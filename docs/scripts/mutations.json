@@ -268,7 +268,7 @@
     "target": "linux/scripts/06-packaging/setup-package-image.sh",
     "find": "compgen -G \"${RUSTUP_HOME}/toolchains/*-${triple}\" >/dev/null",
     "replace": "compgen -G \"${RUSTUP_HOME}/toolchains/*\" >/dev/null",
-    "test": "bash linux/scripts/tests/test-native-rust-toolchain.sh",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "accepting ANY toolchain dir is the 2026-09-01 ship: the builder's x86_64 rustup passes as native on arm64/riscv64 (2 GB of exit-127 binaries at the front of PATH)"
   },
   {
@@ -278,6 +278,38 @@
     "replace": "elif false; then",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "without the host-triple read the smoke is the ADV/HAVE table again: a rustc that happens to run (QEMU host binaries, a future amd64 loader in the image) passes as native"
+  },
+  {
+    "id": "flutter.bootstrap-hard-fail",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        echo \"ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable\" >&2\n        return 1",
+    "replace": "        echo \"ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable\" >&2\n        return 0",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the sdk stage's best-effort `flutter --version` WARNING is how both shipped images carried a 716 MB SDK with an empty bin/cache for months; a bootstrap that cannot fail the stage is that WARNING again"
+  },
+  {
+    "id": "flutter.bootstrap-cache-handover",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    chown -R \"${RUNTIME_UID:?}:${RUNTIME_UID}\" /opt/flutter/bin/cache\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "root writes the cache; without the handover the uid-1001 runtime user hits 'engine.stamp.tmp: Permission denied' on every flutter call (measured 2026-09-03)"
+  },
+  {
+    "id": "flutter.smoke-offline",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "out=\"$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version",
+    "replace": "out=\"$(_rt_run bash -lc 'flutter --suppress-analytics --version",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "online, a bare SDK bootstraps itself during the smoke and passes; the shipped property is that it works without a network"
+  },
+  {
+    "id": "flutter.smoke-dart-arch",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "elif ! printf '%s\\n' \"${out}\" | grep -qF \"${machine}\"; then",
+    "replace": "elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an x86-64 Dart SDK in the arm64 image executes natively on this host, so running flutter proves nothing about the arch; only the ELF machine does"
   },
   {
     "id": "sccache.retry-once",

@@ -49,6 +49,17 @@ _t_fail() {
 
 _t_pass() { :; }
 
+# t_fn_src <file> <function> — the source of one top-level `name() {` … `}`
+# function, for suites that run a build-stage helper off-target with its
+# collaborators stubbed. Returns 1 when the function is gone -- callers do
+# `_fn_src="$(t_fn_src f fn)" || exit 1`, since a subshell cannot end the suite.
+t_fn_src() {
+  local _src
+  _src="$(awk -v fn="$2" '$0 == fn "() {" {p=1} p {print} p && /^}$/ {exit}' "$1")"
+  [ -n "${_src}" ] || { echo "FAIL: $2 not found in $1" >&2; return 1; }
+  printf '%s\n' "${_src}"
+}
+
 # t_out <command...> — combined stdout+stderr, to assert on messages
 t_out() { "$@" 2>&1; }
 # t_rc <command...> — the exit code as text, for t_assert_eq

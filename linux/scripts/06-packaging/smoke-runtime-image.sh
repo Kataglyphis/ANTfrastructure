@@ -23,12 +23,12 @@ inspect_image_config() {
   "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
 }
 
-# Run a command inside the image under test. Leading `-e KEY=VAL` pairs are forwarded
-# as nerdctl-run env options; uses the caller's ${image_tag}/${target_arch} dynamically.
+# Run a command inside the image under test. Leading `-e KEY=VAL` / `--network X`
+# pairs are forwarded to nerdctl run; uses the caller's ${image_tag}/${target_arch}.
 _rt_run() {
   local -a _opts=()
-  while [ "${1:-}" = "-e" ]; do
-    _opts+=(-e "$2")
+  while [ "${1:-}" = "-e" ] || [ "${1:-}" = "--network" ]; do
+    _opts+=("$1" "$2")
     shift 2
   done
   "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" \
@@ -468,13 +468,14 @@ check_ffmpeg() {
     echo ""
 }
 
-# Flutter shipped from the sdk stage. amd64/arm64 carry the SDK; riscv64 is skipped
-# upstream and honestly ships none. Catches the 2026-09-03 drop where /opt/flutter
-# was built, hard-checked, then never COPY'd into the runtime image.
-# docs/artifact-copy-completeness.md
+# Flutter must run as the image user, OFFLINE, on the target-arch Dart SDK the
+# package stage cached: an x86-64 dart in the arm64 image would still execute on
+# this host, so the ELF machine is read rather than inferred from the run.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 check_flutter() {
   local image_tag="$1"
   local target_arch="$2"
+  local pin machine out
   echo "--- Functional: flutter SDK ---"
   if [ "${target_arch}" = "riscv64" ]; then
     if _rt_run bash -lc 'command -v flutter >/dev/null 2>&1'; then
@@ -485,10 +486,15 @@ check_flutter() {
     echo ""
     return 0
   fi
-  if _rt_run bash -lc 'set -o pipefail; flutter --version 2>/dev/null | head -1 | grep -qiE "flutter [0-9]"'; then
-    pass "flutter executes and reports a version (${target_arch})"
+  pin="$(_rt_versions_env_pin FLUTTER_VERSION)"
+  machine="$(smoke_elf_machine_grep "${target_arch}")"
+  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine' 2>&1 || true)"
+  if ! printf '%s\n' "${out}" | grep -qE "^Flutter ${pin:-[0-9]}"; then
+    fail "flutter does not run offline as the image user, or is not FLUTTER_VERSION=${pin:-?} (${target_arch}): $(printf '%s' "${out}" | head -1)"
+  elif ! printf '%s\n' "${out}" | grep -qF "${machine}"; then
+    fail "the cached Dart SDK is not ${machine} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- bootstrapped on the wrong arch"
   else
-    fail "flutter missing or non-functional in the runtime image (${target_arch}) — /opt/flutter not shipped?"
+    pass "flutter ${pin:-(unpinned)} runs offline as the image user on a ${machine} Dart SDK (${target_arch})"
   fi
   echo ""
 }

@@ -236,6 +236,7 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSIO
             rm -rf /opt/flutter; \
             cp -a "${_cached}" /opt/flutter; \
             rm -f "/opt/flutter/${_marker}"; \
+            rm -rf /opt/flutter/bin/cache; \
         else \
             bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
               --arch "${TARGET_ARCH}" \

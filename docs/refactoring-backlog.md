@@ -23,7 +23,7 @@ Last groomed: **2026-09-03**, third pass. Everything closed that day is in the
 `_cross_stage_build_impl` and `reconcile_local_wheels` rows, and F3's
 chain-status walker.
 
-**Eight entries remain: FL1 (ship in progress), HT1, SMK-ADV and TC1 are open
+**Eight entries remain: FL1 (relaunch pending), HT1, SMK-ADV and TC1 are open
 work; YB is a defect under investigation; F1/F2/F3 are tracks.**
 
 * **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
@@ -59,42 +59,43 @@ Nothing in the five entries above is blocked on you. These are:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### FL1. Flutter — fix committed + gate-proven; SHIP BUILD IN PROGRESS 2026-09-03 [high]
+### FL1. Flutter — bootstrap design landed; SHIP BUILD PENDING RELAUNCH 2026-09-03 [high]
 
-The fix (COPY into Dockerfile.package, `/opt/flutter/bin` on PATH, the git
-safe.directory in setup-package-image.sh, the completeness gate + manifest, the
-`check_flutter` runtime smoke, tests + mutation) landed in `189aeae4` and passes
-every static gate.
+`189aeae4` put `/opt/flutter` back into the runtime image (COPY + manifest +
+completeness gate + `check_flutter`). The `flutter-arm64-probe` then showed why
+that alone would still have shipped a broken arm64 Flutter: the sdk stage runs on
+the amd64 host for every arch, so whatever `flutter` caches there is the host's
+Dart SDK, stamped current and never replaced on arm64. The design that fixes it is
+in the tree (uncommitted until this note lands with it):
 
-**A `--only runtime` build is running now** (`flutter-runtime-*.log`): it rebuilds
-the package/wrapper images from the registry `cross-android-<arch>` images (which
-carry `/opt/flutter`), applies the COPY, and publishes the 3-arch `:latest-cross`.
-The build runs `check_flutter` itself, so a broken Flutter fails it. Chosen over a
-full chain because only the package stage changed and the android artifacts already
-exist in the registry.
+* sdk stage ships the checkout **bare** (`setup-flutter.sh` removes `bin/cache`;
+  `Dockerfile.sdk`'s cache-restore branch too);
+* the package stage runs `bootstrap_flutter_sdk` on the target arch (QEMU on arm64,
+  measured 2m48s), asserts the cached dart ELF is the target machine, and hands
+  `bin/cache` to the runtime uid; `Dockerfile.package` COPYs the tree with
+  `--chown=${RUNTIME_UID}` because `flutter` writes into its own cache — as root's
+  tree the runtime user died with `engine.stamp.tmp.NNNN: Permission denied`;
+* `check_flutter` runs `flutter --version` **offline as the image user** and reads
+  the dart ELF machine, since an x86-64 dart executes fine on this host.
 
-**On completion:** confirm `flutter --version` against the shipped
-`:latest-cross-amd64`/`-arm64`, then close this entry. If the build fails, the fix
-is unaffected — re-run once the cause is cleared.
+Everything is in [`artifact-copy-completeness.md`](artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage);
+guarded by `test-setup-package-image.sh`, `test-runtime-image-gates.sh` and the
+`flutter.*` mutations.
 
-**Run 1 (`20260903-161323`) status, 2026-09-03 evening:** both fast lanes died
-on defects the run itself flushed out, neither Flutter-related, both fixed while
-it ran:
+**Run 1 (`20260903-161323`):** amd64 died in the torch stage (`reconcile_local_wheels`,
+hotfix `6ccb2f68`), arm64 in the package stage on the builder-arch rust toolchain
+(`09b1e6e2`, HT1). riscv64 ran on after both fixes and **proved the rust reinstall
+live**: `Rust toolchain in /usr/local/rustup is not riscv64gc-unknown-linux-gnu:
+1.98.0-x86_64-unknown-linux-gnu … -- reinstalling natively` → `rustup-init: OK`.
+Its package image predates the Flutter bootstrap edits (riscv64 ships Flutter
+absent anyway).
 
-* **amd64** — torch stage, `reconcile_local_wheels` returned 1 on the no-local-torch
-  path (`[ … ] && …` as the last statement). Hotfix `6ccb2f68`.
-* **arm64** — package stage exit 127: the COPY'd `/usr/local/{rustup,cargo}` is the
-  amd64 builder's x86_64 toolchain, and it has been shipped in every arm64/riscv64
-  image so far. Fix `09b1e6e2` (`ensure_native_rust_toolchain` + `check_rust_toolchain`
-  smoke); see [`failure-modes.md`](failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch).
-* **riscv64** — package stage started after both fixes landed, so it validates the
-  rust reinstall live (install-rust.sh under QEMU).
-
-**Next:** relaunch `--only runtime` for all three arches once the riscv64 lane ends,
-then the on-completion checks above plus `rustc --version` / `rustup show` on the
-shipped arm64/riscv64 images. The arm64 Flutter question (the SDK there is the
-x86-64 one; see HT1) is being probed in parallel and decides whether arm64 needs a
-package-stage bootstrap before `check_flutter` can pass.
+**Next:** when run 1 ends, pin `useradd -m -u 1001` in `Dockerfile.torch` (the
+COPY chown assumes it; today it is only the first free uid) and relaunch
+`--only runtime` for all three arches. Expected on arm64: package stage
+`OK: Flutter bootstrapped for arm64, bin/cache owned by uid 1001`, smoke
+`PASS flutter 3.47.1 runs offline as the image user on a AArch64 Dart SDK`. Then
+`flutter --version` + `rustc --version` on the shipped images, and close.
 
 ### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
@@ -163,12 +164,10 @@ image. Two members so far:
   the shipped image. Accepted skew: cargo-c comes from apt there (0.10.16 vs the
   0.10.25 pin) because `cargo install cargo-c` under QEMU is a ~1 h build. Revisit
   only if a consumer needs a cargo-c feature newer than 0.10.16.
-* `/opt/flutter` on arm64 — `setup-flutter.sh` installs the **x86-64** SDK on the
-  arm64 lane too. Whether `flutter --version` self-bootstraps an arm64 dart-sdk
-  inside the image is being probed (`flutter-arm64-probe`). Outcome decides:
-  bootstrap in the package stage, or declare Flutter honestly absent on arm64 like
-  riscv64 (`check_flutter`, `register_flutter_git_safe_dir`,
-  [`artifact-copy-completeness.md`](artifact-copy-completeness.md#per-arch-empty-artifacts)).
+* `/opt/flutter` on arm64 — **FIXED in tree 2026-09-03** (see FL1): the sdk stage
+  ships the bare checkout and `bootstrap_flutter_sdk` fetches the target-arch Dart
+  SDK in the package stage; `check_flutter` reads the dart ELF machine on the
+  shipped image. Awaiting the relaunch for live proof.
 
 **Audit the rest:** walk `runtime-artifacts.manifest` and classify each path as
 cross-built-for-target or host-installed; `file -b` one binary per tree inside the

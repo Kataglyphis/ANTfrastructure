@@ -137,15 +137,9 @@ else
   download_and_extract "${URL}" "${INSTALL_DIR}"
 fi
 
-# Clean up unnecessary cache artifacts
+# Ship the checkout BARE: this stage runs on the amd64 host for every arch, so
+# anything `flutter` cached here would be the host's Dart SDK, stamped as
+# current and never replaced on arm64. The package stage bootstraps per arch.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 rm -rf "${FLUTTER_PATH}/bin/cache"
-
-# Verify (best-effort, but never silent: on arm64 the x86-64 tooling may not
-# execute natively — warn instead of masking the failure entirely)
-export PATH="${FLUTTER_PATH}/bin:${PATH}"
-if _flutter_ver="$(flutter --version 2>&1)"; then
-  printf '%s\n' "${_flutter_ver}" | head -1
-else
-  echo "WARNING: 'flutter --version' failed after install (expected on arm64, where the x86-64 archive cannot run natively): $(printf '%s' "${_flutter_ver}" | head -1)" >&2
-fi
-echo "Flutter installed at ${FLUTTER_PATH}"
+echo "Flutter ${FLUTTER_VERSION} installed bare at ${FLUTTER_PATH} (Dart SDK bootstraps in the package stage)"

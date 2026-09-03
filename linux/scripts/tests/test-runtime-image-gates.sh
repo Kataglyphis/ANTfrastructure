@@ -174,4 +174,39 @@ t_assert_contains "$(_rust "rustc 1.98.0 (88d9e12ae 2026-08-18)
 1.98.0-x86_64-unknown-linux-gnu (default)
 /usr/local/cargo/bin/cargo-cbuild")" "PASS rustc 1.98.0 runs natively as x86_64-unknown-linux-gnu" "what a correct image prints"
 
+# The flutter gate with the container stubbed: FLUTTER_OUT is what the image prints
+# for `flutter --version | grep ^Flutter` and `readelf -h dart | grep Machine`; ARGS
+# records the nerdctl options the gate asked for. $2 = target arch.
+_flutter() {
+  local opts; opts="$(mktemp)"
+  FLUTTER_OUT="$1" OPTS="${opts}" bash -c '
+    '"${_STUBS}"'
+    _rt_run() { printf "opts=%s\n" "$*" > "${OPTS}"; printf "%s\n" "${FLUTTER_OUT}"; }
+    smoke_elf_machine_grep() { case "$1" in amd64) printf "X86-64";; arm64) printf "AArch64";; esac; }
+    _rt_versions_env_pin() { printf "3.47.1"; }
+    '"$(_extract check_flutter)"'
+    check_flutter img '"${2:-arm64}"'' 2>&1
+  cat "${opts}"; rm -f "${opts}"
+}
+
+t_case "the flutter gate runs the image offline"
+t_assert_contains "$(_flutter "Flutter 3.47.1 • channel stable
+  Machine:                           AArch64")" "opts=--network none bash" "a cache that still downloads at runtime must not pass"
+
+t_case "an SDK that cannot run as the image user fails (the root-owned bin/cache shape)"
+t_assert_contains "$(_flutter "/opt/flutter/bin/internal/update_engine_version.sh: line 71: /opt/flutter/bin/cache/engine.stamp.tmp.3038: Permission denied")" \
+  "FAIL flutter does not run offline as the image user" "what the uid-1001 runtime user saw on 2026-09-03"
+
+t_case "a version other than the FLUTTER_VERSION pin fails"
+t_assert_contains "$(_flutter "Flutter 3.44.9 • channel stable
+  Machine:                           AArch64")" "is not FLUTTER_VERSION=3.47.1" "the pin is the contract"
+
+t_case "a Dart SDK of the builder's arch in the arm64 image fails even though it ran"
+t_assert_contains "$(_flutter "Flutter 3.47.1 • channel stable
+  Machine:                           Advanced Micro Devices X86-64")" "the cached Dart SDK is not AArch64 on arm64" "an x86-64 dart executes natively on this host"
+
+t_case "the bootstrapped shape passes"
+t_assert_contains "$(_flutter "Flutter 3.47.1 • channel stable
+  Machine:                           AArch64")" "PASS flutter 3.47.1 runs offline as the image user on a AArch64 Dart SDK (arm64)" "what a correct arm64 image prints"
+
 t_summary

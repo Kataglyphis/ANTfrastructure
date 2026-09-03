@@ -482,26 +482,35 @@ report_rust_provenance() {
         echo "  NOTE: RUST_VERSION unset; cannot verify the toolchain matches its pin." >&2
         return 0
     fi
-    got="$(rustc --version 2>/dev/null | awk '{print $2}')"
-    if [ "${got}" != "${want}" ]; then
-        echo "ERROR: shipped rustc is ${got:-<none>}, but versions.env pins RUST_VERSION=${want}." >&2
-        echo "       The pinned toolchain lives in /usr/local/{cargo,rustup} and must be" >&2
-        echo "       COPY'd into this stage; check those COPY lines in Dockerfile.package." >&2
-        echo "       Without them the ENV points at empty paths and wire_cargo_symlinks" >&2
-        echo "       falls back to the apt cargo/rustc debs." >&2
+    got="$(rustc --version 2>&1 || true)"
+    if [ "${got#rustc }" = "${got}" ] || [ "$(printf '%s' "${got}" | awk '{print $2}')" != "${want}" ]; then
+        echo "ERROR: shipped rustc is not RUST_VERSION=${want}: ${got:-<no output>}" >&2
+        echo "       Either ensure_native_rust_toolchain installed a different version, or apt's" >&2
+        echo "       rustc shadows ${CARGO_HOME}/bin on PATH (see wire_cargo_symlinks)." >&2
         return 1
     fi
     echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
-# /opt/flutter is a git repo owned by a different uid than the runtime user, so
-# `flutter --version` dies on "detected dubious ownership" and the SDK is present
-# but unusable. Register it system-wide so any user can run it. Skips riscv64,
-# where the sdk stage leaves /opt/flutter empty. docs/artifact-copy-completeness.md
-register_flutter_git_safe_dir() {
+# The sdk stage ships Flutter bare (empty bin/cache): the Dart SDK and the
+# flutter_tools snapshot are per-arch and only this target-arch stage can create
+# them. Runs as root, so the cache it writes is handed to the runtime user,
+# who already owns the rest of the tree from the COPY.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+bootstrap_flutter_sdk() {
     [ -x /opt/flutter/bin/flutter ] || return 0
+    local arch out
+    arch="$(dpkg --print-architecture)"
     git config --system --add safe.directory /opt/flutter
-    echo "OK: registered /opt/flutter as a git safe.directory"
+    if ! out="$(PATH="/opt/flutter/bin:${PATH}" flutter --suppress-analytics --version 2>&1)"; then
+        printf '%s\n' "${out}" | tail -20 >&2
+        echo "ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable" >&2
+        return 1
+    fi
+    printf '%s\n' "${out}" | grep -m1 -E '^Flutter [0-9]'
+    assert_elf_arch /opt/flutter/bin/cache/dart-sdk/bin/dart "${arch}"
+    chown -R "${RUNTIME_UID:?}:${RUNTIME_UID}" /opt/flutter/bin/cache
+    echo "OK: Flutter bootstrapped for ${arch}, bin/cache owned by uid ${RUNTIME_UID}"
 }
 
 main() {
@@ -533,7 +542,7 @@ main() {
     repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
-    register_flutter_git_safe_dir
+    bootstrap_flutter_sdk
 
     # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
     # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO
