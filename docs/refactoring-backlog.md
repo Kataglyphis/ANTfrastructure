@@ -40,9 +40,14 @@ Nothing in the five entries above is blocked on you. These are:
 
 1. **`git push`** — 28 commits sit on local `main`. Nothing leaves this
    environment without you.
-2. **The submodule pin.** Preflight warns on every run: `external/Kataglyphis-DocumANTation`
-   pin `287365636` is not reachable on its remote. Push it, or a docs/build job
-   that clones it will fail.
+2. ~~The submodule pin.~~ **RESOLVED 2026-09-03 — it was a false alarm, and not
+   yours.** Preflight warned that `external/Kataglyphis-DocumANTation` pin
+   `287365636` was "not reachable on its remote (unpushed local commit or upstream
+   rewrite)". It was neither: the commit **is an ancestor** of the remote's
+   current `main` (`8bf3ccfa`), and the local `origin/main` ref was simply stale.
+   A plain `git fetch` in the submodule cleared it. Worth improving the gate's
+   message — "stale remote-tracking ref" is the third and likeliest cause, and it
+   is the one the wording does not name.
 3. **The Windows lane.** Six confirmed doc defects from the 2026-09-03 currency
    audit are parked in
    [`windows-refactor-backlog.md`](windows-refactor-backlog.md), verified against
