@@ -70,6 +70,7 @@ The two halves of one topic often split:
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
+| **`git@github.com` auth on Windows** — two OpenSSH agents, why `ssh-add` reaches the wrong one, and the two different causes behind one `Permission denied (publickey)` | [`windows-host-setup.md`](windows-host-setup.md#b0-ssh-agent--one-passphrase-then-never-again) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
 | **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md#docker-on-windows-registry-auth-networking-service-recovery) |
 | Defender performance mode, `ExecutionPolicy`, PATH reload, VS/winget updates, `bcdedit` one-time boot | [`windows-host-setup.md`](windows-host-setup.md#appendix--host-odds-and-ends) |
