@@ -60,6 +60,24 @@ riscv64). The build stage creates an **empty** dir on the other arches
 it copies an empty dir where the component is absent. The runtime smoke then
 asserts the honest per-arch truth (see below).
 
+## Scope: the COPY boundary only
+
+The gate audits the `COPY --from=artifact-source` mechanism, because that is
+where Flutter and ArmNN were dropped. Some components reach the runtime image by
+**other** paths and are deliberately NOT in the manifest:
+
+* `cmake` — inherited from `${BASE_IMAGE}` (installed in `Dockerfile.base`).
+* `/opt/python` and the `/opt/venv` runtime venv — built in the `package` stage
+  by `setup-package-image.sh` (`install_staged_target_python`,
+  `create_runtime_venv`), not copied from artifact-source.
+
+A pre-rebuild audit on 2026-09-03 listed every `/opt/*` in the media image and
+cross-checked it against the manifest: the only artifact-source component missing
+was Flutter (now fixed). The build-only trees (`*-cross`, `*-native-*`,
+`llvm-cross`, `wheels`, `cross-bin`) are correctly absent. So for components that
+ship via a NON-COPY mechanism, the runtime smoke is the backstop — the static
+gate cannot see them, by design.
+
 ## The end-to-end backstop
 
 `smoke-runtime-image.sh` `check_flutter` runs against the shipped image: on

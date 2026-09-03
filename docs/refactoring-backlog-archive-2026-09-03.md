@@ -1843,3 +1843,97 @@ STALE freeze once the function dropped under 80 (38 → 37 frozen), and the
 duplication gate failed on MY OWN two test harnesses — merged into one rather
 than allowlisted. Mutations `wheels.partition-arg-order` and
 `wheels.torch-backfill-guard` pin the new wiring.
+
+### F9 — archived 2026-09-03 (both failures retested, neither reproduces)
+
+### F9. Gates that do not run when invoked by hand — BOTH RETESTED 2026-09-03, NEITHER REPRODUCES [S·★★]
+
+Both were filed 2026-09-01 (rescued from the F7/ArmNN cut on 2026-09-02, which
+they had nothing to do with). Both were **retested on 2026-09-03 and did not
+reproduce.** They are kept, not deleted: each failure was really observed, so
+what changed is the diagnosis — from "broken" to "intermittent, cause unknown".
+
+- **The runtime smoke standalone hang** — 2026-09-01 it stopped after
+  "Functional: ML version-pin assertion" with `nerdctl` logging "force cleanup
+  timed out for container".
+  **2026-09-03 retest**, same command, same published image
+  (`smoke-runtime-image.sh …:latest-cross-arm64 arm64`): it ran straight past
+  that point — app-wheel smoke, ONNX InferenceSession, ffmpeg, the /opt `.so`
+  closure, GStreamer core + mandatory plugins, application import, HEALTHCHECK —
+  to completion: **31 PASS, `=== Results: 0 failure(s) ===`**. The "force cleanup timed out" warnings still appear on
+  nearly every container teardown, so that message is NOT the hang; it is normal
+  noise on this host and should not be trusted as the symptom next time.
+
+- **`preflight.sh` dies at the gitleaks secret scan** — 2026-09-01, twice in a
+  row: the process disappeared mid-scan and never wrote its exit code.
+  **2026-09-03 retest** (`PREFLIGHT_ONLY=secret-scan`): gitleaks **8.30.1**
+  scanned ~2.42 GB in **2m49s**, "no leaks found", `secret scan: clean`, and the
+  suite reported `All preflight checks passed` with **rc=0**.
+
+**What to do with this entry:** do not "fix" either one — there is nothing
+failing to fix today. Re-open with fresh evidence if it recurs, and when it does,
+capture the host state (free memory, running containers, disk) at the moment of
+death, because that is what neither 2026-09-01 observation recorded and what
+would separate an OOM kill from a real defect.
+
+A second observation also fell out of the retest: the arm64 app-wheel count
+printed **15** again. That is a second *run*, not a second *build* — same image,
+same wheels — so the floor stays at 14. See
+`docs/gen1-riscv64-genai.md#the-app-wheel-floor`.
+
+### F3 items closed/decided 2026-09-03
+
+- **The source-or-fallback family — DECIDED 2026-09-03: KEEP. Do not delete.**
+  [M·★★★] Four sites carry a canonical helper plus an inline fallback:
+  host-compiler resolution (`ffmpeg-probe-framework.sh`), `_path_contains` /
+  `_path_prepend_unique` (`04-runtime/gstreamer-env.sh`, `libcamera-env.sh`), and
+  host-python discovery (`onnxruntime/build/lib/common.sh`).
+
+  **This entry previously recorded "ANSWERED 2026-09-02: no fallback is reachable"
+  and proposed deleting all four. That answer was WRONG, and acting on it would
+  have broken the build.** It reasoned from the whole-directory provisioning
+  (`Dockerfile.package:276`, `Dockerfile.toolchain:301`, and the ~25 media RUNs
+  that bind-mount `01-core` entire) and concluded `/opt/scripts/core/` always holds
+  all 68 files. It never looked at the **per-file** provisioning, which is
+  widespread:
+
+  | context | 01-core files provided |
+  |---|---|
+  | `Dockerfile.android:79-88` | **3** — `compiler-resolution.sh`, `downloads.sh`, `platform.sh` |
+  | `Dockerfile.media:448-454` | **7** — the cross-* set, `platform.sh`, `ubuntu-mirror.sh` |
+  | `Dockerfile.media:177-180` | **4** |
+  | `Dockerfile.sdk:60,111` | **2** |
+  | `Dockerfile.base` (each RUN) | ~13 |
+  | `Dockerfile.toolchain:91-109` etc. | ~19 |
+
+  `path-helpers.sh` is in **none** of those lists. So the fallbacks are not
+  insurance against a hypothetical future stage — several stages are already in
+  exactly the state they exist for, today.
+
+  **Reachability is per-RUN, not per-tree**, which is why a grep of either shape
+  alone gives the wrong answer: the ffmpeg probe happens to run under a
+  whole-directory mount (`Dockerfile.media:752`), so *that* fallback is indeed
+  dead, while the android lane's 3-file COPY makes others live. Anyone reopening
+  this must check the specific RUN that sources the specific file — and say which
+  RUN in the entry.
+
+- **`lint-{shell,workflows,dockerfiles}.sh` pinned-tool bootstrap** (3 copies) —
+  reviewed and KEPT on 2026-08-31 because hadolint fetches a raw binary while
+  the others untar/unzip, so a shared helper needs a strategy argument. Revisit
+  if a FOURTH tool appears; three is the threshold where the parameter earns
+  itself.
+- **`lib/{app-runner,cmake-build,ctest-run}.sh`** and
+  **`lib/{code-quality,coverage,docs-build}.sh`** — **REVIEWED AND KEPT, entry
+  was stale (found 2026-09-02).** This called them "the most tractable ones",
+  but the allowlist already carries all five pairs, reviewed the same day *by
+  measurement*: longest shared run **11–12 lines**, verdict "a helper would cost
+  more indirection than it saves", budgets pinned so growth trips the gate.
+  Worth knowing they are the one clone family in this list that sits **outside
+  the build closure** (`linux/scripts/lib/` is in no Dockerfile; only
+  `tests/test-lib-smoke.sh` uses it, and `01-core/vulkan-env.sh` merely names
+  `lib/cmake-build.sh` in a comment) — so if the verdict is ever revisited, it
+  can be done during a build. The reviews say "NOT read line-by-line; revisit if
+  it grows", and the pinned budgets are what makes that safe.
+
+- **Dockerfile RUN mount preambles (4-9 files)** — NOT actionable: Dockerfiles
+  have no include or function mechanism. Recorded so nobody re-opens it.

@@ -152,11 +152,6 @@ shell moves ~26 lines. What actually mattered there was that ruff could not see
 the Python at all — fixed 2026-09-02, and those 399 newly-visible lines pass the
 hard gate clean. Split the wrapper for its own sake, never for the line count.
 
-**`reconcile_local_wheels` DONE 2026-09-03: 128 → 43**, four seams extracted
-(`_wheel_families_present`, `_partition_wheels_by_install_group`,
-`_install_wheel_groups`, `_backfill_torch_runtime_deps`). It is off this table
-entirely — details in the 2026-09-03 archive.
-
 **Next candidate: `_opencv_target_adjustments` (114) or `uv_sync_project` (109).**
 Both unreviewed. Measure the value before cutting.
 
@@ -200,100 +195,20 @@ gate does not care that a file is big, only that it grows without saying why.
 
 ### F3. Clone families worth one owner [S-M each]
 
-- **The source-or-fallback family — DECIDED 2026-09-03: KEEP. Do not delete.**
-  [M·★★★] Four sites carry a canonical helper plus an inline fallback:
-  host-compiler resolution (`ffmpeg-probe-framework.sh`), `_path_contains` /
-  `_path_prepend_unique` (`04-runtime/gstreamer-env.sh`, `libcamera-env.sh`), and
-  host-python discovery (`onnxruntime/build/lib/common.sh`).
-
-  **This entry previously recorded "ANSWERED 2026-09-02: no fallback is reachable"
-  and proposed deleting all four. That answer was WRONG, and acting on it would
-  have broken the build.** It reasoned from the whole-directory provisioning
-  (`Dockerfile.package:276`, `Dockerfile.toolchain:301`, and the ~25 media RUNs
-  that bind-mount `01-core` entire) and concluded `/opt/scripts/core/` always holds
-  all 68 files. It never looked at the **per-file** provisioning, which is
-  widespread:
-
-  | context | 01-core files provided |
-  |---|---|
-  | `Dockerfile.android:79-88` | **3** — `compiler-resolution.sh`, `downloads.sh`, `platform.sh` |
-  | `Dockerfile.media:448-454` | **7** — the cross-* set, `platform.sh`, `ubuntu-mirror.sh` |
-  | `Dockerfile.media:177-180` | **4** |
-  | `Dockerfile.sdk:60,111` | **2** |
-  | `Dockerfile.base` (each RUN) | ~13 |
-  | `Dockerfile.toolchain:91-109` etc. | ~19 |
-
-  `path-helpers.sh` is in **none** of those lists. So the fallbacks are not
-  insurance against a hypothetical future stage — several stages are already in
-  exactly the state they exist for, today.
-
-  **Reachability is per-RUN, not per-tree**, which is why a grep of either shape
-  alone gives the wrong answer: the ffmpeg probe happens to run under a
-  whole-directory mount (`Dockerfile.media:752`), so *that* fallback is indeed
-  dead, while the android lane's 3-file COPY makes others live. Anyone reopening
-  this must check the specific RUN that sources the specific file — and say which
-  RUN in the entry.
+Two genuinely-open observations remain. The decided/reviewed items (the
+source-or-fallback KEEP decision, the lint-tool and lib/* pairs reviewed-and-kept
+by measurement, and the not-actionable Dockerfile mount preambles) are in the
+2026-09-03 archive.
 
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
-  (56 shingles) — the single largest copied block in the tree. It is
-  `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
-  bootstrap paradox before touching it: the block exists precisely for the case
-  where nothing has been sourced yet, so extracting it into a file you must
-  source defeats its purpose. A shared file plus a 2-line guard may still beat
-  14 lines × 9.
-- **`lint-{shell,workflows,dockerfiles}.sh` pinned-tool bootstrap** (3 copies) —
-  reviewed and KEPT on 2026-08-31 because hadolint fetches a raw binary while
-  the others untar/unzip, so a shared helper needs a strategy argument. Revisit
-  if a FOURTH tool appears; three is the threshold where the parameter earns
-  itself.
-- **`lib/{app-runner,cmake-build,ctest-run}.sh`** and
-  **`lib/{code-quality,coverage,docs-build}.sh`** — **REVIEWED AND KEPT, entry
-  was stale (found 2026-09-02).** This called them "the most tractable ones",
-  but the allowlist already carries all five pairs, reviewed the same day *by
-  measurement*: longest shared run **11–12 lines**, verdict "a helper would cost
-  more indirection than it saves", budgets pinned so growth trips the gate.
-  Worth knowing they are the one clone family in this list that sits **outside
-  the build closure** (`linux/scripts/lib/` is in no Dockerfile; only
-  `tests/test-lib-smoke.sh` uses it, and `01-core/vulkan-env.sh` merely names
-  `lib/cmake-build.sh` in a comment) — so if the verdict is ever revisited, it
-  can be done during a build. The reviews say "NOT read line-by-line; revisit if
-  it grows", and the pinned budgets are what makes that safe.
+  (56 shingles) — the single largest copied block in the tree,
+  `if ! declare -F info; then source …; else info() { … }; fi`. **Bootstrap
+  paradox before touching it:** the block exists for the case where nothing has
+  been sourced yet, so extracting it into a file you must source defeats its
+  purpose. A shared file plus a 2-line guard may still beat 14 lines × 9. Outside
+  the build closure (`lib/` is in no Dockerfile), so it can be done any time.
 - **`install-deps.sh` family (6 files)** — cross-apt, gstreamer, litert, opencv,
-  pre-setup, assemble-torch-app. Shares the target-package install shape.
-- **Dockerfile RUN mount preambles (4-9 files)** — NOT actionable: Dockerfiles
-  have no include or function mechanism. Recorded so nobody re-opens it.
+  pre-setup, assemble-torch-app share the target-package install shape.
+  Unreviewed; measure the longest shared run before deciding, as the lib/* pairs
+  showed 11–12 lines is below the extract-a-helper threshold.
 
-### F9. Gates that do not run when invoked by hand — BOTH RETESTED 2026-09-03, NEITHER REPRODUCES [S·★★]
-
-Both were filed 2026-09-01 (rescued from the F7/ArmNN cut on 2026-09-02, which
-they had nothing to do with). Both were **retested on 2026-09-03 and did not
-reproduce.** They are kept, not deleted: each failure was really observed, so
-what changed is the diagnosis — from "broken" to "intermittent, cause unknown".
-
-- **The runtime smoke standalone hang** — 2026-09-01 it stopped after
-  "Functional: ML version-pin assertion" with `nerdctl` logging "force cleanup
-  timed out for container".
-  **2026-09-03 retest**, same command, same published image
-  (`smoke-runtime-image.sh …:latest-cross-arm64 arm64`): it ran straight past
-  that point — app-wheel smoke, ONNX InferenceSession, ffmpeg, the /opt `.so`
-  closure, GStreamer core + mandatory plugins, application import, HEALTHCHECK —
-  to completion: **31 PASS, `=== Results: 0 failure(s) ===`**. The "force cleanup timed out" warnings still appear on
-  nearly every container teardown, so that message is NOT the hang; it is normal
-  noise on this host and should not be trusted as the symptom next time.
-
-- **`preflight.sh` dies at the gitleaks secret scan** — 2026-09-01, twice in a
-  row: the process disappeared mid-scan and never wrote its exit code.
-  **2026-09-03 retest** (`PREFLIGHT_ONLY=secret-scan`): gitleaks **8.30.1**
-  scanned ~2.42 GB in **2m49s**, "no leaks found", `secret scan: clean`, and the
-  suite reported `All preflight checks passed` with **rc=0**.
-
-**What to do with this entry:** do not "fix" either one — there is nothing
-failing to fix today. Re-open with fresh evidence if it recurs, and when it does,
-capture the host state (free memory, running containers, disk) at the moment of
-death, because that is what neither 2026-09-01 observation recorded and what
-would separate an OOM kill from a real defect.
-
-A second observation also fell out of the retest: the arm64 app-wheel count
-printed **15** again. That is a second *run*, not a second *build* — same image,
-same wheels — so the floor stays at 14. See
-`docs/gen1-riscv64-genai.md#the-app-wheel-floor`.
