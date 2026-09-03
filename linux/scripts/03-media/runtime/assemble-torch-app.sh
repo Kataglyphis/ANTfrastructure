@@ -301,14 +301,39 @@ run_uv_sync_with_fallback() {
 
 # After uv sync, force-reinstall the prebuilt local wheels, first uninstalling
 # any PyPI onnxruntime/opencv families they replace so the local builds win.
+# Uninstall any PyPI build of a family we ship locally, BEFORE force-reinstalling
+# ours: an upstream pulled transitively (often under a variant name --
+# onnxruntime-gpu, opencv-python 4.x) would otherwise shadow the custom build.
+# torch/torchvision/ai-edge-litert are purged here too, for symmetry.
+_purge_shadowing_pypi_builds() {
+  local have_onnx_family="$1" have_opencv_family="$2"
+  local have_torch_family="$3" have_litert_family="$4"
+  if [ "${have_onnx_family}" = "true" ]; then
+    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu onnxruntime-dnnl 2>/dev/null || true
+  fi
+  if [ "${have_opencv_family}" = "true" ]; then
+    uv_uninstall_pip_opencv
+  fi
+  if [ "${have_torch_family}" = "true" ]; then
+    uv pip uninstall torch torchvision 2>/dev/null || true
+  fi
+  if [ "${have_litert_family}" = "true" ]; then
+    uv pip uninstall ai-edge-litert 2>/dev/null || true
+  fi
+}
+
 reconcile_local_wheels() {
   local -a local_wheels=()
   local wheel_path wheel_basename
   local have_onnx_family=false have_opencv_family=false
   local have_torch_family=false have_litert_family=false
 
+  # Overridable ONLY so this function can be exercised off-target: /opt is
+  # root-owned, so a test cannot put fixtures where the image keeps its wheels.
+  # Unset, this is exactly /opt/wheels. docs/refactoring-backlog.md F1
+  local _wheels_dir="${LOCAL_WHEELS_DIR:-/opt/wheels}"
   shopt -s nullglob
-  local_wheels=(/opt/wheels/*.whl)
+  local_wheels=("${_wheels_dir}"/*.whl)
   shopt -u nullglob
 
   if [ "${#local_wheels[@]}" -eq 0 ]; then
@@ -326,23 +351,8 @@ reconcile_local_wheels() {
     esac
   done
 
-  # Uninstall any PyPI build of a family we ship locally BEFORE force-reinstalling
-  # our wheels, so an upstream pulled transitively (often under a variant name --
-  # onnxruntime-gpu, opencv-python 4.x) can't shadow the custom build. torch/
-  # torchvision/ai-edge-litert are purged here too for symmetry -- previously they
-  # relied on build_uv_sync_args' --no-install-package + --force-reinstall alone.
-  if [ "${have_onnx_family}" = "true" ]; then
-    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu onnxruntime-dnnl 2>/dev/null || true
-  fi
-  if [ "${have_opencv_family}" = "true" ]; then
-    uv_uninstall_pip_opencv
-  fi
-  if [ "${have_torch_family}" = "true" ]; then
-    uv pip uninstall torch torchvision 2>/dev/null || true
-  fi
-  if [ "${have_litert_family}" = "true" ]; then
-    uv pip uninstall ai-edge-litert 2>/dev/null || true
-  fi
+  _purge_shadowing_pypi_builds "${have_onnx_family}" "${have_opencv_family}" \
+    "${have_torch_family}" "${have_litert_family}"
 
   # Partition IREE runtime wheels (riscv64 cross-built, best-effort) out of the
   # main force-reinstall: they pull ml_dtypes, which has no riscv64 PyPI wheel and

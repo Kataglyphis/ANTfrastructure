@@ -150,5 +150,21 @@
     "replace": "        pass",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a tool that edits in place must never leave the tree mutated"
+  },
+  {
+    "id": "wheels.no-deps",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "uv pip install --no-deps --force-reinstall \"${other_wheels[@]}\"",
+    "replace": "uv pip install --force-reinstall \"${other_wheels[@]}\"",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "--no-deps is what stops uv floating the venv off the lock"
+  },
+  {
+    "id": "wheels.ort-dangling-edges",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "uv pip install 'protobuf>=6,<7' flatbuffers",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "the ORT wheel's own requirements are skipped by --no-deps"
   }
 ]
