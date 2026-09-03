@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -59,6 +60,34 @@ HISTORY_FILES = ("CHANGELOG.md",)
 CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
 CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__"}
+
+
+def _ignored_paths(paths: list) -> set:
+    """Paths git ignores — build output and captured data, not source.
+
+    The gate scans every file under the code trees for `docs/*.md` pointers.
+    That is right for source and wrong for generated data: a benchmark result
+    under linux/llm-stack/benchmark_results/ contains MODEL OUTPUT, and a model
+    that writes a markdown link to some invented page under the docs directory
+    is not making a repo reference. Two such lines failed the gate with findings
+    nobody could act on. (The example is deliberately paraphrased rather than
+    quoted — quoting it here made this very docstring trip the gate.)
+
+    Asking git is better than a hand-kept skip list: the same .gitignore that
+    keeps the data out of the repo now keeps it out of the lint, so the next
+    output directory needs no second decision.
+    """
+    if not paths:
+        return set()
+    try:
+        proc = subprocess.run(
+            ["git", "check-ignore", "--stdin"],
+            input="\n".join(str(p) for p in paths),
+            capture_output=True, text=True, cwd=REPO_ROOT, timeout=60,
+        )
+    except Exception:
+        return set()  # no git, or it failed — scan everything rather than skip
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 CODE_POINTER = re.compile(
     r"(?<![\w/.-])((?:\.\./)*docs/[A-Za-z0-9._/-]+\.md)(?:#([A-Za-z0-9_-]+))?"
 )
@@ -249,7 +278,8 @@ def code_files() -> list[Path]:
                 CODE_SKIP_PARTS & set(f.parts)
             ):
                 out.append(f)
-    return out
+    ignored = _ignored_paths([f.relative_to(REPO_ROOT) for f in out])
+    return [f for f in out if str(f.relative_to(REPO_ROOT)) not in ignored]
 
 
 def check_code_pointers(docs: dict[str, Doc], findings: list[str]) -> int:
