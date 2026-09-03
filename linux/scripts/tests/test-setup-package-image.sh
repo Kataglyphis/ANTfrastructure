@@ -2,6 +2,8 @@
 # setup-package-image.sh helpers run off-target with their collaborators stubbed:
 #   ensure_native_rust_toolchain  docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 #   bootstrap_flutter_sdk         docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+# Plus the uid the chown and the useradd must agree on, across two Dockerfiles.
+#   docs/artifact-copy-completeness.md#the-runtime-uid-is-a-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -102,5 +104,21 @@ t_assert_contains "${_out}" "/bin/cache/dart-sdk/bin/dart arm64" "for the arch d
 t_assert_contains "${_out}" "chown -R 1001:1001 /" "the root-written cache is handed to the runtime user"
 t_assert_contains "${_out}" "OK: Flutter bootstrapped for arm64, bin/cache owned by uid 1001" "and the stage says so"
 t_assert_contains "${_out}" "rc=0" "success"
+
+# ---- the chown target (Dockerfile.package) and the user (Dockerfile.torch)
+_DF_DIR="${TESTS_DIR}/../.."
+_uid_arg() { grep -oP '(?<=^ARG RUNTIME_UID=)\d+' "${_DF_DIR}/$1" | head -1; }
+
+t_case "both Dockerfiles default RUNTIME_UID to the same uid"
+t_assert_eq "$(_uid_arg Dockerfile.package)" "$(_uid_arg Dockerfile.torch)" \
+  "package chowns /opt/flutter to it, torch creates the user with it"
+t_assert_eq "1001" "$(_uid_arg Dockerfile.package)" "and it is the uid the smokes assert"
+
+t_case "Dockerfile.torch pins useradd to that uid and proves it"
+_useradd="$(grep -m1 'useradd' "${_DF_DIR}/Dockerfile.torch")"
+t_assert_contains "${_useradd}" 'useradd -m -l -u ${RUNTIME_UID}' \
+  "without -u the first free uid wins, which is 1001 only by luck"
+t_assert_contains "$(grep -A1 'useradd' "${_DF_DIR}/Dockerfile.torch")" 'id -u kataglyphis' \
+  "a base image that already owns the uid must fail the build, not ship a mismatch"
 
 t_summary

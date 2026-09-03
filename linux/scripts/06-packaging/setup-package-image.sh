@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # shellcheck disable=SC1091
 source /opt/scripts/core/platform.sh
+# A set -e death in these image-side scripts printed nothing at all until
+# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# shellcheck source=linux/scripts/01-core/logging.sh
+source /opt/scripts/core/logging.sh
+install_err_trap
 
 link_path_if_present() {
     local candidate="$1"
@@ -333,7 +338,12 @@ wire_cargo_symlinks() {
     # instead of at us.
     if [ -n "${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then
         local _got
-        _got="$("${CARGO_HOME}/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
+        if ! _got="$("${CARGO_HOME}/bin/rustc" --version 2>&1)"; then
+            echo "ERROR: ${CARGO_HOME}/bin/rustc does not execute: ${_got}" >&2
+            echo "       A foreign-arch toolchain reaches here only if ensure_native_rust_toolchain did not replace it." >&2
+            return 1
+        fi
+        _got="$(printf '%s\n' "${_got}" | awk '{print $2}')"
         if [ -n "${_got}" ] && [ "${_got}" != "${RUST_VERSION}" ]; then
             echo "ERROR: ${CARGO_HOME}/bin/rustc reports ${_got}, but RUST_VERSION pins ${RUST_VERSION}." >&2
             echo "       The pinned rustup toolchain is being shadowed - check that" >&2

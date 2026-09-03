@@ -46,6 +46,7 @@ Two neighbours, so you land on the right page:
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
 - [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 - [The copied Rust toolchain is the builder's arch](#the-copied-rust-toolchain-is-the-builders-arch)
+- [A packaging script dies with no message](#a-packaging-script-dies-with-no-message)
 
 **Windows: the layer store (hcsshim)**
 
@@ -639,6 +640,43 @@ tree copied from artifact-source: `/opt/flutter` on arm64 is the x86-64 SDK
 too (`setup-flutter.sh`), which `check_flutter` exercises the same way.
 
 ---
+
+### A packaging script dies with no message
+
+**Symptom.** A `Dockerfile.package` / `Dockerfile.torch` RUN ends with
+`did not complete successfully: exit code: N` and the last line of output is an
+ordinary progress line. Nothing names a command, a line, or a reason. Seen
+twice in the 2026-09-03 18:13 run: the arm64 package stage (`exit code: 127`,
+last line `Keeping existing /usr/local/cargo/bin/rustup`) and the amd64 torch
+stage (`exit code: 1`, last line `Checked 1 package in 2ms`).
+
+**Cause.** `set -e` exits silently by design. The three image-side scripts —
+`setup-package-image.sh`, `setup-torch-venv.sh`, `assemble-torch-app.sh` — are
+several hundred lines of small functions, so the failing command can be any of
+them, and the usual suspects say nothing on the way out:
+
+* a command substitution under `pipefail` whose stderr is discarded
+  (`_got="$(rustc --version 2>/dev/null | awk …)"` — an unrunnable foreign-arch
+  `rustc` produces exit 127 and not one byte of output);
+* a helper whose last command is a failed test, which becomes the helper's own
+  return value (see *A trailing conditional fails the whole script*);
+* any `uv`/`git` call that fails with its diagnostics already consumed.
+
+**Fix.** The three scripts run `set -Eeuo pipefail` and `install_err_trap`
+(`01-core/logging.sh`), so a `set -e` death now prints
+`[ERROR] Command failed (line N): <the command>` before it exits. `-E` is the
+load-bearing flag: without `errtrace` the trap is not inherited by shell
+functions, which is where all the work happens. `Dockerfile.torch` COPYs
+`logging.sh` into `/opt/scripts/core/` for this.
+
+The probe that produced the arm64 127 also names its own failure now: an
+unrunnable `${CARGO_HOME}/bin/rustc` reports `does not execute` and points at
+`ensure_native_rust_toolchain`.
+
+**Reading it.** The trap reports the line of the *failing command*, not of the
+caller. Match it against the script in the image
+(`nerdctl run --rm <image> sed -n '<N>p' /opt/scripts/packaging/…`), because the
+line numbers move with every edit to the file.
 
 ## Windows: the layer store (hcsshim)
 

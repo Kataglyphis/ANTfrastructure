@@ -112,6 +112,22 @@ happen:
   the 716 MB into a new layer) and the bootstrap hands the cache it wrote as
   root to the same uid.
 
+### The runtime uid is a contract
+
+`Dockerfile.package` chowns `/opt/flutter` to `ARG RUNTIME_UID` at COPY time,
+but the user that reads it is created much later, in `Dockerfile.torch`'s
+`useradd`. Those two numbers are in different files and nothing joined them:
+`useradd` without `-u` takes the first free uid, which is 1001 only as long as
+the base image happens to have no other non-system user. A base that gains one
+would move `kataglyphis` to 1002 and hand Flutter's `bin/cache` to a uid that
+does not exist — the same `Permission denied` the chown exists to prevent,
+reappearing from an unrelated change.
+
+`Dockerfile.torch` therefore declares its own `ARG RUNTIME_UID=1001`, passes it
+to `useradd -u`, and asserts `id -u kataglyphis` afterwards, so a base image
+that already owns that uid fails the build instead of shipping a mismatch.
+Both defaults must stay equal; `test-setup-package-image.sh` compares them.
+
 ## The end-to-end backstop
 
 `smoke-runtime-image.sh` `check_flutter` runs against the shipped image **as
