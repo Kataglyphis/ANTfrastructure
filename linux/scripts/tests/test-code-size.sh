@@ -15,7 +15,7 @@ _fixture() {
   local shape="$1" n="$2" allow="${3-}" d
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts"
-  cp "${SCRIPTS_DIR}/verify_code_size.py" "${d}/linux/scripts/"
+  cp "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" "${d}/linux/scripts/"
   # NOTE: the redirect must sit inside each arm. A trailing `esac > "${subject}"`
   # expands ${subject} before any arm runs, so the content lands in the default file.
   case "${shape}" in

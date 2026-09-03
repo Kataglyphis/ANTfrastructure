@@ -21,6 +21,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from quality_allow import check_counts, load_counts  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERE = os.path.dirname(os.path.abspath(__file__))
 FN_ALLOW = os.path.join(HERE, "function-size.allow")
@@ -118,56 +121,6 @@ def _py_functions(path, rel):
         yield item
 
 
-def load_allow(path):
-    frozen = {}
-    if not os.path.exists(path):
-        return frozen
-    for raw in open(path, encoding="utf-8"):
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) < 3:
-            continue
-        frozen[tuple(parts[:-2])] = int(parts[-2])
-    return frozen
-
-
-def _check(kind, items, frozen, limit, allow_name):
-    """The four-way contract, shared by both metrics: a new offender, growth, an
-    unrecorded shrink and a stale freeze all fail."""
-    rc = 0
-    over = [(k, n) for k, n in items if n > limit]
-    print("  %-9s %d over %d lines; %d frozen" % (kind + ":", len(over), limit, len(frozen)))
-    seen = set()
-    for key, count in sorted(over):
-        seen.add(key)
-        label = ":".join(key) if isinstance(key, tuple) else key
-        was = frozen.get(key)
-        if was is None:
-            rc = 1
-            sys.stderr.write("FAIL: %s is %d lines, over the %d-line limit and not "
-                             "frozen -- split it, or add it to %s with a reason.\n"
-                             % (label, count, limit, allow_name))
-        elif count > was:
-            rc = 1
-            sys.stderr.write("FAIL: %s GREW from %d to %d lines -- update its %s "
-                             "entry and say why in the reason column.\n"
-                             % (label, was, count, allow_name))
-        elif count < was:
-            rc = 1
-            sys.stderr.write("FAIL: %s shrank from %d to %d lines -- update its %s "
-                             "entry so the baseline cannot rot.\n"
-                             % (label, was, count, allow_name))
-    for key, was in sorted(frozen.items()):
-        if key not in seen:
-            rc = 1
-            label = ":".join(key) if isinstance(key, tuple) else key
-            sys.stderr.write("FAIL: STALE freeze for %s (%d lines) -- it is no longer "
-                             "over the limit; delete the line.\n" % (label, was))
-    return rc
-
-
 def main():
     print("=== code size gate (functions > %d, files > %d) ===" % (LIMIT, FILE_LIMIT))
     # A name can be defined more than once in one file (a stub redefined later),
@@ -176,10 +129,10 @@ def main():
     longest: dict = {}
     for f, n, c in functions():
         longest[(f, n)] = max(c, longest.get((f, n), 0))
-    rc = _check("functions", sorted(longest.items()),
-                load_allow(FN_ALLOW), LIMIT, "function-size.allow")
-    rc |= _check("files", [((f,), n) for f, n in files()],
-                 load_allow(FILE_ALLOW), FILE_LIMIT, "file-size.allow")
+    rc = check_counts("functions", sorted(longest.items()),
+                      load_counts(FN_ALLOW), LIMIT, "function-size.allow")
+    rc |= check_counts("files", [((f,), n) for f, n in files()],
+                       load_counts(FILE_ALLOW), FILE_LIMIT, "file-size.allow")
     if rc == 0:
         print("OK: no new or grown oversized functions or files")
     return rc

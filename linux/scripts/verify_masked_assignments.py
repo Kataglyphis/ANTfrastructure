@@ -13,6 +13,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from quality_allow import check_keys, load_keys  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "masked-assignments.allow")
 DECL = re.compile(r"^\s*(?:local|export|declare|readonly)\s+(?:-\w+\s+)*([A-Za-z_][A-Za-z0-9_]*)=")
@@ -41,21 +44,9 @@ def sites():
     return sorted(out)
 
 
-def load_allow():
-    if not os.path.exists(ALLOW):
-        return set()
-    keep = set()
-    with open(ALLOW, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                keep.add(line)
-    return keep
-
-
 def main():
     found = sites()
-    allow = load_allow()
+    allow = load_keys(ALLOW)
     # key on file+variable, NOT the line number: a site must not re-flag because
     # something above it moved.
     keys = {"{}\t{}".format(f, v) for f, _n, v in found}
@@ -63,22 +54,14 @@ def main():
     print("  {} `local/export x=$(...)` site(s); {} frozen in {}".format(
         len(found), len(allow), os.path.basename(ALLOW)))
 
-    rc = 0
-    new = sorted(k for k in keys if k not in allow)
-    if new:
-        rc = 1
-        print("\nNEW masked declaration(s) — split them:\n", file=sys.stderr)
-        for k in new:
-            f, v = k.split("\t")
-            ln = next((n for ff, n, vv in found if ff == f and vv == v), "?")
-            print("  {}:{}  {}".format(f, ln, v), file=sys.stderr)
-        print("\n  local x\n  x=\"$(cmd)\" || return 1\n", file=sys.stderr)
-    stale = sorted(allow - keys)
-    if stale:
-        rc = 1
-        print("\nSTALE entr(ies) — the site is gone, delete the line:\n", file=sys.stderr)
-        for k in stale:
-            print("  {}".format(k.replace("\t", "  ")), file=sys.stderr)
+    def _site(k):
+        f, v = k.split("\t")
+        ln = next((n for ff, n, vv in found if ff == f and vv == v), "?")
+        return "{}:{}  {}".format(f, ln, v)
+
+    rc = check_keys(keys, allow,
+                    'NEW masked declaration(s) — split them:\n\n  local x\n  x="$(cmd)" || return 1',
+                    "STALE entr(ies) — the site is gone, delete the line:", _site)
     if rc == 0:
         print("OK: no new masked declarations")
     return rc

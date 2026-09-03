@@ -1,7 +1,7 @@
 [
   {
     "id": "code-size.new-offender",
-    "target": "linux/scripts/verify_code_size.py",
+    "target": "linux/scripts/quality_allow.py",
     "find": "        if was is None:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -9,7 +9,7 @@
   },
   {
     "id": "code-size.growth",
-    "target": "linux/scripts/verify_code_size.py",
+    "target": "linux/scripts/quality_allow.py",
     "find": "        elif count > was:",
     "replace": "        elif False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -17,7 +17,7 @@
   },
   {
     "id": "code-size.unrecorded-shrink",
-    "target": "linux/scripts/verify_code_size.py",
+    "target": "linux/scripts/quality_allow.py",
     "find": "        elif count < was:",
     "replace": "        elif False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -25,7 +25,7 @@
   },
   {
     "id": "code-size.stale-freeze",
-    "target": "linux/scripts/verify_code_size.py",
+    "target": "linux/scripts/quality_allow.py",
     "find": "        if key not in seen:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -34,8 +34,8 @@
   {
     "id": "code-size.file-verdict-discarded",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "    rc |= _check(\"files\"",
-    "replace": "    rc |= 0 * _check(\"files\"",
+    "find": "    rc |= check_counts(\"files\"",
+    "replace": "    rc |= 0 * check_counts(\"files\"",
     "test": "bash linux/scripts/tests/test-code-size.sh",
     "why": "a file violation must fail, not just print"
   },

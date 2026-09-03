@@ -236,6 +236,23 @@ added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
 
+## The allowlist contract
+
+Every gate that freezes a baseline uses one of two rules, both owned by
+`linux/scripts/quality_allow.py` so a new gate cannot invent a third:
+
+- **Counted metrics** (`key | count | reason`, e.g. `function-size.allow`) use
+  the **four-way** rule: a new offender fails, growth past the frozen count
+  fails, an *unrecorded shrink* fails (the improvement must land in the diff),
+  and a stale freeze fails. The number therefore always equals reality.
+- **Set metrics** (one tab-separated key per line, e.g. `comment-size.allow`)
+  use the **two-way** rule: a key not frozen is NEW, a frozen key no longer
+  found is STALE.
+
+Keys are chosen to survive unrelated edits — file + name, or file + first
+comment line — never a line number. A gate that copies these rules instead of
+importing them is the duplication the `code-dupes` gate exists to refuse.
+
 ## The mutation gate (`mutations`)
 
 `docs/scripts/verify_mutations.py` with `docs/scripts/mutations.json`, preflight
