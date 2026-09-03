@@ -37,7 +37,7 @@ _uv_calls_env() {
     printf 'exit 1\n'; } > "${venv}/bin/python3"
   chmod +x "${venv}/bin/python3"
   LOCAL_WHEELS_DIR="${d}" VIRTUAL_ENV="${venv}" _T_ARCH="${arch}" bash -c '
-    set -u
+    set -eu
     log() { :; }; warn() { :; }; echo() { :; }
     uname() { printf "%s\n" "${_T_ARCH}"; }
     uv() { printf "uv %s\n" "$*"; }
@@ -91,6 +91,13 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps '
 t_case "a non-torch wheel set never enters the backfill at all"
 _out="$(_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl")"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl' | grep -v -e 'ml_dtypes')"
+
+t_case "a non-torch wheel set returns 0 under set -e (the amd64/arm64 path)"
+# 2026-09-03: a trailing `[ torch ] && backfill` made the function return 1 for
+# every arch WITHOUT a local torch wheel; set -e then killed setup-torch-venv.sh
+# silently after the last uv call. docs/failure-modes.md#a-trailing-conditional-fails-the-whole-script
+_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl" >/dev/null
+t_assert_eq 0 "$?" "reconcile_local_wheels must exit 0 when there is nothing to backfill"
 
 t_case "IREE on riscv64 builds ml_dtypes from source — WITH deps"
 _out="$(_uv_calls_env riscv64 "" "iree_base_runtime-3.11.0-cp312-abi3-linux_riscv64.whl")"

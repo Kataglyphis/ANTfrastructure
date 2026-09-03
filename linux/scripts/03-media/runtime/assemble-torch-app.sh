@@ -470,7 +470,9 @@ reconcile_local_wheels() {
   _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels "${local_wheels[@]}"
 
   _install_wheel_groups other_wheels tvm_wheels iree_wheels
-  [ "${have_torch_family}" = "true" ] && _backfill_torch_runtime_deps
+  if [ "${have_torch_family}" = "true" ]; then
+    _backfill_torch_runtime_deps
+  fi
 }
 
 install_project_environment() {

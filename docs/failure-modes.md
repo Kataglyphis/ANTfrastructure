@@ -44,6 +44,7 @@ Two neighbours, so you land on the right page:
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
+- [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 
 **Windows: the layer store (hcsshim)**
 
@@ -527,6 +528,53 @@ check: it costs attention on every run and buys nothing. When you find one, the
 question is not "how do I make this pass" but "what would it take to make this
 able to fail" — and if you cannot answer that today, delete it and say where the
 real coverage lives.
+
+---
+
+### A trailing conditional fails the whole script
+
+The 2026-09-03 runtime build died on amd64 in `setup-torch-venv.sh` with
+`exit code: 1` and no error text — the last lines were a healthy
+`uv pip install --no-deps ml_dtypes` / `Checked 1 package in 2ms`. The cause was
+one line at the END of `reconcile_local_wheels` in `assemble-torch-app.sh`:
+
+```bash
+  [ "${have_torch_family}" = "true" ] && _backfill_torch_runtime_deps
+}
+```
+
+A function returns the status of its last statement. With no local torch wheel
+(every amd64/arm64 build — torch comes from `uv sync` there) the test is false,
+the `&&` list is `1`, so the function returns `1`; the caller runs under
+`set -euo pipefail` and exits. Nothing printed anything, because nothing had
+failed in the ordinary sense. riscv64, the only arch WITH a local torch wheel,
+was the only arch that would have passed.
+
+Two things let it through:
+
+- **`set -e` is not tripped by the list itself.** `a && b` is exempt from
+  `-e`, which is why the idiom feels safe; the trap is only that its status
+  becomes the function's status, and the bare call `reconcile_local_wheels`
+  in the caller is NOT exempt.
+- **The characterisation test ran without `set -e` and never looked at `$?`.**
+  It pinned the sequence of `uv` calls the function makes (its stated purpose)
+  and so proved the refactor behaviour-preserving for every path — including
+  the path that now returned `1`, because a return status is not a `uv` call.
+
+Fix: an `if ... fi` (or `|| true` when the right-hand side is genuinely
+optional). The test harness now runs the function under `set -eu` and asserts
+`0` for a non-torch wheel set; against the broken revision that case fails
+(`expected '0', got '1'`).
+
+**Where else this hides.** A census of `cond && cmd` as the last statement
+before a closing brace finds 17 sites in the tree; almost all are deliberate
+*predicates* (`[ -n "${_t}" ] && [ "${_t}" != "${_b}" ]`) whose callers use them
+in `if`/`||`. The bug shape is narrower: an *action* on the right-hand side and
+a *bare* call site under `set -e`. A regex on the function alone cannot tell the
+two apart, which is why this is a call-site check
+(docs/code-quality-tooling.md, planned gate `trailing-and`), not a pattern ban.
+Until it exists: a function-level test must assert the exit status on the
+"nothing to do" path, not only the calls it makes.
 
 ---
 
