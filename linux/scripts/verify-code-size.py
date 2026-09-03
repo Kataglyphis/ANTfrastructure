@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Fail on NEW oversized shell functions AND files.
+"""Keep the size of shell functions and files honest.
+
+The number in the allow file must match reality in BOTH directions, so a size can
+never drift unnoticed: growing one is allowed, but only as a deliberate, reviewable
+edit that shows up in the diff next to a reason. Blocking growth outright would
+just push a needed addition into the wrong file.
 
 The repo had no length metric at all: F1/F2 in the backlog were measured by hand,
 which is why their tables went stale between rounds and had to be re-measured five
@@ -101,8 +106,9 @@ def _check(kind, items, frozen, limit, allow_name):
                              % (label, count, limit, allow_name))
         elif count > was:
             rc = 1
-            sys.stderr.write("FAIL: %s GREW from %d to %d lines. Frozen numbers may "
-                             "only go DOWN.\n" % (label, was, count))
+            sys.stderr.write("FAIL: %s GREW from %d to %d lines -- update its %s "
+                             "entry and say why in the reason column.\n"
+                             % (label, was, count, allow_name))
         elif count < was:
             rc = 1
             sys.stderr.write("FAIL: %s shrank from %d to %d lines -- update its %s "

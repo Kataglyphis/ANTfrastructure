@@ -32,7 +32,7 @@ linux/scripts/03-media/runtime/assemble-torch-app.sh | reconcile_local_wheels | 
 linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | _iree_build_target_cross | 89 | baseline 2026-09-03, not yet reviewed
 linux/scripts/05-frameworks/tvm-config.sh | append_tvm_cmake_args | 84 | baseline 2026-09-03, not yet reviewed
 linux/scripts/06-packaging/smoke-cross-all-arches.sh | main | 96 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/smoke-runtime-image.sh | _shipped_truth_probe | 121 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-runtime-image.sh | _shipped_truth_probe | 131 | grew 2026-09-03: ten ADV probes added for WC
 linux/scripts/06-packaging/smoke-torch-venv.sh | assert_app_venv_parity | 92 | baseline 2026-09-03, not yet reviewed
 linux/scripts/06-packaging/smoke-torch-venv.sh | assert_pinned_versions | 356 | baseline 2026-09-03, not yet reviewed
 linux/scripts/06-packaging/smoke-torch-venv.sh | main | 115 | baseline 2026-09-03, not yet reviewed

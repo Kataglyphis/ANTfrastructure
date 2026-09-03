@@ -635,6 +635,29 @@ patch removal into a Dockerfile edit as well.
 
 `linux/scripts/06-packaging/smoke-runtime-image.sh:665`
 
+**FIXED 2026-09-03.** All ten rows have an `ADV` probe now, and
+`FROZEN_UNPROBED` is **empty** — the gate refuses any new row without one, with
+no baseline left to hide behind.
+
+It turned out to be the cheap half of the work: every one of the ten already had
+a `HAVE` probe and an `ENV` in `Dockerfile.package`; only the `ADV` line was
+missing, so the row could never do more than SKIP. **And the shipped image is
+clean** — running the real comparison against `latest-cross-amd64` gives OK on
+all nine checkable keys (genai has its own dedicated gate). The existing
+normalisation already handles the format gap: ADV `v1.29.0` against HAVE
+`1.29.0`, and IREE's `3.11.0.dev0+e4a3b04…` reduces to `3.11.0`. So nothing was
+hiding behind the inert rows — but from now on nothing can.
+
+Two things this shook out. The `code-size` gate added an hour earlier caught the
+ten new lines growing both the file and `_shipped_truth_probe` past their frozen
+numbers, which exposed a design error in its own contract: "frozen numbers may
+only go DOWN" would have forbidden a legitimate addition to an already-oversized
+file, and a gate that blocks correct work gets routed around. It now requires the
+number to MATCH in both directions, so growth is allowed but lands in the diff
+next to a reason. And `test-advertised-keys.sh`'s anti-rot case had been reading
+the live baseline; with that empty it silently stopped testing anything, so the
+fixture seeds its own entry.
+
 **What breaks.**
 Bump `ARG ONNXRUNTIME_VERSION=v1.29.0` to `v1.30.0` in
 linux/Dockerfile.package:175 (or let

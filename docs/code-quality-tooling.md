@@ -253,11 +253,17 @@ lines, `cmake_build_parse_args` at 116) had never appeared in them.
 | condition | verdict |
 | --- | --- |
 | over the limit, not frozen | FAIL — split it, or freeze it with a reason |
-| grew past its frozen number | FAIL — frozen numbers may only go down |
+| grew past its frozen number | FAIL — update the entry and say why |
 | **shrank** below its frozen number | FAIL — update the entry |
 | frozen but no longer over the limit | FAIL — stale, delete the line |
 
-The last two are what stop the baseline becoming cover for the next offender:
+**Growth is allowed, but never silent.** An outright ban would block a needed
+addition to an already-oversized file and push it into the wrong one instead — the
+gate caught exactly that within an hour of existing, when ten `ADV` probes were
+added to `smoke-runtime-image.sh` for WC. What the gate guarantees is that the
+number always matches reality, so a size change lands in the diff next to a reason.
+
+The last two rows are what stop the baseline becoming cover for the next offender:
 an improvement has to be recorded, and a freeze cannot outlive its subject. Same
 shape as `comment-size` and `masked-assignments`.
 

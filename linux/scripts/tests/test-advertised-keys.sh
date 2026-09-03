@@ -92,12 +92,14 @@ rm -rf "${FIX}"
 
 t_case "the frozen-unprobed baseline cannot rot"
 # Adding the missing probe is the FIX, so the baseline must then shrink. If it
-# does not, the next unprobed row hides behind a stale entry.
+# does not, the next unprobed row hides behind a stale entry. The fixture seeds
+# the entry itself: the live baseline is empty since all ten were probed, and a
+# case that depends on it would quietly stop testing anything.
 FIX="$(_fixture)"
-sed -i "s|printf 'ADV VULKAN_VERSION |printf 'ADV CMAKE_VERSION %s\\n' \"\${CMAKE_VERSION:-}\"\nprintf 'ADV VULKAN_VERSION |" \
-  "${FIX}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+sed -i 's/^FROZEN_UNPROBED = set()$/FROZEN_UNPROBED = {"UBUNTU_VERSION"}/' \
+  "${FIX}/linux/scripts/verify-advertised-keys.py"
 _gate_must_fail "${FIX}" "now HAS a probe" \
-  "a healed key must be removed from the baseline"
+  "a key with a probe must be removed from the baseline"
 rm -rf "${FIX}"
 
 t_summary
