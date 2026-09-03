@@ -540,6 +540,29 @@ the media stage alone.
 
 `linux/Dockerfile.media:648`
 
+**FIXED 2026-09-03.** Each of the eight RUNs now mounts only the subdirectory it
+reads, so deleting a GStreamer-only or libyuv-only patch no longer re-runs
+app-wheelhouse, litert, genai, opencv, opencv-gst and libcamera.
+
+Mapped rather than guessed: a tree-wide grep finds exactly six files naming
+`/opt/scripts/patches/<sub>`, all literal paths, no variables. Mount by mount —
+genai→`onnxruntime-genai`, litert→`litert`, opencv→`opencv`,
+app-wheelhouse→`torchvision`, gstreamer build→`gstreamer`,
+libcamera→`libcamera`+`libyuv`, opencv-gst→`opencv`.
+
+**One mount was simply unused and is gone:** the gstreamer `install-deps.sh` RUN
+mounted the whole tree and the script never mentions patches; it sources only
+`common.sh` and `vulkan.sh`, neither of which is a consumer.
+
+Two checks that mattered. Nothing enumerates the patches ROOT in the media lane —
+the three `_patches_root=/opt/scripts/patches` hits are two android-lane files and
+one comment — and `patch-gstreamer-sources.sh` guards on
+`[ -d /opt/scripts/patches/gstreamer ]`, which the narrowed mount satisfies
+exactly. Proven with a throwaway build: both subdirectories are present and the
+un-mounted `opencv` is correctly absent, so the isolation is real and not just
+lint-clean. `cerbero` and `onnxruntime` are android-lane patches and were never
+part of these mounts.
+
 **What breaks.**
 Backlog items UA and UC delete patches/gstreamer/{003,004,005a,005b,006}; UD
 deletes patches/libyuv/001. Any of those edits changes the content digest of
