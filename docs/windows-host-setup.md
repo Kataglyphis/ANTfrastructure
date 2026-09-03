@@ -331,18 +331,53 @@ ssh-keygen -lf ~/.ssh/id_ed25519.pub                        # the local one; loo
 sign_and_send_pubkey: signing failed for ED25519 "…" from agent: agent refused operation
 ```
 
-A stale entry in the Windows agent — the stored key no longer matches the file
-it was added from. Purge and re-add (`-D` drops **all** identities):
+A stale or unusable entry in the Windows agent: the stored key can no longer
+sign. Do **not** reach for `ssh-add -D` first.
+
+> **`-D` can destroy a key that exists nowhere else.** The Windows agent keeps
+> its own encrypted copy of the private key, and `ssh-add` has no export — a key
+> whose file was deleted after it was added survives *only* inside the agent,
+> and `-D` erases it with no way back. On the 2026-09-03 host the agent's single
+> identity was exactly that: fingerprint `8UtaDNOh…`, with no matching file
+> anywhere under the profile (`~/.ssh` held only an unrelated `id_ed25519`).
+> Before purging anything, check that every fingerprint the agent lists still
+> has a file behind it:
+>
+> ```pwsh
+> & $SSHADD -l                                        # what the agent holds
+> Get-ChildItem "$env:USERPROFILE\.ssh\*.pub" | ForEach-Object { ssh-keygen -lf $_ }
+> ```
+>
+> A fingerprint in the first list with no counterpart in the second is
+> file-less. Leave it alone.
+
+The fix needs no deletion. Add your working key **alongside** the broken one —
+ssh offers each agent identity in turn, so one that refuses no longer ends the
+attempt once a usable key follows it:
 
 ```pwsh
-& $SSHADD -D
+$SSHADD = "$env:WINDIR\System32\OpenSSH\ssh-add.exe"   # repeated: full path, not the MSYS one
 & $SSHADD "$env:USERPROFILE\.ssh\id_ed25519"
 ```
+
+Purge only when every fingerprint in `ssh-add -l` maps to a `.pub` on disk, so
+everything dropped can be re-added.
 
 Both symptoms appeared on one host on 2026-09-03, and the first was initially
 misdiagnosed as "the key is not on the GitHub account" — it was on it the whole
 time. The `.keys` check above settles that question in one command and should be
 the first thing run, before touching anything on GitHub.
+
+**While SSH is still broken, work is not blocked.** If `gh auth status` shows an
+HTTPS login, rewrite the URL per command and leave the config untouched:
+
+```bash
+git -c 'url.https://github.com/.insteadOf=git@github.com:' fetch --all
+git -c 'url.https://github.com/.insteadOf=git@github.com:' push origin HEAD
+```
+
+Per command, not `--global`: a persistent rewrite silently masks the SSH problem
+and then surprises anyone who clones with an unrewritten URL.
 
 Verify: `& $SSHADD -l` lists your key; `git ls-remote git@github.com:<org>/<repo>`
 succeeds from a **non-interactive** shell with no prompt; and both still hold
