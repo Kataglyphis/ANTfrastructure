@@ -40,9 +40,11 @@ A family is ONE block and the files that all hold it -- keyed by the block's
 owner set, not by file adjacency. Clustering on adjacency merged every family
 that shared a single file and once printed one useless "88 files" blob.
 
-Run ``--baseline`` once to freeze what exists today; after that only NEW or
-GROWING duplication fails. A gate that fires on day one about work nobody plans
-to undo is a gate people learn to ignore.
+Run ``--baseline`` once to freeze what exists today; after that NEW or GROWING
+duplication fails, and so does a budget the measurement has dropped below or a
+row whose pair no longer overlaps -- the four-way rule of quality_allow, kept
+local because the key here is an UNORDERED file pair. A gate that fires on day
+one about work nobody plans to undo is a gate people learn to ignore.
 
 Windows files are out of scope on purpose: that lane has its own backlog.
 
@@ -51,6 +53,7 @@ No network, no project imports -- safe for hooks and CI.
 Usage:  python3 docs/scripts/verify_code_dupes.py [--report] [--baseline]
                                                   [--threshold N] [--kind K]
 Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
+docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ import argparse
 import itertools
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -228,6 +232,16 @@ def md_units(path: Path) -> list[tuple[int, str]]:
     return units
 
 
+def _file_kind(name: str) -> str | None:
+    if name.endswith(".sh"):
+        return "shell"
+    if name.startswith("Dockerfile"):
+        return "docker"
+    if name.endswith(".md"):
+        return "md"
+    return None
+
+
 def collect() -> list[tuple[Path, str]]:
     """(path, kind) for everything in scope."""
     doc_gate_scope = {REPO_ROOT / "README.md", REPO_ROOT / "AGENTS.md"}
@@ -243,12 +257,9 @@ def collect() -> list[tuple[Path, str]]:
         name = path.name
         if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
             continue
-        if name.endswith(".sh"):
-            found.append((path, "shell"))
-        elif name.startswith("Dockerfile"):
-            found.append((path, "docker"))
-        elif name.endswith(".md") and path not in doc_gate_scope:
-            found.append((path, "md"))
+        kind = _file_kind(name)
+        if kind and not (kind == "md" and path in doc_gate_scope):
+            found.append((path, kind))
     return found
 
 
@@ -258,6 +269,7 @@ UNIT_READERS = {"shell": shell_units, "docker": docker_units, "md": md_units}
 def load_allow() -> dict[frozenset[str], tuple[int, str]]:
     """`fileA | fileB | budget | reason` -- '#' comments, blank lines ignored."""
     allow: dict[frozenset[str], tuple[int, str]] = {}
+    at: dict[frozenset[str], int] = {}
     if not ALLOW_FILE.is_file():
         return allow
     for n, raw in enumerate(ALLOW_FILE.read_text(encoding="utf-8").split("\n"), 1):
@@ -269,7 +281,14 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
             print(f"ERROR: {ALLOW_FILE.name}:{n}: expected 'a | b | budget | reason'",
                   file=sys.stderr)
             raise SystemExit(2)
-        allow[frozenset((parts[0], parts[1]))] = (int(parts[2]), parts[3])
+        key = frozenset((parts[0], parts[1]))
+        if key in allow:
+            print(f"ERROR: {ALLOW_FILE.name}:{n}: duplicate row for "
+                  f"{' <-> '.join(sorted(key))} (first at line {at[key]}); keep one",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        allow[key] = (int(parts[2]), parts[3])
+        at[key] = n
     return allow
 
 
@@ -375,6 +394,80 @@ def _print_report(args, files, texts, allowed, runs, spread):
         print()
 
 
+def _print_bookkeeping(shrunk, stale, measured, threshold) -> int:
+    """Allow rows whose budget no longer equals reality: shrunk (paste the printed
+    row) or stale (delete the row). Returns 1 if either list is non-empty."""
+    if shrunk:
+        print(f"code duplication gate: {len(shrunk)} allowlist budget(s) above the "
+              f"measurement -- record the new budget\n", file=sys.stderr)
+        for key, n, (was, why) in sorted(shrunk, key=lambda s: sorted(s[0])):
+            names = sorted(key)
+            fa, fb = names[0], names[-1]
+            print(f"  {fa} <-> {fb} shrank from {was} to {n} -- record the new budget "
+                  f"{n} in {ALLOW_FILE.name}:\n    {fa} | {fb} | {n} | {why}\n",
+                  file=sys.stderr)
+    if stale:
+        print(f"code duplication gate: {len(stale)} stale allowlist entr(ies)\n", file=sys.stderr)
+        for k in sorted(stale, key=sorted):
+            print(f"  {' <-> '.join(sorted(k))} is no longer over the threshold "
+                  f"({measured.get(k, (0,))[0]} shared, threshold {threshold}) -- "
+                  f"remove it from {ALLOW_FILE.name}", file=sys.stderr)
+    return 1 if shrunk or stale else 0
+
+
+def _print_families(ranked, stream) -> None:
+    """One family = one BLOCK and the >2 files that all hold it, capped, with an
+    excerpt so the reader can act."""
+    for cnt, held, sh, at in ranked[:FAMILY_MAX_REPORTED]:
+        excerpt = " ".join(sh)
+        print(f"  clone family: ONE block of {cnt} shingle(s), "
+              f"held by {len(held)} files", file=stream)
+        print(f"    block  {excerpt[:110]}{' ...' if len(excerpt) > 110 else ''}",
+              file=stream)
+        print(f"    at     {', '.join(f'{f}:{ln}' for f, ln in at)}", file=stream)
+    if len(ranked) > FAMILY_MAX_REPORTED:
+        print(f"  ... and {len(ranked) - FAMILY_MAX_REPORTED} smaller famil(ies)",
+              file=stream)
+
+
+def _print_findings(findings, runs, texts, ranked) -> None:
+    print(f"code duplication gate: {len(findings)} copied block(s)\n", file=sys.stderr)
+    for n, a, b, budget in findings:
+        over = f", over its budget of {budget[0]}" if budget else ""
+        print(f"  {n} shared shingles{over}, longest identical run "
+              f"{runs.get((a, b), 0)} line(s)", file=sys.stderr)
+        print(f"    {a[0]}:{a[1]}  {texts[a][:140]}", file=sys.stderr)
+        print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
+    _print_families(ranked, sys.stderr)
+    if ranked:
+        print("", file=sys.stderr)
+    print("Give the block ONE owner (a shared helper in 01-core, or the "
+          f"canonical page) and call it from the other. If the twin is "
+          f"deliberate, add it to {ALLOW_FILE.name} with a budget and a reason.",
+          file=sys.stderr)
+
+
+def _write_baseline(per_file, allow) -> int:
+    """Rewrite the allow file: rows sorted by budget, existing reasons kept
+    verbatim, new rows dated; only the header comments survive."""
+    lines = [
+        "# code-dupes.allow -- deliberate twins, with a budget and a reason.",
+        "# Format: fileA | fileB | budget | reason",
+        "# Generated by --baseline; every entry below is PRE-EXISTING duplication",
+        "# frozen so the gate only reports NEW or GROWING copies. The budget must",
+        "# EQUAL the measurement: a copy that shrank fails until its row says so.",
+        "",
+    ]
+    fresh = f"baseline {time.strftime('%Y-%m-%d')}, not yet reviewed"
+    for key, (n, _a, _b) in sorted(per_file.items(), key=lambda kv: -kv[1][0]):
+        names = sorted(key)
+        fa, fb = names[0], (names[1] if len(names) > 1 else names[0])
+        lines.append(f"{fa} | {fb} | {n} | {allow.get(key, (0, fresh))[1]}")
+    ALLOW_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {ALLOW_FILE.name}: {len(per_file)} pair(s) frozen as budgets")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Verify code is free of copied blocks.")
     ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
@@ -399,42 +492,26 @@ def main() -> int:
 
     # Collapse unit pairs to FILE pairs: the allowlist and the reader both think
     # in files, and one copied helper usually shows up as several unit pairs.
-    per_file: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
+    measured: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
     for (a, b), n in shared.items():
-        if n <= args.threshold:
-            continue
         key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
-        if key not in per_file or n > per_file[key][0]:
-            per_file[key] = (n, a, b)
+        if key not in measured or n > measured[key][0]:
+            measured[key] = (n, a, b)
+    per_file = {k: v for k, v in measured.items() if v[0] > args.threshold}
 
-    allow = load_allow()
+    allow = {k: v for k, v in load_allow().items()
+             if all(_file_kind(Path(f).name) in kinds for f in k)}
 
     if args.baseline:
-        lines = [
-            "# code-dupes.allow -- deliberate twins, with a budget and a reason.",
-            "# Format: fileA | fileB | budget | reason",
-            "# Generated by --baseline; every entry below is PRE-EXISTING duplication",
-            "# frozen so the gate only reports NEW or GROWING copies. Shrinking one is",
-            "# always welcome: lower its budget (or delete the line) when you do.",
-            "",
-        ]
-        for key, (n, _a, _b) in sorted(per_file.items(), key=lambda kv: -kv[1][0]):
-            names = sorted(key)
-            # A same-file twin collapses to a ONE-element key; write the name
-            # twice so the allow format stays `a | b | budget | reason`.
-            fa, fb = names[0], (names[1] if len(names) > 1 else names[0])
-            lines.append(f"{fa} | {fb} | {n} | baseline 2026-08-31, not yet reviewed")
-        ALLOW_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"wrote {ALLOW_FILE.name}: {len(per_file)} pair(s) frozen as budgets")
-        return 0
+        return _write_baseline(per_file, allow)
 
-    used: set[frozenset[str]] = set()
-    findings, allowed = [], []
+    findings, allowed, shrunk = [], [], []
     for key, (n, a, b) in per_file.items():
         budget = allow.get(key)
         if budget and n <= budget[0]:
-            used.add(key)
             allowed.append((n, a, b, budget[1]))
+            if n < budget[0]:
+                shrunk.append((key, n, budget))
             continue
         findings.append((n, a, b, budget))
 
@@ -448,54 +525,25 @@ def main() -> int:
     findings.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
     allowed.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
 
-    # One family = one BLOCK and the >2 files that all hold it. Ranked by block
-    # size, capped, and each printed with an excerpt so the reader can act.
     ranked = sorted(((cnt, held, sh, anchor)
                      for held, (cnt, sh, anchor) in families.items()
                      if cnt >= FAMILY_MIN_SHINGLES),
                     key=lambda f: (-f[0], -len(f[1]), sorted(f[1])))
 
-    def print_families(stream) -> None:
-        for cnt, held, sh, at in ranked[:FAMILY_MAX_REPORTED]:
-            excerpt = " ".join(sh)
-            print(f"  clone family: ONE block of {cnt} shingle(s), "
-                  f"held by {len(held)} files", file=stream)
-            print(f"    block  {excerpt[:110]}{' ...' if len(excerpt) > 110 else ''}",
-                  file=stream)
-            print(f"    at     {', '.join(f'{f}:{ln}' for f, ln in at)}", file=stream)
-        if len(ranked) > FAMILY_MAX_REPORTED:
-            print(f"  ... and {len(ranked) - FAMILY_MAX_REPORTED} smaller famil(ies)",
-                  file=stream)
-
     if args.report:
         _print_report(args, files, texts, allowed, runs, spread)
 
+    stale = [k for k in allow if k not in per_file]
+    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)
+
     if findings:
-        print(f"code duplication gate: {len(findings)} copied block(s)\n", file=sys.stderr)
-        for n, a, b, budget in findings:
-            over = f", over its budget of {budget[0]}" if budget else ""
-            print(f"  {n} shared shingles{over}, longest identical run "
-                  f"{runs.get((a, b), 0)} line(s)", file=sys.stderr)
-            print(f"    {a[0]}:{a[1]}  {texts[a][:140]}", file=sys.stderr)
-            print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
-        print_families(sys.stderr)
-        if ranked:
-            print("", file=sys.stderr)
-        print("Give the block ONE owner (a shared helper in 01-core, or the "
-              f"canonical page) and call it from the other. If the twin is "
-              f"deliberate, add it to {ALLOW_FILE.name} with a budget and a reason.",
-              file=sys.stderr)
+        _print_findings(findings, runs, texts, ranked)
         return 1
 
-    stale = sorted(k for k in allow if k not in used)
-    if stale:
-        print(f"code duplication gate: {len(stale)} stale allowlist entr(ies)\n", file=sys.stderr)
-        for k in stale:
-            print(f"  {' <-> '.join(sorted(k))} no longer overlaps -- remove it from "
-                  f"{ALLOW_FILE.name}", file=sys.stderr)
+    if bookkeeping:
         return 1
 
-    print_families(sys.stdout)
+    _print_families(ranked, sys.stdout)
     print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
           f"no block over {args.threshold} shared {SHINGLE}-token shingles "
           f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "

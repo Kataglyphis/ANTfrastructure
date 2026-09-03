@@ -44,7 +44,11 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes p
              masked-decls \
              comment-size \
              code-size \
+             code-complexity \
+             dead-functions \
+             shellcheck-warnings \
              mutations \
+             gate-registry \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -87,22 +91,27 @@ run_check() {
   fi
 }
 
-# 0. Working-tree CRLF guard: a *.sh that is LF in the index but CRLF in the
-#    working tree (e.g. a checkout under core.autocrlf=true) breaks bash inside
-#    the containers ("$'\r': command not found") long before any build runs.
+# 0. Working-tree CR guard: a tracked *.sh carrying CR bytes in the WORKING TREE
+#    breaks bash inside the containers ("$'\r': command not found"). Only git's
+#    w/ column counts (buildkit snapshots the worktree, not the index), and all
+#    three CR-bearing shapes are offenders: crlf, mixed, and -text (a lone CR).
+#    docs/code-quality-tooling.md#crlf-guard-the-worked-example
 check_crlf_guard() {
   local offenders
   # `|| echo FAIL...`: if git itself fails here (not a work tree, broken index)
   # the check must FAIL LOUDLY, not pass on an empty result.
-  offenders="$(git ls-files --eol -- '*.sh' 2>/dev/null | awk -F'\t' '$1 ~ /w\/crlf/ {print $2}' \
+  offenders="$(git ls-files --eol -- '*.sh' 2>/dev/null \
+    | awk -F'\t' '{ split($1, c, /[ \t]+/)
+        if (c[2] == "w/crlf" || c[2] == "w/mixed" || c[2] == "w/-text")
+          printf "  %s  %s\n", c[2], $2 }' \
     || echo "__git-ls-files-FAILED__")"
   if [ -n "${offenders}" ]; then
     printf 'CRLF working-tree line endings detected in tracked *.sh file(s):\n'
-    printf '  %s\n' ${offenders}
+    printf '%s\n' "${offenders}"
     printf 'Fix (re-materialize LF from the index): rm <file> && git checkout -- <file>\n'
     return 1
   fi
-  printf 'no w/crlf *.sh files in the working tree\n'
+  printf 'no w/crlf, w/mixed or w/-text *.sh files in the working tree\n'
 }
 run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 
@@ -189,7 +198,11 @@ run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/script
 run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify_masked_assignments.py
 run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify_comment_size.py
 run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_size.py
+run_check code-complexity "cyclomatic complexity + nesting" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_complexity.py
+run_check dead-functions "dead shell functions" ${PREFLIGHT_PYTHON} linux/scripts/verify_dead_functions.py
+run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
 run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py
+run_check gate-registry "gate proof registry" ${PREFLIGHT_PYTHON} linux/scripts/verify_gate_registry.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then

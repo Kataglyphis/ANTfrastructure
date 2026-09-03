@@ -1,0 +1,22 @@
+# gate-proofs.allow -- preflight slugs with neither a test suite naming their
+# script nor a mutations.json entry, plus mutation ids that break the
+# <slug>.<kebab> convention. Baseline frozen 2026-09-03, not yet reviewed: 15 of
+# 33 slugs. The list only ratchets DOWN -- a NEW unproven slug or a NEW
+# off-convention id fails gate-registry, and a line that has gained a proof (or
+# been renamed) is STALE and must be deleted. The cheapest proof per slug is
+# sketched in docs/code-quality-tooling.md.
+android-parity
+arg-consistency
+copy-coverage
+critical-fixes
+doc-dupes
+dockerfile-lint
+mirror-consistency
+patch-integrity
+pkg-names
+runtime-paths
+sbom
+secret-scan
+stdout-returns
+version-snapshot
+workflow-lint

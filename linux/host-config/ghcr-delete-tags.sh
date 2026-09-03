@@ -46,7 +46,6 @@ _GHCR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEEP_DAYS="${KEEP_DAYS:-2}"
 CONFIRM="${GHCR_DELETE_TAGS_CONFIRM:-0}"
 
-log() { printf '[ghcr-del] %s\n' "$*"; }
 err() { printf '[ghcr-del] ERROR: %s\n' "$*" >&2; exit 1; }
 
 DELETE_TAGS=()

@@ -113,7 +113,6 @@ NPM_REGISTRY
 NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
-OPTIONAL
 ORT_PKGCONFIG_DIR
 PACKAGE_DOCKERFILE_TARGET
 PACKAGE_TYPES
@@ -143,7 +142,6 @@ TVM_LLVM_DIR
 TVM_MB_PER_JOB
 TVM_PREFIX
 TVM_WORKDIR
-UBUNTU_PORTS_MIRROR_URL
 UBUNTU_SOURCES_ROOT
 UV_SYNC_EXTRAS
 VERSION_CODENAME
@@ -233,3 +231,49 @@ VERSION_ID
 # Optional override for the cargo version the toolchain smoke pins; defaults to
 # RUST_VERSION, because cargo ships with the Rust toolchain and tracks it.
 CARGO_VERSION
+
+# --- 2026-09-04: re-homed when the OWNERS scan stopped counting comments ---
+# All fifteen were "owned" only by prose that spells `NAME=value`; each is a real
+# operator switch read as ${NAME:-default} and never assigned in-repo.
+# Build the IREE compiler for the cross target too (default OFF = runtime-only)
+# — 05-frameworks/torch/build-app-wheelhouse.sh.
+IREE_CROSS_BUILD_COMPILER
+# 0 skips hadolint's advisory build-check pass (lint-dockerfiles.sh, default 1).
+LINT_DOCKERFILES_BUILD_CHECK
+# full|minimal install set for the cross target-clang build (02-toolchain/
+# llvm.sh, default minimal).
+LLVM_INSTALL_PROFILE
+# 1 skips the csound GStreamer dependency (03-media gstreamer pre-setup.sh /
+# install-deps.sh, default 0; forced on for arm64+riscv64 anyway).
+MEDIA_SKIP_CSOUND
+# 0 disables the best-effort strip of media build outputs (01-core/build-
+# helpers.sh owns the gate since DUPN1; default 1). AP4 asserts it stayed on.
+MEDIA_STRIP
+# 1 makes a riscv64 Node major-version mismatch fatal instead of a warning
+# (01-core/base-image.sh, default 0).
+NODE_RISCV64_MAJOR_REQUIRED
+# 2 = the second OpenCV configure pass that probes our /opt/gstreamer
+# (03-media/build/opencv/build-opencv.sh, default 1).
+OPENCV_GSTREAMER_PASS
+# CSV slug selectors for preflight.sh; both empty by default. Documented in the
+# gate registry and validated against KNOWN_SLUGS.
+PREFLIGHT_ONLY
+PREFLIGHT_SKIP
+# 0 drops --with-lto from both CPython builds (AP5 cross-LTO escape hatch,
+# 02-toolchain/python/build_python.sh, default 1).
+PYTHON_LTO
+# 0 skips the in-image clang-version smoke (06-packaging/smoke-runtime-
+# image.sh, default 1).
+RUNTIME_CLANG_VERSION_SMOKE
+# 0 skips the in-image compiler smoke (06-packaging/smoke-runtime-image.sh,
+# default 1).
+RUNTIME_COMPILER_SMOKE
+# 0 skips the per-arch runtime smoke that gates create_manifest (build-runtime-
+# manifest.sh, default 1).
+RUNTIME_IMAGE_SMOKE
+# 1 drops the live-tree case from tests/test-shellcheck-warnings.sh; set by the
+# mutation manifest, which must not measure the whole tree per entry.
+SKIP_REAL_TREE
+# 0 selects the presence-only fast path in 06-packaging/smoke-torch-venv.sh
+# (default 1 = actually run the compute check).
+STV_COMPUTE

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # pre-commit — the gates that cost SECONDS, run on every commit.
 #
-# Deliberately not the full suite. `make preflight` runs all 21 checks and takes
-# minutes (the secret scan alone is ~170s); CI runs it on every push
-# (.github/workflows/ubuntu24.04.yml). A hook that slow teaches people to type
-# --no-verify, which is worse than having no hook. So this one runs the ~10s
-# whole-tree gates plus shellcheck on the STAGED shell files only.
+# Deliberately not the full suite. `make preflight` runs all 33 checks and takes
+# minutes (the secret scan alone is ~170s, the mutation gate ~6 min); CI runs it on
+# every push (.github/workflows/ubuntu24.04.yml). A hook that slow teaches people
+# to type --no-verify, which is worse than having no hook. So this one runs the
+# ~4s whole-tree gates, plus shellcheck, the warning ratchet and the mutation
+# gate scoped to the STAGED files only.
 #
 # Install: make hooks    (sets core.hooksPath, so the hook is version-controlled)
 # Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
@@ -14,11 +15,15 @@ set -euo pipefail
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
-# Whole-tree gates that are cheap. Measured 2026-09-02: 8-10s combined.
+# Whole-tree gates that are cheap. Measured 2026-09-04: 17 slugs, 4.2s combined.
 # doc-links is here, not in the docs-only block: code carries docs/ pointers too.
+# The warning ratchet slug is NOT here: its whole-tree run is 22s, so the hook
+# runs it on the staged files only (0.2s each), below. (A comment must not START
+# with the tool's name -- that parses as a directive and errors out.)
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
-arg-consistency,masked-decls,comment-size,code-size,artifact-parity,advert-keys,stage-graph,\
-doc-links"
+arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,\
+artifact-parity,advert-keys,stage-graph,env-knobs,\
+doc-links,gate-registry"
 
 echo "pre-commit: fast preflight gates…"
 PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
@@ -32,9 +37,18 @@ PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
 _staged_sh="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.sh$' || true)"
 if [ -n "${_staged_sh}" ]; then
   echo "pre-commit: shellcheck on staged shell files…"
+  _sc_bin="$(bash linux/scripts/lint-shell.sh --print-bin)" || {
+    echo "pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin" >&2
+    exit 1
+  }
   # shellcheck disable=SC2086
-  shellcheck -S error ${_staged_sh} || {
+  "${_sc_bin}" -S error ${_staged_sh} || {
     echo "pre-commit: shellcheck FAILED on staged files" >&2
+    exit 1
+  }
+  # shellcheck disable=SC2086
+  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {
+    echo "pre-commit: shellcheck warning ratchet FAILED on staged files" >&2
     exit 1
   }
 fi
@@ -46,9 +60,9 @@ if [ -n "${_staged_md}" ]; then
   python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 
-# Mutation gate, scoped to what is being committed: running all 19 takes about a
-# minute, running the handful whose target you just touched takes seconds. It
-# answers the one question reading a test cannot -- can it fail?
+# Mutation gate, scoped to what is being committed: all 180 entries cost ~6 min,
+# the handful whose target you just touched cost seconds. It answers the one
+# question reading a test cannot -- can it fail?
 _staged_any="$(git diff --cached --name-only --diff-filter=ACM || true)"
 if [ -n "${_staged_any}" ]; then
   if python3 docs/scripts/verify_mutations.py --changed >/dev/null 2>&1; then

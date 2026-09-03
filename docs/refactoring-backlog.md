@@ -15,16 +15,24 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary: **AP**=artifact perf · **TG/TS**=toolchain · **GPU**=GPU
 lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
-**LB**=llm-stack benchmark harness ·
+**LB**=llm-stack benchmark harness · **QW**=quality-gate wave follow-ups ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: **2026-09-03**, third pass. Everything closed that day is in the
-2026-09-03 archive: A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's
-`_cross_stage_build_impl` and `reconcile_local_wheels` rows, and F3's
-chain-status walker.
+Last groomed: **2026-09-04**, after the Q7 gate-honesty wave (mutation-gate
+isolation, the CRLF shape widening, three gates that could not go red, the
+env-knobs owners filter, CMD_OPS/arith proofs, registry credit by id prefix, and
+the doc-drift sweep). Everything closed 2026-09-03 is in the 2026-09-03 archive:
+A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's `_cross_stage_build_impl` and
+`reconcile_local_wheels` rows, and F3's chain-status walker.
 
-**Eight entries remain: FL1 (relaunch pending), HT1, SMK-ADV and TC1 are open
-work; YB is a defect under investigation; F1/F2/F3 are tracks.**
+**Sixteen entries remain: FL1 (relaunch pending), HT1, SMK-ADV, TC1 and the
+eight QW rows are open work; YB is a defect under investigation; F1/F2/F3 are
+tracks.**
+
+* **QW1–QW8** — what the 2026-09-03 gate wave left behind and what the
+  2026-09-04 Q7 wave deliberately did NOT fix: two frozen-but-unreviewed
+  baselines, five deletions waiting on the running build, the shared allow
+  reader, and the limits the gates disclose rather than close.
 
 * **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
   found weak** (~5% recovery). Root cause open.
@@ -196,8 +204,10 @@ caller under `set -e` with no message (`reconcile_local_wheels` 2026-09-03; the
 check for it. A small `verify_trailing_conditional.py` over `linux/scripts/**/*.sh`
 — last non-comment statement of a function body matches `&&` without a trailing
 `|| true`/`|| return 0`, or is a bare `[ … ]` — with the usual four-way allowlist.
-Build **after** the Q1–Q6 gate wave lands (it edits the same `preflight.sh` /
-`mutations.json` / `code-quality-tooling.md` seams). Characterisation suites for
+**Unblocked 2026-09-03:** the Q1–Q6 gate wave has landed, so the `preflight.sh` /
+`mutations.json` / `code-quality-tooling.md` seams it shares are free; ship it as
+the eight-part set every gate there ships as, and register the slug last so
+`gate-registry` sees it. Characterisation suites for
 F1 extractions should also run the function under `set -eu` and assert 0 on every
 early-return path — the `reconcile_local_wheels` suite did not until the hotfix.
 
@@ -280,3 +290,161 @@ by measurement, and the not-actionable Dockerfile mount preambles) are in the
   Unreviewed; measure the longest shared run before deciding, as the lib/* pairs
   showed 11–12 lines is below the extract-a-helper threshold.
 
+### QW1. The 95 frozen `shellcheck-warnings` rows are frozen, not REVIEWED [M, ★★]
+
+`shellcheck-warnings.allow` holds 95 `(file, SCxxxx)` rows covering 177
+warning-level findings in 74 files, every one reading `baseline 2026-09-03, not
+yet reviewed`. The gate guarantees the number matches reality; it says nothing
+about whether the warning is right. SC2034 is 85 of the 177 and is where real
+bugs hide — a genuinely unused variable is usually a typo'd reference elsewhere —
+but most of these are sourced-library variables a consumer reads, so expect
+scoped `# shellcheck disable=SC2034` with a reason rather than deletions. SC2154
+(16, all but four in `01-core/cross-env.sh`) is the next cluster. Review per
+file and put the verdict in the row's reason column.
+
+### QW2. The 70 frozen `code-complexity` rows, same [M, ★★]
+
+67 `cc` rows and 3 `nesting` rows in `code-complexity.allow`, all unreviewed.
+That file plus `verify_code_complexity.py` are now the authority for every
+complexity number here — the hand-measured figures that circulated before the
+gate existed were over-counts, one of them by 7×: `assert_pinned_versions` is
+**cc 7**, not 52 (its 312 lines are embedded Python the shell walker never
+reads), and `_chain_stage_disk_guard` is 28, not 29. The real top of the queue is
+`scan_file` and `main` at 42, then `media_common_init` 35,
+`_opencv_target_adjustments` 33, `cross_stage_run` 23. Never re-measure by hand:
+run the gate, and note that the numbers of a handful of functions are wrong for
+the reason in QW4.
+
+### QW3. Delete five dead functions once the 2026-09-03 build ends [S, ★★]
+
+Four sit in `dead-functions.allow` under a **DEAD** heading only because their
+files are inside the running build closure: `cpython_ext_dev_packages_optional`,
+`cpython_ext_modules_optional` and `cpython_ext_modules_required`
+(`01-core/cpython-dev-packages.sh`), and `verify_shared_lib_optional`
+(`03-media/runtime/verify-media-artifacts.sh`). The fifth, `cleanup()` at
+`03-media/build/ffmpeg/build-ffmpeg.sh:716`, is invisible to the gate (same-name
+masking: many live `cleanup()` definitions elsewhere) and must NOT be frozen — a
+row for it would fail as STALE the moment it was written. Delete all five in one
+commit and drop the four allow rows with them.
+
+### QW4. `code-size` measures shell function extents with a raw brace count [S, ★★]
+
+The brace-counting defect is written up under
+[Known limits](code-quality-tooling.md#shell-complexity-code-complexity); the
+work item is the fix, not the description. `code-complexity` and
+`dead-functions` inherit those extents, so all three gates measure the wrong text
+for the handful of functions it hits (`generate_pkgconfig_file` reads 5 lines).
+Fix in `verify_code_size.py` by blanking comments and quotes with
+`verify_code_complexity.strip_line` before counting, then re-freeze the three
+allow files in the same commit — expect movement in every one of them.
+
+### QW5. A shared `(count, reason)` allow reader belongs in `quality_allow.py` [S, ★★]
+
+`load_counts` takes the count as the *second field from the right*, so a
+hand-written row whose reason contains `|` raises `ValueError` before the gate
+can report anything, and an inline `#` is stripped before the split. Confirmed
+again 2026-09-04, pasteable from the repo root:
+
+```
+printf 'linux/scripts/x.sh | 3 | baseline 2026-09-03 | not yet reviewed\n' > /tmp/qw5.allow
+python3 -c "import sys; sys.path.insert(0,'linux/scripts'); import quality_allow; quality_allow.load_counts('/tmp/qw5.allow')"
+# ValueError: invalid literal for int() with base 10: 'baseline 2026-09-03'
+```
+
+The crash is a traceback, not a gate verdict, so the reader never learns which
+row is malformed — and every reason column in the tree is one `|` away from it.
+`verify_shellcheck_warnings.rows` and `verify_code_dupes.load_allow` are already
+parallel parsers that carry reasons, and the ratchet works around the crash by
+not calling `load_counts` at all. One `load_rows(path) -> {key: (count, reason)}`
+in `quality_allow.py`, shared by `check_counts` and every `--write-baseline`,
+deletes both copies.
+
+### QW6. `test-vulkan-target-decomposition.sh` hardcodes `/tmp` [S, ★]
+
+Its normalising `sed` (line 68) matches `/tmp/[A-Za-z0-9._]+/` literally, so under
+a `TMPDIR` override the fixture paths never collapse to `TMP/` and every
+comparison in the suite fails. Derive the pattern from the harness's temp dir.
+
+### QW7. Gate limits disclosed but not closed [S each, ★]
+
+Each is written up in the gate's own section of
+[`code-quality-tooling.md`](code-quality-tooling.md); none has an owner.
+
+* **`dead-functions` same-name masking** — one name table for the whole corpus,
+  so a dead `log()` is kept alive by a live `log()` anywhere. Every short helper
+  name is unguarded. **`--census` is inert on this tree** (re-measured 2026-09-04:
+  `428 definition(s) their own file never names again; 0 of those in a file that
+  sources nothing and that nothing else names`), so the mitigation reports
+  nothing and the masking is entirely unwatched — the known-dead
+  `03-media/build/ffmpeg/build-ffmpeg.sh:716 cleanup()` of QW3 is invisible to
+  both the gate and the census. Closing it properly needs `source_module`-aware
+  scoping, i.e. a real call graph; a cheaper interim is a census tier keyed on
+  `(file, name)` rather than on the file's reachability.
+* **`gate-registry` mention-based TEST proof** — narrowed 2026-09-04, not closed.
+  The mutation half is no longer circular (an entry is credited only to the gate
+  its `<slug>.` id prefix names, and only over that gate's own or imported files,
+  with off-convention ids failing loudly), but the *test* half is still a
+  mention: a suite that names a gate's script and asserts nothing about it still
+  reads `proven`. 15 of 33 slugs remain frozen as unproven. The cheap sweep
+  nobody has run: for every slug whose `mutations` column in
+  [`code-quality-gates.md`](code-quality-gates.md) is `—`, write the
+  `return rc` → `return 0` mutation and see whether its suite survives — that
+  experiment is exactly what exposed `python-lint`, `comment-size` and
+  `masked-decls` as hollow.
+* **`code-dupes --baseline --kind X`** rewrites the whole allow file from that
+  kind's pairs only, dropping every other kind's row. `--kind` scopes the stale
+  check correctly; `_write_baseline` ignores it. Cheapest fix: refuse `--baseline`
+  when `--kind` is given.
+
+### QW8. What the 2026-09-04 Q7 honesty wave left open [S each, ★–★★]
+
+Seven follow-ups the wave surfaced and deliberately did not take. None blocks the
+batch; all were verified on the live tree the day they were written.
+
+* **`lint-python.sh`'s header contradicts its own body.** Lines 16–19 still say
+  the ruff pin "lives here for now — MOVE to versions.env as `RUFF_VERSION` on
+  the next pin-bump window", but the C4 block six lines below already sources
+  `01-core/versions.env` and reads `RUFF_VERSION` (the key exists,
+  `RUFF_VERSION=0.16.4`). Stale prose, not a bug — left alone because
+  `lint-python.sh` is a gate script and the wave's rule was not to touch gate
+  code without a defect. One-line deletion in someone's window.
+* **Fifteen `env-knobs` allow rows want a real default, not a registry row.**
+  The 2026-09-04 owners-side comment filter re-homed 15 live `${NAME:-default}`
+  operator switches that nothing in the repo assigns. Three are reachable today —
+  `PREFLIGHT_ONLY` and `PREFLIGHT_SKIP` (`preflight.sh`) and `SKIP_REAL_TREE`
+  (`tests/test-shellcheck-warnings.sh`) — and would be better as a
+  `: "${NAME:=…}"` at their reader. The other twelve live under
+  `01-core`/`02-toolchain`/`03-media`/`05-frameworks`/`06-packaging`, frozen for
+  the running cross build. Next no-build window.
+* **`crlf-guard` flags `w/-text` wholesale with no escape hatch.** A tracked
+  `*.sh` that was legitimately binary or held a NUL byte would fail the gate and
+  there is no allowlist. Census today is 303/303 `i/lf w/lf`, and a binary `*.sh`
+  has no honest use here, so this is a shape to remember, not a fix to make.
+* **The three `:NN-MM` offsets `cross-build-verification.md` quotes into the
+  pre-commit hook are prose, not gated.** The offsets into `preflight.sh` (the
+  `KNOWN_SLUGS` span) now ARE gated, by `tests/test-preflight-slugs.sh` plus
+  three mutations — that is the drift that actually recurred. Extending
+  `tests/test-lint-shell-scope.sh` to re-derive the hook's spans the same way is
+  the cheap symmetric fix.
+* **The pre-commit hook itself is outside the `shellcheck-warnings` ratchet.**
+  `verify_shellcheck_warnings.py --files linux/host-config/git-hooks/pre-commit`
+  answers `outside the lint-shell.sh scope, skipped`. The hook is linted at
+  `-S error` when passed explicitly, so warning-level regressions in the one file
+  every commit runs are watched by nothing.
+* **`shellcheck-warnings.pin-only-path-bin` and `.list-files-first` are credited
+  to nobody.** Both target `lint-shell.sh`, which is the `shellcheck` slug's
+  script, not `verify_shellcheck_warnings.py`; their prefix names a real slug so
+  the convention check passes, but the registry gives the mutation to neither
+  gate. Renaming them `shellcheck.*` costs nothing and gives that row real
+  weight; `shellcheck-warnings` keeps its own 16 either way.
+* **`tests/test-code-complexity.sh` still measures twice per legacy case.** The
+  18 cases added 2026-09-04 use `_pins`, one gate run for both numbers; the 15
+  older hand-built cases still call `_measure` twice. Converting them halves the
+  suite's remaining runtime but touches assertions existing mutations depend on.
+
+* **`env-knobs` trailing-comment strip is not quote-aware** — a knob read to the
+  right of a ` #` inside a quoted string would be missed. As of 2026-09-04 the
+  same filter runs on the OWNERS side too, so an *assignment* hiding to the right
+  of a quoted ` #` would lose its owner as well. Zero such lines in the tree
+  today (measured), and the failure mode is a loud false-stale or a loud UNOWNED,
+  not a silent pass.

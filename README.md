@@ -268,11 +268,12 @@ is a deliberate subset — the full suite takes minutes (the secret scan alone i
 `make preflight` yourself before a rebuild or a push; CI runs it on every push
 regardless.
 
-The first row's suite is `bash linux/scripts/preflight.sh` (29 slugs). Newest
-gates in it (2026-09-03): **`code-size`** caps shell/Python functions at 80 lines
-and shell/Python/Dockerfile files at 800, against frozen allowlists, and
-**`mutations`** neuters guarded code on purpose and fails unless the named test
-goes red — it gates the test suite itself, not the tree. Before them
+The first row's suite is `bash linux/scripts/preflight.sh` (33 slugs). Newest
+gates in it (2026-09-03): **`gate-registry`** is the meta-gate — every slug must
+carry a proof, a suite naming its script or a mutation, or sit frozen in an
+allowlist; **`code-complexity`** caps cyclomatic complexity and nesting,
+**`dead-functions`** fails a shell function nothing calls, and
+**`shellcheck-warnings`** ratchets the warning count per file and code. Before them
 (2026-09-01), **`pkg-names`** resolves every package name the tree asks apt for
 against the live Ubuntu indices, and **`advert-keys`** fails when a
 version-shaped `ENV`/`ARG` is neither checked by the runtime smoke nor excused

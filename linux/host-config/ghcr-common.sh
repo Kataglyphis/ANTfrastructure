@@ -27,6 +27,7 @@ GHCR_API="${GHCR_API:-https://api.github.com}"
 # The one Accept header. Listing all four types makes GHCR hand back the index
 # for multi-arch tags; omitting the index types silently collapses a tag to a
 # single platform manifest and hides its children.
+# shellcheck disable=SC2034  # read by the sourcing prune/delete tools
 GHCR_MANIFEST_ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
 
 # The PAT: explicit override first, otherwise the credential `docker login
@@ -50,10 +51,4 @@ ghcr_registry_token() {
   curl -fsS -u "x:${1}" \
     "https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_OWNER}/${GHCR_PKG}:pull" \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
-}
-
-# Fetch a manifest by tag or digest. $1 = registry Bearer, $2 = tag|digest
-ghcr_manifest() {
-  curl -fsSL -H "Authorization: Bearer ${1}" -H "Accept: ${GHCR_MANIFEST_ACCEPT}" \
-    "https://ghcr.io/v2/${GHCR_OWNER}/${GHCR_PKG}/manifests/${2}"
 }

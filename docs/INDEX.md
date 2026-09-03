@@ -114,6 +114,7 @@ The two halves of one topic often split:
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | Python CI: the shared lanes, and the two `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv) | [`python-ci.md`](python-ci.md) |
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
+| Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
 | The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |

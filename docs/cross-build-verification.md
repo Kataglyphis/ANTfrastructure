@@ -240,14 +240,14 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:39-48`, 29 slugs), which is also the vocabulary
+(`preflight.sh:39-52`, 33 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
 
 | Slug | Script | Catches |
 |------|--------|---------|
-| `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` materialised with CRLF endings |
+| `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
@@ -255,10 +255,12 @@ drift if a slug is added without touching it.
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
 | `arg-consistency` | `01-core/verify-arg-consistency.sh` | class 8 — ARG names/values vs `versions.env`, plus their forwarding |
 | `version-snapshot` | `docs/scripts/sync_versions.py --check` | class 8 — version snapshots / inline markers / deps table out of sync |
+| `pkg-names` | `verify_package_names.py` | a distro package name the tree asks apt for that no longer resolves against the live Ubuntu indices, at an UNGUARDED call site; SKIPs with no network and no cache |
+| `advert-keys` | `verify_advertised_keys.py` | a version-shaped `ENV`/`ARG` the runtime image advertises that the smoke neither checks nor excuses with a written reason |
 | `doc-links` | `docs/scripts/verify_doc_links.py` | broken relative links, dead anchors, `file.md § Heading` refs, missing `INDEX.md`/toctree coverage |
 | `doc-dupes` | `docs/scripts/verify_doc_dupes.py` | a passage copied into a second page; deliberate overlap is budgeted in `docs/scripts/doc-dupes.allow`, which itself fails when an entry goes stale |
 | `sbom` | `docs/scripts/generate_sbom.py --check` | the committed curated SBOM drifting from `deps.json` + `versions.env` |
-| `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` |
+| `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` — stale allow rows always fail |
 | `mirror-consistency` | `01-core/verify-ubuntu-mirror-consistency.sh` | class 8 — a Dockerfile missing the canonical Ubuntu mirror ARGs |
 | `runtime-paths` | `04-runtime/verify-runtime-paths.sh` | class 8 — `PATH`/`LD_LIBRARY_PATH`/`PKG_CONFIG_PATH` drifting from `runtime-paths.env` |
 | `dockerfile-lint` | `lint-dockerfiles.sh` | hadolint findings (policy in `.hadolint.yaml`; bootstraps a pinned, SHA-verified binary when none is on PATH) |
@@ -273,18 +275,24 @@ drift if a slug is added without touching it.
 | `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
 | `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
 | `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
+| `code-complexity` | `verify_code_complexity.py` | cyclomatic complexity over 15 or nesting over 5 in the `code-size` scan set, against `code-complexity.allow` — the shell counter is heredoc-, comment- and quote-aware |
+| `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
+| `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
+| `gate-registry` | `verify_gate_registry.py` | the meta-gate — a slug with no proof (no suite naming its script, no mutation) and `docs/code-quality-gates.md` drifting from what it derives; unproven slugs are frozen in `gate-proofs.allow` and may only leave it |
 
 Every check with a script is runnable standalone (same command); `crlf-guard`
-and `stage-graph` are inline in `preflight.sh` and have no separate entry
-point. The pre-commit hook
-(`linux/host-config/git-hooks/pre-commit`) runs a fast subset of the same gates —
-`PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes,sbom`
-(`:102-103`) — plus four checks of its own scoped to the STAGED content: an
-unresolved merge-conflict-marker scan (`:69-85`), `bash -n` (`:109`), the
-shellcheck gate restricted to staged `.sh` files (`:112`), and hadolint on
-staged Dockerfiles (`:122`). It closes with a Sphinx `-W` docs build (`:137`),
-which skips when the repo `.venv` has no `sphinx_kataglyphis`.
+and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
+The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 17 fast slugs in
+`_FAST_SLUGS` (`:23-26`), 4.2 s combined — and then three blocks scoped to the
+STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
+plus the warning ratchet on staged `.sh` files (`:37-54`, the binary resolved
+through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
+when `docs/*.md` moved (`:57-61`), and `verify_mutations.py --changed` on
+whatever is staged (`:66-75`, seconds for a typical commit against the ~6 min of all 180 entries).
+`shellcheck-warnings` is deliberately NOT a fast slug: whole-tree it is 22 s,
+per staged file 0.2 s.
 
 ### In-image smoke tests (need a built image, not part of preflight)
 

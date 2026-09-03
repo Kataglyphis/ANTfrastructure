@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
-# lint-env-knobs.sh — A1: the env-knob registry gate (verify-arg-consistency
-# family). Every ALL_CAPS knob CONSUMED via `${VAR:-default}` in linux/scripts
-# must have an OWNER:
-#   (a) set in versions.env,                          — pinned config
-#   (b) declared as ARG/ENV in a linux/Dockerfile*,   — build-graph plumbed
-#   (c) assigned/exported somewhere in linux/scripts, — derived internally
-#   (d) listed in lint-env-knobs.allow                — documented OPERATOR knob
-# Anything else is an UNOWNED knob: a typo'd fallback, a dead alias, or an
-# undocumented operator switch — exactly the class A1 exists to catch (the
-# UBUNTU_PORTS_MIRROR_URL dead-alias was one).
-#
-# ADVISORY by default (never fails); KNOB_GATE=1 promotes unowned knobs to a
-# hard failure. The allowlist doubles as the operator-knob documentation.
+# lint-env-knobs.sh — A1: every `${VAR:-default}` knob consumed in linux/scripts
+# needs an owner (versions.env, Dockerfile ARG/ENV, a script assignment, or a row
+# in lint-env-knobs.allow). Unowned knobs are advisory unless KNOB_GATE=1; a
+# STALE allow row (knob consumed nowhere) always fails.
+# docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -uo pipefail
 export LC_ALL=C
 
@@ -20,15 +12,26 @@ SCRIPTS="${REPO_ROOT}/linux/scripts"
 ALLOW="${SCRIPTS}/lint-env-knobs.allow"
 VERSIONS_ENV="${SCRIPTS}/01-core/versions.env"
 
-echo "=== env-knob registry gate (A1; advisory unless KNOB_GATE=1) ==="
+echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale always fails) ==="
 
 _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
-# 1) CONSUMED knobs: ${VAR:-...} readers in shell scripts. Skip _-prefixed
-#    (privates by convention) and 1-2 char names (loop vars).
-grep -rhoE '\$\{[A-Z][A-Z0-9_]{2,}:-' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
-  | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u | grep -vE '^_' \
+# Line-oriented scan of linux/scripts/*.sh: $1 selects lines, $2 extracts. Both
+# comment forms and backslash-escaped \$ are dropped first, so neither prose nor
+# literal output text is ever evidence of anything.
+_scan() {
+  grep -rhE "$1" "${SCRIPTS}" --include='*.sh' 2>/dev/null \
+  | grep -vE '^[[:space:]]*#' \
+  | sed -E 's/[[:space:]]+#.*$//' \
+  | sed -E 's/\\\$/\\/g' \
+  | grep -oE "$2"
+}
+
+# 1) CONSUMED knobs: ${VAR:-...} readers. The selector is deliberately loose;
+#    the EXTRACT regex is the promise — [A-Z] first bars _-prefixed privates.
+_scan '\$\{[A-Za-z_][A-Za-z0-9_]*:-' '\$\{[A-Z][A-Z0-9_]{2,}:-' \
+  | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u \
   | grep -vE '^(BASH_SOURCE|BASH_REMATCH|HOME|PATH|PWD|OLDPWD|HOSTNAME|OSTYPE|EUID|UID|USER|SHELL|LANG|LC_ALL|TERM|TMPDIR|IFS|PPID|RANDOM|SECONDS|LINENO|FUNCNAME|COLUMNS|LINES|XDG_[A-Z_]+)$' \
   > "${_tmp}/consumed"
 
@@ -40,10 +43,8 @@ grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>
   | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
 #    (c) script-side assignments/exports (VAR= / export VAR= / declare VAR= /
 #        : "${VAR:=...}" self-defaulting / read into VAR)
-{ grep -rhoE '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
-    | grep -oE '[A-Z][A-Z0-9_]{2,}='
-  grep -rhoE ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
-    | grep -oE '[A-Z][A-Z0-9_]{2,}'
+{ _scan '[A-Z][A-Z0-9_]{2,}=' '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' | grep -oE '[A-Z][A-Z0-9_]{2,}='
+  _scan ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' | grep -oE '[A-Z][A-Z0-9_]{2,}'
 } | tr -d '=' | LC_ALL=C sort -u > "${_tmp}/own_scripts"
 #    (d) allowlist (strip comments/blanks)
 if [ -f "${ALLOW}" ]; then
@@ -54,20 +55,27 @@ fi
 
 LC_ALL=C sort -u "${_tmp}/own_versions" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
 
-# 3) verdict
-# LC_ALL=C on comm too, not just on the sorts that produced its inputs: comm
-# checks sortedness in ITS OWN collation, so a host locale that differs from C
-# makes it disagree with files this script sorted in C -- and it reports the
-# wrong set difference silently, because the gate below only prints counts.
-# Last open call site from backlog C ("grep for other call sites while fixing").
+# 3) verdict (comm under LC_ALL=C like the sorts that fed it, or it disagrees silently)
 LC_ALL=C comm -23 "${_tmp}/consumed" "${_tmp}/owned" > "${_tmp}/unowned"
+LC_ALL=C comm -13 "${_tmp}/consumed" "${_tmp}/own_allow" > "${_tmp}/stale"
 n_consumed="$(wc -l < "${_tmp}/consumed")"
 n_unowned="$(wc -l < "${_tmp}/unowned")"
-echo "  consumed \${VAR:-} knobs: ${n_consumed} | owners: versions.env=$(wc -l < "${_tmp}/own_versions") dockerfiles=$(wc -l < "${_tmp}/own_dockerfile") scripts=$(wc -l < "${_tmp}/own_scripts") allowlist=$(wc -l < "${_tmp}/own_allow")"
+n_stale="$(wc -l < "${_tmp}/stale")"
+echo "  consumed \${VAR:-} knobs: ${n_consumed} | owners: versions.env=$(wc -l < "${_tmp}/own_versions") dockerfiles=$(wc -l < "${_tmp}/own_dockerfile") scripts=$(wc -l < "${_tmp}/own_scripts") allowlist=$(wc -l < "${_tmp}/own_allow") | stale allow rows: ${n_stale}"
+
+rc=0
+if [ "${n_stale}" -gt 0 ]; then
+  echo "  STALE allow rows (${n_stale}) — no \${VAR:-} reader consumes these any more; delete the row from $(basename "${ALLOW}"):"
+  sed 's/^/    /' "${_tmp}/stale"
+  echo "FAIL: ${n_stale} stale env-knob allow row(s) — bookkeeping error, fails regardless of KNOB_GATE." >&2
+  rc=1
+fi
 
 if [ "${n_unowned}" -eq 0 ]; then
-  echo "  OK: every consumed knob has an owner (versions.env / Dockerfile ARG-ENV / script assignment / allowlist)"
-  exit 0
+  if [ "${rc}" -eq 0 ]; then
+    echo "  OK: every consumed knob has an owner (versions.env / Dockerfile ARG-ENV / script assignment / allowlist)"
+  fi
+  exit "${rc}"
 fi
 
 echo "  UNOWNED knobs (${n_unowned}) — typo'd fallback, dead alias, or undocumented operator switch:"
@@ -78,4 +86,4 @@ if [ "${KNOB_GATE:-0}" = "1" ]; then
   exit 1
 fi
 echo "  (advisory — set KNOB_GATE=1 to enforce)"
-exit 0
+exit "${rc}"

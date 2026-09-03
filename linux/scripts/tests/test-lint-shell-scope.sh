@@ -36,6 +36,15 @@ t_assert_contains "$(bash "${SUBJECT}" "${_work}/thing.md" 2>&1)" "no shell scri
 t_case "the rule is marked load-bearing where it lives, so the reason survives edits"
 t_assert_contains "$(cat "${SUBJECT}")" "LOAD-BEARING"
 
+t_case "the hook resolves shellcheck through lint-shell.sh, its one owner"
+t_assert_contains "$(cat "${LIVE_HOOK}")" 'lint-shell.sh --print-bin'
+
+t_case "the hook never invokes a bare PATH shellcheck"
+t_assert_fails grep -q -E -e '^[[:space:]]*shellcheck ' "${LIVE_HOOK}"
+
+t_case "--print-bin prints an executable, so the hook's resolution cannot be vacuous"
+t_assert_ok test -x "$(bash "${SUBJECT}" --print-bin)"
+
 t_case "the deleted .githooks copy is really gone"
 t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"
 
