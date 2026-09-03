@@ -305,6 +305,8 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
   # AM_CXXFLAGS (upstream applied this to src/c++17 but not the c++23 module dir).
   # If you EVER see those fenv errors again here, the build-gcc.sh patch failed to
   # apply -- do not dismiss it as benign. See [[canadian-cross-fenv-module-noise]].
+      # The caller uses `if !`, which suppresses errexit in here: without an explicit
+      # die the builder's exit code was discarded. docs/refactoring-backlog.md WG
   CC="${cross_cc}" CXX="${cross_cxx}" \
     ac_cv_prog_cc_works=yes \
     ac_cv_prog_CC_works=yes \
@@ -321,7 +323,8 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
       --native-system-header-dir "/usr/${triplet}/include" \
       --disable-bootstrap \
       --ccache \
-      --skip-system-registration
+      --skip-system-registration \
+      || die "Canadian native GCC build FAILED for ${normalized_target}"
 
   [ -x "${native_prefix}/bin/gcc" ] || die "Expected native GCC not found: ${native_prefix}/bin/gcc"
   [ -x "${native_prefix}/bin/g++" ] || die "Expected native G++ not found: ${native_prefix}/bin/g++"

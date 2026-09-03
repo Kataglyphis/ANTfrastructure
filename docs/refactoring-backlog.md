@@ -864,6 +864,23 @@ than falling through to `pass`.
 
 `linux/scripts/02-toolchain/gcc.sh:383`
 
+**FIXED 2026-09-03.** The builder invocation now ends in an explicit
+`|| die`, so its exit code is raised instead of discarded. That is the whole
+fix: `die` resolves to `err`, which does `exit 1`, and an `exit` is not
+suppressed by the `if !` context — while `errexit` is. With the builder raising,
+the documented `GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE` skip becomes the only
+remaining non-zero return, which is exactly what the `if !` was written for, so
+the call site itself needs no change.
+
+New suite `test-gcc-errexit-contract.sh`. The function needs a cross toolchain
+and a sysroot, so it cannot be unit-tested; what is tested is the contract, plus
+one characterisation test recording that `if ! f` really does suppress errexit
+inside `f` — the behaviour is easy to misremember and the cost of forgetting it
+is a silent multi-hour build. **My first version of the guard test was vacuous:**
+it grepped a 24-line window after the invocation, which also caught the `|| die`
+on the two `-x` checks below, so it passed with the guard removed. It now walks
+the invocation's own continuation lines. Mutating the guard away fails it.
+
 **What breaks.**
 During the Canadian native GCC build for arm64/riscv64, `bash
 "${GCC_CROSS_BUILDER}" …` (gcc.sh:315) runs `make install-gcc install-target-
