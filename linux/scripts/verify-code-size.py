@@ -170,7 +170,13 @@ def _check(kind, items, frozen, limit, allow_name):
 
 def main():
     print("=== code size gate (functions > %d, files > %d) ===" % (LIMIT, FILE_LIMIT))
-    rc = _check("functions", [((f, n), c) for f, n, c in functions()],
+    # A name can be defined more than once in one file (a stub redefined later),
+    # and the allow key is (file, name). Take the LONGEST -- the shortest would let
+    # a redefinition hide the offender.
+    longest: dict = {}
+    for f, n, c in functions():
+        longest[(f, n)] = max(c, longest.get((f, n), 0))
+    rc = _check("functions", sorted(longest.items()),
                 load_allow(FN_ALLOW), LIMIT, "function-size.allow")
     rc |= _check("files", [((f,), n) for f, n in files()],
                  load_allow(FILE_ALLOW), FILE_LIMIT, "file-size.allow")

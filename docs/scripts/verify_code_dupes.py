@@ -273,26 +273,15 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
     return allow
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Verify code is free of copied blocks.")
-    ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
-                    help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
-    ap.add_argument("--report", action="store_true",
-                    help="list every pair over the threshold, allowed ones included")
-    ap.add_argument("--baseline", action="store_true",
-                    help=f"rewrite {ALLOW_FILE.name} to freeze today's duplication as budgets")
-    ap.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
-                    help="restrict to one kind (repeatable); default all")
-    args = ap.parse_args()
+def _index_units(files):
+    """Shingle-index every unit in scope.
 
-    kinds = set(args.kind) if args.kind else set(UNIT_READERS)
-    files = [(p, k) for p, k in collect() if k in kinds]
-    if not files:
-        print("ERROR: nothing in scope to check", file=sys.stderr)
-        return 2
-
+    Returns (owners, heads, texts, unit_lines, kind_of): which units hold each
+    shingle, which shingles OPEN a unit (they make the best excerpts), and the
+    text and normalised lines of each unit for later reporting.
+    """
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
-    heads: set[tuple] = set()   # shingles that OPEN a unit -- best excerpts
+    heads: set[tuple] = set()
     texts: dict[tuple[str, int], str] = {}
     unit_lines: dict[tuple[str, int], list[str]] = {}
     kind_of: dict[str, str] = {}
@@ -310,7 +299,16 @@ def main() -> int:
                 owners[sh].add((rel, line_no))
                 if j == 0:
                     heads.add(sh)
+    return owners, heads, texts, unit_lines, kind_of
 
+
+def _collect_shared(owners, heads, kind_of):
+    """Turn the shingle index into pair counts, spread and clone families.
+
+    Returns (shared, spread, families, suppressed). A family is keyed by the
+    BLOCK's owner set, never by file adjacency -- keying on adjacency once
+    collapsed most of the tree into one meaningless "88 files" family.
+    """
     shared: Counter = Counter()
     spread: Counter = Counter()
     # A family is keyed by the BLOCK's owner set, never by file adjacency: one
@@ -346,6 +344,58 @@ def main() -> int:
                     entry[0] += 1
                     if shingle in heads and entry[1] not in heads:
                         entry[1], entry[2] = shingle, sorted(holders)
+    return shared, spread, families, suppressed
+
+
+def _print_report(args, files, texts, allowed, runs, spread):
+    """The --report listing: every allowed pair, then the widely-copied blocks."""
+    print(f"scanned {len(texts)} units in {len(files)} files "
+          f"(threshold {args.threshold} shared {SHINGLE}-token shingles)\n")
+    for n, a, b, why in allowed:
+        print(f"  allowed {n:4d}  run={runs.get((a, b), 0):3d}  "
+              f"{a[0]}  <->  {b[0]}   ({why})")
+    if allowed:
+        print()
+    # Rank by BLOCK SIZE, not by how many files hold it. One shingle across
+    # 34 files is `set -euo pipefail` -- idiom. Ten shingles across 8 files
+    # is a copied helper. Sorting by file count buries the second under the
+    # first (learned the hard way on the 199-shingle usage() pair).
+    WIDE_MIN_SHINGLES = 5
+    wide = [(cnt, fs) for fs, cnt in spread.items()
+            if len(fs) > MAX_OWNERS and cnt >= WIDE_MIN_SHINGLES]
+    wide.sort(reverse=True, key=lambda w: (w[0], len(w[1])))
+    if wide:
+        print(f"widely-copied blocks ({len(wide)} group(s) of >= "
+              f"{WIDE_MIN_SHINGLES} shingles held by > {MAX_OWNERS} files) -- "
+              f"the highest-leverage extractions:\n")
+        for cnt, fs in wide[:10]:
+            print(f"  {cnt:3d} shingles x {len(fs):2d} files: "
+                  f"{', '.join(sorted(fs)[:4])}"
+                  f"{' ...' if len(fs) > 4 else ''}")
+        print()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Verify code is free of copied blocks.")
+    ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
+                    help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
+    ap.add_argument("--report", action="store_true",
+                    help="list every pair over the threshold, allowed ones included")
+    ap.add_argument("--baseline", action="store_true",
+                    help=f"rewrite {ALLOW_FILE.name} to freeze today's duplication as budgets")
+    ap.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
+                    help="restrict to one kind (repeatable); default all")
+    args = ap.parse_args()
+
+    kinds = set(args.kind) if args.kind else set(UNIT_READERS)
+    files = [(p, k) for p, k in collect() if k in kinds]
+    if not files:
+        print("ERROR: nothing in scope to check", file=sys.stderr)
+        return 2
+
+    owners, heads, texts, unit_lines, kind_of = _index_units(files)
+
+    shared, spread, families, suppressed = _collect_shared(owners, heads, kind_of)
 
     # Collapse unit pairs to FILE pairs: the allowlist and the reader both think
     # in files, and one copied helper usually shows up as several unit pairs.
@@ -418,30 +468,7 @@ def main() -> int:
                   file=stream)
 
     if args.report:
-        print(f"scanned {len(texts)} units in {len(files)} files "
-              f"(threshold {args.threshold} shared {SHINGLE}-token shingles)\n")
-        for n, a, b, why in allowed:
-            print(f"  allowed {n:4d}  run={runs.get((a, b), 0):3d}  "
-                  f"{a[0]}  <->  {b[0]}   ({why})")
-        if allowed:
-            print()
-        # Rank by BLOCK SIZE, not by how many files hold it. One shingle across
-        # 34 files is `set -euo pipefail` -- idiom. Ten shingles across 8 files
-        # is a copied helper. Sorting by file count buries the second under the
-        # first (learned the hard way on the 199-shingle usage() pair).
-        WIDE_MIN_SHINGLES = 5
-        wide = [(cnt, fs) for fs, cnt in spread.items()
-                if len(fs) > MAX_OWNERS and cnt >= WIDE_MIN_SHINGLES]
-        wide.sort(reverse=True, key=lambda w: (w[0], len(w[1])))
-        if wide:
-            print(f"widely-copied blocks ({len(wide)} group(s) of >= "
-                  f"{WIDE_MIN_SHINGLES} shingles held by > {MAX_OWNERS} files) -- "
-                  f"the highest-leverage extractions:\n")
-            for cnt, fs in wide[:10]:
-                print(f"  {cnt:3d} shingles x {len(fs):2d} files: "
-                      f"{', '.join(sorted(fs)[:4])}"
-                      f"{' ...' if len(fs) > 4 else ''}")
-            print()
+        _print_report(args, files, texts, allowed, runs, spread)
 
     if findings:
         print(f"code duplication gate: {len(findings)} copied block(s)\n", file=sys.stderr)

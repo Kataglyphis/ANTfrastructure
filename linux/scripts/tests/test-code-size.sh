@@ -24,6 +24,15 @@ _fixture() {
         > "${d}/linux/scripts/subject.sh"
       [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
       ;;
+    twice)
+      # The same name defined twice, LONG first and short after. "Last wins" would
+      # then report 3 lines and the offender would hide behind its own redefinition,
+      # so the gate must take the longest.
+      { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"
+        echo "big() {"; echo "  :"; echo "}"; } \
+        > "${d}/linux/scripts/subject.sh"
+      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
+      ;;
     pyfunc)
       { echo "def big():"; for _ in $(seq 1 $((n - 1))); do echo "    pass"; done; } \
         > "${d}/linux/scripts/subject.py"
@@ -103,5 +112,9 @@ _exits pyfunc 100 "linux/scripts/subject.py | big | 100 | baseline" 0 \
 t_case "a long Dockerfile is measured, even though it has no functions"
 _says  dockerfile 900 "" "not frozen" "Dockerfile.media is the largest file in the tree"
 _exits dockerfile 900 "linux/Dockerfile.subject | 900 | baseline" 0 "frozen, it passes"
+
+t_case "a name defined twice is measured at its longest, not its last"
+_says  twice 100 "" "is 100 lines" "the short redefinition must not mask the long one"
+_exits twice 100 "linux/scripts/subject.sh | big | 100 | baseline" 0 "frozen at the real length"
 
 t_summary
