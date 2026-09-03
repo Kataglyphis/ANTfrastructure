@@ -265,6 +265,124 @@ Full recipe set (interactive shell into an image, `nerdctl build`, the
 
 ## Phase B — Repo checkout + gate tooling [non-admin]
 
+### B0. SSH agent — one passphrase, then never again
+
+B1's clone URL is `git@github.com:`, and so is every `git@` entry in
+`.gitmodules`. A key that cannot *sign* therefore blocks the clone, every
+`submodule update`, and every push. Windows makes this easy to get wrong in a
+way that looks exactly like a rejected key.
+
+**Two OpenSSH installations, two agents, and PATH picks the wrong one.**
+
+| Command | Resolves to | Talks to |
+|---|---|---|
+| `ssh-add` in **PowerShell** | `C:\Program Files\Git\usr\bin\ssh-add.exe` | MSYS agent via `$SSH_AUTH_SOCK` — normally not running |
+| `ssh-add` in **Git Bash** | `/usr/bin/ssh-add` | the same MSYS agent |
+| `C:\Windows\System32\OpenSSH\ssh-add.exe` | — | the **`ssh-agent` Windows service** — the only one that survives a reboot |
+
+Git for Windows puts `usr\bin` ahead of `System32\OpenSSH` on PATH, so a bare
+`ssh-add` reaches the MSYS agent **in both shells**, including PowerShell. Keys
+loaded there die with the shell. The Windows service (`Automatic`, key store
+DPAPI-encrypted under `HKCU\Software\OpenSSH\Agent\Keys`, readable only by
+SYSTEM) reloads its keys on every boot. **Always use full paths here, never the
+bare command name.**
+
+One-time setup (**[non-admin]** except where marked), PowerShell:
+
+```pwsh
+$SSHADD = "$env:WINDIR\System32\OpenSSH\ssh-add.exe"
+$SSHEXE = "$env:WINDIR\System32\OpenSSH\ssh.exe"
+
+Set-Service ssh-agent -StartupType Automatic   # [admin]; usually already set
+Start-Service ssh-agent                        # [admin]; no-op if Running
+
+& $SSHADD "$env:USERPROFILE\.ssh\id_ed25519"   # asks for the passphrase ONCE, ever
+& $SSHADD -l                                   # must list that key's fingerprint
+
+git config --global core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"
+& $SSHEXE -T git@github.com                    # "Hi <user>! You've successfully authenticated"
+```
+
+The `core.sshCommand` line is the half that is easy to omit and without which
+nothing else helps: Git Bash otherwise runs its own `/usr/bin/ssh`, which cannot
+reach the Windows service at all (MSYS unix socket vs Windows named pipe). It
+then falls back to reading the key file directly and needs a passphrase it has
+no TTY to ask for.
+
+**What failure looks like.** Two unrelated causes print the same misleading last
+line, `Permission denied (publickey)`. Read the two lines above it:
+
+```
+debug1: Server accepts key: .../id_ed25519 ED25519 SHA256:…
+debug1: No more authentication methods to try.
+```
+
+GitHub **accepted** the key; ssh could not produce the signature because the key
+is passphrase-protected and the shell has no TTY. This is an agent problem, not
+a key-registration problem — do **not** re-upload the key. Confirm what the
+account actually holds, without needing any token scope:
+
+```bash
+curl -s https://github.com/<user>.keys | ssh-keygen -lf -   # fingerprints of every key on the account
+ssh-keygen -lf ~/.ssh/id_ed25519.pub                        # the local one; look for it in that list
+```
+
+```
+sign_and_send_pubkey: signing failed for ED25519 "…" from agent: agent refused operation
+```
+
+A stale or unusable entry in the Windows agent: the stored key can no longer
+sign. Do **not** reach for `ssh-add -D` first.
+
+> **`-D` can destroy a key that exists nowhere else.** The Windows agent keeps
+> its own encrypted copy of the private key, and `ssh-add` has no export — a key
+> whose file was deleted after it was added survives *only* inside the agent,
+> and `-D` erases it with no way back. On the 2026-09-03 host the agent's single
+> identity was exactly that: fingerprint `8UtaDNOh…`, with no matching file
+> anywhere under the profile (`~/.ssh` held only an unrelated `id_ed25519`).
+> Before purging anything, check that every fingerprint the agent lists still
+> has a file behind it:
+>
+> ```pwsh
+> & $SSHADD -l                                        # what the agent holds
+> Get-ChildItem "$env:USERPROFILE\.ssh\*.pub" | ForEach-Object { ssh-keygen -lf $_ }
+> ```
+>
+> A fingerprint in the first list with no counterpart in the second is
+> file-less. Leave it alone.
+
+The fix needs no deletion. Add your working key **alongside** the broken one —
+ssh offers each agent identity in turn, so one that refuses no longer ends the
+attempt once a usable key follows it:
+
+```pwsh
+$SSHADD = "$env:WINDIR\System32\OpenSSH\ssh-add.exe"   # repeated: full path, not the MSYS one
+& $SSHADD "$env:USERPROFILE\.ssh\id_ed25519"
+```
+
+Purge only when every fingerprint in `ssh-add -l` maps to a `.pub` on disk, so
+everything dropped can be re-added.
+
+Both symptoms appeared on one host on 2026-09-03, and the first was initially
+misdiagnosed as "the key is not on the GitHub account" — it was on it the whole
+time. The `.keys` check above settles that question in one command and should be
+the first thing run, before touching anything on GitHub.
+
+**While SSH is still broken, work is not blocked.** If `gh auth status` shows an
+HTTPS login, rewrite the URL per command and leave the config untouched:
+
+```bash
+git -c 'url.https://github.com/.insteadOf=git@github.com:' fetch --all
+git -c 'url.https://github.com/.insteadOf=git@github.com:' push origin HEAD
+```
+
+Per command, not `--global`: a persistent rewrite silently masks the SSH problem
+and then surprises anyone who clones with an unrewritten URL.
+
+Verify: `& $SSHADD -l` lists your key; `git ls-remote git@github.com:<org>/<repo>`
+succeeds from a **non-interactive** shell with no prompt; and both still hold
+after a reboot with no re-entry of the passphrase.
+
 ### B1. Git for Windows + clone
 
 Install Git for Windows (`winget install Git.Git`). The gates run under **Git
