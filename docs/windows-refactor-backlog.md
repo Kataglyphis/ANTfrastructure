@@ -235,6 +235,39 @@ this repo's cp314 pin).
   status header), the genai-as-fourth-branch trade-off (4-18 min vs fan-in on
   the flakiest stage).
 
+### Doc drift found by the LINUX-side docs audit 2026-09-03 (routed here, NOT verified on a Windows host)
+
+A 14-agent currency audit ran over `README.md`, `AGENTS.md` and `docs/` from the
+Linux side. Six confirmed findings land in Windows-lane files, so they were left
+untouched there and are recorded here instead. **Each was verified only against
+the repo tree — no Windows host was involved**, so re-check before acting.
+
+- **`docs/windows-host-setup.md:12,17`** — points at
+  `windows/scripts/verify-host-setup.ps1`, including a copy-pasteable
+  `pwsh -File` command. The script is at `windows/scripts/host/verify-host-setup.ps1`.
+  A reader following the doc gets "file not found".
+- **`docs/project-info.md:46`** — locates the HEALTHCHECK script at
+  `windows/scripts/healthcheck.ps1`; it is `windows/scripts/build/healthcheck.ps1`.
+- **`docs/project-info.md:43`** — restates Windows media-stage versions (ORT
+  1.27.0, GenAI 0.14.0, LiteRT 2.1.6, LiteRT-LM 0.13.1, TVM 0.25.0). All five are
+  behind `versions.env`, and `AGENTS.md:681` says not to restate versions ahead of
+  it at all — so the fix is to drop the numbers, not to refresh them.
+- **`docs/project-info.md:40`** — "LLVM 22 via Scoop"; the pin is
+  `LLVM_WINDOWS_VERSION=23.1.0`. Same rule: name the variable, not the number.
+- **`docs/overview.md:23`** — lists `windows/Dockerfile.toolchain`; the file is
+  `windows/Dockerfile.toolchain-builder`.
+- **`README.md:202`** — "The Qualcomm QNN SDK (QAIRT 2.31.0)" while **the same
+  sentence** says "(QAIRT 2.44.0, QNN API 2.33.0)" two lines later. A tree-wide
+  grep finds `2.31.0` exactly once, here; `windows/qnn-sdk/README.md:44` and
+  `docs/windows-cross-builds.md:711` both say 2.44.0.260225. This one is in the
+  repo-wide README rather than a Windows file, but the fact is Windows-lane, so it
+  was deliberately not "fixed" from the Linux side.
+
+Also noted while checking: `docs/third-party-licenses.md` attributes the **Linux**
+sccache patch series to `windows/upstream/sccache-nvcc-quote-fix/`. That is a
+cross-lane attribution error in `docs/deps/deps.json`; the Linux sccache is the
+unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here too.
+
 ### CLOSED (pointers — full narratives in the dated archives)
 
 - **#152** — the 2026-08-31 wave: PROVEN BY BUILD 2026-09-01/02. The dual-lane

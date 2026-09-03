@@ -16,7 +16,7 @@ cd "${_root}"
 
 # Whole-tree gates that are cheap. Measured 2026-09-02: 8-10s combined.
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
-arg-consistency,masked-decls,comment-size,artifact-parity,advert-keys,stage-graph"
+arg-consistency,masked-decls,comment-size,code-size,artifact-parity,advert-keys,stage-graph"
 
 echo "pre-commit: fast preflight gates…"
 PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
