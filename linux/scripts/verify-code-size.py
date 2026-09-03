@@ -16,6 +16,7 @@ Length is weak evidence on its own. This does not ask anyone to split a function
 it asks that the queue stay honest without a human re-counting.
 See docs/code-quality-tooling.md.
 """
+import ast
 import os
 import re
 import sys
@@ -26,8 +27,13 @@ FN_ALLOW = os.path.join(HERE, "function-size.allow")
 FILE_ALLOW = os.path.join(HERE, "file-size.allow")
 LIMIT = int(os.environ.get("FUNCTION_SIZE_LIMIT", "80"))
 FILE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", "800"))
-SCAN = ("linux/scripts", "linux/host-config")
+SCAN = ("linux/scripts", "linux/host-config", "docs/scripts")
+# Dockerfiles sit at the top of linux/ and have no function structure, so they
+# are size-checked as files only. windows/ is out of scope for this repo lane.
+FLAT_SCAN = ("linux",)
 SKIP_DIRS = {".git", "__pycache__", "patches"}
+def _is_subject(fn):
+    return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
 DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\(\)\s*\{")
 
 
@@ -37,10 +43,14 @@ def functions():
         for base, dirs, files in os.walk(os.path.join(ROOT, top)):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for fn in sorted(files):
-                if not fn.endswith(".sh"):
-                    continue
                 path = os.path.join(base, fn)
                 rel = os.path.relpath(path, ROOT)
+                if fn.endswith(".py"):
+                    for item in _py_functions(path, rel):
+                        yield item
+                    continue
+                if not fn.endswith(".sh"):
+                    continue
                 try:
                     lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
                 except OSError:
@@ -63,7 +73,7 @@ def files():
         for base, dirs, fs in os.walk(os.path.join(ROOT, top)):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for fn in sorted(fs):
-                if not fn.endswith(".sh"):
+                if not _is_subject(fn):
                     continue
                 path = os.path.join(base, fn)
                 try:
@@ -71,6 +81,41 @@ def files():
                 except OSError:
                     continue
                 yield os.path.relpath(path, ROOT), n
+    for top in FLAT_SCAN:
+        d = os.path.join(ROOT, top)
+        for fn in sorted(os.listdir(d) if os.path.isdir(d) else []):
+            if not fn.startswith("Dockerfile"):
+                continue
+            path = os.path.join(d, fn)
+            if not os.path.isfile(path):
+                continue
+            try:
+                n = sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            yield os.path.relpath(path, ROOT), n
+
+
+def _py_functions(path, rel):
+    """Yield (rel, qualified_name, line_count) for every def/async def."""
+    try:
+        tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
+    except (OSError, SyntaxError):
+        return
+    stack = []
+
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                walk(child, prefix + child.name + ".")
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                end = getattr(child, "end_lineno", None)
+                if end:
+                    stack.append((rel, prefix + child.name, end - child.lineno + 1))
+                walk(child, prefix + child.name + ".")
+    walk(tree, "")
+    for item in stack:
+        yield item
 
 
 def load_allow(path):

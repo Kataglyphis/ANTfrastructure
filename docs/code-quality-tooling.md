@@ -234,10 +234,17 @@ outage at a time is not a policy.
 
 ## Code size — functions and files (`code-size`)
 
-`linux/scripts/verify-code-size.py`, preflight slug `code-size`. Two metrics,
-one contract: shell **functions** over `FUNCTION_SIZE_LIMIT` (default 80) against
-`function-size.allow`, and shell **files** over `FILE_SIZE_LIMIT` (default 800)
-against `file-size.allow`. 33 functions and 7 files are over today, all frozen.
+`linux/scripts/verify-code-size.py`, preflight slug `code-size`. One contract over
+four subjects: **shell functions** and **Python functions** over
+`FUNCTION_SIZE_LIMIT` (default 80) against `function-size.allow`, and **shell,
+Python and Dockerfile files** over `FILE_SIZE_LIMIT` (default 800) against
+`file-size.allow`. 39 functions and 10 files are over today, all frozen.
+
+Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
+`def`s are qualified (`Class.method`), and a decorator or a multi-line signature
+cannot fool it. Dockerfiles have no function structure, so they are size-checked
+as files only — `Dockerfile.media` at 1162 lines is the largest file in the tree
+and was invisible to every gate until 2026-09-03.
 
 One script rather than two: the four-way contract and the allow-file handling are
 shared, and a second copy would have tripped the duplication gate — correctly.

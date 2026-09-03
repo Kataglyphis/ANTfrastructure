@@ -16,13 +16,28 @@ _fixture() {
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts"
   cp "${SCRIPTS_DIR}/verify-code-size.py" "${d}/linux/scripts/"
-  if [ "${shape}" = "function" ]; then
-    { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"; }
-    [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
-  else
-    for _ in $(seq 1 "${n}"); do echo ":"; done
-    [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/file-size.allow"
-  fi > "${d}/linux/scripts/subject.sh"
+  # NOTE: the redirect must sit inside each arm. A trailing `esac > "${subject}"`
+  # expands ${subject} before any arm runs, so the content lands in the default file.
+  case "${shape}" in
+    function)
+      { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"; } \
+        > "${d}/linux/scripts/subject.sh"
+      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
+      ;;
+    pyfunc)
+      { echo "def big():"; for _ in $(seq 1 $((n - 1))); do echo "    pass"; done; } \
+        > "${d}/linux/scripts/subject.py"
+      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
+      ;;
+    dockerfile)
+      for _ in $(seq 1 "${n}"); do echo "# ."; done > "${d}/linux/Dockerfile.subject"
+      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/file-size.allow"
+      ;;
+    *)
+      for _ in $(seq 1 "${n}"); do echo ":"; done > "${d}/linux/scripts/subject.sh"
+      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/file-size.allow"
+      ;;
+  esac
   printf '%s' "${d}"
 }
 
@@ -78,5 +93,15 @@ _says function 10 "linux/scripts/subject.sh | big | 100 | baseline" \
   "STALE freeze" "delete the line once it drops under"
 _says file 50 "linux/scripts/subject.sh | 900 | baseline" \
   "STALE freeze" "same for files"
+
+# ── the metrics added on 2026-09-03: python functions and Dockerfiles ────────
+t_case "a long python function is measured, via ast rather than a regex"
+_says  pyfunc 100 "" "not frozen" "def bodies count too, and end_lineno is exact"
+_exits pyfunc 100 "linux/scripts/subject.py | big | 100 | baseline" 0 \
+  "frozen at its real length, it passes"
+
+t_case "a long Dockerfile is measured, even though it has no functions"
+_says  dockerfile 900 "" "not frozen" "Dockerfile.media is the largest file in the tree"
+_exits dockerfile 900 "linux/Dockerfile.subject | 900 | baseline" 0 "frozen, it passes"
 
 t_summary

@@ -8,6 +8,10 @@
 #
 # Length is weak evidence on its own; this list is a queue, not an accusation.
 # The refactor entries live in docs/refactoring-backlog.md F1/F2.
+docs/scripts/bump_versions.py | main | 159 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+docs/scripts/generate_sbom.py | build_document | 88 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+docs/scripts/verify_code_dupes.py | main | 201 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+docs/scripts/verify_doc_dupes.py | main | 81 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/scripts/01-core/base-image.sh | install_nodejs | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/cross-apt.sh | install_target_packages | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/cross-meson.sh | ensure_meson_cross_file | 93 | baseline 2026-09-03, not yet reviewed
@@ -41,3 +45,5 @@ linux/scripts/lib/agentic-loop.sh | run_agentic_loop | 97 | baseline 2026-09-03,
 linux/scripts/lib/cmake-build.sh | cmake_build_parse_args | 116 | baseline 2026-09-03, not yet reviewed
 linux/scripts/lib/slang-compile.sh | slang_compile_combined_wgsl | 87 | baseline 2026-09-03, not yet reviewed
 linux/scripts/tests/test-chain-lifecycle.sh | warn | 114 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify-package-names.py | main | 140 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+linux/scripts/verify-package-names.py | scan_file | 93 | baseline 2026-09-03: newly in scope (python/Dockerfile)
