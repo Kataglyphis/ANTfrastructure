@@ -18,23 +18,27 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **LB**=llm-stack benchmark harness ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: **2026-09-03**. 1656 lines of closed work moved to the
-2026-09-03 archive: **A1** and **A2** (both validated by real builds that day),
-the whole **WA–WJ** and **XK–XR** rounds, and **F1**'s closed rows.
+Last groomed: **2026-09-03** (twice — see the archive). 1656 lines of closed work
+moved out first: **A1**, **A2**, the **WA–WJ** and **XK–XR** rounds, **F1**'s
+closed rows. Then **YA** and **YC** were opened, fixed and archived the same day.
 
-What is left is six entries, and they are honestly of two kinds:
+**Four entries remain, and they are honestly of three kinds:**
 
-* **Three defects found on 2026-09-03 and deliberately NOT fixed on the spot** —
-  **YA** (the unhashed 1.5 GB QAIRT download is still live in the android lane),
-  **YB** (sccache loses thousands of compiles per chain to a spawn ENOENT; root
-  cause NOT determined, and two plausible theories are recorded as *disproved* so
-  nobody re-derives them), **YC** (a dead `.githooks/pre-commit` that live docs
-  pointed at). YA and YC were found mid-build, inside the 03-media closure, which
-  is precisely when that closure must not be edited.
-* **Three long-running quality tracks** — **F1** (oversized functions),
-  **F2** (oversized files, now frozen by the `code-size` gate rather than
-  re-measured by hand), **F3** (clone families), plus **F9**'s two
-  invoke-by-hand gate failures.
+* **One real defect, still unsolved** — **YB**. sccache silently loses thousands
+  of compiles per chain. Six hypotheses are now recorded as *disproved by
+  experiment* so nobody re-derives them; what is left needs a real build with
+  `SCCACHE_LOG=debug`, which is why it is not closed.
+* **Two long-running quality tracks** — **F1** (oversized functions) and **F2**
+  (oversized files). Both are now *frozen by the `code-size` gate* rather than
+  re-measured by hand, which is what kept letting their tables go stale. **F3**
+  is down to items that are either reviewed-and-KEPT on purpose or need a
+  validating build to delete safely.
+* **One entry kept only as a record** — **F9**. Both its failures were retested
+  on 2026-09-03 and neither reproduces. It stays because the 2026-09-01
+  observations were real, so the honest status is "intermittent, cause unknown",
+  not "fixed".
+
+Nothing here is blocked on a decision from the owner.
 
 ### YB. sccache fails to spawn its preprocessor on thousands of compiles per chain (`os error 2`) — narrowed 2026-09-03, root cause still OPEN [medium]
 
