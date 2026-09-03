@@ -171,7 +171,7 @@ When feeding locally saved runtime artifacts back into later builds:
 1. Fork the project.
 2. Create a feature branch (`git checkout -b feature/my-change`).
 3. Make your changes. If modifying build scripts or Dockerfiles, run `python3 docs/scripts/sync_versions.py --check` to verify version consistency.
-4. Commit your changes — the pre-commit hook (`.githooks/pre-commit`) runs version-staleness checks and shell syntax validation.
+4. Commit your changes — the pre-commit hook (`linux/host-config/git-hooks/pre-commit`, installed by `make hooks`) runs the fast preflight slugs, staged shellcheck and the doc gates.
 5. Push and open a pull request.
 
 ## License

@@ -602,12 +602,9 @@ In the order they can bite:
    open item by [`refactoring-backlog.md`](refactoring-backlog.md) section B.
    Note it if the riscv64 stage flakes.
 
-Also deliberately left unraised: **the riscv64 app-wheel floor stays at 12.**
-The lane now builds genai, and the app suite's `check_onnxruntime_genai` should
-turn the riscv64 count into 13 — but "should" is not a measurement, and raising
-a floor a run cannot reach reds the gate for the wrong reason. Raise it to 13
-only once a real riscv64 run **prints** `13/… ok`. Until then the new component
-is guarded by `check_genai_binding` and the ARCH-PARITY table instead.
+**Settled 2026-09-03:** a real run printed **14**, so the riscv64 floor moved
+12 → 13 — one wheel of slack on a single observation. The rule for raising it
+further is in [The app-wheel floor](#the-app-wheel-floor).
 
 ### Performance: riscv64 MLAS is scalar
 

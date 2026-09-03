@@ -160,6 +160,33 @@ vendor code end to end; everything upstream of LiteRT is already proven and
 cached. Then remove the zip from `linux/qnn-sdk/` per README discipline — it is a
 hardlink, so the copy under `/opt/scripts/qnn-sdk/` survives.
 
+### YC. `.githooks/pre-commit` is a dead gate that four live docs still named as the current one [medium]
+
+**Found 2026-09-03 by the docs-currency audit.** `git config core.hooksPath` is
+`linux/host-config/git-hooks`, set by `make hooks` (`Makefile:60`). Nothing
+executes `.githooks/pre-commit`: a tree-wide grep finds only prose mentions plus
+one special case in `lint-shell.sh:123,136` that exists purely so the
+extension-less file still gets shellchecked. CI does not run it either —
+`ubuntu24.04.yml:48` runs `bash linux/scripts/preflight.sh` directly.
+
+It is also **stale**: last touched 2026-08-25 (`928e7451`), while the live hook
+was updated 2026-09-03 (`c0dc4de2`). The two run genuinely different gate sets,
+so following the dead one gives a weaker check than the repo actually enforces.
+
+The documentation references are fixed (`AGENTS.md`, `cross-build-verification.md`
+×2, `project-info.md`, `shared/config/README.md`, and the comments in
+`ubuntu24.04.yml` / `build-docs.yml`). **What is NOT done: the file itself.**
+
+**Decide and act:** either delete `.githooks/pre-commit` — and then remove the
+`lint-shell.sh` special case that only exists for it — or, if it is kept
+deliberately as a lighter opt-in gate, say so in a header comment inside the
+file, because nothing currently records why a second, unreachable pre-commit
+script lives in the tree.
+
+**Left alone on purpose:** the `.githooks` mentions in `docs/*archive-2026-*.md`
+are historical records of when that path *was* current, and
+`docs/windows-host-setup.md:277,291` is a Windows-lane file.
+
 ### YA. The unhashed 1.5 GB QAIRT download A2 fixed is still LIVE in the android LiteRT lane — the guard is never reachable from there [high]
 
 **Found 2026-09-03 while validating A2.** `_litert_disable_qairt_header_download`

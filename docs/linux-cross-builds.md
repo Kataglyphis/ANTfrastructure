@@ -673,8 +673,9 @@ with a build-time QNN flag** — corrected 2026-08-31, see Windows backlog #154:
 LiteRT's `TFLITE_ENABLE_QNN`, TVM's `USE_QNN` and IREE's
 `IREE_TARGET_BACKEND_QNN` do not exist upstream, so CMake dropped all three
 silently while the scripts logged success. LiteRT's real switch is
-`LITERT_ENABLE_QUALCOMM`, auto-forced ON by `QAIRT_HEADERS_DIR=<root>/include`,
-which this lane now passes; TVM and IREE have no Qualcomm path at all.
+`LITERT_ENABLE_QUALCOMM`, auto-forced ON by `QAIRT_HEADERS_DIR=<root>/include/QNN`
+(the dir holding `Qnn*.h` — [`qnn-linux.md`](qnn-linux.md) explains why the
+include root does not work), which this lane now passes; TVM and IREE have no Qualcomm path at all.
 Backend `.so` + `hexagon-v*` skel dirs are staged beside
 each framework's install by `stage_qnn_runtime`. No zip = QNN off with a
 notice. Different SDK from the Windows lane (`aarch64-oe-linux-gcc11.2/`,

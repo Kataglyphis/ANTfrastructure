@@ -51,7 +51,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
   Extend here for the compile smoke test.
 - **Smoke framework:** `06-packaging/smoke-common.sh` (`pass`/`fail`/`FAILURES`);
   smoke tests are `06-packaging/smoke-<thing>.sh` and `source smoke-common.sh`.
-- **Static host verifiers wired into `.githooks/pre-commit`:** `verify-critical-fixes.sh`,
+- **Static host verifiers wired into `linux/host-config/git-hooks/pre-commit`:** `verify-critical-fixes.sh`,
   `01-core/verify-arg-consistency.sh`, `sync_versions.py --check`, `bash -n`. The hook is
   the home for the new shellcheck gate and the sourced-scripts-present check.
 
@@ -271,7 +271,7 @@ contents in run order.
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry
 point. The pre-commit hook
-(`.githooks/pre-commit`) runs a fast subset of the same gates —
+(`linux/host-config/git-hooks/pre-commit`) runs a fast subset of the same gates —
 `PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes,sbom`
 (`:102-103`) — plus four checks of its own scoped to the STAGED content: an
 unresolved merge-conflict-marker scan (`:69-85`), `bash -n` (`:109`), the

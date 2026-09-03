@@ -1373,7 +1373,7 @@ base ─┬─ onnxruntime ───────┐
   RENAMED, and it reaches the nested `**/README.md` files `doc-dupes` never
   scans. Budgets live in `docs/scripts/code-dupes.allow` and go stale loudly;
   the fix for a finding is one owner plus a link, not a new entry.
-  CI workflows and `.githooks/pre-commit` run SUBSETS of it via
+  The commit hook runs a SUBSET of it via
   `PREFLIGHT_ONLY=<slugs>` / `PREFLIGHT_SKIP=<slugs>` — never copy the check
   list into a new caller.
   On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
@@ -1669,7 +1669,7 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the four docs gates below — the same checks CI enforces.
+- **Pre-commit hooks:** Run **`make hooks`** once after clone; it points `core.hooksPath` at `linux/host-config/git-hooks`. See the hook section above for what it runs. (`.githooks/pre-commit` is the older, superseded gate — do not install it.)
 - **Four gates guard the docs; none of them is optional.** They exist because
   this tree lost a licence page, a doc index and ~50 cross-references to silent
   drift on a single day. Run them with
