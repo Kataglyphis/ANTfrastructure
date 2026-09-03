@@ -39,6 +39,7 @@ Two neighbours, so you land on the right page:
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
+- [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
@@ -311,6 +312,32 @@ beside its `*_gpu-*` / `*_migraphx-*` neighbours. **The lesson is about `|| true
 on a destructive step:** it hides the failure AND the fact that the step was
 wrong, so the bug sits latent until something unrelated arms it — here, a
 read-only mount becoming writable.
+
+### The disk guard aims at the wrong number
+
+**Symptom.** The chain prunes at 40G free between stages, reports success, and the
+NEXT stage refuses anyway: `[ERROR] runtime lane refused: 56G free, ~120G needed`
+(2026-09-02: six manual prunes; 2026-09-03: the Flutter ship build, attempt 1).
+
+**Cause.** Two different numbers. `CROSS_DISK_GUARD_GB` (40) is a floor for *this*
+stage; the runtime lane needs `CROSS_RUNTIME_LANE_GB` (120) per wrapper build, and
+`--only runtime` additionally pulls the three `cross-android-<arch>` images
+(~40G uncompressed each) as its artifact source. A guard that reclaims to a fixed
+floor is therefore satisfied exactly when the lane is not.
+
+**Fix.** `_chain_stage_disk_guard` in `build-cross-chain.sh` reclaims to what
+comes *next* (`_chain_runtime_lane_need_gb`), and the launch-time preflight warns
+when the run will enter the lane with less than stage cost + lane need.
+
+**When the guard reclaims nothing.** `buildctl du` showing every regular record
+`Reclaimable: false` is not a full cache — it is killed chains' leaked *leases*
+(2026-09-03: 351 records / 251 GB pinned, `prune-safe.sh` freed 0). Leases die
+with the daemon: `systemctl --user restart buildkit.service` (no build running),
+then `PRUNE_KEEP_GB=<N> linux/host-config/prune-safe.sh`. `--keep-storage` bounds
+the WHOLE store, and the non-candidates (cache mounts ~166G + `source.local` ~10G)
+count toward it, so N below ~180 prunes every regular record. Local
+`:latest-cross-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
+them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
 
 ### A renamed or dropped distro package kills a stage hours in
 

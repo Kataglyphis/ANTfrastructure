@@ -200,6 +200,10 @@ the lint gate then includes. Two distinctions are load-bearing:
   (`cat <<'PY_TAIL'`) are FRAGMENTS assembled into one program later — see
   `_smoke_genai_py_verdict` in `06-packaging/smoke-common.sh` — and linting one
   alone reports undefined names for variables the earlier fragment defines.
+<a id="comment-openers"></a>
+- **A comment cannot open a heredoc.** Prose that QUOTES an opener
+  (`# use python3 - <<'PY'`) is not one; the extractor skips lines whose first
+  non-blank character is `#`.
 - **The opener line may carry trailing redirections.** The first version of the
   extractor required the heredoc token to end the line, so it silently skipped
   `"$py" - <<'PY' 2>/dev/null || echo ...` — the shipped-truth probe in
@@ -335,3 +339,27 @@ are legitimately COPY'd into base stages for their descendants, so it produced
 false positives, and a noisy gate teaches people to ignore gates. The
 verify-media-artifacts case it was meant to catch is recorded in
 docs/refactoring-backlog.md F6 instead.
+
+## Code-to-docs pointers (`doc-links`)
+
+The comment rule above produces one artefact per shortened comment: a
+`docs/<page>.md#<anchor>` pointer in code. 286 of them in 131 files as of
+2026-09-03 — more than every Markdown link in `docs/` combined — and nothing
+rendered them, so nothing noticed when a page or heading moved. The first census
+found one dead page and five dead anchors, two of them written that same week
+under the very directive that created the convention.
+
+`docs/scripts/verify_doc_links.py` therefore scans code as well as docs (one
+owner for every kind of cross-reference): `linux/`, `docs/scripts/`, `.github/`
+and the `Makefile`, all suffixes except `.md`/`.patch`/`.diff`. A pointer's page
+must exist and its `#anchor` must be a heading slug or an `<a id="…">` in that
+page. Anchors are matched **exactly** — code pointers are written by hand to a
+known slug, so the prose-abbreviation tolerance of the `§` check does not apply.
+
+When a heading is long or likely to be reworded, give it a stable id
+(`<a id="qairt_headers_dir"></a>` above the heading) and point code at that
+instead of the slug. `windows/` is not scanned: it is its own lane.
+
+Fixtures for both failure directions live in
+`linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
+proves the scan is still running.

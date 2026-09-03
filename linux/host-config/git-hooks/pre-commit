@@ -15,8 +15,10 @@ _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
 # Whole-tree gates that are cheap. Measured 2026-09-02: 8-10s combined.
+# doc-links is here, not in the docs-only block: code carries docs/ pointers too.
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
-arg-consistency,masked-decls,comment-size,code-size,artifact-parity,advert-keys,stage-graph"
+arg-consistency,masked-decls,comment-size,code-size,artifact-parity,advert-keys,stage-graph,\
+doc-links"
 
 echo "pre-commit: fast preflight gates…"
 PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
@@ -37,11 +39,10 @@ if [ -n "${_staged_sh}" ]; then
   }
 fi
 
-# Doc gates only when docs move — both are sub-second.
+# Doc duplication only when docs move — sub-second.
 _staged_md="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^docs/.*\.md$' || true)"
 if [ -n "${_staged_md}" ]; then
-  echo "pre-commit: doc gates…"
-  python3 docs/scripts/verify_doc_links.py >/dev/null || { echo "pre-commit: doc cross-references FAILED" >&2; exit 1; }
+  echo "pre-commit: doc duplication gate…"
   python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 

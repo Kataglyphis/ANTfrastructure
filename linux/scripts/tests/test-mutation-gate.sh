@@ -25,8 +25,9 @@ _fixture() {
     "${find}" "${replace}" "${_work}" > "${_work}/m.json"
 }
 
-_run() { "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" 2>&1; }
-_rc()  { "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" >/dev/null 2>&1; echo $?; }
+_gate() { "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" "$@"; }
+_run() { t_out _gate; }
+_rc()  { t_rc _gate; }
 
 t_case "a mutation the tests catch is reported as biting"
 _fixture "GUARD=on" "GUARD=off" yes

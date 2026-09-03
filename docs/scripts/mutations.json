@@ -226,8 +226,8 @@
   {
     "id": "lint-shell.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all — admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -270,5 +270,13 @@
     "replace": "  : # completeness check disabled",
     "test": "bash linux/scripts/tests/test-artifact-copy-completeness.sh",
     "why": "without the completeness check a built-but-not-copied artifact (Flutter 2026-09-03) ships as missing and nothing notices"
+  },
+  {
+    "id": "doc-links.code-pointers",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "    n_pointers = check_code_pointers(docs, findings)\n",
+    "replace": "    n_pointers = 0  # code pointers unchecked\n",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "286 docs/ pointers live in CODE; without this pass a moved page or renamed heading leaves them dangling and nothing notices (6 were on 2026-09-03)"
   }
 ]

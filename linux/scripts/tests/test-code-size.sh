@@ -50,8 +50,8 @@ _fixture() {
   printf '%s' "${d}"
 }
 
-_run() { "${PY}" "$1/linux/scripts/verify-code-size.py" 2>&1; }
-_rc()  { "${PY}" "$1/linux/scripts/verify-code-size.py" >/dev/null 2>&1; echo $?; }
+_run() { t_out "${PY}" "$1/linux/scripts/verify-code-size.py"; }
+_rc()  { t_rc "${PY}" "$1/linux/scripts/verify-code-size.py"; }
 
 _says() {
   local shape="$1" n="$2" allow="$3" want="$4" why="$5" fix out
