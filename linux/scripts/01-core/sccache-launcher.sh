@@ -42,14 +42,37 @@ if [ "${_rc}" -eq 0 ]; then
   exit 0
 fi
 
-if grep -qE 'sccache: (encountered fatal error|error:|caused by:)' "${_err}" 2>/dev/null; then
-  # sccache's own failure. Report it once so it stays visible in the log --
-  # a silent bypass would hide a cache that has stopped working -- then run
-  # the compiler directly.
-  printf 'sccache-launcher: sccache failed on its own account; compiling directly.\n' >&2
-  sed 's/^/sccache-launcher:   /' "${_err}" >&2
+_sccache_own_failure() {
+  grep -qE 'sccache: (encountered fatal error|error:|caused by:)' "$1" 2>/dev/null
+}
+
+if _sccache_own_failure "${_err}"; then
+  # YB: this class is INTERMITTENT and parallel-only, and the same argv succeeds
+  # right after (see the header). So retry ONCE before giving up the cache entry:
+  # a bypass compiles fine but throws the cache away, and that is thousands of
+  # units per chain. The retry also measures the class -- "retry succeeded" means
+  # transient, "failed twice" means it is not.
+  sccache "$@" 2>"${_err}"
+  _rc2=$?
+  if [ "${_rc2}" -eq 0 ]; then
+    printf 'sccache-launcher: sccache failed once, retry succeeded (cache kept).\n' >&2
+    cat "${_err}" >&2
+    rm -f "${_err}"
+    exit 0
+  fi
+  if _sccache_own_failure "${_err}"; then
+    # Still sccache's own failure. Report it once so it stays visible in the log --
+    # a silent bypass would hide a cache that has stopped working -- then run
+    # the compiler directly.
+    printf 'sccache-launcher: sccache failed twice on its own account; compiling directly.\n' >&2
+    sed 's/^/sccache-launcher:   /' "${_err}" >&2
+    rm -f "${_err}"
+    exec "$@"
+  fi
+  # The retry surfaced a REAL compiler error: hand it back, do not re-run.
+  cat "${_err}" >&2
   rm -f "${_err}"
-  exec "$@"
+  exit "${_rc2}"
 fi
 
 # A real compile error: hand back the compiler's diagnostics and status.

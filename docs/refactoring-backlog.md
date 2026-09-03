@@ -40,60 +40,44 @@ closed rows. Then **YA** and **YC** were opened, fixed and archived the same day
 
 Nothing here is blocked on a decision from the owner.
 
-### YB. sccache fails to spawn its preprocessor on thousands of compiles per chain (`os error 2`) — narrowed 2026-09-03, root cause still OPEN [medium]
+### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
-**Pre-existing**, 3373 occurrences in the 2026-09-03 chain. The launcher falls
-through to a real compile, so builds stay green and nothing gates on it — the
-cache is just silently lost for those units. This repo's build time is dominated
-by compiler caching (CCACHE_COMPILERCHECK=content took LLVM from 11 h to 50 min),
-so a thousands-of-units miss is the same class of loss.
+**Read `01-core/sccache-launcher.sh`'s header first — it is the canonical record**
+and it already contains more than a fresh investigation recovers. In particular it
+states, from the 2026-09-01 run (3062 bypasses):
 
-```
-sccache: error: failed to spawn Command { std: cd "<builddir>" && env -i … "<compiler>" "-x" "c++" "-E" "-P" … }
-sccache: caused by: No such file or directory (os error 2)
-```
+* the class is **intermittent, ~10–40% of compiles, in the heavily parallel steps
+  only**;
+* the compiler path is absolute and **the cwd is a live build dir**;
+* **the direct fallback of that same argv succeeds immediately after**;
+* and, explicitly: *"do NOT re-derive one \[a root cause\] from this message alone."*
 
-**What it is, precisely** (2026-09-03): sccache's own preprocessor pass, run to
-compute the cache key. One decomposed failure: cwd
-`/opt/onnxruntime/build_native_cpu/Release/_deps/abseil_cpp-build/absl/debugging`,
-**289** environment variables, 39 argv elements, carrying CMake's `-MD -MF` with
-a **relative** dep-file path.
+**A correction to this entry's own earlier text.** On 2026-09-03 it concluded that
+`current_dir()` was "the last standing candidate". That is **wrong** — the header
+above had already ruled the cwd out. The re-derivation did add value (six
+hypotheses disproved by experiment, listed below) but it also reproduced work that
+was already written down, which is exactly what the header warns against.
 
-**Spread** — not one component: 1536 `/tmp/opencv-1`, 342 + 233 + 153
-onnxruntime/`_deps`/dnnl, 274 litert/abseil, plus genai, ffmpeg, pyav, armnn. By
-program: 2987 `riscv64-linux-gnu-g++`, 1915 plain `g++`, 685/506/388/194 the rest.
+**Disproved by experiment 2026-09-03, so nobody repeats them:** the failing
+`argv[0]` is never bare or relative; all six failing compiler paths exist and are
+executable in the image; a plain sccache cross-compile returns rc=0; a
+375-variable / 65 KB environment does not trigger it (and would be `E2BIG`). Two
+lookalikes were reproduced and carry DIFFERENT messages: a missing `-MF` directory
+is a compiler error *after* a successful spawn, and a deleted cwd gives
+`Couldn't determine current working directory`.
 
-**SIX hypotheses formed and DISPROVED. Do not re-derive them:**
+**MITIGATION SHIPPED 2026-09-03.** Since the same invocation succeeds right after,
+the launcher now **retries once** before giving up the cache entry. A bypass still
+compiles correctly — it just throws the cache away, and that is the whole cost of
+this bug. The retry is bounded: a second sccache-internal failure falls through to
+the direct compile exactly as before, and a real compiler error surfacing on the
+retry is passed back untouched rather than being re-run. Guarded by three new
+cases in `tests/test-sccache-launcher.sh` (14 assertions) and mutation
+`sccache.retry-once`.
 
-1. `env -i` strips `LD_LIBRARY_PATH`, so the `/opt` GCC cannot start —
-   `env -i /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++ --version` prints `(GCC) 16.2.0`.
-2. The server is in another mount namespace — a namespace mismatch would fail
-   *every* compile; the same chain reports `Cache hits` 2732/2636/2159/1059.
-3. The program is a bare/relative name that `env -i` cannot resolve — **every**
-   failing argv[0] parsed out of the log is an absolute path.
-4. The compiler binary is missing — all six failing paths exist and are
-   executable in `cross-media-arm64` (`g++`, `gcc`, both cross triplets, `/usr/bin/g++`).
-5. A plain sccache cross-compile reproduces it — it does not: `sccache
-   /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++ -c …` returns rc=0, one cache miss.
-6. The 289-variable environment overflows `execve` — reproduced with **375**
-   variables / 65 KB and rc=0. (It would also be `E2BIG`, not `ENOENT`.)
-
-**Two adjacent errors were reproduced and are NOT this one** — useful, because
-their messages look similar in a log skim:
-* `-MF` into a missing directory → `<built-in>: fatal error: opening dependency
-  file …` (a *compiler* error, after a successful spawn).
-* cwd deleted under the client → `sccache: Couldn't determine current working
-  directory` (a *different* sccache message).
-
-So it really is `Command::spawn` returning ENOENT with an existing program — which
-leaves the **`current_dir()` the server is handed** as the last standing
-candidate, since that is the only other thing `spawn` resolves.
-
-**Next step, and it needs a real build:** run one media stage with
-`SCCACHE_LOG=debug` / `SCCACHE_ERROR_LOG` and capture, for a single failure, the
-cwd the *server* was given and whether it exists **at that instant** — a
-`_deps/<x>-build` subdir being created or moved by CMake while a sibling compile
-is in flight would explain both the ENOENT and why it never reproduces standalone.
+**The retry is also the measurement.** "retry succeeded (cache kept)" vs "failed
+twice" in the next build's log says directly whether the class is transient. Count
+both on the next media build before spending more on a root cause.
 
 ### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 

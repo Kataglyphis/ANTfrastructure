@@ -254,5 +254,13 @@
     "replace": "  : # backfill call removed",
     "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
     "why": "extracting the backfill must not make it unreachable -- the notice is a printf and would still print"
+  },
+  {
+    "id": "sccache.retry-once",
+    "target": "linux/scripts/01-core/sccache-launcher.sh",
+    "find": "  sccache \"$@\" 2>\"${_err}\"\n  _rc2=$?",
+    "replace": "  _rc2=1  # retry removed",
+    "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
+    "why": "YB: the ENOENT class is intermittent, so one retry keeps the cache entry instead of bypassing it -- thousands of units per chain"
   }
 ]
