@@ -90,27 +90,22 @@ _chain_status_next_item() {   # prints "<item>|<rest>"
   if [ "${item}" = "${csv}" ]; then printf '%s|' "${item}"; else printf '%s|%s' "${item}" "${csv#*,}"; fi
 }
 
-chain_status_kv_json() {
-  local csv="${1:-}" out="" sep="" pair item k v
+# One CSV walk for both JSON shapes; $2 names the per-item emitter.
+_chain_status_walk_json() {
+  local csv="${1:-}" emit="$2" out="" sep="" pair item
   while [ -n "${csv}" ]; do
     pair="$(_chain_status_next_item "${csv}")"
     item="${pair%%|*}"; csv="${pair#*|}"
     [ -n "${item}" ] || continue
-    k="${item%%=*}"; v="${item#*=}"
-    out="${out}${sep}\"${k}\": \"${v}\""
+    out="${out}${sep}$("${emit}" "${item}")"
     sep=", "
   done
   printf '%s' "${out}"
 }
 
-chain_status_list_json() {
-  local csv="${1:-}" out="" sep="" pair item
-  while [ -n "${csv}" ]; do
-    pair="$(_chain_status_next_item "${csv}")"
-    item="${pair%%|*}"; csv="${pair#*|}"
-    [ -n "${item}" ] || continue
-    out="${out}${sep}\"${item}\""
-    sep=", "
-  done
-  printf '%s' "${out}"
-}
+# Emitters: stdout IS the return value, so they never log.
+_chain_status_emit_kv() { printf '"%s": "%s"' "${1%%=*}" "${1#*=}"; }
+_chain_status_emit_str() { printf '"%s"' "$1"; }
+
+chain_status_kv_json() { _chain_status_walk_json "${1:-}" _chain_status_emit_kv; }
+chain_status_list_json() { _chain_status_walk_json "${1:-}" _chain_status_emit_str; }

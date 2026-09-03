@@ -225,11 +225,16 @@ gate does not care that a file is big, only that it grows without saying why.
   Deleting them is a behavioural change across every stage and wants one
   validating build — that is the only reason it is not already done here.
 
-- **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
-  (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
-  the item-splitting loop is the same; only the emitted shape differs. One
-  walker taking an emitter callback would own it. Allowlisted 2026-09-01 with a
-  budget of 25 so it cannot grow further unnoticed.
+- ~~**`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**~~ —
+  **DONE 2026-09-03.** `_chain_status_walk_json` now owns the walk and takes an
+  emitter NAME; `_chain_status_emit_kv` / `_chain_status_emit_str` own the two
+  shapes. Characterised first: 19 inputs (empty, `solo`, `k=v=w`, leading/trailing/
+  double commas, `=v`, unicode, `%s=%d`) captured before and after — **byte
+  identical**. The allowlist entry went stale on the same change and the gate said
+  so ("no longer overlaps -- remove it from code-dupes.allow"); removed, 243 → 242
+  pairs. `test-chain-lifecycle.sh` never names these functions, but its end-to-end
+  `chain-status.json` check does catch a swapped emitter (2/116 red), which is now
+  pinned as mutation `chain-status.emitter-dispatch`.
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the

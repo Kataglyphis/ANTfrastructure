@@ -236,7 +236,6 @@ linux/scripts/tests/test-module-resolution.sh | linux/scripts/tests/test-module-
 # 2026-09-01: twins created or grown by the prevention-gate work. Reasons are
 # specific; the two worth merging are recorded in docs/refactoring-backlog.md F3.
 linux/scripts/06-packaging/smoke-torch-venv.sh | linux/scripts/06-packaging/smoke-torch-venv.sh | 65 | assert_pinned_versions / assert_app_venv_parity: each gate must read standalone in its own failure output
-linux/scripts/01-core/chain-lifecycle.sh | linux/scripts/01-core/chain-lifecycle.sh | 25 | chain_status_kv_json / _list_json walk the same CSV; worth ONE walker -- see refactoring-backlog F3
 linux/scripts/tests/test-disk-guard.sh | linux/scripts/tests/test-disk-guard.sh | 30 | two fixture builders; explicit beats shared in a test that must not hide its own setup
 linux/scripts/01-core/disk-guard.sh | linux/scripts/01-core/disk-guard.sh | 26 | keep_n arg validation in the trim and the watch entry points; both are public and validate independently
 linux/scripts/build-cross-chain.sh | linux/scripts/build-cross-chain.sh | 24 | numeric-knob guards in the lane gate and the disk watcher; same idiom, different knobs

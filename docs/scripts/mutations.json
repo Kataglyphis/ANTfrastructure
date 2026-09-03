@@ -230,5 +230,13 @@
     "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
+  },
+  {
+    "id": "chain-status.emitter-dispatch",
+    "target": "linux/scripts/01-core/chain-lifecycle.sh",
+    "find": "chain_status_kv_json() { _chain_status_walk_json \"${1:-}\" _chain_status_emit_kv; }",
+    "replace": "chain_status_kv_json() { _chain_status_walk_json \"${1:-}\" _chain_status_emit_str; }",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the shared walker dispatches on an emitter NAME; the suite never calls these functions directly, so pin that its end-to-end JSON check still catches a wrong emitter"
   }
 ]
