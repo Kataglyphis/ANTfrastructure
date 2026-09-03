@@ -57,6 +57,27 @@ Nothing in the five entries above is blocked on you. These are:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
+### FL1. Flutter fix is COMMITTED and GATE-PROVEN but not yet SHIPPED — needs a runtime rebuild [high]
+
+The COPY, the PATH, the git safe.directory fix, the completeness gate + manifest,
+the runtime-smoke `check_flutter`, and the tests/mutation all landed in 189aeae4
+and pass every static gate. But `:latest-cross` still lacks Flutter until the
+runtime stage is rebuilt — the fix lives in `Dockerfile.package` /
+`setup-package-image.sh`, which only build in the runtime/package stage, not the
+media stage.
+
+**Blocked on disk, not on code.** Free is ~38G; the chain's own disk preflight
+wants ~60G for one arch, and the artifact-source (android) images are not local,
+so shipping means a base→…→runtime run. The last media build (2026-09-03) already
+flaked once under disk pressure on `glslangValidator --version` (a qemu exec that
+fails when the host is starved — binfmt was healthy at rest; see
+docs/failure-modes.md binfmt-boot-race). Free disk to ≥80G with
+`linux/host-config/prune-safe.sh` before launching.
+
+Ship it with: `bash linux/scripts/build-cross-chain.sh` (full 3-arch), or a
+narrower runtime-only run once the android images exist. Then confirm with the
+new `check_flutter` smoke on the shipped `:latest-cross-amd64`/`-arm64`.
+
 ### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
 **Read `01-core/sccache-launcher.sh`'s header first — it is the canonical record**
