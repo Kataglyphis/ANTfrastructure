@@ -38,8 +38,10 @@ chain-status walker.
 
 Nothing in the five entries above is blocked on you. These are:
 
-1. **`git push`** — 28 commits sit on local `main`. Nothing leaves this
-   environment without you.
+1. **`git push`** — 2 commits sit on local `main` (both backlog grooming). The
+   substantive work — the Flutter fix, the completeness gate, A1/A2, the sccache
+   retry — was pushed on 2026-09-03; origin/main is at `189aeae4`. Only the last
+   two housekeeping commits remain.
 2. ~~The submodule pin.~~ **RESOLVED 2026-09-03 — it was a false alarm, and not
    yours.** Preflight warned that `external/Kataglyphis-DocumANTation` pin
    `287365636` was "not reachable on its remote (unpushed local commit or upstream
@@ -57,26 +59,23 @@ Nothing in the five entries above is blocked on you. These are:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### FL1. Flutter fix is COMMITTED and GATE-PROVEN but not yet SHIPPED — needs a runtime rebuild [high]
+### FL1. Flutter — fix committed + gate-proven; SHIP BUILD IN PROGRESS 2026-09-03 [high]
 
-The COPY, the PATH, the git safe.directory fix, the completeness gate + manifest,
-the runtime-smoke `check_flutter`, and the tests/mutation all landed in 189aeae4
-and pass every static gate. But `:latest-cross` still lacks Flutter until the
-runtime stage is rebuilt — the fix lives in `Dockerfile.package` /
-`setup-package-image.sh`, which only build in the runtime/package stage, not the
-media stage.
+The fix (COPY into Dockerfile.package, `/opt/flutter/bin` on PATH, the git
+safe.directory in setup-package-image.sh, the completeness gate + manifest, the
+`check_flutter` runtime smoke, tests + mutation) landed in `189aeae4` and passes
+every static gate.
 
-**Blocked on disk, not on code.** Free is ~38G; the chain's own disk preflight
-wants ~60G for one arch, and the artifact-source (android) images are not local,
-so shipping means a base→…→runtime run. The last media build (2026-09-03) already
-flaked once under disk pressure on `glslangValidator --version` (a qemu exec that
-fails when the host is starved — binfmt was healthy at rest; see
-docs/failure-modes.md binfmt-boot-race). Free disk to ≥80G with
-`linux/host-config/prune-safe.sh` before launching.
+**A `--only runtime` build is running now** (`flutter-runtime-*.log`): it rebuilds
+the package/wrapper images from the registry `cross-android-<arch>` images (which
+carry `/opt/flutter`), applies the COPY, and publishes the 3-arch `:latest-cross`.
+The build runs `check_flutter` itself, so a broken Flutter fails it. Chosen over a
+full chain because only the package stage changed and the android artifacts already
+exist in the registry.
 
-Ship it with: `bash linux/scripts/build-cross-chain.sh` (full 3-arch), or a
-narrower runtime-only run once the android images exist. Then confirm with the
-new `check_flutter` smoke on the shipped `:latest-cross-amd64`/`-arm64`.
+**On completion:** confirm `flutter --version` against the shipped
+`:latest-cross-amd64`/`-arm64`, then close this entry. If the build fails, the fix
+is unaffected — re-run once the cause is cleared.
 
 ### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
