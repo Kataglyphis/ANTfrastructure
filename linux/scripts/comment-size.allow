@@ -53,7 +53,6 @@ linux/scripts/01-core/runtime-build-fns.sh	# Verify the provenance we just ASKED
 linux/scripts/01-core/runtime-build-fns.sh	# XC2-PARTIAL-RUN (2026-08-27): the pin is only ever SET by
 linux/scripts/01-core/runtime-build-fns.sh	# shellcheck shell=bash
 linux/scripts/01-core/runtime-flow-common.sh	#
-linux/scripts/01-core/sccache-launcher.sh	#!/bin/sh
 linux/scripts/01-core/setup-rocm-repo.sh	#!/usr/bin/env bash
 linux/scripts/01-core/stage-defs.sh	# ── Pin variable initialization ───────────────────────────
 linux/scripts/01-core/stage-defs.sh	# ── Runtime lane stage order ──────────────────────────────

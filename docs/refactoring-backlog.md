@@ -66,18 +66,16 @@ lookalikes were reproduced and carry DIFFERENT messages: a missing `-MF` directo
 is a compiler error *after* a successful spawn, and a deleted cwd gives
 `Couldn't determine current working directory`.
 
-**MITIGATION SHIPPED 2026-09-03.** Since the same invocation succeeds right after,
-the launcher now **retries once** before giving up the cache entry. A bypass still
-compiles correctly — it just throws the cache away, and that is the whole cost of
-this bug. The retry is bounded: a second sccache-internal failure falls through to
-the direct compile exactly as before, and a real compiler error surfacing on the
-retry is passed back untouched rather than being re-run. Guarded by three new
-cases in `tests/test-sccache-launcher.sh` (14 assertions) and mutation
-`sccache.retry-once`.
+**MITIGATION SHIPPED 2026-09-03: the launcher retries once** before giving up the
+cache entry, because the same invocation succeeds immediately afterwards. What it
+does, why it is bounded, and what the log lines mean is owned by
+[`build-cache-tiers.md`](build-cache-tiers.md#the-single-retry-2026-09-03) —
+do not restate it here. Guarded by `tests/test-sccache-launcher.sh` (14
+assertions) and mutation `sccache.retry-once`.
 
-**The retry is also the measurement.** "retry succeeded (cache kept)" vs "failed
-twice" in the next build's log says directly whether the class is transient. Count
-both on the next media build before spending more on a root cause.
+**Still open:** the root cause. Count `retry succeeded` against `failed twice` on
+the next media build before spending more on it — that number decides whether
+there is anything left to chase.
 
 ### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 

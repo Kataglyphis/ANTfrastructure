@@ -742,4 +742,34 @@ hits or the whole build. Two classes must both bypass to a direct compiler run:
 
 A real compiler error must pass through untouched (the compiler is never
 re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
-all four cases.
+every case.
+
+### What was measured about the ENOENT class
+
+From the 2026-09-01 run, 3062 bypasses:
+
+* **2952x** `sccache: encountered fatal error` + `failed to spawn <compiler> …
+  No such file or directory (os error 2)`, on sccache's OWN `-E` preprocessor
+  pass. It is **intermittent** (~10–40% of compiles) and appears **in the
+  heavily parallel steps only**. The compiler path is absolute, the cwd is a
+  **live build dir**, and the direct fallback of that same argv **succeeds right
+  after** — so neither a missing compiler nor sccache's scrubbed env explains it.
+* **110x** `sccache: error: failed to execute compile` + `Failed to send data to
+  or receive data from server` — the sccache server died mid-build.
+
+Root cause is inside sccache's spawn and is **still open**. Do NOT derive one
+from the message alone; several plausible theories have already been disproved by
+experiment and are listed in `refactoring-backlog.md` under YB.
+
+### The single retry (2026-09-03)
+
+Because the same invocation succeeds immediately afterwards, the launcher
+**retries once** before giving up the cache entry. A bypass was never a
+correctness problem — it compiles fine, it just discards the cache, and that is
+the entire cost of this bug.
+
+The retry is bounded: a second sccache-internal failure falls through to the
+direct compile exactly as before, and a real compiler error surfacing on the
+retry is handed back untouched rather than re-run. It doubles as the measurement
+— `retry succeeded (cache kept)` versus `failed twice` in a build log says
+directly whether the class is transient.
