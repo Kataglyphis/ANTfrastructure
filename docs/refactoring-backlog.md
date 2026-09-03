@@ -126,344 +126,39 @@ emulates the ISA but not a physical core's timing, errata or extension set.
 #594's hardware was a XuanTie C910. Re-run tier 4 on real riscv64 silicon when
 any is available — the repro recipe in the doc is a copy-paste.
 
-### A2. QNN-LINUX — fan-out validation, BLOCKED on the login-gated SDK
+### A2. QNN-LINUX — fan-out validation: SDK STAGED, ORT PROVEN, LiteRT defect FOUND AND FIXED, re-run pending
 
-- **CORRECTED 2026-08-31 — three of the four fan-out flags were invented.** The
-  wiring "mirrors Windows #121 exactly", and Windows #154 established that
-  `TFLITE_ENABLE_QNN`, `USE_QNN` and `IREE_TARGET_BACKEND_QNN` are not upstream
-  options: CMake drops an undeclared `-D` silently and exits 0, so all three logged
-  success and did nothing. Only ORT's `onnxruntime_USE_QNN` was ever real. TVM and
-  IREE have no Qualcomm path at all and their flags are gone. LiteRT's IS real but
-  under a different name — `LITERT_ENABLE_QUALCOMM`, auto-forced ON by
-  `QAIRT_HEADERS_DIR` — and this lane already configures the right tree (`litert/`),
-  so it is now correctly wired for the first time.
-  **A second defect fell out of the same reading, and it is live on every build:**
-  `litert/vendors/CMakeLists.txt` `file(DOWNLOAD)`s QAIRT 2.47.0.260601 from
-  softwarecenter.qualcomm.com whenever `QAIRT_HEADERS_DIR` is empty — ~1.5 GB, **no
-  `EXPECTED_HASH`, no `STATUS` check**, and NOT gated on `LITERT_ENABLE_QUALCOMM`, so
-  it fired on every LiteRT configure including builds that want no NPU. It cannot be
-  dodged with a stub path (any non-empty value force-enables Qualcomm with headers we
-  do not have), so `_litert_disable_qairt_header_download` short-circuits the guard
-  when no SDK is staged. MediaTek's NeuroPilot fetch from AWS S3 and the Samsung
-  LiteCore fetch are suppressed with stub header dirs — both gate on the header
-  EXISTING, so a stub is safe there.
-  **Still unvalidated by a build** — see below; this corrects the wiring, it
-  does not prove it.
+**No longer blocked.** The SDK was already on this machine at
+`/opt/scripts/qnn-sdk/v2.49.0.260730.zip`, and its SHA256 matches the populated
+`QNN_SDK_LINUX_ZIP_SHA256` pin — so **no re-pin was needed**, exactly as this
+entry predicted. Staged into `linux/qnn-sdk/` as a **hardlink** (same
+filesystem): 0 extra bytes on an 88%-full disk.
 
-Wiring is LANDED and fail-safe (no zip = byte-identical behaviour on every arch,
-validated by the 2026-08-30 media rebuilds). ORT was PROVEN on real QAIRT
-v2.49.0.260730. What is unproven is the OPPOSITE direction: with a REAL zip
-staged on arm64, do the two builds that really have a QNN path (ORT, LiteRT)
-stay GREEN and do the staged libs land? That one run also answers LiteRT's
-QNN-manager header fetch and the wheel-staging question.
+**All the evidence lives in [`qnn-linux.md`](qnn-linux.md)** — staging rules,
+the per-framework table of which switches are real, the `QAIRT_HEADERS_DIR`
+trap, and the measured 2026-09-03 results. Do not restate it here.
 
-**Owner action — smaller than previously written.** `QNN_SDK_LINUX_ZIP_SHA256`
-is already IMPLEMENTED and POPULATED with the v2.49.0.260730 hash, so
-re-staging **that exact version needs NO re-pin** — the existing hash validates
-it and a mismatch means a different build was downloaded. Only a NEWER SDK needs
-`sha256sum <zip>` + a versions.env update in the same commit. Steps: download
-the Linux AArch64 SDK from qpm.qualcomm.com (Qualcomm ID + EULA), drop the zip
-in `linux/qnn-sdk/`, rebuild media-arm64, remove the zip afterwards (README
-discipline). `QNN_SDK_LINUX_LIBDIR` (default `aarch64-oe-linux-gcc11.2`) is the
-single knob if a newer SDK renames the lib subdir. Corrected README: 2026-08-31.
+**Status of the three questions this entry was opened to answer:**
 
-## B. Flagged, deliberately NOT fixed (blast radius > value right now)
+| question | verdict |
+|---|---|
+| does ORT stay green with a real SDK? | **YES** — `qnn-linux.md`, Validation |
+| do the staged libs land / wheel staging? | **YES**, 45 `libQnn*.so` |
+| does LiteRT stay green? | **NO — it found a real defect**, now fixed |
 
-**VERIFIED 2026-09-02:** still true — the genai RUN in `Dockerfile.media` carries
-zero cargo mounts, so the deliberate choice below stands unchanged.
+The LiteRT failure is the whole point of having run this: `QAIRT_HEADERS_DIR`
+was passed one directory too high, on a belief the code stated in its own
+comment and which turns out to be false for our code path. Fixed via
+`_litert_qairt_include_dir`, guarded by `tests/test-litert-qairt-headers.sh`
+(9 assertions) and two mutation-manifest entries
+(`qairt.include-root-not-qnn-dir`, `qairt.missing-header-assert`), each confirmed
+to bite. The reasoning is in
+[`qnn-linux.md#qairt_headers_dir---the-trap-that-cost-a-build`](qnn-linux.md).
 
-Found during the 2026-08-31 GEN1 review. The two RISK-REDUCING ones were fixed
-the same day (see the archive); this is what deliberately remains.
-
-- **The genai RUN in Dockerfile.media mounts no cargo registry/git cache** [S·★],
-  so llguidance's crates are fetched from crates.io on every uncached build
-  behind only `retry 3 10`. Already true for arm64, so fixing it changes that
-  lane's cache behaviour — it is risk-NEUTRAL for correctness and would re-key
-  the arm64 genai layer, which is why it was left out of the 2026-08-31 window.
-  Note it if the riscv64 genai stage flakes on the network.
-
-## D. Build infrastructure — found live in the 2026-08-31 rebuild
-
-Ordered by what actually costs a run. The first two each destroyed an entire
-arch's media stage.
-
-- **D1. The batch apt install fails wholesale, and the per-package sweep does
-  not always recover** [M·★★★, RECURRING — cost r4 the whole arm64 lane].
-  `install_target_packages` runs one batch `apt-get`; on cross arches it exits
-  100 with **every** package reporting `Depends: X:<arch> (= <version>) but it
-  is not going to be installed`. The documented per-package retry then rescues
-  most names, but not all — and which one is left behind varies by run
-  (`libpulse-dev` in r4, nothing in r3 with the same scripts two hours earlier).
-  The exact-version dependency shape points at a version skew between the cached
-  apt lists and the live ports archive rather than at bad package names: every
-  name in every `install-deps.sh` was checked against the live ports indices for
-  arm64 and riscv64 and only the two in D2 are actually gone. Root-cause the
-  batch failure; a `|| true` on ffmpeg's list would only hide it.
-
-- **D3. Builds are not reproducible: the base digest changes every run**
-  [M·★★]. `db544a8e` (r3) → `82ecfee4` (r4) → `c85cc424` (r5), same tree.
-  Consequence for anyone assembling a manifest from more than one run: the
-  arches then sit on DIFFERENT base layers. Functionally probably harmless,
-  historically the exact shape of defect this repo has paid for twice (stale
-  `:latest-cross`). Either make base reproducible or make the chain refuse to
-  publish a manifest whose arches disagree on their base digest.
-
-- **D4. `kata-buildcache` grows without bound — MECHANISM EXISTS, verified
-  2026-09-02; the NUMBER is the open part** [S·★★★]. `build-cross-chain.sh:533`
-  caps it at `CROSS_CACHE_MAX_GB` (default **250 G**) and LRU-prunes down to the
-  cap, which is what this entry asked for. It did not help on 2026-09-02 because
-  the cache only reached ~108 G while the *runtime lane* wanted 120 G free — the
-  cap never fired. So the retention policy is real; 250 G is simply far above the
-  point where the chain starts starving. Tune the number against
-  `CROSS_RUNTIME_LANE_GB`, do not re-add the mechanism. ORIGINAL ENTRY: Observed within ONE session: 62 GB → 110 GB, and back to 55 GB after
-  a manual wipe, purely from repeated runs. It is a regenerable cache EXPORT, so
-  wiping it is safe (`prune-safe` cannot touch it — different store). It was the
-  direct cause of the r3 disk emergency that forced a controlled chain stop.
-  Needs a retention policy, or a size cap wired into the disk preflight so the
-  chain trims it instead of asking a human at 19 GB free.
-
-- **D6. `install_target_packages` reports non-fatal misses in fatal-looking
-  language — FIXED, verified 2026-09-02** [S·★]. `cross-apt.sh:379` now reads
-  `FAILED (caller decides if fatal) — missing after apt-get (rc=…)`. The clause
-  that was missing is there. ORIGINAL ENTRY: `FAILED — missing after apt-get (rc=100): <pkg>` is printed
-  identically whether the caller guarded the call with `|| true` or not, which
-  cost two false alarms while monitoring this run. Say which it was: a guarded
-  miss is information, an unguarded one is an outage.
-
-- **D8. Feature parity is in good shape — the table is the source of truth**
-  [reference, VERIFIED 2026-09-02 — and there is now a SECOND registry]. The
-  claim below is exact: `_parity_exempt` still carries precisely two arms,
-  `riscv64:cmake` and `riscv64:iree_base_compiler`.
-
-  What changed on 2026-09-02: `_venv_pkg_exempt`, in the same file, gained
-  riscv64 arms for `scipy` / `scikit-learn` / `pandas` (AA). Two exemption
-  registries now exist in one file and only this entry documents either of them.
-  Anyone auditing "what is riscv64 allowed to be missing?" must read both. `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` carries
-  exactly TWO documented exceptions after GEN1: `riscv64:cmake` (Kitware
-  publishes no riscv64 archive, distro cmake 4.2.3 is used) and
-  `riscv64:iree_base_compiler` (the IREE compiler cannot be cross-built and
-  upstream ships no riscv64 wheel, so that lane is runtime-only). Everything
-  else that differs is deliberate and correct rather than a gap: the ORT flavour
-  split (`onnxruntime_dnnl` on amd64 because oneDNN is x86-only,
-  `onnxruntime_webgpu` on arm64/riscv64) and QNN being arm64-only (it is a
-  Snapdragon NPU). Feature toggles are already at maximum —
-  `ORT_ENABLE_WEBGPU`, `ORT_WEBGPU_ALLOW_CROSS` and `GENAI_ALLOW_RISCV64` are
-  all on; the two that are off are off on purpose (`ORT_ENABLE_LTO` costs build
-  time for no feature, `FFMPEG_ENABLE_TF` was removed deliberately, −500 MB).
-
-## D2026-09-02. Found live in the RVA23 media rebuild
-
-- **DA. sccache cannot spawn the compiler in the genai/extensions build**
-  [S·★★, non-fatal — costs cache, not correctness]. The `media-amd64` lane logs
-  **962** occurrences of `sccache: error: failed to spawn Command { std: cd
-  ".../_deps/onnxruntime_extensions-build" && env -i ... }` ending in
-  `No such file or directory (os error 2)`. The build continues (sccache falls
-  back to compiling directly) and no step fails, so this has been invisible —
-  but every one of those translation units is compiled uncached. The `env -i`
-  in the spawned command line is the thing to look at: the launcher rebuilds a
-  clean environment and the compiler is then no longer on `PATH`. Distinct from
-  the Rust wrapper that was already switched off (see the wave-4 notes).
-
-- **DB. The gitleaks stage dominates preflight — MEASURED 2026-09-02: 170 s**
-  [S·★]. A full `--source .` run over the repo takes **170 seconds**. Neither
-  earlier hypothesis was the story: gitleaks honours `.gitignore` at the repo
-  root (999 tracked files, 5738 ignored), and the ">2 min on `logs/`" reading
-  came from pointing `--source` INTO an ignored directory, where the root
-  `.gitignore` no longer applies — a different question, not a contradiction.
-  170 s for the real invocation is simply what it costs. Decide whether that is
-  worth optimising; it is no longer a mystery.
-
-  **Narrowed further 2026-09-02:** `lint-secrets.sh` already scans with
-  `gitleaks detect --no-git` — the WORKING TREE, not history — so the obvious
-  "it walks every commit" theory is dead before it is raised. Whatever the
-  170 s buys, it buys it on ~999 tracked files. Profiling it means repeated
-  full scans, which is CPU-heavy: do it in a **quiet window**, not beside a
-  running chain, or the measurement steals time from the build and lies about
-  itself. Pairs with F9's second item — a scan that sometimes dies mid-run is
-  the more urgent half of the same gate. ORIGINAL ENTRY:
-  [S·★, measure before changing anything]. `make preflight` spends the bulk of
-  its wall time in the secret scan, which is why it has to be run before a
-  multi-hour rebuild rather than casually. The obvious hypothesis — that it
-  scans the 4.9 GB of build logs under `out/` — was **tested and disproved**:
-  gitleaks returns on `out/` instantly, so it does honour `.gitignore` there.
-  A direct scan of `logs/` (2.3 GB, ignored by the same style of rule,
-  `logs/**/*`) instead ran past 120 s. Those two results are inconsistent and
-  one of the two measurements is wrong. Time the real `--source .` run per
-  directory FIRST; do not narrow a security gate's scope on a guess.
-
-- **DH. sccache spawn failures grew to 1560 in one run — NOT LOCALLY FIXABLE**
-  [see DA]. Same defect as DA, measured across the whole chain rather than one
-  lane. Every one of those translation units compiled uncached, and the launcher's
-  bypass kept the build correct. See DA for why the obvious lead is refuted.
-
-- **DJ. The pinned-stage cache slugs are still dead weight — DC's premise is
-  true within a run and false across runs** [M·★★, measured 2026-09-02]. DC was
-  archived as "FIXED DIFFERENTLY": what actually shipped is the raised entry
-  threshold (`_chain_runtime_lane_is_next` → demand ~120 G before the runtime
-  lane), which cures the *starvation*. The *waste* it described was never
-  reclaimed. Measured live today, with media and android both pinned and the
-  runtime lane about to start: `kata-buildcache` held **69 G** across five slugs
-  (media amd64 16 G, riscv64 14 G, arm64 14 G; android arm64 14 G, amd64 12 G)
-  while the lane's own gate wanted 120 G and the disk had 126 G free.
-
-  **Do not implement DC's trigger as written.** Its premise — "the moment a stage
-  is pinned its slug can never be read again" — holds only for the *current* run.
-  Across runs those slugs are exactly what makes a rebuild warm, and media is the
-  most expensive stage in the chain: deleting them at pin time buys headroom today
-  and pays for it with hours of recompile on the next run. That is why the cheap
-  version was not taken.
-
-  What would actually be right is a *ranked* reclaim rather than a boolean: when
-  the guard must free space, prefer the slug of a stage already pinned in THIS run
-  over one it may still read, and prefer the cheapest-to-rebuild stage over the
-  dearest. Today's numbers say android before media. Until that exists, the manual
-  lever is the between-stage `prune-safe.sh` window — which is what kept this run
-  fed (95 G → 126 G, all 97 cache-mount records surviving).
-
-- **DI. `install_target_packages` batch apt failure fired 4× in this run** [see
-  D1]. The per-package sweep recovered every time and nothing was left behind,
-  so the run stayed green — but D1 is still open and still costing a retry pass
-  per occurrence.
-
-## A2026-09-02. The riscv64 venv gate: SIX real failures, manifest correctly withheld
-
-The `media..runtime` run of 2026-09-02 built and pushed all three per-arch images
-and then **failed the runtime gate on riscv64 with 6 failures**, so
-`create_manifest` never ran and `:latest-cross` still points at the previous
-release. amd64 and arm64 passed with `0 failure(s)`.
-
-**Not a regression from that day's work** (libyuv RVV patch, the OpenCV
-`complex.h` shim, the delete guard, docs — none touch the venv). The VENV-SET
-gate is new, and the previous manifest attempt died earlier on the soname gate,
-so **this is the gate's first complete riscv64 run**: these are pre-existing
-defects becoming visible, which means the riscv64 image has been shipping an
-incomplete `ml-ai` extra unnoticed.
-
-Measured against the SHIPPED images afterwards (`pip list` inside each), the gap
-is far larger than the six failures suggest: **amd64 carries 153 venv packages,
-riscv64 carries 94** — 76 missing, 14 extra.
-
-- **AA. 76 packages are absent from the riscv64 venv — DECIDED 2026-09-02,
-  partially fixed** [L·★★★]. `optuna` and the two ORT deps are now installed;
-  `scipy`, `scikit-learn` and `pandas` are exempted on riscv64 with the reason
-  recorded in `_venv_pkg_exempt`. The remaining ~70 are the pure-Python packages
-  that sit above the compiled roots and were never separately investigated —
-  reopen this entry if any of them is actually wanted on riscv64. The six the gate names are the ones the app declares; the
-  rest are missing silently. They cluster:
-
-  | cluster | examples |
-  | --- | --- |
-  | scientific / ml-ai | `scipy`, `scikit-learn`, `pandas`, `optuna`, `joblib`, `threadpoolctl`, `captum`, `skops` |
-  | MLflow + storage | `mlflow`, `mlflow-skinny`, `alembic`, `SQLAlchemy`, `pyarrow`, `boto3`, `botocore`, `databricks-sdk` |
-  | web / API | `fastapi`, `starlette`, `uvicorn`, `pydantic`, `pydantic_core`, `anyio`, `h11` |
-  | crypto / auth | `cryptography`, `cffi`, `pycparser`, `google-auth`, `pyasn1` |
-  | ORT deps | `flatbuffers`, `protobuf` |
-  | expected | `iree-base-compiler` (riscv64 is deliberately runtime-only) |
-
-  **Measured against PyPI 2026-09-02, and the gap is NOT one problem but two.**
-  The original wording here guessed that almost every root needs a compiled
-  wheel. Only five do:
-
-  | genuinely blocked (no `any`, no riscv64 wheel) | installable today |
-  | --- | --- |
-  | `scipy`, `pandas`, `scikit-learn`, `pyarrow`, `cryptography` | `optuna`, `mlflow`, `fastapi` (pure Python) |
-  | | `flatbuffers`, `protobuf` (pure-Python `any` wheel exists) |
-  | | `pydantic-core` (**publishes a riscv64 wheel**) |
-
-  So the expensive part is a handful of compiled roots, and most of the 76 are
-  pure-Python packages that fell out *transitively* behind them. That changes the
-  decision from "build the whole stack from source or ship nothing" into two
-  separable questions: (1) are the five compiled roots worth a source build on
-  riscv64, and (2) independently of that, why did the pure-Python packages that
-  do not depend on them — `flatbuffers`, `protobuf`, `optuna` — not install?
-
-  The decision is about scope, not mechanics: does the riscv64 image promise the
-  same Python surface as the other two? If yes, the compiled roots must be built
-  from source (BLAS/LAPACK + Fortran for the scientific stack — hours per run).
-  If no, say so once, record it, and make the app's own environment markers stop
-  claiming riscv64 needs them.
-
-- **AC. The riscv64 runtime venv ships build tooling the other arches do not**
-  [S·★★]. 14 packages exist only there, and several have no business in a
-  runtime image: `meson`, `wheel`, `gcovr`, `gyp-next`, `Cython`-adjacent
-  `jaraco.*`/`autocommand`/`typeguard`/`inflect`/`more-itertools`, plus `lxml`
-  and `Markdown`. amd64 carries none of them. They are almost certainly the
-  residue of building packages from source on the arch where wheels were
-  unavailable — i.e. a side effect of AA. Whatever AA is decided, this list
-  should not survive into the shipped image.
-
-**Keep the gate exactly as strict as it is.** It did the one thing this repo
-keeps asking of its gates: it stopped a broken image from being published, and
-it named the six packages instead of saying "smoke failed".
-
-## U2026-09-02. Patches we can DELETE (from the upstream verification round)
-
-Four of our patches turned out to be redundant or already fixed upstream. Each
-one removed is one less thing to carry forward across version bumps. Full
-evidence per item in `docs/upstreamable-patches.md`.
-
-- **UA. Drop `003` and `004` by fixing the meson cross file instead**
-  [M·★★★, deletes two patches]. `gst-plugins-rs/meson.build:719` forwards
-  `rustc.cmd_array()`, which carries `--target` in a cross build, and
-  `cargo_wrapper.py` extracts the triple from it. We never benefit because
-  `cross-meson.sh` writes `rust = '<wrapper script>'` and the wrapper hides
-  `--target` inside itself, so `cmd_array()` is just a path. Meson accepts a
-  list for a binary: write `rust = ['<rustc>', '--target', '<triple>']` and the
-  triple lands exactly where upstream already looks.
-
-  **But this is NOT the one-liner it looks like — inspected 2026-09-02.** The
-  wrapper is conditional on purpose:
-
-  ```sh
-  --target|--target=*)  have_target=true    # caller already chose: pass through
-  */target/*)           cargo_managed=true  # cargo owns this one: pass through
-  ```
-
-  It injects the triple only when neither holds, and its header says why:
-  *"Meson's Rust cross sanity checks do not reliably infer the target triple from
-  the linker alone. Inject it only when the invocation does not already specify
-  --target so cargo-backed subprojects keep working."* An array binary line would
-  append the triple **unconditionally** and remove exactly that cargo exemption.
-  That may still be right — upstream's flow wants the triple in `cmd_array()` —
-  but it cannot be settled without building.
-
-  **Needs a real build to close.** Watch the gst-plugins-rs subprojects, which is
-  where the exemption earns its keep, and do not delete `003`/`004` until that
-  build is green.
-
-  **The one safe half is DONE 2026-09-02.** `003` was *actively wrong*: it
-  prepended `env['RUSTFLAGS']` to a list that already contained it (line 249
-  folds it in), duplicating every flag it claimed to preserve. Regenerated
-  against the pinned `gstreamer-1.29.2` source with only the
-  `CARGO_BUILD_TARGET` fallback left, and the `CROSS_RUST_TARGET` arm dropped —
-  safe because `_cross_env_export_all` exports both (`_export_arch_vars` line
-  586, `_export_cargo_vars` line 592), so the cargo-documented variable is always
-  set when ours is. Verified: APPLIED then SKIP through `apply-patch.sh`, and the
-  result still parses as Python.
-
-- **UC. Drop `005a`, `005b` and `006` when the GStreamer pin moves**
-  [S·★★]. All three are already in upstream `main` — the OpenCV 5 header moves
-  (with the `CV_MAJOR_VERSION >= 5` guard our version lacks) and the FFmpeg 8
-  codec-ID guards (`LIBAVCODEC_VERSION_MAJOR < 63`). Nothing to file; just stop
-  carrying them once the pin includes the commits. Until then note that our
-  `006` is semantically wrong where upstream's is not: we `#define` the removed
-  IDs to `0`, which is `AV_CODEC_ID_NONE`, rather than removing the comparisons.
-
-- **UD. Drop the libyuv RVV patch once libcamera advances its wrap revision**
-  [S·★★]. The trigger, the removal steps and the one thing that must survive the
-  removal are spelled out in `docs/upstreamable-patches.md` entry 16 — that page
-  owns this one.
-
-## W2026-09-03. Audit findings — read-only sweep run during the RVA23 runtime lane
-
-Six independent lenses over linux/scripts/ and the Dockerfiles, every finding
-then put through an adversarial verifier that started from "this is wrong" and
-had to confirm it against the code. **10 findings survived, 5 were killed by
-the verifier** and are not listed. Nothing was edited: the RVA23
-chain was mid-flight, so this is a task list, not a change.
-
-Two of them explain the disk fight of that same evening, and one is proved by
-a line from the log of the build that was running while the audit ran.
+**REMAINING:** re-run media-arm64 with the fix so LiteRT compiles its Qualcomm
+vendor code end to end; everything upstream of LiteRT is already proven and
+cached. Then remove the zip from `linux/qnn-sdk/` per README discipline — it is a
+hardlink, so the copy under `/opt/scripts/qnn-sdk/` survives.
 
 ### YA. The unhashed 1.5 GB QAIRT download A2 fixed is still LIVE in the android LiteRT lane — the guard is never reachable from there [high]
 

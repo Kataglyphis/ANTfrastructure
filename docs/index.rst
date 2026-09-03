@@ -147,6 +147,7 @@ Common development targets:
    linux-build-basics
    linux-cross-builds
    gen1-riscv64-genai
+   qnn-linux
    riscv64-venv-parity
    riscv64-rva23-baseline
    upstreamable-patches

@@ -86,6 +86,7 @@ The two halves of one topic often split:
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and what is still UNVALIDATED | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
+| **QNN / QAIRT on Linux** — the arm64-only opt-in lane: staging the login-gated SDK, the `QAIRT_HEADERS_DIR` trap that must name the dir *holding* `Qnn*.h`, upstream's unhashed 1.5 GB download, and which framework switches are real | [`qnn-linux.md`](qnn-linux.md) |
 | **riscv64 venv parity** — the `/opt/venv` package set measured on the shipped images, and what riscv64 carries that the other arches do not | [`riscv64-venv-parity.md`](riscv64-venv-parity.md) |
 | **Prepared upstream submissions** — the artefacts too big to inline in the register, and the verification behind them | [`upstream/README.md`](upstream/README.md) |
 | **Which local patches to send upstream** — every third-party source change the *Linux* chain carries, graded by how much work stands between it and a merge request. The Windows half is [`upstream-windows-patches.md`](upstream-windows-patches.md) | [`upstreamable-patches.md`](upstreamable-patches.md) |

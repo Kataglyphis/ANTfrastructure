@@ -159,6 +159,15 @@ litert_cross_wheel_platform_tag() {
     return 1
 }
 
+# Echoes the dir that directly HOLDS Qnn*.h. Upstream only probes <dir> vs
+# <dir>/QNN on its download path, never on a pre-set value.
+# docs/qnn-linux.md#qairt_headers_dir
+_litert_qairt_include_dir() {
+    local inc="${LITERT_QNN_HOME}/include/QNN"
+    [ -f "${inc}/QnnLog.h" ] || err "LiteRT: ${inc}/QnnLog.h missing -- QAIRT layout moved; QAIRT_HEADERS_DIR must name the dir holding Qnn*.h"
+    printf '%s\n' "${inc}"
+}
+
 # Upstream's litert/vendors/CMakeLists.txt file(DOWNLOAD)s the QAIRT SDK whenever
 # QAIRT_HEADERS_DIR is empty -- ~1.5 GB from softwarecenter.qualcomm.com, with no
 # EXPECTED_HASH and no STATUS check, and NOT gated on LITERT_ENABLE_QUALCOMM, so it
@@ -292,10 +301,10 @@ configure_litert() {
     cmake_args+=("-DNEUROPILOT_HEADERS_DIR=${litert_vendor_header_stub}"
                  "-DLITECORE_HEADERS_DIR=${litert_vendor_header_stub}")
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
-        # QnnCommon.h sits under include/QNN in a QAIRT tree; upstream probes both
-        # "<dir>" and "<dir>/QNN", so hand it the include root.
-        info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${LITERT_QNN_HOME}/include)"
-        cmake_args+=("-DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include" "-DLITERT_ENABLE_NPU=ON")
+        local qairt_inc
+        qairt_inc="$(_litert_qairt_include_dir)"
+        info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${qairt_inc})"
+        cmake_args+=("-DQAIRT_HEADERS_DIR=${qairt_inc}" "-DLITERT_ENABLE_NPU=ON")
     else
         # NO staged SDK: QAIRT_HEADERS_DIR must stay UNSET (any value force-enables
         # Qualcomm with headers we do not have), so upstream would file(DOWNLOAD) QAIRT
@@ -517,7 +526,7 @@ _litert_wheel_prepare_env() {
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
         # Qualcomm dispatch (see the configure path above for why these are the
         # real names): last-wins on the duplicate -D supersedes the NPU=OFF default.
-        extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include -DLITERT_ENABLE_NPU=ON"
+        extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=$(_litert_qairt_include_dir) -DLITERT_ENABLE_NPU=ON"
     fi
     # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
     # patched upstream build_pip_package_with_cmake.sh word-splits this string

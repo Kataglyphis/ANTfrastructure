@@ -198,5 +198,21 @@
     "replace": "  elif ! printf '%s' \"${out}\" | grep -q \"gst=set\"; then",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "the image ENV sets GST_PLUGIN_PATH, so gst=set answers yes without the entrypoint"
+  },
+  {
+    "id": "qairt.include-root-not-qnn-dir",
+    "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+    "find": "    local inc=\"${LITERT_QNN_HOME}/include/QNN\"",
+    "replace": "    local inc=\"${LITERT_QNN_HOME}/include\"",
+    "test": "bash linux/scripts/tests/test-litert-qairt-headers.sh",
+    "why": "upstream consumes a pre-set QAIRT_HEADERS_DIR verbatim, so the include root fails 7 min deep at qnn_common"
+  },
+  {
+    "id": "qairt.missing-header-assert",
+    "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+    "find": "    [ -f \"${inc}/QnnLog.h\" ] || err ",
+    "replace": "    [ -f \"${inc}/QnnLog.h\" ] || true && err_disabled ",
+    "test": "bash linux/scripts/tests/test-litert-qairt-headers.sh",
+    "why": "a moved SDK layout must fail loudly at configure, not silently produce a bad -D"
   }
 ]
