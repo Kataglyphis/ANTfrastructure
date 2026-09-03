@@ -20,7 +20,6 @@ EXCUSED = {
     "VCS_REF": "a git sha, not a version",
     "APP_REF": "a git ref, not a version string",
     "TVM_REF": "built off-tag; tvm.__version__ reports 0.26.dev1, not the ref",
-    "RUST_VERSION": "a build-stage toolchain; rustc is not shipped in the runtime image",
     "CARGO_C_VERSION": "build-stage only (cargo-c), not shipped",
     "FLUTTER_VERSION": "flutter lane, not the cross runtime image",
     "LITERTJS_VERSION": "a JS package, not importable from the venv",

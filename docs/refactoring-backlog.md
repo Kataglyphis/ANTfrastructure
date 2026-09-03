@@ -967,6 +967,34 @@ returning 1.
 
 `linux/scripts/06-packaging/setup-package-image.sh:463`
 
+**FIXED 2026-09-03 — and the finding was HALF STALE.** Checked against the run
+that had just published rather than the log the audit cited (`runtime-retry2.log`,
+an older run), then against the shipped image itself:
+
+```
+rustc 1.98.0   cargo 1.98.0   default: 1.98.0-x86_64-unknown-linux-gnu
+```
+
+So **the version skew does not exist.** "The shipped image resolves rustc/cargo
+to Ubuntu 1.93.1" was the 2026-08-07 state, fixed by the two COPYs now at
+`Dockerfile.package:110-111`, and the `(no --version)` in the build log is a probe
+artefact from before the toolchain env is wired, not a broken image.
+
+What WAS real, and confirmed on the published run (6 NOTEs, two per arch): the
+gate is **inert**, because `RUST_VERSION` never reaches the package stage. A gate
+written after an incident, that cannot fire, would not have caught the next one.
+
+Fixed at both levels. `Dockerfile.package` now declares `ARG RUST_VERSION` and
+puts it in the ENV block that runs before `setup-package-image.sh`, so
+`report_rust_provenance` actually compares. And `RUST_VERSION` moved out of
+`verify-advertised-keys.py`'s EXCUSED list — its excuse read "rustc is not shipped
+in the runtime image", which the container above disproves — into the checked
+table with both an `ADV` and a `HAVE` probe. The HAVE probe was verified against
+the real image: it extracts `1.98.0`, matching the pin.
+
+Note the interlock: adding a table row without a probe would have failed the
+FROZEN_UNPROBED check added for WD this morning, which is why both probes exist.
+
 **What breaks.**
 `report_rust_provenance()` is the HARD GATE added after the 2026-08-07
 incident (its own comment at lines 456-462: "if the shipped rustc does not

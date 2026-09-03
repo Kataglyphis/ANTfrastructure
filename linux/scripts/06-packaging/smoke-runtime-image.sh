@@ -668,6 +668,7 @@ printf 'ADV GCC_VERSION %s\n'         "${GCC_VERSION:-}"
 printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
 printf 'ADV GSTREAMER_VERSION %s\n'   "${GSTREAMER_VERSION:-}"
 printf 'ADV VULKAN_VERSION %s\n'      "${VULKAN_VERSION:-}"
+printf 'ADV RUST_VERSION %s\n'        "${RUST_VERSION:-}"
 printf 'ADV PYTORCH_EXTRA %s\n'       "${PYTORCH_EXTRA:-}"
 printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
@@ -689,6 +690,7 @@ _have_vulkan() {
 
 _pyver() { "$py" -c "import importlib.metadata as m;print(m.version('$1'))" 2>/dev/null; }
 
+printf 'HAVE RUST_VERSION %s\n'    "$(rustc --version 2>/dev/null | awk '{print $2}')"
 printf 'HAVE UBUNTU_VERSION %s\n'   "$(. /etc/os-release 2>/dev/null; printf '%s' "${VERSION_ID:-}")"
 printf 'HAVE CMAKE_VERSION %s\n'    "$(cmake --version 2>/dev/null | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
 printf 'HAVE NODE_VERSION %s\n'     "$(node --version 2>/dev/null | tr -d 'v')"
@@ -784,7 +786,7 @@ PROBE
 _ADVERTISED_VERSION_KEYS="PYTHON_VERSION PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
-LITERT_VERSION"
+LITERT_VERSION RUST_VERSION"
 
 # Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
 # selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.
