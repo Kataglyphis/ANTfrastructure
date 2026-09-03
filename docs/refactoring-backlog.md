@@ -2040,24 +2040,30 @@ here and the next candidate after the closure window opens.
 `assert_pinned_versions` at 356 is untouched and remains the clear top of the
 list — more than twice the next entry.
 
-**PARTLY DONE 2026-09-03.** `_cross_stage_build_impl` is **170 → 120 lines**, with
-three seams extracted: `_cross_build_pull_flag` (10), `_cross_build_append_push_output`
-(25) and `_cross_build_append_cache_args` (29). The main function now reads as the
-sequence it is instead of inlining three policies.
+**DONE 2026-09-03. `_cross_stage_build_impl` is 170 → 91 lines**, four seams
+extracted: `_cross_build_pull_flag` (10), `_cross_build_append_push_output` (25),
+`_cross_build_append_cache_args` (29) and `_cross_build_salvage_exports` (36).
 
-Order mattered more than the split. The function drives every stage of every build
-and had **zero** coverage, so 16 characterisation assertions were written and
-committed FIRST (`test-cross-stage-build-cmd.sh`), pinning the exact argv it
-assembles; the dry-run path prints it, which is the whole hook. The net was itself
-checked by mutation — inverting the pull flag, arming the inline cache
-unconditionally, swapping zstd for gzip each fail exactly one assertion — and then
-the refactor kept all 16 green, so the command is byte-identical.
+Order was the whole method. The function drives every stage of every build and
+had **zero** coverage, so the net came first and grew in two rounds: 16
+assertions pinning the assembled argv (dry-run path), then 8 more reaching past
+the dry-run return — retry counts and the salvage pass, the latter needing a real
+Dockerfile with named stages and a fake `nerdctl` that records its `--target`s.
+Only then was each seam cut, and all 24 stayed green.
 
-**Still 120 lines**, and the rest is deliberately untouched: the retry loop, the
-salvage-export pass and the registry-cache drop all sit AFTER the dry-run return,
-so the net does not reach them. Extracting them means extending the
-characterisation first — stub `run` to fail, `is_dry_run` to false — not cutting
-blind. That is the next step, and it is the bigger half.
+**Two traps worth recording.** `cross-stage-build.sh` defines
+`_cross_stage_push_error_is_transient`, `_cross_salvage_disk_ok` and
+`cross_stage_log_redirect` itself, so a stub set BEFORE the source is silently
+replaced — the first retry harness read "4 attempts for a non-transient error",
+which looked like a real defect and was my own inert knob. Those three are
+re-stubbed after the source now. And the salvage body was never reached by the
+first net (`Dockerfile.x` has no named stages, so the loop ran empty), which is
+why it got its own characterisation before being extracted rather than after.
+
+**What is left is the registry-cache drop** (~16 lines), the one path still
+uncovered: it needs a non-empty `log_file` holding a `DeadlineExceeded` line, and
+it mutates both `build_cmd` and a counter across loop iterations. Characterise
+first, as above.
 
 **BLOCKED, not deferred (2026-09-02).** The two remaining targets —
 `_cross_stage_build_impl` (01-core) and `reconcile_local_wheels` (03-media/runtime) —

@@ -190,6 +190,46 @@ _cross_build_append_cache_args() {
   fi
 }
 
+# S1: --cache-to type=local only materialises on a SUCCESSFUL solve, so a failed
+# build re-drives per named --target to export the subtrees that did finish.
+# docs/build-cache-tiers.md
+_cross_build_salvage_exports() {
+  local dockerfile="$1" _cache_dir="$2" _cache_slug="$3"
+  local -n _extra="$4"
+  local -n _common="$5"
+  # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
+  # per --target to salvage completed subtrees. docs/build-cache-tiers.md
+  if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
+     && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run \
+     && _cross_salvage_disk_ok "${_cache_dir}"; then
+    local -a _salvage_targets=()
+    mapfile -t _salvage_targets < <(grep -iE \
+      '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
+      "${dockerfile}" 2>/dev/null | awk '{print $NF}')
+    if [ "${#_salvage_targets[@]}" -gt 0 ]; then
+      warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
+      # A target whose subtree holds the broken vertex RE-RUNS it, hence the
+      # hard timeout; and later file-order targets sit downstream of the same
+      # break, hence the stop after 2 consecutive failures.
+      local _tgt _salvage_fails=0 _salvage_ok=0
+      for _tgt in "${_salvage_targets[@]}"; do
+        [ "${_salvage_fails}" -ge 2 ] && break
+        if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
+             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+             --target "${_tgt}" -f "${dockerfile}" \
+             --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
+             --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
+             "${_extra[@]}" "${_common[@]}" . >/dev/null 2>&1; then
+          _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
+        else
+          _salvage_fails=$((_salvage_fails + 1))
+        fi
+      done
+      warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
+    fi
+  fi
+}
+
 _cross_stage_build_impl() {
   local push_flag="$1" label="$2" tag="$3" dockerfile="$4"
   shift 4
@@ -248,37 +288,8 @@ _cross_stage_build_impl() {
     [ "${_rc}" -eq 0 ] && return 0
     if [ "${_attempt}" -ge "${_max_attempts}" ] \
        || ! _cross_stage_push_error_is_transient "${log_file}"; then
-      # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
-      # per --target to salvage completed subtrees. docs/build-cache-tiers.md
-      if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
-         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run \
-         && _cross_salvage_disk_ok "${_cache_dir}"; then
-        local -a _salvage_targets=()
-        mapfile -t _salvage_targets < <(grep -iE \
-          '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
-          "${dockerfile}" 2>/dev/null | awk '{print $NF}')
-        if [ "${#_salvage_targets[@]}" -gt 0 ]; then
-          warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
-          # A target whose subtree holds the broken vertex RE-RUNS it, hence the
-          # hard timeout; and later file-order targets sit downstream of the same
-          # break, hence the stop after 2 consecutive failures.
-          local _tgt _salvage_fails=0 _salvage_ok=0
-          for _tgt in "${_salvage_targets[@]}"; do
-            [ "${_salvage_fails}" -ge 2 ] && break
-            if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
-                 "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
-                 --target "${_tgt}" -f "${dockerfile}" \
-                 --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
-                 --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
-                 "${extra[@]}" "${common_args[@]}" . >/dev/null 2>&1; then
-              _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
-            else
-              _salvage_fails=$((_salvage_fails + 1))
-            fi
-          done
-          warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
-        fi
-      fi
+      _cross_build_salvage_exports "${dockerfile}" "${_cache_dir}" "${_cache_slug}" \
+        extra common_args
       return "${_rc}"
     fi
     # ghcr cache-import flake (2026-08-18): the registry cache IMPORT is itself the

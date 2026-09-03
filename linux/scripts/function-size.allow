@@ -11,7 +11,7 @@
 linux/scripts/01-core/base-image.sh | install_nodejs | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/cross-apt.sh | install_target_packages | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/cross-meson.sh | ensure_meson_cross_file | 93 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-stage-build.sh | _cross_stage_build_impl | 120 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-stage-build.sh | _cross_stage_build_impl | 91 | F1 2026-09-03: 170 -> 91, four seams extracted
 linux/scripts/01-core/parallel-loop.sh | run_parallel_arch_loop | 92 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/python_uv.sh | uv_sync_project | 109 | baseline 2026-09-03, not yet reviewed
 linux/scripts/02-toolchain/build-gcc.sh | verify_gcc_gpg_signature | 81 | baseline 2026-09-03, not yet reviewed
