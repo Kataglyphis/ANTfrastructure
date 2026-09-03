@@ -250,10 +250,18 @@
   {
     "id": "wheels.torch-backfill-guard",
     "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
-    "find": "  [ \"${have_torch_family}\" = \"true\" ] && _backfill_torch_runtime_deps",
+    "find": "  if [ \"${have_torch_family}\" = \"true\" ]; then\n    _backfill_torch_runtime_deps\n  fi",
     "replace": "  : # backfill call removed",
     "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
     "why": "extracting the backfill must not make it unreachable -- the notice is a printf and would still print"
+  },
+  {
+    "id": "wheels.reconcile-return-status",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  if [ \"${have_torch_family}\" = \"true\" ]; then\n    _backfill_torch_runtime_deps\n  fi",
+    "replace": "  [ \"${have_torch_family}\" = \"true\" ] && _backfill_torch_runtime_deps",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "the exact cbbd0da7 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
   },
   {
     "id": "sccache.retry-once",

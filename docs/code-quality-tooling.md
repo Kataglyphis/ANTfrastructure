@@ -3,7 +3,20 @@ Copyright (c) 2025 Kataglyphis
 SPDX-License-Identifier: MIT
 -->
 
-# Code Quality Tooling (clang-format, clang-tidy, cmake-format)
+# Code Quality Tooling
+
+Two audiences share this page. The first half is the C++ formatter and linter
+guidance that is true for any Kataglyphis C++ project (the configs live here,
+the consumers copy them). The second half is this repository's OWN quality
+gates — the scripts under `linux/scripts/verify_*.py`, `docs/scripts/` and
+`lint-*.sh` that `preflight.sh` runs, the pre-commit hook runs in its fast tier,
+and CI runs in full. Every gate ships as a set: the script, its allowlist, a
+`linux/scripts/tests/test-*.sh` suite, a `mutations.json` entry that proves the
+suite can fail, a `preflight.sh` slug, and a section below. The table of all
+slugs with their proof status is generated, not hand-written — see
+`docs/code-quality-gates.md`.
+
+## C++ formatters and linters (clang-format, clang-tidy, cmake-format)
 
 The commands, the traps and the cadence — everything that is true for any
 Kataglyphis C++ project. Adopted here 2026-08-07 from a consumer that had it all
@@ -14,7 +27,7 @@ The configs these tools read (`.clang-format`, `.clang-tidy`, `gcovr.cfg`) are
 owned by this repo too — see [`shared/config/README.md`](../shared/config/README.md)
 for why they are copied into consumers rather than referenced.
 
-## Where the tools are
+### Where the tools are
 
 LLVM is commonly installed on Windows hosts but **not on `PATH`**:
 
@@ -40,7 +53,7 @@ project has set both `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and
 `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`. Without them it hard-errors
 (inside that function) instead of bootstrapping anything.
 
-## clang-format
+### clang-format
 
 Works on the host with no build directory — it needs only the source and
 `.clang-format`.
@@ -79,7 +92,7 @@ git diff --name-only HEAD -- 'Src/*' 'Test/*' |
   ForEach-Object { & $CF -i $_ }
 ```
 
-## clang-tidy
+### clang-tidy
 
 Needs `compile_commands.json`. Two traps that cost real time:
 
@@ -107,7 +120,7 @@ Needs `compile_commands.json`. Two traps that cost real time:
 The clean alternative is to let the build run clang-tidy, where paths are
 consistent by construction.
 
-## Suggested cadence
+### Suggested cadence
 
 - **Per change:** format the files you touched (the `git diff` variant).
 - **Weekly / before a PR:** full check across your own sources; fix what is
@@ -122,7 +135,7 @@ consistent by construction.
   [`shared/config/README.md`](../shared/config/README.md) the consumers are the
   downstream C++ projects.
 
-## The failure mode to watch for
+### The failure mode to watch for
 
 A clang-format check that **reports** a deviating count without **failing** the
 build lets drift grow indefinitely while every build stays green. One consumer
@@ -135,14 +148,14 @@ touches most of the tree in one commit and collides with in-flight work. Do it
 deliberately, ideally right after a merge point, and add the commit to
 `.git-blame-ignore-revs` so history stays readable.
 
-## `linux/scripts/lib/code-quality.sh` — the shared library
+### `linux/scripts/lib/code-quality.sh` — the shared library
 
 Project-agnostic core: a wrapper sets the `CODE_QUALITY_*` variables, sources
 the library, and calls the step functions in the order it wants. The library
 deliberately does not set `-e`/`-u`/`-o pipefail`, so sourcing it cannot change
 the caller's shell options.
 
-### Caller variables
+#### Caller variables
 
 | Variable | Meaning | Default |
 |---|---|---|
@@ -167,7 +180,7 @@ cmake-format is not already on `PATH`. Anything the wrapper does not provide is
 discovered from the environment: logging from `01-core/logging.sh` (or minimal
 fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
 
-### Known divergences from the Windows path — read before "unifying" the two
+#### Known divergences from the Windows path — read before "unifying" the two
 
 The Windows equivalent is split across `WindowsFormatting.Common.psm1` and
 `WindowsCMake.Common.psm1` (both here) plus `WindowsClang.Common.psm1` (in the
@@ -185,6 +198,13 @@ these were "fixed" during the extraction.
 | 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | per file in a loop — slower, isolates failures, logs per-file skips |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
 | 7 | File enumeration | `find` with `-not -path` exclusions | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages` |
+
+## This repository's own gates
+
+The sections below are the design notes per gate: why it exists (with the
+numbers measured when it was added), what it checks, how to fix a finding, and
+which suite and mutation guard it. Slugs in parentheses are the `preflight.sh`
+names; `PREFLIGHT_ONLY=<slug> bash linux/scripts/preflight.sh` runs one gate alone.
 
 ## Python that lives in shell heredocs
 
@@ -213,7 +233,7 @@ Both shapes are pinned in `linux/scripts/tests/test-embedded-python-extract.sh`,
 and the coverage was proven by injecting an undefined name into a real heredoc
 and watching the gate go red.
 
-### hadolint rule selection
+## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
 Windows Dockerfiles are PowerShell (`# escape=`` + SHELL ["pwsh",...]), but
 hadolint's embedded shellcheck still parses RUN bodies as sh wherever it
@@ -274,7 +294,7 @@ Assert both.
 | flag | use |
 | --- | --- |
 | *(none)* | every entry — CI, or before a release |
-| `--changed` | only entries whose target is in the diff — the pre-commit hook |
+| `--changed` | only entries whose target is committed since `origin/main`, staged, or edited — the pre-commit hook. Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | resolve targets and run tests elsewhere (its own tests use this) |
 

@@ -46,14 +46,15 @@ def load(path):
 
 
 def changed_files():
-    """Files touched against origin/main, or staged if that is unavailable."""
+    """Union of files committed since origin/main, staged, and edited in the tree."""
+    touched = set()
     for cmd in (["git", "diff", "--name-only", "origin/main...HEAD"],
                 ["git", "diff", "--cached", "--name-only"],
                 ["git", "diff", "--name-only"]):
         out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
-        if out.returncode == 0 and out.stdout.strip():
-            return set(out.stdout.split())
-    return set()
+        if out.returncode == 0:
+            touched |= set(out.stdout.split())
+    return touched
 
 
 def apply_and_run(entry, root):
