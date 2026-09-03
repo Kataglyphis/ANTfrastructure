@@ -18,27 +18,39 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **LB**=llm-stack benchmark harness ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: **2026-09-03** (twice — see the archive). 1656 lines of closed work
-moved out first: **A1**, **A2**, the **WA–WJ** and **XK–XR** rounds, **F1**'s
-closed rows. Then **YA** and **YC** were opened, fixed and archived the same day.
+Last groomed: **2026-09-03**, third pass. Everything closed that day is in the
+2026-09-03 archive: A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's
+`_cross_stage_build_impl` and `reconcile_local_wheels` rows, and F3's
+chain-status walker.
 
-**Four entries remain, and they are honestly of three kinds:**
+**Five entries remain. Only one is a defect; the rest are tracks.**
 
-* **One real defect, still unsolved** — **YB**. sccache silently loses thousands
-  of compiles per chain. Six hypotheses are now recorded as *disproved by
-  experiment* so nobody re-derives them; what is left needs a real build with
-  `SCCACHE_LOG=debug`, which is why it is not closed.
-* **Two long-running quality tracks** — **F1** (oversized functions) and **F2**
-  (oversized files). Both are now *frozen by the `code-size` gate* rather than
-  re-measured by hand, which is what kept letting their tables go stale. **F3**
-  is down to items that are either reviewed-and-KEPT on purpose or need a
-  validating build to delete safely.
-* **One entry kept only as a record** — **F9**. Both its failures were retested
-  on 2026-09-03 and neither reproduces. It stays because the 2026-09-01
-  observations were real, so the honest status is "intermittent, cause unknown",
-  not "fixed".
+* **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
+  found weak** (~5% recovery). Root cause open.
+* **F1 / F2** — oversized functions and files, both now frozen by the `code-size`
+  gate instead of hand-measured. Two unreviewed F1 candidates left.
+* **F3** — down to items that are reviewed-and-KEPT on purpose. Its
+  source-or-fallback question was DECIDED (keep) on evidence.
+* **F9** — kept as a record only: both failures were retested 2026-09-03 and
+  neither reproduces.
 
-Nothing here is blocked on a decision from the owner.
+### What needs the OWNER, not the agent
+
+Nothing in the five entries above is blocked on you. These are:
+
+1. **`git push`** — 28 commits sit on local `main`. Nothing leaves this
+   environment without you.
+2. **The submodule pin.** Preflight warns on every run: `external/Kataglyphis-DocumANTation`
+   pin `287365636` is not reachable on its remote. Push it, or a docs/build job
+   that clones it will fail.
+3. **The Windows lane.** Six confirmed doc defects from the 2026-09-03 currency
+   audit are parked in
+   [`windows-refactor-backlog.md`](windows-refactor-backlog.md), verified against
+   the tree only — no Windows host was involved. Two are wrong paths a reader
+   would follow into a "file not found".
+4. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and now
+   validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
+   it (login-gated).
 
 ### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
@@ -67,15 +79,33 @@ is a compiler error *after* a successful spawn, and a deleted cwd gives
 `Couldn't determine current working directory`.
 
 **MITIGATION SHIPPED 2026-09-03: the launcher retries once** before giving up the
-cache entry, because the same invocation succeeds immediately afterwards. What it
-does, why it is bounded, and what the log lines mean is owned by
-[`build-cache-tiers.md`](build-cache-tiers.md#the-single-retry-2026-09-03) —
-do not restate it here. Guarded by `tests/test-sccache-launcher.sh` (14
-assertions) and mutation `sccache.retry-once`.
+cache entry. Behaviour, bounds and log lines are owned by
+[`build-cache-tiers.md`](build-cache-tiers.md#the-single-retry-2026-09-03) — do
+not restate them here. Guarded by `tests/test-sccache-launcher.sh` (14 assertions)
+and mutation `sccache.retry-once`.
 
-**Still open:** the root cause. Count `retry succeeded` against `failed twice` on
-the next media build before spending more on it — that number decides whether
-there is anything left to chase.
+**MEASURED on the 2026-09-03 media-arm64 build, and the result is NEGATIVE:**
+
+| outcome | count |
+|---|---|
+| `retry succeeded (cache kept)` | **27** |
+| `failed twice` | **514** |
+
+**~5% recovery.** So the honest answer to "is this class transient?" is **mostly
+no** — a retry issued immediately does not get a different result. Keep the retry
+(it is nearly free and 27 entries is 27 entries) but do **not** treat it as the
+fix, and do not size the remaining work as if it were.
+
+Two things this rules out and one it suggests: a scheduling race or a momentary
+resource shortage would recover far more than 5%, so neither is the mechanism.
+Something about the specific invocation is failing repeatably within a short
+window. That points at per-request state inside the server rather than at the
+environment.
+
+Reading the log needs one caution learned here: a **cached** BuildKit step replays
+its old output verbatim. The first read of this build showed 496 hits of the
+pre-retry message, all from one cached step (`#30`), which would have looked like
+the new launcher failing to take effect.
 
 ### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 
