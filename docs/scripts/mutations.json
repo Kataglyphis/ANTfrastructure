@@ -222,5 +222,13 @@
     "replace": ": # guard call removed",
     "test": "bash linux/scripts/tests/test-litert-qairt-guard.sh",
     "why": "the android lane clones its own tree, so the cross lane's patch cannot cover it -- YA"
+  },
+  {
+    "id": "lint-shell.extensionless-arm",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   }
 ]

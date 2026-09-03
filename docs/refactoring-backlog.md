@@ -36,87 +36,60 @@ What is left is six entries, and they are honestly of two kinds:
   re-measured by hand), **F3** (clone families), plus **F9**'s two
   invoke-by-hand gate failures.
 
-### YB. sccache fails to spawn its preprocessor on thousands of compiles per chain (`os error 2`) — a silent partial cache miss across most of the media stage [medium]
+### YB. sccache fails to spawn its preprocessor on thousands of compiles per chain (`os error 2`) — narrowed 2026-09-03, root cause still OPEN [medium]
 
-**Observed 2026-09-03**, and **pre-existing**: 3373 occurrences in the
-2026-09-03 chain log, 190 within the first four minutes of the A2 media-arm64
-run. Not a regression from the QNN staging.
+**Pre-existing**, 3373 occurrences in the 2026-09-03 chain. The launcher falls
+through to a real compile, so builds stay green and nothing gates on it — the
+cache is just silently lost for those units. This repo's build time is dominated
+by compiler caching (CCACHE_COMPILERCHECK=content took LLVM from 11 h to 50 min),
+so a thousands-of-units miss is the same class of loss.
 
 ```
-sccache-launcher:   sccache: error: failed to spawn Command { std: cd "<builddir>" && env -i … "/opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++" "-x" "c++" "-E" "-P" … }
-sccache-launcher:   sccache: caused by: No such file or directory (os error 2)
+sccache: error: failed to spawn Command { std: cd "<builddir>" && env -i … "<compiler>" "-x" "c++" "-E" "-P" … }
+sccache: caused by: No such file or directory (os error 2)
 ```
 
-That is sccache spawning the **preprocessor** to compute a cache key. When it
-fails, the launcher falls through to a real compile, so the build stays correct
-and green — it just silently loses the cache for that unit. Nothing gates on it.
+**What it is, precisely** (2026-09-03): sccache's own preprocessor pass, run to
+compute the cache key. One decomposed failure: cwd
+`/opt/onnxruntime/build_native_cpu/Release/_deps/abseil_cpp-build/absl/debugging`,
+**289** environment variables, 39 argv elements, carrying CMake's `-MD -MF` with
+a **relative** dep-file path.
 
-**Spread** — this is not one component (counts from the 2026-09-03 chain, by
-build dir):
+**Spread** — not one component: 1536 `/tmp/opencv-1`, 342 + 233 + 153
+onnxruntime/`_deps`/dnnl, 274 litert/abseil, plus genai, ffmpeg, pyav, armnn. By
+program: 2987 `riscv64-linux-gnu-g++`, 1915 plain `g++`, 685/506/388/194 the rest.
 
-| count | tree |
-|---|---|
-| 1536 | `/tmp/opencv-1` |
-| 342 | `/opt/onnxruntime/.../_deps` |
-| 274 | `/tmp/litert-1/.../abseil-cpp-build` |
-| 233 + 153 | `/opt/onnxruntime/.../dnnl` |
-| — | also `/opt/onnxruntime-genai`, `/tmp/ffmpeg-1`, `/tmp/pyav-1`, armnn |
+**SIX hypotheses formed and DISPROVED. Do not re-derive them:**
 
-**What is NOT the cause — two hypotheses formed and then disproved, recorded so
-nobody re-derives them:**
+1. `env -i` strips `LD_LIBRARY_PATH`, so the `/opt` GCC cannot start —
+   `env -i /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++ --version` prints `(GCC) 16.2.0`.
+2. The server is in another mount namespace — a namespace mismatch would fail
+   *every* compile; the same chain reports `Cache hits` 2732/2636/2159/1059.
+3. The program is a bare/relative name that `env -i` cannot resolve — **every**
+   failing argv[0] parsed out of the log is an absolute path.
+4. The compiler binary is missing — all six failing paths exist and are
+   executable in `cross-media-arm64` (`g++`, `gcc`, both cross triplets, `/usr/bin/g++`).
+5. A plain sccache cross-compile reproduces it — it does not: `sccache
+   /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++ -c …` returns rc=0, one cache miss.
+6. The 289-variable environment overflows `execve` — reproduced with **375**
+   variables / 65 KB and rc=0. (It would also be `E2BIG`, not `ENOENT`.)
 
-1. **`env -i` strips `LD_LIBRARY_PATH`, so the `/opt`-installed cross GCC cannot
-   start.** Disproved directly: `env -i /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++
-   --version` inside the shipped image prints `(GCC) 16.2.0` and exits 0.
-2. **The sccache server daemon lives in a different mount namespace, so the
-   `cd` target does not exist for it.** Disproved by the counter-evidence below:
-   a namespace mismatch would fail *every* compile, and it plainly does not.
+**Two adjacent errors were reproduced and are NOT this one** — useful, because
+their messages look similar in a log skim:
+* `-MF` into a missing directory → `<built-in>: fatal error: opening dependency
+  file …` (a *compiler* error, after a successful spawn).
+* cwd deleted under the client → `sccache: Couldn't determine current working
+  directory` (a *different* sccache message).
 
-**The counter-evidence that makes this a PARTIAL failure, not a broken cache:**
-the same chain reports real hits — `Cache hits 2732`, `2636`, `2159`, `1059`,
-`345`, … So sccache works, and only a subset of invocations ENOENT. Any theory
-has to explain why these coexist *within the same component* (onnxruntime shows
-both).
+So it really is `Command::spawn` returning ENOENT with an existing program — which
+leaves the **`current_dir()` the server is handed** as the last standing
+candidate, since that is the only other thing `spawn` resolves.
 
-**Root cause: NOT DETERMINED.** Next steps, cheapest first: log the exact failing
-`argv[0]` and cwd for one failure and check both for existence *at that moment*
-(a `_deps` build dir being cleaned mid-build is the leading remaining guess);
-then compare a failing and a succeeding invocation of the same compiler in the
-same RUN. `SCCACHE_SERVER_UDS=/tmp/sccache-$(id -u).sock` (`01-core/compiler-cache.sh:73`)
-puts the socket on the per-RUN `/tmp` tmpfs, which is worth re-checking as part
-of that.
-
-**Why it matters:** this repo's build time is dominated by compiler caching
-(CCACHE_COMPILERCHECK=content took LLVM from 11 h to 50 min). A silent
-thousands-of-units cache miss on every media stage is the same class of loss,
-and nothing reports it — the only symptom is stderr noise that looks benign.
-
-### YC. `.githooks/pre-commit` is a dead gate that four live docs still named as the current one [medium]
-
-**Found 2026-09-03 by the docs-currency audit.** `git config core.hooksPath` is
-`linux/host-config/git-hooks`, set by `make hooks` (`Makefile:60`). Nothing
-executes `.githooks/pre-commit`: a tree-wide grep finds only prose mentions plus
-one special case in `lint-shell.sh:123,136` that exists purely so the
-extension-less file still gets shellchecked. CI does not run it either —
-`ubuntu24.04.yml:48` runs `bash linux/scripts/preflight.sh` directly.
-
-It is also **stale**: last touched 2026-08-25 (`928e7451`), while the live hook
-was updated 2026-09-03 (`c0dc4de2`). The two run genuinely different gate sets,
-so following the dead one gives a weaker check than the repo actually enforces.
-
-The documentation references are fixed (`AGENTS.md`, `cross-build-verification.md`
-×2, `project-info.md`, `shared/config/README.md`, and the comments in
-`ubuntu24.04.yml` / `build-docs.yml`). **What is NOT done: the file itself.**
-
-**Decide and act:** either delete `.githooks/pre-commit` — and then remove the
-`lint-shell.sh` special case that only exists for it — or, if it is kept
-deliberately as a lighter opt-in gate, say so in a header comment inside the
-file, because nothing currently records why a second, unreachable pre-commit
-script lives in the tree.
-
-**Left alone on purpose:** the `.githooks` mentions in `docs/*archive-2026-*.md`
-are historical records of when that path *was* current, and
-`docs/windows-host-setup.md:277,291` is a Windows-lane file.
+**Next step, and it needs a real build:** run one media stage with
+`SCCACHE_LOG=debug` / `SCCACHE_ERROR_LOG` and capture, for a single failure, the
+cwd the *server* was given and whether it exists **at that instant** — a
+`_deps/<x>-build` subdir being created or moved by CMake while a sibling compile
+is in flight would explain both the ENOENT and why it never reproduces standalone.
 
 ### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-02
 
