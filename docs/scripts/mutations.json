@@ -1,7 +1,7 @@
 [
   {
     "id": "code-size.new-offender",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "        if was is None:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -9,7 +9,7 @@
   },
   {
     "id": "code-size.growth",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "        elif count > was:",
     "replace": "        elif False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -17,7 +17,7 @@
   },
   {
     "id": "code-size.unrecorded-shrink",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "        elif count < was:",
     "replace": "        elif False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -25,7 +25,7 @@
   },
   {
     "id": "code-size.stale-freeze",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "        if key not in seen:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -33,7 +33,7 @@
   },
   {
     "id": "code-size.file-verdict-discarded",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "    rc |= _check(\"files\"",
     "replace": "    rc |= 0 * _check(\"files\"",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -41,7 +41,7 @@
   },
   {
     "id": "code-size.longest-not-last",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "longest[(f, n)] = max(c, longest.get((f, n), 0))",
     "replace": "longest[(f, n)] = c",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -49,7 +49,7 @@
   },
   {
     "id": "code-size.python-ast",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "                if fn.endswith(\".py\"):",
     "replace": "                if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -57,7 +57,7 @@
   },
   {
     "id": "code-size.dockerfile-pass",
-    "target": "linux/scripts/verify-code-size.py",
+    "target": "linux/scripts/verify_code_size.py",
     "find": "            if not fn.startswith(\"Dockerfile\"):",
     "replace": "            if True:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
@@ -65,7 +65,7 @@
   },
   {
     "id": "advert-keys.unprobed-row",
-    "target": "linux/scripts/verify-advertised-keys.py",
+    "target": "linux/scripts/verify_advertised_keys.py",
     "find": "    if new_unprobed:",
     "replace": "    if False:",
     "test": "bash linux/scripts/tests/test-advertised-keys.sh",
@@ -73,7 +73,7 @@
   },
   {
     "id": "advert-keys.healed-baseline",
-    "target": "linux/scripts/verify-advertised-keys.py",
+    "target": "linux/scripts/verify_advertised_keys.py",
     "find": "    if healed:",
     "replace": "    if False:",
     "test": "bash linux/scripts/tests/test-advertised-keys.sh",

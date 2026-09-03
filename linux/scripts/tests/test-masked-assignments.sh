@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tests for verify-masked-assignments.py. `local x="$(cmd)"` returns local's
+# Tests for verify_masked_assignments.py. `local x="$(cmd)"` returns local's
 # status, so set -e never sees cmd fail. shellcheck's SC2155 misses the
 # `${y:-$(cmd)}` spelling, and lint-shell.sh gates at -S error where a warning
 # cannot fail — which is why this gate exists. docs/failure-modes.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-GATE="${TESTS_DIR}/../verify-masked-assignments.py"
+GATE="${TESTS_DIR}/../verify_masked_assignments.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
 t_case "the gate passes on the frozen tree"

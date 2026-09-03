@@ -48,7 +48,7 @@ def _stem(src):
 
 def main():
     if len(sys.argv) < 3:
-        sys.stderr.write("usage: extract-embedded-python.py <outdir> <file.sh>...\n")
+        sys.stderr.write("usage: extract_embedded_python.py <outdir> <file.sh>...\n")
         return 2
     outdir = sys.argv[1]
     os.makedirs(outdir, exist_ok=True)

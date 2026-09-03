@@ -42,6 +42,6 @@ linux/scripts/build-runtime-manifest.sh | main | 90 | baseline 2026-09-03, not y
 linux/scripts/lib/agentic-loop.sh | run_agentic_loop | 97 | baseline 2026-09-03, not yet reviewed
 linux/scripts/lib/cmake-build.sh | cmake_build_parse_args | 116 | baseline 2026-09-03, not yet reviewed
 linux/scripts/lib/slang-compile.sh | slang_compile_combined_wgsl | 87 | baseline 2026-09-03, not yet reviewed
-linux/scripts/verify-package-names.py | main | 140 | baseline 2026-09-03: newly in scope (python/Dockerfile)
-linux/scripts/verify-package-names.py | scan_file | 93 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+linux/scripts/verify_package_names.py | main | 140 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+linux/scripts/verify_package_names.py | scan_file | 93 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/scripts/tests/test-chain-lifecycle.sh | warn | 114 | baseline 2026-09-03, not yet reviewed

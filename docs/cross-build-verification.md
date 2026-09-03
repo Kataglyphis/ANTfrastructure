@@ -26,7 +26,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |
 |---|-------|----------------------|---------------|-----------------|
-| 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `da41e19` | **sourced-scripts-present** static check (`verify-script-copy-coverage.py`) |
+| 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `da41e19` | **sourced-scripts-present** static check (`verify_script_copy_coverage.py`) |
 | 2 | Relocated native GCC/G++ can't find `/usr/include` for source builds under QEMU — C *and* C++ (`#include_next`) | `string.h: No such file` (Pillow); `<cstdlib>`→`stdlib.h: No such` (numpy) | `3c623fa`, `349e32b`, `dc93d11` | **compile smoke test** (C + C++ `#include_next` + `jpeglib.h`) in `validate-compilers.sh` |
 | 3 | Missing dev headers for QEMU source builds | `jpeglib.h` missing for Pillow (`libjpeg-dev`) | `3c623fa` | same compile smoke test (header presence probe) |
 | 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (build-time) **+ compile+link+RUN under qemu** in `smoke-runtime-image.sh` (`bcbd19d`) |
@@ -249,7 +249,7 @@ drift if a slug is added without touching it.
 |------|--------|---------|
 | `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` materialised with CRLF endings |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
-| `copy-coverage` | `verify-script-copy-coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
+| `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
 | `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
@@ -268,11 +268,11 @@ drift if a slug is added without touching it.
 | `android-parity` | `01-core/verify-android-stage-parity.sh` | the five parallel Android library stages diverging beyond `ANDROID_LIB` |
 | `script-tests` | `linux/scripts/tests/run-tests.sh` | unit-test regressions in the tag/build-arg/disk-guard logic; prints the assertion aggregate above |
 | `stage-graph` | inline `cross_stage_validate_graph` | bad parent refs, missing dockerfiles, unresolvable tags, cycles |
-| `stdout-returns` | `verify-stdout-returns.py` | a function whose stdout is captured by `$(...)` logging to stdout, poisoning its return value |
+| `stdout-returns` | `verify_stdout_returns.py` | a function whose stdout is captured by `$(...)` logging to stdout, poisoning its return value |
 | `code-dupes` | `docs/scripts/verify_code_dupes.py` | token-normalised duplication across shell, Dockerfiles and non-`docs/` Markdown — it sees *renamed* clones |
 | `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
 | `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
-| `code-size` | `verify-code-size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
+| `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
 
 Every check with a script is runnable standalone (same command); `crlf-guard`
@@ -585,7 +585,7 @@ savings. Left as-is by design.
 
 ### Advertised version keys (`advert-keys`)
 
-`linux/scripts/verify-advertised-keys.py` globs `linux/Dockerfile.*` for every
+`linux/scripts/verify_advertised_keys.py` globs `linux/Dockerfile.*` for every
 version-shaped `ENV`/`ARG` and fails when one is neither checked by the smoke's
 advertised-vs-actual gate (`_ADVERTISED_VERSION_KEYS`) nor listed in `EXCUSED`
 with a reason. A stale excuse fails too, so the table cannot rot.
@@ -602,7 +602,7 @@ advertised git tag, and the measured value is cut to its numeric prefix so a
 
 ### Distro package names (`pkg-names`)
 
-`linux/scripts/verify-package-names.py` resolves every package name the tree
+`linux/scripts/verify_package_names.py` resolves every package name the tree
 asks apt for against the live Ubuntu indices. Two properties matter:
 
 - A **partial** index fetch is not a pass. If any component (`main`,

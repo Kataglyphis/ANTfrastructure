@@ -354,7 +354,7 @@ noticed for months because warm apt caches still answered for the old names —
 the tree was un-buildable from scratch and no one knew, because nothing ever
 built from scratch.
 
-**Fix.** `linux/scripts/verify-package-names.py`, wired into `preflight.sh` as
+**Fix.** `linux/scripts/verify_package_names.py`, wired into `preflight.sh` as
 the `pkg-names` check. It extracts every distro package name **`linux/scripts/**`**
 asks for and resolves each against the live Ubuntu indices for the pinned codename —
 `archive.ubuntu.com` for amd64, `ports.ubuntu.com` for arm64/riscv64 — before a
@@ -1095,7 +1095,7 @@ The sting: the only line reaching the build log is the same
 `WARNING: GStreamer cross-install had errors` a healthy cross run prints, so the
 broken run is **indistinguishable in the log**.
 
-**The gate.** `verify-masked-assignments.py` (preflight slug `masked-decls`)
+**The gate.** `verify_masked_assignments.py` (preflight slug `masked-decls`)
 fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
 command substitution; 54 pre-existing sites are frozen in
 `masked-assignments.allow`, keyed by file+variable so a site does not re-flag

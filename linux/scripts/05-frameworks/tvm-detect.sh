@@ -137,7 +137,7 @@ normalize_llvm_cmake_dir() {
     resolved_dir="$(dirname "${config_path}")"
     # >&2: this function's stdout is its RETURN VALUE (three call sites use
     # $( )), and log() -> info() writes to fd 1. Caught by
-    # verify-stdout-returns.py, which found this second occurrence after the
+    # verify_stdout_returns.py, which found this second occurrence after the
     # first one in the same function had been fixed by hand.
     log "Correcting LLVM CMake package path from ${dir} to ${resolved_dir}" >&2
     printf '%s' "${resolved_dir}"

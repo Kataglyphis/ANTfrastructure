@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify-code-size.py. The gate derives its root from its own path, so
+# Tests for verify_code_size.py. The gate derives its root from its own path, so
 # each case builds a throwaway tree and runs the real script against it. Both
 # metrics share one four-way contract, so the cases below share one fixture
 # builder and one runner. See docs/code-quality-tooling.md.
@@ -15,7 +15,7 @@ _fixture() {
   local shape="$1" n="$2" allow="${3-}" d
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts"
-  cp "${SCRIPTS_DIR}/verify-code-size.py" "${d}/linux/scripts/"
+  cp "${SCRIPTS_DIR}/verify_code_size.py" "${d}/linux/scripts/"
   # NOTE: the redirect must sit inside each arm. A trailing `esac > "${subject}"`
   # expands ${subject} before any arm runs, so the content lands in the default file.
   case "${shape}" in
@@ -50,8 +50,8 @@ _fixture() {
   printf '%s' "${d}"
 }
 
-_run() { t_out "${PY}" "$1/linux/scripts/verify-code-size.py"; }
-_rc()  { t_rc "${PY}" "$1/linux/scripts/verify-code-size.py"; }
+_run() { t_out "${PY}" "$1/linux/scripts/verify_code_size.py"; }
+_rc()  { t_rc "${PY}" "$1/linux/scripts/verify_code_size.py"; }
 
 _says() {
   local shape="$1" n="$2" allow="$3" want="$4" why="$5" fix out

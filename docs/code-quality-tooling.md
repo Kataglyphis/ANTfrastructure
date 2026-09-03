@@ -192,7 +192,7 @@ these were "fixed" during the extraction.
 — invisible to `lint-python.sh`, which only globbed `*.py`. A syntax error or an
 undefined name in one of those blocks would have shipped silently.
 
-`linux/scripts/extract-embedded-python.py` writes each block to a temp file that
+`linux/scripts/extract_embedded_python.py` writes each block to a temp file that
 the lint gate then includes. Two distinctions are load-bearing:
 
 - **Only directly-executed blocks are extracted.** `python3 - <<'PY'` and
@@ -267,7 +267,7 @@ own survivor-reporting and its file restore.
 
 ## Code size — functions and files (`code-size`)
 
-`linux/scripts/verify-code-size.py`, preflight slug `code-size`. One contract over
+`linux/scripts/verify_code_size.py`, preflight slug `code-size`. One contract over
 four subjects: **shell functions** and **Python functions** over
 `FUNCTION_SIZE_LIMIT` (default 80) against `function-size.allow`, and **shell,
 Python and Dockerfile files** over `FILE_SIZE_LIMIT` (default 800) against
@@ -322,7 +322,7 @@ asserts the exit code too.
 ## Comment size (`comment-size`)
 
 Owner directive 6 says two lines at the point of use; longer text belongs in
-`docs/` with a pointer. `verify-comment-size.py` fails on any NEW comment block
+`docs/` with a pointer. `verify_comment_size.py` fails on any NEW comment block
 over 10 lines in `linux/scripts` or `linux/host-config`. The 175 blocks that
 predate the gate are frozen in `comment-size.allow`; shrinking one means
 deleting its line, and a stale entry fails too, so the list cannot rot.
