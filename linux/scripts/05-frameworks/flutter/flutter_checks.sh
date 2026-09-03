@@ -43,7 +43,12 @@ done
 info "Checking Dart formatting..."
 mapfile -t _dart_files < <(code_quality_find_dart_files .)
 if [ "${#_dart_files[@]}" -eq 0 ]; then
-  warn "flutter_checks: no tracked .dart files found; skipping the format gate."
+  # Empty means git could not read the tree (no repo, safe.directory), not
+  # "nothing to check" — skipping silently would retire the gate.
+  if is_truthy "$STRICT"; then
+    err "flutter_checks: no tracked .dart files found; refusing to skip the format gate."
+  fi
+  warn "flutter_checks: no tracked .dart files found; skipping the format gate (non-strict)."
 else
   _run dart format --output=none --set-exit-if-changed "${_dart_files[@]}"
 fi
