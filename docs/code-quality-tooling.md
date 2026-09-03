@@ -267,13 +267,14 @@ own survivor-reporting and its file restore.
 four subjects: **shell functions** and **Python functions** over
 `FUNCTION_SIZE_LIMIT` (default 80) against `function-size.allow`, and **shell,
 Python and Dockerfile files** over `FILE_SIZE_LIMIT` (default 800) against
-`file-size.allow`. 39 functions and 10 files are over today, all frozen.
+`file-size.allow`. 38 functions and 10 files are over today, all frozen.
 
 Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
 cannot fool it. Dockerfiles have no function structure, so they are size-checked
-as files only — `Dockerfile.media` at 1162 lines is the largest file in the tree
-and was invisible to every gate until 2026-09-03.
+as files only — `Dockerfile.media` at 1162 lines is the largest **Dockerfile**
+in the tree (three shell/Python files are bigger) and was invisible to every
+gate until 2026-09-03.
 
 One script rather than two: the four-way contract and the allow-file handling are
 shared, and a second copy would have tripped the duplication gate — correctly.
@@ -307,7 +308,7 @@ shape as `comment-size` and `masked-assignments`.
 function is wrong; it argues that the queue should stay honest without a human
 re-counting. The judgement about whether to split lives in the backlog.
 
-Covered by `linux/scripts/tests/test-code-size.sh`: 13 assertions over throwaway
+Covered by `linux/scripts/tests/test-code-size.sh`: 20 assertions over throwaway
 trees, each proven to go red by disabling the matching branch. One of them exists
 because a mutation slipped through — asserting on the FAIL message alone let a
 variant pass that printed the failure and still exited 0, so the file half now

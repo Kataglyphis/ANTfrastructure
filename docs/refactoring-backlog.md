@@ -126,66 +126,34 @@ emulates the ISA but not a physical core's timing, errata or extension set.
 #594's hardware was a XuanTie C910. Re-run tier 4 on real riscv64 silicon when
 any is available — the repro recipe in the doc is a copy-paste.
 
-### A2. QNN-LINUX — fan-out validation: SDK STAGED, ORT PROVEN, LiteRT defect FOUND AND FIXED, re-run pending
+### A2. QNN-LINUX — CLOSED 2026-09-03: fan-out validated on a real SDK
 
-**No longer blocked.** The SDK was already on this machine at
-`/opt/scripts/qnn-sdk/v2.49.0.260730.zip`, and its SHA256 matches the populated
-`QNN_SDK_LINUX_ZIP_SHA256` pin — so **no re-pin was needed**, exactly as this
-entry predicted. Staged into `linux/qnn-sdk/` as a **hardlink** (same
-filesystem): 0 extra bytes on an 88%-full disk.
-
-**All the evidence lives in [`qnn-linux.md`](qnn-linux.md)** — staging rules,
-the per-framework table of which switches are real, the `QAIRT_HEADERS_DIR`
-trap, and the measured 2026-09-03 results. Do not restate it here.
-
-**Status of the three questions this entry was opened to answer:**
+All three questions this entry was opened to answer are answered. Evidence and
+the lane's documentation live in [`qnn-linux.md`](qnn-linux.md); do not restate
+them here.
 
 | question | verdict |
 |---|---|
-| does ORT stay green with a real SDK? | **YES** — `qnn-linux.md`, Validation |
-| do the staged libs land / wheel staging? | **YES**, 45 `libQnn*.so` |
-| does LiteRT stay green? | **NO — it found a real defect**, now fixed |
+| does ORT stay green with a real SDK staged? | **YES** |
+| do the staged libs land / wheel staging? | **YES** — 45 `libQnn*.so`, into three install roots |
+| does LiteRT stay green? | **YES, after a fix** — the run found a real defect |
 
-The LiteRT failure is the whole point of having run this: `QAIRT_HEADERS_DIR`
-was passed one directory too high, on a belief the code stated in its own
-comment and which turns out to be false for our code path. Fixed via
-`_litert_qairt_include_dir`, guarded by `tests/test-litert-qairt-headers.sh`
-(9 assertions) and two mutation-manifest entries
-(`qairt.include-root-not-qnn-dir`, `qairt.missing-header-assert`), each confirmed
-to bite. The reasoning is in
-[`qnn-linux.md#qairt_headers_dir---the-trap-that-cost-a-build`](qnn-linux.md).
+The SDK was already on this machine and its SHA256 matched the populated
+`QNN_SDK_LINUX_ZIP_SHA256` pin, so **no re-pin was needed** — as predicted. It
+was staged as a hardlink (0 extra bytes) and removed again afterwards per the
+`linux/qnn-sdk/README.md` discipline.
 
-**REMAINING:** re-run media-arm64 with the fix so LiteRT compiles its Qualcomm
-vendor code end to end; everything upstream of LiteRT is already proven and
-cached. Then remove the zip from `linux/qnn-sdk/` per README discipline — it is a
-hardlink, so the copy under `/opt/scripts/qnn-sdk/` survives.
+**The validation earned its keep on the first run:** LiteRT died ~7 min in with
+`QnnLog.h: No such file or directory`, because `QAIRT_HEADERS_DIR` was passed one
+directory too high on a belief the code stated in its own comment and which is
+false for our code path. Fixed in `82b09447` (`_litert_qairt_include_dir`,
+covering the configure path AND the wheel path, with an assert), guarded by
+`tests/test-litert-qairt-headers.sh` and two mutation-manifest entries that were
+confirmed to bite. The re-run finished `Cross chain complete.` — 60 stages, 0
+fatal errors, `Qualcomm dispatch ON (… /include/QNN)`.
 
-### YC. `.githooks/pre-commit` is a dead gate that four live docs still named as the current one [medium]
-
-**Found 2026-09-03 by the docs-currency audit.** `git config core.hooksPath` is
-`linux/host-config/git-hooks`, set by `make hooks` (`Makefile:60`). Nothing
-executes `.githooks/pre-commit`: a tree-wide grep finds only prose mentions plus
-one special case in `lint-shell.sh:123,136` that exists purely so the
-extension-less file still gets shellchecked. CI does not run it either —
-`ubuntu24.04.yml:48` runs `bash linux/scripts/preflight.sh` directly.
-
-It is also **stale**: last touched 2026-08-25 (`928e7451`), while the live hook
-was updated 2026-09-03 (`c0dc4de2`). The two run genuinely different gate sets,
-so following the dead one gives a weaker check than the repo actually enforces.
-
-The documentation references are fixed (`AGENTS.md`, `cross-build-verification.md`
-×2, `project-info.md`, `shared/config/README.md`, and the comments in
-`ubuntu24.04.yml` / `build-docs.yml`). **What is NOT done: the file itself.**
-
-**Decide and act:** either delete `.githooks/pre-commit` — and then remove the
-`lint-shell.sh` special case that only exists for it — or, if it is kept
-deliberately as a lighter opt-in gate, say so in a header comment inside the
-file, because nothing currently records why a second, unreachable pre-commit
-script lives in the tree.
-
-**Left alone on purpose:** the `.githooks` mentions in `docs/*archive-2026-*.md`
-are historical records of when that path *was* current, and
-`docs/windows-host-setup.md:277,291` is a Windows-lane file.
+**Follow-up, not part of A2:** the same unhashed-QAIRT defect is still live in
+the android lane — backlog **YA**.
 
 ### YA. The unhashed 1.5 GB QAIRT download A2 fixed is still LIVE in the android LiteRT lane — the guard is never reachable from there [high]
 

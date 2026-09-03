@@ -148,9 +148,9 @@ build/pin logic across scripts.
 
 The runtime helpers share initialization logic via
 `linux/scripts/01-core/runtime-flow-common.sh`, which provides
-`init_runtime_flow_defaults()` and `runtime_flow_export_setup()`.  Both
-`build-runtime-artifacts.sh` and `build-runtime-manifest.sh` source this
-directly after `artifact-common.sh`.
+`init_runtime_flow_defaults()`. Both `build-runtime-artifacts.sh` and
+`build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`, which
+loads it inside `runtime_flow_preamble()`.
 
 See `AGENTS.md` § Quick Reference for standalone single-stage rebuild commands.
 
@@ -172,7 +172,7 @@ to an OCI layout (`export_image_to_oci_layout` from context-management.sh) at
 and each child's parent resolution appends
 `--build-context <parent-tag>=oci-layout://<dir>` so its FROM resolves to the
 image THIS RUN built. The android image is additionally exported to
-`<workdir>/android-artifacts/<arch>` and handed to the runtime lane as
+`<workdir>/android-artifacts-<arch>` and handed to the runtime lane as
 `ARTIFACT_CONTEXT_ROOT` (mode `oci`), so the no-push package build copies from
 the locally-built android, not the registry. The workdir is minted once per run
 and reclaimed on exit (age-based sweep for killed runs). The multi-stage
@@ -683,8 +683,10 @@ not `aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
 **PROVEN 2026-08-30** on a staged QAIRT v2.49.0.260730 zip —
 `cross-media-arm64` build GREEN, ORT provider wired (`build results in
 `docs/refactoring-backlog.md` A2. QNN-LINUX). Framework fan-out to
-GenAI/LiteRT/TVM/IREE is WIRED (same 2026-08-30 change) with the validation
-build (zip staged on arm64) still PENDING.
+GenAI/LiteRT/TVM/IREE is WIRED (same 2026-08-30 change), and the validation
+build ran 2026-09-03 against a real v2.49.0.260730 staged on arm64 — see
+[`qnn-linux.md`](qnn-linux.md), which owns the results and the
+`QAIRT_HEADERS_DIR` defect that run exposed.
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
@@ -802,7 +804,7 @@ in minutes.
 
 To prevent regressions during updates, always preserve the following five vital fixes in the Linux cross pipeline:
 
-1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, the `rewrite_staged_python_pc()` helper rewrites the staged `python-3.14.pc` file's `libdir` and `includedir` to point correctly at the compiler's cross directory so `gst-python` builds succeed.
+1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, `python_stage_finalize()` runs `fix_python_pc_file()` over the staged `python-<mm>.pc` and `-embed.pc` so their `libdir`/`includedir` point at the compiler's cross directory, and symlinks `python3.pc` to them, so `gst-python` builds succeed.
 2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, GCC alternatives wire `/opt/gcc-16.2.0/bin/gcc` as `cc`/`c++`. On `amd64`, GCC is built natively. On `arm64`/`riscv64`, it is Canadian-cross-compiled; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native binary. The build hard-fails with three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) `readelf -h` on the `cc` binary itself checks ELF machine type (the real discriminator — `-dumpmachine` only reports the *target* triple, not the host arch); and (c) a cc1 compile-to-object smoke plus ELF check on the produced object, run under the target platform (QEMU for foreign arches). `wrapper-smoke` (Dockerfile.package target) runs validate-compilers.sh, smoke-media.sh, smoke-torch-venv.sh and smoke-cross-all-arches.sh for end-to-end verification.
@@ -870,8 +872,9 @@ The riscv64 cross lane BUILDS `onnxruntime-genai` from source. Upstream ships
 no riscv64 wheel, runs no riscv64 CI, and closed its one RISC-V field report
 ([onnxruntime-genai#594](https://github.com/microsoft/onnxruntime-genai/issues/594),
 Phi-3 int4 emitting nonsense on a XuanTie C910) as not-planned — so this is a
-self-build, and until a real riscv64 media build says otherwise it is
-**unvalidated**.
+self-build. **Validated 2026-09-03**: it builds, and `generate()` on the
+shipped image emits ids identical to an amd64 control, so #594 does not
+reproduce here — [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
 
 * **Toggle:** `GENAI_ALLOW_RISCV64` (`versions.env`, default `true`;
   `Dockerfile.media` ARG → ENV on the `onnxruntime` stage). Anything but

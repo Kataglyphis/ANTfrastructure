@@ -113,7 +113,7 @@ both PRs.
 
 ## 2. OpenCV: FFmpeg 8 removed `AVCodec.pix_fmts` and `supported_framerates`
 
-`linux/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch` ·
+`linux/scripts/patches/opencv/002a-upstream-ffmpeg-pix_fmts-removal.patch` + `002b-upstream-ffmpeg-supported-config-framerates.patch` ·
 applied by `03-media/build/opencv/build-opencv.sh` · applies to **OpenCV 5.0.0**.
 
 FFmpeg 8 removed the `AVCodec::pix_fmts` and `AVCodec::supported_framerates`
