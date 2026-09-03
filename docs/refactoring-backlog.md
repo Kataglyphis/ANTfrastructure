@@ -86,30 +86,45 @@ what the section title says:
   build is the first chance to settle it**
 - the genai NEEDED scan has still never run against a real image on any arch
 
-### A1. GEN1 — riscv64 GenAI: BUILD PROVEN, token sanity still open [★★]
+### A1. GEN1 — riscv64 GenAI: CLOSED 2026-09-03 [★★]
 
-The 2026-08-31 rebuild ran it for real. What was unknown is now measured, and
-only one question survives.
+Both open questions are measured. Evidence and repro:
+`docs/gen1-riscv64-genai.md#tier-4-measured-2026-09-03`.
 
-**PROVEN by the media-riscv64 stage (run r4, image pinned sha256:32114d…):**
-the upstream patch applies (`APPLIED: onnxruntime-genai riscv64 …`); it COMPILES
-under the GCC 16 riscv64 cross toolchain (`Built target onnxruntime-genai`);
-`cross_target_python_dev_ready` was true; llguidance/Corrosion LINKED (**zero**
-`dropping --use_guidance` — the parity-divergence no gate can see did not
-happen); and the wheel `onnxruntime_genai-0.15.2-cp314-cp314-linux_riscv64.whl`
-was produced with the correct platform tag, i.e. it passed the wheel-must-exist
-gate, `assert_elf_arch` and the target `EXT_SUFFIX` assert.
+**Token sanity — the one a build could not answer — is ANSWERED, and the result
+is stronger than "sane tokens":** with SmolLM2-135M-Instruct converted to GenAI
+format on amd64 and mounted into both shipped images, riscv64 greedy decoding is
+**token-for-token identical to the amd64 control** (first 8 ids
+`28, 198, 198, 57, 5248, 18948, 346, 2316` on both; `GENAI-BIND OK` rc=0 on
+both; riscv64 native ext `e_machine=243`). A kernel wrong enough to matter would
+have to be wrong *identically* on two unrelated backends. **#594 does not
+reproduce on this lane.**
 
-**STILL OPEN — the only one a build cannot answer:** does `generate()` emit sane
-tokens on riscv64? Upstream #594 is a RISC-V build that compiled, imported and
-produced nonsense; smoke tiers 1-3 pass in exactly that state. Arm tier 4 by
-mounting a small model and setting `GENAI_MODEL_DIR`. Until then the lane is
-"builds and imports", not "works".
+Two traps the run walked into, both now written up so the next person skips them:
+* `hf-internal-testing/tiny-random-LlamaForCausalLM` cannot be the fixture —
+  `head_size=4` and GroupQueryAttention needs `% 8 == 0`; it fails on amd64 too.
+* An **untrained** model is worse than useless here: near-uniform logits make
+  greedy decoding repeat one token, i.e. it manufactures the exact `#594`
+  signature tier 4 flags as a DEFECT. Use a really-trained small model, and run
+  the **amd64 control first** — that is what identified the fixture, not the
+  lane, as the broken part the first time.
 
-Also unresolved and cheap to settle on the next run: raise the riscv64 app-wheel
-floor 12 → 13 once a run PRINTS 13, and confirm the new
-`validate-media-runtime.sh` genai NEEDED scan behaves on a real image (it has
-never run against one on any arch).
+The two cheap items are settled too:
+* **app-wheel floor** raised riscv64 12 → **13** (the run printed 14; one wheel
+  of slack is deliberate). arm64 printed 15 but is **held at 14** — one sample,
+  and 15 would be a zero-slack floor. Table + the rule for raising them:
+  `docs/gen1-riscv64-genai.md#the-app-wheel-floor`.
+* **`validate-media-runtime.sh` genai NEEDED scan** has now run against real
+  images on **all three** arches (2026-09-03 chain; the "never run on any arch"
+  note was already stale when written). It resolved only `libXv.so.1` and
+  `libwebpdemux.so.2` — nothing genai — and an independent `ldd` over the
+  shipped riscv64 `/usr/local/lib/onnxruntime-genai/lib` reports **0 unresolved
+  NEEDED**.
+
+**Residual, deliberately left open:** tier 4 ran under **qemu-user**, which
+emulates the ISA but not a physical core's timing, errata or extension set.
+#594's hardware was a XuanTie C910. Re-run tier 4 on real riscv64 silicon when
+any is available — the repro recipe in the doc is a copy-paste.
 
 ### A2. QNN-LINUX — fan-out validation, BLOCKED on the login-gated SDK
 

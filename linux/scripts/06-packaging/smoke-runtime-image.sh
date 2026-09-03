@@ -262,13 +262,13 @@ check_app_wheel_smoke() {
       # failures==0 and reports a vanished component as a WARNING, so one identical
       # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
       # when an arch gains a component, never to make a red run green.
-      # GEN1: riscv64 stays at 12 until a real run PRINTS 13/… ok.
-      # docs/gen1-riscv64-genai.md
+      # GEN1: riscv64 12->13 (run 20260903 printed 14); arm64 held at 14.
+      # docs/gen1-riscv64-genai.md#the-app-wheel-floor
       local _wheel_floor _wheel_out _wheel_ok
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
         arm64)   _wheel_floor=14 ;;
-        riscv64) _wheel_floor=12 ;;
+        riscv64) _wheel_floor=13 ;;
         *)       _wheel_floor=0  ;;
       esac
       if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestr_ant_ion.smoke 2>&1)"; then
