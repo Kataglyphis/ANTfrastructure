@@ -74,7 +74,7 @@ git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerH
 
 Look the error message up in
 **[docs/failure-modes.md](docs/failure-modes.md)** — symptom, cause and fix for
-every failure this repo has hit live, on both lanes. The two that catch people
+every failure this repo has hit live, on both lanes. The three that catch people
 first:
 
 - `exec format error` on a foreign arch — QEMU/binfmt is not registered
@@ -131,8 +131,8 @@ On 2026-08-31 it carried **riscv64 only**: a single-arch run had replaced the
 3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
 published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
 a partial run cannot do it again —
-[docs/cross-build-verification.md](docs/cross-build-verification.md). The next full-fanout
-run restores all three arches.
+[docs/cross-build-verification.md](docs/cross-build-verification.md). The 2026-09-02
+full-fanout run restored it: the live index carries amd64/arm64/riscv64 again.
 
 ## Architecture
 
@@ -177,13 +177,15 @@ Three lanes:
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 `windows/amd64`.
 
-> **riscv64 `onnxruntime-genai` is self-built and UNVALIDATED.** Upstream ships
-> no riscv64 wheel and runs no riscv64 CI, so the cross lane builds it from
-> source (toggle `GENAI_ALLOW_RISCV64`, default on). A real riscv64 build has
-> since **compiled and linked it and produced a `linux_riscv64` wheel**; what is
-> still unproven is whether `generate()` emits sane tokens — upstream's one
-> RISC-V field report compiled, imported and emitted nonsense.
-> The patch, the gates and the first-build watch list:
+> **riscv64 `onnxruntime-genai` is self-built, and VALIDATED since 2026-09-03.**
+> Upstream ships no riscv64 wheel and runs no riscv64 CI, so the cross lane
+> builds it from source (toggle `GENAI_ALLOW_RISCV64`, default on). It compiles,
+> links and produces a `linux_riscv64` wheel — and `generate()` now has a
+> measurement behind it: greedy decoding on the shipped riscv64 image is
+> **token-for-token identical to an amd64 control**, so upstream's one RISC-V
+> field report of nonsense output does not reproduce here. The remaining
+> untested case is real riscv64 silicon; the run above was qemu-user.
+> The patch, the gates and the measurement:
 > [docs/gen1-riscv64-genai.md](docs/gen1-riscv64-genai.md).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no
@@ -266,11 +268,15 @@ is a deliberate subset — the full suite takes minutes (the secret scan alone i
 `make preflight` yourself before a rebuild or a push; CI runs it on every push
 regardless.
 
-The first row's suite is `bash linux/scripts/preflight.sh`. Newest gates in it
-(2026-09-01): **`pkg-names`** resolves every package name the tree asks apt for
+The first row's suite is `bash linux/scripts/preflight.sh` (29 slugs). Newest
+gates in it (2026-09-03): **`code-size`** caps shell/Python functions at 80 lines
+and shell/Python/Dockerfile files at 800, against frozen allowlists, and
+**`mutations`** neuters guarded code on purpose and fails unless the named test
+goes red — it gates the test suite itself, not the tree. Before them
+(2026-09-01), **`pkg-names`** resolves every package name the tree asks apt for
 against the live Ubuntu indices, and **`advert-keys`** fails when a
 version-shaped `ENV`/`ARG` is neither checked by the runtime smoke nor excused
-with a reason. Before them, **`code-dupes`** — token-normalised duplication over
+with a reason. Before those, **`code-dupes`** — token-normalised duplication over
 shell, Dockerfiles and the Markdown outside `docs/`, so it catches *renamed*
 clones the prose gate cannot see; deliberate twins are budgeted in
 `docs/scripts/code-dupes.allow`.
