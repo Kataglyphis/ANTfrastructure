@@ -1662,3 +1662,67 @@ discharged-obligation gap.
 Numbers, not opinions: function lengths from an AST-free line count, duplication
 from `docs/scripts/verify_code_dupes.py`. Nothing here breaks a build; this is
 the "I want clean code" queue. Ordered by value, not size.
+
+### YA. The unhashed 1.5 GB QAIRT download A2 fixed is still LIVE in the android LiteRT lane — the guard is never reachable from there [high]
+
+**Found 2026-09-03 while validating A2.** `_litert_disable_qairt_header_download`
+(`03-media/build/litert/build-litert.sh:169`, called once at :305) patches
+upstream's `litert/vendors/CMakeLists.txt` so it stops `file(DOWNLOAD)`ing QAIRT
+from softwarecenter.qualcomm.com — ~1.5 GB, **no `EXPECTED_HASH`, no `STATUS`
+check**, and not gated on `LITERT_ENABLE_QUALCOMM`.
+
+The android LiteRT build is a **different script on a different source tree** and
+never sees it:
+
+* `03-media/android-dispatch.sh:17` dispatches `litert` to
+  `litert/android/build-android.sh`.
+* That script sources only `android-build-preamble.sh` and
+  `litert-eigen-fetch.sh` — **not** `build-litert.sh`. The guard function does
+  not exist in its shell.
+* `QAIRT_HEADERS_DIR` appears **nowhere** in `build-android.sh`, so upstream's
+  `if(NOT QAIRT_HEADERS_DIR)` branch is taken on every configure.
+* It clones its own tree (`android_clone_shallow … litert-android`), so the
+  patch applied to the linux `LITERT_SRC` cannot carry over.
+
+**Evidence it actually fires** — `out/chain-media-runtime.log`, the 2026-09-03
+chain:
+
+```
+QNN headers at: /opt/litert-android/litert/build-android/_deps/qnn_headers/qairt/2.47.0.260601
+QNN headers detected at /opt/litert-android/litert/build-android/_deps/qnn_headers/qairt/2.47…
+```
+
+`_deps/qnn_headers` is upstream's FetchContent destination: the download
+completed. Note the version — **2.47.0.260601**, not the 2.49.0.260730 this repo
+pins and hashes for the linux lane. The android lane is pulling a *different*,
+*unverified* QAIRT over the network on every build.
+
+**Why it was not fixed on the spot.** The file is inside the 03-media
+bind-mount closure, and the discovery landed mid-way through a live media-arm64
+build. The standing rule is not to edit that closure outside a closure window —
+worker retries re-snapshot the context, so a mid-run edit can reach a running
+stage. `build-android.sh` is dispatched by the **android** stage and so is inert
+for a `--only media` run, but "this file isn't used by the stage I'm running" is
+exactly the reasoning that rule exists to refuse.
+
+**Fix (in a closure window):** source the guard — or lift it into a helper both
+lanes source — and call it in `build-android.sh` on the no-SDK path, mirroring
+:300-306. Then confirm on a real android build that `_deps/qnn_headers` is
+**absent**. The guard already fails loudly if upstream moves the anchor, so it
+carries its own staleness check.
+
+**Do NOT dodge it with a stub path:** any non-empty `QAIRT_HEADERS_DIR`
+force-enables Qualcomm (upstream :331-334) with headers we do not have. That is
+why the linux lane patches the block out instead.
+
+**CLOSED 2026-09-03.** Fixed by lifting the guard into
+`03-media/build/litert/android/litert-qairt-guard.sh` — under `android/` because
+`Dockerfile.android` COPYs only that dir — and sourcing it from **both**
+`build-litert.sh` and `android/build-android.sh`, which now calls it right after
+its clone (cwd is the tree root there). The helper logs without `info()`/`warn()`
+because the android stages never source `logging.sh`.
+
+Guarded by `tests/test-litert-qairt-guard.sh` (14 assertions) and the mutation
+`qairt.android-guard-unreachable`: deleting the android call turns the suite red,
+restoring it turns it green. `docs/qnn-linux.md` owns the explanation.
+

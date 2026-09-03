@@ -84,9 +84,18 @@ The patch is idempotent and fails loudly if the anchor moves.
 MediaTek's NeuroPilot fetch (AWS S3) and the Samsung LiteCore fetch *are* dodged
 with stub header dirs — both gate on the header EXISTING, so a stub is safe.
 
-> **Still open — backlog YA:** this guard is unreachable from the **android**
-> LiteRT lane, which builds its own tree via `android-dispatch.sh` and still
-> pulls the unverified 2.47.0.260601 on every build.
+The guard lives in `03-media/build/litert/android/litert-qairt-guard.sh` and is
+sourced by **both** lanes. It has to be: the android lane clones its own tree, so
+the cross lane's patched copy cannot cover it — which is exactly how it went
+unnoticed until 2026-09-03 (backlog YA). It sits under `android/` because
+`Dockerfile.android` COPYs only that directory, the same constraint that put
+`litert-eigen-fetch.sh` there.
+
+The android lane can never have a staged SDK anyway: the only zip this repo takes
+is the **Linux** `aarch64-oe-linux-gcc11.2` build, the wrong ABI for android. So
+its `QAIRT_HEADERS_DIR` is always empty and the download always fired — the
+android build even carries a retry loop written around that download truncating
+mid-transfer, which was the symptom without the cause.
 
 ## What is real, and what was invented
 

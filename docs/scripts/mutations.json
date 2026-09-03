@@ -214,5 +214,13 @@
     "replace": "    [ -f \"${inc}/QnnLog.h\" ] || true && err_disabled ",
     "test": "bash linux/scripts/tests/test-litert-qairt-headers.sh",
     "why": "a moved SDK layout must fail loudly at configure, not silently produce a bad -D"
+  },
+  {
+    "id": "qairt.android-guard-unreachable",
+    "target": "linux/scripts/03-media/build/litert/android/build-android.sh",
+    "find": "_litert_disable_qairt_header_download \"${PWD}\"",
+    "replace": ": # guard call removed",
+    "test": "bash linux/scripts/tests/test-litert-qairt-guard.sh",
+    "why": "the android lane clones its own tree, so the cross lane's patch cannot cover it -- YA"
   }
 ]

@@ -15,6 +15,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/litert-eigen-fetch.sh"
 
+# YA (2026-09-03): upstream file(DOWNLOAD)s ~1.5 GB of QAIRT, unhashed and
+# unchecked, whenever QAIRT_HEADERS_DIR is empty -- which it always is here: the
+# only SDK this repo stages is the LINUX aarch64-oe-linux-gcc11.2 build, wrong ABI
+# for android. docs/qnn-linux.md
+# shellcheck source=litert-qairt-guard.sh
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/litert-qairt-guard.sh"
+
 # resolve_host_compiler now comes from android-build-preamble.sh, sourced above.
 
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
@@ -33,6 +41,9 @@ apt-get update && apt-get install -y --no-install-recommends \
     g++ git cmake ninja-build python3 python3-pip
 
 android_clone_shallow "https://github.com/google-ai-edge/LiteRT.git" "${LITERT_VERSION}" litert-android
+
+# cwd is the clone root after android_clone_shallow.
+_litert_disable_qairt_header_download "${PWD}"
 
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 

@@ -11,7 +11,7 @@ docs/scripts/bump_versions.py | 1121 | baseline 2026-09-03: newly in scope (pyth
 docs/scripts/sync_versions.py | 849 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/Dockerfile.media | 1162 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/scripts/02-toolchain/build-gcc.sh | 880 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/litert/build-litert.sh | 975 | grew 2026-09-03: _litert_qairt_include_dir + its QnnLog.h assert (docs/qnn-linux.md)
+linux/scripts/03-media/build/litert/build-litert.sh | 953 | 2026-09-03: +_litert_qairt_include_dir, then -22 as the QAIRT guard moved to android/litert-qairt-guard.sh (YA)
 linux/scripts/03-media/build/opencv/build-opencv.sh | 934 | baseline 2026-09-03, not yet reviewed
 linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1243 | baseline 2026-09-03, not yet reviewed
 linux/scripts/06-packaging/smoke-runtime-image.sh | 1502 | grew 2026-09-03: probe split into four parts, _boot_verdict extracted
