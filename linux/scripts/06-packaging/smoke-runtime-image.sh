@@ -138,16 +138,23 @@ check_default_entrypoint_boot() {
   echo ""
 }
 
+# The image's OWN healthcheck command. Test[0] is the OCI verb (CMD / CMD-SHELL);
+# the probe is what follows it, and reading only [0] can distinguish 'a HEALTHCHECK
+# exists' from 'none' but never right from wrong. docs/refactoring-backlog.md WE
+_rt_healthcheck_cmd() {
+  inspect_image_config "import sys,json; cfg=json.load(sys.stdin)[0].get('Config',{}); t=(cfg.get('Healthcheck') or {}).get('Test') or []; print(' '.join(t[1:]) if len(t) > 1 else '')"
+}
+
 check_healthcheck_config() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- HEALTHCHECK ---"
   local healthcheck
-  healthcheck="$(inspect_image_config "import sys,json; cfg=json.load(sys.stdin)[0].get('Config',{}); hc=cfg.get('Healthcheck',{}); print(hc.get('Test',[''])[0] if hc else 'NONE')")"
-  if [ -n "${healthcheck}" ] && [ "${healthcheck}" != "NONE" ]; then
+  healthcheck="$(_rt_healthcheck_cmd)"
+  if [ -n "${healthcheck}" ]; then
     pass "HEALTHCHECK configured: ${healthcheck}"
   else
-    fail "No HEALTHCHECK configured"
+    fail "No HEALTHCHECK command configured (Test[0] alone is the OCI verb, not a probe)"
   fi
   echo ""
 }
@@ -252,10 +259,14 @@ check_app_wheel_smoke() {
       if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestr_ant_ion.smoke 2>&1)"; then
         printf '%s\n' "${_wheel_out}"
         _wheel_ok="$(printf '%s\n' "${_wheel_out}" | sed -n 's/.*=== \([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p' | tail -1)"
-        if [ -n "${_wheel_ok}" ] && [ "${_wheel_ok}" -lt "${_wheel_floor}" ] 2>/dev/null; then
+        # An unreadable count must FAIL. Falling through to pass would leave only the
+        # exit status, which is what this ratchet exists to distrust.
+        if [ -z "${_wheel_ok}" ]; then
+          fail "app wheel smoke on ${target_arch}: could not read the ok-count from its summary; the ratchet cannot arm"
+        elif [ "${_wheel_ok}" -lt "${_wheel_floor}" ] 2>/dev/null; then
           fail "app wheel smoke degraded on ${target_arch}: ${_wheel_ok} ok, floor ${_wheel_floor}"
         else
-          pass "app wheel smoke passed on-target (${target_arch}, ${_wheel_ok:-?} ok >= ${_wheel_floor})"
+          pass "app wheel smoke passed on-target (${target_arch}, ${_wheel_ok} ok >= ${_wheel_floor})"
         fi
       else
         fail "app wheel smoke FAILED in the runtime image (${target_arch})"
@@ -1205,11 +1216,16 @@ check_healthcheck_exec() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: HEALTHCHECK command executes ---"
-    if _rt_run \
-         /opt/venv/bin/python3 -c 'import onnxruntime' >/dev/null 2>&1; then
-      pass "HEALTHCHECK command runs (import onnxruntime via /opt/venv/bin/python3) (${target_arch})"
+    # Run the image's OWN command. A hardcoded copy passes while the shipped
+    # HEALTHCHECK is broken -- the one case this gate exists for.
+    local _hc
+    _hc="$(_rt_healthcheck_cmd)"
+    if [ -z "${_hc}" ]; then
+      fail "HEALTHCHECK has no command to run (${target_arch})"
+    elif _rt_run bash -lc "${_hc}" >/dev/null 2>&1; then
+      pass "HEALTHCHECK command runs as configured (${target_arch}): ${_hc}"
     else
-      fail "HEALTHCHECK command FAILED (${target_arch}) -- container would report unhealthy"
+      fail "HEALTHCHECK command FAILED (${target_arch}) -- container would report unhealthy: ${_hc}"
     fi
     echo ""
 }

@@ -790,6 +790,17 @@ closure the chain was re-reading at the time.
 
 `linux/scripts/06-packaging/smoke-runtime-image.sh:1206`
 
+**FIXED 2026-09-03.** Both halves. A new `_rt_healthcheck_cmd` reads the image's
+OWN probe — `Test[0]` is the OCI verb, the command is what follows — and the exec
+gate now runs THAT instead of a hardcoded copy, naming it in both verdicts. The
+config gate reports the command rather than the constant verb.
+
+Demonstrated against the published image: the helper reads
+`/opt/venv/bin/python3 -c "import onnxruntime" || exit 1` and it runs clean,
+while the old gate read `CMD-SHELL`. Reverting the extraction makes the exec gate
+try to run the verb — the failure message says `unhealthy: CMD-SHELL`, which is
+the bug stated in one line.
+
 **What breaks.**
 Edit linux/Dockerfile.torch:149 to `CMD /opt/venv/bin/python -c "import
 orchestr_ant_ion.server" || exit 1` (a rename, a venv interpreter path change,
@@ -835,6 +846,12 @@ run that string instead of the literal.
 ### WF. The app-wheel ratchet silently disarms when the ok-count cannot be parsed, falling back to the exit status the ratchet exists to distrust [medium]
 
 `linux/scripts/06-packaging/smoke-runtime-image.sh:254`
+
+**FIXED 2026-09-03.** An ok-count that does not parse now FAILS. It used to
+short-circuit into the pass branch and print `? ok >= 15`, leaving only the exit
+status — which the comment three lines above already documents as insufficient,
+since the app exits 0 whenever failures==0 and reports a vanished component as a
+WARNING.
 
 **What breaks.**
 The sibling app repo changes its summary wording (e.g. `=== 15/15 ok,` -> `===
