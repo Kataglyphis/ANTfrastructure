@@ -1567,6 +1567,19 @@ write a placeholder pin file the harvest can key on.
 
 `docs/cross-build-verification.md:180`
 
+**HALF DONE 2026-09-03.** The doc row is corrected: it now says the gate is a HARD
+assert armed by default from `versions.env` `TVM_REF`, that there is no escape
+hatch, and that a TVM-less lane means removing the pin rather than expecting a
+warning. **The worse half is deliberately left**: `Dockerfile.media:562-565` still
+promises "BEST-EFFORT on EVERY arch … it can never break the media build"
+directly above the RUN whose else-branch ships a TVM-less image as a warning.
+A comment-only edit there is cache-neutral (BuildKit keys on parsed instructions,
+not comment text), but it was not worth touching Dockerfile.media while the
+chain's publishing lane was mid-flight for zero immediate gain. First item of
+the next window, together with naming the real blocking call —
+`smoke-runtime-image.sh:358-369` via `build-runtime-manifest.sh:310`, not the
+in-build smoke.
+
 **What breaks.**
 A media build ships without TVM (the code itself anticipates this: smoke-
 torch-venv.sh:298 prints "not importable (best-effort; media build shipped
