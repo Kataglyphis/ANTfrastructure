@@ -23,7 +23,7 @@ _cmd() {
     append_buildkit_host_arg() { local -n _o="$1"; _o+=(--host); }
     cross_stage_log_redirect() { printf ""; }
     _has_digest_pinned_base() { [ "${HAS_PINNED_BASE:-0}" = "1" ]; }
-    ancestry_output_annotations() { printf "%s" "${ANCESTRY_ANN:-}"; }
+    ancestry_output_annotations() { printf ""; }   # no case varies this
     is_dry_run() { return 0; }
     log() { :; }; warn() { :; }; run() { :; }
     BUILDKIT_CACHE_DIR="'"${_work}"'/bc"

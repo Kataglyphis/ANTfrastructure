@@ -2003,6 +2003,25 @@ here and the next candidate after the closure window opens.
 `assert_pinned_versions` at 356 is untouched and remains the clear top of the
 list — more than twice the next entry.
 
+**PARTLY DONE 2026-09-03.** `_cross_stage_build_impl` is **170 → 120 lines**, with
+three seams extracted: `_cross_build_pull_flag` (10), `_cross_build_append_push_output`
+(25) and `_cross_build_append_cache_args` (29). The main function now reads as the
+sequence it is instead of inlining three policies.
+
+Order mattered more than the split. The function drives every stage of every build
+and had **zero** coverage, so 16 characterisation assertions were written and
+committed FIRST (`test-cross-stage-build-cmd.sh`), pinning the exact argv it
+assembles; the dry-run path prints it, which is the whole hook. The net was itself
+checked by mutation — inverting the pull flag, arming the inline cache
+unconditionally, swapping zstd for gzip each fail exactly one assertion — and then
+the refactor kept all 16 green, so the command is byte-identical.
+
+**Still 120 lines**, and the rest is deliberately untouched: the retry loop, the
+salvage-export pass and the registry-cache drop all sit AFTER the dry-run return,
+so the net does not reach them. Extracting them means extending the
+characterisation first — stub `run` to fail, `is_dry_run` to false — not cutting
+blind. That is the next step, and it is the bigger half.
+
 **BLOCKED, not deferred (2026-09-02).** The two remaining targets —
 `_cross_stage_build_impl` (01-core) and `reconcile_local_wheels` (03-media/runtime) —
 sit inside the bind-mount closure that standing rule 1 protects, and the RVA23

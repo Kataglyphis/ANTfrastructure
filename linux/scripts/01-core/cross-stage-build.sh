@@ -114,6 +114,82 @@ cross_stage_context_dir() {
 
 # _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [build args...]
 # push=1 pushes to the registry with cache export; push=0 builds locally only.
+# Seams of _cross_stage_build_impl, extracted so the main function reads as the
+# sequence it is. Behaviour is pinned by tests/test-cross-stage-build-cmd.sh.
+# docs/refactoring-backlog.md F1
+
+# --pull for this build: local builds and digest-pinned bases need no refresh.
+_cross_build_pull_flag() {
+  local push_flag="$1"; shift
+  if [ "${push_flag}" -eq 0 ]; then
+    printf '%s' "--pull=false"
+  elif _has_digest_pinned_base "$@"; then
+    printf '%s' "--pull=false"
+  else
+    printf '%s' "--pull=true"
+  fi
+}
+
+# Push output + opt-in attestation. See docs/build-cache-tiers.md.
+_cross_build_append_push_output() {
+  local -n _out="$1"
+  local tag="$2" push_flag="$3"
+  [ "${push_flag}" -eq 1 ] || return 0
+    # Stamp the parent ref this build consumed onto the pushed manifest: it is how
+    # a LATER partial run proves it is not on a stale ancestor (see ancestry.sh).
+    local _ancestry_ann=""
+    if declare -F ancestry_output_annotations >/dev/null 2>&1; then
+      _ancestry_ann="$(ancestry_output_annotations \
+        "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
+    fi
+    # PUSH1 (2026-08-18): zstd (not force-compression) for NEW layers — push time
+    # is the chain ceiling on a ~4-5 MB/s uplink. Knob: CROSS_LAYER_COMPRESSION.
+    _out+=(
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
+    )
+    # Opt-in SLSA provenance + SBOM as OCI referrers; off by default because the
+    # SBOM scanner adds time to every stage.
+    if [ -n "${BUILD_ATTEST:-}" ]; then
+      _out+=(
+        --provenance=mode=max
+        --sbom=true
+      )
+    fi
+}
+
+# The three cache tiers: local export (primary), local import (only when the slug
+# holds a manifest) and the inline registry cache (push only).
+# docs/build-cache-tiers.md
+_cross_build_append_cache_args() {
+  local -n _out="$1"
+  local tag="$2" push_flag="$3" _cache_dir="$4" _cache_slug="$5"
+  # A LOCAL buildkit cache is primary: it survives rebuilds and never hits ghcr's
+  # 400 on oversized mode=max cache blobs. See docs/build-cache-tiers.md.
+  if [ -z "${NO_CACHE:-}" ]; then
+    mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
+    # Only READ when the slug holds a manifest: --cache-from at an index.json-less
+    # dir logs a "could not read" that reads like a fault but is a clean miss.
+    if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
+      _out+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
+    fi
+    # Set by the chain disk-guard when pruning could not clear the free-space
+    # threshold: stop WRITING new local exports, keep READING what survived.
+    if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
+      _out+=(
+        --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
+      )
+    fi
+    # Inline cache (mode=min, in the image config — no separate blob, so no 400)
+    # lets other hosts warm-start from the tag. NO_CACHE_EXPORT skips only this.
+    if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
+      _out+=(
+        --cache-from "type=registry,ref=${tag}"
+        --cache-to "type=inline"
+      )
+    fi
+  fi
+}
+
 _cross_stage_build_impl() {
   local push_flag="$1" label="$2" tag="$3" dockerfile="$4"
   shift 4
@@ -124,14 +200,8 @@ _cross_stage_build_impl() {
   local log_file
   log_file="$(cross_stage_log_redirect "${label}")"
 
-  local pull_flag="--pull=true"
-  if [ "${push_flag}" -eq 0 ]; then
-    # Local builds use local images; registry may have stale versions.
-    pull_flag="--pull=false"
-  elif _has_digest_pinned_base "${extra[@]}"; then
-    # Digest-pinned bases are immutable; no need to pull.
-    pull_flag="--pull=false"
-  fi
+  local pull_flag
+  pull_flag="$(_cross_build_pull_flag "${push_flag}" "${extra[@]}")"
 
   local -a build_cmd=(
     "${NERDCTL_BIN:-nerdctl}" build
@@ -142,57 +212,13 @@ _cross_stage_build_impl() {
     -f "${dockerfile}"
   )
 
-  if [ "${push_flag}" -eq 1 ]; then
-    # Stamp the parent ref this build consumed onto the pushed manifest: it is how
-    # a LATER partial run proves it is not on a stale ancestor (see ancestry.sh).
-    local _ancestry_ann=""
-    if declare -F ancestry_output_annotations >/dev/null 2>&1; then
-      _ancestry_ann="$(ancestry_output_annotations \
-        "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
-    fi
-    # PUSH1 (2026-08-18): zstd (not force-compression) for NEW layers — push time
-    # is the chain ceiling on a ~4-5 MB/s uplink. Knob: CROSS_LAYER_COMPRESSION.
-    build_cmd+=(
-      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
-    )
-    # Opt-in SLSA provenance + SBOM as OCI referrers; off by default because the
-    # SBOM scanner adds time to every stage.
-    if [ -n "${BUILD_ATTEST:-}" ]; then
-      build_cmd+=(
-        --provenance=mode=max
-        --sbom=true
-      )
-    fi
-  fi
+  _cross_build_append_push_output build_cmd "${tag}" "${push_flag}"
 
-  # A LOCAL buildkit cache is primary: it survives rebuilds and never hits ghcr's
-  # 400 on oversized mode=max cache blobs. See docs/build-cache-tiers.md.
-  if [ -z "${NO_CACHE:-}" ]; then
-    local _cache_dir _cache_slug
-    _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
-    _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
-    mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
-    # Only READ when the slug holds a manifest: --cache-from at an index.json-less
-    # dir logs a "could not read" that reads like a fault but is a clean miss.
-    if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
-      build_cmd+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
-    fi
-    # Set by the chain disk-guard when pruning could not clear the free-space
-    # threshold: stop WRITING new local exports, keep READING what survived.
-    if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
-      build_cmd+=(
-        --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
-      )
-    fi
-    # Inline cache (mode=min, in the image config — no separate blob, so no 400)
-    # lets other hosts warm-start from the tag. NO_CACHE_EXPORT skips only this.
-    if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
-      build_cmd+=(
-        --cache-from "type=registry,ref=${tag}"
-        --cache-to "type=inline"
-      )
-    fi
-  fi
+  local _cache_dir _cache_slug
+  _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
+  _cross_build_append_cache_args build_cmd "${tag}" "${push_flag}" \
+    "${_cache_dir}" "${_cache_slug}"
 
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
