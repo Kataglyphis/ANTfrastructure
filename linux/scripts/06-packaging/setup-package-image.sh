@@ -302,6 +302,23 @@ _link_unless_rustup_provides() {
     link_command_if_present "${command_name}" "${link_path}"
 }
 
+# The artifact image is an amd64 host, so the COPY'd /usr/local/{rustup,cargo}
+# is x86_64 on every foreign arch: 2 GB that cannot execute, shipped that way in
+# every arm64/riscv64 image until 2026-09-03. Replace it with a native install
+# when no toolchain for this image's own triple is present (amd64 is a no-op).
+# docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+ensure_native_rust_toolchain() {
+    local triple
+    triple="$(rust_target_triple_for_arch "$(dpkg --print-architecture)")" || return 0
+    if compgen -G "${RUSTUP_HOME}/toolchains/*-${triple}" >/dev/null; then
+        echo "Rust toolchain in ${RUSTUP_HOME} is native (${triple})"
+        return 0
+    fi
+    echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
+    rm -rf "${RUSTUP_HOME}" "${CARGO_HOME}"
+    RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
+}
+
 wire_cargo_symlinks() {
     _link_unless_rustup_provides cargo "${CARGO_HOME}/bin/cargo"
     _link_unless_rustup_provides rustc "${CARGO_HOME}/bin/rustc"
@@ -502,6 +519,7 @@ main() {
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
+    ensure_native_rust_toolchain
     wire_cargo_symlinks
     create_runtime_venv "${python_mm}"
 

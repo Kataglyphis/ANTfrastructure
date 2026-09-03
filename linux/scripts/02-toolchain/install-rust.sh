@@ -3,7 +3,10 @@ set -euo pipefail
 
 # install-rust.sh
 # Installs rustup, cargo-c, nightly toolchain, and cross-compilation targets
-# for the host and all target architectures. Called from Dockerfile.toolchain.
+# for the host and all target architectures. Called from Dockerfile.toolchain,
+# and again by setup-package-image.sh on foreign-arch runtime images, where
+# the COPY'd toolchain is the builder's x86_64 one and cargo-c comes from apt
+# (RUST_INSTALL_CARGO_C=0). docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 
 if [ -f /opt/scripts/core/platform.sh ]; then
   # shellcheck disable=SC1091
@@ -56,7 +59,9 @@ rm -f "${rustup_init}"
 rustc --version
 cargo --version
 
-cargo install --locked --version "${CARGO_C_VERSION}" cargo-c
+if [ "${RUST_INSTALL_CARGO_C:-1}" = "1" ]; then
+  cargo install --locked --version "${CARGO_C_VERSION}" cargo-c
+fi
 
 try_rustup() {
   "$@" && return 0

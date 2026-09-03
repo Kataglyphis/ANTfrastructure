@@ -45,6 +45,7 @@ Two neighbours, so you land on the right page:
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
 - [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
+- [The copied Rust toolchain is the builder's arch](#the-copied-rust-toolchain-is-the-builders-arch)
 
 **Windows: the layer store (hcsshim)**
 
@@ -575,6 +576,67 @@ two apart, which is why this is a call-site check
 (docs/code-quality-tooling.md, planned gate `trailing-and`), not a pattern ban.
 Until it exists: a function-level test must assert the exit status on the
 "nothing to do" path, not only the calls it makes.
+
+### The copied Rust toolchain is the builder's arch
+
+**Symptom.** The arm64 package stage dies with `exit code: 127` and *no*
+`command not found` line — the last output is `Keeping existing
+/usr/local/cargo/bin/rustup (rustup toolchain wins over PATH lookup)`
+(2026-09-03). In the shipped `:latest-cross-arm64` of 2026-09-01:
+
+```
+$ rustc --version
+bash: /usr/local/cargo/bin/rustc: cannot execute: required file not found
+$ ls /usr/local/rustup/toolchains
+1.98.0-x86_64-unknown-linux-gnu  nightly-2026-06-28-x86_64-unknown-linux-gnu
+$ du -sh /usr/local/rustup      # 2.0G
+```
+
+**Cause.** `Dockerfile.package` COPYs `/usr/local/{rustup,cargo}` from
+`artifact-source`, and artifact-source is the **amd64 host** image of the
+cross chain (`--platform=${ARTIFACT_PLATFORM}`). Everything else it copies is a
+*target* tree (a cross-built `/opt/gcc-<v>`, `/opt/llvm-target`, `/opt/opencv5`),
+but the Rust toolchain there is the builder's own x86_64 install with
+`aarch64`/`riscv64gc` *targets* added — that is what a cross-compiler needs and
+exactly what a native arm64 image cannot run. Every arm64/riscv64 runtime image
+shipped 2 GB of dead x86_64 binaries at the front of `PATH`
+(`/usr/local/cargo/bin` precedes `/usr/bin`), so `cargo` was broken rather than
+falling back to Ubuntu's.
+
+**Why nothing caught it.** Three layers, each blind in its own way:
+
+- `wire_cargo_symlinks` checked `-x` (true for a foreign ELF) and kept the shims.
+- `report_rust_provenance`'s hard gate reads `RUST_VERSION`, which did not reach
+  the script until 7eca29c6 (2026-09-03) — the day it started running was the
+  day it failed. Before that: `NOTE: RUST_VERSION unset; cannot verify`.
+- The runtime smoke's ADV/HAVE table (`_advert_verdicts`) turns an *unreadable*
+  actual value into `SKIP`, so `rustc --version` failing under `2>/dev/null` was
+  reported as "could not read", not as a mismatch.
+
+**Why 127 with no message.** `_got="$("${CARGO_HOME}/bin/rustc" --version
+2>/dev/null | awk …)"`: the loader's `cannot execute` goes to `/dev/null`,
+`pipefail` propagates rustc's 127 through `awk`, and `set -e` exits on the
+assignment. The pattern is fine for a probe whose result is *tested*; it is not
+fine when the probe's failure is itself the fault.
+
+**Fix.** `setup-package-image.sh` `ensure_native_rust_toolchain` (before
+`wire_cargo_symlinks`): if `${RUSTUP_HOME}/toolchains/` holds no
+`*-<own triple>` dir, wipe both trees and run the same `install-rust.sh` the
+toolchain stage uses, with `BUILD_MODE=native` and `RUST_INSTALL_CARGO_C=0`
+(compiling cargo-c under QEMU would cost an hour; the `cargo-c` apt package is
+what `wire_cargo_symlinks` links in that case — one minor version behind the
+pin, an accepted skew). amd64 is a no-op: the copied toolchain *is* native
+there. The native install downloads the pinned stable + clippy + rustfmt +
+`wasm32-unknown-unknown` and the pinned nightly, same set as amd64, so the
+three arches ship the same toolchain surface.
+
+**Guards.** `check_rust_toolchain` in `smoke-runtime-image.sh` executes
+`rustc --version` in the shipped image, requires the `RUST_VERSION` pin, reads
+the active toolchain's host triple (`rustup show active-toolchain`) and requires
+`cargo-cbuild` — it fails on the 2026-09-01 image
+(`tests/test-runtime-image-gates.sh`). The same class applies to any *host*
+tree copied from artifact-source: `/opt/flutter` on arm64 is the x86-64 SDK
+too (`setup-flutter.sh`), which `check_flutter` exercises the same way.
 
 ---
 

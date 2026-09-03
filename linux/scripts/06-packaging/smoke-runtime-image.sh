@@ -493,6 +493,30 @@ check_flutter() {
   echo ""
 }
 
+# The Rust toolchain must be the image's OWN arch and run: every arm64/riscv64
+# image before 2026-09-03 carried the builder's x86_64 rustup (2 GB, exit 127),
+# and the ADV/HAVE table only SKIPs an unreadable rustc. Executes the pinned
+# rustc and reads the active toolchain's host triple. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+check_rust_toolchain() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local triple pin out
+  echo "--- Functional: rust toolchain ---"
+  triple="$(smoke_rust_target "${target_arch}")"
+  pin="$(_rt_versions_env_pin RUST_VERSION)"
+  out="$(_rt_run bash -lc 'rustc --version 2>&1 | head -1; rustup show active-toolchain 2>&1 | head -1; command -v cargo-cbuild' 2>&1 || true)"
+  if ! printf '%s\n' "${out}" | grep -qE "^rustc ${pin:-[0-9]}"; then
+    fail "rustc does not run or is not RUST_VERSION=${pin:-?} in the ${target_arch} image: $(printf '%s' "${out}" | head -1)"
+  elif ! printf '%s\n' "${out}" | grep -qF -- "-${triple}"; then
+    fail "the active rust toolchain is not ${triple} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- the builder's toolchain was shipped instead of a native one"
+  elif ! printf '%s\n' "${out}" | grep -qE '^/.*/cargo-cbuild$'; then
+    fail "cargo-cbuild missing on ${target_arch} (apt cargo-c fallback did not link)"
+  else
+    pass "rustc ${pin} runs natively as ${triple} with cargo-cbuild (${target_arch})"
+  fi
+  echo ""
+}
+
 # Native shared-library dependency closure over the source-built /opt stacks: any
 # NEEDED soname absent from the runtime loader path is a real defect (the class that
 # shipped a libopencore-amrwb-broken ffmpeg and a libsleef-broken torch while amd64
@@ -1498,6 +1522,7 @@ main() {
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_flutter "${image_tag}" "${target_arch}"
+    check_rust_toolchain "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"

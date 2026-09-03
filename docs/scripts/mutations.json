@@ -264,6 +264,22 @@
     "why": "the exact cbbd0da7 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
   },
   {
+    "id": "rust.native-toolchain-triple",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "compgen -G \"${RUSTUP_HOME}/toolchains/*-${triple}\" >/dev/null",
+    "replace": "compgen -G \"${RUSTUP_HOME}/toolchains/*\" >/dev/null",
+    "test": "bash linux/scripts/tests/test-native-rust-toolchain.sh",
+    "why": "accepting ANY toolchain dir is the 2026-09-01 ship: the builder's x86_64 rustup passes as native on arm64/riscv64 (2 GB of exit-127 binaries at the front of PATH)"
+  },
+  {
+    "id": "rust.smoke-host-triple",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "elif ! printf '%s\\n' \"${out}\" | grep -qF -- \"-${triple}\"; then",
+    "replace": "elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "without the host-triple read the smoke is the ADV/HAVE table again: a rustc that happens to run (QEMU host binaries, a future amd64 loader in the image) passes as native"
+  },
+  {
     "id": "sccache.retry-once",
     "target": "linux/scripts/01-core/sccache-launcher.sh",
     "find": "  sccache \"$@\" 2>\"${_err}\"\n  _rc2=$?",
