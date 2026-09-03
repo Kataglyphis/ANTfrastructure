@@ -1121,6 +1121,41 @@ This is the same class as upstream
 and runs on the HTP at 19.5 tok/s. If you need a bigger graph on the NPU, reach
 for a pre-compiled AI Hub bundle rather than a larger GGUF.
 
+## Long unattended runs: keep the machine awake first
+
+A multi-hour benchmark makes **no power request**. Windows sees background HTTP
+traffic and a busy NPU as an idle system and enters Modern Standby on schedule —
+and this host does not reliably come back from it while a GenieX lane holds a
+model.
+
+Measured the hard way on 2026-09-03: a 27-task run was left unattended, the
+WLAN log shows `sleep, SLPM Exit, display off` cycling once a minute until
+03:53, and the machine then had to be powered off by hand. Kernel-Power event
+41 with `BugcheckCode 0` and no crash dump — a **hang, not a bluescreen**. The
+run, and roughly an hour of measurement, were lost.
+
+The idle timeouts on this host make it easy to hit:
+
+| Power source | Standby after |
+|---|---|
+| AC | 5 hours |
+| **Battery** | **10 minutes** |
+
+Wrap any run longer than a few minutes:
+
+```powershell
+# hold it awake for the duration of a run started elsewhere
+pwsh -File windows/scripts/host/keep-awake.ps1 -Minutes 240
+
+# or run the command under it
+pwsh -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+```
+
+It uses `SetThreadExecutionState`, which is scoped to that process, so a crash
+or Ctrl-C releases the request automatically. Changing the power scheme instead
+would survive the run and quietly leave the machine unable to sleep at all —
+trading one failure for a worse one.
+
 ## Troubleshooting
 
 Every row below was hit live on 2026-08-31.
