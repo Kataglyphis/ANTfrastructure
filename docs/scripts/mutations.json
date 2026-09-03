@@ -190,5 +190,13 @@
     "replace": "  for f in \"${flagdir}\"/pin.*.*; do",
     "test": "bash linux/scripts/tests/test-parallel-loop.sh",
     "why": "--no-push writes only built.<stage>.<arch>, and pin.* alone loses it"
+  },
+  {
+    "id": "boot.discriminating-assertion",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s' \"${out}\" | grep -q \"gstma=yes\"; then",
+    "replace": "  elif ! printf '%s' \"${out}\" | grep -q \"gst=set\"; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the image ENV sets GST_PLUGIN_PATH, so gst=set answers yes without the entrypoint"
   }
 ]

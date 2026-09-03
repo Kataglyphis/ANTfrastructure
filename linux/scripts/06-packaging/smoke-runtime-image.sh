@@ -97,6 +97,25 @@ check_entrypoint() {
 # arrives on STDIN so the default CMD shell reads it, and `exit 42` proves the exec
 # chain hands the child's status back. A gate may not skip itself: a missing CMDOK
 # marker (inspect failed) or a CMD whose first word is not a shell FAILS.
+# Pure verdict function for the default-boot gate: rc + probe text in, one
+# pass/fail out. No container, so the reasoning is unit-testable -- which is how
+# the previous version's inert assertion would have been caught.
+_boot_verdict() {
+  local rc="$1" out="$2" target_arch="$3"
+  if [ "${rc}" != "42" ]; then
+    fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
+  elif ! printf '%s' "${out}" | grep -q "gstma=yes"; then
+    # NOT gst=set / vulkan=set: the image ENV sets both on its own, so those
+    # answer yes even with the entrypoint's sourcing gone. The multiarch plugin
+    # dir comes only from gstreamer-env.sh. docs/refactoring-backlog.md XQ
+    fail "the entrypoint did not source gstreamer-env.sh (${target_arch}): ${out} -- GST_PLUGIN_PATH lacks the multiarch dir"
+  elif ! printf '%s' "${out}" | grep -q "vkres=yes"; then
+    fail "the entrypoint did not resolve VULKAN_SDK past /opt/vulkan/active (${target_arch}): ${out}"
+  else
+    pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
+  fi
+}
+
 check_default_entrypoint_boot() {
   local image_tag="$1"
   local target_arch="$2"
@@ -125,16 +144,12 @@ check_default_entrypoint_boot() {
   local out rc
   out="$(printf '%s\n' \
            'echo "BOOT uid=$(id -u) gst=${GST_PLUGIN_PATH:+set} vulkan=${VULKAN_SDK:+set}"' \
+    'case "${GST_PLUGIN_PATH}" in *linux-gnu/gstreamer-1.0*) echo "gstma=yes";; *) echo "gstma=no";; esac' \
+    'case "${VULKAN_SDK}" in /opt/vulkan/active|"") echo "vkres=no";; *) echo "vkres=yes";; esac' \
            'exit 42' \
          | "${NERDCTL_BIN}" run --rm -i --platform "linux/${target_arch}" "${image_tag}" 2>/dev/null)" \
     && rc=0 || rc=$?
-  if [ "${rc}" != "42" ]; then
-    fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
-  elif ! printf '%s' "${out}" | grep -q "gst=set"; then
-    fail "default boot ran but the entrypoint exported no GStreamer env (${target_arch}): ${out} -- gstreamer-env.sh sourcing regressed"
-  else
-    pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
-  fi
+  _boot_verdict "${rc}" "${out}" "${target_arch}"
   echo ""
 }
 

@@ -108,4 +108,36 @@ t_assert_contains "${_probe}" "HAVE PYTHON_VERSION" "the actual-versions section
 t_assert_contains "${_probe}" "REQ"                 "the venv inventory section must be there"
 t_assert_contains "${_probe}" "SONAME"              "the inventory section must be there"
 
+# ── XQ: the default-boot gate must test what only the entrypoint provides ────
+_boot() {
+  bash -c '
+    set -u
+    FAILURES=0
+    fail() { printf "FAIL %s\n" "$*"; }
+    pass() { printf "PASS %s\n" "$*"; }
+    '"$(_extract _boot_verdict)"'
+    _boot_verdict "$1" "$2" amd64' _ "$1" "$2" 2>&1
+}
+
+t_case "a boot that did not reach the script fails"
+t_assert_contains "$(_boot 1 "")" "FAIL" "the entrypoint must exec the command and propagate 42"
+
+t_case "the image ENV alone is NOT enough to pass"
+# This is the whole point: GST_PLUGIN_PATH and VULKAN_SDK are set by the image
+# ENV, so the old gst=set/vulkan=set assertion answered yes with the entrypoint's
+# sourcing gone. Measured in the shipped image before changing this.
+t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
+gstma=no
+vkres=no")" "did not source gstreamer-env.sh" \
+  "set-ness of a var the image already exports proves nothing"
+
+t_case "a resolved VULKAN_SDK is required too"
+t_assert_contains "$(_boot 42 "gstma=yes
+vkres=no")" "did not resolve VULKAN_SDK" "the entrypoint resolves it past /opt/vulkan/active"
+
+t_case "the real shipped shape passes"
+t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
+gstma=yes
+vkres=yes")" "PASS" "what the published image actually prints"
+
 t_summary

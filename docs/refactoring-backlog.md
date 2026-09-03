@@ -1845,6 +1845,26 @@ VERSIONS_ENV path as the hatch.
 
 `linux/scripts/06-packaging/smoke-runtime-image.sh:133`
 
+**FIXED 2026-09-03.** The gate asserted `GST_PLUGIN_PATH` and `VULKAN_SDK` were
+SET — and the image ENV sets both on its own, which was measured in the published
+image before anything changed: bypassing the entrypoint entirely still answers
+yes to both. So "the entrypoint's sourcing regressed" was undetectable.
+
+It now asserts what ONLY the entrypoint provides, established by diffing the
+container env with and without it: the multiarch plugin dir inside
+`GST_PLUGIN_PATH`, and a `VULKAN_SDK` resolved past `/opt/vulkan/active`. Proven
+against the shipped image — with the entrypoint `gstma=yes vkres=yes`, bypassing
+it `gstma=no vkres=no`, where the old assertion said "set" both times.
+
+The verdict moved into `_boot_verdict`, a pure function in the file's own
+established shape, so the reasoning is unit-testable without a container — which
+is how the inert version would have been caught. Four cases, plus a mutation
+restoring the old `gst=set` assertion, which bites.
+
+`test-smoke-arch-parity.sh` went red on this and was RIGHT to: its fake entrypoint
+exported `GST_PLUGIN_PATH=/fake/gst`, while its own comment promised "the env the
+entrypoint is supposed to have exported". The fixture now carries the real shapes.
+
 **What breaks.**
 State: the shipped image loses its entrypoint env layer -- e.g.
 Dockerfile.torch:110's `COPY ... gstreamer-env.sh /usr/local/bin/gstreamer-
