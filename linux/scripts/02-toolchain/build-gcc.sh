@@ -378,8 +378,10 @@ verify_gcc_gpg_signature() {
   local default_keys="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62 7F74F97C103468EE5D750B583AB00996FC26A641 33C235A34C46AA3FFB293709A328C3A2C3C45C06 13975A70E63C361C73AE69EF6EEB81F8981C74C7"
   local keys="${GCC_GPG_KEYS:-${default_keys}}"
 
-  if ! wget -q --spider "${SIG_URL}"; then
-    echo "No .sig found or accessible."
+  if ! _gcc_probe_url "${SIG_URL}"; then
+    # "not found" and "host did not answer" are indistinguishable here, so this
+    # must obey GCC_REQUIRE_GPG like every other skipped-verification path.
+    _gcc_gpg_require_or_warn
     return 0
   fi
 
@@ -476,10 +478,27 @@ fetch_gcc_tarball() {
 # Verify the tarball against the server's sha512.sum. If the server has a
 # checksum file, failing to fetch or match it aborts (no silent downgrade to an
 # unverified build); a missing checksum file is only a warning.
+# The tarball is fetched MIRROR-first while the checksum lives only on the
+# canonical host, so "could not verify" is not the same as "nothing to verify".
+# docs/refactoring-backlog.md XK
+# One reachability probe for both proofs. The explicit timeout matters: wget's
+# defaults outlast a short outage and turn it into a silent skip.
+_gcc_probe_url() { wget -q --timeout=20 -t 3 --spider "$1"; }
+
+_gcc_sha_unverified_or_die() {
+  echo "WARNING: SHA512 verification did not happen: $1" >&2
+  if [ "${GCC_ALLOW_UNVERIFIED_TARBALL:-0}" != "1" ]; then
+    echo "ERROR: refusing to build an unverified GCC tarball. The bytes may come "\
+         "from any GNU mirror; the proof comes only from gcc.gnu.org. Set "\
+         "GCC_ALLOW_UNVERIFIED_TARBALL=1 to accept that trade deliberately." >&2
+    exit 1
+  fi
+}
+
 verify_gcc_sha512() {
   echo "Attempting SHA512 verification..."
-  if ! wget -q --spider "${SHA_URL}"; then
-    echo "No sha512.sum found on server; continuing." >&2
+  if ! _gcc_probe_url "${SHA_URL}"; then
+    _gcc_sha_unverified_or_die "sha512.sum not reachable at ${SHA_URL} (absent, or the host did not answer)"
     return 0
   fi
   if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum; then
@@ -487,7 +506,7 @@ verify_gcc_sha512() {
     exit 1
   fi
   if ! grep -Eq "[[:space:]]${TARBALL}\$" sha512.sum 2>/dev/null; then
-    echo "WARNING: tarball entry not found in sha512.sum; continuing without SHA check." >&2
+    _gcc_sha_unverified_or_die "sha512.sum has no entry for ${TARBALL}"
     return 0
   fi
   grep -E "[[:space:]]${TARBALL}\$" sha512.sum > "${TARBALL}.sha512"

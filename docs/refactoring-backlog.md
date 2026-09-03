@@ -1219,6 +1219,30 @@ ran.
 
 `linux/scripts/02-toolchain/build-gcc.sh:481`
 
+**FIXED 2026-09-03.** Four holes, not one. Both proof probes now go through
+`_gcc_probe_url` with an explicit `--timeout=20 -t 3`, and a probe that does not
+answer is no longer read as "nothing to verify":
+
+* an unreachable or absent `sha512.sum` now **aborts**, with
+  `GCC_ALLOW_UNVERIFIED_TARBALL=1` as the explicit escape hatch. The file's own
+  comment already claimed "no silent downgrade to an unverified build" — that is
+  now true rather than aspirational;
+* a `sha512.sum` with no entry for this tarball takes the same path, instead of
+  warning and continuing;
+* the `.sig` probe routes through `_gcc_gpg_require_or_warn`, so `GCC_REQUIRE_GPG=1`
+  finally covers the case it most needed to — it previously returned 0 without
+  consulting the knob at all;
+* the probes had no timeout flags, so wget's defaults outlasted a short outage.
+
+New suite `test-gcc-tarball-verification.sh` extracts the helpers (build-gcc.sh is
+a top-level script, not a library) and stubs `wget` as unreachable. Reverting the
+policy fails 3 of 6 assertions. Extracting `_gcc_probe_url` was not cosmetic: the
+two probes had become identical and pushed the file's own duplication pair over
+budget, so the gate asked for an owner and got one.
+
+**What is NOT changed:** the mirror-first fetch order stays. The problem was never
+that the bytes come from a mirror — it is that the proof was optional.
+
 **What breaks.**
 fetch_gcc_tarball (:469) downloads gcc-16.2.0.tar.xz from
 MIRROR_TARBALL_URL=https://ftpmirror.gnu.org/gnu/gcc/gcc-16.2.0/ FIRST — a GNU
