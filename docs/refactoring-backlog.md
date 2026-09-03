@@ -1436,6 +1436,13 @@ artifact of the chain.
 
 `linux/scripts/tests/test-iree-wheelhouse-stages.sh:233`
 
+**FIXED 2026-09-03** (`aac89983`). PATH is now just the stub dir, which holds the
+git and ninja stubs; nothing in `build_iree_wheels` runs an external command before
+the check. The case also asserts the REASON now, not only the return code — without
+that, deleting the guard still returns 1 and the case still passes, which is exactly
+how it went unnoticed. Proven in a sandbox copy: removing the cmake guard fails one
+assertion, the reason one, while the rc assertion stays green on its own.
+
 **What breaks.**
 Delete (or invert) `command -v cmake >/dev/null 2>&1 || { warn "cmake absent;
 skipping IREE riscv64 runtime wheel"; return 1; }` at
@@ -1505,6 +1512,13 @@ not make, and a refactor of _iree_check_prereqs would be mutation-invisible.
 ### XM. Two test-guard-helpers.sh cases end in `t_assert_ok true` after a subshell whose exit status is thrown away — they cannot fail, so source_vendor's nounset window and first_match's missing-dir contract are unprotected [medium]
 
 `linux/scripts/tests/test-guard-helpers.sh:57`
+
+**FIXED 2026-09-03** (`dafd45db`). Both cases capture `$?` straight after the
+subshell. **The first fix was no fix:** wrapping the subshell in `if ... then`
+suppresses errexit inside it, so the very abort under test could not happen — the
+suite stayed green with `first_match`'s `|| true` removed. Caught by mutating.
+Proven in a sandbox copy of 01-core: removing `|| true` fails exactly one
+assertion, dropping `source_vendor`'s `set +u` fails two.
 
 **What breaks.**
 Rewrite `source_vendor` (linux/scripts/01-core/guard-helpers.sh:45-55) to drop
@@ -2065,6 +2079,12 @@ first work item of the next closure window, in this order:
 by value, for the reason given above: decomposing its shell moves ~26 lines.
 
 ### F2. Files over ~800 lines [L each, low priority] — RE-MEASURED 2026-09-02
+
+
+**NOW MEASURED 2026-09-03**, not yet reduced. `code-size` (see
+docs/code-quality-tooling.md) freezes all 7 files over 800 lines and refuses silent
+growth, so this table can no longer go stale between rounds — which is what kept
+happening. Splitting any of them is still open work, and still low priority.
 
         was   now  file
         1013  1429  06-packaging/smoke-runtime-image.sh          +416
