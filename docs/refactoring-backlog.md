@@ -465,6 +465,113 @@ chain was mid-flight, so this is a task list, not a change.
 Two of them explain the disk fight of that same evening, and one is proved by
 a line from the log of the build that was running while the audit ran.
 
+### YA. The unhashed 1.5 GB QAIRT download A2 fixed is still LIVE in the android LiteRT lane — the guard is never reachable from there [high]
+
+**Found 2026-09-03 while validating A2.** `_litert_disable_qairt_header_download`
+(`03-media/build/litert/build-litert.sh:169`, called once at :305) patches
+upstream's `litert/vendors/CMakeLists.txt` so it stops `file(DOWNLOAD)`ing QAIRT
+from softwarecenter.qualcomm.com — ~1.5 GB, **no `EXPECTED_HASH`, no `STATUS`
+check**, and not gated on `LITERT_ENABLE_QUALCOMM`.
+
+The android LiteRT build is a **different script on a different source tree** and
+never sees it:
+
+* `03-media/android-dispatch.sh:17` dispatches `litert` to
+  `litert/android/build-android.sh`.
+* That script sources only `android-build-preamble.sh` and
+  `litert-eigen-fetch.sh` — **not** `build-litert.sh`. The guard function does
+  not exist in its shell.
+* `QAIRT_HEADERS_DIR` appears **nowhere** in `build-android.sh`, so upstream's
+  `if(NOT QAIRT_HEADERS_DIR)` branch is taken on every configure.
+* It clones its own tree (`android_clone_shallow … litert-android`), so the
+  patch applied to the linux `LITERT_SRC` cannot carry over.
+
+**Evidence it actually fires** — `out/chain-media-runtime.log`, the 2026-09-03
+chain:
+
+```
+QNN headers at: /opt/litert-android/litert/build-android/_deps/qnn_headers/qairt/2.47.0.260601
+QNN headers detected at /opt/litert-android/litert/build-android/_deps/qnn_headers/qairt/2.47…
+```
+
+`_deps/qnn_headers` is upstream's FetchContent destination: the download
+completed. Note the version — **2.47.0.260601**, not the 2.49.0.260730 this repo
+pins and hashes for the linux lane. The android lane is pulling a *different*,
+*unverified* QAIRT over the network on every build.
+
+**Why it was not fixed on the spot.** The file is inside the 03-media
+bind-mount closure, and the discovery landed mid-way through a live media-arm64
+build. The standing rule is not to edit that closure outside a closure window —
+worker retries re-snapshot the context, so a mid-run edit can reach a running
+stage. `build-android.sh` is dispatched by the **android** stage and so is inert
+for a `--only media` run, but "this file isn't used by the stage I'm running" is
+exactly the reasoning that rule exists to refuse.
+
+**Fix (in a closure window):** source the guard — or lift it into a helper both
+lanes source — and call it in `build-android.sh` on the no-SDK path, mirroring
+:300-306. Then confirm on a real android build that `_deps/qnn_headers` is
+**absent**. The guard already fails loudly if upstream moves the anchor, so it
+carries its own staleness check.
+
+**Do NOT dodge it with a stub path:** any non-empty `QAIRT_HEADERS_DIR`
+force-enables Qualcomm (upstream :331-334) with headers we do not have. That is
+why the linux lane patches the block out instead.
+
+### YB. sccache fails to spawn its preprocessor on thousands of compiles per chain (`os error 2`) — a silent partial cache miss across most of the media stage [medium]
+
+**Observed 2026-09-03**, and **pre-existing**: 3373 occurrences in the
+2026-09-03 chain log, 190 within the first four minutes of the A2 media-arm64
+run. Not a regression from the QNN staging.
+
+```
+sccache-launcher:   sccache: error: failed to spawn Command { std: cd "<builddir>" && env -i … "/opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++" "-x" "c++" "-E" "-P" … }
+sccache-launcher:   sccache: caused by: No such file or directory (os error 2)
+```
+
+That is sccache spawning the **preprocessor** to compute a cache key. When it
+fails, the launcher falls through to a real compile, so the build stays correct
+and green — it just silently loses the cache for that unit. Nothing gates on it.
+
+**Spread** — this is not one component (counts from the 2026-09-03 chain, by
+build dir):
+
+| count | tree |
+|---|---|
+| 1536 | `/tmp/opencv-1` |
+| 342 | `/opt/onnxruntime/.../_deps` |
+| 274 | `/tmp/litert-1/.../abseil-cpp-build` |
+| 233 + 153 | `/opt/onnxruntime/.../dnnl` |
+| — | also `/opt/onnxruntime-genai`, `/tmp/ffmpeg-1`, `/tmp/pyav-1`, armnn |
+
+**What is NOT the cause — two hypotheses formed and then disproved, recorded so
+nobody re-derives them:**
+
+1. **`env -i` strips `LD_LIBRARY_PATH`, so the `/opt`-installed cross GCC cannot
+   start.** Disproved directly: `env -i /opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++
+   --version` inside the shipped image prints `(GCC) 16.2.0` and exits 0.
+2. **The sccache server daemon lives in a different mount namespace, so the
+   `cd` target does not exist for it.** Disproved by the counter-evidence below:
+   a namespace mismatch would fail *every* compile, and it plainly does not.
+
+**The counter-evidence that makes this a PARTIAL failure, not a broken cache:**
+the same chain reports real hits — `Cache hits 2732`, `2636`, `2159`, `1059`,
+`345`, … So sccache works, and only a subset of invocations ENOENT. Any theory
+has to explain why these coexist *within the same component* (onnxruntime shows
+both).
+
+**Root cause: NOT DETERMINED.** Next steps, cheapest first: log the exact failing
+`argv[0]` and cwd for one failure and check both for existence *at that moment*
+(a `_deps` build dir being cleaned mid-build is the leading remaining guess);
+then compare a failing and a succeeding invocation of the same compiler in the
+same RUN. `SCCACHE_SERVER_UDS=/tmp/sccache-$(id -u).sock` (`01-core/compiler-cache.sh:73`)
+puts the socket on the per-RUN `/tmp` tmpfs, which is worth re-checking as part
+of that.
+
+**Why it matters:** this repo's build time is dominated by compiler caching
+(CCACHE_COMPILERCHECK=content took LLVM from 11 h to 50 min). A silent
+thousands-of-units cache miss on every media stage is the same class of loss,
+and nothing reports it — the only symptom is stderr noise that looks benign.
+
 ### WA. Per-arch MEDIA_SKIP flag files are COPY'd into the shared media `base` stage, so a riscv64-only edit re-runs the whole amd64 and arm64 media stage [high]
 
 `linux/Dockerfile.media:174`
