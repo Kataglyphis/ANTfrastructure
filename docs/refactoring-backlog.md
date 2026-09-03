@@ -1171,6 +1171,628 @@ later refactored. A unit test asserting `_disk_guard_pick_victim` skips a
 victim added by the guard's own append expression would have caught this and
 does not exist.
 
+## X2026-09-03. Second audit sweep — angles the first round did not cover
+
+Six fresh lenses (supply chain, a meta-audit of the 48 test suites,
+concurrency, docs-vs-code, the runtime image's contract, and a completeness
+critic asked what BOTH rounds would miss), with the ten W-findings handed over
+as an exclusion list so a variant counted as refuted. **8 survived, 8 were
+killed by the verifier** — a 50% refutation rate, which is the point of
+running it.
+
+Read-only again: the RVA23 chain was building its riscv64 wrapper while this
+ran.
+
+### XK. GCC tarball SHA512 verification is skipped silently whenever a HEAD probe to gcc.gnu.org fails — exactly the outage the ftpmirror fallback exists for [high]
+
+`linux/scripts/02-toolchain/build-gcc.sh:481`
+
+**What breaks.**
+fetch_gcc_tarball (:469) downloads gcc-16.2.0.tar.xz from
+MIRROR_TARBALL_URL=https://ftpmirror.gnu.org/gnu/gcc/gcc-16.2.0/ FIRST — a GNU
+redirector that hands the request to an arbitrary volunteer mirror — with
+gcc.gnu.org only as fallback. The sole unconditional integrity check on those
+bytes is verify_gcc_sha512, and it is gated on `wget -q --spider "${SHA_URL}"`
+against https://gcc.gnu.org/pub/gcc/releases/gcc-16.2.0/sha512.sum. That
+spider is a HEAD request with NO --timeout/-t flags (every other wget in the
+file passes `--timeout=20 -t 5`). Any non-200 — gcc.gnu.org unreachable or 5xx
+(the single-host fragility the NET1 mirror was added for, per the comment at
+:250-253), a CDN/WAF that answers HEAD with 403/405, or a DNS blip — makes the
+function print `No sha512.sum found on server; continuing.` and `return 0`.
+verify_gcc_gpg_signature (:381) then hits the identical spider against SIG_URL
+on the same host and returns 0 the same way. Net result: the mirror's bytes
+are extracted and configured/built (:520 onward) as the host GCC and all three
+cross toolchains with ZERO integrity verification, and the whole 5-hour
+chain's artifacts are produced by that compiler. The only trace in the log is
+two innocuous 'not found on server' lines; the build exits 0 and every
+downstream gate passes. This directly falsifies the in-code claim at :250-253
+that the mirror is 'zero trust cost — sha512 verification below is against the
+canonical server either way': the verification is conditional on the canonical
+server being reachable, which is precisely what the mirror assumes it is not.
+
+**Evidence.**
+build-gcc.sh:481-484 `if ! wget -q --spider "${SHA_URL}"; then echo "No
+sha512.sum found on server; continuing." >&2; return 0; fi` — contrast
+:485-487, where a sha512.sum that DOES probe but fails to download is fatal
+('refusing to continue unverified'), and :253 `# Try the GNU mirror redirector
+first for the TARBALL (zero trust cost — sha512 verification below is against
+the canonical server either way)`. MIRROR_BASE=https://ftpmirror.gnu.org/...
+(:253), DOWNLOAD_BASE=https://gcc.gnu.org/... (:248),
+SHA_URL=${DOWNLOAD_BASE}/sha512.sum (:256). The spider is the only wget in the
+file without timeout/retry flags. Not present in docs/refactoring-backlog.md
+or any docs/refactoring-backlog-archive-*.md (grepped for
+gpg/sha512/spider/ftpmirror/build-gcc; the only hit, archive-2026-08-10:1511
+'cache sha512.sum/.sig next', is a caching perf item).
+
+**Verifier's correction.**
+Confirmed, with three corrections and one strengthening. Accurate statement:
+the GCC tarball is fetched mirror-first from the GNU redirector (build-
+gcc.sh:469-472, MIRROR_TARBALL_URL) while both integrity proofs are canonical-
+only (SHA_URL/SIG_URL, :256-257). Each proof is gated on an unauthenticated
+availability probe of gcc.gnu.org — :481 for sha512.sum, :381 for the .sig —
+and each probe failure is a `return 0` that continues the build. When
+gcc.gnu.org does not answer those two probes with 200, the mirror's bytes are
+extracted (:521) and built as the host GCC and all three cross toolchains with
+no integrity check whatsoever, leaving only "No sha512.sum found on server;
+continuing." and "No .sig found or accessible." in a log that exits 0.
+Correction 1 — the "no --timeout/-t flags" argument is backwards. wget's
+defaults are `--tries=20` and a 900s read timeout, so the bare spider is MORE
+retry-persistent than the explicit `--timeout=20 -t 5` fetches, not less. A
+momentary DNS blip is therefore not a realistic trigger. The realistic
+triggers are (a) any non-2xx HTTP answer to the probe — a CDN/WAF or corporate
+proxy that rejects HEAD with 403/405, a 429, a 5xx — which wget does not
+retry, and (b) an outage that outlasts the default retries, i.e. precisely the
+multi-minute gcc.gnu.org unavailability the NET1 mirror was added for.
+Correction 2 — the GPG half is worse than described. :381-384 returns 0
+WITHOUT calling `_gcc_gpg_require_or_warn` (:349), so `GCC_REQUIRE_GPG=1` —
+the only knob that exists to make a skipped signature fatal, and one no file
+in the repo sets — is structurally unable to fire on the unreachable-server
+path. It covers only "gpg not installed" (:394) and "signer key unobtainable"
+(:447). So there is no configuration of this repo, today, in which an
+unreachable gcc.gnu.org fails the build. Correction 3 — scope the blast
+radius. For Canadian-cross builders (HOST_TRIPLET set) a full gcc.gnu.org
+outage would still abort loudly at :563-564, where
+`contrib/download_prerequisites` pulls GMP/MPFR/MPC from the same host and
+`die`s. The silently-unverified toolchain fully materializes in the non-
+Canadian lanes (host GCC + the three cross toolchains, which use apt's
+libgmp/libmpfr per :303-306) and, in the HEAD-rejection case, in every lane —
+there the server is up, prerequisites download fine, and nothing anywhere in
+the 5-hour chain notices. Also worth folding in: :489-491 is a second silent
+skip on the same path — a downloaded sha512.sum with no matching
+`gcc-<ver>.tar.xz` line warns and continues, so an upstream filename
+convention change degrades to unverified as well. Finally, the realistic bad
+outcome is substitution, not corruption: truncated or corrupt bytes die at
+`tar -xf` (:522). What passes unnoticed is a volunteer mirror (or the
+redirector) serving different-but-valid bytes, which then compiles every
+artifact of the chain.
+
+### XL. "missing cmake skips IREE with rc=1" leaves /usr/bin:/bin on PATH, so cmake is never missing — the _iree_check_prereqs skip path is never exercised and the case passes off a real host cmake failing on a stub source tree [medium]
+
+`linux/scripts/tests/test-iree-wheelhouse-stages.sh:233`
+
+**What breaks.**
+Delete (or invert) `command -v cmake >/dev/null 2>&1 || { warn "cmake absent;
+skipping IREE riscv64 runtime wheel"; return 1; }` at
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh:781. The suite stays
+fully green. Reason: the case runs `( PATH="${TMP}/nocmake:/usr/bin:/bin";
+build_iree_wheels )`, and this host has /usr/bin/cmake and /bin/cmake
+(verified: `command -v cmake` -> /usr/bin/cmake), so `command -v cmake`
+SUCCEEDS. `ninja` and `git` are stubs copied into nocmake/ at line 100 and
+`wheel_platform_tag` is a shell stub, so _iree_check_prereqs returns 0 on
+every run. Control flow then falls through _iree_setup_compiler_cache ->
+_iree_fetch_source (stub git builds a fake tree with no CMakeLists.txt) ->
+_iree_build_host_stage, which invokes the REAL /usr/bin/cmake against that
+tree; cmake errors, the `|| return 1` fires and build_iree_wheels returns 1.
+`t_assert_eq "1" "${_rc}"` therefore passes for a completely different reason
+than the one its name and message ("prereq failure must return 1") claim.
+Real-world consequence of the undetected regression: in a stage where cmake
+genuinely is absent, IREE no longer degrades to the documented one-line warn-
+and-skip; it wipes and re-clones the tree (`rm -rf "${src_dir}"` in
+_iree_fetch_source) and then dies in a cmake-not-found configure whose log
+points nowhere near the cause.
+
+**Evidence.**
+test-iree-wheelhouse-stages.sh:233 sets PATH to
+`${TMP}/nocmake:/usr/bin:/bin`; line 100 copies only git+ninja into nocmake/,
+never a cmake shim, and never removes /usr/bin from the search path. build-
+app-wheelhouse.sh:781 is the guard the case claims to exercise. `ls -la
+/usr/bin/cmake /bin/cmake` -> both present (12556296 bytes, Mar 27). This is
+exactly the "right answer for the wrong reason" class the repo already fixed
+for this same file's five build call sites (docs/refactoring-backlog-
+archive-2026-08-31.md:217-231: "asserting rc == 1 did not discriminate ... the
+right answer for the wrong reason"); the fix there added `_no_packaging_diag`
+to the five build cases (test-iree-wheelhouse-stages.sh:252, 262, 270, 279)
+but never revisited the prereq case, which has no discriminating assertion at
+all. Not in docs/refactoring-backlog.md or any refactoring-backlog-
+archive-*.md (grepped for "missing cmake", "nocmake", "check_prereqs").
+
+**Verifier's correction.**
+Real, but it is a test-coverage defect only — trim the claimed real-world
+consequence. Accurate statement: the case at test-iree-wheelhouse-
+stages.sh:231-234 does not exercise _iree_check_prereqs at all. nocmake/
+(:100) never shadows cmake and /usr/bin is left on PATH, so build-app-
+wheelhouse.sh:781 succeeds; the asserted rc=1 is produced ~140 lines later by
+_iree_build_host_stage:920 running the host's real /usr/bin/cmake against the
+stub-cloned tree that has no CMakeLists.txt (the case inherits STUB_CROSS=1
+from the preceding QNN case, so it takes the cross branch). Both prereq guards
+are affected, not just cmake: /usr/bin/ninja exists too and nocmake/ contains
+a ninja stub, so :782 is equally uncovered. The correct fix is to drop
+/usr/bin:/bin from that PATH (or shim a failing cmake) and add a
+discriminating assertion on the "cmake absent; skipping IREE" warn line, in
+the same spirit as the _no_packaging_diag assertions added to the five build
+cases. Two over-claims in the submission to correct: (1) the third prereq
+guard IS genuinely covered — the "missing wheel platform tag" case at :236-240
+sets STUB_WHEEL_PLATFORM="" and would go red if `[ -n "${wheel_platform}" ]`
+were removed (the stub cmake then succeeds and the run returns 0), so only the
+cmake/ninja `command -v` lines are untested; (2) the described consequence of
+a removed guard is milder than stated — with cmake genuinely absent, execution
+reaches `env -u … cmake …` at :920, whose ENOENT ("env: 'cmake': No such file
+or directory") is NOT redirected to a log file and lands directly in the stage
+output, followed by "IREE host stage failed in both COMPILER=OFF and
+COMPILER=ON modes" and a fatal err in main(); the cost is a wasted rm -rf +
+full recursive clone and a slightly indirect error, not a log "pointing
+nowhere near the cause". Severity is low-to-medium: cmake is present in every
+stage that runs build-app-wheelhouse.sh, so no shipped artifact is at risk
+today; what is real is that the suite advertises a skip-path assertion it does
+not make, and a refactor of _iree_check_prereqs would be mutation-invisible.
+
+### XM. Two test-guard-helpers.sh cases end in `t_assert_ok true` after a subshell whose exit status is thrown away — they cannot fail, so source_vendor's nounset window and first_match's missing-dir contract are unprotected [medium]
+
+`linux/scripts/tests/test-guard-helpers.sh:57`
+
+**What breaks.**
+Rewrite `source_vendor` (linux/scripts/01-core/guard-helpers.sh:45-55) to drop
+its `set +u` window — i.e. regress it to the plain `. "${_f}"` the helper
+exists to replace. The case at :55-57 runs `( set -u; source_vendor
+"${_tmp}/vendor.sh"; [ "${VENDOR_SAW}" = "unset-ok" ] )` where vendor.sh
+references `${SOME_DEFINITELY_UNSET_VAR}`; the subshell would die with
+"unbound variable" and exit non-zero — but the file sets only `set -u` (line
+4), not `set -e`, so a failing subshell does not abort the suite, and the next
+statement is the literal `t_assert_ok true`, which runs `true` and always
+passes. Identical shape at :31-33 for `first_match` on a missing directory:
+make first_match drop its trailing `|| true` (guard-helpers.sh:24) and the `(
+set -e; ... )` subshell aborts, unnoticed. Both cases are the pre-migration
+contract freeze for the ~426 raw call sites the module is meant to absorb (its
+own header, guard-helpers.sh:6-10), and it is already sourced live at
+01-core/common.sh:36 and 03-media/core/common.sh:107 — so a silent regression
+here is inherited by every site the migration touches.
+
+**Evidence.**
+test-harness.sh has no facility that captures a bare subshell's status;
+`t_assert_ok true` (lines 33 and 57) evaluates `true` and can only pass. The
+suite's shell options are `set -u` at line 4 — no errexit — so `( ... )`
+exiting non-zero is discarded silently. `grep -rn "t_assert_ok true" tests/`
+returns exactly these two standalone uses plus one at :47 that IS
+discriminating (it sits in the `else` arm of an `if probe sh -c 'exit 3'`,
+whose `then` arm asserts a failure). guard-helpers.sh currently has ZERO
+production call sites (`grep -rn -e '\bfirst_match ' -e '\bsource_vendor ' -e
+'\bcsv_each ' linux/scripts --include='*.sh'` outside tests/ matches only the
+doc comments in the module itself), which is why the damage is latent rather
+than live today. Not recorded: grep for "guard-helpers", "source_vendor",
+"first_match", "t_assert_ok" across docs/refactoring-backlog.md and every
+refactoring-backlog-archive-*.md returns only the 2026-08-10 archive's plan to
+CREATE these helpers, nothing about the suite.
+
+**Verifier's correction.**
+Record it in this narrowed form only: ONE case, not two, is an unprotected
+contract. test-guard-helpers.sh:31-33 is the sole coverage of first_match's
+missing-directory contract, and its assertion cannot fail: the `( set -e;
+r="$(first_match "${_tmp}/does-not-exist" -name '*')"; [ -z "$r" ] )`
+subshell's exit status is discarded (the file sets only `set -u` at :4 — no
+errexit, no ERR trap — and run-tests.sh:20 runs each suite as plain `bash`),
+and the next statement is the literal `t_assert_ok true`, which per test-
+harness.sh:67-70 executes `true`. Deleting the `|| true` from guard-
+helpers.sh:24 leaves the suite fully green. The other three first_match cases
+(:19, :24, :28) all target an existing directory where find returns 0, so none
+of them substitute for it. Fix: capture the status, e.g. `( set -e; ... );
+t_assert_eq "$?" "0"`, or assert via `t_assert_ok bash -c '...'`. The
+source_vendor half of the claim is WRONG and must be dropped. :55-57 is indeed
+tautological, but the nounset window is already covered by the next case at
+:59-61: under `set -u` the unbound-variable error kills that command
+substitution before its `case "$-"` runs, so a source_vendor regressed to a
+plain `. "${_f}"` yields an empty `_restored` and fails t_assert_eq at :61
+(simulated both ways: regressed => empty, correct => "yes"). :63-65 and :67-69
+cover the no-force-`-u` and rc-propagation contracts. So :55-57 is redundant,
+not a hole — worth deleting or converting for tidiness, but it is not a gate
+failure. Severity is LATENT, not live. guard-helpers.sh is sourced at
+01-core/common.sh:36 and 03-media/core/common.sh:107, but it has zero call
+sites anywhere in linux/ (every match outside tests/ is a doc comment or
+prose), exactly as guard-helpers.sh:6-10 says — the ~426-site migration is
+rebuild-gated and has not happened. No current build can go wrong from this;
+the cost is that the pre-migration contract freeze for first_match's `|| true`
+is not actually frozen.
+
+### XN. --no-push android artifact handoff: producer writes `android-artifacts-<arch>`, consumer reads `android-artifacts/<arch>` [high]
+
+`linux/scripts/build-cross-chain.sh:162`
+
+**What breaks.**
+Run the officially-supported full no-push validation chain: `bash
+linux/scripts/build-cross-chain.sh --no-push --target-arches
+amd64,arm64,riscv64` (allowed since 2026-08-30 by _chain_no_push_guard, build-
+cross-chain.sh:286). The android stage exports its OCI layout via
+`cross_stage_context_dir android-artifacts "${arch}"` (cross-stage-
+build.sh:502), and cross_stage_context_dir (cross-stage-build.sh:109-113)
+composes `${CROSS_CONTEXT_WORKDIR}/${stage}${arch:+-${arch}}` ->
+`<WD>/android-artifacts-arm64`. run_runtime_stage then exports
+ARTIFACT_CONTEXT_ROOT=`<WD>/android-artifacts` (build-cross-chain.sh:162), and
+runtime_artifact_context_dir (context-management.sh:209) composes
+`${ARTIFACT_CONTEXT_ROOT%/}/${arch}` -> `<WD>/android-artifacts/arm64`. That
+directory never exists. runtime_artifact_context_ref (context-
+management.sh:219) fails its `index.json`/`oci-layout` check, prints '[ERROR]
+Missing OCI artifact context for arm64' and returns 1 — but
+runtime_build_package_image runs under run_parallel_arch_loop's disabled-
+errexit extent, so the empty capture flows straight into
+`build_args+=(--build-context "runtime_artifact=")` (runtime-build-fns.sh:289)
+and every arch's package build dies on a malformed build-context, hours into
+the run. Net effect: the no-push lane can never reach the runtime stage, and
+when the guard-rail is bypassed the package would copy from the stale
+published cross-android tag instead of the image just built — exactly the
+2026-08-08 stale-parent bug backlog item C claimed to close.
+
+**Evidence.**
+Simulated both helpers verbatim: producer -> /WD/android-artifacts-arm64,
+consumer -> /WD/android-artifacts/arm64. The mismatch was introduced in
+8c97cdd8 ('backlog sweep 2026-08-30: close F1/F2/C'); its own comment at
+build-cross-chain.sh:158 asserts the exporter wrote `<cross workdir>/android-
+artifacts/<arch>`, which cross_stage_context_dir does not do.
+CHANGELOG.md:1322, docs/linux-cross-builds.md:175 and docs/refactoring-
+backlog-archive-2026-08-30.md:64 all document the slash form, so the repo's
+claim and the code disagree. test-cross-oci-handoff.sh:180-183 greps only
+cross-stage-build.sh for the raw read, so it cannot see the orchestrator side.
+
+**Verifier's correction.**
+The mechanism is confirmed, but three parts of the claim need correcting. 1.
+WRONG COMMIT. The break was NOT introduced by 8c97cdd8. That commit
+(2026-08-30) wrote the correct slash form as a literal: `local
+artifact_dir="${CROSS_CONTEXT_WORKDIR}/android-artifacts/${arch}"`, matching
+its own comment and all the docs. The regression is commit 3be6b427
+(2026-09-01, "cross-chain: the --no-push OCI handoff never activated"), which
+replaced that literal with `artifact_dir="$(cross_stage_context_dir android-
+artifacts "${arch}")"` to fix an unrelated `set -u` hazard, not noticing that
+`cross_stage_context_dir` joins the arch with a DASH
+(`${stage}${arch:+-${arch}}`, cross-stage-build.sh:113) while the consumer
+joins with a SLASH (`${ARTIFACT_CONTEXT_ROOT%/}/${arch}`, context-
+management.sh:209). The consumer side was never touched by 3be6b427. So build-
+cross-chain.sh:162 is not the defect — it is the half that still matches the
+documentation; the defect is at linux/scripts/01-core/cross-stage-
+build.sh:502. 2. THE TEST IS WORSE THAN "BLIND". test-cross-oci-
+handoff.sh:180-183 does not merely fail to see the orchestrator side; it
+asserts `grep -c 'CROSS_CONTEXT_WORKDIR}/android-artifacts' cross-stage-
+build.sh` equals 0, i.e. it actively forbids the correct 8c97cdd8 form and
+pins the broken helper call. Restoring the slash path by reverting to the
+literal turns that assertion red. 3. NO STALE-TAG PATH ANY MORE. The claim's
+second half ("when the guard-rail is bypassed the package would copy from the
+stale published cross-android tag") does not occur on current HEAD.
+`runtime_use_local_artifact_context` is true whenever `ARTIFACT_CONTEXT_ROOT`
+is non-empty, and since 3be6b427 mints `CROSS_CONTEXT_WORKDIR` eagerly in
+`main()` the orchestrator always sets it under `--no-push`. So the registry-
+fallback branch (runtime-build-fns.sh:290-294) is never taken; the run always
+takes the hard-failure branch instead. The failure is also loud, not silent:
+`[ERROR] Missing OCI artifact context for <arch>: <dir>` is printed before the
+malformed `--build-context` is assembled. The real cost is a full `--no-push`
+validation chain (base..android, multiple hours across three arches) dying at
+its final stage, plus the wrapper-smoke gate at runtime-build-fns.sh:367-374
+failing the same way. Accurate statement: on HEAD the `--no-push`
+android->runtime artifact handoff is path-mismatched — the exporter writes
+`<cross workdir>/android-artifacts-<arch>` while the runtime helper looks in
+`<cross workdir>/android-artifacts/<arch>` — so a full `bash
+linux/scripts/build-cross-chain.sh --no-push --target-arches
+amd64,arm64,riscv64` cannot complete its runtime stage. One-line fix either
+way: make the exporter use the slash form (and drop/invert the test at test-
+cross-oci-handoff.sh:180-183), or set
+`ARTIFACT_CONTEXT_ROOT="${CROSS_CONTEXT_WORKDIR}/android-artifacts"` -> a
+dash-joined root the consumer can compose. The exporter side is preferable,
+since CHANGELOG.md:1322, docs/linux-cross-builds.md:175-176 and
+docs/refactoring-backlog-archive-2026-08-30.md:64 all document the slash
+layout.
+
+### XO. parallel_loop_harvest keys on pin.* files only, so --no-push --parallel-archs loses every *_BUILT_THIS_RUN flag [medium]
+
+`linux/scripts/01-core/cross-stage-build.sh:521`
+
+**What breaks.**
+Run `build-cross-chain.sh --no-push --parallel-archs` (full chain from base).
+Each per-arch worker is a background subshell, so its array writes are lost to
+the parent; that is why the workers persist state to PARALLEL_LOOP_FLAGDIR. On
+the push path the worker writes BOTH `pin.<stage>.<arch>` and
+`built.<stage>.<arch>` (cross-stage-build.sh:421-422). On the push_flag=0 path
+it writes ONLY `built.<stage>.<arch>` (cross-stage-build.sh:484) — there is no
+pin to capture. parallel_loop_harvest's loop iterates `"${flagdir}"/pin.*.*`
+and reads the built flag only from inside that loop body (line 532-536), so
+with zero pin files the glob matches nothing and ANDROID_BUILT_THIS_RUN stays
+empty in the orchestrator. run_runtime_stage then calls
+cross_stage_ensure_parent_available runtime, whose built-this-run short-
+circuit (stage-defs.sh:402-409) misses, and it executes `nerdctl pull
+--platform linux/amd64 ghcr.io/.../kataglyphis_beschleuniger:cross-
+android-<arch>` for all three arches — re-downloading the last PUBLISHED
+android images (tens of GB each over the ~4-5 MB/s uplink noted in the push-
+compression comment) and re-pointing the local cross-android-<arch> tags at
+stale content, on a run whose entire purpose was to validate locally built
+bytes without touching the registry. The sequential path is unaffected because
+cross_stage_run writes `_local_built_flag["${arch}"]=1` directly in the parent
+(cross-stage-build.sh:478-482), so the guard the comment there names ('without
+it the runtime handoff pulls the STALE published parent over the image this
+run just built') is silently disarmed only under --parallel-archs.
+
+**Evidence.**
+cross-stage-build.sh:483-485 writes built.* with no pin.*; cross-stage-
+build.sh:521 `for f in "${flagdir}"/pin.*.*` is the sole iteration; the built-
+flag harvest at 532-536 is nested inside that loop. Same loss applies to
+`build-sdk-artifacts.sh --parallel-archs` without --push, which passes push=0
+(build-sdk-artifacts.sh:88). Archive item R2 ('BUILT_THIS_RUN in the local
+build path') added the line-478 write but never extended the harvest.
+
+**Verifier's correction.**
+Accurate statement: under `--no-push --parallel-archs`, ANDROID_BUILT_THIS_RUN
+is lost, so the runtime stage pulls the last PUBLISHED android images — but it
+does not ship them in the default flow. parallel_loop_harvest
+(linux/scripts/01-core/cross-stage-build.sh:519-539) iterates only
+`"${flagdir}"/pin.*.*` (line 521) and reads the built flag from inside that
+loop (533-537). The push path writes both flag files (421-422); the
+push_flag=0 path returns at 486 before _cross_stage_run_capture_pin and writes
+only `built.<stage>.<arch>` (484). With zero pin files the glob never matches,
+so under --no-push + --parallel-archs no built flag is harvested and
+ANDROID_BUILT_THIS_RUN stays empty in the parent. The sequential path is
+unaffected (478-482 writes the parent array directly). Consequence, corrected:
+1. cross_stage_ensure_parent_available (stage-defs.sh:390-419), called
+unconditionally at build-cross-chain.sh:141, misses its skip at 403-406 and
+runs `nerdctl pull --platform linux/amd64 ...:cross-android-<arch>` (line 418)
+for all three arches — re-downloading the previously published android images
+on a run that build-cross-chain.sh:262-263 documents as never consulting the
+registry, and clobbering the locally built `cross-android-<arch>` tags with
+stale published content. That is precisely the outcome the comment at 475-476
+says line 478 exists to prevent. 2. The runtime lane itself is NOT poisoned in
+the default configuration: CROSS_NO_PUSH=1 sets ARTIFACT_CONTEXT_ROOT/MODE=oci
+(build-cross-chain.sh:161-165), runtime_use_local_artifact_context (context-
+management.sh:199-201) is true, and runtime_build_package_image passes
+`--build-context runtime_artifact=<oci layout>` (runtime-build-fns.sh:284-289)
+pointing at the layout exported from this run's android image (cross-stage-
+build.sh:496-503) before the pull. So the package/wrapper still get locally
+built bytes; the cost is wasted bandwidth/disk plus corrupted local tags, not
+a wrong artifact. 3. It becomes a wrong artifact only with
+CROSS_LOCAL_CONTEXT_HANDOFF=0 + CROSS_NO_PUSH_FORCE=1: the workdir is never
+created, build-cross-chain.sh:166-167 unsets ARTIFACT_CONTEXT_ROOT, and
+runtime-build-fns.sh:292-294 falls back to the mutable android tag the pull
+just re-pointed at the previous run's image. 4. A failing pull is swallowed:
+run_runtime_stage runs under `||` (build-cross-chain.sh:355) with errexit
+disabled, so a non-zero `run ... pull` neither aborts nor warns. 5. Drop the
+sdk half of the claim: build-cross-chain.sh:141 is the only caller of
+cross_stage_ensure_parent_available, so SDK_BUILT_THIS_RUN has no consumer and
+its loss under `build-sdk-artifacts.sh --parallel-archs` is harmless. Fix
+shape: iterate `built.*.*` as well (or instead), or have the no-push path
+write a placeholder pin file the harvest can key on.
+
+### XP. cross-build-verification.md still calls the TVM smoke "report only" — the chain arms EXP_TVM unconditionally, so a TVM-less image now blocks the manifest [high]
+
+`docs/cross-build-verification.md:180`
+
+**What breaks.**
+A media build ships without TVM (the code itself anticipates this: smoke-
+torch-venv.sh:298 prints "not importable (best-effort; media build shipped
+without it)"). The wrapper smoke instead appends "tvm NOT IMPORTABLE but
+EXP_TVM set" to fails, the per-arch wrapper smoke goes red in build-runtime-
+manifest.sh, and :latest-cross is never published — at the very end of a
+multi-hour chain. The operator opens the escape-hatch table, reads that TVM is
+"report only — best-effort by design" and that EXP_TVM is an opt-in, and goes
+hunting for whoever exported it. Nobody did: the smoke sets it from
+versions.env on every run. Same trap in reverse for anyone who deliberately
+drops TVM from a lane expecting a warning.
+
+**Evidence.**
+DOC docs/cross-build-verification.md:180 — "| TVM presence/version per arch |
+`smoke-torch-venv.sh` (report only — TVM is best-effort by design) |
+`EXP_TVM=<version>` turns the report into a hard pin assertion |". CODE
+linux/scripts/06-packaging/smoke-torch-venv.sh:97 — inside
+assert_pinned_versions, run on every image: `EXP_TVM="$(_stv_vpin
+"${versions_env}" TVM_REF)" \`, with versions.env resolved at :76 from
+/opt/scripts/core/versions.env (baked into the image) and TVM_REF=v0.26.0
+always present (linux/scripts/01-core/versions.env:118). The same file's own
+comment at :280 already says the opposite of the doc: "# TVM is now a HARD
+assert (EXP_TVM set from versions.env TVM_REF)." The reassuring best-effort
+branch at :297-298 only runs when EXP_TVM is empty, which the chain never
+produces. Closed as LOG34 in docs/refactoring-backlog-
+archive-2026-08-27.md:733 ("EXP_TVM is now …") without updating this table.
+
+**Verifier's correction.**
+CONFIRMED, with four refinements. WHAT IS EXACTLY RIGHT: docs/cross-build-
+verification.md:180 sits in a table whose stated premise is "Each hard gate
+has ONE explicit, documented escape hatch". For TVM it says the gate is
+"report only — TVM is best-effort by design" and lists `EXP_TVM=<version>` in
+the OPT-IN column. Since LOG34 (2026-08-30) the code sets EXP_TVM itself on
+every run from versions.env TVM_REF (smoke-torch-venv.sh:97), so the row is
+inverted twice over: the gate is armed by default, and the column that should
+name an escape hatch names the knob that arms it. There is no documented way
+to ship a TVM-less image. REFINEMENT 1 — the doc is not the only stale copy,
+and the second one is worse. linux/Dockerfile.media:562-565 carries the same
+claim ("BEST-EFFORT on EVERY arch ... it can never break the media build.
+Visibility (NOT a gate — TVM stays best-effort)") directly above the RUN at
+:568-574 whose else-branch ships a TVM-less media image as a non-fatal
+WARNING. Producer promises non-fatal; consumer hard-fails hours later. Fixing
+only the doc leaves the more misleading of the two in place. REFINEMENT 2 —
+name the real gate, not the in-build one. The blocking call is smoke-runtime-
+image.sh:358-369 (check_ml_version_pins, STV_ASSERT_ONLY=1) reached from
+build-runtime-manifest.sh:310; `set -euo pipefail` at :2 kills the run before
+create_manifest at :315. Dockerfile.package:395 runs the same script in-build
+but SKIPs (no /opt/venv there), so the failure genuinely lands at the end of
+the chain, exactly as claimed. REFINEMENT 3 — a third stale statement, and one
+of the two must be wrong. Dockerfile.torch:58-60 states "TVM is missing from
+all three shipped images because the media stage produces no tvm wheel (tvm-
+python.sh's verdict)". If that were still true, the armed assert would fail
+every 3-arch build. LOG34 (archive-2026-08-27:733, closed 2026-08-30) says the
+opposite was proved on all three arches. That comment predates LOG34 (ORPHAN-
+PINS, 2026-08-23) and should be re-measured or deleted alongside the doc row;
+whoever fixes the table should check which is current before writing "TVM
+ships on all three". REFINEMENT 4 — a disarm exists but it is not the one
+documented, and it is far too broad to sell as an escape hatch. Setting
+VERSIONS_ENV to a path that does not exist makes assert_pinned_versions fall
+back to ${_SCRIPT_DIR}/../01-core/versions.env, which is
+/opt/scripts/01-core/versions.env in the image and does not exist (the file is
+at /opt/scripts/core/). The SKIP guard at :80-83 needs BOTH versions.env and
+uv.lock missing, and uv.lock is present, so the run continues with EVERY EXP_*
+pin empty — torch, torchvision, onnx, litert, genai, opencv-major all silently
+unasserted. The honest fix is a TVM-specific opt-out (e.g. STV_TVM_OPTIONAL=1,
+or reverting to setting EXP_TVM only when a caller exports it) plus rewriting
+the table row to say the gate is armed by default; do not document the
+VERSIONS_ENV path as the hatch.
+
+### XQ. The only gate that exercises entrypoint.sh's env sourcing asserts two variables the image ENV already sets, so "gstreamer-env.sh sourcing regressed" is undetectable [medium]
+
+`linux/scripts/06-packaging/smoke-runtime-image.sh:133`
+
+**What breaks.**
+State: the shipped image loses its entrypoint env layer -- e.g.
+Dockerfile.torch:110's `COPY ... gstreamer-env.sh /usr/local/bin/gstreamer-
+env.sh` is dropped/renamed, or gstreamer-env.sh exists but aborts partway
+(entrypoint.sh:13-25 `_safe_source` does `source "$f"` and then `return 0`
+UNCONDITIONALLY, and it is always invoked as `_safe_source ... || echo ...`, a
+`||` list, so bash suspends errexit inside the function body -- a mid-file
+failure neither kills PID 1 nor trips the `|| echo "Warning: ... not found or
+not sourced"` arm). Every container then starts WITHOUT
+`/opt/gstreamer/share/pkgconfig` and `/opt/gstreamer/lib/pkgconfig` on
+PKG_CONFIG_PATH, without `/opt/gstreamer/lib/gstreamer-1.0` on GST_PLUGIN_PATH
+and without `/opt/gstreamer/lib/girepository-1.0` on GI_TYPELIB_PATH --
+exactly the non-multiarch spellings the ENV block does not carry. Wrong
+outcome: check_default_entrypoint_boot still prints `PASS default
+ENTRYPOINT+CMD boot: BOOT uid=1001 gst=set vulkan=set`, because the probe at
+line 127 reads `${GST_PLUGIN_PATH:+set}` and `${VULKAN_SDK:+set}`, and BOTH
+are baked unconditionally into the image config by Dockerfile.package:235 and
+:221 -- they are non-empty in every container whether or not the entrypoint
+ran at all. The `2>/dev/null` on line 129 additionally discards
+entrypoint.sh's own warning line, so the last observable trace is thrown away
+too. Only the rc==42 half of this probe is real; the env half cannot fail for
+the reason its own fail message names.
+
+**Evidence.**
+smoke-runtime-image.sh:127 `'echo "BOOT uid=$(id -u)
+gst=${GST_PLUGIN_PATH:+set} vulkan=${VULKAN_SDK:+set}"'`; :129 `|
+"${NERDCTL_BIN}" run --rm -i ... "${image_tag}" 2>/dev/null)`; :133-134 `elif
+! printf '%s' "${out}" | grep -q "gst=set"; then fail "...the entrypoint
+exported no GStreamer env ... gstreamer-env.sh sourcing regressed"`. The two
+variables come from Dockerfile.package:235 `GST_PLUGIN_PATH="${GSTREAMER_PREFI
+X}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0"` and
+:221 `VULKAN_SDK=/opt/vulkan/active`. entrypoint.sh:20-22 `source "$f"` / `[
+"${_ss_had_u}" = "1" ] && set -u` / `return 0`; call sites entrypoint.sh:28
+and :30. Confirmed live in out/build-logs/cross-chain-wave6b.log:3273193 and
+runtime-retry2.log:2952029 -- all three arches print the identical constant
+`gst=set vulkan=set`. A gate that would actually see the regression must read
+something the ENV does not pre-set (e.g. `${GSTREAMER_PREFIX}/lib/pkgconfig`
+inside PKG_CONFIG_PATH).
+
+**Verifier's correction.**
+Accurate statement, with two overstatements in the claim trimmed: CONFIRMED
+CORE: `linux/scripts/06-packaging/smoke-runtime-image.sh:133-134` is the only
+assertion in the tree that claims to detect a gstreamer-env.sh sourcing
+regression, and it cannot fail for that reason. It tests
+`${GST_PLUGIN_PATH:+set}` (composed at :127), but GST_PLUGIN_PATH is baked
+unconditionally into the image config by `linux/Dockerfile.package:235` and
+inherited by the wrapper through the config-preserving OCI-layout handoff
+(`linux/scripts/01-core/context-management.sh:243`), so it is non-empty in
+every container whether or not `/usr/local/bin/gstreamer-env.sh` was ever
+COPY'd (Dockerfile.torch:110) or sourced. The `2>/dev/null` at :129
+additionally throws away entrypoint.sh's own `Warning: … not found or not
+sourced` line (entrypoint.sh:29), the last observable trace. A gate that could
+actually discriminate must read something only gstreamer-env.sh adds — e.g.
+`${GSTREAMER_PREFIX}/share/pkgconfig` inside PKG_CONFIG_PATH — or simply
+assert the file exists and is non-empty. TRIM 1 — "asserts two variables":
+only one is asserted. `vulkan=set` is printed but never grepped; the sole
+predicate is `grep -q "gst=set"`. (Both are ENV-constant, so neither could
+discriminate, but the assertion is single.) TRIM 2 — blast radius is smaller
+than "every container then starts without …". The paths gstreamer-env.sh adds
+are, in this image, near-duplicates of the ENV spellings:
+`${GSTREAMER_PREFIX}/lib/multiarch` is a symlink to the real libdir
+(`linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh:51`,
+`linux/scripts/03-media/runtime/configure-runtime.sh:76-80`, repaired again at
+`linux/scripts/06-packaging/setup-package-image.sh:392-398`), so the ENV's
+`lib/multiarch/{gstreamer-1.0,pkgconfig,girepository-1.0}` already resolve to
+the same directories gstreamer-env.sh would prepend, and ENV
+PATH/LD_LIBRARY_PATH already carry `${GSTREAMER_PREFIX}/bin` and both `lib`
+and `lib/multiarch`. The only genuinely unique contribution is
+`${GSTREAMER_PREFIX}/share/pkgconfig` on PKG_CONFIG_PATH. So a lost sourcing
+layer would likely be latent rather than immediately breaking — which is
+precisely why nothing else would catch it, and why the inert gate matters: the
+regression would ship green and stay invisible until a consumer needed the
+non-multiarch pkgconfig spelling. Bottom line: real, but it is a "gate cannot
+fail" / dead-assertion defect (correctly-worded fail message attached to a
+predicate that is a constant), not an imminent runtime breakage. The rc==42
+half of the probe at :131 is genuine and does its job.
+
+### XR. The curated dependency inventory is only checked in one direction, so a shipped component with no deps.json entry is invisible to every gate — IREE and PyAV ship in :latest-cross and appear in none of deps.json, the licence pages, or the curated SBOM [medium]
+
+`docs/scripts/deps_table.py:34`
+
+**What breaks.**
+Add a source-built component to versions.env and build it into the image
+without touching docs/deps/deps.json. `resolve_dep_version` raises only for
+the reverse case (a deps.json entry naming a versions.env key that no longer
+exists), and every consumer — sync_versions.py's deps-table check
+(docs/scripts/sync_versions.py:417), generate_sbom.py --check, generate-
+website-licenses.py — is generated FROM deps.json, so a missing entry produces
+no diff and all four preflight docs gates (version-snapshot, doc-links, doc-
+dupes, sbom) stay green forever. This already happened twice: IREE
+(versions.env:152 `IREE_VERSION=v3.11.0`, integrated 2026-07-14, riscv64
+runtime built from source, iree-base-runtime/-compiler shipped and asserted by
+the runtime smoke) and PyAV (versions.env:213 `PYAV_VERSION=18.1.0`, built
+from source in Dockerfile.media:793 `FROM ffmpeg AS pyav` and installed into
+/opt/venv; measured as `av 18.1.0` in the shipped image, backlog §G). Both are
+absent from docs/deps/deps.json, from the generated table in docs/third-party-
+licenses.md, from linux/webserver/license-
+assets/documents/footer/openSourceLicenses{En,De}.md (the page the webserver
+actually serves) and from docs/deps/sbom-curated.spdx.json — so the published
+inventory and SBOM describe an image that is not the one shipped. PyAV
+additionally links the FFmpeg this repo configures with --enable-gpl --enable-
+version3 (docs/third-party-licenses.md:147), i.e. the omission lands on the
+copyleft side the curated half exists to cover.
+
+**Evidence.**
+deps_table.py:34-45 (the only completeness contract, one-directional, with a
+comment naming just the renamed/removed-var case); generate_sbom.py:8-26
+states the curated half's whole purpose is source-built components an image
+scanner cannot see; AGENTS.md:1690-1693 claims "A new component needs an entry
+in docs/deps/deps.json … or the build fails", which no code enforces.
+Verified: `grep -i iree docs/deps/deps.json` → no match; `grep -ic iree
+docs/deps/sbom-curated.spdx.json` → 0; the same for pyav; a dump of all 98
+deps.json entries lists ArmNN, TVM, LiteRT-LM, VVdeC, GenAI etc. but neither
+IREE nor PyAV.
+
+**Verifier's correction.**
+CONFIRMED, with two overstatements trimmed. Accurate statement: the deps.json
+completeness contract runs in one direction only.
+`docs/scripts/deps_table.py:34` raises for a deps.json entry whose `var`
+vanished from versions.env; nothing checks the reverse, so a component that
+ships without a deps.json entry is invisible to `sync_versions.py:417`,
+`generate_sbom.py --check`, `generate-website-licenses.py` (including its
+`check_obligations_are_discharged` at line 158, which also iterates deps.json
+entries only) and all four preflight docs gates, which stay green forever.
+`compare_sbom.py` is the only script that reads a real scan and it always
+`return 0` (line 141), so it is a report, not a gate. `AGENTS.md:1688-1690`
+claims a new component needs a deps.json entry "or the build fails"; no code
+enforces that. Two live instances: IREE (versions.env:152, built per-arch and
+asserted by `smoke-runtime-image.sh:388`) and PyAV (versions.env:213,
+`Dockerfile.media:793`, wheels collected at Dockerfile.media:1105) — absent
+from deps.json, from the generated table in docs/third-party-licenses.md, from
+the served `linux/webserver/license-
+assets/documents/footer/openSourceLicenses{En,De}.md`, and from
+docs/deps/sbom-curated.spdx.json. Correction 1 — the SBOM half of the impact
+is weaker than claimed. The curated SBOM's stated scope
+(generate_sbom.py:8-14) is components an image scanner *cannot* see because
+they carry no package metadata. IREE and PyAV both ship as wheels installed
+into /opt/venv with dist-info, so the syft half (.github/workflows/sbom.yml,
+which scans `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`
+directly from the registry) does catalogue them. For these two the gap is a
+curation-policy inconsistency (deps.json already lists PyTorch, TVM, ONNX
+Runtime, uv, Node — all metadata-bearing) rather than a total blind spot. The
+genuinely uncovered surface is the human-facing licence inventory: docs/third-
+party-licenses.md and the webserver-served pages, which have no scanner-fed
+counterpart at all. Correction 2 — the copyleft framing does not apply to
+these two instances. PyAV is BSD-3-Clause and IREE is Apache-2.0-with-LLVM-
+exception; both are attribution-only. The GPL-configured FFmpeg that PyAV
+links already has its own deps.json entry with a `source` block, so no source
+offer is currently missing. The mechanism would equally hide a copyleft
+component (the obligations check only walks deps.json), but the two known
+instances are permissive, so the omission is an attribution gap, not a
+discharged-obligation gap.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
