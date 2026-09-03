@@ -304,4 +304,32 @@ function Invoke-ClangFormatCheck {
   }
 }
 
-Export-ModuleMember -Function Get-ProjectCmakeFiles, Get-ProjectCppFiles, Initialize-UvVenvPython, Invoke-CmakeFormatStep, Invoke-ClangFormatStep, Invoke-ClangFormatCheck
+# Tracked .dart files, vendored trees excluded. `dart format .` must not be used
+# on Windows: it walks .git/modules, and a deep vendored submodule gitdir
+# overruns MAX_PATH, so the listing throws and the gate dies before formatting
+# anything. Docs: docs/windows-reference.md.
+function Get-ProjectDartFiles {
+  param(
+    [Parameter(Mandatory)]
+    [string]$WorkspacePath
+  )
+
+  $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
+  if (-not $gitCommand) { return @() }
+
+  $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- '*.dart' 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $tracked) { return @() }
+
+  return @($tracked |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    ForEach-Object { Join-Path $WorkspacePath $_ } |
+    Where-Object {
+      ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
+      ($_.ToString() -notmatch '\\ExternalLib\\') -and
+      ($_.ToString() -notmatch '\\.git\\modules\\') -and
+      ($_.ToString() -notmatch '\\flutter\\') -and
+      ($_.ToString() -notmatch '\\rust_builder\\')
+    })
+}
+
+Export-ModuleMember -Function Get-ProjectCmakeFiles, Get-ProjectCppFiles, Get-ProjectDartFiles, Initialize-UvVenvPython, Invoke-CmakeFormatStep, Invoke-ClangFormatStep, Invoke-ClangFormatCheck
