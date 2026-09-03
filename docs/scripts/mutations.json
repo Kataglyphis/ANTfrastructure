@@ -154,10 +154,10 @@
   {
     "id": "wheels.no-deps",
     "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
-    "find": "uv pip install --no-deps --force-reinstall \"${other_wheels[@]}\"",
-    "replace": "uv pip install --force-reinstall \"${other_wheels[@]}\"",
+    "find": "  uv pip install --no-deps --force-reinstall \"${_ow[@]}\"",
+    "replace": "  uv pip install --force-reinstall \"${_ow[@]}\"",
     "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
-    "why": "--no-deps is what stops uv floating the venv off the lock"
+    "why": "--no-deps is what stops uv floating the venv off the lock (moved into _install_wheel_groups 2026-09-03; the array is a nameref there)"
   },
   {
     "id": "wheels.ort-dangling-edges",
@@ -238,5 +238,21 @@
     "replace": "chain_status_kv_json() { _chain_status_walk_json \"${1:-}\" _chain_status_emit_str; }",
     "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
     "why": "the shared walker dispatches on an emitter NAME; the suite never calls these functions directly, so pin that its end-to-end JSON check still catches a wrong emitter"
+  },
+  {
+    "id": "wheels.partition-arg-order",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels \"${local_wheels[@]}\"",
+    "replace": "  _partition_wheels_by_install_group tvm_wheels iree_wheels other_wheels \"${local_wheels[@]}\"",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "the three groups are told apart only by nameref ARGUMENT ORDER now; swapping two must not pass"
+  },
+  {
+    "id": "wheels.torch-backfill-guard",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  [ \"${have_torch_family}\" = \"true\" ] && _backfill_torch_runtime_deps",
+    "replace": "  : # backfill call removed",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "extracting the backfill must not make it unreachable -- the notice is a printf and would still print"
   }
 ]

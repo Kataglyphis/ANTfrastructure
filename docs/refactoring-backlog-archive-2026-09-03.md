@@ -1812,3 +1812,34 @@ first, as above.
   pairs. `test-chain-lifecycle.sh` never names these functions, but its end-to-end
   `chain-status.json` check does catch a swapped emitter (2/116 red), which is now
   pinned as mutation `chain-status.emitter-dispatch`.
+
+### F1: reconcile_local_wheels 128 -> 43 (2026-09-03)
+
+Four seams: `_wheel_families_present` (echoes the four family flags),
+`_partition_wheels_by_install_group` and `_install_wheel_groups` (nameref arrays),
+`_backfill_torch_runtime_deps`.
+
+**The net came first and had to be repaired before it was trusted.** The existing
+suite had 6 assertions and reached neither the torch backfill nor the riscv64 IREE
+split. Grown to 14 — and then MUTATION-TESTED, which is what saved it: deleting
+the backfill install left all 14 green. The reason is worth keeping: the function
+announces the backfill with `printf`, which the harness does not stub, so
+`t_assert_contains "${_out}" "fsspec"` was matching the NOTICE, not the install.
+Re-pointed at the `uv` call line; the same mutation now turns 2 red.
+
+Characterised over **44** cases (2 arches × 2 import sets × 11 wheel sets),
+byte-identical before and after — after the tempdir was normalised out, without
+which the baseline was not even reproducible against itself.
+
+**Two traps, both caught by the net rather than by review:**
+* `if [ "${have_torch_family}" = "true" ]` appears TWICE in the file. A global
+  `index()` cut the copy inside `_purge_shadowing_pypi_builds` and produced a
+  syntax error. Searches must be anchored inside the target function.
+* `local -n other_wheels="other_wheels"` is a circular nameref and bash refuses
+  it. The nameref params need names of their own (`_ow`/`_tw`/`_iw`).
+
+The gates then found two follow-ups on their own: `function-size.allow` carried a
+STALE freeze once the function dropped under 80 (38 → 37 frozen), and the
+duplication gate failed on MY OWN two test harnesses — merged into one rather
+than allowlisted. Mutations `wheels.partition-arg-order` and
+`wheels.torch-backfill-guard` pin the new wiring.

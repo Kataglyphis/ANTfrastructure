@@ -102,7 +102,6 @@ table cannot silently go stale between rounds the way it kept doing.
 
         lines  function                       file
           356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
-          128  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh
           114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
           109  uv_sync_project()             01-core/python_uv.sh
            91  _cross_stage_build_impl()     01-core/cross-stage-build.sh
@@ -115,11 +114,13 @@ shell moves ~26 lines. What actually mattered there was that ruff could not see
 the Python at all — fixed 2026-09-02, and those 399 newly-visible lines pass the
 hard gate clean. Split the wrapper for its own sake, never for the line count.
 
-**Next candidate: `reconcile_local_wheels` (128).** 57 comment blocks already name
-its seams. The method that worked on `_cross_stage_build_impl` applies unchanged:
-characterisation net FIRST, then cut one seam at a time, re-running the net after
-each. It is in the 03-media closure, so it needs a window with no build running —
-which is now the normal state, not the exception it was on 2026-09-02.
+**`reconcile_local_wheels` DONE 2026-09-03: 128 → 43**, four seams extracted
+(`_wheel_families_present`, `_partition_wheels_by_install_group`,
+`_install_wheel_groups`, `_backfill_torch_runtime_deps`). It is off this table
+entirely — details in the 2026-09-03 archive.
+
+**Next candidate: `_opencv_target_adjustments` (114) or `uv_sync_project` (109).**
+Both unreviewed. Measure the value before cutting.
 
 **The one uncovered path left inside `_cross_stage_build_impl` is the
 registry-cache drop** (~16 lines). It needs a non-empty `log_file` holding a

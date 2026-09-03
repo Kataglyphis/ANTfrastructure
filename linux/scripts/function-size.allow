@@ -32,7 +32,6 @@ linux/scripts/03-media/build/litert/build-litert.sh | configure_litert | 90 | ba
 linux/scripts/03-media/build/opencv/build-opencv.sh | _opencv_target_adjustments | 114 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/opencv/build-opencv.sh | configure_opencv | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/core/common.sh | media_common_init | 100 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/runtime/assemble-torch-app.sh | reconcile_local_wheels | 128 | F1 2026-09-03: decomposed behind a characterisation net
 linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | _iree_build_target_cross | 89 | baseline 2026-09-03, not yet reviewed
 linux/scripts/05-frameworks/tvm-config.sh | append_tvm_cmake_args | 84 | baseline 2026-09-03, not yet reviewed
 linux/scripts/06-packaging/smoke-cross-all-arches.sh | main | 96 | baseline 2026-09-03, not yet reviewed
