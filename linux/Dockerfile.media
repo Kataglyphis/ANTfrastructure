@@ -121,8 +121,10 @@ ARG BUILD_MODE=native
 # Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
 # (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
 ARG BUILD_MEM_DIVISOR=1
-ARG TARGET_ARCH
 ARG TARGETARCH
+# Defaulted from TARGETARCH so a hand-run build without --build-arg still
+# resolves the per-arch COPY below to a real file.
+ARG TARGET_ARCH=${TARGETARCH}
 ARG GCC_VERSION=16.2.0
 ARG TARGETPLATFORM
 ARG BUILDARCH
@@ -165,13 +167,12 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
 
 # Shared bootstrap + activation scripts (small, rarely change → COPY in base).
 COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts/03-media/core/common.sh
-# Data-driven per-arch MEDIA_SKIP_* flag files consumed by
-# media_load_arch_flags() (03-media/core/common.sh). COPY'd in base so they
-# are present in every derived stage, including install-deps RUN steps that
-# only bind-mount their own install-deps.sh + the cross-env module closure.
-COPY --chmod=644 linux/scripts/03-media/core/arch-flags-amd64.env   /opt/scripts/03-media/core/arch-flags-amd64.env
-COPY --chmod=644 linux/scripts/03-media/core/arch-flags-arm64.env   /opt/scripts/03-media/core/arch-flags-arm64.env
-COPY --chmod=644 linux/scripts/03-media/core/arch-flags-riscv64.env /opt/scripts/03-media/core/arch-flags-riscv64.env
+# Data-driven per-arch MEDIA_SKIP_* flag file consumed by media_load_arch_flags()
+# (03-media/core/common.sh). In base so every derived stage has it, including
+# install-deps RUNs that bind-mount only their own script. ONLY this arch's file:
+# copying all three re-keyed base on every lane whenever one arch's flags changed.
+# docs/refactoring-backlog.md WA
+COPY --chmod=644 linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env /opt/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
 COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/core/python-host.sh

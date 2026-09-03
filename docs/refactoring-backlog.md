@@ -454,6 +454,25 @@ a line from the log of the build that was running while the audit ran.
 
 `linux/Dockerfile.media:174`
 
+**FIXED 2026-09-03.** The three COPYs are one parameterised COPY on
+`${TARGET_ARCH}`, so a lane carries only its own flag file and an edit to one
+arch's flags no longer re-keys `base` — and everything derived from it — on the
+other two. Verified first that nothing ever reads a foreign arch's file:
+`common.sh:65-66` tries only `arch-flags-${arch}.env` for the arch being built,
+and media is built one `--platform` at a time.
+
+The verifier's caveat was real and is handled: `ARG TARGET_ARCH` had **no**
+default, so a hand-run build without `--build-arg` would have resolved the source
+to `arch-flags-.env` and hard-failed where it used to work. It now defaults from
+`TARGETARCH`, which BuildKit fills per platform — the ARG order had to be swapped
+for that. Proven with a throwaway build rather than assumed: without `--build-arg`
+it resolves to `amd64`, and with `--build-arg TARGET_ARCH=riscv64` to the riscv64
+file. Linting a Dockerfile does not prove a COPY source expands.
+
+**Still open, deliberately:** `Dockerfile.package:280` copies the whole
+`03-media/core/` directory, so the runtime lane still takes all three files. That
+is a directory COPY shared with several other consumers and wants its own change.
+
 **What breaks.**
 Backlog section G queues four riscv64-only skip-flag retirements
 (MEDIA_SKIP_CSOUND, MEDIA_SKIP_GUDEV, MEDIA_SKIP_GLIB_STACK,
