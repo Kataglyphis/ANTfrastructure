@@ -249,4 +249,21 @@ t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb "" "" "")"
 t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb "lots" "many" "0")"
 t_assert_eq "0"   "$(_disk_guard_runtime_lane_need_gb 0 3 1)" "0 must disable, not default"
 
+t_case "the anti-spin append must use the separator pick_victim matches on"
+# The guard protects an undeletable victim so the LRU pick stops re-choosing it.
+# It appended with a SPACE while pick_victim matches on COMMAS, so the entry never
+# matched and the loop re-picked the same slug for the rest of the run. The
+# behavioural half: a space-joined list does not protect. Backlog WJ.
+t_assert_eq "slug-old" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old slug-mid")" \
+  "a space-joined list protects NOTHING -- the oldest is picked again, forever"
+t_assert_eq "slug-new" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old,slug-mid")" \
+  "the comma form is what actually protects"
+# The structural half: the caller has to build the comma form. A behavioural test
+# alone cannot catch the chain switching back, because it re-creates the string.
+_chain="${TESTS_DIR}/../build-cross-chain.sh"
+t_assert_eq "0" "$(grep -c -e 'protected="${protected} ${victim}"' "${_chain}" || true)" \
+  "build-cross-chain.sh must not append a protected slug with a space"
+t_assert_eq "2" "$(grep -c -e 'protected="${protected},${victim}"' "${_chain}" || true)" \
+  "both anti-spin sites must append with a comma"
+
 t_summary

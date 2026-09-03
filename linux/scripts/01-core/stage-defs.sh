@@ -131,7 +131,9 @@ cross_stage_parent() {
 # ── Per-arch check ────────────────────────────────────────────────────────────
 # Returns true (0) if the stage fans out per target architecture.
 cross_stage_is_per_arch() {
-  local stage="$1"
+  # `s` must be local: the disk guard calls this from inside its own `for s`
+  # loop, and the leak corrupted its protected-slug list. docs/refactoring-backlog.md WI
+  local stage="$1" s
   for s in "${CROSS_PER_ARCH_STAGES[@]}"; do
     [ "${s}" = "${stage}" ] && return 0
   done

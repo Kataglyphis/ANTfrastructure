@@ -125,4 +125,18 @@ t_assert_eq "example.io/repo:runtime-arm64"         "$(runtime_stage_tag wrapper
 t_assert_eq "example.io/repo:cross-android-arm64"   "$(runtime_stage_tag android arm64)"
 t_assert_fails runtime_stage_tag no-such-stage arm64
 
+t_case "cross_stage_is_per_arch does not clobber the caller's loop variable"
+# It is called from inside _disk_guard_protected_slugs' own `for s` loop. Without
+# `local s` the callee ran its loop to completion on the return-1 path and left
+# the caller's s on the LAST per-arch stage, so the guard protected an arch-less
+# `cross-android-` slug that does not exist and left base/compiler unprotected.
+# Observed live in out/chain-media-runtime.log. Backlog WI.
+_seen=""
+for s in base compiler runtime; do
+  cross_stage_is_per_arch "${s}" || true
+  _seen="${_seen}${_seen:+ }${s}"
+done
+t_assert_eq "base compiler runtime" "${_seen}" \
+  "the caller's s must survive every call, including the return-1 path"
+
 t_summary

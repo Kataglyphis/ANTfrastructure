@@ -1032,6 +1032,13 @@ preflight suite, not just this instance.
 
 `linux/scripts/01-core/stage-defs.sh:135`
 
+**FIXED 2026-09-03** in the closure window that opened when the RVA23 chain
+finished. `cross_stage_is_per_arch` now declares `local stage="$1" s`.
+Demonstrated before and after: with the leak, a caller iterating
+`base compiler runtime` reads back `android` for both non-per-arch stages —
+exactly the arch-less `cross-android-` slug the live log printed. Regression
+test in `test-stage-defs.sh`; removing `local s` fails it.
+
 **What breaks.**
 `cross_stage_is_per_arch()` declares `local stage="$1"` but NOT `local s`, and
 iterates `for s in "${CROSS_PER_ARCH_STAGES[@]}"`. Its only caller that
@@ -1112,6 +1119,14 @@ production's scoping.
 ### WJ. Disk-guard's anti-spin protection appends with a space to a comma-matched list, so an undeletable slug loops forever [medium]
 
 `linux/scripts/build-cross-chain.sh:518`
+
+**FIXED 2026-09-03.** Both anti-spin sites append with a comma now. The
+behavioural half is worse than the entry said: a space-joined list protects
+**nothing at all**, so `pick_victim` re-returns the same oldest slug rather
+than merely failing to skip one. Guarded twice in `test-disk-guard.sh` — a
+behavioural assertion that the space form protects nothing, and a structural
+one on the chain itself, because a behavioural test alone rebuilds the string
+and cannot notice the caller switching back.
 
 **What breaks.**
 `_chain_stage_disk_guard` has two `while` loops (phase 1 free-space, build-
