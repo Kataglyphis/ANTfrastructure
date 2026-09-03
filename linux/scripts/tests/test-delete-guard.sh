@@ -60,7 +60,7 @@ t_case "a quoted span is not cut into segments"
 # The splitter used a regex, so `|` and newlines inside a quoted string ended a
 # segment and the quote-stripping below had nothing to strip. A status line that
 # merely SAID "rm" landed in the same segment as a bare / from `df -h /`, and a
-# legitimate container removal was denied. docs/failure-modes.md#delete-guard-scope
+# legitimate container removal was denied. docs/failure-modes.md#the-delete-guard-denies-its-own-legitimate-work
 _MIX="nerdctl rm abc123 | sed 's/x/y/'
 echo \"  after rm+rmi: \$(df -h / | tail -1)\""
 t_assert_eq "allow" "$(_decide "${_MIX}")" "prose naming rm beside df -h / must not deny"

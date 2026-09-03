@@ -57,7 +57,7 @@ fi
 if [ "$#" -eq 0 ]; then
   _EMB_DIR="$(mktemp -d)"
   trap 'rm -rf "${_EMB_DIR}"' EXIT
-  if python3 linux/scripts/extract-embedded-python.py "${_EMB_DIR}" \
+  if python3 linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
        $(find linux/scripts -name '*.sh' -type f) >/dev/null 2>&1; then
     while IFS= read -r f; do PY_FILES+=("${f}"); done \
       < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)

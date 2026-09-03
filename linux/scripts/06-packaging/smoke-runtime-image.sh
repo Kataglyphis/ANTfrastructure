@@ -97,6 +97,25 @@ check_entrypoint() {
 # arrives on STDIN so the default CMD shell reads it, and `exit 42` proves the exec
 # chain hands the child's status back. A gate may not skip itself: a missing CMDOK
 # marker (inspect failed) or a CMD whose first word is not a shell FAILS.
+# Pure verdict function for the default-boot gate: rc + probe text in, one
+# pass/fail out. No container, so the reasoning is unit-testable -- which is how
+# the previous version's inert assertion would have been caught.
+_boot_verdict() {
+  local rc="$1" out="$2" target_arch="$3"
+  if [ "${rc}" != "42" ]; then
+    fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
+  elif ! printf '%s' "${out}" | grep -q "gstma=yes"; then
+    # NOT gst=set / vulkan=set: the image ENV sets both on its own, so those
+    # answer yes even with the entrypoint's sourcing gone. The multiarch plugin
+    # dir comes only from gstreamer-env.sh. docs/refactoring-backlog.md XQ
+    fail "the entrypoint did not source gstreamer-env.sh (${target_arch}): ${out} -- GST_PLUGIN_PATH lacks the multiarch dir"
+  elif ! printf '%s' "${out}" | grep -q "vkres=yes"; then
+    fail "the entrypoint did not resolve VULKAN_SDK past /opt/vulkan/active (${target_arch}): ${out}"
+  else
+    pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
+  fi
+}
+
 check_default_entrypoint_boot() {
   local image_tag="$1"
   local target_arch="$2"
@@ -125,16 +144,12 @@ check_default_entrypoint_boot() {
   local out rc
   out="$(printf '%s\n' \
            'echo "BOOT uid=$(id -u) gst=${GST_PLUGIN_PATH:+set} vulkan=${VULKAN_SDK:+set}"' \
+    'case "${GST_PLUGIN_PATH}" in *linux-gnu/gstreamer-1.0*) echo "gstma=yes";; *) echo "gstma=no";; esac' \
+    'case "${VULKAN_SDK}" in /opt/vulkan/active|"") echo "vkres=no";; *) echo "vkres=yes";; esac' \
            'exit 42' \
          | "${NERDCTL_BIN}" run --rm -i --platform "linux/${target_arch}" "${image_tag}" 2>/dev/null)" \
     && rc=0 || rc=$?
-  if [ "${rc}" != "42" ]; then
-    fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
-  elif ! printf '%s' "${out}" | grep -q "gst=set"; then
-    fail "default boot ran but the entrypoint exported no GStreamer env (${target_arch}): ${out} -- gstreamer-env.sh sourcing regressed"
-  else
-    pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
-  fi
+  _boot_verdict "${rc}" "${out}" "${target_arch}"
   echo ""
 }
 
@@ -247,13 +262,13 @@ check_app_wheel_smoke() {
       # failures==0 and reports a vanished component as a WARNING, so one identical
       # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
       # when an arch gains a component, never to make a red run green.
-      # GEN1: riscv64 stays at 12 until a real run PRINTS 13/… ok.
-      # docs/gen1-riscv64-genai.md
+      # GEN1: riscv64 12->13 (run 20260903 printed 14); arm64 held at 14.
+      # docs/gen1-riscv64-genai.md#the-app-wheel-floor
       local _wheel_floor _wheel_out _wheel_ok
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
         arm64)   _wheel_floor=14 ;;
-        riscv64) _wheel_floor=12 ;;
+        riscv64) _wheel_floor=13 ;;
         *)       _wheel_floor=0  ;;
       esac
       if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestr_ant_ion.smoke 2>&1)"; then
@@ -451,6 +466,31 @@ check_ffmpeg() {
       fail "ffmpeg failed to execute in the runtime image (${target_arch})"
     fi
     echo ""
+}
+
+# Flutter shipped from the sdk stage. amd64/arm64 carry the SDK; riscv64 is skipped
+# upstream and honestly ships none. Catches the 2026-09-03 drop where /opt/flutter
+# was built, hard-checked, then never COPY'd into the runtime image.
+# docs/artifact-copy-completeness.md
+check_flutter() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- Functional: flutter SDK ---"
+  if [ "${target_arch}" = "riscv64" ]; then
+    if _rt_run bash -lc 'command -v flutter >/dev/null 2>&1'; then
+      fail "flutter present on riscv64 — upstream ships no riscv64 SDK; the image must not advertise it"
+    else
+      pass "flutter honestly absent on riscv64 (upstream unsupported)"
+    fi
+    echo ""
+    return 0
+  fi
+  if _rt_run bash -lc 'set -o pipefail; flutter --version 2>/dev/null | head -1 | grep -qiE "flutter [0-9]"'; then
+    pass "flutter executes and reports a version (${target_arch})"
+  else
+    fail "flutter missing or non-functional in the runtime image (${target_arch}) — /opt/flutter not shipped?"
+  fi
+  echo ""
 }
 
 # Native shared-library dependency closure over the source-built /opt stacks: any
@@ -669,7 +709,8 @@ done' 2>/dev/null)"; then
 # One in-image probe emits facts only; every verdict is reached on the host, so
 # both gates can be driven with recorded probe text.
 # See docs/cross-build-verification.md, "Shipped-truth gates".
-_shipped_truth_probe() {
+_probe_advertised() {
+  # What the image SAYS it is: the ENV keys it advertises.
   cat <<'PROBE'
 set -uo pipefail
 py=/opt/venv/bin/python
@@ -680,7 +721,24 @@ printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
 printf 'ADV GSTREAMER_VERSION %s\n'   "${GSTREAMER_VERSION:-}"
 printf 'ADV VULKAN_VERSION %s\n'      "${VULKAN_VERSION:-}"
 printf 'ADV RUST_VERSION %s\n'        "${RUST_VERSION:-}"
+printf 'ADV UBUNTU_VERSION %s\n'             "${UBUNTU_VERSION:-}"
+printf 'ADV CMAKE_VERSION %s\n'              "${CMAKE_VERSION:-}"
+printf 'ADV NODE_VERSION %s\n'               "${NODE_VERSION:-}"
+printf 'ADV UV_VERSION %s\n'                 "${UV_VERSION:-}"
+printf 'ADV OPENCV_VERSION %s\n'             "${OPENCV_VERSION:-}"
+printf 'ADV ONNXRUNTIME_VERSION %s\n'        "${ONNXRUNTIME_VERSION:-}"
+printf 'ADV ONNXRUNTIME_GENAI_VERSION %s\n'  "${ONNXRUNTIME_GENAI_VERSION:-}"
+printf 'ADV PYAV_VERSION %s\n'               "${PYAV_VERSION:-}"
+printf 'ADV IREE_VERSION %s\n'               "${IREE_VERSION:-}"
+printf 'ADV LITERT_VERSION %s\n'             "${LITERT_VERSION:-}"
 printf 'ADV PYTORCH_EXTRA %s\n'       "${PYTORCH_EXTRA:-}"
+PROBE
+}
+
+_probe_actual_versions() {
+  # What the image actually IS: every value read from the shipped thing itself,
+  # never from an ENV. The ADV/HAVE pair is what the shipped-truth gate compares.
+  cat <<'PROBE'
 printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
 _g="$(command -v gcc || true)"
@@ -715,6 +773,12 @@ printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
 printf 'HAVE LLVM_RELEASE %s\n'       "$(clang --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE GSTREAMER_VERSION %s\n'  "$(gst-inspect-1.0 --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE VULKAN_VERSION %s\n'     "$(_have_vulkan)"
+PROBE
+}
+
+_probe_venv_inventory() {
+  # The venv package set and the app's requirement edges, via importlib.metadata.
+  cat <<'PROBE'
 "$py" - <<'PY' 2>/dev/null || echo 'VENV ABSENT metadata-probe-crashed'
 import importlib.metadata as md
 try:
@@ -766,6 +830,12 @@ for d in md.distributions():
 PY
 # riscv64 only: what the image's own gcc defaults to, then the ISA each
 # shipped object was actually built for.
+PROBE
+}
+
+_probe_elf_and_sonames() {
+  # riscv64 ISA attributes and which library wins each soname lookup.
+  cat <<'PROBE'
 printf 'RVCC %s\n' "$(gcc -v 2>&1 | grep -oE 'with-arch=[a-z0-9_]+' | head -1 | cut -d= -f2)"
 
 for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
@@ -789,6 +859,16 @@ for _d in /opt/gstreamer/lib /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/lib
 done
 echo RTPROBE_DONE
 PROBE
+}
+
+
+# The probe the runtime smoke runs INSIDE the image, in three named parts:
+# what it advertises, what it is, and what it holds. Emitted as one script.
+_shipped_truth_probe() {
+  _probe_advertised
+  _probe_actual_versions
+  _probe_venv_inventory
+  _probe_elf_and_sonames
 }
 
 # Version-carrying env vars the shipped image sets. Each must equal what the image
@@ -1417,6 +1497,7 @@ main() {
     check_genai_binding "${image_tag}" "${target_arch}"
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
+    check_flutter "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"

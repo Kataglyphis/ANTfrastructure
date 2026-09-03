@@ -200,13 +200,16 @@ runtime_use_local_artifact_context() {
   [ -n "${ARTIFACT_CONTEXT_ROOT:-}" ]
 }
 
+# `<root>-<arch>`, matching what cross_stage_context_dir WRITES. It joined with a
+# slash and so pointed at a directory the android stage never creates, which made
+# --no-push fall back to the stale registry tag. docs/refactoring-backlog.md XN
 runtime_artifact_context_dir() {
   local arch="$1"
   if [ -z "${ARTIFACT_CONTEXT_ROOT:-}" ]; then
     printf '[ERROR] ARTIFACT_CONTEXT_ROOT is required for local artifact contexts\n' >&2
     return 1
   fi
-  printf '%s' "${ARTIFACT_CONTEXT_ROOT%/}/${arch}"
+  printf '%s' "${ARTIFACT_CONTEXT_ROOT%/}-${arch}"
 }
 
 runtime_artifact_context_ref() {

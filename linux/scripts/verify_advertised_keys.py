@@ -37,13 +37,10 @@ SHAPED = re.compile(r"(VERSION|RELEASE|REF)$")
 
 
 # Table rows whose value the in-image probe never prints, so the row can only
-# SKIP. Measured 2026-09-03; each is real debt tracked as backlog WC. Shrink this
-# set by adding the printf -- never grow it.
-FROZEN_UNPROBED = {
-    "UBUNTU_VERSION", "CMAKE_VERSION", "NODE_VERSION", "UV_VERSION",
-    "OPENCV_VERSION", "ONNXRUNTIME_VERSION", "ONNXRUNTIME_GENAI_VERSION",
-    "PYAV_VERSION", "IREE_VERSION", "LITERT_VERSION",
-}
+# SKIP. EMPTY since 2026-09-03: all ten were given probes and checked against the
+# shipped image. Adding an entry here accepts a row that cannot fail -- write the
+# probe instead. docs/refactoring-backlog.md WC
+FROZEN_UNPROBED = set()
 
 
 def main():

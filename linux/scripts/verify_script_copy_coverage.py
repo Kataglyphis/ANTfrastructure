@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""verify-script-copy-coverage.py — static "sourced/COPY'd scripts are present" check.
+"""verify_script_copy_coverage.py — static "sourced/COPY'd scripts are present" check.
 
 Catches the failure class where a script that runs inside an image references
 another script at /opt/scripts/... that was never COPY'd into that image, so it

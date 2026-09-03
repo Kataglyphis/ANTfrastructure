@@ -9,6 +9,9 @@ deleting its line. See docs/code-quality-tooling.md.
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from quality_allow import check_keys, load_keys  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comment-size.allow")
 LIMIT = int(os.environ.get("COMMENT_SIZE_LIMIT", "10"))
@@ -47,13 +50,7 @@ def blocks():
 
 def main():
     found = blocks()
-    allow = set()
-    if os.path.exists(ALLOW):
-        with open(ALLOW, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    allow.add(line)
+    allow = load_keys(ALLOW)
     # Key on file + the block's FIRST comment text, not the line number: a block
     # must not re-flag because something above it moved.
     keys = {}
@@ -67,23 +64,14 @@ def main():
     print("=== comment size gate (limit {} lines) ===".format(LIMIT))
     print("  {} block(s) over the limit; {} frozen".format(len(keys), len(allow)))
 
-    rc = 0
-    new = sorted(k for k in keys if k not in allow)
-    if new:
-        rc = 1
-        print("\nNEW oversized comment block(s) — move the detail into docs/ and"
-              " leave a pointer:\n", file=sys.stderr)
-        for k in new:
-            rel, first = k.split("\t")
-            start, n = keys[k]
-            print("  {}:{}  {} lines".format(rel, start, n), file=sys.stderr)
-    stale = sorted(allow - set(keys))
-    if stale:
-        rc = 1
-        print("\nSTALE entr(ies) — that block is gone or now fits, delete the line:\n",
-              file=sys.stderr)
-        for k in stale:
-            print("  {}".format(k.replace("\t", "  ")), file=sys.stderr)
+    def _block(k):
+        rel, first = k.split("\t")
+        start, n = keys[k]
+        return "{}:{}  {} lines".format(rel, start, n)
+
+    rc = check_keys(keys, allow,
+                    "NEW oversized comment block(s) — move the detail into docs/ and leave a pointer:",
+                    "STALE entr(ies) — that block is gone or now fits, delete the line:", _block)
     if rc == 0:
         print("OK: no new oversized comment blocks")
     return rc

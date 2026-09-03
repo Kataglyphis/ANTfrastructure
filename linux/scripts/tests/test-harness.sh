@@ -49,6 +49,11 @@ _t_fail() {
 
 _t_pass() { :; }
 
+# t_out <command...> — combined stdout+stderr, to assert on messages
+t_out() { "$@" 2>&1; }
+# t_rc <command...> — the exit code as text, for t_assert_eq
+t_rc()  { "$@" >/dev/null 2>&1; echo $?; }
+
 # t_assert_eq <expected> <actual> [message]
 t_assert_eq() {
   _T_RUN=$((_T_RUN + 1))

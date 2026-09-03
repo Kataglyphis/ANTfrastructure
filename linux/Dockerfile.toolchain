@@ -12,7 +12,7 @@ SHELL ["bash", "-lc"]
 # edits (including host-only orchestrator modules) invalidate the multi-hour
 # GCC/LLVM/Rust/Python layers. The heavy RUNs below therefore bind-mount ONLY
 # the per-file transitive source-closure of their entrypoint script (traced via
-# verify-script-copy-coverage.py --report-core-usage plus manual source/exec
+# verify_script_copy_coverage.py --report-core-usage plus manual source/exec
 # tracing): editing an unmounted script leaves the compiler layers cached, while
 # editing a mounted file rebuilds exactly the RUNs that consume it. Cheap RUNs
 # (3b/3c) keep whole-dir mounts. The /opt/scripts bundle at the END of this file

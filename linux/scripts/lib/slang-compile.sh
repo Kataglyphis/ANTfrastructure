@@ -326,7 +326,7 @@ slang_compile_combined_wgsl() {
     echo "[WARN] slangc ${slangc_version} is older than ${min_slangc_version}, whose combined (whole-module)" >&2
     echo "[WARN] WGSL emit is the first known-correct one: older builds drop @location(N) from varying" >&2
     echo "[WARN] structs and produce WGSL that wgpu/naga rejects. SKIPPING the combined WGSL emit - the" >&2
-    echo "[WARN] checked-in Rust-crate WGSL is left untouched. See docs/shader-build-pipeline.md." >&2
+    echo "[WARN] checked-in Rust-crate WGSL is left untouched. See docs/slang-shader-compilation.md." >&2
   fi
 
   local src_file out_name dst_rel src_path tmp_out

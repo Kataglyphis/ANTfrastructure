@@ -120,10 +120,11 @@ fi
 # files of other types).
 #
 # Extension-less scripts count too, IF they carry a shell shebang: git hooks are
-# bash but cannot have a .sh suffix, so .githooks/pre-commit was checked by no
-# gate at all and sat with an SC1072/SC1073 parse error (a comment starting with
-# the word "shellcheck", read as a malformed directive) until 2026-08-08. The
-# shebang test is what keeps this from sweeping in READMEs and binaries.
+# bash but cannot have a .sh suffix, so the commit hook
+# (linux/host-config/git-hooks/pre-commit) would be checked by no gate at all.
+# Its predecessor sat with an SC1072/SC1073 parse error until 2026-08-08 for
+# exactly that reason. The shebang test keeps this from sweeping in READMEs and
+# binaries. LOAD-BEARING: without it the live hook is unlinted.
 # Note this only affects EXPLICITLY passed files — the default sweep above still
 # discovers *.sh only, so the gate's default scope is unchanged.
 #
@@ -133,7 +134,7 @@ CHECK=()
 for f in ${FILES[@]+"${FILES[@]}"}; do
   [ -f "${f}" ] || continue
   # Test the BASENAME, not the path: a directory component may carry a dot
-  # (".githooks/pre-commit" matched the "has an extension" arm otherwise).
+  # (a path like ".githooks/pre-commit" matched the "has an extension" arm).
   case "${f##*/}" in
     *.sh) CHECK+=("${f}") ;;
     *.*)  ;;   # some other extension: not ours

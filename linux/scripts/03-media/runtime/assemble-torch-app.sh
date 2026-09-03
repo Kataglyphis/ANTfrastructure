@@ -301,36 +301,13 @@ run_uv_sync_with_fallback() {
 
 # After uv sync, force-reinstall the prebuilt local wheels, first uninstalling
 # any PyPI onnxruntime/opencv families they replace so the local builds win.
-reconcile_local_wheels() {
-  local -a local_wheels=()
-  local wheel_path wheel_basename
-  local have_onnx_family=false have_opencv_family=false
-  local have_torch_family=false have_litert_family=false
-
-  shopt -s nullglob
-  local_wheels=(/opt/wheels/*.whl)
-  shopt -u nullglob
-
-  if [ "${#local_wheels[@]}" -eq 0 ]; then
-    echo "No local wheels found; keeping packages installed by uv sync"
-    return 0
-  fi
-
-  for wheel_path in "${local_wheels[@]}"; do
-    wheel_basename="$(basename "${wheel_path}")"
-    case "$(wheel_family "${wheel_basename}")" in
-      onnx)              have_onnx_family=true ;;
-      opencv)            have_opencv_family=true ;;
-      torch|torchvision) have_torch_family=true ;;
-      litert)            have_litert_family=true ;;
-    esac
-  done
-
-  # Uninstall any PyPI build of a family we ship locally BEFORE force-reinstalling
-  # our wheels, so an upstream pulled transitively (often under a variant name --
-  # onnxruntime-gpu, opencv-python 4.x) can't shadow the custom build. torch/
-  # torchvision/ai-edge-litert are purged here too for symmetry -- previously they
-  # relied on build_uv_sync_args' --no-install-package + --force-reinstall alone.
+# Uninstall any PyPI build of a family we ship locally, BEFORE force-reinstalling
+# ours: an upstream pulled transitively (often under a variant name --
+# onnxruntime-gpu, opencv-python 4.x) would otherwise shadow the custom build.
+# torch/torchvision/ai-edge-litert are purged here too, for symmetry.
+_purge_shadowing_pypi_builds() {
+  local have_onnx_family="$1" have_opencv_family="$2"
+  local have_torch_family="$3" have_litert_family="$4"
   if [ "${have_onnx_family}" = "true" ]; then
     uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu onnxruntime-dnnl 2>/dev/null || true
   fi
@@ -343,6 +320,139 @@ reconcile_local_wheels() {
   if [ "${have_litert_family}" = "true" ]; then
     uv pip uninstall ai-edge-litert 2>/dev/null || true
   fi
+}
+
+# torch's own runtime deps the sync graph can miss. The PACKAGE name is
+# installed, the MODULE name imported -- they differ for typing-extensions.
+_backfill_torch_runtime_deps() {
+  local _venv_py="${VIRTUAL_ENV:-/opt/venv}/bin/python3"
+  local -a _torch_dep_backfill=()
+  local _pair _pkg _mod
+  for _pair in sympy:sympy mpmath:mpmath networkx:networkx \
+               jinja2:jinja2 markupsafe:markupsafe filelock:filelock \
+               fsspec:fsspec typing-extensions:typing_extensions; do
+    _pkg="${_pair%%:*}"; _mod="${_pair##*:}"
+    "${_venv_py}" -c "import ${_mod}" 2>/dev/null || _torch_dep_backfill+=("${_pkg}")
+  done
+  if [ "${#_torch_dep_backfill[@]}" -gt 0 ]; then
+    printf 'Backfilling torch runtime deps missing from the sync graph: %s\n' "${_torch_dep_backfill[*]}"
+    uv pip install --no-deps "${_torch_dep_backfill[@]}"
+  fi
+}
+
+# Install order is load-bearing -- other, then tvm, then iree.
+# Nameref params carry their own names: -n x="x" is a circular reference.
+_install_wheel_groups() {
+  local -n _ow="$1" _tw="$2" _iw="$3"
+if [ "${#_ow[@]}" -gt 0 ]; then
+  # --no-deps: see the locked-wheels comment above — THIS site produced the
+  # live numpy/protobuf float (log: "- numpy==2.5.1 / + numpy==2.5.2" 0.5 s
+  # after uv sync had just enforced the lock).
+  uv pip install --no-deps --force-reinstall "${_ow[@]}"
+  # --no-deps above means the ORT wheel's OWN runtime requirements are never
+  # installed. On riscv64 the sync did not supply them either, so the shipped
+  # venv carried a dangling edge: the wheel declares flatbuffers and protobuf,
+  # the venv has neither, and that surfaces as an ImportError in the USER's
+  # process -- never in our build. Both publish a pure-Python `any` wheel.
+  # protobuf is major-pinned deliberately: an unconstrained resolve is exactly
+  # the "protobuf MAJOR" float the comment above warns about (the 2026-09-02
+  # run installed 6.33.6 twice and 7.36.1 once).
+  # docs/refactoring-backlog.md AB
+  uv pip install 'protobuf>=6,<7' flatbuffers || \
+    echo "WARNING: ORT runtime deps (protobuf/flatbuffers) not installed - the venv gate will name them"
+fi
+if [ "${#_tw[@]}" -gt 0 ]; then
+  uv pip install --no-deps --force-reinstall "${_tw[@]}" || \
+    echo "WARNING: TVM wheel install failed (optional; import tvm will optional-fail; native libs unaffected)"
+fi
+if [ "${#_iw[@]}" -gt 0 ]; then
+  if [ "$(uname -m)" = "riscv64" ]; then
+    # riscv64: install IREE --no-deps (its ml_dtypes/numpy deps have no riscv64
+    # wheels and a full-deps resolve would try to pull them). numpy is already
+    # present from the sync.
+    uv pip install --no-deps --force-reinstall "${_iw[@]}" || \
+      echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
+    # ml_dtypes has no riscv64 PyPI wheel, so source-build it INTO this venv
+    # (best-effort). It must go here, not via apt in setup-package-image.sh — the
+    # from-source py3.14 venv can't see the distro python's dist-packages. Without
+    # it `import iree.runtime` fails "No module named 'ml_dtypes'" (the runtime
+    # smoke WARN); the native iree-compile path is unaffected either way.
+    uv pip install ml_dtypes || \
+      echo "WARNING: ml_dtypes source-build failed on riscv64 (iree.runtime bf16 dtypes unavailable; native iree-compile unaffected)"
+  else
+    # amd64/arm64: the cp314 wheel replaces any PyPI cp312-abi3 build. IREE's
+    # runtime deps (numpy from the lock; ml_dtypes) must NOT be re-resolved
+    # here — a full-deps force-reinstall floats numpy off the lock (the
+    # 2026-08-11 2.5.2 incident, second injector). Install the wheels
+    # --no-deps, then ml_dtypes alone (absent from the app lock).
+    # Hard-fail under set -e -- IREE is REQUIRED here.
+    uv pip install --no-deps --force-reinstall "${_iw[@]}"
+    uv pip install --no-deps ml_dtypes
+  fi
+fi
+
+# When torch ships as a LOCAL wheel (riscv64) its backend extra is never
+# requested from uv sync, so the lock graph omits torch's own runtime deps —
+# and the --no-deps force-reinstall above (correctly) no longer drags them
+# in as a side effect. Result on riscv64: `import torchvision` dies with
+# "No module named 'sympy'" (torch.fx symbolic shapes) while torch's core
+# ops happen to work. Backfill exactly the missing pure-python leaves,
+# --no-deps each (their own hard deps are in the list: sympy->mpmath,
+# jinja2->markupsafe). amd64/arm64 get all of these from the lock and the
+# import probes skip everything.
+}
+
+# Echoes the four family flags in a fixed order: onnx opencv torch litert.
+_wheel_families_present() {
+  local w onnx=false opencv=false torch=false litert=false
+  for w in "$@"; do
+    case "$(wheel_family "$(basename "${w}")")" in
+      onnx)              onnx=true ;;
+      opencv)            opencv=true ;;
+      torch|torchvision) torch=true ;;
+      litert)            litert=true ;;
+    esac
+  done
+  printf '%s %s %s %s\n' "${onnx}" "${opencv}" "${torch}" "${litert}"
+}
+
+# $1..$3 = nameref arrays for iree / tvm / everything else; $4.. = wheel paths.
+_partition_wheels_by_install_group() {
+  local -n _pi="$1" _pt="$2" _po="$3"; shift 3
+  local w
+  for w in "$@"; do
+    case "$(wheel_family "$(basename "${w}")")" in
+      iree|iree-compiler|iree-runtime) _pi+=("${w}") ;;
+      tvm)                             _pt+=("${w}") ;;
+      *)                               _po+=("${w}") ;;
+    esac
+  done
+}
+
+reconcile_local_wheels() {
+  local -a local_wheels=()
+  local wheel_path wheel_basename
+  local have_onnx_family=false have_opencv_family=false
+  local have_torch_family=false have_litert_family=false
+
+  # Overridable ONLY so this function can be exercised off-target: /opt is
+  # root-owned, so a test cannot put fixtures where the image keeps its wheels.
+  # Unset, this is exactly /opt/wheels. docs/refactoring-backlog.md F1
+  local _wheels_dir="${LOCAL_WHEELS_DIR:-/opt/wheels}"
+  shopt -s nullglob
+  local_wheels=("${_wheels_dir}"/*.whl)
+  shopt -u nullglob
+
+  if [ "${#local_wheels[@]}" -eq 0 ]; then
+    echo "No local wheels found; keeping packages installed by uv sync"
+    return 0
+  fi
+
+  read -r have_onnx_family have_opencv_family have_torch_family have_litert_family \
+    <<<"$(_wheel_families_present "${local_wheels[@]}")"
+
+  _purge_shadowing_pypi_builds "${have_onnx_family}" "${have_opencv_family}" \
+    "${have_torch_family}" "${have_litert_family}"
 
   # Partition IREE runtime wheels (riscv64 cross-built, best-effort) out of the
   # main force-reinstall: they pull ml_dtypes, which has no riscv64 PyPI wheel and
@@ -357,87 +467,11 @@ reconcile_local_wheels() {
   # that's meant to be optional. Install it best-effort so `import tvm` degrades to
   # the runtime smoke's optional-fail instead of failing the build.
   local -a iree_wheels=() tvm_wheels=() other_wheels=()
-  for wheel_path in "${local_wheels[@]}"; do
-    case "$(wheel_family "$(basename "${wheel_path}")")" in
-      iree|iree-compiler|iree-runtime)
-        iree_wheels+=("${wheel_path}") ;;
-      tvm)
-        tvm_wheels+=("${wheel_path}") ;;
-      *)
-        other_wheels+=("${wheel_path}") ;;
-    esac
-  done
+  _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels "${local_wheels[@]}"
 
-  if [ "${#other_wheels[@]}" -gt 0 ]; then
-    # --no-deps: see the locked-wheels comment above — THIS site produced the
-    # live numpy/protobuf float (log: "- numpy==2.5.1 / + numpy==2.5.2" 0.5 s
-    # after uv sync had just enforced the lock).
-    uv pip install --no-deps --force-reinstall "${other_wheels[@]}"
-    # --no-deps above means the ORT wheel's OWN runtime requirements are never
-    # installed. On riscv64 the sync did not supply them either, so the shipped
-    # venv carried a dangling edge: the wheel declares flatbuffers and protobuf,
-    # the venv has neither, and that surfaces as an ImportError in the USER's
-    # process -- never in our build. Both publish a pure-Python `any` wheel.
-    # protobuf is major-pinned deliberately: an unconstrained resolve is exactly
-    # the "protobuf MAJOR" float the comment above warns about (the 2026-09-02
-    # run installed 6.33.6 twice and 7.36.1 once).
-    # docs/refactoring-backlog.md AB
-    uv pip install 'protobuf>=6,<7' flatbuffers || \
-      echo "WARNING: ORT runtime deps (protobuf/flatbuffers) not installed - the venv gate will name them"
-  fi
-  if [ "${#tvm_wheels[@]}" -gt 0 ]; then
-    uv pip install --no-deps --force-reinstall "${tvm_wheels[@]}" || \
-      echo "WARNING: TVM wheel install failed (optional; import tvm will optional-fail; native libs unaffected)"
-  fi
-  if [ "${#iree_wheels[@]}" -gt 0 ]; then
-    if [ "$(uname -m)" = "riscv64" ]; then
-      # riscv64: install IREE --no-deps (its ml_dtypes/numpy deps have no riscv64
-      # wheels and a full-deps resolve would try to pull them). numpy is already
-      # present from the sync.
-      uv pip install --no-deps --force-reinstall "${iree_wheels[@]}" || \
-        echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
-      # ml_dtypes has no riscv64 PyPI wheel, so source-build it INTO this venv
-      # (best-effort). It must go here, not via apt in setup-package-image.sh — the
-      # from-source py3.14 venv can't see the distro python's dist-packages. Without
-      # it `import iree.runtime` fails "No module named 'ml_dtypes'" (the runtime
-      # smoke WARN); the native iree-compile path is unaffected either way.
-      uv pip install ml_dtypes || \
-        echo "WARNING: ml_dtypes source-build failed on riscv64 (iree.runtime bf16 dtypes unavailable; native iree-compile unaffected)"
-    else
-      # amd64/arm64: the cp314 wheel replaces any PyPI cp312-abi3 build. IREE's
-      # runtime deps (numpy from the lock; ml_dtypes) must NOT be re-resolved
-      # here — a full-deps force-reinstall floats numpy off the lock (the
-      # 2026-08-11 2.5.2 incident, second injector). Install the wheels
-      # --no-deps, then ml_dtypes alone (absent from the app lock).
-      # Hard-fail under set -e -- IREE is REQUIRED here.
-      uv pip install --no-deps --force-reinstall "${iree_wheels[@]}"
-      uv pip install --no-deps ml_dtypes
-    fi
-  fi
-
-  # When torch ships as a LOCAL wheel (riscv64) its backend extra is never
-  # requested from uv sync, so the lock graph omits torch's own runtime deps —
-  # and the --no-deps force-reinstall above (correctly) no longer drags them
-  # in as a side effect. Result on riscv64: `import torchvision` dies with
-  # "No module named 'sympy'" (torch.fx symbolic shapes) while torch's core
-  # ops happen to work. Backfill exactly the missing pure-python leaves,
-  # --no-deps each (their own hard deps are in the list: sympy->mpmath,
-  # jinja2->markupsafe). amd64/arm64 get all of these from the lock and the
-  # import probes skip everything.
+  _install_wheel_groups other_wheels tvm_wheels iree_wheels
   if [ "${have_torch_family}" = "true" ]; then
-    local _venv_py="${VIRTUAL_ENV:-/opt/venv}/bin/python3"
-    local -a _torch_dep_backfill=()
-    local _pair _pkg _mod
-    for _pair in sympy:sympy mpmath:mpmath networkx:networkx \
-                 jinja2:jinja2 markupsafe:markupsafe filelock:filelock \
-                 fsspec:fsspec typing-extensions:typing_extensions; do
-      _pkg="${_pair%%:*}"; _mod="${_pair##*:}"
-      "${_venv_py}" -c "import ${_mod}" 2>/dev/null || _torch_dep_backfill+=("${_pkg}")
-    done
-    if [ "${#_torch_dep_backfill[@]}" -gt 0 ]; then
-      printf 'Backfilling torch runtime deps missing from the sync graph: %s\n' "${_torch_dep_backfill[*]}"
-      uv pip install --no-deps "${_torch_dep_backfill[@]}"
-    fi
+    _backfill_torch_runtime_deps
   fi
 }
 

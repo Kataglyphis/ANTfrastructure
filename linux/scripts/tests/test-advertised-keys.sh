@@ -15,7 +15,7 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 _fixture() {
   local d; d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts/06-packaging"
-  cp "${SCRIPTS_DIR}/verify-advertised-keys.py" "${d}/linux/scripts/"
+  cp "${SCRIPTS_DIR}/verify_advertised_keys.py" "${d}/linux/scripts/"
   cp "${SCRIPTS_DIR}/06-packaging/smoke-runtime-image.sh" "${d}/linux/scripts/06-packaging/"
   cp "${REPO}"/linux/Dockerfile.* "${d}/linux/"
   printf '%s' "${d}"
@@ -25,19 +25,19 @@ _fixture() {
 # cases below differ only in their mutation; the running lives here.
 _gate_must_fail() {
   local fix="$1" want="$2" why="$3"
-  t_assert_fails "${PY}" "${fix}/linux/scripts/verify-advertised-keys.py"
-  t_assert_contains "$("${PY}" "${fix}/linux/scripts/verify-advertised-keys.py" 2>&1)" \
+  t_assert_fails "${PY}" "${fix}/linux/scripts/verify_advertised_keys.py"
+  t_assert_contains "$("${PY}" "${fix}/linux/scripts/verify_advertised_keys.py" 2>&1)" \
     "${want}" "${why}"
 }
 
 t_case "the gate passes on the real tree"
-t_assert_ok "${PY}" "${SCRIPTS_DIR}/verify-advertised-keys.py"
+t_assert_ok "${PY}" "${SCRIPTS_DIR}/verify_advertised_keys.py"
 
 t_case "a new unexcused version ENV fails the gate"
 FIX="$(_fixture)"
 printf '\nENV FOOBAR_VERSION=1.2.3\n' >> "${FIX}/linux/Dockerfile.package"
-t_assert_fails "${PY}" "${FIX}/linux/scripts/verify-advertised-keys.py"
-t_assert_contains "$("${PY}" "${FIX}/linux/scripts/verify-advertised-keys.py" 2>&1)" \
+t_assert_fails "${PY}" "${FIX}/linux/scripts/verify_advertised_keys.py"
+t_assert_contains "$("${PY}" "${FIX}/linux/scripts/verify_advertised_keys.py" 2>&1)" \
   "FOOBAR_VERSION is advertised" "an unchecked key must name itself"
 rm -rf "${FIX}"
 
@@ -45,14 +45,14 @@ t_case "dropping a key from the smoke table fails the gate"
 FIX="$(_fixture)"
 sed -i 's/^GSTREAMER_VERSION VULKAN_VERSION /VULKAN_VERSION /' \
   "${FIX}/linux/scripts/06-packaging/smoke-runtime-image.sh"
-t_assert_fails "${PY}" "${FIX}/linux/scripts/verify-advertised-keys.py"
+t_assert_fails "${PY}" "${FIX}/linux/scripts/verify_advertised_keys.py"
 rm -rf "${FIX}"
 
 t_case "a stale excuse fails the gate"
 FIX="$(_fixture)"
 sed -i 's/^EXCUSED = {/EXCUSED = {\n    "GONE_VERSION": "nothing advertises this",/' \
-  "${FIX}/linux/scripts/verify-advertised-keys.py"
-t_assert_fails "${PY}" "${FIX}/linux/scripts/verify-advertised-keys.py"
+  "${FIX}/linux/scripts/verify_advertised_keys.py"
+t_assert_fails "${PY}" "${FIX}/linux/scripts/verify_advertised_keys.py"
 rm -rf "${FIX}"
 
 # --- the smoke's pure verdict function, driven with values measured in the
@@ -92,12 +92,14 @@ rm -rf "${FIX}"
 
 t_case "the frozen-unprobed baseline cannot rot"
 # Adding the missing probe is the FIX, so the baseline must then shrink. If it
-# does not, the next unprobed row hides behind a stale entry.
+# does not, the next unprobed row hides behind a stale entry. The fixture seeds
+# the entry itself: the live baseline is empty since all ten were probed, and a
+# case that depends on it would quietly stop testing anything.
 FIX="$(_fixture)"
-sed -i "s|printf 'ADV VULKAN_VERSION |printf 'ADV CMAKE_VERSION %s\\n' \"\${CMAKE_VERSION:-}\"\nprintf 'ADV VULKAN_VERSION |" \
-  "${FIX}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+sed -i 's/^FROZEN_UNPROBED = set()$/FROZEN_UNPROBED = {"UBUNTU_VERSION"}/' \
+  "${FIX}/linux/scripts/verify_advertised_keys.py"
 _gate_must_fail "${FIX}" "now HAS a probe" \
-  "a healed key must be removed from the baseline"
+  "a key with a probe must be removed from the baseline"
 rm -rf "${FIX}"
 
 t_summary

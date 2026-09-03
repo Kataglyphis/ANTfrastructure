@@ -868,7 +868,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
-.github/actions/         9 composite actions consumers call @main, incl.
+.github/actions/         10 composite actions consumers call @main, incl.
                          cleanup-disk-space (Windows runners),
                          run-in-linux-container, run-in-windows-container;
                          full list in .github/actions/README.md
@@ -940,10 +940,11 @@ The rules an agent must never violate:
    base/toolchain closure adds `python/build_python.sh`, the three bundled
    `06-packaging/smoke-*` scripts, `Dockerfile.base` and
    `Dockerfile.toolchain`. Editing 01-core files OUTSIDE those lists no longer
-   busts base — but `Dockerfile.toolchain`'s LAST step (VERIFY TOOLCHAIN
-   CONTRACT) still binds `01-core` and `02-toolchain` **whole**, so an edit
-   anywhere in either directory re-runs that verify layer. It sits after the
-   compiles, so those still cache-hit: the loss is minutes, not hours. A file
+   busts base — but `Dockerfile.toolchain`'s verify layer
+   (`# 3c. VERIFY TOOLCHAIN CONTRACT`, :214) still binds `01-core` and
+   `02-toolchain` **whole**, so an edit anywhere in either directory re-runs it —
+   and everything after it, Rust and the source-built CPython included. It sits
+   after the GCC/LLVM compiles, so those still cache-hit: minutes, not hours. A file
    NEWLY needed by a base RUN must still be ADDED to the
    per-file mount lists (closure = source edges + **exec/`bash` edges**; the
    A1 validation build caught exactly such a miss). Batch closure edits;
@@ -984,20 +985,20 @@ The rules an agent must never violate:
      Two places set the wrapper, in this order: `setup_sccache`
      (compiler-cache.sh:156-195), which setup-gstreamer.sh:50 runs
      unconditionally for the Rust-heavy gstreamer lane, and
-     build-gstreamer-monorepo.sh:581-591, which only fires when
+     build-gstreamer-monorepo.sh's launcher-preferring block, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
      a build at 99%. Since 26a30740 (2026-08-27, owner decision "immer sccache")
      their FALLBACKS AGREE: with no executable launcher on disk both ship BARE
-     sccache — `build-gstreamer-monorepo.sh:611`
+     sccache — build-gstreamer-monorepo.sh's `for _rw in …sccache-launcher.sh` loop
      (`export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"`) and `setup_sccache`'s
      `_sc_launcher="sccache"` default (compiler-cache.sh:176). Never uncached;
      the launcher is an upgrade, not a precondition. The
      launcher is only reachable because 01-core is bind-mounted at
      `/opt/scripts/core` on every heavy media RUN; keep it on those mount
      lists.
-     Exporting `RUSTC_WRAPPER=""` is the opt-out — `Dockerfile.toolchain:58` and
-     `Dockerfile.package:173` do exactly that. nvcc stays untouched — the
+     Exporting `RUSTC_WRAPPER=""` is the opt-out — `Dockerfile.toolchain:66` and
+     `Dockerfile.package:217` do exactly that. nvcc stays untouched — the
      Windows lane records that released sccache breaks around it.
    - sccache-specific knobs live in `/etc/sccache/config.toml` (baked in
      `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
@@ -1160,7 +1161,7 @@ The rules an agent must never violate:
 - **Chain verification:** `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`. Informational only — it prints digests, it does not gate a build.
 - **Stage ancestry (gating):** `ancestry.sh` → `ancestry_output_annotations()`, `ancestry_recorded_parent()`, `ancestry_assert_chain()`. Every pushed cross stage records the parent ref it was built FROM as the OCI manifest annotation `org.kataglyphis.parent-digest`; a run with `--from-stage` after `base` walks that chain and HARD-FAILS when a parent was re-pushed after the child that would be inherited. Read path: `manifest-annotation.py` (annotations live in the base64 `Raw` field of `manifest inspect --verbose`). Absent annotation = warn (predates the mechanism); present + mismatch = fail. Escape hatch: `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`.
 - **Cross-stage build:** `cross-stage-build.sh` → `cross_stage_run()`, `cross_stage_build_and_push()`, `cross_stage_build_local()`, `cross_stage_resolve_parent_pin()`, `cross_stage_assemble_runtime_helper_args()`.
-- **Runtime flow init:** `runtime-flow-common.sh` → `init_runtime_flow_defaults()` (sourced directly by the two runtime scripts).
+- **Runtime flow init:** `runtime-flow-common.sh` → `init_runtime_flow_defaults()` (loaded by `lib-orchestrator.sh` in `runtime_flow_preamble()`, not sourced directly).
 - **Retry logic:** `logging.sh` → `retry <max> <sleep> <desc> <cmd...>`.
 - **Mirror args:** `build-helpers.sh` → `append_mirror_build_args_from_env()`.
 - **Version forwarding:** `version-forwarding.sh` → `append_version_build_args()` (auto-discovers from `versions.env`).
@@ -1178,7 +1179,7 @@ The rules an agent must never violate:
 deliberately NOT in this loop (backlog A3, 2026-08-12): it has no host-side
 caller, and its in-image consumers load it via `source_module`.
 
-`runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
+`runtime-flow-common.sh` is sourced by `lib-orchestrator.sh` inside `runtime_flow_preamble()`; `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`.
 
 **Which loader a NEW script should use (the dual-loader rule):** scripts that
 also execute INSIDE containers (bind-mounted or COPY'd — base-image, 02-toolchain,
@@ -1278,10 +1279,10 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   failed on riscv64 in the same run, so a green arch is not evidence for the
   others — check names against the live index, per arch.
 - **riscv64 self-builds `onnxruntime-genai`** (GEN1) — do not re-add an arch
-  guard. Compiling, linking and the `linux_riscv64` wheel are proven; token
-  sanity from `generate()` is NOT (upstream #594 is a RISC-V build that
-  compiled, imported and emitted nonsense — tiers 1-3 of `smoke_genai_py` pass
-  in exactly that state). Back out with `GENAI_ALLOW_RISCV64=false`; the lane,
+  guard. Compiling, linking and the `linux_riscv64` wheel are proven, and since
+  2026-09-03 so is token sanity: greedy `generate()` ids are identical to an
+  amd64 control, so upstream #594's nonsense output does not reproduce. The one
+  open caveat is real silicon — that run was qemu-user. Back out with `GENAI_ALLOW_RISCV64=false`; the lane,
   its patch and what remains unvalidated are owned by
   [`docs/gen1-riscv64-genai.md`](docs/gen1-riscv64-genai.md).
 - **Feature parity has exactly TWO documented exemptions**, both riscv64:
@@ -1292,7 +1293,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   that no longer applies. The ORT flavour split and arm64-only QNN are
   deliberate, not gaps.
 - **riscv64 builds WITH the vector extension** (2026-09-01). The cross GCC
-  defaults to `rva23u64_zifencei` / `lp64d` — Ubuntu's own riscv64 baseline,
+  defaults to `rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond` / `lp64d` (the ISA
+  string, not the profile NAME: gcc's arch-canonicalize rejects `rva23…` at
+  configure time) — a subset of Ubuntu's own riscv64 baseline,
   which the image's glibc already requires. Do NOT "restore compatibility" by
   reverting it: an rv64gc-only board cannot run this image regardless. Set via
   `--with-arch` in `02-toolchain/build-gcc.sh` (`RISCV_GCC_ARCH` /
@@ -1343,7 +1346,7 @@ base ─┬─ onnxruntime ───────┐
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` on the STAGED shell files and the doc gates only when `docs/` is staged | **~4 s** |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` on the STAGED shell files and the doc gates only when `docs/` is staged, plus the scoped mutation gate (`verify_mutations.py --changed`, silent unless a mutant survives) | **~11 s** |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/ubuntu24.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 
@@ -1360,11 +1363,13 @@ base ─┬─ onnxruntime ───────┐
   list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT
   enumerate it here — this very paragraph went stale by three slugs once);
   `tests/test-preflight-slugs.sh` enforces that every slug has a registered
-  check and vice versa. Newest additions: `pkg-names` (every package name the
-  tree asks apt for, resolved against the live indices; a PARTIAL index fetch is
-  a SKIP, never a pass) and `advert-keys` (every version-shaped `ENV`/`ARG` must
-  be checked by the smoke or excused with a reason, and a stale excuse fails) —
-  both 2026-09-01. Before them: `python-lint` (ruff, hard on
+  check and vice versa. Newest additions: `code-size` (functions over 80
+  lines, files over 800, against frozen allowlists) and `mutations` (neuter
+  guarded code on purpose; the named test MUST go red) — both 2026-09-03. Before
+  them, `pkg-names` (every package name the tree asks apt for, resolved against
+  the live indices; a PARTIAL index fetch is a SKIP, never a pass) and
+  `advert-keys` (every version-shaped `ENV`/`ARG` must be checked by the smoke or
+  excused with a reason, and a stale excuse fails) — both 2026-09-01. Before those: `python-lint` (ruff, hard on
   real-error classes, advisory rest), `secret-scan` (gitleaks, enforcing,
   false positives via `.gitleaksignore` with justification), `stage-graph`,
   `code-dupes`. That last one is the CODE twin of `doc-dupes`: it tokenises
@@ -1373,7 +1378,7 @@ base ─┬─ onnxruntime ───────┐
   RENAMED, and it reaches the nested `**/README.md` files `doc-dupes` never
   scans. Budgets live in `docs/scripts/code-dupes.allow` and go stale loudly;
   the fix for a finding is one owner plus a link, not a new entry.
-  CI workflows and `.githooks/pre-commit` run SUBSETS of it via
+  The commit hook runs a SUBSET of it via
   `PREFLIGHT_ONLY=<slugs>` / `PREFLIGHT_SKIP=<slugs>` — never copy the check
   list into a new caller.
   On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
@@ -1523,8 +1528,9 @@ base ─┬─ onnxruntime ───────┐
     `.claude/hooks/guard-destructive-deletes.ps1` runs as a `PreToolUse` hook
     (registered in `.claude/settings.json` ONLY — the user-level settings carry
     no PreToolUse hook, so this is a single point, not the redundant pair this
-    once claimed). **It is PowerShell: on a host without `pwsh` it cannot fire
-    at all** — verify with `command -v pwsh` before relying on it. It DENIES — a decision no
+    once claimed). Both a Python and a PowerShell implementation are
+    registered, so it fires on a Linux host with no `pwsh` (proven live
+    2026-09-03: it denied a heredoc on this very host). It It DENIES — a decision no
     prompt can override — any command touching a protected root, and it scans
     file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
     written for the user to paste, not a command the agent ran. Outside the
@@ -1567,7 +1573,7 @@ base ─┬─ onnxruntime ───────┐
 
 ## Common Failure Modes
 
-Symptom → cause → fix for 49 failures seen live on both lanes, keyed by the
+Symptom → cause → fix for 57 failures seen live on both lanes, keyed by the
 error message you actually get:
 [`docs/failure-modes.md`](docs/failure-modes.md). Grouped as Linux/cross-lane ·
 the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and
@@ -1632,7 +1638,7 @@ below the VS layer unless they are consumed above it. Same trap for modules:
 editing any of them re-pays the VS Build Tools layer, so batch such edits
 deliberately.
 
-GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed.
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` in `linux/scripts/01-core/versions.env` matches a supported Ubuntu codename (the ARG is declared in `Dockerfile.nvidia` and `Dockerfile.media`; `Dockerfile.amd` hardcodes its ROCm repo paths) (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed.
 
 ## Development Rules
 
@@ -1658,7 +1664,7 @@ than blocking `linux/` itself.
 
 `linux/.dockerignore` is a SEPARATE allowlist for builds whose context is
 `linux/` (the compose-built webserver image): it admits only
-`webserver/{nginx.conf,entrypoint.sh,dist/,license-assets/}`. `webserver/dist`
+`webserver/{nginx.conf,security-headers.conf,entrypoint.sh,dist/,license-assets/}` — the rule is that every `COPY` source in `webserver/Dockerfile` needs a negation. `webserver/dist`
 must stay INCLUDED there — the root file's `**/dist/` exclusion applies only to
 root-context builds and must not be copied over.
 
@@ -1669,7 +1675,7 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the four docs gates below — the same checks CI enforces.
+- **Pre-commit hooks:** Run **`make hooks`** once after clone; it points `core.hooksPath` at `linux/host-config/git-hooks`. See the hook section above for what it runs. (`.githooks/pre-commit` is the older, superseded gate — do not install it.)
 - **Four gates guard the docs; none of them is optional.** They exist because
   this tree lost a licence page, a doc index and ~50 cross-references to silent
   drift on a single day. Run them with

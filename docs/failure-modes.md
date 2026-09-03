@@ -39,10 +39,12 @@ Two neighbours, so you land on the right page:
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
+- [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
+- [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 
 **Windows: the layer store (hcsshim)**
 
@@ -312,6 +314,32 @@ on a destructive step:** it hides the failure AND the fact that the step was
 wrong, so the bug sits latent until something unrelated arms it — here, a
 read-only mount becoming writable.
 
+### The disk guard aims at the wrong number
+
+**Symptom.** The chain prunes at 40G free between stages, reports success, and the
+NEXT stage refuses anyway: `[ERROR] runtime lane refused: 56G free, ~120G needed`
+(2026-09-02: six manual prunes; 2026-09-03: the Flutter ship build, attempt 1).
+
+**Cause.** Two different numbers. `CROSS_DISK_GUARD_GB` (40) is a floor for *this*
+stage; the runtime lane needs `CROSS_RUNTIME_LANE_GB` (120) per wrapper build, and
+`--only runtime` additionally pulls the three `cross-android-<arch>` images
+(~40G uncompressed each) as its artifact source. A guard that reclaims to a fixed
+floor is therefore satisfied exactly when the lane is not.
+
+**Fix.** `_chain_stage_disk_guard` in `build-cross-chain.sh` reclaims to what
+comes *next* (`_chain_runtime_lane_need_gb`), and the launch-time preflight warns
+when the run will enter the lane with less than stage cost + lane need.
+
+**When the guard reclaims nothing.** `buildctl du` showing every regular record
+`Reclaimable: false` is not a full cache — it is killed chains' leaked *leases*
+(2026-09-03: 351 records / 251 GB pinned, `prune-safe.sh` freed 0). Leases die
+with the daemon: `systemctl --user restart buildkit.service` (no build running),
+then `PRUNE_KEEP_GB=<N> linux/host-config/prune-safe.sh`. `--keep-storage` bounds
+the WHOLE store, and the non-candidates (cache mounts ~166G + `source.local` ~10G)
+count toward it, so N below ~180 prunes every regular record. Local
+`:latest-cross-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
+them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
 ### A renamed or dropped distro package kills a stage hours in
 
 **Symptom.** A media or toolchain stage dies four hours into a rebuild with
@@ -327,7 +355,7 @@ noticed for months because warm apt caches still answered for the old names —
 the tree was un-buildable from scratch and no one knew, because nothing ever
 built from scratch.
 
-**Fix.** `linux/scripts/verify-package-names.py`, wired into `preflight.sh` as
+**Fix.** `linux/scripts/verify_package_names.py`, wired into `preflight.sh` as
 the `pkg-names` check. It extracts every distro package name **`linux/scripts/**`**
 asks for and resolves each against the live Ubuntu indices for the pinned codename —
 `archive.ubuntu.com` for amd64, `ports.ubuntu.com` for arm64/riscv64 — before a
@@ -500,6 +528,53 @@ check: it costs attention on every run and buys nothing. When you find one, the
 question is not "how do I make this pass" but "what would it take to make this
 able to fail" — and if you cannot answer that today, delete it and say where the
 real coverage lives.
+
+---
+
+### A trailing conditional fails the whole script
+
+The 2026-09-03 runtime build died on amd64 in `setup-torch-venv.sh` with
+`exit code: 1` and no error text — the last lines were a healthy
+`uv pip install --no-deps ml_dtypes` / `Checked 1 package in 2ms`. The cause was
+one line at the END of `reconcile_local_wheels` in `assemble-torch-app.sh`:
+
+```bash
+  [ "${have_torch_family}" = "true" ] && _backfill_torch_runtime_deps
+}
+```
+
+A function returns the status of its last statement. With no local torch wheel
+(every amd64/arm64 build — torch comes from `uv sync` there) the test is false,
+the `&&` list is `1`, so the function returns `1`; the caller runs under
+`set -euo pipefail` and exits. Nothing printed anything, because nothing had
+failed in the ordinary sense. riscv64, the only arch WITH a local torch wheel,
+was the only arch that would have passed.
+
+Two things let it through:
+
+- **`set -e` is not tripped by the list itself.** `a && b` is exempt from
+  `-e`, which is why the idiom feels safe; the trap is only that its status
+  becomes the function's status, and the bare call `reconcile_local_wheels`
+  in the caller is NOT exempt.
+- **The characterisation test ran without `set -e` and never looked at `$?`.**
+  It pinned the sequence of `uv` calls the function makes (its stated purpose)
+  and so proved the refactor behaviour-preserving for every path — including
+  the path that now returned `1`, because a return status is not a `uv` call.
+
+Fix: an `if ... fi` (or `|| true` when the right-hand side is genuinely
+optional). The test harness now runs the function under `set -eu` and asserts
+`0` for a non-torch wheel set; against the broken revision that case fails
+(`expected '0', got '1'`).
+
+**Where else this hides.** A census of `cond && cmd` as the last statement
+before a closing brace finds 17 sites in the tree; almost all are deliberate
+*predicates* (`[ -n "${_t}" ] && [ "${_t}" != "${_b}" ]`) whose callers use them
+in `if`/`||`. The bug shape is narrower: an *action* on the right-hand side and
+a *bare* call site under `set -e`. A regex on the function alone cannot tell the
+two apart, which is why this is a call-site check
+(docs/code-quality-tooling.md, planned gate `trailing-and`), not a pattern ban.
+Until it exists: a function-level test must assert the exit status on the
+"nothing to do" path, not only the calls it makes.
 
 ---
 
@@ -1068,7 +1143,7 @@ The sting: the only line reaching the build log is the same
 `WARNING: GStreamer cross-install had errors` a healthy cross run prints, so the
 broken run is **indistinguishable in the log**.
 
-**The gate.** `verify-masked-assignments.py` (preflight slug `masked-decls`)
+**The gate.** `verify_masked_assignments.py` (preflight slug `masked-decls`)
 fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
 command substitution; 54 pre-existing sites are frozen in
 `masked-assignments.allow`, keyed by file+variable so a site does not re-flag

@@ -42,7 +42,7 @@ documentation index, which maps every topic to the page that owns it.
       :link: overview
       :link-type: doc
 
-      Published images, repository image chain, feature snapshot, dependencies, and useful tools.
+      Published images, repository image chain, and a feature snapshot.
 
    .. grid-item-card:: Linux Build Basics
       :link: linux-build-basics
@@ -146,7 +146,9 @@ Common development targets:
 
    linux-build-basics
    linux-cross-builds
+   artifact-copy-completeness
    gen1-riscv64-genai
+   qnn-linux
    riscv64-venv-parity
    riscv64-rva23-baseline
    upstreamable-patches
@@ -219,6 +221,7 @@ Common development targets:
    refactoring-backlog-archive-2026-08-30
    refactoring-backlog-archive-2026-08-31
    refactoring-backlog-archive-2026-09-02
+   refactoring-backlog-archive-2026-09-03
    windows-backlog-archive-2026-08-11
    windows-backlog-archive-2026-08-17
    windows-backlog-archive-2026-08-21

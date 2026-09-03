@@ -26,7 +26,8 @@ jobs:
   # critical-fixes, ARG consistency, version snapshot, mirror consistency;
   # the runtime-path check also runs but is advisory-only — it prints WARNs
   # and never fails). Catches the failure classes that otherwise only surface
-  # hours into a multi-arch build. Mirrors the local .githooks/pre-commit gate,
+  # hours into a multi-arch build. Mirrors the local commit gate
+  # (linux/host-config/git-hooks/pre-commit),
   # which is opt-in and silently skipped by contributors who don't enable it.
   preflight:
     runs-on: ubuntu-24.04

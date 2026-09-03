@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tests for extract-embedded-python.py — the bridge that lets ruff see Python
+# Tests for extract_embedded_python.py — the bridge that lets ruff see Python
 # living in shell heredocs (775 lines were invisible before 2026-09-01).
 # The two behaviours below were each proven by mutation. docs/code-quality-tooling.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-EXTRACT="${TESTS_DIR}/../extract-embedded-python.py"
+EXTRACT="${TESTS_DIR}/../extract_embedded_python.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
 _work="$(mktemp -d)"
@@ -65,7 +65,7 @@ t_case "the real tree yields extractable blocks, and the lint gate consumes them
 _extract_fresh $(find "${TESTS_DIR}/.." -name '*.sh' -type f)
 _n="$(find "${_work}/out" -name '*.py' | wc -l)"
 t_assert_ok test "${_n}" -ge 5
-t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract-embedded-python.py" \
+t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract_embedded_python.py" \
   "an extractor nothing calls is not a gate"
 
 # A FAMILY of cat'ed fragments (two or more sharing a marker prefix) IS
