@@ -139,14 +139,15 @@ source-build both wheels here. IREE cross-builds in two stages
 1. a HOST build producing the tools referenced via IREE_HOST_BIN_DIR, and
 2. a TARGET build that cross-compiles the compiler + runtime + their Python
 bindings against those host tools.
-The TARGET stage sets BUILD_COMPILER=ON (unlike upstream's runtime-only riscv64
-lane) because we ship the target iree_base_compiler wheel too. That single fact
-is what makes the HOST stage cheap: with COMPILER=ON on the target, IREE never
-imports llvm-link/clang/iree-compile from IREE_HOST_BIN_DIR (that import branch
-is gated `NOT IREE_BUILD_COMPILER`), so the host stage only has to supply
-iree-c-embed-data and iree-flatcc-cli and runs with IREE_BUILD_COMPILER=OFF.
-See the Stage-1 comment below for the full cmake citation trail; run iree-0714c
-(which forced the host compiler ON) predates the target-side COMPILER=ON switch.
+The TARGET stage is runtime-only by default (`IREE_CROSS_BUILD_COMPILER:-OFF`),
+and that is what decides the host stage. IREE imports host tools only under
+`if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)` (tools/CMakeLists.txt), so a
+COMPILER=OFF target DOES take that branch and needs `iree-tblgen` from the host —
+three tools in total, with `iree-c-embed-data` and `iree-flatcc-cli`. A
+COMPILER=OFF host build never installs tblgen, so the host stage asks for
+**`IREE_BUILD_COMPILER=ON` directly**. Set `IREE_CROSS_BUILD_COMPILER=ON` and the
+target ships the `iree_base_compiler` wheel too; then the import branch is not
+taken and two host tools suffice.
 
 Failure handling: build_iree_wheels returning non-zero is FATAL in main() —
 IREE is required on every arch — so each stage dumps its log tail before
@@ -173,12 +174,13 @@ FAILED: [code=126] …/VMOpEncoder.cpp.inc
 It cannot show up on amd64, where host and target are the same arch --
 which is why the amd64 media stage passed cleanly and arm64 died.
 
-Listing it here makes the OFF pass fail its own check and escalate to
-COMPILER=ON, which is precisely what the fallback loop exists for. The
-cost is that CROSS lanes go back to building the bundled LLVM in the
-host stage; the native lane keeps the win. A cheap COMPILER=OFF probe
-first is still worth it: if upstream ever installs tblgen without the
-compiler, the saving returns automatically and nothing needs editing.
+Because a COMPILER=OFF host build can never install tblgen, probing OFF
+first is a guaranteed miss: a complete host build, discarded, then redone
+with ON. That cost two full host builds in the 2026-09-02 run, so the
+default path now requests ON immediately and `host_compiler_modes` holds
+just `(ON)`. The cost is that CROSS lanes build the bundled LLVM in the
+host stage. If upstream ever installs tblgen without the compiler, restore
+the `(OFF ON)` list and the saving returns.
 
 ### Wheel packing and the target Python sysconfig
 
@@ -198,8 +200,8 @@ cost per run instead of becoming one-time. Two fixes, both needed:
 hatch, not the inherited base value), and (2) actually APPLY it —
 the on-disk limit lives in the cache's own config and only changes
 via `ccache -M`; exporting the env var alone leaves a 30G cache 30G.
-2026-08-26 follow-up: the HOST stage no longer builds LLVM at all
-(IREE_BUILD_COMPILER=OFF, see Stage 1), so only ONE full LLVM object
-set — the target cross-LLVM — plus the riscv64 torch aten objects now
-compete for this cache. 64G is kept deliberately: it is now generous
+2026-09-02 follow-up: with the target runtime-only (the default), the HOST
+stage runs COMPILER=ON and builds the bundled LLVM, so TWO full LLVM object
+sets — host and target cross — plus the riscv64 torch aten objects compete
+for this cache. 64G is kept deliberately: it is now generous
 rather than merely sufficient, which is what makes reruns hit.

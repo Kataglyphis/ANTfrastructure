@@ -240,9 +240,10 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:60-63`), which is also the vocabulary `PREFLIGHT_ONLY=` and
-`PREFLIGHT_SKIP=` accept. That array is the authority; the table below is its
-contents in run order.
+(`preflight.sh:39-48`, 29 slugs), which is also the vocabulary
+`PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
+both membership and run order** — the table below groups them by kind and will
+drift if a slug is added without touching it.
 
 | Slug | Script | Catches |
 |------|--------|---------|
@@ -267,6 +268,12 @@ contents in run order.
 | `android-parity` | `01-core/verify-android-stage-parity.sh` | the five parallel Android library stages diverging beyond `ANDROID_LIB` |
 | `script-tests` | `linux/scripts/tests/run-tests.sh` | unit-test regressions in the tag/build-arg/disk-guard logic; prints the assertion aggregate above |
 | `stage-graph` | inline `cross_stage_validate_graph` | bad parent refs, missing dockerfiles, unresolvable tags, cycles |
+| `stdout-returns` | `verify-stdout-returns.py` | a function whose stdout is captured by `$(...)` logging to stdout, poisoning its return value |
+| `code-dupes` | `docs/scripts/verify_code_dupes.py` | token-normalised duplication across shell, Dockerfiles and non-`docs/` Markdown — it sees *renamed* clones |
+| `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
+| `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
+| `code-size` | `verify-code-size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
+| `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
 
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry
@@ -445,7 +452,7 @@ component present on *every* arch but wrong on all of them is invisible; a
 package installed at the right name but the wrong *version* remains the ML
 version-pin assertion's job; anything the app does not declare as a requirement
 (a transitively-pulled tool nobody depends on) is outside the graph; and the
-advertised-version table only covers the six keys listed above — a new
+advertised-version table covers the 17 keys in `_ADVERTISED_VERSION_KEYS` — a new
 version-carrying `ENV` in `Dockerfile.package` is unguarded until it is added to
 `_ADVERTISED_VERSION_KEYS`.
 

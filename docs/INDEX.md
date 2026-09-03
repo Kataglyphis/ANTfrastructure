@@ -91,7 +91,7 @@ The two halves of one topic often split:
 | **Prepared upstream submissions** — the artefacts too big to inline in the register, and the verification behind them | [`upstream/README.md`](upstream/README.md) |
 | **Which local patches to send upstream** — every third-party source change the *Linux* chain carries, graded by how much work stands between it and a merge request. The Windows half is [`upstream-windows-patches.md`](upstream-windows-patches.md) | [`upstreamable-patches.md`](upstreamable-patches.md) |
 | **riscv64 builds at RVA23 (with vector)** — why enabling RVV costs no compatibility, why `rva23u64_zifencei` and not `rv64gcv`, and the four consumers that need more than `-march` | [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md) |
-| **IREE's two-stage cross build** — why the host stage runs COMPILER=OFF, the two tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
+| **IREE's two-stage cross build** — why the host stage runs COMPILER=ON in the default (runtime-only target) configuration, the three tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
@@ -148,8 +148,8 @@ The two halves of one topic often split:
 Everything here is *record*, not instruction. If you find a live rule that
 exists only in one of these, promote it to its owning page above.
 
-| Looking for | Read |
-|---|---|
+| Looking for | Read | What's in it |
+|---|---|---|
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
@@ -160,7 +160,7 @@ exists only in one of these, promote it to its owning page above.
 | Closed Linux refactor items (2026-08-27) | [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md) | Everything the backlog closed up to 2026-08-27, including the entries that were REFUTED or RETRACTED rather than fixed. |
 | Closed Linux refactor items (2026-08-30) | [`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md) | The OpenCV-sccache REFUTATION (pre-UDS wrong-server bug, not OpenCV-specific) and the F2 one-resolver cache consolidation. |
 | Closed Linux refactor items (2026-08-31) | [`refactoring-backlog-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md) | The A1 closure window: the logging.sh ERR-trap bug, the complexity queue, the modules.sh dir-walker REFUTATION, the IREE toothless-gate finding, and GEN1 (riscv64 GenAI built + wired ON). |
-| Closed Linux refactor items (2026-09-02) | [`refactoring-backlog-archive-2026-09-02.md`](refactoring-backlog-archive-2026-09-02.md) | The RVA23 rebuild window: libyuv's RVV rows, the OpenCV `complex.h` shim, the cache-key blast radius, the duplication baseline review, and the riscv64 venv gate's dangling ORT edges. |
+| Closed Linux refactor items (2026-09-02) | [`refactoring-backlog-archive-2026-09-02.md`](refactoring-backlog-archive-2026-09-02.md) | The RVA23 rebuild window: libyuv's RVV rows, the cache-key blast radius, the duplication baseline review, and the riscv64 venv gate's dangling ORT edges. |
 | Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md), [`../windows/upstream/README.md`](../windows/upstream/README.md) |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 

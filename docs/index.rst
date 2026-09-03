@@ -42,7 +42,7 @@ documentation index, which maps every topic to the page that owns it.
       :link: overview
       :link-type: doc
 
-      Published images, repository image chain, feature snapshot, dependencies, and useful tools.
+      Published images, repository image chain, and a feature snapshot.
 
    .. grid-item-card:: Linux Build Basics
       :link: linux-build-basics
