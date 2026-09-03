@@ -229,9 +229,15 @@ STUB_QNN=""
 
 # ── skip / failure paths: each must return 1 FROM build_iree_wheels ──────────
 t_case "missing cmake skips IREE with rc=1"
+# PATH used to keep /usr/bin, where the real cmake lives, so the guard under test
+# was never reached: the case passed off a real cmake failing on the stub source
+# tree. nocmake/ holds only the git+ninja stubs, and build_iree_wheels runs no
+# external command before the check. Assert the REASON too. Backlog XL.
 APP_WHEELHOUSE_BUILD_ROOT="${TMP}/work"; APP_WHEELHOUSE_DIR="${TMP}/wheels"
-_rc=0; ( PATH="${TMP}/nocmake:/usr/bin:/bin"; build_iree_wheels ) >/dev/null 2>&1 || _rc=$?
+_rc=0; _nocmake_out="$( PATH="${TMP}/nocmake"; build_iree_wheels 2>&1 )" || _rc=$?
 t_assert_eq "1" "${_rc}" "prereq failure must return 1"
+t_assert_contains "${_nocmake_out}" "cmake absent" \
+  "must skip because cmake is absent, not because a later stage failed"
 
 t_case "missing wheel platform tag skips IREE with rc=1"
 STUB_WHEEL_PLATFORM=""
