@@ -111,6 +111,54 @@ Notes that will save time:
   (`build-linux`, `build-asan-clang`) or the two toolchains will fight over one
   CMake cache.
 
+### An empty mount is not a missing drive
+
+Two independent things silently produce a mount that resolves fine and contains
+*nothing* — no error, no warning, exit code 0. Both were hit on 2026-09-03 with
+a repo on `D:` (a ReFS Dev Drive), and each one alone is enough.
+
+**1. The drive must be visible inside containerd's own mount namespace.**
+Rancher's distro automounts only the drives WSL gave it at boot — here just
+`C:` — and containerd does not run in the distro's init namespace:
+
+```
+containerd            mnt:[4026532289]
+init / wsl -d session mnt:[4026532204]
+```
+
+A `mount -t drvfs D: /mnt/d` from a plain `wsl -d rancher-desktop -u root`
+session therefore lands in the *wrong* namespace and changes nothing that
+containerd can see. Mount it where containerd actually looks:
+
+```pwsh
+wsl -d rancher-desktop -u root -e sh -c 'pid=$(ps -eo pid,comm | awk "\$2==\"containerd\" {print \$1; exit}"); nsenter -t "$pid" -m -- sh -c "mkdir -p /mnt/d && mount -t drvfs D: /mnt/d"'
+```
+
+Transient — gone when the VM restarts, and it touches a distro this page
+otherwise says to leave alone. Redo it per boot, or keep the repo on `C:`.
+
+**2. Pass the Windows path, never the WSL path.** nerdctl translates
+`D:\path` itself and resolves the result in containerd's namespace. Handing it
+the already-translated `/mnt/d/path` bypasses that translation and binds an
+empty directory instead — which containerd helpfully *creates* for you, so the
+path then exists and stays empty:
+
+```pwsh
+-v "D:\GitHub\Repo:/workspace"        # correct
+-v "/mnt/d/GitHub/Repo:/workspace"    # resolves, mounts nothing, no error
+```
+
+**Do not diagnose this with `-v /mnt:/hostmnt`.** That probe shows an almost
+empty tree — no `c`, no real `d` — and looks like proof the drives are missing.
+It is measuring containerd's raw namespace, not the path Rancher actually takes,
+and it will send you after the wrong cause. Probe with a Windows path against a
+directory you know has contents (`-v "C:\ProgramData:/probe"`), then compare.
+
+This also qualifies the Dev Drive caution above: `D:` here **is** ReFS, and once
+both points are satisfied the bind mount lists the tree normally. Before blaming
+ReFS for an empty mount, rule out the namespace and the path form — they present
+identically and are far more likely.
+
 ## When to reach for this
 
 - A CI step fails and the logs are not enough. This is the main case, and it is
