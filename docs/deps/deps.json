@@ -265,6 +265,30 @@
                 "url": "https://gitlab.gnome.org/GNOME/gobject-introspection",
                 "ref_var": "GOBJECT_INTROSPECTION_VERSION"
               }
+            },
+            {
+              "name": "IREE",
+              "var": "IREE_VERSION",
+              "license": "Apache 2.0 with LLVM Exception",
+              "spdx": "Apache-2.0 WITH LLVM-exception",
+              "url": "https://iree.dev/",
+              "source": {
+                "kind": "git",
+                "url": "https://github.com/iree-org/iree",
+                "note": "amd64/arm64 install the cp312-abi3 wheels; riscv64 is built from source RUNTIME-ONLY (compiler OFF), so the shipped riscv64 bytes are ours and an image scanner cannot see them."
+              }
+            },
+            {
+              "name": "PyAV",
+              "var": "PYAV_VERSION",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause",
+              "url": "https://github.com/PyAV-Org/PyAV",
+              "source": {
+                "kind": "git",
+                "url": "https://github.com/PyAV-Org/PyAV",
+                "note": "Built from source against this image's own FFmpeg into /opt/pyav, not the PyPI wheel."
+              }
             }
           ]
         },

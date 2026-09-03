@@ -1734,6 +1734,20 @@ half of the probe at :131 is genuine and does its job.
 
 `docs/scripts/deps_table.py:34`
 
+**CONTENT HALF DONE 2026-09-03, structural half still open.** IREE and PyAV now
+have entries in `docs/deps/deps.json`, and the curated SBOM (100 packages) and
+both website licence pages regenerate clean. Licences were read from the
+projects' own LICENSE files rather than assumed: IREE is Apache-2.0 **WITH
+LLVM-exception** (PyPI metadata says plain Apache-2.0, which is less precise than
+an SBOM should be), PyAV is BSD-3-Clause (confirmed by the endorse-or-promote
+clause). **What is NOT fixed is the reason it happened:** `resolve_dep_version`
+still only raises for the reverse case, so the next source-built component added
+without an entry is just as invisible. That needs a shipped-component-to-entry
+check with a frozen baseline, the same shape as the WD fix, and it needs a
+decision first about which `versions.env` keys count as shipped components --
+most of the 115 are build tools and SHAs. AGENTS.md's claim that a missing entry
+fails the build stays false until then.
+
 **What breaks.**
 Add a source-built component to versions.env and build it into the image
 without touching docs/deps/deps.json. `resolve_dep_version` raises only for
