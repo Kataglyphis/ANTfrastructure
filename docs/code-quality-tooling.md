@@ -232,11 +232,15 @@ added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
 
-## Shell function size (`function-size`)
+## Code size — functions and files (`code-size`)
 
-`linux/scripts/verify-function-size.py`, preflight slug `function-size`. Fails on
-any shell function over `FUNCTION_SIZE_LIMIT` (default 80 lines) that is not
-frozen in `linux/scripts/function-size.allow`.
+`linux/scripts/verify-code-size.py`, preflight slug `code-size`. Two metrics,
+one contract: shell **functions** over `FUNCTION_SIZE_LIMIT` (default 80) against
+`function-size.allow`, and shell **files** over `FILE_SIZE_LIMIT` (default 800)
+against `file-size.allow`. 33 functions and 7 files are over today, all frozen.
+
+One script rather than two: the four-way contract and the allow-file handling are
+shared, and a second copy would have tripped the duplication gate — correctly.
 
 **Why it exists.** Until 2026-09-03 the repo had no length metric at all. The F1
 and F2 queues in `docs/refactoring-backlog.md` were counted by hand, which is why
@@ -261,9 +265,11 @@ shape as `comment-size` and `masked-assignments`.
 function is wrong; it argues that the queue should stay honest without a human
 re-counting. The judgement about whether to split lives in the backlog.
 
-Covered by `linux/scripts/tests/test-function-size.sh`, whose six cases each
-build a throwaway tree and were each proven to go red by disabling the matching
-branch in the gate.
+Covered by `linux/scripts/tests/test-code-size.sh`: 13 assertions over throwaway
+trees, each proven to go red by disabling the matching branch. One of them exists
+because a mutation slipped through — asserting on the FAIL message alone let a
+variant pass that printed the failure and still exited 0, so the file half now
+asserts the exit code too.
 
 
 ## Comment size (`comment-size`)

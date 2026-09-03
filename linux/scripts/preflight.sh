@@ -43,7 +43,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes p
              advert-keys \
              masked-decls \
              comment-size \
-             function-size \
+             code-size \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -187,7 +187,7 @@ run_check pkg-names "distro package names" ${PREFLIGHT_PYTHON} linux/scripts/ver
 run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/scripts/verify-advertised-keys.py
 run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify-masked-assignments.py
 run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify-comment-size.py
-run_check function-size "shell function size" ${PREFLIGHT_PYTHON} linux/scripts/verify-function-size.py
+run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify-code-size.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
