@@ -1,0 +1,27 @@
+# Artifacts that MUST be COPY'd from the artifact-source stage into the
+# package-image stage of Dockerfile.package. One "SRC | reason" per line.
+#
+# WHY THIS EXISTS: components are built and hard-checked in Dockerfile.sdk /
+# .media (e.g. `test -x /opt/flutter/bin/flutter`) and then have to be carried
+# across the FROM boundary into the final runtime image by an explicit COPY.
+# Nothing used to assert that carry happened, so Flutter — and ArmNN/ACL before
+# it (F7) — were built, verified, and silently dropped. verify-artifact-copy-parity.sh
+# now fails if a path here is not copied, or a copied path is not here.
+# docs/artifact-copy-completeness.md
+#
+# Paths are the SYMBOLIC form used in the COPY line (a ${VAR} is compared as text).
+${ONNXRUNTIME_OUTPUT_DIR} | ONNX Runtime + EPs — the core inference lib
+${OPENCV_OUTPUT_DIR} | OpenCV 5 with the GStreamer/FFmpeg-enabled cv2
+/opt/ffmpeg | FFmpeg (x265, DNN backends)
+${GSTREAMER_PREFIX} | GStreamer + the source-built plugins
+/opt/libcamera | libcamera runtime
+/opt/armnn | ArmNN (arm64; empty dir elsewhere) — shipped since F7 2026-09-01
+/opt/acl | ARM Compute Library, ArmNN's backend
+/opt/flutter | Flutter SDK (amd64/arm64; empty dir on riscv64) — added 2026-09-03
+/opt/vulkan | Vulkan SDK + loader/layers
+/opt/android-sdk | Android SDK
+/opt/android | Android build outputs (litert/onnxruntime/opencv/gstreamer .so)
+/opt/gcc-${GCC_VERSION} | the pinned GCC toolchain
+/usr/local/rustup | Rust toolchain (rustup home)
+/usr/local/cargo | Rust cargo home + cargo-installed bins
+/opt/llvm-target | LLVM target libs (relocated to /usr/local/llvm-target)

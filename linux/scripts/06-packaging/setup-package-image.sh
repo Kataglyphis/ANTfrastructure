@@ -477,6 +477,16 @@ report_rust_provenance() {
     echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
+# /opt/flutter is a git repo owned by a different uid than the runtime user, so
+# `flutter --version` dies on "detected dubious ownership" and the SDK is present
+# but unusable. Register it system-wide so any user can run it. Skips riscv64,
+# where the sdk stage leaves /opt/flutter empty. docs/artifact-copy-completeness.md
+register_flutter_git_safe_dir() {
+    [ -x /opt/flutter/bin/flutter ] || return 0
+    git config --system --add safe.directory /opt/flutter
+    echo "OK: registered /opt/flutter as a git safe.directory"
+}
+
 main() {
     local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
     local gcc_major="${GCC_VERSION%%.*}"
@@ -505,6 +515,7 @@ main() {
     repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
+    register_flutter_git_safe_dir
 
     # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
     # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO

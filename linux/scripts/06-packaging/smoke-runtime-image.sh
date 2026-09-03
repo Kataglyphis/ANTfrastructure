@@ -468,6 +468,31 @@ check_ffmpeg() {
     echo ""
 }
 
+# Flutter shipped from the sdk stage. amd64/arm64 carry the SDK; riscv64 is skipped
+# upstream and honestly ships none. Catches the 2026-09-03 drop where /opt/flutter
+# was built, hard-checked, then never COPY'd into the runtime image.
+# docs/artifact-copy-completeness.md
+check_flutter() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- Functional: flutter SDK ---"
+  if [ "${target_arch}" = "riscv64" ]; then
+    if _rt_run bash -lc 'command -v flutter >/dev/null 2>&1'; then
+      fail "flutter present on riscv64 — upstream ships no riscv64 SDK; the image must not advertise it"
+    else
+      pass "flutter honestly absent on riscv64 (upstream unsupported)"
+    fi
+    echo ""
+    return 0
+  fi
+  if _rt_run bash -lc 'set -o pipefail; flutter --version 2>/dev/null | head -1 | grep -qiE "flutter [0-9]"'; then
+    pass "flutter executes and reports a version (${target_arch})"
+  else
+    fail "flutter missing or non-functional in the runtime image (${target_arch}) — /opt/flutter not shipped?"
+  fi
+  echo ""
+}
+
 # Native shared-library dependency closure over the source-built /opt stacks: any
 # NEEDED soname absent from the runtime loader path is a real defect (the class that
 # shipped a libopencore-amrwb-broken ffmpeg and a libsleef-broken torch while amd64
@@ -1472,6 +1497,7 @@ main() {
     check_genai_binding "${image_tag}" "${target_arch}"
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
+    check_flutter "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"

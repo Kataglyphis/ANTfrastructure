@@ -48,11 +48,10 @@ extract_artifact_copy_pairs() {
   ' "${DOCKERFILE}"
 }
 
+_require_file() { [ -f "$1" ] || { echo "ERROR: $2 not found: $1"; exit 1; }; }
+
 main() {
-  if [ ! -f "${DOCKERFILE}" ]; then
-    echo "ERROR: Dockerfile not found: ${DOCKERFILE}"
-    exit 1
-  fi
+  _require_file "${DOCKERFILE}" "Dockerfile"
 
   if ! grep -qE '^[[:space:]]*FROM[[:space:]].*[[:space:]]AS[[:space:]]+artifact-source([[:space:]]|$)' "${DOCKERFILE}"; then
     echo "ERROR: no 'AS artifact-source' stage in ${DOCKERFILE}; COPY --from=artifact-source cannot resolve."
@@ -102,5 +101,52 @@ main() {
     exit 1
   fi
   echo "OK: artifact COPY source/destination paths are consistent"
+
+  check_completeness "${pairs}"
+}
+
+# Completeness: every path in runtime-artifacts.manifest must be COPY'd, and every
+# COPY'd path must be in the manifest. This is what catches a BUILT-BUT-DROPPED
+# artifact (Flutter 2026-09-03, ArmNN/ACL before it) — the consistency check above
+# only sees paths that ARE copied. docs/artifact-copy-completeness.md
+# $1 = counter nameref; for each line in $2 (needles) absent from $3 (a newline
+# set), print the two message templates $4/$5 with every '@P@' -> the path, and
+# add the miss count to the counter. One owner for both directions of the check.
+_report_absent() {
+  local -n _cnt="$1"
+  local needles="$2" haystack="$3" head="$4" hint="$5" p
+  while IFS= read -r p; do
+    [ -n "${p}" ] || continue
+    if ! printf '%s\n' "${haystack}" | grep -qxF -- "${p}"; then
+      echo "${head//@P@/${p}}"
+      echo "      ${hint//@P@/${p}}"
+      _cnt=$((_cnt + 1))
+    fi
+  done <<< "${needles}"
+}
+
+check_completeness() {
+  local pairs="$1"
+  local manifest
+  manifest="$(dirname "$0")/runtime-artifacts.manifest"
+  _require_file "${manifest}" "manifest"
+
+  local copied want fails=0
+  copied="$(printf '%s\n' "${pairs}" | awk 'NF{print $1}' | sort -u)"
+  want="$(grep -vE '^[[:space:]]*(#|$)' "${manifest}" | sed 's/[[:space:]]*|.*//' | sort -u)"
+
+  _report_absent fails "${want}" "${copied}" \
+    "FAIL: @P@ is in runtime-artifacts.manifest but NOT COPY'd from artifact-source" \
+    "-> built and expected in the runtime image but dropped; add: COPY --link --from=artifact-source @P@ @P@"
+  _report_absent fails "${copied}" "${want}" \
+    "FAIL: @P@ is COPY'd from artifact-source but NOT in runtime-artifacts.manifest" \
+    "-> add a line '@P@ | <reason>' to the manifest, or remove the COPY"
+
+  if [ "${fails}" -gt 0 ]; then
+    echo
+    echo "FAIL: ${fails} artifact-copy completeness error(s)."
+    exit 1
+  fi
+  echo "OK: every built runtime artifact is copied, and every copy is declared ($(printf '%s\n' "${want}" | grep -c .) artifacts)"
 }
 main "$@"

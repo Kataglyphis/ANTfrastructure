@@ -262,5 +262,13 @@
     "replace": "  _rc2=1  # retry removed",
     "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
     "why": "YB: the ENOENT class is intermittent, so one retry keeps the cache entry instead of bypassing it -- thousands of units per chain"
+  },
+  {
+    "id": "artifact-copy.completeness-check",
+    "target": "linux/scripts/verify-artifact-copy-parity.sh",
+    "find": "  check_completeness \"${pairs}\"",
+    "replace": "  : # completeness check disabled",
+    "test": "bash linux/scripts/tests/test-artifact-copy-completeness.sh",
+    "why": "without the completeness check a built-but-not-copied artifact (Flutter 2026-09-03) ships as missing and nothing notices"
   }
 ]
