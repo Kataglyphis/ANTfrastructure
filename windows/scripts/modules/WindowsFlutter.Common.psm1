@@ -227,6 +227,28 @@ function Sync-FastLocalArtifactsToHost {
     }
 }
 
+# Generates API docs with a pub-activated dartdoc, NOT the SDK-bundled
+# `dart doc`. The dartdoc shipped with the pinned Flutter SDK (9.0.4) crashes on
+# any Flutter app with a _stripDocImports RangeError; >= 9.0.9 fixes it.
+# Docs: docs/windows-reference.md.
+function Invoke-FlutterApiDocs {
+  param(
+    [Parameter(Mandatory)]
+    [string]$WorkspacePath,
+    [string]$OutputPath = 'doc/api'
+  )
+
+  Push-Location $WorkspacePath
+  try {
+    & dart pub global activate dartdoc
+    if ($LASTEXITCODE -ne 0) { throw "dart pub global activate dartdoc failed ($LASTEXITCODE)" }
+    & dart pub global run dartdoc --output $OutputPath
+    if ($LASTEXITCODE -ne 0) { throw "dartdoc failed ($LASTEXITCODE)" }
+  } finally {
+    Pop-Location
+  }
+}
+
 # Back-compat aliases: the 2026-08-04 lint wave renamed these exports to
 # PSSA-approved verbs, but this module is EXTERNAL-CONSUMER API (see AGENTS.md
 # invariants) — other Kataglyphis repos may still call the old names.
@@ -234,6 +256,6 @@ Set-Alias -Name Clean-FlutterPluginSymlinks -Value Clear-FlutterPluginSymlink
 Set-Alias -Name Fix-FlutterPluginSymlinks -Value Repair-FlutterPluginSymlink
 Set-Alias -Name Patch-PermissionHandlerWindows -Value Update-PermissionHandlerWindows
 
-Export-ModuleMember -Function Clear-FlutterPluginSymlink, Repair-FlutterPluginSymlink, Update-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost `
+Export-ModuleMember -Function Clear-FlutterPluginSymlink, Repair-FlutterPluginSymlink, Update-PermissionHandlerWindows, Sync-FastLocalArtifactsToHost, Invoke-FlutterApiDocs `
     -Alias Clean-FlutterPluginSymlinks, Fix-FlutterPluginSymlinks, Patch-PermissionHandlerWindows
 

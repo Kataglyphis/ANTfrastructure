@@ -1,0 +1,57 @@
+name: 'Upload CodeQL SARIF'
+description: >-
+  Probes for CodeQL SARIF results with a step and uploads them, instead of
+  gating on `hashFiles()`.
+
+  hashFiles() only sees inside GITHUB_WORKSPACE. The Windows lane builds in a
+  short-path clone (see clone-into-short-path / prepare-windows-container-host),
+  so the results land OUTSIDE that tree and hashFiles() silently reports
+  nothing - a green job that uploaded no alerts. This action probes the real
+  directory and only then calls upload-sarif.
+
+  Note the checkout-path input: upload-sarif defaults it to github.workspace,
+  which under a short-path clone is the WRONG tree and leaves alerts unable to
+  anchor to source.
+
+inputs:
+  workspace:
+    description: 'Absolute path of the tree the build actually ran in.'
+    required: true
+  results-dir:
+    description: 'SARIF directory, relative to workspace.'
+    required: false
+    default: 'codeql-results'
+  category:
+    description: 'Category passed to upload-sarif, to keep lanes apart.'
+    required: false
+    default: ''
+
+outputs:
+  found:
+    description: "'true' when at least one .sarif was present."
+    value: ${{ steps.probe.outputs.found }}
+
+runs:
+  using: 'composite'
+  steps:
+    # shell is declared explicitly on every step: composite steps do not
+    # inherit a workflow's defaults.run.shell.
+    - name: Probe for SARIF results
+      id: probe
+      shell: pwsh
+      run: |
+        $dir = Join-Path '${{ inputs.workspace }}' '${{ inputs.results-dir }}'
+        $files = @(Get-ChildItem -Path $dir -Filter *.sarif -ErrorAction SilentlyContinue)
+        $found = if ($files.Count -gt 0) { 'true' } else { 'false' }
+        Write-Host "SARIF probe: $dir -> $($files.Count) file(s)"
+        # -Encoding utf8 on Windows PowerShell 5.1 writes a BOM that breaks
+        # GITHUB_OUTPUT parsing; utf8NoBOM is required.
+        "found=$found" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+
+    - name: Upload SARIF
+      if: steps.probe.outputs.found == 'true'
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.workspace }}/${{ inputs.results-dir }}
+        checkout_path: ${{ inputs.workspace }}
+        category: ${{ inputs.category }}

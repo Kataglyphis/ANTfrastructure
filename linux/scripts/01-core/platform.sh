@@ -19,7 +19,7 @@ is_truthy() {
 
 arch_normalize() {
   case "$1" in
-    amd64|x86_64) printf '%s' "amd64" ;;
+    amd64|x86_64|x64) printf '%s' "amd64" ;;
     arm64|aarch64) printf '%s' "arm64" ;;
     i386|i486|i586|i686|386) printf '%s' "386" ;;
     riscv64|riscv|rv64*) printf '%s' "riscv64" ;;
