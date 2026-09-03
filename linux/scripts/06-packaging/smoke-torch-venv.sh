@@ -481,8 +481,6 @@ EXEMPT = {
         "no riscv64 wheel; multi-hour QEMU source build",
     ("scikit-learn", "riscv64"):
         "no riscv64 wheel; needs scipy, which has none either",
-    ("optuna", "riscv64"):
-        "only reachable via the ml-ai extra, which riscv64 cannot install",
     ("mlflow", "riscv64"):
         "app pyproject gates mlflow (and its ~60-package closure) off riscv64",
     ("boto3", "riscv64"):
