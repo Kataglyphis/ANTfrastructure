@@ -919,6 +919,43 @@ demonstrable; the time difference is not in doubt.
 coding column separates nobody. The tool-calling column does, because it has 27
 cases — which is exactly why the case count was raised.
 
+### 1j. Qwen3-8B: the one model that could have changed the answer (measured 2026-09-04)
+
+The winner's direct competitor on the NPU lane — same QAIRT path, same fast
+prefill, twice the parameters. It does not change the recommendation, on any
+axis.
+
+| | QAIRT 4B-Instruct | QAIRT 8B |
+|---|---|---|
+| health probe | 6/6 | 6/6 |
+| **tool calling** | **25/27 in 79 s** | 25/27 in **588 s** |
+| context ceiling | 4096 | **4096** |
+| **coding** | **17/27** in 631 s | **1/27** in 4971 s |
+
+**Identical tool-calling score for 7.5x the time**, and no extra context: the
+4096-token ceiling that § 1e identifies as the binding constraint for agent use
+is the same on both, so the larger model buys capacity per token and no room to
+use it.
+
+**The coding result needs stating carefully.** 1/27 is not "the 8B cannot
+code" — it produced **zero wrong answers**. All 26 failures are the 2048-token
+output cap:
+
+| | min | median | max |
+|---|---|---|---|
+| 4B tokens per task | 75 | **181** | 2048 |
+| 8B tokens per task | **1636** | 2048 | 2048 |
+
+The 8B's *shortest* answer was eight times the 4B's median, and its thinking
+share is **0 %** — it is not deliberating, it simply does not stop. So its
+coding ability here is **unmeasured**, while its usability on this server is
+settled: it cannot deliver a complete function through a 2048-token cap.
+
+This is the clearest case yet for reporting `CUT` apart from `FAIL`. Scored as
+failures, 1/27 would read as a catastrophically bad model. What it actually
+shows is a model whose output length is incompatible with this runtime — a
+server limitation meeting a model habit, and a different problem entirely.
+
 ### 1i. The coding score at 27 tasks — and what six tasks were hiding
 
 The six-task set said the QAIRT 4B-Instruct scored **5/6 = 83 % [44–97 %]**.
