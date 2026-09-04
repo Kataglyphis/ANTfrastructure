@@ -113,7 +113,6 @@ NPM_REGISTRY
 NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
-OPTIONAL
 ORT_PKGCONFIG_DIR
 PACKAGE_DOCKERFILE_TARGET
 PACKAGE_TYPES
@@ -143,7 +142,6 @@ TVM_LLVM_DIR
 TVM_MB_PER_JOB
 TVM_PREFIX
 TVM_WORKDIR
-UBUNTU_PORTS_MIRROR_URL
 UBUNTU_SOURCES_ROOT
 UV_SYNC_EXTRAS
 VERSION_CODENAME
@@ -233,3 +231,179 @@ VERSION_ID
 # Optional override for the cargo version the toolchain smoke pins; defaults to
 # RUST_VERSION, because cargo ships with the Rust toolchain and tracks it.
 CARGO_VERSION
+
+# --- 2026-09-04: re-homed when the OWNERS scan stopped counting comments ---
+# All fifteen were "owned" only by prose that spells `NAME=value`; each is a real
+# operator switch read as ${NAME:-default} and never assigned in-repo.
+# Build the IREE compiler for the cross target too (default OFF = runtime-only)
+# — 05-frameworks/torch/build-app-wheelhouse.sh.
+IREE_CROSS_BUILD_COMPILER
+# 0 skips hadolint's advisory build-check pass (lint-dockerfiles.sh, default 1).
+LINT_DOCKERFILES_BUILD_CHECK
+# full|minimal install set for the cross target-clang build (02-toolchain/
+# llvm.sh, default minimal).
+LLVM_INSTALL_PROFILE
+# 1 skips the csound GStreamer dependency (03-media gstreamer pre-setup.sh /
+# install-deps.sh, default 0; forced on for arm64+riscv64 anyway).
+MEDIA_SKIP_CSOUND
+# 0 disables the best-effort strip of media build outputs (01-core/build-
+# helpers.sh owns the gate since DUPN1; default 1). AP4 asserts it stayed on.
+MEDIA_STRIP
+# 1 makes a riscv64 Node major-version mismatch fatal instead of a warning
+# (01-core/base-image.sh, default 0).
+NODE_RISCV64_MAJOR_REQUIRED
+# 2 = the second OpenCV configure pass that probes our /opt/gstreamer
+# (03-media/build/opencv/build-opencv.sh, default 1).
+OPENCV_GSTREAMER_PASS
+# CSV slug selectors for preflight.sh; both empty by default. Documented in the
+# gate registry and validated against KNOWN_SLUGS.
+PREFLIGHT_ONLY
+PREFLIGHT_SKIP
+# 0 drops --with-lto from both CPython builds (AP5 cross-LTO escape hatch,
+# 02-toolchain/python/build_python.sh, default 1).
+PYTHON_LTO
+# 0 skips the in-image clang-version smoke (06-packaging/smoke-runtime-
+# image.sh, default 1).
+RUNTIME_CLANG_VERSION_SMOKE
+# 0 skips the in-image compiler smoke (06-packaging/smoke-runtime-image.sh,
+# default 1).
+RUNTIME_COMPILER_SMOKE
+# 0 skips the per-arch runtime smoke that gates create_manifest (build-runtime-
+# manifest.sh, default 1).
+RUNTIME_IMAGE_SMOKE
+# 1 drops the live-tree case from tests/test-shellcheck-warnings.sh; set by the
+# mutation manifest, which must not measure the whole tree per entry.
+SKIP_REAL_TREE
+# 0 selects the presence-only fast path in 06-packaging/smoke-torch-venv.sh
+# (default 1 = actually run the compute check).
+STV_COMPUTE
+
+# --- 2026-09-04: re-homed when the OWNER scan stopped counting quoted text ---
+# All 45 were "owned" only by a NAME=value that sits inside an echo/err message,
+# a usage line or a test-fixture argument. Each is a real ${NAME:-default}
+# reader with no assignment anywhere in the repo.
+# 1 ships the venv even though ffmpeg has unresolved libraries
+# (06-packaging/setup-torch-venv.sh, default 0).
+ALLOW_BROKEN_FFMPEG
+# 1 accepts an empty wheelhouse — a deliberately wheel-less riscv64 image
+# (03-media/runtime/verify-media-artifacts.sh, default 0).
+ALLOW_EMPTY_APP_WHEELS
+# 1 continues after a failed IREE build instead of failing the stage
+# (05-frameworks/torch/build-app-wheelhouse.sh, default 0).
+ALLOW_IREE_BUILD_FAIL
+# 1 knowingly ships an image without torch; a sentinel is written and the smoke
+# accepts it (06-packaging/setup-torch-venv.sh + smoke-runtime-image.sh, 0).
+ALLOW_TORCHLESS_RUNTIME
+# 0 downgrades the parent-digest ancestry refusal to a warning
+# (01-core/runtime-build-fns.sh, default 1).
+ANCESTRY_STAMP_ENFORCE
+# Not ours: ccache's own variable, inherited from the image environment.
+# lib/cmake-build.sh only sanity-checks it for a URL and unsets it otherwise.
+CCACHE_SECONDARY_STORAGE
+# 0 disables the in-stage disk watchdog (build-cross-chain.sh, default 1).
+CROSS_DISK_WATCH
+# GB the runtime-lane disk gate demands per concurrent wrapper build
+# (build-cross-chain.sh, default 120; 0 disables the gate).
+CROSS_RUNTIME_LANE_GB
+# 1 makes an incomplete CUDA stack fatal instead of advisory
+# (01-core/verify-cuda-stack.sh, default 0).
+CUDA_STACK_STRICT
+# 0 skips the fail-fast disk preflight (build-cross-chain.sh, default 1).
+DISK_PREFLIGHT
+# 1 downgrades both disk gates to warnings and keeps the warm cache
+# (build-cross-chain.sh, default 0).
+FORCE_LOW_DISK
+# 1 rebuilds a media component already installed in the image (gstreamer,
+# ffmpeg, opencv, litert; default 0).
+FORCE_REBUILD
+# 1 accepts a GCC tarball whose SHA512 could not be fetched
+# (02-toolchain/build-gcc.sh, default 0).
+GCC_ALLOW_UNVERIFIED_TARBALL
+# 1 refuses to build GCC without GPG verification (build-gcc.sh, default 0).
+GCC_REQUIRE_GPG
+# Memory budget per GStreamer compile job, MB (build-gstreamer-monorepo.sh,
+# default 2500) — feeds the mem-capped JOBS computation.
+GSTREAMER_MB_PER_JOB
+# true (default) attempts every gst-plugins-rs plugin, including the Rust
+# cross-builds on riscv64.
+GST_RS_BUILD_ALL
+# 1 keeps the LiteRT source tree after the build
+# (03-media/build/litert/build-litert.sh, default 0).
+KEEP_SOURCES
+# 1 keeps /opt/wheels in the final torch image (setup-torch-venv.sh, default 0).
+KEEP_WHEELHOUSE
+# 1 makes the post-create_manifest freshness check fatal
+# (build-runtime-manifest.sh, default 0 = advisory).
+MANIFEST_FRESHNESS_STRICT
+# 0 downgrades the core ELF-architecture gate to a warning
+# (03-media/runtime/validate-media-runtime.sh, default 1).
+MEDIA_ELF_MISMATCH_FATAL
+# 1 accepts a PNG-less riscv64 OpenCV (WITH_PNG=OFF) instead of failing
+# (03-media/build/opencv/build-opencv.sh, default 0).
+OPENCV_ALLOW_NO_PNG
+# 1 restores the hard fail on a failed onnxruntime-web/WASM build
+# (03-media/build/onnxruntime/build/*, default 0 = best-effort).
+ORT_WEB_REQUIRED
+# true skips the apt packaging prerequisites
+# (02-toolchain/packaging-deps.sh, default false).
+PACKAGING_DEPS_SKIP_APT_INSTALL
+# 1 makes probe-sccache.sh exit non-zero when any compiler probe failed
+# (02-toolchain/probe-sccache.sh, default 0 = report only).
+PROBE_STRICT
+# 0 disables the CPU/RAM/disk sampler both orchestrators start
+# (lib-orchestrator.sh, default 1).
+RESOURCE_MONITOR
+# 0 skips the functional half of the runtime-image smoke
+# (06-packaging/smoke-runtime-image.sh, default 1).
+RUNTIME_FUNCTIONAL_SMOKE
+# 0 disables the manifest one-generation coherence gate
+# (build-runtime-manifest.sh, default 1).
+RUNTIME_MANIFEST_COHERENCE
+# 0 disables the manifest completeness gate that refuses to shrink a published
+# index (build-runtime-manifest.sh, default 1).
+RUNTIME_MANIFEST_COMPLETENESS
+# 0 skips the QEMU binfmt registration before the foreign-arch wrapper builds
+# (build-runtime-manifest.sh, default 1).
+RUNTIME_REGISTER_BINFMT
+# 0 disables salvaging local cache exports after a failed stage
+# (01-core/cross-stage-build.sh, default 1).
+SALVAGE_CACHE_EXPORT
+# true skips install_core_tools; the LLVM RUN layer builds with it set
+# (02-toolchain/setup-dependencies.sh, default false).
+SETUP_DEPENDENCIES_SKIP_CORE_TOOLS
+# 1 makes a missing /opt/venv interpreter fatal for stages where the venv is
+# mandatory (06-packaging/smoke-torch-venv.sh, default 0).
+STV_REQUIRE_VENV
+# 1 restricts validate-compilers.sh to ELF checks, for a target-native cc that
+# cannot execute on the build host (default 0).
+VALIDATE_CC_STATIC_ONLY
+# 0 skips the venv byte-compile (06-packaging/setup-torch-venv.sh, default 1).
+VENV_COMPILE
+# 1 promotes a wrong-SOABI native extension in a wheel to fatal
+# (03-media/runtime/verify-wheels.sh, default 0 = warn).
+WHEEL_SOABI_STRICT
+# 0 makes every verify-shipped-wrapper.sh content mismatch advisory (default 1).
+WRAPPER_CONTENT_GATE
+# Not operator switches — fixture knobs read by the stub functions that
+# test-cross-stage-build-cmd.sh injects; its helpers pass them as NAME=value
+# words (build return code, disk verdict, pinned-base verdict, transient-push
+# verdict).
+BUILD_RC
+DISK_OK
+HAS_PINNED_BASE
+TRANSIENT
+# Not an operator switch: the sentinel test-module-resolution.sh printf-writes
+# into a fixture lib/common.sh to prove the wrong module was sourced.
+MODRES_POISON_SOURCED
+# Not operator switches: generated probe scripts injected into the smoke
+# container as -e NAME="$(...)" by 06-packaging/smoke-runtime-image.sh and read
+# by the in-container bash -lc probe.
+RT_PROBE_SH
+SMOKE_ONNX_PY
+# Not an operator switch: set on the in-container command line by
+# smoke-runtime-image.sh (bash -lc 'STV_ASSERT_ONLY=1 ...') to run only the
+# version-pin assertion of smoke-torch-venv.sh.
+STV_ASSERT_ONLY
+# The release version CI exports: 02-toolchain/rust/version_util.sh writes it to
+# $GITHUB_ENV/$GITHUB_OUTPUT, 06-packaging/package_archive.sh reads it.
+VERSION

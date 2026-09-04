@@ -240,14 +240,14 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:39-48`, 29 slugs), which is also the vocabulary
+(`preflight.sh:39-52`, 33 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
 
 | Slug | Script | Catches |
 |------|--------|---------|
-| `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` materialised with CRLF endings |
+| `crlf-guard` | inline (`git ls-files --eol` over `lint-shell.sh --list-files`) | a tracked shell script — `*.sh` or an extension-less file on a shell shebang — whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
@@ -255,10 +255,12 @@ drift if a slug is added without touching it.
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
 | `arg-consistency` | `01-core/verify-arg-consistency.sh` | class 8 — ARG names/values vs `versions.env`, plus their forwarding |
 | `version-snapshot` | `docs/scripts/sync_versions.py --check` | class 8 — version snapshots / inline markers / deps table out of sync |
+| `pkg-names` | `verify_package_names.py` | a distro package name the tree asks apt for that no longer resolves against the live Ubuntu indices, at an UNGUARDED call site; SKIPs with no network and no cache |
+| `advert-keys` | `verify_advertised_keys.py` | a version-shaped `ENV`/`ARG` the runtime image advertises that the smoke neither checks nor excuses with a written reason |
 | `doc-links` | `docs/scripts/verify_doc_links.py` | broken relative links, dead anchors, `file.md § Heading` refs, missing `INDEX.md`/toctree coverage |
 | `doc-dupes` | `docs/scripts/verify_doc_dupes.py` | a passage copied into a second page; deliberate overlap is budgeted in `docs/scripts/doc-dupes.allow`, which itself fails when an entry goes stale |
 | `sbom` | `docs/scripts/generate_sbom.py --check` | the committed curated SBOM drifting from `deps.json` + `versions.env` |
-| `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` |
+| `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` — stale allow rows always fail |
 | `mirror-consistency` | `01-core/verify-ubuntu-mirror-consistency.sh` | class 8 — a Dockerfile missing the canonical Ubuntu mirror ARGs |
 | `runtime-paths` | `04-runtime/verify-runtime-paths.sh` | class 8 — `PATH`/`LD_LIBRARY_PATH`/`PKG_CONFIG_PATH` drifting from `runtime-paths.env` |
 | `dockerfile-lint` | `lint-dockerfiles.sh` | hadolint findings (policy in `.hadolint.yaml`; bootstraps a pinned, SHA-verified binary when none is on PATH) |
@@ -273,18 +275,32 @@ drift if a slug is added without touching it.
 | `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
 | `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
 | `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
+| `code-complexity` | `verify_code_complexity.py` | cyclomatic complexity over 15 or nesting over 5 in the `code-size` scan set, against `code-complexity.allow` — the shell counter is heredoc-, comment- and quote-aware |
+| `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
+| `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
+| `gate-registry` | `verify_gate_registry.py` | the meta-gate — a slug with no proof (no suite naming its script, no mutation) and `docs/code-quality-gates.md` drifting from what it derives; unproven slugs are frozen in `gate-proofs.allow` and may only leave it |
 
 Every check with a script is runnable standalone (same command); `crlf-guard`
-and `stage-graph` are inline in `preflight.sh` and have no separate entry
-point. The pre-commit hook
-(`linux/host-config/git-hooks/pre-commit`) runs a fast subset of the same gates —
-`PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes,sbom`
-(`:102-103`) — plus four checks of its own scoped to the STAGED content: an
-unresolved merge-conflict-marker scan (`:69-85`), `bash -n` (`:109`), the
-shellcheck gate restricted to staged `.sh` files (`:112`), and hadolint on
-staged Dockerfiles (`:122`). It closes with a Sphinx `-W` docs build (`:137`),
-which skips when the repo `.venv` has no `sphinx_kataglyphis`.
+and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
+The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 17 fast slugs in
+`_FAST_SLUGS` (`:64-67`), 4.2 s combined — and then three blocks scoped to the
+STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
+plus the warning ratchet on staged `.sh` files (`:78-95`, the binary resolved
+through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
+when `docs/*.md` moved, and `verify_mutations.py` on a SAMPLE of the entries whose
+target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 6), newest first, and
+it prints `SAMPLED n of m` whenever it cut, because a green hook must not imply
+coverage it did not pay for. Measured end to end 2026-09-04: **8.0 s** for a
+one-file commit (no sampling — all 5 matched entries ran) and **27.2 s** for the
+43-file commit `9a5bf8dd` (sampling 6 of 132), against **5m26s** for that same
+commit before the cap; those 132 entries uncapped are **322 s** on their own.
+`make preflight` and CI still run every entry.
+Why it samples rather than running `--changed` whole:
+[`code-quality-tooling.md`](code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
+`shellcheck-warnings` is deliberately NOT a fast slug: whole-tree it was 22 s
+against 0.2 s per staged file (measured 2026-09-04).
 
 ### In-image smoke tests (need a built image, not part of preflight)
 
@@ -932,6 +948,41 @@ shallow `-w` test PASSED and the build then died anyway with
 error: failed to create directory `/usr/local/cargo/registry/cache/...`
 Caused by: Permission denied (os error 13)
 Same mkdir-then-test idiom the sccache/ccache loop below already uses.
+
+### Per-arch version truth
+
+The runtime image ADVERTISES its component versions as env (`CMAKE_VERSION`,
+`NODE_VERSION`, …) and the shipped-truth probe in `smoke-runtime-image.sh`
+compares every one of them against the binary actually present. Two of them
+cannot be equal on every arch:
+
+* Kitware publishes no riscv64 CMake archive, so `install_cmake` takes the
+  Ubuntu package there;
+* Node.js publishes no riscv64 tarball, so `install_nodejs` takes the Ubuntu
+  package there.
+
+Both were true long before the probe could see it — the keys only became
+checkable when `d27cdee1` stopped 11 of 16 gate keys from SKIPping, and the
+first run that reached the gate failed with `ADVERTISES CMAKE_VERSION=4.4.3 but
+actually has 4.4.2` (and Node 26.8.1 vs 22.22.1). The label was wrong, not the
+image.
+
+`versions.env` therefore carries `<KEY>_<ARCH>` overrides next to the base key,
+marked `# noforward` so they never become build args of their own:
+
+```
+CMAKE_VERSION=4.4.3
+# noforward
+CMAKE_VERSION_RISCV64=4.4.2
+```
+
+`append_version_build_args <array> <arch>` prefers the override for that arch,
+so `--build-arg CMAKE_VERSION=` carries 4.4.3 to amd64/arm64 and 4.4.2 to
+riscv64, and the image advertises what it has. A name that is *itself* a
+forwarded key (`GENAI_ALLOW_RISCV64`) is never read as another key's override.
+
+These are pins, not excuses: if the Ubuntu archive moves, ADV and HAVE diverge
+again and the build fails until the override is bumped.
 
 ### Which shared library a consumer actually gets
 

@@ -62,6 +62,6 @@ t_case "the real manifest actually lists /opt/flutter (regression guard for this
 t_assert_contains "$(cat "${TESTS_DIR}/../runtime-artifacts.manifest")" "/opt/flutter |"
 
 t_case "Dockerfile.package actually COPYs /opt/flutter (regression guard for this fix)"
-t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.package")" "COPY --link --from=artifact-source /opt/flutter /opt/flutter"
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.package")" 'COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /opt/flutter /opt/flutter' "the flutter COPY line"
 
 t_summary

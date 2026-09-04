@@ -20,10 +20,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-ok=0; fail=0
-pass() { printf '  \033[0;32mOK\033[0m    %s\n' "$*"; ok=$((ok+1)); }
-bad()  { printf '  \033[0;31mFAIL\033[0m  %s\n' "$*"; fail=$((fail+1)); }
-
 TOK="$(curl -sf "https://ghcr.io/token?scope=repository:${REPO}:pull&service=ghcr.io" \
       | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])' 2>/dev/null)"
 [ -n "${TOK}" ] || { printf 'could not obtain a registry token for %s\n' "${REPO}" >&2; exit 1; }

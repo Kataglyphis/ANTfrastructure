@@ -112,7 +112,7 @@
     "why": "a short disk must not be filled further"
   },
   {
-    "id": "stage-defs.loop-var-leak",
+    "id": "stage-graph.loop-var-leak",
     "target": "linux/scripts/01-core/stage-defs.sh",
     "find": "  local stage=\"$1\" s\n",
     "replace": "  local stage=\"$1\"\n",
@@ -150,6 +150,14 @@
     "replace": "        pass",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a tool that edits in place must never leave the tree mutated"
+  },
+  {
+    "id": "mutations.vacuous-bite",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        if not baseline_ok(e, args.root, baselines):",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
   },
   {
     "id": "wheels.no-deps",
@@ -224,7 +232,7 @@
     "why": "the android lane clones its own tree, so the cross lane's patch cannot cover it -- YA"
   },
   {
-    "id": "lint-shell.extensionless-arm",
+    "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
     "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
     "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
@@ -264,6 +272,54 @@
     "why": "the exact cbbd0da7 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
   },
   {
+    "id": "rust.native-toolchain-triple",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "compgen -G \"${RUSTUP_HOME}/toolchains/*-${triple}\" >/dev/null",
+    "replace": "compgen -G \"${RUSTUP_HOME}/toolchains/*\" >/dev/null",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "accepting ANY toolchain dir is the 2026-09-01 ship: the builder's x86_64 rustup passes as native on arm64/riscv64 (2 GB of exit-127 binaries at the front of PATH)"
+  },
+  {
+    "id": "rust.smoke-host-triple",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "elif ! printf '%s\\n' \"${out}\" | grep -qF -- \"-${triple}\"; then",
+    "replace": "elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "without the host-triple read the smoke is the ADV/HAVE table again: a rustc that happens to run (QEMU host binaries, a future amd64 loader in the image) passes as native"
+  },
+  {
+    "id": "flutter.bootstrap-hard-fail",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        echo \"ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable\" >&2\n        return 1",
+    "replace": "        echo \"ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable\" >&2\n        return 0",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the sdk stage's best-effort `flutter --version` WARNING is how both shipped images carried a 716 MB SDK with an empty bin/cache for months; a bootstrap that cannot fail the stage is that WARNING again"
+  },
+  {
+    "id": "flutter.bootstrap-cache-handover",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    chown -R \"${RUNTIME_UID:?}:${RUNTIME_UID}\" /opt/flutter/bin/cache\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "root writes the cache; without the handover the uid-1001 runtime user hits 'engine.stamp.tmp: Permission denied' on every flutter call (measured 2026-09-03)"
+  },
+  {
+    "id": "flutter.smoke-offline",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "out=\"$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version",
+    "replace": "out=\"$(_rt_run bash -lc 'flutter --suppress-analytics --version",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "online, a bare SDK bootstraps itself during the smoke and passes; the shipped property is that it works without a network"
+  },
+  {
+    "id": "flutter.smoke-dart-arch",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "elif ! printf '%s\\n' \"${out}\" | grep -qF \"${machine}\"; then",
+    "replace": "elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an x86-64 Dart SDK in the arm64 image executes natively on this host, so running flutter proves nothing about the arch; only the ELF machine does"
+  },
+  {
     "id": "sccache.retry-once",
     "target": "linux/scripts/01-core/sccache-launcher.sh",
     "find": "  sccache \"$@\" 2>\"${_err}\"\n  _rc2=$?",
@@ -272,7 +328,7 @@
     "why": "YB: the ENOENT class is intermittent, so one retry keeps the cache entry instead of bypassing it -- thousands of units per chain"
   },
   {
-    "id": "artifact-copy.completeness-check",
+    "id": "artifact-parity.completeness-check",
     "target": "linux/scripts/verify-artifact-copy-parity.sh",
     "find": "  check_completeness \"${pairs}\"",
     "replace": "  : # completeness check disabled",
@@ -286,6 +342,1574 @@
     "replace": "    n_pointers = 0  # code pointers unchecked\n",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
     "why": "286 docs/ pointers live in CODE; without this pass a moved page or renamed heading leaves them dangling and nothing notices (6 were on 2026-09-03)"
+  },
+  {
+    "id": "doc-links.local-section-ref-unchecked",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "            if m.group(\"sec\") in have:\n                continue",
+    "replace": "            if True:\n                continue",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  },
+  {
+    "id": "gate-registry.new-unproven",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    if new:\n        rc = 1",
+    "replace": "    if new:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a NEW unproven slug must fail, not just be listed (two-way rule, NEW half)"
+  },
+  {
+    "id": "gate-registry.stale-frozen",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    if stale:\n        rc = 1",
+    "replace": "    if stale:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a frozen slug that gained a proof must fail as STALE so the list only ratchets down"
+  },
+  {
+    "id": "gate-registry.registry-stale",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if current != text:\n        rc = 1",
+    "replace": "    if current != text:\n        rc = 0",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a stale docs/code-quality-gates.md must fail the gate, not just print"
+  },
+  {
+    "id": "gate-registry.basename-is-the-contract",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            \"tests\": [t for t, txt in tests.items() if mentions(needle, txt)],",
+    "replace": "            \"tests\": [],",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a suite naming the script basename (or the inline function) is the test-proof; without the scan every slug is unproven"
+  },
+  {
+    "id": "gate-registry.basename-boundary",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "NEEDLE = r\"(?<![\\w.-])%s\\b\"",
+    "replace": "NEEDLE = r\"%s\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the needle is a bounded word, not a substring: a suite naming not-delta.sh must not prove delta.sh"
+  },
+  {
+    "id": "gate-registry.inline-needle",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return rel, (start, count), word",
+    "replace": "        return rel, (start, count), os.path.basename(rel)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an inline gate is keyed by its function name; keying it by the host file lets any suite that says preflight.sh prove it"
+  },
+  {
+    "id": "gate-registry.script-tie-break",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        pick = [s for s in sites if s[0] == preflight_rel] or \\\n               [s for s in sites if s[0] in cmd] or sorted(sites)",
+    "replace": "        pick = sorted(sites)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a shell function defined in several files resolves to preflight.sh, else to the file the run_check command names -- not to whichever sorts first"
+  },
+  {
+    "id": "gate-registry.imported-module-mutations",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    return [rel] + imported_modules(rel, text)",
+    "replace": "    return [rel]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a mutation on an imported sibling module can prove the importer, so the import scan must feed the attribution"
+  },
+  {
+    "id": "gate-registry.fallback-dropped",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "if \"MISSING\" not in e[3]]",
+    "replace": "if \"MISSING\" in e[3]]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the [ -f ] MISSING fallback line must never be taken for the real gate"
+  },
+  {
+    "id": "gate-registry.inline-extent",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if extent is None:\n        return text",
+    "replace": "    if True:\n        return text",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an inline gate's allow/import scan is confined to its function body, not the whole preflight.sh"
+  },
+  {
+    "id": "gate-registry.hook-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if slug in fast:\n        return \"hook+CI\"",
+    "replace": "    if False:\n        return \"hook+CI\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the hook tier column is read from the pre-commit _FAST_SLUGS string, continuation lines included"
+  },
+  {
+    "id": "gate-registry.by-construction",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if row[\"slug\"] in BY_CONSTRUCTION:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "script-tests and mutations ARE the proof machinery; they must read 'by construction', never UNPROVEN"
+  },
+  {
+    "id": "crlf-guard.pattern-neutered",
+    "target": "linux/scripts/preflight.sh",
+    "find": "if (c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\")",
+    "replace": "if (c[2] == \"never-matches\")",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "the CRLF guard must actually select CR-bearing rows: neutering the awk condition makes every dirty working tree look clean"
+  },
+  {
+    "id": "code-complexity.new-offender",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "        if was is None:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an unfrozen knot must fail"
+  },
+  {
+    "id": "code-complexity.growth",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "        elif count > was:",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "complexity growth past the frozen number must fail"
+  },
+  {
+    "id": "code-complexity.unrecorded-shrink",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "        elif count < was:",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an untangled function must be recorded"
+  },
+  {
+    "id": "code-complexity.stale-freeze",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "        if key not in seen:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a freeze must not outlive its knot"
+  },
+  {
+    "id": "code-complexity.heredoc-skip",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    elif c == \"<\" and \"arith\" not in stack and HEREDOC.match(line, i):",
+    "replace": "    elif False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "Python inside a heredoc must not count"
+  },
+  {
+    "id": "code-complexity.here-string",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "(?<!<)<<-?",
+    "replace": "<<-?",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "<<< is a here-string, not a heredoc that swallows the function"
+  },
+  {
+    "id": "code-complexity.quotes-blanked",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if c in QUOTE:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "'a || b' is text, not a path"
+  },
+  {
+    "id": "code-complexity.quote-state-per-line",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        code, docs = strip_line(line, stack)",
+    "replace": "        code, docs = strip_line(line, [])",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a multi-line awk program is one string, not shell"
+  },
+  {
+    "id": "code-complexity.subst-in-quotes",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    elif top == \"dq\" and line.startswith(\"$(\", i):",
+    "replace": "    elif False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the && inside \"$(a && b)\" is real code"
+  },
+  {
+    "id": "code-complexity.comments-dropped",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if c == \"#\" and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "# a || b is a comment"
+  },
+  {
+    "id": "code-complexity.case-arms",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        self.cc += tok in BRANCH or arm",
+    "replace": "        self.cc += tok in BRANCH",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "every case arm is a path"
+  },
+  {
+    "id": "code-complexity.subst-not-arm",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "            f[1] = \"body\"",
+    "replace": "            pass",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the ')' of $(...) in an arm body is not another arm"
+  },
+  {
+    "id": "code-complexity.nesting-open",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        self.depth += (tok in OPEN) - (tok in CLOSE)",
+    "replace": "        self.depth += 0",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "blocks must deepen the nesting count"
+  },
+  {
+    "id": "code-complexity.python-ast",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    for path, rel in scan(\".py\"):",
+    "replace": "    for path, rel in scan(\".pyx\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "python functions are in scope"
+  },
+  {
+    "id": "code-complexity.elif-depth",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "            chained = isinstance(child, ast.If) and getattr(n, \"orelse\", None) == [child]",
+    "replace": "            chained = False",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an elif chain is not nesting"
+  },
+  {
+    "id": "code-complexity.metric-split",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "if len(k) == 3 and k[2] == metric}",
+    "replace": "if len(k) == 3}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a cc row must not read as a stale nesting row"
+  },
+  {
+    "id": "code-complexity.verdict-kept",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        rc |= check_counts(metric",
+    "replace": "        rc = check_counts(metric",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the cc verdict must survive the nesting pass"
+  },
+  {
+    "id": "code-complexity.command-position",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        if tok in KEYWORDS and not self.cmd:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an unquoted keyword in an argument ('... for cross build') is not a branch"
+  },
+  {
+    "id": "code-complexity.command-position-reset",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        self.cmd = tok in CMD_OPS or arm or (cmd and tok in CMD_KW)",
+    "replace": "        self.cmd = False",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "command position must be re-entered after ;, |, && and a newline"
+  },
+  {
+    "id": "code-complexity.newline-token",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "TOKEN = re.compile(r\"\\n|\\$\\(",
+    "replace": "TOKEN = re.compile(r\"\\$\\(",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a line start is a command position, so the tokenizer must see newlines"
+  },
+  {
+    "id": "code-complexity.escaped-dq",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if top == \"dq\" and c == \"\\\\\":",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a \\\" inside \"...\" does not close the string"
+  },
+  {
+    "id": "code-complexity.escaped-code",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if c == \"\\\\\":",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a backslash-escaped quote in code does not open a string"
+  },
+  {
+    "id": "code-complexity.arith-dollar",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"$((\", i):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "$(( a << b )) is a shift, not a heredoc that swallows the rest"
+  },
+  {
+    "id": "code-complexity.arith-command",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "(( a << b )) is a shift, not a heredoc that swallows the rest"
+  },
+  {
+    "id": "code-complexity.brace-delimited",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        if tok == \"}\" and not delimited:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the '}' of ${x:-$(cmd)} is not a block end"
+  },
+  {
+    "id": "code-complexity.allow-row-metric",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        if len(key) != 3 or key[2] not in METRICS:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an allow row naming no known metric must fail, not be ignored"
+  },
+  {
+    "id": "code-complexity.allow-row-arity",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "                            if len(k) == 3 and k[2] == metric},",
+    "replace": "                            if k[2] == metric},",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a row missing the metric column must fail, not crash the gate"
+  },
+  {
+    "id": "dead-functions.new-dead",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "if not seen[name]]",
+    "replace": "if False]",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "an unfrozen function nothing names must fail"
+  },
+  {
+    "id": "dead-functions.comment-is-not-a-use",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "return HEAD.sub(\"\", COMMENT.sub(\"\", text))",
+    "replace": "return HEAD.sub(\"\", text)",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a name mentioned only in a comment is still dead"
+  },
+  {
+    "id": "dead-functions.definition-is-not-a-use",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "return HEAD.sub(\"\", COMMENT.sub(\"\", text))",
+    "replace": "return COMMENT.sub(\"\", text)",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "its own head, or a second definition, must not count as a call"
+  },
+  {
+    "id": "dead-functions.comment-multiline",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "r\"(?:^|(?<=\\s))#.*$\", re.MULTILINE)",
+    "replace": "r\"(?:^|(?<=\\s))#.*$\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "without MULTILINE only a comment on the first line is stripped"
+  },
+  {
+    "id": "dead-functions.tab-indented-comment",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "r\"(?:^|(?<=\\s))#.*$\"",
+    "replace": "r\"(?:^|(?<= ))#.*$\"",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a tab-indented comment is a comment; a space-only lookbehind counts it as a use"
+  },
+  {
+    "id": "dead-functions.head-multiline",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "HEAD = re.compile(r\"^\\s*\" + DEF_HEAD, re.MULTILINE)",
+    "replace": "HEAD = re.compile(r\"^\\s*\" + DEF_HEAD)",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "without MULTILINE only a definition head at byte 0 is stripped"
+  },
+  {
+    "id": "dead-functions.allow-file-is-not-a-use",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\", \".allow\")",
+    "replace": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a freeze row must not count as a use, or every freeze goes STALE"
+  },
+  {
+    "id": "dead-functions.patch-and-diff-skipped",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "SKIP_SUFFIXES = (\".md\", \".patch\", \".diff\", \".allow\")",
+    "replace": "SKIP_SUFFIXES = (\".md\", \".allow\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a patch or diff quotes code, it never runs it"
+  },
+  {
+    "id": "dead-functions.patches-dir-skipped",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\"__pycache__\", \"patches\",",
+    "replace": "\"__pycache__\",",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "vendored upstream source under patches/ is not a caller"
+  },
+  {
+    "id": "dead-functions.pytest-cache-skipped",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\".pytest_cache\", \".dart_tool\"}",
+    "replace": "\".dart_tool\"}",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a pytest cache records test node ids and would name functions nothing calls"
+  },
+  {
+    "id": "dead-functions.dart-tool-skipped",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\".pytest_cache\", \".dart_tool\"}",
+    "replace": "\".pytest_cache\"}",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the Flutter tool cache is generated, not source"
+  },
+  {
+    "id": "dead-functions.mutations-manifest-skipped",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\"docs/scripts/mutations.json\"}",
+    "replace": "\"docs/scripts/mutations.json.none\"}",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a mutation's find/replace text is prose about code, like an .allow row"
+  },
+  {
+    "id": "dead-functions.dist-is-not-corpus",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\"linux/webserver/dist\"",
+    "replace": "\"linux/webserver/dist/none\"",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a minified web bundle can name anything; letting it count would mask dead functions"
+  },
+  {
+    "id": "dead-functions.dist-skip-is-narrow",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "\"node_modules\",",
+    "replace": "\"node_modules\", \"dist\",",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "skipping every dist/ by name would silently drop a future linux/scripts/dist"
+  },
+  {
+    "id": "dead-functions.dockerfile-in-corpus",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "if not fn.endswith(SKIP_SUFFIXES) and _kept(path):",
+    "replace": "if not fn.endswith(SKIP_SUFFIXES) and _kept(path) and not fn.startswith(\"Dockerfile\"):",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a Dockerfile RUN is how stages call helpers; dropping it would flag live code"
+  },
+  {
+    "id": "dead-functions.census-lists-the-masked",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "    return [key for key in considered if _isolated(key[0], corpus_texts)], len(considered)",
+    "replace": "    return [], len(considered)",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "--census is the only pass that sees a function another file's same name masks"
+  },
+  {
+    "id": "dead-functions.census-skips-sourcing-files",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "    if SOURCED.search(corpus_texts.get(rel, \"\")):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a file that sources a library can be called back into by it"
+  },
+  {
+    "id": "dead-functions.census-skips-named-files",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "    return not any(base in text for other, text in corpus_texts.items() if other != rel)",
+    "replace": "    return True",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a file another file names by basename can be sourced or run from there"
+  },
+  {
+    "id": "dead-functions.host-config-is-a-subject",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
+    "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "operator tools under linux/host-config are scanned for definitions, not only for calls"
+  },
+  {
+    "id": "dead-functions.stale-freeze",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    stale = sorted(frozen - set(keys))",
+    "replace": "    stale = []",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a freeze must not outlive its subject"
+  },
+  {
+    "id": "dead-functions.one-liner-is-a-definition",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "            if depth == 0:\n",
+    "replace": "            if depth == 0 and n > 1:\n",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a one-line function on a file's last line was never yielded and could not be dead"
+  },
+  {
+    "id": "dead-functions.function-keyword",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "DEF = re.compile(\"^\" + DEF_HEAD)",
+    "replace": "DEF = re.compile(r\"^()([A-Za-z_][A-Za-z0-9_]*)\\(\\)\\s*\\{\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "function name { is a definition too"
+  },
+  {
+    "id": "shellcheck-warnings.verdict-exit",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        print(\"OK: shellcheck warnings match the baseline exactly\")\n    return rc",
+    "replace": "        print(\"OK: shellcheck warnings match the baseline exactly\")\n    return 0",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a failing four-way verdict must reach the exit code, not just the log"
+  },
+  {
+    "id": "shellcheck-warnings.level-filter",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        if c.get(\"level\") != \"warning\" or (only is not None and c[\"file\"] not in only):",
+    "replace": "        if (only is not None and c[\"file\"] not in only):",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "only warning-level findings are this gate's business; error-level ones are lint-shell.sh's"
+  },
+  {
+    "id": "shellcheck-warnings.x-follow-sources",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "[shellcheck, \"-x\", \"-f\", \"json1\", \"-S\", \"warning\", *files]",
+    "replace": "[shellcheck, \"-f\", \"json1\", \"-S\", \"warning\", *files]",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "without -x a source= directive is followed only when its target is also an input, so --files counts differ from the whole-set counts"
+  },
+  {
+    "id": "shellcheck-warnings.files-count-filter",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "or (only is not None and c[\"file\"] not in only)",
+    "replace": "or False",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--files must report the listed files only, whatever path the tool attributes a finding to"
+  },
+  {
+    "id": "shellcheck-warnings.files-restriction",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        files = [f for f in in_scope if f in wanted]",
+    "replace": "        files = list(in_scope)",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--files must check only the listed files, or the hook reports other people's files"
+  },
+  {
+    "id": "shellcheck-warnings.files-frozen-scope",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        frozen = {k: n for k, n in frozen.items() if k[0] in only}",
+    "replace": "        frozen = dict(frozen)",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--files must compare against the listed files' rows only, or every other row reads STALE"
+  },
+  {
+    "id": "shellcheck-warnings.scope-skip-note",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        skipped = wanted - set(in_scope)",
+    "replace": "        skipped = set()",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a file outside the lint-shell.sh scope must be skipped visibly, not silently"
+  },
+  {
+    "id": "shellcheck-warnings.abs-path-rel",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    if os.path.isabs(path):\n        return os.path.relpath(path, ROOT)",
+    "replace": "    if os.path.isabs(path):\n        return path",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "an absolute --files path must resolve INTO the scope; unresolved it is merely skipped, which reads as a pass"
+  },
+  {
+    "id": "shellcheck-warnings.keep-reason",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "old.get(key, (0, \"baseline %s, not yet reviewed\" % today))[1]",
+    "replace": "(0, \"baseline %s, not yet reviewed\" % today)[1]",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--write-baseline must keep a reviewed reason, or every rewrite erases the review"
+  },
+  {
+    "id": "shellcheck-warnings.partial-rewrite",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    keep = {k: v for k, v in old.items() if partial and k[0] not in checked}",
+    "replace": "    keep = {}",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--write-baseline --files must leave unchecked files' rows alone"
+  },
+  {
+    "id": "shellcheck-warnings.allow-inline-comment",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        body = line.split(\"#\", 1)[0].strip()",
+    "replace": "        body = line.strip()",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "the allow file must be read the way quality_allow.load_counts reads it: comment first, fields after"
+  },
+  {
+    "id": "shellcheck-warnings.reason-join",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "\" \".join(p for p in parts[3:] if p)",
+    "replace": "parts[3]",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a reason carrying | must be normalised on rewrite, or load_counts reads the reason as the count column"
+  },
+  {
+    "id": "shellcheck-warnings.list-files-exit2",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    if proc.returncode != 0:",
+    "replace": "    if False:",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a failing --list-files must be exit 2; an empty scope silently checks nothing and passes"
+  },
+  {
+    "id": "shellcheck-warnings.json-exit2",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "                         % (proc.returncode, proc.stderr))\n        raise SystemExit(2)",
+    "replace": "                         % (proc.returncode, proc.stderr))\n        return counts",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "shellcheck output that is not json1 must be exit 2, not zero findings"
+  },
+  {
+    "id": "shellcheck-warnings.tool-missing-exit",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    if proc.returncode != 0 or not out:",
+    "replace": "    if False:",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "no usable shellcheck must be exit 2 with a message, not a traceback or a pass"
+  },
+  {
+    "id": "shellcheck-warnings.env-bin-override",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    override = os.environ.get(\"SHELLCHECK_BIN\")",
+    "replace": "    override = None",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "SHELLCHECK_BIN must stay the first-choice override, so a caller can pin the binary the counts were frozen with"
+  },
+  {
+    "id": "shellcheck.pin-only-path-bin",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "[ \"$(\"${path_bin}\" --version 2>/dev/null | sed -n 's/^version: //p')\" = \"${SHELLCHECK_VERSION#v}\" ]",
+    "replace": "[ -n \"${path_bin}\" ]",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a PATH shellcheck at any other version counts different warnings than the frozen baseline (CI's apt 0.9.0)"
+  },
+  {
+    "id": "shellcheck.list-files-first",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "if [ \"${LIST_FILES}\" -eq 1 ]; then",
+    "replace": "if [ \"${LIST_FILES}\" -eq 1 ] && [ \"${#CHECK[@]}\" -gt 0 ]; then",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "--list-files output is a file list; falling through to the 'no shell scripts' banner makes an ANSI line a scope entry"
+  },
+  {
+    "id": "code-dupes.shrunk-budget",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "            if n < budget[0]:",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "a budget above the measurement must fail and name the new budget"
+  },
+  {
+    "id": "code-dupes.stale-row",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    stale = [k for k in allow if k not in per_file]",
+    "replace": "    stale = []",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "a row whose pair is no longer over the threshold must fail as stale"
+  },
+  {
+    "id": "code-dupes.stale-wording",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "} is no longer over the threshold \"",
+    "replace": "} no longer overlaps \"",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "a pair still overlapping at or under the threshold must not be reported as no overlap"
+  },
+  {
+    "id": "code-dupes.stale-count",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "{measured.get(k, (0,))[0]} shared",
+    "replace": "{0} shared",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "the stale line must print the count measured BEFORE the threshold cut, not zero"
+  },
+  {
+    "id": "code-dupes.bookkeeping-exit",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    return 1 if shrunk or stale else 0",
+    "replace": "    return 0",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "printing a shrunk or stale row is not enough; the gate must exit 1"
+  },
+  {
+    "id": "code-dupes.bookkeeping-before-findings",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n\n    if findings:\n        _print_findings(findings, runs, texts, ranked)\n        return 1",
+    "replace": "    if findings:\n        _print_findings(findings, runs, texts, ranked)\n        return 1\n    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "one run must show every bookkeeping error, not hide them behind the first new finding"
+  },
+  {
+    "id": "code-dupes.duplicate-row",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "        if key in allow:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "two rows for one unordered pair must exit 2 naming both, never silently last-wins"
+  },
+  {
+    "id": "code-dupes.kind-scopes-allow",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "             if all(_file_kind(Path(f).name) in kinds for f in k)}",
+    "replace": "             if True}",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "--kind must not call every other kind's row stale"
+  },
+  {
+    "id": "code-dupes.baseline-keeps-reason",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "{allow.get(key, (0, fresh))[1]}",
+    "replace": "{fresh}",
+    "test": "bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "--baseline must carry an existing row's reason over verbatim"
+  },
+  {
+    "id": "env-knobs.stale-detected",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "LC_ALL=C comm -13 \"${_tmp}/consumed\" \"${_tmp}/own_allow\" > \"${_tmp}/stale\"",
+    "replace": ": > \"${_tmp}/stale\"",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "an allow row whose knob is consumed nowhere must be found"
+  },
+  {
+    "id": "env-knobs.stale-fails",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  rc=1\n",
+    "replace": "  rc=0\n",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a stale row must fail the gate, not just print"
+  },
+  {
+    "id": "env-knobs.stale-regardless-of-gate",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  fi\n  exit \"${rc}\"\nfi",
+    "replace": "  fi\n  exit 0\nfi",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "stale is a bookkeeping error: it fails even when every knob is owned and KNOB_GATE is off"
+  },
+  {
+    "id": "env-knobs.ok-line-withheld",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if [ \"${rc}\" -eq 0 ]; then\n    echo \"  OK: every consumed knob has an owner",
+    "replace": "  if [ \"${rc}\" -ge 0 ]; then\n    echo \"  OK: every consumed knob has an owner",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a run that FAILED on a stale row must not also print the all-clear line"
+  },
+  {
+    "id": "env-knobs.comment-line-not-consumer",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  | grep -vE '^[[:space:]]*#' \\\n",
+    "replace": "  | cat \\\n",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "prose naming a knob on a full-line comment is not a reader, so it must not keep a dead row alive"
+  },
+  {
+    "id": "env-knobs.trailing-comment-not-consumer",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  | sed -E 's/[[:space:]]+#.*$//' \\\n",
+    "replace": "  | cat \\\n",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a knob named only in a trailing comment is not a reader either"
+  },
+  {
+    "id": "mutations.isolated-copy",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        args.root = workspace",
+    "replace": "        pass",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the throwaway copy must be the tree that gets mutated; pointing the run back at --root writes into a directory buildkit may be reading as a build context"
+  },
+  {
+    "id": "mutations.in-place-is-opt-in",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if args.in_place:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "--in-place is the documented opt-out the gate's own fixtures need; silently ignoring it turns every absolute-path fixture into a false SURVIVED"
+  },
+  {
+    "id": "mutations.workspace-cleanup",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        shutil.rmtree(workspace, ignore_errors=True)",
+    "replace": "        pass",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "one leaked ~130MB copy per invocation, and the gate runs from a pre-commit hook"
+  },
+  {
+    "id": "crlf-guard.mixed-blind",
+    "target": "linux/scripts/preflight.sh",
+    "find": "c[2] == \"w/crlf\" || c[2] == \"w/mixed\" || c[2] == \"w/-text\"",
+    "replace": "c[2] == \"w/crlf\" || c[2] == \"w/-text\"",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "git says w/crlf only when EVERY line ends CRLF; a file an editor or merge half-rewrote is w/mixed, the realistic accident that produces \"$'\\r': command not found\" in the containers"
+  },
+  {
+    "id": "crlf-guard.lone-cr-blind",
+    "target": "linux/scripts/preflight.sh",
+    "find": "|| c[2] == \"w/-text\"",
+    "replace": "|| c[2] == \"never-emitted\"",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "a bare CR (no LF after it) makes git report w/-text, not w/crlf; it breaks bash the same way and no tracked *.sh is legitimately binary"
+  },
+  {
+    "id": "crlf-guard.index-column",
+    "target": "linux/scripts/preflight.sh",
+    "find": "if (c[2] == \"w/crlf\"",
+    "replace": "if (c[1] == \"i/crlf\"",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "buildkit snapshots the WORKING TREE, so only git's w/ column decides; reading i/ turns a CRLF-in-index/LF-on-disk file into a false positive and misses the real one"
+  },
+  {
+    "id": "comment-size.verdict-discarded",
+    "target": "linux/scripts/verify_comment_size.py",
+    "find": "    return rc",
+    "replace": "    return 0",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "an oversized block that is only PRINTED is not a gate; the verdict must reach preflight"
+  },
+  {
+    "id": "comment-size.limit-not-enforced",
+    "target": "linux/scripts/verify_comment_size.py",
+    "find": "                    if n > LIMIT:",
+    "replace": "                    if False:",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "a block that ends at a code line is the common shape; stop collecting it and the gate sees nothing"
+  },
+  {
+    "id": "masked-decls.verdict-discarded",
+    "target": "linux/scripts/verify_masked_assignments.py",
+    "find": "    return rc",
+    "replace": "    return 0",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "a masked declaration that is only PRINTED is not a gate; the verdict must reach preflight"
+  },
+  {
+    "id": "masked-decls.substitution-required",
+    "target": "linux/scripts/verify_masked_assignments.py",
+    "find": "                if m and SUBST.search(code):",
+    "replace": "                if m:",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "`local x` with no command substitution masks nothing; flagging it would make the split fix itself an offence"
+  },
+  {
+    "id": "python-lint.gate-tier-neutered",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "if ! \"${RUFF[@]}\" check --quiet --select \"${GATE_SELECT}\" \"${PY_FILES[@]}\"; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the gate tier is the only tier preflight can fail; an undefined name must exit non-zero"
+  },
+  {
+    "id": "python-lint.tier-boundary",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "GATE_SELECT=\"E9,F63,F7,F82\"",
+    "replace": "GATE_SELECT=\"E9,F63,F7,F82,F401\"",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the adoption ramp must stay advisory: promoting a style code into the gate tier turns a passing tree red"
+  },
+  {
+    "id": "env-knobs.owner-trailing-comment",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "s/[[:space:]]+#.*$//",
+    "replace": "s/[[:space:]]+$//",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "the trailing '#' strip must cut, not merely trim whitespace, or a ' # ${NAME:-}' still counts as a reader"
+  },
+  {
+    "id": "env-knobs.private-prefix-not-a-knob",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "'\\$\\{[A-Z][A-Z0-9_]{2,}:-'",
+    "replace": "'\\$\\{[A-Z_][A-Z0-9_]{2,}:-'",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "the extraction regex is what bars _-prefixed privates from the census; the loose selector does not"
+  },
+  {
+    "id": "env-knobs.escaped-literal-not-reader",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  | sed -E 's/\\\\\\$/\\\\/g' \\\n",
+    "replace": "  | cat \\\n",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a backslash-escaped \\${NAME:-} is literal output text; counting it as a reader keeps a dead allow row alive"
+  },
+  {
+    "id": "gate-registry.mutation-id-prefix",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "if id_slug(e) == slug and e[\"target\"] in files",
+    "replace": "if e[\"target\"] in files",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "Without the id-prefix key every gate sharing a file (an imported sibling module above all) inherits its neighbours' mutations, the circular credit that gave code-size 7 foreign proofs."
+  },
+  {
+    "id": "gate-registry.mutation-target-scope",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "id_slug(e) == slug and e[\"target\"] in files",
+    "replace": "id_slug(e) == slug",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "The id prefix alone is a claim; the target is the evidence. Without it a typo'd prefix would prove a gate whose code the mutation never touches."
+  },
+  {
+    "id": "gate-registry.off-convention-loud",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if target in files:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
+    "replace": "    if False:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an id pinning a gate's own file under a non-slug prefix must be renamed to that gate, not filed away as a descriptive family where the gate loses the proof"
+  },
+  {
+    "id": "gate-registry.hook-scoped-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "return \"hook (scoped)+CI\" if mentions(needle, text) else \"CI\"",
+    "replace": "return \"CI\"",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "_FAST_SLUGS is not the whole hook: four gates run through their own blocks and read CI-only without this, understating what a commit already checks."
+  },
+  {
+    "id": "preflight-slugs.doc-count-stale",
+    "target": "linux/scripts/tests/test-preflight-slugs.sh",
+    "find": "t_assert_eq \"$(printf '%s\\n' \"${_known}\" | grep -c .)\" \"${_doc_count}\" \"doc slug count vs KNOWN_SLUGS\"",
+    "replace": "t_assert_eq \"$(printf '%s\\n' \"${_known}\" | grep -c . | awk '{print $1 + 1}')\" \"${_doc_count}\" \"doc slug count vs KNOWN_SLUGS\"",
+    "test": "bash linux/scripts/tests/test-preflight-slugs.sh",
+    "why": "the doc's self-declared slug count is COMPARED against KNOWN_SLUGS, not merely parsed out of the page"
+  },
+  {
+    "id": "preflight-slugs.doc-lines-stale",
+    "target": "linux/scripts/tests/test-preflight-slugs.sh",
+    "find": "_arr_last=\"$(awk -v s=\"${_arr_first}\" 'NR>=s && /\\)$/ {print NR; exit}' \"${PREFLIGHT}\")\"",
+    "replace": "_arr_last=\"${_arr_first}\"",
+    "test": "bash linux/scripts/tests/test-preflight-slugs.sh",
+    "why": "a quoted line span rots on the next edit of preflight.sh unless the doc is checked against where the array really is"
+  },
+  {
+    "id": "preflight-slugs.doc-row-missing",
+    "target": "docs/cross-build-verification.md",
+    "find": "| `gate-registry` | `verify_gate_registry.py`",
+    "replace": "| `gate-registryX` | `verify_gate_registry.py`",
+    "test": "bash linux/scripts/tests/test-preflight-slugs.sh",
+    "why": "a slug with no row in the doc table, or a row naming no slug, must fail"
+  },
+  {
+    "id": "pre-commit.bare-shellcheck",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "\"${_sc_bin}\" -S error ${_staged_sh} || {",
+    "replace": "shellcheck -S error ${_staged_sh} || {",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "the hook must use lint-shell.sh's pinned binary, not whatever PATH has"
+  },
+  {
+    "id": "code-complexity.cmd-op-newline",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a newline must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-semicolon",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a ; must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-arm-end",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a ;; must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-arm-fallthrough",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a ;& must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-arm-retry",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a ;;& must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-andand",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an && must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-oror",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an || must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-pipe",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"&\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a | must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-background",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"(\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "an & must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-subshell",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"$(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a ( must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-substitution",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"{\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a $( must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.cmd-op-brace-group",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\", \"{\"}",
+    "replace": "CMD_OPS = {\"\\n\", \";\", \";;\", \";&\", \";;&\", \"&&\", \"||\", \"|\", \"&\", \"(\", \"$(\"}",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a { must put the next word in command position"
+  },
+  {
+    "id": "code-complexity.arith-after-space",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \"\\t;(|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after a space is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "code-complexity.arith-after-tab",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" ;(|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after a tab is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "code-complexity.arith-after-semicolon",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t(|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after a ; is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "code-complexity.arith-after-paren",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after a ( is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "code-complexity.arith-after-pipe",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after a | is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "code-complexity.arith-after-amp",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "`((` after an & is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "env-knobs.owner-quoted-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == \"\\\"\") { top++; S[top] = \"dq\"; continue }",
+    "replace": "    if (c == \"\\\"\") { continue }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "text inside a double-quoted string is not code: an echo that spells NAME=value owns nothing"
+  },
+  {
+    "id": "env-knobs.owner-command-position",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "function cmdpos(pre,   w) {\n  sub(/[ \\t]+$/, \"\", pre)",
+    "replace": "function cmdpos(pre,   w) {\n  return 1\n  sub(/[ \\t]+$/, \"\", pre)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "an assignment-shaped ARGUMENT is not an assignment: only command position owns"
+  },
+  {
+    "id": "env-knobs.owner-comment-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == \"#\" && (out == \"\" || substr(out, length(out), 1) ~ /[ \\t]/)) break",
+    "replace": "    if (0) break",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a comment is not code: prose spelling `export NAME=1` must not own NAME"
+  },
+  {
+    "id": "env-knobs.owner-heredoc-body",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (nhd > 0) { t = $0; if (hdtab[1]) sub(/^\\t+/, \"\", t); if (t == hdend[1]) hdpop(); next }",
+    "replace": "  if (nhd > 0) { nhd = 0 }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a NAME=value line in a heredoc body is emitted data, not this script's own assignment"
+  },
+  {
+    "id": "env-knobs.owner-substitution-in-quotes",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "      else if (c == \"$\" && substr($0, i + 1, 1) == \"(\") { top++; S[top] = \"code\"; P[top] = 0; out = out \"$(\"; i++ }",
+    "replace": "      else if (c == \"$\" && substr($0, i + 1, 1) == \"(\") { i++ }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "$( ) inside a double-quoted word is code again, so an assignment there still owns"
+  },
+  {
+    "id": "env-knobs.owner-keyword-prefix",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (w ~ /^(then|else|elif|do|if|while|until|export|local|declare|readonly|typeset|env|time|!)$/) return 1",
+    "replace": "  if (w ~ /^(then|else|elif|do|if|while|until|env|time|!)$/) return 1",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "export/local/readonly/declare open command position, so the assignment after them owns"
+  },
+  {
+    "id": "env-knobs.owner-env-prefix-chain",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    pos = q + l",
+    "replace": "    out = substr(out, q + l); pos = 1",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "cmdpos must see the whole line prefix, or only the FIRST name of an env-prefix chain owns"
+  },
+  {
+    "id": "env-knobs.owner-case-arm",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (pre ~ /[;&|(){]$/) return 1",
+    "replace": "  if (pre ~ /[;&|({]$/) return 1",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a case arm's ) opens command position, so an assignment in the arm owns"
+  },
+  {
+    "id": "env-knobs.owner-expansion-guard",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (prev !~ /[A-Za-z0-9_{]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)",
+    "replace": "    if (prev !~ /[A-Za-z0-9_]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a parameter expansion's own = is not an assignment: ${VAR=x} must not own"
+  },
+  {
+    "id": "env-knobs.heredoc-quoted-delimiter",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (qc == SQ || qc == \"\\\"\") { j++; while (j <= length($0) && substr($0, j, 1) != qc) { d = d substr($0, j, 1); j++ }; j++ }",
+    "replace": "  if (0) { j++ }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a heredoc must be recognised BEFORE quote state eats its delimiter, or the usage text inside <<'EOT' owns knobs again"
+  },
+  {
+    "id": "env-knobs.heredoc-tab-terminator",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "if (hdtab[1]) sub(/^\\t+/, \"\", t);",
+    "replace": "if (0) sub(/^\\t+/, \"\", t);",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "<<- indents its terminator; without the tab strip the heredoc never ends and eats the rest of the file"
+  },
+  {
+    "id": "env-knobs.heredoc-queue",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "function hdpop(   k) { for (k = 1; k < nhd; k++) { hdend[k] = hdend[k + 1]; hdtab[k] = hdtab[k + 1] } nhd-- }",
+    "replace": "function hdpop(   k) { nhd = 0 }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "two heredocs opened on one line end one at a time; popping both makes the second body code"
+  },
+  {
+    "id": "env-knobs.heredoc-not-herestring",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (d == \"\") { nhd--; out = out \"<<\"; return i + 1 }",
+    "replace": "  if (d == \"\") { nhd--; out = out \"<\"; return i }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a <<< here-string must not re-enter as a heredoc opened at its second <, which would swallow the rest of the file"
+  },
+  {
+    "id": "env-knobs.owner-chain-walks-back",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (w !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0\n  return cmdpos(substr(pre, 1, length(pre) - length(w)))",
+    "replace": "  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "the prefix is walked back over preceding assignments: a word after a command name stays an argument even when it is assignment-shaped"
+  },
+  {
+    "id": "env-knobs.owner-single-quoted-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == SQ) { top++; S[top] = \"sq\"; continue }",
+    "replace": "    if (c == SQ) { continue }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "text inside single quotes is not code: a continued usage line spelling NAME=value owns nothing"
+  },
+  {
+    "id": "crlf-guard.scope-sh-suffix-only",
+    "target": "linux/scripts/preflight.sh",
+    "find": "git ls-files -z 2>/dev/null \\\n    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
+    "replace": "git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "a *.sh pathspec cannot see an extension-less script on a shell shebang, so the commit hook that runs this very gate was outside it while the neighbouring shellcheck gate covered it"
+  },
+  {
+    "id": "crlf-guard.scope-not-classified",
+    "target": "linux/scripts/preflight.sh",
+    "find": "xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null",
+    "replace": "xargs -0r printf '%s\\n' 2>/dev/null",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "the scope must be lint-shell.sh's answer to 'what is a shell script'; taking every tracked path instead turns CR in prose, patches and fixtures into gate failures"
+  },
+  {
+    "id": "crlf-guard.pipefail-pin",
+    "target": "linux/scripts/preflight.sh",
+    "find": "set -uo pipefail",
+    "replace": "set -u",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "__git-ls-files-FAILED__ is reachable only because a failing stage fails the pipeline; without pipefail awk's zero is the verdict and a broken git or a missing lint-shell.sh reads as a clean tree"
+  },
+  {
+    "id": "python-lint.embedded-extraction-off",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "  if python3 linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) >/dev/null 2>&1; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the extraction call is the only thing putting heredoc Python in front of ruff; switching it off drops ~775 lines out of the gate while every suite stays green"
+  },
+  {
+    "id": "python-lint.embedded-file-discovery",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "$(find linux/scripts -name '*.sh' -type f;",
+    "replace": "$(find linux/scripts/01-core -name '*.sh' -type f;",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the extractor is only as wide as the file list it is handed; narrowing the discovery scope silently un-lints whole directories of embedded Python and nothing said so"
+  },
+  {
+    "id": "python-lint.heredoc-python-decision",
+    "target": "linux/scripts/extract_embedded_python.py",
+    "find": "            except SyntaxError:\n                continue",
+    "replace": "            except SyntaxError:\n                pass",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the parse check is what keeps non-Python out: without it a cat'ed TPL_PY_* config template is emitted as Python and reddens the gate on a file that was never Python"
+  },
+  {
+    "id": "python-lint.hook-half-of-discovery",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "; find linux/host-config/git-hooks -type f)",
+    "replace": ")",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "a git hook carries no .sh suffix, so it is reachable only through the second half of the extractor's file list; dropping it takes the pre-commit hook's embedded Python out of the gate and every suite stays green"
+  },
+  {
+    "id": "mutations.preflight-callsite-isolated",
+    "target": "linux/scripts/preflight.sh",
+    "find": "docs/scripts/verify_mutations.py",
+    "replace": "docs/scripts/verify_mutations.py --in-place",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "preflight points the gate at the repo buildkit reads as a build context; one flag turns every mutation into an in-place edit of that tree"
+  },
+  {
+    "id": "mutations.preflight-runs-the-gate",
+    "target": "linux/scripts/preflight.sh",
+    "find": "run_check mutations \"mutation gate (can the tests fail?)\" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py",
+    "replace": "run_check mutations \"mutation gate (can the tests fail?)\" true",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the mutations slug must actually invoke the gate, not a stand-in that always passes"
+  },
+  {
+    "id": "mutations.hook-callsite-isolated",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "replace": "    python3 docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" || {",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the hook runs on the live working tree; --in-place there mutates files a concurrent build is snapshotting"
+  },
+  {
+    "id": "mutations.hook-runs-the-gate",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "replace": "    true || {",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the commit decision must depend on the staged-file run of the gate, not on a stand-in"
+  },
+  {
+    "id": "mutations.copy-excludes-heavy-trees",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "COPY_EXCLUDES = (\".git\", \"external\", \"out\", \"logs\", \"archive\", \"linux/webserver/dist\")",
+    "replace": "COPY_EXCLUDES = ()",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "without the excludes every invocation clones .git/out/logs/archive/external too, and the gate runs once per pre-commit"
+  },
+  {
+    "id": "mutations.find-must-match-once",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if hits > 1:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a find string matching several places would neuter only the first, leaving the guarantee half-standing and the verdict a false SURVIVED"
+  },
+  {
+    "id": "mutations.copy-preserves-mode",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "            shutil.copy2(",
+    "replace": "            shutil.copyfile(",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a copy that drops the executable bit makes every shell test fail for the wrong reason -- a vacuous-bite storm, not a verdict"
+  },
+  {
+    "id": "mutations.copy-does-not-follow-symlinks",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "follow_symlinks=False)",
+    "replace": "follow_symlinks=True)",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "dereferencing pulls whatever a link points at -- a host binary, a device node -- into a copy the pre-commit hook makes once per commit, and turns a path the tests see as a link into a regular file"
+  },
+  {
+    "id": "mutations.symlink-target-refused",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if os.path.islink(target):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the copy holds symlinks, not their contents: writing to one lands on the outside path it points at, which is the one thing the throwaway copy exists to prevent"
+  },
+  {
+    "id": "pre-commit.mutation-cap",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "run = matched[:cap] if cap > 0 else matched",
+    "replace": "run = matched",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "without the cap the hook runs every matched entry -- the 5m22s mutation step"
+  },
+  {
+    "id": "pre-commit.sample-is-newest-first",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "matched.reverse()",
+    "replace": "matched = list(matched)",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a cut that keeps the OLDEST entries never runs the one just written"
+  },
+  {
+    "id": "pre-commit.sample-says-so",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  if [ \"$1\" -lt \"$2\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a sampled run printing the full-coverage line is a green for work it did not do"
+  },
+  {
+    "id": "pre-commit.notice-is-printed",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "the SAMPLED notice is the only thing between a green hook and a false claim of full coverage; with the call gone a capped run prints nothing about its own scope"
+  },
+  {
+    "id": "pre-commit.notice-count-is-the-run",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": "_mutation_notice \"$(( ${_run:-0} + 2 ))\" \"${_matched:-0}\"",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a notice stating a larger sample than the ids actually passed to the gate is worse than no notice -- it reports coverage nobody paid for"
+  },
+  {
+    "id": "pre-commit.uncapped-claims-no-sample",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": "_mutation_notice \"${_run:-0}\" \"$(( ${_matched:-0} + 1 ))\"",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "an uncapped run that prints SAMPLED sends people to 'make preflight' for coverage the hook already gave them"
+  },
+  {
+    "id": "pre-commit.mutation-failure-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "      echo \"pre-commit: a recorded mutation SURVIVED -- a test here cannot fail\" >&2\n      exit 1",
+    "replace": "      echo \"pre-commit: a recorded mutation SURVIVED -- a test here cannot fail\" >&2\n      exit 0",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a surviving mutation must ABORT the commit, not merely print about it on the way to a green hook"
+  },
+  {
+    "id": "code-complexity.arith-line-start",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (line[i - 1] in \" \\t;(|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a line that starts with `((` has no delimiter before it, so its << would read as a heredoc"
+  },
+  {
+    "id": "code-complexity.delim-semicolon",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "DELIM = \" \\t\\n;\"",
+    "replace": "DELIM = \" \\t\\n\"",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the `}` of `{ : ;}` is delimited by the ;, so it closes its block instead of reading as ${x}-tail text"
+  },
+  {
+    "id": "gate-registry.wrong-prefix-loud",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return None if target in owners[slug] else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "replace": "        return None",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a prefix naming a real slug is a claim of ownership; unchecked, a typo'd or copied prefix silently stops proving anything"
+  },
+  {
+    "id": "gate-registry.hook-whole-tree-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if unscoped_hook_block(needle, text):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a conditionally-run WHOLE-TREE gate must not read as scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-staged-list",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return CHANGED not in body and not mentions(var, body)",
+    "replace": "            return CHANGED not in body",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a block that expands its guard variable into the gate command IS scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-changed",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return CHANGED not in body and not mentions(var, body)",
+    "replace": "            return not mentions(var, body)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "--changed is the staged list under another name, so the block that passes it is scoped"
+  },
+  {
+    "id": "gate-registry.id-rule-not-gate-scoped",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return None if target in owners[slug] else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "replace": "        return None if target in owners[slug] or target not in files else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the rule must judge the id, not the target: scoping it to registered gate files is exactly how a slug prefix over an ordinary build script passed silently"
+  },
+  {
+    "id": "gate-registry.family-must-be-declared",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(families, frozen_families,",
+    "replace": "    rc = check_keys({k: v for k, v in families.items() if k in frozen_families}, frozen_families,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an undeclared prefix is how an invented or misspelled namespace enters; declaring it is what makes the descriptive half of the convention checkable at all"
+  },
+  {
+    "id": "gate-registry.family-not-a-slug-freeze",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(unproven, frozen - frozen_ids - frozen_families,",
+    "replace": "    rc = check_keys(unproven, frozen - frozen_ids,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "family declarations share a file with the unproven-slug ratchet; mixed in, every declaration reads as a STALE slug freeze and the census miscounts the debt"
+  },
+  {
+    "id": "shellcheck.crlf-shebang",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "| head -n 1 | tr -d '\\r')\" in",
+    "replace": "| head -n 1)\" in",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a wholly-CRLF extension-less script leaves the CR on the shebang, matches no arm, and is invisible to this gate and to crlf-guard, which reads its scope from here"
+  },
+  {
+    "id": "doc-numbers.manifest-total-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "return {\"total\": len(entries), \"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "return {\"total\": len(entries) + 1, \"distinct\": len({e[\"test\"] for e in entries}),",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the page's entry total is COMPARED against the manifest, not merely present: a derivation off by one must fail the suite"
+  },
+  {
+    "id": "doc-numbers.distinct-commands-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "\"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "\"distinct\": len({e[\"test\"] for e in entries}) - 1,",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the distinct-command count is compared too, so a wrong derivation must fail rather than pass unnoticed"
+  },
+  {
+    "id": "doc-numbers.family-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "        fam[key] = fam.get(key, 0) + 1",
+    "replace": "        fam[key] = fam.get(key, 0) + 2",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "every per-family count in the page is compared against the ids carrying that prefix"
+  },
+  {
+    "id": "doc-numbers.total-re-quoted",
+    "target": "AGENTS.md",
+    "find": "CI still run every entry.",
+    "replace": "CI still run all 180 entries.",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the manifest total has one owner; a second page re-quoting it is exactly how the last three waves went stale"
+  },
+  {
+    "id": "doc-numbers.fast-slug-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    return len([s for s in body.split(\",\") if s]), first, last",
+    "replace": "    return len([s for s in body.split(\",\") if s]) + 1, first, last",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the hook's fast-slug count is derived from _FAST_SLUGS and compared, so a wrong derivation must fail"
+  },
+  {
+    "id": "doc-numbers.fast-slug-span-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    while lines[last - 1].rstrip().endswith(\"\\\\\"):",
+    "replace": "    while False:",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the quoted _FAST_SLUGS span must follow the list's real continuation lines, not stop at its first"
+  },
+  {
+    "id": "env-knobs.heredoc-delimiter-shape",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "if (d !~ /^[A-Za-z_]/) d = \"\"",
+    "replace": "if (0) d = \"\"",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a heredoc delimiter is a word, not a number: without the shape rule `$(( 1 << 2 ))` opens a heredoc on '2' and eats the rest of the file"
+  },
+  {
+    "id": "env-knobs.heredoc-per-file-reset",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "FNR == 1 { nhd = 0 }",
+    "replace": "FNR == 1 { }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "one awk reads every script, so an unterminated heredoc in one file would swallow the next file's assignments"
+  },
+  {
+    "id": "doc-numbers.family-binds-nearest",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "([^()\\n\\d]{0,60}?)",
+    "replace": "([^()\\n]{0,60}?)",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the count must be the LAST number before the marker, or --update overwrites a correct unrelated number on the same line"
+  },
+  {
+    "id": "version-forwarding.per-arch-override",
+    "target": "linux/scripts/01-core/version-forwarding.sh",
+    "find": "      if [ -n \"${!override:-}\" ] && ! _vf_is_tracked \"${override}\"; then value=\"${!override}\"; fi",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-version-forwarding.sh",
+    "why": "riscv64 has no upstream cmake/node artifact, so without the per-arch override the image advertises a version it does not contain"
+  },
+  {
+    "id": "version-forwarding.override-not-a-key",
+    "target": "linux/scripts/01-core/version-forwarding.sh",
+    "find": "  local _vfit\n  for _vfit in \"${_VERSION_BUILD_ARG_VARS[@]}\"; do\n    [ \"${_vfit}\" = \"$1\" ] && return 0\n  done\n  return 1",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-version-forwarding.sh",
+    "why": "a forwarded key that merely ends in _<ARCH> (GENAI_ALLOW_RISCV64) is a key, not another key's override"
   },
   {
     "id": "bench-agent.blocked-counts-as-failure",
@@ -310,13 +1934,5 @@
     "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
     "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
-  },
-  {
-    "id": "doc-links.local-section-ref-unchecked",
-    "target": "docs/scripts/verify_doc_links.py",
-    "find": "            if m.group(\"sec\") in have:\n                continue",
-    "replace": "            if True:\n                continue",
-    "test": "bash linux/scripts/tests/test-doc-links.sh",
-    "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
   }
 ]

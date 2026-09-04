@@ -34,8 +34,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
       # preflight.sh ends with a python-lint gate (lint-python.sh) that needs
       # ruff. It prefers a ruff on PATH and otherwise falls back to
       # `uvx ruff@<pin>` - but this runner had neither, so the gate died with

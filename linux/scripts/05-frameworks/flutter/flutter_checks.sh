@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../01-core/logging.sh"
 source "$SCRIPT_DIR/../../01-core/platform.sh"
+source "$SCRIPT_DIR/../../lib/code-quality.sh"   # code_quality_find_dart_files
 
 STRICT="true"
 EXTRA_PACKAGES=()
@@ -37,11 +38,20 @@ for _pkg in ${EXTRA_PACKAGES[@]+"${EXTRA_PACKAGES[@]}"}; do
   ( cd "$_pkg" && flutter pub get )
 done
 
-# `dart format .` is deliberate here and NOT portable to Windows consumers: it
-# walks .git/modules, which overruns MAX_PATH there. See Get-ProjectDartFiles
-# in windows/scripts/modules/WindowsFormatting.Common.psm1.
+# Tracked files, never `dart format .`: the CI lanes install the Flutter SDK
+# inside the mounted workspace, so a recursive walk reformats the SDK itself.
 info "Checking Dart formatting..."
-_run dart format --output=none --set-exit-if-changed .
+mapfile -t _dart_files < <(code_quality_find_dart_files .)
+if [ "${#_dart_files[@]}" -eq 0 ]; then
+  # Empty means git could not read the tree (no repo, safe.directory), not
+  # "nothing to check" — skipping silently would retire the gate.
+  if is_truthy "$STRICT"; then
+    err "flutter_checks: no tracked .dart files found; refusing to skip the format gate."
+  fi
+  warn "flutter_checks: no tracked .dart files found; skipping the format gate (non-strict)."
+else
+  _run dart format --output=none --set-exit-if-changed "${_dart_files[@]}"
+fi
 
 info "Analyzing..."
 _run dart analyze

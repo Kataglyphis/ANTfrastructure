@@ -4,11 +4,11 @@
 # Catches the "undefined/typo'd function, quoting, bad redirection" failure
 # class (see docs/cross-build-verification.md) in seconds, instead of after a
 # multi-hour QEMU cross build. The tree is kept clean at -S error; warnings are
-# reported but non-fatal (48 files still carry warning-level lint).
+# non-fatal here and ratcheted per file+code by verify_shellcheck_warnings.py.
 #
-# The shellcheck binary is bootstrapped on demand: PATH copy is used when
-# present, otherwise the pinned release (SHELLCHECK_VERSION / SHELLCHECK_*_SHA256 in
-# versions.env) is downloaded once into a version-keyed cache dir and
+# The shellcheck binary is bootstrapped on demand: a PATH copy is used ONLY when its
+# version equals the pin (SHELLCHECK_VERSION / SHELLCHECK_*_SHA256 in versions.env);
+# otherwise that pinned release is downloaded once into a version-keyed cache dir and
 # SHA256-verified — the same pattern as lint-dockerfiles.sh /
 # lint-workflows.sh. A failed bootstrap FAILS the gate (no silent skip: a
 # skipped lint gate reads as green while checking nothing).
@@ -17,6 +17,9 @@
 #   lint-shell.sh                 # check ALL bash under linux/{scripts,llm-stack,webserver} at -S error
 #   lint-shell.sh a.sh b.sh ...   # check only the given files (pre-commit staged mode)
 #   lint-shell.sh --warning ...   # additionally print warning-level findings (non-fatal)
+#   lint-shell.sh --list-files    # print the repo-relative file set and exit (the scope's one owner;
+#                                 # verify_shellcheck_warnings.py ratchets warnings over exactly it)
+#   lint-shell.sh --print-bin     # print the resolved shellcheck path and exit (the binary's one owner)
 #
 # Exit status: non-zero iff any error-level finding exists (the gate) or
 # bootstrapping shellcheck fails.
@@ -33,16 +36,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 SHOW_WARNINGS=0
+LIST_FILES=0
+PRINT_BIN=0
 FILES=()
 for arg in "$@"; do
   case "${arg}" in
     --warning|-w) SHOW_WARNINGS=1 ;;
+    --list-files) LIST_FILES=1 ;;
+    --print-bin) PRINT_BIN=1 ;;
     *) FILES+=("${arg}") ;;
   esac
 done
 
 # ---------------------------------------------------------------------------
-# Bootstrap of shellcheck (PATH copy preferred; else pinned, SHA-verified download)
+# Bootstrap of shellcheck (PATH copy only AT the pin; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------
 shellcheck_asset_and_sha() {
   case "$(uname -s)/$(uname -m)" in
@@ -56,17 +63,19 @@ shellcheck_asset_and_sha() {
 }
 
 shellcheck_ensure() {
-  if command -v shellcheck >/dev/null 2>&1; then
-    SHELLCHECK_BIN="$(command -v shellcheck)"
-    return 0
-  fi
-
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh"
   load_versions_env "${CORE_DIR}/versions.env"
   [ -n "${SHELLCHECK_VERSION:-}" ] || err "SHELLCHECK_VERSION is not set (versions.env not found?)."
 
-  local asset expected_sha cache_root archive bin_name
+  local asset expected_sha cache_root archive bin_name path_bin
+  path_bin="$(command -v shellcheck || true)"
+  if [ -n "${path_bin}" ] \
+     && [ "$("${path_bin}" --version 2>/dev/null | sed -n 's/^version: //p')" = "${SHELLCHECK_VERSION#v}" ]; then
+    SHELLCHECK_BIN="${path_bin}"
+    return 0
+  fi
+
   read -r asset expected_sha < <(shellcheck_asset_and_sha) \
     || err "Unsupported platform for shellcheck bootstrap ($(uname -s)/$(uname -m)); install shellcheck on PATH instead."
   [ -n "${expected_sha}" ] || err "No pinned shellcheck SHA256 for ${asset}; add one to versions.env."
@@ -95,8 +104,11 @@ shellcheck_ensure() {
   fi
 }
 
-shellcheck_ensure
-info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
+if [ "${PRINT_BIN}" -eq 1 ]; then
+  shellcheck_ensure
+  printf '%s\n' "${SHELLCHECK_BIN}"
+  exit 0
+fi
 
 # Default target set: every tracked .sh under linux/scripts, the runtime service
 # scripts (llm-stack, webserver) that ship their own entrypoints, and the
@@ -140,7 +152,7 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
     *.*)  ;;   # some other extension: not ours
     *)
       # No extension at all — admit it only on a shell shebang.
-      case "$(head -c 128 "${f}" 2>/dev/null | head -n 1)" in
+      case "$(head -c 128 "${f}" 2>/dev/null | head -n 1 | tr -d '\r')" in
         '#!'*[bd]'ash'|'#!'*[bd]'ash '*|'#!/bin/sh'|'#!/bin/sh '*|'#!'*'env sh'|'#!'*'env '[bd]'ash')
           CHECK+=("${f}") ;;
       esac
@@ -148,10 +160,18 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
   esac
 done
 
+if [ "${LIST_FILES}" -eq 1 ]; then
+  for f in ${CHECK[@]+"${CHECK[@]}"}; do printf '%s\n' "${f#"${REPO_ROOT}"/}"; done
+  exit 0
+fi
+
 if [ "${#CHECK[@]}" -eq 0 ]; then
   pass "no shell scripts to check"
   exit 0
 fi
+
+shellcheck_ensure
+info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
 
 # --- The gate: -S error must be clean. ---
 error_files=()

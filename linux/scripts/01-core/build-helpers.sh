@@ -121,7 +121,7 @@ append_runtime_accelerator_build_args() {
 append_common_build_args() {
   local -n _acba_out=$1
   append_mirror_build_args_from_env _acba_out
-  append_version_build_args _acba_out
+  append_version_build_args _acba_out "${2:-}"
 }
 
 image_exists() {

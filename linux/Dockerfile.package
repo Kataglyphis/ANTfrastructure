@@ -43,6 +43,9 @@ ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
+# The uid Dockerfile.torch's `useradd kataglyphis` lands on; trees the runtime
+# user must WRITE (Flutter's bin/cache) are chown'd to it at COPY time.
+ARG RUNTIME_UID=1001
 
 FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source
 
@@ -68,6 +71,7 @@ ARG ONNXRUNTIME_GENAI_OUTPUT_DIR
 ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
+ARG RUNTIME_UID
 
 SHELL ["bash", "-lc"]
 
@@ -82,12 +86,11 @@ COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
 # dropped at this boundary, reaching no image. docs/refactoring-backlog.md F7
 COPY --link --from=artifact-source /opt/armnn /opt/armnn
 COPY --link --from=artifact-source /opt/acl /opt/acl
-# Flutter (amd64/arm64; the sdk stage mkdir's an EMPTY /opt/flutter on riscv64, so
-# this COPY is safe everywhere). SAME drop-at-the-boundary bug as ArmNN above: it
-# was installed and hard-checked in Dockerfile.sdk and then never shipped. The
-# copy-completeness gate now guards the whole set. docs/qnn-linux.md is unrelated;
-# see docs/artifact-copy-completeness.md.
-COPY --link --from=artifact-source /opt/flutter /opt/flutter
+# Flutter: the bare SDK checkout (empty on riscv64), owned by the runtime user
+# because `flutter` writes into its own bin/cache; setup-package-image.sh
+# bootstraps the target-arch Dart SDK into it below.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /opt/flutter /opt/flutter
 # AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
 # here anymore — Dockerfile.torch now carries its own wheels-source stage
 # (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts
@@ -143,7 +146,7 @@ SHELL ["bash", "-c"]
 # Re-declared ARGs required by this stage (Docker requirement across FROM boundaries).
 # ARGs before the first FROM are scope-limited. All version ARGs below are passed
 # by the orchestrator from versions.env; defaults here are safety nets.
-ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM
+ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM RUNTIME_UID
 # FFMPEG_PREFIX / LIBCAMERA_PREFIX must be ARGs, not only ENV assignments.
 # They were set at :177-178 INSIDE the same ENV instruction that consumes them
 # below, and Docker substitutes a variable within one instruction using the

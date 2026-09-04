@@ -14,6 +14,6 @@ linux/scripts/02-toolchain/build-gcc.sh | 880 | baseline 2026-09-03, not yet rev
 linux/scripts/03-media/build/litert/build-litert.sh | 953 | 2026-09-03: +_litert_qairt_include_dir, then -22 as the QAIRT guard moved to android/litert-qairt-guard.sh (YA)
 linux/scripts/03-media/build/opencv/build-opencv.sh | 934 | baseline 2026-09-03, not yet reviewed
 linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1243 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/smoke-runtime-image.sh | 1528 | grew 2026-09-03: probe split + _boot_verdict + check_flutter (docs/artifact-copy-completeness.md)
+linux/scripts/06-packaging/smoke-runtime-image.sh | 1559 | grew 2026-09-03: probe split + _boot_verdict + check_flutter (offline, arch-read) + check_rust_toolchain (docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage)
 linux/scripts/build-cross-chain.sh | 881 | baseline 2026-09-03, not yet reviewed
 linux/scripts/lib/agentic-loop.sh | 874 | baseline 2026-09-03, not yet reviewed

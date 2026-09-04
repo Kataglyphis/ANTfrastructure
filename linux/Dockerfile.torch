@@ -48,7 +48,7 @@ ENV VENV=/opt/venv \
     APP_REF=${APP_REF} \
     SKIP_TORCH_TEST_EXTRAS=true
 
-COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-mirror.sh linux/scripts/01-core/cross-env.sh /opt/scripts/core/
+COPY --chmod=755 linux/scripts/01-core/logging.sh linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-mirror.sh linux/scripts/01-core/cross-env.sh /opt/scripts/core/
 COPY --chmod=755 linux/scripts/03-media/runtime/assemble-torch-app.sh /opt/scripts/03-media/final/assemble-torch-app.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
 
@@ -93,6 +93,9 @@ ENV VIRTUAL_ENV=${VENV} \
 
 FROM torch AS final
 
+# Must equal Dockerfile.package's RUNTIME_UID: that stage chowns /opt/flutter
+# bin/cache to it. docs/artifact-copy-completeness.md#the-runtime-uid-is-a-contract
+ARG RUNTIME_UID=1001
 ARG BUILD_TYPE=Release
 ARG WORKDIR=/workspace
 ARG BUILD_DATE=""
@@ -129,7 +132,8 @@ VOLUME ["${WORKDIR}"]
 # and USER kataglyphis (uid 1001) can never use it — it is pure LPE attack
 # surface (the sudo CVE stream) with zero runtime benefit. rm the binaries and
 # clear any residual setuid bits; no runtime script invokes sudo (verified).
-RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis; \
+RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin/bash kataglyphis; \
+    [ "$(id -u kataglyphis)" = "${RUNTIME_UID}" ] || { echo "ERROR: kataglyphis is uid $(id -u kataglyphis), not RUNTIME_UID=${RUNTIME_UID}; Dockerfile.package chown'd /opt/flutter to the wrong owner" >&2; exit 1; }; \
     mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}; \
     rm -f /usr/local/bin/sudo /usr/bin/sudo /usr/bin/sudoedit /usr/local/bin/sudoedit; \
     find / -xdev -perm -4000 -name 'sudo*' -type f -delete 2>/dev/null || true

@@ -1,0 +1,78 @@
+# Functions currently over the complexity limits, frozen at their present numbers.
+#
+# Format: <path> | <function> | <metric: cc|nesting> | <count> | <reason>
+#
+# cc = cyclomatic complexity (limit COMPLEXITY_LIMIT, default 15); nesting = block
+# depth relative to the function body (limit NESTING_LIMIT, default 5). Same four-way
+# contract as function-size.allow: growth, a new offender, an unrecorded shrink and a
+# stale freeze all fail. docs/code-quality-tooling.md#shell-complexity-code-complexity
+docs/scripts/bump_versions.py | main | cc | 37 | baseline 2026-09-03, not yet reviewed
+docs/scripts/compare_sbom.py | main | cc | 18 | baseline 2026-09-03, not yet reviewed
+docs/scripts/generate_sbom.py | build_document | cc | 16 | baseline 2026-09-03, not yet reviewed
+docs/scripts/sync_versions.py | _update_dockerfile_args_inner | cc | 20 | baseline 2026-09-03, not yet reviewed
+docs/scripts/sync_versions.py | _update_script_defaults_inner | cc | 18 | baseline 2026-09-03, not yet reviewed
+docs/scripts/verify_code_dupes.py | main | cc | 20 | baseline 2026-09-03, not yet reviewed
+docs/scripts/verify_doc_dupes.py | main | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/abseil-headers.sh | install_abseil_headers | cc | 19 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/compiler-resolution.sh | resolve_host_compiler_for_lang | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-apt.sh | install_target_packages | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-env.sh | cross_compile_cmake_lib_from_source | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-env.sh | for_each_cross_target | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-meson.sh | ensure_meson_native_file | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-python.sh | host_python_bin | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-stage-build.sh | cross_stage_run | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/disk-guard.sh | _disk_guard_trim_cache_export | cc | 18 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/parallel-loop.sh | run_parallel_arch_loop | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/parallelism.sh | _cgroup_mem_remaining_mb | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/python_uv.sh | uv_sync_project | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/stage-defs.sh | cross_stage_validate_graph | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/02-toolchain/setup-dependencies.sh | main | cc | 25 | baseline 2026-09-03, not yet reviewed
+linux/scripts/02-toolchain/vulkan.sh | install_vulkan_sdk | cc | 18 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/armnn/build-arm-compute-library.sh | build_acl | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/armnn/build-armnn.sh | build_armnn | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | _ffmpeg_probe_core_codecs | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | bundle_sdk_runtime_libs | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh | ensure_tensorflow_c_sdk | cc | 19 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh | _gst_rs_build_plugins | cc | 25 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh | _gst_rs_cargo_config | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_arch_flags | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_cross_flags | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_python_config | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | _gst_xpy_resolve_target_paths | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | dump_debug_info | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | prepare_host_cargo_toolchain_env | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/litert/build-litert.sh | _litert_wheel_cross_args | cc | 21 | 24 before the command-position fix; the extra 3 were argument words
+linux/scripts/03-media/build/onnxruntime/build/lib/common.sh | parse_common_args | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/opencv/build-opencv.sh | _opencv_target_adjustments | cc | 33 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/opencv/build-opencv.sh | configure_opencv_build_env | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/core/common.sh | media_common_init | cc | 35 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | _torch_run_setup_py | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | _torchvision_run_setup_py | cc | 19 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | append_common_cross_cmake_args | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/tvm-config.sh | append_tvm_cmake_args | cc | 24 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/tvm-llvm-compat.sh | _detect_gcc_cxxabi_header | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/tvm.sh | parse_tvm_args | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-android.sh | check_ndk | nesting | 7 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-cross-all-arches.sh | main | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-runtime-image.sh | check_arch_parity | cc | 19 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-torch-venv.sh | main | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/validate-compilers.sh | _artifact_source_check_native_gcc | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-cross-chain.sh | _chain_disk_preflight | cc | 23 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-cross-chain.sh | _chain_prune_archived_logs | cc | 18 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-cross-chain.sh | _chain_stage_disk_guard | cc | 28 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-runtime-manifest.sh | _manifest_wrapper_gate | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-runtime-manifest.sh | main | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/extract_embedded_python.py | main | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/agentic-loop.sh | invoke_agent | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/agentic-loop.sh | invoke_claude | cc | 21 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/agentic-loop.sh | run_agentic_loop | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/cmake-build.sh | cmake_build_parse_args | cc | 31 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lint-shell.sh | shellcheck_ensure | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/stop-cross-chain.sh | main | cc | 20 | baseline 2026-09-03, not yet reviewed
+linux/scripts/tests/test-code-size.sh | _fixture | cc | 16 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_advertised_keys.py | main | cc | 22 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_comment_size.py | blocks | nesting | 6 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_package_names.py | load_arch | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_package_names.py | main | cc | 42 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_package_names.py | scan_file | cc | 42 | baseline 2026-09-03, not yet reviewed
+linux/scripts/verify_package_names.py | scan_file | nesting | 6 | baseline 2026-09-03, not yet reviewed

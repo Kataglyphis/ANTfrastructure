@@ -14,10 +14,20 @@ guarantee, and the test command that must then FAIL. A mutation the tests surviv
 is reported: either the test is vacuous, or the mutation is not the guarantee you
 thought it was. Both are worth knowing.
 
+Each distinct test command is also run ONCE unmutated first: a bite recorded
+while the suite was already red proves nothing.
+
+Every mutation runs in a throwaway COPY of the tree, never in the tree it was
+pointed at: this repo builds from its own working directory, so an in-place edit
+could be snapshotted into a shipped image. The copy keeps symlinks AS symlinks
+rather than dereferencing whatever they point at into it, and a symlink is
+therefore refused as a mutation target -- writing through one would land outside
+the copy. --in-place opts out (its own fixtures).
+
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
 the entries whose target is in the diff, plain for all.
 
-See docs/code-quality-tooling.md.
+See docs/code-quality-tooling.md#the-mutation-gate-mutations.
 """
 import argparse
 import json
@@ -29,6 +39,23 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
+COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist")
+
+
+def mirror_tree(src, dst):
+    """Cheap throwaway copy of src, minus the trees no gate test reads."""
+    skip = {os.path.join(src, rel) for rel in COPY_EXCLUDES} | {dst}
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d) not in skip]
+        here = os.path.join(dst, os.path.relpath(dirpath, src))
+        os.makedirs(here, exist_ok=True)
+        for name in filenames:
+            try:
+                shutil.copy2(os.path.join(dirpath, name), os.path.join(here, name),
+                             follow_symlinks=False)
+            except OSError:
+                pass
+    return dst
 
 
 def load(path):
@@ -60,12 +87,17 @@ def changed_files():
 def apply_and_run(entry, root):
     """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
     target = os.path.join(root, entry["target"])
+    if os.path.islink(target):
+        return False, False, "target is a symlink -- a write through it escapes the copy"
     if not os.path.exists(target):
         return False, False, "target missing"
     with open(target, encoding="utf-8") as fh:
         original = fh.read()
-    if entry["find"] not in original:
+    hits = original.count(entry["find"])
+    if hits == 0:
         return False, False, "find text not present -- the mutation is stale"
+    if hits > 1:
+        return False, False, "find text matches %d times -- ambiguous, name one edit" % hits
     mutated = original.replace(entry["find"], entry["replace"], 1)
     if mutated == original:
         return False, False, "replace is a no-op"
@@ -86,31 +118,29 @@ def apply_and_run(entry, root):
         os.unlink(backup.name)
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manifest", default=MANIFEST)
-    ap.add_argument("--root", default=ROOT,
-                    help="resolve targets and run tests here (default: the repo)")
-    ap.add_argument("--only", action="append", help="run just this mutation id (repeatable)")
-    ap.add_argument("--changed", action="store_true",
-                    help="only entries whose target appears in the current diff")
-    args = ap.parse_args()
+def baseline_ok(entry, root, cache):
+    """Does this entry's test pass UNMUTATED? Cached per command string."""
+    cmd = entry["test"]
+    if cmd not in cache:
+        try:
+            proc = subprocess.run(cmd, shell=True, cwd=root, capture_output=True,
+                                  text=True, timeout=entry.get("timeout", 300))
+            cache[cmd] = proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            cache[cmd] = False
+    return cache[cmd]
 
-    entries = load(args.manifest)
-    if args.only:
-        entries = [e for e in entries if e["id"] in set(args.only)]
-    if args.changed:
-        touched = changed_files()
-        entries = [e for e in entries if e["target"] in touched]
 
-    print("=== mutation gate: can these tests fail? ===")
-    if not entries:
-        print("  nothing selected")
-        return 0
-
+def run_entries(args, entries):
     rc = 0
+    baselines = {}
     for e in entries:
+        if not baseline_ok(e, args.root, baselines):
+            rc = 1
+            sys.stderr.write(
+                "FAIL: %s -- baseline test already fails unmutated (vacuous bite)\n"
+                "      test:   %s\n" % (e["id"], e["test"]))
+            continue
         applied, failed, detail = apply_and_run(e, args.root)
         if not applied:
             rc = 1
@@ -126,6 +156,41 @@ def main():
     if rc == 0:
         print("OK: every recorded mutation is caught by its tests")
     return rc
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--manifest", default=MANIFEST)
+    ap.add_argument("--root", default=ROOT,
+                    help="resolve targets and run tests here (default: the repo)")
+    ap.add_argument("--only", action="append", help="run just this mutation id (repeatable)")
+    ap.add_argument("--changed", action="store_true",
+                    help="only entries whose target appears in the current diff")
+    ap.add_argument("--in-place", action="store_true",
+                    help="mutate --root itself instead of a throwaway copy (fixtures only)")
+    args = ap.parse_args()
+
+    entries = load(args.manifest)
+    if args.only:
+        entries = [e for e in entries if e["id"] in set(args.only)]
+    if args.changed:
+        touched = changed_files()
+        entries = [e for e in entries if e["target"] in touched]
+
+    print("=== mutation gate: can these tests fail? ===")
+    if not entries:
+        print("  nothing selected")
+        return 0
+    if args.in_place:
+        return run_entries(args, entries)
+    workspace = tempfile.mkdtemp(prefix="mutation-gate-")
+    try:
+        mirror_tree(os.path.abspath(args.root), workspace)
+        args.root = workspace
+        return run_entries(args, entries)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+# A set -e death in these image-side scripts printed nothing at all until
+# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# shellcheck source=linux/scripts/01-core/logging.sh
+source /opt/scripts/core/logging.sh
+install_err_trap
 
 : "${VENV:?VENV must be set}"
 : "${ONNX_PACKAGE:?ONNX_PACKAGE must be set}"

@@ -78,17 +78,78 @@ was Flutter (now fixed). The build-only trees (`*-cross`, `*-native-*`,
 ship via a NON-COPY mechanism, the runtime smoke is the backstop — the static
 gate cannot see them, by design.
 
+## Bootstrapping Flutter in the package stage
+
+Being COPY'd is not enough for Flutter. The upstream tarball is the framework
+checkout only: `bin/cache` is empty, and the first `flutter` invocation
+downloads the Dart SDK for `uname -m` and compiles the `flutter_tools`
+snapshot into it — both arch-specific. Three facts shape where that has to
+happen:
+
+* **The sdk stage runs on the amd64 host for every arch.** Anything `flutter`
+  cached there would be the x86-64 Dart SDK, stamped as current
+  (`engine-dart-sdk.stamp`) and therefore never replaced on arm64. Both images
+  shipped on 2026-09-03 carried a 716 MB SDK with an EMPTY cache precisely
+  because the sdk stage's best-effort `flutter --version` had been failing
+  (git "dubious ownership": the tar's files are uid 1000, the build runs as
+  root) behind a WARNING — the one time a masked failure was the lucky
+  outcome. `setup-flutter.sh` now ships the checkout bare on purpose, and the
+  `Dockerfile.sdk` cache-restore path strips `bin/cache` as well.
+* **Only the target-arch `package` stage can bootstrap.** `setup-package-image.sh`
+  `bootstrap_flutter_sdk` registers `/opt/flutter` as a git `safe.directory`,
+  runs `flutter --suppress-analytics --version`, fails the stage with
+  flutter's own output if that fails, prints the version line, and
+  `assert_elf_arch`s `bin/cache/dart-sdk/bin/dart` against
+  `dpkg --print-architecture`. Under QEMU on arm64 this costs about 3 minutes
+  (measured 2026-09-03: Dart SDK download + snapshot compile); amd64 ~30 s;
+  riscv64 has no `flutter` and the function is a no-op.
+* **The runtime user must own the tree.** `Dockerfile.torch` runs the image as
+  `kataglyphis` (uid 1001) and `flutter` writes into `$FLUTTER_ROOT/bin/cache`
+  on every call (lockfile, stamps). With a root-owned SDK the runtime user got
+  `engine.stamp.tmp: Permission denied`. So `Dockerfile.package` COPYs
+  `/opt/flutter` with `--chown=${RUNTIME_UID}:${RUNTIME_UID}` (a global
+  `ARG RUNTIME_UID=1001`, free at copy time — a later `chown -R` would copy
+  the 716 MB into a new layer) and the bootstrap hands the cache it wrote as
+  root to the same uid.
+
+### The runtime uid is a contract
+
+`Dockerfile.package` chowns `/opt/flutter` to `ARG RUNTIME_UID` at COPY time,
+but the user that reads it is created much later, in `Dockerfile.torch`'s
+`useradd`. Those two numbers are in different files and nothing joined them:
+`useradd` without `-u` takes the first free uid, which is 1001 only as long as
+the base image happens to have no other non-system user. A base that gains one
+would move `kataglyphis` to 1002 and hand Flutter's `bin/cache` to a uid that
+does not exist — the same `Permission denied` the chown exists to prevent,
+reappearing from an unrelated change.
+
+`Dockerfile.torch` therefore declares its own `ARG RUNTIME_UID=1001`, passes it
+to `useradd -u`, and asserts `id -u kataglyphis` afterwards, so a base image
+that already owns that uid fails the build instead of shipping a mismatch.
+Both defaults must stay equal; `test-setup-package-image.sh` compares them.
+
 ## The end-to-end backstop
 
-`smoke-runtime-image.sh` `check_flutter` runs against the shipped image: on
-amd64/arm64 `flutter --version` must report a version; on riscv64 flutter must be
-honestly absent. The static gate proves the COPY is wired; the smoke proves the
-result actually runs in the image. Both are needed — the gate cannot execute the
-binary, and the smoke needs a built image.
+`smoke-runtime-image.sh` `check_flutter` runs against the shipped image **as
+the image user, with `--network none`**: on amd64/arm64 `flutter --version`
+must report `FLUTTER_VERSION` from `versions.env`, and the cached
+`dart-sdk/bin/dart` must have the target arch's ELF machine (an x86-64 dart in
+the arm64 image would execute natively on this host and pass a run-only
+check); on riscv64 flutter must be honestly absent. The static gate proves the
+COPY is wired; the smoke proves the result actually runs in the image,
+offline. Both are needed — the gate cannot execute the binary, and the smoke
+needs a built image.
 
 ## Guards
 
 * `tests/test-artifact-copy-completeness.sh` — fixtures for both failure
   directions plus regression guards that the real manifest and Dockerfile agree.
-* Mutation `artifact-copy.completeness-check` — disabling the completeness call
-  turns the suite red.
+* `tests/test-setup-package-image.sh` — `bootstrap_flutter_sdk` off-target: the
+  no-op, the hard failure with flutter's output, the arch check and the cache
+  handover.
+* `tests/test-runtime-image-gates.sh` — `check_flutter` against recorded image
+  output: offline, the permission-denied shape, a pin mismatch, a builder-arch
+  Dart SDK, and the correct shape.
+* Mutations `artifact-copy.completeness-check`, `flutter.bootstrap-hard-fail`,
+  `flutter.bootstrap-cache-handover`, `flutter.smoke-offline`,
+  `flutter.smoke-dart-arch`.

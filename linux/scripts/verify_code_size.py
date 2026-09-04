@@ -37,7 +37,40 @@ FLAT_SCAN = ("linux",)
 SKIP_DIRS = {".git", "__pycache__", "patches"}
 def _is_subject(fn):
     return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
-DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\(\)\s*\{")
+# DEF_HEAD is the unanchored `name() {` / `function name {` head (shared with
+# verify_dead_functions.py); DEF is the column-0 form that opens a measured function.
+DEF_HEAD = r"(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\(\))\s*\{"
+DEF = re.compile("^" + DEF_HEAD)
+
+
+def scan(*suffixes):
+    """Yield (path, relpath) for every file in SCAN whose name ends in one of `suffixes`."""
+    for top in SCAN:
+        for base, dirs, files in os.walk(os.path.join(ROOT, top)):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fn in sorted(files):
+                if fn.endswith(suffixes):
+                    path = os.path.join(base, fn)
+                    yield path, os.path.relpath(path, ROOT)
+
+
+def shell_functions(path, rel):
+    """Yield (rel, name, start_line, body_lines) for every function in one shell file;
+    body_lines runs from the definition line to its closing brace inclusive."""
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        return
+    for i, line in enumerate(lines):
+        m = DEF.match(line)
+        if not m:
+            continue
+        depth = 0
+        for n, body in enumerate(lines[i:], start=1):
+            depth += body.count("{") - body.count("}")
+            if depth == 0:
+                yield rel, m.group(1) or m.group(2), i + 1, lines[i:i + n]
+                break
 
 
 def functions():
@@ -51,23 +84,9 @@ def functions():
                 if fn.endswith(".py"):
                     for item in _py_functions(path, rel):
                         yield item
-                    continue
-                if not fn.endswith(".sh"):
-                    continue
-                try:
-                    lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-                except OSError:
-                    continue
-                for i, line in enumerate(lines):
-                    m = DEF.match(line)
-                    if not m:
-                        continue
-                    depth = 0
-                    for n, body in enumerate(lines[i:], start=1):
-                        depth += body.count("{") - body.count("}")
-                        if depth == 0 and n > 1:
-                            yield rel, m.group(1), n
-                            break
+                elif fn.endswith(".sh"):
+                    for _rel, name, _start, body in shell_functions(path, rel):
+                        yield rel, name, len(body)
 
 
 def files():

@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # setup-torch-venv.sh
 # Consolidated torch venv creation and application assembly for Dockerfile.torch.
 # Replaces the three separate RUN blocks that duplicate the cross-mode skip guard.
+
+# A set -e death in these image-side scripts printed nothing at all until
+# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# shellcheck source=linux/scripts/01-core/logging.sh
+source /opt/scripts/core/logging.sh
+install_err_trap
 
 TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"

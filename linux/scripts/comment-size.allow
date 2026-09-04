@@ -151,7 +151,6 @@ linux/scripts/lib/rust-toolchain.sh	# Make the wasm32-unknown-unknown target usa
 linux/scripts/lib/slang-compile.sh	# ----------------------------------------------------------
 linux/scripts/lib/wasm-opt.sh	#!/usr/bin/env bash
 linux/scripts/lint-dockerfiles.sh	#!/usr/bin/env bash
-linux/scripts/lint-env-knobs.sh	#!/usr/bin/env bash
 linux/scripts/lint-python.sh	#!/usr/bin/env bash
 linux/scripts/lint-secrets.sh	#!/usr/bin/env bash
 linux/scripts/lint-shell.sh	# Keep only existing shell scripts (a staged list may includ

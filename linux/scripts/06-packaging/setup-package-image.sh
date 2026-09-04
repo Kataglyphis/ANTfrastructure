@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # shellcheck disable=SC1091
 source /opt/scripts/core/platform.sh
+# A set -e death in these image-side scripts printed nothing at all until
+# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# shellcheck source=linux/scripts/01-core/logging.sh
+source /opt/scripts/core/logging.sh
+install_err_trap
 
 link_path_if_present() {
     local candidate="$1"
@@ -302,6 +307,23 @@ _link_unless_rustup_provides() {
     link_command_if_present "${command_name}" "${link_path}"
 }
 
+# The artifact image is an amd64 host, so the COPY'd /usr/local/{rustup,cargo}
+# is x86_64 on every foreign arch: 2 GB that cannot execute, shipped that way in
+# every arm64/riscv64 image until 2026-09-03. Replace it with a native install
+# when no toolchain for this image's own triple is present (amd64 is a no-op).
+# docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+ensure_native_rust_toolchain() {
+    local triple
+    triple="$(rust_target_triple_for_arch "$(dpkg --print-architecture)")" || return 0
+    if compgen -G "${RUSTUP_HOME}/toolchains/*-${triple}" >/dev/null; then
+        echo "Rust toolchain in ${RUSTUP_HOME} is native (${triple})"
+        return 0
+    fi
+    echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
+    rm -rf "${RUSTUP_HOME}" "${CARGO_HOME}"
+    RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
+}
+
 wire_cargo_symlinks() {
     _link_unless_rustup_provides cargo "${CARGO_HOME}/bin/cargo"
     _link_unless_rustup_provides rustc "${CARGO_HOME}/bin/rustc"
@@ -316,7 +338,12 @@ wire_cargo_symlinks() {
     # instead of at us.
     if [ -n "${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then
         local _got
-        _got="$("${CARGO_HOME}/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
+        if ! _got="$("${CARGO_HOME}/bin/rustc" --version 2>&1)"; then
+            echo "ERROR: ${CARGO_HOME}/bin/rustc does not execute: ${_got}" >&2
+            echo "       A foreign-arch toolchain reaches here only if ensure_native_rust_toolchain did not replace it." >&2
+            return 1
+        fi
+        _got="$(printf '%s\n' "${_got}" | awk '{print $2}')"
         if [ -n "${_got}" ] && [ "${_got}" != "${RUST_VERSION}" ]; then
             echo "ERROR: ${CARGO_HOME}/bin/rustc reports ${_got}, but RUST_VERSION pins ${RUST_VERSION}." >&2
             echo "       The pinned rustup toolchain is being shadowed - check that" >&2
@@ -465,26 +492,35 @@ report_rust_provenance() {
         echo "  NOTE: RUST_VERSION unset; cannot verify the toolchain matches its pin." >&2
         return 0
     fi
-    got="$(rustc --version 2>/dev/null | awk '{print $2}')"
-    if [ "${got}" != "${want}" ]; then
-        echo "ERROR: shipped rustc is ${got:-<none>}, but versions.env pins RUST_VERSION=${want}." >&2
-        echo "       The pinned toolchain lives in /usr/local/{cargo,rustup} and must be" >&2
-        echo "       COPY'd into this stage; check those COPY lines in Dockerfile.package." >&2
-        echo "       Without them the ENV points at empty paths and wire_cargo_symlinks" >&2
-        echo "       falls back to the apt cargo/rustc debs." >&2
+    got="$(rustc --version 2>&1 || true)"
+    if [ "${got#rustc }" = "${got}" ] || [ "$(printf '%s' "${got}" | awk '{print $2}')" != "${want}" ]; then
+        echo "ERROR: shipped rustc is not RUST_VERSION=${want}: ${got:-<no output>}" >&2
+        echo "       Either ensure_native_rust_toolchain installed a different version, or apt's" >&2
+        echo "       rustc shadows ${CARGO_HOME}/bin on PATH (see wire_cargo_symlinks)." >&2
         return 1
     fi
     echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
-# /opt/flutter is a git repo owned by a different uid than the runtime user, so
-# `flutter --version` dies on "detected dubious ownership" and the SDK is present
-# but unusable. Register it system-wide so any user can run it. Skips riscv64,
-# where the sdk stage leaves /opt/flutter empty. docs/artifact-copy-completeness.md
-register_flutter_git_safe_dir() {
+# The sdk stage ships Flutter bare (empty bin/cache): the Dart SDK and the
+# flutter_tools snapshot are per-arch and only this target-arch stage can create
+# them. Runs as root, so the cache it writes is handed to the runtime user,
+# who already owns the rest of the tree from the COPY.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+bootstrap_flutter_sdk() {
     [ -x /opt/flutter/bin/flutter ] || return 0
+    local arch out
+    arch="$(dpkg --print-architecture)"
     git config --system --add safe.directory /opt/flutter
-    echo "OK: registered /opt/flutter as a git safe.directory"
+    if ! out="$(PATH="/opt/flutter/bin:${PATH}" flutter --suppress-analytics --version 2>&1)"; then
+        printf '%s\n' "${out}" | tail -20 >&2
+        echo "ERROR: flutter --version failed while bootstrapping the ${arch} Dart SDK; the shipped Flutter would be unusable" >&2
+        return 1
+    fi
+    printf '%s\n' "${out}" | grep -m1 -E '^Flutter [0-9]'
+    assert_elf_arch /opt/flutter/bin/cache/dart-sdk/bin/dart "${arch}"
+    chown -R "${RUNTIME_UID:?}:${RUNTIME_UID}" /opt/flutter/bin/cache
+    echo "OK: Flutter bootstrapped for ${arch}, bin/cache owned by uid ${RUNTIME_UID}"
 }
 
 main() {
@@ -502,6 +538,7 @@ main() {
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
+    ensure_native_rust_toolchain
     wire_cargo_symlinks
     create_runtime_venv "${python_mm}"
 
@@ -515,7 +552,7 @@ main() {
     repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
-    register_flutter_git_safe_dir
+    bootstrap_flutter_sdk
 
     # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
     # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO

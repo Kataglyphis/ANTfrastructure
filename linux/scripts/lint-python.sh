@@ -13,10 +13,8 @@
 #                by moving codes into GATE_SELECT once the tree is clean-ish.
 #
 # ruff bootstrap: PATH copy preferred; else `uvx ruff@PIN` (uv is already a
-# hard dependency of this repo; uvx caches the pinned wheel). PIN lives here
-# for now — MOVE to versions.env as RUFF_VERSION on the next pin-bump window
-# (Batch 3 rider; versions.env edits invalidate the media chain, so the pin
-# must not land there out-of-band).
+# hard dependency of this repo; uvx caches the pinned wheel). The pin is
+# RUFF_VERSION in 01-core/versions.env, sourced below.
 #
 # Usage: linux/scripts/lint-python.sh [file.py ...]   (no args = full set)
 set -uo pipefail
@@ -53,12 +51,13 @@ fi
 
 # Python living in shell heredocs is invisible to ruff otherwise (775 lines as of
 # 2026-09-01). Only directly-executed blocks are self-contained; `cat`ed fragments
-# are assembled into one program later. docs/code-quality-tooling.md
+# are assembled into one program later. The git hooks are in scope too: a hook
+# cannot carry a .sh suffix. docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 if [ "$#" -eq 0 ]; then
   _EMB_DIR="$(mktemp -d)"
   trap 'rm -rf "${_EMB_DIR}"' EXIT
   if python3 linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
-       $(find linux/scripts -name '*.sh' -type f) >/dev/null 2>&1; then
+       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) >/dev/null 2>&1; then
     while IFS= read -r f; do PY_FILES+=("${f}"); done \
       < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
   fi

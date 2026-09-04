@@ -77,6 +77,46 @@ for _lib in onnxruntime litert iree; do
   fi
 done
 
+# Per-arch truth: riscv64 has no upstream CMake/Node artifact, so the image must
+# advertise the distro versions it really carries — the shipped-truth probe
+# compares ADV against the binaries. docs/cross-build-verification.md#per-arch-version-truth
+_fwd() {  # _fwd <arch> <KEY> -> the value that would be forwarded
+  local _a=(); append_version_build_args _a "$1"
+  printf '%s\n' "${_a[@]}" | sed -n "s/^$2=//p" | head -1
+}
+
+t_case "a <KEY>_<ARCH> override wins for that arch only"
+CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 \
+  t_assert_eq "1.1.1" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd riscv64 CMAKE_VERSION)"
+t_assert_eq "9.9.9" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd amd64 CMAKE_VERSION)" \
+  "an override for another arch must not leak"
+t_assert_eq "9.9.9" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd '' CMAKE_VERSION)" \
+  "no arch given: the base value stands"
+
+# The values above are fixtures; these read the real versions.env through the
+# chain's own loader, in a subshell so the fixtures stay isolated.
+_fwd_live() {
+  bash -c 'source "$0/01-core/artifact-common.sh" >/dev/null 2>&1
+           source "$0/01-core/version-forwarding.sh"
+           _a=(); append_version_build_args _a "$1"
+           printf "%s\n" "${_a[@]}" | sed -n "s/^$2=//p" | head -1' "${TESTS_DIR}/.." "$1" "$2"
+}
+
+t_case "the live tree advertises what riscv64 actually contains"
+t_assert_eq "4.4.2"   "$(_fwd_live riscv64 CMAKE_VERSION)" "Kitware publishes no riscv64 archive; cmake comes from apt"
+t_assert_eq "22.22.1" "$(_fwd_live riscv64 NODE_VERSION)"  "Node.js publishes no riscv64 tarball; node comes from apt"
+t_assert_eq "4.4.3"   "$(_fwd_live amd64 CMAKE_VERSION)"   "amd64 keeps the Kitware pin"
+
+t_case "a forwarded key that merely ends in _<ARCH> is not an override"
+# The override lookup is skipped for any name that is itself forwarded, so a
+# real key is never mistaken for another key's per-arch value.
+_tracked() { if _vf_is_tracked "$1"; then echo tracked; else echo unknown; fi; }
+t_assert_eq "tracked" "$(_tracked GENAI_ALLOW_RISCV64)" "it is a versions.env key of its own"
+t_assert_eq "unknown" "$(_tracked CMAKE_VERSION_RISCV64)" "the override is # noforward, so it is not a key"
+t_assert_eq "unknown" "$(_tracked NOT_A_VERSIONS_ENV_KEY)" "and an unrelated name is neither"
+t_assert_eq "true" "$(_fwd_live riscv64 GENAI_ALLOW_RISCV64)" \
+  "GENAI_ALLOW_RISCV64 is a key in its own right and must still be forwarded"
+
 # TS4 REGRESSION GUARD (2026-08-24): the llvm-project checkout lives on a
 # shared cachemount. build-clang.sh used a version-LESS path behind a bare
 # directory-exists guard, so an LLVM bump silently rebuilt LAST release's
