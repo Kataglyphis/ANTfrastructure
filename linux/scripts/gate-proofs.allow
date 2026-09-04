@@ -1,10 +1,12 @@
 # gate-proofs.allow -- three namespaces for the gate-registry meta-gate.
 #
 # Bare lines: preflight slugs with neither a test suite naming their script nor a
-# mutations.json entry. Baseline frozen 2026-09-03 at 15 of 33 slugs; 12 of 34
+# mutations.json entry. Baseline frozen 2026-09-03 at 15 of 33 slugs; 11 of 34
 # today -- doc-dupes left on 2026-09-04, stdout-returns left the same day with a
 # suite and four mutations, pkg-names left with a 20-assertion characterisation
-# suite, and the new trailing-conditional slug shipped proven.
+# suite, the new trailing-conditional slug shipped proven, and dockerfile-lint
+# left the same day when its ENV-ordering pass arrived with a suite and eight
+# mutations.
 # The list only ratchets DOWN -- a NEW unproven slug fails gate-registry, and a
 # line that has gained a proof is STALE and must be deleted. The cheapest
 # proof per slug is sketched in docs/code-quality-tooling.md.
@@ -23,7 +25,6 @@ android-parity
 arg-consistency
 copy-coverage
 critical-fixes
-dockerfile-lint
 mirror-consistency
 patch-integrity
 runtime-paths
@@ -31,6 +32,7 @@ sbom
 secret-scan
 version-snapshot
 workflow-lint
+mutation-family:android-env
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build

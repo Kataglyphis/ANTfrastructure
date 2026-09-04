@@ -853,6 +853,57 @@ opt in per scope via `cross_bare_bin_path()`:
 bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
 ```
 
+### Android SDK environment in the runtime image
+
+`Dockerfile.package` COPYs `/opt/android-sdk` unconditionally, so the tree is in
+**all three** shipped `:latest-cross-<arch>` images — measured 2026-09-04, 3.6 GB
+and byte-identical on amd64/arm64/riscv64, with `build-tools/36.0.0`,
+`cmdline-tools/latest`, `licenses`, `ndk/29.0.14206865`, `platforms/android-36`
+and `platform-tools` all present. Nothing advertised it until then, so
+`flutter build apk` stopped at `[!] No Android SDK found`; under CodeQL's
+`database create --command=…` that exit aborts before the database is finalized
+and the lane finally reports a missing bundle directory, three steps from the
+cause. The image now sets:
+
+| variable | value | true on |
+| --- | --- | --- |
+| `ANDROID_HOME` | `/opt/android-sdk` | all three arches |
+| `ANDROID_SDK_ROOT` | `/opt/android-sdk` | all three arches |
+
+`PATH` gains `${ANDROID_HOME}/cmdline-tools/latest/bin` and
+`${ANDROID_HOME}/platform-tools`, **appended**, where `Dockerfile.android`
+prepends. Appending is the whole non-shadowing argument: `platform-tools` ships
+its own `mke2fs`, `make_f2fs` and `sqlite3`, and fronting `PATH` with it would
+put an x86-64 `mke2fs` ahead of `/usr/sbin/mke2fs` on every arch. Appended,
+those directories can only win names nothing else provides — `adb`, `sdkmanager`,
+`avdmanager`, `apkanalyzer`, none of which were on `PATH` before. `build-tools`
+is deliberately left off: it carries a renderscript-era `lld` that would shadow
+`/usr/bin/lld` on a compiler image. Gradle and AGP find build-tools and the NDK
+under `$ANDROID_HOME` without help. Measured on all three shipped images with the
+new value injected: `mke2fs` still resolves to `/usr/sbin/mke2fs` and `lld` to
+`/usr/bin/lld`, while `adb`, `sdkmanager`, `avdmanager` and `apkanalyzer` resolve
+for the first time. The one other new name is `sqlite3`, which nothing on `PATH`
+provided before and which — like `adb` — only executes in the amd64 image.
+
+**The SDK's host tooling is `linux-x86_64` only, on every arch.** `adb`,
+`fastboot`, `aapt2` and `zipalign` are x86-64 ELF and the NDK's only prebuilt
+toolchain is `linux-x86_64`, so on arm64/riscv64 they are data, not programs
+(`adb` there exits `cannot execute: required file not found`). That is upstream's
+shape, not a packaging defect, and it is why `/opt/android-sdk` is already an
+`_RT_TREE_ARCH_EXEMPT` tree —
+[`artifact-copy-completeness.md`](artifact-copy-completeness.md#what-is-exempt-and-why-the-arm-names-the-tree).
+Build Android artifacts from the amd64 image.
+
+**No JDK ships in any arch.** `java`, `javac` and `keytool` are absent and
+`/usr/lib/jvm` does not exist, so the SDK's Java wrappers (`sdkmanager`,
+`avdmanager`, `apkanalyzer`, `d8`, `apksigner`) and `flutter build apk` still
+need one supplied by the consumer. Setting `ANDROID_HOME` is necessary, not
+sufficient.
+
+The built image is asserted by `smoke-runtime-image.sh`'s `android-home`
+consumer-contract row; that the Dockerfile ever sets it, and appends rather than
+fronts, is asserted by `tests/test-dockerfile-env-order.sh`.
+
 ### Cross Python wheels (setuptools knobs)
 
 A hand-rolled `setup.py bdist_wheel` cross-builds correctly only when these are

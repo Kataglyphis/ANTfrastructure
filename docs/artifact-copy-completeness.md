@@ -103,14 +103,39 @@ happen:
   `dpkg --print-architecture`. Under QEMU on arm64 this costs about 3 minutes
   (measured 2026-09-03: Dart SDK download + snapshot compile); amd64 ~30 s;
   riscv64 has no `flutter` and the function is a no-op.
-* **The runtime user must own the tree.** `Dockerfile.torch` runs the image as
-  `kataglyphis` (uid 1001) and `flutter` writes into `$FLUTTER_ROOT/bin/cache`
-  on every call (lockfile, stamps). With a root-owned SDK the runtime user got
+* **The runtime user must own the tree — all of it.** `Dockerfile.torch` runs the
+  image as `kataglyphis` (uid 1001) and `flutter` writes into `$FLUTTER_ROOT`
+  on every call. With a root-owned SDK the runtime user got
   `engine.stamp.tmp: Permission denied`. So `Dockerfile.package` COPYs
   `/opt/flutter` with `--chown=${RUNTIME_UID}:${RUNTIME_UID}` (a global
   `ARG RUNTIME_UID=1001`, free at copy time — a later `chown -R` would copy
-  the 716 MB into a new layer) and the bootstrap hands the cache it wrote as
-  root to the same uid.
+  the 716 MB into a new layer) and the bootstrap hands over what root wrote.
+
+  Handing over `bin/cache` alone was not enough, and the 2026-09-04 image proved
+  it: `flutter --version` ALSO runs `git fetch` and a `dart pub get` for the
+  flutter_tools snapshot, so 37 further paths — the fetched pack, `FETCH_HEAD`,
+  `refs/remotes`, `logs/refs`, and `packages/flutter_tools/.dart_tool` — were left
+  root-owned. The last three broke `flutter pub get` for every consumer with
+  `package_config.json (OS Error: Permission denied)`, and that one is
+  unfixable from outside: the directory sits in a read-only overlay layer, so a
+  non-owner can neither chown, empty nor rename it. The handover is therefore
+  `hand_root_created_paths_to_runtime_user /opt/flutter` — the same
+  `find ! -user … -exec chown -h` the rust trees go through, with one owner rather
+  than two copies — in the SAME RUN
+  that created those paths: it selects only what root owns, which is exactly what
+  this layer already carries (`bin/cache` 687 MB + 8.3 MB of git/`.dart_tool`
+  measured on the shipped amd64 image), so the metadata rewrite copies nothing up.
+  A `chown -R /opt/flutter` would instead copy the COPY `--chown`'d ~700 MB of
+  framework checkout into the RUN layer on every arch. `-h` so a symlink is
+  retargeted rather than its target.
+
+  Running the bootstrap AS uid 1001 instead — nothing created as root, no handover
+  at all — was considered and rejected: `flutter --version` downloads the Dart SDK
+  and runs `pub get`, so it needs a `$HOME` and `PUB_CACHE` for that uid inside a
+  root `RUN` (`setpriv`/`su` plus env), and `git config --system` is root-only. It
+  would trade a measured, zero-byte `find` for a change nothing here can validate
+  without a full chain. The `find` also covers whatever a FUTURE root command in
+  this stage leaves behind, which running one command as the user would not.
 
 ### The runtime uid is a contract
 
@@ -127,6 +152,39 @@ reappearing from an unrelated change.
 to `useradd -u`, and asserts `id -u kataglyphis` afterwards, so a base image
 that already owns that uid fails the build instead of shipping a mismatch.
 Both defaults must stay equal; `test-setup-package-image.sh` compares them.
+
+### The rust toolchain must be writable by the runtime user
+
+Flutter is not the only tree the runtime user writes into. `rustup` writes
+`$RUSTUP_HOME/tmp/` on every invocation and `downloads/`, `update-hashes/`,
+`toolchains/` plus `settings.toml` on `rustup toolchain install`; `cargo`
+creates `$CARGO_HOME/registry/` and `git/`. The 2026-09-03 images shipped both
+trees root-owned, so at uid 1001 rustup died on `could not create temp file
+/usr/local/rustup/tmp/...: Permission denied` — which takes Corrosion, cargokit
+and `flutter_rust_bridge_codegen` with it, and cannot be worked around by
+repointing `RUSTUP_HOME`, because that directory *is* where the toolchains live.
+Consumers were passing `-e CARGO_HOME=...` to get half of it back.
+
+Two paths put the toolchain in the runtime image and both had to be fixed where
+the ownership is decided:
+
+* **The COPY** (`Dockerfile.package`, amd64's toolchain is already the right
+  arch) carries `--chown=${RUNTIME_UID}:${RUNTIME_UID}`, like `/opt/flutter`'s.
+* **The native re-install** `ensure_native_rust_toolchain` performs on
+  arm64/riscv64 runs as root inside the package `RUN` and re-creates both trees
+  root-owned, so `main` calls `hand_root_created_paths_to_runtime_user` on them
+  afterwards — after `wire_cargo_symlinks`, whose apt `cargo-cbuild`/
+  `cargo-cinstall` fallback links are root-created too.
+
+`hand_root_created_paths_to_runtime_user` is `find <paths> ! -user
+${RUNTIME_UID} -exec chown -h ...`, not `chown -R`, and that distinction is the
+whole cost argument. A `chown -R` in a **new** `RUN` rewrites metadata on all
+5261 files of `/usr/local/rustup` (2.0 GB) and `/usr/local/cargo` (173 MB),
+forcing overlayfs to copy every one of them up into that layer: ~2.2 GB added to
+each of the three shipped images. Run inside the RUN that *created* the files
+the chown is free — they are already in that layer — and `! -user` makes it a
+no-op stat walk on the arch where the COPY already did the job. Modes are never
+touched, so the trees stay owner-writable, not world-writable.
 
 ## The shipped trees must carry the image's own arch
 
@@ -200,23 +258,43 @@ COPY is wired; the smoke proves the result actually runs in the image,
 offline. Both are needed — the gate cannot execute the binary, and the smoke
 needs a built image.
 
+Running is not the claim, though — the 2026-09-04 image passed this gate green
+while `flutter pub get` was broken for every consumer. So the same probe also
+asks whether the SDK is USABLE by that user: `bin/cache` and
+`packages/flutter_tools/.dart_tool` must be writable, and `find /opt/flutter
+! -user "$(id -u)"` must come back empty. Both are `test`/`stat` questions, not
+a `pub get`, because the smoke runs with `--network none`; each has its own
+verdict line, so the message names the consumer symptom rather than a path.
+
 ## Guards
 
 * `tests/test-artifact-copy-completeness.sh` — fixtures for both failure
   directions plus regression guards that the real manifest and Dockerfile agree.
 * `tests/test-setup-package-image.sh` — `bootstrap_flutter_sdk` off-target: the
-  no-op, the hard failure with flutter's output, the arch check and the cache
-  handover.
+  no-op, the hard failure with flutter's output, the arch check, the handover of
+  every root-created path (`bin/cache`, `.git/FETCH_HEAD`, the flutter_tools
+  `.dart_tool`) and — on a tree the runtime user already owns — no `chown` at all,
+  which is the size rule as an assertion.
+* `tests/test-setup-package-image.sh` — `hand_root_created_paths_to_runtime_user`
+  over a real tree with `chown` stubbed on PATH: the rustup/cargo pair root
+  re-installed is handed over (`tmp/`, `toolchains/`, the apt `cargo-cbuild`
+  link), a tree the COPY already owns draws no `chown` at all, `main` calls it
+  after both root writers, and both `/usr/local` COPYs carry `--chown`.
+  Mutations `rust.copy-chown`, `rust.toolchain-handover`,
+  `rust.handover-only-root-owned`.
 * `tests/test-runtime-image-gates.sh` — `check_flutter` against recorded image
   output: offline, the permission-denied shape, a pin mismatch, a builder-arch
-  Dart SDK, and the correct shape.
+  Dart SDK, an unwritable `.dart_tool`, a root-owned leftover, and the correct
+  shape.
 * `tests/test-runtime-image-gates.sh` — `check_manifest_tree_arch`: the real
   scanner against a fixture tree of hand-written ELF headers, the verdict function
   on a builder-arch tree in both directions, the missing-sentinel path, and the
   two host-side cross-checks (every manifest path resolves; the relocation and the
   exemption list still agree with their other owners).
 * Mutations `artifact-copy.completeness-check`, `flutter.bootstrap-hard-fail`,
-  `flutter.bootstrap-cache-handover`, `flutter.smoke-offline`,
-  `flutter.smoke-dart-arch`, `probe.tree-arch-mismatch`,
+  `flutter.bootstrap-cache-handover`, `flutter.bootstrap-whole-tree-chown`,
+  `flutter.smoke-offline`, `flutter.smoke-dart-arch`,
+  `flutter.smoke-sdk-writable`, `flutter.smoke-root-owned`,
+  `probe.tree-arch-mismatch`,
   `probe.tree-arch-machine-word`, `probe.tree-arch-scan-sentinel`,
   `probe.tree-arch-arg-default`, `probe.tree-arch-relocation`.

@@ -887,3 +887,64 @@ of that same build) and look like the new launcher failing to take effect. Check
 which step the lines came from before believing them. A second sample needs a
 compile-heavy lane — `--only runtime` produces no `sccache-launcher` lines at
 all.
+
+---
+
+## The shipped image's cache dirs
+
+`:latest-cross` shipped `CCACHE_DIR=/workspace/.ccache` and
+`SCCACHE_DIR=/workspace/.sccache` until 2026-09-04. `/workspace` is the
+**consumer's** bind-mounted checkout (`Dockerfile.torch` makes it the WORKDIR and
+a VOLUME), so every compile inside the image wrote a cache into someone else's
+repository: it pollutes their working tree, can be swept into CI artifacts, and
+on a non-ext4 host mount `flatpak-builder` aborts outright with
+`Can't initialize ccache use: Failed to set permissions of
+/workspace/.ccache/disabled/ccache.conf: Operation not permitted`. Reported by
+the Kataglyphis-Inference-Engine lane and reproduced as uid 1001.
+
+**Where the value came from.** `eff8deac` (2026-06-01) added `CCACHE_DIR` next to
+`CCACHE_SECONDARY_STORAGE=true`, i.e. as one half of a "cache travels with the
+checkout" idea. The other half was wrong and was deleted in `025bf68c` —
+`CCACHE_SECONDARY_STORAGE` is a URL and set to `true` it failed *every* ccache
+compile — but the path it was invented for stayed. `d5bafe86` (2026-08-26) then
+added `SCCACHE_DIR` deliberately alongside it so a consumer would not have a
+ccache dir and no sccache dir; the `/workspace` prefix was inherited from the
+line above, not chosen.
+
+**Does any stage need a per-workspace cache? No.** Nothing else in the Linux tree
+names `/workspace/.ccache`; the build stages get their cache dirs from
+`Dockerfile.base`'s ENV, from `llvm-cross.sh`'s explicit exports, and from
+`--mount=type=cache,target=/var/cache/ccache` — none of which reads the package
+stage's runtime ENV. The only instructions after that ENV block are symlink
+wiring, the apt mirror rewrite, `setup-package-image.sh` and
+`validate-compilers.sh`, and none of them runs a compiler through a cache
+launcher. So the value was runtime-only, and repointing it cannot change what a
+build does. A consumer who *wants* the cache next to their checkout still sets
+`-e CCACHE_DIR=...` themselves; a consumer who wants it to persist across runs
+mounts a volume at `/var/cache/ccache`, which is what that directory is for.
+
+**Why the ENV cannot simply be deleted.** `Dockerfile.base` already declares the
+same defaults, but its image config does not reach the shipped image: the runtime
+package stage is built on a rootfs/OCI-layout export of its parent
+(`context-management.sh`), which carries the filesystem and drops the parent's
+`Config.Env`. Inspecting the shipped `latest-cross-amd64` shows exactly
+`Dockerfile.package`'s own ENV blocks plus `Dockerfile.torch`'s — base's
+`CCACHE_MAXSIZE`, `SCCACHE_CACHE_SIZE`, `SCCACHE_CONF`, `SCCACHE_IDLE_TIMEOUT`
+and `SCCACHE_ERROR_LOG` are all absent from it, while base's *filesystem* effects
+(the 1777 cache dirs) are present. The runtime image must therefore declare the
+paths itself.
+
+**One owner.** `01-core/compiler-cache.sh` owns the two paths as its `:=`
+defaults; `Dockerfile.package`'s ENV repeats them because a Dockerfile cannot
+source shell, and `test-compiler-cache.sh` sources the library with both vars
+unset and asserts the ENV equals what it produces — plus a second assertion that
+neither value sits under `/workspace`. Drift on either side fails the suite.
+
+**What the shipped image already provides.** `/var/cache/ccache` and
+`/var/cache/sccache` are `drwxrwxrwt` (`Dockerfile.base`, 1777 since `35f83d62`)
+and uid 1001 writes to both — verified by running the shipped image. A missing
+cache directory is not an error either: `ccache` creates `CCACHE_DIR` on first
+use, which is how a consumer's `-e CCACHE_DIR=/some/mount` keeps working.
+
+Layer cost: none. This is an ENV change, so nothing is copied up and no file
+metadata is rewritten.

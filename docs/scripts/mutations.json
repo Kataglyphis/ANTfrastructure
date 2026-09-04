@@ -298,10 +298,10 @@
   {
     "id": "flutter.bootstrap-cache-handover",
     "target": "linux/scripts/06-packaging/setup-package-image.sh",
-    "find": "    chown -R \"${RUNTIME_UID:?}:${RUNTIME_UID}\" /opt/flutter/bin/cache\n",
-    "replace": "",
+    "find": "    hand_root_created_paths_to_runtime_user /opt/flutter",
+    "replace": "    chown -R \"${RUNTIME_UID:?}:${RUNTIME_UID}\" /opt/flutter/bin/cache",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
-    "why": "root writes the cache; without the handover the uid-1001 runtime user hits 'engine.stamp.tmp: Permission denied' on every flutter call (measured 2026-09-03)"
+    "why": "root leaves more behind than bin/cache -- the git fetch and the flutter_tools pub get run as root too; handing over only the cache IS the 2026-09-04 image, whose root-owned .dart_tool broke flutter pub get for every consumer, unfixably from inside a read-only overlay layer"
   },
   {
     "id": "flutter.smoke-offline",
@@ -2654,5 +2654,285 @@
     "replace": "  [ -n \"${allow}\" ] || printf '%s\\n' \"${allow}\" > \"${dir}/linux/scripts/${allow_name}\"",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
     "why": "the shared fixture's allow arm inverted: every freeze case would then run with no allow file present and every allow-file assertion would prove nothing. Split across the other suite on purpose so both consumers of the shared helper carry a live mutation"
+  },
+  {
+    "id": "sccache.runtime-ccache-dir-in-workspace",
+    "target": "linux/Dockerfile.package",
+    "find": "CCACHE_DIR=/var/cache/ccache",
+    "replace": "CCACHE_DIR=/workspace/.ccache",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "the shipped image must not write ccache into the consumer's bind-mounted checkout, where it pollutes the working tree and makes flatpak-builder abort on a non-ext4 mount"
+  },
+  {
+    "id": "sccache.runtime-sccache-dir-in-workspace",
+    "target": "linux/Dockerfile.package",
+    "find": "SCCACHE_DIR=/var/cache/sccache",
+    "replace": "SCCACHE_DIR=/workspace/.sccache",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "sccache inherited the wrong prefix from the line above it once already; the pin must catch it on either variable"
+  },
+  {
+    "id": "sccache.cache-dir-owner-drift",
+    "target": "linux/scripts/01-core/compiler-cache.sh",
+    "find": ": \"${CCACHE_DIR:=/var/cache/ccache}\"",
+    "replace": ": \"${CCACHE_DIR:=/tmp/ccache}\"",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "the library owns the path and the Dockerfile ENV is pinned to it; a change on the owner's side must fail too, not silently diverge into two values that agree by hand"
+  },
+  {
+    "id": "rust.copy-chown",
+    "target": "linux/Dockerfile.package",
+    "find": "COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup",
+    "replace": "COPY --link --from=artifact-source /usr/local/rustup /usr/local/rustup",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the shipped 2026-09-04 shape: a root-owned /usr/local/rustup, where uid 1001's rustup dies on 'could not create temp file /usr/local/rustup/tmp/...: Permission denied' and Corrosion/cargokit/flutter_rust_bridge_codegen cannot run at all"
+  },
+  {
+    "id": "rust.toolchain-handover",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    hand_root_created_paths_to_runtime_user \"${RUSTUP_HOME:?}\" \"${CARGO_HOME:?}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the COPY --chown covers amd64 only; on arm64/riscv64 ensure_native_rust_toolchain rm -rf's both trees and re-installs them as root, so without the handover the foreign arches ship exactly the unwritable toolchain the consumer reported"
+  },
+  {
+    "id": "rust.handover-only-root-owned",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    find \"$@\" ! -user \"${uid}\" -exec chown -h \"${uid}:${uid}\" {} +",
+    "replace": "    chown -R \"${uid}:${uid}\" \"$@\"",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "a blanket chown -R rewrites metadata on every file of a tree that entered via COPY --chown, forcing a copy-up of rustup+cargo (2.2 GB) and /opt/flutter (716 MB) into this RUN's layer on every arch -- the exact cost docs/artifact-copy-completeness.md says the COPY-time chown exists to avoid"
+  },
+  {
+    "id": "flutter.bootstrap-whole-tree-chown",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    hand_root_created_paths_to_runtime_user /opt/flutter",
+    "replace": "    chown -R \"${RUNTIME_UID:?}:${RUNTIME_UID}\" /opt/flutter",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the right ownership by the wrong means: chown -R rewrites the metadata of the COPY --chown'd ~700 MB framework checkout and copies it up into this RUN layer on every arch -- the size rule as an assertion"
+  },
+  {
+    "id": "flutter.smoke-sdk-writable",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w \"$d\" ] || printf \"UNWRITABLE %s\\n\" \"$d\"; done; ",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "without the writability question the gate is back to proving flutter RUNS -- which it did, green, all through the ship in which flutter pub get could not open flutter_tools/.dart_tool/package_config.json"
+  },
+  {
+    "id": "flutter.smoke-root-owned",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "find /opt/flutter ! -user \"$(id -u)\" -printf \"FOREIGN %p\\n\" 2>/dev/null | head -3",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the 34 root-owned git internals write nothing today but are the same root-after-chown defect one command away from .dart_tool; only an ownership sweep of the whole SDK sees them"
+  },
+  {
+    "id": "dockerfile-lint.env-order-same-instruction",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "            if ref in seen and ref != key and ref not in args:",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "the whole finding: Dockerfile.android shipped an ENV whose ${ANDROID_HOME} expanded empty, and a gate that reports nothing is how it shipped"
+  },
+  {
+    "id": "dockerfile-lint.env-order-arg-excuse",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "            if ref in seen and ref != key and ref not in args:",
+    "replace": "            if ref in seen and ref != key:",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "GCC_PREFIX=/opt/gcc-${GCC_VERSION} beside ENV GCC_VERSION is correct because the ARG carries the value; without the excuse the gate reds every working Dockerfile"
+  },
+  {
+    "id": "dockerfile-lint.env-order-self-reference",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "        seen.append(key)\n    return bad",
+    "replace": "    return bad",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "PATH=\"/opt/bin:${PATH}\" reads the INHERITED PATH and is the documented idiom; a gate that flags it cannot be left on"
+  },
+  {
+    "id": "dockerfile-lint.env-order-arg-scope-leak",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "        if head == \"FROM\":\n            args = set()",
+    "replace": "        if head == \"FROM\":\n            pass",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "an ARG only excuses a reference in ITS OWN stage; leaking the scope across FROM excuses the next stage's real defect"
+  },
+  {
+    "id": "dockerfile-lint.env-order-interior-comment",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "            if line.lstrip().startswith(\"#\"):\n                continue",
+    "replace": "            if False:\n                continue",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "Dockerfile.package's ENV blocks carry comment lines mid-continuation; treating one as the end of the instruction hides every key set after it"
+  },
+  {
+    "id": "dockerfile-lint.env-order-empty-target-list",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "        sys.stderr.write(\"usage: verify_dockerfile_env_order.py <Dockerfile>...\\n\")\n        return 2",
+    "replace": "        return 0",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "a gate handed no files must not exit 0 -- that is the vacuous pass the whole registry exists to prevent"
+  },
+  {
+    "id": "dockerfile-lint.env-order-missing-target",
+    "target": "linux/scripts/verify_dockerfile_env_order.py",
+    "find": "            sys.stderr.write(\"FAIL: not a file: %s\\n\" % rel)\n            bad += 1",
+    "replace": "            sys.stderr.write(\"FAIL: not a file: %s\\n\" % rel)",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "a mistyped path that only prints scans nothing and still says ok -- the gate would silently cover fewer Dockerfiles every rename"
+  },
+  {
+    "id": "dockerfile-lint.env-order-not-wired",
+    "target": "linux/scripts/lint-dockerfiles.sh",
+    "find": "python3 linux/scripts/verify_dockerfile_env_order.py \"${DOCKERFILES[@]}\" || FAILED=1",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "copy-media-payloads.sh was written and never invoked for months; a gate nothing calls is that defect again"
+  },
+  {
+    "id": "android-env.home-unset",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV ANDROID_HOME=/opt/android-sdk \\\n    ANDROID_SDK_ROOT=/opt/android-sdk",
+    "replace": "ENV ANDROID_SDK_ROOT=/opt/android-sdk",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "the shipped defect exactly: the SDK is in the image and nothing advertises it, so flutter reports '[!] No Android SDK found' three steps from the visible error"
+  },
+  {
+    "id": "android-env.path-fronted",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV PATH=\"${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools\"",
+    "replace": "ENV PATH=\"${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}\"",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "platform-tools ships its own mke2fs/make_f2fs/sqlite3; fronting PATH with it shadows /usr/sbin/mke2fs on all three arches with an x86-64 binary"
+  },
+  {
+    "id": "android-env.build-tools-on-path",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV PATH=\"${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools\"",
+    "replace": "ENV PATH=\"${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}\"",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "build-tools/36.0.0 carries a renderscript-era lld; on a compiler image that name must keep resolving to /usr/bin/lld"
+  },
+  {
+    "id": "android-env.root-not-copied",
+    "target": "linux/Dockerfile.package",
+    "find": "COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk",
+    "replace": "COPY --link --from=artifact-source /opt/android /opt/android-sdk-unused",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "ANDROID_HOME must name a tree this Dockerfile actually stages; an ENV pointing at a path no COPY creates is the lie class the repo keeps re-fixing"
+  },
+  {
+    "id": "probe.contract-workspace-location",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    /workspace*) printf 'BAD %s points into the bind-mounted checkout: %s\\n' \"${row}\" \"${val}\" ;;",
+    "replace": "    /nowhere*)   printf 'BAD %s points into the bind-mounted checkout: %s\\n' \"${row}\" \"${val}\" ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "location and writability are two separate assertions: on a consumer's host /workspace IS a writable bind mount, so without the location arm the shipped CCACHE_DIR=/workspace/.ccache passes"
+  },
+  {
+    "id": "probe.contract-writable",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    *)           if [ \"${write}\" = yes ]; then",
+    "replace": "    *)           if [ \"${write}\" != skip ]; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "moving a cache out of the checkout is only half the fix; without the writability arm the unwritable /usr/local/rustup/tmp and /usr/local/cargo of the shipped image pass"
+  },
+  {
+    "id": "probe.contract-real-write",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ -n \"$2\" ] && [ -d \"$2\" ] && : > \"${_t}\" 2>/dev/null; then",
+    "replace": "  if [ -n \"$2\" ]; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a set variable is not a writable directory; the probe must actually create and remove a file, because access(2) answers yes for root and says nothing about a read-only overlay layer"
+  },
+  {
+    "id": "probe.contract-image-user",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      *\" ${want} \"*) ;;\n      *) printf \"the probe ran as",
+    "replace": "      *) ;;\n      *) printf \"the probe ran as",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "as root every directory answers writable, so a probe that did not run as the image's own Config.User proves nothing and must stop the gate instead of printing seven green rows"
+  },
+  {
+    "id": "probe.contract-done-marker",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if ! printf '%s\\n' \"${probe}\" | grep -qxF -- 'CCPROBE_DONE'; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "exit status is not evidence: a probe that died on line 1 prints nothing, and without the sentinel the gate reads the empty output as a compliant image"
+  },
+  {
+    "id": "probe.contract-empty-table",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${asserted:-0}\" = 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the gate reduces to its row table, so a table that came back empty asserted nothing; printing PASS for it is the hole the gate exists to close"
+  },
+  {
+    "id": "probe.contract-nofact",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    *) printf 'NOFACT %s no WRITE line\\n' \"${row}\"; return 0 ;;",
+    "replace": "    *) ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a row the probe never reported must fail, not be judged from the remaining half of its facts -- a silently dropped row is exactly how all four defects shipped green"
+  },
+  {
+    "id": "probe.contract-exemption-rot",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_consumer_exempt_verdict() {\n  case \"$3\" in",
+    "replace": "_consumer_exempt_verdict() {\n  case \"no\" in",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an exemption that cannot stop applying is a permanent blind spot; the riscv64 Flutter arms must fail the day upstream ships a riscv64 SDK, and must not be granted when the rot signal is missing"
+  },
+  {
+    "id": "probe.contract-owner-count",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ \"${n}\" != 0 ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the 37 root-owned paths under /opt/flutter are the one defect a consumer cannot repair at runtime; without this arm the gate reports the tree as owned by the runtime uid"
+  },
+  {
+    "id": "probe.contract-android-platform-tools",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ \"${dir}\" != yes ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an exported ANDROID_HOME is not an SDK; the directory it names has to exist, or 'flutter build apk' still stops with '[!] No Android SDK found'"
+  },
+  {
+    "id": "probe.contract-android-path",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ \"${onpath}\" != yes ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "flutter finds the SDK by variable but adb / sdkmanager / avdmanager are found by PATH; half a wiring is not the contract the consumer asked for"
+  },
+  {
+    "id": "flutter.bootstrap-inline-chown-copy",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    hand_root_created_paths_to_runtime_user /opt/flutter",
+    "replace": "    find /opt/flutter ! -user \"${RUNTIME_UID:?}\" -exec chown -h \"${RUNTIME_UID}:${RUNTIME_UID}\" {} +",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "functionally identical and still wrong: the flutter and rust sites landed the same find/chown idiom in the same file on the same day, and a second copy drifts from the one the size rule (a tree the COPY --chown already owns draws zero chown calls) is proven against"
+  },
+  {
+    "id": "probe.contract-w-does-not-create",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ -n \"$2\" ] && [ -d \"$2\" ] && : > \"${_t}\" 2>/dev/null; then",
+    "replace": "  if [ -n \"$2\" ] && mkdir -p \"$2\" 2>/dev/null && : > \"${_t}\" 2>/dev/null; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a probe that mkdir's its own target answers writable for a directory the consumer's [ -w ] calls false -- green here, red there"
+  },
+  {
+    "id": "probe.contract-gate-is-called",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_consumer_contract \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the gate can be perfect and never run: the call list is the other half of the guarantee"
   }
 ]

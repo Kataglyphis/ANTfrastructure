@@ -357,6 +357,42 @@ added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
 
+### ENV instruction ordering (`dockerfile-lint`)
+
+A `${VAR}` inside an `ENV` instruction expands to the value `VAR` held *before*
+that instruction. A key set two lines up in the same `ENV` therefore expands
+**empty**, and nothing says so: BuildKit emits no warning, hadolint has no rule
+for it, and the `UndefinedVar` frontend check only runs in the advisory
+`docker buildx build --check` pass, which is skipped on every nerdctl-only host.
+
+Two Dockerfiles shipped that way, both found on 2026-09-04 by reading the ENV of
+an image already on the host:
+
+| file | written | what the image actually got |
+| --- | --- | --- |
+| `Dockerfile.android` | `PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:…:${ANDROID_NDK_HOME}:${PATH}"` | `PATH=/cmdline-tools/latest/bin:/platform-tools:/build-tools/36.0.0::…` — three entries that name no directory, and an empty one, which POSIX reads as the working directory |
+| `Dockerfile.nvidia` | `PATH="${CUDA_HOME}/bin:${PATH}"`, `LD_LIBRARY_PATH="${CUDA_HOME}/lib64:…"` | a bare `/bin` fronting `PATH` and `/lib64` fronting `LD_LIBRARY_PATH`, instead of the CUDA ones |
+
+`verify_dockerfile_env_order.py` runs as pass 0 of `lint-dockerfiles.sh` — no
+download, so it is the one pass that cannot be skipped. It reports a value that
+reads a key assigned **earlier in the same instruction**. Two references are
+deliberately not findings, because both resolve correctly:
+
+* a key reading **itself** (`PATH="/opt/bin:${PATH}"`) — that is the
+  inherit-and-extend idiom, and the inherited value is exactly what it wants;
+* a name that is also an `ARG` **in the same stage** — the reference resolves
+  from the ARG, which is why `GCC_PREFIX=/opt/gcc-${GCC_VERSION}` beside
+  `ENV GCC_VERSION=${GCC_VERSION}` is correct. ARG scope resets at every `FROM`,
+  and so does the excuse.
+
+The fix is always the same: split the `ENV` in two. The second instruction sees
+the first one's keys.
+
+Proof: `tests/test-dockerfile-env-order.sh` (23 assertions) and eight
+`dockerfile-lint.env-order-*` mutations, including one that deletes the call
+from `lint-dockerfiles.sh` — a gate nothing invokes is the `copy-media-payloads.sh`
+defect again.
+
 ## The allowlist contract
 
 Every gate that freezes a baseline uses one of two rules, both owned by
@@ -414,7 +450,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **332 entries** over **41 distinct test commands**; both digits are
+manifest holds **367 entries** over **43 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

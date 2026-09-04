@@ -88,6 +88,7 @@ The two halves of one topic often split:
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest-cross` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
+| **What `:latest-cross` promises a consuming repo** — the cache/rustup/ANDROID_HOME/`/opt/flutter`-ownership contract, its acceptance check, and the per-arch exemption table | [`consumer-image-contract.md`](consumer-image-contract.md) |
 | **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and the 2026-09-03 measurement that closed it | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 | **QNN / QAIRT on Linux** — the arm64-only opt-in lane: staging the login-gated SDK, the `QAIRT_HEADERS_DIR` trap that must name the dir *holding* `Qnn*.h`, upstream's unhashed 1.5 GB download, and which framework switches are real | [`qnn-linux.md`](qnn-linux.md) |
 | **riscv64 venv parity** — the `/opt/venv` package set measured on the shipped images, and what riscv64 carries that the other arches do not | [`riscv64-venv-parity.md`](riscv64-venv-parity.md) |

@@ -472,8 +472,9 @@ check_ffmpeg() {
 }
 
 # Flutter must run as the image user, OFFLINE, on the target-arch Dart SDK the
-# package stage cached: an x86-64 dart in the arm64 image would still execute on
-# this host, so the ELF machine is read rather than inferred from the run.
+# package stage cached, and be USABLE by that user: an x86-64 dart in the arm64
+# image still executes on this host, and `flutter --version` ran fine while
+# `flutter pub get` was denied a root-owned .dart_tool nobody can fix at runtime.
 # docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 check_flutter() {
   local image_tag="$1"
@@ -491,13 +492,17 @@ check_flutter() {
   fi
   pin="$(_rt_versions_env_pin FLUTTER_VERSION)"
   machine="$(smoke_elf_machine_grep "${target_arch}")"
-  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine' 2>&1 || true)"
+  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3' 2>&1 || true)"
   if ! printf '%s\n' "${out}" | grep -qE "^Flutter ${pin:-[0-9]}"; then
     fail "flutter does not run offline as the image user, or is not FLUTTER_VERSION=${pin:-?} (${target_arch}): $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF "${machine}"; then
     fail "the cached Dart SDK is not ${machine} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- bootstrapped on the wrong arch"
+  elif printf '%s\n' "${out}" | grep -q '^UNWRITABLE '; then
+    fail "the shipped SDK is not writable by the image user (${target_arch}): $(printf '%s\n' "${out}" | grep '^UNWRITABLE ' | tr '\n' ' ') -- flutter pub get dies with 'package_config.json (OS Error: Permission denied)', and the dir is in a read-only layer no consumer can chown"
+  elif printf '%s\n' "${out}" | grep -q '^FOREIGN '; then
+    fail "the shipped SDK still holds paths the image user does not own (${target_arch}): $(printf '%s\n' "${out}" | grep '^FOREIGN ' | tr '\n' ' ') -- a root-run flutter or git command wrote them AFTER the COPY --chown"
   else
-    pass "flutter ${pin:-(unpinned)} runs offline as the image user on a ${machine} Dart SDK (${target_arch})"
+    pass "flutter ${pin:-(unpinned)} runs offline as the image user on a ${machine} Dart SDK, whole SDK owned and writable by that user (${target_arch})"
   fi
   echo ""
 }
@@ -522,6 +527,250 @@ check_rust_toolchain() {
     fail "cargo-cbuild missing on ${target_arch} (apt cargo-c fallback did not link)"
   else
     pass "rustc ${pin} runs natively as ${triple} with cargo-cbuild (${target_arch})"
+  fi
+  echo ""
+}
+
+# ── CONSUMER CONTRACT (2026-09-04) ───────────────────────────────────────────
+# The properties a consuming CI lane depends on and cannot repair from outside the
+# image: caches outside the bind-mounted checkout, a writable Rust home, a set
+# ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
+# docs/consumer-image-contract.md#the-contract
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home dart-tool flutter-owner"
+
+# The consumer-visible failure each row prevents, quoted verbatim from the lane that
+# hit it, so a red run names the symptom in the OTHER repo and not just our path.
+# docs/consumer-image-contract.md#the-contract
+_consumer_contract_symptom() {
+  case "$1" in
+    ccache-dir|sccache-dir) printf '%s' 'the cache lands in the consumer checkout and flatpak-builder aborts: "Can'"'"'t initialize ccache use: Failed to set permissions of .../ccache.conf: Operation not permitted"' ;;
+    rustup-tmp)    printf '%s' 'rustup dies with "could not create temp file ...: Permission denied (os error 13)" and Corrosion / cargokit / flutter_rust_bridge_codegen cannot run; redirecting the var does not help, the toolchains live there' ;;
+    cargo-home)    printf '%s' 'every consumer has to pass -e CARGO_HOME=... to work around it' ;;
+    android-home)  printf '%s' '"flutter build apk" stops with "[!] No Android SDK found"; under CodeQL database create that surfaces three steps later as "bundle source directory not found"' ;;
+    dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
+    flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
+    *)             printf '%s' 'no symptom recorded for this row' ;;
+  esac
+}
+
+# Documented per-arch absences, same contract as _parity_exempt: listed = reviewed,
+# and an arm that STOPS applying fails so the table cannot rot. Key is <arch>:<row>.
+# docs/consumer-image-contract.md#per-arch-exemptions
+_consumer_contract_exempt() {
+  case "$1:$2" in
+    # Upstream publishes no riscv64 Flutter SDK, so /opt/flutter ships EMPTY there and
+    # check_flutter asserts that absence instead. The rot signal is the probe's own
+    # FACT flutter-sdk: the day a riscv64 SDK lands, both arms fail and name themselves.
+    riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Facts only, ONE process in the image: what the contract-bearing vars say, a REAL
+# create+delete in each directory (access(2) answers yes for root and lies about a
+# read-only layer), and who owns the Flutter tree. Verdicts are reached on the host.
+# docs/consumer-image-contract.md#the-contract
+_consumer_contract_probe() {
+  cat <<'PROBE'
+set -uo pipefail
+_u="$(id -u)"
+printf 'WHO %s %s\n' "${_u}" "$(id -un 2>/dev/null)"
+_w() {
+  _t="$2/.contract-probe.$$"
+  if [ -n "$2" ] && [ -d "$2" ] && : > "${_t}" 2>/dev/null; then
+    rm -f "${_t}"
+    printf 'WRITE %s yes\n' "$1"
+  else
+    printf 'WRITE %s no\n' "$1"
+  fi
+  printf 'ENV %s %s\n' "$1" "${2:-}"
+}
+_w ccache-dir  "${CCACHE_DIR:-}"
+_w sccache-dir "${SCCACHE_DIR:-}"
+_w rustup-tmp  "${RUSTUP_HOME:+${RUSTUP_HOME}/tmp}"
+_w cargo-home  "${CARGO_HOME:-}"
+_w dart-tool   /opt/flutter/packages/flutter_tools/.dart_tool
+printf 'ENV android-home %s\n' "${ANDROID_HOME:-}"
+printf 'ENV android-sdk-root %s\n' "${ANDROID_SDK_ROOT:-}"
+if [ -d "${ANDROID_HOME:-/nonexistent}/platform-tools" ]; then
+  printf 'DIR android-platform-tools yes\n'
+else
+  printf 'DIR android-platform-tools no\n'
+fi
+_on_path() { case ":${PATH}:" in *":$1:"*) return 0 ;; *) return 1 ;; esac; }
+if [ -n "${ANDROID_HOME:-}" ] && _on_path "${ANDROID_HOME}/platform-tools" \
+   && _on_path "${ANDROID_HOME}/cmdline-tools/latest/bin"; then
+  printf 'FACT android-path yes\n'
+else
+  printf 'FACT android-path no\n'
+fi
+if [ -x /opt/flutter/bin/flutter ]; then
+  printf 'FACT flutter-sdk yes\n'
+else
+  printf 'FACT flutter-sdk no\n'
+fi
+_n=0
+_ex=""
+while IFS= read -r _p; do
+  _n=$((_n + 1))
+  [ "${_n}" -le 5 ] && _ex="${_ex} ${_p}"
+done < <(find /opt/flutter ! -uid "${_u}" 2>/dev/null)
+printf 'FACT flutter-foreign %s\n' "${_n}"
+printf 'FACT flutter-foreign-examples %s\n' "${_ex# }"
+echo CCPROBE_DONE
+PROBE
+}
+
+# One "<verb> <key> <value>" fact out of the probe text; EMPTY on a miss, which every
+# caller turns into NOFACT rather than a pass. docs/consumer-image-contract.md#the-contract
+_consumer_contract_fact() {
+  printf '%s\n' "$1" | sed -n "s/^$2 $3 //p" | head -1
+}
+
+# One directory row: set, outside the consumer's /workspace checkout, and provably
+# writable by the image user. docs/consumer-image-contract.md#the-contract
+_consumer_dir_verdict() {
+  local row="$1" val="$2" write="$3"
+  case "${write}" in
+    yes|no) ;;
+    *) printf 'NOFACT %s no WRITE line\n' "${row}"; return 0 ;;
+  esac
+  case "${val}" in
+    "")          printf 'BAD %s the variable is unset, so the consumer inherits no location at all\n' "${row}" ;;
+    /workspace*) printf 'BAD %s points into the bind-mounted checkout: %s\n' "${row}" "${val}" ;;
+    *)           if [ "${write}" = yes ]; then
+                   printf 'OK %s %s\n' "${row}" "${val}"
+                 else
+                   printf 'BAD %s not writable by the image user: %s\n' "${row}" "${val}"
+                 fi ;;
+  esac
+}
+
+# An exempted row still has to prove its exemption still applies: the rot signal is the
+# probe's own FACT flutter-sdk, and a missing one is NOFACT, never a grant.
+# docs/consumer-image-contract.md#per-arch-exemptions
+_consumer_exempt_verdict() {
+  case "$3" in
+    yes) printf 'STALE %s a Flutter SDK IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$2" "$2" "$1" ;;
+    no)  printf 'EXEMPT %s' "$1" ;;
+    *)   printf 'NOFACT %s no FACT flutter-sdk, so the exemption cannot be re-checked' "$1" ;;
+  esac
+}
+
+# The android row: both variables set AND the platform-tools directory really there,
+# because an exported path is not an SDK. docs/consumer-image-contract.md#the-contract
+_consumer_android_verdict() {
+  local row="$1" val root dir onpath
+  val="$(_consumer_contract_fact "$2" ENV android-home)"
+  root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
+  dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
+  onpath="$(_consumer_contract_fact "$2" FACT android-path)"
+  if [ -z "${dir}" ] || [ -z "${onpath}" ]; then
+    printf 'NOFACT %s no DIR android-platform-tools / FACT android-path line' "${row}"
+  elif [ -z "${val}" ] || [ -z "${root}" ]; then
+    printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while the SDK ships in the image' "${row}" "${val:-<unset>}" "${root:-<unset>}"
+  elif [ "${dir}" != yes ]; then
+    printf 'BAD %s %s/platform-tools does not exist' "${row}" "${val}"
+  elif [ "${onpath}" != yes ]; then
+    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' "${row}" "${val}"
+  else
+    printf 'OK %s %s' "${row}" "${val}"
+  fi
+}
+
+# The ownership row: a missing count is NOFACT, not zero -- the whole defect is that
+# root wrote into the tree after the COPY. docs/consumer-image-contract.md#the-contract
+_consumer_owner_verdict() {
+  local row="$1" n
+  n="$(_consumer_contract_fact "$2" FACT flutter-foreign)"
+  if [ -z "${n}" ]; then
+    printf 'NOFACT %s no FACT flutter-foreign line' "${row}"
+  elif [ "${n}" != 0 ]; then
+    printf 'BAD %s %s path(s) under /opt/flutter are not owned by the runtime uid: %s' "${row}" "${n}" \
+      "$(_consumer_contract_fact "$2" FACT flutter-foreign-examples)"
+  else
+    printf 'OK %s every path under /opt/flutter belongs to the runtime uid' "${row}"
+  fi
+}
+
+# Pure verdict function: arch + probe text in, one "OK|BAD|EXEMPT|STALE|NOFACT <row>
+# <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
+# path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
+_consumer_contract_verdicts() {
+  local arch="$1" probe="$2" row sdk line asserted=0
+  sdk="$(_consumer_contract_fact "${probe}" FACT flutter-sdk)"
+  for row in ${_CONSUMER_CONTRACT_ROWS}; do
+    if _consumer_contract_exempt "${arch}" "${row}"; then
+      line="$(_consumer_exempt_verdict "${row}" "${arch}" "${sdk}")"
+    else
+      case "${row}" in
+        android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
+        flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
+        *)             line="$(_consumer_dir_verdict "${row}" \
+                                 "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
+                                 "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;
+      esac
+    fi
+    printf '%s\n' "${line}"
+    case "${line}" in OK\ *) asserted=$((asserted + 1)) ;; esac
+  done
+  printf 'ASSERTED %d\n' "${asserted}"
+}
+
+# Why the probe's answers are evidence at all: it completed, and it ran as the image's
+# OWN user -- as root every directory answers writable. Prints the reason to stop, EMPTY
+# when the capture is usable. docs/consumer-image-contract.md#how-the-gate-proves-it
+_consumer_probe_verdict() {
+  local probe="$1" want="$2" who
+  if ! printf '%s\n' "${probe}" | grep -qxF -- 'CCPROBE_DONE'; then
+    printf 'the probe did not complete, so the gate asserted NOTHING: %s' \
+      "$(printf '%s' "${probe}" | tr '\n' ';' | head -c 300)"
+  elif [ -z "${want}" ]; then
+    printf '%s' "the image declares no USER, so nothing pins who a consumer runs as -- every writability answer would be root's"
+  else
+    who="$(printf '%s\n' "${probe}" | sed -n 's/^WHO //p' | head -1)"
+    case " ${who} " in
+      *" ${want} "*) ;;
+      *) printf "the probe ran as '%s', not the image's own USER '%s' -- as root every directory answers writable and the gate proves nothing" "${who}" "${want}" ;;
+    esac
+  fi
+}
+
+# CONTRACT: what a consuming CI lane may rely on and cannot repair from outside a
+# read-only overlay layer. One probe run as the image's OWN user -- a root probe would
+# answer yes to every writability question -- then host-side verdicts.
+# docs/consumer-image-contract.md#the-contract
+check_consumer_contract() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local probe want stop verb row rest asserted=""
+  echo "--- CONSUMER CONTRACT (${target_arch}) ---"
+  want="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('User',''))")"
+  probe="$(_rt_run -e "RT_CONTRACT_SH=$(_consumer_contract_probe)" \
+    bash -lc 'if [ -z "${RT_CONTRACT_SH:-}" ]; then echo "CCPROBE_EMPTY"; exit 4; fi
+printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
+  stop="$(_consumer_probe_verdict "${probe}" "${want}")"
+  if [ -n "${stop}" ]; then
+    fail "CONSUMER CONTRACT (${target_arch}): ${stop}"
+    echo ""
+    return 0
+  fi
+  while read -r verb row rest; do
+    [ -n "${verb}" ] || continue
+    case "${verb}" in
+      OK)       echo "  OK   ${row} ${rest}" ;;
+      EXEMPT)   echo "  ~~   ${row} (documented ${target_arch} exception)" ;;
+      BAD)      fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- $(_consumer_contract_symptom "${row}")" ;;
+      STALE)    fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest}" ;;
+      NOFACT)   fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- the probe reported no fact, so the gate could not judge the row" ;;
+      ASSERTED) asserted="${row}" ;;
+      *)        fail "CONSUMER CONTRACT: unknown verdict '${verb} ${row} ${rest}' -- an unhandled verb is a silently dropped row" ;;
+    esac
+  done < <(_consumer_contract_verdicts "${target_arch}" "${probe}")
+  if [ "${asserted:-0}" = 0 ]; then
+    fail "CONSUMER CONTRACT asserted NOTHING on ${target_arch} (${asserted:-no ASSERTED line}) -- an empty row table is a vacuous pass, not a compliant image"
+  else
+    pass "CONSUMER CONTRACT: ${asserted} row(s) hold as ${want} on ${target_arch}"
   fi
   echo ""
 }
@@ -1721,6 +1970,7 @@ main() {
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_flutter "${image_tag}" "${target_arch}"
     check_rust_toolchain "${image_tag}" "${target_arch}"
+    check_consumer_contract "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
     check_manifest_tree_arch "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"

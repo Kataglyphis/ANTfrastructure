@@ -18,6 +18,8 @@ _CC_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${USE_CCACHE:=true}"
 : "${USE_SCCACHE:=true}"
 : "${USE_LLD:=true}"
+# Owner of the runtime cache paths: Dockerfile.package's ENV is pinned to these
+# by test-compiler-cache.sh. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
 : "${CCACHE_DIR:=/var/cache/ccache}"
 : "${CCACHE_MAXSIZE:=10G}"
 : "${SCCACHE_DIR:=/var/cache/sccache}"

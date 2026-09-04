@@ -72,8 +72,14 @@ ENV ANDROID_HOME=/opt/android-sdk \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETPLATFORM=${TARGETPLATFORM} \
     BUILDARCH=${BUILDARCH} \
-    BUILDPLATFORM=${BUILDPLATFORM} \
-    PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
+    BUILDPLATFORM=${BUILDPLATFORM}
+
+# Its OWN instruction: a ${VAR} inside an ENV reads the value from before that
+# instruction, so the ANDROID_* keys set above expanded EMPTY here and the stage
+# ran with PATH=/cmdline-tools/latest/bin:/platform-tools:/build-tools/36.0.0::,
+# whose empty entry POSIX reads as the working directory.
+# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh

@@ -390,6 +390,15 @@ These validate a built/pulled image and also run during the build to fail fast:
     `gst-inspect-1.0` loads the file directly). Warning there instead would let the
     table rot underneath a green run; failing makes it self-correcting, since the fix
     is the one-line deletion the message names.
+  - **CONSUMER CONTRACT** (fail) — the seven properties a consuming CI lane depends on
+    and cannot repair from inside a read-only overlay layer: compiler caches outside
+    `/workspace` and writable, `$RUSTUP_HOME/tmp` and `$CARGO_HOME` writable,
+    `ANDROID_HOME` set with `platform-tools` present *and* on `PATH`, and every path
+    under `/opt/flutter` owned by the runtime uid. One probe, run as the image's own
+    `Config.User` — as root every directory answers writable, so a probe reporting any
+    other identity fails the gate outright. The contract itself, its per-arch exemption
+    table and the 2026-09-04 defects that motivated it:
+    [`consumer-image-contract.md`](consumer-image-contract.md#the-contract).
   - **GStreamer plugin health** (warn) — lists plugins whose runtime `.so` is absent
     (they degrade gracefully); surfaces app-critical regressions like
     `webrtcbin2`→`librice-proto.so.0`. **GStreamer core pipeline** (fail) —

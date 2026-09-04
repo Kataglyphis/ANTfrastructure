@@ -44,6 +44,17 @@ else
 fi
 [ "${#DOCKERFILES[@]}" -gt 0 ] || err "No Dockerfiles found to lint."
 
+FAILED=0
+
+# ---------------------------------------------------------------------------
+# Pass 0: ENV instruction ordering (enforced, no download)
+# hadolint has no rule for it and BuildKit's UndefinedVar check only runs in the
+# advisory pass, which is skipped on every nerdctl-only host.
+# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+# ---------------------------------------------------------------------------
+printf '== ENV instruction ordering on %d Dockerfile(s) ==\n' "${#DOCKERFILES[@]}"
+python3 linux/scripts/verify_dockerfile_env_order.py "${DOCKERFILES[@]}" || FAILED=1
+
 # ---------------------------------------------------------------------------
 # hadolint bootstrap (PATH copy preferred; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------
@@ -117,7 +128,6 @@ HADOLINT_WINDOWS_IGNORES=(
   SC1088 SC1089 SC1099
 )
 
-FAILED=0
 for df in "${DOCKERFILES[@]}"; do
   hl_args=(--config "${REPO_ROOT}/.hadolint.yaml")
   case "${df}" in

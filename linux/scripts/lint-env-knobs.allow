@@ -373,6 +373,7 @@ MODRES_POISON_SOURCED
 # Not operator switches: generated probe scripts injected into the smoke
 # container as -e NAME="$(...)" by 06-packaging/smoke-runtime-image.sh and read
 # by the in-container bash -lc probe.
+RT_CONTRACT_SH
 RT_PROBE_SH
 RT_TREE_PY
 SMOKE_ONNX_PY

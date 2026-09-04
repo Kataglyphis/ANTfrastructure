@@ -18,6 +18,7 @@ cache loss · **DISK**=chain disk reclaim · **HT**=host trees in foreign images
 settle · **F#**=size/duplication tracks. **QW/TC/SMK** are retired: the 2026-09-04
 integration waves closed them. Everything else
 (**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#**) is archive-only.
+**CC**=consumer-contract defects a consuming repo reported against shipped bytes.
 
 Last groomed: **2026-09-04, after the second (judgement) wave integrated.** Every
 number below was re-derived from the gates on the integrated tree, not carried
@@ -37,13 +38,13 @@ and deliberately did **not** make, because no suite in this repo can prove a
 
 | gate | reading |
 |---|---|
-| `mutations` | **332** entries, every one biting, none vacuous or stale |
-| `gate-registry` | **34** slugs; **22** proven; **12** unproven and frozen; 101 ids in 26 declared families |
-| `script-tests` | **75** suites, **2317** assertions |
+| `mutations` | **365** entries, every one biting, none vacuous or stale |
+| `gate-registry` | **34** slugs; **23** proven; **11** unproven and frozen; 126 ids in 27 declared families |
+| `script-tests` | **76** suites, **2434** assertions |
 | `code-size` | 33 functions over 80 lines, 10 files over 800 — all frozen, all with a verdict |
 | `code-complexity` | 68 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
 | `shellcheck-warnings` | 92 rows / **174** findings in 72 files, over a **319**-file scope — all with a verdict |
-| `code-dupes` | 3266 units in 352 files, 246 allowlisted pairs, 801 shingles suppressed as idiom |
+| `code-dupes` | 249 allowlisted pairs — three budgets re-measured DOWN and three rows added on 2026-09-04 |
 | `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 31 / 18 / 173 / 46 frozen |
 
 **Closed by wave 2 and living in git history rather than here:** F4 (all 95
@@ -56,7 +57,7 @@ first-ever-measured functions read and given verdicts), CL4's pointer half, YB's
 sub-item (a), GH5's `pkg-names` row (a real 20-assertion suite, not a waiver),
 GH6's `_fixture` note, and `cmake_build_parse_args` (116 → 60 lines, cc 31 → 24).
 
-**Seventeen entries remain** (`grep -c '^### '` counts nineteen; "Next up" and
+**Eighteen entries remain** (CC1 joined on 2026-09-04) (`grep -c '^### '` counts nineteen; "Next up" and
 "What needs the OWNER" are not entries; CL5 is gone, its subject reviewed and its
 residue folded into CL6, so the CL numbers run 1–4 and 6). CL1, CL2, CL3 and CL6
 are closure work only a real build can confirm; CL4 is a `doc-links` scope
@@ -75,9 +76,12 @@ future reader must not "clean up".
 
 ### Next up — the six highest value-per-effort items, in order
 
-1. **CL1 — watch the next 3-arch build** [S, ★★★]. Not a code change: eight
-   closure files changed SHAPE in wave 1 with static proof only. The log lines to
-   watch are named in CL1. Everything else on this list is cheaper *after* it.
+1. **CC1 + CL1 — watch the next 3-arch build** [S, ★★★]. Not a code change. CC1
+   is the sharper half: four defects a consuming repo hit on shipped bytes are
+   fixed here and confirmed only for their ENV halves; the rustup and `/opt/flutter`
+   ownership rows can be answered by nothing but the rebuilt image. CL1 is the
+   older watch list — eight closure files that changed SHAPE with static proof
+   only. Everything else on this list is cheaper *after* that run.
 2. **DISK2 — wire the buildkit fallback into the two `build-cross-chain.sh` call
    sites** [S, ★★★]. The in-stage watchdog (where 2026-09-03 actually bit) is
    done; a run that dies at *lane entry* still refuses instead of reclaiming.
@@ -129,6 +133,80 @@ Nothing in the seventeen entries above is blocked on you. These are:
 4. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
+
+### CC1. The consumer-contract fixes are static until the next runtime build [S to watch, ★★★]
+
+**Evidence: a consuming repo's CI lane, not a gate.** The
+Kataglyphis-Inference-Engine lane ran against `:latest-cross-amd64` as uid 1001 on
+2026-09-04 and reported four defects; all four were reproduced here in the shipped
+bytes before anything was written:
+
+| # | what the consumer saw | where it came from |
+|---|---|---|
+| 1 | `CCACHE_DIR=/workspace/.ccache`, `SCCACHE_DIR=/workspace/.sccache` — the cache lands in their bind-mounted checkout, and on a non-ext4 mount flatpak-builder aborts with `Can't initialize ccache use: Failed to set permissions of /workspace/.ccache/disabled/ccache.conf: Operation not permitted` | `Dockerfile.package` ENV contradicting `01-core/compiler-cache.sh`'s own `/var/cache/*` defaults |
+| 2 | `rustup: could not create temp file /usr/local/rustup/tmp/...: Permission denied (os error 13)` — Corrosion, cargokit and `flutter_rust_bridge_codegen` cannot run; not fixable by repointing the var, the toolchains live there | both `/usr/local` COPYs carried no `--chown`, and the foreign-arch re-install runs as root |
+| 3 | `flutter build apk` → `[!] No Android SDK found`, surfacing three steps later under CodeQL as `bundle source directory not found: build/app/outputs/flutter-apk` | `ANDROID_HOME`/`ANDROID_SDK_ROOT` are declared in `Dockerfile.android`, which `latest-cross` does not inherit |
+| 4 | `flutter pub get` → `Cannot open file .../flutter_tools/.dart_tool/package_config.json (Permission denied, errno = 13)`; 37 root-owned paths under `/opt/flutter` | the COPY `--chown` is right, but a root-run `flutter`/`git` wrote into the SDK AFTER it |
+
+The fixes are in (`Dockerfile.package` ENV + two `COPY --chown`,
+`hand_root_created_paths_to_runtime_user` in `setup-package-image.sh`, the
+`check_consumer_contract` gate in `smoke-runtime-image.sh`, and the new
+`dockerfile-lint` ENV-ordering pass), each with a suite case and a mutation that
+bites. **None of it has been through a build**, and the split is measurable rather
+than guessed. Running the real probe in the shipped image with only the new ENV
+injected returns `ASSERTED 3`:
+
+* defects **1 and 3 are ENV-only** — `/var/cache/{ccache,sccache}` is already 1777
+  and writable at uid 1001, and the appended `PATH` survives `bash -lc`, so those
+  two rows already go `OK` on today's bytes. What the build must confirm is only
+  that the strings are baked: `nerdctl image inspect` the new `:latest-cross-*` and
+  read `Config.Env` (this stage is built on a rootfs export that drops the parent's
+  `Config.Env`, so a value that is not declared here ships UNSET).
+* defects **2 and 4 need the rebuild's ownership work** and cannot be confirmed
+  from outside. Probe the rebuilt image as uid 1001 with the consumer's own script;
+  the two lines that only a build can answer are
+  `find /usr/local/rustup /usr/local/cargo ! -user 1001` and
+  `find /opt/flutter -user root`, both of which must come back empty on **all three**
+  arches (riscv64's `/opt/flutter` ships empty; `check_consumer_contract` exempts
+  its two flutter rows and fails the day upstream publishes a riscv64 SDK).
+
+Also watch the **layer cost**, because the whole shape of the fix is a size
+argument: `COPY --chown` and a same-RUN `find ! -user … -exec chown -h` are both
+zero-byte, where a later `chown -R` would copy up ~2.2 GB of rustup+cargo and
+~700 MB of Flutter per arch. A per-arch image that grew by gigabytes means BuildKit
+did not do what the argument assumes. `rust.handover-only-root-owned`,
+`flutter.bootstrap-whole-tree-chown` and `flutter.bootstrap-inline-chown-copy` are
+the size rule recorded as tests.
+
+**Two things the consumer flagged as NOT defects, both worth acting on:**
+
+1. **Advertise `/opt/flutter`.** The image ships the Flutter SDK there, and
+   consumers still passing `--flutter-dir /workspace/flutter` re-download it on
+   every run for nothing. It belongs in the consumer-facing image docs beside the
+   contract table — as does the note that `/var/cache/ccache` is not a `VOLUME`, so
+   a consumer who wants the cache to survive teardown now mounts one there.
+2. **The multi-arch index fixed their arm64 lane.** `:latest-cross` is a proper
+   OCI index now; before it, their arm64 job pulled x86-64 binaries and died with
+   `rustc: 1: ELF: not found`. Nothing to do, but it is the payoff line for the
+   manifest work and should not be forgotten when the index shape is next touched.
+
+Still open, deliberately, and none of it in this entry's scope: the shipped image
+also drops `CCACHE_MAXSIZE`, `SCCACHE_CACHE_SIZE`, `SCCACHE_CONF`,
+`SCCACHE_IDLE_TIMEOUT` and `SCCACHE_ERROR_LOG` through the same rootfs-export
+(a value decision — base says 30G, `compiler-cache.sh` says 10G); `common.sh:352`
+still defaults `CCACHE_DIR` to `${HOME}/.cache/ccache`, outside the new pin; no JDK
+ships in any arch, so `ANDROID_HOME` is necessary but not sufficient for
+`flutter build apk`; the Android host tools are linux-x86_64 on every arch;
+`flutter_tools/.dart_tool/package_config.json` resolves every package to
+`file:///root/.pub-cache`, 145 MB shipped under mode-0700 `/root` (latent today,
+fixable with `PUB_CACHE=/opt/flutter/.pub-cache` in the same RUN); the foreign
+arches still ship the builder-arch rust toolchain twice, because the
+`ensure_native_rust_toolchain` `rm -rf` only writes overlay whiteouts; and
+`flutter_rust_bridge_codegen` asks for a floating `nightly` the image does not
+carry (it pins `nightly-2026-06-28`), so with a writable `RUSTUP_HOME` it now
+succeeds but downloads one per CI run. `Dockerfile.nvidia`'s ENV-ordering fix is
+in the same class as `Dockerfile.android`'s but was proven by reading only — no
+nvidia image exists on this host.
 
 ### CL1. Eight closure files changed SHAPE with static proof only [S to watch, ★★★]
 
