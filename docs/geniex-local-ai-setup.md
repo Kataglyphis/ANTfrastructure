@@ -1084,25 +1084,49 @@ vendor:
 | **Phi-4-mini-instruct** | **Microsoft** | **7/27** |
 | **Llama-3.2-3B-Instruct** | **Meta** | **3/27** |
 
-And the failure mode is *identical* across all three weak models — three
-vendors, three architectures, **18 of 21 single-turn failures each**:
+All three fail the same way *as far as the score is concerned* — no native
+`tool_calls`, 18 of 21 single-turn failures each — so a score-only benchmark
+files them under one heading. Reading the actual replies shows **three
+different formats**:
 
-> `no tool call; replied with text: '{"name": "list_files", "parameters": …}'`
+| Model | What it emits instead |
+|---|---|
+| Llama-3.2-3B | `{"name": "read_file", "parameters": {"path": "README.md"}}` — valid JSON |
+| **Qwen3.8-2B** | `<tool_call><function=read_file><parameter=path>…` — **Qwen's own canonical template** |
+| Phi-4-mini | `file: read-file, path: README.md` — invented syntax, and the tool **renamed** |
 
-They emit the **correct tool name and the correct arguments**, as ordinary text
-instead of through the `tool_calls` channel. This is not a reasoning failure and
-has nothing to do with model quality: it is whether the model's chat template
-emits native tool calls under this runtime.
+None of this is a reasoning failure. It is whether the model's chat template
+emits native tool calls under this runtime — and in Qwen3.8's case the model did
+exactly what its own template prescribes; the runtime simply did not convert it.
 
 **What this changes.** The practical consequence is unchanged — a model that
 answers in prose is unusable in opencode, which reads `tool_calls`. But the
 *remedy* is completely different from what a "bad family" conclusion implies:
 
 - **Wrong remedy** (what § 1g implied): pick a different model family.
-- **Right remedy**: a fallback that parses a bare JSON object out of the message
-  content. Three of the five models tested would go from ~25 % to near-perfect
-  with it, because the content is already right. That is an agent-side fix, and
-  it also recovers the one case the incumbent loses this way (§ 1f).
+- **Partial remedy**: an agent-side fallback that parses a call out of the
+  message content. `bench_tools.py --accept-text-json` implements one for both
+  the JSON and the Qwen-template shapes, and **measures** what it is worth —
+  because the first estimate written here ("three of five would go to
+  near-perfect") was itself wrong, and measuring it was the only way to find
+  that out:
+
+| Model | without fallback | with fallback | recovered |
+|---|---|---|---|
+| Llama-3.2-3B | 3/27 | **18/27** | 16 cases |
+| Qwen3.8-2B | 7/27 | 10/27 | 3 cases |
+| Phi-4-mini | 7/27 | 7/27 | **none** |
+
+  So the fallback is decisive for one model, marginal for a second, and useless
+  for the third. Llama emits one consistent JSON shape, so almost everything is
+  recoverable. Qwen3.8's output *varies* — 13 replies still yield nothing
+  parseable — so the template hypothesis explains part of its failure and not
+  most of it. Phi renames the tool (`read-file` for `read_file`) inside a syntax
+  it invented, which no fallback should paper over: recovering that would mean
+  guessing which tool the model meant.
+
+  What survives the fallback is genuine: over-eager calling, wrong tool choice,
+  and arguments typed as strings (`"true"` for `true`).
 
 **On coding they are simply weaker**, and that part *is* about the models:
 

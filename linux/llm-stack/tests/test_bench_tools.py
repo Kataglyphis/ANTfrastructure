@@ -230,3 +230,56 @@ class TestErrorRecovery:
         from bench_tools import grade_error_recovery
         ok, detail = grade_error_recovery({"content": ""})
         assert not ok and "empty" in detail
+
+
+class TestTextJsonFallback:
+    """Three models from three vendors emit the right tool name and arguments
+    as prose. The fallback measures what an agent-side parser would recover —
+    and must never manufacture a call the model did not actually describe."""
+
+    def _msg(self, text):
+        return {"content": text, "tool_calls": []}
+
+    def test_recovers_a_parameters_shaped_call(self):
+        m = self._msg('{"name": "read_file", "parameters": {"path": "README.md"}}')
+        assert not grade(m, EXPECT_READ)[0], "off by default"
+        ok, detail = grade(m, EXPECT_READ, accept_text_json=True)
+        assert ok and "recovered from text" in detail
+
+    def test_recovers_an_arguments_shaped_call(self):
+        m = self._msg('{"name": "read_file", "arguments": {"path": "README.md"}}')
+        assert grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_recovers_from_surrounding_prose(self):
+        m = self._msg('Sure! I will call:\n{"name": "read_file", '
+                      '"parameters": {"path": "README.md"}}\nLet me know.')
+        assert grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_stringified_arguments_are_parsed(self):
+        m = self._msg('{"name": "read_file", "arguments": "{\\"path\\": \\"README.md\\"}"}')
+        assert grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_a_wrong_tool_in_text_is_still_wrong(self):
+        # The fallback fixes the CHANNEL, never the answer.
+        m = self._msg('{"name": "list_files", "parameters": {"directory": "."}}')
+        assert not grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_wrong_arguments_in_text_are_still_wrong(self):
+        m = self._msg('{"name": "read_file", "parameters": {"path": "LICENSE"}}')
+        assert not grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_prose_without_json_recovers_nothing(self):
+        m = self._msg("I would read README.md for you.")
+        assert not grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_json_without_a_name_recovers_nothing(self):
+        # Must not invent a call out of an unrelated JSON object.
+        m = self._msg('{"path": "README.md"}')
+        assert not grade(m, EXPECT_READ, accept_text_json=True)[0]
+
+    def test_the_no_tool_case_is_unaffected(self):
+        # A model that answers "4" must still pass, and one that describes a
+        # call in text must still count as calling one.
+        assert grade(self._msg("4"), None, accept_text_json=True)[0]
+        assert not grade(self._msg('{"name": "run_tests", "parameters": {}}'),
+                         None, accept_text_json=True)[0]
