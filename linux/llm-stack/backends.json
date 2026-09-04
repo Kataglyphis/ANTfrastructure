@@ -38,6 +38,11 @@
       "model": "unsloth/Qwen3-4B-GGUF:Q4_0",
       "note": "Oryon CPU. Fastest GGUF backend here, but pegs 7.5 of 8 cores."
     },
+    "geniex-cpu-shim": {
+      "base_url": "http://127.0.0.1:18190",
+      "model": "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M",
+      "note": "The CPU lane behind geniex_toolcall_shim.py. Use this, not geniex-cpu, for anything agentic: GenieX returns Qwen's <tool_call> template as plain content, so tool calls are invisible without the shim. Start it first: python3 geniex_toolcall_shim.py --upstream http://localhost:18184 --port 18190"
+    },
     "geniex-hybrid": {
       "base_url": "http://127.0.0.1:18183",
       "note": "NPU+CPU. Slower than plain CPU on every model measured - avoid."

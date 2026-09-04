@@ -33,7 +33,7 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
 | You want | Use | Speed |
 |---|---|---|
 | **The fastest finished answer** (chat and completion) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores. Also **3/3 on the executed-code benchmark, 4.3x faster than any other model that scored 3/3** (§ 1d). **Not for agents** — opencode's preamble is 2x its 4096 context (§ 1m) |
-| **Driving a real coding agent** (opencode) | a GGUF lane with `--nctx 16384`, tool set trimmed | Works, but **~2 min per turn**: there is no prefix cache, so the 8,175-token preamble is re-prefilled every turn (§ 1m) |
+| **Driving a real coding agent** (opencode) | CPU lane + `Qwen3.8-9B-Distill:Q4_K_M`, **behind `geniex_toolcall_shim.py`**, tool set trimmed to four | **3/3 end-to-end tasks, verified by the repo's own tests** — but 10-14 min each. Without the shim the lane discards every tool call (§ 1m) |
 | The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
 | Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
 | Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
@@ -1345,14 +1345,112 @@ outlier because of its format, not its size — `Q4_0` costs more per token here
 than `Q4_K_M` does on a model more than twice as large. So: pick the smallest
 model that can do the task, and do not compare prefill across quant formats.
 
+#### The lane drops the tool call on the floor — and that looked like a weak model
+
+Three GGUF models scored **zero tool calls** on the agent benchmark. That reads
+as "these models cannot use tools". It is not what is happening. Asked to fix a
+failing test, `Qwen3.8-9B-Distill` answers:
+
+```text
+I need to first run the test suite to see what's failing, then examine
+the source code to find the bug.
+</think>
+
+<tool_call>
+<function=bash>
+<parameter=command>
+cd /tmp/... && python -m pytest test_calc.py -v 2>&1
+</parameter>
+</function>
+</tool_call>
+```
+
+That is a correct tool call in Qwen's chat template. GenieX returns it as
+`content`, with `tool_calls` empty and `finish_reason` `"stop"` — it serves the
+OpenAI API without parsing the model's template. Every OpenAI-compatible agent
+therefore sees prose, executes nothing, and ends the turn.
+
+**So the benchmark's "0 tool calls" was measuring the server, not the model.**
+Worth stating plainly, because the same number would be produced by a genuinely
+incapable model, and this suite spent a whole session learning to tell those two
+apart.
+
+The 2B is the control that keeps the finding honest: on the identical prompt it
+emits markdown fences (` ```bash\nls -la\n``` `) and no template at all. It
+really cannot do function calling. Both look like "0 tool calls" from outside.
+
+| Model | What it actually emits | Recoverable? |
+|---|---|---|
+| `Qwen3.8-9B-Distill` Q4_K_M | `<tool_call><function=…>` template | **yes** |
+| `Qwen3.8-2B-Distill` Q4_K_M | markdown code fences | no — it is not a call |
+
+**`linux/llm-stack/geniex_toolcall_shim.py` does the translation** the server
+does not: it sits between the agent and the lane, parses the template into
+proper `tool_calls`, and sets `finish_reason` to `"tool_calls"` so the agent
+loop continues instead of stopping.
+
+```bash
+python3 linux/llm-stack/geniex_toolcall_shim.py \
+    --upstream http://localhost:18184 --port 18190
+# then point the opencode provider at 18190 instead of 18184
+```
+
+It calls upstream without streaming even when the client asked for a stream — a
+tool call cannot be recognised before its closing tag arrives — and re-emits the
+answer as the stream the client expects. That costs nothing measurable here:
+there is no prefix cache and prefill dominates, so the response was already one
+long wait.
+
+Two things it deliberately does **not** do. It never invents a call from
+markdown fences: guessing there is how an agent runs a command the model never
+asked for. And a call the model started but never closed yields no call at all —
+only the half-written markup is removed, so it cannot reach the user as if it
+were an answer. Both are pinned by tests, against output captured from the real
+server rather than invented fixtures.
+
+**With the shim in place, the loop works.** The same harness, the same models,
+the same tasks — the only change is that the tool call is now visible:
+
+| Task | Result | Wall | Tool calls | Events |
+|---|---|---:|---:|---:|
+| `fix_failing_test` | **PASS** | 656 s | 7 | 26 |
+| `add_function_and_test` | **PASS** | 841 s | 9 | 31 |
+| `multi_file_rename` | **PASS** | 621 s | 11 | 28 |
+
+Score: **3/3** on `Qwen3.8-9B-Distill` Q4_K_M, CPU lane, tool set trimmed
+to four. This is the first time this benchmark has ever *observed a pass* — and
+that matters more than the number. Until now it had only ever seen failures, so
+a bug that made everything fail would have looked exactly the same. The fixture
+self-test proved the verification could go green; only this proves the whole
+path can.
+
+Read the wall-clock honestly: minutes per task, on tasks a competent junior
+finishes in two. That is the prefill cost of § 1m, not a quality result. What
+changed is that on-device agent work went from *impossible* to *slow*.
+
 #### What this corrects
 
 The QAIRT 4B on the NPU remains the fastest path to a finished *answer* on this
 machine — § 1d, § 1f and § 1i all still stand, all measured through a compact
 harness prompt. It is the right choice for chat and completion. It **cannot
-drive opencode**. For agent work use a GGUF lane (`--nctx 16384`), trim the tool
-set, and expect minutes per turn: on-device agents on this box are limited by
-prefill throughput, not by tokens per second or by model quality.
+drive opencode**, and no configuration changes that.
+
+For agent work the recipe that actually completes tasks is:
+
+1. a **GGUF lane** (`--nctx 16384`) — the QAIRT context is not negotiable;
+2. **behind `geniex_toolcall_shim.py`** — without it the lane discards every
+   tool call and the agent does nothing;
+3. **tool set trimmed** in `opencode.jsonc` — 36% off every turn;
+4. and patience: **10-14 minutes per task**, all of it prefill.
+
+The three constraints stack, and the order in which we found them is the order
+of increasing embarrassment: the first was visible in an error message, the
+second only in a wall-clock, and the third looked exactly like the models being
+bad at their job.
+
+**On-device agent work here went from impossible to slow.** That is the honest
+summary. It is not a throughput result and not a quality result: the models were
+never the limit.
 
 #### The harness proves itself before it judges anything
 

@@ -444,9 +444,15 @@ work. `linux/llm-stack/bench_agent.py` measures this end-to-end against a
 scratch repo, scoring by whether the repo's tests pass rather than by the
 transcript. **And GenieX has no prefix cache** — the identical request twice
 costs 126 s then 122 s — so every agent turn re-prefills the whole conversation
-at 38-61 tok/s. Budget **~2 min per turn**; trimming the tool set from 10 to 6
-is the only lever that helps (-37%), and a smaller model does not (the 4B
-prefills slower than the 9B).
+at 38-214 tok/s. Budget **~10-14 min per task**. Two levers: trim opencode's
+tool set via its top-level `tools` block (8,175 -> 5,234 tokens, 36% off every
+turn), and pick a smaller model *within one quant format* (2B Q4_K_M prefills
+3.5x faster than 9B Q4_K_M; a 4B in Q4_0 is slower than either, so never compare
+prefill across formats). **Third and least visible: GenieX does not parse Qwen's
+`<tool_call>` template**, returning it as plain content with `tool_calls` empty,
+so agent runs score zero tool calls and look like weak models. Put
+`linux/llm-stack/geniex_toolcall_shim.py` in front of the lane; with it,
+`Qwen3.8-9B-Distill` completes 3/3 end-to-end agent tasks.
 `windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly.
 
 ### Triggering the opt-in CI lanes
