@@ -177,7 +177,7 @@ runtime_build_base_image() {
   local -a build_args=()
 
   tag="$(runtime_base_tag "${arch}")"
-  append_common_build_args build_args
+  append_common_build_args build_args "${arch}"
   append_runtime_base_parent_build_arg build_args
 
   if is_dry_run; then
@@ -272,7 +272,7 @@ runtime_build_package_image() {
   local -a build_args=()
 
   tag="$(runtime_package_tag "${arch}")"
-  append_common_build_args build_args
+  append_common_build_args build_args "${arch}"
   append_runtime_accelerator_build_args build_args
 
   # XC2: prefer the immutable android digest (threaded from the orchestrator) as
@@ -357,7 +357,7 @@ _runtime_run_package_smoke() {
   fi
 
   local -a build_args=()
-  append_common_build_args build_args
+  append_common_build_args build_args "${arch}"
   append_runtime_accelerator_build_args build_args
 
   local _android_pin
@@ -404,7 +404,7 @@ _runtime_build_wrapper() {
   local -n _wrapper_build_args_out=$4
 
   _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
-  append_common_build_args _wrapper_build_args_out
+  append_common_build_args _wrapper_build_args_out "${arch}"
   append_runtime_accelerator_build_args _wrapper_build_args_out
 
   local parent_context_dir

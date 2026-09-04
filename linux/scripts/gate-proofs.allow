@@ -36,6 +36,7 @@ mutation-id:python-lint.heredoc-python-decision
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build
+mutation-family:version-forwarding
 mutation-family:delete-guard
 mutation-family:doc-numbers
 mutation-family:flutter

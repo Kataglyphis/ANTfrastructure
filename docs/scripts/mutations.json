@@ -1886,5 +1886,21 @@
     "replace": "([^()\\n]{0,60}?)",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
     "why": "the count must be the LAST number before the marker, or --update overwrites a correct unrelated number on the same line"
+  },
+  {
+    "id": "version-forwarding.per-arch-override",
+    "target": "linux/scripts/01-core/version-forwarding.sh",
+    "find": "      if [ -n \"${!override:-}\" ] && ! _vf_is_tracked \"${override}\"; then value=\"${!override}\"; fi",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-version-forwarding.sh",
+    "why": "riscv64 has no upstream cmake/node artifact, so without the per-arch override the image advertises a version it does not contain"
+  },
+  {
+    "id": "version-forwarding.override-not-a-key",
+    "target": "linux/scripts/01-core/version-forwarding.sh",
+    "find": "  local _vfit\n  for _vfit in \"${_VERSION_BUILD_ARG_VARS[@]}\"; do\n    [ \"${_vfit}\" = \"$1\" ] && return 0\n  done\n  return 1",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-version-forwarding.sh",
+    "why": "a forwarded key that merely ends in _<ARCH> (GENAI_ALLOW_RISCV64) is a key, not another key's override"
   }
 ]

@@ -949,6 +949,41 @@ error: failed to create directory `/usr/local/cargo/registry/cache/...`
 Caused by: Permission denied (os error 13)
 Same mkdir-then-test idiom the sccache/ccache loop below already uses.
 
+### Per-arch version truth
+
+The runtime image ADVERTISES its component versions as env (`CMAKE_VERSION`,
+`NODE_VERSION`, …) and the shipped-truth probe in `smoke-runtime-image.sh`
+compares every one of them against the binary actually present. Two of them
+cannot be equal on every arch:
+
+* Kitware publishes no riscv64 CMake archive, so `install_cmake` takes the
+  Ubuntu package there;
+* Node.js publishes no riscv64 tarball, so `install_nodejs` takes the Ubuntu
+  package there.
+
+Both were true long before the probe could see it — the keys only became
+checkable when `d27cdee1` stopped 11 of 16 gate keys from SKIPping, and the
+first run that reached the gate failed with `ADVERTISES CMAKE_VERSION=4.4.3 but
+actually has 4.4.2` (and Node 26.8.1 vs 22.22.1). The label was wrong, not the
+image.
+
+`versions.env` therefore carries `<KEY>_<ARCH>` overrides next to the base key,
+marked `# noforward` so they never become build args of their own:
+
+```
+CMAKE_VERSION=4.4.3
+# noforward
+CMAKE_VERSION_RISCV64=4.4.2
+```
+
+`append_version_build_args <array> <arch>` prefers the override for that arch,
+so `--build-arg CMAKE_VERSION=` carries 4.4.3 to amd64/arm64 and 4.4.2 to
+riscv64, and the image advertises what it has. A name that is *itself* a
+forwarded key (`GENAI_ALLOW_RISCV64`) is never read as another key's override.
+
+These are pins, not excuses: if the Ubuntu archive moves, ADV and HAVE diverge
+again and the build fails until the override is bumped.
+
 ### Which shared library a consumer actually gets
 
 `/etc/ld.so.conf.d` is read in **sort order**, and several of our `/opt` trees

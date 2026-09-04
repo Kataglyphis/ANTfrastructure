@@ -39,12 +39,29 @@ if [ -z "${_VERSION_BUILD_ARG_VARS_CACHED:-}" ]; then
   _VERSION_BUILD_ARG_VARS_CACHED=1
 fi
 
+# $2 = target arch. A version differs per arch when upstream ships no artifact
+# for it, and the image must ADVERTISE what it actually contains: <KEY>_<ARCH>
+# in versions.env is that arch's truth and wins for it.
+# docs/cross-build-verification.md#per-arch-version-truth
+# A forwarded key that merely ENDS in _<ARCH> (GENAI_ALLOW_RISCV64) is a key in
+# its own right, never another key's override.
+_vf_is_tracked() {
+  local _vfit
+  for _vfit in "${_VERSION_BUILD_ARG_VARS[@]}"; do
+    [ "${_vfit}" = "$1" ] && return 0
+  done
+  return 1
+}
+
 append_version_build_args() {
-  local _avba_name="$1"
-  local var_name
+  local _avba_name="$1" _avba_arch="${2:-}"
+  local var_name value override
   for var_name in "${_VERSION_BUILD_ARG_VARS[@]}"; do
-    if [ -n "${!var_name:-}" ]; then
-      append_optional_build_arg "${_avba_name}" "${var_name}" "${!var_name}"
+    value="${!var_name:-}"
+    if [ -n "${_avba_arch}" ]; then
+      override="${var_name}_$(printf '%s' "${_avba_arch}" | tr '[:lower:]' '[:upper:]')"
+      if [ -n "${!override:-}" ] && ! _vf_is_tracked "${override}"; then value="${!override}"; fi
     fi
+    [ -n "${value}" ] && append_optional_build_arg "${_avba_name}" "${var_name}" "${value}"
   done
 }
