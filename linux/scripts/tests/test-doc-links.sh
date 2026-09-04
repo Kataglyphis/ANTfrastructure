@@ -83,6 +83,35 @@ t_assert_contains "${out}" "${D}orphan.md is in no docs/index.rst toctree"
 t_assert_contains "${out}" "${D}orphan.md is linked from no row in docs/INDEX.md"
 rm -rf "${fix}"
 
+t_case "a bare (S 1a) pointing at no section on the page fails"
+# SECTION_REF only covers the cross-file form, so these were counted and never
+# checked -- a dangling one survived several renumberings unnoticed.
+fix="$(_fixture ':')"
+printf '# Guide\n\n## 1b. Real\n\ntext (\xc2\xa7 1a) more\n' > "${fix}/docs/guide.md"
+SGN="$(printf '\302\247')"
+t_assert_contains "$(_run "${fix}")" "${D}guide.md ${SGN} 1a  (no such section on this page)"
+rm -rf "${fix}"
+
+t_case "a bare section reference that resolves passes"
+fix="$(_fixture ':')"
+printf '# Guide\n\n## 1b. Real\n\ntext (\xc2\xa7 1b) more\n' > "${fix}/docs/guide.md"
+t_assert_eq "0" "$(_rc "${fix}")"
+rm -rf "${fix}"
+
+t_case "a licence clause on a page with no numbered sections is not a section ref"
+# "Apache-2.0 S4(b)" must not be guessed at -- checking pages that define no
+# numbered sections would trade a real gap for false alarms.
+fix="$(_fixture ':')"
+printf '# Guide\n\n## Real Heading\n\nApache-2.0 \xc2\xa74(b) requires notice.\n' > "${fix}/docs/guide.md"
+t_assert_eq "0" "$(_rc "${fix}")"
+rm -rf "${fix}"
+
+t_case "a cross-file reference is not read as a local one"
+fix="$(_fixture ':')"
+printf '# Guide\n\n## 1b. Real\n\nSee CHANGELOG.md \xc2\xa7 2026-09-01 for it.\n' > "${fix}/docs/guide.md"
+t_assert_eq "0" "$(_rc "${fix}")"
+rm -rf "${fix}"
+
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 

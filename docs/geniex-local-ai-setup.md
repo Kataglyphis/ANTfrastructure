@@ -32,14 +32,15 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
 
 | You want | Use | Speed |
 |---|---|---|
-| **The fastest finished answer** (default for a coding agent) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores. Also **3/3 on the executed-code benchmark, 4.3x faster than any other model that scored 3/3** (§ 1d) |
+| **The fastest finished answer** (chat and completion) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores. Also **3/3 on the executed-code benchmark, 4.3x faster than any other model that scored 3/3** (§ 1d). **Not for agents** — opencode's preamble is 2x its 4096 context (§ 1m) |
+| **Driving a real coding agent** (opencode) | a GGUF lane with `--nctx 16384`, tool set trimmed | Works, but **~2 min per turn**: there is no prefix cache, so the 8,175-token preamble is re-prefilled every turn (§ 1m) |
 | The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
 | Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
 | Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
 | **Best quality on-device**, willing to wait | `--compute cpu` + `unsloth/Qwen3.8-27B-GGUF:Q4_0` | 5.6 tok/s, correct output, 16 GB RAM |
 | Nothing | `--compute hybrid` | Slower than CPU on every model, and it damages a concurrent NPU lane |
 
-**Three counter-intuitive results worth knowing before you tune anything:**
+**Four counter-intuitive results worth knowing before you tune anything:**
 
 1. **The CPU beats the Hexagon NPU ~2x on GGUF models** (4B: 23.7 vs 11.9).
    llama.cpp's ARM kernels are mature; the `ggml-hexagon` backend is not. The
@@ -48,8 +49,13 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
    31.7 tok/s and the *slowest* to a finished answer (60.8 s), because it is a
    reasoning model that spends ~1900 tokens thinking. Measure time-to-answer.
 3. **Prefill, not decode, is what an agent waits on.** A 2.5k-token prompt costs
-   13.1 s before the first token. Context discipline beats every other tuning
+   13.1 s before the first token; opencode's real 8,175-token preamble costs
+   **135 s** on the fastest lane. Context discipline beats every other tuning
    knob here.
+4. **There is no prefix cache.** Sending the identical request twice costs the
+   same both times (126 s, then 122 s), so every agent turn re-prefills the
+   whole conversation. This — not tok/s and not model quality — is what limits
+   on-device agents on this machine (§ 1m).
 
 ---
 
@@ -271,8 +277,11 @@ OpenAI-compatible endpoint via `@ai-sdk/openai-compatible`. Edit
         // The key MUST match the id from /v1/models EXACTLY, precision included.
         // HARD 4096 context — compiled into the QAIRT binary; --nctx applies to
         // llama.cpp/GGUF models only, never to a QAIRT bundle.
+        // CHAT AND COMPLETION ONLY. opencode's own preamble is 8,175 tokens
+        // (§ 1m), so agent runs on this lane fail before the model reads the
+        // task. For agent work select the GGUF lane below.
         "qualcomm/Qwen3-4B-Instruct-2507:W4A16": {
-          "name": "Qwen3 4B Instruct W4A16 (NPU) — primary",
+          "name": "Qwen3 4B Instruct W4A16 (NPU) — chat/completion",
           "limit": { "context": 4096, "output": 2048 }
         }
       }
@@ -285,9 +294,11 @@ OpenAI-compatible endpoint via `@ai-sdk/openai-compatible`. Edit
         "apiKey": "geniex"
       },
       "models": {
-        // GGUF lane: --nctx applies here, so the context can be raised
+        // GGUF lane: --nctx applies here, so the context can be raised.
+        // This is the lane to select for agent work — it is the only kind that
+        // fits opencode's 8,175-token preamble (§ 1m).
         "unsloth/Qwen3-4B-GGUF:Q4_0": {
-          "name": "Qwen3 4B (GPU lane)",
+          "name": "Qwen3 4B (GPU lane) — agent work",
           "limit": { "context": 16384, "output": 4096 }
         }
       }
@@ -304,6 +315,7 @@ Four things that silently break this:
 | `baseURL` without `/v1` | 404 on every request |
 | Empty `apiKey` | The SDK refuses to send; GenieX itself never checks the value |
 | `context` > 4096 on the QAIRT model | Overflow returns nothing at all — no error |
+| Selecting the QAIRT model for **agent** use | Fails every task before the model reads it — opencode's preamble alone is 2x the whole context (§ 1m) |
 
 ### Step 4 — select it in opencode
 
@@ -340,9 +352,10 @@ resident, so the cold load happens once per server start rather than after
 every 5-minute pause.
 
 **Budget the 4096 context deliberately.** It is the binding constraint of this
-lane, not the speed: an agent system prompt plus one medium file can exhaust
-it. Keep the agent's context lean, and move long-context work to a GGUF lane
-(`--nctx 16384`) or off-box.
+lane, not the speed — and for agent use it is not a budget at all but a wall:
+opencode's system prompt plus its ten tool schemas measure **8,175 tokens**, two
+times the entire context, before your task is read (§ 1m). Use this lane for
+chat and completion; run agents on a GGUF lane (`--nctx 16384`) or off-box.
 
 ### Which Qwen3.8-class models fit this machine (all measured 2026-08-31, incl. post-RAM-tuning re-test)
 
@@ -789,8 +802,8 @@ the same task cut on both), with the GPU 1.78x slower — **the lane changes
 speed, not correctness**.
 
 **And the binding constraint is still context, not skill.** The winning bundle
-is capped at **4096 tokens** (§ 1a), which an agent's system prompt plus one
-medium file can exhaust. For code that must see a lot of repository at once,
+is capped at **4096 tokens** (§ 1m), which an agent's system prompt plus one
+medium file can exhaust -- in fact opencode's preamble alone is twice it. For code that must see a lot of repository at once,
 the 27B on the CPU lane is the only on-device option with both correctness and
 room — at 43 s per task.
 
@@ -1219,6 +1232,129 @@ lanes in one command.
 - **`max_tokens` is not honoured** — a request capped at 16 returned 21 tokens,
   and streamed requests ran to the model's own stop. Budget by prompt, not by
   the parameter.
+
+### 1m. The end-to-end agent run — the constraint every proxy missed (measured 2026-09-04)
+
+Everything above this line measures an **endpoint**: a prompt goes in, tokens
+come out, a grader scores them. You do not run an endpoint, you run an **agent**
+— and the two had never been connected. `linux/llm-stack/bench_agent.py`
+connects them: a scratch git repository, a task with a verifiable outcome, and
+success defined as *the repository's tests pass afterwards*. Not the transcript.
+An agent that says it fixed the bug and did not is exactly the failure a
+transcript cannot catch.
+
+Connecting them overturned this page's recommendation for agent use, and the
+reason is not the models. **Every prompt in every benchmark above was short.**
+The real one is not.
+
+#### opencode's fixed preamble is 8,175 tokens, before your task is read
+
+Captured off the wire with a logging proxy between opencode and the lane, so
+these are the real bytes rather than an estimate:
+
+| Part | Characters | ~Tokens |
+|---|---:|---:|
+| System prompt | 11,556 | 2,889 |
+| 10 tool schemas | 21,144 | 5,286 |
+| — `bash` alone | 5,310 | 1,328 |
+| **Total, for a one-word user message** | **32,702** | **8,175** |
+
+#### Consequence 1 — the QAIRT lane cannot run an agent at all
+
+The QAIRT bundle has **4096 tokens compiled in**, shared between input and
+output. The preamble is **2.0x that budget**. The result is not a low score, it
+is no score:
+
+| Lane / model | Tasks | Outcome |
+|---|---|---|
+| NPU, `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 3 | **0 reached the model.** `SDKError(Input prompt too long)`, **0 tool calls**, every task |
+
+**No configuration rescues it** — arithmetic, not opinion:
+
+| Trim | Preamble | Fits in 4096? |
+|---|---:|---|
+| All 10 tools (as shipped) | 8,170 | no — 2.0x over |
+| Only 6 core tools (`bash read edit write grep glob`) | 6,008 | no — 1.5x over |
+| **Zero tools** — system prompt alone | 2,889 | leaves **1,207 tokens** for the conversation *and* the answer |
+
+An agent that cannot be given tools is not an agent. `--nctx` does not help: it
+is a llama.cpp flag, and a QAIRT bundle ignores it.
+
+#### Consequence 2 — the GGUF lanes fit, and are prefill-bound
+
+Replaying that exact captured request:
+
+| Lane | Model | TTFT | Prefill |
+|---|---|---:|---:|
+| GPU (Adreno) | `unsloth/Qwen3-4B-GGUF:Q4_0` | **213.0 s** | 38 tok/s |
+| CPU (8x Oryon) | `empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M` | **134.8 s** | 61 tok/s |
+
+That is time to the *first token* of the *first* turn. The GPU lane duly timed
+out on the agent benchmark at a 600 s ceiling without finishing one task.
+
+#### Consequence 3 — there is no prefix cache, so every turn pays it again
+
+The measurement that decides whether any of this is viable. Same lane, same
+model, three requests:
+
+| Request | TTFT |
+|---|---:|
+| The preamble, cold | 126.2 s |
+| **The identical request again** | **122.1 s** |
+| Same prefix, ~500 tokens appended (a realistic turn 2) | 129.1 s |
+
+A cache would have made the second request near-instant and the third cost only
+its increment. Instead all three cost the same: **GenieX re-prefills the whole
+conversation on every turn.** An agent loop therefore costs **~2 minutes per
+turn** on the best lane before a single token of output, and a five-turn bug fix
+is ten minutes of prefill alone.
+
+#### The only lever is prompt size — not model size
+
+| Change | Preamble | TTFT (CPU lane) |
+|---|---:|---:|
+| 10 tools | 8,175 | 182.5 s |
+| 6 core tools | 6,011 | **115.5 s** (-37%) |
+
+Shrinking the *model* does not help, and this surprised us: warm, on the same
+lane and the same request, the 4B prefills **slower** than the 9B (50 vs
+61 tok/s). Note the two differ in quantization format as well as size
+(Q4_0 vs Q4_K_M), so this isolates neither — it is reported because it refutes
+"use a smaller model", not because it explains why.
+
+#### What this corrects
+
+The QAIRT 4B on the NPU remains the fastest path to a finished *answer* on this
+machine — § 1d, § 1f and § 1i all still stand, all measured through a compact
+harness prompt. It is the right choice for chat and completion. It **cannot
+drive opencode**. For agent work use a GGUF lane (`--nctx 16384`), trim the tool
+set, and expect minutes per turn: on-device agents on this box are limited by
+prefill throughput, not by tokens per second or by model quality.
+
+#### The harness proves itself before it judges anything
+
+With no strong control model reachable, a column of failures is unreadable —
+broken fixture, or weak model? So `--self-test` applies a known-good solution to
+each fixture by hand and asserts the verification is red before and green after:
+
+```bash
+python3 linux/llm-stack/bench_agent.py --self-test
+#   fix_failing_test         OK   unsolved=fail solved=pass
+#   add_function_and_test    OK   unsolved=fail solved=pass
+#   multi_file_rename        OK   unsolved=fail solved=pass
+#   Harness validated
+```
+
+The fixtures also refuse the two cheap ways to fake a pass, both covered by
+tests: aliasing the old name (`fetch_data = format_record`) is not a rename, and
+an `assert True` test does not count as testing a `clamp` that never clamps.
+
+**Blocked runs are excluded from the score, not counted as zero.** A model that
+never received the task did not fail it, so the denominator counts attempted
+tasks only. Three blocked tasks report `0/0`, which the statistics layer renders
+`n/a` over a [0%, 100%] interval — "not measurable here", never "0%, it cannot
+code". Confusing those two is how a hardware limit gets written up as a model
+being bad at its job.
 
 ## Debugged: i-quants below 4 bits are broken in this GenieX build
 
