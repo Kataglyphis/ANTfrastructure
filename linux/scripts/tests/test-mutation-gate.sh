@@ -230,4 +230,15 @@ t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside-witness")" \
   "restoring afterwards is not enough -- the outside file must never hold the mutation, even transiently"
 t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
 
+t_case "a DANGLING symlink is still refused as a symlink, not reported as missing"
+# os.path.exists() follows the link, so a link to nothing looks like an absent
+# target -- which sends the reader hunting for a stale manifest entry instead of
+# the symlink that would have let a write escape the copy.
+_symlink_fixture link
+rm -f "${_tmp}/outside.txt"
+_out="$(_iso_run 2>&1)"
+t_assert_contains "${_out}" "target is a symlink" "the link is the finding, not what it points at"
+t_assert_eq 0 "$(printf '%s' "${_out}" | grep -c 'target missing')" "and it must not be misreported as a stale entry"
+t_assert_eq "1" "$(_iso_rc)"
+
 t_summary

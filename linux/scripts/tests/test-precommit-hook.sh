@@ -115,6 +115,50 @@ _out="$(_run_hook 3 "${_work}/none.txt")"
 t_assert_fails test -e "${_ARGV}"
 t_assert_fails grep -q -e 'mutation gate' <<<"${_out}"
 
+# Every remaining abort path. A hook that stops refusing is a hook that ships
+# what it was built to stop, and each of these was reachable with the suite green.
+_abort_rig() {  # $1 = which gate fails; prints the hook's output, then rc=<n>
+  printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = preflight ] && echo 1 || echo 0)" \
+    > "${_root}/linux/scripts/preflight.sh"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s/bin/shellcheck"\n' "${_work}" \
+    > "${_root}/linux/scripts/lint-shell.sh"
+  printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = shellcheck ] && echo 1 || echo 0)" \
+    > "${_work}/bin/shellcheck"
+  chmod +x "${_work}/bin/shellcheck"
+  printf 'import sys; sys.exit(%s)\n' "$([ "$1" = ratchet ] && echo 1 || echo 0)" \
+    > "${_root}/linux/scripts/verify_shellcheck_warnings.py"
+  printf 'import sys; sys.exit(%s)\n' "$([ "$1" = docdupes ] && echo 1 || echo 0)" \
+    > "${_root}/docs/scripts/verify_doc_dupes.py"
+  local _o _rc
+  _o="$(_run_hook 0 "${_work}/abort-staged.txt" 0)"; _rc=$?
+  printf '%s\nrc=%s\n' "${_o}" "${_rc}"
+}
+printf 'linux/scripts/subject.sh\ndocs/page.md\n' > "${_work}/abort-staged.txt"
+
+t_case "a failing fast preflight gate aborts the commit"
+_out="$(_abort_rig preflight)"
+t_assert_contains "${_out}" "pre-commit: FAILED" "the developer must be told which tier refused"
+t_assert_contains "${_out}" "rc=1" "and the commit must not proceed"
+
+t_case "a shellcheck error on a staged file aborts the commit"
+_out="$(_abort_rig shellcheck)"
+t_assert_contains "${_out}" "shellcheck FAILED on staged files"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a warning-ratchet regression on a staged file aborts the commit"
+_out="$(_abort_rig ratchet)"
+t_assert_contains "${_out}" "shellcheck warning ratchet FAILED"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a doc-duplication failure on a staged page aborts the commit"
+_out="$(_abort_rig docdupes)"
+t_assert_contains "${_out}" "doc duplication FAILED"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "every gate green: the hook lets the commit through"
+_out="$(_abort_rig none)"
+t_assert_contains "${_out}" "rc=0" "the rig itself must be able to pass, or the three cases above prove nothing"
+
 t_case "a surviving mutation aborts the commit, it does not just print"
 t_assert_fails _run_hook 3 "${_work}/both.txt" 1
 t_assert_contains "$(_run_hook 3 "${_work}/both.txt" 1)" "a recorded mutation SURVIVED"

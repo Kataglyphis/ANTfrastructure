@@ -598,7 +598,8 @@ path, and the hand-typed doc numbers.
   regex: an unquoted delimiter only has to start `[A-Za-z_]`, which is what keeps
   `<<<` and `$(( a << 2 ))` out but cannot tell a NAMED shift apart. Nothing in
   the tree hits it — the only `<< name` shifts live inside `test-code-complexity.sh`'s
-  own `<<'EOF'` fixtures, and an END-rule probe over all 310 scripts finds no
+  own `<<'EOF'` fixtures, and an END-rule probe over every script the owner scan
+  reads finds no
   unterminated heredoc at EOF. Distinguishing it needs arithmetic-context
   tracking; left at parity rather than grown for a case with no instance.
 

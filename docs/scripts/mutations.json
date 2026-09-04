@@ -1902,5 +1902,53 @@
     "replace": "  return 1",
     "test": "bash linux/scripts/tests/test-version-forwarding.sh",
     "why": "a forwarded key that merely ends in _<ARCH> (GENAI_ALLOW_RISCV64) is a key, not another key's override"
+  },
+  {
+    "id": "pre-commit.fast-tier-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+    "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a failing fast gate must REFUSE the commit, not print and continue"
+  },
+  {
+    "id": "pre-commit.shellcheck-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  \"${_sc_bin}\" -S error ${_staged_sh} || {\n    echo \"pre-commit: shellcheck FAILED on staged files\" >&2\n    exit 1\n  }",
+    "replace": "  \"${_sc_bin}\" -S error ${_staged_sh} || true",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a shellcheck error on a staged file must refuse the commit"
+  },
+  {
+    "id": "pre-commit.ratchet-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {\n    echo \"pre-commit: shellcheck warning ratchet FAILED on staged files\" >&2\n    exit 1\n  }",
+    "replace": "  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || true",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a warning-ratchet regression must refuse the commit, not land as a frozen row later"
+  },
+  {
+    "id": "pre-commit.doc-dupes-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo \"pre-commit: doc duplication FAILED\" >&2; exit 1; }",
+    "replace": "  python3 docs/scripts/verify_doc_dupes.py >/dev/null || true",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a doc-duplication failure must refuse the commit"
+  },
+  {
+    "id": "mutations.symlink-checked-before-exists",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if os.path.islink(target):\n        return False, False, \"target is a symlink -- a write through it escapes the copy\"\n    if not os.path.exists(target):\n        return False, False, \"target missing\"",
+    "replace": "    if not os.path.exists(target):\n        return False, False, \"target missing\"\n    if os.path.islink(target):\n        return False, False, \"target is a symlink -- a write through it escapes the copy\"",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "os.path.exists follows the link, so checking it first reports a dangling symlink as a stale manifest entry and hides the escape"
+  },
+  {
+    "id": "doc-dupes.over-threshold-fails",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "if 1 < len(holders) <= MAX_OWNERS:",
+    "replace": "if False:",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "a passage shared by two pages must be counted, or the gate reports every tree clean"
   }
 ]

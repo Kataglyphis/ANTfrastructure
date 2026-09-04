@@ -17,7 +17,6 @@ android-parity
 arg-consistency
 copy-coverage
 critical-fixes
-doc-dupes
 dockerfile-lint
 mirror-consistency
 patch-integrity

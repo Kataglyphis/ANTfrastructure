@@ -407,3 +407,8 @@ STV_ASSERT_ONLY
 # The release version CI exports: 02-toolchain/rust/version_util.sh writes it to
 # $GITHUB_ENV/$GITHUB_OUTPUT, 06-packaging/package_archive.sh reads it.
 VERSION
+# Operator override for the GCC root clang is pointed at (--gcc-toolchain),
+# read once in 01-core/cross-gcc.sh with gcc_toolchain_prefix as the default.
+# The MYPROJECT_ prefix is a template leftover; renaming it needs a build
+# window, so it is documented rather than silently unowned.
+MYPROJECT_GCC_TOOLCHAIN_PATH

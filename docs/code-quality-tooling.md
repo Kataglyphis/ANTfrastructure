@@ -402,7 +402,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **238 entries** over **32 distinct test commands**; both digits are
+manifest holds **244 entries** over **33 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -525,7 +525,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 15 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 16 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, and both halves of
@@ -762,7 +762,7 @@ question is always "why does *that* suite count?".
   exact failure this whole gate exists to catch. The message names the prefix, the
   target and who does own it. The escape is a freeze under the `mutation-id:`
   namespace in `gate-proofs.allow`, which ratchets down like the slug list.
-- **Why not "every id must start with a slug".** 43 of today's 233 entries pin
+- **Why not "every id must start with a slug".** Many entries pin
   ordinary build scripts no gate owns (`wheels.`, `qairt.`, `boot.`, `sccache.`,
   …); forcing those under a slug would put false credit in a generated table. They
   keep descriptive prefixes, declared once as `mutation-family:` lines, so an
@@ -1513,7 +1513,8 @@ demanded. That single rule is what keeps `<<<` here-strings and `$(( a << 2 ))`
 from opening one; its bail returns past the second `<`, so a here-string cannot
 re-enter as a heredoc. KNOWN LIMIT, unchanged: an arithmetic shift by a NAMED
 variable (`$(( x << SHIFT ))`) still looks like a delimiter. Nothing in the tree
-hits it today, and an END-rule probe over all 310 scripts finds no unterminated
+hits it today, and an END-rule probe over every script the owner scan reads
+(295 on 2026-09-04) finds no unterminated
 heredoc at EOF.
 
 **Ownership follows the whole env-prefix chain.** `FOO=1 BAR=2 cmd` credits both.
