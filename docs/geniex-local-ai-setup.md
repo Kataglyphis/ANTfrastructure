@@ -1309,18 +1309,41 @@ conversation on every turn.** An agent loop therefore costs **~2 minutes per
 turn** on the best lane before a single token of output, and a five-turn bug fix
 is ten minutes of prefill alone.
 
-#### The only lever is prompt size — not model size
+#### Two levers: prompt size, and model size within one quant format
 
-| Change | Preamble | TTFT (CPU lane) |
+**Prompt size.** opencode honours a top-level `tools` block, so the schemas it
+never needs for a coding task can simply be dropped — and every dropped schema
+is paid back on *every* turn, because nothing is cached:
+
+| Tool set | Preamble | Saved |
 |---|---:|---:|
-| 10 tools | 8,175 | 182.5 s |
-| 6 core tools | 6,011 | **115.5 s** (-37%) |
+| All 10, as shipped | 8,175 | — |
+| Minus `task`, `webfetch`, `todowrite`, `skill` | 5,822 | 29% |
+| Also minus `grep`, `glob` (flat repo, not needed) | **5,234** | **36%** |
 
-Shrinking the *model* does not help, and this surprised us: warm, on the same
-lane and the same request, the 4B prefills **slower** than the 9B (50 vs
-61 tok/s). Note the two differ in quantization format as well as size
-(Q4_0 vs Q4_K_M), so this isolates neither — it is reported because it refutes
-"use a smaller model", not because it explains why.
+```jsonc
+// ~/.config/opencode/opencode.jsonc — top level, beside "provider"
+"tools": { "task": false, "webfetch": false, "todowrite": false,
+           "skill": false, "grep": false, "glob": false },
+```
+
+**Model size — but only compared within one quantization format.** An earlier
+draft of this section said shrinking the model does not help, on the strength of
+a 4B that prefilled slower than a 9B. That was wrong, and the confound was
+already flagged in the sentence that stated it: the 4B was `Q4_0` and the 9B
+`Q4_K_M`. Comparing like with like on the same lane and the same 5,234-token
+request:
+
+| Model (all CPU lane) | Format | Prefill | TTFT |
+|---|---|---:|---:|
+| `Qwen3.8-2B-Distill` | Q4_K_M | **214 tok/s** | **24.5 s** |
+| `Qwen3.8-9B-Distill` | Q4_K_M | 61 tok/s | 85.2 s |
+| `Qwen3-4B` | Q4_0 | 50 tok/s | (8,175 tok: 163.9 s) |
+
+Within `Q4_K_M`, the 2B prefills **3.5x** faster than the 9B. The 4B is the
+outlier because of its format, not its size — `Q4_0` costs more per token here
+than `Q4_K_M` does on a model more than twice as large. So: pick the smallest
+model that can do the task, and do not compare prefill across quant formats.
 
 #### What this corrects
 
@@ -1473,10 +1496,30 @@ Wrap any run longer than a few minutes:
 
 ```powershell
 # hold it awake for the duration of a run started elsewhere
-pwsh -File windows/scripts/host/keep-awake.ps1 -Minutes 240
+pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Minutes 240
 
 # or run the command under it
-pwsh -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+```
+
+**`-ExecutionPolicy Bypass` is not optional from WSL, and leaving it out fails
+silently.** This repository lives inside WSL, so Windows sees the script at
+`\\wsl.localhost\...` — a UNC path, which it treats as a remote zone and
+refuses to run unsigned:
+
+```text
+SecurityError: File \\wsl.localhost\...\keep-awake.ps1 cannot be loaded.
+The file is not digitally signed.
+```
+
+Launched the usual way — `Start-Process pwsh ... -WindowStyle Hidden` — that
+error goes to a hidden window nobody reads. The launcher reports success, no
+guard is running, and the machine sleeps mid-run exactly as before. This was
+hit live on 2026-09-04, an hour into an unattended agent benchmark. **Verify,
+do not assume:**
+
+```powershell
+Get-Process pwsh | Select-Object Id, StartTime   # a guard must be listed
 ```
 
 It uses `SetThreadExecutionState`, which is scoped to that process, so a crash

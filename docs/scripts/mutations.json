@@ -1942,5 +1942,29 @@
     "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
     "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
+  },
+  {
+    "id": "toolcall-shim.finish-reason",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "        choice[\"finish_reason\"] = \"tool_calls\"",
+    "replace": "        pass",
+    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "why": "a recognised call with finish_reason 'stop' still ends the turn -- the agent never runs it"
+  },
+  {
+    "id": "toolcall-shim.invents-calls",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "    if not text or \"<function=\" not in text:\n        return strip_thinking(text or \"\"), []",
+    "replace": "    if not text or \"<function=\" not in text:\n        if \"```bash\" in (text or \"\"):\n            return \"\", [{\"id\": \"call_1\", \"type\": \"function\",\n                         \"function\": {\"name\": \"bash\", \"arguments\": \"{}\"}}]\n        return strip_thinking(text or \"\"), []",
+    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "why": "markdown fences are not a call; inventing one runs a command the model never asked for"
+  },
+  {
+    "id": "toolcall-shim.truncated-markup-leaks",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "        return strip_thinking(TOOL_CALL_BLOCK_RE.sub(\"\", text)).strip(), []",
+    "replace": "        return strip_thinking(text), []",
+    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "why": "a call cut off mid-template must not reach the user as raw markup pretending to be an answer"
   }
 ]

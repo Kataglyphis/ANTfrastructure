@@ -339,6 +339,67 @@ see the failure agents actually hit:
   fine; **inventing the contents of a file that could not be read is not**, and
   that is the dangerous answer a single-turn benchmark never sees.
 
+### Does the whole agent loop work? (`bench_agent.py`)
+
+Every other benchmark here measures an **endpoint**. You run an **agent**. This
+one connects them: a scratch git repository, a task with a verifiable outcome,
+and success defined as *the repository's tests pass afterwards* — never by
+reading the transcript. An agent that says it fixed the bug and did not is
+exactly the failure a transcript cannot catch.
+
+```bash
+python3 bench_agent.py --self-test          # prove the fixtures, no model
+python3 bench_agent.py --list
+python3 bench_agent.py --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
+                       --timeout 1800 --output agent.json
+```
+
+Run `--self-test` first, and read a run without it with suspicion. It applies a
+known-good solution to each fixture by hand and asserts the verification is red
+before and green after. Without that, a column of failures is unreadable — a
+broken fixture and a weak model look identical, and this suite spent a session
+learning to tell those apart.
+
+Three things the scoring does that a naive pass count does not:
+
+- **A blocked run is not a failed run.** If the prompt never fitted the model's
+  context, the model never received the task and did not fail it. Those are
+  excluded from the denominator, so three blocked tasks report `0/0` — rendered
+  `n/a` over a [0%, 100%] interval, never "0%, it cannot code".
+- **A timeout keeps its evidence.** The events captured before the deadline are
+  parsed, so an agent that made twenty tool calls and ran long is not reported
+  as having made none.
+- **The fixtures refuse cheap fakes.** Aliasing the old name is not a rename;
+  an `assert True` does not test a `clamp` that never clamps. Both are pinned by
+  tests.
+
+Expect **minutes per task** on this hardware. That is prefill cost, not model
+quality — see `docs/geniex-local-ai-setup.md` § 1m.
+
+### When the lane loses the tool call (`geniex_toolcall_shim.py`)
+
+If an agent run scores **zero tool calls**, suspect the server before the model.
+GenieX serves Qwen GGUFs over an OpenAI-compatible API without parsing their
+chat template: the model correctly emits
+
+```text
+<tool_call><function=bash><parameter=command>…</parameter></function></tool_call>
+```
+
+and the server hands it back as `content`, with `tool_calls` empty and
+`finish_reason` `"stop"`. The agent sees prose, runs nothing, and ends the turn.
+
+```bash
+python3 geniex_toolcall_shim.py --upstream http://localhost:18184 --port 18190
+# then point the agent's provider at 18190
+```
+
+The shim translates the template into real `tool_calls` and sets
+`finish_reason` accordingly. It never invents a call from markdown code fences —
+a model that writes ```` ```bash ```` is not requesting execution, and guessing
+there runs commands nobody asked for — and a call cut off mid-template yields no
+call at all, only its markup removed.
+
 ### What every report records
 
 All tools write a `provenance` block: UTC timestamp, host, OS, architecture,
