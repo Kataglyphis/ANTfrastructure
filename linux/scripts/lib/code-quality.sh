@@ -159,6 +159,30 @@ code_quality_find_clang_tidy_files() {
   find "$@" -type f "${_CODE_QUALITY_NAME_PREDICATE[@]}"
 }
 
+# Prints, one per line, every tracked *.dart file under the given root (default
+# "."). The Windows twin is Get-ProjectDartFiles in
+# windows/scripts/modules/WindowsFormatting.Common.psm1.
+#
+# `dart format .` is not an equivalent: the Linux CI lanes install the Flutter
+# SDK *inside* the mounted workspace (flutter_dir: /workspace/flutter), so a
+# recursive walk reformats the SDK. Measured 2026-09-03 on Kataglyphis-Inference-
+# Engine: "Formatted 7404 files (627 changed)", 604 of them under flutter/ —
+# enough to fail --set-exit-if-changed on its own. Listing tracked files instead
+# also skips vendored submodules and build trees. Docs: docs/code-quality-tooling.md.
+code_quality_find_dart_files() {
+  local root="${1:-.}"
+  command -v git >/dev/null 2>&1 || return 0
+
+  local f
+  git -C "$root" ls-files -- '*.dart' 2>/dev/null | while IFS= read -r f; do
+    case "$f" in
+      build/*|*/build/*|ExternalLib/*|*/ExternalLib/*) continue ;;
+      flutter/*|*/flutter/*|rust_builder/*|*/rust_builder/*) continue ;;
+    esac
+    if [ "$root" = "." ]; then printf '%s\n' "$f"; else printf '%s/%s\n' "$root" "$f"; fi
+  done
+}
+
 # ---------------------------------------------------------------------------
 # Formatting steps
 # ---------------------------------------------------------------------------

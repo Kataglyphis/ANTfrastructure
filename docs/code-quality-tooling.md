@@ -180,6 +180,20 @@ cmake-format is not already on `PATH`. Anything the wrapper does not provide is
 discovered from the environment: logging from `01-core/logging.sh` (or minimal
 fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
 
+#### Dart file enumeration
+
+`code_quality_find_dart_files [root]` prints every tracked `*.dart` path
+(default root `.`), excluding `build/`, `ExternalLib/`, `flutter/` and
+`rust_builder/`. It is the twin of `Get-ProjectDartFiles`
+(`windows/scripts/modules/WindowsFormatting.Common.psm1`) and both return the
+same set for a given repo.
+
+**Never `dart format .` in a CI lane.** The Linux lanes install the Flutter SDK
+inside the mounted workspace (`flutter_dir: /workspace/flutter`), so the
+recursive walk reformats the SDK. Measured 2026-09-03 on
+Kataglyphis-Inference-Engine: `Formatted 7404 files (627 changed)`, 604 of them
+under `flutter/` — by itself enough to fail `--set-exit-if-changed`.
+
 #### Known divergences from the Windows path — read before "unifying" the two
 
 The Windows equivalent is split across `WindowsFormatting.Common.psm1` and

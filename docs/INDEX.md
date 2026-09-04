@@ -83,6 +83,7 @@ The two halves of one topic often split:
 |---|---|
 | Building in the Linux image, presets, the basics | [`linux-build-basics.md`](linux-build-basics.md) |
 | Running Linux containers on a Windows host | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md) |
+| **A bind mount that resolves but is empty** — containerd's own mount namespace, Windows vs WSL path form, and why the obvious `/mnt` probe misleads | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#an-empty-mount-is-not-a-missing-drive) |
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest-cross` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |

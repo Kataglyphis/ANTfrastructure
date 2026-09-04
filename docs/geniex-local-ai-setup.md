@@ -919,6 +919,45 @@ demonstrable; the time difference is not in doubt.
 coding column separates nobody. The tool-calling column does, because it has 27
 cases — which is exactly why the case count was raised.
 
+### 1h. The lane knobs, finally swept (measured 2026-09-01)
+
+Two flags had been carried since the first day without ever being varied.
+
+**`--nctx` costs nothing.** The suspicion was that a larger window allocates a
+larger KV cache and so costs decode speed even on short prompts — which would
+mean the 16384 this repo standardised on is paid for on every request. It is
+not:
+
+| `--nctx` | decode |
+|---|---|
+| 2048 | 10.5 tok/s (cold) |
+| 4096 | 12.6 tok/s |
+| 16384 | **12.9 tok/s** |
+
+No cost, and the low first row is a cold-start artefact. Keep 16384.
+
+**`--ngl` matters enormously, and its default is the worst setting.** On the
+GPU lane, layers offloaded to the Adreno make it *slower*, monotonically:
+
+| `--ngl` | TTFT | decode |
+|---|---|---|
+| `-1` (all layers — the default) | 6.5 s | 12.98 tok/s |
+| `24` | 5.2 s | 14.40 tok/s |
+| `12` | 4.2 s | 17.49 tok/s |
+| **`0` (nothing on the GPU)** | **2.5 s** | **26.36 tok/s** |
+
+**The GPU lane is at its fastest when it does not use the GPU** — `--ngl 0`
+runs the model entirely on the CPU and lands at 26.4 tok/s, twice the default
+and in line with the CPU lane's own 23.7. This is the § 1b finding (the CPU
+beats the Adreno on GGUF) in its sharpest form: not only is the GPU the slower
+unit, every layer you give it costs you.
+
+Practical consequence: **there is no reason to run `--compute gpu` with the
+default `--ngl` on this machine.** Either run the CPU lane directly, or — if
+you want a second concurrent lane whose CPU footprint is small — accept that
+the GPU lane trades throughput for staying out of the CPU's way, and say so
+rather than believing it is an accelerator here.
+
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 
 One server = one request at a time. Throughput scales only by adding servers,
@@ -1081,6 +1120,41 @@ This is the same class as upstream
 `qualcomm/Qwen3-4B-Instruct-2507:W4A16` is 3.0 GiB — above the same budget —
 and runs on the HTP at 19.5 tok/s. If you need a bigger graph on the NPU, reach
 for a pre-compiled AI Hub bundle rather than a larger GGUF.
+
+## Long unattended runs: keep the machine awake first
+
+A multi-hour benchmark makes **no power request**. Windows sees background HTTP
+traffic and a busy NPU as an idle system and enters Modern Standby on schedule —
+and this host does not reliably come back from it while a GenieX lane holds a
+model.
+
+Measured the hard way on 2026-09-03: a 27-task run was left unattended, the
+WLAN log shows `sleep, SLPM Exit, display off` cycling once a minute until
+03:53, and the machine then had to be powered off by hand. Kernel-Power event
+41 with `BugcheckCode 0` and no crash dump — a **hang, not a bluescreen**. The
+run, and roughly an hour of measurement, were lost.
+
+The idle timeouts on this host make it easy to hit:
+
+| Power source | Standby after |
+|---|---|
+| AC | 5 hours |
+| **Battery** | **10 minutes** |
+
+Wrap any run longer than a few minutes:
+
+```powershell
+# hold it awake for the duration of a run started elsewhere
+pwsh -File windows/scripts/host/keep-awake.ps1 -Minutes 240
+
+# or run the command under it
+pwsh -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+```
+
+It uses `SetThreadExecutionState`, which is scoped to that process, so a crash
+or Ctrl-C releases the request automatically. Changing the power scheme instead
+would survive the run and quietly leave the machine unable to sleep at all —
+trading one failure for a worse one.
 
 ## Troubleshooting
 
