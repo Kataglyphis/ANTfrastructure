@@ -26,12 +26,13 @@ and no extra `-e`:
 | 1 | `CCACHE_DIR` and `SCCACHE_DIR` point **outside** `/workspace` and are writable | the cache is written into the consumer's bind-mounted checkout, pollutes their working tree, can be swept into CI artifacts, and on a non-ext4 host mount `flatpak-builder` aborts: *"Can't initialize ccache use: Failed to set permissions of /workspace/.ccache/disabled/ccache.conf: Operation not permitted"* |
 | 2 | `$RUSTUP_HOME/tmp` and `$CARGO_HOME` are writable | *"could not create temp file …: Permission denied (os error 13)"* — Corrosion, cargokit and `flutter_rust_bridge_codegen` cannot run. Not workaroundable by redirecting the variable: the toolchains live in that tree, and `rustup toolchain install` (fRB asks for the `nightly` channel, the image pins a dated nightly) writes there too |
 | 3 | `ANDROID_HOME` and `ANDROID_SDK_ROOT` are set, `$ANDROID_HOME/platform-tools` exists, and the SDK's `cmdline-tools/latest/bin` + `platform-tools` are on `PATH` | `flutter build apk` stops with *"[!] No Android SDK found"*. Under CodeQL's `database create --command=…` the exit 1 aborts before the database is finalised, so the lane reports *"bundle source directory not found: build/app/outputs/flutter-apk"* — three steps from the cause |
-| 4 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
+| 4 | `java` is on `PATH` and `JAVA_HOME` names a JDK with `bin/javac` | Gradle stops the Android lane with *"JAVA_HOME is not set and no 'java' command could be found in your PATH"*, and `flutter doctor` reports *"No Java Development Kit (JDK) found"* |
+| 5 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
 
-Row 4 is the one a consumer **cannot** repair at runtime. The directory sits in a
+Row 5 is the one a consumer **cannot** repair at runtime. The directory sits in a
 read-only overlay layer, so a non-owner can neither empty nor rename it — both
 were attempted and refused — and the only workaround is mounting a tmpfs with
-`mode=1777` over it. Rows 1–3 are merely expensive to work around, and the point
+`mode=1777` over it. Rows 1–4 are merely expensive to work around, and the point
 of writing them down is that nobody should have to.
 
 `/workspace` is the WORKDIR and the consumer's checkout. Nothing the image
@@ -42,6 +43,29 @@ The compiler-cache defaults the shared library already declares
 (`linux/scripts/01-core/compiler-cache.sh`) are `/var/cache/ccache` and
 `/var/cache/sccache`, and the image ships both as `drwxrwxrwt`. An image ENV
 that contradicts our own library is the failure shape row 1 guards.
+
+
+### The Android lane needs a JDK
+
+`02-toolchain/android-sdk.sh` installs the full `openjdk-21-jdk` in the stage
+that BUILDS the SDK, but `Dockerfile.package` copies only `/opt/android-sdk` —
+apt had put the JDK in `/usr/lib/jvm`, which is not part of that COPY. The
+runtime image therefore carried a complete Android SDK and no Java at all, and
+the failure surfaces in Gradle rather than in Flutter, one layer below where a
+reader looks.
+
+The runtime image installs `JDK_PACKAGE` (`01-core/versions.env`,
+`openjdk-21-jdk-headless`, ~286 MB with its JRE) by name rather than through
+`append_available_packages`, which SKIPS what apt does not have: a silently
+skipped JDK would ship the same broken image the gate exists to catch. Headless
+is deliberate — a container build needs `javac`, not AWT.
+
+`JAVA_HOME` cannot be written literally, because Ubuntu's path carries both the
+version and the architecture (`java-21-openjdk-riscv64`). `anchor_java_home`
+resolves it once from the installed `javac` and parks the symlink
+`/usr/lib/jvm/default-java`, which the image ENV names. A JDK bump then needs no
+Dockerfile edit, and a JDK that installed no compiler fails the stage instead of
+shipping a JRE that Gradle cannot use.
 
 ## How the gate proves it
 

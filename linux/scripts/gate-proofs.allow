@@ -51,6 +51,7 @@ mutation-family:harvest
 mutation-family:lib
 mutation-family:pre-commit
 mutation-family:preflight-slugs
+mutation-family:packaging
 mutation-family:probe
 mutation-family:qairt
 mutation-family:rust

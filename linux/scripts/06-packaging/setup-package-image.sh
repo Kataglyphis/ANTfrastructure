@@ -161,6 +161,27 @@ select_dev_packages() {
     #     chain, which pulls target-side Python and breaks cross builds on
     #     python3-minimal's postinst.
     # libssl-dev already arrives via package-lists.sh.
+
+    # Gradle refuses to run without a JDK, and the SDK COPY leaves the source
+    # stage's one behind (it went to /usr/lib/jvm via apt, not /opt/android-sdk).
+    # Asked for by name, not through append_available_packages: a silently
+    # skipped JDK ships an Android SDK that cannot build anything.
+    _sdp_out+=("${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}")
+}
+
+# JAVA_HOME must survive a JDK bump, and Ubuntu's real path carries both the
+# version and the arch (java-21-openjdk-riscv64). Resolve it once from the
+# installed javac and park a stable symlink the image ENV can point at.
+# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+anchor_java_home() {
+    local javac home
+    javac="$(command -v javac 2>/dev/null || true)"
+    [ -n "${javac}" ] || { echo "ERROR: ${JDK_PACKAGE:-the JDK} installed no javac; Gradle cannot build" >&2; return 1; }
+    home="$(dirname "$(dirname "$(readlink -f "${javac}")")")"
+    [ -x "${home}/bin/javac" ] || { echo "ERROR: resolved JAVA_HOME ${home} has no bin/javac" >&2; return 1; }
+    mkdir -p /usr/lib/jvm
+    ln -sfn "${home}" /usr/lib/jvm/default-java
+    echo "OK: JAVA_HOME anchor /usr/lib/jvm/default-java -> ${home}"
 }
 
 install_dev_packages() {
@@ -548,6 +569,7 @@ main() {
     local -a _dev_packages=()
     select_dev_packages _dev_packages "${python_mm}" "${gcc_major}"
     install_dev_packages "${_dev_packages[@]}"
+    anchor_java_home
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"

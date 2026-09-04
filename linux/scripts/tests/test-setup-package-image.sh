@@ -213,4 +213,36 @@ for _tree in rustup cargo; do
     "/usr/local/${_tree} root-owned = rustup dies on '\$RUSTUP_HOME/tmp: Permission denied' at uid 1001"
 done
 
+# ---- the JDK the Android SDK arrives without
+t_case "the runtime image asks for a JDK by name, not best-effort"
+_sdp="$(t_fn_src "${SUBJECT}" select_dev_packages)"
+t_assert_contains "${_sdp}" 'JDK_PACKAGE:?' \
+  "append_available_packages SKIPS what apt lacks; a silently skipped JDK ships an SDK that cannot build"
+t_assert_eq "openjdk-21-jdk-headless" \
+  "$(grep -oP '(?<=^JDK_PACKAGE=).*' "${TESTS_DIR}/../01-core/versions.env")" \
+  "the pin lives in versions.env, next to the android keys"
+
+t_case "JAVA_HOME is anchored to a symlink, so a JDK bump does not silently break the ENV"
+_anchor="$(t_fn_src "${SUBJECT}" anchor_java_home)"
+_tmp="$(mktemp -d)"; mkdir -p "${_tmp}/jvm/java-21-openjdk-riscv64/bin" "${_tmp}/bin"
+: > "${_tmp}/jvm/java-21-openjdk-riscv64/bin/javac"; chmod +x "${_tmp}/jvm/java-21-openjdk-riscv64/bin/javac"
+ln -sfn "${_tmp}/jvm/java-21-openjdk-riscv64/bin/javac" "${_tmp}/bin/javac"
+_out="$(PATH="${_tmp}/bin:${PATH}" bash -c '
+  mkdir() { command mkdir "$@"; }
+  ln() { printf "LN %s\n" "$*"; }
+  '"${_anchor}"'
+  anchor_java_home' 2>&1)"
+t_assert_contains "${_out}" "LN -sfn ${_tmp}/jvm/java-21-openjdk-riscv64 /usr/lib/jvm/default-java" \
+  "the anchor is resolved from the installed javac, so the arch-and-version path never reaches the ENV"
+t_assert_contains "${_out}" "OK: JAVA_HOME anchor" "and it says what it pointed at"
+
+t_case "a JDK that installed no javac fails the stage instead of shipping a JRE"
+_out="$(PATH="${_tmp}/empty:${PATH}" bash -c '
+  command() { return 1; }
+  '"${_anchor}"'
+  anchor_java_home; echo "rc=$?"' 2>&1)"
+t_assert_contains "${_out}" "installed no javac" "Gradle needs a compiler, not a runtime"
+t_assert_contains "${_out}" "rc=1" "and the stage must stop"
+rm -rf "${_tmp}"
+
 t_summary

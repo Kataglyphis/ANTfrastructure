@@ -678,6 +678,24 @@ _CC_PASS="$(_cc_gate "${_CC_FIXED}")"
 t_assert_contains "${_CC_PASS}" "PASS CONSUMER CONTRACT: 7 row(s) hold as kataglyphis" "what a fixed image prints"
 t_assert_contains "${_CC_PASS}" "FAILURES=0" "and nothing else may go red"
 
+t_case "the JDK row: Gradle reads JAVA_HOME, so java on PATH alone is not enough"
+_jdkv() { bash -c '
+    '"$(_extract _consumer_contract_fact)"'
+    '"$(_extract _consumer_jdk_verdict)"'
+    _consumer_jdk_verdict jdk "$1"' _ "$1" 2>&1; }
+t_assert_contains "$(_jdkv "FACT java-on-path no
+FACT javac no")" "BAD jdk no java on PATH" "the shipped image today: the SDK without its JDK"
+t_assert_contains "$(_jdkv "FACT java-on-path yes
+FACT javac yes
+ENV java-home ")" "JAVA_HOME is unset" "Gradle reads the variable, not the PATH entry"
+t_assert_contains "$(_jdkv "FACT java-on-path yes
+FACT javac no
+ENV java-home /usr/lib/jvm/default-java")" "has no bin/javac" "a JRE cannot compile"
+t_assert_contains "$(_jdkv "FACT java-on-path yes
+FACT javac yes
+ENV java-home /usr/lib/jvm/default-java")" "OK jdk" "the fixed shape"
+t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitted no java facts proves nothing"
+
 t_case "every gate this suite pins is actually CALLED by the smoke"
 # A gate can be perfect and never run. Each of these is extracted and driven
 # above, which proves the function and says nothing about the call list.
@@ -685,6 +703,14 @@ _SMOKE_SRC="$(cat "${SMOKE}")"
 for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions; do
   t_assert_eq 1 "$(printf '%s\n' "${_SMOKE_SRC}" | grep -c "^    ${_g} \"\${image_tag}\"")" \
     "${_g} must be invoked once from the smoke's own call list"
+done
+
+t_case "the contract asserts every promise the consuming lane depends on"
+# The row list IS the contract. A row quietly dropped here takes its guarantee
+# with it and every suite below still passes, because they iterate the list.
+for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner; do
+  t_assert_contains " ${_CONSUMER_CONTRACT_ROWS} " " ${_r} " \
+    "${_r} is a promise the consumer's acceptance check makes; it must stay in the table"
 done
 
 t_case "every contract row carries the consumer symptom it prevents"

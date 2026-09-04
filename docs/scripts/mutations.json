@@ -2906,8 +2906,8 @@
   {
     "id": "probe.contract-android-path",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "  elif [ \"${onpath}\" != yes ]; then",
-    "replace": "  elif false; then",
+    "find": "  elif [ \"${onpath}\" != yes ]; then\n    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' \"${row}\" \"${val}\"",
+    "replace": "  elif false; then\n    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' \"${row}\" \"${val}\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "flutter finds the SDK by variable but adb / sdkmanager / avdmanager are found by PATH; half a wiring is not the contract the consumer asked for"
   },
@@ -2934,5 +2934,37 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "the gate can be perfect and never run: the call list is the other half of the guarantee"
+  },
+  {
+    "id": "probe.jdk-row-asserted",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home dart-tool flutter-owner\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
+  },
+  {
+    "id": "probe.jdk-needs-java-home",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ -z \"${home}\" ]; then\n    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
+    "replace": "  elif false; then\n    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "Gradle reads JAVA_HOME, not PATH: java on PATH with the variable unset is exactly the shape the Android lane died on"
+  },
+  {
+    "id": "packaging.jdk-installed",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    _sdp_out+=(\"${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}\")",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the SDK COPY leaves the source stage's JDK behind, so the runtime image must install its own or Gradle has nothing to run"
+  },
+  {
+    "id": "packaging.java-home-anchored",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    ln -sfn \"${home}\" /usr/lib/jvm/default-java",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "JAVA_HOME points at the anchor; without the symlink the ENV names a path that does not exist and Gradle fails as if no JDK were installed"
   }
 ]

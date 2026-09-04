@@ -166,6 +166,7 @@ ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI
 ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
 ARG ENABLE_NVIDIA ENABLE_AMD
 ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
+ARG JDK_PACKAGE=openjdk-21-jdk-headless
 ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
 # NVIDIA_*/VULKAN_VERSION: normally inherited from Dockerfile.base, but the
@@ -261,6 +262,12 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
+
+# Gradle reads JAVA_HOME, not PATH. The anchor is a symlink setup-package-image.sh
+# resolves from the installed javac, so a JDK bump never has to be repeated here.
+# Its own instruction: the env-knob owner scan reads the first name of an ENV only.
+# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 # APPENDED, not prepended as in Dockerfile.android: platform-tools carries its own
 # mke2fs/make_f2fs/sqlite3, and fronting PATH with them would shadow /usr/sbin/mke2fs
