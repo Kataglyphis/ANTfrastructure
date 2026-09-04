@@ -434,7 +434,19 @@ slower than CPU on every model, no `--ngl` setting rescues it, and it is the
 only mode that damages a concurrent NPU lane. One server serves one request at
 a time (no batching), so throughput comes from lanes: NPU+CPU = 39.7 tok/s,
 all three = 45.4. QAIRT bundles are hard-capped at **4096 context** (`--nctx`
-is llama.cpp-only) — that, not speed, is the NPU lane's binding constraint.
+is llama.cpp-only) — that, not speed, is the NPU lane's binding constraint, and
+it is harder than it sounds: **opencode's system prompt plus its ten tool
+schemas are 8,175 tokens** (measured off the wire 2026-09-04), so the QAIRT
+lane cannot drive opencode at all — every task fails before the model reads it,
+and stripping tools does not rescue it (6 core tools still need 6,008). Use the
+QAIRT 4B for chat and completion; use a **GGUF lane** (`--nctx 16384`) for agent
+work. `linux/llm-stack/bench_agent.py` measures this end-to-end against a
+scratch repo, scoring by whether the repo's tests pass rather than by the
+transcript. **And GenieX has no prefix cache** — the identical request twice
+costs 126 s then 122 s — so every agent turn re-prefills the whole conversation
+at 38-61 tok/s. Budget **~2 min per turn**; trimming the tool set from 10 to 6
+is the only lever that helps (-37%), and a smaller model does not (the 4B
+prefills slower than the 9B).
 `windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly.
 
 ### Triggering the opt-in CI lanes

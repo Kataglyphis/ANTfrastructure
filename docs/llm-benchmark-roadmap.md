@@ -108,19 +108,23 @@ exists, every measurement is a one-off and a regression is invisible.
 
 The suite measures *endpoints*. You run an *agent*. Nothing connects the two.
 
-- **P3.1 End-to-end agent task** [L·★★★] Drive opencode against a scratch
-  repository with a real task ("add a function and its test, make it pass") and
-  record whether it succeeded, how many turns, how long. Everything measured so
-  far is a proxy for this, and the proxies have already disagreed once: the
-  coding winner was the tool-calling loser until a system prompt fixed it.
-- **P3.2 Long context *and* tool calling together** [M·★★★] Measured
-  separately, never combined — yet that is precisely an agent turn: a large
-  prompt *and* a tool call. The QAIRT bundle's 4096-token ceiling is shared
-  between input and output, so a long prompt leaves little room for a call, and
-  nobody has checked what breaks first.
-- **P3.3 Turn-count and context growth** [M·★★] An agent loop grows its context
-  every turn. On a 4096-token model, how many turns until it silently returns
-  nothing? That number is more useful than any tok/s figure here.
+- **P3.1 End-to-end agent task** [L·★★★] **DONE 2026-09-04** —
+  `linux/llm-stack/bench_agent.py`, written up as § 1m of the GenieX page. It
+  did what it was supposed to: it disagreed with every proxy. opencode's fixed
+  preamble measures **8,175 tokens**, so the recommended QAIRT bundle (4096
+  compiled in) fails all three tasks with **zero tool calls** — the models were
+  never the constraint, the short prompts in every prior benchmark were.
+- **P3.2 Long context *and* tool calling together** [M·★★★] **Answered by
+  P3.1** for the QAIRT lane: what breaks first is the context, and it breaks
+  before any tool call is attempted. Ten tool schemas are 5,286 tokens on their
+  own — more than the whole 4096 budget, prompt excluded. Still open for the
+  GGUF lanes, where both fit and the question is quality rather than survival.
+- **P3.3 Turn-count and context growth** [M·★★] **Answered, and worse than the
+  question assumed.** On the 4096 model the answer is *zero* turns. On the GGUF
+  lanes the limit is not the ceiling but the cost of approaching it: there is
+  **no prefix cache** (the identical request twice costs 126 s then 122 s), so
+  every turn re-prefills the whole conversation at 38-61 tok/s. Context growth
+  is paid for again, in full, on each turn.
 
 ## Phase 4 — Widen the field [M, gated on downloads]
 
@@ -197,11 +201,18 @@ and the proposal had not.
    defensible against future drift, and it is a day's work.
 2. **P1.1** — stop publishing fractions that the sample cannot support.
 3. **P4.1** — the one model that could still change the recommendation.
-4. **P3.1** — the end-to-end check that tells you whether any of this was
-   predictive.
+4. ~~**P3.1**~~ — done 2026-09-04. It was **not** predictive: the suite ranked
+   models while the binding constraint was prompt size and prefill throughput,
+   which no benchmark here measured because every one of them used a short
+   prompt. Prefer a cheap end-to-end check *early* over a deep proxy suite.
 5. Everything else, as the need appears.
 
 ## What would change the recommendation
+
+**Partly overturned on 2026-09-04, and not by a model.** The answer below
+stands for chat and completion. For *agent* use it is wrong: the bundle cannot
+run opencode at all (§ 1m of the GenieX page). Agent work belongs on a GGUF
+lane, at roughly two minutes per turn.
 
 Stated up front so it is falsifiable: today's answer is
 `qualcomm/Qwen3-4B-Instruct-2507:W4A16` on the NPU lane with

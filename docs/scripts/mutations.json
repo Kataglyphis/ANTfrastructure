@@ -234,8 +234,8 @@
   {
     "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all — admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -342,6 +342,14 @@
     "replace": "    n_pointers = 0  # code pointers unchecked\n",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
     "why": "286 docs/ pointers live in CODE; without this pass a moved page or renamed heading leaves them dangling and nothing notices (6 were on 2026-09-03)"
+  },
+  {
+    "id": "doc-links.local-section-ref-unchecked",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "            if m.group(\"sec\") in have:\n                continue",
+    "replace": "            if True:\n                continue",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
   },
   {
     "id": "gate-registry.new-unproven",
@@ -2990,5 +2998,29 @@
     "replace": "  elif false; then",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "executable is not usable: an AppImage must read its own file, so the gate must check readability and not mere presence"
+  },
+  {
+    "id": "bench-agent.blocked-counts-as-failure",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        if \"too long\" in msg.lower() or \"context\" in msg.lower():\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
+    "replace": "        if False:\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
+    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k context",
+    "why": "a context-blocked run must never be scored as a capability failure"
+  },
+  {
+    "id": "bench-agent.timeout-discards-evidence",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        return (parse(text(e.stdout)), time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
+    "replace": "        return ([], time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
+    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k TimeoutKeepsEvidence",
+    "why": "a timed-out agent that made 20 tool calls must not report 0"
+  },
+  {
+    "id": "bench-agent.verification-always-passes",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        return proc.returncode == 0, (proc.stdout + proc.stderr)[-300:]",
+    "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
+    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
+    "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
   }
 ]

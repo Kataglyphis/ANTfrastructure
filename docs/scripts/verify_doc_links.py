@@ -307,6 +307,52 @@ def check_code_pointers(docs: dict[str, Doc], findings: list[str]) -> int:
     return checked
 
 
+# A bare, same-page reference: "(§ 1a)", "see § 3". Deliberately narrow.
+#   file group  when a filename precedes it -- "CHANGELOG.md § 2026-09-01",
+#               even with a link or whitespace between -- the reference belongs
+#               to that page and SECTION_REF already checks it. A single-char
+#               lookbehind is not enough: the space after ".md" defeats it.
+#   (?![\w.(])  excludes licence clauses ("Apache-2.0 §4(b)") and dates.
+LOCAL_SECTION_REF = re.compile(
+    r"(?P<file>[A-Za-z0-9._/-]+\.md`?\s*(?:\]\([^)]*\))?\s*)?"
+    + SECTION_SIGN
+    + r"\s*(?P<sec>\d+[a-z]?)(?![\w.(])"
+)
+# The headings such a reference can name: "### 1d. Which model writes code".
+NUMBERED_HEADING = re.compile(r"^#{2,6}\s+(\d+[a-z]?)\.", re.MULTILINE)
+
+
+def check_local_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
+    """Validate bare same-page section references.
+
+    SECTION_REF only covers the cross-file form, so "(§ 1a)" was counted and
+    never checked -- a dangling one sat in geniex-local-ai-setup.md through
+    several renumberings without the gate noticing.
+
+    Only pages that actually define numbered sections are checked. Elsewhere a
+    "§ 4" belongs to something else entirely (a licence clause, a spec) and
+    guessing would trade a real gap for false alarms.
+    """
+    checked = 0
+    for doc in docs.values():
+        if doc.is_archive:
+            continue
+        have = set(NUMBERED_HEADING.findall(doc.body))
+        if not have:
+            continue
+        for m in LOCAL_SECTION_REF.finditer(doc.body):
+            if m.group("file"):
+                continue  # cross-file: check_section_refs owns it
+            checked += 1
+            if m.group("sec") in have:
+                continue
+            findings.append(
+                f"[section] {doc.rel} {SECTION_SIGN} {m.group('sec')}  "
+                f"(no such section on this page)"
+            )
+    return checked
+
+
 def check_index_coverage(docs: dict[str, Doc], findings: list[str]) -> int:
     index_rst = DOCS / "index.rst"
     index_md = DOCS / "INDEX.md"
@@ -349,6 +395,7 @@ def main() -> int:
     findings: list[str] = []
     n_links, n_anchors = check_links_and_anchors(docs, findings)
     n_sections = check_section_refs(docs, findings)
+    n_sections += check_local_section_refs(docs, findings)
     n_pages = check_index_coverage(docs, findings)
     n_pointers = check_code_pointers(docs, findings)
 

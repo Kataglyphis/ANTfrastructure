@@ -23,6 +23,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -370,16 +371,86 @@ def grade_error_recovery(message):
     return False, f"ignored the error and answered anyway: {content[:70]!r}"
 
 
-def grade(message, expect):
+def _tool_call_from_text(message):
+    """A tool call the model wrote as prose instead of emitting properly.
+
+    Three models from three vendors (Llama-3.2-3B, Phi-4-mini, Qwen3.8-2B) fail
+    18 of 21 single-turn cases the same way: correct tool name, correct
+    arguments, wrong channel. An agent with a fallback parser recovers those
+    turns; opencode as shipped does not.
+
+    Accepts the two shapes seen in practice:
+        {"name": "read_file", "parameters": {...}}
+        {"name": "read_file", "arguments": {...}}
+    Nothing is guessed: without a recognisable name field this returns None, so
+    the fallback can never manufacture a call the model did not describe.
+    """
+    content = (message.get("content") or "").strip()
+    if "</think>" in content:
+        content = content.split("</think>")[-1].strip()
+    if not content:
+        return None
+
+    # Qwen's own canonical tool-call template, arriving as text because the
+    # runtime did not convert it:
+    #   <tool_call><function=read_file><parameter=path>README.md</parameter>...
+    # This one is worth recovering precisely because the model did nothing
+    # wrong -- it emitted the format its template defines.
+    fn = re.search(r"<function=([\w.-]+)>", content)
+    if fn and "<tool_call>" in content:
+        params = dict(re.findall(
+            r"<parameter=([\w.-]+)>\s*(.*?)\s*</parameter>", content, re.S))
+        typed = {}
+        for key, raw in params.items():
+            low = raw.strip().lower()
+            typed[key] = (True if low == "true" else False if low == "false"
+                          else int(raw) if raw.strip().lstrip("-").isdigit()
+                          else raw.strip())
+        return {"id": "recovered", "type": "function",
+                "function": {"name": fn.group(1), "arguments": json.dumps(typed)}}
+
+    start, end = content.find("{"), content.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        obj = json.loads(content[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    name = obj.get("name") or obj.get("tool") or obj.get("function")
+    if isinstance(name, dict):
+        name = name.get("name")
+    if not isinstance(name, str):
+        return None
+    args = obj.get("parameters") or obj.get("arguments") or obj.get("args") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(args, dict):
+        return None
+    return {"id": "recovered", "type": "function",
+            "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+def grade(message, expect, accept_text_json=False):
     """Returns (ok, detail). Kept strict on names and required values, lenient
     on formatting the model cannot be blamed for (a ./ prefix, a trailing /)."""
     calls = message.get("tool_calls") or []
+    recovered = False
+    if not calls and accept_text_json:
+        salvaged = _tool_call_from_text(message)
+        if salvaged:
+            calls, recovered = [salvaged], True
 
     if expect is None:
         if calls:
             return False, f"called {calls[0]['function']['name']} when none was needed"
         return True, "correctly answered without a tool"
 
+    prefix = "[recovered from text] " if recovered else ""
     if not calls:
         content = (message.get("content") or "")[:60]
         return False, f"no tool call; replied with text: {content!r}"
@@ -410,11 +481,11 @@ def grade(message, expect):
                 return False, f"{key}={got!r}, expected {want!r}"
         elif got != want:
             return False, f"{key}={got!r}, expected {want!r}"
-    return True, "correct tool and arguments"
+    return True, prefix + "correct tool and arguments"
 
 
 def evaluate(base_url, model, label, repeats=1, system=None, warmup=True,
-             prompt_variants=False, context_tokens=0):
+             prompt_variants=False, context_tokens=0, accept_text_json=False):
     tag = "  [+system prompt]" if system else ""
     print(f"\n  === {label}{tag} ===", flush=True)
     if warmup:
@@ -452,7 +523,7 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True,
                                 "passed": False, "errored": True,
                                 "detail": f"request failed: {e}", "wall_s": None})
                 continue
-            ok, detail = grade(message, case["expect"])
+            ok, detail = grade(message, case["expect"], accept_text_json)
             print(f"    {case['name']:22s}{suffix} {'PASS' if ok else 'FAIL'}  "
                   f"{wall:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:60]}",
                   flush=True)
@@ -541,6 +612,11 @@ def main():
                          "the tools this way — measure whether it actually helps "
                          "before shipping it.")
     ap.add_argument("--compare", default=None)
+    ap.add_argument("--accept-text-json", action="store_true",
+                    help="Count a tool call the model wrote as prose. Measures what "
+                         "an agent-side fallback parser would recover: three models "
+                         "from three vendors emit the right name and arguments in "
+                         "the wrong channel.")
     ap.add_argument("--context-tokens", type=int, default=0,
                     help="Prepend roughly N tokens of repository source to every "
                          "single-turn case. Long context and tool calling were "
@@ -584,7 +660,8 @@ def main():
     reports = [evaluate(url, model, label, args.repeats, system,
                         warmup=not args.no_warmup,
                         prompt_variants=args.prompt_variants,
-                        context_tokens=args.context_tokens)
+                        context_tokens=args.context_tokens,
+                        accept_text_json=args.accept_text_json)
                for label, url, model in candidates]
 
 
