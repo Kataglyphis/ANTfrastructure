@@ -980,17 +980,9 @@ distorts every coding number here — the Coder lost **nothing** to it while the
 incumbent lost two tasks and Qwen3-8B lost twenty-six (§ 1j). Brevity is the
 property that survives this runtime.
 
-It also resolves the family question from § 1g. Qwen2.5 scores 27/27 on tool
-calling, landing with Qwen3 rather than Qwen3.8:
-
-| Generation | Tool calling |
-|---|---|
-| Qwen2.5 (Coder-7B) | 27/27 |
-| Qwen3 (1.7B, 4B, 4B-GGUF, 8B) | 25–27/27 |
-| **Qwen3.8 (2B, 9B, 27B)** | **8–9/27** |
-
-So **Qwen3.8 is the outlier**, not Qwen3 the exception — a sharper claim than
-the sweep alone could support, and one a third generation was needed to make.
+It also bears on the family question from § 1g — see § 1l, which **corrects**
+the conclusion drawn there. Qwen2.5 scores 27/27, landing with Qwen3; but the
+reason is not what "family" suggests.
 
 **It does not displace the recommendation, and the reason is the agent loop.**
 Its 27/27 over 25/27 is not separable, and it pays **4.8x the tool-call latency**
@@ -1072,6 +1064,67 @@ default `--ngl` on this machine.** Either run the CPU lane directly, or — if
 you want a second concurrent lane whose CPU footprint is small — accept that
 the GPU lane trades throughput for staying out of the CPU's way, and say so
 rather than believing it is an accelerator here.
+
+### 1l. CORRECTION: it was never about the model family (measured 2026-09-04)
+
+§ 1g reported that every Qwen3 model scores 25–27/27 on tool calling while
+every Qwen3.8 model scores 8–9/27, and called Qwen3.8 an outlier. **The
+observation held; the explanation was wrong.**
+
+The first non-Qwen models on this host settle it. Llama-3.2-3B and
+Phi-4-mini-instruct were pulled specifically because every model measured until
+then was a Qwen, and a finding about "families" cannot be checked inside one
+vendor:
+
+| Model | Vendor | Tool calling |
+|---|---|---|
+| Qwen2.5-Coder-7B | Alibaba | 27/27 |
+| Qwen3 1.7B / 4B / 4B-GGUF / 8B | Alibaba | 25–27/27 |
+| Qwen3.8-2B | Alibaba | 7/27 |
+| **Phi-4-mini-instruct** | **Microsoft** | **7/27** |
+| **Llama-3.2-3B-Instruct** | **Meta** | **3/27** |
+
+And the failure mode is *identical* across all three weak models — three
+vendors, three architectures, **18 of 21 single-turn failures each**:
+
+> `no tool call; replied with text: '{"name": "list_files", "parameters": …}'`
+
+They emit the **correct tool name and the correct arguments**, as ordinary text
+instead of through the `tool_calls` channel. This is not a reasoning failure and
+has nothing to do with model quality: it is whether the model's chat template
+emits native tool calls under this runtime.
+
+**What this changes.** The practical consequence is unchanged — a model that
+answers in prose is unusable in opencode, which reads `tool_calls`. But the
+*remedy* is completely different from what a "bad family" conclusion implies:
+
+- **Wrong remedy** (what § 1g implied): pick a different model family.
+- **Right remedy**: a fallback that parses a bare JSON object out of the message
+  content. Three of the five models tested would go from ~25 % to near-perfect
+  with it, because the content is already right. That is an agent-side fix, and
+  it also recovers the one case the incumbent loses this way (§ 1f).
+
+**On coding they are simply weaker**, and that part *is* about the models:
+
+| Model | Coding | wrong | cut | time |
+|---|---|---|---|---|
+| QAIRT 4B-Instruct | **17/27 = 63 % [44–78]** | 8 | 2 | 631 s |
+| Qwen2.5-Coder-7B | **17/27 = 63 % [44–78]** | 10 | 0 | 245 s |
+| Phi-4-mini | 12/27 = 44 % [28–63] | 15 | 0 | 181 s |
+| Llama-3.2-3B | 11/27 = 41 % [25–59] | 16 | 0 | 265 s |
+
+The intervals still overlap — at 27 tasks a 63 % and a 41 % model are not
+cleanly separable — but the ordering is consistent, and unlike the tool-calling
+column these failures are genuine wrong answers rather than a channel problem.
+Neither is a 3B, so nothing here says a small model cannot code; it says these
+two, at this size, are behind.
+
+**The methodological point is the sharper one.** A benchmark that reports only a
+score would have produced "Qwen3.8, Llama and Phi are bad at tools" — a
+plausible, actionable-looking and wrong conclusion. Recording *why* each case
+failed turned three separate model verdicts into one runtime observation. The
+family table in § 1g was a real pattern in the data and a false explanation of
+it, and it took a model from outside the family to see that.
 
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 
