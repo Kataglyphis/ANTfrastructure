@@ -27,12 +27,13 @@ and no extra `-e`:
 | 2 | `$RUSTUP_HOME/tmp` and `$CARGO_HOME` are writable | *"could not create temp file …: Permission denied (os error 13)"* — Corrosion, cargokit and `flutter_rust_bridge_codegen` cannot run. Not workaroundable by redirecting the variable: the toolchains live in that tree, and `rustup toolchain install` (fRB asks for the `nightly` channel, the image pins a dated nightly) writes there too |
 | 3 | `ANDROID_HOME` and `ANDROID_SDK_ROOT` are set, `$ANDROID_HOME/platform-tools` exists, and the SDK's `cmdline-tools/latest/bin` + `platform-tools` are on `PATH` | `flutter build apk` stops with *"[!] No Android SDK found"*. Under CodeQL's `database create --command=…` the exit 1 aborts before the database is finalised, so the lane reports *"bundle source directory not found: build/app/outputs/flutter-apk"* — three steps from the cause |
 | 4 | `java` is on `PATH` and `JAVA_HOME` names a JDK with `bin/javac` | Gradle stops the Android lane with *"JAVA_HOME is not set and no 'java' command could be found in your PATH"*, and `flutter doctor` reports *"No Java Development Kit (JDK) found"* |
-| 5 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
+| 5 | `appimagetool` is READABLE by the image user, not merely executable | it is an AppImage and reads `/proc/self/exe` for its own squashfs offset, so mode 711 gives *"Cannot open /proc/self/exe: Permission denied"* and produces no `.AppImage` |
+| 6 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
 
-Row 5 is the one a consumer **cannot** repair at runtime. The directory sits in a
+Row 6 is the one a consumer **cannot** repair at runtime. The directory sits in a
 read-only overlay layer, so a non-owner can neither empty nor rename it — both
 were attempted and refused — and the only workaround is mounting a tmpfs with
-`mode=1777` over it. Rows 1–4 are merely expensive to work around, and the point
+`mode=1777` over it. Rows 1–5 are merely expensive to work around, and the point
 of writing them down is that nobody should have to.
 
 `/workspace` is the WORKDIR and the consumer's checkout. Nothing the image
@@ -66,6 +67,25 @@ resolves it once from the installed `javac` and parks the symlink
 `/usr/lib/jvm/default-java`, which the image ENV names. A JDK bump then needs no
 Dockerfile edit, and a JDK that installed no compiler fails the stage instead of
 shipping a JRE that Gradle cannot use.
+
+
+### Executable is not usable
+
+`ensure_appimagetool` (`02-toolchain/packaging-deps.sh`) downloads into a
+`mktemp` file, which is `0600`, and made it executable with `chmod +x` — which
+adds the x bits and leaves r for the owner only, i.e. `0711`. `mv` carries that
+mode to `/usr/local/bin/appimagetool`, so the tool was executable by everyone
+and readable by root alone.
+
+That is fatal for this particular tool and invisible for most others:
+appimagetool is itself an AppImage, so it opens `/proc/self/exe` to find where
+its squashfs payload starts. As uid 1001 that open is refused and the run dies
+with `Failed to get fs offset for /proc/self/exe`, having produced nothing.
+
+The install site now sets `0755` explicitly rather than relying on `+x` over
+whatever mode the download landed with, and the contract gate asserts
+readability rather than presence — `command -v` finding it says nothing about
+whether the image's own user can run it.
 
 ## How the gate proves it
 

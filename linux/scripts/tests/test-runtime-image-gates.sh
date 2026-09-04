@@ -678,6 +678,20 @@ _CC_PASS="$(_cc_gate "${_CC_FIXED}")"
 t_assert_contains "${_CC_PASS}" "PASS CONSUMER CONTRACT: 7 row(s) hold as kataglyphis" "what a fixed image prints"
 t_assert_contains "${_CC_PASS}" "FAILURES=0" "and nothing else may go red"
 
+t_case "the appimagetool row: executable is not the same as usable"
+_toolv() { bash -c '
+    '"$(_extract _consumer_contract_fact)"'
+    '"$(_extract _consumer_tool_verdict)"'
+    _consumer_tool_verdict appimagetool "$1"' _ "$1" 2>&1; }
+t_assert_contains "$(_toolv "ENV appimagetool /usr/local/bin/appimagetool
+FACT appimagetool-readable no")" "is not readable by the image user" \
+  "mode 711 runs for root and fails for uid 1001, which is who ships"
+t_assert_contains "$(_toolv "ENV appimagetool 
+FACT appimagetool-readable no")" "not on PATH at all" "an absent tool is a different failure than an unreadable one"
+t_assert_contains "$(_toolv "ENV appimagetool /usr/local/bin/appimagetool
+FACT appimagetool-readable yes")" "OK appimagetool" "the fixed shape"
+t_assert_contains "$(_toolv "ENV appimagetool /x")" "NOFACT appimagetool" "a probe with no readability fact proves nothing"
+
 t_case "the JDK row: Gradle reads JAVA_HOME, so java on PATH alone is not enough"
 _jdkv() { bash -c '
     '"$(_extract _consumer_contract_fact)"'
@@ -708,7 +722,7 @@ done
 t_case "the contract asserts every promise the consuming lane depends on"
 # The row list IS the contract. A row quietly dropped here takes its guarantee
 # with it and every suite below still passes, because they iterate the list.
-for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner; do
+for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner; do
   t_assert_contains " ${_CONSUMER_CONTRACT_ROWS} " " ${_r} " \
     "${_r} is a promise the consumer's acceptance check makes; it must stay in the table"
 done

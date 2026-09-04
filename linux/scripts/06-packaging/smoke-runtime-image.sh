@@ -536,7 +536,7 @@ check_rust_toolchain() {
 # image: caches outside the bind-mounted checkout, a writable Rust home, a set
 # ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
 # docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner"
 
 # The consumer-visible failure each row prevents, quoted verbatim from the lane that
 # hit it, so a red run names the symptom in the OTHER repo and not just our path.
@@ -548,6 +548,7 @@ _consumer_contract_symptom() {
     cargo-home)    printf '%s' 'every consumer has to pass -e CARGO_HOME=... to work around it' ;;
     android-home)  printf '%s' '"flutter build apk" stops with "[!] No Android SDK found"; under CodeQL database create that surfaces three steps later as "bundle source directory not found"' ;;
     jdk)           printf '%s' 'Gradle stops the Android lane with "ERROR: JAVA_HOME is not set and no '"'"'java'"'"' command could be found in your PATH", and flutter doctor reports "No Java Development Kit (JDK) found" -- the SDK COPY leaves the source stage'"'"'s JDK behind in /usr/lib/jvm' ;;
+    appimagetool)  printf '%s' 'appimagetool is an AppImage: it reads /proc/self/exe for its own squashfs offset, so a mode that is executable but not READABLE gives "Cannot open /proc/self/exe: Permission denied" and no .AppImage is produced' ;;
     dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
     flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
@@ -604,6 +605,13 @@ if [ -n "${ANDROID_HOME:-}" ] && _on_path "${ANDROID_HOME}/platform-tools" \
   printf 'FACT android-path yes\n'
 else
   printf 'FACT android-path no\n'
+fi
+_tool="$(command -v appimagetool 2>/dev/null || true)"
+printf 'ENV appimagetool %s\n' "${_tool}"
+if [ -n "${_tool}" ] && [ -r "${_tool}" ]; then
+  printf 'FACT appimagetool-readable yes\n'
+else
+  printf 'FACT appimagetool-readable no\n'
 fi
 printf 'ENV java-home %s\n' "${JAVA_HOME:-}"
 if command -v java >/dev/null 2>&1; then
@@ -673,6 +681,23 @@ _consumer_exempt_verdict() {
 # because an exported path is not an SDK. docs/consumer-image-contract.md#the-contract
 # Gradle reads JAVA_HOME; a java on PATH with no JAVA_HOME is the shape the Android
 # lane died on. Both, plus a javac under it, or the row is red.
+# A tool that is executable but not readable runs for root and fails for everyone
+# else; the probe answers for the user the image ships.
+_consumer_tool_verdict() {
+  local row="$1" path readable
+  path="$(_consumer_contract_fact "$2" ENV appimagetool)"
+  readable="$(_consumer_contract_fact "$2" FACT appimagetool-readable)"
+  if [ -z "${readable}" ]; then
+    printf 'NOFACT %s no FACT appimagetool-readable line' "${row}"
+  elif [ -z "${path}" ]; then
+    printf 'BAD %s appimagetool is not on PATH at all' "${row}"
+  elif [ "${readable}" != yes ]; then
+    printf 'BAD %s %s is not readable by the image user' "${row}" "${path}"
+  else
+    printf 'OK %s %s readable' "${row}" "${path}"
+  fi
+}
+
 _consumer_jdk_verdict() {
   local row="$1" home onpath javac
   home="$(_consumer_contract_fact "$2" ENV java-home)"
@@ -738,6 +763,7 @@ _consumer_contract_verdicts() {
       case "${row}" in
         android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
         jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
+        appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
         *)             line="$(_consumer_dir_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" ENV "${row}")" \

@@ -2938,8 +2938,8 @@
   {
     "id": "probe.jdk-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home dart-tool flutter-owner\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
   },
@@ -2966,5 +2966,29 @@
     "replace": "    :",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "JAVA_HOME points at the anchor; without the symlink the ENV names a path that does not exist and Gradle fails as if no JDK were installed"
+  },
+  {
+    "id": "packaging.appimagetool-readable",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "    chmod 0755 \"$tmpfile\"",
+    "replace": "    chmod +x \"$tmpfile\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "mktemp gives 0600, so +x yields 0711: the tool runs for root and dies for the image user with 'Cannot open /proc/self/exe'"
+  },
+  {
+    "id": "probe.appimagetool-row-asserted",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
+  },
+  {
+    "id": "probe.appimagetool-readability",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ \"${readable}\" != yes ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "executable is not usable: an AppImage must read its own file, so the gate must check readability and not mere presence"
   }
 ]
