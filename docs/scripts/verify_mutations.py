@@ -33,28 +33,73 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
-COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist")
+COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist",
+                 # 1.5 GB, gitignored, read by no gate test -- and it was
+                 # copied into every mirrored workspace, including the hook's.
+                 "linux/llm-stack/ollama-binary.tar.zst",
+                 "linux/llm-stack/benchmark-viewer/node_modules")
+
+
+def _git_ignored(src):
+    """Every path git ignores under src, or None when git cannot answer.
+
+    Asked at the SOURCE, where .git still exists. The mirror is exactly the
+    place where it will not, so this is the last moment the question can be
+    put -- and the answer is what keeps a 1.5 GB gitignored tarball out of a
+    3 GB tmpfs. A hand-kept list could not: COPY_EXCLUDES was only ever
+    applied to directories, so a file listed there was still copied.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", src, "ls-files", "--others", "--ignored",
+             "--exclude-standard", "--directory", "-z"],
+            capture_output=True, text=True, timeout=120)
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    out = set()
+    for rel in proc.stdout.split("\0"):
+        if rel:
+            out.add(os.path.normpath(os.path.join(src, rel)))
+    return out
 
 
 def mirror_tree(src, dst):
-    """Cheap throwaway copy of src, minus the trees no gate test reads."""
-    skip = {os.path.join(src, rel) for rel in COPY_EXCLUDES} | {dst}
+    """Throwaway copy of src, minus what no gate test reads.
+
+    Skips git-ignored paths (build output, caches, downloaded binaries) and
+    the COPY_EXCLUDES fallback -- both as directories AND as files.
+
+    A copy that fails is an error, never a shrug. This used to `except
+    OSError: pass`; on a full tmpfs that produced 0-byte test files, pytest
+    collected nothing, and every entry was reported as a vacuous bite -- a
+    verdict about the tests that was really a verdict about disk space.
+    """
+    ignored = _git_ignored(src) or set()
+    skip = {os.path.normpath(os.path.join(src, rel)) for rel in COPY_EXCLUDES} | {dst}
+    skip |= ignored
     for dirpath, dirnames, filenames in os.walk(src):
         dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d) not in skip]
         here = os.path.join(dst, os.path.relpath(dirpath, src))
         os.makedirs(here, exist_ok=True)
         for name in filenames:
+            full = os.path.join(dirpath, name)
+            if full in skip:
+                continue
             try:
-                shutil.copy2(os.path.join(dirpath, name), os.path.join(here, name),
-                             follow_symlinks=False)
-            except OSError:
-                pass
+                shutil.copy2(full, os.path.join(here, name), follow_symlinks=False)
+            except OSError as e:
+                raise SystemExit(
+                    "mirror_tree: could not copy %s: %s -- refusing to run the gate "
+                    "on an incomplete copy (is the temp filesystem full?)" % (full, e))
     return dst
 
 
@@ -84,6 +129,30 @@ def changed_files():
     return touched
 
 
+def _run_test(cmd, root, timeout):
+    """Run one test command; on timeout kill the WHOLE tree, not just the shell.
+
+    subprocess.run(timeout=) kills only its direct child. A test that spawns a
+    pytest which spawns a candidate left the grandchildren alive when the gate
+    was interrupted -- one orphan burned CPU for twenty minutes beside the
+    timing-sensitive tests of the next run. Own session, then kill the group.
+    Returns (returncode, timed_out).
+    """
+    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        proc.communicate(timeout=timeout)
+        return proc.returncode, False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        proc.kill()
+        proc.communicate()
+        return None, True
+
+
 def apply_and_run(entry, root):
     """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
     target = os.path.join(root, entry["target"])
@@ -108,11 +177,10 @@ def apply_and_run(entry, root):
     try:
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(mutated)
-        proc = subprocess.run(entry["test"], shell=True, cwd=root,
-                              capture_output=True, text=True, timeout=entry.get("timeout", 300))
-        return True, proc.returncode != 0, "exit %d" % proc.returncode
-    except subprocess.TimeoutExpired:
-        return True, True, "test timed out (counts as failing)"
+        rc, timed_out = _run_test(entry["test"], root, entry.get("timeout", 300))
+        if timed_out:
+            return True, True, "test timed out (counts as failing)"
+        return True, rc != 0, "exit %d" % rc
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
@@ -122,12 +190,8 @@ def baseline_ok(entry, root, cache):
     """Does this entry's test pass UNMUTATED? Cached per command string."""
     cmd = entry["test"]
     if cmd not in cache:
-        try:
-            proc = subprocess.run(cmd, shell=True, cwd=root, capture_output=True,
-                                  text=True, timeout=entry.get("timeout", 300))
-            cache[cmd] = proc.returncode == 0
-        except subprocess.TimeoutExpired:
-            cache[cmd] = False
+        rc, timed_out = _run_test(cmd, root, entry.get("timeout", 300))
+        cache[cmd] = (not timed_out) and rc == 0
     return cache[cmd]
 
 

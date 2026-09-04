@@ -679,7 +679,10 @@ assert _bad("A=1")
 assert _bad("a b=1")
 assert _bad("a1=2")
 assert _bad("a=1 2")
-assert _bad("a=x;;b=y")""",
+assert _bad("a=x;;b=y")
+assert _bad(" ")
+assert _bad("   ")
+assert _bad("\t")""",
         "reference": """def validation_parse_kv_pairs(text: str) -> dict:
     KEY = set("abcdefghijklmnopqrstuvwxyz_")
     VAL = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")

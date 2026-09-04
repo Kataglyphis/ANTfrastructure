@@ -124,21 +124,23 @@ class TestAssertionGrouping:
                  '    f(None); raise AssertionError("should have raised")\n'
                  'except ValueError:\n'
                  '    pass\n')
-        harness = _assertion_harness(tests)
+        harness, _ = _assertion_harness(tests)
         compile("def f(x):\n    return x\n" + harness, "<t>", "exec")
 
     def test_each_top_level_assert_is_its_own_group(self):
         from bench_coding import _assertion_harness
-        h = _assertion_harness("assert 1\nassert 2\nassert 3\n")
+        h, n = _assertion_harness("assert 1\nassert 2\nassert 3\n")
+        assert n == 3
         assert h.count("_RESULTS.append((") == 6  # 3 pass + 3 except arms
 
     def test_else_and_finally_also_stay_attached(self):
         from bench_coding import _assertion_harness
         tests = ('try:\n    x = 1\nexcept Exception:\n    x = 2\nelse:\n'
                  '    x = 3\nfinally:\n    pass\n')
-        compile(_assertion_harness(tests), "<t>", "exec")
+        compile(_assertion_harness(tests)[0], "<t>", "exec")
 
     def test_comments_do_not_become_their_own_group(self):
         from bench_coding import _assertion_harness
-        h = _assertion_harness("# a comment\nassert 1\n")
+        h, n = _assertion_harness("# a comment\nassert 1\n")
+        assert n == 1
         assert h.count("_RESULTS.append((") == 2

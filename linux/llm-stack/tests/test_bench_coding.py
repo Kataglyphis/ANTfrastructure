@@ -40,21 +40,36 @@ class TestExtraction:
     def test_thinking_block_is_dropped(self):
         # A discarded draft inside <think> must never be graded instead of the
         # real answer -- that would score a model on code it rejected.
-        text = ("<think>maybe\n```python\ndef merge_sorted(a,b): return None\n```"
-                "</think>\n```python\ndef merge_sorted(a,b): return sorted(a+b)\n```")
-        code = extract_code(text)
-        assert "return sorted" in code and "return None" not in code
+        # The draft is deliberately LONGER than the answer and defines the same
+        # function: the earlier version of this test had a shorter draft, so
+        # "prefer the longest defining block" picked the answer with the
+        # stripping disabled and the test proved nothing.
+        draft = "def merge_sorted(a, b):\n    # first attempt -- wrong\n    return None"
+        text = (f"<think>\n```python\n{draft}\n```\n</think>\n"
+                "```python\ndef merge_sorted(a,b): return a+b\n```")
+        assert extract_code(text, want="merge_sorted") == "def merge_sorted(a,b): return a+b"
+
+    def test_unclosed_thinking_block_yields_nothing(self):
+        # Cut off mid-thought: everything is reasoning, and a complete-looking
+        # draft in there was being graded PASS at the generation cap.
+        text = "<think>\nLet me try:\n```python\ndef merge_sorted(a,b): return a+b\n```\n"
+        assert extract_code(text, want="merge_sorted") == ""
 
     def test_prefers_the_block_defining_the_required_function(self):
         # The rule this replaced ("longest block wins") was measured wrong:
         # models answer with a compact function plus a longer usage block, the
         # demo got extracted, the function was never defined, and the hidden
         # tests died with NameError — scoring a correct model as a failure.
+        # The second block must ALSO define a function, or the plain
+        # "any block with a def" fallback already picks the right one and the
+        # `want` branch is never exercised -- which is how this test passed
+        # with that branch deleted.
         text = ("```python\ndef merge_sorted(a, b):\n    return a\n```\n"
-                "Example:\n```python\nprint(merge_sorted([1], [2]))\n"
-                "print(merge_sorted([3], [4]))\n"
-                "print(merge_sorted([5], [6]))\n```")
-        assert "def merge_sorted" in extract_code(text, want="merge_sorted")
+                "Example:\n```python\ndef demo():\n"
+                "    print(merge_sorted([1], [2]))\n"
+                "    print(merge_sorted([3], [4]))\n"
+                "    print(merge_sorted([5], [6]))\n```")
+        assert extract_code(text, want="merge_sorted").startswith("def merge_sorted")
 
     def test_falls_back_to_a_block_containing_any_def(self):
         # Without a name to look for, a block that defines something still beats

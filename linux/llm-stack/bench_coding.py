@@ -24,6 +24,10 @@ Usage:
 """
 
 import argparse
+import ast
+import hashlib
+import secrets
+import signal
 import json
 import os
 import statistics
@@ -227,7 +231,12 @@ assert rank_quants(['nodigit']) == []
 ]
 
 
-CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
+# Tolerate a space before, and a suffix after, the language word: "```python3",
+# "``` python" and CRLF fences all matched nothing and graded a correct answer
+# as a SyntaxError. The info string is otherwise ignored -- extract_code
+# prefers the block that defines the required symbol, so an over-broad match
+# cannot pick a bash block over the answer.
+CODE_FENCE = re.compile(r"```[ \t]*(?:python3?|py3?)?[^\n]*\n(.*?)```", re.S | re.I)
 
 
 def _want_from_prompt(task):
@@ -293,6 +302,11 @@ def extract_code(text, want=None):
     # be graded instead of the real answer.
     if "</think>" in text:
         text = text.split("</think>")[-1]
+    elif "<think>" in text:
+        # Unclosed: the whole reply is reasoning. The answer, by this
+        # benchmark's own rule, comes after </think>; a draft cut off
+        # mid-thought was being graded PASS at the generation cap.
+        return ""
     blocks = [b.strip() for b in CODE_FENCE.findall(text) if b.strip()]
     if blocks:
         # Longest-block was wrong: models routinely answer with a compact
@@ -308,11 +322,21 @@ def extract_code(text, want=None):
         if with_def:
             return max(with_def, key=len)
         return max(blocks, key=len)
-    idx = text.find("def ")
-    return text[idx:].strip() if idx != -1 else ""
+    # Bare code: anchor at the first column-0 code line, not the first "def "
+    # substring -- that discarded the imports and constants a function needs
+    # and happily started inside prose ("a Python def for it:").
+    m = re.search(r"^(?:from\s+\S+\s+import\b|import\s+\S|def\s+\w+\s*\(|"
+                  r"class\s+\w+|[A-Za-z_]\w*\s*=)", text, re.M)
+    if not m:
+        return ""
+    tail = text[m.start():]
+    # A bare fence line ends the code: if we are here with one in the text,
+    # the fence was not recognised, and the closing marks are not Python.
+    cut = re.search(r"^\s*```\s*$", tail, re.M)
+    return (tail[:cut.start()] if cut else tail).strip()
 
 
-def looks_truncated(text, chunks, code):
+def looks_truncated(text, chunks, code, finish=None):
     """Was the reply cut off by the server rather than finished by the model?
 
     Two independent signals, either of which is enough:
@@ -321,7 +345,7 @@ def looks_truncated(text, chunks, code):
         string is what a mid-token cut looks like).
     Requiring both would miss a cut that lands on a syntactically valid prefix.
     """
-    if chunks >= GENERATION_CAP:
+    if chunks >= GENERATION_CAP or finish == "length":
         return True
     if code:
         try:
@@ -364,87 +388,142 @@ def _assertion_harness(tests):
     missed", and a model at 6 of 7 assertions is not the same as one at 0 of 7.
     Running the block as a whole stops at the FIRST failure, so most of the
     signal was being thrown away.
-    """
-    # Group by top-level statement. Two things must stay attached to the
-    # statement above them: an indented continuation line, and a dedented
-    # CLAUSE keyword — `except`, `else`, `elif`, `finally`. Splitting a try
-    # from its except produces a SyntaxError and marks a perfectly good
-    # reference solution as failing, which is exactly what happened first.
-    CLAUSE = ("except", "else", "elif", "finally")
-    groups, current = [], []
-    for line in tests.strip().splitlines():
-        stripped = line.strip()
-        starts_new = (
-            stripped
-            and not line[:1].isspace()
-            and not stripped.split(None, 1)[0].rstrip(":").lower() in CLAUSE
-            and current
-        )
-        if starts_new:
-            groups.append(current)
-            current = [line]
-        else:
-            current.append(line)
-    if current:
-        groups.append(current)
-    groups = [g for g in groups
-              if any(ln.strip() and not ln.strip().startswith("#") for ln in g)]
 
+    Statements are found with the parser, not by line prefix: decorators,
+    bracketed continuations at column 0, `except:` and dedented lines inside
+    triple-quoted strings all fooled the prefix rule and turned a correct
+    answer into a 0/0 SyntaxError.
+
+    Only groups that ASSERT are counted. A setup line or helper def is
+    wrapped so a failure there cannot kill the harness, but it is not an
+    assertion and must not pad the denominator -- nine tasks were publishing
+    inflated near-miss fractions. A setup failure is recorded separately and
+    still denies PASS: a candidate that makes `out[0][0] = 99` raise must not
+    be scored on the aliasing check that then passes trivially.
+
+    Returns (program_text, number_of_counted_assertions).
+    """
+    tree = ast.parse(tests)  # author-controlled: a broken test string should fail loudly
+    lines = tests.splitlines()
     body = []
-    for i, group in enumerate(groups):
-        block = "\n".join("    " + ln for ln in group)
-        body.append(f"try:\n{block}\n    _RESULTS.append((#{i}, True, ''))"
-                    .replace(f"(#{i}, True, '')", f"({i}, True, '')"))
-        body.append(f"except Exception as _e:\n    _RESULTS.append(({i}, False, "
-                    f"type(_e).__name__ + ': ' + str(_e)[:80]))")
-    return ("_RESULTS = []\n" + "\n".join(body)
-            + "\nimport json as _json\nprint('__ASSERTIONS__' + _json.dumps(_RESULTS))\n")
+    asserts = 0
+    for node in tree.body:
+        first = min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
+        seg = lines[first - 1:node.end_lineno]
+        block = "\n".join("    " + ln for ln in seg)
+        counted = isinstance(node, ast.Assert) or (
+            isinstance(node, ast.Raise) and "AssertionError" in ast.dump(node))
+        if counted:
+            i = asserts
+            asserts += 1
+            body.append(f"try:\n{block}\n    _RESULTS.append(({i}, True, ''))")
+            # BaseException, not Exception: a candidate that calls sys.exit()
+            # inside the tested function used to end the harness with the
+            # rows never printed, discarding every assertion already passed.
+            body.append(f"except BaseException as _e:\n    _RESULTS.append(({i}, False, "
+                        f"type(_e).__name__ + ': ' + str(_e)[:80]))")
+        else:
+            body.append(f"try:\n{block}")
+            body.append("except BaseException as _e:\n    _SETUP_FAILED.append("
+                        "type(_e).__name__ + ': ' + str(_e)[:80])")
+    program = ("_RESULTS = []\n_SETUP_FAILED = []\n" + "\n".join(body)
+               + "\n_json_dumps = __import__('json').dumps\n"
+               + "print(_MARKER + _json_dumps({'rows': _RESULTS, 'setup': _SETUP_FAILED}))\n")
+    return program, asserts
 
 
 def run_candidate(code, tests, timeout=15, forbidden=None):
     """Execute the generated function against the tests.
 
-    Returns (ok, detail). `ok` still means "every assertion passed" — partial
-    credit is reported alongside, not used to lower the bar.
+    Returns (ok, detail, credit). `ok` still means "every assertion passed" --
+    partial credit is reported alongside, not used to lower the bar.
+
+    The candidate runs in the same process as the harness, so the harness's
+    verdict travels over a channel the candidate can write to. That is why:
+    the marker is a per-run nonce, the LAST occurrence is read, and a row
+    count that differs from the number of assertions in the tests is a
+    failure, never a pass -- `print("__ASSERTIONS__[]")` used to score
+    "all assertions passed". None of this makes the grader adversary-proof
+    (the candidate can read its own file); it stops the cheap fakes. The
+    trust boundary stays where the README puts it.
     """
     if not code.strip():
         return False, "no code found in reply", {"passed": 0, "total": 0}
     violation = check_forbidden(code, forbidden)
     if violation:
         return False, violation, {"passed": 0, "total": 0}
-    program = code + "\n\n" + _assertion_harness(tests)
+    harness, expected = _assertion_harness(tests)
+    marker = "__ASSERTIONS_" + secrets.token_hex(8) + "__"
+    # __name__ is not "__main__": a demo left under the usual guard must not
+    # run, read argv, or call input() against the harness's stdin.
+    program = (f"_MARKER = {marker!r}\n__name__ = 'candidate'\n"
+               + code + "\n\n" + harness)
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "candidate.py")
         with open(path, "w") as f:
             f.write(program)
+        # Own session, so a timeout can kill the whole tree: a grandchild the
+        # candidate spawned used to outlive the deadline in our process group.
+        proc = subprocess.Popen([sys.executable, "-I", path], cwd=tmp,
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True,
+                                start_new_session=True)
         try:
-            proc = subprocess.run([sys.executable, path], cwd=tmp,
-                                  capture_output=True, text=True, timeout=timeout)
+            out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            # The direct child too, unconditionally: if killpg could not reach
+            # the group, communicate() below would wait on a spinning candidate
+            # forever -- the mutation gate found that by removing the session.
+            proc.kill()
+            proc.communicate()
             return False, f"timed out after {timeout}s (likely an infinite loop)", \
                    {"passed": 0, "total": 0}
 
-    marker = "__ASSERTIONS__"
-    if marker in proc.stdout:
-        rows = json.loads(proc.stdout.split(marker, 1)[1].splitlines()[0])
+    if marker in out:
+        try:
+            payload = json.loads(out.rsplit(marker, 1)[1].splitlines()[0])
+            rows, setup = payload["rows"], payload["setup"]
+        except (ValueError, KeyError, IndexError, TypeError):
+            return False, "harness output corrupted", {"passed": 0, "total": 0}
+        if len(rows) != expected:
+            return False, (f"harness output corrupted: {len(rows)} rows for "
+                           f"{expected} assertions"), {"passed": 0, "total": 0}
         passed = sum(1 for _, ok, _ in rows if ok)
-        detail_rows = [{"index": i, "passed": ok, "error": err} for i, ok, err in rows]
-        credit = {"passed": passed, "total": len(rows), "assertions": detail_rows}
+        detail_rows = [{"index": i, "passed": ok, "error": e} for i, ok, e in rows]
+        credit = {"passed": passed, "total": len(rows), "assertions": detail_rows,
+                  "setup_failures": setup}
+        if setup:
+            return False, f"test setup raised: {setup[0][:80]}", credit
         if passed == len(rows):
             return True, "all assertions passed", credit
         first = next((r for r in rows if not r[1]), None)
         return False, (f"{passed}/{len(rows)} assertions passed; first failure: "
                        f"{first[2][:80]}" if first else "failed"), credit
 
-    # The program did not even reach the harness — a syntax error, or the code
-    # raised at import time.
-    err = (proc.stderr or proc.stdout or "").strip().splitlines()
-    return False, (err[-1][:120] if err else f"exit {proc.returncode}"), \
-           {"passed": 0, "total": 0}
+    # The program did not even reach the harness -- a syntax error, or the code
+    # raised at import time. Name the exception, not whatever the last line of
+    # output happened to be (unittest's "OK" was being reported as the reason).
+    lines = (err or out or "").strip().splitlines()
+    named = [ln for ln in lines if re.match(r"^\w+(Error|Exception|Exit)\b", ln.strip())]
+    detail = (named[-1] if named else (lines[-1] if lines else f"exit {proc.returncode}"))
+    return False, detail[:120], {"passed": 0, "total": 0}
 
 
 def ask(base_url, model, prompt, max_tokens, timeout=1800):
-    """One streamed request. Returns (text, ttft_s, wall_s, chunks, prompt_tokens)."""
+    """One streamed request.
+
+    Returns (text, ttft_s, wall_s, chunks, prompt_tokens, think, finish).
+    Reasoning served as a separate delta field (`reasoning_content` on
+    llama.cpp/vLLM, `reasoning` on Ollama) is collected too: dropping it made
+    `out=` undercount, `think=` read 0 % and, worst, a reply that spent its
+    whole budget reasoning arrive as text='' chunks=0 -- graded "wrong" when
+    it was cut off. `finish` is the server's finish_reason, so a cut the
+    server itself reports ("length") no longer depends on counting deltas.
+    """
     body = json.dumps({
         "model": model, "stream": True, "max_tokens": max_tokens,
         "temperature": 0, "messages": [{"role": "user", "content": prompt}],
@@ -453,8 +532,9 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                                  headers={"Content-Type": "application/json"})
     started = time.monotonic()
     ttft = None
-    parts = []
+    parts, think_parts = [], []
     prompt_tokens = None
+    finish = None
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
             line = raw.decode("utf-8", "replace").strip()
@@ -471,13 +551,21 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                 prompt_tokens = chunk["usage"].get("prompt_tokens")
             choices = chunk.get("choices") or []
             if choices:
-                piece = choices[0].get("delta", {}).get("content")
+                delta = choices[0].get("delta") or {}
+                finish = choices[0].get("finish_reason") or finish
+                thought = delta.get("reasoning_content") or delta.get("reasoning")
+                if thought:
+                    if ttft is None:
+                        ttft = time.monotonic() - started
+                    think_parts.append(thought)
+                piece = delta.get("content")
                 if piece:
                     if ttft is None:
                         ttft = time.monotonic() - started
                     parts.append(piece)
     text = "".join(parts)
-    return text, ttft, time.monotonic() - started, len(parts), prompt_tokens
+    return (text, ttft, time.monotonic() - started, len(parts) + len(think_parts),
+            prompt_tokens, "".join(think_parts), finish)
 
 
 def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
@@ -515,7 +603,7 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             prompt = ("Here is context from a repository, for style reference only:\n\n"
                       f"{context}\n\n---\n\nNow, independently of the above:\n" + prompt)
         try:
-            text, ttft, wall, chunks, ptok = ask(base_url, model, prompt, max_tokens)
+            text, ttft, wall, chunks, ptok, think, finish = ask(base_url, model, prompt, max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
             print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
             # A transport failure is not evidence about the model; excluding it
@@ -528,11 +616,13 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
         code = extract_code(text, want=task.get("function") or _want_from_prompt(task))
         ok, detail, credit = run_candidate(code, task["tests"],
                                            forbidden=task.get("forbidden"))
-        truncated = (not ok) and looks_truncated(text, chunks, code)
+        truncated = (not ok) and looks_truncated(text, chunks, code, finish)
         if truncated:
-            detail = f"CUT OFF at {chunks} tokens (server cap) - not graded as wrong"
+            detail = f"CUT OFF at {chunks} deltas (server cap) - not graded as wrong"
         think_share = 0.0
-        if "</think>" in text:
+        if think:
+            think_share = len(think) / (len(think) + len(text))
+        elif "</think>" in text:
             think_share = 1 - len(text.split("</think>")[-1]) / len(text)
         verdict = "PASS" if ok else ("CUT " if truncated else "FAIL")
         # Partial credit beside the verdict: 6-of-7 assertions is not the same
@@ -546,6 +636,7 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
               flush=True)
         entry = {"task": task["name"], "attempt": attempt,
                  "passed": ok, "truncated": truncated, "detail": detail,
+                 "output_sha256": hashlib.sha256((think + text).encode()).hexdigest(),
                  "assertions_passed": credit["passed"],
                  "assertions_total": credit["total"],
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
@@ -559,22 +650,42 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     passed = sum(1 for r in results if r["passed"])
     cut = sum(1 for r in results if r.get("truncated"))
     errored = sum(1 for r in results if r.get("errored"))
-    attempts = len(TASKS) * repeats - errored
-    wrong = attempts - passed - cut
+    # A cut attempt is UNMEASURED and is treated exactly like a transport
+    # error: listed, but not a trial. It used to be printed as "not failed"
+    # and then counted as a miss in the rate, the interval and the rank.
+    attempts = len(TASKS) * repeats - errored - cut
+    wrong = attempts - passed
     total_wall = sum(r["wall_s"] for r in done)
     walls = [r["wall_s"] for r in done]
 
     # How many INDEPENDENT observations are behind that score? On a
     # deterministic endpoint repeats return the identical answer, so counting
-    # them inflates the apparent sample without adding information. Determinism
-    # is detected, not assumed: identical output for every repeat of a task.
-    per_task_outcomes = {}
-    for r in results:
-        per_task_outcomes.setdefault(r["task"], set()).add(r["passed"])
-    deterministic = repeats > 1 and all(len(v) == 1 for v in per_task_outcomes.values())
-    effective_n = len(TASKS) if deterministic else attempts
+    # them as independent trials inflates the apparent sample without adding
+    # information. Determinism is detected from the OUTPUT (one hash per task
+    # across its measured repeats), not from pass/fail agreement -- a sampling
+    # endpoint that fails a task on every draw agrees on the verdict too.
+    # Errored and cut attempts do not vote: one dropped connection used to flip
+    # a deterministic lane to "sampling" and narrow the printed interval.
+    measured = [r for r in results if not r.get("errored") and not r.get("truncated")]
+    per_task_hash, per_task_outcome = {}, {}
+    for r in measured:
+        per_task_hash.setdefault(r["task"], set()).add(r["output_sha256"])
+        per_task_outcome.setdefault(r["task"], set()).add(r["passed"])
+    deterministic = repeats > 1 and bool(per_task_hash) and \
+        all(len(v) == 1 for v in per_task_hash.values())
+    repeats_agreed = repeats > 1 and bool(per_task_outcome) and \
+        all(len(v) == 1 for v in per_task_outcome.values())
+    # Never round a ratio into a count. When the lane is deterministic the
+    # unit is the task: n = tasks with at least one measured attempt, k =
+    # tasks that passed. round(passed * n / total) printed 8/9 for a model
+    # that passed 7 tasks, and "passed" a task that was never observed.
+    if deterministic:
+        effective_n = len(per_task_outcome)
+        effective_k = sum(1 for v in per_task_outcome.values() if v == {True})
+    else:
+        effective_n, effective_k = attempts, passed
 
-    extra = f", {cut} cut off" if cut else ""
+    extra = f", {cut} cut off (unmeasured, excluded)" if cut else ""
     if errored:
         extra += f", {errored} EXCLUDED (transport errors)"
     unit = "attempts" if repeats > 1 else "tasks"
@@ -586,14 +697,19 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
               + (f", stdev {statistics.stdev(walls):.1f}s" if len(walls) > 1 else ""),
               flush=True)
     if deterministic:
-        print(f"       NOTE: every repeat agreed — this endpoint looks "
-              f"deterministic, so the effective sample is {effective_n} tasks, "
-              f"not {attempts} attempts.", flush=True)
+        print(f"       NOTE: every repeat produced byte-identical output — this "
+              f"endpoint is deterministic, so the effective sample is "
+              f"{effective_n} tasks, not {attempts} attempts.", flush=True)
+    elif repeats_agreed:
+        print(f"       NOTE: every repeat agreed on pass/fail but the outputs "
+              f"differed — a sampling endpoint; attempts are counted as trials.",
+              flush=True)
     return {"label": label, "model": model, "base_url": base_url,
             "passed": passed, "wrong": wrong, "truncated": cut,
             "total": attempts, "repeats": repeats, "tasks": len(TASKS),
             "errored": errored,
-            "deterministic": deterministic, "effective_n": effective_n,
+            "deterministic": deterministic, "repeats_agreed": repeats_agreed,
+            "effective_n": effective_n, "effective_k": effective_k,
             "context_tokens": context_tokens,
             "total_wall_s": round(total_wall, 2),
             "avg_wall_s": round(total_wall / len(done), 2) if done else None,
@@ -611,7 +727,8 @@ def main():
     ap.add_argument("--label", default=None)
     ap.add_argument("--max-tokens", type=int, default=3000,
                     help="Budget per task. Reasoning models need room; a model cut "
-                         "off mid-thought produces no code and scores 0 (default 3000)")
+                         "off mid-thought produces no code and is reported CUT -- "
+                         "unmeasured and excluded, not scored 0 (default 3000)")
     ap.add_argument("--compare", default=None,
                     help="JSON file: [{label, backend|base_url, model}, ...]")
     ap.add_argument("--keep-output", action="store_true",
@@ -646,7 +763,7 @@ def main():
     if args.task_set == "novel":
         TASKS = NOVEL_TASKS
     elif args.task_set == "extended":
-        TASKS = NOVEL_TASKS + EXTENDED_TASKS
+        TASKS = EXTENDED_TASKS
     elif args.task_set == "all":
         TASKS = TASKS + NOVEL_TASKS + EXTENDED_TASKS
 
@@ -675,22 +792,29 @@ def main():
 
     if len(reports) > 1:
         print("\n" + "=" * 78)
-        print("  RANKING — by tasks passed, then by time to a finished answer")
+        print("  RANKING — by pass RATE over measured attempts (errors and cuts "
+              "excluded),\n  then by attempts measured, then by time to a finished answer")
         print("=" * 78)
-        ranked = sorted(reports, key=lambda r: (-r["passed"], r["total_wall_s"]))
+        # Rate, not raw count: excluded transport errors were still costing
+        # rank. More measured attempts breaks a tie in the rate, so one lucky
+        # surviving attempt cannot outrank twenty clean ones.
+        ranked = sorted(reports, key=lambda r: (
+            -(r["passed"] / r["total"] if r["total"] else 0.0),
+            -r["total"], r["total_wall_s"]))
         print(f"  {'model':34s} {'pass [95% CI]':>22s} {'wrong':>5s} {'cut':>4s} "
               f"{'total':>9s} {'avg/task':>9s}")
         from bench_stats import format_score
         for r in ranked:
             n = r.get("effective_n") or r["total"]
-            k = round(r["passed"] * n / r["total"]) if r["total"] else 0
+            k = r.get("effective_k", r["passed"])
             print(f"  {r['label'][:34]:34s} {format_score(k, n):>22s} "
                   f"{r.get('wrong', 0):5d} {r.get('truncated', 0):4d} "
                   f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:8.1f}s")
         if any(r.get("truncated") for r in ranked):
             print("\n  'cut' = the server stopped generation at its 2048-token cap "
-                  "before the model\n  finished. Those tasks are UNMEASURED, not failed "
-                  "- a reasoning model can\n  spend the whole budget inside <think>.")
+                  "before the model\n  finished. Those attempts are UNMEASURED: listed "
+                  "here, excluded from the rate,\n  the interval and the rank - a "
+                  "reasoning model can spend the whole budget inside <think>.")
         print()
 
 

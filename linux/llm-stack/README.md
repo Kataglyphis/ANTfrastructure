@@ -273,7 +273,10 @@ error at all.
 
 Results are also reported in three states, not two: **PASS / FAIL / CUT**. A
 reply the server truncated mid-function is *unmeasured*, not wrong — grading it
-as a failure once scored a perfectly usable model 0/3.
+as a failure once scored a perfectly usable model 0/3. Cut attempts are listed
+and then **excluded** from the rate, the interval and the rank, exactly like a
+transport error; for a while the footer said "unmeasured" while the arithmetic
+counted them as misses.
 
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
@@ -286,6 +289,11 @@ with every rule stated in the prompt: the primitives are ordinary, the
 combination cannot have been memorised. **Run both and compare** — a model much
 stronger on `classic` than on `novel` is recalling. Measured: the QAIRT
 4B-Instruct scores 3/3 classic and **2/3 novel**.
+
+The sets by name, because for a while three places disagreed on what
+`extended` meant: `classic` = 3 textbook tasks (the default, and too small to
+prove any drop), `novel` = 3, `extended` = the 21 authored tasks, `all` = all
+27. The published 17/27 is `--task-set all`.
 
 **Constraints stated in a prompt are now enforced.** The merge task says "do not
 use `sorted()`" and for a while nothing checked it — `return sorted(a + b)`
@@ -420,8 +428,13 @@ Fields that cannot be determined are recorded as `null` and listed in
 - **`effective_n` is reported, not just the raw total.** On a deterministic
   endpoint (the QAIRT/NPU path) every repeat returns the identical answer, so
   counting repeats inflates the apparent sample without adding information.
-  When all repeats agree, the tools say so and report the number of distinct
-  *tasks* instead.
+  Determinism is decided on the **output** — one hash per task across its
+  measured repeats — not on pass/fail agreement, which a sampling endpoint
+  that fails every draw also produces; the latter is reported separately as
+  `repeats_agreed`. When the lane is deterministic the unit is the task:
+  `effective_k`/`effective_n` are counts of tasks observed and passed, never a
+  ratio rounded back into a count (that printed 8/9 for seven passes).
+  Errored and cut attempts do not vote.
 - **Median, min, max and stdev** accompany every total, because a mean over a
   cold first run and two warm ones describes neither.
 

@@ -687,6 +687,13 @@ for the close calls; these are the defensible numbers:
 | GGUF Qwen3.8-2B-Distill | 4/9 = 44 % | 5 | 0 | 10.5 s |
 | GGUF Qwen3-4B `Q4_0` | 4/9 = 44 % | **0** | 5 | 101.9 s |
 
+> **Read the `cut` column against the rate (2026-09-04 audit).** These rates
+> counted a cut attempt as a miss: the Q4_0 row is 4 passes, 0 wrong and 5
+> cuts, which is 4/4 *measured* attempts, not 4/9. The tool now excludes cut
+> attempts from the rate, the interval and the rank — they are listed, not
+> scored — so a re-run prints this row as 4/4 with 5 cut. The table is left as
+> published; the `wrong` column already told the truth.
+
 Per task (P=pass, F=fail, C=cut):
 
 | Model | merge_sorted | balanced | parse_version |
@@ -1014,7 +1021,7 @@ nothing — it could not have distinguished this model from one at 45 %.
 | | tasks | score | 95 % interval |
 |---|---|---|---|
 | old set | 6 | 5/6 = 83 % | [44–97 %] |
-| **extended set** | **27** | **17/27 = 63 %** | **[44–78 %]** |
+| **`--task-set all`** (novel + extended + classic) | **27** | **17/27 = 63 %** | **[44–78 %]** |
 
 **Partial credit changes what the failures mean.** Of the eight genuine
 failures (two more were server truncations), **six are near-misses**:
@@ -1038,6 +1045,15 @@ failures and could not have told you that.
 
 Two tasks still hit the 2048-token output cap. That cap remains the single
 biggest distortion in every coding number on this page.
+
+**A caveat on the fractions above (2026-09-04 audit).** The assertion
+denominators counted setup lines and helper definitions in the hidden tests as
+if they were assertions; nine of the 21 extended tasks carry such lines. The
+harness now counts only statements that assert, so a re-run will report
+slightly smaller denominators for those rows (e.g. 20/21 becomes 19/20). The
+PASS/FAIL verdicts, the 17/27 and the interval are unaffected — those never
+used the denominator. The table is left as measured rather than re-derived by
+hand.
 
 ### 1h. The lane knobs, finally swept (measured 2026-09-01)
 
