@@ -352,10 +352,17 @@ def looks_truncated(text, chunks, code, finish=None):
             compile(code, "<candidate>", "exec")
         except SyntaxError:
             # An unterminated construct is a cut; a plain typo usually is not,
-            # but a fenced block that never closed is decisive.
-            if text.count("```") % 2 == 1:
+            # but a fenced block that never closed is decisive. "Never closed"
+            # means the LAST opener has no closer -- counting backticks over
+            # the whole reply turned a typo into CUT whenever prose or a
+            # docstring mentioned ``` once.
+            tail = text.split("</think>")[-1]
+            if re.search(r"```[^\n]*\n(?:(?!```).)*\Z", tail, re.S):
                 return True
     return False
+
+
+_FORBIDDEN_NAMES = {"sorted": ("sorted",), "list.sort": ("sort",), ".sort(": ("sort",)}
 
 
 def check_forbidden(code, forbidden):
@@ -363,10 +370,47 @@ def check_forbidden(code, forbidden):
 
     A benchmark that states a rule and does not enforce it measures nothing:
     `return sorted(a + b)` satisfied every assertion of the merge task while
-    doing exactly what the prompt forbade. Comments and strings are stripped
-    first so that a model *mentioning* sorted() in a docstring is not punished
-    for it.
+    doing exactly what the prompt forbade.
+
+    Checked on the syntax tree, not the text: a text scan let `s = sorted;
+    s(a + b)`, `builtins.sorted(...)` and `getattr(__builtins__, "sorted")`
+    through, and had to strip comments and strings by regex so that a
+    docstring *mentioning* sorted() was not punished. On the tree a docstring
+    is an expression statement holding a constant and is skipped; a name, an
+    attribute, or a string constant handed to getattr/__import__ is a use.
+    Code that does not parse falls back to the text scan -- it will fail the
+    tests anyway.
     """
+    if not forbidden:
+        return None
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return _check_forbidden_text(code, forbidden)
+    wanted = set()
+    unmapped = []
+    for token in forbidden:
+        names = _FORBIDDEN_NAMES.get(token)
+        if names:
+            wanted.update(names)
+        else:
+            unmapped.append(token)
+    docstrings = {id(n.value) for n in ast.walk(tree)
+                  if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
+                  and isinstance(n.value.value, str)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in wanted:
+            return f"used {node.id}(), which the prompt forbids"
+        if isinstance(node, ast.Attribute) and node.attr in wanted:
+            return f"used .{node.attr}(), which the prompt forbids"
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and node.value in wanted and id(node) not in docstrings):
+            return f"named {node.value!r} to look it up, which the prompt forbids"
+    return _check_forbidden_text(code, unmapped) if unmapped else None
+
+
+def _check_forbidden_text(code, forbidden):
+    """The old text scan, kept for tokens with no syntactic meaning."""
     if not forbidden:
         return None
     stripped = re.sub(r"#.*", "", code)
@@ -379,6 +423,43 @@ def check_forbidden(code, forbidden):
         elif token in stripped:
             return f"used {token}, which the prompt forbids"
     return None
+
+
+def _nonstd_imports(code):
+    """Names imported from outside the standard library, or [] / None on error.
+
+    Three prompts say "Use only the Python standard library." and nothing
+    checked it; a solution importing a third-party package that happens to be
+    installed on the host passed. Top-level module of every Import/ImportFrom,
+    against sys.stdlib_module_names.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    allowed = set(sys.stdlib_module_names) | {"__future__"}
+    bad = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            bad += [a.name.split(".")[0] for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            bad.append(node.module.split(".")[0])
+    return sorted({m for m in bad if m not in allowed})
+
+
+_NETNS = None
+
+
+def _netns_available():
+    """Can the candidate be given an empty network namespace? Probed once."""
+    global _NETNS
+    if _NETNS is None:
+        try:
+            _NETNS = subprocess.run(["unshare", "-rn", "true"], capture_output=True,
+                                    timeout=10).returncode == 0
+        except Exception:  # noqa: BLE001
+            _NETNS = False
+    return _NETNS
 
 
 def _assertion_harness(tests):
@@ -432,7 +513,7 @@ def _assertion_harness(tests):
     return program, asserts
 
 
-def run_candidate(code, tests, timeout=15, forbidden=None):
+def run_candidate(code, tests, timeout=15, forbidden=None, stdlib_only=False):
     """Execute the generated function against the tests.
 
     Returns (ok, detail, credit). `ok` still means "every assertion passed" --
@@ -452,6 +533,11 @@ def run_candidate(code, tests, timeout=15, forbidden=None):
     violation = check_forbidden(code, forbidden)
     if violation:
         return False, violation, {"passed": 0, "total": 0}
+    if stdlib_only:
+        extra = _nonstd_imports(code)
+        if extra:
+            return False, (f"imported {', '.join(extra)}, which is not in the standard "
+                           f"library the prompt restricted it to"), {"passed": 0, "total": 0}
     harness, expected = _assertion_harness(tests)
     marker = "__ASSERTIONS_" + secrets.token_hex(8) + "__"
     # __name__ is not "__main__": a demo left under the usual guard must not
@@ -464,7 +550,16 @@ def run_candidate(code, tests, timeout=15, forbidden=None):
             f.write(program)
         # Own session, so a timeout can kill the whole tree: a grandchild the
         # candidate spawned used to outlive the deadline in our process group.
-        proc = subprocess.Popen([sys.executable, "-I", path], cwd=tmp,
+        # Scrubbed environment (no HOME, no tokens, no agent sockets) and, where
+        # the kernel allows it, an empty network namespace. This is not a
+        # sandbox -- the candidate can still read the repository -- and the
+        # README's trust boundary stands; it removes the cheapest ways out.
+        cmd = [sys.executable, "-I", path]
+        if _netns_available():
+            cmd = ["unshare", "-rn"] + cmd
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8",
+               "LC_ALL": "C.UTF-8", "PYTHONHASHSEED": "0", "TMPDIR": tmp}
+        proc = subprocess.Popen(cmd, cwd=tmp, env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True,
                                 start_new_session=True)
@@ -516,7 +611,8 @@ def run_candidate(code, tests, timeout=15, forbidden=None):
 def ask(base_url, model, prompt, max_tokens, timeout=1800):
     """One streamed request.
 
-    Returns (text, ttft_s, wall_s, chunks, prompt_tokens, think, finish).
+    Returns (text, ttft_s, wall_s, chunks, prompt_tokens, think, finish,
+    completion_tokens) -- the last is None when the server reports no usage.
     Reasoning served as a separate delta field (`reasoning_content` on
     llama.cpp/vLLM, `reasoning` on Ollama) is collected too: dropping it made
     `out=` undercount, `think=` read 0 % and, worst, a reply that spent its
@@ -527,6 +623,10 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
     body = json.dumps({
         "model": model, "stream": True, "max_tokens": max_tokens,
         "temperature": 0, "messages": [{"role": "user", "content": prompt}],
+        # Ask for usage so the cap is judged on a real token count where the
+        # server provides one; the delta count is a proxy that is exact on
+        # GenieX (one delta per token) and wrong on servers that batch.
+        "stream_options": {"include_usage": True},
     }).encode()
     req = urllib.request.Request(f"{base_url}/v1/chat/completions", data=body,
                                  headers={"Content-Type": "application/json"})
@@ -534,6 +634,7 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
     ttft = None
     parts, think_parts = [], []
     prompt_tokens = None
+    completion_tokens = None
     finish = None
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
@@ -549,6 +650,7 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                 continue
             if chunk.get("usage"):
                 prompt_tokens = chunk["usage"].get("prompt_tokens")
+                completion_tokens = chunk["usage"].get("completion_tokens", completion_tokens)
             choices = chunk.get("choices") or []
             if choices:
                 delta = choices[0].get("delta") or {}
@@ -565,7 +667,7 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                     parts.append(piece)
     text = "".join(parts)
     return (text, ttft, time.monotonic() - started, len(parts) + len(think_parts),
-            prompt_tokens, "".join(think_parts), finish)
+            prompt_tokens, "".join(think_parts), finish, completion_tokens)
 
 
 def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
@@ -603,7 +705,7 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             prompt = ("Here is context from a repository, for style reference only:\n\n"
                       f"{context}\n\n---\n\nNow, independently of the above:\n" + prompt)
         try:
-            text, ttft, wall, chunks, ptok, think, finish = ask(base_url, model, prompt, max_tokens)
+            text, ttft, wall, chunks, ptok, think, finish, ctok = ask(base_url, model, prompt, max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
             print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
             # A transport failure is not evidence about the model; excluding it
@@ -615,10 +717,13 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             continue
         code = extract_code(text, want=task.get("function") or _want_from_prompt(task))
         ok, detail, credit = run_candidate(code, task["tests"],
-                                           forbidden=task.get("forbidden"))
-        truncated = (not ok) and looks_truncated(text, chunks, code, finish)
+                                           forbidden=task.get("forbidden"),
+                                           stdlib_only=task.get("stdlib_only", False))
+        count = ctok if ctok is not None else chunks
+        truncated = (not ok) and looks_truncated(text, count, code, finish)
         if truncated:
-            detail = f"CUT OFF at {chunks} deltas (server cap) - not graded as wrong"
+            unit = "tokens" if ctok is not None else "deltas"
+            detail = f"CUT OFF at {count} {unit} (server cap) - not graded as wrong"
         think_share = 0.0
         if think:
             think_share = len(think) / (len(think) + len(text))
@@ -640,7 +745,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
                  "assertions_passed": credit["passed"],
                  "assertions_total": credit["total"],
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
-                 "tokens": chunks, "prompt_tokens": ptok,
+                 "tokens": count, "tokens_estimated": ctok is None,
+                 "prompt_tokens": ptok,
                  "thinking_char_share": round(think_share, 3)}
         if keep_output:
             entry["code"] = code
@@ -802,14 +908,14 @@ def main():
             -(r["passed"] / r["total"] if r["total"] else 0.0),
             -r["total"], r["total_wall_s"]))
         print(f"  {'model':34s} {'pass [95% CI]':>22s} {'wrong':>5s} {'cut':>4s} "
-              f"{'total':>9s} {'avg/task':>9s}")
+              f"{'total':>9s} {'avg/attempt':>11s}")
         from bench_stats import format_score
         for r in ranked:
             n = r.get("effective_n") or r["total"]
             k = r.get("effective_k", r["passed"])
             print(f"  {r['label'][:34]:34s} {format_score(k, n):>22s} "
                   f"{r.get('wrong', 0):5d} {r.get('truncated', 0):4d} "
-                  f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:8.1f}s")
+                  f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:10.1f}s")
         if any(r.get("truncated") for r in ranked):
             print("\n  'cut' = the server stopped generation at its 2048-token cap "
                   "before the model\n  finished. Those attempts are UNMEASURED: listed "

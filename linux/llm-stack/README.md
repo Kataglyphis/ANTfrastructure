@@ -295,11 +295,15 @@ The sets by name, because for a while three places disagreed on what
 prove any drop), `novel` = 3, `extended` = the 21 authored tasks, `all` = all
 27. The published 17/27 is `--task-set all`.
 
-**Constraints stated in a prompt are now enforced.** The merge task says "do not
+**Constraints stated in a prompt are enforced.** The merge task says "do not
 use `sorted()`" and for a while nothing checked it — `return sorted(a + b)`
-passed every assertion. Each task may declare `forbidden` tokens, checked
-against the code with comments and strings stripped so that merely *mentioning*
-`sorted()` in a docstring is not punished.
+passed every assertion. Each task may declare `forbidden` tokens, checked on
+the syntax tree: a name, an attribute, or a string handed to `getattr` counts
+(`s = sorted; s(a + b)` and `builtins.sorted` used to slip through a text
+scan), a docstring that merely *mentions* `sorted()` does not. Tasks whose
+prompt says "standard library only" declare `stdlib_only` and any import
+outside `sys.stdlib_module_names` fails them — for a while that sentence was
+in three prompts and nothing enforced it.
 
 ### Can it call tools at all? (`bench_tools.py`)
 

@@ -240,7 +240,10 @@ def main():
         entries = [e for e in entries if e["id"] in set(args.only)]
     if args.changed:
         touched = changed_files()
-        entries = [e for e in entries if e["target"] in touched]
+        # By target OR by the test the entry runs: a commit that only weakens
+        # tests/test_x.py touched no target and selected nothing.
+        entries = [e for e in entries
+                   if e["target"] in touched or any(t in e["test"] for t in touched)]
 
     print("=== mutation gate: can these tests fail? ===")
     if not entries:

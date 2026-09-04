@@ -140,6 +140,14 @@ printf '#!/usr/bin/env bash\nprintf "somewhere/else.sh\\n"\n' > "${_work}/bin/gi
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
   "a target outside the diff must be skipped, not run"
 
+t_case "--changed also selects by the TEST an entry runs, not only by target"
+# A commit that only weakens tests/t.sh touches no target; matching the test
+# path is what makes the gate re-verify the guarantee that test carries.
+_fixture "GUARD=on" "GUARD=off" yes .
+printf '#!/usr/bin/env bash\nprintf "t.sh\\n"\n' > "${_work}/bin/git"
+t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" \
+  "an entry whose test file is in the diff must be selected"
+
 # --- the production call sites: isolation is a DEFAULT, --in-place is one flag away
 _gate_calls() { grep -e 'verify_mutations\.py' "$1" || true; }
 _count() { printf '%s\n' "$1" | grep -c "${@:2}" || true; }

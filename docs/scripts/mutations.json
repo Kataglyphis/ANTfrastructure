@@ -1924,7 +1924,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        if \"too long\" in msg.lower() or \"context\" in msg.lower():\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
     "replace": "        if False:\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k context",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k context",
     "why": "a context-blocked run must never be scored as a capability failure"
   },
   {
@@ -1932,7 +1932,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return (parse(text(e.stdout)), time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
     "replace": "        return ([], time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k TimeoutKeepsEvidence",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TimeoutKeepsEvidence",
     "why": "a timed-out agent that made 20 tool calls must not report 0"
   },
   {
@@ -1940,7 +1940,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return proc.returncode == 0, (proc.stdout + proc.stderr)[-300:]",
     "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
   },
   {
@@ -1948,7 +1948,7 @@
     "target": "linux/llm-stack/geniex_toolcall_shim.py",
     "find": "        choice[\"finish_reason\"] = \"tool_calls\"",
     "replace": "        pass",
-    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
     "why": "a recognised call with finish_reason 'stop' still ends the turn -- the agent never runs it"
   },
   {
@@ -1956,7 +1956,7 @@
     "target": "linux/llm-stack/geniex_toolcall_shim.py",
     "find": "    if not text or \"<function=\" not in text:\n        return strip_thinking(text or \"\"), []",
     "replace": "    if not text or \"<function=\" not in text:\n        if \"```bash\" in (text or \"\"):\n            return \"\", [{\"id\": \"call_1\", \"type\": \"function\",\n                         \"function\": {\"name\": \"bash\", \"arguments\": \"{}\"}}]\n        return strip_thinking(text or \"\"), []",
-    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
     "why": "markdown fences are not a call; inventing one runs a command the model never asked for"
   },
   {
@@ -1964,7 +1964,7 @@
     "target": "linux/llm-stack/geniex_toolcall_shim.py",
     "find": "        return strip_thinking(TOOL_CALL_BLOCK_RE.sub(\"\", text)).strip(), []",
     "replace": "        return strip_thinking(text), []",
-    "test": "python3 -m pytest linux/llm-stack/test_geniex_toolcall_shim.py -q",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
     "why": "a call cut off mid-template must not reach the user as raw markup pretending to be an answer"
   },
   {
@@ -2158,5 +2158,77 @@
     "replace": "                            stderr=subprocess.PIPE, text=True, start_new_session=False)",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a timed-out test left its grandchildren running; one orphan burned CPU for twenty minutes"
+  },
+  {
+    "id": "coding.forbidden-on-the-tree",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if isinstance(node, ast.Name) and node.id in wanted:\n            return f\"used {node.id}(), which the prompt forbids\"",
+    "replace": "        if False:\n            return f\"used {node.id}(), which the prompt forbids\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "an aliased sorted() evaded the text scan"
+  },
+  {
+    "id": "coding.forbidden-attribute",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if isinstance(node, ast.Attribute) and node.attr in wanted:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "builtins.sorted and .sort() must count as use"
+  },
+  {
+    "id": "coding.unclosed-last-fence",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            if re.search(r\"```[^\\n]*\\n(?:(?!```).)*\\Z\", tail, re.S):",
+    "replace": "            if text.count(\"```\") % 2 == 1:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a ``` in prose turned a plain typo into CUT"
+  },
+  {
+    "id": "coding.real-token-count",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        count = ctok if ctok is not None else chunks",
+    "replace": "        count = chunks",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a server that batches deltas reported a complete answer as CUT"
+  },
+  {
+    "id": "coding.stdlib-only",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if stdlib_only:\n        extra = _nonstd_imports(code)",
+    "replace": "    if False:\n        extra = _nonstd_imports(code)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "three prompts said standard library only and nothing enforced it"
+  },
+  {
+    "id": "coding.env-scrubbed",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
+    "replace": "        proc = subprocess.Popen(cmd, cwd=tmp,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the candidate inherited HOME, tokens and agent sockets"
+  },
+  {
+    "id": "coding.netns",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if _netns_available():\n            cmd = [\"unshare\", \"-rn\"] + cmd",
+    "replace": "        if False:\n            cmd = [\"unshare\", \"-rn\"] + cmd",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the candidate could open sockets"
+  },
+  {
+    "id": "coding.ascii-digits",
+    "target": "linux/llm-stack/bench_tasks.py",
+    "find": "assert _bad(\"1.5A\")\nassert _bad(\"\u0661A\")",
+    "replace": "assert _bad(\"1.5A\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the prompt says ASCII digits and every tested input was ASCII"
+  },
+  {
+    "id": "mutations.changed-by-test-path",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "                   if e[\"target\"] in touched or any(t in e[\"test\"] for t in touched)]",
+    "replace": "                   if e[\"target\"] in touched]",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a commit that only weakened a test selected no mutation"
   }
 ]

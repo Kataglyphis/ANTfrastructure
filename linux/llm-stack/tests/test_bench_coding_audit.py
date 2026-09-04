@@ -202,7 +202,7 @@ class TestAskReasoningDeltas:
         chunks = [{"choices": [{"delta": {"reasoning_content": "hmm"}, "finish_reason": None}]}] * 3
         chunks.append({"choices": [{"delta": {}, "finish_reason": "length"}]})
         self._stream(monkeypatch, chunks)
-        text, ttft, wall, n, ptok, think, finish = bc.ask("http://x", "m", "p", 10)
+        text, ttft, wall, n, ptok, think, finish, ctok = bc.ask("http://x", "m", "p", 10)
         assert text == "" and think == "hmmhmmhmm" and n == 3 and finish == "length"
         assert ttft is not None
         assert looks_truncated(text, n, extract_code(text), finish)
@@ -211,7 +211,7 @@ class TestAskReasoningDeltas:
         self._stream(monkeypatch, [{"choices": [{"delta": {"reasoning": "r"}, "finish_reason": None}]},
                                    {"choices": [{"delta": {"content": "def f(): pass"},
                                                  "finish_reason": "stop"}]}])
-        text, *_, think, finish = bc.ask("http://x", "m", "p", 10)
+        text, _t, _w, _n, _p, think, finish, _c = bc.ask("http://x", "m", "p", 10)
         assert think == "r" and text == "def f(): pass" and finish == "stop"
 
 
@@ -220,7 +220,7 @@ def _fake_ask_factory(script):
     calls = iter(script)
     def fake(base_url, model, prompt, max_tokens, timeout=1800):
         text, chunks, finish = next(calls)
-        return text, 0.1, 1.0, chunks, 10, "", finish
+        return text, 0.1, 1.0, chunks, 10, "", finish, None
     return fake
 
 
@@ -264,7 +264,7 @@ class TestEvaluateAccounting:
             item = next(it)
             if item is None:
                 raise ConnectionError("dropped")
-            return item, 0.1, 1.0, 5, 10, "", "stop"
+            return item, 0.1, 1.0, 5, 10, "", "stop", None
         monkeypatch.setattr(bc, "TASKS", nine); monkeypatch.setattr(bc, "ask", fake)
         r = bc.evaluate("http://x", "m", "lbl", 100, repeats=3, warmup=False)
         assert r["passed"] == 21 and r["total"] == 25 and r["errored"] == 2
@@ -279,7 +279,7 @@ class TestEvaluateAccounting:
             if item is None:
                 raise ConnectionError("dropped")
             text, chunks, finish = item
-            return text, 0.1, 1.0, chunks, 10, "", finish
+            return text, 0.1, 1.0, chunks, 10, "", finish, None
         monkeypatch.setattr(bc, "TASKS", [MERGE]); monkeypatch.setattr(bc, "ask", fake)
         r = bc.evaluate("http://x", "m", "lbl", 100, repeats=3, warmup=False)
         assert r["errored"] == 1 and r["deterministic"]
@@ -382,3 +382,117 @@ class TestForbiddenTokensAndExits:
         ok, detail, credit = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
         assert not ok
         assert credit["total"] == 7 and 0 < credit["passed"] < 7, credit
+
+
+class TestForbiddenOnTheTree:
+    @pytest.mark.parametrize("code", [
+        "def merge_sorted(a, b):\n    s = sorted\n    return s(a + b)\n",
+        "import builtins\ndef merge_sorted(a, b):\n    return builtins.sorted(a + b)\n",
+        "def merge_sorted(a, b):\n    return getattr(__builtins__, 'sorted')(a + b)\n",
+        "def merge_sorted(a, b):\n    c = a + b\n    c.sort()\n    return c\n",
+    ], ids=["alias", "builtins-attr", "getattr-string", "list-sort"])
+    def test_evasions_are_caught(self, code):
+        ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
+        assert not ok and "forbids" in detail, detail
+
+    def test_a_variable_named_sorted_out_is_not_sorted(self):
+        code = GOOD.replace("out, i, j = [], 0, 0", "sorted_out, i, j = [], 0, 0") \
+                   .replace("out.append", "sorted_out.append").replace("return out +", "return sorted_out +")
+        ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
+        assert ok, detail
+
+    def test_unparseable_code_falls_back_to_the_text_scan(self):
+        from bench_coding import check_forbidden
+        assert check_forbidden("def f(:\n    return sorted(x)", ["sorted"])
+
+
+class TestUnclosedLastFence:
+    def test_a_fence_in_prose_does_not_make_a_typo_a_cut(self):
+        text = "Wrap it in ``` to run it.\n```python\ndef merge_sorted(a, b)\n    return a\n```"
+        code = extract_code(text, want="merge_sorted")
+        assert not looks_truncated(text, 60, code)
+
+    def test_an_unclosed_final_block_is_a_cut(self):
+        text = "```python\ndef merge_sorted(a, b):\n    return (a +"
+        code = extract_code(text, want="merge_sorted")
+        assert looks_truncated(text, 60, code)
+
+
+class TestRealTokenCount:
+    def test_server_usage_overrides_the_delta_count(self, monkeypatch):
+        bad = "```python\n" + STUB + "```"
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, bc.GENERATION_CAP, 10, "", "stop", 100))
+        r = bc.evaluate("http://x", "m", "lbl", 100, warmup=False)
+        assert r["truncated"] == 0 and r["results"][0]["tokens"] == 100
+        assert r["results"][0]["tokens_estimated"] is False
+
+    def test_no_usage_keeps_the_delta_proxy(self, monkeypatch):
+        bad = "```python\n" + STUB + "```"
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, bc.GENERATION_CAP, 10, "", None, None))
+        r = bc.evaluate("http://x", "m", "lbl", 100, warmup=False)
+        assert r["truncated"] == 1 and r["results"][0]["tokens_estimated"] is True
+
+    def test_ask_reads_completion_tokens(self, monkeypatch):
+        chunks = [{"choices": [{"delta": {"content": "x"}, "finish_reason": "stop"}]},
+                  {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 42}}]
+        lines = [b"data: " + json.dumps(c).encode() + b"\n" for c in chunks] + [b"data: [DONE]\n"]
+        monkeypatch.setattr(bc.urllib.request, "urlopen", lambda req, timeout=0: _FakeResp(lines))
+        *_, ctok = bc.ask("http://x", "m", "p", 10)
+        assert ctok == 42
+
+
+class TestStdlibOnly:
+    def _task(self):
+        import bench_tasks
+        return next(t for t in bench_tasks.EXTENDED_TASKS if t["name"] == "strings_normalize_tag")
+
+    def test_third_party_import_fails_a_stdlib_only_task(self):
+        task = self._task()
+        assert task.get("stdlib_only") is True
+        ok, detail, _ = run_candidate("import yaml\n" + task["reference"], task["tests"], stdlib_only=True)
+        assert not ok and "standard library" in detail
+
+    def test_stdlib_imports_are_fine(self):
+        task = self._task()
+        code = "import re\nfrom collections import Counter\n" + task["reference"]
+        assert run_candidate(code, task["tests"], stdlib_only=True)[0]
+
+    def test_the_prompts_that_say_so_declare_it(self):
+        import bench_tasks
+        for t in bench_tasks.EXTENDED_TASKS:
+            if "standard library" in t["prompt"].lower():
+                assert t.get("stdlib_only") is True, t["name"]
+
+
+class TestCandidateConfinement:
+    def test_environment_is_scrubbed(self):
+        code = "import os\ndef f():\n    return 'HOME' in os.environ or 'SSH_AUTH_SOCK' in os.environ\n"
+        ok, detail, _ = run_candidate(code, "assert f() is False")
+        assert ok, detail
+
+    def test_no_network_interfaces_when_the_kernel_allows_it(self):
+        if not bc._netns_available():
+            pytest.skip("unshare -rn unavailable here")
+        code = "import socket\ndef f():\n    return sorted(n for _, n in socket.if_nameindex())\n"
+        ok, detail, _ = run_candidate(code, "assert f() in ([], ['lo'])")
+        assert ok, detail
+
+
+class TestAsciiDigits:
+    @pytest.mark.parametrize("name,bad", [("validation_parse_seat_code", "١A"),
+                                          ("validation_parse_range_spec", "٣")])
+    def test_the_non_ascii_case_is_tested_and_the_reference_passes(self, name, bad):
+        import bench_tasks
+        task = next(t for t in bench_tasks.EXTENDED_TASKS if t["name"] == name)
+        assert bad in task["tests"]
+        assert run_candidate(task["reference"], task["tests"])[0]
+
+    def test_item_list_rejects_non_ascii_and_signed_counts(self):
+        import bench_tasks
+        task = next(t for t in bench_tasks.EXTENDED_TASKS if t["name"] == "parsing_item_list")
+        assert run_candidate(task["reference"], task["tests"])[0]
+        lenient = task["reference"].replace("all(c in '0123456789' for c in left)", "left.lstrip('+').isdigit()")
+        assert lenient != task["reference"]
+        assert not run_candidate(lenient, task["tests"])[0]
