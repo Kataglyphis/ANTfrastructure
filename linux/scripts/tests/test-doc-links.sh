@@ -112,6 +112,45 @@ printf '# Guide\n\n## 1b. Real\n\nSee CHANGELOG.md \xc2\xa7 2026-09-01 for it.\n
 t_assert_eq "0" "$(_rc "${fix}")"
 rm -rf "${fix}"
 
+t_case "the scanned set does not depend on .git being present"
+# The mutation gate mirrors the repo WITHOUT .git and runs this suite from the
+# copy. There `git check-ignore` exits 128 and answers nothing; treating that
+# as "nothing is ignored" quietly turned 566 scanned files into 5,467, failed
+# the gate on model output, and killed BOTH doc-links mutation entries before
+# either was ever mutated. Neither side could see it: one change made the gate
+# ask git, the other took git away.
+# Comparing the two lists is NOT enough -- with git present the fallback branch
+# never runs, and that version of this test let the mutation survive. So point
+# the gate at a directory that is not a repository and prove the wiring.
+t_assert_eq "wired" "$( "${PY}" - <<'PYCHK'
+import importlib.util, pathlib, tempfile
+spec = importlib.util.spec_from_file_location("g", "docs/scripts/verify_doc_links.py")
+g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+cand = []
+for name in g.CODE_SCAN:
+    root = g.REPO_ROOT / name
+    if root.is_file():
+        cand.append(root); continue
+    for f in sorted(root.rglob("*")):
+        if f.is_file() and f.suffix not in g.CODE_SKIP_SUFFIXES and not (
+                g.CODE_SKIP_PARTS & set(f.parts)):
+            cand.append(f)
+rel = [f.relative_to(g.REPO_ROOT) for f in cand]
+with_git = g._ignored_paths(rel)
+floor = g._static_ignores(rel)
+g.REPO_ROOT = pathlib.Path(tempfile.mkdtemp())   # not a git repository
+without_git = g._ignored_paths(rel)
+problems = []
+if not floor:
+    problems.append("the floor is empty, so it proves nothing")
+if with_git != floor:
+    problems.append("git says %d, floor says %d" % (len(with_git), len(floor)))
+if without_git != floor:
+    problems.append("no-git path returned %d, not the floor" % len(without_git))
+print("wired" if not problems else "BROKEN: " + "; ".join(problems))
+PYCHK
+)"
+
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 

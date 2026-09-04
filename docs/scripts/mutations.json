@@ -352,6 +352,14 @@
     "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
   },
   {
+    "id": "doc-links.git-free-floor",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "        return _static_ignores(paths)\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "replace": "        return set()\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "without git the gate must skip the same paths, or it lints model output and kills its own mutation entries"
+  },
+  {
     "id": "gate-registry.new-unproven",
     "target": "linux/scripts/quality_allow.py",
     "find": "    if new:\n        rc = 1",
