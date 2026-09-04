@@ -956,6 +956,49 @@ failures, 1/27 would read as a catastrophically bad model. What it actually
 shows is a model whose output length is incompatible with this runtime — a
 server limitation meeting a model habit, and a different problem entirely.
 
+### 1k. Does a code-specialised model win? (measured 2026-09-04)
+
+`Qwen2.5-Coder-7B-Instruct` `Q4_K_M` on the CPU lane, against the incumbent.
+
+| | QAIRT 4B-Instruct (NPU) | Qwen2.5-Coder-7B (CPU) |
+|---|---|---|
+| health | 6/6 | 6/6 |
+| **coding** | **17/27 = 63 % [44–78]** | **17/27 = 63 % [44–78]** |
+| coding time | 631 s | **245 s** |
+| tasks cut by the cap | 2 | **0** |
+| mean tokens per task | 401 | **119** |
+| **tool calling** | **25/27 in 79 s** | 27/27 in **378 s** |
+| CPU cost | 1.65 of 8 cores | **7.5 of 8 cores** |
+
+**Specialisation bought brevity, not correctness.** Identical scores, identical
+intervals — and they fail *different* tasks: three each that the other solves.
+That is the signature of two comparable models, not of one being better.
+
+What the specialist does buy is **terseness**: 119 tokens per task against 401.
+On this server that is worth real money, because it is the 2048-token cap that
+distorts every coding number here — the Coder lost **nothing** to it while the
+incumbent lost two tasks and Qwen3-8B lost twenty-six (§ 1j). Brevity is the
+property that survives this runtime.
+
+It also resolves the family question from § 1g. Qwen2.5 scores 27/27 on tool
+calling, landing with Qwen3 rather than Qwen3.8:
+
+| Generation | Tool calling |
+|---|---|
+| Qwen2.5 (Coder-7B) | 27/27 |
+| Qwen3 (1.7B, 4B, 4B-GGUF, 8B) | 25–27/27 |
+| **Qwen3.8 (2B, 9B, 27B)** | **8–9/27** |
+
+So **Qwen3.8 is the outlier**, not Qwen3 the exception — a sharper claim than
+the sweep alone could support, and one a third generation was needed to make.
+
+**It does not displace the recommendation, and the reason is the agent loop.**
+Its 27/27 over 25/27 is not separable, and it pays **4.8x the tool-call latency**
+— the cost an agent pays on *every turn* — while occupying 7.5 of 8 cores
+against the NPU lane's 1.65. For a coding agent the incumbent stays. For batch
+code generation where latency does not matter and the output cap does, the
+Coder is the better choice, and that is a real second use.
+
 ### 1i. The coding score at 27 tasks — and what six tasks were hiding
 
 The six-task set said the QAIRT 4B-Instruct scored **5/6 = 83 % [44–97 %]**.
