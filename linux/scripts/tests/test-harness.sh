@@ -73,6 +73,19 @@ t_fn_src() {
   printf '%s\n' "${_src}"
 }
 
+# t_gate_tree <module>... — a throwaway root holding linux/scripts/<module> for each
+# named module, for a gate that derives its own root from __file__. Prints the root;
+# the caller adds its fixture and removes it. Second owner of a shape two suites had
+# copied. docs/code-quality-tooling.md#the-mutation-gate-mutations
+_T_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+t_gate_tree() {
+  local root m; root="$(mktemp -d)"
+  for m in "$@"; do
+    install -D -m 0644 "${_T_SCRIPTS}/${m}" "${root}/linux/scripts/${m}"
+  done
+  printf '%s' "${root}"
+}
+
 # t_out <command...> — combined stdout+stderr, to assert on messages
 t_out() { "$@" 2>&1; }
 # t_rc <command...> — the exit code as text, for t_assert_eq

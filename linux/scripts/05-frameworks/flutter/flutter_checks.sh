@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Dart/Flutter equivalent of 02-toolchain/rust/cargo_fmt_clippy.sh + cargo_test.sh.
-# Docs: docs/linux-reference.md.
+# Docs: docs/code-quality-tooling.md#dart-file-enumeration
 #
 # Usage: flutter_checks.sh [--strict <bool>] [--extra-package <dir>]...
 #   --strict false  reports failures and continues (default: true)

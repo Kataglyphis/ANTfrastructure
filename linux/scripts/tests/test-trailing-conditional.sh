@@ -13,11 +13,8 @@ GATE="${SCRIPTS_DIR}/verify_trailing_conditional.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
 _fixture() {
-  local d
-  d="$(gate_tree "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py")"
-  printf '%s\n' "$1" > "${d}/linux/scripts/subject.sh"
-  [ -z "${2-}" ] || printf '%s\n' "$2" > "${d}/linux/scripts/trailing-conditional.allow"
-  printf '%s' "${d}"
+  gate_tree_subject trailing-conditional.allow "$1" "${2-}" \
+    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py"
 }
 _gate() { "${PY}" "$1/linux/scripts/verify_trailing_conditional.py"; }
 

@@ -2510,5 +2510,149 @@
     "replace": "    pass \"advertised-version gate had nothing to check on ${target_arch}\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "a gate whose key list came back empty asserted nothing; printing PASS for it is the hole the gate exists to close"
+  },
+  {
+    "id": "lib.app-runner-cd-guarded",
+    "target": "linux/scripts/lib/app-runner.sh",
+    "find": "  cd \"${WORK_DIR}\" || err \"Cannot enter working directory: ${WORK_DIR}\"",
+    "replace": "  cd \"${WORK_DIR}\"",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "app-runner sets no -e, so an unguarded cd that fails leaves the very next line exec'ing the app from the caller's directory instead of PROJECT_ROOT -- a silent wrong-cwd launch, not a failure"
+  },
+  {
+    "id": "lib.ctest-run-cd-guarded",
+    "target": "linux/scripts/lib/ctest-run.sh",
+    "find": "    cd \"${BUILD_DIR}\" || err \"Cannot enter build directory: ${BUILD_DIR}\"",
+    "replace": "    cd \"${BUILD_DIR}\"",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "the [[ -d ]] check above it does not cover a cd that fails for permissions, and this library sets no -e either: the whole ctest suite would then run in the wrong tree and report on it"
+  },
+  {
+    "id": "lib.cmake-build-vulkan-default-must-exist",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "        && -f \"${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT}\" ]]; then",
+    "replace": "        ]]; then",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "cmake_build_prepare_env sources VULKAN_SETUP_SCRIPT unconditionally once it is set, so adopting a caller default that is not on disk turns a missing SDK into a sourcing error much later; the -f test is what stops it"
+  },
+  {
+    "id": "lib.cmake-build-vulkan-flag-beats-env",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "  if [[ -n \"${version_arg}\" ]]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "an explicit --vulkan-version must override the VULKAN_VERSION the image exported, or the flag silently does nothing on every image that presets one"
+  },
+  {
+    "id": "lib.cmake-build-skip-configure-optional-value",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "        if [[ $# -ge 2 && \"${2}\" != -* ]]; then",
+    "replace": "        if [[ $# -ge 2 ]]; then",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "--skip-configure takes an OPTIONAL value; without the -* guard it swallows the following flag as its value, so `--skip-configure --parallel 5` sets SKIP_CONFIGURE=--parallel and drops the job count"
+  },
+  {
+    "id": "lib.log-bootstrap-source-removed",
+    "target": "linux/scripts/lib/rust-toolchain.sh",
+    "find": "# shellcheck source=./log-bootstrap.sh\nsource \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/log-bootstrap.sh\"",
+    "replace": "# shellcheck source=./log-bootstrap.sh",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "a lib that stops sourcing the shared bootstrap ends up with no info/warn/err at all -- the exact drift that left app-runner.sh and rust-toolchain.sh defective before the one-owner extraction"
+  },
+  {
+    "id": "lib.log-bootstrap-private-fallback-returns",
+    "target": "linux/scripts/lib/coverage.sh",
+    "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/log-bootstrap.sh\"",
+    "replace": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/log-bootstrap.sh\"\ninfo() { printf '\\033[1;34m[INFO]\\033[0m %s\\n' \"$*\"; }",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "one owner only holds if a re-pasted private copy of the fallbacks fails; nine such copies drifted twice into real defects and no duplication gate could see them at 9 owners, over the 6-owner idiom threshold"
+  },
+  {
+    "id": "lib.log-bootstrap-loses-01core",
+    "target": "linux/scripts/lib/log-bootstrap.sh",
+    "find": "&& pwd)/../01-core\"",
+    "replace": "&& pwd)/../01-core-gone\"",
+    "test": "bash linux/scripts/tests/test-lib-modules.sh",
+    "why": "the owner must still reach the REAL 01-core/logging.sh rather than settle for its own minimal fallbacks -- the silent degrade app-runner.sh shipped for months, where consumers got no log/die and divergent formatting and nothing failed"
+  },
+  {
+    "id": "pkg-names.unguarded-is-a-verdict",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "        return False, \"\"",
+    "replace": "        return True, \"\"",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "if every call site reads guarded the gate can never FAIL at all; UNGUARDED IS the verdict -- it is the four-hours-in stage kill this gate exists to catch"
+  },
+  {
+    "id": "pkg-names.guard-precedence",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "    if block_guard:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "an install under an enclosing apt probe is guarded BY that probe, not by a condition of its own; lose the arm and the WARN names the wrong reason, pointing a reader at the wrong fix"
+  },
+  {
+    "id": "pkg-names.array-must-be-handed-over",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "    return {m.group(1) for m in ARRAY_REF_RE.finditer(text)}",
+    "replace": "    return set()",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "an array counts as a request only when its file hands it to an installer; with no references every array-declared package silently leaves the scan and the gate reads green over names it never checked"
+  },
+  {
+    "id": "pkg-names.array-body-spans-lines",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "            if cut >= 0:",
+    "replace": "            if True:",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "a NAME=( ... ) body spanning lines is the common shape in install-deps.sh; ending it on the first line reads one package and drops the rest of the list"
+  },
+  {
+    "id": "pkg-names.append-helper-destination",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "        args = args.strip().split(\" \", 1)[1] if \" \" in args.strip() else \"\"",
+    "replace": "        args = args",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "append_unique_packages' first argument is the DESTINATION array, not a package; keep it and the gate demands a distro package by that name and fails on a name that was never requested"
+  },
+  {
+    "id": "pkg-names.cpython-dev-table",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "             if rel.endswith(\"01-core/cpython-dev-packages.sh\") else [])",
+    "replace": "             if False else [])",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "the CPython dev-package table is a request shape no installer call site names; skip it and every package that decides which CPython extension modules build is never checked at all"
+  },
+  {
+    "id": "pkg-names.quoted-name-is-not-a-call",
+    "target": "linux/scripts/verify_package_names.py",
+    "find": "            if in_quotes(spans, m.start()):",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-package-names.sh",
+    "why": "an installer name inside a string is prose, not a call site; counting it invents requests out of echo text -- the exact MUST_NOT_FIND decoy shape the extractor self-check was built around"
+  },
+  {
+    "id": "doc-links.flutter-checks-anchor",
+    "target": "docs/code-quality-tooling.md",
+    "find": "#### Dart file enumeration",
+    "replace": "#### Finding the Dart files",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "05-frameworks/flutter/flutter_checks.sh now points at this section by anchor; renaming the heading must fail, which is the whole point of the anchor -- the bare page reference it used to carry always resolved and the gate could not see it"
+  },
+  {
+    "id": "gate-fixture.plants-the-subject",
+    "target": "linux/scripts/tests/gate-tree.sh",
+    "find": "  printf '%s\\n' \"${subject}\" > \"${dir}/linux/scripts/subject.sh\"",
+    "replace": "  : > \"${dir}/linux/scripts/subject.sh\"",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "one helper now plants the subject for two gate suites; a fixture that writes an EMPTY subject.sh makes every case in both pass against nothing -- exactly the vacuous-fixture failure this manifest exists to catch"
+  },
+  {
+    "id": "gate-fixture.plants-the-allow",
+    "target": "linux/scripts/tests/gate-tree.sh",
+    "find": "  [ -z \"${allow}\" ] || printf '%s\\n' \"${allow}\" > \"${dir}/linux/scripts/${allow_name}\"",
+    "replace": "  [ -n \"${allow}\" ] || printf '%s\\n' \"${allow}\" > \"${dir}/linux/scripts/${allow_name}\"",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "the shared fixture's allow arm inverted: every freeze case would then run with no allow file present and every allow-file assertion would prove nothing. Split across the other suite on purpose so both consumers of the shared helper carry a live mutation"
   }
 ]

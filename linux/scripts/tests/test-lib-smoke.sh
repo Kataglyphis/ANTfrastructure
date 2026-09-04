@@ -72,4 +72,60 @@ _out="$(bash -c "set -euo pipefail
   printf '%s' \"\${PRESET}\"")"
 t_assert_eq "my-preset" "${_out}"
 
+
+# ── cmake-build.sh: Vulkan precedence (_cmake_build_resolve_vulkan) ───────────
+# The flag > inherited-env > caller-default chain, and the rule that the caller
+# default is adopted only when its setup script actually exists: a missing file
+# silently poisoned every later `. "${VULKAN_SETUP_SCRIPT}"`.
+
+t_case "cmake_build_parse_args: --vulkan-* flags beat the inherited environment"
+_out="$(bash -c "set -euo pipefail
+  export VULKAN_VERSION=1.0.0 VULKAN_SDK=/inherited
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --vulkan-version 2.2.2 --vulkan-sdk /flag
+  printf '%s|%s' \"\${VULKAN_VERSION}\" \"\${VULKAN_SDK}\"")"
+t_assert_eq "2.2.2|/flag" "${_out}"
+
+t_case "cmake_build_parse_args: an absent caller-default setup script is not adopted"
+_out="$(bash -c "set -euo pipefail
+  export CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT=/nonexistent/setup-env.sh
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args
+  printf '%s' \"\${VULKAN_SETUP_SCRIPT:-<unset>}\"")"
+t_assert_eq "<unset>" "${_out}"
+
+_setup_script="$(mktemp)"
+
+t_case "cmake_build_parse_args: an existing caller-default setup script is adopted"
+_out="$(bash -c "set -euo pipefail
+  export CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT='${_setup_script}'
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args
+  printf '%s' \"\${VULKAN_SETUP_SCRIPT:-<unset>}\"")"
+t_assert_eq "${_setup_script}" "${_out}"
+
+t_case "cmake_build_parse_args: --vulkan-setup-script wins over an existing caller default"
+_out="$(bash -c "set -euo pipefail
+  export CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT='${_setup_script}'
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --vulkan-setup-script /explicit/setup-env.sh
+  printf '%s' \"\${VULKAN_SETUP_SCRIPT}\"")"
+t_assert_eq "/explicit/setup-env.sh" "${_out}"
+
+rm -f "${_setup_script}"
+
+t_case "cmake_build_parse_args: --skip-configure takes a value but never eats the next flag"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --skip-configure false --parallel 3
+  printf '%s|%s|' \"\${SKIP_CONFIGURE}\" \"\${PARALLEL_JOBS}\"
+  cmake_build_parse_args --skip-configure --parallel 5
+  printf '%s|%s' \"\${SKIP_CONFIGURE}\" \"\${PARALLEL_JOBS}\"")"
+t_assert_eq "false|3|true|5" "${_out}"
+
+t_case "cmake_build_parse_args: an unknown flag is fatal"
+t_assert_fails bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --no-such-flag"
+
 t_summary

@@ -12,25 +12,8 @@ _CMAKE_BUILD_SH_LOADED=1
 
 _CMAKE_BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CMAKE_BUILD_CORE_DIR="${_CMAKE_BUILD_LIB_DIR}/../01-core"
-
-# ---------------------------------------------------------------------------
-# Shared helpers: prefer the real 01-core modules, fall back to local minimals
-# ---------------------------------------------------------------------------
-if ! declare -F info >/dev/null 2>&1; then
-  if [[ -f "${_CMAKE_BUILD_CORE_DIR}/logging.sh" ]]; then
-    # shellcheck source=../01-core/logging.sh
-    source "${_CMAKE_BUILD_CORE_DIR}/logging.sh"
-  fi
-fi
-if ! declare -F info >/dev/null 2>&1; then
-  info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
-fi
-if ! declare -F warn >/dev/null 2>&1; then
-  warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
-fi
-if ! declare -F err >/dev/null 2>&1; then
-  err() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
-fi
+# shellcheck source=./log-bootstrap.sh
+source "${_CMAKE_BUILD_LIB_DIR}/log-bootstrap.sh"
 
 cmake_build_usage() {
   cat <<EOF
@@ -57,6 +40,29 @@ EOF
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
+# Vulkan precedence: an explicit --vulkan-* flag beats the inherited
+# environment, and CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT is the last resort,
+# applied only when that script really exists on disk.
+# docs/shared-script-libraries.md#cmake-buildsh--configure--build-a-cmake-project-in-a-container
+_cmake_build_resolve_vulkan() {
+  local version_arg="$1" setup_arg="$2" sdk_arg="$3"
+
+  if [[ -n "${version_arg}" ]]; then
+    VULKAN_VERSION="${version_arg}"
+  fi
+  if [[ -n "${setup_arg}" ]]; then
+    VULKAN_SETUP_SCRIPT="${setup_arg}"
+  fi
+  if [[ -n "${sdk_arg}" ]]; then
+    VULKAN_SDK="${sdk_arg}"
+  fi
+  if [[ -z "${VULKAN_SETUP_SCRIPT:-}" \
+        && -n "${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT:-}" \
+        && -f "${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT}" ]]; then
+    VULKAN_SETUP_SCRIPT="${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT}"
+  fi
+}
+
 # Fills PRESET, BUILD_DIR, CLEAN_BUILD_DIR, SKIP_CONFIGURE, CMAKE_BUILD_CONFIG,
 # CMAKE_BUILD_TARGET, PARALLEL_JOBS, MB_PER_JOB, CARGO_CACHE_DIR,
 # ALLOW_PREBUILD_FAILURE and CMAKE_BUILD_POSITIONAL.
@@ -76,18 +82,18 @@ cmake_build_parse_args() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --preset)
-        preset_arg="${2:-}"
-        shift 2
-        ;;
-      --build-dir)
-        build_dir_arg="${2:-}"
-        shift 2
-        ;;
-      --clean-build-dir)
-        clean_arg="${2:-}"
-        shift 2
-        ;;
+      --preset)              preset_arg="${2:-}";         shift 2 ;;
+      --build-dir)           build_dir_arg="${2:-}";      shift 2 ;;
+      --clean-build-dir)     clean_arg="${2:-}";          shift 2 ;;
+      --build-config)        config_arg="${2:-}";         shift 2 ;;
+      --build-target)        target_arg="${2:-}";         shift 2 ;;
+      --cargo-cache-dir)     CARGO_CACHE_DIR="${2:-}";    shift 2 ;;
+      --parallel)            PARALLEL_JOBS="${2:-}";      shift 2 ;;
+      --mb-per-job)          MB_PER_JOB="${2:-}";         shift 2 ;;
+      --vulkan-version)      vulkan_version_arg="${2:-}"; shift 2 ;;
+      --vulkan-setup-script) vulkan_setup_arg="${2:-}";   shift 2 ;;
+      --vulkan-sdk)          vulkan_sdk_arg="${2:-}";     shift 2 ;;
+      --allow-prebuild-failure) ALLOW_PREBUILD_FAILURE="true"; shift ;;
       --skip-configure)
         if [[ $# -ge 2 && "${2}" != -* ]]; then
           skip_arg="${2}"
@@ -100,52 +106,9 @@ cmake_build_parse_args() {
       --use-thread-sanitizer)
         err "--use-thread-sanitizer does nothing (legacy plumbing) — select a sanitizer preset via --preset instead"
         ;;
-      --cargo-cache-dir)
-        CARGO_CACHE_DIR="${2:-}"
-        shift 2
-        ;;
-      --parallel)
-        PARALLEL_JOBS="${2:-}"
-        shift 2
-        ;;
-      --mb-per-job)
-        MB_PER_JOB="${2:-}"
-        shift 2
-        ;;
-      --build-config)
-        config_arg="${2:-}"
-        shift 2
-        ;;
-      --build-target)
-        target_arg="${2:-}"
-        shift 2
-        ;;
-      --allow-prebuild-failure)
-        ALLOW_PREBUILD_FAILURE="true"
-        shift
-        ;;
-      --vulkan-version)
-        vulkan_version_arg="${2:-}"
-        shift 2
-        ;;
-      --vulkan-setup-script)
-        vulkan_setup_arg="${2:-}"
-        shift 2
-        ;;
-      --vulkan-sdk)
-        vulkan_sdk_arg="${2:-}"
-        shift 2
-        ;;
-      -h|--help)
-        cmake_build_usage
-        exit 0
-        ;;
-      -*)
-        err "Unknown argument: $1"
-        ;;
-      *)
-        break
-        ;;
+      -h|--help) cmake_build_usage; exit 0 ;;
+      -*)        err "Unknown argument: $1" ;;
+      *)         break ;;
     esac
   done
 
@@ -153,21 +116,8 @@ cmake_build_parse_args() {
     CMAKE_BUILD_POSITIONAL=("$@")
   fi
 
-  # Vulkan selection: an explicit flag always wins over the inherited env.
-  if [[ -n "${vulkan_version_arg}" ]]; then
-    VULKAN_VERSION="${vulkan_version_arg}"
-  fi
-  if [[ -n "${vulkan_setup_arg}" ]]; then
-    VULKAN_SETUP_SCRIPT="${vulkan_setup_arg}"
-  fi
-  if [[ -n "${vulkan_sdk_arg}" ]]; then
-    VULKAN_SDK="${vulkan_sdk_arg}"
-  fi
-  if [[ -z "${vulkan_setup_arg}" && -z "${VULKAN_SETUP_SCRIPT:-}" \
-        && -n "${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT:-}" \
-        && -f "${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT}" ]]; then
-    VULKAN_SETUP_SCRIPT="${CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT}"
-  fi
+  _cmake_build_resolve_vulkan \
+    "${vulkan_version_arg}" "${vulkan_setup_arg}" "${vulkan_sdk_arg}"
 
   PRESET="${preset_arg:-${PRESET:-${CMAKE_BUILD_POSITIONAL[0]:-${CMAKE_BUILD_DEFAULT_PRESET:-}}}}"
   BUILD_DIR="${build_dir_arg:-${BUILD_DIR:-${CMAKE_BUILD_DEFAULT_BUILD_DIR:-build}}}"

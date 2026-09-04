@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Tests for verify_dead_functions.py. The gate derives its root from its own path,
-# so each case copies it plus the two modules it imports into a throwaway tree and
-# plants a subject.sh, callers, and an allow file there. Fixture functions are
+# so each case builds a throwaway tree with gate-tree.sh and plants a subject.sh,
+# callers, and an allow file there. Fixture functions are
 # written via printf so this file defines none of them itself.
 # docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 GATE="${SCRIPTS_DIR}/verify_dead_functions.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
@@ -21,13 +22,8 @@ MASKING=$'foo_fn() {\n  :\n}\nfoo_fn "$@"'
 
 # _fixture <subject.sh content> [allow content] -> tree path
 _fixture() {
-  local d; d="$(mktemp -d)"
-  mkdir -p "${d}/linux/scripts"
-  cp "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" \
-    "${d}/linux/scripts/"
-  printf '%s\n' "$1" > "${d}/linux/scripts/subject.sh"
-  if [ -n "${2-}" ]; then printf '%s\n' "$2" > "${d}/linux/scripts/dead-functions.allow"; fi
-  printf '%s' "${d}"
+  gate_tree_subject dead-functions.allow "$1" "${2-}" \
+    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py"
 }
 _gate() { local d="$1"; shift; "${PY}" "${d}/linux/scripts/verify_dead_functions.py" "$@"; }
 _run() { t_out _gate "$@"; }

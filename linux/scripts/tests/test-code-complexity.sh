@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Tests for verify_code_complexity.py. The gate derives its root from its own path,
-# so each case copies it with its two imports into a throwaway tree and feeds a
-# subject.sh on stdin. Measured numbers are read back through the real CLI with the
+# Tests for verify_code_complexity.py. Each case builds a t_gate_tree holding the
+# gate and its two imports, feeds a subject.sh on stdin. Measured numbers are read back through the real CLI with the
 # limits forced to zero, so no case depends on the parser's internals.
 # docs/code-quality-tooling.md#shell-complexity-code-complexity
 set -u
@@ -14,10 +13,7 @@ ROW="linux/scripts/subject.sh | f"
 # _tree [allow-row...]: a tree holding the gate, its imports, subject.sh from stdin
 # and, when rows are given, a code-complexity.allow.
 _tree() {
-  local root m; root="$(mktemp -d)"
-  for m in "${GATE}" verify_code_size.py quality_allow.py; do
-    install -D -m 0644 "${SRC}/${m}" "${root}/linux/scripts/${m}"
-  done
+  local root; root="$(t_gate_tree "${GATE}" verify_code_size.py quality_allow.py)"
   cat > "${root}/linux/scripts/subject.sh"
   [ $# -eq 0 ] || printf '%s\n' "$@" > "${root}/linux/scripts/code-complexity.allow"
   printf '%s' "${root}"

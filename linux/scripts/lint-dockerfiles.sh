@@ -54,7 +54,7 @@ hadolint_load_pin() {
 }
 
 hadolint_asset_and_sha() {
-  local os arch
+  local os
   case "$(uname -s)" in
     Linux) os=linux ;;
     MINGW*|MSYS*|CYGWIN*) os=windows ;;

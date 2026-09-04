@@ -14,3 +14,14 @@ gate_tree() {
   cp "$@" "${dir}/linux/scripts/"
   printf '%s' "${dir}"
 }
+
+# gate_tree_subject <allow-name> <subject content> <allow content> <module.py>...
+# -> tree path with subject.sh planted, and <allow-name> only when non-empty.
+gate_tree_subject() {
+  local allow_name="$1" subject="$2" allow="$3" dir
+  shift 3
+  dir="$(gate_tree "$@")"
+  printf '%s\n' "${subject}" > "${dir}/linux/scripts/subject.sh"
+  [ -z "${allow}" ] || printf '%s\n' "${allow}" > "${dir}/linux/scripts/${allow_name}"
+  printf '%s' "${dir}"
+}

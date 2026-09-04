@@ -414,7 +414,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **314 entries** over **38 distinct test commands**; both digits are
+manifest holds **332 entries** over **41 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1309,9 +1309,31 @@ listed above.
 
 One `shellcheck -x -f json1 -S warning` run over exactly the file set
 `lint-shell.sh --list-files` prints, counted per `(file, SCxxxx)` and checked
-against the frozen rows with the shared four-way rule. On 2026-09-04: **310
-files in scope, 177 warning-level findings in 74 files, 95 frozen rows** — SC2034 (85),
-SC2155 (19), SC2154 (16), SC2178 (12), SC2046 (11), SC1090 (9).
+against the frozen rows with the shared four-way rule. On 2026-09-04, after the
+row review below: **319 files in scope, 174 warning-level findings in 72 files, 92
+frozen rows** — SC2034 (84), SC2155 (19), SC2154 (16), SC2178 (12), SC2046 (11),
+SC1090 (9), SC2163 (8).
+
+**Every row carries a verdict (2026-09-04).** The 95 rows the baseline
+froze on 2026-09-03 all read `not yet reviewed`; each has now been read against the
+finding in its file and the reason column says why the code is right, or names the
+defect and why it is not being fixed without a build. Three rows were closed by
+fixing the code instead: an unguarded `cd` before `exec` in `lib/app-runner.sh` and
+another in `ctest_run_execute` (both libraries set no `-e`, so a failed `cd` ran the
+app or the suite in the caller's directory — `test-lib-modules.sh` now asserts no
+bare `cd` survives anywhere under `lib/`), and a dead `arch` local in
+`lint-dockerfiles.sh`. Four families account for most of what remains and none of
+them is a defect: `local -n` namerefs SC2178/SC2034 cannot see, associative-array
+subscripts SC2154 misreads as variable references, `export "${__varname}"` indirect
+exports SC2163 misreads, and variables a *sourced* consumer reads. Two verdicts are
+worth reading before anyone "cleans up" the rest: `verify.sh`'s SC2155 is
+load-bearing (`version_major` returns 1 on an empty version, so splitting the
+declaration would turn a tolerated empty `GCC_WANTED` into a `set -e` abort), and
+the SC2034 rows on `stage-defs.sh`, `python_uv.sh`, `pre-setup.sh`,
+`gstreamer-env.sh` and `package_archive.sh` are genuinely dead code left in place
+only because those files are build-closure and nothing static can prove a chain
+still runs — they are the checklist in backlog CL6, to be deleted and re-baselined
+in one build window.
 
 **Why it exists.** `lint-shell.sh` gates at `-S error` and prints warnings as
 advisory noise, so those 177 findings were watched by nothing: the 178th was

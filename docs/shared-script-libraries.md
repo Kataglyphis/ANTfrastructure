@@ -25,6 +25,36 @@ Two libraries in this directory have their own pages, because their topic is
 bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
 [`slang-compile.sh`](slang-shader-compilation.md).
 
+## The logging bootstrap
+
+`log-bootstrap.sh` is the one owner of the block every other library needs
+before it can say anything: resolve `../01-core/logging.sh` if the caller has
+not already defined `info`, and otherwise define the minimal `info`/`warn`/`err`
+that let the library run standalone. Each library sources it on the line after
+its own re-source guard; only `cmake-build.sh` and `wasm-opt.sh` keep a
+`_*_CORE_DIR` of their own, because they reach into `01-core` for
+`parallelism.sh`, `load-versions-env.sh` and `downloads.sh` as well.
+
+It is a separate file, and not an idiom pasted into each library, because nine
+hand-kept copies **had already drifted twice, and both drifts were defects**
+(complexity audit F-A): `app-runner.sh` carried no re-source guard and never
+attempted the real `01-core/logging.sh`, so standalone consumers silently got
+the minimal fallbacks — no `log`, no `die`, different formatting — forever;
+`rust-toolchain.sh` had no guard either and defined no `err`, so an `err` call
+would have inherited whatever the caller happened to have, or exploded. No
+duplication gate could catch that: at nine owners every shingle of the block
+lands in `verify_code_dupes`' `suppressed as idiom at >6 owners` bucket
+(`MAX_OWNERS = 6`), which is why the copies were free to rot.
+
+Sourcing a sibling to get logging is not the bootstrap paradox it looks like.
+The block it replaced already sourced a file — `../01-core/logging.sh`, one
+directory further away — and every consumer vendors the whole ContainerHub
+checkout (`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/<lib>.sh`), so
+a missing file **next to** the library it serves is a broken checkout, not a
+supported state. `tests/test-lib-modules.sh` holds that line: every `lib/*.sh`
+must source cleanly standalone, define `info`/`warn`/`err`, survive a double
+source, and end up with the *real* logging module rather than the fallbacks.
+
 ## `cmake-build.sh` — configure + build a CMake project in a container
 
 | Variable | Meaning | Default |
@@ -39,6 +69,16 @@ bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
 | `CMAKE_BUILD_SAFE_DIRECTORY` | path registered as a git `safe.directory`; empty disables | `/workspace` |
 | `CMAKE_BUILD_PREBUILD_LABEL` | label logged around the pre-build hook | — |
 | `CMAKE_BUILD_USAGE_INTRO` | one-line description shown in `--help` | — |
+
+**Vulkan selection — `_cmake_build_resolve_vulkan`.** Three sources can name a
+Vulkan SDK, and they are resolved in one place: an explicit `--vulkan-version` /
+`--vulkan-setup-script` / `--vulkan-sdk` flag overwrites whatever the image
+exported, and `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT` is consulted last — only
+when nothing else set `VULKAN_SETUP_SCRIPT` **and** the file it names exists.
+That `-f` test is the load-bearing half: `cmake_build_prepare_env` sources
+`VULKAN_SETUP_SCRIPT` unconditionally once it is set, so adopting a default that
+is not on disk turns a missing SDK into a sourcing error much later.
+`tests/test-lib-smoke.sh` pins all four cases.
 
 **Hook — `cmake_build_prebuild_hook`.** Called only when the wrapper declares it.
 Runs after configure, immediately before `cmake --build`; use it for code or

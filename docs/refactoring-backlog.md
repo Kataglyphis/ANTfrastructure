@@ -14,85 +14,105 @@ without re-verifying.
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **YB**=sccache
 cache loss · **DISK**=chain disk reclaim · **HT**=host trees in foreign images ·
-**GH**=gate holes and gate scope · **CL**=build-closure follow-ups the wave could
-not prove statically · **F#**=size/duplication tracks. **QW/TC/SMK** are retired:
-the 2026-09-04 integration wave closed them and what survived is re-filed under
-**GH** and **CL**. Everything else
+**GH**=gate holes and gate scope · **CL**=build-closure follow-ups no gate can
+settle · **F#**=size/duplication tracks. **QW/TC/SMK** are retired: the 2026-09-04
+integration waves closed them. Everything else
 (**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#**) is archive-only.
 
-Last groomed: **2026-09-04, after the eight-lane quality wave integrated.** Every
+Last groomed: **2026-09-04, after the second (judgement) wave integrated.** Every
 number below was re-derived from the gates on the integrated tree, not carried
-forward. The wave landed 67 new mutation entries (manifest 244 → **309**, all
-biting), a new `trailing-conditional` preflight slug (**34** slugs, 21 proven, 13
-frozen unproven), and full `preflight.sh` green in **7m24s**. The build closure is
-OPEN and stayed open: the wave edited `01-core`, `02-toolchain`, `03-media`,
-`05-frameworks` and `06-packaging`, **and none of those edits has been through a
-build** — that is what **CL** is for.
+forward.
 
-**Closed by that wave and living in git history rather than here:** QW3 (five dead
-functions + their four allow rows + one orphaned private), QW4 (`code-size` shell
-extents — the tokenizer now has one owner in `verify_code_size.py`), QW6 (the
-`/tmp` hardcode), TC1 (the `trailing-conditional` gate, plus the four live defects
-it found), SMK-ADV (both SKIP arms and an unhandled-verb arm now fatal), HT1's
-audit (`check_manifest_tree_arch`), DISK1's in-stage half, QW7's `--baseline
---kind` footgun / census masked tier / submodule-pin wording, all fifteen of QW8's
-env-knob defaults and the `MYPROJECT_` rename, QW8's hook-span assertions and the
-hook joining the `shellcheck-warnings` ratchet, QW9's call-site and shell-out
-ownership rules, the heredoc ruff finding names, the `versions.env` quoting and
-the mutation gate's sharding, and all six QW10 items.
+**Nothing in this repository has been through a build since the 2026-09-04
+`--only runtime` run.** That statement covers both waves. Wave 1 changed SHAPE in
+eight closure files with static proof only — that is CL1, unchanged and still the
+first thing to do. Wave 2 was a review wave: it edited exactly ONE file inside the
+build closure, `05-frameworks/flutter/flutter_checks.sh`, and only its `# Docs:`
+comment on line 5, so it added nothing to CL1's watch list. What wave 2 produced
+instead is CL6 — eight closure clean-ups it identified, judged behaviour-neutral,
+and deliberately did **not** make, because no suite in this repo can prove a
+`source_module` mount gap or a stage that slices a script rather than running it.
 
-**Nineteen entries remain** (`grep -c '^### '` counts twenty-one; "Next up" and
-"What needs the OWNER" are not entries). GH1–GH6 are gate holes the wave disclosed
-rather than closed; CL1–CL5 are closure edits only a real build can confirm, plus
-the judgement calls the lanes refused to guess at; DISK2 and HT2 are the halves of
-DISK1 and HT1 that stayed open; YB is a defect under investigation; F1–F5 are
-tracks.
+**Where the gates stand on the integrated tree** (all rc 0):
 
-* **CL1–CL5** — nothing in the closure was validated by a build. Read this
-  section before the next 3-arch run and watch the named log lines.
-* **GH1–GH6** — the pre-push gap, the second allow-reader, the `trailing-conditional`
-  false negatives, the env-knobs owner-scan blind spot, the frozen-slug sweep and
-  two dead-function gate holes.
-* **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
-  found weak** (~5% recovery). Root cause open.
-* **F1–F5** — 29 of 36 frozen function-size rows, 69 of 72 complexity rows and
-  95 of 95 shellcheck rows are frozen, not reviewed. Bookkeeping, not defects.
+| gate | reading |
+|---|---|
+| `mutations` | **332** entries, every one biting, none vacuous or stale |
+| `gate-registry` | **34** slugs; **22** proven; **12** unproven and frozen; 101 ids in 26 declared families |
+| `script-tests` | **75** suites, **2317** assertions |
+| `code-size` | 33 functions over 80 lines, 10 files over 800 — all frozen, all with a verdict |
+| `code-complexity` | 68 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
+| `shellcheck-warnings` | 92 rows / **174** findings in 72 files, over a **319**-file scope — all with a verdict |
+| `code-dupes` | 3266 units in 352 files, 246 allowlisted pairs, 801 shingles suppressed as idiom |
+| `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 31 / 18 / 173 / 46 frozen |
+
+**Closed by wave 2 and living in git history rather than here:** F4 (all 95
+`shellcheck-warnings` rows reviewed — 92 rows now, three closed by fixing code:
+two unguarded `cd`s in `lib/` and a dead `local arch` in `lint-dockerfiles.sh`),
+F5 (all 72 `code-complexity` rows reviewed — 70 now, `verify_package_names.py`'s
+`scan_file` and `main` both cut from **cc 42**), the `lib/*.sh` logging-preamble
+clone family (one owner, `lib/log-bootstrap.sh`, nine consumers), CL5 (both
+first-ever-measured functions read and given verdicts), CL4's pointer half, YB's
+sub-item (a), GH5's `pkg-names` row (a real 20-assertion suite, not a waiver),
+GH6's `_fixture` note, and `cmake_build_parse_args` (116 → 60 lines, cc 31 → 24).
+
+**Seventeen entries remain** (`grep -c '^### '` counts nineteen; "Next up" and
+"What needs the OWNER" are not entries; CL5 is gone, its subject reviewed and its
+residue folded into CL6, so the CL numbers run 1–4 and 6). CL1, CL2, CL3 and CL6
+are closure work only a real build can confirm; CL4 is a `doc-links` scope
+decision; GH1–GH6 are gate holes; DISK2 and HT2 are the halves of DISK1 and HT1
+that stayed open; YB is a defect under investigation; F1–F3 are tracks.
+
+**What the allow files are now, and what they are not.** Every row in
+`function-size.allow`, `code-complexity.allow`, `file-size.allow` and
+`shellcheck-warnings.allow` carries a verdict naming what its number IS. That
+makes them a reference, **not a queue**. Most rows are tables (flag parsers,
+per-arch dispatch, codec probes), refusal matrices where fewer paths would cost
+safety, or heredoc payloads the shell walker never reads. Do not open one of these
+files looking for the biggest number; open it looking for the reasons that say
+SPLIT WANTED, and read the reason before acting — several say explicitly what a
+future reader must not "clean up".
 
 ### Next up — the six highest value-per-effort items, in order
 
-1. **CL1 — watch the next 3-arch build** [S, ★★★]. Not a code change: seventeen
-   closure files were edited this wave with static proof only, eight of them
-   changing SHAPE. The log lines to watch are named in CL1. Everything else on
-   this list is cheaper *after* it.
+1. **CL1 — watch the next 3-arch build** [S, ★★★]. Not a code change: eight
+   closure files changed SHAPE in wave 1 with static proof only. The log lines to
+   watch are named in CL1. Everything else on this list is cheaper *after* it.
 2. **DISK2 — wire the buildkit fallback into the two `build-cross-chain.sh` call
    sites** [S, ★★★]. The in-stage watchdog (where 2026-09-03 actually bit) is
    done; a run that dies at *lane entry* still refuses instead of reclaiming.
-3. **GH1 — the pre-push hook** [M, ★★]. Sharding made this affordable: the full
-   309-entry gate is **1m59s** at the default `--jobs 8`. Blocked only on
-   `verify_gate_registry.HOOK` being a single path.
-4. **GH2 — finish the shared allow reader** [S, ★★]. Half landed;
+3. **CL6 — the eight closure clean-ups wave 2 found and did not make** [S, ★★].
+   All behaviour-neutral on inspection, all in files a stage copies and executes.
+   They cost one build window, and CL1 already needs that window. CL3's
+   delete-vs-wire decision rides along in it.
+4. **GH1 — the pre-push hook** [M, ★★]. Sharding keeps this affordable at 332
+   entries. Blocked only on `verify_gate_registry.HOOK` being a single path.
+5. **GH2 — finish the shared allow reader** [S, ★★]. Half landed;
    `verify_code_dupes.load_allow` still carries its own parse because it needs raw
    line numbers `load_rows` does not surface.
-5. **CL3 — `export_clang_gcc_toolchain_env` has no production caller** [S, ★★].
-   A documented operator switch on a code path nothing enters. Decide whether
-   clang is ever the compiler there before writing any gate for it.
-6. **GH5 — the thirteen frozen unproven slugs** [M, ★★]. `stdout-returns` shipped
-   as the worked example this wave; the nine remaining tree-consistency checkers
-   are the cheapest next batch.
+6. **GH5 — the twelve frozen unproven slugs** [M, ★★]. `stdout-returns` and now
+   `pkg-names` are the worked examples; the nine remaining tree-consistency
+   checkers are the cheapest next batch.
 
-**Honesty about the rest:** F1–F5 remain the biggest *time* items here and none
-of them is a defect. The real defects with a known failure mode are DISK2, GH2,
-GH3 and CL3.
+**Honesty about the rest:** F1–F3 remain the biggest *time* items here and none of
+them is a defect. The real defects with a known failure mode are DISK2, GH2, GH3
+and the `_gst_monorepo_tflite_flags` split inside CL6's window.
 
 ### What needs the OWNER, not the agent
 
-Nothing in the nineteen entries above is blocked on you. These are:
+Nothing in the seventeen entries above is blocked on you. These are:
 
-1. **`git push`** — `git rev-list --count origin/main..HEAD` says **2** commits
-   ahead of `origin/main` as this file was groomed, before the wave's own commit.
+1. **`git push`** — `git rev-list --count origin/main..HEAD` says **3** commits
+   ahead of `origin/main` as this file was groomed, before this wave's own commit.
    Re-derive it with that command rather than retyping a ref; it was wrong at
    three consecutive groomings before the command was written down.
-2. **The Windows lane.** Six confirmed doc defects from the 2026-09-03 currency
+2. **Downstream consumers of `linux/scripts/lib/`.** The nine libraries now source
+   a sibling, `lib/log-bootstrap.sh`. Any full ContainerHub checkout satisfies
+   that — which is how [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md)
+   says to consume them — but a consumer that had copied ONE `lib/*.sh` file out on
+   its own will break on its next CI run, not here. No such consumer exists in this
+   repo.
+3. **The Windows lane.** Six confirmed doc defects from the 2026-09-03 currency
    audit are parked in
    [`windows-refactor-backlog.md`](windows-refactor-backlog.md), verified against
    the tree only — no Windows host was involved. **Three** of the six are wrong
@@ -106,18 +126,21 @@ Nothing in the nineteen entries above is blocked on you. These are:
    `load_versions_env`, `sync_versions.py` and `bump_versions.py` all strip one
    surrounding pair and were proven byte-identical; whether `Get-Pin` does was
    not testable from this host. One PowerShell run answers it.
-3. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
+4. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### CL1. Seventeen closure files changed with static proof only [S to watch, ★★★]
+### CL1. Eight closure files changed SHAPE with static proof only [S to watch, ★★★]
 
-**Nothing the 2026-09-04 wave changed under `01-core`, `02-toolchain`, `03-media`,
+**Nothing the 2026-09-04 waves changed under `01-core`, `02-toolchain`, `03-media`,
 `05-frameworks` or `06-packaging` has been through a build.** Every edit carries a
 suite case and a mutation, and every mutation bites — but a suite cannot execute a
-Dockerfile stage. Seventeen files under those five directories are modified;
-`git status --porcelain | grep -E '01-core|02-toolchain|03-media|05-frameworks|06-packaging'`
-is the authority, not this list. Nine of them changed only by gaining a
+Dockerfile stage. This list is wave 1's; the second wave added exactly one closure
+edit, a `# Docs:` comment in `flutter_checks.sh`, and nothing to watch for it.
+Seventeen files under those five directories changed in wave 1's commit;
+`git show --name-only --format= 4dcbd4eb | grep -E '01-core|02-toolchain|03-media|05-frameworks|06-packaging'`
+is the authority, not this list (it was `git status` while the wave was uncommitted,
+which stopped being true the moment it landed). Nine of them changed only by gaining a
 `: "${NAME:=default}"` line (see the two shapes at the end of this entry); the
 eight below changed SHAPE, and are the watch list for the next 3-arch run. It
 costs nothing to keep and closes the moment a green chain reports.
@@ -156,65 +179,154 @@ array treats it as **optional**, so the change flips an assert from warn to fata
 on all three arches. That needs a build, not a suite. Either wire it and take the
 stricter verdict deliberately, or delete the unread column.
 
-### CL3. `export_clang_gcc_toolchain_env` has no production caller [S, ★★]
+### CL3. `export_clang_gcc_toolchain_env` is redundant with the clang wrappers [S, ★★]
 
-`grep -rn export_clang_gcc_toolchain_env . --exclude-dir=.git` finds the
-definition (`01-core/cross-gcc.sh:44`), its own error string, the suite written
-for it on 2026-09-04 (`tests/test-cross-gcc-toolchain-knob.sh`) and the knob's
-row in `docs/linux-cross-builds.md`. What it does NOT find is a caller in the
-build: nothing sources this function to point clang at the source-built GCC, so
-the `--gcc-toolchain` flags it exports never reach a compile.
+**The question this entry carried for two groomings is ANSWERED (2026-09-04); what
+is left is one decision, and it wants a build window.**
 
-The 2026-09-04 review refuted the entry's earlier framing. Two claims were
-wrong and are not worth repeating: that the grep returns "exactly two hits"
-(it returns six), and that the function is invisible to `dead-functions`
-*because* it names itself in its own error string — it is invisible because the
-gate is mention-based, and the suite and the doc row now mention it too, so no
-change to the error string would make the gate see it.
+Clang *is* the compiler on one path: `install_cross_clang_wrappers`
+(`02-toolchain/llvm.sh:98`) writes `clang-<arch>` / `clang++-<arch>` wrappers. But
+each wrapper already bakes `--gcc-toolchain=${gcc_prefix}` into its own `exec`
+line (`llvm.sh:91`), from the same `gcc_toolchain_prefix()` in `cross-gcc.sh` the
+env function uses. And nothing in the tree sets a bare `CC=clang`
+(`grep -rn 'CC=clang' linux/ --exclude-dir=tests` is empty). So
+`export_clang_gcc_toolchain_env` (`01-core/cross-gcc.sh:44`) is **redundant with
+the wrappers, not load-bearing for them**: the `--gcc-toolchain` flags it exports
+never reach a compile.
 
-What remains is the real question, unanswered: is clang ever the compiler on a
-path where this would matter, or is the function dead weight from the
-cross-clang experiment? Decide that before writing any gate — a gate that
-enforces "documented operator switches must have a caller" would be worth
-having, but not one derived from a repro that does not reproduce.
+Two facts the earlier framing did not have, and both matter to the decision:
 
-### CL4. `flutter_checks.sh:5` points at a page with no such content [S, ★]
+* its guard `case $(basename "${CC:-}") in clang*)` also matches `clang-arm64`, so
+  a wrapper used as `CC` would get a **second** `--gcc-toolchain` appended on top
+  of the baked one;
+* the two disagree on the missing-prefix case — the wrapper falls back to `/usr`,
+  the function warns and exports nothing. Two policies for one question.
 
-`linux/scripts/05-frameworks/flutter/flutter_checks.sh:5` reads
-`# Docs: docs/linux-reference.md.` — the deliberately quarantined general-Linux
-cheat-sheet, which carries no repo-specific sections. It is as empty a pointer as
-the one `cross-gcc.sh` carried until this wave. **`doc-links` cannot see it**
-because it has no `#anchor`: the gate validates anchors, and a bare page reference
-always resolves. Point it at a real section, or teach `verify_doc_links.py` that a
-`docs/*.md` pointer with no anchor is worth a note.
+**The decision left is delete-vs-wire**, and it is a closure edit that removes a
+documented operator switch plus its knob row, its suite
+(`tests/test-cross-gcc-toolchain-knob.sh`) and its row in
+[`linux-cross-builds.md`](linux-cross-builds.md) — where the verdict above now
+lives, so a reader hits it before this file. Take it in CL6's window and watch for
+any stage that ASSEMBLES the assignment at runtime: a Dockerfile `RUN` building
+`CC=clang…` from parts is invisible to the grep above, exactly the way CL1's
+deleted functions are.
 
-### CL5. Two functions no extent gate had ever measured [S, ★★]
+### CL4. A bare `docs/*.md` pointer is invisible to `doc-links` [S, ★]
 
-`code-size`'s brace count used to terminate early on a `{` inside a quoted `case`
-pattern, so two closure functions were invisible to every extent gate until
-2026-09-04:
+**The instance is fixed.** `05-frameworks/flutter/flutter_checks.sh:5` read
+`# Docs: docs/linux-reference.md.` — the quarantined general-Linux cheat-sheet,
+which says nothing about that script. It now points at
+`docs/code-quality-tooling.md#dart-file-enumeration`, the section that owns
+`code_quality_find_dart_files` and the "never `dart format .` in a CI lane" rule,
+and mutation `doc-links.flutter-checks-anchor` renames that heading to prove the
+gate can now see the pointer at all.
 
-* `build-android-from-source.sh | override_soundtouch_codeberg_checksum` — 68
-  lines, **cc 16**, first measurement ever.
-* `build-gstreamer-monorepo.sh | _gst_monorepo_tflite_flags` — **cc 18**, measured
-  before over a 32-line truncation (its own comment about the stray-brace bug
-  ended the count 19 lines early).
+**The general half is open, and is now decidable rather than a guess.** Re-derived
+from `verify_doc_links.CODE_POINTER` on the integrated tree: **377** code pointers,
+**89** anchored, **288 bare**. A "bare pointer is worth a note" gate therefore
+starts at 288 raw findings — many of them legitimate, because a sentence naming a
+whole page is not a broken pointer. That is not a gate; it is a second frozen
+ratchet.
 
-Both are now honest rows in `code-complexity.allow`. **Neither is a regression** —
-the code is byte-for-byte unchanged — but neither has ever been reviewed either,
-because nothing could see them. Both are `03-media`, so splitting them is a
-build-validated change. Read them once; they may be fine.
+**The version that IS actionable:** narrow the rule to FILE-HEADER pointers only —
+the house comment rule already says a header ends in a `docs/*.md#anchor` — which is
+**45** on 2026-09-04 — bare pointers in the first ten lines of a `.sh`/`.py`
+file, e.g. `build-cross-chain.sh:5`, `lint-shell.sh:5`, `compiler-cache.sh:4`,
+`lib/slang-compile.sh:7`. The count depends entirely on where you draw the set,
+so re-derive it, never quote it: 53 over all code files, 45 over `.sh`/`.py`,
+46 over comment lines only. The earlier "42" reproduced under none of those
+readings, which is why the definition now travels with the number:
 
-### GH1. Nothing runs the other ~293 mutation entries between commit and CI [M, ★★]
+```
+python3 -c 'import sys,io; sys.path.insert(0,"docs/scripts"); import verify_doc_links as V
+print(sum(1 for p in V.code_files() if str(p).endswith((".sh",".py"))
+          for ln in io.open(p,encoding="utf-8",errors="replace").read().splitlines()[:10]
+          for m in V.CODE_POINTER.finditer(ln) if "#" not in m.group(0)))'
+```
+
+Act when someone is willing to write that many anchors; leave it otherwise.
+
+**Gate-scope note, worth keeping whatever is decided:** `doc-links` scans
+`docs/scripts/`, which includes `mutations.json`. Any mutation whose `find` or
+`replace` text contains a `docs/*.md` pointer therefore turns the REAL tree red —
+which is why the mutation above had to break the target *heading* instead of the
+pointer. `dead-functions` already skips the manifest for the same class of reason
+(`dead-functions.mutations-manifest-skipped`); `doc-links` does not. Arguably
+correct as it stands (a pointer inside a mutation's `find` string should stay
+valid), so this is a decision to record, not a defect to fix.
+
+### CL6. Eight closure clean-ups wave 2 found, judged, and did not make [S, ★★]
+
+Every one of these was read in full, judged behaviour-neutral, and left alone for
+the same reason: the file is inside the build closure, a stage copies and executes
+it, and nothing static can prove a chain still runs. They are cheap and they share
+one window — **the same window CL1 needs**. Each already carries its verdict in its
+own allow row; that row is the authority, this is the checklist.
+
+**Four rows that are real dead code** (`shellcheck-warnings.allow`, SC2034 — seven
+findings across four files). All locals or leaf assignments, so all four are
+behaviour-neutral deletions — and each deletion must re-baseline its row in the same
+change, or the four-way contract fails on the unrecorded shrink:
+
+* `01-core/stage-defs.sh` — in `cross_stage_validate_graph`, `dockerfile` and
+  `tag_fn` are declared and never used, and `chain=(${stage})` is written and never
+  read (the cycle check counts depth instead).
+* `01-core/python_uv.sh` — `g` in `local conflicted=0 g x y`; the inner read uses
+  `x` and `y` only.
+* `03-media/.../gstreamer/common/pre-setup.sh` — `gi_bindir` / `gi_libdir` are
+  superseded by `target_gi_bindir` / `target_gi_libdir`. **The header comment at
+  `:195-197` still lists them, so comment and code move together.**
+* `04-runtime/gstreamer-env.sh` — `SYSTEM_LIB` is computed in both `TRIPLET`
+  branches and read nowhere (`MULTIARCH_DIR` beside it is used four times).
+
+**One MIXED row that must not be split** — `build-runtime-manifest.sh` SC2034 is
+frozen at 3: `PUSH_IMAGES` and `PUSH_INTERMEDIATE_IMAGES` are real out-vars, but
+`r` in `_manifest_wrapper_gate`'s local list is dead. Dropping `r` alone takes the
+row 3 → 2, which the four-way rule FAILS as an unrecorded shrink. Code fix and
+re-baseline land together or not at all.
+
+**Two SC2206 quotings** — `01-core/cross-env.sh:680` and `02-toolchain/build-clang.sh:280`
+and `:283` pass unquoted `${...}` into cmake argv arrays. Quoting is a strict
+improvement and behaviour-identical for every value those knobs can hold today.
+The only real risk is a cmake argv that stops being one word, which is exactly what
+a build shows and a suite does not.
+
+**One split** — `03-media/.../build-gstreamer-monorepo.sh | _gst_monorepo_tflite_flags`
+(cc 18) is three unrelated TFLite workarounds under one name: the cross pkg-config
+probe that emits `-idirafter`/`-L`/`-rpath-link`, the idempotent sanitizer for the
+stray `}` an old `generate_pkgconfig_file` left in `tensorflow-lite.pc`, and the
+symlink farm that exists only because Meson probes via `-print-file-name` and
+ignores `-L`. Seams are clean; only an arm64 **and** riscv64 monorepo stage that
+still resolves TFLite proves the split. (Its sibling from the same extent fix,
+`override_soundtouch_codeberg_checksum` cc 16, was reviewed and is a **KEEP** — all
+16 paths are refusals to re-pin, and merging any two trades a named WARNING for a
+silent TOFU re-pin.)
+
+**One that is not a build question at all** —
+`06-packaging/package_archive.sh` parses `--appdata-file`, `--app-id` and
+`--appimage-extract-and-run` and then ignores them (`APPIMAGE_EXTRACT_AND_RUN=1`
+is exported unconditionally), and assigns `ResolvedBinary` with an explaining
+comment and never reads it. **Nothing in this repo invokes
+`package_archive.sh`.** Decide whether the script has a consumer before spending
+anything on it; the flags mislead a reader, not a build.
+
+**And one flagged, not changed:** `vulkan.sh:268` is the one `SC2155` in the tree
+whose masked callee is not trivially total —
+`export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir …):${host_pkgconfig}"`.
+`cross_pkg_config_libdir` only probes directories today so it cannot fail; if that
+ever changes, the failure is silent and `PKG_CONFIG_LIBDIR` keeps only the host
+path.
+
+### GH1. Nothing runs the other ~316 mutation entries between commit and CI [M, ★★]
 
 The pre-commit hook samples at most `PRECOMMIT_MUTATION_CAP` (**16** since
 2026-09-04) of the entries whose target is staged, newest first, and says so. CI
-runs all 309. Between the two there is nothing.
+runs all **332**. Between the two there is nothing.
 
 A **pre-push hook** is the right home: `--changed`'s existing semantics
 (everything committed since `origin/main`) are exactly push semantics, and a batch
 pays once instead of per commit. Sharding made the price reasonable — the full
-309-entry gate is **1m59s** at the default `--jobs 8` on a 32-core host, and
+332-entry gate is **2m06s** at the default `--jobs 8` on a 32-core host, and
 `--changed` over a branch is a fraction of that.
 
 **Still blocked on one thing:** `verify_gate_registry.py`'s `HOOK` constant is a
@@ -302,33 +414,44 @@ shrinks the registry by five more rows.
 carry the name inside a quoted word, so counting them means un-masking string
 content — the exact hole the 2026-09-04 walker closed. They are honest allow rows.
 
-### GH5. Thirteen preflight slugs are frozen as unproven [M, ★★]
+### GH5. Twelve preflight slugs are frozen as unproven [M, ★★]
 
-`gate-registry` reports **34 slugs; 21 proven; 13 unproven, 13 frozen in
-`gate-proofs.allow`**. Two left the freeze on 2026-09-04 (`doc-dupes`, then
-`stdout-returns`) and the new `trailing-conditional` shipped proven.
+`gate-registry` reports **34 slugs; 22 proven; 12 unproven, 12 frozen in
+`gate-proofs.allow`**. Three left the freeze on 2026-09-04 — `doc-dupes`, then
+`stdout-returns`, then `pkg-names` — and the new `trailing-conditional` shipped
+proven.
 
-**The "cheap sweep" the entry this one replaces prescribed cannot be run as written, and
-that prescription is now deleted.** It said to take the rows whose `mutations`
-column is `—` and write a `return rc → return 0` mutation "and see whether its
-suite survives". Measured: all thirteen have BOTH an empty tests list and an empty
-mutations list (`verify_gate_registry.rows()` — copy-coverage, critical-fixes,
-patch-integrity, arg-consistency, version-snapshot, mirror-consistency,
-runtime-paths, dockerfile-lint, workflow-lint, secret-scan, android-parity,
-pkg-names, sbom). There is no suite for the mutation to turn red; the experiment
-has nothing to run.
+**The "cheap sweep" an earlier version of this entry prescribed cannot be run as
+written, and that prescription stays deleted.** It said to take the rows whose
+`mutations` column is `—` and write a `return rc → return 0` mutation "and see
+whether its suite survives". Measured: all twelve have BOTH an empty tests list and
+an empty mutations list (`verify_gate_registry.rows()` — copy-coverage,
+critical-fixes, patch-integrity, arg-consistency, version-snapshot,
+mirror-consistency, runtime-paths, dockerfile-lint, workflow-lint, secret-scan,
+android-parity, sbom). There is no suite for the mutation to turn red; the
+experiment has nothing to run.
 
-What actually closes a frozen row is **writing the suite**. `stdout-returns` is the
-worked example — 16 assertions over throwaway trees at the gate's own
-`parents[2]` depth, four mutations, one new doc section, freeze line deleted — and
-the nine remaining tree-consistency checkers are the cheapest next batch because
-they share that shape.
+What actually closes a frozen row is **writing the suite**. Two worked examples now
+exist: `stdout-returns` (16 assertions over throwaway trees at the gate's own
+`parents[2]` depth, four mutations, one new doc section) and `pkg-names` (a
+20-assertion characterisation suite driving the extractor through its real `--list`
+CLI in a throwaway tree, plus seven mutations). The nine remaining
+tree-consistency checkers are the cheapest next batch because they share that
+shape.
 
-The hollow-mention hazard the entry also named is real but lives among the 21
-**proven** slugs, not these thirteen: the test half of the proof is still a
-mention (`[t for t, txt in tests.items() if mentions(needle, txt)]`), so a suite
-that names a gate's script and asserts nothing about it still reads `proven`. The
-mutation half is no longer circular.
+**One trap this wave hit and someone else will.** `dockerfile-lint` was one signature
+away from leaving the list for the wrong reason. A mutation that edits
+`lint-dockerfiles.sh` and is caught by the **shellcheck ratchet** would be credited
+to `dockerfile-lint` by the registry's mechanical rule (`target in own_files`) and
+the row would read `proven` — while nothing had proved that the hadolint gate itself
+can fail. That entry was therefore **not** written. The rule is: the mutation's test
+must be the SLUG'S OWN proof, not any gate that happens to notice the edit.
+
+The hollow-mention hazard the entry also named is real but lives among the 22
+**proven** slugs, not these twelve: the test half of the proof is still a mention
+(`[t for t, txt in tests.items() if mentions(needle, txt)]`), so a suite that names
+a gate's script and asserts nothing about it still reads `proven`. The mutation half
+is no longer circular.
 
 ### GH6. Two holes in `dead-functions`, one narrow and one deep [S / L, ★★]
 
@@ -346,13 +469,22 @@ mutation half is no longer circular.
   tier had to exist.) That is a watch list, not a fix. Closing it properly needs `source_module`-
   aware scoping, i.e. a real call graph.
 
-Two smaller notes on the same gate: the census's own headline figures in
-`code-quality-tooling.md` are re-typed prose that nothing derives — which is how
-they came to be wrong by 11 functions and 8 rows before 2026-09-04. Deriving them
-in `test-doc-numbers.sh` the way it already derives the manifest totals is the
-obvious fix. And `test-dead-functions.sh`'s `_fixture` at `:23` is the original of
-the tree builder extracted into `tests/gate-tree.sh` this wave; migrating it to
-`gate_tree` leaves one owner for the pattern. `code-dupes` is clean either way.
+One smaller note on the same gate is still open: the census's own headline figures
+in `code-quality-tooling.md` are re-typed prose that nothing derives — which is how
+they came to be wrong by 11 functions and 8 rows before 2026-09-04. Deriving them in
+`test-doc-numbers.sh` the way it already derives the manifest totals is the obvious
+fix, and that file's `--update` mode makes it small.
+
+**The `_fixture` note is closed, and it was bigger than it read.** Migrating
+`test-dead-functions.sh`'s tree builder onto `tests/gate-tree.sh` made the two
+`_fixture` bodies IDENTICAL and `code-dupes` immediately found a fresh 13-shingle
+pair — the duplicated unit was the whole fixture, not just the tree builder. The
+owner is now `gate_tree_subject <allow-name> <subject> <allow> <module.py>…`, both
+`test-dead-functions.sh` and `test-trailing-conditional.sh` are three-line calls to
+it, and two mutations (`gate-fixture.plants-the-subject`, `.plants-the-allow`) hold
+it — one aimed at each consumer on purpose. All nine pre-existing
+`dead-functions.*` / `trailing-conditional.*` mutations were re-run through the new
+fixture and still bite, so the refactor hollowed neither suite.
 
 ### DISK2. The buildkit fallback is not wired into the two `build-cross-chain.sh` gates [S, ★★★]
 
@@ -478,138 +610,218 @@ mechanism; something about the specific invocation fails repeatably within a sho
 window, which points at per-request state inside the server rather than at the
 environment.
 
-**Two things still open here.** (a) `build-cache-tiers.md` still presents the
-retry as the pending experiment ("says directly whether the class is transient")
-without recording that the answer came back negative — copy the 27/514 result into
-that section so the next reader does not re-run it. (b) No fresh counts exist:
-today's run was `--only runtime` and its log contains zero `sccache-launcher`
-lines, so 27/514 is still the latest data. Defer new root-cause work until the
-next compile-heavy build (media or toolchain) can produce a second sample.
+**One thing is still open here.** The measurement is now written down where it
+belongs: [`build-cache-tiers.md`](build-cache-tiers.md#the-single-retry-2026-09-03)
+carries the 27/514 table, the negative verdict and the cached-step caution, and its
+opening premise was corrected in the same edit — it used to assert that "the same
+invocation succeeds immediately afterwards", which is precisely what the retry
+measurement disproved; what succeeds is the DIRECT FALLBACK. **That paragraph and
+the `~5% recovery` paragraph above are a deliberate ownership split** (the doc owns
+the measurement, this entry owns the interpretation) and they sit just under the
+`doc-dupes` threshold — do not re-expand this one with the doc's wording or the
+gate goes red, as it did at 47 shared shingles before the split.
+
+**What remains: no fresh counts exist.** The 2026-09-04 run was `--only runtime`
+and its log contains zero `sccache-launcher` lines, so 27/514 from the 2026-09-03
+media-arm64 build is still the only data. Defer new root-cause work until the next
+compile-heavy build (media or toolchain) can produce a second sample.
 
 Reading the log needs one caution learned here: a **cached** BuildKit step replays
 its old output verbatim. The first read of the 2026-09-03 build showed 496 hits of
 the pre-retry message, all from one cached step (`#30`), which would have looked
 like the new launcher failing to take effect.
 
-### F1. Functions that outgrew a screen [M each]
+### F1. The extent queues — what is left after every row got a verdict [M each]
 
-**`function-size.allow` is the authority — do not transcribe it here.** A
-hand-copied excerpt of the top rows lived in this entry until 2026-09-04, silently
-omitted four larger unreviewed functions, and pointed at the wrong next candidate;
-the freezing applies to the allow file, not to a paragraph quoting it. The gate
-prints `functions: 36 over 80 lines; 36 frozen` today, and **29** of those rows
-still read `baseline 2026-09-03, not yet reviewed`.
+**`function-size.allow` and `code-complexity.allow` are the authority — do not
+transcribe them here.** Both are now fully reviewed: 33 function rows over 80 lines
+and 68 `cc` rows over 15, every one carrying a verdict that says what its number IS.
+Read the reasons, not the numbers.
 
-**Re-derive the queue from the gate, then judge by value, not by line count.** As
-of 2026-09-04 the top is `assert_pinned_versions` 356, `bump_versions.py main`
-159, `verify_package_names.py main` 140, `cmake_build_parse_args` 116,
-`smoke-torch-venv.sh main` 115, `_opencv_target_adjustments` 114,
-`uv_sync_project` 109, `append_tvm_cmake_args` 84.
+**Closed 2026-09-04:** `cmake_build_parse_args` 116 → 60 lines and cc 31 → 24 (the
+Vulkan flag > env > caller-default chain is now `_cmake_build_resolve_vulkan`, with
+its precedence written up in
+[`shared-script-libraries.md`](shared-script-libraries.md) and three mutations
+holding it); `verify_package_names.py` `main` 140 → 34 and `scan_file` 93 → 7, both
+from **cc 42** to 7-and-gone, with `--list` output over the whole tree proven
+byte-identical before and after.
 
-**`assert_pinned_versions` is top by size and the WORST candidate by value.** It
-is not 356 lines of shell — it is **44** lines of shell wrapping a **312**-line
-embedded Python program (`"${PY}" - <<'PYEOF'`, `smoke-torch-venv.sh:101`–`414`).
-Splitting the shell moves 44 lines. Split the wrapper for its own sake, never for
-the line count.
+**Four measurement facts that decided most of the remaining verdicts**, and that a
+future reader should not re-discover:
 
-**Cheapest real target: `cmake_build_parse_args` (116).** It lives in `lib/`,
-outside the build closure, so it can be cut at any time, and it also carries the
-`cc 31` complexity row QW2 misses.
+* **Heredoc payloads are not shell.** `assert_pinned_versions` is 44 lines of shell
+  around a **312**-line embedded Python program — top of the size queue and the
+  WORST candidate on it, because splitting the shell moves 44 lines and its `cc` is
+  **7**. Same shape: `assert_app_venv_parity` (20 around 72),
+  `_gst_xpy_write_config` (14 around 70), `ensure_meson_cross_file` (56 around a
+  37-line Meson-ini template).
+* **Much of the `cc` here is a TABLE, not tangle**: flag and subcommand parsers
+  (`parse_tvm_args` 13 options, `append_tvm_cmake_args` 15, `setup-dependencies.sh`
+  `main` 5 flags × 10 commands), feature tables (`_ffmpeg_probe_core_codecs` is
+  sixteen `if probe; then --enable-<codec>` lines and nothing else), and two rows
+  where the metric is simply literal — `dump_debug_info` (cc 23) contains no
+  decision at all, just ~20 which-then-`--version` pairs each swallowed, and
+  `_torch_run_setup_py` counts the size of torch's build environment.
+* **Refusal matrices cost safety when flattened**: `_chain_prune_archived_logs`
+  (every branch is a refusal to delete the wrong thing), `_manifest_wrapper_gate`
+  (the cell that decides whether a manifest would MIX releases),
+  `install_target_packages`, `override_soundtouch_codeberg_checksum`.
+* **Precedence ladders where the ORDER is the contract**: `host_python_bin`,
+  `install_abseil_headers`' five download/extract rungs, `_detect_gcc_cxxabi_header`,
+  `configure_opencv_build_env`'s gstreamer-libdir search (the RV1-GST-PC ladder).
 
-Two of the 36 rows are **first-ever measurements**, not regressions — see CL5;
-they have never been reviewed because no extent gate could see them until
-2026-09-04.
+**The rows that ARE debt, named in their own reason column.** All but two are build
+closure, which is why they are recorded rather than cut: `_opencv_target_adjustments`
+(cc 33 — three unrelated riscv64 workarounds, seams `_ota_riscv64_freetype` /
+`_ota_riscv64_png`), `_chain_stage_disk_guard` (28 — two near-identical eviction
+loops wanting one `_evict_until <predicate>`), `media_common_init` (35 — a module
+loader whose load ORDER is load-bearing, so a table+loop is NOT a free win),
+`_cgroup_mem_remaining_mb` (20 — the same four tests twice over cgroup v1 and v2),
+`_gst_rs_build_plugins` (25 — five copies of one exclusion preamble),
+`build-runtime-manifest.sh` `main` (22 — five phases on one repeated
+`BUILD_IMAGES -eq 1` test).
+
+**The next things to actually do — the first two are outside the closure:**
+
+* **`verify_doc_dupes.py main`** — cc 23, 81 lines, the undecomposed twin of
+  `verify_code_dupes.py main`, which is already decomposed at 85. The template for
+  the fix exists in its sibling; mirror those helper names rather than inventing a
+  second vocabulary. Cheapest real item in this entry.
+* **`slang_compile_combined_wgsl`** (87) — its `while read` body is 50 of the 87
+  lines with THREE distinct outcomes, so it extracts as `_slang_emit_one_wgsl`
+  returning 0/1/2 with the caller keeping `wgsl_failed` / `wgsl_invalid`. The
+  prerequisite is a fixture (a manifest JSON plus a fake `slangc`, which the
+  function already takes as `$1`), not a build.
+* Inside the closure the best-shaped candidate is `smoke-cross-all-arches.sh main`
+  (96): five numbered probe sections sharing only the harness's pass/fail globals,
+  so the helpers need no parameters.
+
+**Two rows carry a "do not do the obvious thing" verdict.** `verify_comment_size.blocks`
+(nesting 6): the honest fix is importing `verify_code_size.scan` like every other
+extent gate, but that WIDENS the scan to `docs/scripts` and NARROWS it by
+`SKIP_DIRS 'patches'` — it changes the gate's scope and needs a fresh
+`comment-size.allow` baseline, which is different work from a nesting trim. And
+`verify_package_names.load_arch` (17): every branch is a way the gate must not
+produce a FALSE verdict, the all-or-nothing partial-fetch refusal above all.
 
 **The one uncovered path left inside `_cross_stage_build_impl` is the
-registry-cache drop** — lines 295–317, **23** lines, not the ~16 previously
-claimed. It needs a non-empty `log_file` whose tail matches
-`DeadlineExceeded|httpReadSeeker`, and it mutates both `build_cmd` and
-`_regcache_fails` across retry iterations. Nothing covers it:
+registry-cache drop** — lines 295–317, **23** lines. It needs a non-empty
+`log_file` whose tail matches `DeadlineExceeded|httpReadSeeker`, and it mutates
+both `build_cmd` and `_regcache_fails` across retry iterations. Nothing covers it:
 `grep -rn DeadlineExceeded linux/scripts/tests/` returns nothing, and
 `test-cross-stage-build-cmd.sh` only counts `cache-from`/`cache-to` on the
 non-failing path. Write the characterisation first — fake `log_file`, assert the
 counter reaches 2 and that the registry cache pairs vanish from `build_cmd` while
-local cache args survive — then extract. `01-core`, so it was frozen; the window
-is open now.
+local cache args survive — then extract.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
-**`file-size.allow` is the authority — do not transcribe it here either.** The
-ten-row table that used to sit in this entry was written on 2026-09-03 and was
-already wrong by two rows the same day (`smoke-runtime-image.sh` 1502→1559,
-`build-litert.sh` 975→953), each drift correctly recorded with a reason in the
-allow file. It drifted again on 2026-09-04: `smoke-runtime-image.sh` is **1739**
-after HT2's tree-arch audit, and three closure files each grew by 1–3 lines for
-the env-knob self-defaults and the `_chain_on_exit` `if`. The gate prints `files: 10 over 800 lines; 10 frozen`; read it there.
+**`file-size.allow` is the authority — do not transcribe it here.** The ten-row
+table that used to sit in this entry was wrong within a day of being written, twice.
+This entry's prose then broke its own rule again on 2026-09-04 by quoting
+`smoke-runtime-image.sh` at 1739 when the allow file had carried the correct number
+and the reason all along. The gate prints `files: 10 over 800 lines; 10 frozen`;
+read it there.
 
-Splitting any of the ten is still open work and still low priority. Seven of them
-sit inside the build closure and could not be touched during the run that finished
-at 12:24; `bump_versions.py`, `sync_versions.py` and `lib/agentic-loop.sh` never
-were. If one gets split this cycle, take `smoke-runtime-image.sh`: it is the
-largest file in the tree (1739), it is still growing, and its probe sections are
-already named seams.
+**All ten rows were reviewed 2026-09-04 and nine are NOT split targets**, each with
+a reason a stranger can act on. The file's own HEADER was the thing that had stopped
+measuring what it claimed — it said "Shell files currently over the size limit"
+while three of ten rows are `docs/scripts/*.py` and `linux/Dockerfile.media`, two of
+those carrying the copy-pasted reason "newly in scope (python/Dockerfile)". Header
+corrected to state `verify_code_size.py`'s actual scope.
+
+**One row IS a real split, and it is blocked on coverage rather than on risk:**
+`lib/agentic-loop.sh` (874) is two subjects wearing one name — engine adapters and
+the loop driver — and it is outside the build closure, so it could be cut at any
+time. Nothing covers it: `test-lib-smoke.sh` gives it parse + source-clean +
+defines-a-function, and `test-lib-modules.sh` skips it by name. The row names the
+three characterisation cases to write first: config load, one faked `invoke_agent`,
+one drain of the executor queue.
+
+**Two verdicts worth not re-litigating.** `build-app-wheelhouse.sh` is the
+near-miss: the stage suites extract blocks from it **by line range**, so a file
+split silently re-aims them. And `smoke-runtime-image.sh` — which every earlier
+version of this entry nominated as THE one to split — is an explicit **NO**: 63
+functions, all `check_*` / `_probe_*` over one image through one `_rt_run` under one
+`main()`. Its length is the number of assertions it makes about the shipped bytes,
+and that number growing is the gate succeeding.
+
+**One small thing that will move a row when someone does it:**
+`docs/scripts/sync_versions.py` has NO module docstring at all — shebang straight
+into `from __future__` — despite being the authority for the version-propagation
+ritual and despite its sibling `bump_versions.py` carrying a full one. It was left
+undone only because no honest `docs/*.md#anchor` exists to end the header with yet.
+Adding it also moves that file's `file-size.allow` row from 849.
 
 ### F3. Clone families worth one owner [S-M each]
 
-One genuinely-open observation remains. The gate reads
-`3250 units in 350 files, no block over 10 shared 12-token shingles
-(241 allowlisted pair(s); 891 shingle(s) suppressed as idiom at >6 owners)` on the
-integrated tree — two of those budgets SHRANK on 2026-09-04 and were re-recorded
-with the reason, which is the gate working. The decided/reviewed items (the
-source-or-fallback KEEP decision, the lint-tool and lib/* pairs reviewed-and-kept
-by measurement, and the not-actionable Dockerfile mount preambles) are in the
-2026-09-03 archive. The `install-deps.sh` family bullet was **measured and closed
-2026-09-04**: the shape already has an owner (`media_install_deps_init` /
-`install_target_packages`) and the literal residue is a 7-line bootstrap header,
-below this entry's own 11–12-line extraction threshold.
+The gate reads `3266 units in 352 files, no block over 10 shared 12-token shingles
+(246 allowlisted pair(s); 801 shingle(s) suppressed as idiom at >6 owners)` on the
+integrated tree. The decided/reviewed items (the source-or-fallback KEEP decision,
+the lint-tool and `lib/*` pairs reviewed-and-kept by measurement, the not-actionable
+Dockerfile mount preambles, and the `install-deps.sh` family) are in the 2026-09-03
+archive and in `docs/scripts/code-dupes.allow`.
 
-- **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files** —
-  `if ! declare -F info; then source …; else info() { … }; fi`, identical in
-  `app-runner`, `coverage`, `ctest-run`, `cmake-build`, `rust-toolchain`,
-  `code-quality`, `docs-build`, `wasm-opt` and `slang-compile`, differing only in
-  the `_<NAME>_CORE_DIR` token. **`verify_code_dupes` cannot see it**: at 9 owners
-  every shingle lands in the `suppressed as idiom at >6 owners` bucket
-  (`MAX_OWNERS = 6`), and the `widely-copied blocks` section did not print at all
-  in the 2026-09-03 run — which is precisely why this needs a backlog row rather than a
-  gate finding. (Do not quote a shingle count for it; the gate no longer produces
-  one. The largest family the gate *does* report today is `_path_contains`, 44
-  shingles over 3 files.) **Bootstrap paradox before touching it:** the block
-  exists for the case where nothing has been sourced yet, so extracting it into a
-  file you must source defeats its purpose. A shared file plus a 2-line guard may
-  still beat 14 lines × 9. Outside the build closure (`lib/` is in no Dockerfile),
-  so it can be done any time.
+**CLOSED 2026-09-04 — the `lib/*.sh` 14-line logging preamble.** One owner now,
+`lib/log-bootstrap.sh`, sourced by all nine libraries; net −132 lines, three
+mutations (`lib.log-bootstrap-*`) holding it. **The mechanism, the two libraries
+that keep a `_*_CORE_DIR` anyway, the two historical drifts and the answer to this
+entry's own "bootstrap paradox" objection are owned by
+[`shared-script-libraries.md`](shared-script-libraries.md#the-logging-bootstrap) —
+read it there, do not restate it here.** The one thing worth repeating in a
+duplication entry: no duplication gate could ever have found this, because at nine
+owners every shingle of the block landed in the `suppressed as idiom at >6 owners`
+bucket. That is what made a backlog row necessary instead of a gate finding.
 
-### F4. The 95 frozen `shellcheck-warnings` rows are frozen, not REVIEWED [M, ★★]
+**The gate bookkeeping that extraction owed, and what it exposed.** Dropping the
+preamble below `MAX_OWNERS = 6` unsuppressed 5 pairs that had been invisible (891 →
+801 suppressed shingles) — exactly what this entry predicted. All five were read and
+recorded in `code-dupes.allow` rather than re-suppressed. They are a genuinely
+different family, the **defensive logger**: `command -v` not `declare -F`, bare
+`[INFO]`/`[WARN]` with no ANSI, no `err()`, no attempt to load `logging.sh`, longest
+run 2–3 lines. It **cannot** adopt `lib/log-bootstrap.sh`: `lib/` is deliberately in
+no Dockerfile while all three of those files are inside the build closure.
 
-`shellcheck-warnings.allow` holds 95 `(file, SCxxxx)` rows covering 177
-warning-level findings in 74 files, every single one reading `baseline 2026-09-03,
-not yet reviewed` — 95 of 95, no exceptions. Re-derived 2026-09-04: still 95, over
-a scope that GREW to **317** files when the pre-commit hook joined the ratchet.
-The hook itself contributed zero rows — the hole was coverage, not debt. The gate guarantees the number
-matches reality; it says nothing about whether the warning is right. SC2034 is 85
-of the 177 and is where real bugs hide — a genuinely unused variable is usually a
-typo'd reference elsewhere — but most of these are sourced-library variables a
-consumer reads, so expect scoped `# shellcheck disable=SC2034` with a reason
-rather than deletions. SC2154 (16, all but four in `01-core/cross-env.sh`) is the
-next cluster, then SC2155 19, SC2178 12, SC2046 11, SC1090 9, SC2163 8. Review per
-file and put the verdict in the row's reason column. This is 74 small independent
-reviews, not one big one — the largest single file is 5 findings.
+**Two families read and recorded, neither changed:**
 
-### F5. The 69 unreviewed `code-complexity` rows, same [M, ★★]
+- **`strip_elf_tree`** (`build-helpers.sh:160` / `bootstrap.sh:41` /
+  `build-gcc.sh:825`, 27 shingles). The owner already exists and its own comment says
+  it centralises this pattern; `bootstrap.sh`'s copy is the legitimate
+  source-or-fallback half. **`build-gcc.sh:833` is the one caller that never
+  converted AND is not equivalent** — it filters `-type f -executable` plus an ELF
+  executable-or-shared-object awk, while the owner takes `-type f` plus `/ELF/`. So
+  converting it means either giving `strip_elf_tree` a filter argument or accepting
+  that a WIDER set of files gets stripped in the shipped toolchain. Build closure;
+  only a real toolchain stage shows what changes in the bytes.
+- **`media_jobs`** (`android-build-preamble.sh:77` /
+  `build-android-from-source.sh:236` / `build-app-wheelhouse.sh:76`, 26 shingles).
+  Not the shared idiom the pair row called it: the NAME HAS TWO DEFINITIONS —
+  `03-media/core/common.sh:221` (assumes `media_common_init` pre-loaded
+  `parallelism.sh`) and `android-build-preamble.sh:77` (a strict superset that
+  sources it on demand) — and `build-android-from-source.sh` sources the preamble at
+  line 6 and then re-implements the function inline anyway, its own comment admitting
+  it "Mirrors media_jobs() but keeps the configurable per-job cap".
+  `build-app-wheelhouse.sh` is a fourth copy at 4096 MB. The fix is one
+  `media_jobs [cap_mb]` defaulting to 2000, arithmetically identical for all 14
+  callers — but two same-named definitions mean **last source wins** wherever both
+  are in scope, nothing covers `media_jobs` today, and only a stage shows which one
+  the android lanes actually get.
 
-69 `cc` rows and 3 `nesting` rows in `code-complexity.allow` (**72** total after
-2026-09-04 added two first-ever measurements, CL5); **69 of the 72 are
-unreviewed** (one has since gained a real verdict —
-`build-litert.sh | _litert_wheel_cross_args | cc | 21`, "24 before the
-command-position fix; the extra 3 were argument words"). That file plus
-`verify_code_complexity.py` are the authority for every complexity number here —
-the hand-measured figures that circulated before the gate existed were
-over-counts, one of them by 7×: `assert_pinned_versions` is **cc 7**, not 52 (its
-312 lines are embedded Python the shell walker never reads — the function is 356
-lines today and its cc still did not move), and `_chain_stage_disk_guard` is 28,
-not 29. The real top of the queue, sorted from the gate: `scan_file` and `main`
-(`verify_package_names.py`) at 42, then `bump_versions.py main` **37**,
-`media_common_init` 35, `_opencv_target_adjustments` 33,
-`cmake_build_parse_args` **31**, `cross_stage_run` 23. Never re-measure by hand:
-run the gate. The extent bug that skewed a handful of these was fixed on
-2026-09-04, so the numbers the gate prints now are the honest ones.
+**One open question answered 2026-09-03-style, per-RUN, and recorded in its row.**
+The `gstreamer-env` ↔ `libcamera-env` pair asked "is the fallback still reachable at
+all". `libcamera-env.sh` has exactly ONE consumer, `04-runtime/entrypoint.sh`, whose
+base carries `Dockerfile.package:285 COPY linux/scripts/01-core/ /opt/scripts/core/`
+— `path-helpers.sh` IS there, so that fallback is **dead**. `gstreamer-env.sh` has
+four: the same entrypoint (dead), `Dockerfile.media:913` and `:965` which bind-mount
+`01-core` entire (dead), and `setup-gstreamer.sh:420` / `build-libcamera.sh:86`
+which source it by repo-relative path on a host checkout where `/opt/scripts` does
+not exist — **live**. Verdict: KEEP both. They are one 27-line block, deleting half
+is a build-closure edit no gate can prove, and the branch costs one `[ -f ]` per
+container start.
+
+**Two overlaps observed while reviewing that no gate currently flags.**
+`docs/scripts/sync_versions.py`'s `_update_dockerfile_args_inner` and
+`_update_script_defaults_inner` are the same algorithm over two syntaxes (outside
+the closure). And `prepare_host_cargo_toolchain_env` overlaps the host half of
+`_gst_rs_cargo_config`, which calls it when defined (inside the closure). Both are
+dupes-gate questions, not complexity ones.

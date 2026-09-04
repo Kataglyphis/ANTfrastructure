@@ -853,13 +853,37 @@ experiment and are listed in `refactoring-backlog.md` under YB.
 
 ### The single retry (2026-09-03)
 
-Because the same invocation succeeds immediately afterwards, the launcher
-**retries once** before giving up the cache entry. A bypass was never a
-correctness problem — it compiles fine, it just discards the cache, and that is
-the entire cost of this bug.
+Because the direct fallback of the same argv succeeds immediately afterwards,
+the launcher **retries once** before giving up the cache entry. A bypass was
+never a correctness problem — it compiles fine, it just discards the cache, and
+that is the entire cost of this bug.
 
 The retry is bounded: a second sccache-internal failure falls through to the
 direct compile exactly as before, and a real compiler error surfacing on the
-retry is handed back untouched rather than re-run. It doubles as the measurement
-— `retry succeeded (cache kept)` versus `failed twice` in a build log says
-directly whether the class is transient.
+retry is handed back untouched rather than re-run.
+
+#### The retry's own measurement — ANSWERED, and the answer is negative
+
+The retry doubles as the experiment: `retry succeeded (cache kept)` versus
+`failed twice` in a build log says directly whether the class is transient. That
+count was taken on the 2026-09-03 media-arm64 build and the question is
+**answered — do not re-run it**:
+
+| outcome | count |
+|---|---|
+| `retry succeeded (cache kept)` | **27** |
+| `failed twice` | **514** |
+
+**~5% recovery: this class is NOT transient.** The retry stays — it costs
+nothing and 27 recovered entries are 27 recovered entries — but it is a
+mitigation, not the fix, and nothing here should be sized as though the bug were
+handled. What that 5% rules out, and where it points the root-cause hunt next,
+is `refactoring-backlog.md` under YB.
+
+Reading these counts out of a log needs one caution: a **cached** BuildKit step
+replays its old output verbatim, so a pre-retry launcher's messages can reappear
+in a post-retry build (496 of them from one cached step, `#30`, on the first read
+of that same build) and look like the new launcher failing to take effect. Check
+which step the lines came from before believing them. A second sample needs a
+compile-heavy lane — `--only runtime` produces no `sccache-launcher` lines at
+all.
