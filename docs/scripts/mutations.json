@@ -234,8 +234,8 @@
   {
     "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all — admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -1257,19 +1257,19 @@
   },
   {
     "id": "preflight-slugs.doc-count-stale",
-    "target": "docs/cross-build-verification.md",
-    "find": "33 slugs)",
-    "replace": "29 slugs)",
+    "target": "linux/scripts/tests/test-preflight-slugs.sh",
+    "find": "t_assert_eq \"$(printf '%s\\n' \"${_known}\" | grep -c .)\" \"${_doc_count}\" \"doc slug count vs KNOWN_SLUGS\"",
+    "replace": "t_assert_eq \"$(printf '%s\\n' \"${_known}\" | grep -c . | awk '{print $1 + 1}')\" \"${_doc_count}\" \"doc slug count vs KNOWN_SLUGS\"",
     "test": "bash linux/scripts/tests/test-preflight-slugs.sh",
-    "why": "the doc's self-declared slug count must track KNOWN_SLUGS"
+    "why": "the doc's self-declared slug count is COMPARED against KNOWN_SLUGS, not merely parsed out of the page"
   },
   {
     "id": "preflight-slugs.doc-lines-stale",
-    "target": "docs/cross-build-verification.md",
-    "find": "preflight.sh:39-52",
-    "replace": "preflight.sh:39-48",
+    "target": "linux/scripts/tests/test-preflight-slugs.sh",
+    "find": "_arr_last=\"$(awk -v s=\"${_arr_first}\" 'NR>=s && /\\)$/ {print NR; exit}' \"${PREFLIGHT}\")\"",
+    "replace": "_arr_last=\"${_arr_first}\"",
     "test": "bash linux/scripts/tests/test-preflight-slugs.sh",
-    "why": "the doc's quoted line span must be where KNOWN_SLUGS really is"
+    "why": "a quoted line span rots on the next edit of preflight.sh unless the doc is checked against where the array really is"
   },
   {
     "id": "preflight-slugs.doc-row-missing",
@@ -1817,27 +1817,27 @@
   },
   {
     "id": "doc-numbers.manifest-total-stale",
-    "target": "docs/code-quality-tooling.md",
-    "find": "**233 entries**",
-    "replace": "**180 entries**",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "return {\"total\": len(entries), \"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "return {\"total\": len(entries) + 1, \"distinct\": len({e[\"test\"] for e in entries}),",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
-    "why": "the page's manifest total must be mutations.json's real length, not the digit the last wave typed"
+    "why": "the page's entry total is COMPARED against the manifest, not merely present: a derivation off by one must fail the suite"
   },
   {
     "id": "doc-numbers.distinct-commands-stale",
-    "target": "docs/code-quality-tooling.md",
-    "find": "**31 distinct test commands**",
-    "replace": "**29 distinct test commands**",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "\"distinct\": len({e[\"test\"] for e in entries}),",
+    "replace": "\"distinct\": len({e[\"test\"] for e in entries}) - 1,",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
-    "why": "the distinct-command count drives the baseline-run cost claim and must track the manifest"
+    "why": "the distinct-command count is compared too, so a wrong derivation must fail rather than pass unnoticed"
   },
   {
     "id": "doc-numbers.family-count-stale",
-    "target": "docs/code-quality-tooling.md",
-    "find": "47 mutation entries (`code-complexity.*`)",
-    "replace": "41 mutation entries (`code-complexity.*`)",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "        fam[key] = fam.get(key, 0) + 1",
+    "replace": "        fam[key] = fam.get(key, 0) + 2",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
-    "why": "a per-gate entry count written next to its id prefix must equal the ids that actually carry that prefix"
+    "why": "every per-family count in the page is compared against the ids carrying that prefix"
   },
   {
     "id": "doc-numbers.total-re-quoted",
@@ -1849,18 +1849,42 @@
   },
   {
     "id": "doc-numbers.fast-slug-count-stale",
-    "target": "docs/cross-build-verification.md",
-    "find": "the 17 fast slugs in",
-    "replace": "the 19 fast slugs in",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    return len([s for s in body.split(\",\") if s]), first, last",
+    "replace": "    return len([s for s in body.split(\",\") if s]) + 1, first, last",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
-    "why": "the hook's fast-slug count is derived from _FAST_SLUGS, not retyped"
+    "why": "the hook's fast-slug count is derived from _FAST_SLUGS and compared, so a wrong derivation must fail"
   },
   {
     "id": "doc-numbers.fast-slug-span-stale",
-    "target": "docs/cross-build-verification.md",
-    "find": "`_FAST_SLUGS` (`:64-67`)",
-    "replace": "`_FAST_SLUGS` (`:64-70`)",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    while lines[last - 1].rstrip().endswith(\"\\\\\"):",
+    "replace": "    while False:",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
-    "why": "a quoted line span rots on the next edit of the hook unless a gate reads where the list really is"
+    "why": "the quoted _FAST_SLUGS span must follow the list's real continuation lines, not stop at its first"
+  },
+  {
+    "id": "env-knobs.heredoc-delimiter-shape",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "if (d !~ /^[A-Za-z_]/) d = \"\"",
+    "replace": "if (0) d = \"\"",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a heredoc delimiter is a word, not a number: without the shape rule `$(( 1 << 2 ))` opens a heredoc on '2' and eats the rest of the file"
+  },
+  {
+    "id": "env-knobs.heredoc-per-file-reset",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "FNR == 1 { nhd = 0 }",
+    "replace": "FNR == 1 { }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "one awk reads every script, so an unterminated heredoc in one file would swallow the next file's assignments"
+  },
+  {
+    "id": "doc-numbers.family-binds-nearest",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "([^()\\n\\d]{0,60}?)",
+    "replace": "([^()\\n]{0,60}?)",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the count must be the LAST number before the marker, or --update overwrites a correct unrelated number on the same line"
   }
 ]

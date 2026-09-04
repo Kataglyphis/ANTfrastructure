@@ -388,7 +388,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **233 entries** over **31 distinct test commands**; both digits are
+manifest holds **236 entries** over **31 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -921,8 +921,8 @@ fallback pair, inline in `preflight.sh`, inline in a sourced lib, inline with a
 same-named stub in a lib nobody sources, run whole-tree by a staged-docs block,
 scoped by `--changed` rather than the guard variable, by-construction) plus the
 `mutation-id:` and `mutation-family:` ratchets in both directions and all three
-convention breaches they catch, 32 in `tests/test-crlf-guard.sh`, and 23 entries
-(`gate-registry.*`).
+convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
+and 23 entries (`gate-registry.*`).
 
 ## Shell complexity (`code-complexity`)
 
@@ -1079,8 +1079,9 @@ shell function defined under `linux/scripts` or `linux/host-config` must be name
 at least once somewhere in the scanned code. Definitions come from
 `verify_code_size.functions()`, so the two gates cannot disagree about what a
 definition is — including the `function name {` form and a one-liner on a file's
-last line, both of which an earlier brace walker missed. 1811 functions today, 39
-named nowhere else, all 39 frozen in `linux/scripts/dead-functions.allow`. The
+last line, both of which an earlier brace walker missed. 1828 functions on
+2026-09-04, 39 named nowhere else, all 39 frozen in
+`linux/scripts/dead-functions.allow`. The
 whole pass costs 0.2s, which is why it is in the pre-commit tier.
 
 **What counts as a use.** The corpus is every text file under `linux/`, `.github/`
@@ -1191,8 +1192,8 @@ subject and not merely a caller, the two-way freeze contract, and the three
 
 One `shellcheck -x -f json1 -S warning` run over exactly the file set
 `lint-shell.sh --list-files` prints, counted per `(file, SCxxxx)` and checked
-against the frozen rows with the shared four-way rule. Today: **307 files in
-scope, 177 warning-level findings in 74 files, 95 frozen rows** — SC2034 (85),
+against the frozen rows with the shared four-way rule. On 2026-09-04: **310
+files in scope, 177 warning-level findings in 74 files, 95 frozen rows** — SC2034 (85),
 SC2155 (19), SC2154 (16), SC2178 (12), SC2046 (11), SC1090 (9).
 
 **Why it exists.** `lint-shell.sh` gates at `-S error` and prints warnings as
@@ -1520,7 +1521,7 @@ unowned. 29 were GAINED, all genuine env-prefix chains.
 `linux/scripts/tests/test-env-knobs.sh` (90 assertions) each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-9 entries (`code-dupes.*`) and 24 (`env-knobs.*`) in
+9 entries (`code-dupes.*`) and 26 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,

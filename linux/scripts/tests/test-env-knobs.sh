@@ -233,6 +233,20 @@ t_case "an assignment-shaped ARGUMENT stays an argument after another argument"
 t_assert_eq "1" "$(_shape_rc '_helper ONE_ARG=1 SHAPE_KNOB=2')" \
   "crediting it would make every word after an assignment-shaped argument an owner"
 
+t_case "arithmetic is not a heredoc: << inside (( )) opens nothing"
+_t_hd 'arith' '_shift=$(( 1 << 2 ))'
+
+t_case "an unterminated heredoc does not eat the NEXT file"
+# The scan is one awk over every script, so nhd must reset per file. Sorted file
+# order puts this one first; without the reset it swallows subject.sh whole.
+_eat="${_work}/linux/scripts/a-unterminated.sh"
+printf '#!/usr/bin/env bash\ncat <<%s\nEATEN_KNOB=1\n' "'NEVERENDS'" > "${_eat}"
+{ _consume PINNED_KNOB DOCKER_KNOB HD_BODY_KNOB SHAPE_KNOB; printf 'SHAPE_KNOB=1\n'; } > "${SUBJECT}"
+_out="$(_knobs 1)"
+t_assert_contains "${_out}" "UNOWNED knobs (1)" "the assignment in the next file still owns"
+t_assert_contains "${_out}" "    HD_BODY_KNOB" "and the runaway body still owns nothing"
+rm -f "${_eat}"
+
 t_case "the REAL tree is clean today, under KNOB_GATE=1"
 t_assert_eq "0" "$(t_rc env KNOB_GATE=1 bash "${LIVE}")"
 t_assert_contains "$(KNOB_GATE=1 bash "${LIVE}" 2>&1)" "stale allow rows: 0"

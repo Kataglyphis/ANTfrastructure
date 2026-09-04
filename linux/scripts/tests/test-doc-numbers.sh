@@ -23,7 +23,7 @@ HOOK = "linux/host-config/git-hooks/pre-commit"
 OWNER = "docs/code-quality-tooling.md"
 MIRRORS = ("AGENTS.md", "docs/cross-build-verification.md")
 TOTALS = re.compile(r"\*\*(\d+) entries\*\* over \*\*(\d+) distinct test commands\*\*")
-FAMILY = re.compile(r"(\d+)([^()\n]{0,60}?)\(`([a-z0-9][a-z0-9-]*)\.\*`\)")
+FAMILY = re.compile(r"(\d+)([^()\n\d]{0,60}?)\(`([a-z0-9][a-z0-9-]*)\.\*`\)")
 BARE = re.compile(r"all \d+ entries|still run all \d+")
 FAST = re.compile(r"the (\d+) (?:fast|cheap whole-tree) slugs")
 SPAN = re.compile(r"`_FAST_SLUGS` \(`:(\d+)-(\d+)`\)")
@@ -171,6 +171,19 @@ t_assert_eq "" "$(_kind family)" "stale per-family mutation count"
 
 t_case "only the owning page quotes a whole-manifest total"
 t_assert_eq "" "$(_kind bare-total)" "a second page re-quotes the manifest total"
+
+t_case "a count binds to the marker it precedes, not to a number further left"
+# --update rewrites whatever the regex matched, so a gap allowed to span digits
+# would let it overwrite a correct unrelated number on the same line.
+_fam="$(python3 - "${TESTS_DIR}/test-doc-numbers.sh" <<'FAM'
+import io, re, sys
+src = io.open(sys.argv[1], encoding="utf-8").read()
+pat = re.search(r'FAMILY = re\.compile\(r"(.*)"\)', src).group(1)
+print(re.compile(pat).findall("45 knobs re-homed and 9 entries (`env-knobs.*`) pin it"))
+FAM
+)"
+t_assert_contains "${_fam}" "'9'" "the adjacent count is the one that binds"
+t_assert_eq 0 "$(printf '%s' "${_fam}" | grep -c "'45'")" "the distant number is left alone"
 
 t_case "the hook's fast-slug count is quoted correctly"
 t_assert_eq "" "$(_kind fast-slugs)" "stale fast-slug count"

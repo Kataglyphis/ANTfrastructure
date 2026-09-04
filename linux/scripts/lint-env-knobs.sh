@@ -44,7 +44,7 @@ grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>
 #    (c) script-side assignments in COMMAND position, plus the self-defaulting
 #        : "${VAR:=...}" form. Quoted text, comments and heredoc bodies are not
 #        code, so a NAME=value printed in a message owns nothing.
-{ find "${SCRIPTS}" -name '*.sh' -print0 | xargs -0 -r awk '
+{ find "${SCRIPTS}" -name '*.sh' -print0 | LC_ALL=C sort -z | xargs -0 -r awk '
 BEGIN { SQ = "\047" }
 FNR == 1 { nhd = 0 }
 {
