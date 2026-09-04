@@ -20,9 +20,13 @@ while the suite was already red proves nothing.
 Every mutation runs in a throwaway COPY of the tree, never in the tree it was
 pointed at: this repo builds from its own working directory, so an in-place edit
 could be snapshotted into a shipped image. The copy keeps symlinks AS symlinks
-rather than dereferencing whatever they point at into it, and a symlink is
-therefore refused as a mutation target -- writing through one would land outside
-the copy. --in-place opts out (its own fixtures).
+rather than dereferencing whatever they point at into it, drops the ones that
+resolve outside the tree, and a symlink is therefore refused as a mutation target
+-- writing through one would land outside the copy. --in-place opts out (its own
+fixtures).
+
+Every mutation is still proven on its own, but --jobs of them run at once, each
+shard in its own mirror; the report is reassembled in manifest order.
 
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
 the entries whose target is in the diff, plain for all.
@@ -30,28 +34,43 @@ the entries whose target is in the diff, plain for all.
 See docs/code-quality-tooling.md#the-mutation-gate-mutations.
 """
 import argparse
+import concurrent.futures
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
 COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist")
+DEFAULT_JOBS = min(8, os.cpu_count() or 1)
+
+
+def within(root, path):
+    """Does path RESOLVE inside root? A link that leaves it must not be copied."""
+    try:
+        return os.path.commonpath([root, os.path.realpath(path)]) == root
+    except ValueError:
+        return False
 
 
 def mirror_tree(src, dst):
     """Cheap throwaway copy of src, minus the trees no gate test reads."""
     skip = {os.path.join(src, rel) for rel in COPY_EXCLUDES} | {dst}
+    home = os.path.realpath(src)
     for dirpath, dirnames, filenames in os.walk(src):
         dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d) not in skip]
         here = os.path.join(dst, os.path.relpath(dirpath, src))
         os.makedirs(here, exist_ok=True)
         for name in filenames:
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path) and not within(home, path):
+                continue
             try:
-                shutil.copy2(os.path.join(dirpath, name), os.path.join(here, name),
+                shutil.copy2(path, os.path.join(here, name),
                              follow_symlinks=False)
             except OSError:
                 pass
@@ -82,6 +101,57 @@ def changed_files():
         if out.returncode == 0:
             touched |= set(out.stdout.split())
     return touched
+
+
+def passes(cmd, root, timeout):
+    """Run one test command unmutated; a timeout is not a pass."""
+    try:
+        proc = subprocess.run(cmd, shell=True, cwd=root, capture_output=True,
+                              text=True, timeout=timeout)
+        return proc.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
+class Baselines:
+    """One unmutated run per distinct test command, shared by every shard."""
+
+    def __init__(self):
+        self._ok = {}
+        self._guards = {}
+        self._lock = threading.Lock()
+
+    def ok(self, cmd, root, timeout):
+        with self._lock:
+            guard = self._guards.setdefault(cmd, threading.Lock())
+        with guard:
+            if cmd not in self._ok:
+                self._ok[cmd] = passes(cmd, root, timeout)
+        return self._ok[cmd]
+
+
+class Report:
+    """Per-entry output buffer, so shards that finish out of order still read in
+    manifest order."""
+
+    def __init__(self):
+        self.lines = {}
+        self._cur = threading.local()
+
+    def entry(self, key):
+        self._cur.key = key
+        self.lines[key] = []
+
+    def out(self, text):
+        self.lines[self._cur.key].append((sys.stdout, text))
+
+    def err(self, text):
+        self.lines[self._cur.key].append((sys.stderr, text))
+
+    def flush(self, entries):
+        for e in entries:
+            for stream, text in self.lines.get(e["id"], ()):
+                stream.write(text)
 
 
 def apply_and_run(entry, root):
@@ -120,42 +190,57 @@ def apply_and_run(entry, root):
 
 def baseline_ok(entry, root, cache):
     """Does this entry's test pass UNMUTATED? Cached per command string."""
-    cmd = entry["test"]
-    if cmd not in cache:
-        try:
-            proc = subprocess.run(cmd, shell=True, cwd=root, capture_output=True,
-                                  text=True, timeout=entry.get("timeout", 300))
-            cache[cmd] = proc.returncode == 0
-        except subprocess.TimeoutExpired:
-            cache[cmd] = False
-    return cache[cmd]
+    return cache.ok(entry["test"], root, entry.get("timeout", 300))
 
 
-def run_entries(args, entries):
+def run_entries(args, entries, report, baselines=None):
     rc = 0
-    baselines = {}
+    baselines = Baselines() if baselines is None else baselines
     for e in entries:
+        report.entry(e["id"])
         if not baseline_ok(e, args.root, baselines):
             rc = 1
-            sys.stderr.write(
+            report.err(
                 "FAIL: %s -- baseline test already fails unmutated (vacuous bite)\n"
                 "      test:   %s\n" % (e["id"], e["test"]))
             continue
         applied, failed, detail = apply_and_run(e, args.root)
         if not applied:
             rc = 1
-            sys.stderr.write("FAIL: %s -- %s (%s)\n" % (e["id"], detail, e["target"]))
+            report.err("FAIL: %s -- %s (%s)\n" % (e["id"], detail, e["target"]))
         elif failed:
-            print("  bites   %-34s %s" % (e["id"], e["why"]))
+            report.out("  bites   %-34s %s\n" % (e["id"], e["why"]))
         else:
             rc = 1
-            sys.stderr.write(
+            report.err(
                 "FAIL: %s SURVIVED -- the tests pass with this guarantee removed.\n"
                 "      target: %s\n      test:   %s\n      meaning: %s\n"
                 % (e["id"], e["target"], e["test"], e["why"]))
-    if rc == 0:
-        print("OK: every recorded mutation is caught by its tests")
     return rc
+
+
+def run_shard(args, entries, root, src, report, baselines):
+    if root != args.root:
+        mirror_tree(src, root)
+    local = argparse.Namespace(**vars(args))
+    local.root = root
+    return run_entries(local, entries, report, baselines)
+
+
+def run_shards(args, entries, src, report):
+    """Deal the entries round-robin over --jobs mirrors and run the shards at once."""
+    jobs = max(1, min(args.jobs, len(entries)))
+    shards = [entries[n::jobs] for n in range(jobs)]
+    extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in shards[1:]]
+    baselines = Baselines()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            done = [pool.submit(run_shard, args, shard, root, src, report, baselines)
+                    for shard, root in zip(shards, [args.root] + extra)]
+            return max(f.result() for f in done)
+    finally:
+        for root in extra:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def main():
@@ -169,6 +254,8 @@ def main():
                     help="only entries whose target appears in the current diff")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                    help="mutations to prove at once, one mirror each (default: %(default)s)")
     args = ap.parse_args()
 
     entries = load(args.manifest)
@@ -182,15 +269,22 @@ def main():
     if not entries:
         print("  nothing selected")
         return 0
+    report = Report()
     if args.in_place:
-        return run_entries(args, entries)
-    workspace = tempfile.mkdtemp(prefix="mutation-gate-")
-    try:
-        mirror_tree(os.path.abspath(args.root), workspace)
-        args.root = workspace
-        return run_entries(args, entries)
-    finally:
-        shutil.rmtree(workspace, ignore_errors=True)
+        rc = run_entries(args, entries, report)
+    else:
+        src = os.path.abspath(args.root)
+        workspace = tempfile.mkdtemp(prefix="mutation-gate-")
+        try:
+            mirror_tree(src, workspace)
+            args.root = workspace
+            rc = run_shards(args, entries, src, report)
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+    report.flush(entries)
+    if rc == 0:
+        print("OK: every recorded mutation is caught by its tests")
+    return rc
 
 
 if __name__ == "__main__":

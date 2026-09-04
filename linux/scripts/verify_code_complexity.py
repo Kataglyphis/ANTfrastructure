@@ -11,15 +11,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_counts, load_counts  # noqa: E402
-from verify_code_size import scan, shell_functions  # noqa: E402
+from verify_code_size import code_lines, scan, shell_functions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOW = os.path.join(HERE, "code-complexity.allow")
 CC_LIMIT = int(os.environ.get("COMPLEXITY_LIMIT", "15"))
 NEST_LIMIT = int(os.environ.get("NESTING_LIMIT", "5"))
-HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 TOKEN = re.compile(r"\n|\$\(|&&|\|\||;;&|;;|;&|[();|&]|(?:[^\s;()|&$]|\$(?!\())+")
-QUOTE = {"'": "sq", '"': "dq"}
 BRANCH = {"if", "elif", "while", "until", "for", "&&", "||"}
 OPEN = {"if", "for", "while", "until", "select", "case", "{"}
 CLOSE = {"fi", "done", "esac", "}"}
@@ -34,115 +32,9 @@ PY_BRANCH = (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.With, ast.
 PY_BLOCK = PY_BRANCH + (ast.Try, ast.Match)
 
 
-def _arith_open(line, i):
-    """Length of an arithmetic opener at `i`: 3 for `$((`, 2 for a delimited `((`, else 0."""
-    if line.startswith("$((", i):
-        return 3
-    if line.startswith("((", i) and (i == 0 or line[i - 1] in " \t;(|&"):
-        return 2
-    return 0
-
-
-def _skip_quoted(line, i, stack, out):
-    """Advance one char inside '...' or "..."; a $( inside "..." re-enters code."""
-    c, top = line[i], stack[-1]
-    if top == "dq" and c == "\\":
-        return i + 2
-    if c == ("'" if top == "sq" else '"'):
-        stack.pop()
-        out.append(c)
-    elif top == "dq" and line.startswith("$((", i):
-        stack.append("arith")
-        out.append("$(")
-        return i + 3
-    elif top == "dq" and line.startswith("$(", i):
-        stack.append("sub")
-        out.append("$(")
-        return i + 2
-    return i + 1
-
-
-def _open_group(line, i, stack, out):
-    """Push the group opened at `i` -- $((, (( , $( or ( -- and return the next index,
-    or 0 when the char is emitted as ordinary code."""
-    n = _arith_open(line, i)
-    if n:
-        stack.append("arith")
-        out.append("$(" if n == 3 else "(")
-        return i + n
-    if line.startswith("$(", i):
-        stack.append("sub")
-        out.append("$(")
-        return i + 2
-    if line[i] == "(":
-        stack.append("par")
-    return 0
-
-
-def _close_group(line, i, stack):
-    """Pop the group closed by the ')' at `i`; return the next index past a `))`, else 0."""
-    top = stack[-1] if stack else None
-    if top == "arith" and line.startswith("))", i):
-        stack.pop()
-        return i + 2
-    if top in ("sub", "par"):
-        stack.pop()
-    return 0
-
-
-def _code_char(line, i, stack, out, docs):
-    """Advance one char of code; -1 at a comment. Quotes and the ( ) groups push onto
-    `stack`, a heredoc operator records its terminator in `docs` and leaves the code."""
-    c = line[i]
-    if c == "#" and (i == 0 or line[i - 1] in " \t;(|&"):
-        return -1
-    if c == "\\":
-        out.append(line[i:i + 2])
-        return i + 2
-    if c in QUOTE:
-        stack.append(QUOTE[c])
-    elif c in ("$", "("):
-        j = _open_group(line, i, stack, out)
-        if j:
-            return j
-    elif c == ")":
-        j = _close_group(line, i, stack)
-        if j:
-            out.append(c)
-            return j
-    elif c == "<" and "arith" not in stack and HEREDOC.match(line, i):
-        m = HEREDOC.match(line, i)
-        docs.append(m.group(2))
-        out.append(" ")
-        return m.end()
-    out.append(c)
-    return i + 1
-
-
-def strip_line(line, stack):
-    """Return (code, heredoc_terminators) for one line; `stack` carries quote and
-    $( ) context across lines so multi-line strings and substitutions parse right."""
-    out, docs, i = [], [], 0
-    while 0 <= i < len(line):
-        if stack and stack[-1] in ("sq", "dq"):
-            i = _skip_quoted(line, i, stack, out)
-        else:
-            i = _code_char(line, i, stack, out, docs)
-    return "".join(out), docs
-
-
 def shell_code(body_lines):
     """The code text of a function: heredoc bodies dropped, comments and quotes blanked."""
-    stack, pending, out = [], [], []
-    for line in body_lines:
-        if pending:
-            if line.strip() == pending[0]:
-                pending.pop(0)
-            continue
-        code, docs = strip_line(line, stack)
-        pending.extend(docs)
-        out.append(code)
-    return "\n".join(out)
+    return "\n".join(code_lines(body_lines))
 
 
 class _Walker:

@@ -9,6 +9,11 @@ source "${TESTS_DIR}/../01-core/disk-guard.sh"
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
+# Default OFF for the whole suite: with a real buildctl on PATH the DISK1
+# fallback would prune this host's live buildkit store. The DISK1 section below
+# turns it on only behind a stub. docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
+export CROSS_BUILDKIT_PRUNE=0
+
 # ---- _disk_guard_free_gb ----
 # The preflight exists to stop a multi-hour ENOSPC death, so it must measure the
 # cache dir's OWN filesystem and must never itself abort the orchestrator.
@@ -265,5 +270,162 @@ t_assert_eq "0" "$(grep -c -e 'protected="${protected} ${victim}"' "${_chain}" |
   "build-cross-chain.sh must not append a protected slug with a space"
 t_assert_eq "2" "$(grep -c -e 'protected="${protected},${victim}"' "${_chain}" || true)" \
   "both anti-spin sites must append with a comma"
+
+# ---------------------------------------------------------------------------
+# DISK1: the filtered buildkit-store fallback. On 2026-09-03 the riscv64 torch
+# stage hit ENOSPC at 4G free while 415G sat in the buildkit store and the guard
+# logged `NOTHING was reclaimable`. buildctl and df are stubbed here — a real
+# prune of this host's store must never be a side effect of a unit test.
+_bk="$(mktemp -d)"
+mkdir -p "${_bk}/bin" "${_bk}/bc" "${_bk}/empty"
+BUILDCTL_LOG="${_bk}/buildctl.log"
+BUILDCTL_PRUNED="${_bk}/pruned"
+export BUILDCTL_LOG BUILDCTL_PRUNED
+cat > "${_bk}/bin/buildctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${BUILDCTL_LOG}"
+[ "${BUILDCTL_UNREACHABLE:-0}" = "1" ] && exit 1
+if [ "$1" = "du" ] && [ "$2" = "--filter" ]; then
+  n=97
+  [ -f "${BUILDCTL_PRUNED}" ] && n="${BUILDCTL_MOUNTS_AFTER:-${n}}"
+  i=0; while [ "${i}" -lt "${n}" ]; do printf 'mount-%s\n' "${i}"; i=$(( i + 1 )); done
+fi
+[ "$1" = "prune" ] && : > "${BUILDCTL_PRUNED}"
+exit 0
+STUB
+chmod +x "${_bk}/bin/buildctl"
+PATH="${_bk}/bin:${PATH}"
+export CROSS_BUILDKIT_PRUNE=1
+# 4G free is the ENOSPC number from the incident; 227G is what the manual
+# `PRUNE_KEEP_GB=120 prune-safe.sh` rescue left behind (223G reclaimed in 36s).
+_disk_guard_free_gb() {
+  if [ -f "${BUILDCTL_PRUNED}" ]; then echo "${BK_FREE_AFTER:-227}"; else echo 4; fi
+}
+_bk_reset() {
+  rm -f "${BUILDCTL_PRUNED}"; : > "${BUILDCTL_LOG}"
+  _DISK_GUARD_BUILDKIT_PRUNES=0
+  _DISK_GUARD_BUILDKIT_FREED_GB=0
+  _DISK_GUARD_TRIM_REMOVED=0
+  _DISK_GUARD_TRIM_FREED_BYTES=0
+  unset BUILDCTL_UNREACHABLE BUILDCTL_MOUNTS_AFTER
+}
+_bk_prunes() { grep -c -e '^prune ' "${BUILDCTL_LOG}" 2>/dev/null || true; }
+
+t_case "the trim runs FIRST — a fallback that fires while disk is ample is a bug"
+_bk_reset
+_disk_guard_free_gb() { echo 100; }
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
+t_assert_eq "0" "$(_bk_prunes)" "40G target with 100G free must never reach buildctl"
+t_assert_eq "" "$(cat "${_bk}/o.txt")" "an ample-disk fallback must log nothing"
+_disk_guard_free_gb() {
+  if [ -f "${BUILDCTL_PRUNED}" ]; then echo "${BK_FREE_AFTER:-227}"; else echo 4; fi
+}
+
+t_case "watch_once falls back to buildctl only after the trim comes up short"
+# The 2026-09-03 shape exactly: kata-buildcache has nothing prunable (three
+# slugs, keep_n 3), so the trim frees literally nothing and the store holds 415G.
+_bk_reset
+_disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o.txt" 2>&1
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}" "there is nothing for the trim to remove"
+t_assert_eq "1" "$(_bk_prunes)" "the guard must reach the buildkit store instead of giving up"
+
+t_case "the prune is FILTERED and carries a keep-storage value"
+t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 120000" \
+  "an unfiltered prune eats the exec.cachemount records — 1.5-2h of cold LLVM"
+
+t_case "the destructive command is never reachable from the guard"
+t_assert_eq "0" "$(grep -c -e 'nerdctl' "${BUILDCTL_LOG}" || true)"
+_dg="${TESTS_DIR}/../01-core/disk-guard.sh"
+t_assert_eq "0" "$(grep -c -e 'nerdctl' "${_dg}" || true)" \
+  "disk-guard.sh must not name nerdctl at all"
+t_assert_eq "0" "$(grep -c -e 'builder prune' "${_dg}" || true)" \
+  "'nerdctl builder prune -f' deletes the cache mounts; only the filtered buildctl form is allowed"
+
+t_case "a human reading the log sees HOW MUCH was reclaimed, and from where"
+t_assert_contains "$(cat "${_bk}/o.txt")" "[disk-buildkit] 4G free < 40G after the cache-export trim"
+t_assert_contains "$(cat "${_bk}/o.txt")" "reclaimed 223G of layer cache" \
+  "a reclaim nobody can quantify from the log is what made 2026-09-03 unreconstructible"
+t_assert_contains "$(cat "${_bk}/o.txt")" "all 97 cache-mount record(s) survived"
+
+t_case "the reclaim record CREDITS the buildkit prune instead of crying defeat"
+t_assert_contains "$(cat "${_bk}/o.txt")" "+ 223G of buildkit layer cache"
+t_assert_eq "0" "$(grep -c -e 'NOTHING was reclaimable' "${_bk}/o.txt" || true)" \
+  "223G were reclaimed; the give-up warning would now be a lie"
+
+t_case "the fallback runs ONCE, not once per sample"
+# The store is at keep-storage after the first prune: a repeat walk costs I/O
+# during a build and frees nothing.
+BK_FREE_AFTER=10 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o2.txt" 2>&1
+t_assert_eq "1" "$(_bk_prunes)" "a second sample must not re-prune"
+t_assert_contains "$(cat "${_bk}/o2.txt")" "already pruned once here"
+
+t_case "keep-storage never drops below the 100G recompile-churn floor"
+_bk_reset
+CROSS_BUILDKIT_KEEP_GB=40 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_contains "$(cat "${BUILDCTL_LOG}")" "--keep-storage 100000" \
+  "keeping under 100G mid-run costs recompile churn (rebuild-disk-management)"
+_bk_reset
+CROSS_BUILDKIT_KEEP_GB=0 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_eq "0" "$(grep -c -e 'keep-storage' "${BUILDCTL_LOG}" || true)" \
+  "0 is the explicit 'reclaim all layer cache' escape hatch"
+t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular"
+
+t_case "a garbage keep value falls back to the default instead of reaching buildctl"
+# CROSS_BUILDKIT_KEEP_GB reaches an arithmetic context and a --keep-storage
+# argument; an operator typo must not become `--keep-storage 000` or a syntax error.
+for _bad in "" "abc" "12G" "-5" "10.5"; do
+  _bk_reset
+  CROSS_BUILDKIT_KEEP_GB="${_bad}" _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+  t_assert_contains "$(cat "${BUILDCTL_LOG}")" "--keep-storage 120000" \
+    "CROSS_BUILDKIT_KEEP_GB='${_bad}' must land on the 120G default"
+done
+
+t_case "the once-per-caller credit resets between callers, or the second stage never reclaims"
+_bk_reset
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_eq "1" "$(_bk_prunes)" "first caller prunes"
+_bk_reset
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_eq "1" "$(_bk_prunes)" "a fresh caller must be able to prune again"
+
+t_case "a cache-mount record that did NOT survive is reported loudly"
+_bk_reset
+BUILDCTL_MOUNTS_AFTER=90 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
+t_assert_contains "$(cat "${_bk}/o.txt")" "cache-mount records dropped 97 -> 90"
+
+t_case "a missing buildctl degrades to the old behaviour, it does not die"
+_bk_reset
+PATH="${_bk}/empty" _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
+t_assert_contains "$(cat "${_bk}/o.txt")" "SKIP: no buildctl on PATH"
+t_assert_eq "0" "$(_bk_prunes)"
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  _disk_guard_free_gb() { echo 4; }
+  PATH="'"${_bk}"'/empty" _disk_guard_buildkit_fallback "/" 40 >/dev/null 2>&1
+  exit 0'
+
+t_case "an unreachable buildkit socket SKIPs — it must not prune blind"
+_bk_reset
+BUILDCTL_UNREACHABLE=1 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
+t_assert_contains "$(cat "${_bk}/o.txt")" "SKIP: buildkit store unreachable"
+t_assert_eq "0" "$(_bk_prunes)" "a store that will not answer du must not be pruned"
+
+t_case "CROSS_BUILDKIT_PRUNE=0 keeps the pre-DISK1 behaviour, and says so"
+_bk_reset
+CROSS_BUILDKIT_PRUNE=0 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o.txt" 2>&1
+t_assert_eq "0" "$(_bk_prunes)"
+t_assert_contains "$(cat "${_bk}/o.txt")" "disabled (CROSS_BUILDKIT_PRUNE=0)"
+t_assert_contains "$(cat "${_bk}/o.txt")" "NOTHING was reclaimable" \
+  "with the fallback off the operator must still get the give-up warning"
+
+t_case "the fallback never aborts the stage it is called from"
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  export CROSS_BUILDKIT_PRUNE=0
+  _disk_guard_buildkit_fallback "" "" >/dev/null 2>&1
+  _disk_guard_buildkit_fallback "/definitely/not/here" "lots" >/dev/null 2>&1
+  _disk_guard_buildkit_fallback "/" 999999 >/dev/null 2>&1
+  exit 0'
+rm -rf "${_bk}"
 
 t_summary

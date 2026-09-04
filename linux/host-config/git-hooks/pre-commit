@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # pre-commit — the gates that cost SECONDS, run on every commit.
 #
-# Deliberately not the full suite: `make preflight` runs all 33 checks in minutes,
-# and this hook's own mutation step measured 5m26s on a 43-file commit (322s for
-# those 132 entries) until it was capped. A hook that slow teaches people to type
-# --no-verify, which is worse than having no hook, so the mutation step now
-# SAMPLES and says so. docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
+# Deliberately not the full suite: `make preflight` runs all 34 checks in minutes,
+# and this hook's own mutation step measured 5m26s on a 43-file commit until it
+# was capped, so it SAMPLES. The gate shards its own run since 2026-09-04 (one
+# mirror per job), which is what pays for a sample of 16 rather than 6 in the
+# same seconds. docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 #
 # Install: make hooks    (sets core.hooksPath, so the hook is version-controlled)
 # Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
 set -euo pipefail
 
-_MUTATION_CAP="${PRECOMMIT_MUTATION_CAP:-6}"
+_MUTATION_CAP="${PRECOMMIT_MUTATION_CAP:-16}"
 _MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
 
 # <cap> <manifest> <file listing staged paths> -> "plan <run> <matched>" then the
@@ -56,14 +56,14 @@ fi
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
-# Whole-tree gates that are cheap. Measured 2026-09-04: 17 slugs, 4.2s combined.
+# Whole-tree gates that are cheap. Measured 2026-09-04: 18 slugs, 6.4s combined.
 # doc-links is here, not in the docs-only block: code carries docs/ pointers too.
 # The warning ratchet slug is NOT here: its whole-tree run is 22s, so the hook
 # runs it on the staged files only (0.2s each), below. (A comment must not START
 # with the tool's name -- that parses as a directive and errors out.)
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
 arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,\
-artifact-parity,advert-keys,stage-graph,env-knobs,\
+artifact-parity,advert-keys,stage-graph,env-knobs,trailing-conditional,\
 doc-links,gate-registry"
 
 echo "pre-commit: fast preflight gates…"

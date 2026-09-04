@@ -28,6 +28,8 @@ CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+: "${LINT_DOCKERFILES_BUILD_CHECK:=1}"
+
 # ---------------------------------------------------------------------------
 # Target set
 # ---------------------------------------------------------------------------
@@ -133,7 +135,7 @@ done
 # ---------------------------------------------------------------------------
 # Pass 2: BuildKit frontend lint (advisory; auto-skipped without docker buildx)
 # ---------------------------------------------------------------------------
-if [ "${LINT_DOCKERFILES_BUILD_CHECK:-1}" = "1" ] \
+if [ "${LINT_DOCKERFILES_BUILD_CHECK}" = "1" ] \
    && command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1 \
    && docker version --format '{{.Server.Os}}' >/dev/null 2>&1; then
   printf '\n== docker buildx build --check (advisory) ==\n'

@@ -111,21 +111,19 @@ if [ "${PRINT_BIN}" -eq 1 ]; then
 fi
 
 # Default target set: every tracked .sh under linux/scripts, the runtime service
-# scripts (llm-stack, webserver) that ship their own entrypoints, and the
-# host-config operator tools.
-#
-# host-config was NOT swept until 2026-08-27. Seven scripts sat outside the
-# gate -- including install-nerdctl-full.sh and the two ghcr tools, i.e. the
-# ones that upgrade the daemon and DELETE from the registry. They happened to
-# be clean, which is luck, not coverage: this repo's recurring failure is a
-# gate whose scope quietly excludes the thing it was meant to protect.
+# scripts (llm-stack, webserver), the host-config operator tools, and the
+# extension-less git hooks. host-config (2026-08-27) and git-hooks (2026-09-04)
+# were both added after the same finding: a scope that quietly excludes the
+# thing it was meant to protect. The ratchet asks THIS set.
+# docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
 if [ "${#FILES[@]}" -eq 0 ]; then
   mapfile -t FILES < <(find \
     "${REPO_ROOT}/linux/scripts" \
     "${REPO_ROOT}/linux/host-config" \
     "${REPO_ROOT}/linux/llm-stack" \
     "${REPO_ROOT}/linux/webserver" \
-    -name '*.sh' -type f | sort)
+    \( -name '*.sh' -o -path "${REPO_ROOT}/linux/host-config/git-hooks/*" \) \
+    -type f | sort)
 fi
 
 # Keep only existing shell scripts (a staged list may include deletions and

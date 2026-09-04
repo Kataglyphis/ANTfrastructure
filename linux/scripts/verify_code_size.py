@@ -14,7 +14,10 @@ one below its frozen number fails too, so the baseline cannot rot into cover.
 
 Length is weak evidence on its own. This does not ask anyone to split a function;
 it asks that the queue stay honest without a human re-counting.
-See docs/code-quality-tooling.md.
+
+This module also owns strip_line/code_lines, the quote-, comment- and heredoc-aware
+view of shell source that every extent-based gate imports.
+docs/code-quality-tooling.md#what-a-shell-functions-extent-is
 """
 import ast
 import os
@@ -43,6 +46,123 @@ DEF_HEAD = r"(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?|([A-Za-z_][A-Za-z0-
 DEF = re.compile("^" + DEF_HEAD)
 
 
+HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+QUOTE = {"'": "sq", '"': "dq"}
+
+
+def _arith_open(line, i):
+    """Length of an arithmetic opener at `i`: 3 for `$((`, 2 for a delimited `((`, else 0."""
+    if line.startswith("$((", i):
+        return 3
+    if line.startswith("((", i) and (i == 0 or line[i - 1] in " \t;(|&"):
+        return 2
+    return 0
+
+
+def _skip_quoted(line, i, stack, out):
+    """Advance one char inside '...' or "..."; a $( inside "..." re-enters code."""
+    c, top = line[i], stack[-1]
+    if top == "dq" and c == "\\":
+        return i + 2
+    if c == ("'" if top == "sq" else '"'):
+        stack.pop()
+        out.append(c)
+    elif top == "dq" and line.startswith("$((", i):
+        stack.append("arith")
+        out.append("$(")
+        return i + 3
+    elif top == "dq" and line.startswith("$(", i):
+        stack.append("sub")
+        out.append("$(")
+        return i + 2
+    return i + 1
+
+
+def _open_group(line, i, stack, out):
+    """Push the group opened at `i` -- $((, (( , $( or ( -- and return the next index,
+    or 0 when the char is emitted as ordinary code."""
+    n = _arith_open(line, i)
+    if n:
+        stack.append("arith")
+        out.append("$(" if n == 3 else "(")
+        return i + n
+    if line.startswith("$(", i):
+        stack.append("sub")
+        out.append("$(")
+        return i + 2
+    if line[i] == "(":
+        stack.append("par")
+    return 0
+
+
+def _close_group(line, i, stack):
+    """Pop the group closed by the ')' at `i`; return the next index past a `))`, else 0."""
+    top = stack[-1] if stack else None
+    if top == "arith" and line.startswith("))", i):
+        stack.pop()
+        return i + 2
+    if top in ("sub", "par"):
+        stack.pop()
+    return 0
+
+
+def _code_char(line, i, stack, out, docs):
+    """Advance one char of code; -1 at a comment. Quotes and the ( ) groups push onto
+    `stack`, a heredoc operator records its terminator in `docs` and leaves the code."""
+    c = line[i]
+    if c == "#" and (i == 0 or line[i - 1] in " \t;(|&"):
+        return -1
+    if c == "\\":
+        out.append(line[i:i + 2])
+        return i + 2
+    if c in QUOTE:
+        stack.append(QUOTE[c])
+    elif c in ("$", "("):
+        j = _open_group(line, i, stack, out)
+        if j:
+            return j
+    elif c == ")":
+        j = _close_group(line, i, stack)
+        if j:
+            out.append(c)
+            return j
+    elif c == "<" and "arith" not in stack and HEREDOC.match(line, i):
+        m = HEREDOC.match(line, i)
+        docs.append(m.group(2))
+        out.append(" ")
+        return m.end()
+    out.append(c)
+    return i + 1
+
+
+def strip_line(line, stack):
+    """Return (code, heredoc_terminators) for one line; `stack` carries quote and
+    $( ) context across lines so multi-line strings and substitutions parse right."""
+    out, docs, i = [], [], 0
+    while 0 <= i < len(line):
+        if stack and stack[-1] in ("sq", "dq"):
+            i = _skip_quoted(line, i, stack, out)
+        else:
+            i = _code_char(line, i, stack, out, docs)
+    return "".join(out), docs
+
+
+def code_lines(lines):
+    """One stripped line per line in: comment text, quoted text and heredoc bodies gone,
+    quote and $( ) state carried across lines."""
+    stack, pending, out = [], [], []
+    for line in lines:
+        if pending:
+            out.append("")
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        code, docs = strip_line(line, stack)
+        pending.extend(docs)
+        out.append(code)
+    return out
+
+
 def scan(*suffixes):
     """Yield (path, relpath) for every file in SCAN whose name ends in one of `suffixes`."""
     for top in SCAN:
@@ -56,17 +176,20 @@ def scan(*suffixes):
 
 def shell_functions(path, rel):
     """Yield (rel, name, start_line, body_lines) for every function in one shell file;
-    body_lines runs from the definition line to its closing brace inclusive."""
+    body_lines runs from the definition line to its closing brace inclusive. Braces are
+    counted over code_lines, so a `}` in a comment, a string or a heredoc body neither
+    ends a function early nor hides one, and neither does a definition head inside one."""
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
     except OSError:
         return
-    for i, line in enumerate(lines):
+    code = code_lines(lines)
+    for i, line in enumerate(code):
         m = DEF.match(line)
         if not m:
             continue
         depth = 0
-        for n, body in enumerate(lines[i:], start=1):
+        for n, body in enumerate(code[i:], start=1):
             depth += body.count("{") - body.count("}")
             if depth == 0:
                 yield rel, m.group(1) or m.group(2), i + 1, lines[i:i + n]

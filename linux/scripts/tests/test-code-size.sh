@@ -9,13 +9,20 @@ source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
+# An empty tree with the gate and its one import installed.
+_tree() {
+  local d
+  d="$(mktemp -d)"
+  mkdir -p "${d}/linux/scripts"
+  cp "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" "${d}/linux/scripts/"
+  printf '%s' "${d}"
+}
+
 # A tree holding one subject.sh. `shape` decides whether the <n> lines form one
 # long FUNCTION or just a long FILE, and which allow file the line lands in.
 _fixture() {
   local shape="$1" n="$2" allow="${3-}" d
-  d="$(mktemp -d)"
-  mkdir -p "${d}/linux/scripts"
-  cp "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" "${d}/linux/scripts/"
+  d="$(_tree)"
   # NOTE: the redirect must sit inside each arm. A trailing `esac > "${subject}"`
   # expands ${subject} before any arm runs, so the content lands in the default file.
   case "${shape}" in
@@ -116,5 +123,90 @@ _exits dockerfile 900 "linux/Dockerfile.subject | 900 | baseline" 0 "frozen, it 
 t_case "a name defined twice is measured at its longest, not its last"
 _says  twice 100 "" "is 100 lines" "the short redefinition must not mask the long one"
 _exits twice 100 "linux/scripts/subject.sh | big | 100 | baseline" 0 "frozen at the real length"
+
+# ── extents: braces that are not code ────────────────────────────────────────
+# subject.sh is read from stdin and every function reports its own length, so a
+# case asserts the measured extent directly. docs/code-quality-tooling.md#what-a-shell-functions-extent-is
+_measure() {
+  local d out
+  d="$(_tree)"
+  cat > "${d}/linux/scripts/subject.sh"
+  out="$(t_out env FUNCTION_SIZE_LIMIT=0 "${PY}" "${d}/linux/scripts/verify_code_size.py")"
+  rm -rf "${d}"
+  printf '%s' "${out}"
+}
+
+_no_function() {
+  t_assert_eq "" "$(printf '%s' "$1" | grep -e ":$2 is" || true)" \
+    "$2 is not a definition: $3"
+}
+
+t_case "a } inside a comment does not end the function early"
+_out="$(_measure <<'SH'
+big() {
+  # a stray } in prose, as generate_pkgconfig_file explains its own bug
+  :
+}
+SH
+)"
+t_assert_contains "${_out}" "subject.sh:big is 4 lines" "comment text is not code"
+
+t_case "a } inside a single- or double-quoted string does not end the function early"
+_out="$(_measure <<'SH'
+sq() {
+  echo '}'
+  :
+}
+dq() {
+  echo "}"
+  :
+}
+SH
+)"
+t_assert_contains "${_out}" "subject.sh:sq is 4 lines" "'}' is a string, not a block end"
+t_assert_contains "${_out}" "subject.sh:dq is 4 lines" '"}" is a string, not a block end'
+
+t_case "a } inside a heredoc body does not end the function early"
+_out="$(_measure <<'SH'
+heredoc() {
+  cat <<'BODY'
+}
+an apostrophe ' in the body must not open a string either
+BODY
+  :
+}
+SH
+)"
+t_assert_contains "${_out}" "subject.sh:heredoc is 7 lines" "a heredoc body is data"
+
+t_case "a definition inside a heredoc body is fixture text, not a function"
+_out="$(_measure <<'SH'
+writer() {
+  cat > /tmp/qw4-fixture.sh <<'FIXTURE'
+phantom() {
+  :
+}
+FIXTURE
+}
+SH
+)"
+t_assert_contains "${_out}" "subject.sh:writer is 7 lines" "the writer runs to its own brace"
+_no_function "${_out}" "phantom" "it is a line of the heredoc the writer emits"
+
+t_case "a { inside a comment no longer swallows the rest of the file"
+# The old raw count never closed outer, so outer was invisible to every gate that
+# inherits these extents and inner sat inside an extent that ran to EOF.
+_out="$(_measure <<'SH'
+outer() {
+  # an unbalanced { in prose
+  :
+}
+inner() {
+  :
+}
+SH
+)"
+t_assert_contains "${_out}" "subject.sh:outer is 4 lines" "outer must be measured at all"
+t_assert_contains "${_out}" "subject.sh:inner is 3 lines" "inner is its own function"
 
 t_summary

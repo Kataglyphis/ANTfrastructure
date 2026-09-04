@@ -1,5 +1,5 @@
 # shellcheck -S warning findings frozen per (file, code) over lint-shell.sh's file set.
-# Format: <file> | SC<code> | <count> | <reason>   (a reason may not contain | or #)
+# Format: <file> | SC<code> | <count> | <reason>   (the reason is the rest of the line)
 # The four-way rule applies: a new pair, a higher count, an unrecorded lower count
 # and a row whose pair is gone all FAIL. Record a fix with --write-baseline [--files f].
 # docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings

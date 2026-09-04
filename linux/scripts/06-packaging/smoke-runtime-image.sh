@@ -17,6 +17,9 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
+: "${RUNTIME_CLANG_VERSION_SMOKE:=1}"
+: "${RUNTIME_COMPILER_SMOKE:=1}"
+
 # Evaluate a python expression against the image's `nerdctl image inspect` JSON (the
 # [0] element on stdin). Uses the caller's ${image_tag} dynamically; empty on any error.
 inspect_image_config() {
@@ -548,6 +551,188 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
+# ── HT1: the shipped artifact trees must carry THIS image's arch ─────────────
+# artifact-source is the BUILDER's image, so a tree INSTALLED on the host instead of
+# cross-built ships x86_64 into the arm64/riscv64 runtime image -- rustup (2 GB, exit
+# 127) and Flutter's Dart SDK both did, and only their own gates caught them.
+# docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+
+# Trees whose ELF machine is NOT this image's by design. The arm names the TREE, never
+# an arch, so a newly host-installed tree fails by default; both here are android-lane
+# payloads (device .so + the SDK's host tooling) whose arch says nothing about the image.
+_RT_TREE_ARCH_EXEMPT="/opt/android /opt/android-sdk"
+
+_rt_tree_arch_exempt() {
+  case " ${_RT_TREE_ARCH_EXEMPT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+# Where the gate probes a manifest tree in the image: the manifest carries the COPY
+# SOURCE path, one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
+# owns the other half), and /opt/vulkan ships the SDK's x86_64 HOST tools beside the
+# cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert.
+_rt_tree_probe_path() {
+  case "$1" in
+    /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
+    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;
+    *)                printf '%s' "$1" ;;
+  esac
+}
+
+# Manifest paths as they exist IN the image: ${VAR} resolved from the environment, else
+# from Dockerfile.package's own `ARG VAR=default`, then relocated. An unresolvable token
+# is printed as `UNRESOLVED <var>` so the gate fails rather than scanning nothing.
+_rt_manifest_trees() {
+  local manifest="${_SCRIPT_DIR}/../runtime-artifacts.manifest"
+  local dockerfile="${_SCRIPT_DIR}/../../Dockerfile.package"
+  local line path var val guard
+  while IFS= read -r line; do
+    path="$(printf '%s' "${line%%|*}" | tr -d '[:space:]')"
+    case "${path}" in ''|'#'*) continue ;; esac
+    guard=0
+    while [ "${guard}" -lt 8 ] && [[ "${path}" =~ \$\{([A-Za-z0-9_]+)\} ]]; do
+      guard=$((guard + 1))
+      var="${BASH_REMATCH[1]}"
+      val="${!var:-}"
+      [ -n "${val}" ] || val="$(sed -n "s/^ARG ${var}=\(.*\)$/\1/p" "${dockerfile}" | head -1)"
+      [ -n "${val}" ] || break
+      path="${path//\$\{${var}\}/${val}}"
+    done
+    case "${path}" in
+      *'${'*) printf 'UNRESOLVED %s\n' "${path}" ;;
+      *)      _rt_tree_probe_path "${path}"; printf '\n' ;;
+    esac
+  done < "${manifest}"
+}
+
+# ELF machine of every EXECUTABLE-or-.so object under $RT_TREES, aggregated per (tree,
+# machine) so the
+# verdict reads counts instead of thousands of paths. Only candidates count toward CAP:
+# rust-src alone would spend it before reaching toolchains/*/bin/rustc. Header reads in ONE
+# process, not a readelf exec per file, which under qemu would cost minutes. docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+_tree_arch_py() {
+  cat <<'PY'
+import os
+EM = {3: "Intel 80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+CAP = int(os.environ.get("RT_TREE_CAP") or "20000")
+for tree in os.environ.get("RT_TREES", "").split():
+    if not os.path.isdir(tree):
+        print("TREEMISS", tree)
+        continue
+    seen, sample, visited = {}, {}, 0
+    first, rest = [], []
+    for dirpath, dirnames, filenames in os.walk(tree):
+        dirnames.sort()
+        for name in sorted(filenames):
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                continue
+            try:
+                executable = os.stat(path).st_mode & 0o111
+            except OSError:
+                continue
+            (first if executable or ".so" in name else rest).append(path)
+    for path in first + rest:
+        if visited >= CAP:
+            print("TREECAP", tree, CAP)
+            break
+        visited += 1
+        try:
+            with open(path, "rb") as fh:
+                head = fh.read(20)
+        except OSError:
+            continue
+        if len(head) < 20 or head[:4] != b"\x7fELF":
+            continue
+        order = "little" if head[5] == 1 else "big"
+        key = EM.get(int.from_bytes(head[18:20], order), "EM%d" % int.from_bytes(head[18:20], order))
+        seen[key] = seen.get(key, 0) + 1
+        sample.setdefault(key, path)
+    if not seen:
+        print("TREENOELF", tree)
+    for key in sorted(seen):
+        print("TREE", tree, key, seen[key], sample[key])
+print("TREESCAN_DONE")
+PY
+}
+
+# Pure verdict function for the tree-arch gate: scanner text + the expected ELF machine
+# in, one "OK|BAD|NOELF|MISSING <tree> ..." line out per tree, NONE when it saw nothing.
+_tree_arch_verdicts() {
+  local probe="$1" want="$2" tree machine count sample n=0
+  while read -r tree; do
+    [ -n "${tree}" ] || continue
+    printf 'MISSING %s\n' "${tree}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREEMISS //p')
+  while read -r tree; do
+    [ -n "${tree}" ] || continue
+    printf 'NOELF %s\n' "${tree}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREENOELF //p')
+  while read -r tree cap; do
+    [ -n "${tree}" ] || continue
+    n=$((n + 1))
+    printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREECAP //p')
+  while read -r tree machine count sample; do
+    [ -n "${tree}" ] || continue
+    n=$((n + 1))
+    case "${machine}" in
+      *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
+      *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREE //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+# HT1 gate: read the ELF machine of what each manifest tree actually ships.
+check_manifest_tree_arch() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
+  local trees="" tree want out verb machine count sample bad=0 ok=0
+  while read -r tree; do
+    case "${tree}" in
+      UNRESOLVED*)
+        bad=$((bad + 1))
+        fail "tree-arch gate: runtime-artifacts.manifest names ${tree#UNRESOLVED } but neither the environment nor Dockerfile.package's ARG defaults define it -- the tree would be silently skipped"
+        continue ;;
+    esac
+    if _rt_tree_arch_exempt "${tree}"; then
+      echo "  ~~   ${tree} not asserted (android-lane payload; its arch is not the image's)"
+      continue
+    fi
+    trees="${trees} ${tree}"
+  done < <(_rt_manifest_trees)
+  want="$(smoke_elf_machine_grep "${target_arch}")"
+  out="$(_rt_run -e "RT_TREES=${trees# }" -e "RT_TREE_PY=$(_tree_arch_py)" \
+           bash -lc 'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"
+printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
+  if ! printf '%s\n' "${out}" | grep -qxF -- 'TREESCAN_DONE'; then
+    fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
+    echo ""
+    return 0
+  fi
+
+  while read -r verb tree machine count sample; do
+    [ -n "${verb}" ] || continue
+    case "${verb}" in
+      OK)      ok=$((ok + 1)); echo "  OK   ${tree}: ${count} ELF object(s), all ${machine}" ;;
+      NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
+      BAD)     bad=$((bad + 1))
+               fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason" ;;
+      MISSING) bad=$((bad + 1))
+               fail "tree-arch: ${tree} is declared in runtime-artifacts.manifest but is ABSENT from the ${target_arch} image -- the COPY landed elsewhere or the tree was dropped" ;;
+      CAPPED)  bad=$((bad + 1))
+               fail "tree-arch: the walk of ${tree} hit the ${machine}-file cap, so everything past it was never read -- a partial scan is not a pass. Raise RT_TREE_CAP or narrow the tree" ;;
+      NONE)    bad=$((bad + 1))
+               fail "tree-arch: the scanner found NO tree at all on ${target_arch} -- a vacuous pass, not a green image" ;;
+      *)       bad=$((bad + 1))
+               fail "tree-arch gate: unknown verdict '${verb}' for ${tree} on ${target_arch}" ;;
+    esac
+  done < <(_tree_arch_verdicts "${out}" "${want}")
+  [ "${bad}" -ne 0 ] || pass "all ${ok} asserted artifact tree(s) are ${want} on ${target_arch}"
+  echo ""
+}
+
 # RP1 (security): the shipped image must carry NO usable `sudo` - it was purged from
 # the final stage (Dockerfile.torch) as pure LPE surface, since no sudoers/group grants
 # exist. Every other setuid binary is inventoried (informational) so a new one is at
@@ -744,7 +929,6 @@ _probe_advertised() {
   cat <<'PROBE'
 set -uo pipefail
 py=/opt/venv/bin/python
-printf 'ADV PYTHON_VERSION %s\n'      "${PYTHON_VERSION:-}"
 printf 'ADV PYTHON_MAJOR_MINOR %s\n'  "${PYTHON_MAJOR_MINOR:-}"
 printf 'ADV GCC_VERSION %s\n'         "${GCC_VERSION:-}"
 printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
@@ -769,7 +953,6 @@ _probe_actual_versions() {
   # What the image actually IS: every value read from the shipped thing itself,
   # never from an ENV. The ADV/HAVE pair is what the shipped-truth gate compares.
   cat <<'PROBE'
-printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
 _g="$(command -v gcc || true)"
 printf 'HAVE GCC_VERSION %s\n'        "${_g:+$("$_g" -dumpfullversion 2>/dev/null || "$_g" -dumpversion 2>/dev/null)}"
@@ -902,9 +1085,11 @@ _shipped_truth_probe() {
 }
 
 # Version-carrying env vars the shipped image sets. Each must equal what the image
-# ACTUALLY has; there is no exemption arm, because a label that contradicts the
-# artefact is never a documented state.
-_ADVERTISED_VERSION_KEYS="PYTHON_VERSION PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
+# ACTUALLY has; there is no exemption arm and no SKIP arm, because neither a label
+# that contradicts the artefact nor a row that cannot fail is a documented state.
+# A key the image deliberately does not advertise belongs in verify_advertised_keys.py's
+# EXCUSED table instead. docs/cross-build-verification.md
+_ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
 LITERT_VERSION RUST_VERSION"
@@ -936,7 +1121,8 @@ _venv_pkg_exempt() {
 }
 
 # Pure verdict function for the advertised-vs-actual gate: probe text in, one
-# "OK|BAD|SKIP <key> ..." line out per key. No container, no globals.
+# "OK|BAD|UNSET|UNREAD <key> ..." line out per key. No container, no globals.
+# Both "the image did not tell us" arms are fatal: docs/cross-build-verification.md
 _advert_verdicts() {
   local probe="$1" key adv have
   for key in ${_ADVERTISED_VERSION_KEYS}; do
@@ -946,9 +1132,9 @@ _advert_verdicts() {
     adv="${adv#v}"
     [ -z "${have}" ] || have="$(printf '%s' "${have}" | grep -oE '^[0-9]+(\.[0-9]+)*' || printf '%s' "${have}")"
     if [ -z "${adv}" ]; then
-      printf 'SKIP %s image sets no %s -- nothing advertised to check\n' "${key}" "${key}"
+      printf 'UNSET %s\n' "${key}"
     elif [ -z "${have}" ]; then
-      printf 'SKIP %s advertised %s but the in-image probe could not read the actual value\n' "${key}" "${adv}"
+      printf 'UNREAD %s %s\n' "${key}" "${adv}"
     elif [ "${adv}" = "${have}" ] || \
          { [ "${key}" = VULKAN_VERSION ] && [ "${adv#"${have}"}" = ".0" ]; }; then
       printf 'OK %s %s\n' "${key}" "${adv}"
@@ -1122,15 +1308,21 @@ check_advertised_versions() {
   fi
   local verb key rest ok=0 bad=0
   while read -r verb key rest; do
+    [ -n "${verb}" ] || continue
     case "${verb}" in
-      OK)   echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
-      SKIP) echo "  SKIP ${key}: ${rest}" ;;
-      BAD)  bad=$((bad + 1))
-            fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+      OK)     echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
+      BAD)    bad=$((bad + 1))
+              fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+      UNSET)  bad=$((bad + 1))
+              fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
+      UNREAD) bad=$((bad + 1))
+              fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
+      *)      bad=$((bad + 1))
+              fail "advertised-version gate: unknown verdict '${verb}' for ${key} on ${target_arch} -- a verb no arm handles is a silently dropped row" ;;
     esac
   done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
   if [ "$((ok + bad))" -eq 0 ]; then
-    fail "advertised-version gate asserted NOTHING on ${target_arch}: every key in _ADVERTISED_VERSION_KEYS was unset or unreadable -- a vacuous pass, not a green image"
+    fail "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
   elif [ "${bad}" -eq 0 ]; then
     pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
   fi
@@ -1393,7 +1585,7 @@ except AttributeError:
 check_native_compiler_battery() {
   local image_tag="$1"
   local target_arch="$2"
-    if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
+    if [ "${RUNTIME_COMPILER_SMOKE}" = "1" ]; then
       echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
       # A battery, not a hello-world: each case exercises a distinct piece of the
       # shipped toolchain. C++ exceptions+STL is the load-bearing one - it regression-
@@ -1451,7 +1643,7 @@ exit $rc'; then
 check_clang_llvm_release() {
   local image_tag="$1"
   local target_arch="$2"
-    if [ "${RUNTIME_CLANG_VERSION_SMOKE:-1}" = "1" ]; then
+    if [ "${RUNTIME_CLANG_VERSION_SMOKE}" = "1" ]; then
       echo "--- Functional: clang/clang++ version == LLVM_RELEASE (${target_arch}) ---"
       local _llvm_release="${LLVM_RELEASE:-}"
       if [ -z "${_llvm_release}" ]; then
@@ -1530,6 +1722,7 @@ main() {
     check_flutter "${image_tag}" "${target_arch}"
     check_rust_toolchain "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
+    check_manifest_tree_arch "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
     check_venv_bytecode "${image_tag}" "${target_arch}"

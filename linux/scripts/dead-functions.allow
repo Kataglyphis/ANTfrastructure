@@ -47,17 +47,3 @@ linux/scripts/06-packaging/verify-parity.sh	check_versions
 
 # bash hook: bash itself calls it when a command is not found.
 linux/scripts/tests/test-harness.sh	command_not_found_handle
-
-# Heredoc fixture text, not functions: verify_code_size.functions() is not
-# heredoc-aware, so these column-0 heads inside cat <<'SH' blocks read as definitions.
-linux/scripts/tests/test-embedded-python-extract.sh	emit_a
-linux/scripts/tests/test-embedded-python-extract.sh	emit_b
-linux/scripts/tests/test-embedded-python-extract.sh	run_it
-linux/scripts/tests/test-embedded-python-extract.sh	run_probe
-
-# DEAD - delete after the 2026-09-03 build (file is in the running build closure).
-# Whole-repo grep (windows/, docs/, shared/ included) finds only the definitions.
-linux/scripts/01-core/cpython-dev-packages.sh	cpython_ext_dev_packages_optional
-linux/scripts/01-core/cpython-dev-packages.sh	cpython_ext_modules_optional
-linux/scripts/01-core/cpython-dev-packages.sh	cpython_ext_modules_required
-linux/scripts/03-media/runtime/verify-media-artifacts.sh	verify_shared_lib_optional

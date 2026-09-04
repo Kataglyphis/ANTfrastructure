@@ -106,8 +106,8 @@ _probe="$(bash -c '
   '"$(_extract _probe_elf_and_sonames)"'
   '"$(_extract _shipped_truth_probe)"'
   _shipped_truth_probe' 2>/dev/null)"
-t_assert_contains "${_probe}" "ADV PYTHON_VERSION"  "the advertised section must be there"
-t_assert_contains "${_probe}" "HAVE PYTHON_VERSION" "the actual-versions section must be there"
+t_assert_contains "${_probe}" "ADV PYTHON_MAJOR_MINOR"  "the advertised section must be there"
+t_assert_contains "${_probe}" "HAVE PYTHON_MAJOR_MINOR" "the actual-versions section must be there"
 t_assert_contains "${_probe}" "REQ"                 "the venv inventory section must be there"
 t_assert_contains "${_probe}" "SONAME"              "the inventory section must be there"
 
@@ -208,5 +208,174 @@ t_assert_contains "$(_flutter "Flutter 3.47.1 • channel stable
 t_case "the bootstrapped shape passes"
 t_assert_contains "$(_flutter "Flutter 3.47.1 • channel stable
   Machine:                           AArch64")" "PASS flutter 3.47.1 runs offline as the image user on a AArch64 Dart SDK (arm64)" "what a correct arm64 image prints"
+
+
+# ── advertised keys: neither "the image did not tell us" arm may be a SKIP ───
+# check_advertised_versions with the verdict function stubbed: VERDICTS is what
+# _advert_verdicts would print for the probe.
+_advert_gate() {
+  VERDICTS="$1" bash -c '
+    '"${_STUBS}"'
+    _advert_verdicts() { printf "%s\n" "${VERDICTS}"; }
+    _SHIPPED_TRUTH_PROBE=""
+    _SHIPPED_TRUTH_PROBE_RC=0
+    '"$(_extract check_advertised_versions)"'
+    check_advertised_versions img amd64' 2>&1
+}
+
+t_case "an unset key fails the gate instead of printing a SKIP"
+t_assert_contains "$(_advert_gate "UNSET RUST_VERSION")" "could only ever SKIP" \
+  "a row that cannot fail is the hole that hid eleven ARG-only keys"
+
+t_case "an unreadable actual value fails the gate"
+t_assert_contains "$(_advert_gate "UNREAD RUST_VERSION 1.98.0")" "could NOT read the actual value" \
+  "the rust defect shape: rustc did not run and the gate said SKIP"
+
+t_case "a verdict verb no arm handles fails instead of being dropped"
+# The case had no default arm, so any new verb would have vanished silently --
+# the same class as the SKIP arms themselves.
+t_assert_contains "$(_advert_gate "WHAT RUST_VERSION 1.98.0")" "unknown verdict" \
+  "an unhandled verb is a silently dropped row"
+
+t_case "an EMPTY verdict table is a vacuous pass, not a green image"
+# The whole gate reduces to "check every advertised key" -- so a key list that
+# came back empty asserts nothing at all, which is the same hole one level up.
+t_assert_contains "$(_advert_gate "")" "asserted NOTHING" \
+  "an empty table must fail, not print PASS all 0"
+t_assert_eq 0 "$(printf '%s' "$(_advert_gate "")" | grep -c 'PASS all')" \
+  "and it must not read as a pass while doing so"
+
+t_case "a clean table still passes"
+t_assert_contains "$(_advert_gate "OK RUST_VERSION 1.98.0")" "PASS all 1 advertised" \
+  "the gate must still be able to pass"
+
+# ── HT1: the manifest trees must carry the image's own arch ──────────────────
+# The scanner is the real program from the smoke, run against a fixture tree of
+# hand-written ELF headers -- the only way to prove it reads e_machine and not
+# some other header word.
+_HT1_FIX="$(mktemp -d)"
+mkdir -p "${_HT1_FIX}"/{native,builder,empty}/bin
+t_fake_elf "${_HT1_FIX}/native/bin/dart" 183
+t_fake_elf "${_HT1_FIX}/native/bin/rustc" 183
+t_fake_elf "${_HT1_FIX}/builder/bin/rustc" 62
+printf 'not an ELF\n' > "${_HT1_FIX}/empty/bin/README"
+
+_scan() {
+  RT_TREES="$*" RT_TREE_CAP="${RT_TREE_CAP:-}" bash -c '
+    '"$(_extract _tree_arch_py)"'
+    RT_TREES="${RT_TREES}" python3 -c "$(_tree_arch_py)"' 2>&1
+}
+_SCAN_OUT="$(_scan "${_HT1_FIX}/native" "${_HT1_FIX}/builder" "${_HT1_FIX}/empty" "${_HT1_FIX}/gone")"
+
+t_case "the scanner reads the ELF machine of what a tree actually ships"
+t_assert_contains "${_SCAN_OUT}" "TREE ${_HT1_FIX}/native AArch64 2" "two aarch64 objects"
+t_assert_contains "${_SCAN_OUT}" "TREE ${_HT1_FIX}/builder X86-64 1" "the builder-arch tree names its machine"
+t_assert_contains "${_SCAN_OUT}" "TREENOELF ${_HT1_FIX}/empty" "a per-arch empty tree is not a machine"
+t_assert_contains "${_SCAN_OUT}" "TREEMISS ${_HT1_FIX}/gone" "a declared tree that is absent must be reported"
+t_assert_contains "${_SCAN_OUT}" "TREESCAN_DONE" "exit status is not evidence; the sentinel is"
+
+_verdicts() {
+  bash -c '
+    '"$(_extract _tree_arch_verdicts)"'
+    _tree_arch_verdicts "$1" "$2"' _ "$1" "$2" 2>&1
+}
+
+t_case "a builder-arch tree in a foreign image is BAD, not a note"
+t_assert_contains "$(_verdicts "${_SCAN_OUT}" AArch64)" "BAD ${_HT1_FIX}/builder X86-64 1" \
+  "the 2 GB x86_64 rustup shipped in every arm64 image for months"
+t_assert_contains "$(_verdicts "${_SCAN_OUT}" AArch64)" "OK ${_HT1_FIX}/native AArch64 2" \
+  "a target-arch tree must still pass"
+
+t_case "the same trees on the builder's own arch flip the verdict"
+t_assert_contains "$(_verdicts "${_SCAN_OUT}" X86-64)" "BAD ${_HT1_FIX}/native AArch64" \
+  "the machine is compared against THIS image's arch, not against x86_64"
+
+t_case "a scan that found no tree at all is a vacuous pass, not a pass"
+t_assert_contains "$(_verdicts "TREESCAN_DONE" AArch64)" "NONE" "nothing asserted must be reportable"
+
+t_case "a huge tree cannot crowd the shipped binaries out of the scan"
+# The rustup layout that motivated this gate carries tens of thousands of rust-src
+# .rs files under toolchains/*/lib, sorted BEFORE toolchains/*/bin/rustc — the one
+# object that shipped as x86_64 for months. Candidates are read first for that reason.
+# The real shape: /usr/local/rustup holds TWO toolchains, so the first one's
+# rust-src sorts ahead of the second one's bin/ and starves it.
+_HT1_BIG="$(mktemp -d)"
+mkdir -p "${_HT1_BIG}/tree/toolchains/a-stable/lib/src" "${_HT1_BIG}/tree/toolchains/b-nightly/bin"
+_i=0; while [ "${_i}" -lt 60 ]; do printf 'source\n' > "${_HT1_BIG}/tree/toolchains/a-stable/lib/src/mod_${_i}.rs"; _i=$((_i + 1)); done
+t_fake_elf "${_HT1_BIG}/tree/toolchains/b-nightly/bin/rustc" 62
+chmod +x "${_HT1_BIG}/tree/toolchains/b-nightly/bin/rustc"
+_out="$(RT_TREE_CAP=20 _scan "${_HT1_BIG}/tree")"
+t_assert_contains "${_out}" "X86-64 1" "the second toolchain's binary is found though 60 sources of the first sort ahead of it"
+t_assert_contains "${_out}" "TREECAP" "and the walk still reports that it did not finish"
+
+t_case "a walk that ran out of budget is not a pass"
+t_assert_contains "$(_verdicts "TREECAP /x 20
+TREESCAN_DONE" AArch64)" "CAPPED /x" "a partial scan must reach the verdict layer, not be an INFO line"
+rm -rf "${_HT1_BIG}"
+
+# The gate itself with the container stubbed: SCAN is what the image's scanner printed.
+_ht1_gate() {
+  SCAN="$1" WANT="$2" bash -c '
+    '"${_STUBS}"'
+    _rt_run() { printf "%s\n" "${SCAN}"; }
+    smoke_elf_machine_grep() { printf "%s" "${WANT}"; }
+    _rt_manifest_trees() { printf "%s\n" "'"${_HT1_FIX}"'/native"; }
+    _rt_tree_arch_exempt() { return 1; }
+    '"$(_extract _tree_arch_verdicts)"'
+    '"$(_extract _tree_arch_py)"'
+    '"$(_extract check_manifest_tree_arch)"'
+    check_manifest_tree_arch img arm64' 2>&1
+}
+
+t_case "the gate fails on a builder-arch tree"
+t_assert_contains "$(_ht1_gate "${_SCAN_OUT}" AArch64)" "FAIL" "a BAD verdict must reach the summary"
+
+t_case "a scanner that never ran fails instead of passing empty"
+t_assert_contains "$(_ht1_gate "python3: command not found" AArch64)" "could not run" \
+  "no TREESCAN_DONE marker means the gate asserted nothing"
+
+t_case "the correct shape passes"
+t_assert_contains "$(_ht1_gate "TREE ${_HT1_FIX}/native AArch64 2 x
+TREESCAN_DONE" AArch64)" "PASS all 1 asserted artifact tree(s)" "what a correct image prints"
+
+rm -rf "${_HT1_FIX}"
+
+# ── HT1: the host-side halves of the gate agree with their other owners ──────
+t_case "every manifest path resolves to a real absolute path"
+_TREES="$(bash -c '
+  _SCRIPT_DIR="'"${TESTS_DIR}/../06-packaging"'"
+  '"$(_extract _rt_tree_probe_path)"'
+  '"$(_extract _rt_manifest_trees)"'
+  _rt_manifest_trees' 2>&1)"
+t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -e UNRESOLVED)" \
+  "an unresolved \${VAR} would scan nothing and say nothing"
+t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -ve '^/')" \
+  "every resolved tree must be an absolute path"
+t_assert_contains "${_TREES}" "/opt/opencv5" "\${OPENCV_OUTPUT_DIR} comes from Dockerfile.package's ARG default"
+
+t_case "the Vulkan tree is probed at what VULKAN_SDK resolves to"
+# /opt/vulkan carries the SDK's x86_64 HOST tools (glslang, spirv-tools -- built for
+# the build host, never loaded by a cross consumer) beside the cross-built target
+# libs under active/. Scanning the whole tree would red every foreign image on
+# purpose-built host tooling; scanning active/ asserts exactly what the image runs.
+t_assert_contains "${_TREES}" "/opt/vulkan/active" "the host-tool half of the SDK is not this image's to assert"
+
+t_case "the one documented COPY relocation is applied, not the source path"
+# verify-artifact-copy-parity.sh's ALLOWED_RELOCATIONS is the other owner of this
+# fact; the manifest carries the COPY SOURCE, which does not exist in the image.
+_RELOC="$(sed -n 's/^  "\(\/[^ ]*\) \(\/[^"]*\)"$/\1 \2/p' "${TESTS_DIR}/../verify-artifact-copy-parity.sh")"
+t_assert_contains "${_RELOC}" "/" "ALLOWED_RELOCATIONS moved or changed shape -- this cross-check reads nothing"
+while read -r _src _dst; do
+  [ -n "${_src}" ] || continue
+  t_assert_contains "${_TREES}" "${_dst}" "relocated ${_src} must be probed at ${_dst}"
+done < <(printf '%s\n' "${_RELOC}")
+
+t_case "every arch-exempt tree is still a declared artifact"
+# An exemption for a tree nobody ships any more silently narrows the gate.
+eval "$(sed -n '/^_RT_TREE_ARCH_EXEMPT=/p' "${SMOKE}")"
+t_assert_contains "${_RT_TREE_ARCH_EXEMPT}" "/opt/" "the exemption list moved -- this cross-check reads nothing"
+for _t in ${_RT_TREE_ARCH_EXEMPT}; do
+  t_assert_contains "${_TREES}" "${_t}" "exempt tree ${_t} is no longer in the manifest"
+done
 
 t_summary

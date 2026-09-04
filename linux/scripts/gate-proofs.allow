@@ -1,14 +1,19 @@
 # gate-proofs.allow -- three namespaces for the gate-registry meta-gate.
 #
 # Bare lines: preflight slugs with neither a test suite naming their script nor a
-# mutations.json entry. Baseline frozen 2026-09-03, not yet reviewed: 15 of 33
-# slugs. The list only ratchets DOWN -- a NEW unproven slug fails gate-registry,
-# and a line that has gained a proof is STALE and must be deleted. The cheapest
+# mutations.json entry. Baseline frozen 2026-09-03 at 15 of 33 slugs; 13 of 34
+# today -- doc-dupes left on 2026-09-04, stdout-returns left the same day with a
+# suite and four mutations, and the new trailing-conditional slug shipped proven.
+# The list only ratchets DOWN -- a NEW unproven slug fails gate-registry, and a
+# line that has gained a proof is STALE and must be deleted. The cheapest
 # proof per slug is sketched in docs/code-quality-tooling.md.
 #
 # mutation-id: lines: ids whose prefix names a preflight slug that does not own
 # the target, or names no slug while pinning some gate's own file. Ratchets down
 # the same way: rename the id in mutations.json and delete the line together.
+# Empty since 2026-09-04: the registry now credits a gate for the helper its .sh
+# shells out to and for a mutation that pins its CALL SITE in a shared
+# orchestrator or a git hook, which is what all five frozen ids were.
 #
 # mutation-family: lines: declared descriptive prefixes for mutations over
 # ORDINARY build scripts, which no gate owns. Not debt -- a vocabulary. An
@@ -24,20 +29,18 @@ pkg-names
 runtime-paths
 sbom
 secret-scan
-stdout-returns
 version-snapshot
 workflow-lint
-mutation-id:mutations.hook-callsite-isolated
-mutation-id:mutations.hook-runs-the-gate
-mutation-id:mutations.preflight-callsite-isolated
-mutation-id:mutations.preflight-runs-the-gate
-mutation-id:python-lint.heredoc-python-decision
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build
+mutation-family:cross-gcc
 mutation-family:version-forwarding
+mutation-family:dead-code
 mutation-family:delete-guard
+mutation-family:disk-guard
 mutation-family:doc-numbers
+mutation-family:env-knob-default
 mutation-family:flutter
 mutation-family:guard-helpers
 mutation-family:handoff
@@ -48,4 +51,7 @@ mutation-family:probe
 mutation-family:qairt
 mutation-family:rust
 mutation-family:sccache
+mutation-family:tree-arch
+mutation-family:vulkan
 mutation-family:wheels
+mutation-family:trailing-return

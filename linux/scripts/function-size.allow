@@ -10,7 +10,7 @@
 # The refactor entries live in docs/refactoring-backlog.md F1/F2.
 docs/scripts/bump_versions.py | main | 159 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 docs/scripts/generate_sbom.py | build_document | 88 | baseline 2026-09-03: newly in scope (python/Dockerfile)
-docs/scripts/verify_code_dupes.py | main | 81 | F1 2026-09-03: decomposed, output byte-identical; Q5 2026-09-03: shrink+stale bookkeeping moved to _print_bookkeeping, report/findings/families/baseline to their own helpers
+docs/scripts/verify_code_dupes.py | main | 85 | F1 2026-09-03: decomposed, output byte-identical; Q5 2026-09-03: shrink+stale bookkeeping moved to _print_bookkeeping, report/findings/families/baseline to their own helpers; +4 on 2026-09-04 for the add_mutually_exclusive_group that makes --baseline refuse --kind
 docs/scripts/verify_doc_dupes.py | main | 81 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/scripts/01-core/base-image.sh | install_nodejs | 81 | baseline 2026-09-03, not yet reviewed
 linux/scripts/01-core/cross-apt.sh | install_target_packages | 81 | baseline 2026-09-03, not yet reviewed

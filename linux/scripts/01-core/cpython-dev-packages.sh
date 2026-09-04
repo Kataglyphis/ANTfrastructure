@@ -10,9 +10,10 @@
 # (build_python.sh cross staging + smoke-toolchain.sh). The 2026-08-09
 # libsqlite3-dev incident was exactly this desync: the host closure only got
 # sqlite transitively (via GUI dev packages), the cross list forgot it, and no
-# assert noticed. All of those sites now derive from this table, so a
-# PYTHON_VERSION bump or a new extension dependency cannot desync host and
-# target again.
+# assert noticed. Both package sites now derive from this table, so a
+# PYTHON_VERSION bump or a new dev-package dependency cannot desync host and
+# target again. The <ext-module> column is documentation only -- its two class
+# accessors were deleted 2026-09-04 with no caller ever having used them.
 #
 # Row format: "<dev-package> <required|optional> <ext-module>[ <ext-module>...]"
 #   required - the target-arch dev-package install is FATAL on cross staging,
@@ -83,22 +84,3 @@ _cpython_dev_pkgs_by_class() {
 }
 
 cpython_ext_dev_packages_required() { _cpython_dev_pkgs_by_class required; }
-cpython_ext_dev_packages_optional() { _cpython_dev_pkgs_by_class optional; }
-
-_cpython_ext_modules_by_class() {
-  local want="$1" row pkg class exts ext
-  local -a ext_arr=()
-  for row in "${_CPYTHON_EXT_DEV_PKG_TABLE[@]}"; do
-    IFS=' ' read -r pkg class exts <<< "${row}"
-    [ "${class}" = "${want}" ] || continue
-    IFS=' ' read -r -a ext_arr <<< "${exts}"
-    for ext in "${ext_arr[@]}"; do
-      printf '%s\n' "${ext}"
-    done
-  done
-  return 0
-}
-
-# Extension modules whose backing dev package is required/optional above.
-cpython_ext_modules_required() { _cpython_ext_modules_by_class required; }
-cpython_ext_modules_optional() { _cpython_ext_modules_by_class optional; }

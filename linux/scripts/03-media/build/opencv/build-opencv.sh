@@ -38,6 +38,7 @@ install_warn_trap
 : "${WITH_JAVA:=false}"
 : "${SKIP_DEP_INSTALL:=false}"
 : "${WITH_IPP:=ON}"
+: "${OPENCV_GSTREAMER_PASS:=1}"
 
 HOST_PYTHON=""
 
@@ -357,7 +358,7 @@ _opencv_target_adjustments() {
             # (2026-08-21): this used to key on FORCE_REBUILD, so forcing a
             # PASS-1 rebuild silently flipped gstreamer ON with nothing to
             # probe — FORCE_REBUILD keeps its one meaning (skip-override).
-            if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
+            if [ "${OPENCV_GSTREAMER_PASS}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
             # RV1-FREETYPE: riscv64 stages a PIC-static target harfbuzz because the

@@ -3,6 +3,7 @@
 #
 [ -n "${_BUILD_HELPERS_LOADED:-}" ] && return 0
 _BUILD_HELPERS_LOADED=1
+: "${MEDIA_STRIP:=1}"
 #
 # Provides:
 #   _bool_truthy()                — test a value for boolean truthiness
@@ -202,7 +203,7 @@ _resolve_media_strip_bin() {
 strip_media_prefixes() {
   # DUPN1: the MEDIA_STRIP gate lives HERE (not at the 9 call sites) — one
   # authority, call sites keep only the declare -F guard + `|| true`.
-  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
+  [ "${MEDIA_STRIP}" = "1" ] || return 0
   local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
   strip_bin="$(_resolve_media_strip_bin)"
   local -a prefixes=("$@")
@@ -227,7 +228,7 @@ strip_media_prefixes() {
 # _resolve_media_strip_bin; --strip-all keeps .dynsym. Best-effort; the caller
 # owns the MEDIA_STRIP gate (mirrors strip_media_prefixes).
 strip_media_libs() {
-  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0   # DUPN1: gate lives in the helper
+  [ "${MEDIA_STRIP}" = "1" ] || return 0   # DUPN1: gate lives in the helper
   local dir="$1"; shift
   { [ -d "${dir}" ] && [ "$#" -gt 0 ]; } || return 0
   local strip_bin; strip_bin="$(_resolve_media_strip_bin)"

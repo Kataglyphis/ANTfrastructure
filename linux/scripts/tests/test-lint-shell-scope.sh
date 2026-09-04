@@ -45,6 +45,36 @@ t_assert_fails grep -q -E -e '^[[:space:]]*shellcheck ' "${LIVE_HOOK}"
 t_case "--print-bin prints an executable, so the hook's resolution cannot be vacuous"
 t_assert_ok test -x "$(bash "${SUBJECT}" --print-bin)"
 
+# docs/cross-build-verification.md quotes two hook line spans as `:NN-MM`. They
+# are re-derived here from the hook itself, so an edit that moves either block
+# fails the suite instead of rotting the prose.
+DOC="${TESTS_DIR}/../../../docs/cross-build-verification.md"
+# _span <first-line-regex> <awk-body-picking-the-last-line>
+_span() {
+  local a b
+  a="$(grep -n -E -e "$1" "${LIVE_HOOK}" | head -1 | cut -d: -f1)"
+  b="$(awk -v s="${a}" "$2" "${LIVE_HOOK}")"
+  printf ':%s-%s' "${a}" "${b}"
+}
+_slugs_span()  { _span '^_FAST_SLUGS=' 'NR>=s && !/\\$/ { print NR; exit }'; }
+_staged_span() { _span '^_staged_sh='  'NR>s && /^fi$/ { print NR; exit }'; }
+
+t_case "the doc's _FAST_SLUGS offset is the span the hook actually has"
+t_assert_contains "$(cat "${DOC}")" "(\`$(_slugs_span)\`)"
+
+t_case "the doc's staged-shell-block offset is the span the hook actually has"
+t_assert_contains "$(cat "${DOC}")" "(\`$(_staged_span)\`,"
+
+t_case "both derivations found a real span, so neither assertion can pass on empty"
+t_assert_fails test "$(_slugs_span)" = ":-"
+t_assert_fails test "$(_staged_span)" = ":-"
+
+t_case "the DEFAULT sweep contains the hook, so the warning ratchet watches it too"
+t_assert_contains "$(bash "${SUBJECT}" --list-files)" "linux/host-config/git-hooks/pre-commit"
+t_assert_fails grep -q -F -e "outside the lint-shell.sh scope" <<<"$(
+  "${PREFLIGHT_PYTHON:-python3}" "${TESTS_DIR}/../verify_shellcheck_warnings.py" \
+    --files "${LIVE_HOOK}" 2>&1)"
+
 t_case "the deleted .githooks copy is really gone"
 t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"
 

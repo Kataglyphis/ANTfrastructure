@@ -26,6 +26,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 VENV="${VENV:-/opt/venv}"
 PY="${VENV}/bin/python"
+: "${STV_COMPUTE:=1}"
 
 # Required modules: (import_name, pretty_name, version_expr_or_empty)
 REQUIRED_MODULES=(
@@ -583,7 +584,7 @@ main() {
   # smoke — zero in-repo functional coverage for the core ML stack. Gate with
   # STV_COMPUTE=0 for callers that need the fast presence-only path.
   # (~3 s native, ~8 s under qemu.)
-  if [ "${STV_COMPUTE:-1}" = "1" ]; then
+  if [ "${STV_COMPUTE}" = "1" ]; then
     if "${PY}" - <<'STV_PY' 2>/dev/null
 import torch
 torch.manual_seed(0)

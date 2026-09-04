@@ -165,13 +165,44 @@ _census $'linux/scripts/subject.sh\tfoo_fn' "--census is the pass that does see 
   "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
 _census "1 definition(s) their own file never names again" "the considered count" \
   "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+_census "1 of those in a file that sources nothing" "the isolated tier counts it too" \
+  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
 _census_rc 0 "the census reports, it never fails a build" "${MASKED}"
 
-t_case "the census lists only files that source nothing and that nothing else names"
-_census "none --" "a file that sources a library can be called back into it" \
+t_case "the masked census tier is keyed on (file, name), not on the file's reachability"
+_census "masked (1)" "a second definer is what the one name table cannot separate" \
   $'. ./lib.sh\n'"${MASKED}" "" linux/scripts/other.sh "${MASKING}"
-_census "none --" "a file another file names by basename may be run from there" \
+_census $'linux/scripts/subject.sh\tfoo_fn' "the masked row names file AND function" \
+  $'. ./lib.sh\n'"${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+_census "none -- every candidate owns its name" "a name only one file defines is not masked" \
+  "${DEAD}"
+_census "1 share their name with another file's definition" "the masked count is in the header" \
+  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+
+t_case "the census lists only files that source nothing and that nothing else names"
+_census "0 of those in a file that sources nothing" "a file that sources a library can be called back into it" \
+  $'. ./lib.sh\n'"${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+_census "none -- every candidate sits in a sourced or externally named file" \
+  "the isolated tier says so in its own words" \
   "${MASKED}" "" linux/scripts/runner.sh 'bash subject.sh'
+_census "0 of those in a file that sources nothing" "a file another file names by basename may be run from there" \
+  "${MASKED}" "" linux/scripts/runner.sh 'bash subject.sh'
+
+t_case "the 2026-09-04 DEAD group is deleted, rows and all"
+ROOT="$(cd "${SCRIPTS_DIR}/../.." && pwd)"
+FFMPEG_SH="linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh"
+# _defs <path> <name> -> how many `<name>() {` definitions live under <path>
+_defs() { ( cd "${ROOT}" && grep -rhE "^[[:space:]]*$2\(\)[[:space:]]*\{" "$1" \
+            --include='*.sh' 2>/dev/null | wc -l | tr -d ' ' ); }
+for _fn in cpython_ext_dev_packages_optional cpython_ext_modules_optional \
+           cpython_ext_modules_required _cpython_ext_modules_by_class \
+           verify_shared_lib_optional; do
+  t_assert_eq "0" "$(_defs linux "${_fn}")" "${_fn} was deleted as dead"
+  t_assert_eq "0" "$(grep -c -e "${_fn}" "${SCRIPTS_DIR}/dead-functions.allow")" \
+    "and its freeze went with it"
+done
+t_assert_eq "0" "$(_defs "${FFMPEG_SH}" cleanup)" \
+  "same-name masking hides ffmpeg's cleanup() from the gate; only this pin sees it"
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"

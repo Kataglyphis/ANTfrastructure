@@ -33,11 +33,13 @@ linux/scripts/03-media/build/armnn/build-armnn.sh | build_armnn | cc | 20 | base
 linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | _ffmpeg_probe_core_codecs | cc | 16 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | bundle_sdk_runtime_libs | cc | 16 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh | ensure_tensorflow_c_sdk | cc | 19 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh | override_soundtouch_codeberg_checksum | cc | 16 | 2026-09-04 extent fix: first measurement, code unchanged. A quoted `{` in a case pattern left the old raw brace count open to EOF, so the function was invisible to every extent gate
 linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh | _gst_rs_build_plugins | cc | 25 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh | _gst_rs_cargo_config | cc | 22 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_arch_flags | cc | 20 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_cross_flags | cc | 17 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_python_config | cc | 17 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_tflite_flags | cc | 18 | 2026-09-04 extent fix: code unchanged, extent corrected 32 -> 51 lines. Its own comment about the stray-brace bug ended the old count early, hiding the last 19 lines from the gate
 linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | _gst_xpy_resolve_target_paths | cc | 16 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | dump_debug_info | cc | 23 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | prepare_host_cargo_toolchain_env | cc | 20 | baseline 2026-09-03, not yet reviewed
@@ -76,3 +78,4 @@ linux/scripts/verify_package_names.py | load_arch | cc | 17 | baseline 2026-09-0
 linux/scripts/verify_package_names.py | main | cc | 42 | baseline 2026-09-03, not yet reviewed
 linux/scripts/verify_package_names.py | scan_file | cc | 42 | baseline 2026-09-03, not yet reviewed
 linux/scripts/verify_package_names.py | scan_file | nesting | 6 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-runtime-image.sh | check_manifest_tree_arch | cc | 16 | reviewed 2026-09-04 by MEASUREMENT: a verdict dispatcher, one arm per verb (OK/BAD/NOELF/MISSING/CAPPED/NONE/unknown), each naming its own failure. Splitting it would hide the table a reader needs to see whole; the CAPPED arm is what makes a partial scan fail instead of reading green

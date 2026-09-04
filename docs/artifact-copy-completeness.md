@@ -128,6 +128,66 @@ to `useradd -u`, and asserts `id -u kataglyphis` afterwards, so a base image
 that already owns that uid fails the build instead of shipping a mismatch.
 Both defaults must stay equal; `test-setup-package-image.sh` compares them.
 
+## The shipped trees must carry the image's own arch
+
+`artifact-source` is the **builder's** image. A tree that was cross-built for the
+target carries target-arch ELF; a tree that was merely *installed on the host*
+carries x86-64, and the unconditional COPY ships it into the arm64/riscv64 runtime
+image unchanged. Two members of that class shipped for months — the 2 GB `rustup`
+whose `rustc` exited 127 on every foreign image, and Flutter's cached Dart SDK,
+which executes *natively on the build host* and so passes any run-only check.
+Both are fixed, and each has its own gate. What was missing is the general audit:
+nothing read the ELF machine of what a foreign image actually carries, so a third
+member would ship the same way.
+
+`smoke-runtime-image.sh` `check_manifest_tree_arch` closes that. It is
+manifest-driven — every path in `runtime-artifacts.manifest`, resolved the way the
+image sees it — and it reads bytes, not behaviour:
+
+* `${VAR}` in a manifest path is resolved from the environment, else from
+  `Dockerfile.package`'s own `ARG VAR=default`. A token that resolves from
+  neither **fails**; it would otherwise scan nothing and say nothing.
+* The manifest carries the COPY **source** path, so `_rt_tree_probe_path` maps it
+  to where the gate looks in the image. Two arms: the one documented relocation
+  (`/opt/llvm-target` → `/usr/local/llvm-target`, listed in
+  `verify-artifact-copy-parity.sh`'s `ALLOWED_RELOCATIONS` — the suite fails if the
+  two owners of that fact stop agreeing), and `/opt/vulkan` → `/opt/vulkan/active`.
+  The Vulkan tree deliberately ships the SDK's **x86-64 host tools** (glslang,
+  SPIRV-Tools; `vulkan.sh` skips the rest for cross lanes precisely because no
+  cross consumer loads them) beside the cross-built target libs, and `active` is
+  what `VULKAN_SDK`, `PATH` and `LD_LIBRARY_PATH` resolve to. Asserting the whole
+  tree would red every foreign image on tooling that is host-arch on purpose.
+* One in-image scanner reads the ELF header of every object under those trees and
+  aggregates `(tree, machine) → count`. Header reads in a single process, never a
+  `readelf` exec per file, which under QEMU would cost minutes; the walk is sorted
+  so a capped scan picks the same files on every run, and it says so when the cap
+  is reached.
+* Any object whose machine is not this image's is **fatal**, and the message names
+  the tree and an example path. Exit status is not evidence: without the
+  `TREESCAN_DONE` sentinel the gate fails rather than passing on empty output, and
+  a scan that saw no tree at all is reported as the vacuous pass it is.
+
+### What is exempt, and why the arm names the tree
+
+`_RT_TREE_ARCH_EXEMPT` holds `/opt/android` and `/opt/android-sdk`: Android device
+payloads and the SDK's host tooling, whose arch says nothing about this image
+either way. The arm names the **tree**, never an arch — so a newly host-installed
+tree fails by default instead of inheriting somebody's exemption. A tree that is
+present but holds no ELF at all (a per-arch empty dir) is a note, not a pass:
+presence is the ARCH-PARITY table's assertion, and absence of the directory itself
+is fatal here.
+
+### What only a real build can tell you
+
+The table was reasoned from the build graph, not measured on a shipped image:
+`/opt/gcc-*` is target-native because `swap-native-gcc.sh` does
+`rm -rf /opt/gcc-${GCC_VERSION}` and copies the Canadian-cross native tree over it
+in the android stage; `/opt/llvm-target`, `/opt/armnn` and `/opt/acl` are
+cross-built for the target; `/opt/flutter` and `/usr/local/{rustup,cargo}` are the
+two members that were *fixed* to be target-arch. If any tree turns out to carry a
+legitimate builder-arch helper the gate names the tree and an example path, and
+the fix is one arm with a written reason — never a loosened comparison.
+
 ## The end-to-end backstop
 
 `smoke-runtime-image.sh` `check_flutter` runs against the shipped image **as
@@ -150,6 +210,13 @@ needs a built image.
 * `tests/test-runtime-image-gates.sh` — `check_flutter` against recorded image
   output: offline, the permission-denied shape, a pin mismatch, a builder-arch
   Dart SDK, and the correct shape.
+* `tests/test-runtime-image-gates.sh` — `check_manifest_tree_arch`: the real
+  scanner against a fixture tree of hand-written ELF headers, the verdict function
+  on a builder-arch tree in both directions, the missing-sentinel path, and the
+  two host-side cross-checks (every manifest path resolves; the relocation and the
+  exemption list still agree with their other owners).
 * Mutations `artifact-copy.completeness-check`, `flutter.bootstrap-hard-fail`,
   `flutter.bootstrap-cache-handover`, `flutter.smoke-offline`,
-  `flutter.smoke-dart-arch`.
+  `flutter.smoke-dart-arch`, `probe.tree-arch-mismatch`,
+  `probe.tree-arch-machine-word`, `probe.tree-arch-scan-sentinel`,
+  `probe.tree-arch-arg-default`, `probe.tree-arch-relocation`.

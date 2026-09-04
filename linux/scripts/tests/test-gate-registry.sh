@@ -13,6 +13,7 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 FROZEN_IDS='mutation-id:helper.y
 mutation-id:omega.mismatch
 mutation-id:beta.over-ordinary
+mutation-id:alpha.foreign
 mutation-family:wheels'
 
 # Twelve slugs, one per shape: alpha (test), beta (own mutation), gamma (mutation on
@@ -39,7 +40,8 @@ _subjects() {
   printf ':\n' > "${d}/linux/scripts/delta.sh"
   printf ':\n' > "${d}/linux/scripts/ordinary.sh"
   printf 'import sys\n' > "${d}/docs/scripts/epsilon.py"
-  printf ':\n' > "${d}/linux/scripts/tests/run-tests.sh"
+  printf 'bash linux/scripts/tests/gate-helper.sh\n' > "${d}/linux/scripts/tests/run-tests.sh"
+  printf ':\n' > "${d}/linux/scripts/tests/gate-helper.sh"
   printf 'check_eta() {\n  :\n}\n' > "${d}/linux/scripts/01-core/eta-lib.sh"
   printf 'check_theta() {\n  : theta.allow\n}\n' > "${d}/linux/scripts/01-core/theta-lib.sh"
   printf 'check_theta() {\n  : decoy.allow\n}\ncheck_zeta() {\n  : decoy.allow\n}\n' \
@@ -78,7 +80,13 @@ _fixture() {
  {"id": "beta.over-ordinary", "target": "linux/scripts/ordinary.sh", "find": "a", "replace": "b",
   "test": "bash linux/scripts/tests/test-beta.sh", "why": "w"},
  {"id": "wheels.ordinary", "target": "linux/scripts/ordinary.sh", "find": "a", "replace": "b",
-  "test": "bash linux/scripts/tests/test-wheels.sh", "why": "w"}]
+  "test": "bash linux/scripts/tests/test-wheels.sh", "why": "w"},
+ {"id": "script-tests.helper", "target": "linux/scripts/tests/gate-helper.sh", "find": "a", "replace": "b",
+  "test": "bash linux/scripts/tests/run-tests.sh", "why": "w"},
+ {"id": "alpha.callsite", "target": "linux/scripts/preflight.sh", "find": "a", "replace": "b",
+  "test": "bash linux/scripts/tests/test-alpha.sh", "why": "w"},
+ {"id": "alpha.foreign", "target": "linux/scripts/ordinary.sh", "find": "a", "replace": "b",
+  "test": "bash linux/scripts/tests/test-alpha.sh", "why": "w"}]
 EOF
   cat > "${d}/linux/host-config/git-hooks/pre-commit" <<'EOF'
 _FAST_SLUGS="alpha,beta,\
@@ -218,6 +226,23 @@ t_assert_eq "0" "$(_count_in_row "${fix}" omega 'omega.mismatch')" \
   "omega.mismatch targets beta's script; omega owns verify_omega.py and helper.py"
 t_assert_eq "0" "$(_count_in_row "${fix}" beta 'omega.mismatch')" "nor does beta take it by target"
 
+t_case "a .sh gate owns the helper it SHELLS OUT to, the way a .py gate owns its imports"
+t_assert_contains "$(_row "${fix}" script-tests)" "| script-tests.helper |" \
+  "a shell gate imports nothing, so its extractor or sub-gate would otherwise belong to no row at all"
+
+t_case "a mutation may pin the CALL SITE, in a file the gate does not own"
+# preflight.sh belongs to zeta (an inline gate lives in it), so by target alone
+# alpha.callsite credits nobody -- and the four ids over the real preflight.sh and
+# the real pre-commit hook sat frozen on exactly that.
+t_assert_contains "$(_row "${fix}" alpha)" "| alpha.callsite |" \
+  "the target names verify_alpha.py and the suite it must turn red is alpha's own"
+t_assert_eq "0" "$(_count_in_row "${fix}" zeta 'alpha.callsite')" \
+  "and the gate that does own preflight.sh must not take it by target"
+t_assert_eq "0" "$(_count_in_row "${fix}" alpha 'alpha.foreign')" \
+  "ordinary.sh never NAMES verify_alpha.py, so it is not a call site however right the suite is"
+t_assert_eq "0" "$(_count_in_row "${fix}" beta 'beta.over-ordinary')" \
+  "the rule needs BOTH halves: beta's prefix over a file it does not own, with a suite that is not beta's, is still off-convention"
+
 t_case "the hook tier reflects blocks that run a gate outside _FAST_SLUGS"
 t_assert_contains "$(_row "${fix}" gamma)" "| hook (scoped)+CI |" "the hook runs verify_gamma.py on staged files"
 t_assert_contains "$(_row "${fix}" eta)" "| hook (scoped)+CI |" "an inline gate the hook calls by function name"
@@ -237,14 +262,14 @@ t_assert_contains "$(_row "${fix}" delta)" "| — | — | CI | UNPROVEN (frozen)
   "test-not-delta.sh says not-delta.sh, which is not delta.sh"
 
 t_case "hook tier follows _FAST_SLUGS, backslash continuation included"
-t_assert_contains "$(_row "${fix}" alpha)" "| hook+CI | test |"
+t_assert_contains "$(_row "${fix}" alpha)" "| hook+CI |" "alpha is named first in _FAST_SLUGS"
 t_assert_contains "$(_row "${fix}" zeta)" "| hook+CI |" "zeta sits on the continued line"
 t_assert_contains "$(_row "${fix}" delta)" "| CI | UNPROVEN (frozen) |"
 
 t_case "a mutation id whose prefix names no slug fails loudly, and its freeze ratchets"
 fix2="$(_written "$(printf 'delta\nomega')")"
 t_assert_eq "0" "$(_rc "${fix2}")" "frozen by the fixture, so the tree is clean"
-t_assert_contains "$(_run "${fix2}")" "3 mutation id(s) off-convention, 3 frozen" "and counted separately"
+t_assert_contains "$(_run "${fix2}")" "4 mutation id(s) off-convention, 4 frozen" "and counted separately"
 sed -i '/mutation-id:helper.y/d' "${fix2}/linux/scripts/gate-proofs.allow"
 t_assert_eq "1" "$(_rc "${fix2}")" "unfrozen, the convention breach must fail"
 t_assert_contains "$(_run "${fix2}")" "prefix that cannot own it"

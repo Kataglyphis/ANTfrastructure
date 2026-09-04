@@ -6,6 +6,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 set -euo pipefail
 
+: "${LLVM_INSTALL_PROFILE:=minimal}"
+
 llvm_build_script() {
   local script_dir
 
@@ -464,7 +466,7 @@ install_llvm_clang() {
   # clangd/clang-tidy/clang-format have zero downstream consumers per audit).
   # The minimal set still includes clang-tools (clang-tblgen) — required by the
   # cross target-clang build. Override with LLVM_INSTALL_PROFILE=full if desired.
-  local profile="${LLVM_INSTALL_PROFILE:-minimal}"
+  local profile="${LLVM_INSTALL_PROFILE}"
   local installed_from_source=0
   local target_arch=""
 

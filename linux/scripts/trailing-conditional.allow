@@ -1,0 +1,31 @@
+# Frozen 2026-09-04: functions whose LAST statement is a conditional, reviewed and
+# KEPT because the caller reads that status as an answer, never as success. Two-way:
+# a frozen function that stops ending on a conditional is STALE and its line goes.
+# Format: <file>\t<function>.
+# docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
+
+# Pure predicates. Every call site is a condition (`if f`, `f || return 0`,
+# `f && x`), so a false answer is the point and returning 1 is the contract.
+linux/scripts/01-core/ancestry.sh	ancestry_run_ids_coherent
+linux/scripts/01-core/context-management.sh	runtime_pushes_intermediate_images
+linux/scripts/01-core/context-management.sh	runtime_use_local_artifact_context
+linux/scripts/01-core/context-management.sh	runtime_use_local_stage_context_outputs
+linux/scripts/01-core/cross-apt.sh	cross_package_has_install_candidate
+linux/scripts/01-core/cross-apt.sh	is_cross_riscv64
+linux/scripts/01-core/cross-env.sh	cross_mode_requested
+linux/scripts/01-core/cross-env.sh	cross_target_is_foreign
+linux/scripts/01-core/platform.sh	android_build_host_supported
+linux/scripts/01-core/ubuntu-mirror.sh	ubuntu_archive_mirror_is_official
+linux/scripts/01-core/verify.sh	verify_cross_mode_requested
+linux/scripts/02-toolchain/packaging-deps.sh	best_effort_mode
+linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh	cerbero_state_is_mounted
+linux/scripts/03-media/runtime/verify-media-artifacts.sh	probe_lib
+linux/scripts/06-packaging/smoke-common.sh	smoke_is_elf
+linux/scripts/build-cross-chain.sh	stage_enabled
+
+# Verdict functions: the trailing test IS the verdict, and a caller that wants the
+# "nothing happened" arm spells it out. smoke_test_ffmpeg fails the build when a
+# codec probe failed; patch_csound_sys_char_signedness answers "did I patch
+# anything", and both its callers say so (`|| true` at :511, `&& retry` at :522).
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh	smoke_test_ffmpeg
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh	patch_csound_sys_char_signedness

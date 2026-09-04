@@ -12,8 +12,8 @@ docs/scripts/sync_versions.py | 849 | baseline 2026-09-03: newly in scope (pytho
 linux/Dockerfile.media | 1162 | baseline 2026-09-03: newly in scope (python/Dockerfile)
 linux/scripts/02-toolchain/build-gcc.sh | 880 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/litert/build-litert.sh | 953 | 2026-09-03: +_litert_qairt_include_dir, then -22 as the QAIRT guard moved to android/litert-qairt-guard.sh (YA)
-linux/scripts/03-media/build/opencv/build-opencv.sh | 934 | baseline 2026-09-03, not yet reviewed
-linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1243 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/smoke-runtime-image.sh | 1559 | grew 2026-09-03: probe split + _boot_verdict + check_flutter (offline, arch-read) + check_rust_toolchain (docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage)
-linux/scripts/build-cross-chain.sh | 881 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/opencv/build-opencv.sh | 935 | baseline 2026-09-03, not yet reviewed; +1 on 2026-09-04 for the `: "${OPENCV_GSTREAMER_PASS:=1}"` self-default that let the knob's registry row be deleted
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1246 | baseline 2026-09-03, not yet reviewed; +3 on 2026-09-04 for the IREE_CROSS_BUILD_COMPILER self-default inside build_iree_wheels (the stage suites extract that block alone, so a file-scope default is invisible to it) plus its two-line reason
+linux/scripts/06-packaging/smoke-runtime-image.sh | 1752 | grew 2026-09-04: HT1 check_manifest_tree_arch — the manifest-driven ELF-machine audit that generalises check_flutter/check_rust_toolchain (docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch); 2026-09-04: the HT1 tree-arch scanner reads candidates (executable/.so) before the rest and a capped walk is now a FAIL, not an INFO line
+linux/scripts/build-cross-chain.sh | 883 | baseline 2026-09-03, not yet reviewed; +1 on 2026-09-04 turning _chain_on_exit's trailing `&&` list into an `if` — an EXIT trap ending on a false && returns 1 and fails a chain that finished green; 2026-09-04: DISK1: the in-stage sampler reaches for the filtered buildkit reclaim
 linux/scripts/lib/agentic-loop.sh | 874 | baseline 2026-09-03, not yet reviewed

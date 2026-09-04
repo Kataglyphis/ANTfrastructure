@@ -5,6 +5,13 @@
 # neither documented usage NOR a real operator switch should be FIXED at its
 # reader, not kept here. New unowned knobs fail the gate (KNOB_GATE=1) until
 # either owned in-repo or added here WITH this file's review.
+# Eleven rows are REDUNDANT rather than stale -- APP_UV_LOCK, ARTIFACT_CONTEXT_MODE,
+# ARTIFACT_CONTEXT_ROOT, BUILDKIT_CACHE_DIR, CROSS_CONTEXT_ROOT, CROSS_DISK_GUARD_GB,
+# CROSS_LOCAL_CONTEXT_HANDOFF, CROSS_NO_PUSH_FORCE, NO_COLOR, SHELLCHECK_CACHE_DIR,
+# UBUNTU_SOURCES_ROOT are each consumed AND assigned in-repo, so the gate is green with
+# or without them. Reviewed 2026-09-04 and KEPT: for most of them the in-repo assignment
+# is a TEST FIXTURE setting the knob for one case, which documents nothing about the
+# operator switch and vanishes with the fixture.
 ACTIONLINT_CACHE_DIR
 AGENTIC_EXECUTOR_MODEL
 AGENTIC_PLANNER_MODEL
@@ -233,50 +240,12 @@ VERSION_ID
 CARGO_VERSION
 
 # --- 2026-09-04: re-homed when the OWNERS scan stopped counting comments ---
-# All fifteen were "owned" only by prose that spells `NAME=value`; each is a real
-# operator switch read as ${NAME:-default} and never assigned in-repo.
-# Build the IREE compiler for the cross target too (default OFF = runtime-only)
-# — 05-frameworks/torch/build-app-wheelhouse.sh.
-IREE_CROSS_BUILD_COMPILER
-# 0 skips hadolint's advisory build-check pass (lint-dockerfiles.sh, default 1).
-LINT_DOCKERFILES_BUILD_CHECK
-# full|minimal install set for the cross target-clang build (02-toolchain/
-# llvm.sh, default minimal).
-LLVM_INSTALL_PROFILE
+# Fifteen landed here; thirteen were given a `: "${NAME:=default}"` at their
+# reader in the 2026-09-04 build window and their rows deleted with them. The
+# two below are what is left.
 # 1 skips the csound GStreamer dependency (03-media gstreamer pre-setup.sh /
 # install-deps.sh, default 0; forced on for arm64+riscv64 anyway).
 MEDIA_SKIP_CSOUND
-# 0 disables the best-effort strip of media build outputs (01-core/build-
-# helpers.sh owns the gate since DUPN1; default 1). AP4 asserts it stayed on.
-MEDIA_STRIP
-# 1 makes a riscv64 Node major-version mismatch fatal instead of a warning
-# (01-core/base-image.sh, default 0).
-NODE_RISCV64_MAJOR_REQUIRED
-# 2 = the second OpenCV configure pass that probes our /opt/gstreamer
-# (03-media/build/opencv/build-opencv.sh, default 1).
-OPENCV_GSTREAMER_PASS
-# CSV slug selectors for preflight.sh; both empty by default. Documented in the
-# gate registry and validated against KNOWN_SLUGS.
-PREFLIGHT_ONLY
-PREFLIGHT_SKIP
-# 0 drops --with-lto from both CPython builds (AP5 cross-LTO escape hatch,
-# 02-toolchain/python/build_python.sh, default 1).
-PYTHON_LTO
-# 0 skips the in-image clang-version smoke (06-packaging/smoke-runtime-
-# image.sh, default 1).
-RUNTIME_CLANG_VERSION_SMOKE
-# 0 skips the in-image compiler smoke (06-packaging/smoke-runtime-image.sh,
-# default 1).
-RUNTIME_COMPILER_SMOKE
-# 0 skips the per-arch runtime smoke that gates create_manifest (build-runtime-
-# manifest.sh, default 1).
-RUNTIME_IMAGE_SMOKE
-# 1 drops the live-tree case from tests/test-shellcheck-warnings.sh; set by the
-# mutation manifest, which must not measure the whole tree per entry.
-SKIP_REAL_TREE
-# 0 selects the presence-only fast path in 06-packaging/smoke-torch-venv.sh
-# (default 1 = actually run the compute check).
-STV_COMPUTE
 
 # --- 2026-09-04: re-homed when the OWNER scan stopped counting quoted text ---
 # All 45 were "owned" only by a NAME=value that sits inside an echo/err message,
@@ -302,6 +271,12 @@ ANCESTRY_STAMP_ENFORCE
 CCACHE_SECONDARY_STORAGE
 # 0 disables the in-stage disk watchdog (build-cross-chain.sh, default 1).
 CROSS_DISK_WATCH
+# DISK1: 0 disables the guard's filtered buildkit-store fallback
+# (01-core/disk-guard.sh, default 1).
+CROSS_BUILDKIT_PRUNE
+# DISK1: GB of type==regular layer cache the fallback keeps (default 120; a
+# non-zero value under the 100 GB churn floor is raised, 0 prunes all of it).
+CROSS_BUILDKIT_KEEP_GB
 # GB the runtime-lane disk gate demands per concurrent wrapper build
 # (build-cross-chain.sh, default 120; 0 disables the gate).
 CROSS_RUNTIME_LANE_GB
@@ -399,6 +374,7 @@ MODRES_POISON_SOURCED
 # container as -e NAME="$(...)" by 06-packaging/smoke-runtime-image.sh and read
 # by the in-container bash -lc probe.
 RT_PROBE_SH
+RT_TREE_PY
 SMOKE_ONNX_PY
 # Not an operator switch: set on the in-container command line by
 # smoke-runtime-image.sh (bash -lc 'STV_ASSERT_ONLY=1 ...') to run only the
@@ -407,8 +383,3 @@ STV_ASSERT_ONLY
 # The release version CI exports: 02-toolchain/rust/version_util.sh writes it to
 # $GITHUB_ENV/$GITHUB_OUTPUT, 06-packaging/package_archive.sh reads it.
 VERSION
-# Operator override for the GCC root clang is pointed at (--gcc-toolchain),
-# read once in 01-core/cross-gcc.sh with gcc_toolchain_prefix as the default.
-# The MYPROJECT_ prefix is a template leftover; renaming it needs a build
-# window, so it is documented rather than silently unowned.
-MYPROJECT_GCC_TOOLCHAIN_PATH

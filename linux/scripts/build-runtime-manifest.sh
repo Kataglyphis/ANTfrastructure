@@ -8,6 +8,7 @@ source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 runtime_flow_preamble
 
 IMAGE_NAME="${IMAGE_NAME:-}"
+: "${RUNTIME_IMAGE_SMOKE:=1}"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
@@ -284,7 +285,7 @@ main() {
 
   # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
   # can never ship as :latest-cross. RUNTIME_IMAGE_SMOKE=0 skips.
-  if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
+  if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag

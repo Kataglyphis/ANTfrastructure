@@ -752,6 +752,7 @@ destroys it, and what replacing it costs is in
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 | `VULKAN_CROSS_STRICT=1` | Promote the Vulkan cross-components gate (`vulkan.sh`) from advisory WARN to fatal. It fires when all three cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause. |
+| `CROSS_GCC_TOOLCHAIN_PATH` | GCC root that `export_clang_gcc_toolchain_env` (`01-core/cross-gcc.sh`) points clang at via `--gcc-toolchain`; defaults to `gcc_toolchain_prefix` (`/opt/gcc-$GCC_VERSION`). Renamed 2026-09-04 from `MYPROJECT_GCC_TOOLCHAIN_PATH`, a template leftover — the old name is no longer read anywhere, so an operator still exporting it silently gets the default. |
 | `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
 
 ### IREE (Linux lane)

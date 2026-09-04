@@ -36,12 +36,16 @@ fi
 # dies on those. Force UTF-8 mode (no-op on Linux).
 export PYTHONUTF8=1
 
+: "${PREFLIGHT_ONLY:=}"
+: "${PREFLIGHT_SKIP:=}"
+
 KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
              pkg-names \
              advert-keys \
              masked-decls \
+             trailing-conditional \
              comment-size \
              code-size \
              code-complexity \
@@ -59,7 +63,7 @@ _in_csv() {  # _in_csv needle csv
   return 1
 }
 
-for _sel in ${PREFLIGHT_ONLY:-} ${PREFLIGHT_SKIP:-}; do
+for _sel in ${PREFLIGHT_ONLY} ${PREFLIGHT_SKIP}; do
   IFS=',' read -ra _slugs <<< "${_sel}"
   for _slug in "${_slugs[@]}"; do
     _known=1
@@ -73,8 +77,8 @@ done
 
 check_selected() {  # check_selected slug -> 0 if this check should run
   local slug="$1"
-  if [ -n "${PREFLIGHT_ONLY:-}" ]; then _in_csv "${slug}" "${PREFLIGHT_ONLY}" && return 0 || return 1; fi
-  if [ -n "${PREFLIGHT_SKIP:-}" ]; then _in_csv "${slug}" "${PREFLIGHT_SKIP}" && return 1 || return 0; fi
+  if [ -n "${PREFLIGHT_ONLY}" ]; then _in_csv "${slug}" "${PREFLIGHT_ONLY}" && return 0 || return 1; fi
+  if [ -n "${PREFLIGHT_SKIP}" ]; then _in_csv "${slug}" "${PREFLIGHT_SKIP}" && return 1 || return 0; fi
   return 0
 }
 
@@ -198,6 +202,9 @@ fi
 run_check pkg-names "distro package names" ${PREFLIGHT_PYTHON} linux/scripts/verify_package_names.py
 run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/scripts/verify_advertised_keys.py
 run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify_masked_assignments.py
+# A function whose last statement is a bare test or an `&&` list returns that
+# test's status, so a caller under set -e dies on the "nothing to do" path.
+run_check trailing-conditional "trailing-conditional returns" ${PREFLIGHT_PYTHON} linux/scripts/verify_trailing_conditional.py
 run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify_comment_size.py
 run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_size.py
 run_check code-complexity "cyclomatic complexity + nesting" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_complexity.py
@@ -242,8 +249,10 @@ run_check stage-graph "cross stage graph validation" bash -c '
   source linux/scripts/01-core/stage-defs.sh
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
 
-# Informational: warn if a submodule pin is not reachable on its remote
-# (unpushed local commit). Warn-only — never fails, silent when offline.
+# Informational: warn if a submodule pin is not reachable on its remote. Three
+# causes, likeliest first: a STALE remote-tracking ref (the ancestry fallback
+# below needs the remote tip's OBJECTS locally), an unpushed local commit, an
+# upstream rewrite. Warn-only — never fails, silent when offline.
 # Checks all initialized submodules, not just DocumANTation.
 _probe_submodule_pushed() {  # dir
   local dir="$1" recorded remote_tips tip
@@ -264,8 +273,8 @@ _probe_submodule_pushed() {  # dir
       return 0
     fi
   done
-  printf "${YELLOW}NOTE:${NC} submodule %s pin %.9s is not reachable on its remote (unpushed local commit or upstream rewrite) — push it before a build/docs job that clones it.\n" \
-    "${dir}" "${recorded}"
+  printf "${YELLOW}NOTE:${NC} submodule %s pin %.9s is not reachable on its remote (likeliest a STALE remote-tracking ref: run \`git -C %s fetch\` and re-run; otherwise an unpushed local commit or an upstream rewrite) — push it before a build/docs job that clones it.\n" \
+    "${dir}" "${recorded}" "${dir}"
 }
 while IFS= read -r _sub_path; do
   [ -n "${_sub_path}" ] && _probe_submodule_pushed "${_sub_path}"

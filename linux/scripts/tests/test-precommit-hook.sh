@@ -120,7 +120,8 @@ t_assert_fails grep -q -e 'mutation gate' <<<"${_out}"
 _abort_rig() {  # $1 = which gate fails; prints the hook's output, then rc=<n>
   printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = preflight ] && echo 1 || echo 0)" \
     > "${_root}/linux/scripts/preflight.sh"
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s/bin/shellcheck"\n' "${_work}" \
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s/bin/shellcheck"\nexit %s\n' \
+    "${_work}" "$([ "$1" = printbin ] && echo 1 || echo 0)" \
     > "${_root}/linux/scripts/lint-shell.sh"
   printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = shellcheck ] && echo 1 || echo 0)" \
     > "${_work}/bin/shellcheck"
@@ -138,6 +139,14 @@ printf 'linux/scripts/subject.sh\ndocs/page.md\n' > "${_work}/abort-staged.txt"
 t_case "a failing fast preflight gate aborts the commit"
 _out="$(_abort_rig preflight)"
 t_assert_contains "${_out}" "pre-commit: FAILED" "the developer must be told which tier refused"
+t_assert_contains "${_out}" "rc=1" "and the commit must not proceed"
+
+t_case "no pinned shellcheck: the hook refuses rather than falling back to PATH"
+# The stub still PRINTS a usable path, so only the exit code of --print-bin can
+# make the hook stop; a hook that lints with an unpinned binary is a hook whose
+# verdict nobody can reproduce.
+_out="$(_abort_rig printbin)"
+t_assert_contains "${_out}" "no pinned shellcheck"
 t_assert_contains "${_out}" "rc=1" "and the commit must not proceed"
 
 t_case "a shellcheck error on a staged file aborts the commit"

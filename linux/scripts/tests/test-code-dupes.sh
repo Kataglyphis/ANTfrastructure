@@ -142,6 +142,15 @@ t_assert_eq "0" "${rc}"
 t_assert_contains "$(_allow)" "${A} | ${B} | ${N} | baseline $(date +%F), not yet reviewed"
 rm -rf "${fix}"
 
+t_case "--baseline is refused with --kind: a scoped rewrite would drop other kinds"
+_fixture "${A} | ${B} | ${N} | ${WHY}" "linux/Dockerfile.probe | linux/Dockerfile.other | 40 | ${WHY}"
+_verdict --baseline --kind shell
+t_assert_eq "2" "${rc}" "a scoped baseline must refuse, not rewrite"
+t_assert_contains "${out}" "not allowed with argument --baseline"
+t_assert_contains "$(_allow)" "linux/Dockerfile.probe" "the other kind's row must survive untouched"
+t_assert_contains "$(_allow)" "${A} | ${B} | ${N}" "and so must the kind it WAS given"
+rm -rf "${fix}"
+
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
 

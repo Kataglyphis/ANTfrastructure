@@ -606,7 +606,8 @@ _chain_runtime_lane_disk_gate() {
 }
 
 # Background disk sampler for the duration of ONE stage. Reuses the between-stage
-# threshold and the keep-floor trim; never prunes buildkit (that costs hours).
+# threshold and the keep-floor trim, then the filtered buildkit reclaim when that
+# is not enough (DISK1) -- filtered to type==regular, so the cachemounts survive.
 _chain_disk_watch_start() {
   _CHAIN_DISK_WATCH_PID=""
   [ "${CROSS_DISK_WATCH:-1}" = "1" ] || return 0
@@ -723,8 +724,9 @@ _chain_remove_pidfile() {
 # nothing consumes it after the chain ends, and the age-sweep is belt-and-braces.
 _chain_on_exit() {
   _chain_remove_pidfile
-  declare -F cross_cleanup_local_context_workdir >/dev/null 2>&1 \
-    && cross_cleanup_local_context_workdir
+  if declare -F cross_cleanup_local_context_workdir >/dev/null 2>&1; then
+    cross_cleanup_local_context_workdir
+  fi
 }
 
 _chain_on_signal() {

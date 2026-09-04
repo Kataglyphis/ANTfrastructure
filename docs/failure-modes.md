@@ -610,9 +610,10 @@ falling back to Ubuntu's.
 - `report_rust_provenance`'s hard gate reads `RUST_VERSION`, which did not reach
   the script until 7eca29c6 (2026-09-03) — the day it started running was the
   day it failed. Before that: `NOTE: RUST_VERSION unset; cannot verify`.
-- The runtime smoke's ADV/HAVE table (`_advert_verdicts`) turns an *unreadable*
+- The runtime smoke's ADV/HAVE table (`_advert_verdicts`) turned an *unreadable*
   actual value into `SKIP`, so `rustc --version` failing under `2>/dev/null` was
-  reported as "could not read", not as a mismatch.
+  reported as "could not read", not as a mismatch. That arm is fatal since
+  2026-09-04 (`UNREAD`); see docs/cross-build-verification.md, gate A.
 
 **Why 127 with no message.** `_got="$("${CARGO_HOME}/bin/rustc" --version
 2>/dev/null | awk …)"`: the loader's `cannot execute` goes to `/dev/null`,
@@ -637,7 +638,11 @@ the active toolchain's host triple (`rustup show active-toolchain`) and requires
 `cargo-cbuild` — it fails on the 2026-09-01 image
 (`tests/test-runtime-image-gates.sh`). The same class applies to any *host*
 tree copied from artifact-source: `/opt/flutter` on arm64 is the x86-64 SDK
-too (`setup-flutter.sh`), which `check_flutter` exercises the same way.
+too (`setup-flutter.sh`), which `check_flutter` exercises the same way. The
+general audit for that class is `check_manifest_tree_arch`: it reads the ELF
+machine of everything under every tree in `runtime-artifacts.manifest` and fails
+when a foreign image carries builder-arch objects —
+docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
 
 ---
 

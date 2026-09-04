@@ -61,9 +61,10 @@ patch_gstreamer_sources() {
       "OpenCV 5 remove cascade elements"
 
   # 006: gst-libav fallback defines for removed FFmpeg codec IDs (V308/V408/V410)
-  [ -f "${repo_root}/subprojects/gst-libav/ext/libav/gstavvidenc.c" ] && \
+  if [ -f "${repo_root}/subprojects/gst-libav/ext/libav/gstavvidenc.c" ]; then
     bash "${_apply_patch}" "${_patch_dir}/006-libav-removed-codec-fallbacks.patch" "${repo_root}" \
       "gst-libav removed codec fallbacks"
+  fi
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

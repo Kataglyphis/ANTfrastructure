@@ -49,6 +49,19 @@ _t_fail() {
 
 _t_pass() { :; }
 
+# t_fake_elf <path> <e_machine> — a 64-byte ELF header, which is all any gate in
+# this tree reads of a binary: magic, EI_CLASS/EI_DATA, e_type, e_machine. One
+# owner, so a suite needing a binary of a given arch never ships one.
+t_fake_elf() {
+  python3 -c 'import sys
+m = int(sys.argv[2])
+h = bytearray(64)
+h[0:4] = b"\x7fELF"; h[4] = 2; h[5] = 1
+h[16:18] = (2).to_bytes(2, "little")
+h[18:20] = m.to_bytes(2, "little")
+open(sys.argv[1], "wb").write(bytes(h))' "$1" "$2"
+}
+
 # t_fn_src <file> <function> — the source of one top-level `name() {` … `}`
 # function, for suites that run a build-stage helper off-target with its
 # collaborators stubbed. Returns 1 when the function is gone -- callers do

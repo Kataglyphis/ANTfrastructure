@@ -195,9 +195,10 @@ skips the trim entirely and restores the pre-2026-08-31 behaviour.
 **Why this is safe.** T2 is a *cache export*, not the buildkit store. Losing a
 slug costs export reuse for that stage and nothing else — no ccache, no
 sccache, no cachemount. The trim only ever `rm -rf`s directories directly under
-`BUILDKIT_CACHE_DIR`; it never invokes `buildctl prune`, `nerdctl builder
-prune` or `nerdctl system prune`. The sanctioned buildkit-store reclaim remains
-`linux/host-config/prune-safe.sh`.
+`BUILDKIT_CACHE_DIR`; it never invokes any prune. The buildkit store is reached
+only by the **filtered** `buildctl prune` of § 3.2.1, and by
+`linux/host-config/prune-safe.sh` by hand. `nerdctl builder prune` and
+`nerdctl system prune` are never run by anything in the chain.
 
 **Salvage disk gate.** `_cross_salvage_disk_ok` gates the S1 salvage on free
 space: below `SALVAGE_MIN_FREE_GB` (default `CROSS_DISK_GUARD_GB`, i.e. 40 G)
@@ -249,7 +250,9 @@ Each tick:
   must act on, and it is what silence used to look like.
 
 It never calls `nerdctl system prune` / `builder prune`; those wipe the
-`exec.cachemount` records and cost hours (§ 7).
+`exec.cachemount` records and cost hours (§ 7). When the trim leaves the disk
+still short, the watchdog falls back to a *filtered* buildkit prune instead of
+giving up — § 3.2.1.
 
 **The lane-entry gate.** `_chain_runtime_lane_disk_gate` runs immediately
 before `build-runtime-manifest.sh`. It requires
@@ -269,6 +272,85 @@ stages' consumption is still unknown, so the honest enforcement point is lane
 entry, where free space is actually measured against what is about to be spent.
 The r2 run would have been refused at 02:55 with 88 G — hours before it died,
 and after a trim that might have rescued it.
+
+
+### 3.2.1 The buildkit-store fallback (DISK1)
+
+Landed 2026-09-04, after the 2026-09-03 runtime run died at **4 G** free while
+**415 G** sat in `~/.local/share/buildkit`. The watchdog fired, trimmed
+`~/.cache/kata-buildcache`, freed nothing — the dir held exactly three slugs and
+`CROSS_TRIM_KEEP_SLUGS` is 3 — and logged `NOTHING was reclaimable`. The manual
+rescue, `PRUNE_KEEP_GB=120 linux/host-config/prune-safe.sh`, freed **223 G in
+36 s** with all **97** cache-mount records surviving.
+
+`_disk_guard_buildkit_fallback` is that rescue, wired into
+`_disk_guard_watch_once` **after** the cache-export trim: it re-measures free
+space and returns immediately unless the trim left the path still under the
+threshold. Only then does it run
+
+```
+buildctl prune --filter type==regular --keep-storage <keep_gb * 1000>
+```
+
+the same filtered form `prune-safe.sh` uses. `nerdctl builder prune -f` is not
+an alternative and never becomes one: it has no `--filter`, so it deletes the
+`exec.cachemount` records too — ccache, sccache, uv, cargo, apt — and cost
+1.5–2 h of cold LLVM on 2026-08-17 (§ 7). `prune-safe.sh` remains the
+operator-facing tool with the full before/after inventory; the guard is the
+in-chain, non-interactive subset.
+
+**Why 120 G of keep-storage, when the guard fires at 40 G free.** The two
+numbers measure different things and do not compete. `CROSS_DISK_GUARD_GB` (40)
+is *free space on the filesystem* — the point at which a stage is about to
+ENOSPC. `CROSS_BUILDKIT_KEEP_GB` (120) is *how much layer cache stays in the
+store* — the reuse the remaining stages still need. A prune that clears the
+40 G emergency while keeping 120 G of layers satisfies both, which is exactly
+what the 2026-09-03 rescue did on a 415 G store. Below ~100 G of retained
+layers the next stages start recompiling what they should have pulled from
+cache (the `rebuild-disk-management` note), so a non-zero
+`CROSS_BUILDKIT_KEEP_GB` under 100 is raised to 100 and logged. `0` is the
+explicit "reclaim everything regenerable" escape hatch and is left alone. When
+the store is smaller than the keep value the prune is a no-op and the log says
+it freed 0 G — honest, and the operator still gets the `NOTHING was reclaimable`
+warning from the reclaim record.
+
+**Once per caller, not once per sample.** The watchdog samples every
+`CROSS_DISK_WATCH_SECS` (120 s). After the first prune the store is already at
+`--keep-storage`, so a repeat would walk the whole store — 36 s of I/O during a
+running build — and free nothing. The second and later samples log `already
+pruned once here` and stop. The latch is per process, so the next stage's
+watchdog starts fresh.
+
+**What it logs.** Every arm is greppable as `[disk-buildkit]`:
+
+| line | when |
+|---|---|
+| `<N>G free < <T>G after the cache-export trim — pruning type==regular layer cache with --keep-storage <K>G` | the prune is about to run |
+| `reclaimed <N>G of layer cache in <S>s (<before>G -> <after>G free; keep-storage <K>G)` | after it, always — including `reclaimed 0G` |
+| `all <N> cache-mount record(s) survived` | the filter held |
+| `cache-mount records dropped <N> -> <M>` (WARN) | it did not; compile caches are gone |
+| `SKIP: no buildctl on PATH` (WARN) | tool missing |
+| `SKIP: buildkit store unreachable` (WARN) | `buildctl du` will not answer |
+| `already pruned once here` | the latch |
+| `disabled (CROSS_BUILDKIT_PRUNE=0)` | the knob |
+
+The reclaimed GB also reaches `_disk_guard_reclaim_record`, so the single
+`[disk-reclaim]` line per reclaim now reads `… freed X GiB + 223G of buildkit
+layer cache`, and `NOTHING was reclaimable` is emitted only when *both* tiers
+came up empty. Pinning that give-up line as correct behaviour is what the old
+suite did.
+
+**Degradation.** A missing `buildctl`, an unreachable socket, a non-numeric
+target or an unknown free-space reading all return 0 after one WARN, leaving
+exactly the pre-2026-09-04 behaviour. The fallback never aborts the stage it
+samples — it is a watchdog, and a watchdog that kills the build it watches is
+worse than the drain.
+
+Unit coverage: the DISK1 section of `linux/scripts/tests/test-disk-guard.sh`
+(trim-first ordering, the filter and keep-storage argument, the keep floor,
+the once-latch, the survival count, both SKIP arms, and a structural assertion
+that `disk-guard.sh` does not name `nerdctl` or `builder prune` anywhere), plus
+the `disk-guard.*` mutations.
 
 ### 3.3 Runtime-failure summary (B3)
 
@@ -700,6 +782,8 @@ measurement, not a default flip.
 | `CROSS_DISK_WATCH=0` | unset (watch on) | disable the in-stage disk watchdog (§ 3.2) |
 | `CROSS_DISK_WATCH_SECS` | `120` | in-stage sampling interval |
 | `CROSS_TRIM_KEEP_SLUGS` | `3` | newest T2 slugs the trim will never remove |
+| `CROSS_BUILDKIT_PRUNE=0` | unset (fallback on) | disable the guard's filtered buildkit-store prune (§ 3.2.1) |
+| `CROSS_BUILDKIT_KEEP_GB` | `120` | GB of `type==regular` layer cache that prune keeps; a non-zero value under 100 is raised to 100, `0` reclaims all of it (§ 3.2.1) |
 | `SALVAGE_MIN_FREE_GB` | `CROSS_DISK_GUARD_GB` (40) | free-space floor below which the S1 salvage is skipped (`0` = always salvage) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
@@ -721,6 +805,12 @@ keeps the design.
 - Do not add a cache tier that the DeadlineExceeded auto-recovery cannot strip.
 - Do not "align" the ccache/sccache cache-mount ids with the apt ones
   (`Dockerfile.media:26-31`).
+- Do not reclaim buildkit-store disk with `nerdctl builder prune -f` or
+  `nerdctl system prune`, from a script or by hand. Neither has a `--filter`, so
+  both delete the `exec.cachemount` records with the layer cache: 4.9 GB of
+  compile cache thrown away to reclaim 207 GB of regenerable layers on
+  2026-08-17, and both target-LLVM builds then ran cold. The filtered form is
+  `buildctl prune --filter type==regular` (§ 3.2.1, `prune-safe.sh`).
 - Do not size the runtime-lane disk gate per arch. It is per *concurrent* build
   (§ 3.2); the per-arch number refuses every run on this host.
 - Do not judge a cache change by whether the flags appear in the command. Judge
