@@ -28,6 +28,7 @@ BY_CONSTRUCTION = ("script-tests", "mutations")
 UNPROVEN = "UNPROVEN (frozen)"
 EMPTY = "—"
 ID_FREEZE = "mutation-id:"
+FAMILY = "mutation-family:"
 
 RUN_CHECK = re.compile(r'^\s*run_check\s+([a-z0-9-]+)\s+"([^"]*)"\s*(.*)$')
 KNOWN = re.compile(r"KNOWN_SLUGS=\((.*?)\)", re.DOTALL)
@@ -170,29 +171,34 @@ def mutation_ids(entries, slug, files):
 
 
 def _id_verdict(e, known, owners, files):
-    """Why a mutation id over a registered gate's file credits nobody -- an unknown
-    prefix, or a real slug that does not own the target -- or None when it is fine."""
-    if e["target"] in files and id_slug(e) not in known:
-        return "prefix names no preflight slug"
-    if e["target"] in files and e["target"] not in owners.get(id_slug(e), ()):
-        return "%s does not own %s -- %s does" % (
-            id_slug(e), e["target"],
-            ", ".join(sorted(s for s, fs in owners.items() if e["target"] in fs)))
+    """Why a mutation id credits no gate -- a slug prefix that does not own its target,
+    or a non-slug prefix over a file some gate does own -- or None: it credits its gate,
+    or its prefix is a descriptive family the allowlist must declare."""
+    slug, target = id_slug(e), e["target"]
+    names = ", ".join(sorted(s for s, fs in owners.items() if target in fs))
+    holds = "owned by %s" % names if names else "owned by no gate"
+    if slug in known:
+        return None if target in owners[slug] else "%s does not own %s -- %s" % (slug, target, holds)
+    if target in files:
+        return "prefix names no preflight slug, and %s is %s" % (target, holds)
     return None
 
 
-def off_convention_ids(table):
-    """Frozen key -> why that mutation id credits no gate, so the convention behind
-    prefix-keyed credit is checked in both directions rather than assumed."""
+def id_verdicts(table):
+    """({frozen key: why it credits no gate}, {family key: id count}): every id is
+    credited to the gate its prefix names, off-convention, or in a descriptive family."""
     known = set(known_slugs(_read(PREFLIGHT)))
     owners = {row["slug"]: set(row["own files"]) for row in table}
     files = {f for fs in owners.values() for f in fs}
-    out = {}
+    off, families = {}, {}
     for e in mutation_entries():
         why = _id_verdict(e, known, owners, files)
         if why:
-            out[ID_FREEZE + e["id"]] = why
-    return out
+            off[ID_FREEZE + e["id"]] = why
+        elif id_slug(e) not in known:
+            key = FAMILY + id_slug(e)
+            families[key] = families.get(key, 0) + 1
+    return off, families
 
 
 def suites():
@@ -301,10 +307,14 @@ def render(table):
               "suites, mutations and hook tier, derived from the tree; the `gate-registry` "
               "preflight check fails when this table is stale."), "",
              ("Proof rules, in short. Tests: the suite names the needle -- a basename, or "
-              "for an inline gate the function on its `run_check` line. Mutations: the id "
-              "prefix picks the gate, and the target must be that gate's script or an "
-              "imported module beside it; a prefix that cannot own the target fails until "
-              "renamed or frozen. Hook tier: `hook+CI` sits in `_FAST_SLUGS` and runs "
+              "for an inline gate the function on its `run_check` line. Mutations: every id "
+              "is `<prefix>.<kebab>`, and the prefix decides. A prefix naming a preflight "
+              "slug credits that gate, and its target must be that gate's script or an "
+              "imported module beside it. A prefix naming no slug must not target a "
+              "registered gate's file at all -- it is a descriptive family over ordinary "
+              "build scripts, and the family has to be declared in `gate-proofs.allow`. "
+              "Anything else fails until it is renamed, declared or frozen. "
+              "Hook tier: `hook+CI` sits in `_FAST_SLUGS` and runs "
               "whole-tree on every commit, `hook (scoped)+CI` is run by a later hook block "
               "over the staged files alone, `hook (whole tree, when relevant)+CI` is run "
               "whole-tree by a block that fires only when the commit touches its inputs, "
@@ -332,26 +342,35 @@ def main():
     unproven = {r["slug"] for r in table if r["proof"] == UNPROVEN}
     frozen = load_keys(ALLOW)
     frozen_ids = {k for k in frozen if k.startswith(ID_FREEZE)}
-    off_convention = off_convention_ids(table)
+    frozen_families = {k for k in frozen if k.startswith(FAMILY)}
+    off_convention, families = id_verdicts(table)
     print("  %d slugs; %d proven; %d unproven, %d frozen in %s"
-          % (len(table), len(table) - len(unproven), len(unproven), len(frozen - frozen_ids),
-             os.path.basename(ALLOW)))
+          % (len(table), len(table) - len(unproven), len(unproven),
+             len(frozen - frozen_ids - frozen_families), os.path.basename(ALLOW)))
     if off_convention or frozen_ids:
         print("  %d mutation id(s) off-convention, %d frozen"
               % (len(off_convention), len(frozen_ids)))
+    print("  %d mutation id(s) in %d descriptive famil(ies), %d declared"
+          % (sum(families.values()), len(families), len(frozen_families)))
     sys.stdout.flush()
     scripts = {r["slug"]: r["script"] for r in table}
-    rc = check_keys(unproven, frozen - frozen_ids,
+    rc = check_keys(unproven, frozen - frozen_ids - frozen_families,
                     "NEW unproven slug(s) -- write a tests/test-*.sh naming the script, or a "
                     "mutations.json entry targeting it:",
                     "STALE entr(ies) -- the slug is proven now, delete the line "
                     "(the list only ratchets down):",
                     lambda k: "%s  (%s)" % (k, scripts.get(k, "?")))
     rc = check_keys(off_convention, frozen_ids,
-                    "mutations.json id(s) pinning a gate file under a prefix that cannot own it "
+                    "mutations.json id(s) pinning a file under a prefix that cannot own it "
                     "-- rename to <owning-slug>.<kebab> so the registry can credit them:",
                     "STALE mutation-id freeze(s) -- the id is renamed or gone, delete the line:",
                     lambda k: "%s  (%s)" % (k, off_convention[k])) or rc
+    rc = check_keys(families, frozen_families,
+                    "mutations.json id(s) whose prefix is neither a preflight slug nor a declared "
+                    "descriptive family -- rename to <owning-slug>.<kebab>, or declare the family:",
+                    "STALE mutation-family declaration(s) -- no id carries the prefix any more, "
+                    "delete the line:",
+                    lambda k: "%s  (%d id(s))" % (k, families[k])) or rc
     current = _read(REGISTRY) if os.path.isfile(REGISTRY) else ""
     if current != text:
         rc = 1

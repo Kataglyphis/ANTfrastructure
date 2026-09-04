@@ -1364,9 +1364,16 @@ base ─┬─ onnxruntime ───────┐
   uncapped). The hook now scopes to the STAGED files and runs at most
   `PRECOMMIT_MUTATION_CAP` of them (default 6, newest first, `0` = uncapped).
   A sample never reports as full coverage — it prints how many of how many it
-  ran. `make preflight` and CI still run all 180 entries.
+  ran. `make preflight` and CI still run every entry.
   Reasoning and the measurements: `docs/code-quality-tooling.md` §
   "The pre-commit hook's cost budget".
+
+- **Never retype a number a gate can measure.** Manifest sizes, per-prefix
+  mutation counts and the hook's own slug list are pinned by
+  `tests/test-doc-numbers.sh`, which reads them out of `mutations.json` and the
+  hook and fails on drift; `bash linux/scripts/tests/test-doc-numbers.sh --update`
+  rewrites the pages. Wall-clock figures cannot be pinned — write them with the
+  date they were measured, or leave the digit out.
 
 - **`bash linux/scripts/preflight.sh` is the single source of the no-build gate
   list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT

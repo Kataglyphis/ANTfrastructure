@@ -296,11 +296,11 @@ coverage it did not pay for. Measured end to end 2026-09-04: **8.0 s** for a
 one-file commit (no sampling — all 5 matched entries ran) and **27.2 s** for the
 43-file commit `9a5bf8dd` (sampling 6 of 132), against **5m26s** for that same
 commit before the cap; those 132 entries uncapped are **322 s** on their own.
-`make preflight` and CI still run all 180.
+`make preflight` and CI still run every entry.
 Why it samples rather than running `--changed` whole:
 [`code-quality-tooling.md`](code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
-`shellcheck-warnings` is deliberately NOT a fast slug: whole-tree it is 22 s,
-per staged file 0.2 s.
+`shellcheck-warnings` is deliberately NOT a fast slug: whole-tree it was 22 s
+against 0.2 s per staged file (measured 2026-09-04).
 
 ### In-image smoke tests (need a built image, not part of preflight)
 

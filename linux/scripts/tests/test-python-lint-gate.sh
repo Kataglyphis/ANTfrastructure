@@ -2,7 +2,8 @@
 # Tests for lint-python.sh, the python-lint gate. It cds to a root derived from
 # its own path, so each case builds a throwaway tree and runs the REAL script in
 # it -- proving both TIERS (gate hard-fails, advisory reports and passes) and the
-# TARGET SET (plain .py plus heredoc Python, non-Python heredocs excluded).
+# TARGET SET (plain .py, heredoc Python in linux/scripts AND in the extensionless
+# git hooks, non-Python heredocs excluded).
 # docs/code-quality-tooling.md#proving-a-gate-can-go-red
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +24,8 @@ fi
 _mkroot() {
   local d
   d="$(mktemp -d)"
-  mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts"
+  mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts" \
+           "${d}/linux/host-config/git-hooks"
   cp "${S}/lint-python.sh" "${d}/linux/scripts/"
   printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/versions.env"
   printf '%s\n' "${d}"
@@ -45,11 +47,13 @@ _lint() {
   _run "${d}"
 }
 
-# _targets <subject.py body> <heredoc python body> -> the gate's output plus rc.
-# The tree carries all three target shapes at once: a plain .py, a directly-run
-# heredoc opened on line 2 of probe.sh, and a cat'ed TPL_PY_* family that is nginx
-# config, not Python, and must never reach ruff. Openers are printf ARGUMENTS so
-# this suite is not itself an extraction target. docs/code-quality-tooling.md
+# _targets <subject.py body> <heredoc python body> [hook heredoc python body]
+# -> the gate's output plus rc. The tree carries every target shape at once: a
+# plain .py, a directly-run heredoc opened on line 2 of probe.sh, the same shape
+# opened on line 3 of an EXTENSIONLESS git hook, and a cat'ed TPL_PY_* family that
+# is nginx config, not Python, and must never reach ruff. Openers are printf
+# ARGUMENTS so this suite is not itself an extraction target.
+# docs/code-quality-tooling.md
 _targets() {
   local d
   d="$(_mkroot)"
@@ -59,6 +63,11 @@ _targets() {
     printf '  python3 - %s\n' "<<'PY'"
     printf '%s\nPY\n}\n' "$2"
   } > "${d}/linux/scripts/probe.sh"
+  { printf '#!/usr/bin/env bash\n'
+    printf 'hook_probe() {\n'
+    printf '  python3 - %s\n' "<<'PY'"
+    printf '%s\nPY\n}\n' "${3:-print(\"ok\")}"
+  } > "${d}/linux/host-config/git-hooks/pre-commit"
   { printf 'emit_head() {\n'
     printf '  cat %s\n' "<<'TPL_PY_HEAD'"
     printf 'location / {\nTPL_PY_HEAD\n}\n'
@@ -93,7 +102,7 @@ t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean" "F401 is outside 
 t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0" "the adoption ramp must stay advisory"
 
-t_case "a clean tree of all three target shapes passes"
+t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean" \
   "the nginx TPL_PY_* family must not be linted as Python"
@@ -115,6 +124,18 @@ t_case "the heredoc finding names its shell file and line"
 _out="$(_targets 'print("ok")' 'print(nope_in_heredoc)')"
 t_assert_contains "${_out}" "probe__2.py:1:" \
   "the extracted name maps the finding back to probe.sh's opener line 2, body line 1"
+
+t_case "a gate-tier error inside a git-hook heredoc fails the gate"
+_out="$(_targets 'print("ok")' 'print("ok")' 'print(nope_in_hook)')"
+t_assert_contains "${_out}" "nope_in_hook" \
+  "a hook carries no .sh suffix: dropping the git-hooks half of the file list leaves the pre-commit hook's embedded Python outside the gate, silently"
+t_assert_contains "${_out}" "python gate pass failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "the git-hook finding names its hook file and line"
+_out="$(_targets 'print("ok")' 'print("ok")' 'print(nope_in_hook)')"
+t_assert_contains "${_out}" "pre-commit__3.py:1:" \
+  "the extracted name maps the finding back to the hook's opener line 3, body line 1"
 
 t_case "the gate is registered in preflight"
 t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is not a gate"

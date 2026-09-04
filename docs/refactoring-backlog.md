@@ -18,24 +18,28 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **LB**=llm-stack benchmark harness · **QW**=quality-gate wave follow-ups ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: **2026-09-04**, after the Q8 gate-scope wave was integrated (the
-env-knobs owner tokenizer, `crlf-guard` taking its scope from `lint-shell.sh`,
-the embedded-Python target set, the mutation gate's call-site and copy pins, the
-SAMPLED pre-commit mutation step, and the two-sided mutation-id convention).
-Q8 closed the two off-convention mutation ids and `lint-python.sh`'s stale ruff-pin
-sentence out of QW8. Everything closed 2026-09-03 is in the 2026-09-03 archive:
-A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's `_cross_stage_build_impl` and
-`reconcile_local_wheels` rows, and F3's chain-status walker.
+Last groomed: **2026-09-04**, after the Q9 gate-hole wave was integrated (the
+env-knobs heredoc-before-quote tokenizer and its env-prefix chains, the pre-commit
+hook driven end to end, the git-hook half of the embedded-Python target set, the
+mutation gate's two symlink properties, doc numbers derived instead of retyped,
+and the id-convention rule widened to judge the ID rather than the target). Q9
+closed QW9's "the id-convention check is silent over NON-gate files" row.
+Everything closed 2026-09-03 is in the 2026-09-03 archive: A1, A2, YA, YC, the
+WA–WJ and XK–XR rounds, F1's `_cross_stage_build_impl` and `reconcile_local_wheels`
+rows, and F3's chain-status walker.
 
-**Seventeen entries remain: FL1 (relaunch pending), HT1, SMK-ADV, TC1 and the
-nine QW rows are open work; YB is a defect under investigation; F1/F2/F3 are
+**Nineteen entries remain: FL1 (relaunch pending), DISK1, HT1, SMK-ADV, TC1 and
+the ten QW rows are open work; YB is a defect under investigation; F1/F2/F3 are
 tracks.**
 
-* **QW1–QW9** — what the 2026-09-03 gate wave left behind and what the
-  2026-09-04 Q7 and Q8 waves deliberately did NOT fix: two frozen-but-unreviewed
-  baselines, five deletions waiting on the running build, the shared allow
-  reader, the ownership shapes the gate registry cannot express, and the limits
-  the gates disclose rather than close.
+* **QW1–QW10** — what the 2026-09-03 gate wave left behind and what the
+  2026-09-04 Q7, Q8 and Q9 waves deliberately did NOT fix: two
+  frozen-but-unreviewed baselines, five deletions waiting on the running build,
+  the shared allow reader, the ownership shapes the gate registry cannot express,
+  four unpinned hook abort paths, and the limits the gates disclose rather than
+  close.
+* **DISK1** — the chain's in-stage disk reclaim ignores the buildkit store. Cost
+  a full runtime run on 2026-09-03; blocked on the running build.
 
 * **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
   found weak** (~5% recovery). Root cause open.
@@ -162,6 +166,25 @@ Reading the log needs one caution learned here: a **cached** BuildKit step repla
 its old output verbatim. The first read of this build showed 496 hits of the
 pre-retry message, all from one cached step (`#30`), which would have looked like
 the new launcher failing to take effect.
+
+### DISK1. The chain's in-stage disk reclaim never looks at the buildkit store [M, ★★★]
+
+**Not a gate item — this comes from tonight's build.** The in-stage disk reclaim
+only trims `~/.cache/kata-buildcache` and then reports `NOTHING was reclaimable`,
+while `~/.local/share/buildkit` holds hundreds of GB of `type==regular` layer
+cache it never inspects. On 2026-09-03 that cost a full runtime run: the riscv64
+torch stage hit ENOSPC at **4G free** while **415G** sat in the buildkit store.
+`PRUNE_KEEP_GB=120 linux/host-config/prune-safe.sh` then freed **223G in 36s**
+with all **97** cache-mount records surviving.
+
+The disk guard should fall back to that filtered `buildctl prune` before declaring
+defeat — and **never** to `nerdctl builder prune -f`, which eats the cachemounts
+(1.5–2 h of cold LLVM to rebuild; see the rebuild-disk-management memory).
+
+Repro: watch a stage hit ENOSPC and read the guard's own log line — it says
+nothing was reclaimable while `buildctl --addr … du` reports hundreds of GB of
+regular records. BLOCKED: the guard lives in a build-closure file, so the fix
+waits for the running cross build to end.
 
 ### HT1. Host trees copied from `artifact-source` — the builder's arch ships in foreign images [high]
 
@@ -457,42 +480,43 @@ blocks the batch; every one is a gate that is honest about a limit rather than a
 gate that lies.
 
 * **The registry cannot express "a call site in the orchestrator".** [M, ★★]
-  `preflight.sh` is `crlf-guard`'s gate script AND the file that invokes all 33
-  slugs. `mutations.preflight-callsite-isolated` and
-  `mutations.preflight-runs-the-gate` pin preflight's *mutation-gate call site*;
-  the two-sided id rule sees only that `crlf-guard` owns the file, so it demands a
-  `crlf-guard.*` prefix — which would put a false credit in a generated table.
-  Both ids are frozen under `mutation-id:` in `gate-proofs.allow` instead. Repro:
-  rename either to `mutations.*` without the freeze and `verify_gate_registry.py`
-  prints `mutations does not own linux/scripts/preflight.sh -- crlf-guard does`.
-  The fix is an ownership rule, e.g. credit an entry to the slug whose registered
-  suite is its `test` command when the target is a shared orchestrator.
+  FOUR frozen ids now sit on this shape, not two — Q9's widened id rule made the
+  two over the pre-commit hook visible as well. The names and the reasoning are
+  owned by [`code-quality-tooling.md`](code-quality-tooling.md#the-allowlist);
+  what is open is the RULE. Repro: delete a `mutation-id:` line and
+  `verify_gate_registry.py` prints `mutations does not own
+  linux/scripts/preflight.sh -- owned by crlf-guard`. Fix: credit an entry to the
+  slug whose registered suite is its `test` command when the target is a shared
+  orchestrator or a hook.
 
 * **`own_files()` does not follow a `.sh` gate's shelled-out helper.** [S, ★★]
   It is `[rel] + imported_modules(rel)`, and `imported_modules` returns `[]` for a
   shell gate, so `linux/scripts/extract_embedded_python.py` belongs to no row:
-  `python-lint.heredoc-python-decision` is a proven mutation that is credited to
-  nobody *and* invisible to the off-convention check. Repro: grep the `python-lint`
-  row of [`code-quality-gates.md`](code-quality-gates.md) — the entry is absent.
-  Fix: let `own_files` follow a `.sh` gate's `python3 <x>.py` / `bash <x>.sh`
-  invocations.
-
-* **The id-convention check is silent over NON-gate files.** [S, ★]
-  It fires only when the target is a registered gate's own file, so the four
-  `pre-commit.*` ids (target `linux/host-config/git-hooks/pre-commit`, and
-  `pre-commit` is not a preflight slug at all) pass unexamined. Deliberate scope,
-  matching the house rule, but it means the prefix is enforced for gate files only.
+  `python-lint.heredoc-python-decision` is a proven mutation credited to nobody.
+  Q9's widened id rule at least made it LOUD — it is now reported off-convention
+  and frozen under `mutation-id:` rather than passing unexamined. Repro: grep the
+  `python-lint` row of [`code-quality-gates.md`](code-quality-gates.md) — the
+  entry is absent, and the freeze line is in `gate-proofs.allow`. Fix: let
+  `own_files` follow a `.sh` gate's `python3 <x>.py` / `bash <x>.sh` invocations;
+  that deletes the freeze and gives `python-lint` a sixth credited mutation.
+  Deliberately NOT done in Q9: it re-credits files other lanes were editing
+  mid-wave and could turn unrelated freezes STALE in the same run.
 
 * **The mutation gate re-runs a whole suite per entry.** [M, ★★★]
-  Measured 2026-09-04 on the 23-file integration diff: the hook's mutation step is
-  23.9 s capped at 6 entries and **2 m 22 s uncapped** for the 71 matched entries,
-  and the full 211-entry manifest is **7 m 15 s**. The cost is one suite process
+  Re-measured 2026-09-04 after the Q9 wave, on this wave's own 17-file diff
+  (233 entries in the manifest): the hook is **7.2 s** capped at 6 and
+  **2 m 45.9 s uncapped** for its 65 matched entries; the full manifest is
+  **8 m 18.6 s**. A one-file commit of a GATE script is not cheaper — staging only
+  `verify_gate_registry.py` matches 21 entries and the six newest are all
+  `test-gate-registry.sh` runs, so that hook takes **19.1 s**, more than the
+  17-file commit whose six newest are cheap `test-doc-numbers.sh` runs. The
+  sampling is newest-first, not cost-aware. The cost is one suite process
   per entry; one baseline and one process reused per suite would let
   `PRECOMMIT_MUTATION_CAP` rise a lot for free. Repro:
   `PRECOMMIT_MUTATION_CAP=0 bash linux/host-config/git-hooks/pre-commit` with the
   current diff staged.
 
-* **Nothing runs the other ~205 entries between commit and CI.** [M, ★★]
+* **Nothing runs the other ~227 entries between commit and CI.** [M, ★★]
   A pre-push hook is the right home — `--changed`'s existing semantics (everything
   committed since `origin/main`) are exactly right there, and a batch pays once
   instead of per commit. Blocked on `verify_gate_registry.py`'s `HOOK` constant
@@ -541,6 +565,70 @@ gate that lies.
   sourcing it runs `86`, `89`, `90` as commands. Cosmetic, but it is stderr noise
   on a gate that runs in every hook. Quoting the value is the one-line fix, and it
   is frozen for the duration of the running cross build (`01-core`).
+
+### QW10. What the 2026-09-04 Q9 gate-hole wave left open [S–M each, ★–★★]
+
+Six follow-ups. The wave itself closed the id-convention hole over non-gate files,
+the env-knobs heredoc/env-prefix tokenizer holes, the unpinned SAMPLED notice, the
+git-hook half of the embedded-Python target set, the mutation gate's symlink write
+path, and the hand-typed doc numbers.
+
+* **Four `|| exit 1` blocks in the pre-commit hook are still not driven end to
+  end.** [S, ★★] Q9 built the rig — a stub `git` plus a stub gate whose rc the
+  case chooses — and used it to pin only the mutation step. The hook's
+  `shellcheck -S error`, the warning ratchet, the fast-preflight block and
+  `verify_doc_dupes.py` each abort through the same shape, and each exit could be
+  flipped to `0` with every suite, the registry and preflight staying green — the
+  exact class Q9 just closed one instance of. Repro: change the mutation step's
+  `exit 1` to `exit 0` on the pre-2026-09-04 suite and nothing goes red. Fix:
+  four more cases in `tests/test-precommit-hook.sh` (stub the tool in the sandbox,
+  run it with rc 1) plus a mutation each.
+
+* **`mirror_tree` still copies escaping symlinks INTO the workspace.** [S, ★★]
+  Refusing a symlink TARGET closes the write path, but a test running inside the
+  copy can still read or write through `docs/.venv/bin/python` →
+  `/usr/bin/python3`. Skipping links whose resolved target falls outside `src`
+  would close that too; nothing depends on `docs/.venv` (grep for it outside the
+  venv returns nothing), but it changes mirror semantics, so it wants its own case
+  rather than a drive-by. Repro: `ls -l` the `docs/.venv/bin` of any run's
+  throwaway copy.
+
+* **`$(( x << SHIFT ))` still reads as a heredoc delimiter.** [S, ★]
+  Known limit of the env-knobs owner tokenizer, unchanged from the pre-2026-09-04
+  regex: an unquoted delimiter only has to start `[A-Za-z_]`, which is what keeps
+  `<<<` and `$(( a << 2 ))` out but cannot tell a NAMED shift apart. Nothing in
+  the tree hits it — the only `<< name` shifts live inside `test-code-complexity.sh`'s
+  own `<<'EOF'` fixtures, and an END-rule probe over all 310 scripts finds no
+  unterminated heredoc at EOF. Distinguishing it needs arithmetic-context
+  tracking; left at parity rather than grown for a case with no instance.
+
+* **Eleven `env-knobs` allow rows are REDUNDANT, not stale.** [S, ★]
+  `APP_UV_LOCK`, `ARTIFACT_CONTEXT_MODE`, `ARTIFACT_CONTEXT_ROOT`,
+  `BUILDKIT_CACHE_DIR`, `CROSS_CONTEXT_ROOT`, `CROSS_DISK_GUARD_GB`,
+  `CROSS_LOCAL_CONTEXT_HANDOFF`, `CROSS_NO_PUSH_FORCE`, `NO_COLOR`,
+  `SHELLCHECK_CACHE_DIR`, `UBUNTU_SOURCES_ROOT` are each consumed AND owned by a
+  script assignment, so the gate calls them redundant and stays green. All eleven
+  were redundant before Q9 too, so this is a curation call, not fallout — and for
+  most of them the "owner" is a test fixture setting the knob for one case, which
+  is exactly why the documenting row is worth keeping. Decide, then delete or
+  annotate; do not leave it implicit.
+
+* **The per-suite ASSERTION counts in `code-quality-tooling.md` are not pinned.**
+  [S, ★] `test-doc-numbers.sh` derives the manifest counts and the hook's
+  fast-slug list, but a count like "90 assertions in `test-env-knobs.sh`" is only
+  checkable by running that suite. All were verified by hand on 2026-09-04 and one
+  was wrong (62 → 63). They will drift again. The two honest options are the same
+  two: drop them, or let `run-tests.sh`'s aggregate speak — which is already the
+  stated policy for the tree-wide totals in `cross-build-verification.md`.
+
+* **Five mutation ids stay frozen because two ownership rules are missing.** [S, ★]
+  Renaming them is available and was deliberately NOT done: `mutations.hook-*` →
+  `pre-commit.*` (that family already holds four ids over the same file) and
+  `python-lint.heredoc-python-decision` → an `embedded-python` family would each
+  drop a freeze, but a rename without deleting its `mutation-id:` line reports
+  STALE and a deletion without the rename reports a prefix that cannot own the
+  target — so the two halves must land together. The `mutations.preflight-*` pair
+  has no good family at all and waits on the call-site ownership rule above.
 
 **Two shapes to remember, not fix.** `test-mutation-gate.sh` pins two call-site
 strings it does not own (`run_check mutations` in `preflight.sh`, and the hook's

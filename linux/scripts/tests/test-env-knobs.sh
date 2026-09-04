@@ -185,11 +185,53 @@ t_assert_eq "0" "$(_shape_rc 'readonly SHAPE_KNOB=1')"               "readonly"
 t_assert_eq "0" "$(_shape_rc 'declare -x SHAPE_KNOB=1')"             "declare with a flag"
 t_assert_eq "0" "$(_shape_rc 'SHAPE_KNOB=1 _helper')"                "an env prefix"
 t_assert_eq "0" "$(_shape_rc '_other=0 SHAPE_KNOB=1 _helper')"       "the second of an env-prefix chain"
+t_assert_eq "0" "$(_shape_rc 'FIRST=1 SECOND=2 SHAPE_KNOB=3 _helper')" "the third of a longer chain"
 t_assert_eq "0" "$(_shape_rc 'true; SHAPE_KNOB=1')"                  "after ;"
 t_assert_eq "0" "$(_shape_rc 'true && SHAPE_KNOB=1')"                "after &&"
 t_assert_eq "0" "$(_shape_rc 'if true; then SHAPE_KNOB=1; fi')"      "after then"
 t_assert_eq "0" "$(_shape_rc 'case "$1" in a) SHAPE_KNOB=1 ;; esac')" "in a case arm"
 t_assert_eq "0" "$(_shape_rc '_v="$(SHAPE_KNOB=1 _helper)"')"        "inside \$( ) within a quoted word"
+
+# ── HEREDOCS: the body is data in all four delimiter forms ───────────────────
+# Each fixture pairs a body knob (must stay UNOWNED) with a real assignment
+# AFTER the terminator (must still own), so a tokenizer that never terminates
+# and swallows the rest of the file fails the case instead of passing it.
+_t_hd() {
+  local _what="$1"; shift
+  { _consume PINNED_KNOB DOCKER_KNOB HD_BODY_KNOB SHAPE_KNOB
+    printf '%s\n' "$@"; printf 'SHAPE_KNOB=1\n'; } > "${SUBJECT}"
+  local _out; _out="$(_knobs 1)"
+  t_assert_contains "${_out}" "UNOWNED knobs (1)" "${_what}: the assignment after the terminator still owns"
+  t_assert_contains "${_out}" "    HD_BODY_KNOB" "${_what}: the body owns nothing"
+}
+
+t_case "a heredoc body is data whether or not the delimiter is quoted"
+_t_hd "<<EOT"    'cat > /tmp/x <<EOT'    'HD_BODY_KNOB=1' 'EOT'
+_t_hd "<<'EOT'"  "cat > /tmp/x <<'EOT'"  'HD_BODY_KNOB=1' 'EOT'
+_t_hd '<<"EOT"'  'cat > /tmp/x <<"EOT"'  'HD_BODY_KNOB=1' 'EOT'
+_t_hd '<<\EOT'   'cat > /tmp/x <<\EOT'   'HD_BODY_KNOB=1' 'EOT'
+
+t_case "the <<- form strips tabs off the terminator it is looking for"
+_t_hd '<<-EOT' 'cat <<-EOT' $'\tHD_BODY_KNOB=1' $'\tEOT'
+_t_hd "<<-'EOT'" "cat <<-'EOT'" $'\tHD_BODY_KNOB=1' $'\tEOT'
+
+t_case "two heredocs opened on ONE line are queued, not merged"
+_t_hd 'two on one line' "cat <<'ONE' <<'TWO'" 'FIRST_BODY=1' 'ONE' 'HD_BODY_KNOB=2' 'TWO'
+
+t_case "a heredoc opened inside \$( ) is still a heredoc"
+_t_hd 'bare $( )'   "_v=\$(cat <<'SUBEOF'"      'HD_BODY_KNOB=1' 'SUBEOF' ')'
+_t_hd 'quoted $( )' "_v=\"\$(cat <<'SUBEOF'\"" 'HD_BODY_KNOB=1' 'SUBEOF' ')"'
+
+t_case "a here-string is not a heredoc: <<< swallows nothing"
+_t_hd '<<<' 'grep -q x <<<"HD_BODY_KNOB=1"'
+
+t_case "single-quoted text is not code either"
+t_assert_eq "1" "$(_shape_rc "printf '%s\\n' \\" "  'SHAPE_KNOB=1 accepts the risk'")" \
+  "a usage line continued onto its own line is a string, not an assignment"
+
+t_case "an assignment-shaped ARGUMENT stays an argument after another argument"
+t_assert_eq "1" "$(_shape_rc '_helper ONE_ARG=1 SHAPE_KNOB=2')" \
+  "crediting it would make every word after an assignment-shaped argument an owner"
 
 t_case "the REAL tree is clean today, under KNOB_GATE=1"
 t_assert_eq "0" "$(t_rc env KNOB_GATE=1 bash "${LIVE}")"

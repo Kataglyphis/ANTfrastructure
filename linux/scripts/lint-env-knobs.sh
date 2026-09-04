@@ -46,9 +46,9 @@ grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>
 #        code, so a NAME=value printed in a message owns nothing.
 { find "${SCRIPTS}" -name '*.sh' -print0 | xargs -0 -r awk '
 BEGIN { SQ = "\047" }
-FNR == 1 { hd = "" }
+FNR == 1 { nhd = 0 }
 {
-  if (hd != "") { t = $0; if (hdtab) sub(/^\t+/, "", t); if (t == hd) hd = ""; next }
+  if (nhd > 0) { t = $0; if (hdtab[1]) sub(/^\t+/, "", t); if (t == hdend[1]) hdpop(); next }
   out = ""; top = 0; S[0] = "code"; P[0] = 0
   for (i = 1; i <= length($0); i++) {
     c = substr($0, i, 1)
@@ -59,6 +59,7 @@ FNR == 1 { hd = "" }
       else if (c == "$" && substr($0, i + 1, 1) == "(") { top++; S[top] = "code"; P[top] = 0; out = out "$("; i++ }
       continue
     }
+    if (c == "<" && substr($0, i + 1, 1) == "<") { i = hdpush(i); continue }
     if (c == "\\") { i++; continue }
     if (c == SQ) { top++; S[top] = "sq"; continue }
     if (c == "\"") { top++; S[top] = "dq"; continue }
@@ -67,17 +68,24 @@ FNR == 1 { hd = "" }
     else if (c == ")") { if (P[top] > 0) { P[top]--; continue } else if (top > 0) { top--; continue } }
     out = out c
   }
-  if (match(out, /<<-?[ \t]*[A-Za-z_][A-Za-z0-9_]*/)) {
-    m = substr(out, RSTART, RLENGTH); hdtab = (substr(m, 3, 1) == "-")
-    sub(/^<<-?[ \t]*/, "", m); hd = m
-  }
-  while (match(out, /[A-Z][A-Z0-9_][A-Z0-9_]+=/)) {
-    q = RSTART; l = RLENGTH
+  pos = 1
+  while (match(substr(out, pos), /[A-Z][A-Z0-9_][A-Z0-9_]+=/)) {
+    q = pos + RSTART - 1; l = RLENGTH
     prev = (q == 1) ? "" : substr(out, q - 1, 1)
     if (prev !~ /[A-Za-z0-9_{]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)
-    out = substr(out, q + l)
+    pos = q + l
   }
 }
+function hdpush(i,   j, d, qc) {
+  j = i + 2; nhd++; hdtab[nhd] = (substr($0, j, 1) == "-"); if (hdtab[nhd]) j++
+  while (substr($0, j, 1) ~ /^[ \t]$/) j++
+  qc = substr($0, j, 1); if (qc == "\\") { j++; qc = "" }
+  if (qc == SQ || qc == "\"") { j++; while (j <= length($0) && substr($0, j, 1) != qc) { d = d substr($0, j, 1); j++ }; j++ }
+  else { while (substr($0, j, 1) ~ /^[A-Za-z0-9_]$/) { d = d substr($0, j, 1); j++ }; if (d !~ /^[A-Za-z_]/) d = "" }
+  if (d == "") { nhd--; out = out "<<"; return i + 1 }
+  hdend[nhd] = d; return j - 1
+}
+function hdpop(   k) { for (k = 1; k < nhd; k++) { hdend[k] = hdend[k + 1]; hdtab[k] = hdtab[k + 1] } nhd-- }
 function cmdpos(pre,   w) {
   sub(/[ \t]+$/, "", pre)
   if (pre == "") return 1
@@ -85,7 +93,8 @@ function cmdpos(pre,   w) {
   while (pre ~ /(^|[ \t])-[A-Za-z-]+$/) { sub(/[ \t]*-[A-Za-z-]+$/, "", pre); if (pre == "") return 0 }
   w = pre; sub(/^.*[ \t]/, "", w)
   if (w ~ /^(then|else|elif|do|if|while|until|export|local|declare|readonly|typeset|env|time|!)$/) return 1
-  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)
+  if (w !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0
+  return cmdpos(substr(pre, 1, length(pre) - length(w)))
 }'
   _scan ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' | grep -oE '[A-Z][A-Z0-9_]{2,}'
 } | LC_ALL=C sort -u > "${_tmp}/own_scripts"

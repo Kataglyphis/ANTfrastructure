@@ -1242,10 +1242,10 @@
   {
     "id": "gate-registry.off-convention-loud",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "if e[\"target\"] in files and id_slug(e) not in known",
-    "replace": "if False",
+    "find": "    if target in files:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
+    "replace": "    if False:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
-    "why": "Credit by id prefix is only safe while the convention is enforced; an id naming no slug must fail loudly instead of silently proving nothing."
+    "why": "an id pinning a gate's own file under a non-slug prefix must be renamed to that gate, not filed away as a descriptive family where the gate loses the proof"
   },
   {
     "id": "gate-registry.hook-scoped-tier",
@@ -1458,8 +1458,8 @@
   {
     "id": "env-knobs.owner-heredoc-body",
     "target": "linux/scripts/lint-env-knobs.sh",
-    "find": "  if (hd != \"\") { t = $0; if (hdtab) sub(/^\\t+/, \"\", t); if (t == hd) hd = \"\"; next }",
-    "replace": "  if (hd != \"\") { hd = \"\" }",
+    "find": "  if (nhd > 0) { t = $0; if (hdtab[1]) sub(/^\\t+/, \"\", t); if (t == hdend[1]) hdpop(); next }",
+    "replace": "  if (nhd > 0) { nhd = 0 }",
     "test": "bash linux/scripts/tests/test-env-knobs.sh",
     "why": "a NAME=value line in a heredoc body is emitted data, not this script's own assignment"
   },
@@ -1482,10 +1482,10 @@
   {
     "id": "env-knobs.owner-env-prefix-chain",
     "target": "linux/scripts/lint-env-knobs.sh",
-    "find": "  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)",
-    "replace": "  return 0",
+    "find": "    pos = q + l",
+    "replace": "    out = substr(out, q + l); pos = 1",
     "test": "bash linux/scripts/tests/test-env-knobs.sh",
-    "why": "every assignment of an env-prefix chain owns, not just the first"
+    "why": "cmdpos must see the whole line prefix, or only the FIRST name of an env-prefix chain owns"
   },
   {
     "id": "env-knobs.owner-case-arm",
@@ -1502,6 +1502,54 @@
     "replace": "    if (prev !~ /[A-Za-z0-9_]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)",
     "test": "bash linux/scripts/tests/test-env-knobs.sh",
     "why": "a parameter expansion's own = is not an assignment: ${VAR=x} must not own"
+  },
+  {
+    "id": "env-knobs.heredoc-quoted-delimiter",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (qc == SQ || qc == \"\\\"\") { j++; while (j <= length($0) && substr($0, j, 1) != qc) { d = d substr($0, j, 1); j++ }; j++ }",
+    "replace": "  if (0) { j++ }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a heredoc must be recognised BEFORE quote state eats its delimiter, or the usage text inside <<'EOT' owns knobs again"
+  },
+  {
+    "id": "env-knobs.heredoc-tab-terminator",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "if (hdtab[1]) sub(/^\\t+/, \"\", t);",
+    "replace": "if (0) sub(/^\\t+/, \"\", t);",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "<<- indents its terminator; without the tab strip the heredoc never ends and eats the rest of the file"
+  },
+  {
+    "id": "env-knobs.heredoc-queue",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "function hdpop(   k) { for (k = 1; k < nhd; k++) { hdend[k] = hdend[k + 1]; hdtab[k] = hdtab[k + 1] } nhd-- }",
+    "replace": "function hdpop(   k) { nhd = 0 }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "two heredocs opened on one line end one at a time; popping both makes the second body code"
+  },
+  {
+    "id": "env-knobs.heredoc-not-herestring",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (d == \"\") { nhd--; out = out \"<<\"; return i + 1 }",
+    "replace": "  if (d == \"\") { nhd--; out = out \"<\"; return i }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a <<< here-string must not re-enter as a heredoc opened at its second <, which would swallow the rest of the file"
+  },
+  {
+    "id": "env-knobs.owner-chain-walks-back",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (w !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0\n  return cmdpos(substr(pre, 1, length(pre) - length(w)))",
+    "replace": "  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "the prefix is walked back over preceding assignments: a word after a command name stays an argument even when it is assignment-shaped"
+  },
+  {
+    "id": "env-knobs.owner-single-quoted-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == SQ) { top++; S[top] = \"sq\"; continue }",
+    "replace": "    if (c == SQ) { continue }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "text inside single quotes is not code: a continued usage line spelling NAME=value owns nothing"
   },
   {
     "id": "crlf-guard.scope-sh-suffix-only",
@@ -1550,6 +1598,14 @@
     "replace": "            except SyntaxError:\n                pass",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "the parse check is what keeps non-Python out: without it a cat'ed TPL_PY_* config template is emitted as Python and reddens the gate on a file that was never Python"
+  },
+  {
+    "id": "python-lint.hook-half-of-discovery",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "; find linux/host-config/git-hooks -type f)",
+    "replace": ")",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "a git hook carries no .sh suffix, so it is reachable only through the second half of the extractor's file list; dropping it takes the pre-commit hook's embedded Python out of the gate and every suite stays green"
   },
   {
     "id": "mutations.preflight-callsite-isolated",
@@ -1608,6 +1664,22 @@
     "why": "a copy that drops the executable bit makes every shell test fail for the wrong reason -- a vacuous-bite storm, not a verdict"
   },
   {
+    "id": "mutations.copy-does-not-follow-symlinks",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "follow_symlinks=False)",
+    "replace": "follow_symlinks=True)",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "dereferencing pulls whatever a link points at -- a host binary, a device node -- into a copy the pre-commit hook makes once per commit, and turns a path the tests see as a link into a regular file"
+  },
+  {
+    "id": "mutations.symlink-target-refused",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if os.path.islink(target):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the copy holds symlinks, not their contents: writing to one lands on the outside path it points at, which is the one thing the throwaway copy exists to prevent"
+  },
+  {
     "id": "pre-commit.mutation-cap",
     "target": "linux/host-config/git-hooks/pre-commit",
     "find": "run = matched[:cap] if cap > 0 else matched",
@@ -1632,6 +1704,38 @@
     "why": "a sampled run printing the full-coverage line is a green for work it did not do"
   },
   {
+    "id": "pre-commit.notice-is-printed",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "the SAMPLED notice is the only thing between a green hook and a false claim of full coverage; with the call gone a capped run prints nothing about its own scope"
+  },
+  {
+    "id": "pre-commit.notice-count-is-the-run",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": "_mutation_notice \"$(( ${_run:-0} + 2 ))\" \"${_matched:-0}\"",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a notice stating a larger sample than the ids actually passed to the gate is worse than no notice -- it reports coverage nobody paid for"
+  },
+  {
+    "id": "pre-commit.uncapped-claims-no-sample",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "_mutation_notice \"${_run:-0}\" \"${_matched:-0}\"",
+    "replace": "_mutation_notice \"${_run:-0}\" \"$(( ${_matched:-0} + 1 ))\"",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "an uncapped run that prints SAMPLED sends people to 'make preflight' for coverage the hook already gave them"
+  },
+  {
+    "id": "pre-commit.mutation-failure-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "      echo \"pre-commit: a recorded mutation SURVIVED -- a test here cannot fail\" >&2\n      exit 1",
+    "replace": "      echo \"pre-commit: a recorded mutation SURVIVED -- a test here cannot fail\" >&2\n      exit 0",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a surviving mutation must ABORT the commit, not merely print about it on the way to a green hook"
+  },
+  {
     "id": "code-complexity.arith-line-start",
     "target": "linux/scripts/verify_code_complexity.py",
     "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
@@ -1650,10 +1754,10 @@
   {
     "id": "gate-registry.wrong-prefix-loud",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "    if e[\"target\"] in files and e[\"target\"] not in owners.get(id_slug(e), ()):",
-    "replace": "    if False:",
+    "find": "        return None if target in owners[slug] else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "replace": "        return None",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
-    "why": "a known prefix over a file that slug does not own is credited to nobody; silently it would stop proving anything"
+    "why": "a prefix naming a real slug is a claim of ownership; unchecked, a typo'd or copied prefix silently stops proving anything"
   },
   {
     "id": "gate-registry.hook-whole-tree-tier",
@@ -1680,11 +1784,83 @@
     "why": "--changed is the staged list under another name, so the block that passes it is scoped"
   },
   {
+    "id": "gate-registry.id-rule-not-gate-scoped",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "        return None if target in owners[slug] else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "replace": "        return None if target in owners[slug] or target not in files else \"%s does not own %s -- %s\" % (slug, target, holds)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "the rule must judge the id, not the target: scoping it to registered gate files is exactly how a slug prefix over an ordinary build script passed silently"
+  },
+  {
+    "id": "gate-registry.family-must-be-declared",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(families, frozen_families,",
+    "replace": "    rc = check_keys({k: v for k, v in families.items() if k in frozen_families}, frozen_families,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "an undeclared prefix is how an invented or misspelled namespace enters; declaring it is what makes the descriptive half of the convention checkable at all"
+  },
+  {
+    "id": "gate-registry.family-not-a-slug-freeze",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    rc = check_keys(unproven, frozen - frozen_ids - frozen_families,",
+    "replace": "    rc = check_keys(unproven, frozen - frozen_ids,",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "family declarations share a file with the unproven-slug ratchet; mixed in, every declaration reads as a STALE slug freeze and the census miscounts the debt"
+  },
+  {
     "id": "shellcheck.crlf-shebang",
     "target": "linux/scripts/lint-shell.sh",
     "find": "| head -n 1 | tr -d '\\r')\" in",
     "replace": "| head -n 1)\" in",
     "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
     "why": "a wholly-CRLF extension-less script leaves the CR on the shebang, matches no arm, and is invisible to this gate and to crlf-guard, which reads its scope from here"
+  },
+  {
+    "id": "doc-numbers.manifest-total-stale",
+    "target": "docs/code-quality-tooling.md",
+    "find": "**233 entries**",
+    "replace": "**180 entries**",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the page's manifest total must be mutations.json's real length, not the digit the last wave typed"
+  },
+  {
+    "id": "doc-numbers.distinct-commands-stale",
+    "target": "docs/code-quality-tooling.md",
+    "find": "**31 distinct test commands**",
+    "replace": "**29 distinct test commands**",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the distinct-command count drives the baseline-run cost claim and must track the manifest"
+  },
+  {
+    "id": "doc-numbers.family-count-stale",
+    "target": "docs/code-quality-tooling.md",
+    "find": "47 mutation entries (`code-complexity.*`)",
+    "replace": "41 mutation entries (`code-complexity.*`)",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "a per-gate entry count written next to its id prefix must equal the ids that actually carry that prefix"
+  },
+  {
+    "id": "doc-numbers.total-re-quoted",
+    "target": "AGENTS.md",
+    "find": "CI still run every entry.",
+    "replace": "CI still run all 180 entries.",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the manifest total has one owner; a second page re-quoting it is exactly how the last three waves went stale"
+  },
+  {
+    "id": "doc-numbers.fast-slug-count-stale",
+    "target": "docs/cross-build-verification.md",
+    "find": "the 17 fast slugs in",
+    "replace": "the 19 fast slugs in",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the hook's fast-slug count is derived from _FAST_SLUGS, not retyped"
+  },
+  {
+    "id": "doc-numbers.fast-slug-span-stale",
+    "target": "docs/cross-build-verification.md",
+    "find": "`_FAST_SLUGS` (`:64-67`)",
+    "replace": "`_FAST_SLUGS` (`:64-70`)",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "a quoted line span rots on the next edit of the hook unless a gate reads where the list really is"
   }
 ]

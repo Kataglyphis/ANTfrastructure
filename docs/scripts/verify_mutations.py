@@ -19,7 +19,10 @@ while the suite was already red proves nothing.
 
 Every mutation runs in a throwaway COPY of the tree, never in the tree it was
 pointed at: this repo builds from its own working directory, so an in-place edit
-could be snapshotted into a shipped image. --in-place opts out (its own fixtures).
+could be snapshotted into a shipped image. The copy keeps symlinks AS symlinks
+rather than dereferencing whatever they point at into it, and a symlink is
+therefore refused as a mutation target -- writing through one would land outside
+the copy. --in-place opts out (its own fixtures).
 
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
 the entries whose target is in the diff, plain for all.
@@ -84,6 +87,8 @@ def changed_files():
 def apply_and_run(entry, root):
     """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
     target = os.path.join(root, entry["target"])
+    if os.path.islink(target):
+        return False, False, "target is a symlink -- a write through it escapes the copy"
     if not os.path.exists(target):
         return False, False, "target missing"
     with open(target, encoding="utf-8") as fh:

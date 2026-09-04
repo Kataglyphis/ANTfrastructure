@@ -2,8 +2,9 @@
 # Tests for docs/scripts/verify_mutations.py. It neuters a guarantee to check a
 # test can fail, so the cases that matter most are that the tree it was pointed at
 # comes back byte-identical (a build may be reading it), that --in-place -- the
-# opt-out these fixtures use -- still edits in place and restores, and that the two
-# production call sites never pass it.
+# opt-out these fixtures use -- still edits in place and restores, that no write
+# escapes the copy through a symlink, and that the two production call sites never
+# pass it.
 # docs/code-quality-tooling.md#the-mutation-gate-mutations
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -192,5 +193,41 @@ for _d in ${_heavy}; do
     *) t_assert_ok true ;;
   esac
 done
+
+# --- symlinks: the copy must neither dereference them nor let a write out ------
+
+# A tree whose `link` points at a file OUTSIDE it, mutating <target>. The test
+# records what the COPY holds -- the only place the symlink handling is
+# observable -- and what the outside file said WHILE it ran.
+_symlink_fixture() {
+  _fixture "GUARD=on" "GUARD=off" yes .
+  printf 'GUARD=on\n' > "${_tmp}/outside.txt"
+  ln -sfn "${_tmp}/outside.txt" "${_work}/link"
+  printf 'not-run\n' > "${_tmp}/kind"
+  printf 'not-run\n' > "${_tmp}/outside-witness"
+  { printf 'if [ -L ./link ]; then echo symlink; else echo dereferenced; fi > "%s/kind"\n' "${_tmp}"
+    printf 'cat "%s/outside.txt" > "%s/outside-witness"\n' "${_tmp}" "${_tmp}"
+    printf 'grep -q "GUARD=on" ./subject.sh\n'
+  } > "${_work}/t.sh"
+  printf '[{"id":"probe","target":"%s","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe"}]\n' \
+    "$1" > "${_work}/m.json"
+}
+
+t_case "the copy keeps a symlink AS a symlink instead of dereferencing it"
+_symlink_fixture subject.sh
+t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+t_assert_eq "symlink" "$(cat "${_tmp}/kind")" \
+  "dereferencing pulls whatever the link points at -- a host binary, a device -- into a copy made once per commit"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")" "and the file outside the tree is untouched"
+
+t_case "a symlink is refused as a mutation target, so no write escapes the copy"
+_symlink_fixture link
+_out="$(_iso_run 2>&1)"
+t_assert_contains "${_out}" "target is a symlink" \
+  "the copy holds the link, not the file: mutating it writes straight through to the outside path"
+t_assert_eq "1" "$(_iso_rc)" "a mutation that cannot be applied safely must fail the gate, not be skipped"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside-witness")" \
+  "restoring afterwards is not enough -- the outside file must never hold the mutation, even transiently"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
 
 t_summary

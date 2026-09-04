@@ -251,6 +251,17 @@ Both shapes are pinned in `linux/scripts/tests/test-embedded-python-extract.sh`,
 and the coverage was proven by injecting an undefined name into a real heredoc
 and watching the gate go red.
 
+The extractor's file list has TWO halves, and each is now pinned separately:
+`find linux/scripts -name '*.sh'` (the `probe.sh` cases plus
+`python-lint.embedded-file-discovery`, which NARROWS the find rather than deleting
+it) and `find linux/host-config/git-hooks -type f` (the git-hook cases plus
+`python-lint.hook-half-of-discovery`). The second half exists because a git hook
+cannot carry a `.sh` suffix; the pre-commit hook's `_mutation_plan` is ~15 lines of
+embedded Python that would silently leave the gate if that half were dropped.
+`tests/test-python-lint-gate.sh` asserts on the extractor's mapped-back NAME and
+line (`pre-commit__3.py:1:` = opener line 3, body line 1), not on the exit code, so
+a fixture that never reaches ruff cannot pass the case by accident.
+
 ## Proving a gate can go red
 
 Three slugs read "proven" in the registry while nothing could turn them red:
@@ -376,15 +387,17 @@ now run once unmutated per invocation (cached by command string) before any entr
 using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
-distinct command — 29 of them across 180 entries — inside a full run of about
-six minutes (5m58s, measured twice), and it is paid once per command, not once
-per entry.
+distinct command, and it is paid once per command, not once per entry. The
+manifest holds **233 entries** over **31 distinct test commands**; both digits are
+derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
+on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
+scales with the manifest, not a current figure.
 
 **The gate never edits the tree it is given.** Until 2026-09-03 `apply_and_run()`
 wrote the mutated text straight into `--root` (default: this repo) and restored it
 in a `finally`. Preflight and the pre-commit hook both run it that way, and this
 repo builds *from its own working directory* — buildkit is handed `--local
-context=.`. Of the 180 entries, 11 target scripts that are `COPY`'d into an
+context=.`. Entries target scripts that are `COPY`'d into an
 image (`linux/scripts/01-core/*`, `03-media/*`, `06-packaging/*`), so a cross build
 running at the same time could snapshot a deliberately neutered script into a
 shipped layer; anything else reading the tree during that window saw a gate with
@@ -396,9 +409,23 @@ Every invocation now builds ONE throwaway copy of the root (`mirror_tree()`, an
 `linux/webserver/dist`), points the whole run at it, and `rmtree`s it in a
 `finally`. Tests still run with `cwd` = that copy, so the relative commands every
 entry uses (`bash linux/scripts/tests/test-*.sh`) resolve unchanged. `--changed`
-still asks git about the REAL repo. Measured cost: 0.58s for 6.4k files / 131MB,
-paid once per invocation whether it runs one entry or all 139 — a full run stays
-at 4m2xs (+0.2%). Selection happens first, so a `--changed` hook run that selects
+still asks git about the REAL repo. Measured once, 2026-09-03: 0.58s for 6.4k
+files / 131MB, paid per invocation whether it runs one entry or all of them —
+under 1% of a full run that day.
+
+Symlinks carry TWO properties here, not one. `mirror_tree` copies with
+`follow_symlinks=False`, so a link stays a link: dereferencing would pull whatever
+it points at — a host binary, a device node — into a copy made once per commit,
+and would turn a path the tests see as a link into a regular file. This repo has a
+live instance inside the copied scope: `docs/.venv/bin/python` →
+`/usr/bin/python3`, an absolute escape. And precisely BECAUSE the copy holds links
+rather than contents, a write through one would land outside the copy, so
+`apply_and_run()` refuses a symlink target outright and fails with `target is a
+symlink -- a write through it escapes the copy`. The check sits before the
+existence test, because `os.path.exists` follows links and a dangling one would
+otherwise be reported as `target missing`. Restoring afterwards is not a defence:
+the outside file would hold the mutation *while the test runs*, which is exactly
+the transient-write hazard this whole rewrite was about. Selection happens first, so a `--changed` hook run that selects
 nothing (the common commit) copies nothing at all.
 
 | flag | use |
@@ -427,10 +454,10 @@ hook now selects on the STAGED files alone — the same scoping it already appli
 to `shellcheck` (`--files`) and to the doc gates. `--changed` keeps its meaning
 for CI.
 
-**Cost.** Even staged-only, the mass is lopsided: 180 entries over 29 distinct
-test commands, and one file (`verify_code_complexity.py`) owns 41 of them. Each
-entry costs one full run of its suite — 0.5 s for a cheap one, 3.2 s for
-`test-code-complexity.sh` — so touching one gate script can be a minute on its
+**Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
+handful of suites, and `test-code-complexity.sh` alone owns more than a fifth of
+the manifest. Each entry costs one full run of its suite — 0.5 s for a cheap one,
+3.2 s for `test-code-complexity.sh` (measured 2026-09-03) — so touching one gate script can be a minute on its
 own. No selection rule makes that both complete and fast. So the hook **samples**,
 and says so:
 
@@ -441,7 +468,7 @@ and says so:
 - and when it cut, it prints `SAMPLED <n> of <m> entries … NOT full coverage`.
   A green hook must never imply coverage it did not pay for; that rule has cost
   this repo enough already (`## Proving a gate can go red`). `make preflight`
-  and CI still run all 180.
+  and CI still run every entry.
 
 Measured after, on this tree, 2026-09-04 — end-to-end runs of the whole hook, its
 `git diff --cached` fed the two file lists by a shim, with the parts timed
@@ -458,18 +485,37 @@ The 43-file column is the worst case by construction: the six newest entries for
 that commit all belong to `test-code-complexity.sh`, the slowest suite in the
 manifest. A commit that touches no mutation target skips the step entirely.
 
+Re-measured independently 2026-09-04 against the 233-entry manifest, same rig: the
+one-file column reproduces at **7.8 s** (fast slugs alone **4.7 s**), and this
+wave's own 17-file diff — 65 matched entries — costs **7.2 s** capped and
+**2 m 45.9 s** uncapped. The sample is newest-first, NOT cost-aware, and that
+shows: staging one *gate* script, `verify_gate_registry.py`, matches 21 entries
+whose six newest are all `test-gate-registry.sh` runs and takes **19.1 s** — more
+than the 17-file commit, whose six newest happen to be cheap. File count is not
+the cost; which suite the newest entries belong to is.
+
 `--print-mutation-plan <cap> <manifest> <file-of-staged-paths>` prints
 `plan <run> <matched>` and the ids, without running anything; it exists before the
 hook's `git rev-parse`, so `tests/test-precommit-hook.sh` can drive the selection
 off-target and inside the mutation gate's own throwaway copy. git never passes
 arguments to a `pre-commit` hook, so it cannot fire by accident.
 
+The suite also drives the hook END TO END — a stub `git` feeds it a staged-file
+list and a stub `verify_mutations.py` records the argv it is handed — so the
+`SAMPLED` notice, the agreement between the number it states and the ids actually
+run, and the abort on a surviving mutation are each pinned by a mutation
+(`pre-commit.notice-is-printed`, `pre-commit.notice-count-is-the-run`,
+`pre-commit.uncapped-claims-no-sample`, `pre-commit.mutation-failure-aborts`).
+Before that, deleting the notice call left every suite, the registry and preflight
+green.
+
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: thirteen entries neuter
-its survivor-reporting, its file restore, its baseline pass, its use of the copy,
-the opt-in-ness of `--in-place`, the cleanup of the copy, both production call
-sites, the exclude list, the single-match rule and `copy2`. The isolation proof is
+how the next inert check gets in. The gate guards itself: 15 entries (`mutations.*`)
+neuter its survivor-reporting, its file restore, its baseline pass, its use of the
+copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
+call sites, the exclude list, the single-match rule, `copy2`, and both halves of
+the symlink contract. The isolation proof is
 a witness file: the fixture's test command `cp`s the pointed-at subject somewhere
 else *while the mutation is applied*, and the suite asserts that snapshot still
 reads `GUARD=on` — an after-the-fact byte comparison cannot tell isolation from a
@@ -491,15 +537,43 @@ site and must bite. The test only READS those two files; they belong to other ga
 membership, so emptying it is invisible to every functional test — the run just gets
 slower and clones `.git`. The suite plants a payload in each excluded tree, has the
 fixture's test command list what it can see from *inside* the copy, and asserts none
-of them arrived (0.57s / 6302 files / 127MB measured, against a whole-checkout clone
-per invocation). `copy2`, not `copyfile`, carries the mode across, so a mutated `.sh`
+of them arrived — against a whole-checkout clone per invocation, at the mirror
+cost measured above. `copy2`, not `copyfile`, carries the mode across, so a mutated `.sh`
 is still executable in the copy: the suite chmods its subject and has the test command
 require `-x`. Losing that would turn every shell test red for the wrong reason — a
 vacuous-bite storm, not a verdict. And a `find` string matching MORE than once is now
 an error (`ambiguous, name one edit`) instead of a silent first-occurrence edit that
 neuters one of several copies, leaves the guarantee half-standing, and reports a false
-`SURVIVED`; zero matches was already `stale`. All 180 entries matched exactly once when
-the rule landed.
+`SURVIVED`; zero matches was already `stale`. Every entry matched exactly once when
+the rule landed (2026-09-03).
+
+## Doc numbers are derived
+
+Three waves in a row shipped prose quoting a manifest count that the next wave
+invalidated — `180 entries` outlived 180 by two rebuilds of this page, in four
+places at once. Re-typing the digit is what failed; the fix is the same one
+`tests/test-preflight-slugs.sh` already applies to the slug count.
+
+`linux/scripts/tests/test-doc-numbers.sh` measures the truth from
+`docs/scripts/mutations.json` and from `_FAST_SLUGS` in the pre-commit hook, and
+fails when this page, `cross-build-verification.md` or `AGENTS.md` disagrees.
+`bash linux/scripts/tests/test-doc-numbers.sh --update` rewrites the digits in
+place, so tracking a new wave is one command rather than a hunt.
+
+Two spellings are load-bearing, because they are what the gate finds:
+
+| in prose | pinned against |
+| --- | --- |
+| `**<n> entries** over **<m> distinct test commands**` — this page, exactly once | the manifest's length and its distinct `test` commands |
+| ``<n> … (`<prefix>.*`)`` — any of the three pages | how many ids carry that prefix |
+| `the <n> fast slugs` / `the <n> cheap whole-tree slugs`, and ``` `_FAST_SLUGS` (`:<a>-<b>`) ``` | the hook's own list and the lines it spans |
+
+A count of the whole manifest has ONE owner, the first row above; the other two
+pages say "every entry" and the gate fails if a bare `all <n> entries` comes
+back. Two numbers were never pinnable and are now written as what they are: a
+wall clock moves with the machine, and a per-gate offender census belongs to its
+allow file. Those carry the date they were measured, or no digit at all — a
+figure a reader cannot trust is worse than a sentence without one.
 
 ## Code size — functions and files (`code-size`)
 
@@ -507,7 +581,8 @@ the rule landed.
 four subjects: **shell functions** and **Python functions** over
 `FUNCTION_SIZE_LIMIT` (default 80) against `function-size.allow`, and **shell,
 Python and Dockerfile files** over `FILE_SIZE_LIMIT` (default 800) against
-`file-size.allow`. 38 functions and 10 files are over today, all frozen.
+`file-size.allow`. The offenders that exist today are frozen in those two
+files, which are the inventory — this page does not keep a second count.
 
 Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
@@ -662,14 +737,23 @@ question is always "why does *that* suite count?".
   by `gate-registry`, `code-complexity` and `dead-functions`. Keying on the id
   ended it; `shellcheck`, `artifact-parity` and `stage-graph` lost the mutation
   half of their proof (all three keep a suite, none dropped to UNPROVEN).
-- **The convention is enforced in both directions.** An entry whose target is a
-  registered gate's file is credited to nobody, and therefore fails the gate,
-  when its prefix names no slug **or** when it names a real slug that does not own
-  that target — a typo'd prefix would otherwise stop proving anything in silence,
-  which is the exact failure this whole gate exists to catch. The message names
-  the prefix, the target and the slug that does own it. The escape is the same:
-  freeze the id under the `mutation-id:` namespace in `gate-proofs.allow`, which
-  ratchets down like the slug list.
+- **The convention is enforced in both directions, over every entry.** The rule is
+  about the ID, not about which files happen to be registered. A prefix that names
+  a preflight slug is a claim of ownership: it fails unless the `target` is that
+  slug's own script or a module it imports — over an ordinary build script just as
+  much as over another gate's file. A prefix that names no slug fails when it pins
+  a registered gate's file at all (that entry belongs to the gate, under the
+  gate's name), and otherwise must be a declared descriptive family. A typo'd or
+  copied prefix would otherwise stop proving anything in silence, which is the
+  exact failure this whole gate exists to catch. The message names the prefix, the
+  target and who does own it. The escape is a freeze under the `mutation-id:`
+  namespace in `gate-proofs.allow`, which ratchets down like the slug list.
+- **Why not "every id must start with a slug".** 43 of today's 233 entries pin
+  ordinary build scripts no gate owns (`wheels.`, `qairt.`, `boot.`, `sccache.`,
+  …); forcing those under a slug would put false credit in a generated table. They
+  keep descriptive prefixes, declared once as `mutation-family:` lines, so an
+  invented or misspelled namespace still fails loudly and a family nothing carries
+  any more reads STALE.
 - **The hook-tier column follows the hook, not one string in it.** `hook+CI` = the
   slug is listed in `_FAST_SLUGS`, so the whole gate runs on every commit;
   `hook (scoped)+CI` = a later hook block hands the gate the staged file list
@@ -701,13 +785,27 @@ both pinning `lint-shell.sh`, which `shellcheck` owns — and both were renamed 
 change: renaming without deleting reports STALE, deleting without renaming reports
 the prefix that cannot own it.
 
-Today's two frozen ids are the shape the file-ownership model cannot express:
+Lines prefixed `mutation-family:` are the third namespace and are NOT debt: they
+declare the descriptive prefixes used over ordinary build scripts, which no gate
+owns. 16 declared on 2026-09-04, covering 43 ids. An undeclared prefix fails as
+NEW; a family no id carries any more is STALE. If a family name is ever adopted as
+a preflight slug, every id under it starts being judged by ownership and the
+declaration goes stale in the same run. The file therefore holds three counts: 15
+frozen slugs, 5 `mutation-id:` freezes and 16 `mutation-family:` declarations.
+
+Today's five frozen ids are the shape the file-ownership model cannot express.
 `mutations.preflight-callsite-isolated` and `mutations.preflight-runs-the-gate`
-pin `preflight.sh`, whose sole registered owner is `crlf-guard` — but what they
-prove is how the ORCHESTRATOR invokes the `mutations` gate, and `test-mutation-gate.sh`
-is what catches them. Renaming them `crlf-guard.<kebab>` would put a false credit
-in a generated table, so they are frozen instead. The fix is an ownership rule for
-call sites in `preflight.sh`, not a rename; see `docs/refactoring-backlog.md`.
+pin `preflight.sh`, whose sole registered owner is `crlf-guard`;
+`mutations.hook-callsite-isolated` and `mutations.hook-runs-the-gate` pin
+`linux/host-config/git-hooks/pre-commit`, which no gate owns. All four prove how
+the ORCHESTRATOR invokes the `mutations` gate, and `test-mutation-gate.sh` is what
+catches them. The fifth, `python-lint.heredoc-python-decision`, pins
+`extract_embedded_python.py` — the helper `lint-python.sh` shells out to but does
+not `import`, so `own_files()` does not credit it. The last three became visible
+only on 2026-09-04: before the id rule was widened it was silent over files no
+gate owns. Renaming any of them would put false credit in a generated table, so
+they are frozen instead. The fix is an ownership rule for call sites and for a
+shell gate's shelled-out helpers, not a rename; see `docs/refactoring-backlog.md`.
 
 The cheapest proof per frozen slug, by shape:
 
@@ -742,7 +840,8 @@ an extension-less script on a shell shebang — including
 neighbouring `shellcheck` gate admits those files explicitly, so the repo held two
 gates with two different answers to "what is a shell script". There is now one
 owner: `lint-shell.sh --list-files`, the same scope the shellcheck warning ratchet
-consumes. Feeding it `git ls-files -z` classifies all 1071 tracked paths in ~68 ms,
+consumes. Feeding it `git ls-files -z` classified the whole tracked tree in ~68 ms
+on 2026-09-03,
 which is inside the budget for a `_FAST_SLUGS` member. A tracked file that is not a
 shell script (prose, a patch, a fixture) may carry CR and is not an offender.
 
@@ -771,7 +870,7 @@ extension-less `NOTES` is not; and a directory that is not a repo, or a tree wit
 That last guarantee holds **only under `pipefail`** — a failing stage fails the
 pipeline only because `preflight.sh` sets `set -uo pipefail`. The suite used to
 hard-code those options when it ran the extracted function, so deleting `pipefail`
-from `preflight.sh` survived all 68 suites. It now *derives* the options from
+from `preflight.sh` survived every suite in the tree. It now *derives* the options from
 `preflight.sh`'s own `set -` line and asserts that line pins `pipefail`, which puts
 the dependency where it lives; `crlf-guard.pipefail-pin` proves it.
 
@@ -814,15 +913,16 @@ regenerated whenever a slug, a suite name, a mutation entry or the hook's
   that named the gate and then scoped it through some third spelling of "the
   staged files" would read whole-tree.
 
-Pinned by 61 assertions in `tests/test-gate-registry.sh` over a twelve-slug fixture
-(one per shape: file gate proven by a suite, by its own mutation, by an inherited
-mutation credited by id prefix, the same import under another gate's prefix,
-unproven, `[ -f ]` fallback pair, inline in `preflight.sh`, inline in a sourced
-lib, inline with a same-named stub in a lib nobody sources, run whole-tree by a
-staged-docs block, scoped by `--changed` rather than the guard variable,
-by-construction) plus the `mutation-id:` ratchet in both directions and both
-convention breaches it catches, 25 in `tests/test-crlf-guard.sh`, and 20 mutation
-entries.
+Pinned by 70 assertions in `tests/test-gate-registry.sh` over a twelve-slug fixture
+plus `ordinary.sh`, a build script no `run_check` registers (one per shape: file
+gate proven by a suite, by its own mutation, by an inherited mutation credited by
+id prefix, the same import under another gate's prefix, unproven, `[ -f ]`
+fallback pair, inline in `preflight.sh`, inline in a sourced lib, inline with a
+same-named stub in a lib nobody sources, run whole-tree by a staged-docs block,
+scoped by `--changed` rather than the guard variable, by-construction) plus the
+`mutation-id:` and `mutation-family:` ratchets in both directions and all three
+convention breaches they catch, 32 in `tests/test-crlf-guard.sh`, and 23 entries
+(`gate-registry.*`).
 
 ## Shell complexity (`code-complexity`)
 
@@ -962,7 +1062,7 @@ and that case is what caught the gate tripping its own limit: `_code_char` reach
 cc 20 while gaining the arithmetic handling and had to be split into
 `_open_group` / `_close_group` / `_code_char`.
 
-47 mutation entries carry it: the four contract directions (in `quality_allow.py`),
+47 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
 the tokenizer guarantees (heredocs, here-strings, quotes, cross-line quote state,
 comments, case arms, worst-not-last, the Python walk, elif depth, the metric split,
 the surviving verdict), and one for each fix above — including **both** directions
@@ -1072,7 +1172,8 @@ those three rows STALE; that is the deliberate trade, not an oversight.
 
 `linux/scripts/tests/test-dead-functions.sh`: 55 assertions over throwaway trees —
 each case copies the gate plus the two modules it imports and plants a subject,
-callers and an allow file. 22 mutations, every one proven to bite, covering the
+callers and an allow file. 22 mutations (`dead-functions.*`), every one proven
+to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 `patches/`, `linux/webserver/dist`, `.pytest_cache`, `.dart_tool` and
 `mutations.json` out; `dist` narrow), both `re.MULTILINE` flags (without them only
@@ -1158,9 +1259,10 @@ counts come from the one parser that also carries the reasons — but that is a
 workaround, not the fix: a shared `(count, reason)` reader belongs in
 `quality_allow.py`, and is filed for that file's owner.
 
-**Coverage.** 62 assertions over throwaway trees whose subjects provoke SC2034,
+**Coverage.** 63 assertions over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 18 mutations, every one proven to bite. The suite's
+shellcheck cannot produce; 16 mutations (`shellcheck-warnings.*`), every one
+proven to bite. The suite's
 last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it —
 which is what every mutation `test` command sets, so no mutation can be recorded
 as biting because the tree drifted rather than because the guarantee was removed.
@@ -1276,8 +1378,8 @@ Three limits of that filter, stated so nobody rediscovers them:
 - The trailing-comment strip cuts at the first **whitespace-preceded** `#` and
   is not quote-aware. `${#arr[@]}` is safe (its `#` follows `{`), but a knob
   read to the right of a ` #` that sits *inside* a quoted string would be
-  missed. Measured over all 1459 non-comment `${VAR:-}` lines in the tree: the
-  strip removes zero knob occurrences today. The failure mode is loud — a live
+  missed. Measured 2026-09-03 over every non-comment `${VAR:-}` line in the tree:
+  the strip removed zero knob occurrences that day. The failure mode is loud — a live
   row reported stale — not a silent pass.
 - Full-line `#` inside a heredoc is dropped like any other comment. For the
   shell and Python bodies this repo emits that is correct; a heredoc in a
@@ -1369,22 +1471,66 @@ UNOWNED against the real tree. The suite therefore spells every fixture knob
 through `printf '${%s:-}' NAME`, the trick the original `_consume` helper
 already used.
 
-Census at the time of writing: `consumed ${VAR:-} knobs: 643 | owners:
-versions.env=174 dockerfiles=116 scripts=912 allowlist=225 | stale allow rows: 0`.
+Census at the time of writing (2026-09-03): `consumed ${VAR:-} knobs: 643 |
+owners: versions.env=174 dockerfiles=116 scripts=912 allowlist=225 | stale allow
+rows: 0`.
+
+### The owner tokenizer, 2026-09-04
+
+Two holes in the tokenizer were making the census lie, and both are closed.
+
+**A heredoc redirection is matched in the character loop, BEFORE quote state.**
+`<<X`, `<<-X`, `<<'X'`, `<<"X"` and `<<\X` all now mark their body as data.
+The pre-2026-09-04 code matched the terminator on the *post-quote* text, so
+`cat <<'EOT'` had already been reduced to `cat <<` by the time the heredoc was
+looked for, and the whole usage block was scanned as code. That is how ~45
+operator switches came to be "owned" by their own help text. `hdpush()` parses
+the delimiter itself and returns the index past it, so the delimiter never reaches
+quote state.
+
+**Heredocs are a QUEUE.** Several opened on one line end one at a time:
+`cat <<'ONE' <<'TWO'` ends ONE at `ONE` and TWO at `TWO`, instead of treating the
+second body as code. A heredoc opened inside `$( )` works in both nesting shapes,
+because `$( )` is already a code frame and the detection lives in code state.
+
+**Unquoted delimiters must start `[A-Za-z_]`** — the same shape the old regex
+demanded. That single rule is what keeps `<<<` here-strings and `$(( a << 2 ))`
+from opening one; its bail returns past the second `<`, so a here-string cannot
+re-enter as a heredoc. KNOWN LIMIT, unchanged: an arithmetic shift by a NAMED
+variable (`$(( x << SHIFT ))`) still looks like a delimiter. Nothing in the tree
+hits it today, and an END-rule probe over all 310 scripts finds no unterminated
+heredoc at EOF.
+
+**Ownership follows the whole env-prefix chain.** `FOO=1 BAR=2 cmd` credits both.
+The match loop no longer truncates the line as it walks it — it fed `cmdpos` the
+VALUE of the previous assignment as the whole prefix, so only the FIRST name of a
+chain owned, while the doc already CLAIMED chain support. `cmdpos` walks the
+prefix back over preceding assignments, so `cmd A=1 B=2` still credits neither:
+a word after a command name stays an argument even when it is assignment-shaped.
+
+Census after (2026-09-04): `consumed ${VAR:-} knobs: 643 | owners: versions.env=174
+dockerfiles=116 scripts=946 allowlist=225 | stale allow rows: 0`. Five script-side
+owners were LOST, every one a quoted-delimiter heredoc body (a `python3 <<'PY'`
+program, a `versions.env` fixture, a `<<'EOF'` fixture); none of those names went
+unowned. 29 were GAINED, all genuine env-prefix chains.
 
 ### Proof
 
 `linux/scripts/tests/test-code-dupes.sh` (34 assertions) and
-`linux/scripts/tests/test-env-knobs.sh` (67 assertions) each copy their gate into
+`linux/scripts/tests/test-env-knobs.sh` (90 assertions) each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-Nineteen entries in `docs/scripts/mutations.json` neuter one guarantee each and
-are proven to make those suites fail: the shrink and stale detections and their
+9 entries (`code-dupes.*`) and 24 (`env-knobs.*`) in
+`docs/scripts/mutations.json` neuter one guarantee each and are proven to make
+those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,
 the `--kind` scoping, the bookkeeping ordering, `--baseline`'s reason carry-over,
 the two comment filters, the `KNOB_GATE`-independence of stale, the withheld
 all-clear line, the trailing strip's cut point, the escaped-`\$` deletion, and the
-extraction regex that bars `_`-prefixed privates. Nine more neuter one piece each
+extraction regex that bars `_`-prefixed privates. The rest neuter one piece each
 of the owner tokenizer — quoted text, command position, comments, heredoc bodies,
 `$( )` re-entry, the keyword prefixes, the env-prefix chain, the case arm, and
-the `${VAR=x}` guard.
+the `${VAR=x}` guard, plus the heredoc rewrite above: the body-is-data rule, the
+quoted delimiter, the `<<-` tab-stripped terminator, the queue, the here-string
+bail, single-quoted text in command position, and both halves of the env-prefix
+chain.
