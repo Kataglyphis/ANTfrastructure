@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # lint-env-knobs.sh — A1: every `${VAR:-default}` knob consumed in linux/scripts
-# needs an owner (versions.env, Dockerfile ARG/ENV, a script assignment, or a row
-# in lint-env-knobs.allow). Unowned knobs are advisory unless KNOB_GATE=1; a
-# STALE allow row (knob consumed nowhere) always fails.
+# needs an owner: versions.env, a Dockerfile ARG/ENV, a script assignment in
+# command position, or a row in lint-env-knobs.allow. Unowned knobs are advisory
+# unless KNOB_GATE=1; a STALE allow row (knob consumed nowhere) always fails.
 # docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -uo pipefail
 export LC_ALL=C
@@ -41,11 +41,54 @@ sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | LC_ALL=C 
 #    (b) Dockerfile ARG/ENV declarations
 grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
   | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
-#    (c) script-side assignments/exports (VAR= / export VAR= / declare VAR= /
-#        : "${VAR:=...}" self-defaulting / read into VAR)
-{ _scan '[A-Z][A-Z0-9_]{2,}=' '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' | grep -oE '[A-Z][A-Z0-9_]{2,}='
+#    (c) script-side assignments in COMMAND position, plus the self-defaulting
+#        : "${VAR:=...}" form. Quoted text, comments and heredoc bodies are not
+#        code, so a NAME=value printed in a message owns nothing.
+{ find "${SCRIPTS}" -name '*.sh' -print0 | xargs -0 -r awk '
+BEGIN { SQ = "\047" }
+FNR == 1 { hd = "" }
+{
+  if (hd != "") { t = $0; if (hdtab) sub(/^\t+/, "", t); if (t == hd) hd = ""; next }
+  out = ""; top = 0; S[0] = "code"; P[0] = 0
+  for (i = 1; i <= length($0); i++) {
+    c = substr($0, i, 1)
+    if (S[top] == "sq") { if (c == SQ) top--; continue }
+    if (S[top] == "dq") {
+      if (c == "\\") i++
+      else if (c == "\"") top--
+      else if (c == "$" && substr($0, i + 1, 1) == "(") { top++; S[top] = "code"; P[top] = 0; out = out "$("; i++ }
+      continue
+    }
+    if (c == "\\") { i++; continue }
+    if (c == SQ) { top++; S[top] = "sq"; continue }
+    if (c == "\"") { top++; S[top] = "dq"; continue }
+    if (c == "#" && (out == "" || substr(out, length(out), 1) ~ /[ \t]/)) break
+    if (c == "(") P[top]++
+    else if (c == ")") { if (P[top] > 0) { P[top]--; continue } else if (top > 0) { top--; continue } }
+    out = out c
+  }
+  if (match(out, /<<-?[ \t]*[A-Za-z_][A-Za-z0-9_]*/)) {
+    m = substr(out, RSTART, RLENGTH); hdtab = (substr(m, 3, 1) == "-")
+    sub(/^<<-?[ \t]*/, "", m); hd = m
+  }
+  while (match(out, /[A-Z][A-Z0-9_][A-Z0-9_]+=/)) {
+    q = RSTART; l = RLENGTH
+    prev = (q == 1) ? "" : substr(out, q - 1, 1)
+    if (prev !~ /[A-Za-z0-9_{]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)
+    out = substr(out, q + l)
+  }
+}
+function cmdpos(pre,   w) {
+  sub(/[ \t]+$/, "", pre)
+  if (pre == "") return 1
+  if (pre ~ /[;&|(){]$/) return 1
+  while (pre ~ /(^|[ \t])-[A-Za-z-]+$/) { sub(/[ \t]*-[A-Za-z-]+$/, "", pre); if (pre == "") return 0 }
+  w = pre; sub(/^.*[ \t]/, "", w)
+  if (w ~ /^(then|else|elif|do|if|while|until|export|local|declare|readonly|typeset|env|time|!)$/) return 1
+  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)
+}'
   _scan ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' | grep -oE '[A-Z][A-Z0-9_]{2,}'
-} | tr -d '=' | LC_ALL=C sort -u > "${_tmp}/own_scripts"
+} | LC_ALL=C sort -u > "${_tmp}/own_scripts"
 #    (d) allowlist (strip comments/blanks)
 if [ -f "${ALLOW}" ]; then
   sed -E 's/#.*$//; s/[[:space:]]+//g' "${ALLOW}" | grep -vE '^$' | LC_ALL=C sort -u > "${_tmp}/own_allow"

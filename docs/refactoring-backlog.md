@@ -18,21 +18,24 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **LB**=llm-stack benchmark harness · **QW**=quality-gate wave follow-ups ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: **2026-09-04**, after the Q7 gate-honesty wave (mutation-gate
-isolation, the CRLF shape widening, three gates that could not go red, the
-env-knobs owners filter, CMD_OPS/arith proofs, registry credit by id prefix, and
-the doc-drift sweep). Everything closed 2026-09-03 is in the 2026-09-03 archive:
+Last groomed: **2026-09-04**, after the Q8 gate-scope wave was integrated (the
+env-knobs owner tokenizer, `crlf-guard` taking its scope from `lint-shell.sh`,
+the embedded-Python target set, the mutation gate's call-site and copy pins, the
+SAMPLED pre-commit mutation step, and the two-sided mutation-id convention).
+Q8 closed the two off-convention mutation ids and `lint-python.sh`'s stale ruff-pin
+sentence out of QW8. Everything closed 2026-09-03 is in the 2026-09-03 archive:
 A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's `_cross_stage_build_impl` and
 `reconcile_local_wheels` rows, and F3's chain-status walker.
 
-**Sixteen entries remain: FL1 (relaunch pending), HT1, SMK-ADV, TC1 and the
-eight QW rows are open work; YB is a defect under investigation; F1/F2/F3 are
+**Seventeen entries remain: FL1 (relaunch pending), HT1, SMK-ADV, TC1 and the
+nine QW rows are open work; YB is a defect under investigation; F1/F2/F3 are
 tracks.**
 
-* **QW1–QW8** — what the 2026-09-03 gate wave left behind and what the
-  2026-09-04 Q7 wave deliberately did NOT fix: two frozen-but-unreviewed
+* **QW1–QW9** — what the 2026-09-03 gate wave left behind and what the
+  2026-09-04 Q7 and Q8 waves deliberately did NOT fix: two frozen-but-unreviewed
   baselines, five deletions waiting on the running build, the shared allow
-  reader, and the limits the gates disclose rather than close.
+  reader, the ownership shapes the gate registry cannot express, and the limits
+  the gates disclose rather than close.
 
 * **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
   found weak** (~5% recovery). Root cause open.
@@ -398,19 +401,19 @@ Each is written up in the gate's own section of
 
 ### QW8. What the 2026-09-04 Q7 honesty wave left open [S each, ★–★★]
 
-Seven follow-ups the wave surfaced and deliberately did not take. None blocks the
+Five follow-ups the wave surfaced and deliberately did not take (two of the
+original seven were closed by the 2026-09-04 Q8 integration). None blocks the
 batch; all were verified on the live tree the day they were written.
 
-* **`lint-python.sh`'s header contradicts its own body.** Lines 16–19 still say
-  the ruff pin "lives here for now — MOVE to versions.env as `RUFF_VERSION` on
-  the next pin-bump window", but the C4 block six lines below already sources
-  `01-core/versions.env` and reads `RUFF_VERSION` (the key exists,
-  `RUFF_VERSION=0.16.4`). Stale prose, not a bug — left alone because
-  `lint-python.sh` is a gate script and the wave's rule was not to touch gate
-  code without a defect. One-line deletion in someone's window.
-* **Fifteen `env-knobs` allow rows want a real default, not a registry row.**
+* **Sixty `env-knobs` allow rows want a real default, not a registry row.**
   The 2026-09-04 owners-side comment filter re-homed 15 live `${NAME:-default}`
-  operator switches that nothing in the repo assigns. Three are reachable today —
+  operator switches that nothing in the repo assigns, and the Q8 owner tokenizer
+  re-homed 45 more whose only "owner" was quoted text — 36 of those are real
+  operator escape hatches named in exactly one place each, an error message
+  (`FORCE_LOW_DISK`, `DISK_PREFLIGHT`, `GCC_REQUIRE_GPG`, `RUNTIME_*`,
+  `OPENCV_ALLOW_NO_PNG`, `WHEEL_SOABI_STRICT`, the `ALLOW_*`/`KEEP_*` family).
+  A `: "${NAME:=0}"` at the reader would shrink the registry AND make the
+  default greppable where it is read. Three are reachable today —
   `PREFLIGHT_ONLY` and `PREFLIGHT_SKIP` (`preflight.sh`) and `SKIP_REAL_TREE`
   (`tests/test-shellcheck-warnings.sh`) — and would be better as a
   `: "${NAME:=…}"` at their reader. The other twelve live under
@@ -430,13 +433,11 @@ batch; all were verified on the live tree the day they were written.
   `verify_shellcheck_warnings.py --files linux/host-config/git-hooks/pre-commit`
   answers `outside the lint-shell.sh scope, skipped`. The hook is linted at
   `-S error` when passed explicitly, so warning-level regressions in the one file
-  every commit runs are watched by nothing.
-* **`shellcheck-warnings.pin-only-path-bin` and `.list-files-first` are credited
-  to nobody.** Both target `lint-shell.sh`, which is the `shellcheck` slug's
-  script, not `verify_shellcheck_warnings.py`; their prefix names a real slug so
-  the convention check passes, but the registry gives the mutation to neither
-  gate. Renaming them `shellcheck.*` costs nothing and gives that row real
-  weight; `shellcheck-warnings` keeps its own 16 either way.
+  every commit runs are watched by nothing. Q8 located the asymmetry exactly:
+  `lint-shell.sh` admits extension-less shebang scripts only for EXPLICITLY passed
+  paths, so `git ls-files -z | xargs -0r lint-shell.sh --list-files` answers 315
+  files (hook included — that is how `crlf-guard` now reaches it) while the
+  argument-less default sweep is 309 `*.sh` and the ratchet asks that one.
 * **`tests/test-code-complexity.sh` still measures twice per legacy case.** The
   18 cases added 2026-09-04 use `_pins`, one gate run for both numbers; the 15
   older hand-built cases still call `_measure` twice. Converting them halves the
@@ -448,3 +449,104 @@ batch; all were verified on the live tree the day they were written.
   of a quoted ` #` would lose its owner as well. Zero such lines in the tree
   today (measured), and the failure mode is a loud false-stale or a loud UNOWNED,
   not a silent pass.
+
+### QW9. What the 2026-09-04 Q8 gate-scope wave left open [S–M each, ★–★★]
+
+Eleven follow-ups, all verified on the live tree at integration time. Nothing here
+blocks the batch; every one is a gate that is honest about a limit rather than a
+gate that lies.
+
+* **The registry cannot express "a call site in the orchestrator".** [M, ★★]
+  `preflight.sh` is `crlf-guard`'s gate script AND the file that invokes all 33
+  slugs. `mutations.preflight-callsite-isolated` and
+  `mutations.preflight-runs-the-gate` pin preflight's *mutation-gate call site*;
+  the two-sided id rule sees only that `crlf-guard` owns the file, so it demands a
+  `crlf-guard.*` prefix — which would put a false credit in a generated table.
+  Both ids are frozen under `mutation-id:` in `gate-proofs.allow` instead. Repro:
+  rename either to `mutations.*` without the freeze and `verify_gate_registry.py`
+  prints `mutations does not own linux/scripts/preflight.sh -- crlf-guard does`.
+  The fix is an ownership rule, e.g. credit an entry to the slug whose registered
+  suite is its `test` command when the target is a shared orchestrator.
+
+* **`own_files()` does not follow a `.sh` gate's shelled-out helper.** [S, ★★]
+  It is `[rel] + imported_modules(rel)`, and `imported_modules` returns `[]` for a
+  shell gate, so `linux/scripts/extract_embedded_python.py` belongs to no row:
+  `python-lint.heredoc-python-decision` is a proven mutation that is credited to
+  nobody *and* invisible to the off-convention check. Repro: grep the `python-lint`
+  row of [`code-quality-gates.md`](code-quality-gates.md) — the entry is absent.
+  Fix: let `own_files` follow a `.sh` gate's `python3 <x>.py` / `bash <x>.sh`
+  invocations.
+
+* **The id-convention check is silent over NON-gate files.** [S, ★]
+  It fires only when the target is a registered gate's own file, so the four
+  `pre-commit.*` ids (target `linux/host-config/git-hooks/pre-commit`, and
+  `pre-commit` is not a preflight slug at all) pass unexamined. Deliberate scope,
+  matching the house rule, but it means the prefix is enforced for gate files only.
+
+* **The mutation gate re-runs a whole suite per entry.** [M, ★★★]
+  Measured 2026-09-04 on the 23-file integration diff: the hook's mutation step is
+  23.9 s capped at 6 entries and **2 m 22 s uncapped** for the 71 matched entries,
+  and the full 211-entry manifest is **7 m 15 s**. The cost is one suite process
+  per entry; one baseline and one process reused per suite would let
+  `PRECOMMIT_MUTATION_CAP` rise a lot for free. Repro:
+  `PRECOMMIT_MUTATION_CAP=0 bash linux/host-config/git-hooks/pre-commit` with the
+  current diff staged.
+
+* **Nothing runs the other ~205 entries between commit and CI.** [M, ★★]
+  A pre-push hook is the right home — `--changed`'s existing semantics (everything
+  committed since `origin/main`) are exactly right there, and a batch pays once
+  instead of per commit. Blocked on `verify_gate_registry.py`'s `HOOK` constant
+  being hard-coded to the pre-commit path: add a pre-push hook today and the
+  generated table reports the `mutations` slug as CI-only, which is a false
+  statement in a generated file.
+
+* **The shell tokenizer now exists twice, in two languages.** [M, ★★]
+  `verify_code_complexity.py` (`shell_code` + `_Walker`) and the awk filter inside
+  `lint-env-knobs.sh` both strip comments, quotes and heredoc bodies and both
+  answer "is this token in command position". Not code duplication —
+  `verify_code_dupes.py` is clean — but duplication of idea across a language
+  boundary, kept because the env-knobs gate is a 0.4 s bash gate with no Python
+  process to spare. If a third consumer appears, extract one owner and call it.
+
+* **Two owner shapes the env-knobs scan deliberately will not count.** [S, ★]
+  `-e "NAME=$(...)"` container-env injection (`RT_PROBE_SH`, `SMOKE_ONNX_PY`) and
+  `NAME=value` words passed as arguments to a test helper that later
+  `export "$@"`s them (`BUILD_RC`, `DISK_OK`, `HAS_PINNED_BASE`, `TRANSIENT`).
+  Both carry the name inside a quoted word, so teaching the scan about them means
+  un-masking string content — the exact hole the wave closed. They are honest
+  allow rows; the alternative is a real assignment at the reader.
+
+* **A heredoc ruff finding is named `probe__2.py:1:`.** [S, ★★]
+  Opener line in the shell file, then line WITHIN the extracted body: reading a
+  real finding needs the two numbers added by hand. `extract_embedded_python.py`
+  already prints the exact `<tmpfile>\t<src>:<line>` table; `lint-python.sh`
+  discards it. Surfacing it on a gate failure is the fix, and it needs its own
+  suite case plus a mutation because it changes the gate's output.
+
+* **`extract_embedded_python.py | main | cc 16` is frozen "not yet reviewed".**
+  [S, ★] Baseline 2026-09-03. The file became load-bearing for the `python-lint`
+  target set on 2026-09-04, so it is the next candidate for the complexity queue
+  rather than a permanent freeze.
+
+* **`*.sh.tpl` is in no shell gate's scope, and a CRLF template generates a CRLF
+  wrapper.** [S, ★] `lint-shell.sh` classifies `qemu-binary-wrapper.sh.tpl` as
+  "some other extension", so neither `shellcheck` nor `crlf-guard` sees it.
+  Admitting it would also send an `@PLACEHOLDER@` template to shellcheck (it
+  happens to parse today) — a call for the `lint-shell` owner, not something
+  `crlf-guard` should answer differently.
+
+* **`versions.env` cannot be sourced quietly.** [S, ★]
+  Every `lint-python.sh` run prints `versions.env: line 398: 86: command not
+  found` (three times) because `CUDA_ARCHITECTURES=80;86;89;90` is unquoted and
+  sourcing it runs `86`, `89`, `90` as commands. Cosmetic, but it is stderr noise
+  on a gate that runs in every hook. Quoting the value is the one-line fix, and it
+  is frozen for the duration of the running cross build (`01-core`).
+
+**Two shapes to remember, not fix.** `test-mutation-gate.sh` pins two call-site
+strings it does not own (`run_check mutations` in `preflight.sh`, and the hook's
+`verify_mutations.py "${_only[@]}" ||` line) — reformatting either call site turns
+the suite red with no behaviour change; that already happened once during this
+wave and is the price of pinning a call site by reading it. And
+`windows/scripts/patches/ffmpeg/makedef` entered the `crlf-guard` scope as a side
+effect of the shared classifier: it is LF today, and a future CR there is a
+Windows-backlog item, not a Linux-lane regression.

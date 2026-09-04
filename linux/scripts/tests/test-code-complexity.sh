@@ -436,6 +436,27 @@ f() {
 }
 EOF
 
+t_case "'((' at column 0 is arithmetic: a line start is a delimiter too"
+_pins 2 0 "nothing precedes it, so its << must not swallow the rest" <<'EOF'
+f() {
+((x << n))
+  a || b
+}
+EOF
+
+# ── a '}' is a block end only when something delimits it ─────────────────────
+t_case "a '}' glued to a ';' still closes its block"
+_pins 3 2 "'{ : ;}' ends the brace group; unclosed, everything after it reads one deeper" <<'EOF'
+f() {
+  { : ;}
+  if a; then
+    if b; then
+      :
+    fi
+  fi
+}
+EOF
+
 # ── the four-way contract, both metrics ──────────────────────────────────────
 t_case "under both limits nothing is reported"
 t_assert_contains "$(_run_on _ors 14)" "rc=0" "cc 15 is at, not over, the limit"

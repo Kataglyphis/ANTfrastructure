@@ -152,7 +152,7 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
     *.*)  ;;   # some other extension: not ours
     *)
       # No extension at all — admit it only on a shell shebang.
-      case "$(head -c 128 "${f}" 2>/dev/null | head -n 1)" in
+      case "$(head -c 128 "${f}" 2>/dev/null | head -n 1 | tr -d '\r')" in
         '#!'*[bd]'ash'|'#!'*[bd]'ash '*|'#!/bin/sh'|'#!/bin/sh '*|'#!'*'env sh'|'#!'*'env '[bd]'ash')
           CHECK+=("${f}") ;;
       esac

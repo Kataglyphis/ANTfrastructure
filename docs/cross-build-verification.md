@@ -247,7 +247,7 @@ drift if a slug is added without touching it.
 
 | Slug | Script | Catches |
 |------|--------|---------|
-| `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
+| `crlf-guard` | inline (`git ls-files --eol` over `lint-shell.sh --list-files`) | a tracked shell script — `*.sh` or an extension-less file on a shell shebang — whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
@@ -285,12 +285,20 @@ Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
 whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 17 fast slugs in
-`_FAST_SLUGS` (`:23-26`), 4.2 s combined — and then three blocks scoped to the
+`_FAST_SLUGS` (`:64-67`), 4.2 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
-plus the warning ratchet on staged `.sh` files (`:37-54`, the binary resolved
+plus the warning ratchet on staged `.sh` files (`:78-95`, the binary resolved
 through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
-when `docs/*.md` moved (`:57-61`), and `verify_mutations.py --changed` on
-whatever is staged (`:66-75`, seconds for a typical commit against the ~6 min of all 180 entries).
+when `docs/*.md` moved, and `verify_mutations.py` on a SAMPLE of the entries whose
+target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 6), newest first, and
+it prints `SAMPLED n of m` whenever it cut, because a green hook must not imply
+coverage it did not pay for. Measured end to end 2026-09-04: **8.0 s** for a
+one-file commit (no sampling — all 5 matched entries ran) and **27.2 s** for the
+43-file commit `9a5bf8dd` (sampling 6 of 132), against **5m26s** for that same
+commit before the cap; those 132 entries uncapped are **322 s** on their own.
+`make preflight` and CI still run all 180.
+Why it samples rather than running `--changed` whole:
+[`code-quality-tooling.md`](code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
 `shellcheck-warnings` is deliberately NOT a fast slug: whole-tree it is 22 s,
 per staged file 0.2 s.
 

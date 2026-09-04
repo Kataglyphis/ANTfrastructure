@@ -260,6 +260,9 @@ work="$(mktemp -d)"; printf 'Just prose, not a script.\n' > "${work}/READMEISH"
 t_assert_eq "" "$(bash "${LINT}" --list-files "${work}/READMEISH" 2>&1)" \
   "the 'no shell scripts to check' banner would become a bogus scope entry"
 t_assert_contains "$(bash "${LINT}" --list-files 2>&1)" "linux/scripts/lint-shell.sh" "the real scope is non-empty"
+printf '#!/usr/bin/env bash\r\n: "${X:-}"\r\n' > "${work}/crlfhook"
+t_assert_contains "$(bash "${LINT}" --list-files "${work}/crlfhook" 2>&1)" "crlfhook" \
+  "a CRLF extension-less script must still classify as shell, or it is invisible to this gate AND to crlf-guard"
 rm -rf "${work}"
 
 # ── the real tree ────────────────────────────────────────────────────────────

@@ -1346,7 +1346,7 @@ base ─┬─ onnxruntime ───────┐
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` on the STAGED shell files and the doc gates only when `docs/` is staged, plus the scoped mutation gate (`verify_mutations.py --changed`, silent unless a mutant survives) | **~11 s** |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 17 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most 6 entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/ubuntu24.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 
@@ -1355,9 +1355,18 @@ base ─┬─ onnxruntime ───────┐
   with a clone. `git commit --no-verify` bypasses it — then run `make preflight`
   before pushing, because CI will not be as forgiving.
 
-  The hook is deliberately a SUBSET. A pre-commit gate that takes minutes teaches
-  people to type `--no-verify`, which is worse than having no hook at all; the
-  full suite belongs to the two slower rungs above it.
+  The hook is deliberately a SUBSET, and its mutation step is deliberately a
+  SAMPLE. A pre-commit gate that takes minutes teaches people to type
+  `--no-verify`, which is worse than having no hook at all — and this one had
+  become that gate: the same 43-file commit measured **5m26s** in September 2026,
+  because `--changed` also selects everything committed since `origin/main`, so
+  every commit of a batch re-paid for the ones before it (132 entries, 322 s
+  uncapped). The hook now scopes to the STAGED files and runs at most
+  `PRECOMMIT_MUTATION_CAP` of them (default 6, newest first, `0` = uncapped).
+  A sample never reports as full coverage — it prints how many of how many it
+  ran. `make preflight` and CI still run all 180 entries.
+  Reasoning and the measurements: `docs/code-quality-tooling.md` §
+  "The pre-commit hook's cost budget".
 
 - **`bash linux/scripts/preflight.sh` is the single source of the no-build gate
   list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT

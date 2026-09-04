@@ -91,27 +91,29 @@ run_check() {
   fi
 }
 
-# 0. Working-tree CR guard: a tracked *.sh carrying CR bytes in the WORKING TREE
-#    breaks bash inside the containers ("$'\r': command not found"). Only git's
-#    w/ column counts (buildkit snapshots the worktree, not the index), and all
-#    three CR-bearing shapes are offenders: crlf, mixed, and -text (a lone CR).
+# 0. Working-tree CR guard: a tracked shell script carrying CR bytes in the WORKING
+#    TREE breaks bash inside the containers ("$'\r': command not found"). Only git's
+#    w/ column counts (buildkit snapshots the worktree, not the index). The file set
+#    is lint-shell.sh's, so extension-less hooks are in scope; any stage failing is
+#    a loud failure under pipefail, never an empty pass.
 #    docs/code-quality-tooling.md#crlf-guard-the-worked-example
 check_crlf_guard() {
   local offenders
-  # `|| echo FAIL...`: if git itself fails here (not a work tree, broken index)
-  # the check must FAIL LOUDLY, not pass on an empty result.
-  offenders="$(git ls-files --eol -- '*.sh' 2>/dev/null \
+  offenders="$(git ls-files -z 2>/dev/null \
+    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \
+    | tr '\n' '\0' \
+    | xargs -0r git ls-files --eol -- 2>/dev/null \
     | awk -F'\t' '{ split($1, c, /[ \t]+/)
         if (c[2] == "w/crlf" || c[2] == "w/mixed" || c[2] == "w/-text")
           printf "  %s  %s\n", c[2], $2 }' \
     || echo "__git-ls-files-FAILED__")"
   if [ -n "${offenders}" ]; then
-    printf 'CRLF working-tree line endings detected in tracked *.sh file(s):\n'
+    printf 'CRLF working-tree line endings detected in tracked shell script(s):\n'
     printf '%s\n' "${offenders}"
     printf 'Fix (re-materialize LF from the index): rm <file> && git checkout -- <file>\n'
     return 1
   fi
-  printf 'no w/crlf, w/mixed or w/-text *.sh files in the working tree\n'
+  printf 'no w/crlf, w/mixed or w/-text shell scripts in the working tree\n'
 }
 run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 

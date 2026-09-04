@@ -88,8 +88,11 @@ def apply_and_run(entry, root):
         return False, False, "target missing"
     with open(target, encoding="utf-8") as fh:
         original = fh.read()
-    if entry["find"] not in original:
+    hits = original.count(entry["find"])
+    if hits == 0:
         return False, False, "find text not present -- the mutation is stale"
+    if hits > 1:
+        return False, False, "find text matches %d times -- ambiguous, name one edit" % hits
     mutated = original.replace(entry["find"], entry["replace"], 1)
     if mutated == original:
         return False, False, "replace is a no-op"

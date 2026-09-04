@@ -32,6 +32,8 @@ ID_FREEZE = "mutation-id:"
 RUN_CHECK = re.compile(r'^\s*run_check\s+([a-z0-9-]+)\s+"([^"]*)"\s*(.*)$')
 KNOWN = re.compile(r"KNOWN_SLUGS=\((.*?)\)", re.DOTALL)
 FAST = re.compile(r'_FAST_SLUGS="([^"]*)"', re.DOTALL)
+GUARD = re.compile(r'^if \[ -n "\$\{(_[A-Za-z0-9_]+)\}" \]; then$')
+CHANGED = "--changed"
 ALLOW_LIT = re.compile(r"[A-Za-z0-9_./-]+\.allow\b")
 IMPORT = re.compile(r"^from\s+([A-Za-z_][A-Za-z0-9_]*)\s+import\b", re.MULTILINE)
 WORD = re.compile(r"(?<![\w/.-])([A-Za-z_][A-Za-z0-9_]*)(?![\w/.-])")
@@ -167,13 +169,30 @@ def mutation_ids(entries, slug, files):
     return [e["id"] for e in entries if id_slug(e) == slug and e["target"] in files]
 
 
-def unknown_prefix_ids(table):
-    """Frozen keys for entries that pin a registered gate's file under an id prefix
-    naming no slug -- credited to nobody, so the convention is checked, not assumed."""
+def _id_verdict(e, known, owners, files):
+    """Why a mutation id over a registered gate's file credits nobody -- an unknown
+    prefix, or a real slug that does not own the target -- or None when it is fine."""
+    if e["target"] in files and id_slug(e) not in known:
+        return "prefix names no preflight slug"
+    if e["target"] in files and e["target"] not in owners.get(id_slug(e), ()):
+        return "%s does not own %s -- %s does" % (
+            id_slug(e), e["target"],
+            ", ".join(sorted(s for s, fs in owners.items() if e["target"] in fs)))
+    return None
+
+
+def off_convention_ids(table):
+    """Frozen key -> why that mutation id credits no gate, so the convention behind
+    prefix-keyed credit is checked in both directions rather than assumed."""
     known = set(known_slugs(_read(PREFLIGHT)))
-    files = {f for row in table for f in row["own files"]}
-    return {ID_FREEZE + e["id"] for e in mutation_entries()
-            if e["target"] in files and id_slug(e) not in known}
+    owners = {row["slug"]: set(row["own files"]) for row in table}
+    files = {f for fs in owners.values() for f in fs}
+    out = {}
+    for e in mutation_entries():
+        why = _id_verdict(e, known, owners, files)
+        if why:
+            out[ID_FREEZE + e["id"]] = why
+    return out
 
 
 def suites():
@@ -195,11 +214,39 @@ def hook_slugs(text):
     return {s.strip() for s in m.group(1).replace("\\\n", "").split(",") if s.strip()}
 
 
+def hook_blocks(text):
+    """[(guard variable, body)] for every `if [ -n "${_staged…}" ]` block of the hook."""
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        m = GUARD.match(lines[i])
+        i += 1
+        if not m:
+            continue
+        start = i
+        while i < len(lines) and lines[i] != "fi":
+            i += 1
+        out.append((m.group(1), "\n".join(lines[start:i])))
+    return out
+
+
+def unscoped_hook_block(needle, text):
+    """True when the hook names the gate inside a staged-files block whose body never
+    hands it that list: the whole-tree gate, run only when the commit is relevant.
+    `--changed` is the same list under another name."""
+    for var, body in hook_blocks(text):
+        if mentions(needle, body):
+            return CHANGED not in body and not mentions(var, body)
+    return False
+
+
 def hook_tier(slug, needle, fast, text):
-    """_FAST_SLUGS runs the whole gate; a hook block naming the gate itself runs it
-    scoped to the staged files; anything else is CI-only."""
+    """_FAST_SLUGS runs the whole gate on every commit; a later hook block runs it
+    either over the staged files or whole-tree behind a staged-files `if`, and the
+    column must say which; anything else is CI-only."""
     if slug in fast:
         return "hook+CI"
+    if unscoped_hook_block(needle, text):
+        return "hook (whole tree, when relevant)+CI"
     return "hook (scoped)+CI" if mentions(needle, text) else "CI"
 
 
@@ -256,9 +303,12 @@ def render(table):
              ("Proof rules, in short. Tests: the suite names the needle -- a basename, or "
               "for an inline gate the function on its `run_check` line. Mutations: the id "
               "prefix picks the gate, and the target must be that gate's script or an "
-              "imported module beside it; a prefix naming no slug fails until renamed or "
-              "frozen. Hook tier: `hook+CI` sits in `_FAST_SLUGS`, `hook (scoped)+CI` is "
-              "named by a later hook block over staged files, `CI` is neither. Rationale: "
+              "imported module beside it; a prefix that cannot own the target fails until "
+              "renamed or frozen. Hook tier: `hook+CI` sits in `_FAST_SLUGS` and runs "
+              "whole-tree on every commit, `hook (scoped)+CI` is run by a later hook block "
+              "over the staged files alone, `hook (whole tree, when relevant)+CI` is run "
+              "whole-tree by a block that fires only when the commit touches its inputs, "
+              "`CI` is none of those. Rationale: "
               "docs/code-quality-tooling.md#gate-proof-registry-gate-registry"), "",
              "| " + " | ".join(COLUMNS) + " |",
              "|" + " --- |" * len(COLUMNS)]
@@ -282,7 +332,7 @@ def main():
     unproven = {r["slug"] for r in table if r["proof"] == UNPROVEN}
     frozen = load_keys(ALLOW)
     frozen_ids = {k for k in frozen if k.startswith(ID_FREEZE)}
-    off_convention = unknown_prefix_ids(table)
+    off_convention = off_convention_ids(table)
     print("  %d slugs; %d proven; %d unproven, %d frozen in %s"
           % (len(table), len(table) - len(unproven), len(unproven), len(frozen - frozen_ids),
              os.path.basename(ALLOW)))
@@ -298,9 +348,10 @@ def main():
                     "(the list only ratchets down):",
                     lambda k: "%s  (%s)" % (k, scripts.get(k, "?")))
     rc = check_keys(off_convention, frozen_ids,
-                    "mutations.json id(s) pinning a gate file under a prefix that names no "
-                    "preflight slug -- rename to <slug>.<kebab> so the registry can credit them:",
-                    "STALE mutation-id freeze(s) -- the id is renamed or gone, delete the line:") or rc
+                    "mutations.json id(s) pinning a gate file under a prefix that cannot own it "
+                    "-- rename to <owning-slug>.<kebab> so the registry can credit them:",
+                    "STALE mutation-id freeze(s) -- the id is renamed or gone, delete the line:",
+                    lambda k: "%s  (%s)" % (k, off_convention[k])) or rc
     current = _read(REGISTRY) if os.path.isfile(REGISTRY) else ""
     if current != text:
         rc = 1

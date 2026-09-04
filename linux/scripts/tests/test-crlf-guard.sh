@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests for check_crlf_guard, the inline preflight gate: a tracked *.sh whose
-# WORKING-TREE bytes carry CR must be named and fail in every shape git can
-# report (w/crlf, w/mixed, w/-text), an index-only CRLF must not, and a git
-# failure must not pass on the empty result.
+# Tests for check_crlf_guard, the inline preflight gate: a tracked shell script
+# whose WORKING-TREE bytes carry CR must be named and fail in every shape git can
+# report (w/crlf, w/mixed, w/-text), an index-only CRLF must not, the scope is
+# lint-shell.sh's, and any stage failing must not pass on the empty result.
 # docs/code-quality-tooling.md#crlf-guard-the-worked-example
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,6 +10,7 @@ source "${TESTS_DIR}/test-harness.sh"
 REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
 
 FN_SRC="$(t_fn_src "${REPO_ROOT}/linux/scripts/preflight.sh" check_crlf_guard)" || exit 1
+SET_LINE="$(grep -m1 -e '^set -' "${REPO_ROOT}/linux/scripts/preflight.sh")"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
@@ -22,6 +23,8 @@ _repo() {
   git -C "${REPO}" config user.email tester@example.invalid
   git -C "${REPO}" config user.name tester
   git -C "${REPO}" config core.autocrlf false
+  mkdir -p "${REPO}/linux/scripts"
+  cp "${REPO_ROOT}/linux/scripts/lint-shell.sh" "${REPO}/linux/scripts/lint-shell.sh"
   printf 'echo hi\n' > "${REPO}/good.sh"
   printf 'echo bad\n' > "${REPO}/bad.sh"
   git -C "${REPO}" add good.sh bad.sh
@@ -34,7 +37,9 @@ _eol() { git -C "${REPO}" ls-files --eol -- "$1" | awk -F'\t' -v n="$2" '{split(
 
 OUT=""; rc=0
 _guard() {
-  OUT="$(cd "${1:-${REPO}}" && bash -c 'set -uo pipefail; source "$1"; check_crlf_guard' _ "${WORK}/guard.sh" 2>&1)"
+  OUT="$(cd "${1:-${REPO}}" && bash -c "${SET_LINE}"'
+source "$1"
+check_crlf_guard' _ "${WORK}/guard.sh" 2>&1)"
   rc=$?
 }
 
@@ -43,7 +48,7 @@ _named() { printf '%s' "${OUT}" | grep -c "$1"; }
 t_case "an LF-only working tree passes and says what it looked at"
 _repo lf; _guard
 t_assert_eq "0" "${rc}" "nothing carries CR, so the guard must pass"
-t_assert_contains "${OUT}" "no w/crlf, w/mixed or w/-text *.sh files in the working tree"
+t_assert_contains "${OUT}" "no w/crlf, w/mixed or w/-text shell scripts in the working tree"
 
 t_case "a wholly-CRLF tracked *.sh is named and fails"
 _repo crlf 'echo bad\r\n'; _guard
@@ -99,5 +104,33 @@ mkdir -p "${WORK}/nogit"
 _guard "${WORK}/nogit"
 t_assert_eq "1" "${rc}" "git ls-files failing must not read as a clean tree"
 t_assert_contains "${OUT}" "__git-ls-files-FAILED__"
+
+t_case "an extension-less script on a shell shebang is in scope, like the commit hook"
+_repo hook
+mkdir -p "${REPO}/git-hooks"
+printf '#!/usr/bin/env bash\necho hi\r\n' > "${REPO}/git-hooks/pre-commit"
+git -C "${REPO}" add git-hooks/pre-commit
+_guard
+t_assert_eq "1" "${rc}" "a hook cannot carry a .sh suffix, and CR breaks it exactly the same"
+t_assert_contains "${OUT}" "w/mixed  git-hooks/pre-commit"
+
+t_case "an extension-less file with no shell shebang is NOT an offender"
+_repo notes
+printf 'plain\r\ntext\r\n' > "${REPO}/NOTES"
+git -C "${REPO}" add NOTES
+_guard
+t_assert_eq "0" "${rc}" "the scope is lint-shell.sh's answer, not every tracked file"
+t_assert_eq "0" "$(_named NOTES)" "prose is allowed to carry CR"
+
+t_case "the scope owner going missing is a loud failure, not an empty scope that passes"
+_repo noowner
+rm "${REPO}/linux/scripts/lint-shell.sh"
+_guard
+t_assert_eq "1" "${rc}" "no lint-shell.sh means no answer to 'what is a shell script'"
+t_assert_contains "${OUT}" "__git-ls-files-FAILED__"
+
+t_case "the pipefail this guard needs is pinned in preflight.sh, not hard-coded here"
+t_assert_contains "${SET_LINE}" "pipefail" \
+  "the loud-failure cases run under preflight.sh's own set line; dropping pipefail there must break them"
 
 t_summary

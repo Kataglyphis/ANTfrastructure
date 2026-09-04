@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests for docs/scripts/verify_mutations.py. It neuters a guarantee to check a
-# test can fail, so the two cases that matter most are that the tree it was
-# pointed at comes back byte-identical (a build may be reading it) and that
-# --in-place, the opt-out these fixtures use, still edits in place and restores.
+# test can fail, so the cases that matter most are that the tree it was pointed at
+# comes back byte-identical (a build may be reading it), that --in-place -- the
+# opt-out these fixtures use -- still edits in place and restores, and that the two
+# production call sites never pass it.
 # docs/code-quality-tooling.md#the-mutation-gate-mutations
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,5 +138,59 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" 
 printf '#!/usr/bin/env bash\nprintf "somewhere/else.sh\\n"\n' > "${_work}/bin/git"
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
   "a target outside the diff must be skipped, not run"
+
+# --- the production call sites: isolation is a DEFAULT, --in-place is one flag away
+_gate_calls() { grep -e 'verify_mutations\.py' "$1" || true; }
+_count() { printf '%s\n' "$1" | grep -c "${@:2}" || true; }
+
+t_case "the production call sites invoke the gate, and never with --in-place"
+_pf_calls="$(_gate_calls "${REPO}/linux/scripts/preflight.sh")"
+_hook_calls="$(_gate_calls "${REPO}/linux/host-config/git-hooks/pre-commit")"
+t_assert_contains "${_pf_calls}" "run_check mutations" \
+  "preflight must run the mutation gate as the 'mutations' slug"
+t_assert_eq "1" "$(_count "${_hook_calls}" -E -e 'verify_mutations\.py "\$\{_only\[@\]\}" \|\|')" \
+  "the pre-commit hook must gate the commit on the staged-file selection of this gate"
+t_assert_eq "0" "$(_count "${_pf_calls}" -e '--in-place')" \
+  "preflight must not opt out of isolation: it points the gate at the tree buildkit reads as a build context"
+t_assert_eq "0" "$(_count "${_hook_calls}" -e '--in-place')" \
+  "the hook must not opt out of isolation: it runs against the live working tree"
+
+t_case "a find string that matches TWICE is an error, not a silent partial edit"
+_fixture "GUARD=on" "GUARD=off" yes .
+printf 'GUARD=on\n' >> "${_work}/subject.sh"
+_out="$(_iso_run)"
+t_assert_contains "${_out}" "ambiguous" \
+  "a mutation must name ONE edit: replacing the first of several leaves the guarantee half-standing"
+t_assert_eq "1" "$(_iso_rc)" "an ambiguous mutation must fail the gate"
+case "${_out}" in
+  *SURVIVED*) t_assert_eq "an ambiguous-find error" "a SURVIVED verdict" \
+    "half-applying the edit turns a real guarantee into a false survivor report" ;;
+  *) t_assert_ok true ;;
+esac
+
+t_case "the copy keeps file modes, so a mutated script is still executable"
+_fixture "GUARD=on" "GUARD=off" yes .
+chmod +x "${_work}/subject.sh"
+printf 'test -x ./subject.sh || exit 1\ngrep -q "GUARD=on" ./subject.sh\n' > "${_work}/t.sh"
+t_assert_contains "$(_iso_run)" "bites" \
+  "a mode-losing copy makes every shell test fail for the wrong reason, not for the mutation"
+t_assert_eq "0" "$(_iso_rc)" "the executable subject must still produce an honest bite"
+
+t_case "the copy skips the heavy trees, it does not clone the whole checkout"
+_fixture "GUARD=on" "GUARD=off" yes .
+_heavy=".git/objects out logs archive external linux/webserver/dist"
+for _d in ${_heavy}; do mkdir -p "${_work}/${_d}"; printf 'heavy\n' > "${_work}/${_d}/payload"; done
+printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' \
+  "${_tmp}" > "${_work}/t.sh"
+t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+_copied="$(cat "${_tmp}/copied")"
+t_assert_contains "${_copied}" "./subject.sh" "the tree under test is what gets copied"
+for _d in ${_heavy}; do
+  case "${_copied}" in
+    *"./${_d}/payload"*) t_assert_eq "no ${_d} in the copy" "${_d} was copied" \
+      "COPY_EXCLUDES must keep ${_d} out: the gate runs from a pre-commit hook, once per invocation" ;;
+    *) t_assert_ok true ;;
+  esac
+done
 
 t_summary

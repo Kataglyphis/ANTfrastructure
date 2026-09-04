@@ -968,7 +968,7 @@
     "why": "SHELLCHECK_BIN must stay the first-choice override, so a caller can pin the binary the counts were frozen with"
   },
   {
-    "id": "shellcheck-warnings.pin-only-path-bin",
+    "id": "shellcheck.pin-only-path-bin",
     "target": "linux/scripts/lint-shell.sh",
     "find": "[ \"$(\"${path_bin}\" --version 2>/dev/null | sed -n 's/^version: //p')\" = \"${SHELLCHECK_VERSION#v}\" ]",
     "replace": "[ -n \"${path_bin}\" ]",
@@ -976,7 +976,7 @@
     "why": "a PATH shellcheck at any other version counts different warnings than the frozen baseline (CI's apt 0.9.0)"
   },
   {
-    "id": "shellcheck-warnings.list-files-first",
+    "id": "shellcheck.list-files-first",
     "target": "linux/scripts/lint-shell.sh",
     "find": "if [ \"${LIST_FILES}\" -eq 1 ]; then",
     "replace": "if [ \"${LIST_FILES}\" -eq 1 ] && [ \"${#CHECK[@]}\" -gt 0 ]; then",
@@ -1200,20 +1200,12 @@
     "why": "the adoption ramp must stay advisory: promoting a style code into the gate tier turns a passing tree red"
   },
   {
-    "id": "env-knobs.owners-ignore-comments",
-    "target": "linux/scripts/lint-env-knobs.sh",
-    "find": "{ _scan '[A-Z][A-Z0-9_]{2,}=' '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' | grep -oE '[A-Z][A-Z0-9_]{2,}='",
-    "replace": "{ grep -rhoE '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' \"${SCRIPTS}\" --include='*.sh' 2>/dev/null | grep -oE '[A-Z][A-Z0-9_]{2,}='",
-    "test": "bash linux/scripts/tests/test-env-knobs.sh",
-    "why": "the OWNERS scan must read the comment-stripped lines: a knob named only in prose is not owned"
-  },
-  {
     "id": "env-knobs.owner-trailing-comment",
     "target": "linux/scripts/lint-env-knobs.sh",
     "find": "s/[[:space:]]+#.*$//",
     "replace": "s/[[:space:]]+$//",
     "test": "bash linux/scripts/tests/test-env-knobs.sh",
-    "why": "the strip must cut at the trailing '#', not merely trim whitespace, or a ' # NAME=1' still owns NAME"
+    "why": "the trailing '#' strip must cut, not merely trim whitespace, or a ' # ${NAME:-}' still counts as a reader"
   },
   {
     "id": "env-knobs.private-prefix-not-a-knob",
@@ -1438,5 +1430,261 @@
     "replace": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|\"):",
     "test": "bash linux/scripts/tests/test-code-complexity.sh",
     "why": "`((` after an & is arithmetic, so its << is not a heredoc"
+  },
+  {
+    "id": "env-knobs.owner-quoted-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == \"\\\"\") { top++; S[top] = \"dq\"; continue }",
+    "replace": "    if (c == \"\\\"\") { continue }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "text inside a double-quoted string is not code: an echo that spells NAME=value owns nothing"
+  },
+  {
+    "id": "env-knobs.owner-command-position",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "function cmdpos(pre,   w) {\n  sub(/[ \\t]+$/, \"\", pre)",
+    "replace": "function cmdpos(pre,   w) {\n  return 1\n  sub(/[ \\t]+$/, \"\", pre)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "an assignment-shaped ARGUMENT is not an assignment: only command position owns"
+  },
+  {
+    "id": "env-knobs.owner-comment-text",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (c == \"#\" && (out == \"\" || substr(out, length(out), 1) ~ /[ \\t]/)) break",
+    "replace": "    if (0) break",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a comment is not code: prose spelling `export NAME=1` must not own NAME"
+  },
+  {
+    "id": "env-knobs.owner-heredoc-body",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (hd != \"\") { t = $0; if (hdtab) sub(/^\\t+/, \"\", t); if (t == hd) hd = \"\"; next }",
+    "replace": "  if (hd != \"\") { hd = \"\" }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a NAME=value line in a heredoc body is emitted data, not this script's own assignment"
+  },
+  {
+    "id": "env-knobs.owner-substitution-in-quotes",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "      else if (c == \"$\" && substr($0, i + 1, 1) == \"(\") { top++; S[top] = \"code\"; P[top] = 0; out = out \"$(\"; i++ }",
+    "replace": "      else if (c == \"$\" && substr($0, i + 1, 1) == \"(\") { i++ }",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "$( ) inside a double-quoted word is code again, so an assignment there still owns"
+  },
+  {
+    "id": "env-knobs.owner-keyword-prefix",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (w ~ /^(then|else|elif|do|if|while|until|export|local|declare|readonly|typeset|env|time|!)$/) return 1",
+    "replace": "  if (w ~ /^(then|else|elif|do|if|while|until|env|time|!)$/) return 1",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "export/local/readonly/declare open command position, so the assignment after them owns"
+  },
+  {
+    "id": "env-knobs.owner-env-prefix-chain",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  return (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/)",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "every assignment of an env-prefix chain owns, not just the first"
+  },
+  {
+    "id": "env-knobs.owner-case-arm",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "  if (pre ~ /[;&|(){]$/) return 1",
+    "replace": "  if (pre ~ /[;&|({]$/) return 1",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a case arm's ) opens command position, so an assignment in the arm owns"
+  },
+  {
+    "id": "env-knobs.owner-expansion-guard",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "    if (prev !~ /[A-Za-z0-9_{]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)",
+    "replace": "    if (prev !~ /[A-Za-z0-9_]/ && cmdpos(substr(out, 1, q - 1))) print substr(out, q, l - 1)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "a parameter expansion's own = is not an assignment: ${VAR=x} must not own"
+  },
+  {
+    "id": "crlf-guard.scope-sh-suffix-only",
+    "target": "linux/scripts/preflight.sh",
+    "find": "git ls-files -z 2>/dev/null \\\n    | xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null \\\n    | tr '\\n' '\\0' \\\n    | xargs -0r git ls-files --eol -- 2>/dev/null \\\n",
+    "replace": "git ls-files --eol -- '*.sh' 2>/dev/null \\\n",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "a *.sh pathspec cannot see an extension-less script on a shell shebang, so the commit hook that runs this very gate was outside it while the neighbouring shellcheck gate covered it"
+  },
+  {
+    "id": "crlf-guard.scope-not-classified",
+    "target": "linux/scripts/preflight.sh",
+    "find": "xargs -0r bash linux/scripts/lint-shell.sh --list-files 2>/dev/null",
+    "replace": "xargs -0r printf '%s\\n' 2>/dev/null",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "the scope must be lint-shell.sh's answer to 'what is a shell script'; taking every tracked path instead turns CR in prose, patches and fixtures into gate failures"
+  },
+  {
+    "id": "crlf-guard.pipefail-pin",
+    "target": "linux/scripts/preflight.sh",
+    "find": "set -uo pipefail",
+    "replace": "set -u",
+    "test": "bash linux/scripts/tests/test-crlf-guard.sh",
+    "why": "__git-ls-files-FAILED__ is reachable only because a failing stage fails the pipeline; without pipefail awk's zero is the verdict and a broken git or a missing lint-shell.sh reads as a clean tree"
+  },
+  {
+    "id": "python-lint.embedded-extraction-off",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "  if python3 linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) >/dev/null 2>&1; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the extraction call is the only thing putting heredoc Python in front of ruff; switching it off drops ~775 lines out of the gate while every suite stays green"
+  },
+  {
+    "id": "python-lint.embedded-file-discovery",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "$(find linux/scripts -name '*.sh' -type f;",
+    "replace": "$(find linux/scripts/01-core -name '*.sh' -type f;",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the extractor is only as wide as the file list it is handed; narrowing the discovery scope silently un-lints whole directories of embedded Python and nothing said so"
+  },
+  {
+    "id": "python-lint.heredoc-python-decision",
+    "target": "linux/scripts/extract_embedded_python.py",
+    "find": "            except SyntaxError:\n                continue",
+    "replace": "            except SyntaxError:\n                pass",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the parse check is what keeps non-Python out: without it a cat'ed TPL_PY_* config template is emitted as Python and reddens the gate on a file that was never Python"
+  },
+  {
+    "id": "mutations.preflight-callsite-isolated",
+    "target": "linux/scripts/preflight.sh",
+    "find": "docs/scripts/verify_mutations.py",
+    "replace": "docs/scripts/verify_mutations.py --in-place",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "preflight points the gate at the repo buildkit reads as a build context; one flag turns every mutation into an in-place edit of that tree"
+  },
+  {
+    "id": "mutations.preflight-runs-the-gate",
+    "target": "linux/scripts/preflight.sh",
+    "find": "run_check mutations \"mutation gate (can the tests fail?)\" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py",
+    "replace": "run_check mutations \"mutation gate (can the tests fail?)\" true",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the mutations slug must actually invoke the gate, not a stand-in that always passes"
+  },
+  {
+    "id": "mutations.hook-callsite-isolated",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "replace": "    python3 docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" || {",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the hook runs on the live working tree; --in-place there mutates files a concurrent build is snapshotting"
+  },
+  {
+    "id": "mutations.hook-runs-the-gate",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "replace": "    true || {",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the commit decision must depend on the staged-file run of the gate, not on a stand-in"
+  },
+  {
+    "id": "mutations.copy-excludes-heavy-trees",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "COPY_EXCLUDES = (\".git\", \"external\", \"out\", \"logs\", \"archive\", \"linux/webserver/dist\")",
+    "replace": "COPY_EXCLUDES = ()",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "without the excludes every invocation clones .git/out/logs/archive/external too, and the gate runs once per pre-commit"
+  },
+  {
+    "id": "mutations.find-must-match-once",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if hits > 1:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a find string matching several places would neuter only the first, leaving the guarantee half-standing and the verdict a false SURVIVED"
+  },
+  {
+    "id": "mutations.copy-preserves-mode",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "            shutil.copy2(",
+    "replace": "            shutil.copyfile(",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a copy that drops the executable bit makes every shell test fail for the wrong reason -- a vacuous-bite storm, not a verdict"
+  },
+  {
+    "id": "pre-commit.mutation-cap",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "run = matched[:cap] if cap > 0 else matched",
+    "replace": "run = matched",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "without the cap the hook runs every matched entry -- the 5m22s mutation step"
+  },
+  {
+    "id": "pre-commit.sample-is-newest-first",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "matched.reverse()",
+    "replace": "matched = list(matched)",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a cut that keeps the OLDEST entries never runs the one just written"
+  },
+  {
+    "id": "pre-commit.sample-says-so",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  if [ \"$1\" -lt \"$2\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "a sampled run printing the full-coverage line is a green for work it did not do"
+  },
+  {
+    "id": "code-complexity.arith-line-start",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    if line.startswith(\"((\", i) and (i == 0 or line[i - 1] in \" \\t;(|&\"):",
+    "replace": "    if line.startswith(\"((\", i) and (line[i - 1] in \" \\t;(|&\"):",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "a line that starts with `((` has no delimiter before it, so its << would read as a heredoc"
+  },
+  {
+    "id": "code-complexity.delim-semicolon",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "DELIM = \" \\t\\n;\"",
+    "replace": "DELIM = \" \\t\\n\"",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the `}` of `{ : ;}` is delimited by the ;, so it closes its block instead of reading as ${x}-tail text"
+  },
+  {
+    "id": "gate-registry.wrong-prefix-loud",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if e[\"target\"] in files and e[\"target\"] not in owners.get(id_slug(e), ()):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a known prefix over a file that slug does not own is credited to nobody; silently it would stop proving anything"
+  },
+  {
+    "id": "gate-registry.hook-whole-tree-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    if unscoped_hook_block(needle, text):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a conditionally-run WHOLE-TREE gate must not read as scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-staged-list",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return CHANGED not in body and not mentions(var, body)",
+    "replace": "            return CHANGED not in body",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a block that expands its guard variable into the gate command IS scoped to the staged files"
+  },
+  {
+    "id": "gate-registry.hook-block-changed",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "            return CHANGED not in body and not mentions(var, body)",
+    "replace": "            return not mentions(var, body)",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "--changed is the staged list under another name, so the block that passes it is scoped"
+  },
+  {
+    "id": "shellcheck.crlf-shebang",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "| head -n 1 | tr -d '\\r')\" in",
+    "replace": "| head -n 1)\" in",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "a wholly-CRLF extension-less script leaves the CR on the shebang, matches no arm, and is invisible to this gate and to crlf-guard, which reads its scope from here"
   }
 ]

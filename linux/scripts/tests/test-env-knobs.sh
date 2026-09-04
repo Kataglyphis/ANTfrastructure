@@ -16,6 +16,9 @@ ALLOW="${_work}/linux/scripts/lint-env-knobs.allow"
 SUBJECT="${_work}/linux/scripts/subject.sh"
 printf 'PINNED_KNOB=1\n' > "${_work}/linux/scripts/01-core/versions.env"
 printf 'FROM scratch\nARG DOCKER_KNOB\n' > "${_work}/linux/Dockerfile.subject"
+# The copied gate reads its own ${KNOB_GATE:-0}; preflight.sh owns it in the real
+# tree with `env KNOB_GATE=1 bash …`, so the fixture tree carries that caller too.
+printf '#!/usr/bin/env bash\nenv KNOB_GATE=1 bash lint-env-knobs.sh\n' > "${_work}/linux/scripts/caller.sh"
 
 # Consumers: every knob named is read via ${VAR:-} in the subject script.
 _consume() { printf '#!/usr/bin/env bash\n'; printf 'echo "${%s:-}"\n' "$@"; }
@@ -130,6 +133,63 @@ out="$(_knobs)"
 t_assert_eq "1" "$(_rc 1)" "an allow row for a name only printed literally is stale"
 t_assert_contains "${out}" "STALE allow rows (1)"
 t_assert_contains "${out}" "    ESCAPED_KNOB"
+
+# ── OWNERS: an assignment is code in command position, never text ────────────
+# Every fixture below is passed as a single-quoted argument, so the live-tree
+# census cannot see SHAPE_KNOB as an owner of its own suite.
+: > "${ALLOW}"
+_shape_rc() {
+  { _consume PINNED_KNOB DOCKER_KNOB SHAPE_KNOB; printf '%s\n' "$@"; } > "${SUBJECT}"
+  _rc 1
+}
+
+t_case "a knob owned only by an echo string is UNOWNED"
+{ _consume PINNED_KNOB DOCKER_KNOB ECHOED_KNOB
+  printf 'echo "out of disk; %s=1 accepts the risk" >&2\n' ECHOED_KNOB; } > "${SUBJECT}"
+out="$(_knobs)"
+t_assert_eq "1" "$(_rc 1)" "an operator switch mentioned only in a message has no owner"
+t_assert_contains "${out}" "UNOWNED knobs (1)"
+t_assert_contains "${out}" "    ECHOED_KNOB"
+
+t_case "an assignment-shaped ARGUMENT is not an owner either"
+{ _consume PINNED_KNOB DOCKER_KNOB ARGUMENT_KNOB
+  printf '_helper %s=1\n' ARGUMENT_KNOB; } > "${SUBJECT}"
+out="$(_knobs)"
+t_assert_eq "1" "$(_rc 1)" "a word after the command name is an argument, not an assignment"
+t_assert_contains "${out}" "    ARGUMENT_KNOB"
+
+t_case "a comment that spells a whole assignment COMMAND is still only a comment"
+{ _consume PINNED_KNOB DOCKER_KNOB COMMENTED_SHAPE_KNOB
+  printf 'true   # set it with: export %s=1\n' COMMENTED_SHAPE_KNOB; } > "${SUBJECT}"
+out="$(_knobs)"
+t_assert_eq "1" "$(_rc 1)" "the keyword before it is inside the comment too"
+t_assert_contains "${out}" "    COMMENTED_SHAPE_KNOB"
+
+t_case "a NAME=value line inside a heredoc body is not an owner"
+{ _consume PINNED_KNOB DOCKER_KNOB HEREDOC_KNOB
+  printf 'cat > /tmp/x <<EOF\n%s=1\nEOF\n' HEREDOC_KNOB; } > "${SUBJECT}"
+out="$(_knobs)"
+t_assert_eq "1" "$(_rc 1)" "a heredoc body is emitted data, not this script's own assignment"
+t_assert_contains "${out}" "    HEREDOC_KNOB"
+
+t_case "a parameter expansion's own = is not an assignment"
+t_assert_eq "1" "$(_shape_rc ': ${SHAPE_KNOB=x}')" "the documented self-defaulting form is : \"\${VAR:=…}\""
+t_assert_eq "0" "$(_shape_rc ': "${SHAPE_KNOB:=x}"')" "…and that form still owns"
+
+t_case "every assignment shape in command position owns"
+t_assert_eq "0" "$(_shape_rc 'SHAPE_KNOB=1')"                        "a plain assignment"
+t_assert_eq "0" "$(_shape_rc "SHAPE_KNOB=\${PINNED_KNOB:-x}")"       "a defaulted value"
+t_assert_eq "0" "$(_shape_rc 'export SHAPE_KNOB=1')"                 "export"
+t_assert_eq "0" "$(_shape_rc 'f() { local SHAPE_KNOB=1; }')"         "local, inside a function"
+t_assert_eq "0" "$(_shape_rc 'readonly SHAPE_KNOB=1')"               "readonly"
+t_assert_eq "0" "$(_shape_rc 'declare -x SHAPE_KNOB=1')"             "declare with a flag"
+t_assert_eq "0" "$(_shape_rc 'SHAPE_KNOB=1 _helper')"                "an env prefix"
+t_assert_eq "0" "$(_shape_rc '_other=0 SHAPE_KNOB=1 _helper')"       "the second of an env-prefix chain"
+t_assert_eq "0" "$(_shape_rc 'true; SHAPE_KNOB=1')"                  "after ;"
+t_assert_eq "0" "$(_shape_rc 'true && SHAPE_KNOB=1')"                "after &&"
+t_assert_eq "0" "$(_shape_rc 'if true; then SHAPE_KNOB=1; fi')"      "after then"
+t_assert_eq "0" "$(_shape_rc 'case "$1" in a) SHAPE_KNOB=1 ;; esac')" "in a case arm"
+t_assert_eq "0" "$(_shape_rc '_v="$(SHAPE_KNOB=1 _helper)"')"        "inside \$( ) within a quoted word"
 
 t_case "the REAL tree is clean today, under KNOB_GATE=1"
 t_assert_eq "0" "$(t_rc env KNOB_GATE=1 bash "${LIVE}")"

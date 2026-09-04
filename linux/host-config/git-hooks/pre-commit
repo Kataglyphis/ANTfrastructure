@@ -1,16 +1,57 @@
 #!/usr/bin/env bash
 # pre-commit — the gates that cost SECONDS, run on every commit.
 #
-# Deliberately not the full suite. `make preflight` runs all 33 checks and takes
-# minutes (the secret scan alone is ~170s, the mutation gate ~6 min); CI runs it on
-# every push (.github/workflows/ubuntu24.04.yml). A hook that slow teaches people
-# to type --no-verify, which is worse than having no hook. So this one runs the
-# ~4s whole-tree gates, plus shellcheck, the warning ratchet and the mutation
-# gate scoped to the STAGED files only.
+# Deliberately not the full suite: `make preflight` runs all 33 checks in minutes,
+# and this hook's own mutation step measured 5m26s on a 43-file commit (322s for
+# those 132 entries) until it was capped. A hook that slow teaches people to type
+# --no-verify, which is worse than having no hook, so the mutation step now
+# SAMPLES and says so. docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 #
 # Install: make hooks    (sets core.hooksPath, so the hook is version-controlled)
 # Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
 set -euo pipefail
+
+_MUTATION_CAP="${PRECOMMIT_MUTATION_CAP:-6}"
+_MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
+
+# <cap> <manifest> <file listing staged paths> -> "plan <run> <matched>" then the
+# ids to run: entries whose target is staged, newest first (the manifest is
+# appended to), cut to <cap>; 0 = uncapped. git passes no arguments to a
+# pre-commit hook, so --print-mutation-plan is a test entry point only.
+# docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
+_mutation_plan() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+
+cap, manifest, staged_list = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+with open(staged_list, encoding="utf-8") as fh:
+    staged = {line.strip() for line in fh if line.strip()}
+with open(manifest, encoding="utf-8") as fh:
+    matched = [e["id"] for e in json.load(fh) if e["target"] in staged]
+matched.reverse()
+run = matched[:cap] if cap > 0 else matched
+print("plan %d %d" % (len(run), len(matched)))
+for mid in run:
+    print(mid)
+PY
+}
+
+# <run> <matched> -> the one line the mutation step prints about its own coverage.
+# A sample must never read as full coverage.
+# docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
+_mutation_notice() {
+  if [ "$1" -lt "$2" ]; then
+    echo "pre-commit: mutation gate — SAMPLED $1 of $2 entries (newest first), NOT full coverage; PRECOMMIT_MUTATION_CAP=0 or 'make preflight' runs the rest"
+  else
+    echo "pre-commit: mutation gate — all $2 entries for the staged files…"
+  fi
+}
+
+if [ "${1:-}" = "--print-mutation-plan" ]; then
+  _mutation_plan "${2:-0}" "${3:-${_MUTATION_MANIFEST}}" "${4:-/dev/null}"
+  exit 0
+fi
 
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
@@ -60,17 +101,30 @@ if [ -n "${_staged_md}" ]; then
   python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 
-# Mutation gate, scoped to what is being committed: all 180 entries cost ~6 min,
-# the handful whose target you just touched cost seconds. It answers the one
-# question reading a test cannot -- can it fail?
+# Mutation gate, SAMPLED. Scope is the STAGED files, not `--changed` (which also
+# selects everything committed since origin/main, so every commit of a batch
+# re-paid for the ones before it: 132 entries / 5m22s for this session's 43-file
+# commit). Newest entries first, capped, and it PRINTS the sample size -- green
+# here never means full coverage. It answers the one question reading a test
+# cannot: can it fail? docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 _staged_any="$(git diff --cached --name-only --diff-filter=ACM || true)"
 if [ -n "${_staged_any}" ]; then
-  if python3 docs/scripts/verify_mutations.py --changed >/dev/null 2>&1; then
-    :
-  else
-    echo "pre-commit: a recorded mutation SURVIVED -- a test here cannot fail" >&2
-    python3 docs/scripts/verify_mutations.py --changed >&2 || true
-    exit 1
+  _staged_list="$(mktemp)"
+  printf '%s\n' "${_staged_any}" > "${_staged_list}"
+  _plan="$(_mutation_plan "${_MUTATION_CAP}" "${_MUTATION_MANIFEST}" "${_staged_list}")"
+  rm -f "${_staged_list}"
+  _run="$(printf '%s\n' "${_plan}" | sed -n '1s/^plan \([0-9]*\) [0-9]*$/\1/p')"
+  _matched="$(printf '%s\n' "${_plan}" | sed -n '1s/^plan [0-9]* \([0-9]*\)$/\1/p')"
+  _only=()
+  while IFS= read -r _id; do
+    if [ -n "${_id}" ]; then _only+=(--only "${_id}"); fi
+  done < <(printf '%s\n' "${_plan}" | tail -n +2)
+  if [ "${#_only[@]}" -gt 0 ]; then
+    _mutation_notice "${_run:-0}" "${_matched:-0}"
+    python3 docs/scripts/verify_mutations.py "${_only[@]}" || {
+      echo "pre-commit: a recorded mutation SURVIVED -- a test here cannot fail" >&2
+      exit 1
+    }
   fi
 fi
 
