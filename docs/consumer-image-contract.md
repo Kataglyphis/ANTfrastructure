@@ -147,6 +147,34 @@ The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
 was measured present in all three shipped arches on 2026-09-04, and the parity
 table already asserts the `android-sdk` prefix on every arch.
 
+### The Flatpak runtimes ship with the image
+
+`flatpak list --runtime` in the shipped image returned **zero refs**. Every consumer
+run therefore re-downloaded the whole runtime set — roughly 1.9 GB across seven refs,
+the single largest download in their build.
+
+Two of the seven (`Platform` and `Sdk`) were already installed here; the other five
+were left to each consumer run. All seven are installed now:
+
+| ref | pinned by |
+| --- | --- |
+| `org.freedesktop.Platform//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Sdk//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Sdk.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.GL.default//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.GL.default//<ver>extra` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.openh264//<ver>` | `FLATPAK_OPENH264_VERSION` |
+
+`GL.default` appears twice on purpose: the base branch and its `extra` sibling are
+two separate refs, and a build that resolves one still fetches the other.
+
+`INSTALL_FLATPAK_RUNTIMES` defaults to **true** since 2026-09-05. Flathub builds
+these for `x86_64` and `aarch64` only, so on any other architecture the install is a
+guaranteed 404 rather than a transient failure — the installer skips those arches
+outright instead of retrying, and riscv64 images ship without Flatpak runtimes by
+construction.
+
 ### The web lane toolchain
 
 Measured in a consumer run, the Flutter **web** lane rebuilt its own tools on every

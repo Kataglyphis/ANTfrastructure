@@ -4926,5 +4926,117 @@
     "replace": "        -DSPIRV_SKIP_EXECUTABLES=ON \\",
     "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
     "why": "the spirv-* executables are what make the foreign-arch prefix a usable SDK rather than link fodder for TVM; skipping them ships libs with no tools, which is the state HT5's prune would then make permanent"
+  },
+  {
+    "id": "packaging.appimage-runtime-staged-when-present",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        info \"appimagetool already present: $(command -v appimagetool)\"\n        ensure_appimagetool_runtime",
+    "replace": "        info \"appimagetool already present: $(command -v appimagetool)\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "the already-present arm is the one a cached layer takes on every rebuild, so dropping the stager there ships the common case without a runtime and every consumer AppImage build goes back to fetching it from GitHub"
+  },
+  {
+    "id": "packaging.appimage-runtime-staged-when-installed",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "    info \"appimagetool is now available: $dest\"\n    ensure_appimagetool_runtime",
+    "replace": "    info \"appimagetool is now available: $dest\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "the just-installed arm is the one a cold build takes; the stager has to be on BOTH success paths or the image that most needs it is the one that ships without it"
+  },
+  {
+    "id": "packaging.appimage-runtime-offset-validated",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        ''|*[!0-9]*)",
+    "replace": "        'never-matches-this')",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "head -c with an empty or non-numeric offset writes a garbage runtime that appimagetool will happily prepend to every AppImage; the guard is what turns an unreadable offset into a WARN instead of a corrupt artifact"
+  },
+  {
+    "id": "packaging.appimage-runtime-not-downloaded",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        head -c \"${offset}\" \"${tool}\" > \"${dir}/runtime-${arch_name}\"",
+    "replace": "        download_file \"https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${arch_name}\" \"${dir}/runtime-${arch_name}\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "the runtime is only published under the moving `continuous` tag, which is exactly the mutable-asset trap TS1 recorded: taking it from appimagetool's own SHA-pinned bytes is what makes it pinned transitively and arch-correct by construction"
+  },
+  {
+    "id": "packaging.appimage-runtime-missing-tool-noop",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "    tool=\"$(command -v appimagetool 2>/dev/null)\" || return 0",
+    "replace": "    tool=\"$(command -v appimagetool 2>/dev/null)\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "riscv64 has no upstream appimagetool at all, so the stager must be a silent no-op there rather than a toolchain-stage failure over a runtime nobody on that arch can use"
+  },
+  {
+    "id": "packaging.flatpak-all-seven-refs",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        \"org.freedesktop.Platform.Locale//${version}\" \\\n        \"org.freedesktop.Sdk.Locale//${version}\" \\",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "only Platform and Sdk were installed before; the other five were left to every consumer run and are most of the ~1.9 GB that made this the single largest download in their build"
+  },
+  {
+    "id": "packaging.flatpak-gl-extra-sibling",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        \"org.freedesktop.Platform.GL.default//${version}extra\" \\",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "the `extra` sibling is a SEPARATE ref on the same branch, not a variant of the base one -- resolving GL.default still fetches it, so dropping the row just moves that download back into the consumer's run"
+  },
+  {
+    "id": "packaging.flatpak-openh264-own-version",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "        \"org.freedesktop.Platform.openh264//${openh264}\"",
+    "replace": "        \"org.freedesktop.Platform.openh264//${version}\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "openh264 is branched on its own version, not the runtime's; pinning it to ${version} names a ref that does not exist and the install 404s"
+  },
+  {
+    "id": "env-knob-default.flatpak-runtimes-on",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "INSTALL_FLATPAK_RUNTIMES=\"${INSTALL_FLATPAK_RUNTIMES:-true}\"",
+    "replace": "INSTALL_FLATPAK_RUNTIMES=\"${INSTALL_FLATPAK_RUNTIMES:-false}\"",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "off by default is what put ZERO refs in the shipped image; the default IS the fix, since no consumer sets this knob"
+  },
+  {
+    "id": "rust.web-lane-nightly-channel",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if \"${rustup}\" toolchain install nightly --profile minimal \\\n         --component rust-src --target wasm32-unknown-unknown; then",
+    "replace": "    if true; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "wasm-pack -Z build-std invokes `cargo +nightly`, which resolves the CHANNEL name and not install-rust.sh's dated pin; without the channel installed here every consumer run auto-installs it through a path rustup itself calls deprecated"
+  },
+  {
+    "id": "rust.web-lane-crates-pinned",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        if \"${cargo}\" install --locked \"${name}\" --version \"${version}\"; then",
+    "replace": "        if \"${cargo}\" install \"${name}\"; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "--locked plus an explicit version is what makes the consumer get the build this image was tested with; resolving the index at build time reintroduces the drift the pins exist to stop"
+  },
+  {
+    "id": "rust.web-lane-unpinned-skipped",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        [ -n \"${version}\" ] || { echo \"WARN: no version pinned for ${name}; skipping\"; continue; }",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "an empty version reaches `--version ''`, which is not a skip but an install of whatever cargo resolves; the guard is the only thing that keeps an unset knob from silently un-pinning a 258-crate build"
+  },
+  {
+    "id": "rust.web-lane-non-fatal",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "            echo \"WARN: cargo install ${name} ${version} failed; the web lane will build it per run\"",
+    "replace": "            echo \"ERROR: cargo install ${name} ${version} failed\" >&2; return 1",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "the whole step is a build-time convenience: a consumer that has to build its own tools is slow, one that cannot build the image at all is worse, so a crates.io hiccup must never fail the package stage"
+  },
+  {
+    "id": "rust.web-lane-requires-cargo-home",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ ! -x \"${rustup}\" ] || [ ! -x \"${cargo}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "without the precondition the function runs ${CARGO_HOME}/bin/rustup as a bare path that is not there, and the stage dies on 127 in an arch that simply has no Rust rather than skipping"
   }
 ]

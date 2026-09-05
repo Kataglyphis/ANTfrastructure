@@ -634,6 +634,24 @@ Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Unti
 then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
 emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 
+### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
+
+The 2026-09-05 report's remaining items, all landed except two.
+
+**Declined, with a reason:** a warm `~/.pub-cache`. The reporter marked it optional
+themselves, and its contents follow `pubspec.lock` — an image-baked cache is stale
+for any consumer whose lock differs, which is every consumer that is not this one.
+Staging it would trade a real download for a silent wrong-version risk. `flutter
+pub get` stays a per-run cost.
+
+**Open, and it is the owner's call:** `prune-vulkan-host-sdk.sh` drops `x86_64/`
+from the FOREIGN images only (on amd64 it is a no-op — there `x86_64` IS the
+downloaded SDK). The evidence is one-sided: those 52 binaries are x86-64 ELF in the
+arm64 image and exit 127. But the owner has twice said not to remove Vulkan payload,
+so it ships wired and unshipped until they say otherwise. Note the coupling: the
+tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree, which only
+holds while the prune runs. Keeping `x86_64/` means re-narrowing that gate.
+
 ### YB. sccache: root cause FOUND and fixed, unproven by any build [S to watch, ★★★]
 
 **This entry is no longer an investigation.** The 2026-09-05 wave found the mechanism
