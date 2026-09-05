@@ -172,3 +172,5 @@ linux/scripts/tests/test-smoke-arch-parity.sh	# ── ARCH-PARITY component tab
 linux/scripts/tests/test-tvm-wheel-diagnostics.sh	#!/usr/bin/env bash
 linux/scripts/verify-patch-integrity.sh	#!/usr/bin/env bash
 linux/scripts/verify-shipped-wrapper.sh	#!/usr/bin/env bash
+linux/scripts/lib/app-packaging.sh	#!/usr/bin/env bash
+linux/scripts/05-frameworks/flutter/flutter-pin.sh	#!/usr/bin/env bash

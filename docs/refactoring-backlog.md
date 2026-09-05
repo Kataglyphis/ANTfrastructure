@@ -483,6 +483,40 @@ Not fixed during the run that found them, on purpose: arm64 was built and riscv6
 had not started, and editing `vulkan.sh` there would have shipped two arches from
 different sources. docs/vulkan-foreign-arch-sdk.md
 
+### VK3. Ratchet the target Vulkan SDK so it can never shrink again [S, ★★★]
+
+Owner's request, 2026-09-05: the foreign-arch SDK must keep being built for every
+arch the way it is now. It shipped 2 tools for months precisely because nothing
+asserted a NUMBER — `check_vulkan_toolset` requires six
+(`glslangValidator` + five `spirv-*`) and merely WARNs about the rest, which was
+the right conservatism while the fifteen cross-builds were unproven. They are
+proven now, on the shipped bytes of both foreign lanes:
+
+```
+aarch64/bin  20 tools, 4 layer manifests   (glslc, vulkaninfo, vkcube b7)
+riscv64/bin  20 tools, 4 layer manifests   (glslc f3)
+x86_64/bin   52 tools                       (downloaded LunarG SDK)
+```
+
+The ratchet, in the shape this repo already uses for the shellcheck and app-wheel
+counts:
+
+1. Promote the measured 20 from `_VK_REPORTED_TOOLS` to `_VK_REQUIRED_TOOLS`. A
+   WARN is invisible in a green run; that is how two-of-fifty-two survived.
+2. Freeze the count PER ARCH, since amd64 legitimately carries 52 and the foreign
+   pair 20 — one frozen table, the way `_RT_TREE_ARCH_FROZEN` holds its counts,
+   so a lane that gains tools has to record the new floor rather than drift.
+3. Require the four validation-layer manifests. Developing a Vulkan application
+   without them is the thing the whole exercise was for.
+4. Make `_vulkan_target_verdict` demand a minimum of the component table rather
+   than only failing when EVERY component failed. Today one surviving component
+   reads as success; that is an env-shaped check, not a completeness one.
+
+Do it as its own change, after a rebuild has landed — editing the runtime smoke
+while a chain is running is the mid-run drift this file keeps warning about.
+Closing VK2 raises the floor again, so land VK2 first and record the new numbers
+once. docs/vulkan-foreign-arch-sdk.md
+
 ### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
 
 The 2026-09-05 report's remaining items, all landed except two.

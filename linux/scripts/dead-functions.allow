@@ -49,3 +49,15 @@ linux/scripts/06-packaging/verify-parity.sh	check_versions
 
 # bash hook: bash itself calls it when a command is not found.
 linux/scripts/tests/test-harness.sh	command_not_found_handle
+
+# app-packaging.sh has NO caller in this repo by design: its header says a wrapper
+# in the consuming repo sets the APP_PACKAGING_* variables, sources it and calls the
+# step functions. These are that public API. flutter-pin.sh is the same shape.
+linux/scripts/lib/app-packaging.sh	app_packaging_package_android_apk_outputs_tar
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_appimage
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_deb
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_flatpak
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
+linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
+linux/scripts/lib/app-packaging.sh	app_packaging_setup_dependencies_for_container
+linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin

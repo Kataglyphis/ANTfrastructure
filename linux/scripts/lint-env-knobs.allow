@@ -379,3 +379,17 @@ STV_ASSERT_ONLY
 # The release version CI exports: 02-toolchain/rust/version_util.sh writes it to
 # $GITHUB_ENV/$GITHUB_OUTPUT, 06-packaging/package_archive.sh reads it.
 VERSION
+
+# app-packaging.sh's caller contract. The library has no caller in THIS repo by
+# design -- a wrapper in the consuming repo sets these, sources the file and calls
+# the step functions -- so the reader is here and the writer is not. The header of
+# app-packaging.sh is the table that documents each one.
+APP_PACKAGING_APP_ID_PREFIX
+APP_PACKAGING_COMMENT
+APP_PACKAGING_DESCRIPTION
+APP_PACKAGING_MAINTAINER
+# Operator switches for the same library: where it stages (a bind-mounted host
+# drive refuses the chmods flatpak-builder and dpkg-deb need) and how loud it is.
+KATAGLYPHIS_FLATPAK_VERBOSE
+KATAGLYPHIS_FLATPAK_WORKDIR
+KATAGLYPHIS_PACKAGING_WORKDIR
