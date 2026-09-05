@@ -2014,6 +2014,109 @@ the prefix carries libraries the linker is happy with but nothing you can build 
     echo ""
 }
 
+# The ABI /opt/android is compiled for, asserted against the ABI the image says it
+# targets. That tree is tree-arch EXEMPT on purpose -- an Android arm64-v8a payload
+# is AArch64 in EVERY image, including the amd64 one -- so nothing else could catch
+# a layer built for the wrong ABI, and it derived from the BUILD HOST for months.
+# It reached a consumer as a link error, not a missing file.
+# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+_ANDROID_ABI_MACHINE="arm64-v8a:183 x86_64:62 x86:3 riscv64:243"
+
+_android_abi_want() {
+  local row
+  for row in ${_ANDROID_ABI_MACHINE}; do
+    [ "${row%%:*}" = "$1" ] && { printf '%s' "${row#*:}"; return 0; }
+  done
+  return 1
+}
+
+# Archives matter as much as shared objects here: the reported failure was a .a
+# member, which `file` on the archive itself does not report.
+_android_abi_py() {
+  cat <<'PY'
+import collections, os, struct
+
+def machine(b):
+    return struct.unpack_from("<H", b, 18)[0] if b[:4] == b"\x7fELF" else None
+
+def archive_machine(path):
+    with open(path, "rb") as fh:
+        if fh.read(8) != b"!<arch>\n":
+            return None
+        for _ in range(6):                      # skip "/" and "//" bookkeeping members
+            head = fh.read(60)
+            if len(head) < 60:
+                return None
+            size = int(head[48:58].decode("ascii", "replace").strip() or 0)
+            body = fh.read(min(size, 20))
+            fh.seek(size - len(body) + (size % 2), 1)
+            got = machine(body)
+            if got:
+                return got
+    return None
+
+seen, sample = collections.Counter(), {}
+for root, _dirs, files in os.walk("/opt/android"):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            if name.endswith(".a"):
+                got = archive_machine(path)
+            elif name.endswith(".so") or ".so." in name:
+                with open(path, "rb") as fh:
+                    got = machine(fh.read(20))
+            else:
+                continue
+        except OSError:
+            continue
+        if got:
+            seen[got] += 1
+            sample.setdefault(got, path)
+for got, count in seen.most_common():
+    print("MACH %d %d %s" % (got, count, sample[got]))
+PY
+}
+
+check_android_abi() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out abi want mach count path bad=0 total=0
+
+    echo "--- Functional: Android SDK ABI ---"
+    out="$(_rt_run /bin/sh -c "echo \"ABI \${ANDROID_TARGET_ABI:-unset}\"; \
+      /opt/venv/bin/python -c \"$(_android_abi_py | sed 's/"/\\"/g')\"" 2>&1)" || true
+
+    abi="$(printf '%s' "${out}" | sed -n 's/^ABI //p' | head -1)"
+    if [ -z "${abi}" ] || [ "${abi}" = unset ]; then
+      fail "the ${target_arch} image does not advertise ANDROID_TARGET_ABI -- a consumer cannot tell which Android ABI /opt/android was built for"
+      echo ""
+      return 0
+    fi
+    if ! want="$(_android_abi_want "${abi}")"; then
+      fail "ANDROID_TARGET_ABI=${abi} in the ${target_arch} image is not an ABI this gate knows (${_ANDROID_ABI_MACHINE})"
+      echo ""
+      return 0
+    fi
+
+    while read -r _tag mach count path; do
+      [ "${_tag}" = MACH ] || continue
+      total=$((total + count))
+      if [ "${mach}" != "${want}" ]; then
+        fail "/opt/android carries ${count} object(s) of ELF machine ${mach} but the image advertises ANDROID_TARGET_ABI=${abi} (machine ${want}) -- e.g. ${path}; a consumer linking for ${abi} gets \"is incompatible\" at link time"
+        bad=$((bad + 1))
+      fi
+    done <<EOF
+$(printf '%s' "${out}")
+EOF
+
+    if [ "${total}" -eq 0 ]; then
+      echo "  WARN no Android ELF objects found under /opt/android (${target_arch}) -- non-fatal"
+    elif [ "${bad}" -eq 0 ]; then
+      echo "  OK  ${total} Android object(s) are all ${abi} (${target_arch})"
+    fi
+    echo ""
+}
+
 # Native compiler compile + link + RUN. The build-time validate-compilers.sh compiles
 # and links in every wrapper image but never RUNS the result - a cross arch's binary
 # cannot execute on the x86_64 build host, so the shipped native GCC/G++ was only ever
@@ -2178,6 +2281,7 @@ main() {
     check_webrtc_signalling "${image_tag}" "${target_arch}"
     check_vulkan_loader "${image_tag}" "${target_arch}"
     check_vulkan_toolset "${image_tag}" "${target_arch}"
+    check_android_abi "${image_tag}" "${target_arch}"
     check_native_compiler_battery "${image_tag}" "${target_arch}"
     check_clang_llvm_release "${image_tag}" "${target_arch}"
   else

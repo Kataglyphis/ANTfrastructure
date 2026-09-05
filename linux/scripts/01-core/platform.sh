@@ -390,11 +390,32 @@ android_abi_for_arch() {
   arch_android_abi_for "$1"
 }
 
+# The Android ABI the prebuilt SDKs under /opt/android are compiled for. It used
+# to follow arch_oci -- the BUILD HOST -- and every cross stage builds on amd64,
+# so the whole Android layer shipped as x86_64, which is emulator-only.
+# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+arch_for_android_abi() {
+  case "$1" in
+    arm64-v8a) printf '%s' "arm64" ;;
+    x86_64)    printf '%s' "amd64" ;;
+    x86)       printf '%s' "386" ;;
+    riscv64)   printf '%s' "riscv64" ;;
+    *) return 1 ;;
+  esac
+}
+
 android_target_arch() {
+  if [ -n "${ANDROID_TARGET_ABI:-}" ]; then
+    arch_for_android_abi "${ANDROID_TARGET_ABI}" && return 0
+  fi
   arch_oci
 }
 
 android_target_abi() {
+  if [ -n "${ANDROID_TARGET_ABI:-}" ]; then
+    printf '%s' "${ANDROID_TARGET_ABI}"
+    return 0
+  fi
   android_abi_for_arch "$(android_target_arch)" || printf '%s' ""
 }
 

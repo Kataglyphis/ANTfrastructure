@@ -6,9 +6,9 @@ set -euo pipefail
 # target triple. preflight owns the repo-grep half (verify-critical-fixes.sh).
 # docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
-source "${REPO_ROOT}/linux/scripts/06-packaging/smoke-common.sh"
+source "${_SCRIPT_DIR}/smoke-common.sh"
 
 CF_SMOKE_ROOT="${CF_SMOKE_ROOT:-}"
 PYTHON_CROSS_ROOT="${CF_SMOKE_ROOT}/opt/python-cross"

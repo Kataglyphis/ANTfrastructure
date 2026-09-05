@@ -2216,22 +2216,6 @@
     "why": "the manifest carries the COPY SOURCE path, which does not exist in the image; the suite reads ALLOWED_RELOCATIONS so the two owners of that fact cannot drift"
   },
   {
-    "id": "vulkan-prune.host-prefix-is-never-the-own-arch",
-    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
-    "find": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 1",
-    "replace": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 0",
-    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
-    "why": "on amd64 x86_64 IS the prefix the image runs, and it is the DOWNLOADED SDK -- pruning it there deletes the only Vulkan tooling that arch has"
-  },
-  {
-    "id": "vulkan-prune.own-arch-loader-must-exist",
-    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
-    "find": "  [ -e \"${version_dir}/${arch_dir}/lib/libvulkan.so.1\" ] || return 1",
-    "replace": "  [ -e \"${version_dir}/${arch_dir}/lib/libvulkan.so.1\" ] || return 0",
-    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
-    "why": "the builder prefix may only go once the cross build has produced a real own-arch loader to replace it; dropping it when the target prefix is empty leaves the image with no Vulkan at all"
-  },
-  {
     "id": "shellcheck-warnings.allow-row-shape",
     "target": "linux/scripts/quality_allow.py",
     "find": "            if at < 1 or len(parts) < at + 2 or not parts[at].isdigit():",
@@ -4270,5 +4254,645 @@
     "replace": "CONT_END = (\"\\\\\", \"&&\", \"||\", \"|\", \"{\", \"(\", \"then\", \"do\", \"else\")",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
     "why": "a `{` on its own line joined forward, so the predicate after it read as `{ [ -n .. ]` and hid behind the closer arm"
+  },
+  {
+    "id": "vulkan.sdk-source-prune-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    _vulkan_prune_sdk_sources \"${target_dir}\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the prune is unreachable unless the cross install calls it, and without the call every foreign lane carries 4.09 GB of ./vulkansdk build tree from the SDK stage all the way into the runtime image"
+  },
+  {
+    "id": "vulkan.sdk-source-prune-guard",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  [ -d \"${target_dir}/source\" ] || return 0",
+    "replace": "  [ -d \"${target_dir}/source\" ] || true",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "a tree with no source/ must be a silent no-op; without the early return the helper logs a prune it did not do and rm -rf's a path that is not there, which under the caller's errexit is one bad rm away from killing the SDK stage"
+  },
+  {
+    "id": "packaging.vulkan-prune-host-arch-guard",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "on amd64 the builder prefix IS the prefix the image runs; without this arm the prune deletes /opt/vulkan/<ver>/x86_64 out of the amd64 image and takes VULKAN_SDK, the loader and every host tool with it"
+  },
+  {
+    "id": "packaging.vulkan-prune-loader-precondition",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  [ -e \"${version_dir}/${arch_dir}/lib/libvulkan.so.1\" ] || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "the target loader existing is the whole precondition for dropping the host one; without it a lane whose cross Vulkan build failed ships an image with no loader at all instead of keeping the host prefix and warning"
+  },
+  {
+    "id": "packaging.vulkan-prune-symlink-guard",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  [ -d \"${version_dir}/${arch_dir}\" ] && [ ! -L \"${version_dir}/${arch_dir}\" ] || return 1",
+    "replace": "  [ -d \"${version_dir}/${arch_dir}\" ] || return 1",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "setup-vulkan-symlinks.sh makes aarch64 -> x86_64 as a fallback; -d follows that link, so without the -L test the prune reads the loader THROUGH the link and then deletes the very tree the link points at"
+  },
+  {
+    "id": "packaging.vulkan-prune-arch-validation",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  arch_deb_multiarch_triplet_for \"${target_arch}\" >/dev/null 2>&1 || {",
+    "replace": "  true || {",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "arch_uname_name_for echoes an unknown arch straight back, so an unvalidated arch silently names a prefix that does not exist and the prune keeps 1.86 GB while reporting success; the triplet lookup is the only thing that returns non-zero on an arch platform.sh cannot map"
+  },
+  {
+    "id": "packaging.vulkan-prune-runs-before-the-copy",
+    "target": "linux/Dockerfile.package",
+    "find": "    bash /tmp/prune-vulkan-host-sdk.sh \"${TARGET_ARCH:-${TARGETARCH}}\"",
+    "replace": "    true",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "a perfect prune script that no stage runs saves nothing; the suite pins that Dockerfile.package invokes it in artifact-source and at a line BEFORE the /opt/vulkan COPY, since after the COPY the bytes are already a layer"
+  },
+  {
+    "id": "tree-arch.vulkan-probed-whole",
+    "target": "linux/scripts/runtime-artifacts.manifest",
+    "find": "/opt/vulkan | Vulkan SDK + loader/layers",
+    "replace": "/opt/vulkan/active | Vulkan SDK + loader/layers",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "narrowing the manifest entry is the other way to re-blind the tree-arch gate to this class: the scanner would look only at active/ again and a builder-arch prefix that came back would be invisible, exactly as it was for months"
+  },
+  {
+    "id": "probe.tree-arch-vulkan-narrowing-returns",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;",
+    "replace": "    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "re-adding a /opt/vulkan arm to _rt_tree_probe_path restores the exemption HT5 removed -- the whole-tree walk is what turns 1 317 hidden X86-64 objects into a failure -- and dropping the llvm-target relocation at the same time breaks the arm the parity gate co-owns"
+  },
+  {
+    "id": "probe.vulkan-loader-path-asserted",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "        /opt/vulkan/*) echo \"  OK  libvulkan.so.1 loads from ${_vk_lib} (${target_arch})\" ;;",
+    "replace": "        *) echo \"  OK  libvulkan.so.1 loads from ${_vk_lib} (${target_arch})\" ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "Ubuntu's multiarch libvulkan.so.1 is in every image, so without the path arm a prune that removed the prefix the image actually runs still passes the load test on the distro loader -- the exact silent pass the tree-arch NOELF note leaves open"
+  },
+  {
+    "id": "probe.vulkan-loader-path-parsed",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  printf '%s' \"${1}\" | sed -n 's/^VKLIB //p' | head -1",
+    "replace": "  printf '%s' \"\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a reader that returns nothing sends every run down the non-fatal WARN arm, so the gate reports 'no path' forever and the assertion it exists to make never runs"
+  },
+  {
+    "id": "llvm-target.repair-repoints-inside-the-prefix",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "ln -sfn \"$(realpath -m --relative-to=\"${e%/*}\" \"${prefix}/lib/${base}\")\" \"${e}\"",
+    "replace": "ln -sfn \"${prefix}/lib/${base}\" \"${e}\"",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "an absolute /opt path dangles again after the package COPY, and a bare basename dangles four levels down in site-packages"
+  },
+  {
+    "id": "llvm-target.repair-drops-what-the-prefix-does-not-own",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "           && _is_llvm_family \"${base}\"; then",
+    "replace": "           && true; then",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "without the family filter the repair materialises a second libc++ ahead of the base image's on the loader path"
+  },
+  {
+    "id": "llvm-target.repair-materialises-a-header-tree",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "if [ -n \"${real}\" ] && [ -d \"${real}\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "dropping the include/llvm link instead of filling it leaves find_package(LLVM) succeeding and the compile failing"
+  },
+  {
+    "id": "llvm-target.repair-fails-the-sdk-stage",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "    [ -z \"${links}\" ] || {",
+    "replace": "    [ -z \"\" ] || {",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "shipping a link that resolves to nothing is exactly what put twelve of them in the image"
+  },
+  {
+    "id": "llvm-target.family-covers-liblldb",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "libLLVM*|libclang*|liblldb*)",
+    "replace": "libLLVM*|libclang*)",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "liblldb outside the family is why the walk's ldconfig arm passed 3 of 142 binaries that cannot start"
+  },
+  {
+    "id": "llvm-target.repair-runs-on-every-arch",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "    _llvm_target_repair_links /opt/llvm-target /opt/llvm-target",
+    "replace": "    true",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "the foreign prefixes measure 0 dangling; the call keeps that true instead of assuming it"
+  },
+  {
+    "id": "python.uv-group-text-accumulated-in-the-walk",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "        else if (depth >= 2) group = group c",
+    "replace": "        else if (depth >= 2) group = group \"\"",
+    "test": "bash linux/scripts/tests/test-uv-conflict-extras.sh",
+    "why": "gathering the extras outside the character walk is what made an inline conflicts group invisible"
+  },
+  {
+    "id": "python.uv-group-read-at-its-closing-bracket",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "          if (depth == 2) { g = extras(group); if (g != \"\") print g; group = \"\" }",
+    "replace": "          if (depth == 2) { group = \"\" }",
+    "test": "bash linux/scripts/tests/test-uv-conflict-extras.sh",
+    "why": "no group means no exclusion and uv sync --all-extras dies on the conflict it was meant to route around"
+  },
+  {
+    "id": "lib.agentic-fixer-role-maps-to-executor",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "if [[ \"$role\" == \"fixer\" ]]; then oc_agent=\"executor\"; fi",
+    "replace": "if false; then oc_agent=\"executor\"; fi",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "opencode has no agent named fixer; the mapping is the only thing that routes it to the executor"
+  },
+  {
+    "id": "cross-build.media-init-refuses-a-missing-cross-predicate",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "  for _fn in log cross_build_is_active mem_capped_jobs; do",
+    "replace": "  for _fn in log mem_capped_jobs; do",
+    "test": "bash linux/scripts/tests/test-cross-fallback-parity.sh",
+    "why": "this assertion is the ONLY reason the 03-media fallback clone could be deleted"
+  },
+  {
+    "id": "cross-build.media-init-refusal-is-a-branch",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    echo \"ERROR: media_common_init: critical module(s) did not load -- missing:${_missing}\" >&2",
+    "replace": "    echo \"WARN: media_common_init: missing:${_missing}\" >&2",
+    "test": "bash linux/scripts/tests/test-cross-fallback-parity.sh",
+    "why": "a warning instead of a refusal lets the caller reach a function that is not there"
+  },
+  {
+    "id": "dead-functions.unlinked-arm-wired",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "found} | scoped, allow,",
+    "replace": "found}, allow,",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the unlinked-definer arm must actually reach check_keys; dropping the union leaves the gate exactly as blind as before"
+  },
+  {
+    "id": "dead-functions.unlinked-own-file-mention",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "if not peers or text is None or re.search(r\"\\b%s\\b\" % name, _code(text)):",
+    "replace": "if not peers or text is None or False:",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a definition its own file names again was never a candidate; without this the arm fails live code"
+  },
+  {
+    "id": "dead-functions.unlinked-outside-caller",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "if any(o != rel and name in words and o not in definers[name]",
+    "replace": "if any(False and o != rel and name in words and o not in definers[name]",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "one mention from a file that does NOT define the name is a real caller and must stop the arm dead"
+  },
+  {
+    "id": "dead-functions.unlinked-shared-basename",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "if any(reads(rel) & reads(peer) for peer in peers):",
+    "replace": "if any(False and reads(rel) & reads(peer) for peer in peers):",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the whole argument: a file naming both definers' basenames can load them into one shell, so the arm must stay quiet there"
+  },
+  {
+    "id": "dead-functions.unlinked-reads-self",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "readers[rel] = {rel} | {o for o, text",
+    "replace": "readers[rel] = {o for o, text",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "seeding the reader set with the file itself is what makes the link symmetric -- without it, the subject naming the peer (or the peer naming the subject) is not seen as a link"
+  },
+  {
+    "id": "dead-functions.unlinked-tag",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"))",
+    "replace": "+ \"\")",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the two arms ask for different fixes; an untagged row leaves the author guessing which one fired"
+  },
+  {
+    "id": "gst.tflite-parent-calls-fix-pc",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "\n  _gst_tflite_fix_pc\n",
+    "replace": "\n",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "the split must keep all three workarounds in the call path; dropping one from the parent is the exact way a decomposition silently loses a fix"
+  },
+  {
+    "id": "gst.tflite-idirafter",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "append_flag_if_missing CPPFLAGS \"-idirafter ${tflite_includedir}\"",
+    "replace": "append_flag_if_missing CPPFLAGS \"-I${tflite_includedir}\"",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "-idirafter, never -I: the target TFLite headers must lose to anything the cross toolchain already found"
+  },
+  {
+    "id": "gst.tflite-rpath-link",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "append_flag_if_missing LDFLAGS \"-Wl,-rpath-link,${tflite_libdir}\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "-L alone lets the link start and the transitive resolve fail; -rpath-link is half the pair"
+  },
+  {
+    "id": "gst.tflite-probe-first-match",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "tflite_pkg_config_name=\"${dep}\"\n        break",
+    "replace": "tflite_pkg_config_name=\"${dep}\"",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "tensorflowlite_c must win over tensorflow-lite; without the break the last candidate silently wins instead"
+  },
+  {
+    "id": "gst.tflite-pc-sed-idempotent",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g'",
+    "replace": "sed -i 's/-ltensorflow-lite/-ltensorflow-lite}/g'",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "the repair runs on every monorepo build, so a second pass must be a no-op rather than re-introducing the stray brace"
+  },
+  {
+    "id": "gst.tflite-symlink-static",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "ln -sf /usr/local/lib/libtensorflow-lite.a \"${_gcc_dir}/libtensorflow-lite.a\" 2>/dev/null || true",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "Meson's -print-file-name probe asks for the static archive too; seeding only the .so leaves the static link unresolved"
+  },
+  {
+    "id": "gst.tflite-library-path",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "export LIBRARY_PATH=\"/usr/local/lib:${LIBRARY_PATH:-}\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "the symlink farm and LIBRARY_PATH are one workaround; pkg-config's -L is precisely what -print-file-name ignores"
+  },
+  {
+    "id": "gst.tflite-symlink-cross-only",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "[ \"${BUILD_MODE:-native}\" = \"cross\" ] && [ -f /usr/local/lib/libtensorflow-lite.so ]",
+    "replace": "[ -f /usr/local/lib/libtensorflow-lite.so ]",
+    "test": "bash linux/scripts/tests/test-pkgconfig-file.sh",
+    "why": "a native build must not have foreign-arch symlinks planted into its own gcc search dirs"
+  },
+  {
+    "id": "doc-links.header-open-backlog",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "UNFREEZABLE_PAGES = (\"refactoring-backlog.md\",)",
+    "replace": "UNFREEZABLE_PAGES = ()",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "an OPEN backlog entry is archived the day it closes, so a header pointer at refactoring-backlog.md is built to rot and freezing it only hides that -- which is exactly what the nine group-(b) rows did before this wave re-pointed every one of them. Neutering the tuple lets a frozen row cover the shape again and the gate reports the tree clean"
+  },
+  {
+    "id": "lib.agentic-engines-not-sourced",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/agentic-engines.sh\"",
+    "replace": ": # not sourced",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "agentic-loop.sh is the ONLY file a consumer sources; without this line every engine adapter is undefined and the loop dies at the first invoke_agent (19/34 red)"
+  },
+  {
+    "id": "lib.agentic-engines-cwd-relative",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/agentic-engines.sh\"",
+    "replace": "source ./linux/scripts/lib/agentic-engines.sh",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "external repos source this by absolute path from their own tree via a submodule checkout, so resolving the sibling against cwd instead of BASH_SOURCE breaks every consumer but this one"
+  },
+  {
+    "id": "lib.agentic-driver-half-leaked",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "_AGENTIC_JQ_PRELUDE=",
+    "replace": "unchecked_task_count() { :; }\n_AGENTIC_JQ_PRELUDE=",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "the split is by subject -- a loop-driver function appearing in the engine half means a half moved back and the seam has stopped meaning anything"
+  },
+  {
+    "id": "lib.agentic-adapter-second-copy",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "unchecked_task_count() {",
+    "replace": "invoke_opencode() {\n    log \"second copy\"\n}\n\nunchecked_task_count() {",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "one owner per function: a re-inlined adapter in the driver half would drift silently, which is exactly how the lib/*.sh logging preamble rotted before it got an owner"
+  },
+  {
+    "id": "lib.agentic-jq-prelude-seam",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "_AGENTIC_JQ_PRELUDE='def v:",
+    "replace": "_AGENTIC_JQ_PRELUDE_UNUSED='def v:",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "the jq prelude is defined in the engine half and used by resolve_build_matrix_entry and _agentic_load_loop_config in the driver half; losing it across the seam makes `v` undefined and every MATRIX_*/_AL field silently empty rather than an error"
+  },
+  {
+    "id": "lib.agentic-jq-precondition-owner",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "    if ! command -v jq &>/dev/null; then log \"jq required\" \"FATAL\"; return 1; fi",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "run_agentic_loop's own copy of this guard was removed because load_engine_config owns it; deleting the owner too would let a jq-less host reach the planner with an empty model id instead of a FATAL"
+  },
+  {
+    "id": "probe.smoke-cross-clang-first-arch-only",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "  local clang_dump=\"$1\" target_arches=\"$2\" expected arch\n  for arch in $(smoke_arch_words \"${target_arches}\"); do",
+    "replace": "  local clang_dump=\"$1\" target_arches=\"$2\" expected arch\n  for arch in $(smoke_arch_words \"${target_arches}\" | head -1); do",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "the historical bug: the sweep broke after the first arch, so a clang whose single default triple matched a LATER requested arch was reported as matching nothing"
+  },
+  {
+    "id": "probe.smoke-cross-clang-no-match-passes",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "    fail \"clang (llvm-target): -dumpmachine=${clang_dump:-EMPTY} matches none of: ${target_arches}\"",
+    "replace": "    pass \"clang (llvm-target): -dumpmachine=${clang_dump:-EMPTY} matches none of: ${target_arches}\"",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "this arm did not exist at all before -- a target clang built for the wrong arch shipped green; turning it back into a pass restores that"
+  },
+  {
+    "id": "probe.smoke-cross-clang-guard-inverted",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "  [ -x \"${SMOKE_TARGET_CLANG}\" ] || return 0",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "an image that carries no llvm-target is not a defect; without the guard every such image fails on an empty -dumpmachine"
+  },
+  {
+    "id": "probe.smoke-cross-host-arch-cross-probed",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "    [ \"${arch}\" = \"${host_arch}\" ] && continue",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "the host arch has no <triplet>-gcc under GCC_PREFIX, so cross-probing it invents a failure on every image"
+  },
+  {
+    "id": "probe.smoke-cross-missing-cross-gcc-passes",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "      fail \"Cross GCC for ${arch} not found at ${cross_gcc}\"",
+    "replace": "      pass \"Cross GCC for ${arch} not found at ${cross_gcc}\"",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "a missing cross compiler is the whole point of this smoke; a pass here makes the wrapper-smoke stage green on a toolchain that cannot cross-build"
+  },
+  {
+    "id": "probe.smoke-cross-missing-tool-passes",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "      fail \"${tool} not found in PATH\"",
+    "replace": "      pass \"${tool} not found in PATH\"",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "cc/c++/gcc/g++ absent from PATH must be a failure, not a PASS line with an empty resolution target"
+  },
+  {
+    "id": "probe.smoke-cross-main-drops-a-probe",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "  _smoke_probe_llvm_target_clang \"${target_arches}\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "the new risk the split introduces: a dropped call retires a whole toolchain check silently, since the probe still exists and still parses"
+  },
+  {
+    "id": "probe.smoke-cross-main-drops-summary",
+    "target": "linux/scripts/06-packaging/smoke-cross-all-arches.sh",
+    "find": "  smoke_summary",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-cross-arch-smoke-probes.sh",
+    "why": "smoke_summary is what turns accumulated FAILURES into a non-zero exit; without it the smoke exits 0 no matter how many probes failed"
+  },
+  {
+    "id": "sccache.media-launcher-env-after-resolve",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    compiler_cache_launcher_env 2>/dev/null || true\n    _mcl_launcher=\"$(compiler_cache_launcher 2>/dev/null || true)\"",
+    "replace": "    _mcl_launcher=\"$(compiler_cache_launcher 2>/dev/null || true)\"\n    compiler_cache_launcher_env 2>/dev/null || true",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "resolving before the server address is established is the TCP 4226 class: the compiles run against a launcher whose address was set after it was chosen"
+  },
+  {
+    "id": "sccache.media-launcher-subshell-return",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "  local -n _mcl_launcher=\"$1\"\n  _mcl_launcher=\"\"",
+    "replace": "  local _mcl_launcher=\"\"\n  trap 'printf \"%s\" \"${_mcl_launcher}\"' RETURN",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "the reason this helper takes an out-variable: a printing version is called as $( ), and the sccache server address compiler_cache_launcher_env exports dies with that subshell before any compile runs"
+  },
+  {
+    "id": "sccache.media-launcher-use-ccache-ignored",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "if command -v ccache >/dev/null 2>&1 && is_truthy \"${USE_CCACHE:-true}\"; then",
+    "replace": "if command -v ccache >/dev/null 2>&1; then",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "Dockerfile.media documents USE_CCACHE=0/false/no/off as the way to disable ccache; ignoring it makes that switch a no-op"
+  },
+  {
+    "id": "sccache.media-launcher-ccache-fallback-gone",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    _mcl_launcher=\"ccache\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "the fallback is the whole second half of the ladder the two media scripts used to carry; losing it silently builds uncached wherever 01-core is not loaded"
+  },
+  {
+    "id": "sccache.media-launcher-out-var-not-cleared",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "  local -n _mcl_launcher=\"$1\"\n  _mcl_launcher=\"\"",
+    "replace": "  local -n _mcl_launcher=\"$1\"",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "an out-parameter must be defined by the call, not merely maybe-assigned: without the pre-clear a stale caller value survives on a cacheless host and becomes the compiler prefix"
+  },
+  {
+    "id": "sccache.media-launcher-reinlined-at-ffmpeg",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "    media_compiler_launcher _ff_cc_launcher",
+    "replace": "    if command -v compiler_cache_launcher >/dev/null 2>&1; then _ff_cc_launcher=ccache; fi",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "the drift pin for the F3 extraction: re-inlining the guard at a call site is how this family grew two copies that had already diverged on USE_CCACHE truthiness"
+  },
+  {
+    "id": "critical-fixes.smoke-vulkan-any-path",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "grep -rlE 'bash .*smoke-vulkan\\.sh'",
+    "replace": "grep -rlE 'bash[^\\n]*smoke-vulkan\\.sh'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "[^\\n] is a NEGATED CHARACTER CLASS, not 'anything but a newline' - it excludes the letter n, so the realistic RUN bash /opt/scripts/06-packaging/smoke-vulkan.sh never matched and the check was dead"
+  },
+  {
+    "id": "critical-fixes.bare-sccache-scan",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "    if [ -n \"${_bad_sccache}\" ]; then",
+    "replace": "    if [ -z \"${_bad_sccache}\" ] && false; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the repo-wide bare-sccache scan is the always-sccache decision's only enforcement; a launcher pointing at bare sccache ABORTS a build where ccache would only miss"
+  },
+  {
+    "id": "critical-fixes.transient-classifier-runs",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "    eval \"${_fn}\"",
+    "replace": "    eval \"${_fn}\"; _cross_stage_push_error_is_transient() { true; }",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the classifier is EXTRACTED AND RUN, not grepped; a build error classified as transient retries a doomed push four times"
+  },
+  {
+    "id": "critical-fixes.numpy-reseed-ban",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if grep -qE 'for pkg in .*\\bnumpy\\b' \"${stv}\" 2>/dev/null; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "apt numpy seeded into the venv collides with uv's built wheel (bug E)"
+  },
+  {
+    "id": "critical-fixes.base-mount-scope",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if grep -qE -- '--mount=type=bind,source=linux/scripts,target' \"${dbase}\" 2>/dev/null; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a whole-tree scripts bind mount folds every script's checksum into the base cache key and busts the base layer on every edit"
+  },
+  {
+    "id": "probe.cf-pc-prefix-resolved",
+    "target": "linux/scripts/06-packaging/smoke-critical-fixes.sh",
+    "find": "        \"${PYTHON_CROSS_ROOT}/${arch}\"|\"${PYTHON_CROSS_ROOT}/${arch}\"/*)",
+    "replace": "        *)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the probe must judge where the .pc prefix LANDS; a prefix resolving out of the staging tree makes every cross gst-python link pick the host libpython"
+  },
+  {
+    "id": "probe.cf-absl-demander",
+    "target": "linux/scripts/06-packaging/smoke-critical-fixes.sh",
+    "find": "  if [ -n \"${demander}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "absl missing is only a defect where a shipped header includes it - and on the shipped runtime images 707 of them do"
+  },
+  {
+    "id": "probe.cf-absl-empty-stub",
+    "target": "linux/scripts/06-packaging/smoke-critical-fixes.sh",
+    "find": "    hit=\"$(grep -rlm1 --include='*.h' -e 'include \"absl/' \"${dir}\" 2>/dev/null | head -1 || true)\"",
+    "replace": "    hit=\"${dir}\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "/usr/local/include/tensorflow ships as an EMPTY two-directory stub on all three arches; treating a directory's existence as evidence is what made the old probe red against healthy images"
+  },
+  {
+    "id": "packaging.absl-headers-copied",
+    "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+    "find": "    /usr/local/include/absl \\",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "707 of the 1322 LiteRT headers this loop copies include absl/; without absl a consumer compiling against the shipped prefix fails on the first include"
+  },
+  {
+    "id": "sccache.setup-log-names-address",
+    "target": "linux/scripts/01-core/common.sh",
+    "find": " [server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]\"",
+    "replace": "\"",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "the launcher only prints its [server=] field when sccache FAILS, so a chain where the YB fix works would carry no evidence that it did"
+  },
+  {
+    "id": "sccache.media-setup-log-names-address",
+    "target": "linux/scripts/01-core/compiler-cache.sh",
+    "find": " [server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]\"",
+    "replace": "\"",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "the media stages run the other setter; one grep must cover both or half the chain goes unread"
+  },
+  {
+    "id": "version-snapshot.snapshot-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result = check_snapshot(render_snapshot())",
+    "replace": "        result = 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "the generated snapshot block in README.md is what a reader trusts for every pinned version"
+  },
+  {
+    "id": "version-snapshot.marker-tokens-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= validate_inline_marker_tokens()",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "a typo'd marker name is silently SKIPPED by the updater, so without this pass it stays stale forever"
+  },
+  {
+    "id": "version-snapshot.inline-markers-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= check_inline_markers(versions)",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "every inline version literal in docs/ and README.md rides on this one call"
+  },
+  {
+    "id": "version-snapshot.deps-table-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= check_deps_table(versions)",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "the third-party dependency table is a licence record, not decoration"
+  },
+  {
+    "id": "version-snapshot.dockerfile-args-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= check_dockerfile_args(versions)",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "an ARG default drifting from versions.env is what a manual docker build silently gets"
+  },
+  {
+    "id": "version-snapshot.doc-literals-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= check_doc_literals(versions)",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "the /opt/gcc-<version> and clang literals prose carries cannot use inline markers, so only this scan holds them"
+  },
+  {
+    "id": "version-snapshot.licence-subprocess-ored",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        result |= lic_result.returncode",
+    "replace": "        result |= 0",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "generate-website-licenses.py is a separate program whose verdict decides this slug too"
+  },
+  {
+    "id": "vulkan.sdk-rest-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  _vulkan_target_build_sdk_rest \"${arch_suffix}\" \"${archdir}\" \"${target_dir}\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the table is dead text unless _build_vulkan_targets walks it; without the call the foreign prefix falls back to the four TVM needs and every other SDK component silently stops being cross-built"
+  },
+  {
+    "id": "vulkan.sdk-rest-src-first-candidate",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    [ -d \"${root}/${d}\" ] && { printf '%s' \"${root}/${d}\"; return 0; }",
+    "replace": "    [ -d \"${root}/${d}\" ] && { printf '%s' \"${root}/${d}\"; }",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the candidates are ordered, and shaderc's real CMake project is the FIRST of them (shaderc/src) with the bare checkout name behind it; without the return every later candidate is appended too and the argv names a path that does not exist"
+  },
+  {
+    "id": "vulkan.sdk-rest-extra-args",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      -DSPIRV_HEADERS_INSTALL_DIR=\"${archdir}\" \\\n      ${extra}",
+    "replace": "      -DSPIRV_HEADERS_INSTALL_DIR=\"${archdir}\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the third column is the only place a row says what it needs -- VOLK_INSTALL=ON, SHADERC_ENABLE_INSTALL=ON, SPIRV_CROSS_CLI=ON; dropping it configures every component with defaults that install nothing"
+  },
+  {
+    "id": "vulkan.sdk-rest-missing-source-skips",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  [ -d \"${src}\" ] || { log \"${label}: source missing at ${src}; skipping\"; return 0; }",
+    "replace": "  [ -d \"${src}\" ] || log \"${label}: source missing at ${src}; skipping\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "./vulkansdk fetches a different subset per lane, so most rows have no source; without the early return each one is counted as attempted and cmake is configured against a path that is not there"
+  },
+  {
+    "id": "vulkan.spirv-tools-executables-built",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "        -DSPIRV_SKIP_EXECUTABLES=OFF \\",
+    "replace": "        -DSPIRV_SKIP_EXECUTABLES=ON \\",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the spirv-* executables are what make the foreign-arch prefix a usable SDK rather than link fodder for TVM; skipping them ships libs with no tools, which is the state HT5's prune would then make permanent"
   }
 ]

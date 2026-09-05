@@ -471,7 +471,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **534 entries** over **69 distinct test commands**; both digits are
+manifest holds **612 entries** over **74 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1518,7 +1518,7 @@ those three rows STALE; that is the deliberate trade, not an oversight.
 
 `linux/scripts/tests/test-dead-functions.sh`, over throwaway trees —
 each case copies the gate plus the two modules it imports and plants a subject,
-callers and an allow file. 25 mutations (`dead-functions.*`), every one proven
+callers and an allow file. 31 mutations (`dead-functions.*`), every one proven
 to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 `patches/`, `linux/webserver/dist`, `.pytest_cache`, `.dart_tool` and

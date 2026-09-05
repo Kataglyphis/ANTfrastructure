@@ -274,6 +274,22 @@ ENV BUILD_MODE=${BUILD_MODE} \
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
 
+# The android stage advertises these; Dockerfile.package COPYs the payload they
+# point at but never re-declared the names, so a consumer that found /opt/android
+# still could not be told where anything in it was. One ENV per name: the env-knob
+# owner scan reads the first name of an instruction only.
+# NOT a bare OpenCV_DIR -- that is the name find_package(OpenCV) reads, and pointing
+# it at the Android SDK would hijack every LINUX OpenCV consumer in this image.
+# docs/consumer-image-contract.md#the-android-sdk-roots-are-advertised
+ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
+ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
+ENV LITERT_ROOT_ANDROID=/opt/android/litert
+ENV OPENCV_ROOT_ANDROID=/opt/android/opencv
+ENV IREE_ROOT_ANDROID=/opt/android/iree
+ENV OPENCV_ANDROID_JNI_DIR=/opt/android/opencv/sdk/native/jni
+ARG ANDROID_TARGET_ABI=arm64-v8a
+ENV ANDROID_TARGET_ABI=${ANDROID_TARGET_ABI}
+
 # Gradle reads JAVA_HOME, not PATH. The anchor is a symlink setup-package-image.sh
 # resolves from the installed javac, so a JDK bump never has to be repeated here.
 # Its own instruction: the env-knob owner scan reads the first name of an ENV only.

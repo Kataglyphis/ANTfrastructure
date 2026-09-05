@@ -585,6 +585,55 @@ and `<label> unavailable` lines in the lane logs, and the
 `check_vulkan_toolset` verdict on each shipped image, then record here which
 components genuinely cross-build and drop the ones that never will.
 
+### AB1. The Android layer was built for the build host, not for a phone [M, ★★★]
+
+Reported by the Kataglyphis-Inference-Engine android lane 2026-09-05, as a link
+error rather than a missing file — every SDK was present and every one was wrong:
+
+```
+ld.lld: error: /opt/android/gstreamer/libgstreamer-1.0.a(gst.c.o)
+        is incompatible with aarch64linux
+```
+
+Root cause was one function. `android_target_arch()` returned `arch_oci` — the
+architecture of the machine running the build — and every cross stage builds on
+`linux/amd64`. So all five prebuilt SDKs under `/opt/android` (GStreamer, ONNX
+Runtime, LiteRT, OpenCV, IREE) were compiled for Android `x86_64` in EVERY image,
+arm64 and riscv64 included. `x86_64` is the emulator ABI.
+
+Measured over the whole tree on the shipped image, not just the three the report
+sampled: **420 objects, every one ELF machine 62 (X86-64), 0 AArch64.**
+
+FIXED: `ANDROID_TARGET_ABI` (versions.env, default `arm64-v8a`) names the target;
+`arch_for_android_abi` maps it back so `TARGET_ARCH` and the ABI cannot disagree —
+that pair drives cerbero's `CERBERO_TARGET_ARCH`, the API-level floor and ONNX
+Runtime's riscv64 skip. The five cerbero cachemounts now carry the ABI in their id:
+they were keyed on `${TARGET_ARCH}`, which is the constant build host, so a
+switched ABI would have resumed the previous ABI's tree and spent hours building
+the wrong thing. `check_android_abi` asserts the shipped payload against the ABI
+the image advertises, reading `.a` MEMBERS as well as `.so` files because the
+object that broke the consumer's link was inside an archive.
+
+Two things the same report turned up:
+
+- **The SDK roots were never advertised.** `Dockerfile.android` sets
+  `GSTREAMER_ROOT_ANDROID` and its four siblings; `Dockerfile.package` COPYs the
+  payload and re-declared none of them, so a consumer found `/opt/android` and no
+  name for anything in it. All five are exported now, one `ENV` each. Deliberately
+  no bare `OpenCV_DIR` — that name would hijack every Linux OpenCV consumer in the
+  image; `OPENCV_ANDROID_JNI_DIR` carries the Android tree instead.
+- **The Flutter finding does not reproduce.** `/opt/flutter/bin/cache/dart-sdk/bin/dart`
+  exists in the shipped image and `flutter --version` answers instantly with Dart
+  3.13.1, no download — at engine revision `5d53178869`, the SAME one the report's
+  download line names. Whatever re-fetches it is on the consumer side (a volume over
+  `/opt/flutter`, a different uid, or an older pull), not in the image.
+
+**Open: one ABI per image.** Multi-ABI would want the official multi-ABI artifacts
+(GStreamer's universal tarball already carries `arm64/armv7/x86/x86_64`; the OpenCV
+Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Until
+then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
+emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+
 ### YB. sccache: root cause FOUND and fixed, unproven by any build [S to watch, ★★★]
 
 **This entry is no longer an investigation.** The 2026-09-05 wave found the mechanism

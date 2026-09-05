@@ -873,6 +873,33 @@ opt in per scope via `cross_bare_bin_path()`:
 bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
 ```
 
+### The Android ABI is a target, not the build host
+
+`ANDROID_TARGET_ABI` (`01-core/versions.env`, default `arm64-v8a`) names the ABI the
+prebuilt SDKs under `/opt/android` are compiled for. It used to be derived from
+`arch_oci` — the **build host** — and every cross stage in this repo builds on amd64.
+The whole Android layer therefore shipped as `x86_64`, which is emulator-only, while
+the app asked for `arm64-v8a`. Nothing failed loudly; the payload was simply for the
+wrong machine.
+
+`android_target_arch` now prefers the declared ABI and falls back to `arch_oci` only
+when nothing declared one:
+
+| ABI | OCI arch |
+| --- | --- |
+| `arm64-v8a` | `arm64` |
+| `x86_64` | `amd64` |
+| `x86` | `386` |
+| `riscv64` | `riscv64` |
+
+`arch_for_android_abi` returns non-zero on anything else rather than guessing, so an
+unmappable ABI is a build failure and not a silently mis-targeted layer.
+
+One ABI per image. The ABI is part of the cerbero cache-mount id in
+`Dockerfile.android`, so changing it rebuilds the GStreamer Android payload rather
+than reusing another ABI's state — set it and rebuild the layer to target a
+different device.
+
 ### Android SDK environment in the runtime image
 
 `Dockerfile.package` COPYs `/opt/android-sdk` unconditionally, so the tree is in
@@ -1048,4 +1075,42 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --pa
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+```
+
+## The Android ABI is a target, not the build host
+
+`/opt/android` holds five prebuilt Android SDKs — GStreamer, ONNX Runtime,
+LiteRT, OpenCV, IREE. Each is compiled for exactly one Android ABI, and until
+2026-09-05 that ABI was derived from `arch_oci`: the architecture of the machine
+doing the build. Every cross stage builds on `linux/amd64`, so the answer was
+always `x86_64`, on every image, including the arm64 and riscv64 ones.
+
+The symptom reached a consumer as a linker error, not a missing file — the SDKs
+were all present and all wrong:
+
+```
+ld.lld: error: /opt/android/gstreamer/libgstreamer-1.0.a(gst.c.o)
+        is incompatible with aarch64linux
+```
+
+`x86_64` is the emulator ABI. An app targeting real phones asks for `arm64-v8a`,
+so the layer was useful to almost nobody.
+
+`ANDROID_TARGET_ABI` in `versions.env` now names the target, defaulting to
+`arm64-v8a`. `android_target_abi()` reads it, and `android_target_arch()` maps it
+BACK to a Debian arch through `arch_for_android_abi` so the two never disagree —
+the preamble's `TARGET_ARCH` drives cerbero's `CERBERO_TARGET_ARCH`, the API-level
+floor, and ONNX Runtime's riscv64 skip. With the knob unset the old host-derived
+behaviour is unchanged.
+
+One ABI per image. Switching costs a full rebuild of the android stage, which is
+why the five cerbero cachemounts carry `abi${ANDROID_TARGET_ABI}` in their id:
+without it a switched ABI would resume the previous ABI's cerbero tree and spend
+hours producing the wrong thing, the same class of trap the NDK version key
+already guards.
+
+To build the emulator ABI instead:
+
+```bash
+ANDROID_TARGET_ABI=x86_64 bash linux/scripts/build-cross-chain.sh --only android
 ```

@@ -147,6 +147,34 @@ The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
 was measured present in all three shipped arches on 2026-09-04, and the parity
 table already asserts the `android-sdk` prefix on every arch.
 
+### The Android SDK roots are advertised
+
+`Dockerfile.android` advertises where each Android payload lives; `Dockerfile.package`
+COPYs the payload those names point at but, until 2026-09-05, never re-declared the
+names. A consumer that found `/opt/android` in the runtime image therefore still had
+no way to be told where anything inside it was, and every Android lane hardcoded the
+paths or re-downloaded the SDKs. The runtime image now re-declares all six:
+
+| variable | value |
+| --- | --- |
+| `GSTREAMER_ROOT_ANDROID` | `/opt/android/gstreamer` |
+| `ONNXRUNTIME_ROOT_ANDROID` | `/opt/android/onnxruntime` |
+| `LITERT_ROOT_ANDROID` | `/opt/android/litert` |
+| `OPENCV_ROOT_ANDROID` | `/opt/android/opencv` |
+| `IREE_ROOT_ANDROID` | `/opt/android/iree` |
+| `OPENCV_ANDROID_JNI_DIR` | `/opt/android/opencv/sdk/native/jni` |
+
+Two shapes here are deliberate and a tidy-up would break both. Each name gets its
+**own** `ENV` instruction, because the env-knob owner scan reads only the first name
+of an instruction — collapsing them into one backslash-continued `ENV`, the way
+`Dockerfile.android` writes them, would leave five of the six with no recorded owner.
+And the OpenCV key is `OPENCV_ROOT_ANDROID`, never a bare `OpenCV_DIR`: that is the
+name `find_package(OpenCV)` reads, so pointing it at the Android SDK would hijack
+every **Linux** OpenCV consumer in the same image.
+
+These are paths, not versions, so they are outside the advertised-version-key gate
+(`verify_advertised_keys.py`); what holds them is the runtime smoke's path checks.
+
 ## Two things worth knowing before you configure a lane
 
 - `:latest-cross` is a proper multi-arch index. An arm64 runner gets arm64
@@ -155,3 +183,29 @@ table already asserts the `android-sdk` prefix on every arch.
 - **The image ships Flutter at `/opt/flutter`.** A lane still passing
   `--flutter-dir /workspace/flutter` re-downloads the whole SDK every run for
   nothing. `sccache` and `appimagetool` are on `PATH` as well.
+
+## The Android SDK roots are advertised
+
+`Dockerfile.android` sets `GSTREAMER_ROOT_ANDROID`, `ONNXRUNTIME_ROOT_ANDROID`,
+`LITERT_ROOT_ANDROID`, `OPENCV_ROOT_ANDROID` and `IREE_ROOT_ANDROID`, but that is
+the *build* stage. `Dockerfile.package` COPYs the payload those names point at and
+used to stop there, so a consumer of the shipped image found `/opt/android`
+populated and no name telling it what was where. The reported symptom:
+
+```
+CMake Error at CMakeLists.txt:18 (message):
+  GSTREAMER_ROOT_ANDROID must be set
+```
+
+All five are re-declared in the runtime image, one `ENV` instruction each — the
+env-knob owner scan reads the first name of an instruction only, so a single
+multi-name `ENV` would leave four of them unowned.
+
+There is deliberately **no** bare `OpenCV_DIR`. That is the name
+`find_package(OpenCV)` resolves, and pointing it at the Android SDK would hijack
+every *Linux* OpenCV consumer in the same image. `OPENCV_ANDROID_JNI_DIR` names
+the Android tree instead, to be passed explicitly:
+
+```bash
+cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
+```

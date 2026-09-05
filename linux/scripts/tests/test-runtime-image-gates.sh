@@ -914,4 +914,58 @@ t_case "the layer manifest is reported when the prefix carries it"
 t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
 LAYER yes")" "validation layer manifest present" "the good shape is stated too"
 
+# ── the Android SDK ABI gate ────────────────────────────────────────────────
+# ABI_OUT is what the probe prints: the image's advertised ABI, then one MACH row
+# per ELF machine found under /opt/android. The ABI->machine table is read out of
+# the source so the suite cannot drift from what the gate accepts.
+_ABI_TABLE="$(grep -E '^_ANDROID_ABI_MACHINE=' "${SMOKE}")"
+_abi_gate() {
+  ABI_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    '"${_ABI_TABLE}"'
+    _rt_run() { printf "%s\n" "${ABI_OUT}"; }
+    '"$(_extract _android_abi_want)"'
+    '"$(_extract check_android_abi)"'
+    check_android_abi img arm64' 2>&1
+}
+
+# Measured on the 2026-09-05 image: 420 objects under /opt/android, every one of
+# them machine 62. Same row with 183 is what the fixed android stage produces.
+_ABI_SAMPLE=/opt/android/litert/lib/libbenchmark_main.a
+_abi_shipped="ABI arm64-v8a
+MACH 62 420 ${_ABI_SAMPLE}"
+_abi_fixed="ABI arm64-v8a
+MACH 183 420 ${_ABI_SAMPLE}"
+
+t_case "the shipped shape -- an arm64-v8a claim over an x86-64 payload -- fails"
+t_assert_contains "$(_abi_gate "${_abi_shipped}")" \
+  "is incompatible" "this is the consumer's link error, caught before it ships"
+
+t_case "the failure names the count and a sample object"
+t_assert_contains "$(_abi_gate "${_abi_shipped}")" \
+  "420 object(s) of ELF machine 62" "a count and a path is what makes it actionable"
+
+t_case "a correctly built arm64-v8a payload passes"
+t_assert_contains "$(_abi_gate "${_abi_fixed}")" \
+  "all arm64-v8a" "what the fixed android stage prints"
+
+t_case "an image that does not advertise the ABI fails"
+t_assert_contains "$(_abi_gate "ABI unset")" \
+  "does not advertise ANDROID_TARGET_ABI" "a consumer cannot guess which ABI it got"
+
+t_case "an ABI the table does not know fails rather than passing vacuously"
+t_assert_contains "$(_abi_gate "ABI mips64
+MACH 183 4 /opt/android/x")" "is not an ABI this gate knows" \
+  "an unknown claim must never read as satisfied"
+
+t_case "a mixed payload fails on the wrong half even when the right half is there"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a
+MACH 183 400 /opt/android/ok.so
+MACH 62 20 /opt/android/gstreamer/libgstreamer-1.0.a")" \
+  "libgstreamer-1.0.a" "one stale ABI among many is exactly how it reached the consumer"
+
+t_case "an empty tree warns instead of passing silently"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a")" \
+  "no Android ELF objects" "nothing found is not the same as everything correct"
+
 t_summary

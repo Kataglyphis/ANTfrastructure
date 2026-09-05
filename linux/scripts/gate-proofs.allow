@@ -60,6 +60,5 @@ mutation-family:rust
 mutation-family:sccache
 mutation-family:tree-arch
 mutation-family:vulkan
-mutation-family:vulkan-prune
 mutation-family:wheels
 mutation-family:trailing-return
