@@ -161,6 +161,27 @@ select_dev_packages() {
     #     chain, which pulls target-side Python and breaks cross builds on
     #     python3-minimal's postinst.
     # libssl-dev already arrives via package-lists.sh.
+
+    # Gradle refuses to run without a JDK, and the SDK COPY leaves the source
+    # stage's one behind (it went to /usr/lib/jvm via apt, not /opt/android-sdk).
+    # Asked for by name, not through append_available_packages: a silently
+    # skipped JDK ships an Android SDK that cannot build anything.
+    _sdp_out+=("${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}")
+}
+
+# JAVA_HOME must survive a JDK bump, and Ubuntu's real path carries both the
+# version and the arch (java-21-openjdk-riscv64). Resolve it once from the
+# installed javac and park a stable symlink the image ENV can point at.
+# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+anchor_java_home() {
+    local javac home
+    javac="$(command -v javac 2>/dev/null || true)"
+    [ -n "${javac}" ] || { echo "ERROR: ${JDK_PACKAGE:-the JDK} installed no javac; Gradle cannot build" >&2; return 1; }
+    home="$(dirname "$(dirname "$(readlink -f "${javac}")")")"
+    [ -x "${home}/bin/javac" ] || { echo "ERROR: resolved JAVA_HOME ${home} has no bin/javac" >&2; return 1; }
+    mkdir -p /usr/lib/jvm
+    ln -sfn "${home}" /usr/lib/jvm/default-java
+    echo "OK: JAVA_HOME anchor /usr/lib/jvm/default-java -> ${home}"
 }
 
 install_dev_packages() {
@@ -322,6 +343,18 @@ ensure_native_rust_toolchain() {
     echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
     rm -rf "${RUSTUP_HOME}" "${CARGO_HOME}"
     RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
+}
+
+# Hand the paths root wrote in THIS RUN to the runtime user. Only what root
+# still owns is chowned: a blanket chown -R rewrites metadata on a tree that
+# entered the stage via COPY --chown and copies it up into this layer (rustup
+# 2.0 GB + cargo 173 MB, /opt/flutter 716 MB). Modes are untouched, so a tree
+# stays owner-writable, never world-writable.
+# docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
+hand_root_created_paths_to_runtime_user() {
+    local uid="${RUNTIME_UID:?}"
+    find "$@" ! -user "${uid}" -exec chown -h "${uid}:${uid}" {} +
+    echo "OK: $* owned by uid ${uid}"
 }
 
 wire_cargo_symlinks() {
@@ -504,8 +537,9 @@ report_rust_provenance() {
 
 # The sdk stage ships Flutter bare (empty bin/cache): the Dart SDK and the
 # flutter_tools snapshot are per-arch and only this target-arch stage can create
-# them. Runs as root, so the cache it writes is handed to the runtime user,
-# who already owns the rest of the tree from the COPY.
+# them. Runs as root, so EVERY path root leaves behind -- bin/cache, the fetched
+# git objects, flutter_tools/.dart_tool -- goes through the same handover the rust
+# trees use; the rest of the tree is the COPY --chown's and must not be rewritten.
 # docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 bootstrap_flutter_sdk() {
     [ -x /opt/flutter/bin/flutter ] || return 0
@@ -519,8 +553,8 @@ bootstrap_flutter_sdk() {
     fi
     printf '%s\n' "${out}" | grep -m1 -E '^Flutter [0-9]'
     assert_elf_arch /opt/flutter/bin/cache/dart-sdk/bin/dart "${arch}"
-    chown -R "${RUNTIME_UID:?}:${RUNTIME_UID}" /opt/flutter/bin/cache
-    echo "OK: Flutter bootstrapped for ${arch}, bin/cache owned by uid ${RUNTIME_UID}"
+    hand_root_created_paths_to_runtime_user /opt/flutter
+    echo "OK: Flutter bootstrapped for ${arch}"
 }
 
 main() {
@@ -535,11 +569,13 @@ main() {
     local -a _dev_packages=()
     select_dev_packages _dev_packages "${python_mm}" "${gcc_major}"
     install_dev_packages "${_dev_packages[@]}"
+    anchor_java_home
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
     ensure_native_rust_toolchain
     wire_cargo_symlinks
+    hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"
 
     add_prefix_python_paths_to_venv "/opt/opencv5" "${VIRTUAL_ENV}/bin/python"

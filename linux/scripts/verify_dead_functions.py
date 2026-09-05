@@ -87,25 +87,36 @@ def _isolated(rel, corpus_texts):
 
 
 def census(corpus_texts):
-    """(rows, considered) -- definitions their own file never names again; rows keep
-    only those in a file that sources nothing and that nothing else names."""
+    """(rows, shared, considered) -- definitions their own file never names again;
+    rows keeps the ones in a file that sources nothing and that nothing else names,
+    shared keeps the ones whose name a second file also defines."""
     considered = []
     for rel, name in definitions():
         text = corpus_texts.get(rel)
         if text is None or re.search(r"\b%s\b" % name, _code(text)):
             continue
         considered.append((rel, name))
-    return [key for key in considered if _isolated(key[0], corpus_texts)], len(considered)
+    definers = Counter(name for _, name in definitions())
+    return ([key for key in considered if _isolated(key[0], corpus_texts)],
+            [key for key in considered if definers[key[1]] > 1],
+            len(considered))
 
 
-def report_census(rows, considered):
+def report_census(rows, shared, considered):
     print("=== dead function census (advisory, not a gate) ===")
     print("  %d definition(s) their own file never names again; %d of those in a file "
-          "that sources nothing and that nothing else names" % (considered, len(rows)))
+          "that sources nothing and that nothing else names; %d share their name with "
+          "another file's definition" % (considered, len(rows), len(shared)))
     for rel, name in rows:
         print("  %s\t%s" % (rel, name))
     if not rows:
         print("  none -- every candidate sits in a sourced or externally named file")
+    print("  masked (%d) -- the gate's live verdict for these comes from a same-named "
+          "definition in another file, not from a call it can see:" % len(shared))
+    for rel, name in shared:
+        print("  %s\t%s" % (rel, name))
+    if not shared:
+        print("  none -- every candidate owns its name in the corpus")
     return 0
 
 

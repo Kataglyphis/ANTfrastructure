@@ -23,15 +23,21 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}" || exit 1
 
 # C4 (2026-08-26): read the pin from versions.env instead of duplicating it.
-# The literal here silently drifted from RUFF_VERSION the moment that key was
-# bumped; sourcing it is the one-line fix the backlog asked for.
-_venv="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core/versions.env"
-# shellcheck disable=SC1090
-[ -f "${_venv}" ] && . "${_venv}"
+# Through the safe loader, never `source`: versions.env is inert data whose
+# values may contain shell metacharacters, and sourcing it ran three of
+# CUDA_ARCHITECTURES' arch numbers as commands on every hook run.
+# docs/cross-build-verification.md#per-arch-version-truth
+_core="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core"
+if [ -f "${_core}/versions.env" ] && [ -f "${_core}/load-versions-env.sh" ]; then
+  # shellcheck source=01-core/load-versions-env.sh
+  . "${_core}/load-versions-env.sh" && load_versions_env "${_core}/versions.env"
+fi
 RUFF_PIN="${RUFF_VERSION:-0.16.4}"
 GATE_SELECT="E9,F63,F7,F82"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+_RUFF_OUT="$(mktemp)"
+trap 'rm -f "${_RUFF_OUT}"; rm -rf "${_EMB_DIR:-}"' EXIT
 
 # ---------------------------------------------------------------------------
 # Target set — first-party Python only (vendored/venv/checkout trees excluded)
@@ -55,13 +61,51 @@ fi
 # cannot carry a .sh suffix. docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 if [ "$#" -eq 0 ]; then
   _EMB_DIR="$(mktemp -d)"
-  trap 'rm -rf "${_EMB_DIR}"' EXIT
+  _EMB_MAP="${_EMB_DIR}/.sources"
   if python3 linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
-       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) >/dev/null 2>&1; then
+       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) > "${_EMB_MAP}" 2>/dev/null; then
     while IFS= read -r f; do PY_FILES+=("${f}"); done \
       < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
   fi
 fi
+
+# A finding in an extracted block is named `probe__2.py:1:` -- opener line in one
+# number, body line in the other, added by hand by whoever reads it. The
+# extractor's map turns the pair back into the shell file and its real line.
+# docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
+_name_sources() {
+  python3 - "${_EMB_MAP:-/dev/null}" "$1" <<'EMBPY'
+import re
+import sys
+
+table = {}
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for row in fh:
+            tmp, _, where = row.rstrip("\n").partition("\t")
+            if tmp and where:
+                table[tmp] = where
+except OSError:
+    pass
+
+
+def relabel(hit):
+    where = table.get(hit.group(1))
+    if where is None:
+        return hit.group(0)
+    exact = re.match(r"(.*):(\d+)$", where)
+    if exact:
+        return "%s:%d" % (exact.group(1), int(exact.group(2)) + int(hit.group(2)))
+    return "%s line %s" % (where, hit.group(2))
+
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+NAMED = re.compile(r"(\S+\.py):(\d+)")
+with open(sys.argv[2], encoding="utf-8") as fh:
+    for line in fh:
+        sys.stdout.write(NAMED.sub(relabel, ANSI.sub("", line)))
+EMBPY
+}
 
 # ---------------------------------------------------------------------------
 # ruff bootstrap (PATH copy preferred; else pinned uvx)
@@ -78,7 +122,8 @@ fi
 echo "== python lint: ${#PY_FILES[@]} file(s), ruff via '${RUFF[*]}' =="
 
 # Gate pass — real-error classes only, hard-fails.
-if ! "${RUFF[@]}" check --quiet --select "${GATE_SELECT}" "${PY_FILES[@]}"; then
+if ! "${RUFF[@]}" check --quiet --select "${GATE_SELECT}" "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
+  _name_sources "${_RUFF_OUT}"
   echo ""
   err "python gate pass failed (${GATE_SELECT}: syntax errors / undefined names / invalid asserts)"
 fi
@@ -87,9 +132,10 @@ echo "gate pass (${GATE_SELECT}): clean"
 # Advisory pass — full default ruleset, informational only.
 echo ""
 echo "-- advisory pass (full default ruleset; does not fail the gate) --"
-if "${RUFF[@]}" check "${PY_FILES[@]}"; then
+if "${RUFF[@]}" check "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
   echo "advisory pass: clean"
 else
+  _name_sources "${_RUFF_OUT}"
   echo ""
   echo "ADVISORY: findings above are informational (adoption ramp — tighten by"
   echo "promoting codes into GATE_SELECT once addressed; do not churn files"

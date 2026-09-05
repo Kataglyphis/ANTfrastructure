@@ -158,6 +158,18 @@ out="$(_knobs)"
 t_assert_eq "1" "$(_rc 1)" "a word after the command name is an argument, not an assignment"
 t_assert_contains "${out}" "    ARGUMENT_KNOB"
 
+t_case "a reader to the right of a # INSIDE a quoted string is still a reader"
+{ _consume PINNED_KNOB DOCKER_KNOB
+  printf 'echo "tag: #${%s:-x}"\n' QUOTED_HASH_KNOB; } > "${SUBJECT}"
+out="$(_knobs 1)"
+t_assert_eq "1" "$(_rc 1)" "a flat cut at ` #` loses the reader and the gate goes quiet"
+t_assert_contains "${out}" "    QUOTED_HASH_KNOB"
+
+t_case "a real trailing comment after that same line is still stripped"
+{ _consume PINNED_KNOB DOCKER_KNOB
+  printf 'echo "tag: #x"   # ${%s:-x}\n' COMMENTED_TAIL_KNOB; } > "${SUBJECT}"
+t_assert_eq "0" "$(_rc 1)" "the quote closed before the hash, so the tail is prose"
+
 t_case "a comment that spells a whole assignment COMMAND is still only a comment"
 { _consume PINNED_KNOB DOCKER_KNOB COMMENTED_SHAPE_KNOB
   printf 'true   # set it with: export %s=1\n' COMMENTED_SHAPE_KNOB; } > "${SUBJECT}"
@@ -246,6 +258,17 @@ _out="$(_knobs 1)"
 t_assert_contains "${_out}" "UNOWNED knobs (1)" "the assignment in the next file still owns"
 t_assert_contains "${_out}" "    HD_BODY_KNOB" "and the runaway body still owns nothing"
 rm -f "${_eat}"
+
+t_case "the thirteen 2026-09-04 build-window knobs default at their reader, not in a row"
+_REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
+for _k in CROSS_GCC_TOOLCHAIN_PATH IREE_CROSS_BUILD_COMPILER LINT_DOCKERFILES_BUILD_CHECK \
+          LLVM_INSTALL_PROFILE MEDIA_STRIP NODE_RISCV64_MAJOR_REQUIRED OPENCV_GSTREAMER_PASS \
+          PYTHON_LTO RUNTIME_CLANG_VERSION_SMOKE RUNTIME_COMPILER_SMOKE RUNTIME_IMAGE_SMOKE \
+          SKIP_REAL_TREE STV_COMPUTE; do
+  t_assert_ok grep -rqF -e ": \"\${${_k}:=" "${_REPO}/linux/scripts"
+  t_assert_eq "" "$(grep -cE -e "^${_k}[[:space:]]*(#.*)?$" "${TESTS_DIR}/../lint-env-knobs.allow" \
+    | sed 's/^0$//')" "${_k} owns its default at the reader; the registry row must be gone"
+done
 
 t_case "the REAL tree is clean today, under KNOB_GATE=1"
 t_assert_eq "0" "$(t_rc env KNOB_GATE=1 bash "${LIVE}")"

@@ -195,9 +195,10 @@ skips the trim entirely and restores the pre-2026-08-31 behaviour.
 **Why this is safe.** T2 is a *cache export*, not the buildkit store. Losing a
 slug costs export reuse for that stage and nothing else — no ccache, no
 sccache, no cachemount. The trim only ever `rm -rf`s directories directly under
-`BUILDKIT_CACHE_DIR`; it never invokes `buildctl prune`, `nerdctl builder
-prune` or `nerdctl system prune`. The sanctioned buildkit-store reclaim remains
-`linux/host-config/prune-safe.sh`.
+`BUILDKIT_CACHE_DIR`; it never invokes any prune. The buildkit store is reached
+only by the **filtered** `buildctl prune` of § 3.2.1, and by
+`linux/host-config/prune-safe.sh` by hand. `nerdctl builder prune` and
+`nerdctl system prune` are never run by anything in the chain.
 
 **Salvage disk gate.** `_cross_salvage_disk_ok` gates the S1 salvage on free
 space: below `SALVAGE_MIN_FREE_GB` (default `CROSS_DISK_GUARD_GB`, i.e. 40 G)
@@ -249,7 +250,9 @@ Each tick:
   must act on, and it is what silence used to look like.
 
 It never calls `nerdctl system prune` / `builder prune`; those wipe the
-`exec.cachemount` records and cost hours (§ 7).
+`exec.cachemount` records and cost hours (§ 7). When the trim leaves the disk
+still short, the watchdog falls back to a *filtered* buildkit prune instead of
+giving up — § 3.2.1.
 
 **The lane-entry gate.** `_chain_runtime_lane_disk_gate` runs immediately
 before `build-runtime-manifest.sh`. It requires
@@ -269,6 +272,85 @@ stages' consumption is still unknown, so the honest enforcement point is lane
 entry, where free space is actually measured against what is about to be spent.
 The r2 run would have been refused at 02:55 with 88 G — hours before it died,
 and after a trim that might have rescued it.
+
+
+### 3.2.1 The buildkit-store fallback (DISK1)
+
+Landed 2026-09-04, after the 2026-09-03 runtime run died at **4 G** free while
+**415 G** sat in `~/.local/share/buildkit`. The watchdog fired, trimmed
+`~/.cache/kata-buildcache`, freed nothing — the dir held exactly three slugs and
+`CROSS_TRIM_KEEP_SLUGS` is 3 — and logged `NOTHING was reclaimable`. The manual
+rescue, `PRUNE_KEEP_GB=120 linux/host-config/prune-safe.sh`, freed **223 G in
+36 s** with all **97** cache-mount records surviving.
+
+`_disk_guard_buildkit_fallback` is that rescue, wired into
+`_disk_guard_watch_once` **after** the cache-export trim: it re-measures free
+space and returns immediately unless the trim left the path still under the
+threshold. Only then does it run
+
+```
+buildctl prune --filter type==regular --keep-storage <keep_gb * 1000>
+```
+
+the same filtered form `prune-safe.sh` uses. `nerdctl builder prune -f` is not
+an alternative and never becomes one: it has no `--filter`, so it deletes the
+`exec.cachemount` records too — ccache, sccache, uv, cargo, apt — and cost
+1.5–2 h of cold LLVM on 2026-08-17 (§ 7). `prune-safe.sh` remains the
+operator-facing tool with the full before/after inventory; the guard is the
+in-chain, non-interactive subset.
+
+**Why 120 G of keep-storage, when the guard fires at 40 G free.** The two
+numbers measure different things and do not compete. `CROSS_DISK_GUARD_GB` (40)
+is *free space on the filesystem* — the point at which a stage is about to
+ENOSPC. `CROSS_BUILDKIT_KEEP_GB` (120) is *how much layer cache stays in the
+store* — the reuse the remaining stages still need. A prune that clears the
+40 G emergency while keeping 120 G of layers satisfies both, which is exactly
+what the 2026-09-03 rescue did on a 415 G store. Below ~100 G of retained
+layers the next stages start recompiling what they should have pulled from
+cache (the `rebuild-disk-management` note), so a non-zero
+`CROSS_BUILDKIT_KEEP_GB` under 100 is raised to 100 and logged. `0` is the
+explicit "reclaim everything regenerable" escape hatch and is left alone. When
+the store is smaller than the keep value the prune is a no-op and the log says
+it freed 0 G — honest, and the operator still gets the `NOTHING was reclaimable`
+warning from the reclaim record.
+
+**Once per caller, not once per sample.** The watchdog samples every
+`CROSS_DISK_WATCH_SECS` (120 s). After the first prune the store is already at
+`--keep-storage`, so a repeat would walk the whole store — 36 s of I/O during a
+running build — and free nothing. The second and later samples log `already
+pruned once here` and stop. The latch is per process, so the next stage's
+watchdog starts fresh.
+
+**What it logs.** Every arm is greppable as `[disk-buildkit]`:
+
+| line | when |
+|---|---|
+| `<N>G free < <T>G after the cache-export trim — pruning type==regular layer cache with --keep-storage <K>G` | the prune is about to run |
+| `reclaimed <N>G of layer cache in <S>s (<before>G -> <after>G free; keep-storage <K>G)` | after it, always — including `reclaimed 0G` |
+| `all <N> cache-mount record(s) survived` | the filter held |
+| `cache-mount records dropped <N> -> <M>` (WARN) | it did not; compile caches are gone |
+| `SKIP: no buildctl on PATH` (WARN) | tool missing |
+| `SKIP: buildkit store unreachable` (WARN) | `buildctl du` will not answer |
+| `already pruned once here` | the latch |
+| `disabled (CROSS_BUILDKIT_PRUNE=0)` | the knob |
+
+The reclaimed GB also reaches `_disk_guard_reclaim_record`, so the single
+`[disk-reclaim]` line per reclaim now reads `… freed X GiB + 223G of buildkit
+layer cache`, and `NOTHING was reclaimable` is emitted only when *both* tiers
+came up empty. Pinning that give-up line as correct behaviour is what the old
+suite did.
+
+**Degradation.** A missing `buildctl`, an unreachable socket, a non-numeric
+target or an unknown free-space reading all return 0 after one WARN, leaving
+exactly the pre-2026-09-04 behaviour. The fallback never aborts the stage it
+samples — it is a watchdog, and a watchdog that kills the build it watches is
+worse than the drain.
+
+Unit coverage: the DISK1 section of `linux/scripts/tests/test-disk-guard.sh`
+(trim-first ordering, the filter and keep-storage argument, the keep floor,
+the once-latch, the survival count, both SKIP arms, and a structural assertion
+that `disk-guard.sh` does not name `nerdctl` or `builder prune` anywhere), plus
+the `disk-guard.*` mutations.
 
 ### 3.3 Runtime-failure summary (B3)
 
@@ -700,6 +782,8 @@ measurement, not a default flip.
 | `CROSS_DISK_WATCH=0` | unset (watch on) | disable the in-stage disk watchdog (§ 3.2) |
 | `CROSS_DISK_WATCH_SECS` | `120` | in-stage sampling interval |
 | `CROSS_TRIM_KEEP_SLUGS` | `3` | newest T2 slugs the trim will never remove |
+| `CROSS_BUILDKIT_PRUNE=0` | unset (fallback on) | disable the guard's filtered buildkit-store prune (§ 3.2.1) |
+| `CROSS_BUILDKIT_KEEP_GB` | `120` | GB of `type==regular` layer cache that prune keeps; a non-zero value under 100 is raised to 100, `0` reclaims all of it (§ 3.2.1) |
 | `SALVAGE_MIN_FREE_GB` | `CROSS_DISK_GUARD_GB` (40) | free-space floor below which the S1 salvage is skipped (`0` = always salvage) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
@@ -721,6 +805,12 @@ keeps the design.
 - Do not add a cache tier that the DeadlineExceeded auto-recovery cannot strip.
 - Do not "align" the ccache/sccache cache-mount ids with the apt ones
   (`Dockerfile.media:26-31`).
+- Do not reclaim buildkit-store disk with `nerdctl builder prune -f` or
+  `nerdctl system prune`, from a script or by hand. Neither has a `--filter`, so
+  both delete the `exec.cachemount` records with the layer cache: 4.9 GB of
+  compile cache thrown away to reclaim 207 GB of regenerable layers on
+  2026-08-17, and both target-LLVM builds then ran cold. The filtered form is
+  `buildctl prune --filter type==regular` (§ 3.2.1, `prune-safe.sh`).
 - Do not size the runtime-lane disk gate per arch. It is per *concurrent* build
   (§ 3.2); the per-arch number refuses every run on this host.
 - Do not judge a cache change by whether the flags appear in the command. Judge
@@ -763,13 +853,98 @@ experiment and are listed in `refactoring-backlog.md` under YB.
 
 ### The single retry (2026-09-03)
 
-Because the same invocation succeeds immediately afterwards, the launcher
-**retries once** before giving up the cache entry. A bypass was never a
-correctness problem — it compiles fine, it just discards the cache, and that is
-the entire cost of this bug.
+Because the direct fallback of the same argv succeeds immediately afterwards,
+the launcher **retries once** before giving up the cache entry. A bypass was
+never a correctness problem — it compiles fine, it just discards the cache, and
+that is the entire cost of this bug.
 
 The retry is bounded: a second sccache-internal failure falls through to the
 direct compile exactly as before, and a real compiler error surfacing on the
-retry is handed back untouched rather than re-run. It doubles as the measurement
-— `retry succeeded (cache kept)` versus `failed twice` in a build log says
-directly whether the class is transient.
+retry is handed back untouched rather than re-run.
+
+#### The retry's own measurement — ANSWERED, and the answer is negative
+
+The retry doubles as the experiment: `retry succeeded (cache kept)` versus
+`failed twice` in a build log says directly whether the class is transient. That
+count was taken on the 2026-09-03 media-arm64 build and the question is
+**answered — do not re-run it**:
+
+| outcome | count |
+|---|---|
+| `retry succeeded (cache kept)` | **27** |
+| `failed twice` | **514** |
+
+**~5% recovery: this class is NOT transient.** The retry stays — it costs
+nothing and 27 recovered entries are 27 recovered entries — but it is a
+mitigation, not the fix, and nothing here should be sized as though the bug were
+handled. What that 5% rules out, and where it points the root-cause hunt next,
+is `refactoring-backlog.md` under YB.
+
+Reading these counts out of a log needs one caution: a **cached** BuildKit step
+replays its old output verbatim, so a pre-retry launcher's messages can reappear
+in a post-retry build (496 of them from one cached step, `#30`, on the first read
+of that same build) and look like the new launcher failing to take effect. Check
+which step the lines came from before believing them. A second sample needs a
+compile-heavy lane — `--only runtime` produces no `sccache-launcher` lines at
+all.
+
+---
+
+## The shipped image's cache dirs
+
+`:latest-cross` shipped `CCACHE_DIR=/workspace/.ccache` and
+`SCCACHE_DIR=/workspace/.sccache` until 2026-09-04. `/workspace` is the
+**consumer's** bind-mounted checkout (`Dockerfile.torch` makes it the WORKDIR and
+a VOLUME), so every compile inside the image wrote a cache into someone else's
+repository: it pollutes their working tree, can be swept into CI artifacts, and
+on a non-ext4 host mount `flatpak-builder` aborts outright with
+`Can't initialize ccache use: Failed to set permissions of
+/workspace/.ccache/disabled/ccache.conf: Operation not permitted`. Reported by
+the Kataglyphis-Inference-Engine lane and reproduced as uid 1001.
+
+**Where the value came from.** `eff8deac` (2026-06-01) added `CCACHE_DIR` next to
+`CCACHE_SECONDARY_STORAGE=true`, i.e. as one half of a "cache travels with the
+checkout" idea. The other half was wrong and was deleted in `025bf68c` —
+`CCACHE_SECONDARY_STORAGE` is a URL and set to `true` it failed *every* ccache
+compile — but the path it was invented for stayed. `d5bafe86` (2026-08-26) then
+added `SCCACHE_DIR` deliberately alongside it so a consumer would not have a
+ccache dir and no sccache dir; the `/workspace` prefix was inherited from the
+line above, not chosen.
+
+**Does any stage need a per-workspace cache? No.** Nothing else in the Linux tree
+names `/workspace/.ccache`; the build stages get their cache dirs from
+`Dockerfile.base`'s ENV, from `llvm-cross.sh`'s explicit exports, and from
+`--mount=type=cache,target=/var/cache/ccache` — none of which reads the package
+stage's runtime ENV. The only instructions after that ENV block are symlink
+wiring, the apt mirror rewrite, `setup-package-image.sh` and
+`validate-compilers.sh`, and none of them runs a compiler through a cache
+launcher. So the value was runtime-only, and repointing it cannot change what a
+build does. A consumer who *wants* the cache next to their checkout still sets
+`-e CCACHE_DIR=...` themselves; a consumer who wants it to persist across runs
+mounts a volume at `/var/cache/ccache`, which is what that directory is for.
+
+**Why the ENV cannot simply be deleted.** `Dockerfile.base` already declares the
+same defaults, but its image config does not reach the shipped image: the runtime
+package stage is built on a rootfs/OCI-layout export of its parent
+(`context-management.sh`), which carries the filesystem and drops the parent's
+`Config.Env`. Inspecting the shipped `latest-cross-amd64` shows exactly
+`Dockerfile.package`'s own ENV blocks plus `Dockerfile.torch`'s — base's
+`CCACHE_MAXSIZE`, `SCCACHE_CACHE_SIZE`, `SCCACHE_CONF`, `SCCACHE_IDLE_TIMEOUT`
+and `SCCACHE_ERROR_LOG` are all absent from it, while base's *filesystem* effects
+(the 1777 cache dirs) are present. The runtime image must therefore declare the
+paths itself.
+
+**One owner.** `01-core/compiler-cache.sh` owns the two paths as its `:=`
+defaults; `Dockerfile.package`'s ENV repeats them because a Dockerfile cannot
+source shell, and `test-compiler-cache.sh` sources the library with both vars
+unset and asserts the ENV equals what it produces — plus a second assertion that
+neither value sits under `/workspace`. Drift on either side fails the suite.
+
+**What the shipped image already provides.** `/var/cache/ccache` and
+`/var/cache/sccache` are `drwxrwxrwt` (`Dockerfile.base`, 1777 since `35f83d62`)
+and uid 1001 writes to both — verified by running the shipped image. A missing
+cache directory is not an error either: `ccache` creates `CCACHE_DIR` on first
+use, which is how a consumer's `-e CCACHE_DIR=/some/mount` keeps working.
+
+Layer cost: none. This is an ENV change, so nothing is copied up and no file
+metadata is rewritten.

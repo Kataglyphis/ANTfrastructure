@@ -1370,7 +1370,7 @@ base ─┬─ onnxruntime ───────┐
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 17 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most 6 entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most 6 entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/ubuntu24.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 
@@ -1386,7 +1386,8 @@ base ─┬─ onnxruntime ───────┐
   because `--changed` also selects everything committed since `origin/main`, so
   every commit of a batch re-paid for the ones before it (132 entries, 322 s
   uncapped). The hook now scopes to the STAGED files and runs at most
-  `PRECOMMIT_MUTATION_CAP` of them (default 6, newest first, `0` = uncapped).
+  `PRECOMMIT_MUTATION_CAP` of them (default 16, newest first, `0` = uncapped;
+  raised from 6 on 2026-09-04, when the gate learned to shard its own run).
   A sample never reports as full coverage — it prints how many of how many it
   ran. `make preflight` and CI still run every entry.
   Reasoning and the measurements: `docs/code-quality-tooling.md` §

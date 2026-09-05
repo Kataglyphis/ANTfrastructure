@@ -17,6 +17,9 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
+: "${RUNTIME_CLANG_VERSION_SMOKE:=1}"
+: "${RUNTIME_COMPILER_SMOKE:=1}"
+
 # Evaluate a python expression against the image's `nerdctl image inspect` JSON (the
 # [0] element on stdin). Uses the caller's ${image_tag} dynamically; empty on any error.
 inspect_image_config() {
@@ -469,8 +472,9 @@ check_ffmpeg() {
 }
 
 # Flutter must run as the image user, OFFLINE, on the target-arch Dart SDK the
-# package stage cached: an x86-64 dart in the arm64 image would still execute on
-# this host, so the ELF machine is read rather than inferred from the run.
+# package stage cached, and be USABLE by that user: an x86-64 dart in the arm64
+# image still executes on this host, and `flutter --version` ran fine while
+# `flutter pub get` was denied a root-owned .dart_tool nobody can fix at runtime.
 # docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 check_flutter() {
   local image_tag="$1"
@@ -488,13 +492,17 @@ check_flutter() {
   fi
   pin="$(_rt_versions_env_pin FLUTTER_VERSION)"
   machine="$(smoke_elf_machine_grep "${target_arch}")"
-  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine' 2>&1 || true)"
+  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3' 2>&1 || true)"
   if ! printf '%s\n' "${out}" | grep -qE "^Flutter ${pin:-[0-9]}"; then
     fail "flutter does not run offline as the image user, or is not FLUTTER_VERSION=${pin:-?} (${target_arch}): $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF "${machine}"; then
     fail "the cached Dart SDK is not ${machine} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- bootstrapped on the wrong arch"
+  elif printf '%s\n' "${out}" | grep -q '^UNWRITABLE '; then
+    fail "the shipped SDK is not writable by the image user (${target_arch}): $(printf '%s\n' "${out}" | grep '^UNWRITABLE ' | tr '\n' ' ') -- flutter pub get dies with 'package_config.json (OS Error: Permission denied)', and the dir is in a read-only layer no consumer can chown"
+  elif printf '%s\n' "${out}" | grep -q '^FOREIGN '; then
+    fail "the shipped SDK still holds paths the image user does not own (${target_arch}): $(printf '%s\n' "${out}" | grep '^FOREIGN ' | tr '\n' ' ') -- a root-run flutter or git command wrote them AFTER the COPY --chown"
   else
-    pass "flutter ${pin:-(unpinned)} runs offline as the image user on a ${machine} Dart SDK (${target_arch})"
+    pass "flutter ${pin:-(unpinned)} runs offline as the image user on a ${machine} Dart SDK, whole SDK owned and writable by that user (${target_arch})"
   fi
   echo ""
 }
@@ -523,6 +531,309 @@ check_rust_toolchain() {
   echo ""
 }
 
+# ── CONSUMER CONTRACT (2026-09-04) ───────────────────────────────────────────
+# The properties a consuming CI lane depends on and cannot repair from outside the
+# image: caches outside the bind-mounted checkout, a writable Rust home, a set
+# ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
+# docs/consumer-image-contract.md#the-contract
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner"
+
+# The consumer-visible failure each row prevents, quoted verbatim from the lane that
+# hit it, so a red run names the symptom in the OTHER repo and not just our path.
+# docs/consumer-image-contract.md#the-contract
+_consumer_contract_symptom() {
+  case "$1" in
+    ccache-dir|sccache-dir) printf '%s' 'the cache lands in the consumer checkout and flatpak-builder aborts: "Can'"'"'t initialize ccache use: Failed to set permissions of .../ccache.conf: Operation not permitted"' ;;
+    rustup-tmp)    printf '%s' 'rustup dies with "could not create temp file ...: Permission denied (os error 13)" and Corrosion / cargokit / flutter_rust_bridge_codegen cannot run; redirecting the var does not help, the toolchains live there' ;;
+    cargo-home)    printf '%s' 'every consumer has to pass -e CARGO_HOME=... to work around it' ;;
+    android-home)  printf '%s' '"flutter build apk" stops with "[!] No Android SDK found"; under CodeQL database create that surfaces three steps later as "bundle source directory not found"' ;;
+    jdk)           printf '%s' 'Gradle stops the Android lane with "ERROR: JAVA_HOME is not set and no '"'"'java'"'"' command could be found in your PATH", and flutter doctor reports "No Java Development Kit (JDK) found" -- the SDK COPY leaves the source stage'"'"'s JDK behind in /usr/lib/jvm' ;;
+    appimagetool)  printf '%s' 'appimagetool is an AppImage: it reads /proc/self/exe for its own squashfs offset, so a mode that is executable but not READABLE gives "Cannot open /proc/self/exe: Permission denied" and no .AppImage is produced' ;;
+    dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
+    flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
+    *)             printf '%s' 'no symptom recorded for this row' ;;
+  esac
+}
+
+# Documented per-arch absences, same contract as _parity_exempt: listed = reviewed,
+# and an arm that STOPS applying fails so the table cannot rot. Key is <arch>:<row>.
+# docs/consumer-image-contract.md#per-arch-exemptions
+_consumer_contract_exempt() {
+  case "$1:$2" in
+    # Upstream publishes no riscv64 Flutter SDK, so /opt/flutter ships EMPTY there and
+    # check_flutter asserts that absence instead. The rot signal is the probe's own
+    # FACT flutter-sdk: the day a riscv64 SDK lands, both arms fail and name themselves.
+    riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Facts only, ONE process in the image: what the contract-bearing vars say, a REAL
+# create+delete in each directory (access(2) answers yes for root and lies about a
+# read-only layer), and who owns the Flutter tree. Verdicts are reached on the host.
+# docs/consumer-image-contract.md#the-contract
+_consumer_contract_probe() {
+  cat <<'PROBE'
+set -uo pipefail
+_u="$(id -u)"
+printf 'WHO %s %s\n' "${_u}" "$(id -un 2>/dev/null)"
+_w() {
+  _t="$2/.contract-probe.$$"
+  if [ -n "$2" ] && [ -d "$2" ] && : > "${_t}" 2>/dev/null; then
+    rm -f "${_t}"
+    printf 'WRITE %s yes\n' "$1"
+  else
+    printf 'WRITE %s no\n' "$1"
+  fi
+  printf 'ENV %s %s\n' "$1" "${2:-}"
+}
+_w ccache-dir  "${CCACHE_DIR:-}"
+_w sccache-dir "${SCCACHE_DIR:-}"
+_w rustup-tmp  "${RUSTUP_HOME:+${RUSTUP_HOME}/tmp}"
+_w cargo-home  "${CARGO_HOME:-}"
+_w dart-tool   /opt/flutter/packages/flutter_tools/.dart_tool
+printf 'ENV android-home %s\n' "${ANDROID_HOME:-}"
+printf 'ENV android-sdk-root %s\n' "${ANDROID_SDK_ROOT:-}"
+if [ -d "${ANDROID_HOME:-/nonexistent}/platform-tools" ]; then
+  printf 'DIR android-platform-tools yes\n'
+else
+  printf 'DIR android-platform-tools no\n'
+fi
+_on_path() { case ":${PATH}:" in *":$1:"*) return 0 ;; *) return 1 ;; esac; }
+if [ -n "${ANDROID_HOME:-}" ] && _on_path "${ANDROID_HOME}/platform-tools" \
+   && _on_path "${ANDROID_HOME}/cmdline-tools/latest/bin"; then
+  printf 'FACT android-path yes\n'
+else
+  printf 'FACT android-path no\n'
+fi
+_tool="$(command -v appimagetool 2>/dev/null || true)"
+printf 'ENV appimagetool %s\n' "${_tool}"
+if [ -n "${_tool}" ] && [ -r "${_tool}" ]; then
+  printf 'FACT appimagetool-readable yes\n'
+else
+  printf 'FACT appimagetool-readable no\n'
+fi
+printf 'ENV java-home %s\n' "${JAVA_HOME:-}"
+if command -v java >/dev/null 2>&1; then
+  printf 'FACT java-on-path yes\n'
+else
+  printf 'FACT java-on-path no\n'
+fi
+if [ -x "${JAVA_HOME:-/nonexistent}/bin/javac" ]; then
+  printf 'FACT javac yes\n'
+else
+  printf 'FACT javac no\n'
+fi
+if [ -x /opt/flutter/bin/flutter ]; then
+  printf 'FACT flutter-sdk yes\n'
+else
+  printf 'FACT flutter-sdk no\n'
+fi
+_n=0
+_ex=""
+while IFS= read -r _p; do
+  _n=$((_n + 1))
+  [ "${_n}" -le 5 ] && _ex="${_ex} ${_p}"
+done < <(find /opt/flutter ! -uid "${_u}" 2>/dev/null)
+printf 'FACT flutter-foreign %s\n' "${_n}"
+printf 'FACT flutter-foreign-examples %s\n' "${_ex# }"
+echo CCPROBE_DONE
+PROBE
+}
+
+# One "<verb> <key> <value>" fact out of the probe text; EMPTY on a miss, which every
+# caller turns into NOFACT rather than a pass. docs/consumer-image-contract.md#the-contract
+_consumer_contract_fact() {
+  printf '%s\n' "$1" | sed -n "s/^$2 $3 //p" | head -1
+}
+
+# One directory row: set, outside the consumer's /workspace checkout, and provably
+# writable by the image user. docs/consumer-image-contract.md#the-contract
+_consumer_dir_verdict() {
+  local row="$1" val="$2" write="$3"
+  case "${write}" in
+    yes|no) ;;
+    *) printf 'NOFACT %s no WRITE line\n' "${row}"; return 0 ;;
+  esac
+  case "${val}" in
+    "")          printf 'BAD %s the variable is unset, so the consumer inherits no location at all\n' "${row}" ;;
+    /workspace*) printf 'BAD %s points into the bind-mounted checkout: %s\n' "${row}" "${val}" ;;
+    *)           if [ "${write}" = yes ]; then
+                   printf 'OK %s %s\n' "${row}" "${val}"
+                 else
+                   printf 'BAD %s not writable by the image user: %s\n' "${row}" "${val}"
+                 fi ;;
+  esac
+}
+
+# An exempted row still has to prove its exemption still applies: the rot signal is the
+# probe's own FACT flutter-sdk, and a missing one is NOFACT, never a grant.
+# docs/consumer-image-contract.md#per-arch-exemptions
+_consumer_exempt_verdict() {
+  case "$3" in
+    yes) printf 'STALE %s a Flutter SDK IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$2" "$2" "$1" ;;
+    no)  printf 'EXEMPT %s' "$1" ;;
+    *)   printf 'NOFACT %s no FACT flutter-sdk, so the exemption cannot be re-checked' "$1" ;;
+  esac
+}
+
+# The android row: both variables set AND the platform-tools directory really there,
+# because an exported path is not an SDK. docs/consumer-image-contract.md#the-contract
+# Gradle reads JAVA_HOME; a java on PATH with no JAVA_HOME is the shape the Android
+# lane died on. Both, plus a javac under it, or the row is red.
+# A tool that is executable but not readable runs for root and fails for everyone
+# else; the probe answers for the user the image ships.
+_consumer_tool_verdict() {
+  local row="$1" path readable
+  path="$(_consumer_contract_fact "$2" ENV appimagetool)"
+  readable="$(_consumer_contract_fact "$2" FACT appimagetool-readable)"
+  if [ -z "${readable}" ]; then
+    printf 'NOFACT %s no FACT appimagetool-readable line' "${row}"
+  elif [ -z "${path}" ]; then
+    printf 'BAD %s appimagetool is not on PATH at all' "${row}"
+  elif [ "${readable}" != yes ]; then
+    printf 'BAD %s %s is not readable by the image user' "${row}" "${path}"
+  else
+    printf 'OK %s %s readable' "${row}" "${path}"
+  fi
+}
+
+_consumer_jdk_verdict() {
+  local row="$1" home onpath javac
+  home="$(_consumer_contract_fact "$2" ENV java-home)"
+  onpath="$(_consumer_contract_fact "$2" FACT java-on-path)"
+  javac="$(_consumer_contract_fact "$2" FACT javac)"
+  if [ -z "${onpath}" ] || [ -z "${javac}" ]; then
+    printf 'NOFACT %s no FACT java-on-path / FACT javac line' "${row}"
+  elif [ "${onpath}" != yes ]; then
+    printf 'BAD %s no java on PATH' "${row}"
+  elif [ -z "${home}" ]; then
+    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' "${row}"
+  elif [ "${javac}" != yes ]; then
+    printf 'BAD %s JAVA_HOME=%s has no bin/javac -- a JRE cannot compile' "${row}" "${home}"
+  else
+    printf 'OK %s java + JAVA_HOME=%s with javac' "${row}" "${home}"
+  fi
+}
+
+_consumer_android_verdict() {
+  local row="$1" val root dir onpath
+  val="$(_consumer_contract_fact "$2" ENV android-home)"
+  root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
+  dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
+  onpath="$(_consumer_contract_fact "$2" FACT android-path)"
+  if [ -z "${dir}" ] || [ -z "${onpath}" ]; then
+    printf 'NOFACT %s no DIR android-platform-tools / FACT android-path line' "${row}"
+  elif [ -z "${val}" ] || [ -z "${root}" ]; then
+    printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while the SDK ships in the image' "${row}" "${val:-<unset>}" "${root:-<unset>}"
+  elif [ "${dir}" != yes ]; then
+    printf 'BAD %s %s/platform-tools does not exist' "${row}" "${val}"
+  elif [ "${onpath}" != yes ]; then
+    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' "${row}" "${val}"
+  else
+    printf 'OK %s %s' "${row}" "${val}"
+  fi
+}
+
+# The ownership row: a missing count is NOFACT, not zero -- the whole defect is that
+# root wrote into the tree after the COPY. docs/consumer-image-contract.md#the-contract
+_consumer_owner_verdict() {
+  local row="$1" n
+  n="$(_consumer_contract_fact "$2" FACT flutter-foreign)"
+  if [ -z "${n}" ]; then
+    printf 'NOFACT %s no FACT flutter-foreign line' "${row}"
+  elif [ "${n}" != 0 ]; then
+    printf 'BAD %s %s path(s) under /opt/flutter are not owned by the runtime uid: %s' "${row}" "${n}" \
+      "$(_consumer_contract_fact "$2" FACT flutter-foreign-examples)"
+  else
+    printf 'OK %s every path under /opt/flutter belongs to the runtime uid' "${row}"
+  fi
+}
+
+# Pure verdict function: arch + probe text in, one "OK|BAD|EXEMPT|STALE|NOFACT <row>
+# <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
+# path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
+_consumer_contract_verdicts() {
+  local arch="$1" probe="$2" row sdk line asserted=0
+  sdk="$(_consumer_contract_fact "${probe}" FACT flutter-sdk)"
+  for row in ${_CONSUMER_CONTRACT_ROWS}; do
+    if _consumer_contract_exempt "${arch}" "${row}"; then
+      line="$(_consumer_exempt_verdict "${row}" "${arch}" "${sdk}")"
+    else
+      case "${row}" in
+        android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
+        jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
+        appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
+        flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
+        *)             line="$(_consumer_dir_verdict "${row}" \
+                                 "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
+                                 "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;
+      esac
+    fi
+    printf '%s\n' "${line}"
+    case "${line}" in OK\ *) asserted=$((asserted + 1)) ;; esac
+  done
+  printf 'ASSERTED %d\n' "${asserted}"
+}
+
+# Why the probe's answers are evidence at all: it completed, and it ran as the image's
+# OWN user -- as root every directory answers writable. Prints the reason to stop, EMPTY
+# when the capture is usable. docs/consumer-image-contract.md#how-the-gate-proves-it
+_consumer_probe_verdict() {
+  local probe="$1" want="$2" who
+  if ! printf '%s\n' "${probe}" | grep -qxF -- 'CCPROBE_DONE'; then
+    printf 'the probe did not complete, so the gate asserted NOTHING: %s' \
+      "$(printf '%s' "${probe}" | tr '\n' ';' | head -c 300)"
+  elif [ -z "${want}" ]; then
+    printf '%s' "the image declares no USER, so nothing pins who a consumer runs as -- every writability answer would be root's"
+  else
+    who="$(printf '%s\n' "${probe}" | sed -n 's/^WHO //p' | head -1)"
+    case " ${who} " in
+      *" ${want} "*) ;;
+      *) printf "the probe ran as '%s', not the image's own USER '%s' -- as root every directory answers writable and the gate proves nothing" "${who}" "${want}" ;;
+    esac
+  fi
+}
+
+# CONTRACT: what a consuming CI lane may rely on and cannot repair from outside a
+# read-only overlay layer. One probe run as the image's OWN user -- a root probe would
+# answer yes to every writability question -- then host-side verdicts.
+# docs/consumer-image-contract.md#the-contract
+check_consumer_contract() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local probe want stop verb row rest asserted=""
+  echo "--- CONSUMER CONTRACT (${target_arch}) ---"
+  want="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('User',''))")"
+  probe="$(_rt_run -e "RT_CONTRACT_SH=$(_consumer_contract_probe)" \
+    bash -lc 'if [ -z "${RT_CONTRACT_SH:-}" ]; then echo "CCPROBE_EMPTY"; exit 4; fi
+printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
+  stop="$(_consumer_probe_verdict "${probe}" "${want}")"
+  if [ -n "${stop}" ]; then
+    fail "CONSUMER CONTRACT (${target_arch}): ${stop}"
+    echo ""
+    return 0
+  fi
+  while read -r verb row rest; do
+    [ -n "${verb}" ] || continue
+    case "${verb}" in
+      OK)       echo "  OK   ${row} ${rest}" ;;
+      EXEMPT)   echo "  ~~   ${row} (documented ${target_arch} exception)" ;;
+      BAD)      fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- $(_consumer_contract_symptom "${row}")" ;;
+      STALE)    fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest}" ;;
+      NOFACT)   fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- the probe reported no fact, so the gate could not judge the row" ;;
+      ASSERTED) asserted="${row}" ;;
+      *)        fail "CONSUMER CONTRACT: unknown verdict '${verb} ${row} ${rest}' -- an unhandled verb is a silently dropped row" ;;
+    esac
+  done < <(_consumer_contract_verdicts "${target_arch}" "${probe}")
+  if [ "${asserted:-0}" = 0 ]; then
+    fail "CONSUMER CONTRACT asserted NOTHING on ${target_arch} (${asserted:-no ASSERTED line}) -- an empty row table is a vacuous pass, not a compliant image"
+  else
+    pass "CONSUMER CONTRACT: ${asserted} row(s) hold as ${want} on ${target_arch}"
+  fi
+  echo ""
+}
+
 # Native shared-library dependency closure over the source-built /opt stacks: any
 # NEEDED soname absent from the runtime loader path is a real defect (the class that
 # shipped a libopencore-amrwb-broken ffmpeg and a libsleef-broken torch while amd64
@@ -546,6 +857,188 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
       fail "native /opt library has unresolved shared-object deps (${target_arch}) -- see BROKEN lines above"
     fi
     echo ""
+}
+
+# ── HT1: the shipped artifact trees must carry THIS image's arch ─────────────
+# artifact-source is the BUILDER's image, so a tree INSTALLED on the host instead of
+# cross-built ships x86_64 into the arm64/riscv64 runtime image -- rustup (2 GB, exit
+# 127) and Flutter's Dart SDK both did, and only their own gates caught them.
+# docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+
+# Trees whose ELF machine is NOT this image's by design. The arm names the TREE, never
+# an arch, so a newly host-installed tree fails by default; both here are android-lane
+# payloads (device .so + the SDK's host tooling) whose arch says nothing about the image.
+_RT_TREE_ARCH_EXEMPT="/opt/android /opt/android-sdk"
+
+_rt_tree_arch_exempt() {
+  case " ${_RT_TREE_ARCH_EXEMPT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+# Where the gate probes a manifest tree in the image: the manifest carries the COPY
+# SOURCE path, one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
+# owns the other half), and /opt/vulkan ships the SDK's x86_64 HOST tools beside the
+# cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert.
+_rt_tree_probe_path() {
+  case "$1" in
+    /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
+    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;
+    *)                printf '%s' "$1" ;;
+  esac
+}
+
+# Manifest paths as they exist IN the image: ${VAR} resolved from the environment, else
+# from Dockerfile.package's own `ARG VAR=default`, then relocated. An unresolvable token
+# is printed as `UNRESOLVED <var>` so the gate fails rather than scanning nothing.
+_rt_manifest_trees() {
+  local manifest="${_SCRIPT_DIR}/../runtime-artifacts.manifest"
+  local dockerfile="${_SCRIPT_DIR}/../../Dockerfile.package"
+  local line path var val guard
+  while IFS= read -r line; do
+    path="$(printf '%s' "${line%%|*}" | tr -d '[:space:]')"
+    case "${path}" in ''|'#'*) continue ;; esac
+    guard=0
+    while [ "${guard}" -lt 8 ] && [[ "${path}" =~ \$\{([A-Za-z0-9_]+)\} ]]; do
+      guard=$((guard + 1))
+      var="${BASH_REMATCH[1]}"
+      val="${!var:-}"
+      [ -n "${val}" ] || val="$(sed -n "s/^ARG ${var}=\(.*\)$/\1/p" "${dockerfile}" | head -1)"
+      [ -n "${val}" ] || break
+      path="${path//\$\{${var}\}/${val}}"
+    done
+    case "${path}" in
+      *'${'*) printf 'UNRESOLVED %s\n' "${path}" ;;
+      *)      _rt_tree_probe_path "${path}"; printf '\n' ;;
+    esac
+  done < "${manifest}"
+}
+
+# ELF machine of every EXECUTABLE-or-.so object under $RT_TREES, aggregated per (tree,
+# machine) so the
+# verdict reads counts instead of thousands of paths. Only candidates count toward CAP:
+# rust-src alone would spend it before reaching toolchains/*/bin/rustc. Header reads in ONE
+# process, not a readelf exec per file, which under qemu would cost minutes. docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+_tree_arch_py() {
+  cat <<'PY'
+import os
+EM = {3: "Intel 80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+CAP = int(os.environ.get("RT_TREE_CAP") or "20000")
+for tree in os.environ.get("RT_TREES", "").split():
+    if not os.path.isdir(tree):
+        print("TREEMISS", tree)
+        continue
+    seen, sample, visited = {}, {}, 0
+    first, rest = [], []
+    for dirpath, dirnames, filenames in os.walk(tree):
+        dirnames.sort()
+        for name in sorted(filenames):
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                continue
+            try:
+                executable = os.stat(path).st_mode & 0o111
+            except OSError:
+                continue
+            (first if executable or ".so" in name else rest).append(path)
+    for path in first + rest:
+        if visited >= CAP:
+            print("TREECAP", tree, CAP)
+            break
+        visited += 1
+        try:
+            with open(path, "rb") as fh:
+                head = fh.read(20)
+        except OSError:
+            continue
+        if len(head) < 20 or head[:4] != b"\x7fELF":
+            continue
+        order = "little" if head[5] == 1 else "big"
+        key = EM.get(int.from_bytes(head[18:20], order), "EM%d" % int.from_bytes(head[18:20], order))
+        seen[key] = seen.get(key, 0) + 1
+        sample.setdefault(key, path)
+    if not seen:
+        print("TREENOELF", tree)
+    for key in sorted(seen):
+        print("TREE", tree, key, seen[key], sample[key])
+print("TREESCAN_DONE")
+PY
+}
+
+# Pure verdict function for the tree-arch gate: scanner text + the expected ELF machine
+# in, one "OK|BAD|NOELF|MISSING <tree> ..." line out per tree, NONE when it saw nothing.
+_tree_arch_verdicts() {
+  local probe="$1" want="$2" tree machine count sample n=0
+  while read -r tree; do
+    [ -n "${tree}" ] || continue
+    printf 'MISSING %s\n' "${tree}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREEMISS //p')
+  while read -r tree; do
+    [ -n "${tree}" ] || continue
+    printf 'NOELF %s\n' "${tree}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREENOELF //p')
+  while read -r tree cap; do
+    [ -n "${tree}" ] || continue
+    n=$((n + 1))
+    printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREECAP //p')
+  while read -r tree machine count sample; do
+    [ -n "${tree}" ] || continue
+    n=$((n + 1))
+    case "${machine}" in
+      *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
+      *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREE //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+# HT1 gate: read the ELF machine of what each manifest tree actually ships.
+check_manifest_tree_arch() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
+  local trees="" tree want out verb machine count sample bad=0 ok=0
+  while read -r tree; do
+    case "${tree}" in
+      UNRESOLVED*)
+        bad=$((bad + 1))
+        fail "tree-arch gate: runtime-artifacts.manifest names ${tree#UNRESOLVED } but neither the environment nor Dockerfile.package's ARG defaults define it -- the tree would be silently skipped"
+        continue ;;
+    esac
+    if _rt_tree_arch_exempt "${tree}"; then
+      echo "  ~~   ${tree} not asserted (android-lane payload; its arch is not the image's)"
+      continue
+    fi
+    trees="${trees} ${tree}"
+  done < <(_rt_manifest_trees)
+  want="$(smoke_elf_machine_grep "${target_arch}")"
+  out="$(_rt_run -e "RT_TREES=${trees# }" -e "RT_TREE_PY=$(_tree_arch_py)" \
+           bash -lc 'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"
+printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
+  if ! printf '%s\n' "${out}" | grep -qxF -- 'TREESCAN_DONE'; then
+    fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
+    echo ""
+    return 0
+  fi
+
+  while read -r verb tree machine count sample; do
+    [ -n "${verb}" ] || continue
+    case "${verb}" in
+      OK)      ok=$((ok + 1)); echo "  OK   ${tree}: ${count} ELF object(s), all ${machine}" ;;
+      NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
+      BAD)     bad=$((bad + 1))
+               fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason" ;;
+      MISSING) bad=$((bad + 1))
+               fail "tree-arch: ${tree} is declared in runtime-artifacts.manifest but is ABSENT from the ${target_arch} image -- the COPY landed elsewhere or the tree was dropped" ;;
+      CAPPED)  bad=$((bad + 1))
+               fail "tree-arch: the walk of ${tree} hit the ${machine}-file cap, so everything past it was never read -- a partial scan is not a pass. Raise RT_TREE_CAP or narrow the tree" ;;
+      NONE)    bad=$((bad + 1))
+               fail "tree-arch: the scanner found NO tree at all on ${target_arch} -- a vacuous pass, not a green image" ;;
+      *)       bad=$((bad + 1))
+               fail "tree-arch gate: unknown verdict '${verb}' for ${tree} on ${target_arch}" ;;
+    esac
+  done < <(_tree_arch_verdicts "${out}" "${want}")
+  [ "${bad}" -ne 0 ] || pass "all ${ok} asserted artifact tree(s) are ${want} on ${target_arch}"
+  echo ""
 }
 
 # RP1 (security): the shipped image must carry NO usable `sudo` - it was purged from
@@ -744,7 +1237,6 @@ _probe_advertised() {
   cat <<'PROBE'
 set -uo pipefail
 py=/opt/venv/bin/python
-printf 'ADV PYTHON_VERSION %s\n'      "${PYTHON_VERSION:-}"
 printf 'ADV PYTHON_MAJOR_MINOR %s\n'  "${PYTHON_MAJOR_MINOR:-}"
 printf 'ADV GCC_VERSION %s\n'         "${GCC_VERSION:-}"
 printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
@@ -769,7 +1261,6 @@ _probe_actual_versions() {
   # What the image actually IS: every value read from the shipped thing itself,
   # never from an ENV. The ADV/HAVE pair is what the shipped-truth gate compares.
   cat <<'PROBE'
-printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
 _g="$(command -v gcc || true)"
 printf 'HAVE GCC_VERSION %s\n'        "${_g:+$("$_g" -dumpfullversion 2>/dev/null || "$_g" -dumpversion 2>/dev/null)}"
@@ -902,9 +1393,11 @@ _shipped_truth_probe() {
 }
 
 # Version-carrying env vars the shipped image sets. Each must equal what the image
-# ACTUALLY has; there is no exemption arm, because a label that contradicts the
-# artefact is never a documented state.
-_ADVERTISED_VERSION_KEYS="PYTHON_VERSION PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
+# ACTUALLY has; there is no exemption arm and no SKIP arm, because neither a label
+# that contradicts the artefact nor a row that cannot fail is a documented state.
+# A key the image deliberately does not advertise belongs in verify_advertised_keys.py's
+# EXCUSED table instead. docs/cross-build-verification.md
+_ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
 LITERT_VERSION RUST_VERSION"
@@ -936,7 +1429,8 @@ _venv_pkg_exempt() {
 }
 
 # Pure verdict function for the advertised-vs-actual gate: probe text in, one
-# "OK|BAD|SKIP <key> ..." line out per key. No container, no globals.
+# "OK|BAD|UNSET|UNREAD <key> ..." line out per key. No container, no globals.
+# Both "the image did not tell us" arms are fatal: docs/cross-build-verification.md
 _advert_verdicts() {
   local probe="$1" key adv have
   for key in ${_ADVERTISED_VERSION_KEYS}; do
@@ -946,9 +1440,9 @@ _advert_verdicts() {
     adv="${adv#v}"
     [ -z "${have}" ] || have="$(printf '%s' "${have}" | grep -oE '^[0-9]+(\.[0-9]+)*' || printf '%s' "${have}")"
     if [ -z "${adv}" ]; then
-      printf 'SKIP %s image sets no %s -- nothing advertised to check\n' "${key}" "${key}"
+      printf 'UNSET %s\n' "${key}"
     elif [ -z "${have}" ]; then
-      printf 'SKIP %s advertised %s but the in-image probe could not read the actual value\n' "${key}" "${adv}"
+      printf 'UNREAD %s %s\n' "${key}" "${adv}"
     elif [ "${adv}" = "${have}" ] || \
          { [ "${key}" = VULKAN_VERSION ] && [ "${adv#"${have}"}" = ".0" ]; }; then
       printf 'OK %s %s\n' "${key}" "${adv}"
@@ -1122,15 +1616,21 @@ check_advertised_versions() {
   fi
   local verb key rest ok=0 bad=0
   while read -r verb key rest; do
+    [ -n "${verb}" ] || continue
     case "${verb}" in
-      OK)   echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
-      SKIP) echo "  SKIP ${key}: ${rest}" ;;
-      BAD)  bad=$((bad + 1))
-            fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+      OK)     echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
+      BAD)    bad=$((bad + 1))
+              fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+      UNSET)  bad=$((bad + 1))
+              fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
+      UNREAD) bad=$((bad + 1))
+              fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
+      *)      bad=$((bad + 1))
+              fail "advertised-version gate: unknown verdict '${verb}' for ${key} on ${target_arch} -- a verb no arm handles is a silently dropped row" ;;
     esac
   done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
   if [ "$((ok + bad))" -eq 0 ]; then
-    fail "advertised-version gate asserted NOTHING on ${target_arch}: every key in _ADVERTISED_VERSION_KEYS was unset or unreadable -- a vacuous pass, not a green image"
+    fail "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
   elif [ "${bad}" -eq 0 ]; then
     pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
   fi
@@ -1393,7 +1893,7 @@ except AttributeError:
 check_native_compiler_battery() {
   local image_tag="$1"
   local target_arch="$2"
-    if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
+    if [ "${RUNTIME_COMPILER_SMOKE}" = "1" ]; then
       echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
       # A battery, not a hello-world: each case exercises a distinct piece of the
       # shipped toolchain. C++ exceptions+STL is the load-bearing one - it regression-
@@ -1451,7 +1951,7 @@ exit $rc'; then
 check_clang_llvm_release() {
   local image_tag="$1"
   local target_arch="$2"
-    if [ "${RUNTIME_CLANG_VERSION_SMOKE:-1}" = "1" ]; then
+    if [ "${RUNTIME_CLANG_VERSION_SMOKE}" = "1" ]; then
       echo "--- Functional: clang/clang++ version == LLVM_RELEASE (${target_arch}) ---"
       local _llvm_release="${LLVM_RELEASE:-}"
       if [ -z "${_llvm_release}" ]; then
@@ -1529,7 +2029,9 @@ main() {
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_flutter "${image_tag}" "${target_arch}"
     check_rust_toolchain "${image_tag}" "${target_arch}"
+    check_consumer_contract "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
+    check_manifest_tree_arch "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
     check_venv_bytecode "${image_tag}" "${target_arch}"

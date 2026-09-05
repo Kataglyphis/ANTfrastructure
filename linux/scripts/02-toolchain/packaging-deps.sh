@@ -188,7 +188,9 @@ ensure_appimagetool() {
     info "Downloading appimagetool from $url"
     download_verified_file "$url" "$sha256" "$tmpfile"
 
-    chmod +x "$tmpfile"
+    # Explicit: +x over mktemp's 0600 ships 0711, and an AppImage must READ itself.
+    # docs/consumer-image-contract.md#executable-is-not-usable
+    chmod 0755 "$tmpfile"
 
     # Install to first writable location
     local dest=""

@@ -17,34 +17,13 @@ echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale
 _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
-# Line-oriented scan of linux/scripts/*.sh: $1 selects lines, $2 extracts. Both
-# comment forms and backslash-escaped \$ are dropped first, so neither prose nor
-# literal output text is ever evidence of anything.
-_scan() {
-  grep -rhE "$1" "${SCRIPTS}" --include='*.sh' 2>/dev/null \
-  | grep -vE '^[[:space:]]*#' \
-  | sed -E 's/[[:space:]]+#.*$//' \
-  | sed -E 's/\\\$/\\/g' \
-  | grep -oE "$2"
-}
-
-# 1) CONSUMED knobs: ${VAR:-...} readers. The selector is deliberately loose;
-#    the EXTRACT regex is the promise — [A-Z] first bars _-prefixed privates.
-_scan '\$\{[A-Za-z_][A-Za-z0-9_]*:-' '\$\{[A-Z][A-Z0-9_]{2,}:-' \
-  | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u \
-  | grep -vE '^(BASH_SOURCE|BASH_REMATCH|HOME|PATH|PWD|OLDPWD|HOSTNAME|OSTYPE|EUID|UID|USER|SHELL|LANG|LC_ALL|TERM|TMPDIR|IFS|PPID|RANDOM|SECONDS|LINENO|FUNCNAME|COLUMNS|LINES|XDG_[A-Z_]+)$' \
-  > "${_tmp}/consumed"
-
-# 2) OWNERS
-#    (a) versions.env keys
-sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_versions"
-#    (b) Dockerfile ARG/ENV declarations
-grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
-  | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
-#    (c) script-side assignments in COMMAND position, plus the self-defaulting
-#        : "${VAR:=...}" form. Quoted text, comments and heredoc bodies are not
-#        code, so a NAME=value printed in a message owns nothing.
-{ find "${SCRIPTS}" -name '*.sh' -print0 | LC_ALL=C sort -z | xargs -0 -r awk '
+# ONE walker for both passes over linux/scripts/*.sh. It tracks single quotes,
+# double quotes, $( ) and heredoc bodies so a `#` only ends the line when it
+# really opens a comment. Default mode prints the ASSIGNMENTS in command
+# position (quoted text and heredoc bodies own nothing); MODE=prefix prints the
+# raw line up to that comment, which is what a knob READER needs -- a flat sed
+# cut at ` #` loses every reader to the right of a hash inside a string.
+_KNOB_AWK='
 BEGIN { SQ = "\047" }
 FNR == 1 { nhd = 0 }
 {
@@ -59,7 +38,7 @@ FNR == 1 { nhd = 0 }
       else if (c == "$" && substr($0, i + 1, 1) == "(") { top++; S[top] = "code"; P[top] = 0; out = out "$("; i++ }
       continue
     }
-    if (c == "<" && substr($0, i + 1, 1) == "<") { i = hdpush(i); continue }
+    if (MODE != "prefix" && c == "<" && substr($0, i + 1, 1) == "<") { i = hdpush(i); continue }
     if (c == "\\") { i++; continue }
     if (c == SQ) { top++; S[top] = "sq"; continue }
     if (c == "\"") { top++; S[top] = "dq"; continue }
@@ -68,6 +47,7 @@ FNR == 1 { nhd = 0 }
     else if (c == ")") { if (P[top] > 0) { P[top]--; continue } else if (top > 0) { top--; continue } }
     out = out c
   }
+  if (MODE == "prefix") { print substr($0, 1, i - 1); next }
   pos = 1
   while (match(substr(out, pos), /[A-Z][A-Z0-9_][A-Z0-9_]+=/)) {
     q = pos + RSTART - 1; l = RLENGTH
@@ -96,6 +76,34 @@ function cmdpos(pre,   w) {
   if (w !~ /^[A-Za-z_][A-Za-z0-9_]*=/) return 0
   return cmdpos(substr(pre, 1, length(pre) - length(w)))
 }'
+
+# Line-oriented scan of linux/scripts/*.sh: $1 selects lines, $2 extracts. The one
+# walker drops both comment forms and backslash-escaped \$, so neither prose nor
+# literal output text is ever evidence of anything.
+_scan() {
+  grep -rhE "$1" "${SCRIPTS}" --include='*.sh' 2>/dev/null \
+  | awk -v MODE=prefix "${_KNOB_AWK}" \
+  | sed -E 's/\\\$/\\/g' \
+  | grep -oE "$2"
+}
+
+# 1) CONSUMED knobs: ${VAR:-...} readers. The selector is deliberately loose;
+#    the EXTRACT regex is the promise — [A-Z] first bars _-prefixed privates.
+_scan '\$\{[A-Za-z_][A-Za-z0-9_]*:-' '\$\{[A-Z][A-Z0-9_]{2,}:-' \
+  | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u \
+  | grep -vE '^(BASH_SOURCE|BASH_REMATCH|HOME|PATH|PWD|OLDPWD|HOSTNAME|OSTYPE|EUID|UID|USER|SHELL|LANG|LC_ALL|TERM|TMPDIR|IFS|PPID|RANDOM|SECONDS|LINENO|FUNCNAME|COLUMNS|LINES|XDG_[A-Z_]+)$' \
+  > "${_tmp}/consumed"
+
+# 2) OWNERS
+#    (a) versions.env keys
+sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_versions"
+#    (b) Dockerfile ARG/ENV declarations
+grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
+  | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
+#    (c) script-side assignments in COMMAND position, plus the self-defaulting
+#        : "${VAR:=...}" form. Quoted text, comments and heredoc bodies are not
+#        code, so a NAME=value printed in a message owns nothing.
+{ find "${SCRIPTS}" -name '*.sh' -print0 | LC_ALL=C sort -z | xargs -0 -r awk "${_KNOB_AWK}"
   _scan ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' | grep -oE '[A-Z][A-Z0-9_]{2,}'
 } | LC_ALL=C sort -u > "${_tmp}/own_scripts"
 #    (d) allowlist (strip comments/blanks)

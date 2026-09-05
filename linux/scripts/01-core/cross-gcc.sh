@@ -40,9 +40,10 @@ gcc_toolchain_bindir() {
 # Point clang at the source-built GCC (headers, libstdc++, crt). Exports the
 # --gcc-toolchain flags only; CC/CXX selection stays with the caller, and GCC
 # itself rejects the flag, so this is a no-op unless clang is in use.
-# Docs: docs/linux-reference.md "clang against the source-built GCC".
+# Docs: docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
 export_clang_gcc_toolchain_env() {
-  local root; root="${MYPROJECT_GCC_TOOLCHAIN_PATH:-$(gcc_toolchain_prefix)}"
+  : "${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_prefix)}"
+  local root="${CROSS_GCC_TOOLCHAIN_PATH}"
   case "$(basename "${CC:-}")" in clang*) ;; *) return 0 ;; esac
   if [ ! -d "$root" ]; then
     printf 'export_clang_gcc_toolchain_env: no GCC toolchain at %s; clang will use its own discovery\n' "$root" >&2

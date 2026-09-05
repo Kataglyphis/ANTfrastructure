@@ -116,8 +116,12 @@ COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSIO
 # is its documented fallback. A consumer then hit
 # "rustc 1.93.1 is not supported by ... requires rustc 1.95" on a dependency
 # whose floor the pinned toolchain clears easily.
-COPY --link --from=artifact-source /usr/local/rustup /usr/local/rustup
-COPY --link --from=artifact-source /usr/local/cargo /usr/local/cargo
+# --chown at COPY time is free (like /opt/flutter's); rustup writes into tmp/,
+# downloads/ and toolchains/ on `rustup toolchain install`, so a root-owned
+# tree is unusable at uid 1001 and a later `chown -R` costs 2.2 GB of layer.
+# docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
+COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup
+COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/cargo /usr/local/cargo
 # The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
@@ -162,6 +166,7 @@ ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI
 ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
 ARG ENABLE_NVIDIA ENABLE_AMD
 ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
+ARG JDK_PACKAGE=openjdk-21-jdk-headless
 ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
 # NVIDIA_*/VULKAN_VERSION: normally inherited from Dockerfile.base, but the
@@ -231,8 +236,12 @@ ENV BUILD_MODE=${BUILD_MODE} \
     LIBCAMERA_PREFIX=/opt/libcamera \
     VULKAN_SDK=/opt/vulkan/active \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
-    CCACHE_DIR=/workspace/.ccache \
-    SCCACHE_DIR=/workspace/.sccache \
+    # Cache dirs are 01-core/compiler-cache.sh's defaults, re-declared because
+    # the parent's image config does not survive the rootfs-export context this
+    # stage is built on. /workspace is the CONSUMER's bind mount, never ours.
+    # docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+    CCACHE_DIR=/var/cache/ccache \
+    SCCACHE_DIR=/var/cache/sccache \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
     # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),
@@ -245,6 +254,27 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GDK_BACKEND=x11 \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
+
+# The SDK ships on all three arches (the COPY above is unconditional) but nothing
+# advertised it, so `flutter build apk` reported "[!] No Android SDK found".
+# Its host tools are linux-x86_64 only, which is why /opt/android-sdk is already
+# an _RT_TREE_ARCH_EXEMPT tree rather than a per-arch claim.
+# docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk
+
+# Gradle reads JAVA_HOME, not PATH. The anchor is a symlink setup-package-image.sh
+# resolves from the installed javac, so a JDK bump never has to be repeated here.
+# Its own instruction: the env-knob owner scan reads the first name of an ENV only.
+# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
+# APPENDED, not prepended as in Dockerfile.android: platform-tools carries its own
+# mke2fs/make_f2fs/sqlite3, and fronting PATH with them would shadow /usr/sbin/mke2fs
+# on every arch. Appended, these dirs win only names nothing else provides -- adb,
+# sdkmanager, avdmanager, apkanalyzer. Separate instruction so ${ANDROID_HOME} reads
+# the line above: docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
 
 # Docker's ENV above is not enough for a LOGIN shell. CI steps run
 # `docker run ... bash -lc '<script>'`, and a login bash sources /etc/profile

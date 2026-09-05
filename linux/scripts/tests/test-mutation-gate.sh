@@ -263,16 +263,23 @@ kill -9 "${_g}" 2>/dev/null; rm -f "${_tmp}/gpid"
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 
-# A tree whose `link` points at a file OUTSIDE it, mutating <target>. The test
-# records what the COPY holds -- the only place the symlink handling is
-# observable -- and what the outside file said WHILE it ran.
+# A tree with a `link`, mutating <target>. $2 places the link: "inside" points it
+# at a sibling of the subject, "outside" at a file the tree does not contain,
+# "dangling" at a name inside the tree that does not exist. The test records what
+# the COPY holds -- the only place the symlink handling is observable -- and what
+# the outside file said WHILE it ran.
 _symlink_fixture() {
   _fixture "GUARD=on" "GUARD=off" yes .
   printf 'GUARD=on\n' > "${_tmp}/outside.txt"
-  ln -sfn "${_tmp}/outside.txt" "${_work}/link"
+  printf 'GUARD=on\n' > "${_work}/inner.txt"
+  case "${2:-inside}" in
+    outside)  ln -sfn "${_tmp}/outside.txt" "${_work}/link" ;;
+    dangling) ln -sfn no-such-file.txt "${_work}/link" ;;
+    *)        ln -sfn inner.txt "${_work}/link" ;;
+  esac
   printf 'not-run\n' > "${_tmp}/kind"
   printf 'not-run\n' > "${_tmp}/outside-witness"
-  { printf 'if [ -L ./link ]; then echo symlink; else echo dereferenced; fi > "%s/kind"\n' "${_tmp}"
+  { printf 'if [ -L ./link ]; then echo symlink; elif [ -e ./link ]; then echo dereferenced; else echo absent; fi > "%s/kind"\n' "${_tmp}"
     printf 'cat "%s/outside.txt" > "%s/outside-witness"\n' "${_tmp}" "${_tmp}"
     printf 'grep -q "GUARD=on" ./subject.sh\n'
   } > "${_work}/t.sh"
@@ -281,20 +288,84 @@ _symlink_fixture() {
 }
 
 t_case "the copy keeps a symlink AS a symlink instead of dereferencing it"
-_symlink_fixture subject.sh
+_symlink_fixture subject.sh inside
 t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
 t_assert_eq "symlink" "$(cat "${_tmp}/kind")" \
   "dereferencing pulls whatever the link points at -- a host binary, a device -- into a copy made once per commit"
-t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")" "and the file outside the tree is untouched"
 
-t_case "a symlink is refused as a mutation target, so no write escapes the copy"
-_symlink_fixture link
+t_case "a link that RESOLVES outside the tree is not copied into the workspace at all"
+_symlink_fixture subject.sh outside
+t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+t_assert_eq "absent" "$(cat "${_tmp}/kind")" \
+  "keeping the link as a link still lets a test inside the copy read and write straight through it -- docs/.venv/bin/python IS /usr/bin/python3"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside-witness")" \
+  "and the outside file must be untouched WHILE the test runs, not merely afterwards"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
+
+t_case "a symlink is refused as a mutation target, so no write goes through it"
+_symlink_fixture link inside
 _out="$(_iso_run 2>&1)"
 t_assert_contains "${_out}" "target is a symlink" \
-  "the copy holds the link, not the file: mutating it writes straight through to the outside path"
+  "the copy holds the link, not the file: mutating it writes straight through to whatever it names"
 t_assert_eq "1" "$(_iso_rc)" "a mutation that cannot be applied safely must fail the gate, not be skipped"
-t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside-witness")" \
-  "restoring afterwards is not enough -- the outside file must never hold the mutation, even transiently"
-t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
+
+t_case "a DANGLING symlink is still refused as a symlink, not reported as missing"
+# os.path.exists() follows the link, so a link to nothing looks like an absent
+# target -- which sends the reader hunting for a stale manifest entry instead of
+# the symlink that would have let a write escape the copy.
+_symlink_fixture link dangling
+_out="$(_iso_run 2>&1)"
+t_assert_contains "${_out}" "target is a symlink" "the link is the finding, not what it points at"
+t_assert_eq 0 "$(printf '%s' "${_out}" | grep -c 'target missing')" "and it must not be misreported as a stale entry"
+t_assert_eq "1" "$(_iso_rc)"
+
+# --- shards: the run is parallel, the proof is still one mutation at a time ----
+# 244 entries over 33 suites cost 8m47s serially, which is what kept the hook's
+# sample at six. Shards buy that back only if every entry is still proven alone.
+
+# $1 subjects, each with its own mutation and its own test; subject $2 gets a
+# test that CANNOT fail, so a run that drops a shard reports a green it did not earn.
+_shard_fixture() {
+  local n="$1" survivor="$2" entries="" id
+  for id in $(seq 1 "${n}"); do
+    printf 'GUARD=on\n' > "${_work}/s${id}.sh"
+    if [ "${id}" = "${survivor}" ]; then
+      printf 'true\n' > "${_work}/t${id}.sh"
+    else
+      printf 'grep -q "GUARD=on" "./s%s.sh"\n' "${id}" > "${_work}/t${id}.sh"
+    fi
+    entries="${entries}${entries:+,}$(printf '{"id":"probe.%s","target":"s%s.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t%s.sh","why":"probe %s"}' "${id}" "${id}" "${id}" "${id}")"
+  done
+  printf '[%s]\n' "${entries}" > "${_work}/m.json"
+}
+_bitten() { printf '%s\n' "$1" | sed -n 's/^  bites  *\(probe\.[0-9]*\).*/\1/p' | tr '\n' ' '; }
+
+t_case "a parallel run proves every entry, and one survivor anywhere fails it"
+_shard_fixture 8 6
+_out="$(t_out _iso --jobs 4)"
+t_assert_eq "1" "$(t_rc _iso --jobs 4)" "a survivor in ANY shard must fail the whole run"
+t_assert_contains "${_out}" "probe.6 SURVIVED" \
+  "the entry whose test cannot fail must be named, whichever shard drew it"
+t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.7 probe.8 " "$(_bitten "${_out}")" \
+  "sharding must not thin the run: every other entry is still proven on its own"
+
+t_case "the report reads in manifest order, not in the order the shards finished"
+_shard_fixture 8 0
+_out="$(t_out _iso --jobs 4)"
+t_assert_eq "0" "$(t_rc _iso --jobs 4)" "eight catchable mutations are eight bites"
+t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " "$(_bitten "${_out}")"
+
+t_case "a parallel run mutates its own mirrors only, never the tree it was pointed at"
+_shard_fixture 8 0
+_before="$(_snapshot)"
+t_assert_eq "0" "$(t_rc _iso --jobs 4)"
+t_assert_eq "${_before}" "$(_snapshot)" \
+  "one shard per mirror is the whole point -- shards sharing a tree would mutate each other's subjects"
+
+t_case "--jobs never exceeds the number of entries, so a single id makes one copy"
+_fixture "GUARD=on" "GUARD=off" yes .
+t_assert_contains "$(t_out _iso --jobs 16)" "bites" "a cap larger than the work must not change the verdict"
+t_assert_eq "" "$(find "${_tmp}" -maxdepth 1 -name 'mutation-gate-*' -print)" \
+  "and every mirror a parallel run made must be gone afterwards"
 
 t_summary

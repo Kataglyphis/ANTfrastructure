@@ -100,6 +100,16 @@ executables, not libraries. The idiom is to cut the region under test out with
 block from `_iree_check_prereqs` through `build_iree_wheels`. Always assert that
 the extraction caught what it claims (both suites do) so a rename degrades into
 a failing assertion instead of an empty one.
+**A golden trace that normalises paths must derive its temp root from
+`TMPDIR`.** `test-vulkan-target-decomposition.sh` folds the `mktemp -d` build
+directory out of the cmake argv before comparing; that `sed` matched a literal
+`/tmp` until 2026-09-04, while both the fixture and `vulkan.sh` use `mktemp -d`,
+which honours `TMPDIR`. Under any override the suite failed 5 of 35 assertions
+on un-normalised paths — green everywhere it was ever run, red on the first
+machine that sets `TMPDIR`. The pattern is now built from `${TMPDIR:-/tmp}` with
+every non-word byte escaped for the ERE, and a final case re-runs the whole
+suite under a different `TMPDIR` so the hardcoding cannot come back.
+
 `test-base-image-parse-options.sh` shows the two-mode variant: real
 `bash base-image.sh …` processes for the error paths — every parse error dies
 before `main` dispatches, so nothing touches apt, the network or the host — plus
@@ -181,6 +191,7 @@ deliberately reduced image, never to "get the build green":
 | ELF architecture of shipped binaries | `validate-media-runtime.sh` — runs on EVERY scan since 2026-08-08 (a clean dependency scan used to `exit 0` before it) | `MEDIA_ELF_MISMATCH_FATAL=0` downgrades to warning |
 | litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip, which since GEN1 (2026-08-31) covers only NON-arm64/riscv64 cross targets and a riscv64 lane switched off with `GENAI_ALLOW_RISCV64` |
 | `onnxruntime_genai`'s native binding really works — version == the versions.env pin, the loaded pybind `.so` is TARGET-arch ELF (read from its own `e_machine`), and native code RUNS (`og.Tensor` numpy round-trip, the capability predicates, `og.Config` rejecting a non-model path from C++) | `smoke-runtime-image.sh` `check_genai_binding` (payload: `smoke-common.sh` `smoke_genai_py`) | none — but an absent wheel is a SKIP, not a failure (presence is the ARCH-PARITY table's assertion). Set `GENAI_MODEL_DIR` to a real model directory to arm the fourth tier, which calls `generate()` and asserts on TOKEN CONTENT; no model ships in these images, so that tier reports UNPROVEN by default |
+| Every artifact tree in `runtime-artifacts.manifest` carries THIS image's ELF machine — `artifact-source` is the builder's image, so a tree installed on the host (rustup, Flutter) ships x86-64 into a foreign one | `smoke-runtime-image.sh` `check_manifest_tree_arch` | none. Exemptions name the TREE (`/opt/android`, `/opt/android-sdk`), never an arch, so a new host-installed tree fails by default — docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch |
 | Vulkan cross-components (loader / SPIRV-Tools / glslang) — all three failing at once is an env-shaped toolchain cause | `vulkan.sh` | default is advisory (WARN); `VULKAN_CROSS_STRICT=1` is the OPT-IN promotion to fatal |
 | Vendored-wheel SOABI vs target triple — a native `.cpython-*.so` carrying a SOABI for a different arch than the target triple is a host-SOABI leak that only fails at `import` | `verify-wheels.sh` (triple derived from `TARGET_ARCH`, **not** the running interpreter) | default is advisory (WARN); `WHEEL_SOABI_STRICT=1` is the OPT-IN promotion to fatal |
 | Clean stop of a running chain — reaps the orphaned nerdctl/buildctl child subtree; **never `pkill` the orchestrator, that orphans them** | `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep) | n/a — operational tool, not a gate |
@@ -240,7 +251,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:39-52`, 33 slugs), which is also the vocabulary
+(`preflight.sh:42-56`, 34 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -273,6 +284,7 @@ drift if a slug is added without touching it.
 | `stdout-returns` | `verify_stdout_returns.py` | a function whose stdout is captured by `$(...)` logging to stdout, poisoning its return value |
 | `code-dupes` | `docs/scripts/verify_code_dupes.py` | token-normalised duplication across shell, Dockerfiles and non-`docs/` Markdown — it sees *renamed* clones |
 | `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
+| `trailing-conditional` | `verify_trailing_conditional.py` | a function whose LAST statement is a bare test or an `&&` list, so it returns that test's status and a caller under `set -e` dies on the nothing-to-do path; deliberate predicates are frozen in `trailing-conditional.allow` |
 | `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
 | `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
 | `code-complexity` | `verify_code_complexity.py` | cyclomatic complexity over 15 or nesting over 5 in the `code-size` scan set, against `code-complexity.allow` — the shell counter is heredoc-, comment- and quote-aware |
@@ -284,13 +296,13 @@ drift if a slug is added without touching it.
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
-whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 17 fast slugs in
-`_FAST_SLUGS` (`:64-67`), 4.2 s combined — and then three blocks scoped to the
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 18 fast slugs in
+`_FAST_SLUGS` (`:64-67`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
 plus the warning ratchet on staged `.sh` files (`:78-95`, the binary resolved
 through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
 when `docs/*.md` moved, and `verify_mutations.py` on a SAMPLE of the entries whose
-target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 6), newest first, and
+target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 16), newest first, and
 it prints `SAMPLED n of m` whenever it cut, because a green hook must not imply
 coverage it did not pay for. Measured end to end 2026-09-04: **8.0 s** for a
 one-file commit (no sampling — all 5 matched entries ran) and **27.2 s** for the
@@ -378,6 +390,15 @@ These validate a built/pulled image and also run during the build to fail fast:
     `gst-inspect-1.0` loads the file directly). Warning there instead would let the
     table rot underneath a green run; failing makes it self-correcting, since the fix
     is the one-line deletion the message names.
+  - **CONSUMER CONTRACT** (fail) — the seven properties a consuming CI lane depends on
+    and cannot repair from inside a read-only overlay layer: compiler caches outside
+    `/workspace` and writable, `$RUSTUP_HOME/tmp` and `$CARGO_HOME` writable,
+    `ANDROID_HOME` set with `platform-tools` present *and* on `PATH`, and every path
+    under `/opt/flutter` owned by the runtime uid. One probe, run as the image's own
+    `Config.User` — as root every directory answers writable, so a probe reporting any
+    other identity fails the gate outright. The contract itself, its per-arch exemption
+    table and the 2026-09-04 defects that motivated it:
+    [`consumer-image-contract.md`](consumer-image-contract.md#the-contract).
   - **GStreamer plugin health** (warn) — lists plugins whose runtime `.so` is absent
     (they degrade gracefully); surfaces app-critical regressions like
     `webrtcbin2`→`librice-proto.so.0`. **GStreamer core pipeline** (fail) —
@@ -418,18 +439,28 @@ which is exactly how a test in this repo once stayed green while the code it
 guarded was gutted.
 
 **A. Advertised env versions == actual** (`check_advertised_versions`, fail).
-Every key in `_ADVERTISED_VERSION_KEYS` (`PYTHON_VERSION`,
-`PYTHON_MAJOR_MINOR`, `GCC_VERSION`, `LLVM_RELEASE`, `GSTREAMER_VERSION`,
-`VULKAN_VERSION`) is compared against what the image *has* — the venv
-interpreter, `gcc -dumpfullversion`, `clang --version`,
+Every key in `_ADVERTISED_VERSION_KEYS` (`PYTHON_MAJOR_MINOR`, `GCC_VERSION`,
+`LLVM_RELEASE`, `GSTREAMER_VERSION`, `VULKAN_VERSION`, …) is compared against what
+the image *has* — the venv interpreter, `gcc -dumpfullversion`, `clang --version`,
 `gst-inspect-1.0 --version`, the resolved `/opt/vulkan/active` path. This exists
 because all three wrappers shipped Ubuntu's Python **3.14.4** while advertising
 `PYTHON_VERSION=3.14.7`; an env label that contradicts the interpreter is worse
 than no label, since everything downstream reasons from it. There is **no
 exemption arm** — a version label that disagrees with the artefact is never a
-documented state. An unset or unreadable key is a loud per-row `SKIP`, and if
-*every* row skips the gate **fails** rather than printing a green it did not
-earn.
+documented state.
+
+There is no `SKIP` arm either. Both "the image did not tell us" answers are
+**fatal**: a key the image does not set at all (`UNSET`) and a key whose actual
+value the probe could not read (`UNREAD`). The second is the exact shape the
+builder's `rustc` shipped in — it exited 127 on every foreign image for months
+while this gate printed a green `SKIP` — and the first is how a row that *can only
+ever* `SKIP` gets in, the same hole `verify_advertised_keys.py` emptied
+`FROZEN_UNPROBED` to abolish. A verdict verb no arm handles is fatal too: a
+silently dropped row is that failure wearing a new name. A key the image
+deliberately does not advertise belongs in `verify_advertised_keys.py`'s `EXCUSED`
+table rather than in a row that cannot fail — `PYTHON_VERSION` is `ARG`-only by
+design (nothing stages `/opt/python-cross` into the runtime image, so it ships the
+distro Python), and `PYTHON_MAJOR_MINOR` is the ENV that *is* checked.
 
 **B. Venv package set vs the app's own declared graph**
 (`check_venv_package_set`, fail). Measured live, the shipped venvs held
@@ -468,9 +499,10 @@ component present on *every* arch but wrong on all of them is invisible; a
 package installed at the right name but the wrong *version* remains the ML
 version-pin assertion's job; anything the app does not declare as a requirement
 (a transitively-pulled tool nobody depends on) is outside the graph; and the
-advertised-version table covers the 17 keys in `_ADVERTISED_VERSION_KEYS` — a new
-version-carrying `ENV` in `Dockerfile.package` is unguarded until it is added to
-`_ADVERTISED_VERSION_KEYS`.
+advertised-version table covers only the keys listed in
+`_ADVERTISED_VERSION_KEYS` — a new version-carrying `ENV` in `Dockerfile.package`
+is unguarded until it is added there, which is what the `advert-keys` gate
+enforces.
 
 **Mutation record (both gates proven red, then green).** Against the real
 locally-built `latest-cross-arm64`/`-riscv64` wrappers:
@@ -482,7 +514,7 @@ locally-built `latest-cross-arm64`/`-riscv64` wrappers:
 | advertise `GSTREAMER_VERSION=9.9.9` | A fails on that key too — a second, independent row can red |
 | `pip uninstall captum scipy`, image re-committed | B goes **red**: 2 extra-requirement fails + 3 dangling-edge fails; unmutated image green |
 | recorded probe, `RTPROBE_DONE` stripped | both gates **fail** ("a gate that cannot run is not a pass") |
-| recorded probe, every `ADV` value blanked | A **fails** the vacuous-pass guard after six loud `SKIP`s |
+| recorded probe, every `ADV` value blanked | A **fails** — one fatal `UNSET` per row. Before 2026-09-04 those rows were loud `SKIP`s and only the vacuous-pass guard caught the blanking |
 | recorded probe, `PKG opencv-python` added | B **fails**: the documented exemption no longer applies, message names the arm to delete |
 | recorded probe, `REQ docs …` removed | B **fails**: refuses to assert an empty extra |
 | recorded probe, `VENV ABSENT` injected | B prints a loud `SKIP` (never a pass) |
@@ -983,6 +1015,20 @@ forwarded key (`GENAI_ALLOW_RISCV64`) is never read as another key's override.
 
 These are pins, not excuses: if the Ubuntu archive moves, ADV and HAVE diverge
 again and the build fails until the override is bumped.
+
+**A value whose characters the shell would interpret is quoted in the file and
+unquoted by the loader.** `CUDA_ARCHITECTURES=80;86;89;90` was written bare, so
+every plain `source versions.env` — `lint-python.sh` did exactly that to read
+`RUFF_VERSION` — ran `86`, `89` and `90` as commands and printed three
+`command not found` lines on every hook run. That reader now goes through
+`load_versions_env` like every other one, so the noise cannot come back the next
+time a value earns a metacharacter. The value is now
+`"80;86;89;90"`: `load_versions_env` strips one surrounding pair before
+exporting, so neither the exported variable nor the `--build-arg` it forwards
+gains a quote. That last half is the whole point — a quoted build arg reaches
+CMake as *data* and would defeat the `90` → `90a` transform, which is how the
+same bug landed once before. `test-version-forwarding.sh` asserts both halves
+through the real loader.
 
 ### Which shared library a consumer actually gets
 

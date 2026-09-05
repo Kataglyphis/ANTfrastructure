@@ -27,6 +27,7 @@ _mkroot() {
   mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts" \
            "${d}/linux/host-config/git-hooks"
   cp "${S}/lint-python.sh" "${d}/linux/scripts/"
+  cp "${S}/01-core/load-versions-env.sh" "${d}/linux/scripts/01-core/"
   printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/versions.env"
   printf '%s\n' "${d}"
 }
@@ -81,6 +82,17 @@ _targets() {
 t_case "the pin the fixture carries is the one versions.env holds"
 t_assert_ok test -n "${PIN}"
 
+t_case "reading the pin makes no noise: versions.env is data, and is never sourced"
+# CUDA_ARCHITECTURES=80;86;89;90 -- `source` runs 86, 89 and 90 as commands, three
+# `command not found` lines on stderr for every hook run.
+_d="$(_mkroot)"
+printf 'CUDA_ARCHITECTURES=80;86;89;90\nRUFF_VERSION=%s\n' "${PIN}" \
+  > "${_d}/linux/scripts/01-core/versions.env"
+printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
+t_assert_eq "" "$(bash "${_d}/linux/scripts/lint-python.sh" 2>&1 >/dev/null)" \
+  "a gate that runs in every hook must not print shell errors from its own pin lookup"
+t_assert_contains "$(_run "${_d}")" "rc=0" "and the value must still load, not break the gate"
+
 t_case "an undefined name fails the gate tier"
 _out="$(_lint 'print(nope)')"
 t_assert_contains "${_out}" "python gate pass failed" "F82 is the whole point of the gate tier"
@@ -120,10 +132,12 @@ t_assert_contains "${_out}" "nope_in_heredoc" \
 t_assert_contains "${_out}" "python gate pass failed"
 t_assert_contains "${_out}" "rc=1"
 
-t_case "the heredoc finding names its shell file and line"
+t_case "the heredoc finding names the shell file and the line the reader must open"
 _out="$(_targets 'print("ok")' 'print(nope_in_heredoc)')"
-t_assert_contains "${_out}" "probe__2.py:1:" \
-  "the extracted name maps the finding back to probe.sh's opener line 2, body line 1"
+t_assert_contains "${_out}" "linux/scripts/probe.sh:3:" \
+  "probe__2.py:1: is two numbers the reader has to add up by hand: opener line 2 plus body line 1"
+t_assert_eq 0 "$(printf '%s' "${_out}" | grep -c 'probe__2\.py')" \
+  "and the throwaway name must be gone, not printed alongside"
 
 t_case "a gate-tier error inside a git-hook heredoc fails the gate"
 _out="$(_targets 'print("ok")' 'print("ok")' 'print(nope_in_hook)')"
@@ -132,10 +146,10 @@ t_assert_contains "${_out}" "nope_in_hook" \
 t_assert_contains "${_out}" "python gate pass failed"
 t_assert_contains "${_out}" "rc=1"
 
-t_case "the git-hook finding names its hook file and line"
+t_case "the git-hook finding names the hook file and the line the reader must open"
 _out="$(_targets 'print("ok")' 'print("ok")' 'print(nope_in_hook)')"
-t_assert_contains "${_out}" "pre-commit__3.py:1:" \
-  "the extracted name maps the finding back to the hook's opener line 3, body line 1"
+t_assert_contains "${_out}" "linux/host-config/git-hooks/pre-commit:4:" \
+  "a hook has no .sh suffix and no line of its own in the extracted name -- opener 3 plus body 1"
 
 t_case "the gate is registered in preflight"
 t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is not a gate"

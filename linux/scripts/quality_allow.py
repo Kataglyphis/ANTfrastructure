@@ -9,20 +9,31 @@ import os
 import sys
 
 
-def load_counts(path):
-    """`key | count | reason` rows -> {key-tuple: count}. Keys may carry `|`-separated parts."""
-    frozen = {}
+def load_rows(path, keys=None, fmt="<key> | ... | <count> | <reason>"):
+    """`key | count | reason` rows -> {key-tuple: (count, reason)}. `keys` fixes the
+    number of key columns so a reason may carry `|` and `#`; None keeps the count in
+    the second column from the right. A row that fits neither is a named gate error."""
+    rows = {}
     if not os.path.exists(path):
-        return frozen
-    for raw in open(path, encoding="utf-8"):
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) < 3:
-            continue
-        frozen[tuple(parts[:-2])] = int(parts[-2])
-    return frozen
+        return rows
+    with open(path, encoding="utf-8") as fh:
+        for num, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [p.strip() for p in line.split("|")]
+            at = len(parts) - 2 if keys is None else keys
+            if at < 1 or len(parts) < at + 2 or not parts[at].isdigit():
+                sys.stderr.write("ERROR: %s:%d: expected '%s'\n"
+                                 % (os.path.basename(path), num, fmt))
+                raise SystemExit(2)
+            rows[tuple(parts[:at])] = (int(parts[at]), " | ".join(parts[at + 1:]))
+    return rows
+
+
+def load_counts(path, keys=None, fmt="<key> | ... | <count> | <reason>"):
+    """load_rows without the reasons -- what check_counts compares against."""
+    return {key: count for key, (count, _reason) in load_rows(path, keys, fmt).items()}
 
 
 def check_counts(kind, items, frozen, limit, allow_name, unit="lines"):

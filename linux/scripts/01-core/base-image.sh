@@ -15,6 +15,8 @@ done
 [ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
 unset _bs_path _FOUND_MODULES
 
+: "${NODE_RISCV64_MAJOR_REQUIRED:=0}"
+
 source_module common.sh
 source_module package-lists.sh
 source_module cmake.sh
@@ -435,7 +437,7 @@ install_nodejs() {
       installed_major="${installed_major%%.*}"
       pinned_major="${BASE_IMAGE_NODE_VERSION%%.*}"
       if [ "${installed_major}" != "${pinned_major}" ]; then
-        if [ "${NODE_RISCV64_MAJOR_REQUIRED:-0}" = "1" ]; then
+        if [ "${NODE_RISCV64_MAJOR_REQUIRED}" = "1" ]; then
           die "riscv64 Node.js major mismatch: installed ${installed_node}, but pin ${BASE_IMAGE_NODE_VERSION} expects major ${pinned_major}"
         fi
         warn "riscv64 Node.js major LAGS the pin: installed ${installed_node}, pin ${BASE_IMAGE_NODE_VERSION} (major ${pinned_major}) — ubuntu-ports has no ${pinned_major}.x; shipping the ports default (optional JS/web tooling only)"

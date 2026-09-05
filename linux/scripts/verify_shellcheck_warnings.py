@@ -13,16 +13,17 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_counts  # noqa: E402
+from quality_allow import check_counts, load_counts, load_rows  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 ALLOW = os.path.join(HERE, "shellcheck-warnings.allow")
 ALLOW_NAME = os.path.basename(ALLOW)
+ALLOW_FMT = "<file> | SC<code> | <count> | <reason>"
 LINT = os.path.join(HERE, "lint-shell.sh")
 HEADER = (
     "# shellcheck -S warning findings frozen per (file, code) over lint-shell.sh's file set.",
-    "# Format: <file> | SC<code> | <count> | <reason>   (a reason may not contain | or #)",
+    "# Format: %s   (the reason is the rest of the line)" % ALLOW_FMT,
     "# The four-way rule applies: a new pair, a higher count, an unrecorded lower count",
     "# and a row whose pair is gone all FAIL. Record a fix with --write-baseline [--files f].",
     "# docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings",
@@ -82,26 +83,21 @@ def _rel(path):
     return os.path.relpath(os.path.abspath(path), ROOT)
 
 
-def rows(path):
-    """The allow file as (header lines, {key: (count, reason)}), read as quality_allow reads it."""
-    header, out = [], {}
+def header_of(path):
+    """The comment block that opens the allow file, so --write-baseline keeps it."""
     if not os.path.exists(path):
-        return list(HEADER), out
+        return list(HEADER)
+    head = []
     for raw in open(path, encoding="utf-8"):
         line = raw.rstrip("\n")
-        body = line.split("#", 1)[0].strip()
-        if not body:
-            if not out:
-                header.append(line)
-            continue
-        parts = [p.strip() for p in body.split("|")]
-        if len(parts) >= 4:
-            out[tuple(parts[:2])] = (int(parts[2]), " ".join(p for p in parts[3:] if p))
-    return header, out
+        if line.strip() and not line.strip().startswith("#"):
+            break
+        head.append(line)
+    return head
 
 
 def write_baseline(counts, checked, partial):
-    header, old = rows(ALLOW)
+    header, old = header_of(ALLOW), load_rows(ALLOW, 2, ALLOW_FMT)
     today = datetime.date.today().isoformat()
     keep = {k: v for k, v in old.items() if partial and k[0] not in checked}
     for key, n in counts.items():
@@ -125,7 +121,7 @@ def main():
     shellcheck = binary()
     in_scope = scope()
     files, skipped, only = in_scope, set(), None
-    frozen = {k: n for k, (n, _reason) in rows(ALLOW)[1].items()}
+    frozen = load_counts(ALLOW, 2, ALLOW_FMT)
     if args.files:
         wanted = {_rel(f) for f in args.files}
         files = [f for f in in_scope if f in wanted]

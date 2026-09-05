@@ -28,6 +28,8 @@ CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+: "${LINT_DOCKERFILES_BUILD_CHECK:=1}"
+
 # ---------------------------------------------------------------------------
 # Target set
 # ---------------------------------------------------------------------------
@@ -42,6 +44,17 @@ else
 fi
 [ "${#DOCKERFILES[@]}" -gt 0 ] || err "No Dockerfiles found to lint."
 
+FAILED=0
+
+# ---------------------------------------------------------------------------
+# Pass 0: ENV instruction ordering (enforced, no download)
+# hadolint has no rule for it and BuildKit's UndefinedVar check only runs in the
+# advisory pass, which is skipped on every nerdctl-only host.
+# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+# ---------------------------------------------------------------------------
+printf '== ENV instruction ordering on %d Dockerfile(s) ==\n' "${#DOCKERFILES[@]}"
+python3 linux/scripts/verify_dockerfile_env_order.py "${DOCKERFILES[@]}" || FAILED=1
+
 # ---------------------------------------------------------------------------
 # hadolint bootstrap (PATH copy preferred; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------
@@ -52,7 +65,7 @@ hadolint_load_pin() {
 }
 
 hadolint_asset_and_sha() {
-  local os arch
+  local os
   case "$(uname -s)" in
     Linux) os=linux ;;
     MINGW*|MSYS*|CYGWIN*) os=windows ;;
@@ -115,7 +128,6 @@ HADOLINT_WINDOWS_IGNORES=(
   SC1088 SC1089 SC1099
 )
 
-FAILED=0
 for df in "${DOCKERFILES[@]}"; do
   hl_args=(--config "${REPO_ROOT}/.hadolint.yaml")
   case "${df}" in
@@ -133,7 +145,7 @@ done
 # ---------------------------------------------------------------------------
 # Pass 2: BuildKit frontend lint (advisory; auto-skipped without docker buildx)
 # ---------------------------------------------------------------------------
-if [ "${LINT_DOCKERFILES_BUILD_CHECK:-1}" = "1" ] \
+if [ "${LINT_DOCKERFILES_BUILD_CHECK}" = "1" ] \
    && command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1 \
    && docker version --format '{{.Server.Os}}' >/dev/null 2>&1; then
   printf '\n== docker buildx build --check (advisory) ==\n'

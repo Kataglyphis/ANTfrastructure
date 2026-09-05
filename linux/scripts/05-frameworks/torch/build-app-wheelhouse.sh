@@ -904,7 +904,7 @@ _iree_build_host_stage() {
     # from an OFF host build guarantees the escalation: a complete host build,
     # deleted, then redone with ON. Ask for ON directly instead of paying for the
     # discarded pass. It cost two full host builds in the 2026-09-02 run.
-    case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
+    case "${IREE_CROSS_BUILD_COMPILER}" in
       ON|on|1|true|TRUE|yes|YES) : ;;
       *)
         host_required_tools+=(iree-tblgen)
@@ -1027,7 +1027,7 @@ _iree_build_target_cross() {
     # The cross target is runtime-only unless IREE_CROSS_BUILD_COMPILER=ON,
     # so demanding a compiler wheel afterwards would fail a build that did
     # exactly what it was told to do.
-    case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
+    case "${IREE_CROSS_BUILD_COMPILER}" in
       [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
       *)                           iree_wheel_projects=(runtime) ;;
     esac
@@ -1037,7 +1037,7 @@ _iree_build_target_cross() {
             "${ccache_cmake_args[@]}" \
             -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-            -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER:-OFF}" \
+            -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER}" \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
             -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
             -DIREE_BUILD_SAMPLES=OFF \
@@ -1146,6 +1146,9 @@ _iree_package_wheels() {
 }
 
 build_iree_wheels() {
+    # Default set HERE, not at file scope: the stage suites extract this block
+    # alone, so a top-level default would leave `set -u` nothing to read.
+    : "${IREE_CROSS_BUILD_COMPILER:=OFF}"
     # Wheel projects this run expects. Set by the cross branch (runtime-only
     # unless IREE_CROSS_BUILD_COMPILER=ON); the native branch leaves it empty
     # and the packaging step defaults to both. Declared here so `set -u` does

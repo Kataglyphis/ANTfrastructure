@@ -10,27 +10,8 @@
 [ -n "${_DOCS_BUILD_SH_LOADED:-}" ] && return 0
 _DOCS_BUILD_SH_LOADED=1
 
-_DOCS_BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_DOCS_BUILD_CORE_DIR="${_DOCS_BUILD_LIB_DIR}/../01-core"
-
-# ---------------------------------------------------------------------------
-# Shared helpers: prefer the real 01-core modules, fall back to local minimals
-# ---------------------------------------------------------------------------
-if ! declare -F info >/dev/null 2>&1; then
-  if [[ -f "${_DOCS_BUILD_CORE_DIR}/logging.sh" ]]; then
-    # shellcheck source=../01-core/logging.sh
-    source "${_DOCS_BUILD_CORE_DIR}/logging.sh"
-  fi
-fi
-if ! declare -F info >/dev/null 2>&1; then
-  info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
-fi
-if ! declare -F warn >/dev/null 2>&1; then
-  warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
-fi
-if ! declare -F err >/dev/null 2>&1; then
-  err() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
-fi
+# shellcheck source=./log-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
 _docs_build_root() {
   printf '%s\n' "${DOCS_BUILD_PROJECT_ROOT:-$(pwd)}"

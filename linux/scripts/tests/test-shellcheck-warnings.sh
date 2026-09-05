@@ -12,6 +12,7 @@ PY="$(command -v "${PREFLIGHT_PYTHON:-python3}")"
 TODAY="$(date +%F)"
 PIN="$(sed -n 's/^SHELLCHECK_VERSION=//p' "${TESTS_DIR}/../01-core/versions.env")"
 source "${TESTS_DIR}/test-harness.sh"
+: "${SKIP_REAL_TREE:=}"
 
 if ! command -v shellcheck >/dev/null 2>&1; then
   t_case "shellcheck is on PATH (the gate needs it, and so does this suite)"
@@ -57,9 +58,9 @@ _rc()  { local d="$1"; shift; t_rc  env "SHELLCHECK_BIN=${SC_BIN}" "${PY}" "${d}
 _write() { _rc "$1" --write-baseline "${@:2}"; }
 _rows() { grep -v -e '^#' "$1/linux/scripts/shellcheck-warnings.allow"; }
 _head() { head -n "$2" "$1/linux/scripts/shellcheck-warnings.allow"; }
-# The allow file as quality_allow.load_counts sees it — the reader other gates share.
-_load_counts() {
-  "${PY}" -c 'import sys; sys.path.insert(0, sys.argv[1]); from quality_allow import load_counts; print(sorted(load_counts(sys.argv[1] + "/shellcheck-warnings.allow").items()))' \
+# The allow file through quality_allow.load_rows — the one reader every gate shares.
+_load_rows() {
+  "${PY}" -c 'import sys; sys.path.insert(0, sys.argv[1]); from quality_allow import load_rows; print(sorted(load_rows(sys.argv[1] + "/shellcheck-warnings.allow", 2, "shape").items()))' \
     "$1/linux/scripts"
 }
 ROW_A1="linux/scripts/a.sh | SC2034 | 1 | baseline"
@@ -199,16 +200,26 @@ t_assert_eq "linux/scripts/a.sh | SC2034 | 1 | old
 linux/scripts/b.sh | SC2034 | 9 | untouched" "$(_rows "${fix}")" "a.sh re-counted with its reason kept; b.sh was not checked, so its row stays"
 rm -rf "${fix}"
 
-# ── the allow file is read the way quality_allow.load_counts reads it ────────
-t_case "a reason carrying | or # is tolerated and normalised, so both readers agree"
+# ── the allow file is read by quality_allow.load_rows, keyed from the LEFT ───
+t_case "a reason carrying | or # survives the round trip, and the shared reader agrees"
 fix="$(_fixture a:unused)"
 _freeze "${fix}" "linux/scripts/a.sh | SC2034 | 1 | why | because   # side note"
 t_assert_eq "0" "$(_rc "${fix}")" "the extra separators must not shift the count column"
 t_assert_eq "0" "$(_write "${fix}")"
-t_assert_eq "linux/scripts/a.sh | SC2034 | 1 | why because" "$(_rows "${fix}")" \
-  "the rewritten reason carries neither separator"
-t_assert_eq "[(('linux/scripts/a.sh', 'SC2034'), 1)]" "$(_load_counts "${fix}")" \
-  "load_counts reads the same row back (it counts | -separated fields from the right)"
+t_assert_eq "linux/scripts/a.sh | SC2034 | 1 | why | because   # side note" "$(_rows "${fix}")" \
+  "a rewritten reason must keep both separators, not lose its tail"
+t_assert_eq "[(('linux/scripts/a.sh', 'SC2034'), (1, 'why | because   # side note'))]" \
+  "$(_load_rows "${fix}")" "load_rows keys from the LEFT, so a | in the reason cannot shift the count"
+rm -rf "${fix}"
+
+t_case "a malformed row is a gate message naming the file and line, never a traceback"
+fix="$(_fixture a:unused)"
+_freeze "${fix}" "linux/scripts/a.sh | SC2034 | one | why"
+t_assert_eq "2" "$(_rc "${fix}")" "an unreadable allow file must stop the gate, not pass it"
+out="$(_run "${fix}")"
+t_assert_contains "${out}" "shellcheck-warnings.allow:1:" "the message must name the offending line"
+t_assert_contains "${out}" "<file> | SC<code> | <count> | <reason>" "and the shape it expected"
+t_assert_eq "0" "$(printf '%s' "${out}" | grep -c -e Traceback)" "a traceback is not a verdict"
 rm -rf "${fix}"
 
 # ── the tool itself: never a silent zero ─────────────────────────────────────
@@ -266,7 +277,7 @@ t_assert_contains "$(bash "${LINT}" --list-files "${work}/crlfhook" 2>&1)" "crlf
 rm -rf "${work}"
 
 # ── the real tree ────────────────────────────────────────────────────────────
-if [ -z "${SKIP_REAL_TREE:-}" ]; then
+if [ -z "${SKIP_REAL_TREE}" ]; then
   t_case "the REAL tree matches its baseline today"
   t_assert_eq "0" "$("${PY}" "${GATE}" >/dev/null 2>&1; echo $?)"
 fi

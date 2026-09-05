@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Tests for verify_code_complexity.py. The gate derives its root from its own path,
-# so each case copies it with its two imports into a throwaway tree and feeds a
-# subject.sh on stdin. Measured numbers are read back through the real CLI with the
+# Tests for verify_code_complexity.py. Each case builds a t_gate_tree holding the
+# gate and its two imports, feeds a subject.sh on stdin. Measured numbers are read back through the real CLI with the
 # limits forced to zero, so no case depends on the parser's internals.
 # docs/code-quality-tooling.md#shell-complexity-code-complexity
 set -u
@@ -14,10 +13,7 @@ ROW="linux/scripts/subject.sh | f"
 # _tree [allow-row...]: a tree holding the gate, its imports, subject.sh from stdin
 # and, when rows are given, a code-complexity.allow.
 _tree() {
-  local root m; root="$(mktemp -d)"
-  for m in "${GATE}" verify_code_size.py quality_allow.py; do
-    install -D -m 0644 "${SRC}/${m}" "${root}/linux/scripts/${m}"
-  done
+  local root; root="$(t_gate_tree "${GATE}" verify_code_size.py quality_allow.py)"
   cat > "${root}/linux/scripts/subject.sh"
   [ $# -eq 0 ] || printf '%s\n' "$@" > "${root}/linux/scripts/code-complexity.allow"
   printf '%s' "${root}"
@@ -55,18 +51,24 @@ _contract() {
   t_assert_contains "${out}" "rc=1" "a stale row is a failure, not a warning"
 }
 
+# _pins <cc> <nesting> <why-cc> [why-nesting]: both metrics of the subject.sh on
+# stdin, in ONE gate run. <why-nesting> defaults to <why-cc>.
+_pins() {
+  local fix out; fix="$(_tree)"
+  out="$(COMPLEXITY_LIMIT=0 NESTING_LIMIT=-1 "${PY}" "${fix}/linux/scripts/${GATE}" 2>&1)"
+  rm -rf "${fix}"
+  t_assert_contains "${out}" "subject.sh:f:cc is $1 paths" "$3"
+  t_assert_contains "${out}" "subject.sh:f:nesting is $2 levels" "${4:-$3}"
+}
+
 # ── the metrics on hand-built subjects ───────────────────────────────────────
 t_case "a straight-line function is cc 1, nesting 0"
-fix="$(_tree <<'EOF'
+_pins 1 0 "\$(...) is not a decision point" "the body itself is depth 0" <<'EOF'
 f() {
   x="$(cmd)"
   echo "${x}"
 }
 EOF
-)"
-t_assert_eq "1" "$(_measure "${fix}" f cc)" "\$(...) is not a decision point"
-t_assert_eq "0" "$(_measure "${fix}" f nesting)" "the body itself is depth 0"
-rm -rf "${fix}"
 
 t_case "if/elif/for/while/until and && / || each add one path"
 fix="$(_tree <<'EOF'
@@ -99,7 +101,7 @@ t_assert_eq "4" "$(_measure "${fix}" f cc)" "three arms, two substitutions"
 rm -rf "${fix}"
 
 t_case "heredoc bodies are skipped, in every spelling"
-fix="$(_tree <<'EOF'
+_pins 2 1 "only the one real if is a path" "nothing inside the heredocs nests" <<'EOF'
 f() {
   if out="$(python3 - <<'PYEOF'
 a = b = c = 1
@@ -120,10 +122,6 @@ EOF3
 	EOF4
 }
 EOF
-)"
-t_assert_eq "2" "$(_measure "${fix}" f cc)" "only the one real if is a path"
-t_assert_eq "1" "$(_measure "${fix}" f nesting)" "nothing inside the heredocs nests"
-rm -rf "${fix}"
 
 t_case "a here-string is not a heredoc: the rest of the function still counts"
 fix="$(_tree <<'EOF'
@@ -137,7 +135,7 @@ t_assert_eq "2" "$(_measure "${fix}" f cc)" "<<< must not swallow the next lines
 rm -rf "${fix}"
 
 t_case "operators inside quotes do not count, multi-line single quotes included"
-fix="$(_tree <<'EOF'
+_pins 2 0 "only the && inside \$(...) is code" "the awk braces are text" <<'EOF'
 f() {
   echo 'a || b && if for while' "x && y || if" "${v:-'if'}"
   awk '
@@ -146,10 +144,6 @@ f() {
   echo "$(true && false)"
 }
 EOF
-)"
-t_assert_eq "2" "$(_measure "${fix}" f cc)" "only the && inside \$(...) is code"
-t_assert_eq "0" "$(_measure "${fix}" f nesting)" "the awk braces are text"
-rm -rf "${fix}"
 
 t_case "operators in comments do not count, but \${#x} and \$# are not comments"
 fix="$(_tree <<'EOF'
@@ -219,30 +213,22 @@ t_assert_contains "${out}" "subject.py:g:nesting is 1 levels" "elif continues it
 rm -rf "${fix}"
 
 t_case "an unquoted keyword in argument position is a word, not a branch"
-fix="$(_tree <<'EOF'
+_pins 1 0 "a bare 'for' after a command name is text" "and it opens no block that never closes" <<'EOF'
 f() {
   echo for x
   err Could not resolve host tools for cross wheel build
   note No packaging detected while scanning done esac fi
 }
 EOF
-)"
-t_assert_eq "1" "$(_measure "${fix}" f cc)" "a bare 'for' after a command name is text"
-t_assert_eq "0" "$(_measure "${fix}" f nesting)" "and it opens no block that never closes"
-rm -rf "${fix}"
 
 t_case "the same keywords in command position still count"
-fix="$(_tree <<'EOF'
+_pins 6 2 "for + two ifs + && + while" "the inner if is two blocks deep" <<'EOF'
 f() {
   for x in y; do :; done
   if a; then if b; then :; fi; fi
   x=1 && while c; do :; done
 }
 EOF
-)"
-t_assert_eq "6" "$(_measure "${fix}" f cc)" "for + two ifs + && + while"
-t_assert_eq "2" "$(_measure "${fix}" f nesting)" "the inner if is two blocks deep"
-rm -rf "${fix}"
 
 t_case "a backslash-escaped quote neither ends nor starts a string"
 fix="$(_tree <<'EOF'
@@ -265,38 +251,21 @@ t_assert_eq "3" "$(_measure "${fix}" f cc)" "\\' is a literal quote, not an open
 rm -rf "${fix}"
 
 t_case "arithmetic is not a heredoc: << inside (( )) swallows nothing"
-fix="$(_tree <<'EOF'
+_pins 3 1 "1 + if + ||; the shifts are arithmetic" "the lines after the shift still parse" <<'EOF'
 f() {
   x=$(( a << b ))
   if (( c << d )); then :; fi
   e || g
 }
 EOF
-)"
-t_assert_eq "3" "$(_measure "${fix}" f cc)" "1 + if + ||; the shifts are arithmetic"
-t_assert_eq "1" "$(_measure "${fix}" f nesting)" "the lines after the shift still parse"
-rm -rf "${fix}"
 
 t_case "the '}' that closes \${x:-\$(cmd)} is not a block end"
-fix="$(_tree <<'EOF'
+_pins 2 1 "one real if" "an undelimited '}' must not close the body" <<'EOF'
 f() {
   a=${x:-$(cmd)}
   if b; then :; fi
 }
 EOF
-)"
-t_assert_eq "1" "$(_measure "${fix}" f nesting)" "an undelimited '}' must not close the body"
-t_assert_eq "2" "$(_measure "${fix}" f cc)" "one real if"
-rm -rf "${fix}"
-
-# _pins <cc> <nesting> <why>: both metrics of the subject.sh on stdin, in one run
-_pins() {
-  local fix out; fix="$(_tree)"
-  out="$(COMPLEXITY_LIMIT=0 NESTING_LIMIT=-1 "${PY}" "${fix}/linux/scripts/${GATE}" 2>&1)"
-  rm -rf "${fix}"
-  t_assert_contains "${out}" "subject.sh:f:cc is $1 paths" "$3"
-  t_assert_contains "${out}" "subject.sh:f:nesting is $2 levels" "$3"
-}
 
 # ── command position: one case per CMD_OPS member ────────────────────────────
 t_case "a newline opens command position"

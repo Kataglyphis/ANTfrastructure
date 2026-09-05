@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
+: "${PYTHON_LTO:=1}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # /opt/scripts first (container layout), then repo layout.
@@ -246,7 +248,7 @@ EOF
   # AP5: cross-LTO leans on the target GCC's linker plugin (fragile), so PYTHON_LTO=0
   # is the escape hatch. PGO stays out of reach cross (needs the foreign interpreter).
   local -a _lto_args=()
-  [ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+  [ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
 
   (
     cd "${cross_build_dir}"
@@ -493,7 +495,7 @@ cd "${PYTHON_SOURCE_DIR}"
 # LTO too (safe/well-trodden natively). Same PYTHON_LTO=0 escape hatch as the
 # cross path. Empty-array expansion is set -u safe (bash 4.4+).
 _lto_args=()
-[ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+[ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
 ./configure --enable-shared --enable-optimizations "${_lto_args[@]}" --prefix=/usr/local
 make -j"$(compute_jobs_with_mem_cap "" 2500)"
 make altinstall

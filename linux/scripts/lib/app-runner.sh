@@ -26,34 +26,13 @@
 #   app_runner_env_hook           after LD_LIBRARY_PATH export, before launch
 #                                 (e.g. force/clear validation layers)
 #
-# The wrapper's environment is expected to provide info/warn/err logging and
-# get_project_root/source_vulkan_env (e.g. from a project common.sh); minimal
-# fallbacks are defined here so the library also works standalone.
-
-# ---------------------------------------------------------------------------
-# Bootstrap — brought in line with the sibling libs (complexity audit F-A):
-# this file was the drifted copy with NO re-source guard and NO attempt to
-# load the real 01-core/logging.sh, so standalone consumers silently got the
-# minimal fallbacks (no log/die, divergent formatting) forever.
-# ---------------------------------------------------------------------------
+# The wrapper's environment is expected to provide get_project_root and
+# source_vulkan_env (e.g. from a project common.sh); logging comes from
+# log-bootstrap.sh, so the library also works standalone.
 [ -n "${_APP_RUNNER_LIB_LOADED:-}" ] && return 0
 _APP_RUNNER_LIB_LOADED=1
-_APP_RUNNER_CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core"
-if ! declare -F info >/dev/null 2>&1; then
-  if [[ -f "${_APP_RUNNER_CORE_DIR}/logging.sh" ]]; then
-    # shellcheck source=../01-core/logging.sh
-    source "${_APP_RUNNER_CORE_DIR}/logging.sh"
-  fi
-fi
-if ! declare -F info >/dev/null 2>&1; then
-  info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
-fi
-if ! declare -F warn >/dev/null 2>&1; then
-  warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
-fi
-if ! declare -F err >/dev/null 2>&1; then
-  err() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
-fi
+# shellcheck source=./log-bootstrap.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
 app_runner_usage() {
   local shader_flag_summary=""
@@ -232,7 +211,7 @@ app_runner_main() {
   info "Working directory: ${WORK_DIR}"
   info "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
 
-  cd "${WORK_DIR}"
+  cd "${WORK_DIR}" || err "Cannot enter working directory: ${WORK_DIR}"
 
   if [[ ${#APP_ARGS[@]} -gt 0 ]]; then
     exec "${EXE_PATH}" "${APP_ARGS[@]}"

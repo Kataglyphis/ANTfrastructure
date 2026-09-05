@@ -194,8 +194,14 @@ RUN set -euo pipefail; \
 ENV CUDA_HOME=/usr/local/cuda \
     CUDA_ROOT=/usr/local/cuda \
     CUDNN_HOME=/usr/local/cuda \
-    TENSORRT_HOME=/usr/local/tensorrt \
-    PATH="${CUDA_HOME}/bin:${PATH}" \
+    TENSORRT_HOME=/usr/local/tensorrt
+
+# The path list is its OWN instruction: a ${VAR} inside an ENV reads the value
+# from before that instruction, so CUDA_HOME/TENSORRT_HOME set four lines up
+# expanded EMPTY and the layer prepended a bare /bin to PATH and /lib64 to
+# LD_LIBRARY_PATH instead of the CUDA ones.
+# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+ENV PATH="${CUDA_HOME}/bin:${PATH}" \
     LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs:${TENSORRT_HOME}/lib:${LD_LIBRARY_PATH:-}" \
     PKG_CONFIG_PATH="${CUDA_HOME}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" \
     LIBRARY_PATH="${CUDA_HOME}/lib64/stubs:${LIBRARY_PATH:-}"

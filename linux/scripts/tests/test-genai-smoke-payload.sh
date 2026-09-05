@@ -51,22 +51,13 @@ t_assert_contains "$(_emit _smoke_genai_py_tier4_generate)" "GENAI_MODEL_DIR"
 t_assert_contains "$(_emit _smoke_genai_py_verdict)"       "GENAI-BIND OK:"
 
 # ── fixtures ────────────────────────────────────────────────────────────────
-# A 20-byte ELF header is all tier 2 reads: magic, EI_CLASS/EI_DATA, e_machine.
-_fake_elf() {  # $1 = path, $2 = e_machine
-  python3 -c 'import sys
-m=int(sys.argv[2])
-h=bytearray(20); h[0:4]=b"\x7fELF"; h[4]=2; h[5]=1
-h[18:20]=m.to_bytes(2,"little")
-open(sys.argv[1],"wb").write(bytes(h))' "$1" "$2"
-}
-
 EMPTY="${_WORK}/empty"; mkdir -p "${EMPTY}"
 
 # A stub that behaves like a healthy binding: version, a loaded native
 # extension, the pybind names, capability predicates, Tensor, Config.
 STUB="${_WORK}/stub"; mkdir -p "${STUB}/onnxruntime_genai" "${STUB}/numpy"
-_fake_elf "${STUB}/onnxruntime_genai/ext_x86_64.so" 62
-_fake_elf "${STUB}/onnxruntime_genai/ext_riscv64.so" 243
+t_fake_elf "${STUB}/onnxruntime_genai/ext_x86_64.so" 62
+t_fake_elf "${STUB}/onnxruntime_genai/ext_riscv64.so" 243
 cat > "${STUB}/onnxruntime_genai/__init__.py" <<'PY'
 import os, sys, types
 __version__ = os.environ.get("STUB_GENAI_VERSION", "0.15.2")

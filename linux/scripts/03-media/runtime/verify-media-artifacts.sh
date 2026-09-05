@@ -106,24 +106,6 @@ verify_shared_lib() {
   return 0
 }
 
-# Like verify_shared_lib but does NOT increment the failure counter — for
-# libraries that may not be produced by every build revision (e.g. LiteRT
-# may build only static libs depending on the source revision).
-verify_shared_lib_optional() {
-  local dir="$1"
-  local glob_pattern="$2"
-  local label="${3:-shared library}"
-
-  local found=""
-  found="$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)"
-  if [ -z "${found}" ]; then
-    echo "INFO [${STAGE}]: ${label} (${glob_pattern}) not found — may be a static-only build" >&2
-    return 0
-  fi
-  pass_check "${label}: ${found}"
-  return 0
-}
-
 # Side-effect-free probe: succeeds if <dir> contains a file matching <pattern>.
 # Use for one-of/fallback logic — the verify_* helpers above increment FAILURES
 # BEFORE returning 1, so `verify_x A || verify_x B` counts a failure even when
@@ -283,8 +265,8 @@ case "${STAGE}" in
 
   opencv-core)
     PREFIX="${PREFIX:-/opt/opencv5}"
-    # Was two verify_shared_lib_optional calls — INFO-only, could never fail,
-    # so a build that produced no libopencv_core at all passed. One-of, hard.
+    # Was two INFO-only optional-lib checks — they could never fail, so a build
+    # that produced no libopencv_core at all passed. One-of, hard.
     verify_any_lib "libopencv_core.so" \
       "${PREFIX}/lib:libopencv_core.so*" \
       "${PREFIX}/lib64:libopencv_core.so*"

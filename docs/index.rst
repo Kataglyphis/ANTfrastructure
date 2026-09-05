@@ -147,6 +147,7 @@ Common development targets:
    linux-build-basics
    linux-cross-builds
    artifact-copy-completeness
+   consumer-image-contract
    gen1-riscv64-genai
    qnn-linux
    riscv64-venv-parity

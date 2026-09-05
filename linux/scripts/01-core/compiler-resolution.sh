@@ -106,7 +106,8 @@ derive_cxx_from_cc() {
   local cc="$1"
   local cxx
   cxx="$(printf '%s' "${cc}" | sed 's/-gcc$/-g++/')"
-  [ -x "${cxx}" ] && printf '%s' "${cxx}"
+  [ -x "${cxx}" ] || return 0
+  printf '%s' "${cxx}"
 }
 
 # Resolve both CC and CXX for a target architecture. Expects a target arch

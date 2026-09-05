@@ -18,6 +18,10 @@ SMOKE = "linux/scripts/06-packaging/smoke-runtime-image.sh"
 # Not a version to compare, with the reason. A stale entry fails.
 EXCUSED = {
     "VCS_REF": "a git sha, not a version",
+    "PYTHON_VERSION": "ARG-only by design: nothing stages /opt/python-cross into the "
+                      "runtime image, so it ships the DISTRO python and the ARG's patch "
+                      "level would be a label the artefact contradicts. PYTHON_MAJOR_MINOR "
+                      "is ENV and IS checked",
     "APP_REF": "a git ref, not a version string",
     "TVM_REF": "built off-tag; tvm.__version__ reports 0.26.dev1, not the ref",
     "CARGO_C_VERSION": "build-stage only (cargo-c), not shipped",

@@ -27,6 +27,10 @@ done
 SDK="$(mktemp -d)"
 trap 'rm -rf "${SDK}"' EXIT
 
+# mktemp honours TMPDIR, so the argv normaliser must too; every non-word byte is
+# escaped for the ERE. docs/cross-build-verification.md
+_TMP_RE="$(printf '%s' "${TMPDIR:-/tmp}" | sed -e 's#/*$##' -e 's#[^A-Za-z0-9_/-]#\\&#g')"
+
 # Fake extracted SDK tree; `full` = every source + host headers, the rest
 # exercise the skip branches.
 _fixture() {
@@ -65,7 +69,7 @@ _trace() {
     unset CC CXX
     _build_vulkan_targets aarch64 "${SDK}" aarch64-linux-gnu
     printf 'EXIT %s\n' "$?"
-  ) 2>&1 | sed -E "s#-B /tmp/[A-Za-z0-9._]+/#-B TMP/#; s#(--build|--install) /tmp/[A-Za-z0-9._]+/#\1 TMP/#; s#${SDK}#SDK#g"
+  ) 2>&1 | sed -E "s#-B ${_TMP_RE}/[A-Za-z0-9._]+/#-B TMP/#; s#(--build|--install) ${_TMP_RE}/[A-Za-z0-9._]+/#\1 TMP/#; s#${SDK}#SDK#g"
 }
 
 _XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_INSTALL_LIBDIR=lib'
@@ -150,5 +154,13 @@ chmod +x "${SDK}/aarch64/bin/glslangValidator"
 _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
 t_assert_contains "${_out}" "EXIT 0"
+
+# A hardcoded /tmp left 5 of 35 assertions un-normalised under an override.
+if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then
+  t_case "the whole suite still passes with TMPDIR pointed elsewhere"
+  _alt="$(mktemp -d)"
+  t_assert_ok env "TMPDIR=${_alt}" VULKAN_TMPDIR_CASE=1 bash "${TESTS_DIR}/$(basename "${BASH_SOURCE[0]}")"
+  rm -rf "${_alt}"
+fi
 
 t_summary

@@ -426,7 +426,8 @@ _cross_env_resolve_tools() {
     # Some cross-triplet g++ binaries may not be found by
     # resolve_cross_gcc_tool even though they exist. Derive from CC.
     if command -v derive_cxx_from_cc >/dev/null 2>&1; then
-      _ert_out[cxx]="$(derive_cxx_from_cc "${_ert_out[cc]}")" || return 1
+      _ert_out[cxx]="$(derive_cxx_from_cc "${_ert_out[cc]}")"
+      [ -x "${_ert_out[cxx]}" ] || return 1
     else
       _cxx_fb="$(printf '%s' "${_ert_out[cc]}" | sed 's/-gcc$/-g++/')"
       [ -x "${_cxx_fb}" ] && _ert_out[cxx]="${_cxx_fb}" || return 1

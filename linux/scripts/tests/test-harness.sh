@@ -49,6 +49,19 @@ _t_fail() {
 
 _t_pass() { :; }
 
+# t_fake_elf <path> <e_machine> — a 64-byte ELF header, which is all any gate in
+# this tree reads of a binary: magic, EI_CLASS/EI_DATA, e_type, e_machine. One
+# owner, so a suite needing a binary of a given arch never ships one.
+t_fake_elf() {
+  python3 -c 'import sys
+m = int(sys.argv[2])
+h = bytearray(64)
+h[0:4] = b"\x7fELF"; h[4] = 2; h[5] = 1
+h[16:18] = (2).to_bytes(2, "little")
+h[18:20] = m.to_bytes(2, "little")
+open(sys.argv[1], "wb").write(bytes(h))' "$1" "$2"
+}
+
 # t_fn_src <file> <function> — the source of one top-level `name() {` … `}`
 # function, for suites that run a build-stage helper off-target with its
 # collaborators stubbed. Returns 1 when the function is gone -- callers do
@@ -58,6 +71,19 @@ t_fn_src() {
   _src="$(awk -v fn="$2" '$0 == fn "() {" {p=1} p {print} p && /^}$/ {exit}' "$1")"
   [ -n "${_src}" ] || { echo "FAIL: $2 not found in $1" >&2; return 1; }
   printf '%s\n' "${_src}"
+}
+
+# t_gate_tree <module>... — a throwaway root holding linux/scripts/<module> for each
+# named module, for a gate that derives its own root from __file__. Prints the root;
+# the caller adds its fixture and removes it. Second owner of a shape two suites had
+# copied. docs/code-quality-tooling.md#the-mutation-gate-mutations
+_T_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+t_gate_tree() {
+  local root m; root="$(mktemp -d)"
+  for m in "$@"; do
+    install -D -m 0644 "${_T_SCRIPTS}/${m}" "${root}/linux/scripts/${m}"
+  done
+  printf '%s' "${root}"
 }
 
 # t_out <command...> — combined stdout+stderr, to assert on messages

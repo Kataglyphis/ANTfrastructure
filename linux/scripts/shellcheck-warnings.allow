@@ -1,100 +1,99 @@
 # shellcheck -S warning findings frozen per (file, code) over lint-shell.sh's file set.
-# Format: <file> | SC<code> | <count> | <reason>   (a reason may not contain | or #)
+# Format: <file> | SC<code> | <count> | <reason>   (the reason is the rest of the line)
 # The four-way rule applies: a new pair, a higher count, an unrecorded lower count
 # and a row whose pair is gone all FAIL. Record a fix with --write-baseline [--files f].
+# Every row carries a verdict. `F4 2026-09-04` is provenance -- the review pass that
+# wrote them; that backlog track is CLOSED and its residue is backlog CL6.
 # docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
-linux/host-config/ghcr-prune-package.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/artifact-common.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/base-image.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/build-helpers.sh | SC2178 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cli-parsers.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/common.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/common.sh | SC2155 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/compiler-resolution.sh | SC2010 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-apt.sh | SC2120 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-env-doctor.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-env.sh | SC2154 | 12 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-env.sh | SC2206 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-stage-build.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/cross-stage-build.sh | SC2178 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/path-helpers.sh | SC2163 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/python_uv.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/resource-monitor.sh | SC2045 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/resource-monitor.sh | SC2154 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/runtime-build-fns.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/runtime-flow-common.sh | SC2034 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/stage-defs.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/01-core/verify.sh | SC2155 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/build-clang.sh | SC2206 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/gcc.sh | SC2155 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/llvm-cross.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/llvm-cross.sh | SC2154 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/llvm-cross.sh | SC2178 | 5 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/llvm.sh | SC2155 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/python/build_python.sh | SC1090 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/python/ci_build_docs.sh | SC2154 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/setup-dependencies.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/verify-gcc.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/02-toolchain/vulkan.sh | SC2155 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/android-build-preamble.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | SC2043 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/gstreamer/common/pre-setup.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/gstreamer/common/pre-setup.sh | SC2120 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/litert/build-litert.sh | SC2046 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/litert/build-litert.sh | SC2048 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/litert/build-litert.sh | SC2155 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/build/opencv/build-opencv.sh | SC2178 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/core/common.sh | SC2155 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/runtime/assemble-torch-app.sh | SC2034 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/runtime/install-deps.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/03-media/runtime/media-env.sh | SC2034 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/04-runtime/entrypoint.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/04-runtime/gstreamer-env.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/04-runtime/gstreamer-env.sh | SC2163 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/04-runtime/libcamera-env.sh | SC2163 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/04-runtime/verify-runtime-paths.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/05-frameworks/tvm-config.sh | SC2178 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/package_archive.sh | SC2034 | 4 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/setup-package-image.sh | SC2140 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-cross-chain.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-cross-chain.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-cross-stage.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-runtime-artifacts.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-runtime-artifacts.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-runtime-manifest.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-runtime-manifest.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-sdk-artifacts.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/build-sdk-artifacts.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/agentic-loop.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/agentic-loop.sh | SC2155 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/agentic-loop.sh | SC2163 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/app-runner.sh | SC2164 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/cmake-build.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/code-quality.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/ctest-run.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lib/ctest-run.sh | SC2164 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lint-dockerfiles.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/lint-python.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/setup-rootless-binfmt.sh | SC2155 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-ancestry.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-chain-lifecycle.sh | SC1007 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-chain-lifecycle.sh | SC2034 | 5 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-chain-lifecycle.sh | SC2163 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-cli-parsers.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-cross-oci-handoff.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-disk-guard.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-embedded-python-extract.sh | SC2046 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-guard-helpers.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-iree-wheelhouse-stages.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-iree-wheelhouse-stages.sh | SC2123 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-litert-qairt-guard.sh | SC1090 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-llvm-cross-stanza.sh | SC2054 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-parallel-loop.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-runtime-smoke-gate.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-stage-defs.sh | SC2034 | 3 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-tag-naming.sh | SC2034 | 5 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-tvm-wheel-diagnostics.sh | SC2034 | 2 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-tvm-wheel-diagnostics.sh | SC2069 | 1 | baseline 2026-09-03, not yet reviewed
-linux/scripts/tests/test-vulkan-target-decomposition.sh | SC2034 | 1 | baseline 2026-09-03, not yet reviewed
+linux/host-config/ghcr-prune-package.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `created` is the THIRD tab field of candidates.tsv and exists to consume the column. With `read -r vid digest` the tab and the timestamp land inside digest and the failure log prints a mangled digest. The dry-run branch reads the same column as awk $3.
+linux/scripts/01-core/artifact-common.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: the path is `${_ARTIFACT_COMMON_DIR}/${_ac_module}` over a runtime module list, so no literal `# shellcheck source=` exists. Coverage is verify-script-copy-coverage.py plus the suites that source the modules for real.
+linux/scripts/01-core/base-image.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: bootstrap source of the first of two layouts that exists (in-image /opt/scripts vs in-repo). A source= directive can name only one of them, so following it statically would lie about the other.
+linux/scripts/01-core/build-helpers.sh | SC2178 | 2 | F4 2026-09-04 reviewed, KEEP: `local -n` binds a nameref to the CALLER's array and SC2178 misreads the declaration as a string assignment; every write in the body is array-shaped. Removing the -n would silently write a string into a local.
+linux/scripts/01-core/cli-parsers.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: this is the SHARED flag parser. DRY_RUN, PARALLEL_ARCHS and MAX_PARALLEL_ARCHS are read by the four orchestrators that source it (build-cross-chain/-stage, build-runtime-artifacts/-manifest, build-sdk-artifacts) and by is_dry_run in build-helpers.sh; the parser only writes them.
+linux/scripts/01-core/common.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: SUDO_WRAP is set next to SUDO in the privilege block and read by sourcing consumers — setup-gstreamer.sh alone uses it on 8 lines. This file only assigns it.
+linux/scripts/01-core/common.sh | SC2155 | 1 | F4 2026-09-04 reviewed, KEEP: the masked command is `id -u`, which cannot meaningfully fail in a container that got this far; the value is a socket path, not a decision input.
+linux/scripts/01-core/compiler-resolution.sh | SC2010 | 1 | F4 2026-09-04 reviewed, KEEP: the ls-piped-into-grep-v is load-bearing and already explained in place — it must EXCLUDE the libstdc++.so.6.<v>-gdb.py sibling that sorts after the real library under sort -V. A bare glob cannot express the exclusion, and the paths are /opt/gcc-* trees this build creates.
+linux/scripts/01-core/cross-apt.sh | SC2120 | 1 | F4 2026-09-04 reviewed, KEEP: apt_update_smart is a PUBLIC helper with an optional argv (it defaults to -y). SC2120 only reports that no in-tree caller passes extra args today; the parameter is contract, not dead code.
+linux/scripts/01-core/cross-env-doctor.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `failures` is passed BY NAME to all four _doctor_phase_* helpers, each of which binds it with `local -n` and appends. Deleting it would leave every phase's nameref dangling.
+linux/scripts/01-core/cross-env.sh | SC2154 | 12 | F4 2026-09-04 reviewed, KEEP: false positive on associative-array SUBSCRIPTS. `_eri_out[build_arch]=...` writes the literal key build_arch through a nameref; shellcheck cannot see the caller's `declare -A` so it reads the subscript as a variable. Quoting the keys silences it but is not worth a closure edit.
+linux/scripts/01-core/cross-env.sh | SC2206 | 1 | F4 2026-09-04 reviewed, KEEP: unquoted ${CMAKE_POLICY_VERSION_MINIMUM:-3.5} inside a cmake argv array. A policy version has no whitespace or globs, so it is safe today; quoting it would be a strict improvement but is a shape change in a build-closure file, so it belongs to a build window.
+linux/scripts/01-core/cross-stage-build.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `built_flag` is a `local -n` bound to ${stage^^}_BUILT_THIS_RUN in the orchestrator; the write lands in the caller's assoc array (and, under --parallel-archs, in the flagdir file the next lines create).
+linux/scripts/01-core/cross-stage-build.sh | SC2178 | 1 | F4 2026-09-04 reviewed, KEEP: `local -n` binds a nameref to the CALLER's array and SC2178 misreads the declaration as a string assignment; every write in the body is array-shaped. Removing the -n would silently write a string into a local.
+linux/scripts/01-core/path-helpers.sh | SC2163 | 2 | F4 2026-09-04 reviewed, KEEP — the warning is WRONG here: `export "${__varname}"` is the correct INDIRECT export, exporting the variable whose NAME is in __varname, right after `printf -v` wrote it. SC2163's suggested `export __varname` would export the holder instead of the target.
+linux/scripts/01-core/python_uv.sh | SC2034 | 1 | F4 2026-09-04 REVIEWED, real dead code: `g` in `local conflicted=0 g x y` is a leftover — the inner read uses x and y only. Harmless (a local), build-closure file, so it waits for a build window.
+linux/scripts/01-core/resource-monitor.sh | SC2045 | 1 | F4 2026-09-04 reviewed, KEEP: `ls -t` is used for its MTIME ORDER, which no glob can produce — the loop wants the newest stage log that has a .log.run marker (MON1). The names are this tool's own timestamped logs.
+linux/scripts/01-core/resource-monitor.sh | SC2154 | 1 | F4 2026-09-04 reviewed, KEEP: `ec` is assigned INSIDE the single-quoted trap body, which shellcheck analyses as if it ran in the enclosing scope. Assigning ec before the trap would capture the wrong status.
+linux/scripts/01-core/runtime-build-fns.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `parent_context_dir` is the 4th positional of _runtime_resolve_parent_context, which writes it through a nameref. The `local` is what gives the nameref a target in this frame.
+linux/scripts/01-core/runtime-flow-common.sh | SC2034 | 4 | F4 2026-09-04 reviewed, KEEP: the four are the DEFAULTS block for the runtime flow. PUSH_IMAGES/PUSH_INTERMEDIATE_IMAGES are read by context-management.sh and re-exported by lib-orchestrator.sh; DRY_RUN by is_dry_run; PARALLEL_ARCHS by the arch loop.
+linux/scripts/01-core/stage-defs.sh | SC2034 | 3 | F4 2026-09-04 REVIEWED, real dead code, deliberately not fixed here: in cross_stage_validate_graph `dockerfile` and `tag_fn` are declared and never used, and `chain=(${stage})` is written but never read (the cycle check counts depth instead). All three are locals, so removing them cannot change behaviour — but stage-defs.sh is build-closure and nothing in this session can run a chain. Delete on the next build window and re-baseline.
+linux/scripts/01-core/verify.sh | SC2155 | 4 | F4 2026-09-04 reviewed, KEEP and DO NOT naively split: version_major RETURNS 1 on an empty version (platform.sh:441). Line 81 carries none of the or-true guard lines 82, 160 and 161 have, so the SC2155 form is what keeps an empty GCC_WANTED from aborting the whole verify under set -e. Splitting the declaration would change behaviour, not just style.
+linux/scripts/02-toolchain/build-clang.sh | SC2206 | 2 | F4 2026-09-04 reviewed, KEEP: ${ENABLE_LTO} and ${BOOTSTRAP} are ON/OFF booleans in a cmake argv array; same shape and same verdict as cross-env.sh's SC2206.
+linux/scripts/02-toolchain/gcc.sh | SC2155 | 1 | F4 2026-09-04 reviewed, KEEP: masks version_major over GCC_WANTED, which versions.env always sets; see verify.sh's SC2155 row for why splitting is a behaviour change and not a cleanup.
+linux/scripts/02-toolchain/llvm-cross.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: linker_flag_args, extra_cmake_args and superset_args are declared here and passed BY NAME to _llvm_cross_linker_flag_args / _llvm_cross_launcher_cmake_args / _llvm_cross_superset_cmake_args and then to _llvm_cross_cmake_configure. The declaration is the nameref's target.
+linux/scripts/02-toolchain/llvm-cross.sh | SC2154 | 2 | F4 2026-09-04 reviewed, KEEP: same associative-array-subscript false positive as cross-env.sh — `_r[build_dir_suffix]=` and `_r[wrapper_dir_suffix]=` are literal keys on a nameref-bound assoc array.
+linux/scripts/02-toolchain/llvm-cross.sh | SC2178 | 5 | F4 2026-09-04 reviewed, KEEP: `local -n` binds a nameref to the CALLER's array and SC2178 misreads the declaration as a string assignment; every write in the body is array-shaped. Removing the -n would silently write a string into a local.
+linux/scripts/02-toolchain/llvm.sh | SC2155 | 3 | F4 2026-09-04 reviewed, KEEP: all three mask llvm_wanted_major, a pure string-slice helper over a versions.env pin.
+linux/scripts/02-toolchain/python/build_python.sh | SC1090 | 2 | F4 2026-09-04 reviewed, KEEP: the same two-layout bootstrap as base-image.sh, plus a pkg-config fixup sourced only when present. Both paths are chosen at runtime.
+linux/scripts/02-toolchain/python/ci_build_docs.sh | SC2154 | 1 | F4 2026-09-04 reviewed, KEEP: `venv_existed` is the 4th arg of uv_venv_ensure, which fills it with `printf -v` (ci-common.sh:69). The out-var contract is documented at ci-common.sh:51-56.
+linux/scripts/02-toolchain/setup-dependencies.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: two-layout bootstrap source, same as base-image.sh.
+linux/scripts/02-toolchain/verify-gcc.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `local PREFIX=$1` is unused ON PURPOSE — the function verifies the ACTIVE gcc on PATH, not a prefix tree, and the local also shields the caller's global PREFIX from the function. It documents the arity build-gcc.sh:846 calls with; drop it only together with that call site.
+linux/scripts/02-toolchain/vulkan.sh | SC2155 | 4 | F4 2026-09-04 reviewed, KEEP with a caveat worth a look in a build window: :268 masks cross_pkg_config_libdir, so a failure there would leave PKG_CONFIG_LIBDIR holding only the host path. It cannot currently fail (it only probes directories), but this is the one SC2155 in the tree whose masked callee is not trivially total.
+linux/scripts/03-media/android-build-preamble.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: android_build_preamble_init is SOURCED; ANDROID_API_LEVEL is its output, read by the four android build scripts that call it (and matching the Dockerfile.android ARG of the same name).
+linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: `out_ref` is the caller's nameref; the line already carries a scoped SC2206 disable explaining the deliberate IFS re-split. The SC2034 is the same nameref blind spot.
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | SC2043 | 1 | F4 2026-09-04 reviewed, KEEP: the one-item `for _rw in ...` is a deliberate first-match-wins list of launcher candidates, written so a second candidate is a one-line addition. Collapsing it to an `if` would work today and lose that.
+linux/scripts/03-media/build/gstreamer/common/pre-setup.sh | SC2034 | 2 | F4 2026-09-04 REVIEWED, real dead code: gi_bindir and gi_libdir are assigned by the cross-introspection detector and read by nothing — the .pc generator uses target_gi_bindir/target_gi_libdir. The header comment at :195-197 still lists them, so fix the comment and the code together in a build window.
+linux/scripts/03-media/build/gstreamer/common/pre-setup.sh | SC2120 | 1 | F4 2026-09-04 reviewed, KEEP: _apt_refresh takes optional apt args exactly like cross-apt.sh's apt_update_smart; same verdict.
+linux/scripts/03-media/build/litert/build-litert.sh | SC2046 | 4 | F4 2026-09-04 reviewed, KEEP: all four are `info <text> $(cmd)` — info forwards "$@" to _log_emit, which re-joins with "$*", so the split and the rejoin cancel. The message is the only consumer.
+linux/scripts/03-media/build/litert/build-litert.sh | SC2048 | 2 | F4 2026-09-04 reviewed, KEEP: `${cmake_args[*]}` is a deliberate JOIN for a log line, not an argv expansion — "${a[@]}" would hand info one argument per flag and read identically after _log_emit rejoins them.
+linux/scripts/03-media/build/litert/build-litert.sh | SC2155 | 2 | F4 2026-09-04 reviewed, KEEP: both mask litert_build_subdir, a test-and-printf-else-printf one-liner that always returns 0.
+linux/scripts/03-media/build/opencv/build-opencv.sh | SC2178 | 1 | F4 2026-09-04 reviewed, KEEP: `local -n` binds a nameref to the CALLER's array and SC2178 misreads the declaration as a string assignment; every write in the body is array-shaped. Removing the -n would silently write a string into a local.
+linux/scripts/03-media/core/common.sh | SC2155 | 1 | F4 2026-09-04 reviewed, KEEP: masks `cd ... && pwd` for SCRIPTS_ROOT. The directory is this file's own parent, resolved from BASH_SOURCE, so the cd cannot fail without the script itself being unreadable.
+linux/scripts/03-media/runtime/assemble-torch-app.sh | SC2034 | 4 | F4 2026-09-04 reviewed, KEEP: all four are nameref targets — out_packages_ref binds the caller's array, and iree_wheels/tvm_wheels/other_wheels are filled by _partition_wheels_by_install_group and consumed by _install_wheel_groups. install_project_environment 20 lines below already documents this pattern with per-line disables.
+linux/scripts/03-media/runtime/install-deps.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: word splitting is the mechanism — the dpkg-grep-awk pipeline yields one package name per line and apt-get purge needs them as separate argv words. Debian package names cannot contain whitespace or glob characters.
+linux/scripts/03-media/runtime/media-env.sh | SC2034 | 4 | F4 2026-09-04 reviewed, KEEP — the warning is simply WRONG here: the whole block sits between `set -a` and `set +a`, so every assignment is exported. shellcheck does not model allexport. Adding `export` per line would be redundant and would invite someone to move a line out of the block.
+linux/scripts/04-runtime/entrypoint.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: sources every *.sh the image drops in the env.d directory — the whole point is that the set is not known statically. Narrowing it to a fixed list would break the drop-in contract.
+linux/scripts/04-runtime/gstreamer-env.sh | SC2034 | 1 | F4 2026-09-04 REVIEWED, real dead code: SYSTEM_LIB is computed in both TRIPLET branches and read nowhere in the tree (MULTIARCH_DIR beside it is used four times). Runtime-image file, so it waits for a build window.
+linux/scripts/04-runtime/gstreamer-env.sh | SC2163 | 2 | F4 2026-09-04 reviewed, KEEP: byte-identical indirect-export fallback copy of path-helpers.sh's _path_prepend_unique, kept inline for the case where /opt/scripts/core is not present. See F2's note on this deliberate triplication.
+linux/scripts/04-runtime/libcamera-env.sh | SC2163 | 2 | F4 2026-09-04 reviewed, KEEP: the third copy of the same indirect-export fallback; same reason as gstreamer-env.sh.
+linux/scripts/04-runtime/verify-runtime-paths.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: sources the generated paths env file it exists to VERIFY; a static directive would check the generator's template instead of the artifact.
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: sources the versions-env loader resolved at runtime between the in-image and in-repo layout.
+linux/scripts/05-frameworks/tvm-config.sh | SC2178 | 3 | F4 2026-09-04 reviewed, KEEP: `local -n` binds a nameref to the CALLER's array and SC2178 misreads the declaration as a string assignment; every write in the body is array-shaped. Removing the -n would silently write a string into a local.
+linux/scripts/06-packaging/package_archive.sh | SC2034 | 4 | F4 2026-09-04 REVIEWED, real defect, but in an ORPHAN: --appdata-file, --app-id and --appimage-extract-and-run are parsed and then ignored (APPIMAGE_EXTRACT_AND_RUN=1 is exported unconditionally), and ResolvedBinary is assigned with an explaining comment and never read. Nothing in this repo invokes package_archive.sh, so the flags mislead a reader, not a build. Decide whether the script has a consumer before spending anything on it.
+linux/scripts/06-packaging/setup-package-image.sh | SC2140 | 1 | F4 2026-09-04 reviewed, KEEP — the warning is WRONG here: "...lib"/python"${mm}" is ordinary concatenation that quotes the prefix and the version separately and leaves the literal `python` unquoted between them. The result is one word either way.
+linux/scripts/build-cross-chain.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: ORCHESTRATOR_UNSUPPORTED_FLAGS is read by the shared parser in cli-parsers.sh:85 — each orchestrator declares the flags it does NOT support and the parser warns rather than rejects (Batch 5 / O5).
+linux/scripts/build-cross-chain.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: `$(arch_list_to_words ...)` exists to turn a comma list into argv words for run_parallel_arch_loop; quoting it would pass all three arches as ONE argument and the loop would build a bogus arch.
+linux/scripts/build-cross-stage.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: same as build-cross-chain.sh — ORCHESTRATOR_UNSUPPORTED_FLAGS is consumed by cli-parsers.sh:85.
+linux/scripts/build-runtime-artifacts.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: --push-all sets PUSH_IMAGES and PUSH_INTERMEDIATE_IMAGES for context-management.sh and lib-orchestrator.sh; this file exports them (:76 region) but never reads them.
+linux/scripts/build-runtime-artifacts.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: same arch_list_to_words splitting contract as build-cross-chain.sh.
+linux/scripts/build-runtime-manifest.sh | SC2034 | 3 | F4 2026-09-04 reviewed, mixed and KEPT as one row: PUSH_IMAGES/PUSH_INTERMEDIATE_IMAGES are real out-vars for context-management.sh, but `r` in _manifest_wrapper_gate's local list is dead. Dropping `r` alone would take this row to 2, which is a gate FAIL until re-baselined — do both in one change.
+linux/scripts/build-runtime-manifest.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: same arch_list_to_words splitting contract as build-cross-chain.sh.
+linux/scripts/build-sdk-artifacts.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: PARALLEL_ARCHS is the default this orchestrator publishes for the shared parser and the arch loop; the loop at :78 reads MAX_PARALLEL_ARCHS, not this flag.
+linux/scripts/build-sdk-artifacts.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: same arch_list_to_words splitting contract as build-cross-chain.sh.
+linux/scripts/lib/agentic-loop.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: MATRIX_BUILD_TYPE is reset then re-assigned by the eval of the jq-generated assignments at :566; the documented consumer set is listed at :551. The reset is what makes a missing jq field empty instead of stale.
+linux/scripts/lib/agentic-loop.sh | SC2155 | 2 | F4 2026-09-04 reviewed, KEEP: the masked commands are `date` and `printf '=%.0s'` — neither has a failure mode this code could act on, and both feed log text only.
+linux/scripts/lib/agentic-loop.sh | SC2163 | 1 | F4 2026-09-04 reviewed, KEEP: `export "$env_assignment"` exports a VAR=VALUE string built from the matrix config — the argument is an assignment, which is exactly what export takes.
+linux/scripts/lib/cmake-build.sh | SC2034 | 2 | F1 2026-09-04 reviewed, KEEP: VULKAN_VERSION and VULKAN_SDK are outputs of this library, read by 01-core/vulkan-env.sh source_vulkan_env and by the SDK setup-env.sh it sources, never by this file. Exporting them to silence the warning would change what the sourced setup script sees
+linux/scripts/lib/code-quality.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: both are the library's documented OUT variables (see the comments at :215 and :247) — the consumer is the CI caller that sources this file, never the file itself.
+linux/scripts/lib/ctest-run.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: VULKAN_VERSION and VULKAN_SDK are parsed here and consumed by the Vulkan env script that ctest_run_prepare_env sources (or by the caller-supplied source_vulkan_env). Same contract as cmake-build.sh.
+linux/scripts/lint-python.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: the two find outputs are split into the extractor's argv on purpose; every path is repo-relative under linux/scripts and carries no whitespace, and the gate's own file list is the thing under test.
+linux/scripts/setup-rootless-binfmt.sh | SC2155 | 1 | F4 2026-09-04 reviewed, KEEP: masks `id -u` inside a pidfile path.
+linux/scripts/tests/test-ancestry.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: all three are INPUTS to the function under test, read from the sourced module — CROSS_STAGE_ORDER by the stage-defs walkers, CROSS_RUN_ID by append_runtime_image_output, and RUNTIME_ANDROID_PIN_arm64 indirectly via runtime_android_pin_varname (tag-naming.sh:80), which is why no literal reference exists anywhere.
+linux/scripts/tests/test-chain-lifecycle.sh | SC1007 | 1 | F4 2026-09-04 reviewed, KEEP: `CROSS_CHAIN_PIDFILE= cross_chain_pidfile_path` is an env PREFIX that sets the variable empty for one command — the case exists to prove the TMPDIR default wins over an empty override, so the empty value is the input.
+linux/scripts/tests/test-chain-lifecycle.sh | SC2034 | 5 | F4 2026-09-04 reviewed, KEEP: fixture state read by the chain functions under test — CROSS_LOG_ARCHIVE_KEEP by the log archiver, PARALLEL_ARCHS by the lane gate, FINAL_IMAGE/TARGET_ARCHES and CROSS_STAGE_ORDER by the stage walkers.
+linux/scripts/tests/test-chain-lifecycle.sh | SC2163 | 1 | F4 2026-09-04 reviewed, KEEP: `export "$@"` in _lane_run forwards the case's VAR=VAL knobs into a subshell; the subshell is what keeps them from leaking into the next case.
+linux/scripts/tests/test-cli-parsers.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: ORCHESTRATOR_UNSUPPORTED_FLAGS is the parser's input (cli-parsers.sh:85); the case sets it empty to exercise the no-unsupported-flags arm.
+linux/scripts/tests/test-cross-oci-handoff.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: FROM_STAGE_IDX/TO_STAGE_IDX are read by the handoff helper under test, set as an env prefix on its invocation.
+linux/scripts/tests/test-disk-guard.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: CROSS_STAGE_ORDER and TARGET_ARCHES are the fixture the disk guard sizes its lane from.
+linux/scripts/tests/test-embedded-python-extract.sh | SC2046 | 1 | F4 2026-09-04 reviewed, KEEP: the case feeds the whole real tree to the extractor as argv words — the same deliberate split lint-python.sh:66 performs, which is what makes this an honest end-to-end case.
+linux/scripts/tests/test-guard-helpers.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: SUDO is run_priv's only input and is set inside the subshell that sources common.sh, so the assignment must come after the source and cannot be seen as a read here.
+linux/scripts/tests/test-iree-wheelhouse-stages.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: BUILD_PYTHON, MAX_JOBS and IREE_REF are the wheel builder's inputs, read by build_iree_wheels from the sourced module.
+linux/scripts/tests/test-iree-wheelhouse-stages.sh | SC2123 | 1 | F4 2026-09-04 reviewed, KEEP: overriding PATH is the POINT of the case — a subshell PATH holding only the stub dir is what makes the cmake-absent guard reachable at all (the case used to pass against the real /usr/bin cmake).
+linux/scripts/tests/test-litert-qairt-guard.sh | SC1090 | 1 | F4 2026-09-04 reviewed, KEEP: the suite sources ${GUARD} in a subshell precisely so the guard file is a test PARAMETER; a source= directive would pin it and defeat the isolation.
+linux/scripts/tests/test-llvm-cross-stanza.sh | SC2054 | 1 | F4 2026-09-04 reviewed, KEEP: the commas are INSIDE one linker-flag value (-Wl,-rpath-link,/lib), which is a single array element. Replacing them with spaces would change the flag under test.
+linux/scripts/tests/test-parallel-loop.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: PARALLEL_ARCHS is the loop's input, read by the sourced module.
+linux/scripts/tests/test-runtime-smoke-gate.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: PACKAGE_DOCKERFILE_PATH, NERDCTL_BIN and WRAPPER_SMOKE_GATE are the gate's inputs; WRAPPER_SMOKE_GATE's contract is documented at runtime-build-fns.sh:626.
+linux/scripts/tests/test-stage-defs.sh | SC2034 | 3 | F4 2026-09-04 reviewed, KEEP: IMAGE_REPO, CROSS_TARGETS and RUNTIME_IMAGE_PREFIX are the tag builders' inputs.
+linux/scripts/tests/test-tag-naming.sh | SC2034 | 5 | F4 2026-09-04 reviewed, KEEP: all five are tag-naming inputs; IMAGE_REGISTRY_PREFIX=WRONG at :10 is specifically the value the case proves is IGNORED, so it must be assigned and never read here.
+linux/scripts/tests/test-tvm-wheel-diagnostics.sh | SC2034 | 2 | F4 2026-09-04 reviewed, KEEP: wheel_cmake_args_string and TVM_WHEEL_SKIP_REASON stand in for tvm_build_wheel's locals, which the functions under test reach through bash dynamic scoping (noted in the comment at :86).
+linux/scripts/tests/test-tvm-wheel-diagnostics.sh | SC2069 | 1 | F4 2026-09-04 reviewed, KEEP: `2>&1 >/dev/null` is the correct STDERR-ONLY capture — stderr goes to the original stdout first, then stdout is discarded. _verdict is documented as returning the verdict's stderr; swapping the order as SC2069 suggests would capture stdout and drop the thing under test.
+linux/scripts/tests/test-vulkan-target-decomposition.sh | SC2034 | 1 | F4 2026-09-04 reviewed, KEEP: SUDO is _build_vulkan_targets' input, set inside the subshell fixture to the recording stub so the case can assert what got run under sudo.

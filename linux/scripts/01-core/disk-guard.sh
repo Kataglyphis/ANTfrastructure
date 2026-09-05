@@ -9,6 +9,7 @@
 #   _disk_guard_protected_slugs <completed_stage>     — slugs of remaining stages
 #   _disk_guard_watch_once / _disk_guard_watch_loop   — in-stage sampling (B2)
 #   _disk_guard_runtime_lane_need_gb                  — runtime-lane free-GB need
+#   _disk_guard_buildkit_fallback <path> <target_gb>  — filtered buildkit prune (DISK1)
 #
 # _disk_guard_protected_slugs expects the caller's environment to provide the
 # stage graph (CROSS_STAGE_ORDER, stage_enabled, cross_stage_is_per_arch,
@@ -173,14 +174,107 @@ _disk_guard_warn() {
   if declare -F warn >/dev/null 2>&1; then warn "$@"; else printf '[WARN] %s\n' "$*" >&2; fi
 }
 
+# ── DISK1: filtered buildkit-store fallback when the trim cannot free enough ──
+# Keep-storage policy, the once-per-caller rule, the log contract and the
+# unfiltered-prune incident this must never repeat:
+# docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
+_DISK_GUARD_BUILDKIT_FREED_GB=0
+_DISK_GUARD_BUILDKIT_PRUNES=0
+
+_disk_guard_buildctl() {
+  BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}" buildctl "$@"
+}
+
+# exec.cachemount record count; 0 when the store cannot be read.
+_disk_guard_cachemount_count() {
+  # `|| true`: grep -c exits 1 on no match and callers run under pipefail.
+  _disk_guard_buildctl du --filter type==exec.cachemount 2>/dev/null | grep -c . || true
+}
+
+_disk_guard_keep_gb() {
+  local keep="${CROSS_BUILDKIT_KEEP_GB:-120}"
+  case "${keep}" in ''|*[!0-9]*) keep=120 ;; esac
+  if [ "${keep}" -gt 0 ] && [ "${keep}" -lt 100 ]; then keep=100; fi
+  printf '%s' "${keep}"
+}
+
+# May the fallback run? Every refusal names itself in the log — a silent skip is
+# indistinguishable from the 2026-09-03 "NOTHING was reclaimable" it replaces.
+_disk_guard_buildkit_ready() {
+  if [ "${CROSS_BUILDKIT_PRUNE:-1}" != "1" ]; then
+    _disk_guard_log "[disk-buildkit] disabled (CROSS_BUILDKIT_PRUNE=${CROSS_BUILDKIT_PRUNE:-1}) — the buildkit store is not touched"
+    return 1
+  fi
+  if [ "${_DISK_GUARD_BUILDKIT_PRUNES:-0}" -gt 0 ]; then
+    _disk_guard_log "[disk-buildkit] already pruned once here — the store is at keep-storage, a repeat walk costs I/O and frees nothing"
+    return 1
+  fi
+  if ! command -v buildctl >/dev/null 2>&1; then
+    _disk_guard_warn "[disk-buildkit] SKIP: no buildctl on PATH — reclaim by hand with linux/host-config/prune-safe.sh"
+    return 1
+  fi
+  if ! _disk_guard_buildctl du >/dev/null 2>&1; then
+    _disk_guard_warn "[disk-buildkit] SKIP: buildkit store unreachable — reclaim by hand with linux/host-config/prune-safe.sh"
+    return 1
+  fi
+  return 0
+}
+
+_disk_guard_buildkit_prune() {
+  local keep="${1:-0}"
+  if [ "${keep}" -gt 0 ]; then
+    _disk_guard_buildctl prune --filter type==regular --keep-storage "$(( keep * 1000 ))" >/dev/null 2>&1
+  else
+    _disk_guard_buildctl prune --filter type==regular >/dev/null 2>&1
+  fi
+}
+
+_disk_guard_cachemount_verdict() {
+  if [ "${2:-0}" -lt "${1:-0}" ]; then
+    _disk_guard_warn "[disk-buildkit] cache-mount records dropped ${1} -> ${2} — the type==regular filter did not hold; ccache/sccache/uv are gone and the next compile stage runs COLD"
+  else
+    _disk_guard_log "[disk-buildkit] all ${2} cache-mount record(s) survived"
+  fi
+}
+
+# _disk_guard_buildkit_fallback <path> <target_gb>
+# Runs only when <path> is STILL below <target_gb> after the cache-export trim.
+# Always returns 0: a reclaim that cannot run must not abort the stage.
+_disk_guard_buildkit_fallback() {
+  local path="${1:-}" target_gb="${2:-}" keep n_before n_after before after t0
+  _DISK_GUARD_BUILDKIT_FREED_GB=0
+  case "${target_gb}" in ''|*[!0-9]*) return 0 ;; esac
+  before="$(_disk_guard_free_gb "${path}")"
+  [ -n "${before}" ] || return 0
+  [ "${before}" -lt "${target_gb}" ] || return 0
+  _disk_guard_buildkit_ready || return 0
+  keep="$(_disk_guard_keep_gb)"
+  n_before="$(_disk_guard_cachemount_count)"
+  t0="${SECONDS}"
+  _disk_guard_log "[disk-buildkit] ${before}G free < ${target_gb}G after the cache-export trim — pruning type==regular layer cache with --keep-storage ${keep}G (exec.cachemount records are not candidates)"
+  _disk_guard_buildkit_prune "${keep}" || true
+  _DISK_GUARD_BUILDKIT_PRUNES=$(( ${_DISK_GUARD_BUILDKIT_PRUNES:-0} + 1 ))
+  after="$(_disk_guard_free_gb "${path}")"
+  n_after="$(_disk_guard_cachemount_count)"
+  if [ -n "${after}" ] && [ "${after}" -gt "${before}" ]; then
+    _DISK_GUARD_BUILDKIT_FREED_GB=$(( after - before ))
+  fi
+  _disk_guard_log "[disk-buildkit] reclaimed ${_DISK_GUARD_BUILDKIT_FREED_GB}G of layer cache in $(( SECONDS - t0 ))s (${before}G -> ${after:-?}G free; keep-storage ${keep}G)"
+  _disk_guard_cachemount_verdict "${n_before:-0}" "${n_after:-0}"
+  return 0
+}
+
 # One greppable line per reclaim the chain performs — including the reclaim that
 # freed nothing, which is the case an operator most needs to see.
 # _disk_guard_reclaim_record <where> <free_gb_before> <bc_dir>
 _disk_guard_reclaim_record() {
-  local where="${1:-?}" before_gb="${2:-?}" bc_dir="${3:-}" after_gb
+  local where="${1:-?}" before_gb="${2:-?}" bc_dir="${3:-}" after_gb bk=""
   after_gb="$(_disk_guard_free_gb "${bc_dir}")"
-  if [ "${_DISK_GUARD_TRIM_REMOVED:-0}" -gt 0 ] 2>/dev/null; then
-    _disk_guard_log "[disk-reclaim] ${where}: removed ${_DISK_GUARD_TRIM_REMOVED} cache-export slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES:-0}") GiB; ${before_gb}G -> ${after_gb:-?}G free"
+  if [ "${_DISK_GUARD_BUILDKIT_FREED_GB:-0}" -gt 0 ] 2>/dev/null; then
+    bk=" + ${_DISK_GUARD_BUILDKIT_FREED_GB}G of buildkit layer cache"
+  fi
+  if [ "${_DISK_GUARD_TRIM_REMOVED:-0}" -gt 0 ] 2>/dev/null || [ -n "${bk}" ]; then
+    _disk_guard_log "[disk-reclaim] ${where}: removed ${_DISK_GUARD_TRIM_REMOVED} cache-export slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES:-0}") GiB${bk}; ${before_gb}G -> ${after_gb:-?}G free"
   else
     _disk_guard_warn "[disk-reclaim] ${where}: NOTHING was reclaimable (${before_gb}G -> ${after_gb:-?}G free) — the chain cannot free more space by itself; free some or the build will ENOSPC"
   fi
@@ -199,6 +293,7 @@ _disk_guard_watch_once() {
   [ "${free_gb}" -lt "${threshold}" ] || return 0
   _disk_guard_warn "[disk-watch] ${free_gb}G free < ${threshold}G DURING a stage — reclaiming regenerable cache exports now"
   _disk_guard_trim_cache_export "${bc_dir}" "${threshold}" "${protected}" "" "${keep_n}"
+  _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
   _disk_guard_reclaim_record "in-stage" "${free_gb}" "${bc_dir}"
   return 0
 }

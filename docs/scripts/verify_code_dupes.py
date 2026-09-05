@@ -50,6 +50,10 @@ Windows files are out of scope on purpose: that lane has its own backlog.
 
 No network, no project imports -- safe for hooks and CI.
 
+``--baseline`` rewrites the WHOLE file, so the parser refuses it together with
+``--kind``: scoping the rewrite would drop every other kind's curated rows --
+236 of today's 241 for ``--kind md``.
+
 Usage:  python3 docs/scripts/verify_code_dupes.py [--report] [--baseline]
                                                   [--threshold N] [--kind K]
 Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
@@ -474,10 +478,14 @@ def main() -> int:
                     help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
     ap.add_argument("--report", action="store_true",
                     help="list every pair over the threshold, allowed ones included")
-    ap.add_argument("--baseline", action="store_true",
-                    help=f"rewrite {ALLOW_FILE.name} to freeze today's duplication as budgets")
-    ap.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
-                    help="restrict to one kind (repeatable); default all")
+    # Mutually exclusive, not a hand-written guard: --baseline rewrites the WHOLE
+    # allow file, so scoping it would silently discard every other kind's rows.
+    scope = ap.add_mutually_exclusive_group()
+    scope.add_argument("--baseline", action="store_true",
+                       help=f"rewrite {ALLOW_FILE.name} to freeze today's duplication as budgets"
+                            " (whole file; cannot be scoped with --kind)")
+    scope.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
+                       help="restrict to one kind (repeatable); default all")
     args = ap.parse_args()
 
     kinds = set(args.kind) if args.kind else set(UNIT_READERS)
