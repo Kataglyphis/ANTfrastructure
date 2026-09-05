@@ -3,7 +3,7 @@
 # sources and smoke-runtime-image.sh checks the effect of. Each case copies the
 # script and repoints its /opt/scripts/core lookups at a fixture, so the triplet
 # branch, the multiarch fallback and the inline path-helper copy all run here.
-# docs/refactoring-backlog.md CL6
+# docs/cross-build-verification.md#gstreamer-envsh-the-runtime-env-the-entrypoint-sources
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

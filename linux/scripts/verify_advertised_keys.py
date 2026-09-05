@@ -2,7 +2,8 @@
 """Every version-shaped ENV the runtime image advertises must be checked or excused.
 
 A new ARG/ENV added to Dockerfile.package is otherwise silently unverified by the
-smoke's advertised-vs-actual gate. See docs/cross-build-verification.md.
+smoke's advertised-vs-actual gate.
+docs/cross-build-verification.md#advertised-version-keys-advert-keys
 """
 import glob
 import os

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-lib-smoke.sh — cheap smoke tests for every consumer-facing module in
-# linux/scripts/lib/ (refactoring backlog item A2, docs/refactoring-backlog.md).
+# Cheap smoke tests for every consumer-facing module in linux/scripts/lib/.
+# docs/shared-script-libraries.md#what-holds-the-standalone-contract
 #
 # These libraries are sourced STANDALONE by external repos, which is exactly
 # how they rot: app-runner.sh's bootstrap comment (lib/app-runner.sh:33-40)

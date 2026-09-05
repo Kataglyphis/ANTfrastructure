@@ -45,6 +45,14 @@ The compiler-cache defaults the shared library already declares
 `/var/cache/sccache`, and the image ships both as `drwxrwxrwt`. An image ENV
 that contradicts our own library is the failure shape row 1 guards.
 
+**Neither cache directory is a `VOLUME`.** The image declares exactly one,
+`/workspace` (`Dockerfile.torch:118`, confirmed in `Config.Volumes` of all three
+shipped children), so a container's compiler cache lives in its writable layer
+and dies with it. A lane that wants the cache to survive has to mount something
+there itself — and that is the reason row 1 is a LOCATION assertion: a cache
+pointed back into the bind-mounted checkout would persist, by polluting the
+consumer's working tree.
+
 
 ### The Android lane needs a JDK
 

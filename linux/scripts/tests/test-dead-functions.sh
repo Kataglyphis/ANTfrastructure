@@ -52,6 +52,11 @@ _census()    { _expect census "$@"; }
 _census_rc() { _expect census-rc "$@"; }
 # _called <rc> <why> <caller.sh content>: used_fn defined, one line in caller.sh
 _called()  { _verdict "$1" "$2" "${USED}" "" linux/scripts/caller.sh "$3"; }
+# _mask <_verdict|_says|_census|_census_rc> <want> <why> [rel content]...: the masking
+# fixture -- subject.sh defines foo_fn and never names it, other.sh defines AND calls
+# its own foo_fn, and the two files name nothing of each other.
+_mask() { local fn="$1"; shift; "${fn}" "$1" "$2" "${MASKED}" "" \
+  linux/scripts/other.sh "${MASKING}" "${@:3}"; }
 
 t_case "a function nothing names fails, and says which"
 _verdict 1 "printing is not enough; it must fail" "${DEAD}"
@@ -165,15 +170,32 @@ _says "linux/scripts/subject.sh  used_fn" "names the row to delete" "${USED}" "$
   .github/ci.yml 'run: used_fn'
 _verdict 1 "a frozen name that is no longer defined is stale" ':' "${FROZEN_DEAD}"
 
-t_case "same-name masking: the gate cannot see a dead function another file also defines"
-_verdict 0 "one corpus-wide name table is what makes the gate cheap, and blind here" \
-  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
-_census $'linux/scripts/subject.sh\tfoo_fn' "--census is the pass that does see it" \
-  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
-_census "1 definition(s) their own file never names again" "the considered count" \
-  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
-_census "1 of those in a file that sources nothing" "the isolated tier counts it too" \
-  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+LINKED=(linux/scripts/runner.sh $'. ./subject.sh\n. ./other.sh')
+
+t_case "same-name masking: the unlinked-definer arm fails what the name table cannot see"
+_mask _verdict 1 "no mention of foo_fn can be about this copy, so the gate must say so"
+_mask _says "[unlinked definer]" "the row is tagged so the author knows which arm fired"
+_mask _says "1 more unlinked from every other definer" "the header counts the arm separately"
+_mask _census $'linux/scripts/subject.sh\tfoo_fn' "--census is the pass that does see it"
+_mask _census "1 of them unlinked" "the census header carries the arm's count"
+_verdict 0 "and a frozen row still passes, same two-way contract" \
+  "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}"
+
+t_case "the unlinked-definer arm keeps quiet wherever the two definers could meet"
+_mask _verdict 0 "a third file naming both basenames can load them into one shell" "${LINKED[@]}"
+_mask _verdict 0 "one mention from a file that does NOT define the name is a real caller" \
+  linux/scripts/caller.sh 'foo_fn'
+_verdict 0 "the peer naming the subject is that same link seen from one side" \
+  "${MASKED}" "" linux/scripts/other.sh $'# loads subject.sh\n'"${MASKING}"
+_verdict 0 "the subject naming the peer is the link from the other side" \
+  $'# loads other.sh\n'"${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+_verdict 0 "a definition its own file names again was never a candidate" \
+  $'foo_fn() {\n  :\n}\nfoo_fn' "" linux/scripts/other.sh "${MASKING}"
+_verdict 1 "a stale unlinked freeze fails once the two files are linked" \
+  "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
+  "${LINKED[@]}"
+_mask _census "1 definition(s) their own file never names again" "the considered count"
+_mask _census "1 of those in a file that sources nothing" "the isolated tier counts it too"
 _census_rc 0 "the census reports, it never fails a build" "${MASKED}"
 
 t_case "the masked census tier is keyed on (file, name), not on the file's reachability"
@@ -183,8 +205,7 @@ _census $'linux/scripts/subject.sh\tfoo_fn' "the masked row names file AND funct
   $'. ./lib.sh\n'"${MASKED}" "" linux/scripts/other.sh "${MASKING}"
 _census "none -- every candidate owns its name" "a name only one file defines is not masked" \
   "${DEAD}"
-_census "1 share their name with another file's definition" "the masked count is in the header" \
-  "${MASKED}" "" linux/scripts/other.sh "${MASKING}"
+_mask _census "1 share their name with another file's definition" "the masked count is in the header"
 
 t_case "the census lists only files that source nothing and that nothing else names"
 _census "0 of those in a file that sources nothing" "a file that sources a library can be called back into it" \
@@ -210,6 +231,22 @@ for _fn in cpython_ext_dev_packages_optional cpython_ext_modules_optional \
 done
 t_assert_eq "0" "$(_defs "${FFMPEG_SH}" cleanup)" \
   "same-name masking hides ffmpeg's cleanup() from the gate; only this pin sees it"
+
+t_case "the verify-parity row the masking used to make unwritable"
+# Name and BOTH basenames are assembled, never spelled: this file is corpus, so a
+# literal here is an outside mention of the name, or the third-file link between the
+# two definers, and either one switches the unlinked arm back off (GH5's trap).
+_CP="$(printf 'check_%s' python)"
+_PKG="linux/scripts/06-packaging"
+PARITY_SH="${_PKG}/$(printf 'verify-%s.sh' parity)"
+SMOKE_TC="${_PKG}/$(printf 'smoke-%s.sh' toolchain)"
+t_assert_eq "1" "$(_defs "${PARITY_SH}" "${_CP}")" \
+  "still reached as check_\${check_name} over CHECK_LIST"
+t_assert_eq "1" "$(_defs "${SMOKE_TC}" "${_CP}")" \
+  "and the smoke script still owns the name that masked it"
+t_assert_eq "1" "$(grep -c -e "$(printf '%s\t%s' "${PARITY_SH##*/}" "${_CP}")" \
+  "${SCRIPTS_DIR}/dead-functions.allow")" \
+  "the unlinked arm is what makes this freeze hold instead of reading STALE"
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regression cover for the logging.sh ERR-trap dynamic-scope bug; each case runs
-# a real `bash -c`, the only place it reproduces. docs/failure-modes.md
+# a real `bash -c`, the only place it reproduces.
+# docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
 set -uo pipefail
 
 _TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

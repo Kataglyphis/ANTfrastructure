@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # compiler-cache.sh - ccache/sccache/lld wiring for the 03-media chain ONLY: the
 # 02-toolchain builds cache themselves (build-gcc.sh --ccache, build-clang.sh).
-# See docs/build-cache-tiers.md.
+# See docs/build-cache-tiers.md#5-scc1--the-ccachesccache-hybrid.
 #
 # Two-caches-installed decision (2026-08-28): both ccache and sccache stay
 # mounted. sccache is the primary; ccache is the fallback for invocations
@@ -203,7 +203,7 @@ setup_sccache() {
     export CMAKE_CXX_COMPILER_LAUNCHER="${_sc_launcher}"
   fi
 
-  _cc_info "sccache enabled: SCCACHE_DIR=${SCCACHE_DIR}, CACHE_SIZE=${SCCACHE_CACHE_SIZE}"
+  _cc_info "sccache enabled: SCCACHE_DIR=${SCCACHE_DIR}, CACHE_SIZE=${SCCACHE_CACHE_SIZE} [server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]"
   _cc_info "RUSTC_WRAPPER=${RUSTC_WRAPPER}"
 
   sccache --start-server 2>/dev/null || true

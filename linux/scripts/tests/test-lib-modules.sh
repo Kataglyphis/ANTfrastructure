@@ -12,8 +12,10 @@ LIB_DIR="${TESTS_DIR}/../lib"
 
 for mod in "${LIB_DIR}"/*.sh; do
   name="$(basename "${mod}")"
-  # agentic-loop is an executable loop, not a source-library — skip.
-  [ "${name}" = "agentic-loop.sh" ] && continue
+  # The agentic-* pair is one executable loop split over two files, not a
+  # source-library: agentic-engines.sh is a half that its own sourcer feeds.
+  # docs/agentic-loop-build-matrix.md#the-two-bash-files
+  case "${name}" in agentic-*.sh) continue ;; esac
 
   t_case "${name}: sources cleanly and defines info/warn/err"
   t_assert_ok bash -c "source '${mod}' && declare -F info >/dev/null && declare -F warn >/dev/null && declare -F err >/dev/null"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pins the emitted argv of the 02-toolchain/llvm-cross.sh helpers split out of
-# _llvm_cross_setup_and_build. docs/cross-build-verification.md
+# _llvm_cross_setup_and_build.
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

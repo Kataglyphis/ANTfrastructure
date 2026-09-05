@@ -86,6 +86,7 @@ The two halves of one topic often split:
 | **A bind mount that resolves but is empty** — containerd's own mount namespace, Windows vs WSL path form, and why the obvious `/mnt` probe misleads | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#an-empty-mount-is-not-a-missing-drive) |
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
+| **Vulkan SDK on foreign arches** — LunarG ships x86_64 only, so arm64/riscv64 are cross-built; what the target prefix contains, why it used to hold two binaries, and the known gaps (`glslc`, `vulkaninfo`) | [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md) |
 | **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest-cross` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | **What `:latest-cross` promises a consuming repo** — the cache/rustup/ANDROID_HOME/`/opt/flutter`-ownership contract, its acceptance check, and the per-arch exemption table | [`consumer-image-contract.md`](consumer-image-contract.md) |

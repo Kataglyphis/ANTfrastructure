@@ -11,6 +11,7 @@ PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
 _ELF_NEEDED_SRC="$(t_fn_src "${MAT}" _elf_needed)" || exit 1
+_FAM_SRC="$(t_fn_src "${MAT}" _is_llvm_family)" || exit 1
 _FILL_SRC="$(t_fn_src "${MAT}" _llvm_target_fill_needed)" || exit 1
 
 # ── _elf_needed reads NEEDED and only NEEDED ────────────────────────────────
@@ -48,6 +49,7 @@ _fill() {
     _elf_needed() {
       printf "%s\n" "${NEEDED_MAP}" | awk -v f="${1##*/}" "\$1 == f { for (i=2; i<=NF; i++) print \$i }"
     }
+    '"${_FAM_SRC}"'
     '"${_FILL_SRC}"'
     _llvm_target_fill_needed "$1" "$2"' _ "${prefix}" "${src}"
 }
@@ -125,6 +127,138 @@ wait "${_pid}"; _rc=$?
 kill "${_watch}" 2>/dev/null
 t_assert_eq 0 "${_rc}" "the round bound must stop the loop, not a timeout"
 rm -rf "${_P}" "${_S}"
+
+# ── _is_llvm_family: the one owner of "the prefix carries this itself" ──────
+t_case "_is_llvm_family covers what the prefix must own and nothing else"
+_fam() { bash -c "${_FAM_SRC}"$'\n''if _is_llvm_family "$1"; then echo OWN; else echo BORROW; fi' _ "$1"; }
+t_assert_eq "OWN" "$(_fam libLLVM.so.23.1)"
+t_assert_eq "OWN" "$(_fam libclang-23.so.23)"
+t_assert_eq "OWN" "$(_fam liblldb-23.so.1)" \
+  "the builder ldcache had it and the runtime image never did: 3 of the shipped prefix's 142 binaries cannot start, all three on this soname"
+t_assert_eq "BORROW" "$(_fam libc++.so.1)" \
+  "a second libc++ in a prefix that ld.so.conf publishes FIRST would shadow the base image's for every consumer"
+t_assert_eq "BORROW" "$(_fam libstdc++.so.6)"
+t_assert_eq "BORROW" "$(_fam libc++abi.so.1)"
+
+# ── _llvm_target_repair_links over the measured Debian layout ───────────────
+# The amd64 prefix is an apt tree: `ls -la /usr/lib/llvm-23/lib` links the dev
+# entries at ../../x86_64-linux-gnu RELATIVE TO ITS OWN LOCATION, so `cp -a` to
+# /opt/llvm-target breaks 19 of them in the sdk stage; ldconfig later deletes the
+# 7 that look like sonames and 12 reach the shipped image.
+_REPAIR_SRC="$(t_fn_src "${MAT}" _llvm_target_repair_links)" || exit 1
+_repair() {
+  bash -c "${_FAM_SRC}"$'\n'"${_REPAIR_SRC}"$'\n''_llvm_target_repair_links "$1" "$2"' _ "$1" "$2" 2>&1
+}
+
+# root/ is the ORIGINAL prefix (every link resolves there); dest/llvm-target is
+# the copy at a different depth, which is what breaks them.
+_mk_apt_fixture() {
+  _T="$(mktemp -d)"
+  mkdir -p "${_T}/root/lib/python3.14/site-packages/lldb/native" "${_T}/root/include" \
+           "${_T}/multiarch" "${_T}/include/llvm-23/llvm"
+  local _f
+  for _f in libclang-23.so.23 liblldb-23.so.1 libc++.a libc++.modules.json libc++.so.1.0; do
+    printf 'real %s\n' "${_f}" > "${_T}/multiarch/${_f}"
+  done
+  : > "${_T}/include/llvm-23/llvm/IR.h"
+  ( cd "${_T}/root/lib" || exit 1
+    ln -s ../../multiarch/libclang-23.so.23 libclang-23.so
+    ln -s ../../multiarch/libclang-23.so.23 libclang.so
+    ln -s libclang-23.so libclang-23.1.0.so
+    ln -s ../../multiarch/libc++.so.1.0 libc++.so.1.0
+    ln -s libc++.so.1.0 libc++.so.1
+    ln -s libc++.so.1 libc++.so
+    ln -s ../../multiarch/libc++.a libc++.a
+    ln -s ../../multiarch/libc++.modules.json libc++.modules.json
+    ln -s ../../multiarch/liblldb-23.so.1 liblldb-23.so.1
+    ln -s ../../../../../../multiarch/liblldb-23.so.1 python3.14/site-packages/lldb/native/_lldb.cpython-314.so
+    cd ../include || exit 1
+    ln -s ../../include/llvm-23/llvm llvm )
+  mkdir -p "${_T}/dest"; cp -a "${_T}/root" "${_T}/dest/llvm-target"
+  _P="${_T}/dest/llvm-target"
+}
+
+t_case "the copied prefix is the thing that breaks -- the original resolves"
+_mk_apt_fixture
+t_assert_eq "0" "$(find "${_T}/root" -xtype l | wc -l)" "every link resolves where the tree was installed"
+t_assert_eq "11" "$(find "${_P}" -xtype l | wc -l)" "cp -a to another depth breaks every one of them"
+
+t_case "after the repair nothing under the prefix resolves to nothing"
+_repair "${_P}" "${_T}/root" >/dev/null
+t_assert_eq "0" "$(find "${_P}" -xtype l | wc -l)"
+
+t_case "the three libclang dev links are re-pointed INSIDE the prefix"
+t_assert_eq "libclang-23.so.23" "$(readlink "${_P}/lib/libclang.so")" \
+  "an absolute or outward target is exactly the defect; clang.cindex opens this name"
+t_assert_eq "libclang-23.so.23" "$(readlink "${_P}/lib/libclang-23.so")"
+t_assert_eq "libclang-23.so.23" "$(readlink "${_P}/lib/libclang-23.1.0.so")" \
+  "a link to a link is flattened onto the real file"
+t_assert_ok test -f "${_P}/lib/libclang-23.so.23"
+
+t_case "an LLVM-family soname the prefix does not have is materialised"
+t_assert_ok test -f "${_P}/lib/liblldb-23.so.1"
+t_assert_eq "real liblldb-23.so.1" "$(cat "${_P}/lib/liblldb-23.so.1")"
+
+t_case "a deep link is re-pointed with a path that resolves from ITS OWN dir"
+_NAT="${_P}/lib/python3.14/site-packages/lldb/native/_lldb.cpython-314.so"
+t_assert_eq "../../../../liblldb-23.so.1" "$(readlink "${_NAT}")" \
+  "a bare basename would dangle four levels down; an absolute /opt path would dangle after the COPY"
+t_assert_ok test -f "${_NAT}"
+
+t_case "a dev entry naming a package the prefix does not carry is DROPPED"
+t_assert_eq "" "$(find "${_P}/lib" -maxdepth 1 -name 'libc++*' -printf '%f\n')" \
+  "libc++.a/.modules.json/.so name libc++-23-dev and libc++1 -- materialising them puts a second libc++ ahead of the base image's on the loader path"
+t_assert_ok test -f "${_T}/multiarch/libc++.a"
+t_assert_eq "real libc++.a" "$(cat "${_T}/multiarch/libc++.a")" "dropping a link must not touch the tree it named"
+
+t_case "a link naming a DIRECTORY is materialised in place"
+t_assert_ok test -f "${_P}/include/llvm/IR.h"
+t_assert_eq "" "$(readlink "${_P}/include/llvm")" "it is a directory now, not a link"
+rm -rf "${_T}"
+
+t_case "the repair is idempotent and safe with the prefix as its own root"
+_mk_apt_fixture
+_repair "${_P}" "${_T}/root" >/dev/null
+_before="$(cd "${_P}" && find . | LC_ALL=C sort)"
+_repair "${_P}" "${_P}" >/dev/null
+t_assert_eq "${_before}" "$(cd "${_P}" && find . | LC_ALL=C sort)" \
+  "the foreign branch passes the prefix as its own root -- measured 0 dangling there, so it must be a no-op"
+rm -rf "${_T}"
+
+t_case "a link the repair cannot resolve anywhere is removed, not left"
+_mk_apt_fixture
+ln -s /nowhere/at/all "${_P}/lib/libGONE.so"
+ln -s /nowhere/at/all "${_T}/root/lib/libGONE.so"
+_repair "${_P}" "${_T}/root" >/dev/null
+t_assert_eq "0" "$(find "${_P}" -xtype l | wc -l)"
+t_assert_fails test -e "${_P}/lib/libGONE.so"
+rm -rf "${_T}"
+
+t_case "a dangling link the repair CANNOT reach fails the sdk stage"
+# The one path that survives the loop: a materialised directory that brings a
+# broken link of its own. A stage that ships it is the whole defect returning.
+_mk_apt_fixture
+ln -s ../../nowhere "${_T}/include/llvm-23/llvm/stale.h"
+_out="$(_repair "${_P}" "${_T}/root")" && _rc=0 || _rc=$?
+t_assert_eq 1 "${_rc}" "silently shipping it is what put twelve of these in the image"
+t_assert_contains "${_out}" "resolve to nothing"
+rm -rf "${_T}"
+
+t_case "the sdk stage repairs BEFORE it fills, on every arch"
+_MAT_SRC_EARLY="$(cat "${MAT}")"
+t_assert_contains "${_MAT_SRC_EARLY}" '_llvm_target_repair_links /opt/llvm-target "${_hostllvm}"' \
+  "amd64 resolves against the apt tree it was copied from -- the copy itself is where the links break"
+t_assert_contains "${_MAT_SRC_EARLY}" "_llvm_target_repair_links /opt/llvm-target /opt/llvm-target" \
+  "the source-built foreign prefixes measured 0 dangling; the call keeps that true rather than assuming it"
+_repair_line="$(printf '%s\n' "${_MAT_SRC_EARLY}" | grep -n -e '_llvm_target_repair_links /opt/llvm-target "' | cut -d: -f1)"
+_fill_line="$(printf '%s\n' "${_MAT_SRC_EARLY}" | grep -n -e '_llvm_target_fill_needed /opt/llvm-target' | cut -d: -f1)"
+t_assert_ok test "${_repair_line}" -lt "${_fill_line}"
+
+t_case "one family owner, three callers"
+t_assert_eq 3 "$(printf '%s\n' "${_MAT_SRC_EARLY}" | grep -c -e '_is_llvm_family ')" \
+  "the fill, the repair and the self-containment walk must not each carry their own pattern"
+t_assert_eq "" "$(printf '%s\n' "${_MAT_SRC_EARLY}" | grep -e 'libLLVM\*|libclang\*)')" \
+  "an inline copy of the family pattern is how liblldb stayed outside it"
 
 # ── one owner: the walk below the fill reads the same DT_NEEDED ─────────────
 t_case "the sdk stage calls the fill and the walk shares its NEEDED reader"

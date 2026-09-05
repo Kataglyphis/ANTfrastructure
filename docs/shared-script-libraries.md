@@ -25,6 +25,23 @@ Two libraries in this directory have their own pages, because their topic is
 bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
 [`slang-compile.sh`](slang-shader-compilation.md).
 
+## What holds the standalone contract
+
+Two suites, and they split the work. `tests/test-lib-smoke.sh` is the cheap half
+over every `lib/*.sh`: the module parses (`bash -n`), it sources cleanly under
+`set -euo pipefail` — a strict-mode consumer must not be killed by an unbound
+variable or a failing top-level command — and sourcing it defines at least one
+function, counted as a delta inside one shell so functions exported into the
+test environment cannot fake the number. A module that exports nothing is a
+gutted or early-returning copy, not a library. It also parses
+`cmake_build_parse_args` in isolation. No network, no cmake run.
+
+`tests/test-lib-modules.sh` is the strict half described under
+[The logging bootstrap](#the-logging-bootstrap): double-source safety, and that
+`info`/`warn`/`err` arrive from the real `01-core/logging.sh` rather than a
+private fallback copy. It skips `agentic-loop.sh`, which is an executable loop
+rather than a source-library.
+
 ## The logging bootstrap
 
 `log-bootstrap.sh` is the one owner of the block every other library needs

@@ -4,7 +4,7 @@
 Owner directive (AGENTS.md priority 6): two lines at the point of use; anything
 longer moves into docs/ and the code keeps a pointer. Existing blocks are frozen
 in comment-size.allow so the gate only refuses new ones — shrinking one means
-deleting its line. See docs/code-quality-tooling.md.
+deleting its line. docs/code-quality-tooling.md#comment-size-comment-size
 """
 import os
 import sys

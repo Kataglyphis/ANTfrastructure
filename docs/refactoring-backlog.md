@@ -525,13 +525,65 @@ re-derived. `/opt/vulkan` in the arm64 and riscv64 images is **5.8 GB** — 1.8 
 narrowed to `active/` (122 files, 3 objects, all target) because `active/` is what
 the image RUNS and all the gate can honestly assert. The narrowing was KEPT and the
 number written into
-[`artifact-copy-completeness.md`](artifact-copy-completeness.md). **This wants a
-packaging fix, not a looser gate**: decide what of `x86_64/` and `source/` the
-runtime image actually needs on a foreign arch, and stop copying the rest.
+[`artifact-copy-completeness.md`](artifact-copy-completeness.md).
+
+**The framing above was wrong, and the 2026-09-05 investigation replaced it.** The
+question is not "how much builder-arch payload can be pruned" — it is **why the
+target prefix was worth so little that pruning looked like the win**. Measured on the
+shipped arm64 image: `x86_64/bin` holds **52 tools**, `aarch64/bin` holds **two**
+(`glslang`, `glslangValidator`), while `aarch64/lib` holds the *complete* set of
+`libSPIRV-Tools*`. The cross build had succeeded and been told not to keep its
+binaries:
+
+- `_vulkan_target_build_spirv_tools` passed `-DSPIRV_SKIP_EXECUTABLES=ON`. Its own
+  header says why — *"TVM's Vulkan build links it"*. The target prefix was built to
+  be **linked against**, never to be **used**.
+- `_build_vulkan_targets` attempted only four things: headers, loader, SPIRV-Tools,
+  glslang. Every other SDK component was cross-built for no arch at all.
+
+FIXED 2026-09-05: the flag is `OFF`, and `_vulkan_target_build_sdk_rest` adds
+Vulkan-Headers, SPIRV-Headers, Vulkan-Utility-Libraries, SPIRV-Cross, SPIRV-Reflect
+and **Vulkan-ValidationLayers** through one shared `_vulkan_target_install_component`
+(non-fatal per component, aggregate verdict unchanged). `check_vulkan_toolset` in the
+runtime smoke now FAILS on the shape that shipped, with seven cases in
+`test-runtime-image-gates.sh` proving it bites. Nine `_vulkan_skip` rows that the
+consuming loop never read — and that mislabelled ValidationLayers/shaderc/SPIRV-Cross
+as *"host-only component"* — are deleted: activating them would have skipped the
+CHECKOUTS the target build reads. Design and remaining gaps:
+[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md).
+
+**UNPROVEN until a rebuild ships it.** The six new components are cross-builds that
+have never run; they are wrapped non-fatally, so they either land or they are absent,
+but they cannot fail a lane.
 
 Two other facts nobody had ever checked on a real image, recorded in the same place:
 all 15 manifest trees exist on all three arches, and no tree comes near
 `RT_TREE_CAP` — the largest is `/opt/flutter` at 17 523 of 20 000.
+
+### VK1. Every SDK component is now cross-built, and none of it is proven [M, ★★★]
+
+Superseded the "known gaps" list on the same day it was written. Two of its three
+gaps were not gaps:
+
+- **`glslc` is buildable.** The first look reported `source/shaderc` as carrying no
+  `CMakeLists.txt` — true, but the checkout lives one level down in
+  `source/shaderc/src`, with a populated `third_party/` (glslang, spirv-tools,
+  abseil, re2). The lesson is the general one: a missing file at the path you
+  guessed is not evidence the thing cannot be built.
+- **`vulkaninfo` was only missing because of a skip.** `Vulkan-Tools` sat in the
+  cross skip list, so its source was never fetched. Removing the skip fetches it.
+
+`_vulkan_build_components` now skips nothing, and `_VK_TARGET_COMPONENTS` drives a
+cross-build of all fifteen remaining components through one shared installer.
+`slang` (host LLVM `tblgen`) and `vulkanCapsViewer` (Qt for the target) are still
+expected to fail to configure — they are attempted anyway, non-fatally, so the build
+log reports what is true instead of a comment asserting it.
+
+**What is actually unknown**: none of these fifteen cross-builds has ever run. The
+next rebuild is the first evidence. Read the per-component `Cross-building <label>`
+and `<label> unavailable` lines in the lane logs, and the
+`check_vulkan_toolset` verdict on each shipped image, then record here which
+components genuinely cross-build and drop the ones that never will.
 
 ### YB. sccache: root cause FOUND and fixed, unproven by any build [S to watch, ★★★]
 

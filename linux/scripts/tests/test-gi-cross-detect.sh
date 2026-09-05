@@ -2,7 +2,8 @@
 # Tests for the host-tool detector in 03-media/.../gstreamer/common/pre-setup.sh,
 # the phase that names every cross gobject-introspection wrapper the monorepo
 # stage later execs. Extracted, not sourced: pre-setup.sh is a stage script that
-# installs packages at top level. docs/refactoring-backlog.md CL6
+# installs packages at top level.
+# docs/cross-build-verification.md#cross-gobject-introspection-naming-the-wrappers-before-writing-them
 #
 # The subject communicates through FILE-SCOPE variables by design (its own
 # header says so), so both halves of that contract read as unassigned here.

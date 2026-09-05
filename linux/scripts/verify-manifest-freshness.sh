@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify-manifest-freshness.sh — does :latest-cross index the bytes THIS run built?
-# Registry-only: no pull, no emulation. Why both assertions are needed, and why
-# neither suffices alone: docs/cross-build-verification.md.
+# Registry-only: no pull, no emulation. Why neither assertion suffices alone:
+# docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
 #
 # Usage: linux/scripts/verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag latest-cross]
 # Env:   EXPECT_RUN_ID  assert the shared run-id equals this exact value

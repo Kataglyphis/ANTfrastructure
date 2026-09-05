@@ -231,29 +231,30 @@ _uv_conflict_groups() {
   local pyproject="${1:-pyproject.toml}"
   [ -f "$pyproject" ] || return 0
   awk '
-    /^[[:space:]]*conflicts[[:space:]]*=/ { inblock = 1; depth = 0 }
+    function extras(s,   out, piece) {
+      out = ""
+      while (match(s, /extra[[:space:]]*=[[:space:]]*"[^"]+"/)) {
+        piece = substr(s, RSTART, RLENGTH)
+        s = substr(s, RSTART + RLENGTH)
+        if (match(piece, /"[^"]+"/)) out = out " " substr(piece, RSTART + 1, RLENGTH - 2)
+      }
+      sub(/^ /, "", out)
+      return out
+    }
+    /^[[:space:]]*conflicts[[:space:]]*=/ { inblock = 1; depth = 0; group = "" }
     inblock {
-      line = $0
-      n = length(line)
+      n = length($0)
       for (i = 1; i <= n; i++) {
-        c = substr(line, i, 1)
+        c = substr($0, i, 1)
         if (c == "[") { depth++; if (depth == 2) group = "" }
         else if (c == "]") {
-          if (depth == 2 && group != "") { sub(/^ /, "", group); print group }
+          if (depth == 2) { g = extras(group); if (g != "") print g; group = "" }
           depth--
           if (depth <= 0) { inblock = 0; exit }
         }
+        else if (depth >= 2) group = group c
       }
-      if (depth >= 2) {
-        tmp = line
-        while (match(tmp, /extra[[:space:]]*=[[:space:]]*"[^"]+"/)) {
-          piece = substr(tmp, RSTART, RLENGTH)
-          tmp = substr(tmp, RSTART + RLENGTH)
-          if (match(piece, /"[^"]+"/)) {
-            group = group " " substr(piece, RSTART + 1, RLENGTH - 2)
-          }
-        }
-      }
+      if (depth >= 2) group = group " "
     }
   ' "$pyproject"
 }

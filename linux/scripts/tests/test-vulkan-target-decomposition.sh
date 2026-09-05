@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Golden trace of _build_vulkan_targets + the _vulkan_target_* helpers it was
-# decomposed into (02-toolchain/vulkan.sh). docs/cross-build-verification.md
+# decomposed into (02-toolchain/vulkan.sh).
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,6 +17,7 @@ for _fn in _cross_build_sdk_component \
            _vulkan_target_link_glslang_aliases \
            _vulkan_target_build_glslang \
            _vulkan_target_verdict \
+           _vulkan_prune_sdk_sources \
            _build_vulkan_targets; do
   _src="$(awk "/^${_fn}\(\) \{/,/^\}/" "${VULKAN_SH}")"
   t_case "vulkan.sh still defines ${_fn}"
@@ -154,6 +156,43 @@ chmod +x "${SDK}/aarch64/bin/glslangValidator"
 _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
 t_assert_contains "${_out}" "EXIT 0"
+
+# ---------------------------------------------------------------------------
+# The ./vulkansdk build tree is dropped in the RUN that produced it, so no layer
+# downstream of the SDK stage carries it.
+_prune() {
+  (
+    set -euo pipefail
+    eval "${_FNS}"
+    log() { printf 'LOG %s\n' "$*"; }
+    unset SUDO
+    _vulkan_prune_sdk_sources "$1"
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1 | sed "s#${SDK}#SDK#g"
+}
+
+t_case "the SDK source tree is pruned, the host prefix the SDK stage still uses is not"
+_fixture full
+_out="$(_prune "${SDK}")"
+t_assert_contains "${_out}" "LOG Pruning the Vulkan SDK build tree at SDK/source"
+t_assert_ok test '!' -e "${SDK}/source"
+t_assert_ok test -d "${SDK}/x86_64"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "no source/ prunes to a no-op that errexit does not turn into an abort"
+_fixture empty
+mkdir -p "${SDK}/x86_64"
+_out="$(_prune "${SDK}")"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^LOG Pruning')" "nothing to prune must log nothing"
+t_assert_contains "${_out}" "EXIT 0" "the directory guard must absorb the miss under errexit"
+
+t_case "the cross install prunes AFTER _build_vulkan_targets consumed the sources"
+_XSRC="$(awk '/^_build_vulkan_sdk_cross\(\) \{/,/^\}/' "${VULKAN_SH}")"
+t_assert_contains "${_XSRC}" '_vulkan_prune_sdk_sources "${target_dir}"' \
+  "the prune is unreachable unless the cross install calls it"
+t_assert_eq "targets prune" \
+  "$(printf '%s\n' "${_XSRC}" | sed -n 's/.*_build_vulkan_targets .*/targets/p; s/.*_vulkan_prune_sdk_sources .*/prune/p' | tr '\n' ' ' | sed 's/ $//')" \
+  "pruning before the targets build would delete the loader/SPIRV-Tools/glslang sources"
 
 # A hardcoded /tmp left 5 of 35 assertions un-normalised under an override.
 if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then

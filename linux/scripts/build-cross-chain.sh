@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # build-cross-chain.sh — full cross lane with digest-pinned stage handoff.
-# Why: docs/linux-cross-builds.md.
+# Why: docs/linux-cross-builds.md#recommended-digest-pinned-orchestrator-build-cross-chainsh
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

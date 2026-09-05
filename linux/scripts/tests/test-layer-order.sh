@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-layer-order.sh — freezes the verified-clean layering of the 01-core
-# source graph (refactoring backlog item A5, docs/refactoring-backlog.md).
+# Freezes the verified-clean layering of the 01-core source graph.
+# docs/cross-build-verification.md#the-01-core-source-graph-is-layered
 #
 # The 01-core modules form a small DAG that was audited clean; nothing enforces
 # it, so a convenience `source common.sh` added to a leaf would silently create

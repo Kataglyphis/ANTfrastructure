@@ -197,4 +197,68 @@ _unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include
   | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v '2>/dev/null || true' || true)"
 t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage instead of degrading to ccache"
 
+# ── the media half: media_compiler_launcher (backlog F3) ─────────────────────
+# build-ffmpeg.sh and build-pyav.sh each carried their own copy of "establish the
+# address, resolve a launcher, fall back to ccache". One owner now, in the file
+# they both already source. It takes an out-variable NAME rather than printing,
+# because a $( ) caller would discard the address it just exported -- the defect
+# the cases above exist for. docs/cross-build-verification.md#the-media-compile-cache-launcher
+_MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
+_MW="$(mktemp -d)"
+trap 'rm -rf "${_MW}"' EXIT
+
+# One call with the collaborators faked. $1 is shell run before the call.
+_media_launcher() {
+  # platform.sh, not a stub: is_truthy is the canonical predicate the owner calls,
+  # and a second copy of its table here is exactly what the dupes gate is for.
+  bash -c "set -u
+    source '${TESTS_DIR}/../01-core/platform.sh'
+    source '${_MEDIA_COMMON}'
+    ${1}
+    _got=
+    media_compiler_launcher _got
+    printf '[%s]' \"\${_got}\"" 2>&1
+}
+
+t_case "a resolvable launcher is returned, and the address is established first"
+_out="$(_media_launcher "
+  compiler_cache_launcher_env() { echo env-called >> '${_MW}/order'; }
+  compiler_cache_launcher()     { echo resolve-called >> '${_MW}/order'; printf sccache; }")"
+t_assert_eq "[sccache]" "${_out}" "the out-variable carries the bare launcher token and nothing else"
+t_assert_eq "env-called
+resolve-called" "$(cat "${_MW}/order")" "resolving before the address is set is the TCP 4226 bug"
+
+t_case "the address reaches the CALLER's shell — the reason this is not a \$( ) helper"
+_out="$(_media_launcher '
+  compiler_cache_launcher_env() { export SCCACHE_SERVER_UDS=/tmp/probe.sock; }
+  compiler_cache_launcher()     { printf sccache; }
+  _addr_after() { printf "|addr=%s" "${SCCACHE_SERVER_UDS:-UNSET}"; }
+  trap _addr_after EXIT')"
+t_assert_contains "${_out}" "addr=/tmp/probe.sock" \
+  "a \$( ) resolver exports into a subshell and the compiles then run without the server address"
+
+t_case "a launcher that fails yields empty, never a partial command line"
+t_assert_eq "[]" "$(_media_launcher 'compiler_cache_launcher_env() { :; }
+  compiler_cache_launcher() { return 1; }')"
+
+t_case "without 01-core the ccache fallback still answers"
+printf '#!/bin/sh\nexit 0\n' > "${_MW}/ccache"; chmod +x "${_MW}/ccache"
+t_assert_eq "[ccache]" "$(_media_launcher "PATH='${_MW}':\${PATH}")"
+
+t_case "USE_CCACHE=0 turns the fallback off"
+t_assert_eq "[]" "$(_media_launcher "PATH='${_MW}':\${PATH}; USE_CCACHE=0")"
+
+t_case "no launcher and no ccache is empty and rc 0 — never an aborted stage"
+t_assert_eq "[]" "$(_media_launcher "PATH='${_MW}/none'")"
+t_assert_ok bash -c "set -euo pipefail; source '${_MEDIA_COMMON}'
+  PATH='${_MW}/none'; x=seed; media_compiler_launcher x; [ -z \"\${x}\" ]"
+
+t_case "the two media scripts call the owner and keep no copy of the guard"
+for _f in "${TESTS_DIR}/../03-media/build/ffmpeg/build-ffmpeg.sh" \
+          "${TESTS_DIR}/../03-media/build/pyav/build-pyav.sh"; do
+  t_assert_ok grep -q 'media_compiler_launcher' "${_f}"
+  t_assert_fails grep -q 'command -v compiler_cache_launcher' "${_f}"
+  t_assert_fails grep -q '$(media_compiler_launcher' "${_f}"
+done
+
 t_summary

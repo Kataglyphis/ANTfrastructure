@@ -162,7 +162,8 @@ header):
 |-------|---------|--------|
 | `test-logging-err-trap.sh` | `01-core/logging.sh` ERR trap | Every case runs a real `bash -c` under `set -Eeuo pipefail`, the only place the dynamic-scope bug reproduces. warn reports and lets the script finish; err reports and exits 1; neither dies on an unbound variable; the reported line is the FAILING one, not the install site; the command survives spaces, quotes and `$`; a trap installed inside a function still fires after that function returned and from inside another; the last install wins; and `build-gcc.sh`'s hand-re-armed two-argument `on_err` keeps err semantics. |
 | `test-tvm-cmake-args.sh` | `05-frameworks/tvm-config.sh` `append_tvm_cmake_args` (15 positionals → named options) | Golden argv captured from the pre-refactor implementation byte for byte, including `-D` ORDER (a later flag overrides an earlier one) and the exact `${CMAKE_*:+ …}` suffix handling; the Vulkan / cross-linker / `LLVM_DIR` / `CMAKE_IGNORE_PATH` / CUDA-OpenCL normalisation arms; `resolve_qnn_sdk` exporting `TVM_QNN_HOME` non-locally, which `tvm.sh`'s post-install staging depends on; and that an unknown, missing or value-less option is a HARD error rather than a silently wrong feature set. |
-| `test-vulkan-target-decomposition.sh` | `02-toolchain/vulkan.sh` `_build_vulkan_targets` + `_vulkan_target_*` | A golden trace of the cmake argv per component, the headers→loader→SPIRV-Tools→glslang order, the attempted/ok counter wording, the env-shaped all-failed verdict and its `VULKAN_CROSS_STRICT=1` promotion to fatal, the `source/glslang-main` checkout fallback, the `/usr/local/bin` alias plumbing (recorded through a stub `SUDO`, never run) — and that `_vulkan_target_link_glslang_aliases` keeps its explicit `return 0`, since the helpers are called as plain statements and its final false `[ -e ]` test would otherwise trip errexit and kill the SDK stage. |
+| `test-vulkan-target-decomposition.sh` | `02-toolchain/vulkan.sh` `_build_vulkan_targets` + `_vulkan_target_*` | A golden trace of the cmake argv per component, the headers→loader→SPIRV-Tools→glslang order, the attempted/ok counter wording, the env-shaped all-failed verdict and its `VULKAN_CROSS_STRICT=1` promotion to fatal, the `source/glslang-main` checkout fallback, the `/usr/local/bin` alias plumbing (recorded through a stub `SUDO`, never run) — and that `_vulkan_target_link_glslang_aliases` keeps its explicit `return 0`, since the helpers are called as plain statements and its final false `[ -e ]` test would otherwise trip errexit and kill the SDK stage. Also `_vulkan_prune_sdk_sources`: the 3.9 GB `./vulkansdk` build tree goes in the SAME RUN that made it, AFTER the cross targets consumed it, and a tree without one is a no-op rather than an errexit abort. |
+| `test-vulkan-host-sdk-prune.sh` | `06-packaging/prune-vulkan-host-sdk.sh` + its wiring in `Dockerfile.package` | The builder-arch prefix goes only where the image runs its own: amd64 keeps `x86_64` because that IS its prefix; a foreign arch drops it only behind a REAL (non-symlink) `<arch>/lib/libvulkan.so.1`, so the `setup-vulkan-symlinks.sh` fallback link is not mistaken for a cross build and a lane whose loader failed keeps the tree and says so; an arch `platform.sh` cannot map is a hard error, not a guess; and the prune runs in `artifact-source` AHEAD of the `/opt/vulkan` COPY, where it is still worth bytes. |
 | `test-llvm-cross-stanza.sh` | `02-toolchain/llvm-cross.sh` helpers split out of `_llvm_cross_setup_and_build` | One `-Wl,-rpath-link` per EXISTING directory in order, an out-array reset rather than appended to, a failing resolver tolerated; both compiler launchers or neither; the superset shape (projects/runtimes, `LLVM_USE_HOST_TOOLS`, `CLANG_TABLEGEN`) not regressing to the core-only one that leaves `libLLVMSupportLSP.a` unbuilt; the nested `CROSS_TOOLCHAIN_FLAGS_NATIVE` string with and without a launcher; the three injected arg groups landing at their original insertion points in the configure argv; and exactly four build/install calls — including the explicit `--target llvm-config` (TVM reads it out of `/opt/llvm-cross`) and `--strip` on both installs. |
 | `test-iree-wheelhouse-stages.sh` | `05-frameworks/torch/build-app-wheelhouse.sh` `_iree_*` stages | The dynamic-scope couplings a refactor can silently sever — `ccache_cmake_args` / `_iree_launcher` reaching BOTH build steps, the `CCACHE_*`/`SCCACHE_*` exports surviving the helper boundary, `wheel_platform` reaching the retag, `iree_wheel_projects` reaching packaging so the cross lane ships the runtime wheel only, the target-python sysconfig export surviving into wheel-packing — plus the native and cross flag sets, the QNN arm, and the five mutation-covered `|| return 1` call sites described above. |
 | `test-base-image-parse-options.sh` | `01-core/base-image.sh` `parse_options` (116-line nest → data table) | The asymmetries a "harmonising" rewrite would eat: `--archive-url` rejects an empty value while `--ports-url` accepts one verbatim; both also flip `USE_FAST_UBUNTU_MIRROR=true` while `--rewrite-security` does not and validates through `parse_bool_flag`; `install-vulkan-runtime-files` is the ONLY command taking positionals (stopping at `--` or the first non-flag, remainder into `REMAINING_ARGS`, and it alone sets that variable); a repeated flag keeps the LAST value; and the per-command, no-arg and catch-all arms each die with their own message verbatim. |
@@ -198,8 +199,10 @@ deliberately reduced image, never to "get the build green":
 
 <a id="verify-the-shipped-bytes"></a>
 
-**Verify the shipped BYTES, never the push** (backlog RTCACHE3; 2026-08-15 →
-2026-08-16). The 2026-08-15 S2 saga shipped `:latest-cross` STALE five times
+#### Verify the shipped BYTES, never the push
+
+Backlog RTCACHE3; 2026-08-15 → 2026-08-16.
+The 2026-08-15 S2 saga shipped `:latest-cross` STALE five times
 with every static gate and all smokes GREEN — the manifest, smokes, and push
 were all byte-identical to a prior run. The real cause was the
 `--output type=image` tagging bug (see
@@ -261,7 +264,7 @@ drift if a slug is added without touching it.
 | `crlf-guard` | inline (`git ls-files --eol` over `lint-shell.sh --list-files`) | a tracked shell script — `*.sh` or an extension-less file on a shell shebang — whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
-| `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
+| `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 — the host half (fix5-fix10); the /opt-probing half is [`smoke-critical-fixes.sh`](#the-in-image-half-of-critical-fixes), which no build stage runs |
 | `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
 | `arg-consistency` | `01-core/verify-arg-consistency.sh` | class 8 — ARG names/values vs `versions.env`, plus their forwarding |
@@ -519,6 +522,47 @@ locally-built `latest-cross-arm64`/`-riscv64` wrappers:
 | recorded probe, `REQ docs …` removed | B **fails**: refuses to assert an empty extra |
 | recorded probe, `VENV ABSENT` injected | B prints a loud `SKIP` (never a pass) |
 
+### The in-image half of critical-fixes
+
+The `critical-fixes` battery was two scripts wearing one name, and the split is
+what let its preflight slug leave `gate-proofs.allow`. `verify-critical-fixes.sh`
+now holds fix5–fix10, every one of them a grep over the REPO TREE, so preflight
+can run it off-target and `test-critical-fixes.sh` can drive the real gate in a
+fixture tree and knock out one guarded line at a time.
+`06-packaging/smoke-critical-fixes.sh` holds fix1–fix4, the probes that only mean
+anything inside a built image. It is **not wired into any build stage**: run it
+against a shipped image with `nerdctl run --rm --platform linux/<arch> -v
+<repo>:/repo:ro --entrypoint bash <image> /repo/linux/scripts/06-packaging/smoke-critical-fixes.sh`.
+`CF_SMOKE_ROOT` prefixes every absolute path it reads, which is what makes the
+suite able to prove it on a host.
+
+**Nothing had ever run those four probes anywhere.** On the host they all skip —
+except fix4, which on an amd64 host asserts that an amd64 `cc` reports amd64.
+Run for the first time on 2026-09-05, against the images this repo had actually
+shipped, they reported **four failures, and all four were the probe being wrong**:
+
+| probe | what it asserted | what the image had |
+|---|---|---|
+| fix1 | a literal `prefix=/opt/python-cross` line in `python-3.14.pc` | `prefix=${pcfiledir}/../..` on all three arches — the RELOCATABLE form, which resolves to exactly the right directory. Now the probe resolves `${pcfiledir}` the way pkg-config does and judges where the prefix LANDS |
+| fix2 | `absl/types/span.h` under `/opt/litert/include`, `/usr/local/include/litert` or `/usr/local/include/tensorflow/lite` | `install_abseil_headers` installs into `/usr/local/include`, which the probe never looked at. It also treated the existence of `/usr/local/include/tensorflow` as proof LiteRT was present — and that path ships as an EMPTY two-directory stub |
+
+fix3 and fix4 pass, and that is the first evidence either has ever produced:
+`cross-android-amd64` has no dangling `lib-dynload` symlink on any of the three
+staged arches, and `cc -dumpmachine` reports `x86_64` / `aarch64` / `riscv64` in
+the matching `latest-cross-*` image. (`readelf` is absent from the foreign runtime
+images, so the ELF-machine arm of fix4 returns early there.)
+
+**With fix2 corrected it finds a real defect, on all three shipped arches.**
+`latest-cross-{amd64,arm64,riscv64}` each ship 1322 LiteRT/TFLite headers, **707
+of which `#include "absl/…"`**, plus `litert.pc`, `tensorflow-lite.pc`,
+`tensorflowlite_c.pc` and the libraries — and no `absl` directory at all. A
+consumer that compiles against the prefix those `.pc` files advertise fails on the
+first include. The cause is `06-packaging/copy-media-payloads.sh`, which copied
+`/usr/local/include/{tflite,tensorflow,flatbuffers,c}` out of the artifact image
+and left `/usr/local/include/absl` — 384 headers, 4.6 MB, present in all three
+`cross-android-*` images — behind. It is in the copy list now; only a rebuild
+proves the bytes.
+
 ### Foreign-arch execution needs QEMU binfmt — registered **without sudo**
 
 The foreign-arch smokes above only mean something if the image's binaries can
@@ -558,7 +602,16 @@ largely **deliberate** and should not be "fixed":
 
 - `cross_build_is_active` / `install_host_packages` etc. are re-defined as
   **fallbacks** in several modules so each can be sourced standalone. Removing
-  them breaks isolated use.
+  them breaks isolated use. Three owners are live and none is redundant:
+  `01-core/common.sh` holds the documented approximation, `_gst_monorepo_env_setup`
+  a strict superset for stage contexts where 01-core is never sourced, and
+  `01-core/install-deps-preamble.sh` the trivial native `false` stubs. A fourth,
+  in `media_common_init`, was deleted on 2026-09-05: the same function asserts
+  with `declare -F` that `cross_build_is_active` exists and returns 1 when it does
+  not, sixteen lines above the guard, so that copy could never execute.
+  "Sourced standalone" is the test — a fallback that an assertion above it has
+  already refused is dead, not defensive, and `test-cross-fallback-parity.sh`
+  pins the assertion so the deletion stays justified.
 - `build-libcamera.sh`'s inline `-idirafter /usr/include` (generic) plus its
   `append_cross_idirafter` call is a **native/cross fallback pair**, not a copy.
 - The `-idirafter` logic in `setup-torch-venv.sh` + `swap-native-gcc.sh`
@@ -1052,3 +1105,186 @@ ways.
 convention `000-llvm-target.conf` already used. Verify after any change with
 `ldconfig -p | grep -e <soname>` **in the shipped image** — the build log cannot
 show this.
+
+### The `01-core` source graph is layered
+
+The `01-core` modules form a small DAG that was audited clean once and that
+nothing enforced afterwards, so a convenience `source common.sh` added to a leaf
+would create a cycle or a load-order landmine that only detonates inside a
+Dockerfile stage — the worst place to find one. `tests/test-layer-order.sh`
+freezes the table: L0 true leaves that source no other `01-core` file
+(`logging.sh`, `load-versions-env.sh`, `path-helpers.sh`, `platform.sh`,
+`guard-helpers.sh`), L1 above them (`arch-mapping.sh`, `ubuntu-mirror.sh`,
+`downloads.sh`, `parallelism.sh`), L2 (`common.sh`), and L3 (`cross-env.sh` and
+its four `cross-*` siblings, with `cross-env.sh` additionally the aggregator).
+Each module may only reach DOWN.
+
+Two details are load-bearing. `platform.sh` is **L0, not L1** — it sources
+nothing, and both `arch-mapping.sh` and `ubuntu-mirror.sh` source it; the
+original sketch of this rule guessed otherwise. And no `01-core` file may source
+`artifact-common.sh` or `lib-orchestrator.sh`, which are top-level-only
+aggregators — the check strips comments before grepping, because
+`context-management.sh` and `version-forwarding.sh` *mention* `artifact-common.sh`
+in prose. Adjust the table only when the layering deliberately changes.
+
+### Cross gobject-introspection: naming the wrappers before writing them
+
+Cross introspection under QEMU needs a set of wrapper executables, and the names
+have to agree across three phases that run minutes apart: the phase that writes
+them, Meson's own lookup, and the monorepo stage that execs them.
+`_gi_cross_detect_host_tools` (`03-media/build/gstreamer/common/pre-setup.sh`) is
+the single place those names are decided, and it communicates through file-scope
+variables by design. For `riscv64` it yields
+`/usr/local/bin/g-ir-scanner-riscv64-cross`,
+`/usr/bin/riscv64-linux-gnu-g-ir-scanner`,
+`/usr/local/bin/g-ir-scanner-ldd-riscv64-cross`,
+`/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper` and
+`/usr/local/bin/meson-riscv64-exe-wrapper`, plus the two unsuffixed defaults
+`/usr/local/bin/g-ir-scanner` and `/usr/local/bin/ldd` that Meson finds on PATH.
+
+Two fallbacks in it are easy to lose in a rewrite and expensive to lose in a
+build. The host scanner is looked up with `PATH=/usr/bin:/bin` **first**, so a
+rerun does not recurse into the wrapper installed under `/usr/local/bin`. And an
+unqueryable `gobject-introspection` package falls back to
+`GOBJECT_INTROSPECTION_VERSION` rather than to an empty string — which is what a
+scratch cross stage actually sees. `tests/test-gi-cross-detect.sh` pins every
+name and both fallbacks by extracting the function (`pre-setup.sh` installs
+packages at top level, so it cannot be sourced).
+
+### `gstreamer-env.sh`: the runtime env the entrypoint sources
+
+`04-runtime/gstreamer-env.sh` is what makes the `/opt/gstreamer` build
+reachable at runtime: it prepends the prefix to `PATH`, and prepends both the
+plain `lib/` and the multiarch `lib/<triplet>/` directory to `PKG_CONFIG_PATH`,
+`LD_LIBRARY_PATH`, `GST_PLUGIN_PATH` and `GI_TYPELIB_PATH`. The multiarch
+`gstreamer-1.0` plugin dir is precisely what `smoke-runtime-image.sh` looks for,
+so a regression here reads as a plugin-count failure three stages later.
+
+The triplet has three sources in a fixed order: `deb_multiarch_triplet` from
+`/opt/scripts/core/platform.sh` when that file is present, then
+`dpkg-architecture -q DEB_HOST_MULTIARCH`, then the literal `lib/multiarch`
+fallback. The script also carries an inline copy of `_path_contains` /
+`_path_prepend_unique` for the case where `/opt/scripts/core/path-helpers.sh` is
+absent — a copy that has to stay idempotent, since the entrypoint may source the
+script twice. `tests/test-gstreamer-env.sh` drives all of it on the host by
+copying the script and repointing its `/opt/scripts/core` lookups at a fixture,
+so the triplet branch, the fallback and the inline helpers each really run.
+
+### TFLite for the GStreamer monorepo: three workarounds
+
+`_gst_monorepo_tflite_flags` in
+`03-media/build/gstreamer/common/build-gstreamer-monorepo.sh` was one 51-line
+function carrying three defects from three different years. It is now three
+named helpers called in order (backlog CL6), and the split is worth reading
+because the reason each exists is different:
+
+| helper | what it works around |
+| --- | --- |
+| `_gst_tflite_probe_flags` | cross builds only. `pkg-config` is asked for `tensorflowlite_c`, then `tensorflow-lite`, and the first that exists contributes `-idirafter <includedir>` to `CPPFLAGS`/`CFLAGS`/`CXXFLAGS` and `-L<libdir>` plus `-Wl,-rpath-link,<libdir>` to `LDFLAGS`. `-idirafter`, not `-I`: the target headers must lose to anything the toolchain already found |
+| `_gst_tflite_fix_pc` | an idempotent `sed` over `/usr/local/lib/pkgconfig/tensorflow-lite.pc`, deleting the stray `}` a since-fixed `generate_pkgconfig_file` left after `-ltensorflow-lite`. Older toolchain images still carry the bad `.pc`, so the repair has to happen at consume time, not at generate time. [`tests/test-pkgconfig-file.sh`](../linux/scripts/tests/test-pkgconfig-file.sh) owns both ends of that bug |
+| `_gst_tflite_symlink_for_meson` | Meson does not probe a library through `pkg-config`'s `-L`; it asks the cross compiler for `-print-file-name`, which searches only the toolchain's own directories. The fix is a symlink farm into every `/opt/gcc-*/<triplet>/lib*` and `/opt/gcc-*/lib/gcc/<triplet>/*/`, plus `LIBRARY_PATH` |
+
+Each helper is a no-op outside its own precondition — not cross, no `.pc`, no
+`libtensorflow-lite.so` — and each returns 0 on that path, which is what lets
+them be three bare calls under the file's `set -euo pipefail`. The suite proves
+exactly that: it extracts the three functions with `awk`, drives each one with a
+fixture `pkg-config`, `.pc` file and `gcc` layout, and asserts the skip paths
+leave the environment untouched and still exit 0.
+
+**What the suite cannot prove** is the thing the split is actually for: that an
+arm64 *and* a riscv64 monorepo stage still resolve TFLite. Meson's probe order,
+the real `.pc` files in the shipped toolchain image and the `-print-file-name`
+search dirs are all container facts. Until a chain runs both arches, this is a
+verified refactor, not a verified fix.
+
+### The wrapper generation gate (`_manifest_wrapper_gate`)
+
+A multi-arch index is only meaningful if its children came from one run.
+`_manifest_wrapper_gate` (`build-runtime-manifest.sh`) reads the recorded
+`run-id` off each per-arch wrapper tag through `ancestry_recorded_run_id` and
+refuses to assemble `:latest-cross` out of tags that span generations — the
+failure it exists for is an index that mixes a fresh arm64 wrapper with an
+amd64 one from last week, which every existence check passes.
+
+Its refusal matrix is deliberately asymmetric, and the asymmetry is the whole
+design:
+
+* **tags that span generations** refuse on *both* paths — building or repairing.
+* **a missing run-id stamp** only warns on the build path (the run is about to
+  overwrite that tag anyway) and **refuses** on the repair path
+  (`--manifest-only` / `--repair`), because `ancestry_run_ids_coherent` drops
+  empty ids, so unverifiable provenance cannot rule a mixed release out.
+* **a wrapper older than the current android artifact** likewise refuses on the
+  repair path only.
+* `--force` overrides after the warning is printed; `RUNTIME_MANIFEST_COHERENCE=0`
+  disables the gate outright.
+
+`tests/test-manifest-wrapper-gate.sh` extracts the function with its ancestry
+collaborators stubbed, so what is under test is the decision rather than the
+registry.
+
+### Cross-compiler multi-arch smoke
+
+`06-packaging/smoke-cross-all-arches.sh [amd64,arm64,riscv64]` runs one probe
+per toolchain the image is supposed to carry, and each probe is a function so a
+suite can drive it without a built image
+(`tests/test-cross-arch-smoke-probes.sh`):
+
+| Probe | Asserts |
+|-------|---------|
+| `_smoke_probe_host_compilers` | `cc` exists and is the host arch; the same for `${GCC_PREFIX}/bin/gcc` when it is present |
+| `_smoke_probe_cross_compilers` | for every requested arch that is not the host: `<triplet>-gcc` exists and produces target objects, and `<triplet>-g++ -dumpmachine` names the target |
+| `_smoke_probe_llvm_target_clang` | `${SMOKE_TARGET_CLANG}` (default `/usr/local/llvm-target/bin/clang`) reports a triple matching one of the requested arches |
+| `_smoke_probe_symlink_chain` | `cc`, `c++`, `gcc`, `g++` all resolve to something |
+
+The clang probe is the one with history. The binary has a **single** default
+triple, so the check is "does it match ONE of the requested arches", not one
+verdict per arch. The loop that answers it used to `break` after the first arch
+and had no failure arm at all, so a clang built for the wrong target shipped
+green. `_smoke_clang_match_arch <dumpmachine> <arch-list>` is now that answer on
+its own — it prints the first arch whose uname name prefixes the triple and
+nothing when none does — and the caller turns an empty answer into
+`matches none of: <list>`, a real `fail`. An absent clang is still skipped
+silently: an image without `llvm-target` is not a defect.
+
+`SMOKE_TARGET_CLANG` exists so the probe can be pointed at a clang the suite
+controls. It defaults to the shipped path in the script itself, so nothing in
+the image or the Dockerfiles needs to set it.
+
+### The media compile-cache launcher
+
+`03-media/core/common.sh` owns `media_compiler_launcher <out-var>`. It sets the
+named variable to the launcher a media compile should prefix its compiler with,
+or to the empty string:
+
+1. when `01-core/common.sh` is loaded — which `media_common_init` guarantees, or
+   aborts — it establishes the launcher address with
+   `compiler_cache_launcher_env` **first** and then resolves through
+   `compiler_cache_launcher`, so sccache is asked when sccache is the active
+   cache. Resolving before the address is set is how a stage ends up talking to
+   a server that is not there;
+2. otherwise, `ccache` when it is on `PATH` and `USE_CCACHE` is truthy.
+
+`build-ffmpeg.sh` and `build-pyav.sh` each carried their own copy of that
+ladder, and the copies had already drifted: ffmpeg tested `USE_CCACHE` with an
+inline deny-list (`0|false|no|off` → off, anything else → on) while pyav used
+the canonical `is_truthy` (`1|true|yes|on` → on, anything else → off). They
+agree on every value either script documents and on the `:-true` default; they
+disagreed only on junk (`USE_CCACHE=y` was on for ffmpeg, off for pyav). The
+owner uses `is_truthy`, the predicate `platform.sh` declares canonical.
+
+**It takes an out-variable name instead of printing**, which is the one thing
+about it that is not obvious. `compiler_cache_launcher_env` exports the sccache
+server address into the shell that will run the compiles, and a `$( )` caller
+would run it in a subshell and discard that export the moment the substitution
+closes — a green build that talks to no server. The same trap is written up at
+[`build-cache-tiers.md`](build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run);
+folding the resolve into a printing helper is how it comes back.
+
+Step 2 is unreachable from those two scripts — `media_common_init` returns
+non-zero when a critical 01-core module fails to load, and both scripts run it
+at top level under `set -e`. It stays because the helper is the media tree's
+answer to the question, not ffmpeg's, and a later consumer may not run the
+init. `tests/test-compiler-cache-launcher.sh` covers both steps plus the
+totality contract: no launcher and no ccache prints nothing and returns 0, so a
+cacheless host degrades instead of aborting a stage.

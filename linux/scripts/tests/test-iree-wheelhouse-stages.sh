@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Wiring tests for the _iree_* stage helpers of build-app-wheelhouse.sh: the
-# dynamic-scope couplings a refactor can sever. docs/cross-build-verification.md
+# dynamic-scope couplings a refactor can sever.
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

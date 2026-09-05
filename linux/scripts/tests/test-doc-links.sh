@@ -147,6 +147,17 @@ printf '# see %sguide.md\n' "${D}" > "${fix}/linux/scripts/subject.mk"
 t_assert_eq "0" "$(_rc "${fix}")" "a Makefile fragment has no house header convention"
 rm -rf "${fix}"
 
+t_case "a header must not point at an OPEN backlog page, frozen or not"
+fix="$(_fixture "# see ${D}refactoring-backlog.md")"
+printf '# Backlog\n\n## Open item\n\ntext\n' > "${fix}/docs/refactoring-backlog.md"
+printf '# Index\n\n- [guide](guide.md)\n- [backlog](refactoring-backlog.md)\n' > "${fix}/docs/INDEX.md"
+printf '.. toctree::\n\n   guide\n   refactoring-backlog\n' > "${fix}/docs/index.rst"
+_freeze "${fix}" "$(printf 'linux/scripts/subject.sh\t%srefactoring-backlog.md' "${D}")"
+t_assert_eq "1" "$(_rc "${fix}")" "freezing one is what the old group (b) did, and every row rotted"
+t_assert_contains "$(_run "${fix}")" "must not point at an OPEN backlog page" \
+  "the entry is archived when it closes, so the fix is to re-point, never to freeze"
+rm -rf "${fix}"
+
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 

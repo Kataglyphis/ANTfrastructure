@@ -3,7 +3,7 @@
 # engine-config precedence, invoke_agent's retry ladder with the engine faked,
 # and one drain of the executor queue. Written so the engine-adapter half can be
 # split from the loop-driver half (backlog F2) against a fixed behaviour.
-# docs/agentic-loop-build-matrix.md
+# docs/agentic-loop-build-matrix.md#bash-agentic-loopsh
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -98,6 +98,24 @@ t_case "the fixer role runs on the executor agent, not an agent named 'fixer'"
 _agent 0 opencode fixer >/dev/null
 t_assert_eq "executor" "$(cat "${_ATTEMPTS}")"
 
+t_case "every OTHER role survives that mapping under a consumer's errexit"
+# The mapping was written `[[ "$role" == fixer ]] && oc_agent=executor`, and it was
+# reported as fatal for every other role under a consumer's `set -e`. MEASURED, it
+# is not: bash exempts every command of an AND-OR list except the one after the
+# final && or ||, so the failing test neither exits the shell nor fires an ERR trap
+# under `set -eE`. It WOULD be fatal one edit later -- as the last statement of the
+# function the list becomes its return status -- so the shape is gone and the
+# behaviour is pinned here. docs/agentic-loop-build-matrix.md#the-two-bash-files
+_out="$(bash -c "set -eu
+LOG_FILE='${_work}/loop.log'
+: > '${_ATTEMPTS}'
+source '${LIB}'
+invoke_opencode() { echo \"\$1\" >> '${_ATTEMPTS}'; return 0; }
+AGENTIC_ENGINE=opencode PLANNER_MODEL=m EXECUTOR_MODEL=m DRY_RUN=true invoke_agent executor msg
+echo reached-the-end" 2>&1)"
+t_assert_contains "${_out}" "reached-the-end" "errexit must not end the run on the role that is NOT the fixer"
+t_assert_eq "executor" "$(cat "${_ATTEMPTS}")" "the adapter must still have been called once"
+
 t_case "an unknown engine is FATAL and never falls through to a default"
 _out="$(_agent 0 podracer executor)"
 t_assert_contains "${_out}" "Unknown engine"
@@ -136,5 +154,61 @@ printf -- '- [b] blocked on the SDK\n' > "${_work}/BACKLOG.md"
 _out="$(_drain ":")"
 t_assert_contains "${_out}" "Tasks in queue: 0"
 t_assert_contains "${_out}" "completed=0" "blocked work must let the planner run again, not stall the executor"
+
+# ── 4. the F2 seam: two files, one entry point ──────────────────────────
+# The engine half is loaded BY agentic-loop.sh from its own directory, so a
+# consumer that sources only the entry point still gets every adapter, and
+# neither file may carry a second copy of the other's functions.
+ENGINES="${TESTS_DIR}/../lib/agentic-engines.sh"
+
+t_case "sourcing the entry point alone defines both halves"
+_out="$(bash -c "source '${LIB}' >/dev/null 2>&1
+  for f in log unchecked_task_count load_engine_config invoke_agent invoke_claude \\
+           invoke_opencode claude_stream_render usage_limit_wait_seconds; do
+    declare -F \"\${f}\" >/dev/null || echo \"MISSING \${f}\"
+  done; echo DONE")"
+t_assert_eq "DONE" "${_out}" "a consumer sources agentic-loop.sh and nothing else"
+
+t_case "the entry point resolves its sibling by BASH_SOURCE, not by cwd"
+_out="$(cd / && bash -c "source '${LIB}' >/dev/null 2>&1; declare -F invoke_agent >/dev/null && echo YES")"
+t_assert_eq "YES" "${_out}" "external repos source this by absolute path from their own tree"
+
+t_case "the engine half owns the adapters and none of the loop driver"
+_out="$(bash -c "source '${ENGINES}' >/dev/null 2>&1
+  declare -F invoke_agent >/dev/null || echo NO_ADAPTER
+  declare -F run_agentic_loop >/dev/null && echo DRIVER_LEAKED
+  declare -F unchecked_task_count >/dev/null && echo BACKLOG_LEAKED
+  echo DONE")"
+t_assert_eq "DONE" "${_out}" "the split is by subject; a leaked driver function means a half moved back"
+
+t_case "neither file defines the same function twice"
+_dupes="$(cat "${LIB}" "${ENGINES}" | sed -n 's/^\([a-z_][a-z0-9_]*\)() {$/\1/p' | sort | uniq -d)"
+t_assert_eq "" "${_dupes}" "one owner per function — a re-inlined copy would drift like the pre-split preamble did"
+
+t_case "the jq prelude crosses the seam: a driver-side reader still parses a matrix entry"
+# _AGENTIC_JQ_PRELUDE is defined in the engine half and used by
+# resolve_build_matrix_entry in the driver half; an unsourced sibling makes the
+# jq program a bare filter and every MATRIX_* field silently empty.
+cat > "${_work}/matrix.json" <<'J'
+{ "buildMatrix": { "linux": [ { "name": "rel", "sanitizer": "asan", "testCommand": "ctest" } ] } }
+J
+_out="$(_lib 'resolve_build_matrix_entry "'"${_work}"'/matrix.json" 0 linux
+        echo "${MATRIX_NAME}|${MATRIX_SANITIZER}|${MATRIX_TEST_CMD}|${MATRIX_BUILD_DIR}"')"
+t_assert_eq "rel|asan|ctest|build" "${_out}"
+
+t_case "the jq precondition survives in load_engine_config, which run_agentic_loop delegates to"
+# PATH is emptied after sourcing, so `command -v jq` misses exactly the way a
+# host without jq does. run_agentic_loop carried a second copy of this guard;
+# deleting the copy must not lose the verdict, and deleting the OWNER must
+# turn this red rather than let a jq-less host reach the planner.
+_out="$(bash -c "set -u
+LOG_FILE='${_work}/loop.log'
+source '${LIB}'
+PATH=/nonexistent
+run_agentic_loop '${_work}/config.json' '${_work}' linux
+echo \"rc=\$?\"" 2>&1)"
+t_assert_contains "${_out}" "jq required"
+t_assert_contains "${_out}" "rc=1" "no jq must stop the loop before it plans anything"
+t_assert_eq "1" "$(printf '%s\n' "${_out}" | grep -c 'jq required')" "the owner must state the reason exactly once"
 
 t_summary

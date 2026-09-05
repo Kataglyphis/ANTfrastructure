@@ -60,6 +60,7 @@ copy_media_payloads() {
     /usr/local/lib/onnxruntime-genai \
     /usr/local/lib/onnxruntime-gpu \
     /usr/local/include/tflite \
+    /usr/local/include/absl \
     /usr/local/include/tensorflow \
     /usr/local/include/flatbuffers \
     /usr/local/include/c \

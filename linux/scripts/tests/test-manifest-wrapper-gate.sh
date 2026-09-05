@@ -2,7 +2,8 @@
 # Tests for _manifest_wrapper_gate (build-runtime-manifest.sh) — the refusal
 # matrix that keeps a multi-arch index from mixing two generations of wrapper
 # images. Extracted with its ancestry collaborators stubbed, so the DECISION is
-# under test, not the registry. docs/refactoring-backlog.md CL6
+# under test, not the registry.
+# docs/cross-build-verification.md#the-wrapper-generation-gate-_manifest_wrapper_gate
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

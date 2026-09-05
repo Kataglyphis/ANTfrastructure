@@ -63,6 +63,15 @@ RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,ta
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
 
+# The Vulkan SDK's builder-arch prefix and its ./vulkansdk build tree: 5.95 GB that
+# nothing on a foreign image's PATH, VULKAN_SDK or LD_LIBRARY_PATH reaches. Pruned
+# HERE, before the /opt/vulkan COPY below, so the runtime layer never carries it.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh,target=/tmp/prune-vulkan-host-sdk.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
+    set -euo pipefail; \
+    bash /tmp/prune-vulkan-host-sdk.sh "${TARGET_ARCH:-${TARGETARCH}}"
+
 
 FROM ${BASE_IMAGE} AS package-image
 

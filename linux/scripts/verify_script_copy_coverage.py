@@ -6,7 +6,8 @@ another script at /opt/scripts/... that was never COPY'd into that image, so it
 fails at *build* time with "command not found" / exit 127 — e.g. the
 media_load_arch_flags bug (Dockerfile.package ran install-deps.sh, which sources
 /opt/scripts/03-media/core/common.sh, but 03-media/core was not COPY'd). Fix
-commit da41e19; see docs/cross-build-verification.md (failure class #1).
+commit da41e19; failure class 1 in
+docs/cross-build-verification.md#failure-classes-from-build-history
 
 How it works, per linux/Dockerfile.*:
   1. Parse COPY lines into a map of provided /opt/scripts/* paths -> repo source

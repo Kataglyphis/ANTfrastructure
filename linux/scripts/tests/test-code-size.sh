@@ -2,7 +2,8 @@
 # Tests for verify_code_size.py. The gate derives its root from its own path, so
 # each case builds a throwaway tree and runs the real script against it. Both
 # metrics share one four-way contract, so the cases below share one fixture
-# builder and one runner. See docs/code-quality-tooling.md.
+# builder and one runner.
+# docs/code-quality-tooling.md#code-size--functions-and-files-code-size
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

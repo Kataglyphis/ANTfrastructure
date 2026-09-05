@@ -422,7 +422,7 @@ ensure_sccache_env() {
     warn "sccache server did not answer — caller should fall back to ccache"
     return 1
   fi
-  info "Using sccache with SCCACHE_DIR=${SCCACHE_DIR} (cap ${SCCACHE_CACHE_SIZE:-unset})"
+  info "Using sccache with SCCACHE_DIR=${SCCACHE_DIR} (cap ${SCCACHE_CACHE_SIZE:-unset}) [server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]"
   return 0
 }
 

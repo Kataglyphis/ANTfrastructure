@@ -4,7 +4,8 @@
 `local`/`export`/`declare`/`readonly` return THEIR OWN status, so `set -e` never
 sees the command fail and x silently holds "". shellcheck's SC2155 misses the
 `${y:-$(cmd)}` form entirely, and lint-shell.sh gates at -S error, where a
-warning cannot fail. See docs/failure-modes.md.
+warning cannot fail.
+docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
 
 Existing sites are frozen in masked-assignments.allow; this gate only refuses new
 ones. Fixing one means deleting its line.

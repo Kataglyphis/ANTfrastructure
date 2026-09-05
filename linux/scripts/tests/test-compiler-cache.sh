@@ -259,4 +259,30 @@ t_case "an address the caller already chose is never overridden"
 _uds4="$(cat "${TMPDIR:-/tmp}/ccf_uds4.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds4.$$"
 t_assert_eq "${_uds4}" "UNSET|24226"
 
+
+# ── the server address has to be READABLE in the run log (YB) ───────────────
+# Both setters establish the address; neither ever PRINTED it. sccache-launcher.sh's
+# [server=] field appears only when sccache FAILS, so on the chain where the YB fix
+# works there would have been nothing to grep — the verdict and its only evidence
+# cancelling each other out.
+t_case "ensure_sccache_env's setup line NAMES the address it just exported"
+_addr_out="$(
+  # shellcheck disable=SC1090
+  source "${TESTS_DIR}/../01-core/logging.sh"
+  sccache() { case "$1" in --version) echo "sccache 0.17.0" ;; *) return 0 ;; esac; }
+  export SCCACHE_DIR=/tmp SCCACHE_CACHE_SIZE=10G
+  eval "$(sed -n '/^ensure_sccache_env() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
+  ensure_sccache_env 2>&1
+)"
+t_assert_contains "${_addr_out}" "[server=/tmp/sccache-" "one grep per stage IS the YB verdict"
+case "${_addr_out}" in
+  *"[server=tcp:4226]"*) t_assert_eq "uds" "tcp:4226 — the regression's own address" ;;
+  *)                     t_assert_eq "uds" "uds" ;;
+esac
+
+t_case "setup_sccache prints the same field, spelled the same way"
+# Two setters, one grep: a second spelling means half the stages go unread.
+t_assert_contains "$(cat "${CCSH}")" '[server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]' \
+  "the media-side setter must carry the identical field"
+
 t_summary

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pins the per-command asymmetries of 01-core/base-image.sh parse_options that a
-# "harmonizing" rewrite would eat. docs/cross-build-verification.md
+# "harmonizing" rewrite would eat.
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

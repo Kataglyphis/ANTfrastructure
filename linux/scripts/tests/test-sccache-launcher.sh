@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for 01-core/sccache-launcher.sh: BOTH sccache failure classes must bypass
 # to a direct compiler run, a real compiler error must pass through untouched.
-# Why each class matters: docs/build-cache-tiers.md
+# docs/build-cache-tiers.md#sccache-failure-classes-the-launcher-must-bypass
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

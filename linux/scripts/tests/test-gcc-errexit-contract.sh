@@ -2,7 +2,8 @@
 # The `if ! build_canadian_native_gcc_for …` call site suppresses errexit for that
 # function's whole body, so every failure inside it must raise explicitly. The
 # function needs a cross toolchain and a sysroot, so it cannot run here; what is
-# testable is the contract. See docs/refactoring-backlog.md WG.
+# testable is the contract.
+# docs/failure-modes.md#a-callee-invoked-in-an-if--condition-runs-with-errexit-off
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

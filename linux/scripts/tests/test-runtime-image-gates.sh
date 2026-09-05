@@ -395,12 +395,13 @@ t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -ve '^/')" \
   "every resolved tree must be an absolute path"
 t_assert_contains "${_TREES}" "/opt/opencv5" "\${OPENCV_OUTPUT_DIR} comes from Dockerfile.package's ARG default"
 
-t_case "the Vulkan tree is probed at what VULKAN_SDK resolves to"
-# /opt/vulkan carries the SDK's x86_64 HOST tools (glslang, spirv-tools -- built for
-# the build host, never loaded by a cross consumer) beside the cross-built target
-# libs under active/. Scanning the whole tree would red every foreign image on
-# purpose-built host tooling; scanning active/ asserts exactly what the image runs.
-t_assert_contains "${_TREES}" "/opt/vulkan/active" "the host-tool half of the SDK is not this image's to assert"
+t_case "the Vulkan tree is probed WHOLE, not narrowed to active/"
+# The narrowing existed because /opt/vulkan shipped the SDK's 1.8 GB x86-64 host
+# prefix plus a 3.9 GB build tree into every foreign image. Both are pruned before
+# the COPY now (backlog HT5), so every byte of the tree is the image's own arch.
+t_assert_contains "${_TREES}" "/opt/vulkan" "the manifest tree must still reach the scanner"
+t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -e '/opt/vulkan/active')" \
+  "a re-narrowed probe would stop seeing a builder-arch prefix that came back"
 
 # Every needle of a table read out of ANOTHER owner of the same fact must appear in
 # ${haystack}, sentinel first so a table that moved fails loudly instead of iterating
@@ -802,11 +803,45 @@ FACT javac yes
 ENV java-home /usr/lib/jvm/default-java")" "OK jdk" "the fixed shape"
 t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitted no java facts proves nothing"
 
+# ── The Vulkan loader gate: WHICH libvulkan answered ────────────────────────
+# Ubuntu's multiarch loader is in every image, so "it loaded" was never evidence
+# that the shipped /opt/vulkan prefix is the one in use.
+_vk_gate() {
+  VK_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(_extract _vk_loaded_path)"'
+    '"$(_extract check_vulkan_loader)"'
+    check_vulkan_loader img arm64'
+}
+
+t_case "a loader resolved inside /opt/vulkan is the pass"
+_VK="$(_vk_gate 'VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357')"
+t_assert_contains "${_VK}" "libvulkan.so.1 loads from /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357" \
+  "the pass line must name the path it read, not just say OK"
+t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "a shipped-prefix loader is not a failure"
+
+t_case "the distro loader answering instead of the shipped prefix FAILS"
+_VK="$(_vk_gate 'VKLIB /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341
+VKOK 1.4.341')"
+t_assert_contains "${_VK}" "FAIL libvulkan.so.1 loaded from /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341" \
+  "a prune that took the prefix the image runs would otherwise pass on Ubuntu's loader"
+
+t_case "a load that names no path is a warning, not a verdict either way"
+_VK="$(_vk_gate 'VKOK 1.4.357')"
+t_assert_contains "${_VK}" "WARN" "/proc/self/maps can be unreadable; that is not a defect"
+t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "an unread maps file must not fail the image"
+
+t_case "an unloadable libvulkan is still the hard failure it was"
+_VK="$(_vk_gate 'OSError: libvulkan.so.1: cannot open shared object file: No such file or directory')"
+t_assert_contains "${_VK}" "FAIL libvulkan.so.1 missing/unloadable" "the pre-existing arm must survive the sharpening"
+
 t_case "every gate this suite pins is actually CALLED by the smoke"
 # A gate can be perfect and never run. Each of these is extracted and driven
 # above, which proves the function and says nothing about the call list.
 _SMOKE_SRC="$(cat "${SMOKE}")"
-for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions; do
+for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions check_vulkan_loader; do
   t_assert_eq 1 "$(printf '%s\n' "${_SMOKE_SRC}" | grep -c "^    ${_g} \"\${image_tag}\"")" \
     "${_g} must be invoked once from the smoke's own call list"
 done
@@ -833,5 +868,50 @@ t_case "every per-arch exemption names a row that still exists"
 _CC_EX="$(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) return 0 ;;/\1/p' | tr '|' '\n' | sed 's/^[a-z0-9]*://')"
 _t_all_present " ${_CONSUMER_CONTRACT_ROWS} " "${_CC_EX}" "-" \
   "every per-arch exemption must name a row the gate still asserts"
+
+# ── the Vulkan SDK toolset gate ─────────────────────────────────────────────
+# VK_OUT is the inventory the probe prints for ${VULKAN_SDK}. The two lists come
+# from the source, so the suite cannot drift from what the gate requires.
+_VK_TOOL_VARS="$(grep -E '^_VK_(REQUIRED|REPORTED)_TOOLS=' "${SMOKE}")"
+eval "${_VK_TOOL_VARS}"
+_vk_inventory() { for _t in $1; do printf 'TOOL %s\n' "${_t}"; done; }
+_vk_toolset() {
+  VK_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    '"${_VK_TOOL_VARS}"'
+    _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(_extract check_vulkan_toolset)"'
+    check_vulkan_toolset img arm64' 2>&1
+}
+
+t_case "the shipped shape -- full libraries, two binaries -- fails"
+t_assert_contains "$(_vk_toolset "TOOL glslangValidator")" \
+  "missing required tools: spirv-opt" \
+  "a prefix you can link against but cannot compile a shader with is the defect"
+
+t_case "one absent required tool fails and names it"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS/spirv-val/}")")" \
+  "spirv-val" "the gate must name what is missing, not just that something is"
+
+t_case "the complete required set passes"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "SDK tools present" "what a correctly cross-built prefix prints"
+
+t_case "an absent REPORTED tool warns and does not fail"
+t_assert_eq "0" \
+  "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")" | grep -c '^FAIL')" \
+  "spirv-cross and friends are new cross-builds; losing one is not a lane failure"
+
+t_case "an absent reported tool is still visible as a WARN"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "WARN spirv-cross absent" "non-fatal must not mean invisible"
+
+t_case "a missing validation layer manifest warns"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "no validation layer manifest" "you cannot develop a Vulkan app without the layers"
+
+t_case "the layer manifest is reported when the prefix carries it"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+LAYER yes")" "validation layer manifest present" "the good shape is stated too"
 
 t_summary

@@ -2,7 +2,7 @@
 # Tests for 01-core/cpython-dev-packages.sh — the one table tying CPython's
 # extension modules to the apt -dev packages they link against, and the two
 # consumers that must both read it (the target install, the lib-dynload audit).
-# docs/failure-modes.md
+# docs/failure-modes.md#a-from-source-cpython-silently-drops-an-extension-module
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

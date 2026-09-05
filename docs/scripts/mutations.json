@@ -2216,12 +2216,20 @@
     "why": "the manifest carries the COPY SOURCE path, which does not exist in the image; the suite reads ALLOWED_RELOCATIONS so the two owners of that fact cannot drift"
   },
   {
-    "id": "probe.tree-arch-vulkan-active",
-    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;",
-    "replace": "    /opt/vulkan)      printf '%s' /opt/vulkan ;;",
-    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
-    "why": "/opt/vulkan ships the SDK's x86_64 HOST tools beside the cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert"
+    "id": "vulkan-prune.host-prefix-is-never-the-own-arch",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 1",
+    "replace": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 0",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "on amd64 x86_64 IS the prefix the image runs, and it is the DOWNLOADED SDK -- pruning it there deletes the only Vulkan tooling that arch has"
+  },
+  {
+    "id": "vulkan-prune.own-arch-loader-must-exist",
+    "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
+    "find": "  [ -e \"${version_dir}/${arch_dir}/lib/libvulkan.so.1\" ] || return 1",
+    "replace": "  [ -e \"${version_dir}/${arch_dir}/lib/libvulkan.so.1\" ] || return 0",
+    "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
+    "why": "the builder prefix may only go once the cross build has produced a real own-arch loader to replace it; dropping it when the target prefix is empty leaves the image with no Vulkan at all"
   },
   {
     "id": "shellcheck-warnings.allow-row-shape",
@@ -3770,8 +3778,8 @@
   {
     "id": "doc-numbers.census-keys-in-order",
     "target": "linux/scripts/tests/test-doc-numbers.sh",
-    "find": "CENSUS_KEYS = (\"considered\", \"isolated\", \"masked\")",
-    "replace": "CENSUS_KEYS = (\"considered\", \"masked\", \"isolated\")",
+    "find": "CENSUS_KEYS = (\"considered\", \"isolated\", \"masked\", \"unlinked\")",
+    "replace": "CENSUS_KEYS = (\"considered\", \"masked\", \"isolated\", \"unlinked\")",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
     "why": "each quoted number binds to its own tier; swapping the isolated and masked counts must not read as correct"
   },
@@ -3857,7 +3865,7 @@
   },
   {
     "id": "trailing-return.agentic-retry-sleep-skipped",
-    "target": "linux/scripts/lib/agentic-loop.sh",
+    "target": "linux/scripts/lib/agentic-engines.sh",
     "find": "        if [[ \"${DRY_RUN:-false}\" != \"true\" ]]; then sleep \"$sleep_s\"; fi",
     "replace": "        [[ \"${DRY_RUN:-false}\" != \"true\" ]] && sleep \"$sleep_s\"",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
@@ -4121,7 +4129,7 @@
   },
   {
     "id": "lib.agentic-engine-env-override",
-    "target": "linux/scripts/lib/agentic-loop.sh",
+    "target": "linux/scripts/lib/agentic-engines.sh",
     "find": "        (if $eo != \"\" then $eo else (.engine // \"opencode\" | v) end) as $e |",
     "replace": "        ((.engine // \"opencode\" | v)) as $e |",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",
@@ -4129,7 +4137,7 @@
   },
   {
     "id": "lib.agentic-missing-model-fatal",
-    "target": "linux/scripts/lib/agentic-loop.sh",
+    "target": "linux/scripts/lib/agentic-engines.sh",
     "find": "    if [[ -z \"$PLANNER_MODEL\" || -z \"$EXECUTOR_MODEL\" ]]; then",
     "replace": "    if false; then",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",
@@ -4137,7 +4145,7 @@
   },
   {
     "id": "lib.agentic-retry-exhaustion",
-    "target": "linux/scripts/lib/agentic-loop.sh",
+    "target": "linux/scripts/lib/agentic-engines.sh",
     "find": "        if (( attempt > retries )); then",
     "replace": "        if (( attempt > 0 )); then",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",
@@ -4145,7 +4153,7 @@
   },
   {
     "id": "lib.agentic-unknown-engine-fatal",
-    "target": "linux/scripts/lib/agentic-loop.sh",
+    "target": "linux/scripts/lib/agentic-engines.sh",
     "find": "            *)\n                log \"Unknown engine: '${AGENTIC_ENGINE}' (expected opencode|claude)\" \"FATAL\"\n                return 1 ;;",
     "replace": "            *)\n                invoke_opencode \"$role\" \"$model\" \"$message\" || rc=$? ;;",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for extract_embedded_python.py — the bridge that lets ruff see Python
 # living in shell heredocs (775 lines were invisible before 2026-09-01).
-# The two behaviours below were each proven by mutation. docs/code-quality-tooling.md
+# The two behaviours below were each proven by mutation.
+# docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

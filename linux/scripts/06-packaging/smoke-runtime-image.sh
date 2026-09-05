@@ -6,7 +6,7 @@ set -euo pipefail
 # run the ML stack, ffmpeg and GStreamer INSIDE the image (qemu for cross arches).
 # RUNTIME_FUNCTIONAL_SMOKE=0 skips the functional half; ALLOW_TORCHLESS_RUNTIME=1
 # accepts a torch-less image. What each gate covers:
-# docs/cross-build-verification.md, "In-image smoke tests".
+# docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -908,15 +908,13 @@ _rt_tree_arch_exempt() {
 }
 
 # Where the gate probes a manifest tree in the image: the manifest carries the COPY
-# SOURCE path, one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
-# owns the other half), and /opt/vulkan ships a whole builder-arch SDK beside the
-# cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert.
-# What that narrowing does NOT look at was measured, and it is not small:
-# docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
+# SOURCE path and one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
+# owns the other half). /opt/vulkan used to be narrowed to active/ around a builder-arch
+# SDK that no longer ships; the WHOLE tree is asserted now.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 _rt_tree_probe_path() {
   case "$1" in
     /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
-    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;
     *)                printf '%s' "$1" ;;
   esac
 }
@@ -1922,10 +1920,19 @@ check_webrtc_signalling() {
     echo ""
 }
 
+# The path /proc/self/maps names for the loaded loader, out of the probe's output.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+_vk_loaded_path() {
+  printf '%s' "${1}" | sed -n 's/^VKLIB //p' | head -1
+}
+
 # Vulkan loader load test -- the .so-closure gate proves libvulkan resolves, not that
 # the loader dlopen()s at runtime. A missing ICD/GPU does NOT stop ctypes.CDLL and the
 # runtime image ALWAYS installs the Vulkan runtime files, so a load failure means the
-# lib is missing/broken and FAILS; only a container-infra error stays WARN.
+# lib is missing/broken and FAILS; only a container-infra error stays WARN. WHICH
+# libvulkan answered is asserted too: Ubuntu's multiarch loader is in every image, so a
+# linker fallback to it would pass a load-only check with /opt/vulkan unused or unshipped.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 check_vulkan_loader() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1936,18 +1943,74 @@ check_vulkan_loader() {
          /opt/venv/bin/python -c 'import ctypes
 l = ctypes.CDLL("libvulkan.so.1")
 try:
+    print("VKLIB %s" % [m.rsplit(" ", 1)[-1].strip()
+                        for m in open("/proc/self/maps") if "libvulkan" in m][0])
+except (OSError, IndexError):
+    pass
+try:
     v = ctypes.c_uint32()
     assert l.vkEnumerateInstanceVersion(ctypes.byref(v)) == 0
     print("VKOK %d.%d.%d" % (v.value >> 22, (v.value >> 12) & 1023, v.value & 4095))
 except AttributeError:
     print("VKOK (pre-1.1 loader)")' 2>&1)" || true
+    _vk_lib="$(_vk_loaded_path "${_vk_out}")"
     if printf '%s' "${_vk_out}" | grep -q "VKOK"; then
-      echo "  OK  libvulkan.so.1 loads (${target_arch})"
+      case "${_vk_lib}" in
+        /opt/vulkan/*) echo "  OK  libvulkan.so.1 loads from ${_vk_lib} (${target_arch})" ;;
+        '')            echo "  WARN libvulkan.so.1 loads but /proc/self/maps named no path -- non-fatal" ;;
+        *)             fail "libvulkan.so.1 loaded from ${_vk_lib} in the ${target_arch} image, not from /opt/vulkan -- the shipped SDK prefix is not what the loader resolves to (pruned too far, or LD_LIBRARY_PATH lost it)" ;;
+      esac
     elif printf '%s' "${_vk_out}" | grep -qiE "OSError|No such file|cannot open shared object|not found"; then
       fail "libvulkan.so.1 missing/unloadable in ${target_arch} image (runtime always ships it): $(printf '%s' "${_vk_out}" | tail -1)"
     else
       echo "  WARN vulkan load check inconclusive (container-infra error?) -- non-fatal: $(printf '%s' "${_vk_out}" | tail -1)"
     fi
+    echo ""
+}
+
+# A cross-built SDK prefix that carries libraries but no tools links fine and is
+# useless to build an application with -- that shipped for months unnoticed because
+# every Vulkan check here asked about the loader. REQUIRED is the set proven to
+# cross-build; the rest is reported so a silent loss is still visible.
+# docs/vulkan-foreign-arch-sdk.md
+_VK_REQUIRED_TOOLS="glslangValidator spirv-opt spirv-val spirv-dis spirv-as spirv-link"
+_VK_REPORTED_TOOLS="glslc vulkaninfo spirv-cross spirv-reflect spirv-lint spirv-reduce"
+
+check_vulkan_toolset() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out missing found layer
+
+    echo "--- Functional: Vulkan SDK toolset ---"
+    out="$(_rt_run /bin/sh -c '
+      for t in '"${_VK_REQUIRED_TOOLS} ${_VK_REPORTED_TOOLS}"'; do
+        [ -x "${VULKAN_SDK}/bin/${t}" ] && echo "TOOL ${t}"
+      done
+      ls "${VULKAN_SDK}"/share/vulkan/explicit_layer.d/*validation*.json >/dev/null 2>&1 \
+        && echo LAYER yes' 2>&1)" || true
+
+    missing=""
+    for t in ${_VK_REQUIRED_TOOLS}; do
+      printf '%s' "${out}" | grep -qx "TOOL ${t}" || missing="${missing} ${t}"
+    done
+    found="$(printf '%s' "${out}" | grep -c '^TOOL ' || true)"
+
+    if [ -n "${missing}" ]; then
+      fail "the ${target_arch} Vulkan SDK prefix is missing required tools:${missing} -- \
+the prefix carries libraries the linker is happy with but nothing you can build a shader with \
+(see docs/vulkan-foreign-arch-sdk.md)"
+    else
+      echo "  OK  ${found} SDK tools present in \${VULKAN_SDK}/bin (${target_arch})"
+    fi
+
+    for t in ${_VK_REPORTED_TOOLS}; do
+      printf '%s' "${out}" | grep -qx "TOOL ${t}" \
+        || echo "  WARN ${t} absent from the ${target_arch} SDK prefix -- non-fatal"
+    done
+    layer="$(printf '%s' "${out}" | grep -c '^LAYER yes' || true)"
+    [ "${layer}" -gt 0 ] \
+      && echo "  OK  validation layer manifest present (${target_arch})" \
+      || echo "  WARN no validation layer manifest in the ${target_arch} SDK -- non-fatal"
     echo ""
 }
 
@@ -2114,6 +2177,7 @@ main() {
     check_healthcheck_exec "${image_tag}" "${target_arch}"
     check_webrtc_signalling "${image_tag}" "${target_arch}"
     check_vulkan_loader "${image_tag}" "${target_arch}"
+    check_vulkan_toolset "${image_tag}" "${target_arch}"
     check_native_compiler_battery "${image_tag}" "${target_arch}"
     check_clang_llvm_release "${image_tag}" "${target_arch}"
   else

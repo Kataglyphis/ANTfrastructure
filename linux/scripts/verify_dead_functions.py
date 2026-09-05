@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fail on NEW dead shell functions: defined under linux/scripts or linux/host-config
 and named nowhere else once comments, definition heads and a definition's mentions of
-itself are removed. Dispatch the scanner cannot see is frozen two-way in
-dead-functions.allow; --census is the advisory per-file listing masking defeats here.
+itself are removed, plus the unlinked-definer arm that reaches inside same-name masking.
+Dispatch the scanner cannot see is frozen two-way in dead-functions.allow.
 docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 """
 import os
@@ -91,6 +91,48 @@ def dead(seen):
     return defined, [(rel, name) for rel, name in defined if not seen[name]]
 
 
+def _definers():
+    """Function name -> the set of files defining it."""
+    out = {}
+    for rel, name in definitions():
+        out.setdefault(name, set()).add(rel)
+    return out
+
+
+def _names_of(corpus_texts):
+    return {rel: set(WORD.findall(_code(text))) for rel, text in corpus_texts.items()}
+
+
+def unlinked(corpus_texts):
+    """Same-name masking, reached where the corpus makes it provable: a definition its
+    own file never names again, whose every other mention sits in a file that DEFINES
+    the name too, and where no corpus file names two of those files' basenames -- so no
+    mention can be about this copy. Findings, not a census; see the doc anchor."""
+    definers = _definers()
+    names = _names_of(corpus_texts)
+    readers = {}
+
+    def reads(rel):
+        if rel not in readers:
+            base = os.path.basename(rel)
+            readers[rel] = {rel} | {o for o, text in corpus_texts.items() if base in text}
+        return readers[rel]
+
+    rows = []
+    for rel, name in definitions():
+        peers = definers[name] - {rel}
+        text = corpus_texts.get(rel)
+        if not peers or text is None or re.search(r"\b%s\b" % name, _code(text)):
+            continue
+        if any(o != rel and name in words and o not in definers[name]
+               for o, words in names.items()):
+            continue
+        if any(reads(rel) & reads(peer) for peer in peers):
+            continue
+        rows.append((rel, name))
+    return rows
+
+
 def _isolated(rel, corpus_texts):
     if SOURCED.search(corpus_texts.get(rel, "")):
         return False
@@ -99,9 +141,10 @@ def _isolated(rel, corpus_texts):
 
 
 def census(corpus_texts):
-    """(rows, shared, considered) -- definitions their own file never names again;
-    rows keeps the ones in a file that sources nothing and that nothing else names,
-    shared keeps the ones whose name a second file also defines."""
+    """(rows, shared, considered, unlinked_count) -- definitions their own file never
+    names again; rows keeps the ones in a file that sources nothing and that nothing
+    else names, shared the ones whose name a second file also defines, and the count
+    the gate's unlinked-definer arm carves out of shared."""
     considered = []
     for rel, name in definitions():
         text = corpus_texts.get(rel)
@@ -111,14 +154,16 @@ def census(corpus_texts):
     definers = Counter(name for _, name in definitions())
     return ([key for key in considered if _isolated(key[0], corpus_texts)],
             [key for key in considered if definers[key[1]] > 1],
-            len(considered))
+            len(considered), len(unlinked(corpus_texts)))
 
 
-def report_census(rows, shared, considered):
+def report_census(rows, shared, considered, unlinked_count):
     print("=== dead function census (advisory, not a gate) ===")
     print("  %d definition(s) their own file never names again; %d of those in a file "
           "that sources nothing and that nothing else names; %d share their name with "
-          "another file's definition" % (considered, len(rows), len(shared)))
+          "another file's definition, %d of them unlinked from every other definer "
+          "and failed by the gate"
+          % (considered, len(rows), len(shared), unlinked_count))
     for rel, name in rows:
         print("  %s\t%s" % (rel, name))
     if not rows:
@@ -137,14 +182,21 @@ def main(argv):
     if "--census" in argv:
         return report_census(*census(corpus_texts))
     defined, found = dead(mentions(corpus_texts))
+    scoped = {"%s\t%s" % k for k in unlinked(corpus_texts)}
     allow = load_keys(ALLOW)
     print("=== dead function gate ===")
-    print("  %d shell functions; %d named nowhere else; %d frozen in %s"
-          % (len(defined), len(found), len(allow), os.path.basename(ALLOW)))
-    rc = check_keys({"%s\t%s" % k for k in found}, allow,
+    print("  %d shell functions; %d named nowhere else, %d more unlinked from every "
+          "other definer of their name; %d frozen in %s"
+          % (len(defined), len(found), len(scoped - {"%s\t%s" % k for k in found}),
+             len(allow), os.path.basename(ALLOW)))
+    rc = check_keys({"%s\t%s" % k for k in found} | scoped, allow,
                     "NEW dead function(s) -- nothing outside a comment names them. Delete the\n"
                     "function, or freeze it in dead-functions.allow naming the dispatch site:",
-                    "STALE entr(ies) -- the function is called again or gone, delete the line:")
+                    "STALE entr(ies) -- the function is called again or gone, delete the line.\n"
+                    "An unlinked-definer row also goes STALE when a corpus file starts naming\n"
+                    "both definers' basenames; that disarms the arm, it does not revive the code:",
+                    describe=lambda k: k.replace("\t", "  ")
+                    + ("  [unlinked definer]" if k in scoped else ""))
     if rc == 0:
         print("OK: no new dead functions")
     return rc

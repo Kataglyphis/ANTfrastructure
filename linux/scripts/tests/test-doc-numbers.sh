@@ -30,11 +30,13 @@ FAST = re.compile(r"the (\d+) (?:fast|cheap whole-tree) slugs")
 SPAN = re.compile(r"`_FAST_SLUGS` \(`:(\d+)-(\d+)`\)")
 CENSUS_GATE = "linux/scripts/verify_dead_functions.py"
 CENSUS_LINE = re.compile(r"(\d+) definition\(s\) their own file never names again; "
-                         r"(\d+) of those .*?; (\d+) share their name")
-CENSUS_KEYS = ("considered", "isolated", "masked")
+                         r"(\d+) of those .*?; (\d+) share their name.*?, (\d+) of them "
+                         r"unlinked")
+CENSUS_KEYS = ("considered", "isolated", "masked", "unlinked")
 CENSUS = (("considered", re.compile(r"(\d+) definitions qualify")),
           ("isolated", re.compile(r"\*\*(\d+)\*\* rows remain")),
           ("masked", re.compile(r"reports \*\*(\d+)\*\* rows today")),
+          ("unlinked", re.compile(r"the arm reaches \*\*(\d+)\*\* of them today")),
           ("isolated", re.compile(r"the reachability\s+tier reports (\d+)")))
 
 
@@ -176,9 +178,9 @@ def main():
         lines = []
         for check in CHECKS:
             check(root, t, lines)
-    print("derived: total=%d distinct=%d fast=%d span=%d-%d census=%d/%d/%d"
+    print("derived: total=%d distinct=%d fast=%d span=%d-%d census=%s"
           % (t["total"], t["distinct"], t["fast"], t["span"][0], t["span"][1],
-             t["census"]["considered"], t["census"]["isolated"], t["census"]["masked"]))
+             "/".join(str(t["census"][k]) for k in CENSUS_KEYS)))
     print("\n".join(lines))
 
 

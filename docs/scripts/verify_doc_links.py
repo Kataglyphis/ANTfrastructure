@@ -31,7 +31,8 @@ So this checks the four ways a docs tree rots, all of them silent:
                ``docs/*.md#anchor``; a bare page name there survives a rename
                of the section it meant, so nothing tells the next reader the
                pointer now lands on a page that no longer explains this file.
-               Frozen, two-way, in ``doc-header-pointers.allow``.
+               Frozen, two-way, in ``doc-header-pointers.allow`` -- except for a
+               page in ``UNFREEZABLE_PAGES``, which no header may name at all.
 
 No network, no build -- safe for hooks and CI. The one project import is
 quality_allow, the repo's single owner of the two-way allow contract; a fixture
@@ -70,6 +71,10 @@ CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
 HEADER_LINES = 10
 HEADER_SUFFIXES = (".sh", ".py")
 HEADER_ALLOW = Path(__file__).with_name("doc-header-pointers.allow")
+# Pages a header pointer may never name, frozen or not: an OPEN backlog entry is
+# archived the day it closes, so the pointer is built to rot and freezing it only
+# hides that. Re-point at the durable page instead.
+UNFREEZABLE_PAGES = ("refactoring-backlog.md",)
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
 CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__"}
 
@@ -351,12 +356,19 @@ def check_header_pointers(findings: list[str]) -> int:
     one that gained an anchor (or left) is STALE and its row goes."""
     found = header_pointers()
     frozen = load_keys(str(HEADER_ALLOW))
-    for key in sorted(k for k in found if k not in frozen):
+    for key in sorted(found):
         rel, page = key.split("\t")
-        findings.append(
-            f"[header]  {found[key]} -> {page}  (bare pointer in a file header; "
-            f"name the section it means, or freeze it in {HEADER_ALLOW.name})"
-        )
+        if Path(page).name in UNFREEZABLE_PAGES:
+            findings.append(
+                f"[header]  {found[key]} -> {page}  (a file header must not point at an "
+                f"OPEN backlog page -- the entry is archived when it closes; re-point at "
+                f"the durable page that explains the behaviour)"
+            )
+        elif key not in frozen:
+            findings.append(
+                f"[header]  {found[key]} -> {page}  (bare pointer in a file header; "
+                f"name the section it means, or freeze it in {HEADER_ALLOW.name})"
+            )
     for key in sorted(frozen - set(found)):
         findings.append(
             f"[header]  {key.replace(chr(9), '  ')}  "

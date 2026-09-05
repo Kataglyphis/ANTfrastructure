@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Parity suite for the three intentionally-bundled cross_build_is_active
-# fallback clones (01-core/common.sh, 03-media/core/common.sh,
-# gstreamer/common/build-gstreamer-monorepo.sh). Bundling is policy; DRIFT is
-# the bug — this file has drifted twice (arch normalization missed 4 of 5
-# copies; the cross_build_enabled delegation missed the monorepo copy).
+# Parity suite for the intentionally-bundled cross_build_is_active fallback
+# clones (01-core/common.sh, gstreamer/common/build-gstreamer-monorepo.sh).
+# Bundling is policy; DRIFT is the bug — this file has drifted twice (arch
+# normalization missed 4 of 5 copies; the cross_build_enabled delegation missed
+# the monorepo copy). The 03-media/core/common.sh copy is GONE: it sat behind an
+# assertion in the same function that already refuses to continue without the
+# function, so it could never execute. That coupling is asserted below.
 # Assert BEHAVIOR parity of the fallback in three scenarios instead of
 # diffing text (comments/locals may differ).
 set -u
@@ -29,8 +31,28 @@ _probe() {
 t_case "01-core/common.sh: source-time delegation to cross_build_enabled present"
 t_assert_ok grep -q 'cross_build_is_active() { cross_build_enabled; }' "${TESTS_DIR}/../01-core/common.sh"
 
+# ── why 03-media/core/common.sh carries no copy any more ────────────────────
+# media_common_init sources its critical modules, then asserts with `declare -F`
+# that log, cross_build_is_active and mem_capped_jobs exist and RETURNS 1 when one
+# does not. A `command -v cross_build_is_active` guard sixteen lines further down
+# could therefore never be true. Deleting a fallback because an assertion above it
+# makes it unreachable couples two independent things — so the coupling is pinned
+# here: put the fallback back if this assertion ever stops naming the function.
+MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
+_MEDIA_INIT_SRC="$(t_fn_src "${MEDIA_COMMON}" media_common_init)" || exit 1
+
+t_case "media_common_init still REFUSES to continue without cross_build_is_active"
+t_assert_contains "${_MEDIA_INIT_SRC}" 'for _fn in log cross_build_is_active mem_capped_jobs; do' \
+  "this is the only reason the 03-media fallback could be deleted"
+t_assert_contains "${_MEDIA_INIT_SRC}" "critical module(s) did not load" "and it must still be a hard return 1"
+t_assert_contains "${_MEDIA_INIT_SRC}" 'if [ -n "${_missing}" ]; then' \
+  "a warning instead of a branch would let the caller reach a function that is not there"
+
+t_case "and it carries no unreachable clone of the fallback"
+t_assert_eq "" "$(printf '%s\n' "${_MEDIA_INIT_SRC}" | grep -e 'cross_build_is_active() {')" \
+  "16 lines that could not execute, and one more copy to keep in parity"
+
 FILES=(
-  "${TESTS_DIR}/../03-media/core/common.sh"
   "${TESTS_DIR}/../03-media/build/gstreamer/common/build-gstreamer-monorepo.sh"
 )
 
