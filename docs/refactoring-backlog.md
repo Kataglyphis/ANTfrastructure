@@ -517,6 +517,26 @@ while a chain is running is the mid-run drift this file keeps warning about.
 Closing VK2 raises the floor again, so land VK2 first and record the new numbers
 once. docs/vulkan-foreign-arch-sdk.md
 
+### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
+
+Measured in the runtime stage of the 2026-09-05 rebuild: six of the seven refs
+install, the seventh does not.
+
+```
+[INFO] Installing org.freedesktop.Platform.openh264//2.5.1
+[WARN] org.freedesktop.Platform.openh264//2.5.1 did not install
+[INFO] Flatpak runtime installation complete (6/7 refs)
+```
+
+`2.5.1` is the version the consumer's report printed, but that is what flatpak
+DISPLAYS, not necessarily the branch it resolves. Ask flathub what exists —
+`flatpak remote-ls flathub --arch=<arch> | grep openh264` — and pin
+`FLATPAK_OPENH264_VERSION` to the branch it names. It is 0.9 MB of the 1.9 GB, so
+the value is closing the gap rather than the bytes.
+
+The per-ref non-fatal handling did exactly its job: one bad ref cost one ref, not
+the other six and not the build. Do not change that.
+
 ### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
 
 The 2026-09-05 report's remaining items, all landed except two.
