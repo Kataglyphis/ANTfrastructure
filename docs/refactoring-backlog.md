@@ -537,6 +537,58 @@ the value is closing the gap rather than the bytes.
 The per-ref non-fatal handling did exactly its job: one bad ref cost one ref, not
 the other six and not the build. Do not change that.
 
+### DISK3. The chain's disk guard cannot see where the disk actually went [M, ★★★]
+
+Observed live during the 2026-09-05 rebuild, in the chain's own words:
+
+```
+[INFO] [disk-trim]     removed 0 slug(s), freed 0.0 GiB; 28G free now
+[INFO] [disk-buildkit] already pruned once here -- the store is at keep-storage
+[WARN] [disk-reclaim]  in-stage: NOTHING was reclaimable (28G -> 28G free)
+                       -- the chain cannot free
+```
+
+It was right that it could not, and wrong that nothing was reclaimable. At that
+moment `~/.local/share/containerd` held **295 GB**, including three
+`cross-android-*` stage images from a PREVIOUS run at 41.5 / 41.8 / 38.0 GB. The
+run had no use for them: every stage builds FROM a digest it pins and pulls, and
+on rootless nerdctl a stage build does not even create a local tag (the RTCACHE3
+finding). Deleting those three took 51G free to 120G in about a minute.
+
+`disk-guard.sh` contains no `nerdctl rmi`, no `image prune`, and no image listing
+at all. It knows its own log slugs and BuildKit, and BuildKit was already at
+`keep-storage` — so its two levers were spent while its third, larger one was
+invisible to it. The 2026-09-05 run needed FOUR manual rescues; the 2026-08-27
+ENOSPC in [[rebuild-disk-management]] is the same gap, hit harder.
+
+What to add, in this order because it is also the risk order:
+
+1. **Dangling images.** `nerdctl image prune` (no `-a`). Zero risk, and it
+   returned 20 GB on its own in this run.
+   **Size is not the metric — unique layers are.** Deleting the three
+   `cross-sdk-*` images (80 GB by `nerdctl images`) freed *zero* bytes, because
+   every layer they hold is also held by the `cross-android-*` images built on top
+   of them. The previous release's `latest-cross*` freed 113 GB from a similar
+   nominal size, because its layers are nobody else's. A guard that picks the
+   biggest tags will do nothing; it has to pick tags whose layers nothing else
+   references.
+2. **Stage images this run did not produce.** `cross-<stage>-<arch>` whose digest
+   is not among the parents this run pinned. They are all on ghcr and every one is
+   re-pullable; the chain already records the digests it pinned, so the comparison
+   is available rather than guessed.
+3. **NEVER the current run's parents**, and never `nerdctl system prune` — see
+   [[rebuild-disk-management]] for why the cachemounts must survive.
+
+There is a second, milder instance of the same blindness: the runtime lane's own
+pre-flight (`runtime lane refused: 74G free, ~120G needed`) correctly refuses to
+start rather than dying on ENOSPC mid-build — good — but the reclaim it runs first
+reports `NOTHING was reclaimable` for the same reason. The refusal is right; the
+reclaim under it is looking in one store while the space is in another.
+
+The guard should also stop reporting `NOTHING was reclaimable` when it has not
+looked at the largest store. A guard that gives up loudly reads like an
+environment limit; this one was a coverage gap.
+
 ### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
 
 The 2026-09-05 report's remaining items, all landed except two.

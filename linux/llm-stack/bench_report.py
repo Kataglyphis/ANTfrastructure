@@ -84,15 +84,18 @@ def build_manifest(directory, title, model, generated):
         entry = {
             "label": os.path.basename(path)[:-5],
             "file": os.path.basename(path),
-            "kind": doc.get("benchmark", "throughput"),
+            "kind": report_kind(doc),
             "config": doc.get("config", {}),
             "correctness": doc.get("correctness"),
             "results": doc.get("results", []),
         }
+        if entry["kind"] == "unknown":
+            print(f"  WARNING: {path} has neither 'benchmark' nor 'results' — "
+                  f"not a report this suite wrote", file=sys.stderr)
         if "reports" in doc:
-            # Scored benchmarks: keep the per-model scores AND flatten their
-            # per-case rows, so a viewer can show either without re-deriving.
-            entry["scored"] = [{
+            # Scored benchmarks keep their scores AND flattened per-case rows.
+            # A row with no integer passed/total is not a score ("/ = 0%").
+            scored = [{
                 "label": r.get("label"), "model": r.get("model"),
                 "passed": r.get("passed"), "total": r.get("total"),
                 "effective_n": r.get("effective_n"),
@@ -101,11 +104,34 @@ def build_manifest(directory, title, model, generated):
                 "total_wall_s": r.get("total_wall_s"),
                 "median_wall_s": r.get("median_wall_s"),
                 "results": r.get("results", []),
-            } for r in doc["reports"]]
+            } for r in doc["reports"] if is_scored(r)]
+            unscored = [{k: v for k, v in r.items() if k != "results"}
+                        for r in doc["reports"] if not is_scored(r)]
+            if scored:
+                entry["scored"] = scored
+            if unscored:
+                entry["unscored"] = unscored
             entry["results"] = [row for r in doc["reports"]
                                 for row in r.get("results", [])]
         manifest["configs"].append(entry)
     return manifest
+
+
+def _count(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def is_scored(row):
+    """A report row is a score only when passed AND total are integer counts."""
+    return _count(row.get("passed")) and _count(row.get("total"))
+
+
+def report_kind(doc):
+    """'benchmark' from the shared envelope; 'throughput' for the legacy shape;
+    'unknown' for a JSON that is neither, so the viewer never fabricates a row."""
+    if doc.get("benchmark"):
+        return doc["benchmark"]
+    return "throughput" if "results" in doc else "unknown"
 
 
 def comparison_rows(directory):

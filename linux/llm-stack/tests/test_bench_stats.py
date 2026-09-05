@@ -114,3 +114,136 @@ class TestStatisticalPower:
     def test_zero_trials_is_not_a_crash(self):
         from bench_stats import smallest_separable_rate
         assert smallest_separable_rate(0) is None
+
+
+class TestPairedSignTest:
+    """Both models answer the SAME cases. Only the cases that disagree carry
+    information, and that is a far sharper instrument than two overlapping
+    intervals — the roadmap's '119 cases needed' came from the blunt one."""
+
+    def test_six_one_way_flips_are_significant(self):
+        from bench_stats import paired_sign_test
+        assert abs(paired_sign_test(6, 0) - 0.03125) < 1e-9
+
+    def test_three_one_way_flips_are_not(self):
+        from bench_stats import paired_sign_test
+        assert abs(paired_sign_test(3, 0) - 0.25) < 1e-9
+
+    def test_no_discordant_cases_is_no_evidence(self):
+        from bench_stats import paired_sign_test
+        assert paired_sign_test(0, 0) == 1.0
+
+    def test_two_sided_and_symmetric(self):
+        from bench_stats import paired_sign_test
+        assert paired_sign_test(8, 1) == paired_sign_test(1, 8)
+        assert paired_sign_test(8, 1) < 0.05 < paired_sign_test(7, 1)
+
+    def test_never_exceeds_one(self):
+        from bench_stats import paired_sign_test
+        assert paired_sign_test(4, 4) == 1.0
+
+    def test_rejects_negative_counts(self):
+        from bench_stats import paired_sign_test
+        with pytest.raises(ValueError):
+            paired_sign_test(-1, 2)
+
+    def test_the_case_the_overlap_rule_got_wrong(self):
+        # 24/27 vs 18/27 with 6-0 discordant cases: the intervals overlap, so
+        # the old rule said "not separable". The paired test says p=0.031.
+        from bench_stats import paired_sign_test
+        assert intervals_overlap(24, 27, 18, 27)
+        assert paired_sign_test(6, 0) < 0.05
+
+
+class TestDiffInterval:
+    def test_contains_the_point_difference(self):
+        from bench_stats import diff_interval
+        for a, b in ((8, 12), (12, 12), (0, 12), (5, 12)):
+            lo, hi = diff_interval(a, 12, b, 12)
+            assert lo <= (b - a) / 12 <= hi, (a, b)
+
+    def test_swapping_sides_mirrors_the_interval(self):
+        from bench_stats import diff_interval
+        lo, hi = diff_interval(8, 12, 12, 12)
+        lo2, hi2 = diff_interval(12, 12, 8, 12)
+        assert abs(lo + hi2) < 1e-12 and abs(hi + lo2) < 1e-12
+
+    def test_is_sharper_than_interval_overlap(self):
+        # 8/12 vs 12/12: the two Wilson intervals overlap, yet the interval on
+        # the DIFFERENCE excludes zero. Overlap is the more conservative rule.
+        from bench_stats import diff_interval
+        assert intervals_overlap(8, 12, 12, 12)
+        lo, _ = diff_interval(8, 12, 12, 12)
+        assert lo > 0
+
+    def test_no_trials_yields_the_full_range(self):
+        from bench_stats import diff_interval
+        assert diff_interval(0, 0, 3, 3) == (-1.0, 1.0)
+
+    def test_identical_scores_straddle_zero(self):
+        from bench_stats import diff_interval
+        lo, hi = diff_interval(9, 12, 9, 12)
+        assert lo < 0 < hi and abs(lo + hi) < 1e-12
+
+
+class TestPairedOutcomes:
+    def test_counts_bools(self):
+        from bench_stats import paired_outcomes
+        a = {"x": True, "y": False, "z": True, "w": False}
+        b = {"x": False, "y": True, "z": True, "w": False}
+        assert paired_outcomes(a, b) == (1, 1, 2)
+
+    def test_counts_repeat_pairs_by_rate(self):
+        from bench_stats import paired_outcomes
+        a = {"x": (3, 3), "y": (1, 3)}
+        b = {"x": (2, 3), "y": (1, 3)}
+        assert paired_outcomes(a, b) == (1, 0, 1)
+
+    def test_only_shared_cases_count_and_unmeasured_ones_are_skipped(self):
+        from bench_stats import paired_outcomes
+        a = {"x": (1, 1), "only_a": (1, 1), "dead": (0, 0)}
+        b = {"x": (1, 1), "only_b": (0, 1), "dead": (1, 1)}
+        assert paired_outcomes(a, b) == (0, 0, 1)
+
+
+class TestTiers:
+    """A ranking that orders strictly by point estimate prints an ordering the
+    data may not support. Adjacent rows the paired test cannot separate belong
+    in one tier."""
+
+    @staticmethod
+    def _row(name, fails):
+        return {"label": name, "cases": {f"c{i}": i >= fails for i in range(27)}}
+
+    def test_six_flips_start_a_new_tier(self):
+        from bench_stats import tiers
+        rows = [self._row("a", 0), self._row("b", 6)]
+        assert [[r["label"] for r in t] for t in tiers(rows, key=lambda r: r["cases"])] \
+            == [["a"], ["b"]]
+
+    def test_three_flips_share_a_tier(self):
+        from bench_stats import tiers
+        rows = [self._row("a", 0), self._row("b", 3)]
+        assert [[r["label"] for r in t] for t in tiers(rows, key=lambda r: r["cases"])] \
+            == [["a", "b"]]
+
+    def test_tiers_chain_through_adjacent_rows(self):
+        # a~b and b~c are each within noise; a and c may not be, but the rows
+        # are ADJACENT-compared, so all three share a tier. Documented choice.
+        from bench_stats import tiers
+        rows = [self._row("a", 0), self._row("b", 4), self._row("c", 8)]
+        assert len(tiers(rows, key=lambda r: r["cases"])) == 1
+
+    def test_empty_ranking(self):
+        from bench_stats import tiers
+        assert tiers([], key=lambda r: r) == []
+
+
+class TestPairedPower:
+    def test_six_flips_is_the_floor_at_five_percent(self):
+        from bench_stats import smallest_detectable_flips
+        assert smallest_detectable_flips() == 6
+
+    def test_note_states_the_floor(self):
+        from bench_stats import paired_power_note
+        assert "6 cases" in paired_power_note()

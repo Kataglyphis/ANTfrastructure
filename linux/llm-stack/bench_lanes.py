@@ -223,10 +223,9 @@ def run_lanes(lanes, prompt, max_tokens, sequential_baseline=True):
 def sweep_nctx(base_url_template, model, values, prompt, max_tokens=256):
     """Does --nctx change anything but memory?
 
-    Never swept. The suspicion worth testing: on a llama.cpp lane a larger
-    context window allocates a larger KV cache, which could cost decode speed
-    even when the prompt never approaches it — in which case the 16384 this
-    repo standardised on is paid for on every short request.
+    Swept 2026-09-01 (docs/geniex-local-ai-setup.md 1h): a larger context
+    window costs nothing measurable, so 16384 stands. No CLI flag reaches this;
+    call it from a script when a new lane needs the same question answered.
     """
     print("\n  nctx sweep (restart the lane between values):", flush=True)
     rows = []
@@ -285,6 +284,33 @@ def resolve_lane(spec, path=None):
     return spec, entry["base_url"].rstrip("/"), model
 
 
+def build_reports(batching=None, batching_endpoint=None, lane_run=None, lanes=None):
+    """Shape the probes' output as the shared envelope's reports[] rows.
+
+    One row per lane plus an 'aggregate' row (both carry `tok_per_sec`, which
+    bench_compare diffs with a tolerance), and a 'batching' row carrying the
+    verdict. None of them has passed/total: these are not scores.
+    """
+    reports = []
+    if batching_endpoint is not None:
+        url, model = batching_endpoint
+        row = {"label": "batching", "model": model, "base_url": url}
+        row.update(batching or {"verdict": "error", "serialised": None, "requests": {}})
+        reports.append(row)
+    if lane_run is not None:
+        for name, (url, model) in (lanes or {}).items():
+            together = lane_run["lanes"].get(name, {})
+            reports.append({"label": name, "model": model, "base_url": url,
+                            "alone": lane_run["baseline"].get(name),
+                            "together": together,
+                            "tok_per_sec": together.get("decode_tok_per_sec")})
+        reports.append({"label": "aggregate", "model": None, "base_url": None,
+                        "lanes": sorted(lanes or {}),
+                        "tok_per_sec": lane_run["aggregate_tok_per_sec"],
+                        "wall_s": lane_run["wall_s"]})
+    return reports
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -314,7 +340,7 @@ def main():
     if not args.batching and not args.lanes:
         ap.error("nothing to do: pass --batching and/or --lanes")
 
-    report = {"prompt": args.prompt, "max_tokens": args.max_tokens}
+    batching = endpoint = lane_run = lanes = None
 
     if args.batching:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -323,21 +349,31 @@ def main():
         url, backend_model, source = resolve_backend(args.backend, args.base_url)
         model = args.model or backend_model or detect_model_via_api(url)
         print(f"  Endpoint: {url}  (from {source})")
-        report["batching"] = probe_batching(url, model, args.prompt, args.max_tokens)
+        endpoint = (url, model)
+        batching = probe_batching(url, model, args.prompt, args.max_tokens)
 
     if args.lanes:
         lanes = {}
         for spec in args.lanes:
             name, url, model = resolve_lane(spec)
             lanes[name] = (url, model)
-        report["lane_run"] = run_lanes(
+        lane_run = run_lanes(
             lanes, args.prompt, args.max_tokens,
             sequential_baseline=not args.no_baseline)
 
     print()
     if args.output:
-        with open(args.output, "w") as f:
-            json.dump(report, f, indent=2)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from bench_cli import write_report
+
+        # The shared envelope, so bench_report labels it and bench_compare can
+        # diff it; the bare dict passed "no regression" against anything.
+        base_url = endpoint[0] if endpoint else next(iter(lanes.values()))[0]
+        write_report(args.output, "bench_lanes",
+                     {"prompt": args.prompt, "max_tokens": args.max_tokens,
+                      "baseline": not args.no_baseline},
+                     build_reports(batching, endpoint, lane_run, lanes),
+                     base_url, ("bench_lanes.py", "bench_provenance.py"))
         print(f"  Report written to {args.output}")
 
 

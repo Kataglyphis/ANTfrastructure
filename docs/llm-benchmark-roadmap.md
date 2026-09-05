@@ -14,29 +14,46 @@ Written 2026-08-31, after the GenieX/Snapdragon measurement round. Every number
 quoted here is measured on that host; see
 [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) for the runs themselves.
 
+> **Brought up to date 2026-09-05** against the panel review's backlog and the
+> work it produced; the ranked backlog, the 32 confirmed defects and the model
+> shortlist live in
+> [`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md).
+
 ---
 
 ## Where it stands
 
-Six tools, 135 unit tests that need no server:
+Counts are deliberately not written down here: three of them rotted within a
+week the last time they were. Derive them —
+`ls linux/llm-stack/*.py | wc -l` for the tools,
+`python3 -m pytest linux/llm-stack/tests --collect-only -q | tail -2` for the
+tests (they run offline), and the task and case inventories from the two
+one-liners in the [suite README](../linux/llm-stack/README.md) § Benchmarking.
 
 | Tool | Answers |
 |---|---|
 | `benchmark_openai_api.py` | throughput, TTFT, decode vs prefill, time-to-answer, generic correctness |
-| `bench_coding.py` | does the generated code RUN (classic + novel task sets) |
-| `bench_tools.py` | tool calling, including multi-turn and error recovery |
+| `bench_coding.py` | does the generated code RUN — Python, bash, CMake, Dockerfile, tagged by kind |
+| `bench_tools.py` | tool calling: selection, typed arguments, parallel calls, restraint, irrelevance, multi-turn |
+| `bench_agent.py` | the whole opencode loop against a scratch repository, scored by that repository's tests |
+| `bench_embeddings.py` | embedding shape, speed and whether the vectors mean anything |
 | `bench_lanes.py` | does one server batch; do several lanes add up |
 | `inspect_gguf.py` | is this GGUF sane (tensor-type histogram) |
-| `bench_provenance.py` | what produced a measurement |
+| `bench_sweep.py` | the whole suite over a candidates file, in one command |
+| `bench_compare.py` | two reports: paired sign test, stored baselines, regression exit code |
+| `bench_report.py` · `bench_stats.py` · `bench_provenance.py` · `bench_cli.py` | summaries and the viewer manifest · intervals and the paired tests · what produced a measurement · the one request path |
 
-**What it can claim:** for one model family, on one host, with short prompts, a
-defensible ranking on speed, code that executes, and tool calling — with cold
-start, unenforced constraints, inflated sample counts and truncation artefacts
-all removed.
+**What it can claim:** on one host, a defensible ranking on speed, on code that
+executes in four languages, on tool calling, and — through `bench_agent` — on
+one real agent loop, with cold start, unenforced constraints, inflated sample
+counts and truncation artefacts all removed, and with a control endpoint to tell
+a hard case from a broken one.
 
-**What it cannot claim:** anything about models outside the Qwen3 family,
-anything about a real agent session, and — at n = 3 tasks / 8 cases — anything
-statistically separable between two close candidates.
+**What it cannot claim:** anything about a model family it has not run;
+anything about the non-Python languages' *linting* on a host without
+`shellcheck`/`hadolint`/`cmake` (those rows skip visibly); and any separation
+between two close candidates that fewer than six cases flip the same way (see
+P2.6, recomputed).
 
 ---
 
@@ -47,21 +64,33 @@ The measurement errors are fixed; the *statistics* are not.
 - **P1.1 Report confidence intervals, not bare fractions** [S·★★★] **DONE**
   (`bench_stats.py`). Scores now print as `8/12 = 67% [39-86%]`, and the
   comparer refuses to call an overlapping difference a regression.
-- **P1.2 Prompt-variation sensitivity** [M·★★★] Every task has exactly one
-  phrasing. Small models are highly prompt-sensitive, so an unknown share of
-  the ranking may be an artefact of wording. Add 2–3 paraphrases per task and
-  report the spread; a model whose score swings on rewording is fragile in a
-  way the current number hides.
-- **P1.3 A control model** [S·★★] No calibration point. When every model fails
-  a task there is no way to tell a hard task from a broken one. Run one known-
-  strong endpoint (the `ollama` backend, or a hosted model) as a reference row.
-- **P1.4 Partial credit** [M·★] Pass/fail cannot distinguish "wrong algorithm"
-  from "one edge case missed". Report per-assertion results; a model at 6/7
-  assertions is not the same as one at 0/7.
-- **P1.5 Record the environment, and serialise runs** [S·★★] Results shift with
-  what else is running: a lane benchmark measured 18.56 tok/s on the CPU lane
-  against 23.7 alone. Record which lanes were live and refuse to compare runs
-  taken under different load.
+- **P1.2 Prompt-variation sensitivity** [M·★★★] **PARTLY DONE** (2026-08-31,
+  widened 2026-09-05). `bench_tools --prompt-variants` asks every case in its
+  paraphrases, and the paraphrases of the selection cases now share fewer than
+  two content words with the tool description they must select — the old ones
+  were near-verbatim copies and measured reading. **Still open:** it is opt-in,
+  no *spread* is reported (only the combined score), and `bench_coding` has no
+  paraphrases at all.
+- **P1.3 A control model** [S·★★] **DONE 2026-09-05.** A `control` backend in
+  `backends.json`, an example candidate row, and `mark_suspect_cases()` called
+  from both rankings: a case the control also **fails** leaves every other
+  candidate's score, interval and rank and is named above the table. The
+  control keeps its own full score, and a case it merely *errored* on is not
+  suspect. Hosted controls became usable at the same time (`api_key_env`).
+  **Known gap:** the wall clock is not recomputed, so a suspect case's seconds
+  still count toward the time tie-break.
+- **P1.4 Partial credit** [M·★] **DONE** (b2d7b0f3, 2026-08-31; denominator
+  corrected 2026-09-05). Per-assertion credit prints beside every FAIL. The
+  correction matters for any published fraction: a
+  `try: f(bad) / except ValueError` block is now **one assertion**, where it
+  used to be classified as setup — so a candidate missing only that rule read
+  as "test setup raised" with full credit. Nothing downstream aggregates
+  partial credit; it is a per-row diagnostic, not a score.
+- **P1.5 Record the environment, and serialise runs** [S·★★] **PARTLY DONE.**
+  Live lanes are detected and warned about, and provenance records host, arch,
+  git SHA and dirtiness. **Not** done: nothing *refuses* to compare two runs
+  taken under different load, and liveness is not load — a lane that is up and
+  idle looks the same as one under a sweep.
 
 ## Phase 2 — A tripwire, not a scrapbook [M] — the highest-value phase
 
@@ -86,16 +115,22 @@ exists, every measurement is a one-off and a regression is invisible.
   "I already confirmed that `list_files` has been correctly called" — without
   ever telling the user what the files were.
 
-  `bench_coding` still has 3 classic + 3 novel tasks. Each additional one needs
-  a test set, a reference solution and a known-wrong solution (the task tests
-  enforce both), so it is real authoring work rather than a copy-paste.
+  `bench_coding` grew the same way (2026-08-31, then 2026-09-05): the classic
+  three, three novel, the extended set, and the bash/CMake/Dockerfile tasks —
+  derive the current split rather than trusting a number here. Each task needs a
+  test set, a reference solution and a known-wrong solution (its own tests
+  enforce all three), so it is real authoring work rather than a copy-paste.
 
-- **P2.6 Per-case diffing beat the statistics** [S·★★★] **DONE**, and it
-  changes how the tripwire should be read. Even at 27 cases the observed
-  25/27 → 22/27 drop is *not* separable — because a 93 % baseline carries a
-  wide interval of its own, and separating 93 % → 81 % would need **119**
-  cases. Perfect baselines are far cheaper statistically than near-perfect
-  ones.
+- **P2.6 Per-case diffing beat the statistics** [S·★★★] **DONE**, and
+  **recomputed 2026-09-05** — the "119 cases" it used to quote was an artefact of the wrong
+  test and is retired. Both candidates answer the *same* cases, so the aggregate
+  is now judged by an exact two-sided **paired sign test** over the cases that
+  disagreed, plus a Newcombe interval on the difference. The floor is **six
+  cases flipping the same way with none flipping back**, and it does **not**
+  depend on suite size. Under the old unpaired rule, 24/27 vs 18/27 with six
+  discordant cases and none flipping back was "not separable"; paired, it is
+  p = 0.031. Interval overlap survives only as the fallback for reports with no
+  per-case detail, and says so in the finding.
 
   For a deterministic endpoint the aggregate is the wrong instrument anyway.
   The comparer now diffs **per case**: a case that passed and now fails is a
@@ -126,8 +161,13 @@ The suite measures *endpoints*. You run an *agent*. Nothing connects the two.
 - **P3.2 Long context *and* tool calling together** [M·★★★] **Answered by
   P3.1** for the QAIRT lane: what breaks first is the context, and it breaks
   before any tool call is attempted. Ten tool schemas are 5,286 tokens on their
-  own — more than the whole 4096 budget, prompt excluded. Still open for the
-  GGUF lanes, where both fit and the question is quality rather than survival.
+  own — more than the whole 4096 budget, prompt excluded. **Instrumented for the
+  GGUF lanes 2026-09-05**, where both fit and the question is quality rather
+  than survival: `bench_tools --context-tokens N` pads every case with real
+  repository source, `--tools opencode` advertises a ten-schema preamble of the
+  size an agent really sends, and `--turn-growth` grows a loop until the context
+  runs out and reports where. Measuring the GGUF lanes with them is the open
+  half.
 - **P3.3 Turn-count and context growth** [M·★★] **Answered, and worse than the
   question assumed.** On the 4096 model the answer is *zero* turns. On the GGUF
   lanes the limit is not the ceiling but the cost of approaching it: there is
@@ -141,15 +181,26 @@ The suite measures *endpoints*. You run an *agent*. Nothing connects the two.
 code-specialised model has been tried.** That is the single largest limit on
 the ranking's authority.
 
-- **P4.1 Qwen3-8B W4A16 on the NPU** [M·★★★] The winner's direct competitor:
-  same fast prefill, same 4096 ceiling, twice the parameters. ~6 GB.
-- **P4.2 A code-specialised GGUF** [M·★★] `Qwen2.5-Coder-7B` or similar — does
-  a specialist beat a generalist here, and does its prefill cost sink it?
-- **P4.3 The other QAIRT bundles** [M·★] `Ministral-3-3B-Instruct`,
-  `Gemma-4-E2B-it`, and `GPT-OSS-20B` if the chipset supports it.
-- **P4.4 Cross-family sanity** [S·★★] With more than one family in the table,
-  re-check whether the findings (thinking tax, cut-off cap, prefill asymmetry)
-  are properties of *this hardware* or of *Qwen*.
+- **P4.1 Qwen3-8B W4A16 on the NPU** [M·★★★] **MEASURED 2026-09-04 (816d80c0,
+  § 1j) — and CONDITIONAL.** It did not change the recommendation: the 8B lost
+  26 of 27 tasks to truncation. But that run was taken on GenieX v0.5.0, whose
+  serve default capped every response at 2048 tokens, so the result is
+  conditioned on a launch flag rather than on the model. **Re-measure** — the
+  launcher now passes `-MaxTokens` (default 4096) and the grader's truncation
+  rule has since been fixed. Command in the CHANGELOG entry of 2026-09-05.
+- **P4.2 A code-specialised GGUF** [M·★★] **MEASURED 2026-09-04 (51ad1f8d,
+  § 1k) — and CONDITIONAL** for the same reason as P4.1, and re-measured with
+  it.
+- **P4.3 A second family on the GGUF/CPU lane** [M·★] *Reworded 2026-09-05.*
+  It used to read "the other QAIRT bundles", which is a dead end on this
+  chipset: no further QAIRT bundle exists for the Snapdragon X Elite —
+  `Gemma-4` is `GENIEX_LLAMACPP`-only here, `Ministral-3-3B` is X2-only, and
+  `Llama-3.1-8B` has no downloadable bundle. Widening the field therefore means
+  GGUFs on the CPU lane, where any family runs; the shortlist is in the review
+  page § "Adding more models".
+- **P4.4 Cross-family sanity** [S·★★] **DONE 2026-09-04 (23676f5a, § 1l).** With
+  a non-Qwen model in the table the "model family" explanation was refuted: the
+  findings are properties of *this hardware and this runtime*, not of Qwen.
 
 ## Phase 4b — Refactoring review, applied (2026-08-31) — CLOSED
 
@@ -191,16 +242,57 @@ exactly the separation the fingerprint exists for — and the baseline was
 re-recorded, which the reviewer had priced as the real cost of this refactor
 and the proposal had not.
 
-**222 tests**, up from 196.
+The test count that stood here has been dropped rather than updated: it went
+stale twice. `python3 -m pytest linux/llm-stack/tests -q` is the answer, and it
+runs offline.
 
 ## Phase 5 — The remaining backlog items [M–L]
 
-- **P5.1 Embeddings** [M·★★] Endpoints are tested, nothing measures them.
-  Needed the moment a RAG or code-search path exists.
-- **P5.2 Energy per token** [M·★] The real argument for the NPU on a battery
-  device. 165 % vs 752 % of 800 % CPU hints at it; nothing measures joules.
-- **P5.3 The lanes never swept** [S·★] hybrid on coding tasks, `nctx` below
-  16384, `--ngl` on the GPU lane.
+- **P5.1 Embeddings** [M·★★] **DONE 2026-09-04 (96321e8e)** —
+  `bench_embeddings.py` measures shape, speed and *meaning* (do related texts
+  land closer than unrelated ones), which is the check that catches a broken
+  quantisation.
+- **P5.2 Energy per token** [M·★] **PARTLY.** An `energy_proxy` is recorded;
+  joules are still not measured, and a proxy is not a measurement.
+- **P5.3 The lanes never swept** [S·★] **DONE 2026-09-01**, written up as § 1h
+  of the GenieX page.
+
+## Phase 6 — The panel review, applied (2026-09-05)
+
+A seven-lens review of the suite produced a ranked backlog `R1`–`R15` and 32
+confirmed defects `D1`–`D32`:
+[`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md),
+which carries a per-item status line. Most of it landed the same day. The
+headline changes, because they alter how every earlier number should be read:
+
+- **The grader's truncation rule was wrong and was live for the § 1n coding
+  table.** A closing fence followed by a newline was read as an unclosed
+  opener, so a syntax-error reply ending that way was graded CUT — excluded
+  rather than counted wrong — while a server cut landing on a prefix that
+  happened to compile was graded FAIL. Both are fixed; any table derived under
+  the old rule is wrong in **both** directions.
+- **Wall statistics now cover measured attempts only**, with the rest reported
+  as `unmeasured_wall_s`. An 1800 s abandoned attempt used to decide the rank
+  tie-break it was excluded from.
+- **Separability is paired** (P2.6 above), the control endpoint calibrates the
+  cases (P1.3), and rows nobody graded — overflow, skipped, blocked — are
+  excluded on both sides of a comparison.
+- **The suite now measures the languages this repository is written in** (bash,
+  CMake, Dockerfile) and tags every task by kind, because 27 pure-Python
+  spec-transcription tasks cannot predict an agent editing shell and CMake.
+- **The agent verdicts refuse the cheap fakes** — editing the red test, writing
+  no tests, aliasing the old name — and a context error *after* work has begun
+  is now a real failure rather than an excluded row.
+- **Adding a model is one command** (`bench_sweep.py`) with API keys read from
+  the environment, and a sandbox with RLIMITs plus a grader self-check that
+  aborts before contacting an endpoint.
+
+Still open out of that backlog, and worth knowing before publishing a number:
+no raw report JSON is stored for any already-published table (R4); and the
+§ 1i/§ 1n coding tables have not been re-derived under the fixed grader
+(R2/R7/R11) — the exact commands are in the CHANGELOG entry of 2026-09-05.
+R3 and R8 closed on 2026-09-05: `bench_tools.evaluate()` has a direct test, and
+the determinism probe and the tiered ranking rows are both called.
 
 ---
 
@@ -209,7 +301,8 @@ and the proposal had not.
 1. **P2.1 + P2.2** — the tripwire. Everything already measured becomes
    defensible against future drift, and it is a day's work.
 2. **P1.1** — stop publishing fractions that the sample cannot support.
-3. **P4.1** — the one model that could still change the recommendation.
+3. ~~**P4.1**~~ — measured 2026-09-04, and to be re-measured: its conclusion is
+   conditioned on a 2048-token serve default nobody recorded.
 4. ~~**P3.1**~~ — done 2026-09-04. It was **not** predictive: the suite ranked
    models while the binding constraints were prompt size, prefill throughput,
    and a server that silently discarded every tool call. None of the three was
@@ -235,3 +328,9 @@ Stated up front so it is falsifiable: today's answer is
   slower long-context model completes;
 - a code-specialised model whose prefill cost turns out to be tolerable in a
   real loop.
+
+Two of those three were tested on 2026-09-04 (§ 1j, § 1k) and neither overturned
+it — but both runs were taken under a `geniex serve --max-tokens` default of
+2048 that nobody recorded, so **both verdicts are conditional until P4.1/P4.2
+are re-measured.** The second bullet is settled: the ceiling does make it fail,
+before it reads the task at all.

@@ -11,6 +11,12 @@
     "Resolution order: --base-url > LLM_BASE_URL / OLLAMA_BASE_URL > --backend",
     "> the entry marked default.",
     "",
+    "Optional per-entry fields, all honoured by bench_cli.post_json (one request path for every tool):",
+    "  api_key_env    Name of the environment variable holding the API key. The KEY NEVER GOES IN THIS FILE. Sent as 'Authorization: Bearer <value>'; an unset or empty variable aborts the run naming the variable, and the value is never printed or written to a report.",
+    "  headers        Extra request headers as a JSON object, merged after Content-Type and before the Authorization header (so api_key_env always wins). Only the header NAMES reach a report.",
+    "  request_extra  JSON object merged into the request body BEFORE the caller's own keys, so an explicit model/max_tokens/temperature always wins. One level deep. Use it for per-backend knobs: {\"num_ctx\": 16384} on Ollama, {\"chat_template_kwargs\": {\"enable_thinking\": false}} on a Qwen server.",
+    "  probe          Default true. false stops the tools asking /v1/models what this endpoint serves -- set it on paid hosts, where a discovery request costs money or is not offered. A probe:false backend must name its 'model' here or be given --model.",
+    "",
     "A 'control' backend is the calibration point: when every candidate fails a case there is no way to tell a hard case from a broken one. Point it at the strongest endpoint you have (a hosted model, or the LAN Ollama) and the benchmarks will flag a case the control also fails as suspect rather than as evidence about the candidates."
   ],
   "default": "ollama",
@@ -49,7 +55,14 @@
     },
     "control": {
       "base_url": "http://summy-server:11434",
-      "note": "Calibration reference \u2014 see the comment above. Point this at the strongest endpoint available; a case the control also fails is a suspect case, not a model result."
+      "note": "Calibration reference — see the comment above. Point this at the strongest endpoint available; a case the control also fails is a suspect case, not a model result."
+    },
+    "mistral-glm": {
+      "base_url": "https://api.eu.mistral.ai",
+      "model": "zai-glm-5-2",
+      "api_key_env": "MISTRAL_API_KEY",
+      "probe": false,
+      "note": "HOSTED, COSTS MONEY. The GLM-5.2 endpoint docs/mistral-vibe-glm-setup.md already configures for the coding agent, reused here as a strong control. Export MISTRAL_API_KEY first (console.mistral.ai/api-keys); the key never goes in this file. probe:false because a paid host should not be asked what it serves - the model id above is exact (zai-glm-5-2, not glm-5.2)."
     }
   }
 }

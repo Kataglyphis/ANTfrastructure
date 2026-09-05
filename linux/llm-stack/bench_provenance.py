@@ -113,8 +113,39 @@ def energy_proxy():
         return None
 
 
-def collect(base_url=None, tool_files=(), extra=None):
-    """Return a provenance block for a report."""
+def determinism_probe(base_url, model, post, prompt="Reply with the single word: ready"):
+    """Send two identical tiny requests; record whether the outputs matched.
+
+    `post(url, payload) -> dict` is injected so this can run without a server
+    (tests) and so callers pick the transport. "Deterministic" here means two
+    draws at temperature 0 agreed byte-for-byte — evidence, not proof, and it is
+    recorded as such so a --repeats 1 flip can be read for what it is.
+    """
+    payload = {"model": model, "temperature": 0, "max_tokens": 8, "stream": False,
+               "messages": [{"role": "user", "content": prompt}]}
+    outputs = []
+    try:
+        for _ in range(2):
+            reply = post(f"{base_url}/v1/chat/completions", payload)
+            content = (reply.get("choices") or [{}])[0].get("message", {}).get("content")
+            if content is None:
+                raise ValueError("reply carried no message content")
+            outputs.append(content)
+    except Exception as e:  # noqa: BLE001 — a failed probe is recorded, never fatal
+        return {"deterministic": None, "requests": len(outputs), "prompt": prompt,
+                "error": f"{type(e).__name__}: {e}"[:200]}
+    return {"deterministic": outputs[0] == outputs[1], "requests": 2, "prompt": prompt,
+            "output_sha256": [hashlib.sha256(o.encode()).hexdigest()[:16] for o in outputs],
+            "error": None}
+
+
+def collect(base_url=None, tool_files=(), extra=None, temperature=None, seed=None,
+            determinism=None):
+    """Return a provenance block for a report.
+
+    `temperature`, `seed` and `determinism` (a determinism_probe() result) are
+    recorded as explicit nulls when the caller does not supply them.
+    """
     prov = {
         "schema_version": SCHEMA_VERSION,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -136,6 +167,9 @@ def collect(base_url=None, tool_files=(), extra=None):
         "live_lanes": busy_lanes(),
         # Not energy. See energy_proxy() for why this host cannot measure that.
         "energy_proxy": energy_proxy(),
+        "temperature": temperature,
+        "seed": seed,
+        "determinism_probe": determinism,
     }
     if extra:
         prov.update(extra)
@@ -168,4 +202,14 @@ def compare(old, new):
     if old.get("git_sha") != new.get("git_sha"):
         notes.append(f"repository moved {str(old.get('git_sha'))[:8]} → "
                      f"{str(new.get('git_sha'))[:8]}")
+    for key in ("temperature", "seed"):
+        if old.get(key) != new.get(key):
+            notes.append(f"{key} differs: {old.get(key)!r} vs {new.get(key)!r} — "
+                         f"a flip may be sampling, not the model")
     return notes
+
+
+def known_deterministic(prov):
+    """True only when a probe in this provenance block saw two draws agree."""
+    probe = (prov or {}).get("determinism_probe") or {}
+    return probe.get("deterministic") is True

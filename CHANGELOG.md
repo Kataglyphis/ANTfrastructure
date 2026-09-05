@@ -6,6 +6,291 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-05 — The panel review, applied: the grader was wrong in both directions, and every published coding number is now un-comparable
+
+The review below found 36 defects and changed nothing. This is the work unit
+that fixed them — `R1`–`R15` and `D1`–`D32` of
+[`docs/llm-benchmark-review-2026-09-05.md`](docs/llm-benchmark-review-2026-09-05.md),
+which now carries a status line per item. Read that page for the per-item
+detail; what follows is what a reader of the numbers has to know.
+
+**Two grader defects were live for the numbers published this morning.** The
+truncation check (`looks_truncated`, regressed in `4d469a22` the day before)
+could not tell a closing fence from an opener: any syntax-error reply whose
+final ```` ``` ```` was followed by a newline or by prose was graded `CUT` and
+**excluded** from the rate, the interval, determinism and the rank, instead of
+counted wrong. The mirror gap did the opposite — a genuine server cut that
+happened to land on a compiling prefix was graded `FAIL`, "timed out (likely an
+infinite loop)". Both are fixed, both are pinned by tests over the exact tails
+(```` ``` ````, ```` ```\n ````, ```` ```\n\nHope this helps ````), and both
+now have mutation entries. **Any coding table derived before today is wrong in
+both directions and must be re-derived, not adjusted.**
+
+**Wall time no longer includes the attempts it excluded.** `total_wall_s`,
+`avg`, `median` and `stdev` cover measured attempts only; the rest is reported
+as `unmeasured_wall_s`. A 1800 s abandoned attempt used to decide the rank
+tie-break it had been excluded from.
+
+**Partial credit counts the checks it was ignoring.** A
+`try: f(bad); raise AssertionError / except ValueError: pass` block is one
+assertion, not test setup — 39 of them across 15 of the 27 Python tasks (the
+count moved because this same change rewrote `parse_version` to plain asserts;
+re-derive it with `bench_coding._assertion_harness` after any task edit). A
+candidate that missed only the ValueError rule used to be reported "test setup
+raised" with full credit; it now scores 5/6. The § 1i near-miss fractions
+therefore describe an accounting that no longer exists, in **both** directions.
+
+**The suite now measures the languages this repository is written in.** Tasks
+carry a required `kind` and `lang` (no default — a task that forgets one fails
+its own test), `run_candidate` dispatches to a bash, CMake or Dockerfile runner
+inside the identical sandbox, and pass rates print per lang and per kind.
+`--task-set` gained `languages` and its **default changed from `classic` to
+`all`**. Two bash/CMake agent fixtures joined `bench_agent`. A language whose
+tool is absent is a visible `SKIP` — never a pass, never a fail — and an absent
+`shellcheck`/`hadolint` says so on every affected row rather than reading clean.
+
+**The three agent verdicts refuse the cheap fakes**, each pinned by a test:
+editing, deleting or adding a test file fails `fix_failing_test`;
+`add_function_and_test` runs the agent's own tests against four clamp mutants
+and requires each to be caught; a rename is decided on the syntax tree, so a
+comment mentioning the old name is not a failure and an alias is. A context
+error *after* the agent started working is now a real `CONTEXT_GROWTH` failure
+rather than a row dropped from the denominator — that is precisely the failure
+mode the roadmap says would overturn the recommendation.
+
+**Adding a model is one command.** `bench_sweep.py --candidates --outdir
+--tools` derives one report path per (tool, candidate), refuses to overwrite or
+to let two labels collide *before* anything runs, runs the correctness gate per
+candidate first, and ends with the viewer manifest. `candidates.example.json`
+is checked in. Every request in the suite goes through one `bench_cli.post_json`
+that honours a backend's `api_key_env` / `headers` / `request_extra` / `probe` —
+the key is read from the environment at request time, an unset variable aborts
+naming the variable, and only header *names* and the variable *name* ever reach
+a report.
+
+**The control endpoint finally does something.** A case the `control` backend
+also *fails* is marked suspect and removed from every other candidate's score,
+interval and rank, and named above the ranking table. A case it merely errored
+on is not: that is evidence about nothing.
+
+**Comparisons are paired.** Both candidates answer the same cases, so
+`bench_compare` judges the aggregate by an exact two-sided sign test over the
+discordant cases plus a Newcombe interval on the difference, and reports a
+single-draw flip at `--repeats 1` as such instead of alarming — the old rule
+fired on 92 % of same-model re-runs. Rows nobody graded (overflow, skipped,
+blocked, `CONTEXT`) are excluded on both sides.
+
+**Also:** an `OVERFLOW` state for the 4xx that says the prompt did not fit; an
+`ERROR` state for an in-stream `{"error": …}` or bare `error:` SSE line; the
+sandbox gained RLIMITs (1 GiB address space, 8 MiB files, 64 processes) and a
+**grader self-check** that runs every task's reference through the real path and
+aborts loudly before any endpoint is contacted; `bench_lanes` writes the shared
+envelope; the manifest emits `scored` only where `passed`/`total` are integers;
+and `build-viewer.sh` copies run-scoped subdirectories again — the viewer had
+been silently disconnected from `run_benchmarks.sh` since the output became
+run-scoped.
+
+**Verified.** `pytest linux/llm-stack/tests -q` → 1000 passed, 35 skipped, and
+the suite is now *enforced* offline: a conftest fixture refuses an outbound
+`socket.connect` and names the test. That guard exists because renaming a seam
+silently un-patched three tests, which then connected to a real Ollama and hung
+the run for ten minutes with no output — the worst possible failure for a gate.
+Every entry `verify_mutations.py --changed` selects bites; the manifest grew
+418 → 586. Two mutations found **vacuous tests** and were fixed by
+strengthening the test, never by weakening the entry
+(`coding.forbidden-ignores-docstrings`, and `test_attribute_use_is_rejected`,
+which had been passing for the wrong reason). `lint-python.sh` clean on all
+changed files; `bash -n` clean on both shell files.
+
+**Second pass, same day — an independent audit of the diff above, applied.**
+Twenty-three findings, each with a regression test proven red against the
+un-fixed code and a mutation entry. What moves a number:
+
+- `bench_coding.evaluate()` **rebound its own `entry` parameter** to the
+  per-attempt result row, so every request after the first graded attempt went
+  out with no `Authorization` header and no `request_extra`. On the hosted
+  `mistral-glm` lane that is a 401 per row, recorded as a transport error and
+  subtracted from the denominator — a working model reporting as nearly
+  all-EXCLUDED. The row is now `row`.
+- `check_forbidden`'s exemption for a name the code binds itself was
+  **file-wide**: `def _fmt(sorted=None)` anywhere in the file whitelisted every
+  `sorted(...)` call in every other scope, and the merge task's own "wrong"
+  exemplar passed. Resolution is per enclosing scope now, with the text scan
+  kept as a backstop for a module-level binding that never executes.
+- A bash candidate that installed its own top-level `trap ... EXIT` **replaced
+  the harness reporter**: no marker rows, credit 0/0, and a correct answer
+  graded `FAIL` with the detail `exit 0`. The trap is re-armed after the
+  candidate and `__bench_report` is called outright.
+- A **429 rate limit or a 403 quota refusal was published as a context
+  overflow** ("the prompt did not fit"). `exceed` is anchored to the context
+  now, and 429 / `rate limit|quota|billing` bodies fall through to `errored`.
+- **One flaky control draw** marked a case suspect and deleted it from every
+  candidate, tying a model that solved it 3/3 with one that never did. A case
+  is suspect only when the control failed **every** measured attempt — and the
+  control is printed beside the ranking, not inside it, because it alone keeps
+  the full denominator.
+- Suspect exclusion rewrote `passed`/`total` and **left `by_kind`, `by_lang`,
+  `categories` and the wall statistics stale**, so one row read 3/3 = 100 %
+  beside `python=3/6` and suspect seconds still decided the rank tiebreak.
+  Everything derived from the rows is now recomputed with the score.
+- `bench_agent`'s untracked-file arm refused **any** test-shaped basename
+  anywhere in the workspace, so a correct fix plus a leftover `test_repro.py`
+  scored 0/3 with the detail "tests were modified" — and nothing had been. It
+  is scoped to files that can actually shadow or configure a protected test,
+  with its own wording.
+- `grade_error_recovery` called a correct admission "invented content"
+  whenever it carried a **tagged** fence: the language tag is part of the body,
+  so ```` ```text ```` quoting the tool's own error could never match the
+  history. Inventing file contents still fails.
+- `bench_sweep` **exited 0 after measuring nothing** when every candidate gated
+  `unreachable`, writing an empty manifest that shadows the previous run in the
+  viewer; and `_sweep.json` never held the argv the README promised. Both fixed.
+- `build-viewer.sh --copy-only SRC/ DST` (a trailing slash is what tab
+  completion produces) copied into `DST/<absolute source path>/…`, or outside
+  `DST` entirely for a relative source, **and reported success**.
+
+Three half-wired mechanisms from the first pass are now wired rather than
+documented: `determinism_probe()` runs once per lane in `bench_coding` and
+`bench_tools` and is recorded with `temperature`/`seed`; `bench_stats.tiers()`
+groups ranking rows the paired sign test cannot separate; and both tools emit
+`wall_measured_s`. `tests/test_bench_tools_evaluate.py` finally pins D19, D22
+and D24 (R3), and the `[shellcheck SKIPPED]` note now reaches failing rows and
+the report row's `linter` field.
+
+**Not verified here, and it matters.** `shellcheck`, `hadolint`, `cmake`,
+`ctest` and `pwsh` are all absent on this aarch64 host, so the CMake task's
+reference and known-wrong answer, the `fix_cmake_link` fixture's red-then-green,
+the four bash references' shellcheck-cleanliness, the Dockerfile reference's
+hadolint-cleanliness and the whole of `start-geniex-servers.ps1` have never been
+executed. They skip visibly here; **the first run on a host that has those tools
+must check those rows before any number from them is published.**
+
+**Deferred to a live lane — the exact commands.** The GenieX lanes are on
+another host and were not benchmarked from here. Each of these is a
+measurement, not an edit:
+
+1. **R11 — re-measure Qwen3-8B and Qwen2.5-Coder with the output cap recorded.**
+   The § 1j/§ 1k conclusions were taken on GenieX v0.5.0, whose
+   `geniex serve --max-tokens` default of 2048 was never recorded anywhere, so
+   "the 8B lost 26 of 27 tasks to truncation" is conditioned on a launch flag
+   rather than on the model. On the Windows host:
+
+   ```pwsh
+   pwsh -File windows/scripts/host/start-geniex-servers.ps1 -Restart -WithCpu -Pull `
+        -Nctx 16384 -MaxTokens 4096 `
+        -Models @{ npu = 'qualcomm/Qwen3-8B:W4A16'
+                   cpu = 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M' }
+   ```
+
+   then, from WSL2:
+
+   ```bash
+   cd linux/llm-stack
+   python3 bench_coding.py --backend geniex-npu --model qualcomm/Qwen3-8B:W4A16 \
+       --label 'Qwen3-8B W4A16 (NPU, serve --max-tokens 4096)' \
+       --task-set all --repeats 3 --max-tokens 4096 --keep-output \
+       --output benchmark_results/2026-09-05-p41/coding_qwen3-8b-npu.json
+   python3 bench_coding.py --backend geniex-cpu \
+       --model Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M \
+       --label 'Qwen2.5-Coder-7B Q4_K_M (CPU, serve --max-tokens 4096)' \
+       --task-set all --repeats 3 --max-tokens 4096 --keep-output \
+       --output benchmark_results/2026-09-05-p41/coding_qwen25-coder-cpu.json
+   ```
+
+   Then update § 1j and § 1k of the GenieX page and roadmap P4.1/P4.2, which
+   are marked CONDITIONAL until this runs.
+
+2. **R2/R7 — re-run the § 1n coding table under the fixed grader.** The
+   published six-model table and the 16/26 27-task run were both measured with
+   the truncation regression live and the old partial-credit denominators. List
+   § 1n's six lanes plus a `control` row in `candidates.json`, then:
+
+   ```bash
+   cd linux/llm-stack
+   cp candidates.example.json candidates.json     # then edit: the six § 1n lanes + control
+   python3 bench_sweep.py --candidates candidates.json \
+       --outdir benchmark_results/2026-09-05-s1n --tools coding \
+       --repeats 3 --task-set all --title 'GenieX v0.6.1, fixed grader'
+   python3 bench_compare.py --dir benchmark_results/<the-previous-run> \
+       benchmark_results/2026-09-05-s1n
+   ```
+
+   The sweep's coding step already passes `--keep-output`, so the raw replies
+   land beside each report; its agent step does not, so run `bench_agent.py`
+   directly for anything from § 1m/§ 1n. Expect `BENCHMARK SOURCE CHANGED` from the comparison — that is the
+   fingerprint working, and it is why the two tables must not be set beside each
+   other. Re-classify the three cuts and re-derive the § 1i / § 1n near-miss
+   fractions from the new reports.
+
+3. **R4 — store the raw report for every published number.** No report JSON
+   exists for § 1i, § 1j, § 1k, § 1m or § 1n, so no past PASS can be re-audited
+   and the 2118 s → 657 s attribution is unprovable. The original bytes are
+   gone; "retroactive" here means re-running each published table with its
+   output kept, under the fixed grader, and committing it:
+
+   ```bash
+   cd linux/llm-stack
+   mkdir -p benchmark_results/2026-09-05-published
+   # coding tables (§ 1i, § 1j, § 1k, § 1n): as in (1) and (2), with --keep-output
+   # tool calling (§ 1f, § 1g):
+   python3 bench_tools.py --compare candidates.json --repeats 3 \
+       --output benchmark_results/2026-09-05-published/tools.json
+   # the agent run (§ 1m, § 1n):
+   python3 bench_agent.py --self-test
+   python3 bench_agent.py --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
+       --timeout 1800 --keep-output \
+       --output benchmark_results/2026-09-05-published/agent.json
+   python3 bench_report.py manifest benchmark_results/2026-09-05-published \
+       benchmark_results/2026-09-05-published/_manifest.json \
+       --title 'Published tables, raw reports' --model mixed --generated "$(date -u +%FT%TZ)"
+   ```
+
+   Then link that directory from each GenieX section it backs.
+
+Docs updated in the same unit (R15): the suite README's whole § Benchmarking
+brought in line with `--help` for every tool — including deleting a paragraph
+that enumerated "two of the eight" tool-calling cases by names that had not
+existed for weeks — plus new sections for `bench_compare`, `bench_embeddings`
+and adding a model with `bench_sweep`; the roadmap's inventory, its P1.2–P1.5 /
+P4.1–P4.4 / P5.1–P5.3 status marks and a dated Phase 6; dated corrections in
+§ 1i and § 1n of the GenieX page and the CPU-lane opencode provider that its
+own reproduce commands had always assumed; `docs/INDEX.md`; and three lines of
+`AGENTS.md`.
+
+## 2026-09-05 — The benchmark suite, reviewed by a panel: 36 defect claims, 36 confirmed, none fixed yet
+
+A structured review of `linux/llm-stack/` rather than a change to it. Seven
+reviewers each took one lens — the grader, the task set, the agent loop, tool
+calling, the statistics, the plumbing, the documentation — and two researchers
+worked the web for the model-widening and multimodal questions. Every concrete
+defect claim then went to an independent skeptic told to refute it; **36 went in
+and 36 came back confirmed**, most reproduced from a scratch script against the
+imported module. The tree was `b03ac235`, clean, and **it was not modified**.
+
+**New — [`docs/llm-benchmark-review-2026-09-05.md`](docs/llm-benchmark-review-2026-09-05.md).**
+The ranked backlog (`R1`–`R15`), the 32 confirmed defects with a file and line
+each (`D1`–`D32`), the documentation found contradicting the code, how a model is
+added today and what blocks it, a shortlist of models to add, and the design for
+a `bench_vision.py` on the Snapdragon lanes. Indexed from `docs/INDEX.md`; the
+roadmap carries a banner pointing at it.
+
+**Three findings worth knowing before the next measurement.** The grader's
+truncation check (`looks_truncated`, commit `4d469a22` of 2026-09-04) misreads a
+closing fence followed by a newline as an unclosed opener, so a syntax-error
+reply ending in ```` ```\n ```` is graded CUT and excluded rather than counted
+wrong — live for the § 1n coding numbers published this morning. The agent
+benchmark's verdicts accept cheap cheats: editing or deleting the red test
+passes `fix_failing_test`, and `add_function_and_test` passes with no tests
+written. And no request site anywhere carries an API key, so the roadmap's
+hosted control model (P1.3) cannot be used until one does.
+
+**The headline results stand.** No published number was shown wrong; the QAIRT
+4B still cannot run opencode and the 9B-Distill still passes 3/3 on the CPU
+lane. What the review found weak is auditability — no raw report JSON is stored
+for any published table — and construct validity: all 27 coding tasks and all
+three agent fixtures are pure Python, for an agent that edits a repository made
+of bash, PowerShell, CMake and Dockerfiles.
+
 ## 2026-09-05 — GenieX v0.6.1: four of the constraints this repo was built around are gone
 
 Updated the on-device runtime from **v0.5.0 to v0.6.1** (llama.cpp `873e5d8` →

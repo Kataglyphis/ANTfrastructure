@@ -341,7 +341,15 @@ ensure_native_rust_toolchain() {
         return 0
     fi
     echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
-    rm -rf "${RUSTUP_HOME}" "${CARGO_HOME}"
+    # NOT rm -rf "${CARGO_HOME}": Dockerfile.package keeps the crate downloads on a
+    # BuildKit cache mount at ${CARGO_HOME}/registry, and rm over a live mountpoint
+    # fails EBUSY -- which took the arm64 package image down on 2026-09-05. amd64
+    # never reaches this line because its copied toolchain is already native. The
+    # registry is a download cache, not toolchain state, so the fresh install reuses it.
+    rm -rf "${RUSTUP_HOME:?}"
+    if [ -d "${CARGO_HOME:?}" ]; then
+        find "${CARGO_HOME}" -mindepth 1 -maxdepth 1 ! -name registry -exec rm -rf {} +
+    fi
     RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
 }
 

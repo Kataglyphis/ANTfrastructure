@@ -234,8 +234,8 @@
   {
     "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all — admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -349,7 +349,7 @@
     "find": "            if m.group(\"sec\") in have:\n                continue",
     "replace": "            if True:\n                continue",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
-    "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
+    "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
   },
   {
     "id": "doc-links.git-free-floor",
@@ -1898,7 +1898,7 @@
   {
     "id": "pre-commit.fast-tier-aborts",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+    "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
     "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -2426,7 +2426,7 @@
   {
     "id": "pre-commit.pinned-shellcheck-or-refuse",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+    "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
     "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3002,24 +3002,24 @@
   {
     "id": "bench-agent.blocked-counts-as-failure",
     "target": "linux/llm-stack/bench_agent.py",
-    "find": "        if \"too long\" in msg.lower() or \"context\" in msg.lower():\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
-    "replace": "        if False:\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
+    "find": "        if any(marker in low for marker in CONTEXT_MARKERS):\n            if reached:",
+    "replace": "        if False:\n            if reached:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k context",
     "why": "a context-blocked run must never be scored as a capability failure"
   },
   {
     "id": "bench-agent.timeout-discards-evidence",
     "target": "linux/llm-stack/bench_agent.py",
-    "find": "        return (parse(text(e.stdout)), time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
-    "replace": "        return ([], time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
+    "find": "        return parse(text(out)), time.monotonic() - started, True, text(err)[-400:]",
+    "replace": "        return [], time.monotonic() - started, True, text(err)[-400:]",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TimeoutKeepsEvidence",
     "why": "a timed-out agent that made 20 tool calls must not report 0"
   },
   {
     "id": "bench-agent.verification-always-passes",
     "target": "linux/llm-stack/bench_agent.py",
-    "find": "        return proc.returncode == 0, (proc.stdout + proc.stderr)[-300:]",
-    "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
+    "find": "    if proc.returncode != 0:\n        return False, detail",
+    "replace": "    if False:\n        return False, detail",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
   },
@@ -3218,8 +3218,8 @@
   {
     "id": "mutations.push-stale-check-aborts",
     "target": "linux/host-config/git-hooks/pre-push",
-    "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since origin/main…\"",
-    "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since origin/main…\"",
+    "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since origin/main\u2026\"",
+    "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since origin/main\u2026\"",
     "test": "bash linux/scripts/tests/test-prepush-hook.sh",
     "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
   },
@@ -3666,8 +3666,8 @@
   {
     "id": "arg-consistency.gcc-literal-drift-fatal",
     "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-    "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-    "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
+    "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+    "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
     "test": "bash linux/scripts/tests/test-arg-consistency.sh",
     "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
   },
@@ -3706,8 +3706,8 @@
   {
     "id": "arg-consistency.script-drift-advisory",
     "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-    "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-    "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+    "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+    "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
     "test": "bash linux/scripts/tests/test-arg-consistency.sh",
     "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
   },
@@ -3925,7 +3925,7 @@
     "find": "            if SECTION_SIGN in line:\n                continue",
     "replace": "            if False:\n                continue",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
-    "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+    "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
   },
   {
     "id": "doc-links.header-stale-row",
@@ -5048,6 +5048,14 @@
     "why": "without the precondition the function runs ${CARGO_HOME}/bin/rustup as a bare path that is not there, and the stage dies on 127 in an arch that simply has no Rust rather than skipping"
   },
   {
+    "id": "package.rust-wipe-spares-the-cargo-registry",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    rm -rf \"${RUSTUP_HOME:?}\"\n    if [ -d \"${CARGO_HOME:?}\" ]; then\n        find \"${CARGO_HOME}\" -mindepth 1 -maxdepth 1 ! -name registry -exec rm -rf {} +\n    fi",
+    "replace": "    rm -rf \"${RUSTUP_HOME}\" \"${CARGO_HOME}\"",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "Dockerfile.package keeps the crate downloads on a BuildKit cache mount at ${CARGO_HOME}/registry, and rm -rf over a live mountpoint fails EBUSY -- it took the entire arm64 package image down on 2026-09-05. amd64 never reaches the wipe because its copied toolchain is already native, so the defect ships looking green"
+  },
+  {
     "id": "toolcall-shim.finish-reason",
     "target": "linux/llm-stack/geniex_toolcall_shim.py",
     "find": "        choice[\"finish_reason\"] = \"tool_calls\"",
@@ -5122,16 +5130,16 @@
   {
     "id": "coding.own-session-killpg",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "                                start_new_session=True)",
-    "replace": "                                start_new_session=False)",
+    "find": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=True)",
+    "replace": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=False)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "a grandchild outlived the timeout in the bench's process group"
   },
   {
     "id": "coding.not-main",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "    program = (f\"_MARKER = {marker!r}\\n__name__ = 'candidate'\\n\"",
-    "replace": "    program = (f\"_MARKER = {marker!r}\\n\"",
+    "find": "    program = (f\"_MARKER = {marker!r}\\n__name__ = 'candidate'\\n\"\n               + code + \"\\n\\n\" + harness)",
+    "replace": "    program = (f\"_MARKER = {marker!r}\\n\"\n               + code + \"\\n\\n\" + harness)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "a demo under if __name__ == '__main__' failed a correct function"
   },
@@ -5162,7 +5170,7 @@
   {
     "id": "coding.errored-do-not-vote",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "    measured = [r for r in results if not r.get(\"errored\") and not r.get(\"truncated\")]",
+    "find": "    measured = [r for r in results if _measured(r)]",
     "replace": "    measured = list(results)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "one dropped connection flipped a deterministic lane and narrowed the interval"
@@ -5202,8 +5210,8 @@
   {
     "id": "coding.prefer-defining-block",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "        if want:\n            defining = [b for b in blocks",
-    "replace": "        if False:\n            defining = [b for b in blocks",
+    "find": "        if want:\n            defining = [i for i, b in enumerate(blocks)",
+    "replace": "        if False:\n            defining = [i for i, b in enumerate(blocks)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "the want branch was never exercised by its test"
   },
@@ -5252,8 +5260,8 @@
     "target": "linux/llm-stack/bench_coding.py",
     "find": "    stripped = re.sub(r'\"\"\"[\\s\\S]*?\"\"\"|\\'\\'\\'[\\s\\S]*?\\'\\'\\'', \"\", stripped)",
     "replace": "    pass",
-    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a docstring that mentions sorted() must not fail the forbidden-token check"
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k UNMAPPED",
+    "why": "a docstring that mentions a forbidden token with no syntactic meaning must not fail the text fallback -- the tree path handles the mapped ones"
   },
   {
     "id": "mutations.timeout-kills-tree",
@@ -5266,7 +5274,7 @@
   {
     "id": "coding.forbidden-on-the-tree",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "        if isinstance(node, ast.Name) and node.id in wanted:\n            return f\"used {node.id}(), which the prompt forbids\"",
+    "find": "        if isinstance(node, ast.Name) and node.id in wanted and node in unbound:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "replace": "        if False:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "an aliased sorted() evaded the text scan"
@@ -5282,8 +5290,8 @@
   {
     "id": "coding.unclosed-last-fence",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "            if re.search(r\"```[^\\n]*\\n(?:(?!```).)*\\Z\", tail, re.S):",
-    "replace": "            if text.count(\"```\") % 2 == 1:",
+    "find": "    if not _unclosed_fence(text):\n        return False",
+    "replace": "    if False:\n        return False",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "a ``` in prose turned a plain typo into CUT"
   },
@@ -5306,23 +5314,23 @@
   {
     "id": "coding.env-scrubbed",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "        proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
-    "replace": "        proc = subprocess.Popen(cmd, cwd=tmp,",
+    "find": "    proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
+    "replace": "    proc = subprocess.Popen(cmd, cwd=tmp,",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "the candidate inherited HOME, tokens and agent sockets"
   },
   {
     "id": "coding.netns",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "        if _netns_available():\n            cmd = [\"unshare\", \"-rn\"] + cmd",
-    "replace": "        if False:\n            cmd = [\"unshare\", \"-rn\"] + cmd",
+    "find": "    if _netns_available():\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
+    "replace": "    if False:\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "the candidate could open sockets"
   },
   {
     "id": "coding.ascii-digits",
     "target": "linux/llm-stack/bench_tasks.py",
-    "find": "assert _bad(\"1.5A\")\nassert _bad(\"١A\")",
+    "find": "assert _bad(\"1.5A\")\nassert _bad(\"\u0661A\")",
     "replace": "assert _bad(\"1.5A\")",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "the prompt says ASCII digits and every tested input was ASCII"
@@ -5345,18 +5353,1362 @@
   },
   {
     "id": "coding.wall-clock-deadline",
-    "target": "linux/llm-stack/bench_coding.py",
-    "find": "            if deadline and time.monotonic() - started > deadline:\n                gave_up = True\n                break",
-    "replace": "            if False:\n                gave_up = True\n                break",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "            if self._deadline and time.monotonic() - self.started > self._deadline:\n                self.gave_up = True\n                return",
+    "replace": "            if False:\n                self.gave_up = True\n                return",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour"
+    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour. ask() now inherits the cap from bench_cli.post_json, so the coding suite must still see it bite there."
   },
   {
     "id": "coding.gave-up-is-unmeasured",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "        truncated = (not ok) and (gave_up or looks_truncated(",
-    "replace": "        truncated = (not ok) and (False or looks_truncated(",
+    "find": "        truncated = (not ok) and (not skipped) and (gave_up or looks_truncated(",
+    "replace": "        truncated = (not ok) and (not skipped) and (False or looks_truncated(",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "an abandoned attempt is unmeasured, not a wrong answer"
+  },
+  {
+    "id": "bench-agent.tests-may-be-modified",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    if task.get(\"protect_tests\"):\n        detail = protected_tests_changed(workspace, task)",
+    "replace": "    if False:\n        detail = protected_tests_changed(workspace, task)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TestFixTaskProtectsItsTests",
+    "why": "D12: deleting, skipping or inverting the red test prints the same '2 passed' a real fix prints"
+  },
+  {
+    "id": "bench-agent.added-test-file-ignored",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    overrides = added_overrides(added.split(), fixture_tests)\n    if overrides:\n        return (\"a new file was added that can override the protected tests: \"\n                + \", \".join(overrides))\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k added_conftest",
+    "why": "D12: a new conftest.py can monkeypatch the function under test; only tracked files were diffed"
+  },
+  {
+    "id": "bench-agent.git-failure-reads-as-untouched",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    if changed is None or added is None:\n        return f\"could not check whether the tests were modified: {err or err2}\"",
+    "replace": "    if changed is None or added is None:\n        return None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k broken_git",
+    "why": "a check that cannot run must fail loudly, not pass"
+  },
+  {
+    "id": "bench-agent.mutants-need-not-die",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "            if r.returncode != 1:\n                return f\"the tests do not catch a clamp that {name}\"",
+    "replace": "            if False:\n                return f\"the tests do not catch a clamp that {name}\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TestClampTaskRequiresRealTests",
+    "why": "D13: a correct clamp with no tests written scored PASS on half the task"
+  },
+  {
+    "id": "bench-agent.only-one-mutant",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    \"never raises\": (\n        \"\\n\\ndef clamp(value, low, high):\\n\"\n        \"    return max(low, min(value, high))\\n\"),",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k missing_error_case",
+    "why": "D13: the error case is one of the three things the prompt asks the tests to cover"
+  },
+  {
+    "id": "bench-agent.rename-accepts-alias",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "                if isinstance(node, ast.Name) and node.id == name:\n                    what = \"name\"",
+    "replace": "                if False:\n                    what = \"name\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k rejects_an_alias",
+    "why": "D14: fetch_data = format_record is not a rename"
+  },
+  {
+    "id": "bench-agent.rename-accepts-wrapper-def",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "                                       ast.ClassDef)) and node.name == name:\n                    what = \"definition\"",
+    "replace": "                                       ast.ClassDef)) and False:\n                    what = \"definition\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k wrapper_def",
+    "why": "D14: a def fetch_data() wrapper around the new name keeps the old one bound"
+  },
+  {
+    "id": "bench-agent.context-marker-loose",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "CONTEXT_MARKERS = (\"context_length_exceeded\", \"prompt too long\",\n                   \"maximum context length\", \"input prompt too long\")",
+    "replace": "CONTEXT_MARKERS = (\"context\", \"too long\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TestErrorClassification",
+    "why": "D15: 'context canceled' and 'context 16384 too large for VRAM' are not a blocked prompt"
+  },
+  {
+    "id": "bench-agent.context-growth-excluded",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "            if reached:\n                out.append((\"CONTEXT_GROWTH\"",
+    "replace": "            if False:\n                out.append((\"CONTEXT_GROWTH\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k \"context_growth or model_was_reached or after_tool_calls\"",
+    "why": "D15: an overflow after tool calls is the P3.3 failure and must be scored, not excluded"
+  },
+  {
+    "id": "bench-agent.blocked-not-errored",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "               \"errored\": blocked, \"wall_s\": round(wall, 2),",
+    "replace": "               \"errored\": False, \"wall_s\": round(wall, 2),",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k blocked_rows_are_errored",
+    "why": "D16: a comparer skips errored rows; without the flag a blocked task reads as REGRESSION"
+  },
+  {
+    "id": "bench-agent.blocked-wall-counted",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    wall = sum(r[\"wall_s\"] for r in results if not r[\"blocked\"])",
+    "replace": "    wall = sum(r[\"wall_s\"] for r in results)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k blocked_rows_are_errored",
+    "why": "D16: total_wall_s over all rows while total excludes blocked ones inflates per-attempt time"
+  },
+  {
+    "id": "bench-agent.timeout-leaves-orphans",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "                            text=True, start_new_session=True)",
+    "replace": "                            text=True, start_new_session=False)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k tree_dies",
+    "why": "D17: without its own session, killpg misses opencode's bash children"
+  },
+  {
+    "id": "bench-agent.unresolved-lane-not-flagged",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        incomplete = [] if base_url else [\"base_url\"]",
+    "replace": "        incomplete = []",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k unresolvable_lane",
+    "why": "R4: a null base_url must be listed as a gap, not silently omitted"
+  },
+  {
+    "id": "bench-agent.diff-unbounded",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "            row[\"diff\"] = diff[:DIFF_LIMIT]",
+    "replace": "            row[\"diff\"] = diff",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k diff_is_bounded",
+    "why": "R4: a stored diff is bounded so one runaway workspace cannot bloat the report"
+  },
+  {
+    "id": "bench-agent.jsonc-comments-break-parse",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        elif text.startswith(\"//\", i):",
+    "replace": "        elif False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k jsonc",
+    "why": "R4: opencode.jsonc carries // comments; a plain json.loads would record null for every field"
+  },
+  {
+    "id": "bench-agent.sessions-leak-into-home",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    env[\"XDG_DATA_HOME\"] = data",
+    "replace": "    pass",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k scratch_dir",
+    "why": "R4: runs leaked 49 agentbench project rows into ~/.local/share/opencode"
+  },
+  {
+    "id": "bench-cli.extra-dropped",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "    for key, value in (extra or {}).items():",
+    "replace": "    for key, value in {}.items():",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TestWriteReportExtra",
+    "why": "R4: opencode version and config hash must land in the provenance block"
+  },
+  {
+    "id": "bench-cli.extra-incomplete-replaces",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "        if key == \"incomplete\":",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k incomplete_extends",
+    "why": "R4: a tool's gaps add to collect()'s, never overwrite them"
+  },
+  {
+    "id": "coding.fence-parity",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    rest = _PAIRED_FENCE.sub(\"\", tail)",
+    "replace": "    rest = tail",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py -q -k TestTruncationTails",
+    "why": "D1: without pairing, a CLOSING fence reads as an unclosed opener and every syntax-error reply ending in ``` is excluded as CUT instead of counted wrong."
+  },
+  {
+    "id": "coding.cut-on-valid-prefix",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if finish is None:\n        return True",
+    "replace": "    if False:\n        return True",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py -q -k a_cut_landing_on_a_compiling_prefix",
+    "why": "D2: a server cut that lands on a prefix which happens to compile must still be CUT, not graded FAIL."
+  },
+  {
+    "id": "coding.sse-data-error",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            if isinstance(chunk, dict) and chunk.get(\"error\"):",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestInStreamErrors",
+    "why": "D3: an OpenAI/vLLM {\"error\": ...} chunk inside an already-200 stream must raise, or the attempt is graded FAIL 'no code found' instead of errored."
+  },
+  {
+    "id": "coding.sse-event-error",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            if line.startswith(\"error:\"):",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k a_llama_cpp_error_event_line_raises",
+    "why": "D3: llama.cpp delivers the same fault as a bare `error:` event line, which is not a `data:` line and was silently dropped."
+  },
+  {
+    "id": "coding.context-overflow",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            overflow = _overflow_reason(e)",
+    "replace": "            overflow = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestContextOverflow",
+    "why": "R13: an HTTP 4xx saying the prompt did not fit is unmeasured like a cut and must be recorded distinctly, not folded into transport errors."
+  },
+  {
+    "id": "coding.multi-fence-preamble",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                return \"\\n\\n\".join(preamble + [blocks[chosen]])",
+    "replace": "                return blocks[chosen]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py -q -k TestMultiFenceAndIndentedExtraction",
+    "why": "D4: an answer whose imports or helper live in an earlier fence died with NameError and was graded FAIL."
+  },
+  {
+    "id": "coding.defines-on-the-tree",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        tree = ast.parse(block)\n    except SyntaxError:\n        return re.search(rf\"\\bdef\\s+{re.escape(want)}\\s*\\(\", block) is not None\n    return any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == want\n               for n in tree.body)",
+    "replace": "        pass\n    except SyntaxError:\n        pass\n    return re.search(rf\"\\bdef\\s+{re.escape(want)}\\s*\\(\", block) is not None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py -q -k a_demo_quoting_the_signature",
+    "why": "D5: on raw text a longer demo whose docstring quotes the signature outranks the real definition and the function is never defined."
+  },
+  {
+    "id": "coding.dedent-indented-fence",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    blocks = [textwrap.dedent(b).strip() for b in CODE_FENCE.findall(text) if b.strip()]",
+    "replace": "    blocks = [b.strip() for b in CODE_FENCE.findall(text) if b.strip()]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py -q -k an_indented_fence_with_two_statements",
+    "why": "D9: strip() clears only the first line's margin, so a fence indented in a markdown list raised IndentationError from its second statement."
+  },
+  {
+    "id": "coding.forbidden-import-alias",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if isinstance(node, ast.alias) and node.name in wanted:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestForbiddenPrecision",
+    "why": "D6: `from builtins import sorted as s` is the import form of the aliasing evasion and passed the constraint check."
+  },
+  {
+    "id": "coding.forbidden-lookup-strings-only",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                and node.value in wanted and _is_lookup_string(node, parents.get(node))):",
+    "replace": "                and node.value in wanted):",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k a_string_value_that_happens_to_read_sort",
+    "why": "D7: only a string handed to getattr/__import__ or keying __builtins__ is a lookup; a `mode='sort'` default is not, and flagging it fails a correct answer with 0/0."
+  },
+  {
+    "id": "coding.forbidden-bound-names",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                    and child.id not in visible and child.id not in class_body):",
+    "replace": "                    ):",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k defines_its_own_sort",
+    "why": "D7: a candidate's own `def sort` is not list.sort; flagging every bare Name failed correct answers."
+  },
+  {
+    "id": "coding.measured-wall-only",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    done = [r for r in results if r[\"wall_s\"] is not None and _measured(r)]",
+    "replace": "    done = [r for r in results if r[\"wall_s\"] is not None]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestUnmeasuredWallTime",
+    "why": "D8: a cut or abandoned attempt carries a real wall_s of up to the whole deadline and used to decide avg/median and the rank tiebreak it is excluded from."
+  },
+  {
+    "id": "coding.unmeasured-wall-reported",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            \"unmeasured_wall_s\": round(unmeasured_wall, 2),",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k the_unmeasured_wall_time_is_still_reported",
+    "why": "D8: excluding the cut's wall time from the statistics must not make it vanish from the report -- an hour spent generating is a fact about the lane."
+  },
+  {
+    "id": "coding.should-raise-is-an-assertion",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            isinstance(node, ast.Try) and _try_asserts(node))",
+    "replace": "            False)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_partial_credit.py -q -k TestShouldRaiseChecksAreAssertions",
+    "why": "D10/R7: a should-raise check is one assertion, not setup; counted as setup, a candidate missing only the ValueError rule scored N/N with 'test setup raised'."
+  },
+  {
+    "id": "coding.candidate-rlimits",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                            preexec_fn=_candidate_rlimits,\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestCandidateRlimits",
+    "why": "R14: without RLIMIT_AS/FSIZE/NPROC in the child an allocating or disk-filling candidate takes the host down with it."
+  },
+  {
+    "id": "coding.selfcheck-aborts",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if not ok:\n            sys.exit(",
+    "replace": "        if False:\n            sys.exit(",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k TestGraderSelfCheck",
+    "why": "R14: a self-check that does not abort is worse than none -- a broken grading path scores every model identically and reads as 'the models are bad'."
+  },
+  {
+    "id": "coding.selfcheck-runs-in-main",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    selfcheck = grader_selfcheck(TASKS)",
+    "replace": "    selfcheck = {\"tasks\": 0, \"passed\": True, \"netns\": False, \"seconds\": 0.0, \"rlimits\": {}}",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_audit.py -q -k main_stops_before_benchmarking",
+    "why": "R14: the self-check has to run before the sweep, or a broken grader is discovered after the measurements it invalidates."
+  },
+  {
+    "id": "coding.lang-dispatch",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    runner = _RUNNERS.get(lang)",
+    "replace": "    runner = _RUNNERS.get(\"python\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k reference_solution_passes",
+    "why": "R5: without the dispatch every task is graded as Python, so a bash or CMake reference is scored a syntax error and the model is blamed for the harness."
+  },
+  {
+    "id": "coding.skip-is-not-a-pass",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    return False, f\"SKIPPED: {reason}\", {\"passed\": 0, \"total\": 0, \"skipped\": reason}",
+    "replace": "    return True, f\"SKIPPED: {reason}\", {\"passed\": 0, \"total\": 0, \"skipped\": reason}",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k skip_not_a_pass",
+    "why": "R5: a missing cmake must never grade the task PASS -- an ungraded task reported green is the exact failure the visible skip exists to prevent."
+  },
+  {
+    "id": "coding.skip-is-visible",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        return None, \" [shellcheck SKIPPED: not on PATH]\"",
+    "replace": "        return None, \"\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k shellcheck_absent_is_named",
+    "why": "R5: an absent shellcheck that says nothing reads exactly like a clean one, so every bash row would silently claim a lint it never ran."
+  },
+  {
+    "id": "coding.shellcheck-enforced",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if p.returncode != 0:\n        first = next((ln.strip() for ln in (p.stdout + p.stderr).splitlines()\n                      if ln.strip()), \"shellcheck reported an error\")\n        return f\"shellcheck -S error: {first[:100]}\", \" [shellcheck FAILED]\"",
+    "replace": "    if False:\n        first = next((ln.strip() for ln in (p.stdout + p.stderr).splitlines()\n                      if ln.strip()), \"shellcheck reported an error\")\n        return f\"shellcheck -S error: {first[:100]}\", \" [shellcheck FAILED]\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k failing_linter",
+    "why": "R5 requires shellcheck -S error to PASS, not merely to run; a linter whose verdict is discarded is a gate that cannot fail."
+  },
+  {
+    "id": "coding.forged-rows-refused",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if len(rows) > expected:\n        return None, (f\"harness output corrupted: {len(rows)} rows for \"\n                      f\"{expected} assertions\")",
+    "replace": "    if False:\n        return None, (f\"harness output corrupted: {len(rows)} rows for \"\n                      f\"{expected} assertions\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k \"forged or more_rows\"",
+    "why": "The shell and CMake row protocol is a channel the candidate can write to: appending its own P rows must be corruption, never a score."
+  },
+  {
+    "id": "coding.skip-out-of-the-denominator",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    attempts = len(TASKS) * repeats - errored - cut - overflow - skipped",
+    "replace": "    attempts = len(TASKS) * repeats - errored - cut - overflow",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k out_of_the_denominator",
+    "why": "A task nothing graded must not enter the rate as a miss: a host without cmake would otherwise rank as a worse MODEL."
+  },
+  {
+    "id": "coding.skip-wall-is-unmeasured",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    return not (r.get(\"errored\") or r.get(\"truncated\") or r.get(\"overflow\")\n                or r.get(\"skipped\"))",
+    "replace": "    return not (r.get(\"errored\") or r.get(\"truncated\") or r.get(\"overflow\"))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k carries_no_measured_wall",
+    "why": "The wall of an attempt nobody graded decided the rank tiebreak and avg/attempt while being excluded from the rate."
+  },
+  {
+    "id": "coding.selfcheck-counts-only-what-it-checked",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            \"checked\": len(tasks) - len(skipped), \"skipped\": skipped,",
+    "replace": "            \"checked\": len(tasks), \"skipped\": skipped,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k self_check_lists",
+    "why": "The self-check is what makes a row of failures readable; counting a reference it never ran as checked makes that guarantee a lie."
+  },
+  {
+    "id": "coding.task-set-default-is-all",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                    choices=(\"classic\", \"novel\", \"extended\", \"languages\", \"all\"),\n                    default=\"all\",",
+    "replace": "                    choices=(\"classic\", \"novel\", \"extended\", \"languages\", \"all\"),\n                    default=\"classic\",",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k default_is_every_task",
+    "why": "R5: the default was the three-task 'classic' set the README itself calls recall-prone and too small to carry a ranking."
+  },
+  {
+    "id": "coding.languages-are-in-the-all-set",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        TASKS = TASKS + NOVEL_TASKS + EXTENDED_TASKS + LANGUAGE_TASKS",
+    "replace": "        TASKS = TASKS + NOVEL_TASKS + EXTENDED_TASKS",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k every_set_name",
+    "why": "Adding the languages and then leaving them out of the default set would ship the tags and measure nothing new."
+  },
+  {
+    "id": "coding.rates-are-split-by-group",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        group = out.setdefault(by_task.get(r[\"task\"], \"unknown\"),",
+    "replace": "        group = out.setdefault(\"all\",",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k rates_split",
+    "why": "One aggregate hides what R5 exists to expose: 27/27 Python and 0/4 bash reads as 27/31."
+  },
+  {
+    "id": "coding.defining-fence-outside-python",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            defining = [i for i, b in enumerate(blocks) if _defines(b, want, lang)]",
+    "replace": "            defining = [i for i, b in enumerate(blocks) if _defines(b, want, \"python\")]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k defining_fence_wins",
+    "why": "Outside Python there is no AST: without the language's own spelling the longest block wins and a model's usage demo is graded instead of its function."
+  },
+  {
+    "id": "coding.non-python-block-shape",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            shaped = [b for b in blocks if re.search(_LANG_SHAPE[lang], b)]",
+    "replace": "            shaped = []",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k not_graded_on_its_build_command",
+    "why": "With no shape filter the longest fence wins outside Python too, and a model's usage demo is graded instead of its answer."
+  },
+  {
+    "id": "coding.bash-runs-under-euo-pipefail",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    program = (\"#!/usr/bin/env bash\\nset -euo pipefail\\n\"",
+    "replace": "    program = (\"#!/usr/bin/env bash\\nset +u\\n\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k runs_with_pipefail",
+    "why": "Every bash prompt promises those flags; grading without them accepts answers that die in the caller's real script."
+  },
+  {
+    "id": "coding.dockerfile-continuations-are-one-instruction",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if line.endswith(\"\\\\\\\\\"):\n            pending += line[:-1].strip() + \" \"\n            continue",
+    "replace": "        if False:\n            pending += line[:-1].strip() + \" \"\n            continue",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding_tasks.py -q -k continuation_is_one_instruction",
+    "why": "A backslash-continued RUN is ONE layer; reading each line as its own instruction turns the correct single-RUN answer into three and inverts the task."
+  },
+  {
+    "id": "bench-agent.fixture-tools-required",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        if not any(shutil.which(o) for o in options):\n            missing.append(\"/\".join(options))",
+    "replace": "        if False:\n            missing.append(\"/\".join(options))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k records_which_fixtures",
+    "why": "A fixture the host cannot build would be run and its failure charged to the model, which is how a missing cmake becomes a capability verdict."
+  },
+  {
+    "id": "bench-agent.skipped-fixture-is-not-validated",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "            _self_test_row(task[\"name\"], None, \"needs \" + \", \".join(needs))",
+    "replace": "            _self_test_row(task[\"name\"], True, \"needs \" + \", \".join(needs))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k never_reported_as_validated",
+    "why": "--self-test is the gate that makes every other row readable; printing OK for a fixture it never ran is a gate that cannot fail."
+  },
+  {
+    "id": "bench-agent.shell-and-c-tests-are-protected",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "TEST_FILE_PATTERNS = (\"test_*.py\", \"*_test.py\", \"conftest.py\",\n                      \"check*.sh\", \"test_*.sh\", \"*_test.sh\",\n                      \"test_*.c\", \"*_test.c\")",
+    "replace": "TEST_FILE_PATTERNS = (\"test_*.py\", \"*_test.py\", \"conftest.py\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k \"editing_the_check_script or c_test_of_the_cmake\"",
+    "why": "'Do not edit the tests' has to cover the bash check script and the C test too, or the cheapest fake pass is reopened for the two new fixtures."
+  },
+  {
+    "id": "bench-agent.ctest-count-is-asserted",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        \"printf '%s\\\\n' \\\"$out\\\" | grep -q -e '0 tests failed out of 1'\\n\")]",
+    "replace": "        \"true\\n\")]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k refuses_a_run_with_no_tests",
+    "why": "ctest exits 0 when it finds NO tests, so without the count assertion deleting add_test() is a free pass."
+  },
+  {
+    "id": "bench-agent.unbuildable-selection-exits-nonzero",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    if not tasks:\n        raise SystemExit(\"every selected task needs a tool this host does not have: \"",
+    "replace": "    if False:\n        raise SystemExit(\"every selected task needs a tool this host does not have: \"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k unbuildable_task_exits",
+    "why": "D18's lesson: running nothing, printing 0/0 and exiting 0 is worse than an error, because bench_compare then reads it as a result."
+  },
+  {
+    "id": "bench-agent.empty-pathspec-protects-everything",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "    if not fixture_tests:\n        # `git diff -- ` with an EMPTY pathspec means every path, which would\n        # reject the fix itself; a task matching no pattern is a harness bug.\n        return (f\"{task['name']} declares protect_tests but none of its files \"\n                f\"match {TEST_FILE_PATTERNS}\")\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k protect_tests_without_a_test_file",
+    "why": "`git diff --` with no pathspec means EVERY path: a protected task whose files match no pattern would reject the correct fix as 'tests were modified'."
+  },
+  {
+    "id": "bench_cli.api_key_missing_variable_is_loud",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "        if not os.environ.get(var):",
+    "replace": "        if not var:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k missing_variable",
+    "why": "An unset api_key_env must abort naming the variable, not send an unauthenticated request and fail as an anonymous 401 an hour into a sweep."
+  },
+  {
+    "id": "bench_cli.request_extra_loses_to_explicit_keys",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "    payload = request_extras(entry)\n    payload.update(body or {})",
+    "replace": "    payload = dict(body or {})\n    payload.update(request_extras(entry))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k explicit_key_wins",
+    "why": "A per-backend request_extra must never override max_tokens/model/temperature: it would silently change the budget the benchmark is measuring."
+  },
+  {
+    "id": "bench_cli.stream_deadline_stops_the_read",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "            if self._deadline and time.monotonic() - self.started > self._deadline:",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k deadline_abandons",
+    "why": "urlopen's timeout is per socket read, so a model that keeps emitting deltas never trips it; without the wall-clock deadline one request blocked a sweep for over an hour."
+  },
+  {
+    "id": "bench_cli.entry_config_reports_header_names_only",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "            \"headers\": sorted(entry.get(\"headers\") or {}),",
+    "replace": "            \"headers\": dict(entry.get(\"headers\") or {}),",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k header_values_never",
+    "why": "Reports are committed; a header VALUE can be an API key, so only the names may be recorded."
+  },
+  {
+    "id": "bench_cli.colliding_labels_are_disambiguated",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "            suffix = row[\"backend\"] or row[\"base_url\"]",
+    "replace": "            suffix = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k colliding_derived_labels",
+    "why": "Two lanes serving the same GGUF resolve to one label: the ranking showed a single row and bench_compare read a 3/3 -> 0/3 collapse as unchanged."
+  },
+  {
+    "id": "bench_cli.colliding_explicit_labels_are_refused",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "        explicit = [r for r in group if r[\"explicit_label\"]]",
+    "replace": "        explicit = []",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k colliding_explicit_labels",
+    "why": "Only the author knows which of two identically-labelled candidates is which; renaming silently would put the wrong name on a published number."
+  },
+  {
+    "id": "bench_cli.comment_element_is_not_a_candidate",
+    "target": "linux/llm-stack/bench_cli.py",
+    "find": "        if isinstance(entry, dict) and set(entry) <= {\"_comment\"}:\n            continue",
+    "replace": "        if False:\n            continue",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_cli.py -q -k comment_only_element",
+    "why": "candidates.example.json documents its own fields in a _comment element; benchmarking it would measure a nonexistent endpoint."
+  },
+  {
+    "id": "bench_sweep.refuses_to_overwrite_a_report",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "            if os.path.exists(path):",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k existing_file_is_never_overwritten",
+    "why": "A second candidate written to the same output silently destroyed the first run's measurement."
+  },
+  {
+    "id": "bench_sweep.refuses_two_labels_that_slug_alike",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "            if path in seen:",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k slug_to_the_same_file",
+    "why": "Disambiguated labels can still collide once punctuation is stripped, and the second run would overwrite the first."
+  },
+  {
+    "id": "bench_sweep.unreachable_lane_is_not_measured",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "        if gates[label][\"verdict\"] == \"unreachable\":",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k unreachable_candidate_is_not_measured",
+    "why": "A dead endpoint produces a full set of plausible failures that read as a model result; the gate is the only thing that separates them."
+  },
+  {
+    "id": "bench_sweep.missing_baseline_is_caught_first",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "        if not os.path.exists(baseline_path(args.baseline)):",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k missing_baseline",
+    "why": "Otherwise the sweep measures for hours and only then discovers there is nothing to compare against."
+  },
+  {
+    "id": "benchmark_openai_api.paid_host_is_never_probed",
+    "target": "linux/llm-stack/benchmark_openai_api.py",
+    "find": "    if not (entry or {}).get(\"probe\", True):",
+    "replace": "    if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_backend_compat.py -q -k probe_false_backend_is_never_asked",
+    "why": "probe:false exists so a paid endpoint is not asked what it serves; without the guard every run makes an unrequested billable call."
+  },
+  {
+    "id": "backends.registry_rejects_a_misspelled_field",
+    "target": "linux/llm-stack/backends.json",
+    "find": "      \"api_key_env\": \"MISTRAL_API_KEY\",",
+    "replace": "      \"api_key_evn\": \"MISTRAL_API_KEY\",",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_backends_registry.py -q -k unknown_field",
+    "why": "A typo'd field name silently means no auth against a live endpoint, which reads as a model result rather than a config error."
+  },
+  {
+    "id": "build_viewer.copies_run_scoped_subdirectories",
+    "target": "linux/llm-stack/benchmark-viewer/build-viewer.sh",
+    "find": "  done < <(find \"$src\" -type f -name '*.json' -print0 2>/dev/null || true)",
+    "replace": "  done < <(find \"$src\" -maxdepth 1 -type f -name '*.json' -print0 2>/dev/null || true)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k run_scoped_manifest_reaches",
+    "why": "D30: run_benchmarks.sh writes ./benchmark_results/<backend>-<model>/, and a non-recursive copy left the viewer fetching a manifest nothing wrote."
+  },
+  {
+    "id": "build_viewer.promotes_the_newest_run_manifest",
+    "target": "linux/llm-stack/benchmark-viewer/build-viewer.sh",
+    "find": "  if [ \"$newest\" != \"$src/_manifest.json\" ]; then",
+    "replace": "  if false; then",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k stale_top_level_manifest",
+    "why": "App.jsx fetches one fixed path; without the promotion a stale top-level manifest shadows the run just measured."
+  },
+  {
+    "id": "stats.sign-test-one-sided",
+    "target": "linux/llm-stack/bench_stats.py",
+    "find": "    return min(1.0, 2 * tail)",
+    "replace": "    return min(1.0, tail)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_stats.py -q -k TestPairedSignTest",
+    "why": "R8: the sign test is two-sided \u2014 a one-sided p halves the threshold and calls 5-0 separable"
+  },
+  {
+    "id": "stats.unmeasured-cases-vote",
+    "target": "linux/llm-stack/bench_stats.py",
+    "find": "        if ra is None or rb is None:\n            continue\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_stats.py -q -k TestPairedOutcomes",
+    "why": "R8: a case with no measured attempt on either side is skipped, never counted as a tie"
+  },
+  {
+    "id": "stats.diff-interval-is-just-overlap",
+    "target": "linux/llm-stack/bench_stats.py",
+    "find": "    low = d - math.sqrt((pb - lb) ** 2 + (ua - pa) ** 2)\n    high = d + math.sqrt((ub - pb) ** 2 + (pa - la) ** 2)",
+    "replace": "    low = lb - ua\n    high = ub - la",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_stats.py -q -k is_sharper_than_interval_overlap",
+    "why": "R8: the Newcombe interval on the DIFFERENCE is the point of the change; differencing the two Wilson bounds is the over-conservative rule it replaced"
+  },
+  {
+    "id": "stats.tiers-never-split",
+    "target": "linux/llm-stack/bench_stats.py",
+    "find": "            if paired_sign_test(a_better, b_better) < alpha:\n                groups.append([row])\n                continue\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_stats.py -q -k six_flips_start_a_new_tier",
+    "why": "R8: a separable difference must start a new tier, or the ranking prints one tie for everything"
+  },
+  {
+    "id": "stats.tiers-always-split",
+    "target": "linux/llm-stack/bench_stats.py",
+    "find": "            if paired_sign_test(a_better, b_better) < alpha:",
+    "replace": "            if True:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_stats.py -q -k three_flips_share_a_tier",
+    "why": "R8: rows the paired test cannot separate share a tier \u2014 that is the whole point of tiering a ranking"
+  },
+  {
+    "id": "compare.blocked-rows-are-failures",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    return not (item.get(\"errored\") or item.get(\"truncated\") or item.get(\"blocked\")\n                or item.get(\"overflow\") or item.get(\"skipped\")\n                or item.get(\"status\") == \"CONTEXT\")",
+    "replace": "    return not (item.get(\"errored\") or item.get(\"truncated\"))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k TestContextBlockedRows",
+    "why": "D16: a task whose prompt never fit was not attempted; counting it broke every previously-passing blocked task as a REGRESSION"
+  },
+  {
+    "id": "compare.ignores-wall-measured-s",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    if entry.get(\"wall_measured_s\") is not None and n:\n        return entry[\"wall_measured_s\"] / n, \"measured\"\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k wall_measured_s_is_preferred_over_the_total",
+    "why": "R13: the tool's own measured wall decides SLOWER; the total includes cut and blocked attempts sitting at the deadline"
+  },
+  {
+    "id": "compare.legacy-timing-unlabelled",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "            if \"legacy\" in (a_src, b_src):\n                mark += \"   (legacy timing: may include cut or blocked attempts)\"\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k falling_back_to_the_total_is_noted",
+    "why": "R13: a timing verdict derived from a legacy total must say so, or it reads as a measured comparison"
+  },
+  {
+    "id": "compare.duplicate-labels-collapse",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "            if any(e[\"label\"] == label for e in entries):\n                raise ValueError(\n                    f\"duplicate label {label!r}: two candidates resolved to the same \"\n                    f\"name, so their scores cannot be told apart \u2014 give each entry in \"\n                    f\"the --compare file a distinct 'label' (e.g. backend:model)\")\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k TestDuplicateLabels",
+    "why": "D27: two lanes serving the same GGUF collapsed to one label and a 3/3 -> 0/3 lane collapse read 'unchanged'"
+  },
+  {
+    "id": "compare.not-a-report-accepted",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    if not isinstance(report, dict) or not (\"reports\" in report or \"results\" in report):",
+    "replace": "    if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k TestNotAReport",
+    "why": "D29: an envelope-less lane report used to normalise as benchmark_openai_api and compare 'no regression' against anything"
+  },
+  {
+    "id": "compare.control-found-by-label-only",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    return (report.get(\"backend\") == \"control\"\n            or str(report.get(\"label\") or \"\").lower().startswith(\"control\"))",
+    "replace": "    return \"control\" in str(report.get(\"label\") or \"\").lower()",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k control_is_matched_by_backend_even_when_labelled_by_model",
+    "why": "D28: a control entry that names a model is labelled by the model id, so the label heuristic never matched it"
+  },
+  {
+    "id": "compare.suspect-cases-not-carried",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "                \"suspect_cases\": suspect_cases(report[\"reports\"]),",
+    "replace": "                \"suspect_cases\": None,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k \"normalise_carries_suspect_cases or compare_names_them\"",
+    "why": "D28: suspect_cases() had no callers, so backends.json's promise that the control flags a suspect case was never true"
+  },
+  {
+    "id": "compare.single-draw-flip-alarms",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        if broke and single_draw:",
+    "replace": "        if broke and False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k one_flip_is_reported_not_alarmed",
+    "why": "R8: at --repeats 1 on a sampling lane the per-case alarm fired on 92 % of same-model re-runs"
+  },
+  {
+    "id": "compare.deterministic-lane-not-strict",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        strict = _known_deterministic(a) and _known_deterministic(b)",
+    "replace": "        strict = False",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k a_deterministic_lane_still_treats_a_flip_as_a_regression",
+    "why": "R8: on a lane shown deterministic a flip is still a real regression, not a coin toss"
+  },
+  {
+    "id": "compare.determinism-probe-ignored",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    return bool(entry.get(\"deterministic\")) or bool(entry.get(\"probe_deterministic\"))",
+    "replace": "    return bool(entry.get(\"deterministic\"))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k a_provenance_probe_that_saw_two_draws_agree_counts_as_deterministic",
+    "why": "R8: the provenance probe measures 'does this lane sample at T=0' once, so a --repeats 1 report can still be judged strictly"
+  },
+  {
+    "id": "compare.paired-regression-unflagged",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "                if worse > better and p < ALPHA:\n                    findings.append(f\"{line}   *** REGRESSION *** ({verdict})\")\n                    regressed = True\n",
+    "replace": "                if False:\n                    findings.append(f\"{line}   *** REGRESSION *** ({verdict})\")\n                    regressed = True\n",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k six_one_way_flips_regress_where_the_intervals_still_overlap",
+    "why": "R8: 24/27 -> 18/27 with 6-0 discordant cases is p=0.031; the overlap rule called it 'not separable'"
+  },
+  {
+    "id": "compare.paired-test-on-no-cases",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "            if shared:",
+    "replace": "            if True:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k the_same_aggregate_without_per_case_detail_falls_back_to_overlap",
+    "why": "R8: a report with no per-case rows has nothing to pair, so the interval fallback must still run and say it is unpaired"
+  },
+  {
+    "id": "compare.lane-throughput-unchecked",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        if a_tps and b_tps is not None:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k TestLanesReports",
+    "why": "D29: a lane report's tok/s is its whole result; without this any two lane reports compared as 'no regression'"
+  },
+  {
+    "id": "compare.batching-loss-unflagged",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        if a.get(\"serialised\") is False and b.get(\"serialised\") is True:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_compare.py -q -k losing_batching_regresses",
+    "why": "D29: a server that stops overlapping concurrent requests has regressed, and no score would show it"
+  },
+  {
+    "id": "report.scored-rows-unchecked",
+    "target": "linux/llm-stack/bench_report.py",
+    "find": "            } for r in doc[\"reports\"] if is_scored(r)]",
+    "replace": "            } for r in doc[\"reports\"]]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_report.py -q -k TestScoredRowsAreCounts",
+    "why": "D31: turn_growth and embeddings rows have no passed/total and rendered as '/ = 0%' ranked last"
+  },
+  {
+    "id": "report.bools-count-as-scores",
+    "target": "linux/llm-stack/bench_report.py",
+    "find": "    return _count(row.get(\"passed\")) and _count(row.get(\"total\"))",
+    "replace": "    return row.get(\"passed\") is not None and row.get(\"total\") is not None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_report.py -q -k booleans_are_not_counts",
+    "why": "D31: passed=True is a flag, not a count of one"
+  },
+  {
+    "id": "report.kind-defaults-to-throughput",
+    "target": "linux/llm-stack/bench_report.py",
+    "find": "    return \"throughput\" if \"results\" in doc else \"unknown\"",
+    "replace": "    return \"throughput\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_report.py -q -k a_json_that_is_no_report_is_unknown_and_warned",
+    "why": "D29/D31: a JSON that is neither envelope nor legacy shape must be named unknown and warned about, not indexed as an empty throughput run"
+  },
+  {
+    "id": "report.kind-ignores-the-envelope",
+    "target": "linux/llm-stack/bench_report.py",
+    "find": "    if doc.get(\"benchmark\"):\n        return doc[\"benchmark\"]",
+    "replace": "    if False:\n        return doc[\"benchmark\"]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_report.py -q -k lanes_envelope_is_labelled_by_its_benchmark",
+    "why": "D29: the manifest labels a report by the benchmark that wrote it"
+  },
+  {
+    "id": "lanes.envelope-bypassed",
+    "target": "linux/llm-stack/bench_lanes.py",
+    "find": "        write_report(args.output, \"bench_lanes\",\n                     {\"prompt\": args.prompt, \"max_tokens\": args.max_tokens,\n                      \"baseline\": not args.no_baseline},\n                     build_reports(batching, endpoint, lane_run, lanes),\n                     base_url, (\"bench_lanes.py\", \"bench_provenance.py\"))",
+    "replace": "        with open(args.output, \"w\") as f:\n            json.dump({\"prompt\": args.prompt, \"max_tokens\": args.max_tokens}, f, indent=2)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_lanes.py -q -k main_writes_the_shared_envelope",
+    "why": "D29: the lane report was the only --output bypassing write_report, so it carried no benchmark, provenance or config"
+  },
+  {
+    "id": "lanes.rows-look-like-scores",
+    "target": "linux/llm-stack/bench_lanes.py",
+    "find": "        reports.append({\"label\": \"aggregate\", \"model\": None, \"base_url\": None,",
+    "replace": "        reports.append({\"label\": \"aggregate\", \"model\": None, \"base_url\": None,\n                        \"passed\": 0, \"total\": 0,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_lanes.py -q -k no_rows_are_scores",
+    "why": "D31: a throughput row must never look like a score, or the manifest ranks it 0 %"
+  },
+  {
+    "id": "lanes.failed-batching-probe-dropped",
+    "target": "linux/llm-stack/bench_lanes.py",
+    "find": "        row.update(batching or {\"verdict\": \"error\", \"serialised\": None, \"requests\": {}})",
+    "replace": "        row.update(batching or {})",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_lanes.py -q -k a_failed_batching_probe_is_still_a_row",
+    "why": "D29: a probe that failed is recorded as a row saying so, not silently absent from the report"
+  },
+  {
+    "id": "provenance.probe-assumes-determinism",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "    return {\"deterministic\": outputs[0] == outputs[1], \"requests\": 2, \"prompt\": prompt,",
+    "replace": "    return {\"deterministic\": True, \"requests\": 2, \"prompt\": prompt,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k two_different_answers_are_not",
+    "why": "R8: the probe's whole content is whether the two draws agreed"
+  },
+  {
+    "id": "provenance.probe-failure-is-fatal",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "    except Exception as e:  # noqa: BLE001 \u2014 a failed probe is recorded, never fatal",
+    "replace": "    except ZeroDivisionError as e:  # noqa: BLE001",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k a_failed_probe_is_null_not_an_exception",
+    "why": "R8: a probe that cannot reach the server records deterministic=None; it must never take the benchmark down"
+  },
+  {
+    "id": "provenance.contentless-reply-is-a-draw",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "            if content is None:\n                raise ValueError(\"reply carried no message content\")\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k a_reply_without_content_is_a_failed_probe",
+    "why": "R8: two empty replies from a dead lane are not evidence of determinism"
+  },
+  {
+    "id": "provenance.temperature-and-seed-unrecorded",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "        \"temperature\": temperature,\n        \"seed\": seed,\n        \"determinism_probe\": determinism,\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k TestTemperatureAndSeed",
+    "why": "R8: temperature and seed are recorded as explicit nulls so a flip can be read as sampling rather than the model"
+  },
+  {
+    "id": "provenance.temperature-change-unflagged",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "    for key in (\"temperature\", \"seed\"):",
+    "replace": "    for key in ():",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k a_temperature_change_is_flagged_on_compare",
+    "why": "R8: comparing two runs taken at different temperatures must say so before any score"
+  },
+  {
+    "id": "provenance.known-deterministic-accepts-null",
+    "target": "linux/llm-stack/bench_provenance.py",
+    "find": "    return probe.get(\"deterministic\") is True",
+    "replace": "    return probe.get(\"deterministic\") is not False",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_provenance.py -q -k known_deterministic_needs_a_positive_probe",
+    "why": "R8: only a probe that SAW two draws agree licenses the strict flip rule"
+  },
+  {
+    "id": "tools.restraint-passes-on-silence",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        if not (message.get(\"content\") or \"\").strip():\n            return False, \"empty reply\", recovered\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k empty_none_and_whitespace_all_fail",
+    "why": "D20: a dead lane returning HTTP 200 and zero tokens scored 3/27 'correctly answered without a tool'"
+  },
+  {
+    "id": "tools.pad-carries-the-answer-key",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "PAD_SOURCES = [\"bench_coding.py\", \"bench_lanes.py\", \"benchmark_openai_api.py\"]",
+    "replace": "PAD_SOURCES = [\"bench_tools.py\", \"bench_coding.py\", \"bench_lanes.py\"]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k padding_never_contains_the_answer_key",
+    "why": "D21: --context-tokens padding used to prepend this file, prompt beside expected tool name and arguments"
+  },
+  {
+    "id": "tools.identical-retry-accepted",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "            if _call_key(c) in failed:",
+    "replace": "            if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k identical_retry",
+    "why": "D23: re-issuing the exact call that just failed was graded 'retried with another call'"
+  },
+  {
+    "id": "tools.retry-key-ignores-path-spelling",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    return fn.get(\"name\"), json.dumps({k: _canon(k, v) for k, v in args.items()}, sort_keys=True)",
+    "replace": "    return fn.get(\"name\"), json.dumps(args, sort_keys=True)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k identical_retry_with_dot_slash",
+    "why": "D23: './config/secret.yaml' is the same failed call as 'config/secret.yaml'"
+  },
+  {
+    "id": "tools.admit-words-unbounded",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "ADMIT_RE = re.compile(r\"\\b(?:not found|does not exist|doesn't exist|no such|could not|\"\n                      r\"couldn't|cannot|can't|error|failed|unable|missing)\\b\")",
+    "replace": "ADMIT_RE = re.compile(r\"(?:not found|does not exist|doesn't exist|no such|could not|\"\n                      r\"couldn't|cannot|can't|error|failed|unable|missing)\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k admit_words_are_word_bounded",
+    "why": "D23: unbounded substrings made invented YAML with 'error_reporting: true' read as an admission of failure"
+  },
+  {
+    "id": "tools.quoted-output-counts-as-admission",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    own = _own_words(content, history)\n    if not own.strip():\n        return False, \"only quoted the tool output, did not report the failure\"\n",
+    "replace": "    own = content\n",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k quoting_the_tool_output_alone",
+    "why": "D23: echoing the tool's own 'Error: ENOENT' line is not the model reporting the failure"
+  },
+  {
+    "id": "tools.invented-fenced-block-accepted",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    for block in FENCE_RE.findall(content):\n        # Both spellings, because ```text keeps the tag as the body's first\n        # line and a tagged fence could otherwise never match the history.\n        bodies = [b for b in _fence_bodies(block) if b]\n        if bodies and not any(_quoted_from(b, history) for b in bodies):\n            return False, f\"invented content after the error: {bodies[0][:60]!r}\"\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k invented_fenced_block",
+    "why": "D23: inventing the contents of a file that could not be read must fail even when the prose also admits the error"
+  },
+  {
+    "id": "tools.type-blind-arguments",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    if not _type_ok(got, schema):\n        return f\"{key}={got!r}, expected {want!r} ({schema['type']})\"\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k \"integer_one_is_not_true or string_digits_are_not_an_integer\"",
+    "why": "D25: case_sensitive=1 passed a boolean expectation and '40' passed an integer one"
+  },
+  {
+    "id": "tools.bool-counts-as-an-int",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    if isinstance(got, bool) and jtype != \"boolean\":\n        return False\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k true_is_not_an_integer",
+    "why": "D25: Python's bool is an int; a JSON schema's integer never is"
+  },
+  {
+    "id": "tools.enum-unchecked",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    if (schema or {}).get(\"enum\") and got not in schema[\"enum\"]:\n        return f\"{key}={got!r}, not one of {schema['enum']}\"\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k enum_value_outside_the_set_is_named",
+    "why": "D25/R12: an enum parameter is graded against its declared set, and the detail says so"
+  },
+  {
+    "id": "tools.leniency-on-every-string",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        return _norm_path(value) if _is_path_param(key) else value.strip()",
+    "replace": "        return _norm_path(value)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k \"a_trailing_dot_on_content_is_wrong or a_slashed_query_is_wrong\"",
+    "why": "D25: path leniency applied to every string let content='./done' and query='./__init__.py' pass"
+  },
+  {
+    "id": "tools.dot-slash-runs-stripped",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    s = s.strip()\n    if s.startswith(\"./\"):\n        s = s[2:]\n    if len(s) > 1 and s.endswith(\"/\"):\n        s = s[:-1]\n    return s",
+    "replace": "    return str(s).strip().strip(\"./\").rstrip(\"/\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k only_one_dot_slash_is_forgiven",
+    "why": "D25: strip('./') removed runs of dots and slashes at both ends, far wider than the documented one './' and one trailing '/'"
+  },
+  {
+    "id": "tools.parallel-count-unchecked",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    if len(calls) != len(expects):\n        return False, f\"{prefix}{len(calls)} tool calls, expected {len(expects)}\", recovered\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k \"three_calls_for_two_expected or only_one_of_two_fails\"",
+    "why": "R12: N expected calls means exactly N calls \u2014 a third, extra call is not a pass"
+  },
+  {
+    "id": "tools.text-json-not-threaded-into-followup",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    calls = message.get(\"tool_calls\") or []\n    if not calls and accept_text_json:\n        calls = _tool_calls_from_text(message, tools or TOOLS)\n    if calls:\n        return False, \"called another tool instead of answering from the result\"\n",
+    "replace": "    if message.get(\"tool_calls\"):\n        return False, \"called another tool instead of answering from the result\"\n",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k followup_written_as_a_text_call_fails_under_the_flag",
+    "why": "D26: under --accept-text-json a follow-up written as text was judged on the raw channel and passed as a text answer"
+  },
+  {
+    "id": "tools.text-json-not-threaded-into-recovery",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    calls = message.get(\"tool_calls\") or []\n    if not calls and accept_text_json:\n        calls = _tool_calls_from_text(message, tools or TOOLS)\n    if calls:\n        failed = _failed_calls(history)\n",
+    "replace": "    calls = message.get(\"tool_calls\") or []\n    if calls:\n        failed = _failed_calls(history)\n",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k \"text_retry_passes_recovery or text_identical_retry_fails\"",
+    "why": "D26: a text-channel retry after an error was a false FAIL, and a text-channel identical retry a false PASS"
+  },
+  {
+    "id": "tools.qwen-blocks-merged",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    if \"<function=\" in content:\n        _, calls = _parse_qwen_blocks(content)\n",
+    "replace": "    if \"<function=\" in content:\n        _, calls = _parse_qwen_blocks(content)\n        calls = calls[:1]\n",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k two_blocks_yield_two_calls",
+    "why": "D26: two <tool_call> blocks used to merge into one chimera call that grade() accepted where the native channel said '2 tool calls'"
+  },
+  {
+    "id": "tools.text-values-not-typed",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        jtype = (_param_schema(tools, name, key) or {}).get(\"type\")",
+    "replace": "        jtype = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k values_are_coerced_by_the_schema_not_by_shape",
+    "why": "D25: the text channel carries only strings; a digit-only query is not an integer just because it looks like one"
+  },
+  {
+    "id": "tools.no-parallel-multiple-cases",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    {\"name\": \"parallel_multiple_read_and_status\", \"category\": \"parallel\",\n     \"prompt\": \"Show me the contents of setup.py, and also tell me which files have uncommitted changes.\",\n     \"expect\": [{\"name\": \"read_file\", \"args\": {\"path\": \"setup.py\"}},\n                {\"name\": \"git_status\", \"args\": {}}]},\n    {\"name\": \"parallel_multiple_list_and_tests\", \"category\": \"parallel\",\n     \"prompt\": \"List the files in the directory tests, and run the whole test suite.\",\n     \"expect\": [{\"name\": \"list_files\", \"args\": {\"directory\": \"tests\"}},\n                {\"name\": \"run_tests\", \"args\": {}}]},\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k suite_has_parallel_and_parallel_multiple_cases",
+    "why": "R12: parallel cases must include ones needing two DIFFERENT tools, not only the same tool twice"
+  },
+  {
+    "id": "tools.variant-echoes-the-tool-description",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "     \"variants\": [\"Wipe notes.txt and put the single word done into it.\",",
+    "replace": "     \"variants\": [\"Overwrite notes.txt with new content, replacing everything in it: done.\",",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k selection_variants_share_under_two_content_words",
+    "why": "R12: the near-neighbour paraphrases must not be copies of the tool description \u2014 that measures reading, not selection"
+  },
+  {
+    "id": "tools.irrelevance-case-tells-the-model",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "     \"prompt\": \"How do you say 'good morning' in German?\",",
+    "replace": "     \"prompt\": \"Without using any tool, how do you say 'good morning' in German?\",",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k irrelevance_prompts_never_mention_tools",
+    "why": "R12: the irrelevance cases measure judgement, not instruction following; a prompt that says 'no tool' is a restraint case"
+  },
+  {
+    "id": "tools-opencode.untranslatable-guessed",
+    "target": "linux/llm-stack/tools_opencode.py",
+    "find": "    # list_files (glob \"*\" or bash ls), case_sensitive, include and verbosity\n    # have two defensible answers or no parameter here.\n    return UNTRANSLATABLE",
+    "replace": "    return {\"name\": \"list_files\", \"args\": {\"directory\": \".\"}}",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k every_translation_names_an_advertised_tool",
+    "why": "R12: a case with two defensible answers under the opencode schemas is skipped and listed, never graded on an opinion"
+  },
+  {
+    "id": "tools-opencode.edit-loses-the-new-text",
+    "target": "linux/llm-stack/tools_opencode.py",
+    "find": "            \"oldString\": {\"contains\": [t[1:] for t in removed]},\n            \"newString\": {\"contains\": [t[1:] for t in added]}}}",
+    "replace": "            \"oldString\": {\"contains\": [t[1:] for t in removed]}}}",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k translated_patch_grades_an_edit",
+    "why": "R12: the diff's added lines are what the edit must write; without them any replacement text passes"
+  },
+  {
+    "id": "tools-opencode.tool-set-incomplete",
+    "target": "linux/llm-stack/tools_opencode.py",
+    "find": "    _tool(\"edit\", _EDIT, {\n        \"filePath\": {\"type\": \"string\", \"description\": \"The absolute path to the file to modify\"},\n        \"oldString\": {\"type\": \"string\", \"description\": \"The text to replace\"},\n        \"newString\": {\"type\": \"string\", \"description\":\n                      \"The text to replace it with (must be different from oldString)\"},\n        \"replaceAll\": {\"type\": \"boolean\", \"description\":\n                       \"Replace all occurrences of oldString (default false)\"}},\n          [\"filePath\", \"oldString\", \"newString\"]),\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools.py -q -k ten_tools_at_a_realistic_length",
+    "why": "R12: --tools opencode advertises all ten schemas at ~5k tokens; a shorter set is not the preamble an agent really sends"
+  },
+  {
+    "id": "coding.ask-carries-the-entry",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "body, entry=entry,\n                             stream=True, timeout=timeout, deadline=deadline) as resp:",
+    "replace": "body, entry=None,\n                             stream=True, timeout=timeout, deadline=deadline) as resp:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k coding_ask_sends",
+    "why": "R10: without the entry no Authorization header is sent and a hosted endpoint cannot be measured at all"
+  },
+  {
+    "id": "coding.evaluate-carries-the-entry",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                        entry=c[\"entry\"], backend=c[\"backend\"])",
+    "replace": "                        entry=None, backend=c[\"backend\"])",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_coding_main_excludes",
+    "why": "R10: the entry resolved in main() has to reach every request, not just exist"
+  },
+  {
+    "id": "coding.control-backend-recorded",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            # The registry name, so suspect_cases() can find the control row.\n            \"backend\": backend,",
+    "replace": "            \"backend\": None,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k records_the_backend",
+    "why": "R10: without the registry name on the row the control is found only by a label that happens to spell it"
+  },
+  {
+    "id": "coding.suspect-cases-not-excluded",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    suspect = mark_suspect_cases(reports)",
+    "replace": "    suspect = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_coding_main_excludes",
+    "why": "R10: a task the control also fails is a broken task; scoring candidates on it charges them for the prompt"
+  },
+  {
+    "id": "tools.call-carries-the-entry",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "body, entry=entry,\n                             timeout=timeout) as r:",
+    "replace": "body, entry=None,\n                             timeout=timeout) as r:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k tools_call_sends",
+    "why": "R10: without the entry no Authorization header is sent and a hosted endpoint cannot be measured at all"
+  },
+  {
+    "id": "tools.evaluate-carries-the-entry",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "                        tool_set=args.tools, entry=c[\"entry\"], backend=c[\"backend\"])",
+    "replace": "                        tool_set=args.tools, entry=None, backend=c[\"backend\"])",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_tools_main_excludes",
+    "why": "R10: the entry resolved in main() has to reach every request, not just exist"
+  },
+  {
+    "id": "tools.control-backend-recorded",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "            # The registry name, so suspect_cases() can find the control row.\n            \"backend\": backend,",
+    "replace": "            \"backend\": None,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k records_the_backend",
+    "why": "R10: without the registry name on the row the control is found only by a label that happens to spell it"
+  },
+  {
+    "id": "tools.suspect-cases-not-excluded",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    suspect = mark_suspect_cases(reports)",
+    "replace": "    suspect = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_tools_main_excludes",
+    "why": "R10: a case the control also fails is a broken case; scoring candidates on it charges them for the prompt"
+  },
+  {
+    "id": "compare.suspect-cases-still-scored",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        kept = [r for r in rows if measured(r) and _case_key(r) not in dropped]",
+    "replace": "        kept = [r for r in rows if measured(r)]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k TestSuspectCasesLeaveTheRanking",
+    "why": "R10: marking a case suspect without removing it from the rate leaves the candidate charged for it"
+  },
+  {
+    "id": "compare.suspect-rescores-the-control",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        if is_control(report):\n            report[\"suspect_excluded\"] = 0\n            continue",
+    "replace": "        if False:\n            report[\"suspect_excluded\"] = 0",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k TestSuspectCasesLeaveTheRanking",
+    "why": "R10: the control is the calibration, not a competitor; rescoring it to a perfect rate over the cases it passed is meaningless"
+  },
+  {
+    "id": "compare.overflow-and-skipped-rows-are-failures",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "                or item.get(\"overflow\") or item.get(\"skipped\")\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k overflow_or_skipped",
+    "why": "D8/R5: a prompt that never fit and a task whose grader is not installed were not attempted; counting them makes an ungraded row read as a failed one"
+  },
+  {
+    "id": "bench-agent.rename-decided-by-name-only",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "                elif isinstance(node, ast.Attribute) and node.attr == name:\n                    what = \"attribute\"",
+    "replace": "                elif False:\n                    what = \"attribute\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k attribute_use",
+    "why": "D14: client.fetch_data(r) keeps the old name alive through an attribute"
+  },
+  {
+    "id": "bench-agent.rename-punishes-docstrings",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "                      and id(node) not in docstrings):\n                    what = \"string\"",
+    "replace": "                      and True):\n                    what = \"string\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k bare_docstring",
+    "why": "D14: a docstring that is exactly the old name must not fail a correct rename"
+  },
+  {
+    "id": "llm-stack-tests.offline-guard",
+    "target": "linux/llm-stack/tests/conftest.py",
+    "find": "        raise NetworkAccessInATest(",
+    "replace": "        return real_connect(self, address)\n        raise NetworkAccessInATest(",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k TestTheSuiteStaysOffline",
+    "why": "a test that reaches a server it did not start hangs the suite silently instead of failing -- which is exactly what happened when one seam was renamed"
+  },
+  {
+    "id": "coding.control-backend-not-passed",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                        entry=c[\"entry\"], backend=c[\"backend\"])",
+    "replace": "                        entry=c[\"entry\"], backend=None)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_coding_main_excludes",
+    "why": "R10: the registry name resolved in main() has to reach the row, or the control is found only by a label that happens to spell it"
+  },
+  {
+    "id": "tools.control-backend-not-passed",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "                        tool_set=args.tools, entry=c[\"entry\"], backend=c[\"backend\"])",
+    "replace": "                        tool_set=args.tools, entry=c[\"entry\"], backend=None)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_integration.py -q -k bench_tools_main_excludes",
+    "why": "R10: the registry name resolved in main() has to reach the row, or the control is found only by a label that happens to spell it"
+  },
+  {
+    "id": "coding.evaluate-passes-the-entry-to-every-ask",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                base_url, model, prompt, max_tokens, deadline=deadline, entry=entry)",
+    "replace": "                base_url, model, prompt, max_tokens, deadline=deadline, entry=None)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestEveryRequestKeepsTheBackendEntry",
+    "why": "the graded requests must carry the backends.json entry, or a hosted lane is unauthenticated from the second attempt on"
+  },
+  {
+    "id": "coding.forbidden-scope-not-file-wide",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        out.append(child)\n        if not isinstance(child, _SCOPES):\n            out.extend(_scope_nodes(child))",
+    "replace": "        out.append(child)\n        out.extend(_scope_nodes(child))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestForbiddenNamesResolvePerScope",
+    "why": "a file-wide bound-name set let an unrelated helper's parameter whitelist sorted() in every other scope"
+  },
+  {
+    "id": "coding.forbidden-text-backstop",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    return _check_forbidden_text(code, forbidden) or (\n        _check_forbidden_text(code, unmapped) if unmapped else None)",
+    "replace": "    return _check_forbidden_text(code, unmapped) if unmapped else None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestForbiddenNamesResolvePerScope",
+    "why": "a module-level binding that never executes (`for sorted in []`) leaves the builtin reachable, so the text scan must still run on the mapped tokens"
+  },
+  {
+    "id": "coding.bash-reporter-trap-rearmed",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "               + \"\\n# \u2500\u2500 candidate \u2500\u2500\\n\" + code\n               + \"\\n\\ntrap __bench_report EXIT\\n\"\n               + \"\\n# \u2500\u2500 checks \u2500\u2500\\n\" + tests + \"\\n__bench_report\\n\")",
+    "replace": "               + \"\\n# \u2500\u2500 candidate \u2500\u2500\\n\" + code + \"\\n\\n# \u2500\u2500 checks \u2500\u2500\\n\" + tests + \"\\n\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestBashCandidateCannotSilenceTheReporter",
+    "why": "a candidate's own top-level EXIT trap replaced the reporter, so a correct bash answer was graded FAIL 0/0 'exit 0'"
+  },
+  {
+    "id": "coding.linter-note-on-failing-rows",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                   f\"{first[:80]}{note}\"), credit",
+    "replace": "                   f\"{first[:80]}\"), credit",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestTheLinterSkipReachesEveryRow",
+    "why": "the [shellcheck SKIPPED] note was appended on the all-passed branch only, so a failing row on a host without shellcheck read clean"
+  },
+  {
+    "id": "coding.linter-verdict-on-the-row",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "               \"linter\": credit.get(\"shellcheck\") or credit.get(\"hadolint\"),\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k the_row_carries_the_linter_verdict",
+    "why": "credit['shellcheck']/['hadolint'] never reached the report row, so a reader could not tell per row whether the linter ran"
+  },
+  {
+    "id": "coding.throttling-is-not-overflow",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if exc.code == 429:\n        return None\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestThrottlingIsNotAContextOverflow",
+    "why": "a 429 rate limit was published as 'the prompt did not fit the context', a false cause for every unmeasured row"
+  },
+  {
+    "id": "coding.quota-body-is-not-overflow",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if _NOT_OVERFLOW_BODY.search(body):\n        return None\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestThrottlingIsNotAContextOverflow",
+    "why": "a 403 quota or 402 billing refusal says 'exceeded' too; only a body naming the context is a context overflow"
+  },
+  {
+    "id": "coding.wall-measured-emitted",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            \"wall_measured_s\": round(total_wall, 2),\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestWallMeasuredIsEmitted",
+    "why": "bench_compare's timing verdict prefers wall_measured_s; with no producer the branch was unreachable"
+  },
+  {
+    "id": "coding.determinism-probe-wired",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                     extra=_determinism_extra(candidates))",
+    "replace": "                     extra=None)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k bench_coding_hands_it_to_write_report",
+    "why": "provenance.determinism_probe was null in every report, so bench_compare's known-deterministic disjunct was unreachable"
+  },
+  {
+    "id": "tools.determinism-probe-wired",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "                     extra=_determinism_extra(candidates))",
+    "replace": "                     extra=None)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k bench_tools_hands_it_to_write_report",
+    "why": "same as coding.determinism-probe-wired, and an unset api_key_env must not take the finished report with it"
+  },
+  {
+    "id": "tools.wall-measured-emitted",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "            \"wall_measured_s\": round(wall, 2),\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k bench_tools_emits_it",
+    "why": "bench_compare's timing verdict prefers wall_measured_s; with no producer the branch was unreachable"
+  },
+  {
+    "id": "compare.suspect-needs-every-control-attempt",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "    return sorted(k for k, v in outcomes.items() if v and not any(v))",
+    "replace": "    return sorted(k for k, v in outcomes.items() if not all(v))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestSuspectCasesNeedEveryControlAttempt",
+    "why": "one flaky control draw marked a case suspect and deleted it from every candidate, tying 3/3 with 0/3"
+  },
+  {
+    "id": "compare.suspect-recounts-the-group-tables",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        _recount_groups(report, rows, kept, dropped)\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestSuspectExclusionRewritesEveryDerivedTable",
+    "why": "by_kind/by_lang/categories and the wall statistics kept their pre-exclusion values, so a row read 3/3=100% beside python=3/6"
+  },
+  {
+    "id": "compare.case-outcomes-drops-suspect-rows",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "        if key is None or not measured(item) or item.get(\"suspect\"):",
+    "replace": "        if key is None:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k case_outcomes_skips_unmeasured_and_suspect_rows",
+    "why": "the tiering input must exclude the same rows the score does, or the paired test votes on attempts nothing measured"
+  },
+  {
+    "id": "agent.added-file-scoped-to-overrides",
+    "target": "linux/llm-stack/bench_agent.py",
+    "find": "        if base in bases:\n            out.add(n)\n        elif base in OVERRIDE_FILES and os.path.dirname(n) in dirs:\n            out.add(n)\n        elif c_fixture and n.endswith(\".c\") and is_test_file(n):\n            out.add(n)",
+    "replace": "        if is_test_file(n):\n            out.add(n)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestAStrayTestFileIsNotACheat",
+    "why": "the untracked arm refused any test-shaped basename anywhere, so a correct fix plus a leftover test_repro.py scored 0/3"
+  },
+  {
+    "id": "tools.tagged-fence-is-not-invention",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    return [body] if not (head.strip().isalnum() and rest.strip()) else [body, rest.strip()]",
+    "replace": "    return [body]",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestTaggedFencesAreNotAutomaticallyInvented",
+    "why": "```text keeps the tag as the body's first line, so a tagged fence quoting the tool's own error could never match the history"
+  },
+  {
+    "id": "tools.multi-transport-scored-as-wrong",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        record(case, attempt, vi, passed=False, errored=True, recovered=False,",
+    "replace": "        record(case, attempt, vi, passed=False, recovered=False,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools_evaluate.py -q -k TestAMultiTurnTransportFailureLeavesTheDenominator",
+    "why": "D19: a transport failure scored as a wrong answer, and bench_compare then named it a REGRESSION"
+  },
+  {
+    "id": "tools.determinism-from-the-message-hash",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        per_key_hash.setdefault(key, set()).add(r[\"message_sha256\"])",
+    "replace": "        per_key_hash.setdefault(key, set()).add(r[\"passed\"])",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools_evaluate.py -q -k differing_text_with_the_same_verdict",
+    "why": "D24: a sampling lane that fails a case on every draw agrees on the verdict too, so pass/fail cannot decide determinism"
+  },
+  {
+    "id": "tools.effective-k-count-not-ratio",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "        effective_k = sum(1 for v in per_key_outcome.values() if v == {True})",
+    "replace": "        effective_k = round(passed * effective_n / total) if total else 0",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools_evaluate.py -q -k effective_k_is_a_count",
+    "why": "D24: a rounded ratio 'passed' a case that was never observed once errored attempts made the per-key counts uneven"
+  },
+  {
+    "id": "tools.errored-attempts-do-not-vote",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "    measured = [r for r in results if not r.get(\"errored\")]",
+    "replace": "    measured = list(results)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools_evaluate.py -q -k TestAMultiTurnTransportFailureLeavesTheDenominator",
+    "why": "D24: one dropped connection flipped a deterministic lane to 'sampling' \u2014 and, recording wall_s=None, crashed the sum"
+  },
+  {
+    "id": "tools.config-records-the-scoring-flags",
+    "target": "linux/llm-stack/bench_tools.py",
+    "find": "            \"context_tokens\": context_tokens, \"accept_text_json\": accept_text_json,",
+    "replace": "            \"context_tokens\": context_tokens,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_tools_evaluate.py -q -k the_flags_that_change_the_score",
+    "why": "D22: bench_compare's like-for-like guard was blind to accept_text_json, prompt_variants and context_tokens"
+  },
+  {
+    "id": "sweep.measuring-nothing-exits-zero",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "    if summary[\"steps\"] and all(s[\"status\"] == \"skipped-gate\"\n                                for s in summary[\"steps\"]):\n        raise SystemExit(\"every candidate was skipped by the correctness gate \"\n                         \"\u2014 nothing was measured\")\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k TestASweepThatMeasuredNothingFailsLoudly",
+    "why": "a sweep whose every candidate gated unreachable measured nothing, wrote an empty manifest that shadows the last real run, and exited 0"
+  },
+  {
+    "id": "sweep.argv-recorded",
+    "target": "linux/llm-stack/bench_sweep.py",
+    "find": "            \"tool\": tool, \"label\": label, \"output\": path, \"argv\": cmd,\n            \"returncode\": rc,",
+    "replace": "            \"tool\": tool, \"label\": label, \"output\": path, \"returncode\": rc,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_sweep.py -q -k TestTheSweepSummaryHoldsTheArgv",
+    "why": "the README promised _sweep.json holds every step's exact argv; run_step printed it and threw it away"
+  },
+  {
+    "id": "build_viewer.copy-normalises-a-trailing-slash",
+    "target": "linux/llm-stack/benchmark-viewer/build-viewer.sh",
+    "find": "  local src=\"${1%/}\" dst=\"${2%/}\"",
+    "replace": "  local src=\"$1\" dst=\"$2\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k TestTheViewerCopyRefusesToWriteOutsideTheDestination",
+    "why": "a trailing-slash SRC made the prefix strip a no-op, so run JSON landed at DST/<absolute source path>/ and it still exited 0"
+  },
+  {
+    "id": "build_viewer.copy-asserts-the-strip",
+    "target": "linux/llm-stack/benchmark-viewer/build-viewer.sh",
+    "find": "    if [ \"$rel\" = \"$file\" ]; then\n      echo \"copy_results: $file is not under $src\" >&2\n      return 1\n    fi\n",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k a_file_outside_the_source_is_a_loud_failure",
+    "why": "a path the strip could not shorten was copied to $dst/$file \u2014 outside $dst for a relative source \u2014 and reported success"
   }
 ]

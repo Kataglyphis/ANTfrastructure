@@ -18,7 +18,8 @@ _fn_src="$(t_fn_src "${SUBJECT}" ensure_native_rust_toolchain)" || exit 1
 _rust() {
   local arch="$1"; shift
   local tmp; tmp="$(mktemp -d)"
-  mkdir -p "${tmp}/rustup/toolchains" "${tmp}/cargo/bin"
+  mkdir -p "${tmp}/rustup/toolchains" "${tmp}/cargo/bin" "${tmp}/cargo/registry/cache"
+  : > "${tmp}/cargo/registry/cache/kept.crate"
   local d; for d in "$@"; do mkdir -p "${tmp}/rustup/toolchains/${d}"; done
   RUSTUP_HOME="${tmp}/rustup" CARGO_HOME="${tmp}/cargo" IMG_ARCH="${arch}" bash -c '
     set -eu
@@ -29,7 +30,9 @@ _rust() {
     bash() { printf "installer=%s cargo_c=%s mode=%s\n" "$*" "${RUST_INSTALL_CARGO_C:-unset}" "${BUILD_MODE:-unset}"; }
     '"${_fn_src}"'
     ensure_native_rust_toolchain
-    printf "left=%s\n" "$(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr "\n" " ")"' 2>&1
+    printf "left=%s\n" "$(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr "\n" " ")"
+    printf "cargo_left=%s\n" "$(ls "${CARGO_HOME}" 2>/dev/null | tr "\n" " ")"
+    printf "crate_kept=%s\n" "$(ls "${CARGO_HOME}/registry/cache" 2>/dev/null | tr "\n" " ")"' 2>&1
   rm -rf "${tmp}"
 }
 
@@ -40,6 +43,17 @@ t_assert_contains "${_out}" "installer=/opt/scripts/toolchain/install-rust.sh ca
   "the toolchain stage's installer, without the QEMU-hostile cargo-c compile"
 t_assert_contains "${_out}" "left=" "both trees are wiped before the install"
 t_assert_eq "left=" "$(printf '%s\n' "${_out}" | grep '^left=')" "no x86_64 dir survives"
+
+# Dockerfile.package keeps the crate downloads on a BuildKit cache mount at
+# ${CARGO_HOME}/registry. `rm -rf "${CARGO_HOME}"` over a live mountpoint fails
+# EBUSY, which took the whole arm64 package image down on 2026-09-05 -- amd64
+# never reaches the wipe, so it looked green.
+t_case 'the wipe spares CARGO_HOME/registry, which may be a live cache mount'
+_out="$(_rust arm64 1.98.0-x86_64-unknown-linux-gnu)"
+t_assert_eq "cargo_left=registry " "$(printf '%s\n' "${_out}" | grep '^cargo_left=')" \
+  "bin/ goes with the foreign toolchain; registry is a download cache and a mountpoint"
+t_assert_eq "crate_kept=kept.crate " "$(printf '%s\n' "${_out}" | grep '^crate_kept=')" \
+  "and its contents survive, so the fresh toolchain reuses them"
 
 t_case "an arm64 image with a native toolchain is left alone"
 _out="$(_rust arm64 1.98.0-aarch64-unknown-linux-gnu)"
