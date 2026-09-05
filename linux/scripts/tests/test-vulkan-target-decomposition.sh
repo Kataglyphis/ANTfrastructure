@@ -11,6 +11,7 @@ VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 # file scope and pulls 01-core modules on source.
 _FNS=""
 for _fn in _cross_build_sdk_component \
+           _vulkan_setup_cross_pkgconfig \
            _vulkan_target_copy_headers \
            _vulkan_target_build_loader \
            _vulkan_target_build_spirv_tools \
@@ -258,5 +259,59 @@ if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then
   t_assert_ok env "TMPDIR=${_alt}" VULKAN_TMPDIR_CASE=1 bash "${TESTS_DIR}/$(basename "${BASH_SOURCE[0]}")"
   rm -rf "${_alt}"
 fi
+
+# ── the host half of the pkg-config path ────────────────────────────────────
+# _vulkan_run_vulkansdk builds HOST tools while the cross search path is still
+# exported, and is sudo --preserve-env'd with it. A host tool asking for xcb was
+# handed the TARGET module, whose LIBRARY_DIRS became a find_library HINT and
+# resolved to an absolute foreign path -- which ld cannot skip the way it skips
+# an incompatible -l. That took the sdk stage down on 2026-09-05.
+_pkgconf_env() {
+  bash -c '
+    set -u
+    cross_build_is_active() { return 0; }
+    cross_pkg_config_libdir() { printf "/usr/%s/lib/pkgconfig:/usr/lib/%s/pkgconfig" "$1" "$1"; }
+    log() { :; }
+    dpkg-architecture() { printf "x86_64-linux-gnu"; }
+    '"$(sed -n '/^_vulkan_setup_cross_pkgconfig()/,/^}/p' "${VULKAN_SH}")"'
+    _vulkan_setup_cross_pkgconfig aarch64-linux-gnu
+    printf "CROSS=%s\nHOST=%s\n" "${PKG_CONFIG_LIBDIR}" "${VULKAN_HOST_PKG_CONFIG_LIBDIR}"' 2>&1
+}
+
+t_case "the cross path leads with the target triplet -- that is what it is for"
+t_assert_contains "$(_pkgconf_env | sed -n 's/^CROSS=//p')" "aarch64-linux-gnu" \
+  "the target build must find the target's modules first"
+
+t_case "the HOST half is exported separately and names no target triplet"
+_host_half="$(_pkgconf_env | sed -n 's/^HOST=//p')"
+t_assert_eq "0" "$(printf '%s' "${_host_half}" | grep -c aarch64-linux-gnu || true)" \
+  "a host tool searching here is how vulkaninfo got an absolute aarch64 libxcb"
+t_assert_contains "${_host_half}" "pkgconfig" "it still has to be a real search path"
+
+t_case "the host swap is applied and then undone around the host SDK build"
+_run_src="$(sed -n '/^_vulkan_run_vulkansdk()/,/^}/p' "${VULKAN_SH}")"
+t_assert_contains "${_run_src}" "_vulkan_pkgconfig_use_host" \
+  "the host build must not inherit the cross search path"
+t_assert_contains "${_run_src}" "_vulkan_pkgconfig_restore" \
+  "and the cross value has to come back for the target build that follows"
+
+t_case "the swap actually replaces the path, and the restore puts it back"
+_swapped="$(bash -c '
+  set -u
+  log() { :; }
+  '"$(sed -n '/^_vulkan_pkgconfig_use_host()/,/^}/p' "${VULKAN_SH}")"'
+  '"$(sed -n '/^_vulkan_pkgconfig_restore()/,/^}/p' "${VULKAN_SH}")"'
+  export PKG_CONFIG_LIBDIR=/cross/aarch64-linux-gnu/pkgconfig
+  export PKG_CONFIG_SYSROOT_DIR=/ PKG_CONFIG_ALLOW_CROSS=1
+  VULKAN_HOST_PKG_CONFIG_LIBDIR=/host/pkgconfig
+  _saved=$PKG_CONFIG_LIBDIR
+  _vulkan_pkgconfig_use_host
+  printf "during=%s sysroot=%s\n" "${PKG_CONFIG_LIBDIR}" "${PKG_CONFIG_SYSROOT_DIR:-unset}"
+  _vulkan_pkgconfig_restore "$_saved" "/" "1"
+  printf "after=%s\n" "${PKG_CONFIG_LIBDIR}"' 2>&1)"
+t_assert_contains "${_swapped}" "during=/host/pkgconfig" "the host build searches the host half only"
+t_assert_contains "${_swapped}" "sysroot=unset" "a cross sysroot has no meaning for a host tool"
+t_assert_contains "${_swapped}" "after=/cross/aarch64-linux-gnu/pkgconfig" \
+  "the target build that follows still needs the cross path"
 
 t_summary

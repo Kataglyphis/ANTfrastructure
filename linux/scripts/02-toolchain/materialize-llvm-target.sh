@@ -70,7 +70,11 @@ _llvm_target_repair_links() {
             cp -a "${real}" "${prefix}/lib/${base}"
         fi
         if [ -n "${base}" ] && [ -f "${prefix}/lib/${base}" ]; then
-            ln -sfn "$(realpath -m --relative-to="${e%/*}" "${prefix}/lib/${base}")" "${e}"
+            # Not when the copy landed ON the link's own path: relinking there
+            # replaces the file just written with a symlink to itself, which is
+            # dangling by definition. It IS the answer already.
+            [ "${prefix}/lib/${base}" = "${e}" ] \
+                || ln -sfn "$(realpath -m --relative-to="${e%/*}" "${prefix}/lib/${base}")" "${e}"
         else
             rm -f "${e}"
         fi

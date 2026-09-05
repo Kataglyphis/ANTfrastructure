@@ -264,6 +264,8 @@ _vulkan_setup_cross_pkgconfig() {
     if [ -n "${host_multiarch}" ]; then
       host_pkgconfig="/usr/lib/${host_multiarch}/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
     fi
+    # _vulkan_run_vulkansdk builds HOST tools and must search ONLY this half.
+    export VULKAN_HOST_PKG_CONFIG_LIBDIR="${host_pkgconfig}"
     if command -v cross_pkg_config_libdir >/dev/null 2>&1; then
       export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}"):${host_pkgconfig}"
     else
@@ -274,20 +276,76 @@ _vulkan_setup_cross_pkgconfig() {
 }
 
 _vulkan_build_components() {
-  local -n _vulkan_sdk_components_ref="$1"
+  local arch_suffix="$1"
+  local -n _vulkan_sdk_components_ref="$2"
 
   log "Building selected SDK components..."
   JOBS="$(compute_jobs "${JOBS:-}")"
-  # Nothing is skipped. ./vulkansdk fetches a component's CHECKOUT only when it
-  # builds it, and source/ is what every target-arch build below reads.
-  # docs/vulkan-foreign-arch-sdk.md
   _vulkan_sdk_components_ref=(
     glslang vulkan-headers vulkan-loader
     vulkan-validationlayers shaderc spirv-headers spirv-tools
     vulkan-extensionlayer volk vma vul
     spirv-cross spirv-reflect vulkan-profiles
-    vulkan-tools gfxreconstruct vcv slang
   )
+
+  # Nothing is skipped for being a cross lane any more. These four used to be,
+  # because the host link died on the TARGET arch's libxcb -- the cause was the
+  # host build inheriting the cross pkg-config search path, fixed in
+  # _vulkan_run_vulkansdk. Skipping also skips the CHECKOUT, and source/ is what
+  # every target-arch build reads. docs/vulkan-foreign-arch-sdk.md
+  local -A _vulkan_skip=()
+  if [ "${arch_suffix}" = "riscv64" ]; then
+    _vulkan_skip[slang]="riscv64 (not yet ported upstream)"
+  fi
+
+  local comp
+  for comp in vulkan-tools gfxreconstruct vcv slang; do
+    if [ -n "${_vulkan_skip[${comp}]:-}" ]; then
+      log "Skipping ${comp} for ${_vulkan_skip[${comp}]}"
+    else
+      _vulkan_sdk_components_ref+=("${comp}")
+    fi
+  done
+}
+
+# What ./vulkansdk skipped above but the TARGET build still wants. Source only:
+# the HOST link is what fails; cross-compiling against the target sysroot is
+# exactly the configuration those X11/XCB libs are right for.
+# docs/vulkan-foreign-arch-sdk.md
+_VK_SOURCE_ONLY="Vulkan-Tools:https://github.com/KhronosGroup/Vulkan-Tools.git"
+
+_vulkan_fetch_source_only() {
+  local target_dir="$1" version="$2" row name url dest
+
+  [ -n "${version}" ] || { log "no Vulkan version in scope; skipping the source-only fetch"; return 0; }
+  for row in ${_VK_SOURCE_ONLY}; do
+    name="${row%%:*}"
+    url="${row#*:}"
+    dest="${target_dir}/source/${name}"
+    [ -d "${dest}" ] && continue
+    log "Fetching ${name} (vulkan-sdk-${version}) for the target build"
+    ${SUDO:-} git clone --depth 1 --branch "vulkan-sdk-${version}" "${url}" "${dest}" \
+      || log "${name}: source fetch failed; the target build will skip it"
+  done
+}
+
+# pkg-config needs the same save/restore the compilers already get here, and used
+# not to get it. PKG_CONFIG_LIBDIR lists the TARGET triplet first and the vulkansdk
+# run is sudo --preserve-env'd with it intact, so a HOST tool asking for xcb was
+# handed the target module; its LIBRARY_DIRS became a find_library HINT and the
+# x86_64 link got an absolute aarch64 path, which ld cannot skip the way it skips
+# an incompatible -l. docs/vulkan-foreign-arch-sdk.md
+_vulkan_pkgconfig_use_host() {
+  [ -n "${VULKAN_HOST_PKG_CONFIG_LIBDIR:-}" ] || return 0
+  export PKG_CONFIG_LIBDIR="${VULKAN_HOST_PKG_CONFIG_LIBDIR}"
+  unset PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_ALLOW_CROSS
+  log "Host SDK build uses host-only pkg-config path ${PKG_CONFIG_LIBDIR}"
+}
+
+_vulkan_pkgconfig_restore() {
+  [ -n "$1" ] && export PKG_CONFIG_LIBDIR="$1" || unset PKG_CONFIG_LIBDIR
+  [ -n "$2" ] && export PKG_CONFIG_SYSROOT_DIR="$2" || unset PKG_CONFIG_SYSROOT_DIR
+  [ -n "$3" ] && export PKG_CONFIG_ALLOW_CROSS="$3" || unset PKG_CONFIG_ALLOW_CROSS
 }
 
 _vulkan_run_vulkansdk() {
@@ -306,6 +364,10 @@ EOF
   local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
   local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
   unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
+
+  local _saved_pc_libdir="${PKG_CONFIG_LIBDIR:-}" _saved_pc_sysroot="${PKG_CONFIG_SYSROOT_DIR:-}"
+  local _saved_pc_cross="${PKG_CONFIG_ALLOW_CROSS:-}"
+  _vulkan_pkgconfig_use_host
 
   # GCC 16 promotes several new -W diagnostics that fire (often as false
   # positives) on the older SDK component sources — e.g. -Warray-bounds on
@@ -340,6 +402,7 @@ EOF
   else
     ./vulkansdk -j "$JOBS" "$@"
   fi
+  _vulkan_pkgconfig_restore "${_saved_pc_libdir}" "${_saved_pc_sysroot}" "${_saved_pc_cross}"
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
   [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER
   [ -n "${_saved_cmake_cxx}" ] && export CMAKE_CXX_COMPILER="${_saved_cmake_cxx}" || unset CMAKE_CXX_COMPILER
@@ -373,11 +436,12 @@ _build_vulkan_sdk_cross() {
     _vulkan_setup_cross_pkgconfig "${target_triplet}"
 
     local sdk_components=()
-    _vulkan_build_components sdk_components
+    _vulkan_build_components "${arch_suffix}" sdk_components
     _vulkan_run_vulkansdk "${sdk_components[@]}"
 
-    # ./vulkansdk only built HOST (x86_64) tools; also produce TARGET-arch Vulkan
-    # libs (loader + SPIRV-Tools) so cross consumers (e.g. TVM) can link them.
+    # ./vulkansdk only built HOST (x86_64) tools; produce the TARGET-arch SDK the
+    # image actually runs. docs/vulkan-foreign-arch-sdk.md
+    _vulkan_fetch_source_only "${target_dir}" "${version:-${VULKAN_VERSION:-}}"
     _build_vulkan_targets "${arch_suffix}" "${target_dir}" "${target_triplet}"
     _vulkan_prune_sdk_sources "${target_dir}"
   )

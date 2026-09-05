@@ -557,6 +557,43 @@ bootstrap_flutter_sdk() {
     echo "OK: Flutter bootstrapped for ${arch}"
 }
 
+# The web lane, measured in a consumer run: two `cargo install` from source per
+# invocation (wasm-pack 258 crates, flutter_rust_bridge_codegen 174), plus a
+# nightly rustup auto-install through a path rustup itself calls deprecated.
+# The dated pin install-rust.sh adds is not enough -- `wasm-pack -Z build-std`
+# invokes `cargo +nightly`, which resolves the CHANNEL name, not the pin.
+# Non-fatal throughout: a consumer that has to build its own tools is slow, one
+# that cannot build the image at all is worse.
+# docs/consumer-image-contract.md#the-web-lane-toolchain
+install_web_lane_toolchain() {
+    local rustup="${CARGO_HOME:?}/bin/rustup" cargo="${CARGO_HOME:?}/bin/cargo"
+    local name version
+
+    if [ ! -x "${rustup}" ] || [ ! -x "${cargo}" ]; then
+        echo "WARN: no rustup/cargo under ${CARGO_HOME}; skipping the web-lane toolchain"
+        return 0
+    fi
+
+    if "${rustup}" toolchain install nightly --profile minimal \
+         --component rust-src --target wasm32-unknown-unknown; then
+        echo "OK: nightly channel installed with rust-src + wasm32-unknown-unknown"
+    else
+        echo "WARN: the nightly channel is unavailable; the web lane will auto-install it per run"
+    fi
+
+    for name in "wasm-pack:${WASM_PACK_VERSION:-}" \
+                "flutter_rust_bridge_codegen:${FLUTTER_RUST_BRIDGE_VERSION:-}"; do
+        version="${name#*:}"
+        name="${name%%:*}"
+        [ -n "${version}" ] || { echo "WARN: no version pinned for ${name}; skipping"; continue; }
+        if "${cargo}" install --locked "${name}" --version "${version}"; then
+            echo "OK: ${name} ${version} installed"
+        else
+            echo "WARN: cargo install ${name} ${version} failed; the web lane will build it per run"
+        fi
+    done
+}
+
 main() {
     local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
     local gcc_major="${GCC_VERSION%%.*}"
@@ -575,6 +612,7 @@ main() {
     preserve_custom_gcc "${GCC_VERSION}"
     ensure_native_rust_toolchain
     wire_cargo_symlinks
+    install_web_lane_toolchain
     hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"
 

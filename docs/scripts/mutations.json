@@ -2248,6 +2248,22 @@
     "why": "mktemp honours TMPDIR; a hardcoded /tmp in the argv normaliser failed 5 of 35 assertions under any override"
   },
   {
+    "id": "vulkan.host-pkgconfig-half-excludes-the-target",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    export VULKAN_HOST_PKG_CONFIG_LIBDIR=\"${host_pkgconfig}\"",
+    "replace": "    export VULKAN_HOST_PKG_CONFIG_LIBDIR=\"/usr/lib/${target_triplet}/pkgconfig:${host_pkgconfig}\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the host SDK build searches this path; one target-triplet entry in it hands a host tool the foreign xcb module, whose LIBRARY_DIRS becomes an absolute find_library result that ld cannot skip -- the x86_64 vulkaninfo link then fails and takes the sdk stage with it"
+  },
+  {
+    "id": "vulkan.host-build-swaps-the-pkgconfig-path",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  export PKG_CONFIG_LIBDIR=\"${VULKAN_HOST_PKG_CONFIG_LIBDIR}\"",
+    "replace": "  export PKG_CONFIG_LIBDIR=\"${PKG_CONFIG_LIBDIR}\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "without the swap the host build keeps the cross search path it is sudo --preserve-env'd with, which is exactly the configuration that failed; the compilers were already saved and restored here and pkg-config was the one that was not"
+  },
+  {
     "id": "version-forwarding.versions-env-quiet-source",
     "target": "linux/scripts/01-core/versions.env",
     "find": "CUDA_ARCHITECTURES=\"80;86;89;90\"",
@@ -4350,6 +4366,14 @@
     "replace": "ln -sfn \"${prefix}/lib/${base}\" \"${e}\"",
     "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
     "why": "an absolute /opt path dangles again after the package COPY, and a bare basename dangles four levels down in site-packages"
+  },
+  {
+    "id": "llvm-target.repair-never-links-a-file-to-itself",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "            [ \"${prefix}/lib/${base}\" = \"${e}\" ] \\\n                || ln -sfn \"$(realpath -m --relative-to=\"${e%/*}\" \"${prefix}/lib/${base}\")\" \"${e}\"",
+    "replace": "            ln -sfn \"$(realpath -m --relative-to=\"${e%/*}\" \"${prefix}/lib/${base}\")\" \"${e}\"",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "a Debian multiarch dev link (lib/libX.so.N -> ../../<triplet>/libX.so.N) resolves to its OWN basename, so the repair copies the real file exactly onto the link's path; relinking there replaces that file with a symlink to itself, which is dangling by definition and killed the whole sdk stage"
   },
   {
     "id": "llvm-target.repair-drops-what-the-prefix-does-not-own",

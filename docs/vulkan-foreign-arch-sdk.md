@@ -44,24 +44,50 @@ component that will not cross-build leaves the prefix poorer, it does not fail
 the lane. `_vulkan_target_verdict` fails only when *every* attempt failed, which
 is the shape of a broken cross toolchain rather than one awkward component.
 
-## Nothing is skipped
+## The host build must not inherit the cross pkg-config path
 
-`_vulkan_build_components` used to drop `vulkan-tools`, `gfxreconstruct`, `vcv` and
-`slang` on a cross lane, and carried nine more skip rows that the consuming loop
-never read. Both are gone. Skipping a component skips its **checkout**, and
-`source/` is what every target build reads — so a skip that looked like it only
-saved host build time was silently deciding what the target arch could never have.
+`./vulkansdk` builds HOST (x86_64) tools, and `_vulkan_run_vulkansdk` already
+saved and restored `CC`, `CXX` and the `CMAKE_*_COMPILER` variables so CMake would
+use the host compiler. pkg-config was left out of that, and the omission cost four
+components.
+
+`_vulkan_setup_cross_pkgconfig` builds a `PKG_CONFIG_LIBDIR` with the TARGET
+triplet FIRST, and the vulkansdk run is `sudo --preserve-env`'d with it intact:
+
+```
+Using cross pkg-config search path
+  /usr/aarch64-linux-gnu/lib/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:...
+```
+
+So a host tool asking pkg-config for `xcb` was handed the aarch64 module, and
+`XCB_LIBRARY_DIRS=/usr/lib/aarch64-linux-gnu` became a `find_library` HINT that
+resolved to an absolute foreign path:
+
+```
+x86_64-linux-gnu-ld.bfd: /usr/lib/aarch64-linux-gnu/libxcb.so:
+    error adding symbols: file in wrong format
+```
+
+`vkcube` linked in the same run: `ld` skips an incompatible library found through
+`-l`, and cannot skip one handed to it as an absolute path. The x86_64 dev package
+was installed the whole time — this was search order, nothing else.
+
+`_vulkan_run_vulkansdk` now swaps `PKG_CONFIG_LIBDIR` to the host half for the
+duration of the host build and restores the cross value afterwards, exactly as it
+already did for the compilers. The host half is exported once by
+`_vulkan_setup_cross_pkgconfig` as `VULKAN_HOST_PKG_CONFIG_LIBDIR`, so the
+multiarch triplet is worked out in one place.
+
+With that fixed, nothing is skipped for being a cross lane. `slang` remains
+skipped on riscv64 alone, which is an upstream port gap rather than a build-host
+problem.
 
 `_VK_TARGET_COMPONENTS` is the table of what gets cross-built, one row per
 component: label, checkout candidates, extra CMake args. LunarG's directory names
-do not all match the component name (`shaderc` keeps its CMake project one level
-down in `src/`, which is why `glslc` looked unbuildable at first), so each row may
-name several candidates.
-
-The heavy tail — `gfxreconstruct`, `slang`, `vulkanCapsViewer` — is attempted like
-everything else. `slang` needs host LLVM `tblgen` and `vulkanCapsViewer` needs Qt
-for the target, so both may well fail to configure; they fail fast, non-fatally, and
-the build log says so rather than a comment asserting it.
+do not all match the component name — `shaderc` keeps its CMake project one level
+down in `src/`, which is why `glslc` looked unbuildable at first — so a row may
+name several candidates. `_vulkan_fetch_source_only` is the safety net for a
+component whose checkout is absent but whose target build is still wanted.
 
 ## The source tree does not ship
 

@@ -1307,6 +1307,8 @@ printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
 printf 'ADV GSTREAMER_VERSION %s\n'   "${GSTREAMER_VERSION:-}"
 printf 'ADV VULKAN_VERSION %s\n'      "${VULKAN_VERSION:-}"
 printf 'ADV RUST_VERSION %s\n'        "${RUST_VERSION:-}"
+printf 'ADV WASM_PACK_VERSION %s\n' "${WASM_PACK_VERSION:-}"
+printf 'ADV FLUTTER_RUST_BRIDGE_VERSION %s\n' "${FLUTTER_RUST_BRIDGE_VERSION:-}"
 printf 'ADV UBUNTU_VERSION %s\n'             "${UBUNTU_VERSION:-}"
 printf 'ADV CMAKE_VERSION %s\n'              "${CMAKE_VERSION:-}"
 printf 'ADV NODE_VERSION %s\n'               "${NODE_VERSION:-}"
@@ -1358,6 +1360,8 @@ printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
 printf 'HAVE LLVM_RELEASE %s\n'       "$(clang --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE GSTREAMER_VERSION %s\n'  "$(gst-inspect-1.0 --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE VULKAN_VERSION %s\n'     "$(_have_vulkan)"
+printf 'HAVE WASM_PACK_VERSION %s\n' "$(wasm-pack --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'HAVE FLUTTER_RUST_BRIDGE_VERSION %s\n' "$(flutter_rust_bridge_codegen --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 PROBE
 }
 
@@ -1464,7 +1468,7 @@ _shipped_truth_probe() {
 _ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
-LITERT_VERSION RUST_VERSION"
+LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION"
 
 # Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
 # selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.

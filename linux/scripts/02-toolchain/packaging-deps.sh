@@ -136,9 +136,40 @@ install_apt_deps() {
 
 # ── appimagetool provisioning ─────────────────────────────────────────
 
+# The runtime appimagetool embeds into every AppImage it builds. Without it on
+# disk each consumer run fetches it from GitHub, so a build hangs on GitHub being
+# up. It is NOT downloaded here: upstream publishes it only under the moving
+# `continuous` tag, the exact mutable-asset trap TS1 below documents. Every
+# AppImage BEGINS with that runtime, and appimagetool is already SHA-pinned, so
+# the bytes are taken from the tool itself -- pinned transitively, arch-correct
+# by construction. /etc/skel so the runtime user created later inherits it.
+# docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
+ensure_appimagetool_runtime() {
+    local tool offset arch_name dir
+    tool="$(command -v appimagetool 2>/dev/null)" || return 0
+    [ -n "${tool}" ] || return 0
+    arch_name="$(uname -m)"
+
+    offset="$("${tool}" --appimage-offset 2>/dev/null)" || offset=""
+    case "${offset}" in
+        ''|*[!0-9]*)
+            warn "appimagetool did not report --appimage-offset; runtime-${arch_name} not staged"
+            return 0
+            ;;
+    esac
+
+    for dir in /etc/skel/.local/share/appimagekit "${HOME:-/root}/.local/share/appimagekit"; do
+        mkdir -p "${dir}"
+        head -c "${offset}" "${tool}" > "${dir}/runtime-${arch_name}"
+        chmod 0755 "${dir}/runtime-${arch_name}"
+    done
+    info "Staged AppImage runtime-${arch_name} (${offset} bytes) from ${tool}"
+}
+
 ensure_appimagetool() {
     if command -v appimagetool >/dev/null 2>&1; then
         info "appimagetool already present: $(command -v appimagetool)"
+        ensure_appimagetool_runtime
         return 0
     fi
 
@@ -213,6 +244,7 @@ ensure_appimagetool() {
     fi
 
     info "appimagetool is now available: $dest"
+    ensure_appimagetool_runtime
 }
 
 ensure_appimagetool_if_supported() {

@@ -157,7 +157,7 @@ _mk_apt_fixture() {
   mkdir -p "${_T}/root/lib/python3.14/site-packages/lldb/native" "${_T}/root/include" \
            "${_T}/multiarch" "${_T}/include/llvm-23/llvm"
   local _f
-  for _f in libclang-23.so.23 liblldb-23.so.1 libc++.a libc++.modules.json libc++.so.1.0; do
+  for _f in libclang-23.so.23 liblldb-23.so.1 libLLVM.so.23.1 libc++.a libc++.modules.json libc++.so.1.0; do
     printf 'real %s\n' "${_f}" > "${_T}/multiarch/${_f}"
   done
   : > "${_T}/include/llvm-23/llvm/IR.h"
@@ -171,6 +171,7 @@ _mk_apt_fixture() {
     ln -s ../../multiarch/libc++.a libc++.a
     ln -s ../../multiarch/libc++.modules.json libc++.modules.json
     ln -s ../../multiarch/liblldb-23.so.1 liblldb-23.so.1
+    ln -s ../../multiarch/libLLVM.so.23.1 libLLVM.so.23.1
     ln -s ../../../../../../multiarch/liblldb-23.so.1 python3.14/site-packages/lldb/native/_lldb.cpython-314.so
     cd ../include || exit 1
     ln -s ../../include/llvm-23/llvm llvm )
@@ -181,7 +182,7 @@ _mk_apt_fixture() {
 t_case "the copied prefix is the thing that breaks -- the original resolves"
 _mk_apt_fixture
 t_assert_eq "0" "$(find "${_T}/root" -xtype l | wc -l)" "every link resolves where the tree was installed"
-t_assert_eq "11" "$(find "${_P}" -xtype l | wc -l)" "cp -a to another depth breaks every one of them"
+t_assert_eq "12" "$(find "${_P}" -xtype l | wc -l)" "cp -a to another depth breaks every one of them"
 
 t_case "after the repair nothing under the prefix resolves to nothing"
 _repair "${_P}" "${_T}/root" >/dev/null
@@ -197,6 +198,19 @@ t_assert_ok test -f "${_P}/lib/libclang-23.so.23"
 
 t_case "an LLVM-family soname the prefix does not have is materialised"
 t_assert_ok test -f "${_P}/lib/liblldb-23.so.1"
+
+# The Debian multiarch dev shape: lib/libX.so.N -> ../../<triplet>/libX.so.N. The
+# target's basename IS the link's own name, so the repair copies the real file
+# exactly onto the link's path -- and relinking there would replace the file it
+# just wrote with a symlink to itself. `find -xtype l` calls that dangling, which
+# is how it took the whole sdk stage down on 2026-09-05 (libclang-cpp.so.23.1).
+t_case "a link whose target carries its OWN name ends as the file, not a self-link"
+t_assert_eq "" "$(readlink "${_P}/lib/libLLVM.so.23.1" || true)" \
+  "anything here means the real file was overwritten by a link to itself"
+t_assert_eq "real libLLVM.so.23.1" "$(cat "${_P}/lib/libLLVM.so.23.1" 2>/dev/null || true)" \
+  "nothing else in the fixture names this basename, so nothing heals it after the fact"
+t_assert_eq "0" "$(find "${_P}/lib" -name libLLVM.so.23.1 -xtype l | wc -l)" \
+  "this is the exact find the script's own final assertion runs"
 t_assert_eq "real liblldb-23.so.1" "$(cat "${_P}/lib/liblldb-23.so.1")"
 
 t_case "a deep link is re-pointed with a path that resolves from ITS OWN dir"

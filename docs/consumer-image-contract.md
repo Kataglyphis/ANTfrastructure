@@ -147,6 +147,61 @@ The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
 was measured present in all three shipped arches on 2026-09-04, and the parity
 table already asserts the `android-sdk` prefix on every arch.
 
+### The web lane toolchain
+
+Measured in a consumer run, the Flutter **web** lane rebuilt its own tools on every
+invocation: `flutter_rust_bridge_codegen build-web` shells out to `wasm-pack`, and
+both were a from-source `cargo install` — 258 crates for `wasm-pack`, 174 for
+`flutter_rust_bridge_codegen` — followed by a nightly `rustup` auto-install through
+a path rustup itself calls deprecated.
+
+The image now installs all three ahead of time:
+
+| what | pin | why it must be here |
+| --- | --- | --- |
+| `nightly` toolchain + `rust-src` + `wasm32-unknown-unknown` | channel | `wasm-pack -Z build-std` runs `cargo +nightly`, which resolves the **channel name**, not a dated pin — so `install-rust.sh`'s dated pin does not satisfy it |
+| `wasm-pack` | `WASM_PACK_VERSION` | 258 crates per consumer run |
+| `flutter_rust_bridge_codegen` | `FLUTTER_RUST_BRIDGE_VERSION` | 174 crates per consumer run |
+
+Both crate versions live in `01-core/versions.env` and are installed with
+`cargo install --locked`, so a consumer gets the pinned build rather than whatever
+the index resolves to that day.
+
+`install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly channel,
+an unpinned version and a failed `cargo install` each `WARN` and continue. The
+trade is deliberate: a consumer that has to build its own tools is slow, a consumer
+that cannot build the image at all is worse.
+
+### The AppImage runtime ships with the tool
+
+Every AppImage begins with a small ELF **runtime** that `appimagetool` prepends to
+the payload. When that runtime is not already on disk, `appimagetool` fetches it
+from GitHub on each run — so a consumer's packaging step depends on GitHub being up
+at build time, and fails offline.
+
+The runtime is staged at image-build time instead, and it is **not downloaded**.
+Upstream publishes it only under the moving `continuous` tag, which is the exact
+mutable-asset trap that already broke `appimagetool` itself once (a `continuous`
+re-upload changed the bytes under a pinned SHA256, and `download_verified_file`
+reported a tamper-shaped "checksum mismatch" that was only upstream drift). Since
+every AppImage *starts* with the runtime, and `appimagetool` is itself an AppImage
+pinned to an immutable versioned tag with a recorded SHA256, the runtime is taken
+out of the tool's own first `--appimage-offset` bytes. It is therefore pinned
+transitively and arch-correct by construction — no second download, no second pin
+to keep in step.
+
+It is written to two places, as `runtime-<uname -m>`:
+
+| path | why |
+| --- | --- |
+| `/etc/skel/.local/share/appimagekit/` | the runtime user is created later, and inherits `/etc/skel` |
+| `${HOME}/.local/share/appimagekit/` | the build user that runs the packaging step now |
+
+`ensure_appimagetool_runtime` is a no-op, not a failure, when `appimagetool` is
+absent (riscv64 has no upstream build) or when it does not report a numeric offset:
+a missing runtime costs a consumer one download, and is never worth failing a
+toolchain stage over.
+
 ### The Android SDK roots are advertised
 
 `Dockerfile.android` advertises where each Android payload lives; `Dockerfile.package`
