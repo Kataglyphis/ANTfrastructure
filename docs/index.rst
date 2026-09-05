@@ -195,6 +195,7 @@ Common development targets:
    mistral-vibe-glm-setup
    geniex-local-ai-setup
    llm-benchmark-roadmap
+   llm-benchmark-review-2026-09-05
    agentic-loop-build-matrix
    windows-agentic-loop
 

@@ -360,6 +360,31 @@ OpenAI-compatible endpoint via `@ai-sdk/openai-compatible`. Edit
 }
 ```
 
+**Added 2026-09-05: the CPU lane.** The agent measurements in § 1m and § 1n ran
+against the GGUF **CPU** lane on 18184, and the reproduce commands there say
+`--model geniex-cpu/…`. That provider key has to exist in this file or opencode
+resolves nothing — it was used for weeks and never written down. It is a third
+block beside the two above, identical in shape:
+
+```jsonc
+    "geniex-cpu": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "GenieX (Snapdragon CPU)",
+      "options": {
+        "baseURL": "http://127.0.0.1:18184/v1",   // 18190 instead, on pre-0.6 builds behind the shim
+        "apiKey": "geniex"
+      },
+      "models": {
+        // The agent lane: the strongest GGUF backend on this machine (§ 1b),
+        // and the only kind of lane opencode's 8,175-token preamble fits.
+        "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M": {
+          "name": "Qwen3.8 9B Distill (CPU lane) — agent work",
+          "limit": { "context": 16384, "output": 4096 }
+        }
+      }
+    }
+```
+
 Four things that silently break this:
 
 | Pitfall | Consequence |
@@ -1107,14 +1132,30 @@ failures and could not have told you that.
 Two tasks still hit the 2048-token output cap. That cap remains the single
 biggest distortion in every coding number on this page.
 
-**A caveat on the fractions above (2026-09-04 audit).** The assertion
-denominators counted setup lines and helper definitions in the hidden tests as
-if they were assertions; nine of the 21 extended tasks carry such lines. The
-harness now counts only statements that assert, so a re-run will report
-slightly smaller denominators for those rows (e.g. 20/21 becomes 19/20). The
-PASS/FAIL verdicts, the 17/27 and the interval are unaffected — those never
-used the denominator. The table is left as measured rather than re-derived by
-hand.
+**A caveat on the fractions above (2026-09-04 audit, corrected 2026-09-05).**
+The 2026-09-04 note said the denominators had counted "setup lines and helper
+definitions" as assertions. That described the wrong mechanism, and the panel
+review found it: what those denominators actually counted, and what was then
+removed, is **only** top-level `assert` statements. The should-raise checks —
+`try: f(bad); raise AssertionError / except ValueError: pass`, 41 of them across
+16 of the 27 Python tasks as the suite stood on 2026-09-04 — were counted as
+**test setup**, not as assertions at all.
+A candidate that got everything right except the ValueError rule was therefore
+reported as "test setup raised" with full credit (12/12, 9/9) rather than as the
+near-miss it was.
+
+Since 2026-09-05 such a block counts as exactly one assertion, so the
+denominators here move in **both** directions: smaller where a helper line was
+being counted, larger where a should-raise check was not. Every fraction in the
+table above is an *intermediate* accounting that no longer exists, and it is
+left as measured rather than re-derived by hand — a re-derivation needs a live
+re-run, not arithmetic. The PASS/FAIL verdicts, the 17/27 and its interval never
+used the denominator and are unaffected.
+
+The other half of this section's closing claim did not survive either: "that cap
+remains the single biggest distortion" was written on GenieX v0.5.0. The
+2048-token ceiling is gone on v0.6.1 (§ 1n) and the cap that remains is
+`--max-tokens`, a parameter of the experiment.
 
 ### 1h. The lane knobs, finally swept (measured 2026-09-01)
 
@@ -1727,13 +1768,56 @@ are the GenieX version and that the shim is gone:
 single task used to. The gain is the prefix cache: the work per turn did not
 change, it stopped being paid again on every turn.
 
-Reproduce with:
+Reproduce with (`geniex-cpu` is the opencode provider key declared in Step 3;
+`--keep-output` was added afterwards and stores each workspace's `git diff`, so
+a future PASS can be re-audited — this run's could not be):
 
 ```bash
 python3 linux/llm-stack/bench_agent.py --self-test    # prove the fixtures first
 python3 linux/llm-stack/bench_agent.py \
-    --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M --timeout 1800
+    --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
+    --timeout 1800 --keep-output --output agent-v0.6.1.json
 ```
+
+#### The grader itself changed on 2026-09-05 — do not compare a re-run to these numbers
+
+Everything above was measured with the grader as it stood on the morning of
+2026-09-05. A panel review found four defects in it the same day
+([`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md)),
+all now fixed, and each moves a published number without any model changing:
+
+- **The truncation rule was wrong in both directions.** A reply whose final
+  ` ``` ` was followed by a newline or by prose was read as an *unclosed* fence,
+  so a syntax-error answer ending that way was graded CUT — excluded from the
+  rate, the interval, determinism and the rank — instead of counted wrong.
+  Conversely a server cut landing on a prefix that happened to compile was
+  graded FAIL, "timed out (likely an infinite loop)". The three cuts in the
+  tables above were classified under that rule and have **not** been
+  re-classified.
+- **Wall statistics now cover measured attempts only.** The seconds of a cut or
+  abandoned attempt — up to the full 1800 s deadline — used to be inside
+  `total_wall_s` and `avg/attempt`, which is what the ranking's tie-break reads.
+  Every wall figure above includes attempts that were excluded from the score
+  beside it; a re-run's will not.
+- **Partial-credit denominators changed again**, in both directions, for the
+  reason given in § 1i's dated caveat. The "nine of the eleven failures are near
+  misses" fractions here are the intermediate accounting.
+- **A control endpoint can now mark a case suspect** and remove it from every
+  candidate's score. No control ran for anything on this page, so nothing above
+  is calibrated that way — a re-run with one configured will legitimately report
+  a different denominator.
+
+Also new since these runs: an `OVERFLOW` state for a 4xx saying the prompt did
+not fit (it used to land in three different buckets depending on how the server
+reported it), an `ERROR` state for an in-stream `{"error": …}` (graded "no code
+found" before), a visible `SKIP` for a language whose linter is absent, and
+`--task-set all` now meaning 33 tasks rather than 27.
+
+**So: re-derive, do not compare.** A number produced by today's grader and one
+in the tables above are not the same measurement, and `bench_compare` will say
+so on its own — provenance carries a hash of the grader's source and reports
+`BENCHMARK SOURCE CHANGED` before any score. The exact re-run commands are in
+the CHANGELOG entry of 2026-09-05.
 
 ## Debugged: i-quants below 4 bits are broken in GenieX's llama.cpp
 

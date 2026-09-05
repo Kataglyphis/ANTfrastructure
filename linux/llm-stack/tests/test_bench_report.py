@@ -107,3 +107,72 @@ class TestComparisonTable:
         write(tmp_path, "empty.json", {"results": [{"error": "x"}]})
         write(tmp_path, "a.json", LEGACY)
         assert [r[0] for r in comparison_rows(str(tmp_path))] == ["a"]
+
+
+ENVELOPE = {"benchmark": "bench_tools", "provenance": {"host": "h"}, "config": {},
+            "reports": [{"label": "m", "model": "m", "passed": 25, "total": 27,
+                         "results": [{"case": "a", "passed": True}]}]}
+
+
+class TestScoredRowsAreCounts:
+    """D31: a `scored` row with no integer passed/total rendered as
+    '/ = 0% [0-100%]' and ranked last. turn_growth and embeddings write rows
+    of a different shape; they are not scores."""
+
+    def test_a_scored_row_needs_integer_passed_and_total(self, tmp_path):
+        write(tmp_path, "t.json", ENVELOPE)
+        m = build_manifest(str(tmp_path), "T", "m", "now")
+        assert m["configs"][0]["kind"] == "bench_tools"
+        assert [r["passed"] for r in m["configs"][0]["scored"]] == [25]
+
+    def test_turn_growth_has_no_scored_rows(self, tmp_path):
+        doc = {"benchmark": "bench_tools_turn_growth", "provenance": {}, "config": {},
+               "reports": [{"label": "m", "model": "m", "results": [{"turn": 1}]}]}
+        write(tmp_path, "g.json", doc)
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert "scored" not in entry
+        assert entry["kind"] == "bench_tools_turn_growth"
+        assert entry["unscored"][0]["label"] == "m"
+        assert "results" not in entry["unscored"][0]
+
+    def test_embeddings_semantic_score_is_not_a_scored_row(self, tmp_path):
+        doc = {"benchmark": "bench_embeddings", "provenance": {}, "config": {},
+               "reports": [{"label": "e", "model": "e", "semantic_passed": 3,
+                            "semantic_total": 3, "deterministic": True}]}
+        write(tmp_path, "e.json", doc)
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert "scored" not in entry and entry["unscored"][0]["semantic_passed"] == 3
+
+    def test_booleans_are_not_counts(self, tmp_path):
+        doc = dict(ENVELOPE, reports=[{"label": "m", "passed": True, "total": True}])
+        write(tmp_path, "b.json", doc)
+        assert "scored" not in build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+
+    def test_a_mixed_envelope_keeps_only_the_real_scores(self, tmp_path):
+        doc = dict(ENVELOPE, reports=ENVELOPE["reports"] + [{"label": "x", "passed": None,
+                                                              "total": None}])
+        write(tmp_path, "mix.json", doc)
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert [r["label"] for r in entry["scored"]] == ["m"]
+        assert [r["label"] for r in entry["unscored"]] == ["x"]
+
+
+class TestReportKind:
+    def test_lanes_envelope_is_labelled_by_its_benchmark(self, tmp_path):
+        doc = {"benchmark": "bench_lanes", "provenance": {}, "config": {},
+               "reports": [{"label": "npu", "tok_per_sec": 19.0}]}
+        write(tmp_path, "l.json", doc)
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert entry["kind"] == "bench_lanes" and "scored" not in entry
+
+    def test_legacy_shape_is_throughput(self, tmp_path):
+        write(tmp_path, "a.json", LEGACY)
+        assert build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]["kind"] == "throughput"
+
+    def test_a_json_that_is_no_report_is_unknown_and_warned(self, tmp_path, capsys):
+        # The envelope-less dict bench_lanes used to write: indexed as an empty
+        # 'throughput' run, silently.
+        write(tmp_path, "stray.json", {"prompt": "x", "max_tokens": 256})
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert entry["kind"] == "unknown"
+        assert "stray.json" in capsys.readouterr().err

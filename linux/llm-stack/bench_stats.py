@@ -10,9 +10,16 @@ instead of leaving it to be discovered later.
 Wilson rather than the textbook normal approximation: the latter is badly
 wrong exactly where this benchmark lives — small n, and proportions at 0 or 1,
 where it produces a zero-width interval around a certainty nobody has.
+
+Two models answering the SAME cases are a paired design. Overlap of two
+independent intervals is the wrong test for that (see paired_sign_test); it
+is kept as the fallback for reports that carry no per-case outcomes.
 """
 
 import math
+
+# Two-sided p-value below which a paired difference counts as separable.
+ALPHA = 0.05
 
 
 def wilson_interval(successes, trials, z=1.96):
@@ -89,3 +96,106 @@ def power_note(trials, from_rate=1.0):
                 f"'no regression' here means 'cannot tell'")
     return (f"at n={trials} the smallest provable drop is {100*from_rate:.0f}% -> "
             f"{100*mde:.0f}%; anything subtler passes unnoticed")
+
+
+def diff_interval(a_succ, a_tot, b_succ, b_tot, z=1.96):
+    """Newcombe hybrid-score 95 % interval for the difference b_rate - a_rate.
+
+    Two overlapping Wilson intervals do NOT mean the difference includes zero;
+    the overlap rule is far more conservative than a test on the difference.
+    Returns (low, high) in -1..1; (-1.0, 1.0) when either side has no trials.
+    """
+    if a_tot <= 0 or b_tot <= 0:
+        return (-1.0, 1.0)
+    pa, pb = a_succ / a_tot, b_succ / b_tot
+    la, ua = wilson_interval(a_succ, a_tot, z)
+    lb, ub = wilson_interval(b_succ, b_tot, z)
+    d = pb - pa
+    low = d - math.sqrt((pb - lb) ** 2 + (ua - pa) ** 2)
+    high = d + math.sqrt((ub - pb) ** 2 + (pa - la) ** 2)
+    return (max(-1.0, low), min(1.0, high))
+
+
+def paired_sign_test(discordant_a, discordant_b):
+    """Exact two-sided sign test on paired per-case outcomes.
+
+    `discordant_a` = cases only A got right, `discordant_b` = cases only B got
+    right; cases both got right or both got wrong carry no information about
+    which is better and are not passed in. Under "no difference" each
+    discordant case is a fair coin, so the p-value is the two-sided binomial
+    tail. 6-0 gives 0.031; 3-0 gives 0.25; no discordant cases gives 1.0.
+    """
+    if discordant_a < 0 or discordant_b < 0:
+        raise ValueError("discordant counts cannot be negative")
+    n = discordant_a + discordant_b
+    if n == 0:
+        return 1.0
+    k = min(discordant_a, discordant_b)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+
+def _rate(value):
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    passes, attempts = value
+    return passes / attempts if attempts else None
+
+
+def paired_outcomes(a_cases, b_cases):
+    """Count shared cases where A did better, B did better, or neither.
+
+    Values are either a bool (one draw) or a (passes, attempts) pair; a case
+    with no measured attempt on either side is skipped, not counted as a tie.
+    """
+    a_better = b_better = ties = 0
+    for key in set(a_cases) & set(b_cases):
+        ra, rb = _rate(a_cases[key]), _rate(b_cases[key])
+        if ra is None or rb is None:
+            continue
+        if ra > rb:
+            a_better += 1
+        elif rb > ra:
+            b_better += 1
+        else:
+            ties += 1
+    return a_better, b_better, ties
+
+
+def smallest_detectable_flips(alpha=ALPHA):
+    """How many cases must flip ONE way, with none flipping back, to be seen.
+
+    Independent of the suite size: a paired test looks only at the cases that
+    disagreed. At alpha=0.05 the answer is 6 (2 * 0.5**6 = 0.031).
+    """
+    k = 1
+    while paired_sign_test(k, 0) >= alpha:
+        k += 1
+    return k
+
+
+def paired_power_note(alpha=ALPHA):
+    k = smallest_detectable_flips(alpha)
+    return (f"paired: {k} cases flipping the same way (none flipping back) would "
+            f"be detected; fewer cannot be, whatever the suite size")
+
+
+def tiers(rows, key, alpha=ALPHA):
+    """Group already-ranked rows whose neighbours are not separably different.
+
+    `key(row)` returns that row's per-case outcomes ({case: bool} or
+    {case: (passes, attempts)}). Adjacent rows are compared with the paired
+    sign test; a new tier starts where p < alpha. Rows sharing a tier should be
+    printed as a tie, not as an ordering the data does not support.
+    """
+    groups = []
+    for row in rows:
+        if groups:
+            a_better, b_better, _ = paired_outcomes(key(groups[-1][-1]), key(row))
+            if paired_sign_test(a_better, b_better) < alpha:
+                groups.append([row])
+                continue
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups

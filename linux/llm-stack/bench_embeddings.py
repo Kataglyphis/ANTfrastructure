@@ -20,15 +20,15 @@ Usage:
 """
 
 import argparse
-import json
 import math
 import os
 import statistics
 import sys
 import time
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from bench_cli import entry_config, post_json  # noqa: E402
 
 # Triples: (anchor, related, unrelated). The related text must be closer to the
 # anchor than the unrelated one. Chosen so the judgement is not arguable — an
@@ -56,13 +56,11 @@ SIZES = [("short", "hello world"),
          ("long", "The quick brown fox jumps over the lazy dog. " * 100)]
 
 
-def embed(base_url, model, texts, timeout=300):
-    body = json.dumps({"model": model, "input": texts}).encode()
-    req = urllib.request.Request(f"{base_url}/v1/embeddings", data=body,
-                                 headers={"Content-Type": "application/json"})
+def embed(base_url, model, texts, timeout=300, entry=None):
     started = time.monotonic()
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.load(r)
+    with post_json(f"{base_url}/v1/embeddings", {"model": model, "input": texts},
+                   entry=entry, timeout=timeout) as r:
+        data = r.json()
     wall = time.monotonic() - started
     vectors = [item["embedding"] for item in
                sorted(data["data"], key=lambda d: d.get("index", 0))]
@@ -94,14 +92,14 @@ def check_shape(vectors):
     return problems
 
 
-def run(base_url, model, label):
+def run(base_url, model, label, entry=None):
     print(f"\n  === {label} ===", flush=True)
     report = {"label": label, "model": model, "base_url": base_url}
 
     # --- shape and determinism
     try:
-        first, _ = embed(base_url, model, ["shape probe"])
-        second, _ = embed(base_url, model, ["shape probe"])
+        first, _ = embed(base_url, model, ["shape probe"], entry=entry)
+        second, _ = embed(base_url, model, ["shape probe"], entry=entry)
     except Exception as e:  # noqa: BLE001
         print(f"    endpoint unusable: {type(e).__name__}: {e}", flush=True)
         return {**report, "error": str(e)[:200]}
@@ -119,7 +117,7 @@ def run(base_url, model, label):
     speed = {}
     for name, text in SIZES:
         try:
-            _, wall = embed(base_url, model, [text])
+            _, wall = embed(base_url, model, [text], entry=entry)
             speed[name] = round(wall, 3)
             print(f"    {name:7s} ({len(text):5d} chars): {wall:6.3f}s", flush=True)
         except Exception as e:  # noqa: BLE001
@@ -129,8 +127,8 @@ def run(base_url, model, label):
 
     # --- batching: does the endpoint actually batch, or loop internally?
     try:
-        _, one = embed(base_url, model, ["batch probe"])
-        _, eight = embed(base_url, model, ["batch probe"] * 8)
+        _, one = embed(base_url, model, ["batch probe"], entry=entry)
+        _, eight = embed(base_url, model, ["batch probe"] * 8, entry=entry)
         report["batch_speedup"] = round((one * 8) / eight, 2) if eight else None
         print(f"    batch of 8 vs 8 singles: {report['batch_speedup']}x "
               f"({'batches' if (report['batch_speedup'] or 0) > 2 else 'little or no batching'})",
@@ -142,7 +140,8 @@ def run(base_url, model, label):
     passed, margins = 0, []
     for anchor, related, unrelated in TRIPLES:
         try:
-            vecs, _ = embed(base_url, model, [anchor, related, unrelated])
+            vecs, _ = embed(base_url, model, [anchor, related, unrelated],
+                            entry=entry)
             near = cosine(vecs[0], vecs[1])
             far = cosine(vecs[0], vecs[2])
             ok = near > far
@@ -178,13 +177,16 @@ def main():
     args = ap.parse_args()
 
     from bench_cli import resolve_candidates, write_report
-    from benchmark_openai_api import resolve_backend
+    from benchmark_openai_api import resolve_backend, resolve_backend_entry
 
-    candidates = resolve_candidates(args, resolve_backend)
-    reports = [run(url, model, label) for label, url, model in candidates]
+    candidates = resolve_candidates(args, resolve_backend, resolve_backend_entry)
+    reports = [run(url, model, label, entry) for label, url, model, entry in candidates]
 
     if args.output:
-        write_report(args.output, "bench_embeddings", {}, reports,
+        # What each backend entry added to every request -- never a key value.
+        config = {"backend_entry": {label: entry_config(entry)
+                                    for label, _, _, entry in candidates}}
+        write_report(args.output, "bench_embeddings", config, reports,
                      candidates[0][1] if candidates else None,
                      ("bench_embeddings.py", "bench_provenance.py"))
         print(f"\n  Report written to {args.output}")

@@ -127,6 +127,10 @@ python3 bench_report.py manifest "$OUTDIR" "$MANIFEST" \
 echo ""
 echo "All benchmarks complete. Results in $OUTDIR/"
 echo ""
+# OUTDIR is run-scoped; build-viewer.sh copies every run directory and shows
+# the newest manifest. Say so here, where the manifest was just written.
+echo "Viewer: bash benchmark-viewer/build-viewer.sh"
+echo ""
 echo "Quick comparison:"
 python3 bench_report.py table "$OUTDIR" 2>&1
 

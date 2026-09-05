@@ -22,6 +22,8 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import benchmark_openai_api as bench  # noqa: E402
@@ -170,3 +172,54 @@ class TestEnvVarCompat:
 
     def test_default_is_ollama_localhost(self):
         assert self._resolve({}) == "http://localhost:11434"
+
+
+class TestModelResolution:
+    """Which model gets benchmarked, decided without contacting anything.
+
+    The probe:false case is the paid-host path: asking /v1/models there costs
+    money and may not be offered, so the id has to be named rather than
+    discovered.
+    """
+
+    def _detect(self, answer="detected/M"):
+        calls = []
+
+        def detect(entry=None):
+            calls.append(entry)
+            return answer
+
+        detect.calls = calls
+        return detect
+
+    def test_an_explicit_model_wins(self):
+        detect = self._detect()
+        assert bench.resolve_model("org/M", "backend/M", {}, detect) == "org/M"
+        assert detect.calls == []
+
+    def test_the_backend_default_is_used_next(self):
+        detect = self._detect()
+        assert bench.resolve_model(None, "backend/M", {}, detect) == "backend/M"
+        assert detect.calls == []
+
+    def test_otherwise_the_endpoint_is_asked(self):
+        detect = self._detect()
+        assert bench.resolve_model(None, None, {}, detect) == "detected/M"
+        assert len(detect.calls) == 1
+
+    def test_the_probe_carries_the_entry_so_a_hosted_endpoint_authenticates(self):
+        detect = self._detect()
+        entry = {"api_key_env": "K"}
+        bench.resolve_model(None, None, entry, detect)
+        assert detect.calls == [entry]
+
+    def test_a_probe_false_backend_is_never_asked(self):
+        detect = self._detect()
+        with pytest.raises(SystemExit) as e:
+            bench.resolve_model(None, None, {"probe": False}, detect)
+        assert detect.calls == []
+        assert "--model" in str(e.value)
+
+    def test_a_probe_false_backend_with_a_model_is_fine(self):
+        detect = self._detect()
+        assert bench.resolve_model(None, "paid/M", {"probe": False}, detect) == "paid/M"
