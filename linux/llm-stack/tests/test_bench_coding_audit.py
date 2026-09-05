@@ -5,12 +5,14 @@ graded FAIL, a fake PASS, a number the docs could not have produced. The
 reproductions come from that audit, not from imagination.
 """
 
+import io
 import json
 import os
 import signal
 import subprocess
 import sys
 import time
+import urllib.error
 
 import pytest
 
@@ -186,11 +188,14 @@ class TestTruncation:
 
 
 class _FakeResp:
+    """urlopen's return, not ask()'s: the request now goes through
+    bench_cli.post_json, which wraps this and closes it."""
     def __init__(self, lines):
         self._lines = [l if isinstance(l, bytes) else l.encode() for l in lines]
     def __enter__(self): return self
     def __exit__(self, *a): return False
     def __iter__(self): return iter(self._lines)
+    def close(self): pass
 
 
 class TestAskReasoningDeltas:
@@ -218,7 +223,8 @@ class TestAskReasoningDeltas:
 def _fake_ask_factory(script):
     """script: list of (text, chunks, finish) consumed per call."""
     calls = iter(script)
-    def fake(base_url, model, prompt, max_tokens, timeout=1800, deadline=None):
+    def fake(base_url, model, prompt, max_tokens, timeout=1800, deadline=None,
+             entry=None):
         text, chunks, finish = next(calls)
         return text, 0.1, 1.0, chunks, 10, "", finish, None, False
     return fake
@@ -289,7 +295,7 @@ class TestEvaluateAccounting:
 class TestTaskSets:
     def _tasks_for(self, monkeypatch, flag):
         import bench_cli
-        monkeypatch.setattr(bench_cli, "resolve_candidates", lambda args, rb: [])
+        monkeypatch.setattr(bench_cli, "candidate_rows", lambda args, rb, re=None: [])
         monkeypatch.setattr(sys, "argv", ["bench_coding.py", "--task-set", flag])
         original = bc.TASKS
         try:
@@ -301,8 +307,12 @@ class TestTaskSets:
     def test_extended_is_the_21_task_set_the_help_describes(self, monkeypatch):
         assert len(self._tasks_for(monkeypatch, "extended")) == 21
 
-    def test_all_is_27(self, monkeypatch):
-        assert len(self._tasks_for(monkeypatch, "all")) == 27
+    def test_all_is_every_set(self, monkeypatch):
+        # Derived, not hard-wired: R5 grew "all" from 27 to 33 and a pinned
+        # literal would turn that into a false regression.
+        assert len(self._tasks_for(monkeypatch, "all")) == (
+            len(bc.TASKS) + len(bc.NOVEL_TASKS) + len(bc.EXTENDED_TASKS)
+            + len(bc.LANGUAGE_TASKS))
 
 
 class TestKvPairsWhitespace:
@@ -374,6 +384,20 @@ class TestForbiddenTokensAndExits:
         ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
         assert ok, detail
 
+    def test_a_docstring_mentioning_an_UNMAPPED_token_is_not_punished(self):
+        # The docstring rule now lives only in the TEXT fallback (an unmapped
+        # token, or code that does not parse); that fallback still strips them.
+        code = ('def merge_sorted(a, b):\n'
+                '    """Merge two lists.\n\n'
+                '    Deliberately avoids itertools.\n    """\n'
+                '    return a + b\n')
+        assert bc.check_forbidden(code, ["itertools"]) is None
+
+    def test_an_unmapped_token_actually_used_is_still_caught(self):
+        # The other half: the fallback must still be a check, not a no-op.
+        code = "import itertools\n\n\ndef merge_sorted(a, b):\n    return a + b\n"
+        assert "itertools" in (bc.check_forbidden(code, ["itertools"]) or "")
+
     def test_sys_exit_inside_the_function_keeps_earlier_credit(self):
         # sys.exit raises SystemExit, which is not an Exception. The harness
         # used to die there with no rows printed: 0/7 for a 5/7 answer.
@@ -390,7 +414,13 @@ class TestForbiddenOnTheTree:
         "import builtins\ndef merge_sorted(a, b):\n    return builtins.sorted(a + b)\n",
         "def merge_sorted(a, b):\n    return getattr(__builtins__, 'sorted')(a + b)\n",
         "def merge_sorted(a, b):\n    c = a + b\n    c.sort()\n    return c\n",
-    ], ids=["alias", "builtins-attr", "getattr-string", "list-sort"])
+        # Bound, then called: no `.sort(` and no `sorted(` anywhere in the
+        # text, so only the Attribute arm of the tree walk sees these.
+        "def merge_sorted(a, b):\n    c = a + b\n    m = c.sort\n    m()\n    return c\n",
+        "import builtins\ndef merge_sorted(a, b):\n    f = builtins.sorted\n"
+        "    return f(a + b)\n",
+    ], ids=["alias", "builtins-attr", "getattr-string", "list-sort",
+            "bound-list-sort", "bound-builtins-attr"])
     def test_evasions_are_caught(self, code):
         ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
         assert not ok and "forbids" in detail, detail
@@ -532,6 +562,7 @@ class TestWallClockDeadline:
             def __iter__(self):
                 while True:
                     yield line
+            def close(self): pass
 
         monkeypatch.setattr(bc.urllib.request, "urlopen", lambda req, timeout=0: Endless())
 
@@ -563,3 +594,218 @@ class TestWallClockDeadline:
         assert r["truncated"] == 1 and r["abandoned"] == 1
         assert r["passed"] == 0 and r["wrong"] == 0 and r["total"] == 0
         assert "GAVE UP" in r["results"][0]["detail"]
+
+
+class TestForbiddenPrecision:
+    """D6/D7. The constraint check has to catch the evasions and ONLY the
+    evasions: a correct answer that happens to contain the string 'sort', or
+    that defines its own `sort`, was scored FAIL with 0/0 credit.
+    """
+
+    F = MERGE["forbidden"]
+
+    @pytest.mark.parametrize("code", [
+        "from builtins import sorted as s\ndef merge_sorted(a, b):\n    return s(a + b)\n",
+        "def merge_sorted(a, b):\n    return getattr(__builtins__, 'sorted')(a + b)\n",
+        "def merge_sorted(a, b):\n    return __builtins__['sorted'](a + b)\n",
+    ], ids=["import-alias", "getattr-string", "builtins-subscript"])
+    def test_the_lookup_evasions_are_still_caught(self, code):
+        ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=self.F)
+        assert not ok and "forbids" in detail, detail
+
+    def test_a_string_value_that_happens_to_read_sort_is_not_a_lookup(self):
+        # `mode='sort'` is a default, not a name handed to getattr.
+        code = ("def merge_sorted(a, b, mode='sort'):\n    out, i, j = [], 0, 0\n"
+                "    while i < len(a) and j < len(b):\n"
+                "        if a[i] <= b[j]:\n            out.append(a[i]); i += 1\n"
+                "        else:\n            out.append(b[j]); j += 1\n"
+                "    return out + a[i:] + b[j:]\n")
+        ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=self.F)
+        assert ok, detail
+
+    def test_a_candidate_that_defines_its_own_sort_is_not_using_list_sort(self):
+        # `sort` is not even a builtin; the code binds the name itself.
+        code = ("def sort(x, y):\n"
+                '    """Smaller of the two heads first -- the only comparison made."""\n'
+                "    return (x, y) if x <= y else (y, x)\n\n\n"
+                "def merge_sorted(a, b):\n    out, i, j = [], 0, 0\n"
+                "    while i < len(a) and j < len(b):\n"
+                "        lo, _hi = sort(a[i], b[j])\n        out.append(lo)\n"
+                "        if a[i] <= b[j]:\n            i += 1\n"
+                "        else:\n            j += 1\n"
+                "    return out + a[i:] + b[j:]\n")
+        ok, detail, credit = run_candidate(code, MERGE["tests"], forbidden=self.F)
+        assert ok, f"{detail} {credit}"
+
+
+class TestInStreamErrors:
+    """D3. A fault delivered INSIDE an already-200 stream used to be dropped:
+    ask() returned '', and the attempt was recorded wrong=1 with 'no code found
+    in reply' instead of excluded as a transport error.
+    """
+
+    def _serve(self, monkeypatch, lines):
+        monkeypatch.setattr(bc.urllib.request, "urlopen",
+                            lambda req, timeout=0: _FakeResp(lines))
+
+    def test_an_openai_style_error_chunk_raises(self, monkeypatch):
+        self._serve(monkeypatch, [b'data: {"error": {"message": "engine crashed"}}\n'])
+        with pytest.raises(RuntimeError, match="server error in stream"):
+            bc.ask("http://x", "m", "p", 10)
+
+    def test_a_llama_cpp_error_event_line_raises(self, monkeypatch):
+        self._serve(monkeypatch, [b"error: slot unavailable\n"])
+        with pytest.raises(RuntimeError, match="server error in stream"):
+            bc.ask("http://x", "m", "p", 10)
+
+    def test_evaluate_records_errored_not_a_wrong_answer(self, monkeypatch):
+        # Whole path: urlopen -> ask -> evaluate. Nothing here opens a socket.
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        self._serve(monkeypatch, [b'data: {"error": {"message": "engine crashed"}}\n'])
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
+        assert r["errored"] == 1 and r["total"] == 0 and r["wrong"] == 0
+        assert "no code found" not in r["results"][0]["detail"]
+
+
+def _http_error(code, body):
+    return urllib.error.HTTPError("http://x/v1/chat/completions", code, "Bad Request",
+                                  {}, io.BytesIO(body))
+
+
+class TestContextOverflow:
+    """R13. A 4xx saying the prompt did not fit is the same 4096 ceiling that
+    reads CUT when the server streams it: unmeasured, and recorded apart from
+    both a transport error and a cut.
+    """
+
+    def test_a_4xx_naming_the_context_is_an_overflow(self):
+        exc = _http_error(400, b'{"error":{"message":"maximum context length is 4096 tokens"}}')
+        assert "HTTP 400" in bc._overflow_reason(exc)
+
+    def test_an_unrelated_4xx_stays_a_plain_transport_error(self):
+        assert bc._overflow_reason(_http_error(404, b'{"error":{"message":"unknown model"}}')) is None
+
+    def test_a_5xx_is_never_an_overflow(self):
+        # A 503 whose body happens to say "context too long" is the server
+        # failing, not the prompt not fitting.
+        assert bc._overflow_reason(_http_error(503, b"context too long")) is None
+
+    def test_evaluate_excludes_it_and_records_it_distinctly(self, monkeypatch):
+        exc = _http_error(400, b'{"error":{"message":"maximum context length is 4096 tokens"}}')
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (_ for _ in ()).throw(exc))
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
+        assert r["overflow"] == 1 and r["total"] == 0 and r["wrong"] == 0
+        assert r["errored"] == 0 and r["truncated"] == 0, "an overflow is neither"
+        assert "OVERFLOW" in r["results"][0]["detail"]
+
+
+class TestUnmeasuredWallTime:
+    """D8. A cut attempt was excluded from the rate but its wall time -- up to
+    the whole 1800 s deadline -- still fed total/avg/median and the rank
+    tiebreak, so one abandoned attempt could rank a fast lane last.
+    """
+
+    def _lane(self, monkeypatch, script):
+        """script: list of (text, wall, finish)."""
+        it = iter(script)
+        def fake(*a, **k):
+            text, wall, finish = next(it)
+            return text, 0.1, wall, 5, 10, "", finish, None, False
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask", fake)
+        return bc.evaluate("http://x", "m", "lbl", 3000, repeats=2, warmup=False)
+
+    def test_wall_statistics_cover_measured_attempts_only(self, monkeypatch):
+        good = "```python\n" + GOOD + "```"
+        r = self._lane(monkeypatch, [(good, 10.0, "stop"), ("<think>truncated", 1800.0, "length")])
+        assert r["truncated"] == 1 and r["passed"] == 1 and r["total"] == 1
+        assert r["total_wall_s"] == 10.0, "the cut's 1800s must not be in the total"
+        assert r["avg_wall_s"] == 10.0 and r["median_wall_s"] == 10.0
+
+    def test_the_unmeasured_wall_time_is_still_reported(self, monkeypatch):
+        good = "```python\n" + GOOD + "```"
+        r = self._lane(monkeypatch, [(good, 10.0, "stop"), ("<think>truncated", 1800.0, "length")])
+        assert r["unmeasured_wall_s"] == 1800.0, "dropping it would hide where the hour went"
+
+    def test_a_cut_cannot_flip_the_rank_tiebreak(self, monkeypatch):
+        # The audit's reproduction: same rate and same measured count, so the
+        # tiebreak is the wall clock — and an abandoned 1800s decided it.
+        good = "```python\n" + GOOD + "```"
+        fast = self._lane(monkeypatch, [(good, 10.0, "stop"), ("<think>truncated", 1800.0, "length")])
+        it = iter([(good, 50.0, "stop"), None])
+        def fake(*a, **k):
+            item = next(it)
+            if item is None:
+                raise ConnectionError("dropped")
+            text, wall, finish = item
+            return text, 0.1, wall, 5, 10, "", finish, None, False
+        monkeypatch.setattr(bc, "ask", fake)
+        slow = bc.evaluate("http://x", "m", "slow", 3000, repeats=2, warmup=False)
+        # The key main() ranks by, mirrored here: rate, then measured attempts,
+        # then time to a finished answer.
+        key = lambda r: (-(r["passed"] / r["total"] if r["total"] else 0.0),
+                         -r["total"], r["total_wall_s"])
+        assert [r["label"] for r in sorted([slow, fast], key=key)] == ["lbl", "slow"]
+
+
+class TestCandidateRlimits:
+    """R14. An allocating candidate took WSL2 down with it. The ceilings must
+    be in force in the CHILD, on both the plain and the `unshare -rn` path.
+    """
+
+    def test_the_child_runs_under_the_declared_ceilings(self):
+        code = ("import resource\n"
+                "def limits():\n"
+                "    return [resource.getrlimit(r)[0] for r in (resource.RLIMIT_AS,\n"
+                "            resource.RLIMIT_FSIZE, resource.RLIMIT_NPROC)]\n")
+        tests = (f"assert limits()[0] == {bc.RLIMIT_AS_BYTES}, limits()\n"
+                 f"assert limits()[1] == {bc.RLIMIT_FSIZE_BYTES}, limits()\n"
+                 f"assert limits()[2] == {bc.RLIMIT_NPROC}, limits()\n")
+        ok, detail, _ = run_candidate(code, tests)
+        assert ok, detail
+
+    def test_the_file_size_ceiling_actually_bites(self):
+        # Not just declared: a candidate filling the disk is killed by the
+        # kernel at the limit. 9 MB against an 8 MB ceiling -- cheap either way.
+        code = ("def fill():\n"
+                "    with open('big.bin', 'wb') as f:\n"
+                f"        f.write(b'x' * {bc.RLIMIT_FSIZE_BYTES + (1 << 20)})\n"
+                "    return True\n")
+        ok, detail, _ = run_candidate(code, "assert fill()")
+        assert not ok, detail
+
+
+class TestGraderSelfCheck:
+    """R14. If the grading path itself breaks on a host, every model scores
+    identically with the same stderr -- indistinguishable from 'the models are
+    bad'. The run must stop before it measures anything.
+    """
+
+    def test_a_failing_reference_aborts_the_run(self):
+        broken = dict(MERGE, reference="def merge_sorted(a, b):\n    return []\n")
+        with pytest.raises(SystemExit) as e:
+            bc.grader_selfcheck([broken])
+        assert "GRADER SELF-CHECK FAILED" in str(e.value)
+        assert "merge_sorted" in str(e.value), "the failing task must be named"
+
+    def test_a_passing_reference_records_the_environment(self):
+        rec = bc.grader_selfcheck([MERGE])
+        assert rec["passed"] and rec["tasks"] == 1
+        assert rec["rlimits"] == {"as_bytes": bc.RLIMIT_AS_BYTES,
+                                  "fsize_bytes": bc.RLIMIT_FSIZE_BYTES,
+                                  "nproc": bc.RLIMIT_NPROC}
+        assert rec["netns"] is bc._netns_available()
+
+    def test_main_stops_before_benchmarking_anything(self, monkeypatch):
+        # Nothing may be measured after a broken grader: candidate_rows is
+        # imported only below the self-check, so reaching it is the failure.
+        import bench_cli
+        broken = dict(MERGE, reference="def merge_sorted(a, b):\n    return []\n")
+        monkeypatch.setattr(bc, "TASKS", [broken])
+        monkeypatch.setattr(bench_cli, "candidate_rows",
+                            lambda args, rb, re=None: pytest.fail("the sweep started anyway"))
+        monkeypatch.setattr(sys, "argv", ["bench_coding.py"])
+        with pytest.raises(SystemExit) as e:
+            bc.main()
+        assert "GRADER SELF-CHECK FAILED" in str(e.value)

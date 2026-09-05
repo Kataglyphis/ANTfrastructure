@@ -21,7 +21,12 @@ import json
 import os
 import sys
 import time
+import urllib.request
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from bench_cli import entry_config, post_json, request_headers  # noqa: E402
 
 # LB7 — this harness is not Ollama-specific any more: it benchmarks any
 # OpenAI-compatible server (Ollama, GenieX, llama.cpp, vLLM). LLM_BASE_URL is
@@ -222,6 +227,27 @@ def resolve_backend(name=None, base_url=None, path=None):
     return "http://localhost:11434", None, "built-in default"
 
 
+def resolve_backend_entry(name=None, base_url=None, path=None):
+    """The whole backends.json entry behind resolve_backend's 3-tuple.
+
+    Carries the optional api_key_env / headers / request_extra / probe fields
+    that resolve_backend's (url, model, source) cannot. An explicit --base-url
+    with no --backend resolves to {}: guessing an entry from a URL would attach
+    someone's API key to an endpoint they typed by hand.
+    """
+    backends, default_name = load_backends(path)
+    if name:
+        if name not in backends:
+            known = ", ".join(sorted(backends)) or "(none configured)"
+            raise SystemExit(f"unknown backend {name!r}. Known: {known}")
+        return dict(backends[name])
+    if base_url:
+        return {}
+    if default_name and default_name in backends:
+        return dict(backends[default_name])
+    return {}
+
+
 def print_backends(path=None):
     backends, default_name = load_backends(path)
     if not backends:
@@ -363,35 +389,55 @@ def sample_resources_glances():
     }
 
 
-def detect_model_via_api(base_url=None):
+def _get_json(url, entry=None, timeout=5):
+    """GET one JSON document with the backend entry's auth and headers."""
+    req = urllib.request.Request(url, headers=request_headers(entry))
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
+def detect_model_via_api(base_url=None, entry=None):
     """Detect a served model.
 
     Asks the portable OpenAI endpoint (/v1/models) FIRST. The previous version
     probed Ollama's /api/show with a hardcoded "gemma4:26b" and returned that
     name on any 200 -- which reported the wrong model on any host serving
     something else, and nothing at all on a non-Ollama server.
-    """
-    import requests
 
+    `entry` carries the auth a hosted endpoint needs; a backend marked
+    probe:false is never asked at all (see main()).
+    """
     base = base_url or LLM_BASE_URL
     try:
-        r = requests.get(f"{base}/v1/models", timeout=5)
-        if r.status_code == 200:
-            models = r.json().get("data", [])
-            if models:
-                return models[0]["id"]
-    except Exception:
+        models = _get_json(f"{base}/v1/models", entry).get("data", [])
+        if models:
+            return models[0]["id"]
+    except Exception:  # noqa: BLE001 — detection is best-effort by design
         pass
     # Ollama-native fallback: /api/tags lists what is actually pulled.
     try:
-        r = requests.get(f"{base}/api/tags", timeout=5)
-        if r.status_code == 200:
-            tags = r.json().get("models", [])
-            if tags:
-                return tags[0].get("name") or tags[0].get("model", "unknown")
-    except Exception:
+        tags = _get_json(f"{base}/api/tags", entry).get("models", [])
+        if tags:
+            return tags[0].get("name") or tags[0].get("model", "unknown")
+    except Exception:  # noqa: BLE001
         pass
     return "unknown"
+
+
+def resolve_model(explicit, backend_model, entry, detect=None):
+    """--model, else the backend's default, else ask the endpoint.
+
+    A backend marked probe:false is never asked -- on a paid host a discovery
+    request costs money and may not exist. Its id has to be named, and saying
+    so beats an unexplained 404 halfway through a run.
+    """
+    if explicit or backend_model:
+        return explicit or backend_model
+    if not (entry or {}).get("probe", True):
+        raise SystemExit(
+            "this backend is marked probe:false, so /v1/models is not queried. "
+            'Pass --model, or give the entry a "model" field in backends.json.')
+    return (detect or detect_model_via_api)(entry=entry)
 
 
 def benchmark_chat(
@@ -405,14 +451,14 @@ def benchmark_chat(
     sample_interval=0.2,
     warmup=True,
     base_url=None,
+    entry=None,
 ):
     """Run a benchmark against the OpenAI-compatible chat completions endpoint.
 
-    Yields dicts with timing and resource data for each prompt.
+    Yields dicts with timing and resource data for each prompt. `entry` is the
+    backends.json entry: its api_key_env / headers / request_extra travel with
+    every request through bench_cli.post_json.
     """
-    import requests
-
-    session = requests.Session()
     endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
 
     # Warmup: one short request to load the model into memory
@@ -425,8 +471,11 @@ def benchmark_chat(
             }
             if extra_params:
                 wp_payload.update(extra_params)
-            session.post(endpoint, json=wp_payload, timeout=120)
-        except Exception:
+            with post_json(endpoint, wp_payload, entry=entry, timeout=120) as r:
+                r.raw.read()
+        except SystemExit:
+            raise  # a missing API key is a setup error, not a warmup hiccup
+        except Exception:  # noqa: BLE001 — a cold-start failure is not a result
             pass
         time.sleep(1)
 
@@ -453,43 +502,40 @@ def benchmark_chat(
 
         try:
             if stream:
-                r = session.post(endpoint, json=payload, stream=True, timeout=300)
-                r.raise_for_status()
                 content_chunks = []
                 usage = None
-                for line in r.iter_lines(decode_unicode=True):
-                    # The space after "data:" is OPTIONAL in the SSE spec.
-                    # Ollama sends it, GenieX does not -- matching on "data: "
-                    # silently parsed nothing and reported 0 tokens / no TTFT
-                    # against any server that omits it.
-                    if line.startswith("data:"):
-                        data = line[5:].lstrip()
-                        if data.strip() == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            # Usage in final streaming chunk (choices may be empty)
-                            if "usage" in chunk:
-                                usage = chunk["usage"]
-                            choices = chunk.get("choices", [])
-                            if not choices:
-                                continue
-                            delta = choices[0].get("delta", {})
-                            piece = delta.get("content", "") or delta.get("reasoning", "")
-                            if piece:
-                                streamed_chunks += 1
-                            # LB2: first token carrying actual content marks the
-                            # end of prefill. Empty role-only deltas do not count.
-                            if piece and first_token_at is None:
-                                first_token_at = time.monotonic()
-                            content_chunks.append(piece)
-                        except json.JSONDecodeError:
-                            pass
+                with post_json(endpoint, payload, entry=entry,
+                               stream=True, timeout=300) as response:
+                    for line in response.lines():
+                        # The space after "data:" is OPTIONAL in SSE: GenieX
+                        # omits it, and "data: " parsed nothing against it.
+                        if line.startswith("data:"):
+                            data = line[5:].lstrip()
+                            if data.strip() == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                # Usage in final streaming chunk (choices may be empty)
+                                if "usage" in chunk:
+                                    usage = chunk["usage"]
+                                choices = chunk.get("choices", [])
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta", {})
+                                piece = delta.get("content", "") or delta.get("reasoning", "")
+                                if piece:
+                                    streamed_chunks += 1
+                                # LB2: first token carrying actual content marks the
+                                # end of prefill. Empty role-only deltas do not count.
+                                if piece and first_token_at is None:
+                                    first_token_at = time.monotonic()
+                                content_chunks.append(piece)
+                            except json.JSONDecodeError:
+                                pass
                 content = "".join(content_chunks)
             else:
-                r = session.post(endpoint, json=payload, timeout=300)
-                r.raise_for_status()
-                body = r.json()
+                with post_json(endpoint, payload, entry=entry, timeout=300) as r:
+                    body = r.json()
                 content = body["choices"][0]["message"]["content"]
                 usage = body.get("usage")
         except Exception as e:
@@ -608,7 +654,8 @@ def _answer_matches(content, accepted):
     return False
 
 
-def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url=None):
+def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url=None,
+                          entry=None):
     """LB1 — check the model still answers correctly, not just quickly.
 
     Returns a dict with the score and per-item detail, or None if the endpoint
@@ -621,9 +668,6 @@ def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url
     budget misreports a healthy model. Measured: Qwen3-4B scores 5/6 at 900
     (arithmetic truncated) and 6/6 at 2500.
     """
-    import requests
-
-    session = requests.Session()
     endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
     items = []
 
@@ -637,9 +681,8 @@ def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url
         if extra_params:
             payload.update(extra_params)
         try:
-            r = session.post(endpoint, json=payload, timeout=600)
-            r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"]
+            with post_json(endpoint, payload, entry=entry, timeout=600) as r:
+                content = r.json()["choices"][0]["message"]["content"]
         except Exception as e:  # noqa: BLE001 — one bad probe must not abort the run
             items.append({
                 "prompt": prompt[:60], "expected": accepted[0],
@@ -875,6 +918,7 @@ def main():
     global LLM_BASE_URL, OLLAMA_BASE_URL
     LLM_BASE_URL, backend_model, source = resolve_backend(args.backend, args.base_url)
     OLLAMA_BASE_URL = LLM_BASE_URL
+    entry = resolve_backend_entry(args.backend, args.base_url)
 
     if args.load:
         with open(args.load) as f:
@@ -886,7 +930,7 @@ def main():
         return
 
     # A backend may name its own default model; an explicit --model still wins.
-    model = args.model or backend_model or detect_model_via_api()
+    model = resolve_model(args.model, backend_model, entry)
 
     if args.correctness_only:
         print(f"\n  Model: {model}")
@@ -895,6 +939,7 @@ def main():
             model,
             max_tokens=args.correctness_max_tokens,
             extra_params=json.loads(args.extra_params) if args.extra_params else None,
+            entry=entry,
         )
         print_correctness(probe)
         # Distinct exit codes so a gate can tell "model is wrong" (act on it)
@@ -940,6 +985,7 @@ def main():
             stream=args.stream,
             extra_params=extra_params,
             warmup=not args.no_warmup,
+            entry=entry,
         ):
             results.append(result)
             if partial_path:
@@ -959,6 +1005,7 @@ def main():
             model,
             max_tokens=args.correctness_max_tokens,
             extra_params=extra_params,
+            entry=entry,
         )
         print_correctness(correctness)
 
@@ -973,6 +1020,9 @@ def main():
             "temperature": args.temperature,
             "stream": args.stream,
             "extra_params": extra_params,
+            # What the backend entry added to every request. Names only for the
+            # header and key fields -- a value could be the key itself.
+            "backend_entry": entry_config(entry),
             "prompts_requested": len(all_prompts),
             "prompts_completed": len([r for r in results if "error" not in r]),
         },

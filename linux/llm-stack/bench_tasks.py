@@ -21,6 +21,8 @@ never told.
 EXTENDED_TASKS = [
     {
         "name": "strings_normalize_tag",
+        "kind": "spec-transcription",
+        "lang": "python",
         "stdlib_only": True,
         "prompt": """You are writing the slug helper for a tagging system.
 
@@ -69,6 +71,8 @@ assert normalize_tag("-") == "untitled\"""",
     },
     {
         "name": "strings_split_steps",
+        "kind": "spec-transcription",
+        "lang": "python",
         "stdlib_only": True,
         "prompt": """A recipe app stores an instruction list as one string in which steps are separated by the exact three-character marker `-->` (hyphen, hyphen, greater-than sign).
 
@@ -111,6 +115,8 @@ assert split_steps("  step one  -->\\n step two \\n") == ["step one", "step two"
     },
     {
         "name": "strings_dominant_case",
+        "kind": "spec-transcription",
+        "lang": "python",
         "stdlib_only": True,
         "prompt": """Write a Python function with this exact signature:
     def dominant_case(words: list[str]) -> str
@@ -183,6 +189,8 @@ assert dominant_case(["ready", "set", "GO", "go"]) == "lower\"""",
     },
     {
         "name": "lists_chunk_with_remainder_policy",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def chunk_sequence(items: list, size: int, policy: str, fill=None) -> list
 
@@ -265,6 +273,8 @@ except ValueError:
     },
     {
         "name": "lists_dedupe_keep_last_casefold",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def dedupe_keep_last(words: list) -> list
 
@@ -332,6 +342,8 @@ except TypeError:
     },
     {
         "name": "lists_merge_pairs_longest_value_wins",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def merge_records(primary: list, secondary: list) -> list
 
@@ -407,6 +419,8 @@ except ValueError:
     },
     {
         "name": "dicts_invert_to_groups",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def invert_to_groups(mapping: dict) -> dict
 
@@ -447,6 +461,8 @@ assert isinstance(_res[5], list) and _res[5] == ["m", "n"]""",
     },
     {
         "name": "dicts_merge_layers",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def merge_layers(layers: list) -> dict
 
@@ -509,6 +525,8 @@ except TypeError:
     },
     {
         "name": "dicts_top_tags",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def top_tags(tags: list, n: int) -> list
 
@@ -560,6 +578,8 @@ except ValueError:
     },
     {
         "name": "validation_parse_seat_code",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """An airline seat code is a short string like "12B": a row number written in ASCII digits, immediately followed by exactly one seat letter, with nothing else in the string.
 
 Write a Python function with this exact signature:
@@ -636,6 +656,8 @@ assert _bad("١A")""",
     },
     {
         "name": "validation_parse_kv_pairs",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A tiny config format is a semicolon-separated list of key=value fields, for example "host=local;port=8080".
 
 Write a Python function with this exact signature:
@@ -727,6 +749,8 @@ assert _bad("\t")""",
     },
     {
         "name": "validation_parse_range_spec",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A range spec is a comma-separated list of items where each item is either a single number or an inclusive range written "lo-hi", for example "9,1-3".
 
 Write a Python function with this exact signature:
@@ -851,6 +875,8 @@ assert _bad("٣")""",
     },
     {
         "name": "numbers_clamp_and_count",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def clamp_and_count(values: list[int], low: int, high: int) -> tuple[list[int], int]
 
@@ -919,6 +945,8 @@ except ValueError:
     },
     {
         "name": "numbers_round_to_step",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def round_to_step(value: int, step: int) -> int
 
@@ -972,6 +1000,8 @@ except ValueError:
     },
     {
         "name": "numbers_speed_to_kmh",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def speed_to_kmh(meters: float, seconds: float) -> str
 
@@ -1028,6 +1058,8 @@ except ValueError:
     },
     {
         "name": "stateful_classify_ticket",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A support desk classifies a ticket by applying rules in a fixed order.
 
 Write a Python function with this exact signature:
@@ -1104,6 +1136,8 @@ except ValueError:
     },
     {
         "name": "stateful_label_readings",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """Write a Python function with this exact signature:
     def stateful_label_readings(readings: list[int]) -> list[str]
 
@@ -1167,6 +1201,8 @@ assert len(stateful_label_readings([1, 2, 3, 4, 5, 6])) == 6""",
     },
     {
         "name": "stateful_run_machine",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A tiny job machine starts in the state "idle" and processes a list of events from left to right.
 
 Write a Python function with this exact signature:
@@ -1252,6 +1288,8 @@ except ValueError:
     },
     {
         "name": "parsing_pipe_record",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """You are parsing one line of a tiny record format into its fields.
 
 Write a Python function with this exact signature:
@@ -1325,6 +1363,8 @@ except ValueError:
     },
     {
         "name": "parsing_kv_config",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A one-line settings string looks like `name=alice; timeout = 30 ;path=/a=b`.
 
 Write a Python function with this exact signature:
@@ -1399,6 +1439,8 @@ except ValueError:
     },
     {
         "name": "parsing_item_list",
+        "kind": "spec-transcription",
+        "lang": "python",
         "prompt": """A shopping list is written as one line: items separated by `,`, where an item is either `name` or `count*name`, for example `apple, 2*pear ,banana`.
 
 Write a Python function with this exact signature:
@@ -1409,7 +1451,7 @@ Rules:
 - Otherwise split s on `,` and strip leading and trailing whitespace from each item. If an item is empty after stripping, raise ValueError (so a trailing comma is an error).
 - If the item contains `*`, split it at the FIRST `*`: the part before is the count text, the part after is the name. Strip whitespace from both. Any further `*` characters stay inside the name.
 - If the item contains no `*`, its count is 1 and the whole stripped item is the name.
-- The count text must consist only of the digits 0-9 (leading zeros are allowed) and its value must be at least 1; otherwise raise ValueError. So `0*x`, `-2*x` and `x*y` are all errors.
+- The count text must consist only of the ASCII digits 0-9 (leading zeros are allowed) and its value must be at least 1; otherwise raise ValueError. So `0*x`, `-2*x` and `x*y` are all errors.
 - The name must not be empty after stripping; otherwise raise ValueError.
 - Return one (name, count) tuple per item, in input order. Repeated names stay separate entries; never merge them.
 
@@ -1507,5 +1549,341 @@ except ValueError:
         out.append((name, count))
     return out""",
         "wrong_explanation": "It trusts int() for the count instead of requiring digits with a value of at least 1, so `0*x` and `-2*x` are accepted rather than raising ValueError.",
+    },
+]
+
+
+# ── Other languages ───────────────────────────────────────────────────────────
+# Non-Python tasks: see docs/llm-benchmark-review-2026-09-05.md § R5.
+
+LANGUAGE_TASKS = [
+    {
+        "name": "bash_split_comma_list",
+        "kind": "spec-transcription",
+        "lang": "bash",
+        "function": "split_list",
+        "prompt": """A build script needs to turn one comma-separated option into a list it can loop over.
+
+Write a bash function with this exact signature:
+    split_list() { ... }
+
+It takes the list as its first argument and prints one item per line, in input order.
+
+Rules:
+- Split the argument on commas, and on commas only.
+- Print each item exactly as it appeared between the commas: spaces inside an item are part of that item and must survive, and no glob character is ever expanded.
+- Skip items that are empty, so "a,,b" prints two lines and a trailing comma adds nothing.
+- An empty or missing argument prints nothing and returns 0.
+- The caller's IFS is `$'\\n\\t'` (newline and tab, no space) and your function is called under `set -euo pipefail`. It must be correct under both.
+
+Reply with the function in a single ```bash code block and nothing else.""",
+        "tests": """IFS=$'\\n\\t'
+assert_eq "a
+b
+c" "$(split_list "a,b,c")" "three items"
+assert_eq "one item" "$(split_list "one item")" "no comma is a single item"
+assert_eq "a b
+c d" "$(split_list "a b,c d")" "spaces inside an item survive"
+assert_eq "*
+?" "$(split_list "*,?")" "glob characters are never expanded"
+assert_eq "a
+b" "$(split_list "a,,b,")" "empty items are skipped"
+assert_eq "" "$(split_list "")" "an empty argument prints nothing"
+assert_ok "an empty argument still returns 0" split_list ""
+""",
+        "reference": """split_list() {
+    local list="${1-}"
+    local item
+    local -a parts=()
+    IFS=',' read -r -a parts <<< "$list" || true
+    for item in ${parts[@]+"${parts[@]}"}; do
+        if [ -n "$item" ]; then
+            printf '%s\\n' "$item"
+        fi
+    done
+}""",
+        "wrong": """split_list() {
+    local list="${1-}"
+    local item
+    for item in ${list//,/ }; do
+        printf '%s\\n' $item
+    done
+}""",
+        "wrong_explanation": "Substituting spaces for commas and relying on word splitting does not split at all under the caller's IFS of newline/tab, so the whole list arrives as one bogus item -- AGENTS.md shell bug class 3. The unquoted $item also expands globs.",
+    },
+    {
+        "name": "bash_count_matches",
+        "kind": "bug-fix",
+        "lang": "bash",
+        "function": "count_matches",
+        "prompt": """This helper is called from a script running under `set -euo pipefail`. It should print how many lines of a file contain a pattern, but the whole script dies whenever nothing matches, and it reports failure on a file that simply has no match.
+
+    count_matches() {
+        local file="$1" pattern="$2"
+        local n
+        n=$(grep -c -e "$pattern" "$file")
+        printf '%s\\n' "$n"
+        [ "$n" -gt 0 ] && return 0
+    }
+
+Rewrite it. Write a bash function with this exact signature:
+    count_matches() { ... }
+
+Rules:
+- The first argument is a file, the second a pattern passed to grep.
+- Print the number of matching lines on one line, and print `0` when there are none.
+- Return 0 whenever the file is readable, whatever the count. Finding nothing is a legitimate result, not an error.
+- Return a non-zero status and print nothing on stdout when the file does not exist or cannot be read.
+- It runs under `set -euo pipefail`, so an empty grep result must not abort the caller, and the function must not end on a bare `[ ... ] && ...` whose false case becomes its return value.
+
+Reply with the function in a single ```bash code block and nothing else.""",
+        "tests": """printf 'alpha\\nbeta\\nalpha gamma\\n' > sample.txt
+assert_eq "2" "$(count_matches sample.txt alpha)" "two matching lines"
+assert_eq "1" "$(count_matches sample.txt beta)" "one matching line"
+assert_eq "0" "$(count_matches sample.txt zeta)" "no match prints 0"
+assert_ok "no match is not an error" count_matches sample.txt zeta
+assert_ok "a match is not an error" count_matches sample.txt alpha
+assert_fail "an unreadable file is an error" count_matches nope.txt alpha
+assert_eq "" "$(count_matches nope.txt alpha 2>/dev/null || true)" "an unreadable file prints nothing"
+rc=0
+captured="$(count_matches sample.txt zeta)" || rc=$?
+assert_eq "0" "$rc" "capturing a zero-match result must not fail the caller"
+assert_eq "0" "$captured" "the captured value is 0"
+""",
+        "reference": """count_matches() {
+    local file="${1-}"
+    local pattern="${2-}"
+    local n=0
+    if [ ! -r "$file" ]; then
+        return 1
+    fi
+    n=$(grep -c -e "$pattern" "$file" || true)
+    if [ -z "$n" ]; then
+        n=0
+    fi
+    printf '%s\\n' "$n"
+    return 0
+}""",
+        "wrong": """count_matches() {
+    local file="${1-}"
+    local pattern="${2-}"
+    local n
+    n=$(grep -c -e "$pattern" "$file")
+    printf '%s\\n' "$n"
+    [ "$n" -gt 0 ] && return 0
+}""",
+        "wrong_explanation": "Unguarded $(grep -c) exits 1 on a legitimate empty result (AGENTS.md class 2) and the closing bare `[ ... ] && return 0` makes the healthy zero-match path return 1 (class 5).",
+    },
+    {
+        "name": "bash_print_args",
+        "kind": "spec-transcription",
+        "lang": "bash",
+        "function": "print_args",
+        "prompt": """Write a bash function with this exact signature:
+    print_args() { ... }
+
+It prints each of its arguments on its own line, in order.
+
+Rules:
+- One line per argument, printed byte for byte as it was passed.
+- An argument containing spaces stays ONE line; an argument containing a glob character such as `*` or `?` is printed literally and never expanded against the current directory.
+- With no arguments it prints nothing and returns 0.
+- An argument that begins with a hyphen, such as `-n` or `-e`, is printed as text, not treated as an option.
+- It runs under `set -euo pipefail`.
+
+Reply with the function in a single ```bash code block and nothing else.""",
+        "tests": """assert_eq "a b
+c d" "$(print_args "a b" "c d")" "spaces do not split an argument"
+assert_eq "1" "$(print_args "x y z" | wc -l)" "one argument is one line"
+assert_eq "*" "$(print_args "*")" "a glob is printed literally"
+assert_eq "-n" "$(print_args "-n")" "a leading hyphen is text, not an option"
+assert_eq "" "$(print_args)" "no arguments prints nothing"
+assert_ok "no arguments returns 0" print_args
+""",
+        "reference": """print_args() {
+    local arg
+    for arg in "$@"; do
+        printf '%s\\n' "$arg"
+    done
+}""",
+        "wrong": """print_args() {
+    for arg in $@; do
+        echo $arg
+    done
+}""",
+        "wrong_explanation": "Unquoted $@ and $arg word-split and glob-expand every argument (the unquoted-expansion class), and `echo -n` is swallowed as an option.",
+    },
+    {
+        "name": "bash_head_of_file",
+        "kind": "bug-fix",
+        "lang": "bash",
+        "function": "head_of_file",
+        "prompt": """This helper prints the first N lines of a file. It reports success on a file that does not exist, because the pipeline's status is the status of `head`, not of `cat`, and the caller does not set `pipefail`.
+
+    head_of_file() {
+        local file="$1" n="$2"
+        cat "$file" | head -n "$n"
+    }
+
+Rewrite it. Write a bash function with this exact signature:
+    head_of_file() { ... }
+
+Rules:
+- The first argument is a file, the second the number of lines to print.
+- Print the first N lines of the file; if the file is shorter, print all of it.
+- Return a non-zero status, and print nothing on stdout, when the file does not exist or cannot be read.
+- The caller may have `pipefail` switched OFF, so you must not depend on it: check the status yourself, or do not use a pipeline at all.
+
+Reply with the function in a single ```bash code block and nothing else.""",
+        "tests": """set +o pipefail
+printf 'l1\\nl2\\nl3\\n' > lines.txt
+assert_eq "l1
+l2" "$(head_of_file lines.txt 2)" "the first two lines"
+assert_eq "l1
+l2
+l3" "$(head_of_file lines.txt 10)" "n larger than the file prints all of it"
+assert_ok "a readable file returns 0" head_of_file lines.txt 1
+assert_fail "a missing file fails even with pipefail off" head_of_file missing.txt 2
+assert_eq "" "$(head_of_file missing.txt 2 2>/dev/null || true)" "a missing file prints nothing"
+""",
+        "reference": """head_of_file() {
+    local file="${1-}"
+    local n="${2-10}"
+    if [ ! -r "$file" ]; then
+        return 1
+    fi
+    head -n "$n" -- "$file"
+}""",
+        "wrong": """head_of_file() {
+    local file="${1-}"
+    local n="${2-10}"
+    cat "$file" | head -n "$n"
+}""",
+        "wrong_explanation": "With pipefail off the pipeline's status is head's, so a missing file is reported as success -- the pipefail-masking class.",
+    },
+    {
+        "name": "cmake_normalize_arch",
+        "kind": "spec-transcription",
+        "lang": "cmake",
+        "function": "normalize_arch",
+        "prompt": """The build scripts see several spellings of the same machine and need one label per architecture.
+
+Write a CMake function with this exact signature:
+    function(normalize_arch out_var arch)
+
+Rules:
+- Compare `arch` case-insensitively.
+- `x86_64`, `amd64` and `x64` all map to `amd64`.
+- `aarch64` and `arm64` both map to `arm64`.
+- `riscv64` maps to `riscv64`.
+- Anything else, including an empty string, maps to the empty string.
+- Set the result in the CALLER's scope, in the variable whose NAME is given by `out_var`. After `normalize_arch(result "x86_64")` the caller must see `${result}` equal to `amd64`.
+
+Reply with the function in a single ```cmake code block and nothing else.""",
+        "tests": """normalize_arch(r_a "x86_64")
+assert_eq("amd64" "${r_a}" "x86_64")
+normalize_arch(r_b "AMD64")
+assert_eq("amd64" "${r_b}" "AMD64 is case-insensitive")
+normalize_arch(r_c "x64")
+assert_eq("amd64" "${r_c}" "x64")
+normalize_arch(r_d "aarch64")
+assert_eq("arm64" "${r_d}" "aarch64")
+normalize_arch(r_e "arm64")
+assert_eq("arm64" "${r_e}" "arm64")
+normalize_arch(r_f "riscv64")
+assert_eq("riscv64" "${r_f}" "riscv64")
+normalize_arch(r_g "ppc64le")
+assert_eq("" "${r_g}" "an unknown machine maps to nothing")
+normalize_arch(r_h "")
+assert_eq("" "${r_h}" "an empty machine maps to nothing")
+""",
+        "reference": """function(normalize_arch out_var arch)
+  string(TOLOWER "${arch}" lowered)
+  if(lowered STREQUAL "x86_64" OR lowered STREQUAL "amd64" OR lowered STREQUAL "x64")
+    set(mapped "amd64")
+  elseif(lowered STREQUAL "aarch64" OR lowered STREQUAL "arm64")
+    set(mapped "arm64")
+  elseif(lowered STREQUAL "riscv64")
+    set(mapped "riscv64")
+  else()
+    set(mapped "")
+  endif()
+  set(${out_var} "${mapped}" PARENT_SCOPE)
+endfunction()""",
+        "wrong": """function(normalize_arch out_var arch)
+  string(TOLOWER "${arch}" lowered)
+  if(lowered STREQUAL "x86_64" OR lowered STREQUAL "amd64" OR lowered STREQUAL "x64")
+    set(mapped "amd64")
+  elseif(lowered STREQUAL "aarch64" OR lowered STREQUAL "arm64")
+    set(mapped "arm64")
+  elseif(lowered STREQUAL "riscv64")
+    set(mapped "riscv64")
+  else()
+    set(mapped "")
+  endif()
+  set(${out_var} "${mapped}")
+endfunction()""",
+        "wrong_explanation": "Without PARENT_SCOPE the result is set in the function's own scope, so every caller reads an empty variable -- the classic CMake out-parameter bug.",
+    },
+    {
+        "name": "dockerfile_pinned_tool_image",
+        "kind": "design",
+        "lang": "dockerfile",
+        "prompt": """Write a Dockerfile for a small Debian-based image that runs one Python entrypoint script, `/app/tool.py`, which is in the build context.
+
+Requirements:
+- Exactly one `FROM`, and its image reference must carry an explicit tag that is not `latest`. An untagged image and `:latest` are both refused.
+- Install `python3` with apt in a SINGLE `RUN` instruction that runs `apt-get update`, installs with `--no-install-recommends`, and ends with `apt-get clean` in that same `RUN`. Two separate `RUN` instructions for the update and the install are refused, because the cached update layer can then serve a stale package index.
+- Set `WORKDIR /app` before any `COPY`.
+- Use `COPY`, never `ADD`, to bring the script in.
+- Create and switch to a non-root user with a `USER` instruction, and place it AFTER the install `RUN`.
+- End with an `ENTRYPOINT` in exec form -- a JSON array such as `["python3", "/app/tool.py"]`, not a bare shell string.
+
+Reply with the Dockerfile in a single ```dockerfile code block and nothing else.""",
+        "tests": '''froms = instructions("FROM")
+assert len(froms) == 1, f"expected exactly one FROM, got {len(froms)}"
+image = froms[0].split()[0]
+assert ":" in image or "@" in image, f"the base image {image!r} carries no tag"
+assert not image.endswith(":latest"), "the base image is pinned to :latest"
+
+runs = instructions("RUN")
+installs = [r for r in runs if "apt-get install" in r or "apt install" in r]
+assert len(installs) == 1, f"expected one apt install RUN, got {len(installs)}"
+assert "apt-get update" in installs[0], "apt-get update is not in the install RUN"
+assert "--no-install-recommends" in installs[0], "installed without --no-install-recommends"
+assert "apt-get clean" in installs[0], "the install RUN does not end with apt-get clean"
+assert "python3" in installs[0], "python3 is not installed"
+assert not [r for r in runs if "apt-get update" in r and r != installs[0]], \\
+    "apt-get update also runs in a separate RUN"
+
+order = verbs()
+assert "WORKDIR" in order and "COPY" in order, "WORKDIR and COPY are both required"
+assert order.index("WORKDIR") < order.index("COPY"), "WORKDIR must come before COPY"
+assert "ADD" not in order, "ADD was used where COPY was required"
+assert "USER" in order, "no USER instruction: the image runs as root"
+assert order.index("USER") > order.index("RUN"), "USER must come after the install RUN"
+assert instructions("USER")[-1].strip() not in ("root", "0"), "the final USER is root"
+
+entry = instructions("ENTRYPOINT")
+assert len(entry) == 1, f"expected exactly one ENTRYPOINT, got {len(entry)}"
+assert entry[0].strip().startswith("["), "ENTRYPOINT is not in exec (JSON array) form"
+assert "tool.py" in entry[0], "the entrypoint does not run tool.py"
+''',
+        "reference": """FROM debian:bookworm-slim
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends python3 \\
+ && apt-get clean
+RUN useradd --create-home --uid 10001 tool
+USER tool
+WORKDIR /app
+COPY tool.py /app/tool.py
+ENTRYPOINT ["python3", "/app/tool.py"]""",
+        "wrong": """FROM debian:latest
+RUN apt-get update
+RUN apt-get install -y python3
+COPY tool.py /app/tool.py
+WORKDIR /app
+ENTRYPOINT python3 /app/tool.py""",
+        "wrong_explanation": "Pinned to :latest, apt update split from the install so the cached update layer can serve a stale index, no --no-install-recommends and no clean, COPY before WORKDIR, no USER (it runs as root) and a shell-form ENTRYPOINT.",
     },
 ]

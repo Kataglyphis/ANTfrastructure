@@ -383,6 +383,8 @@ silently benchmarking the wrong host.
   on it (`BENCH_SKIP_CORRECTNESS=1` bypasses, `BENCH_BACKEND=<name>` retargets).
 - `bench_lanes.py` — `--batching` (does one server overlap concurrent
   requests?) and `--lanes <backend> <backend>` (do several add up?).
+- `bench_coding.py` — does the generated code RUN, in Python/bash/CMake/Dockerfile, executed in a sandbox; `bench_tools.py` — tool calling, single- and multi-turn; `bench_agent.py` — the whole opencode loop against a scratch repo; `bench_embeddings.py` — do the vectors mean anything.
+- `bench_sweep.py` — the whole suite over a `candidates.json` in one command; `bench_compare.py` — two reports, paired sign test, `baselines/`; `bench_report.py` — summaries and the viewer manifest; `bench_stats.py`/`bench_provenance.py`/`bench_cli.py` — intervals, what produced a run, and the one request path.
 - `inspect_gguf.py` — tensor-type histogram from the file header, verdict
   OK / LIKELY OK / RISKY, exit 1 on RISKY.
 
@@ -393,9 +395,7 @@ v0.6.1 `0eadefe`), so it is a property of these kernels, not of one release. Ran
 1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
 spent ~1900 tokens thinking.
 
-Testing: 58 unit tests need no server (`pytest tests/test_benchmark_metrics.py
-tests/test_inspect_gguf.py tests/test_bench_lanes.py tests/test_backend_compat.py
-tests/test_backends_registry.py`); the rest of `tests/` needs the stack up. The
+Testing: `pytest linux/llm-stack/tests -q` runs offline and is enforced offline — a conftest fixture refuses an outbound `socket.connect` and names the test, after a renamed seam silently sent three tests at a real Ollama and hung the suite; only `test_v1_api.py` and `test_harness_against_ollama.py` need a live server, and both skip themselves. The
 viewer has a server-side smoke render (`cd benchmark-viewer && npm run smoke`) —
 `vite build` only proves the JSX compiles, and a silently-failed edit once made
 the comparison table render empty cells while the build reported success.
@@ -459,7 +459,7 @@ Still worth doing on any version: trim opencode's tool set via its top-level
 `tools` block (8,175 -> 5,234 tokens, and on a pre-cache build that was 36% off
 every turn), and compare prefill only *within one quant format* — a 2B Q4_K_M
 prefills 3.5x faster than a 9B Q4_K_M while a 4B in Q4_0 is slower than either.
-`windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly.
+`windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly — it reads the model ids from `linux/llm-stack/backends.json`, passes `--nctx` and `-MaxTokens` (default 4096; the CLI's own 2048 default was invisible in every report), warms every lane **it starts** (a busy lane is left alone; re-run with `-Restart` to guarantee the recorded caps), and takes `-Models` / `-Pull`.
 
 ### Triggering the opt-in CI lanes
 

@@ -7,9 +7,11 @@ edit to the grader could cost accuracy or speed and nobody would know.
 
 Three things it refuses to do, because each is a way to be confidently wrong:
 
-  * call a difference a regression when the sample cannot support it — the
-    Wilson intervals are checked first, and overlapping intervals are reported
-    as "not separable", not as a change;
+  * call a difference a regression when the sample cannot support it — both
+    models answered the SAME cases, so the aggregate is judged by a paired
+    sign test on per-case outcomes (interval overlap only for reports without
+    per-case detail), and a single-draw flip on a sampling lane is named as
+    such, not alarmed;
   * blame the model when the *grader* moved — provenance carries a hash of the
     benchmark's own source, and a mismatch is stated before any score;
   * compare across hosts or architectures silently.
@@ -23,12 +25,23 @@ Usage:
 import argparse
 import json
 import os
+import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bench_provenance import compare as compare_provenance  # noqa: E402
-from bench_stats import format_score, intervals_overlap, power_note  # noqa: E402
+from bench_provenance import known_deterministic  # noqa: E402
+from bench_stats import (  # noqa: E402
+    ALPHA,
+    diff_interval,
+    format_score,
+    intervals_overlap,
+    paired_outcomes,
+    paired_power_note,
+    paired_sign_test,
+    power_note,
+)
 
 BASELINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "baselines")
 
@@ -43,47 +56,72 @@ def normalise(report):
     {benchmark, provenance, config, reports:[...]} while benchmark_openai_api.py
     writes {timestamp, model, api_url, hardware, config, results:[...]}. Rather
     than break the viewer that reads the older one, adapt here — and record the
-    divergence as a debt (roadmap P2.3) instead of hiding it behind this
-    function.
+    divergence as a debt (roadmap P4b.2, still open for the legacy shape)
+    instead of hiding it behind this function.
     """
-    if isinstance(report, dict) and "reports" in report:
+    if not isinstance(report, dict) or not ("reports" in report or "results" in report):
+        raise ValueError("not a benchmark report: neither 'reports' (shared envelope) "
+                         "nor 'results' (benchmark_openai_api) is present")
+    if "reports" in report:
+        prov = report.get("provenance") or {}
         entries = []
         for r in report["reports"]:
             # Per-case outcomes matter more than the aggregate on a
             # deterministic endpoint: a case that flipped is a concrete,
             # attributable change, where the proportion may not move enough to
             # clear a confidence interval.
-            cases = {}
+            cases, walls = {}, []
             for item in r.get("results", []):
                 key = item.get("case") or item.get("task")
-                if key is None or item.get("errored") or item.get("truncated"):
+                if key is None or not measured(item):
                     continue  # a transport failure says nothing about the model
                 cases.setdefault(key, []).append(bool(item.get("passed")))
+                if isinstance(item.get("wall_s"), (int, float)):
+                    walls.append(item["wall_s"])
+            label = r.get("label") or r.get("model")
+            if any(e["label"] == label for e in entries):
+                raise ValueError(
+                    f"duplicate label {label!r}: two candidates resolved to the same "
+                    f"name, so their scores cannot be told apart — give each entry in "
+                    f"the --compare file a distinct 'label' (e.g. backend:model)")
+            probe = r.get("determinism_probe")
+            if probe is None and r.get("base_url") in (None, prov.get("base_url")):
+                probe = prov.get("determinism_probe")
             entries.append({
-                "label": r.get("label") or r.get("model"),
+                "label": label,
                 "model": r.get("model"),
                 "passed": r.get("passed"),
                 "total": r.get("total"),
                 "wall_s": r.get("total_wall_s"),
                 "median_wall_s": r.get("median_wall_s"),
+                # Wall over measured attempts only, when the tool recorded it;
+                # else derived from the rows; else None (legacy report).
+                "wall_measured_s": r.get("wall_measured_s"),
+                "unmeasured_wall_s": r.get("unmeasured_wall_s"),
+                "measured_walls": walls,
                 "effective_n": r.get("effective_n"),
                 # A count of tasks observed to pass; absent in older reports.
                 "effective_k": r.get("effective_k"),
                 "deterministic": r.get("deterministic"),
+                "probe_deterministic": known_deterministic({"determinism_probe": probe}),
                 # Counts, not a bool. Collapsing repeats with all() was wrong in
                 # BOTH directions on a sampling lane: 3/3 -> 2/3 read as a hard
                 # regression off one flaky draw, while a real 2/3 -> 0/3 collapse
                 # produced nothing at all (False -> False is neither broke nor
                 # fixed) and the aggregate was too small to clear the interval.
                 "cases": {k: (sum(v), len(v)) for k, v in cases.items()},
+                # bench_lanes rows: throughput, not pass/fail.
+                "tok_per_sec": r.get("tok_per_sec"),
+                "serialised": r.get("serialised"),
             })
         return {"benchmark": report.get("benchmark", "unknown"),
-                "provenance": report.get("provenance", {}),
+                "provenance": prov,
                 "config": report.get("config", {}),
+                "suspect_cases": suspect_cases(report["reports"]),
                 "entries": entries}
 
     # older shape: one model, scores live in per-prompt results
-    results = report.get("results", []) if isinstance(report, dict) else []
+    results = report.get("results", [])
     ok = [r for r in results if "error" not in r]
     walls = [r.get("latency_s") for r in ok if r.get("latency_s") is not None]
     correctness = report.get("correctness") or {}
@@ -105,9 +143,46 @@ def normalise(report):
     }
 
 
+def measured(item):
+    """Did this result row measure the model? Transport errors, cut outputs and
+    context-blocked agent tasks (status CONTEXT: the prompt never fit) did not.
+
+    Nor did an overflow (the 4xx that says the prompt did not fit) or a task
+    skipped because the tool that grades its language is not on this host: the
+    producers exclude both from their own rates, and counting them here made a
+    row that nobody graded look like a row the model failed.
+    """
+    return not (item.get("errored") or item.get("truncated") or item.get("blocked")
+                or item.get("overflow") or item.get("skipped")
+                or item.get("status") == "CONTEXT")
+
+
 def load(path):
     with open(path) as f:
-        return normalise(json.load(f))
+        try:
+            return normalise(json.load(f))
+        except ValueError as e:
+            raise SystemExit(f"{path}: {e}") from e
+
+
+def _per_attempt(entry):
+    """Seconds per MEASURED attempt, and where the number came from.
+
+    A cut or abandoned attempt can sit at the 1800 s deadline; letting it into
+    the mean decided the SLOWER verdict for the wrong reason. Order: the tool's
+    own wall_measured_s, then the per-row walls, then the legacy total (noted).
+    """
+    n = entry.get("total")
+    if entry.get("wall_measured_s") is not None and n:
+        return entry["wall_measured_s"] / n, "measured"
+    walls = entry.get("measured_walls") or []
+    if walls:
+        return sum(walls) / len(walls), "measured"
+    if entry.get("median_wall_s"):
+        return entry["median_wall_s"], "legacy"
+    if entry.get("wall_s") and n:
+        return entry["wall_s"] / n, "legacy"
+    return None, None
 
 
 def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
@@ -135,6 +210,12 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
     # repeats change reports a slowdown for doing more work.
     timing_comparable = old_cfg.get("repeats") == new_cfg.get("repeats")
 
+    suspect = set(new.get("suspect_cases") or old.get("suspect_cases") or ())
+    if suspect:
+        findings.append(f"! {len(suspect)} case(s) the CONTROL also fails — suspect "
+                        f"cases, evidence about the case not the candidates: "
+                        f"{', '.join(sorted(suspect))}")
+
     old_by = {e["label"]: e for e in old["entries"]}
     new_by = {e["label"]: e for e in new["entries"]}
 
@@ -152,7 +233,11 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
         # A single flaky draw must not fire the alarm on a sampling lane, and a
         # total collapse must not hide there either. Strict flip on a
         # deterministic endpoint; "passed before, never passes now" otherwise.
-        strict = bool(a.get("deterministic")) and bool(b.get("deterministic"))
+        strict = _known_deterministic(a) and _known_deterministic(b)
+        # One attempt per case on a lane nobody has shown deterministic: a flip
+        # is one coin toss. Named, not alarmed; the paired test judges the run.
+        single_draw = not strict and shared and all(
+            a_cases[k][1] == 1 and b_cases[k][1] == 1 for k in shared)
 
         def _rate(pair):
             passes, attempts = pair
@@ -174,11 +259,16 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
         fixed = sorted(k for k in shared if _fixed(k))
         degraded = sorted(k for k in shared
                           if k not in broke and _rate(b_cases[k]) < _rate(a_cases[k]))
-        if broke:
+        if broke and single_draw:
+            findings.append(f"  {label}: {len(broke)} case(s) flipped (single draw — "
+                            f"rerun with --repeats 3): {', '.join(broke)}")
+        elif broke:
             findings.append(f"  {label}: {len(broke)} case(s) that PASSED now fail — "
                             f"*** REGRESSION ***")
             for k in broke:
-                findings.append(f"      broke: {k}")
+                findings.append(f"      broke: {k}"
+                                + (" (suspect: the control fails it too)"
+                                   if k in suspect else ""))
             regressed = True
         if fixed:
             findings.append(f"  {label}: {len(fixed)} case(s) now fixed: "
@@ -208,13 +298,29 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
             b_k = b.get("effective_k")
             if b_k is None:
                 b_k = min(b_n, round(b_rate * b_n))
-            line = (f"  {label}: {format_score(a_k, a_n)} -> {format_score(b_k, b_n)}")
-            if b_rate < a_rate:
+            lo, hi = diff_interval(a_k, a_n, b_k, b_n)
+            line = (f"  {label}: {format_score(a_k, a_n)} -> {format_score(b_k, b_n)}"
+                    f"   diff {100 * (b_rate - a_rate):+.0f}pt [{100 * lo:+.0f}, {100 * hi:+.0f}]")
+            if shared:
+                # Paired: only the cases that disagree carry information, and
+                # 6-0 is p=0.031 where overlapping intervals say "cannot tell".
+                worse, better, _ = paired_outcomes(a_cases, b_cases)
+                p = paired_sign_test(worse, better)
+                verdict = f"paired sign test {worse} worse / {better} better, p={p:.3f}"
+                if worse > better and p < ALPHA:
+                    findings.append(f"{line}   *** REGRESSION *** ({verdict})")
+                    regressed = True
+                elif worse > better:
+                    findings.append(f"{line}   lower; not separable ({verdict})")
+                elif better > worse:
+                    sep = " (separable)" if p < ALPHA else ""
+                    findings.append(f"{line}   improved{sep} ({verdict})")
+                else:
+                    findings.append(f"{line}   unchanged ({verdict})")
+            elif b_rate < a_rate:
                 if intervals_overlap(a_k, a_n, b_k, b_n):
-                    note = "   lower; the AGGREGATE is not separable at this sample size"
-                    if broke:
-                        note += " (but named cases broke — see above)"
-                    findings.append(line + note)
+                    findings.append(line + "   lower; the AGGREGATE is not separable "
+                                    "at this sample size (unpaired — no per-case detail)")
                 else:
                     findings.append(line + "   *** REGRESSION ***")
                     regressed = True
@@ -226,10 +332,7 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
 
         # Per-attempt time, not the sum: a run that errored out half its
         # requests summed less wall time and was reported as FASTER.
-        a_time = a.get("median_wall_s") or (
-            a["wall_s"] / a["total"] if a.get("wall_s") and a.get("total") else None)
-        b_time = b.get("median_wall_s") or (
-            b["wall_s"] / b["total"] if b.get("wall_s") and b.get("total") else None)
+        (a_time, a_src), (b_time, b_src) = _per_attempt(a), _per_attempt(b)
         if a_time and b_time and timing_comparable:
             delta = (b_time - a_time) / a_time
             mark = ""
@@ -238,32 +341,187 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
                 regressed = True
             elif delta < -time_tolerance:
                 mark = "   faster"
+            if "legacy" in (a_src, b_src):
+                mark += "   (legacy timing: may include cut or blocked attempts)"
             findings.append(f"  {label}: {a_time:.2f}s -> {b_time:.2f}s per attempt "
                             f"({delta:+.0%}){mark}")
         elif a_time and b_time:
             findings.append(f"  {label}: timing not compared — config differs")
 
+        # --- bench_lanes: throughput and the batching verdict, no pass/fail
+        a_tps, b_tps = a.get("tok_per_sec"), b.get("tok_per_sec")
+        if a_tps and b_tps is not None:
+            delta = (b_tps - a_tps) / a_tps
+            mark = ""
+            if delta < -time_tolerance:
+                mark = "   *** SLOWER ***"
+                regressed = True
+            elif delta > time_tolerance:
+                mark = "   faster"
+            findings.append(f"  {label}: {a_tps:.1f} -> {b_tps:.1f} tok/s ({delta:+.0%}){mark}")
+        if a.get("serialised") is False and b.get("serialised") is True:
+            findings.append(f"  {label}: overlapped concurrent requests before, now "
+                            f"SERIALISES them — *** REGRESSION ***")
+            regressed = True
+        elif a.get("serialised") is True and b.get("serialised") is False:
+            findings.append(f"  {label}: now overlaps concurrent requests (batching)")
+
     return findings, regressed
 
 
-def suspect_cases(reports, control_label="control"):
+def case_outcomes(report):
+    """{case: (passes, attempts)} over the measured, non-suspect rows.
+
+    The shape `bench_stats.tiers`/`paired_outcomes` want, built from a RAW
+    report row the way normalise() builds it from a stored one.
+    """
+    cases = {}
+    for item in report.get("results", []):
+        key = _case_key(item)
+        if key is None or not measured(item) or item.get("suspect"):
+            continue
+        passes, attempts = cases.get(key, (0, 0))
+        cases[key] = (passes + int(bool(item.get("passed"))), attempts + 1)
+    return cases
+
+
+def _known_deterministic(entry):
+    return bool(entry.get("deterministic")) or bool(entry.get("probe_deterministic"))
+
+
+def is_control(report):
+    """The calibration entry: backend 'control' in backends.json, or a label
+    starting with 'control' (the label falls back to the model id otherwise)."""
+    return (report.get("backend") == "control"
+            or str(report.get("label") or "").lower().startswith("control"))
+
+
+def suspect_cases(reports):
     """Cases the CONTROL endpoint also failed.
 
     Without a calibration point, "every model failed this" reads as a hard case
     when it may be a broken one — a contradictory assertion, an ambiguous
     prompt, a tool description nobody could disambiguate. A case the control
     fails is evidence about the CASE, not about the candidates.
+
+    Contract: `reports` is the envelope's reports[] list (raw rows, as the
+    tools emit and as a ranking holds them); each row may carry `backend`,
+    `label` and `results` [{case|task, passed, errored, truncated, status}].
+    Returns the sorted case keys the control measured and failed, or None when
+    no row is a control. Rankings call this to mark those cases.
     """
-    control = next((r for r in reports
-                    if control_label in str(r.get("label", "")).lower()), None)
+    control = next((r for r in reports if is_control(r)), None)
     if not control:
         return None
-    failed = set()
+    # Aggregated over the control's own attempts: one flaky draw out of three
+    # is not evidence that the case is broken, and used to delete it anyway.
+    outcomes = {}
     for item in control.get("results", []):
         key = item.get("case") or item.get("task")
-        if key is not None and not item.get("passed") and not item.get("errored"):
-            failed.add(key)
-    return sorted(failed)
+        if key is not None and measured(item):
+            outcomes.setdefault(key, []).append(bool(item.get("passed")))
+    return sorted(k for k, v in outcomes.items() if v and not any(v))
+
+
+def _case_key(item):
+    """The case identity in a result row: bench_tools writes `case`, bench_coding
+    and bench_agent write `task`."""
+    return item.get("case") if item.get("case") is not None else item.get("task")
+
+
+def mark_suspect_cases(reports):
+    """Exclude the cases the control also fails from every OTHER row's score.
+
+    Mutates `reports` in place and returns the sorted suspect keys, or None
+    when no control ran. A case the control fails says the case is broken, so
+    scoring a candidate on it charges the candidate for a bad prompt: the rows
+    stay in the report, flagged `suspect`, and leave the rate, the interval and
+    the rank. The control's own row keeps its full score -- it is the
+    calibration, not a competitor.
+
+    Determinism is not re-derived: `deterministic` was decided from the output
+    hashes over every attempt, and dropping a case cannot make a sampling lane
+    deterministic. Everything else derived from the rows IS re-derived, so no
+    table in the same object can disagree with the headline.
+    """
+    suspect = suspect_cases(reports)
+    if not suspect:
+        # None (no control ran) and [] (a control that failed nothing) are both
+        # "nothing to exclude"; the caller tells them apart by the return value.
+        return suspect
+    dropped = set(suspect)
+    for report in reports:
+        report["suspect_cases"] = list(suspect)
+        for item in report.get("results", []):
+            if _case_key(item) in dropped:
+                item["suspect"] = True
+        if is_control(report):
+            report["suspect_excluded"] = 0
+            continue
+        rows = report.get("results") or []
+        kept = [r for r in rows if measured(r) and _case_key(r) not in dropped]
+        report["suspect_excluded"] = sum(
+            1 for r in rows if measured(r) and _case_key(r) in dropped)
+        passed = sum(1 for r in kept if r.get("passed"))
+        report["passed"], report["total"] = passed, len(kept)
+        if "wrong" in report:
+            report["wrong"] = len(kept) - passed
+        if report.get("deterministic"):
+            outcomes = {}
+            for r in kept:
+                outcomes.setdefault((_case_key(r), r.get("variant")), set()).add(
+                    bool(r.get("passed")))
+            report["effective_n"] = len(outcomes)
+            report["effective_k"] = sum(1 for v in outcomes.values() if v == {True})
+        else:
+            report["effective_n"], report["effective_k"] = len(kept), passed
+        _recount_groups(report, rows, kept, dropped)
+    return suspect
+
+
+def _recount_groups(report, rows, kept, dropped):
+    """Re-derive the group tables and the wall statistics from the KEPT rows.
+
+    Left stale, `by_kind`/`by_lang`/`categories` contradicted the headline in
+    the same object (3/3 = 100% beside python=3/6) and suspect seconds still
+    decided the rank tiebreak.
+    """
+    for field, group_key in (("by_kind", "kind"), ("by_lang", "lang")):
+        if field not in report:
+            continue
+        groups = {}
+        for r in rows:
+            if _case_key(r) in dropped:
+                continue
+            g = groups.setdefault(r.get(group_key) or "unknown",
+                                  {"passed": 0, "measured": 0, "skipped": 0,
+                                   "excluded": 0})
+            if r.get("skipped"):
+                g["skipped"] += 1
+            elif not measured(r):
+                g["excluded"] += 1
+            else:
+                g["measured"] += 1
+                g["passed"] += int(bool(r.get("passed")))
+        report[field] = dict(sorted(groups.items()))
+    if "categories" in report:
+        cats = {}
+        for r in kept:
+            c = cats.setdefault(r.get("category", "unknown"), {"passed": 0, "total": 0})
+            c["total"] += 1
+            c["passed"] += int(bool(r.get("passed")))
+        report["categories"] = cats
+    walls = [r["wall_s"] for r in kept
+             if isinstance(r.get("wall_s"), (int, float))]
+    if "total_wall_s" in report:
+        report["total_wall_s"] = round(sum(walls), 2)
+        report["avg_wall_s"] = round(sum(walls) / len(walls), 2) if walls else None
+        if "median_wall_s" in report:
+            report["median_wall_s"] = (round(statistics.median(walls), 2)
+                                       if walls else None)
+        if "stdev_wall_s" in report:
+            report["stdev_wall_s"] = (round(statistics.stdev(walls), 2)
+                                      if len(walls) > 1 else None)
 
 
 def pair_directories(old_dir, new_dir):
@@ -372,7 +630,9 @@ def main():
         sizes = [e.get("effective_n") or e["total"] for e in new["entries"] if e.get("total")]
         has_cases = any(e.get("cases") for e in new["entries"])
         print("  no regression detected")
-        if sizes:
+        if has_cases:
+            print(f"  {paired_power_note()}")
+        elif sizes:
             print(f"  {power_note(min(sizes))}")
         if not has_cases:
             print("  (no per-case detail in these reports — only the aggregate "

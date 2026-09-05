@@ -208,3 +208,72 @@ class TestRegistrySeam:
         with _pytest.raises(argparse.ArgumentTypeError) as e:
             resolve_lane("nope", path=str(reg))
         assert "only-this" in str(e.value)
+
+
+class TestReportEnvelope:
+    """D29: the lane report was the one --output that bypassed write_report.
+    The manifest indexed it as an empty 'throughput' run and bench_compare
+    passed ANY two of them."""
+
+    LANE_RUN = {"lanes": {"npu": {"decode_tok_per_sec": 19.25, "ttft_s": 0.4},
+                          "gpu": {"error": "dead"}},
+                "baseline": {"npu": {"decode_tok_per_sec": 20.0}},
+                "aggregate_tok_per_sec": 19.25, "wall_s": 9.0}
+    LANES = {"npu": ("http://h:1", "m1"), "gpu": ("http://h:2", "m2")}
+
+    def test_one_row_per_lane_plus_the_aggregate(self):
+        from bench_lanes import build_reports
+        rows = build_reports(lane_run=self.LANE_RUN, lanes=self.LANES)
+        assert [r["label"] for r in rows] == ["npu", "gpu", "aggregate"]
+        assert rows[0]["tok_per_sec"] == 19.25 and rows[0]["alone"]["decode_tok_per_sec"] == 20.0
+        assert rows[1]["tok_per_sec"] is None  # a dead lane is a row, not a crash
+        assert rows[2]["tok_per_sec"] == 19.25 and rows[2]["lanes"] == ["gpu", "npu"]
+
+    def test_batching_row_carries_the_verdict(self):
+        from bench_lanes import build_reports
+        rows = build_reports(batching={"verdict": "OVERLAPPED (batching)", "serialised": False,
+                                       "wall_s": 1.0, "requests": {}},
+                             batching_endpoint=("http://h:1", "m"))
+        assert rows[0]["label"] == "batching" and rows[0]["serialised"] is False
+
+    def test_a_failed_batching_probe_is_still_a_row(self):
+        from bench_lanes import build_reports
+        rows = build_reports(batching=None, batching_endpoint=("http://h:1", "m"))
+        assert rows[0]["serialised"] is None and rows[0]["verdict"] == "error"
+
+    def test_no_rows_are_scores(self):
+        from bench_lanes import build_reports
+        from bench_report import is_scored
+        rows = build_reports(lane_run=self.LANE_RUN, lanes=self.LANES)
+        assert not any(is_scored(r) for r in rows)
+
+    def test_main_writes_the_shared_envelope(self, tmp_path, monkeypatch):
+        # End to end against the loopback server; the provenance probes that
+        # would touch other hosts are stubbed so this never leaves the machine.
+        import bench_lanes
+        import bench_provenance
+        from bench_compare import load
+        from bench_report import build_manifest
+        monkeypatch.setattr(bench_provenance, "busy_lanes", lambda *a, **k: [])
+        monkeypatch.setattr(bench_provenance, "_server_models", lambda *a, **k: None)
+        srv, url = make_server(serialise=False, tokens=4)
+        out = tmp_path / "lanes.json"
+        monkeypatch.setattr(sys, "argv", ["bench_lanes.py", "--lanes", f"x={url},model=m",
+                                          "--no-baseline", "--output", str(out)])
+        try:
+            bench_lanes.main()
+        finally:
+            srv.shutdown()
+        doc = json.loads(out.read_text())
+        assert doc["benchmark"] == "bench_lanes"
+        assert doc["provenance"]["base_url"] == url and doc["provenance"]["tool_sha256"]
+        assert doc["config"] == {"prompt": bench_lanes.DEFAULT_PROMPT, "max_tokens": 256,
+                                 "baseline": False}
+        assert [r["label"] for r in doc["reports"]] == ["x", "aggregate"]
+
+        entry = build_manifest(str(tmp_path), "T", "m", "now")["configs"][0]
+        assert entry["kind"] == "bench_lanes" and "scored" not in entry
+
+        norm = load(str(out))
+        assert norm["benchmark"] == "bench_lanes"
+        assert {e["label"]: e["tok_per_sec"] for e in norm["entries"]}["x"] is not None

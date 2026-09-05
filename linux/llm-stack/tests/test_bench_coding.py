@@ -9,6 +9,8 @@ reply with no code at all.
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bench_coding import TASKS, extract_code, run_candidate  # noqa: E402
@@ -172,3 +174,120 @@ class TestTruncationDetection:
         from bench_coding import looks_truncated
         text = "```python\ndef f() return 1\n```"
         assert not looks_truncated(text, 100, "def f() return 1")
+
+
+class TestTruncationTails:
+    """D1/D2. A regex that could not tell a CLOSING fence from an opener read
+    every reply ending in "```\\n" as unclosed: a model that wrote broken code
+    on purpose was excluded from the rate, the interval and the rank instead of
+    counted wrong. The mirror hole graded a real cut FAIL when its prefix
+    happened to compile.
+    """
+
+    # A deliberate typo: closed fence, so the only thing deciding CUT vs FAIL
+    # is whether the tail is read as an opener.
+    TYPO = "def merge_sorted(a, b)\n    return a\n"
+
+    @pytest.mark.parametrize("tail", ["```", "```\n", "```\n\nHope this helps"],
+                             ids=["bare", "newline", "prose"])
+    @pytest.mark.parametrize("finish", [None, "stop"])
+    def test_a_closing_fence_is_not_an_unclosed_opener(self, tail, finish):
+        from bench_coding import extract_code, looks_truncated
+        text = "```python\n" + self.TYPO + tail
+        code = extract_code(text, want="merge_sorted")
+        assert not looks_truncated(text, 60, code, finish, cap=3000), \
+            "a syntax-error reply with a CLOSED fence is wrong, not cut"
+
+    def test_a_genuinely_unclosed_final_fence_is_still_a_cut(self):
+        from bench_coding import extract_code, looks_truncated
+        text = "```python\ndef merge_sorted(a, b):\n    return (a +"
+        assert looks_truncated(text, 60, extract_code(text, want="merge_sorted"),
+                               None, cap=3000)
+
+    def test_the_server_reported_length_still_wins_over_a_closed_fence(self):
+        from bench_coding import looks_truncated
+        text = "```python\n" + self.TYPO + "```\n"
+        assert looks_truncated(text, 60, self.TYPO, "length", cap=3000)
+
+    def test_the_delta_count_cap_still_wins_over_a_closed_fence(self):
+        from bench_coding import looks_truncated
+        text = "```python\n" + self.TYPO + "```\n"
+        assert looks_truncated(text, 3000, self.TYPO, None, cap=3000)
+
+    def test_a_cut_landing_on_a_compiling_prefix_is_a_cut_not_a_failure(self):
+        # D2: the stream stopped mid-body, below the cap, with no finish
+        # reason. The prefix parses -- and used to be graded FAIL.
+        from bench_coding import extract_code, looks_truncated
+        text = ("```python\ndef merge_sorted(a, b):\n    out = []\n"
+                "    for x in a:\n        out.append(x)\n")
+        code = extract_code(text, want="merge_sorted")
+        compile(code, "<prefix>", "exec")      # the prefix really is valid
+        assert looks_truncated(text, 60, code, None, cap=3000)
+
+
+class TestMultiFenceAndIndentedExtraction:
+    """D4/D5/D9. Three ways a CORRECT answer was graded FAIL: its imports or
+    helper lived in an earlier fence, a demo block quoting the signature in a
+    docstring outranked the real definition, or the fence was indented inside a
+    markdown list.
+    """
+
+    def _graded(self, text):
+        return run_candidate(extract_code(text, want="merge_sorted"), MERGE["tests"],
+                             forbidden=MERGE["forbidden"])
+
+    def test_a_helper_in_an_earlier_fence_is_kept(self):
+        text = ("First a helper:\n```python\ndef _take(xs):\n    return xs[0], xs[1:]\n```\n"
+                "Then the function:\n```python\ndef merge_sorted(a, b):\n"
+                "    out = []\n    while a and b:\n"
+                "        if a[0] <= b[0]:\n            x, a = _take(a)\n"
+                "        else:\n            x, b = _take(b)\n"
+                "        out.append(x)\n    return out + a + b\n```\n")
+        ok, detail, _ = self._graded(text)
+        assert ok, detail      # used to die with NameError: _take
+
+    def test_an_import_in_an_earlier_fence_is_kept(self):
+        text = ("```python\nimport heapq\n```\n\n"
+                "```python\ndef merge_sorted(a, b):\n    return list(heapq.merge(a, b))\n```")
+        ok, detail, _ = self._graded(text)
+        assert ok, detail      # used to die with NameError: heapq
+
+    def test_a_demo_quoting_the_signature_in_its_docstring_does_not_win(self):
+        # The demo is LONGER and its docstring quotes the signature, so
+        # longest-wins picked it. On the tree, only the real block defines it.
+        real = ("def merge_sorted(a, b):\n    out, i, j = [], 0, 0\n"
+                "    while i < len(a) and j < len(b):\n"
+                "        if a[i] <= b[j]:\n            out.append(a[i]); i += 1\n"
+                "        else:\n            out.append(b[j]); j += 1\n"
+                "    return out + a[i:] + b[j:]\n")
+        demo = ('def demo():\n'
+                '    """Usage of def merge_sorted(a, b) -- the signature above.\n\n'
+                '    Call it as: def merge_sorted(a, b) -> list\n'
+                '    Prints a few merges so you can see def merge_sorted(a, b) run.\n'
+                '    """\n'
+                '    print(merge_sorted([1, 3], [2]))\n'
+                '    print(merge_sorted([], [4]))\n'
+                '    print(merge_sorted([9], []))\n'
+                '    print(merge_sorted([0, 0], [0]))\n')
+        assert len(demo) > len(real), "the demo must be the longer block or this proves nothing"
+        ok, detail, _ = self._graded(f"```python\n{real}```\n\nExample:\n```python\n{demo}```\n")
+        assert ok, detail
+
+    def test_an_indented_fence_with_two_statements_compiles(self):
+        # A fence inside a markdown list keeps its margin on every line but the
+        # first: strip() alone left an IndentationError that then read as CUT.
+        text = ("1. Put this in a file:\n\n"
+                "   ```python\n"
+                "   import math\n\n"
+                "   def merge_sorted(a, b):\n"
+                "       out = []\n"
+                "       i = j = 0\n"
+                "       while i < len(a) and j < len(b):\n"
+                "           if a[i] <= b[j]:\n"
+                "               out.append(a[i]); i += 1\n"
+                "           else:\n"
+                "               out.append(b[j]); j += 1\n"
+                "       return out + a[i:] + b[j:] + [math.inf][:0]\n"
+                "   ```\n")
+        ok, detail, _ = self._graded(text)
+        assert ok, detail
