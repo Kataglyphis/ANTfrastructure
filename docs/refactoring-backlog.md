@@ -13,116 +13,135 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **YB**=sccache
-cache loss · **HT**=host trees in foreign images · **GH**=gate holes and gate
-scope · **CL**=build-closure follow-ups no gate can settle · **F#**=size and
-duplication tracks · **CC**=consumer-contract defects a consuming repo reported
-against shipped bytes. **DISK** is retired (DISK1 and DISK2 are both closed).
+cache loss · **CL**=build-closure follow-ups no gate can settle · **CC**=consumer-contract
+defects a consuming repo reported against shipped bytes · **CS**=consumer staging ·
+**VK**=the foreign-arch Vulkan SDK · **AB**=the Android layer · **R#**=residue left by a
+closed entry · **F#**=size and duplication tracks.
+**HT** and **GH** are retired: HT2–HT5 and GH1–GH7 are all closed, and there is no
+host-tree or gate-scope work left OPEN. **DISK** is retired (DISK1 and DISK2 closed).
 **QW/TC/SMK** were retired by the 2026-09-04 waves; everything else
 (**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#**) is archive-only.
 
-Last groomed: **2026-09-05, after the eight-lane integration wave.** Every number
-below was re-derived from the gates on the integrated tree, not carried forward.
+Last groomed: **2026-09-05, at the integration of the six-lane wave**, with a
+validating chain already in flight. Every number below was re-derived from the gate
+that produces it, on the integrated tree, after the merge — not carried forward from
+any lane's own report. Four figures that lanes carried forward did not survive that
+re-derivation; see the corrections below.
 
-## THIS FILE IS NOW ALMOST ENTIRELY A BUILD-WATCH LIST
+## THIS FILE IS A BUILD-WATCH LIST, AND THE BUILD IS RUNNING
 
-Read this before anything else, because it is the honest state of the wave and it
-changes what the rest of the file is for.
+Read this before anything else. **A validating chain is in flight right now** —
+`chain-status.json` run `20260905-120554-7b7a0d4e`, `sdk..runtime`, all three arches.
+It is the first chain since the 2026-09-04 `--only runtime` run, and that run FAILED
+(`=== Results: 5 failure(s) ===` / `[ERROR] runtime stage failed`, so the arm64 and
+riscv64 runtime smokes never ran at all). Everything below that says "unproven by any
+build" is asking a question this run answers. The exact log lines to read, grouped by
+stage, are in **[`build-watch-list.md`](build-watch-list.md)** — that page, not this
+one, is what to have open while the chain runs.
 
-**Nothing in this repository has been through a build since the 2026-09-04
-`--only runtime` run, and that run FAILED.** Its own log
-(`~/build-logs/six-fixes-20260904-211138.log`) ends `=== Results: 5 failure(s) ===`
-/ `[ERROR] runtime stage failed` at 03:10 — the amd64 tree-arch gate's cross-payload
-false positives, which HEAD `2157ec6c` then fixed. The chain aborted there, so **the
-arm64 and riscv64 runtime smokes never ran at all**. The live `:latest-cross`
-manifest (`sha256:752596d8…`) is dated roughly an hour later, so it was assembled
-outside that chain. Any earlier claim in this file, or anywhere else, that "three
-children each passed the full runtime smoke" is not supported by a log on this host,
-and the wave's own re-reads of the shipped images are the stronger evidence for
-everything that was measured rather than run.
+**A first rebuild attempt already found two build-killing bugs** (HEAD `e109f5ad`),
+which is the honest measure of what static proof is worth: a `_llvm_target_repair_links`
+self-link that relinked a file onto its own path, and a Vulkan defect in the same
+class. Both were found by a chain in minutes after surviving a full green battery.
+Assume the running chain will find more, and read the watch list rather than trusting
+this file.
 
-**The 2026-09-05 wave closed nine entries outright and gutted five more, and every
-one of them was closed with STATIC proof.** Gone entirely: DISK2, HT2, HT3, CL2,
-CL3, GH1, GH2, GH3, GH4. Reduced to a named residue: CL4 (now GH7), CL6, GH5, GH6
-and YB. What a suite proves is that a function behaves; it cannot execute a
-Dockerfile stage, cannot see a `source_module` mount gap, and cannot tell you
-whether a stage slices a script or runs it whole. **Thirteen entries remain**
-(`grep -c '^### '` counts fifteen; "Next up" and "What needs the OWNER" are not
-entries), and of those, CC1, CL1 and YB are pure watch lists while CL6, CL7, HT4 and
-HT5 are work that needs the same window. **CL1 is the watch list and it roughly
-doubled.**
+**The 2026-09-05 integration wave closed eleven entries and folded three lanes'
+concurrent work in.** Gone entirely, and living in git history rather than here:
+**CL6** (the `_gst_monorepo_tflite_flags` split, three named helpers with the bodies
+moved verbatim), **CL7** (all three — the inline-TOML `_uv_conflict_groups` walk, the
+`agentic-engines.sh` `&&` shape, and the unreachable `03-media` `cross_build_is_active`
+clone), **GH5** (both frozen slugs left the freeze; `gate-proofs.allow`'s bare-slug
+namespace is EMPTY for the first time), **GH6** (the deep half closed as a real gate
+arm, `unlinked()`, which found `verify-parity.sh check_python`), **GH7** (the header-pointer
+allow file ratcheted 45 rows → 8, with nine durable doc sections written to absorb the
+re-points), **HT4** (twelve dangling `/opt/llvm-target` dev symlinks on amd64, and the
+3-of-142 unstartable binaries `liblldb` was hiding), **HT5** (5.7 GB of builder-arch
+Vulkan payload per foreign image, removed at both the SDK and packaging boundaries),
+and **F1/F2/F3's named rows** (`smoke-cross-all-arches.sh main`, the
+`lib/agentic-loop.sh` split, and the ffmpeg↔pyav launcher twin).
 
-**Where the gates stand on the integrated tree** (all rc 0; the full preflight is
-**10 m 31 s** wall clock now, up from ~8 m 30 s — the nineteen net-new suites and the 153
-appended mutation entries are where it went):
+**Four numbers in the closed entries did not survive re-measurement, and the
+corrections are the point.** HT4 said nine dangling links; there are **twelve**, and
+"in the builder they resolve" was false — nineteen are already broken in
+`cross-android-amd64`. HT5's share-of-image was 18.5 %/19.2 %; measured against
+nerdctl's decimal GB it is **19.5 %/20.3 %**. CL7.2's stated failure mode does **not
+reproduce** — bash exempts every command of an AND-OR list but the last, so the shape
+was fixed and the entry corrected rather than closed as a bug. And CC1's ownership
+half was **already green on today's bytes** on all three arches, which makes it a
+regression watch, not a discovery. Re-measure before you trust a number in here.
+
+**Where the gates stand on the integrated tree** (every reading re-derived from the
+gate itself on 2026-09-05 after integration, not carried forward):
 
 | gate | reading |
 |---|---|
-| `mutations` | **530** entries over **68** distinct test commands, every one biting, none vacuous or stale |
-| `gate-registry` | **34** slugs; **32** proven; **2** unproven and frozen with named reasons; 200 ids in 31 declared families |
-| `script-tests` | **96** suites, **2942** assertions |
-| `code-size` | 31 functions over 80 lines, 11 files over 800 — all frozen, all with a verdict |
-| `code-complexity` | 67 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
-| `shellcheck-warnings` | **88** findings over a **341**-file scope — all frozen, all with a verdict |
-| `code-dupes` | 3544 units in 373 files, **248** allowlisted pairs, 845 shingles suppressed as idiom |
-| `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 30 / 32 / 171 / 46 frozen |
-| `doc-links` | 72 pages, 493 code pointers, **45** bare header pointers frozen |
+| `mutations` | **630** entries over **74** distinct test commands, every one proven to bite, none vacuous, none stale |
+| `gate-registry` | **34** slugs; **34** proven; **0** unproven, **0** frozen — the bare-slug namespace is empty; 279 ids in 31 declared families |
+| `script-tests` | **100** suites, **3322** assertions |
+| `preflight` | 45 checks, rc 0 |
+| `code-size` | 29 functions over 80 lines, 11 files over 800 — all frozen, all with a verdict |
+| `code-complexity` | 66 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
+| `shellcheck-warnings` | **88** findings over a **348**-file scope — all frozen, all with a verdict |
+| `code-dupes` | 3706 units in 380 files, **248** allowlisted pairs, 852 shingles suppressed as idiom |
+| `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 30 / 32 / 169 / 46 frozen |
+| `doc-links` | 73 pages, **507** code pointers, **8** bare header pointers frozen (was 45) |
 
-**Closed by the 2026-09-05 wave and living in git history rather than here:**
-DISK2 (the buildkit fallback is wired into both `build-cross-chain.sh` gates, with
-`_disk_guard_reclaim_begin` as the one owner of the per-episode latch), HT2 (the
-tree-arch exemption table is now measured — `/opt/android` asserted, `/opt/android-sdk`
-kept with its numbers, `riscv64:flutter-owner` asserted, and the `Intel 80386` label
-that ate a column fixed), HT3 (five builder-arch LLVM libraries removed at the source
-plus the invisible amd64 twin), CL2 (`cpython_ext_modules` is the one owner),
-CL3 (`export_clang_gcc_toolchain_env` deleted, the clang wrappers proven instead),
-CL4 (the `doc-links` header-pointer rule ships, 45 rows frozen and grouped),
-GH1 (`--stale-check` plus a pre-push hook), GH2 (`quality_allow.iter_rows` is the
-single allow reader; `verify_doc_dupes.load_allow` was the last copy and is gone),
-GH3 (`trailing-conditional` judges the RETURNED statement — four false negatives
-closed and five real defects fixed), GH4 (the env-knobs owner scan reads the `.env`
-files a stage sources), and the nine `gate-proofs.allow` slugs GH5 shed.
+**Ten entries remain** (`grep -c '^### '` counts twelve; "Next up" and "What needs
+the OWNER" are not entries), and they divide cleanly: **CC1, CL1, VK1, AB1 and YB are
+watch lists** that the running chain either closes or re-opens with evidence; **CS1**
+has one open owner decision; **R1** is the named residue of the eleven that closed;
+**F1/F2/F3** are tracks, not defects.
 
-**What the allow files are now, and what they are not.** Every row in
-`function-size.allow`, `code-complexity.allow`, `file-size.allow` and
-`shellcheck-warnings.allow` carries a verdict naming what its number IS. That
-makes them a reference, **not a queue**. Most rows are tables (flag parsers,
-per-arch dispatch, codec probes), refusal matrices where fewer paths would cost
-safety, or heredoc payloads the shell walker never reads. Do not open one of these
-files looking for the biggest number; open it looking for the reasons that say
-SPLIT WANTED, and read the reason before acting — several say explicitly what a
-future reader must not "clean up".
+**What the integration wave itself had to fix, because it is the pattern to expect
+next time.** Three lanes landed behaviour changes with no suite case and no mutation
+— the Vulkan `_VK_TARGET_COMPONENTS` table and its two helpers, the Android ABI
+mapper's doc anchors, and the whole packaging set (AppImage runtime staging, the seven
+Flatpak refs, the web-lane toolchain). One of them, `ensure_appimagetool_runtime`, was
+written and documented but **never called from anywhere**. The integration added 20
+mutations and 40 assertions to cover them, wired the dead function into both of
+`ensure_appimagetool`'s success paths, and wrote the five doc sections their pointers
+already named. A lane that ships a function without a caller ships nothing; the
+`dead-functions` gate is what caught it, and it caught it only because the wave ran
+the full battery after the merge rather than trusting each lane's own green.
 
-### Next up — in order; the first four share one build window
+### Next up — the running chain decides most of this
 
-1. **Run a chain, then read CL1, CC1, YB and HT/CL6 against its log** [S to
-   watch, ★★★]. Not a code change, and it is now the only thing that can move
-   this file. Fourteen entries were closed or gutted on static proof this week and
-   three watch lists hang on one run. A compile-heavy chain (media or toolchain, **not**
-   `--only runtime`) answers YB as well, because the launcher now prints the
-   server address it used.
-2. **CL6 — the `_gst_monorepo_tflite_flags` split** [S, ★★]. The last item of the
-   original eight, and the only one that changes what a build does. It rides in the
-   same window.
-3. **CL7 — the three closure defects this wave FOUND and did not fix** [S each,
-   ★★]. Each is a real defect with a named failure mode, each was pinned as a
-   KNOWN-GAP case rather than papered over, and each needs the same window.
-4. **HT4 / HT5 — two measured size defects nobody had a number for** [M each, ★★].
-   HT5 is 5.7 GB of builder-arch payload in each foreign image, ~19 % of both;
-   HT4 is a set of dangling dev symlinks the old glob never fixed either. Both were
-   measured on the shipped bytes this week.
-5. **The gate work: GH7's 38 header-pointer rows, then GH6's deep half** [S then L,
-   ★–★★]. GH7 is 38 small edits of two different kinds (29 anchors to choose, 9
-   backlog pointers to RE-POINT at a durable page); GH6's same-name masking is the
-   one structural hole left, and the cost of closing it properly is now written down.
-   GH5's two frozen slugs are third: both need a real change, not a suite.
-6. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None of them is
-   a defect. The remaining named items are `smoke-cross-all-arches.sh main`, the
-   `_cross_stage_build_impl` registry-cache-drop coverage, the `agentic-loop.sh`
-   split (now unblocked — it has 24 assertions), and three clone families.
+1. **Read the chain against [`build-watch-list.md`](build-watch-list.md)** [S, ★★★].
+   Not a code change, and it is the only thing that can move this file. Five of the
+   eight remaining entries (CC1, CL1, VK1, AB1, YB) are watch lists that close or
+   re-open on this one run. The watch list is grouped by stage with the exact lines
+   that mean PASS and the exact lines that mean FAIL, so it can be followed live.
+   YB and VK1 are answered in the **sdk and media** stages, CC1 and AB1 only in the
+   **package/runtime** stage and then on the shipped bytes.
+2. **Record the three per-arch image sizes from this run** [S, ★★]. CC1 has asked
+   for this at two consecutive groomings and there is still no in-tree baseline. The
+   expected reading, after HT5, is roughly **24.9 / 23.7 GB** on arm64/riscv64 against
+   an unchanged **30.37 GB** on amd64 — but VK1's fifteen new cross-built components
+   push the target prefix back up by an unknown amount, so the two changes have to be
+   read together or neither number means anything.
+3. **CS1's one open owner decision** [S, ★★]. `prune-vulkan-host-sdk.sh` ships wired
+   but the owner has twice said not to remove Vulkan payload. Note the coupling before
+   deciding: the tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree,
+   and that only holds while the prune runs. Keeping `x86_64/` means re-narrowing the
+   gate and giving back the 1.86 GB.
+4. **The residue the closed entries left, all small and all named** [S each, ★]:
+   the runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*` (HT4's structural
+   half — the builder's ldconfig cache is what let `liblldb` through, and only an
+   in-image check catches the next one); `VK_LAYER_PATH` dangling on all three shipped
+   images and always having done so; LOG14's cross-lane skip list claiming a ~390 s/lane
+   saving the shipped bytes contradict; and GH6's 93 remaining masked rows, which are a
+   watch list and not a fix.
+5. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
+   With `smoke-cross-all-arches.sh main`, the `agentic-loop.sh` split and the
+   ffmpeg↔pyav twin all closed, what is left inside the build closure is the
+   `_cross_stage_build_impl` registry-cache drop (still uncovered — `grep -rn
+   DeadlineExceeded linux/scripts/tests/` returns nothing), five cc rows, and three
+   clone families.
 
-**Honesty about the rest:** the real defects with a known failure mode are CL7's
-three, `_gst_monorepo_tflite_flags`, and HT5's 5.7 GB. Everything else on this list
-is either a watch or a track.
+**Honesty about the rest:** after this wave there is no OPEN entry naming a defect
+with a known failure mode. Everything here is a watch, an owner decision, or a track.
+That is a good state to be in only if the chain is actually read.
 
 ### What needs the OWNER, not the agent
 
@@ -224,12 +243,28 @@ arches still ship the builder-arch rust toolchain twice, because
 `Dockerfile.nvidia`'s ENV-ordering fix is in the same class as `Dockerfile.android`'s
 but was proven by reading only — no nvidia image exists on this host.
 
-**Two things the consumer flagged as NOT defects, both still worth acting on:**
-advertise `/opt/flutter` in the consumer-facing image docs (consumers still passing
-`--flutter-dir /workspace/flutter` re-download the SDK every run), and note that
-`/var/cache/ccache` is not a `VOLUME`. The multi-arch index fixing their arm64 lane
-is the payoff line for the manifest work; do not forget it when the index shape is
-next touched.
+**CORRECTED 2026-09-05 — the ownership half is ALREADY GREEN on today's shipped
+bytes, on all three arches.** Measured as uid 1001 in `latest-cross-{amd64,arm64,riscv64}`:
+`find /usr/local/rustup /usr/local/cargo ! -user 1001` = **0** and
+`find /opt/flutter -user root` = **0** everywhere (riscv64's `/opt/flutter` is the
+documented 1-entry empty dir; arm64 is 21 578 entries). Defects **2 and 4 are therefore
+a REGRESSION WATCH, not a discovery** — the run must keep them at 0, not reach it. The
+ENV half checks out as written too: `CCACHE_DIR=/var/cache/ccache`,
+`SCCACHE_DIR=/var/cache/sccache`, `ANDROID_HOME=ANDROID_SDK_ROOT=/opt/android-sdk` on
+all three; and the deliberately-open list is confirmed UNSET (`CCACHE_MAXSIZE`,
+`SCCACHE_CACHE_SIZE`, `SCCACHE_CONF`, `SCCACHE_IDLE_TIMEOUT`, `SCCACHE_ERROR_LOG`,
+`PUB_CACHE`). The per-arch size baseline this entry keeps asking for is
+**30.37 / 30.84 / 29.69 GB**, verified against `nerdctl images` on 2026-09-05 — that is
+the number the next run gets diffed against.
+
+**Both "worth acting on" items are now CLOSED, so do not re-raise them.**
+`/opt/flutter` was already advertised in
+[`consumer-image-contract.md`](consumer-image-contract.md); the `VOLUME` note is
+written there now — neither cache directory is one, and the image declares exactly
+**one** `VOLUME`, `/workspace` (`Dockerfile.torch:118`, confirmed in `Config.Volumes`
+of all three shipped children). The multi-arch index fixing their arm64 lane is the
+payoff line for the manifest work; do not forget it when the index shape is next
+touched.
 
 ### CL1. Closure files that changed SHAPE with static proof only [S to watch, ★★★]
 
@@ -271,7 +306,7 @@ Only `smoke-runtime-image.sh`'s tree-arch and advert arms really ran, amd64 only
 | `linux/Dockerfile.toolchain` | both per-file `01-core` mount blocks now mount `sccache-launcher.sh` | the GCC/LLVM stages stop running BARE sccache, where an sccache fault ABORTS the build instead of costing a cache entry |
 | `01-core/compiler-cache.sh` | `sccache_export_server_address` hoisted out of the `$( )` resolver in `setup_ccache` and `setup_sccache` | the same `[server=…]` field, from the media lane this time |
 | `02-toolchain/materialize-llvm-target.sh` | the multiarch glob became a demand-driven `_llvm_target_fill_needed` walk | the amd64 sdk stage must print `amd64 /opt/llvm-target NEEDED walk clean` and must NOT print `is NOT self-contained` — this is the one place the change can break a build, and it fails at the sdk stage rather than shipping |
-| `06-packaging/copy-media-payloads.sh` | the package-stage copy loop deleted; only `publish_llvm_target_ld_path` remains | `import tvm` must still work on all three arches (`smoke-torch-venv.sh`'s tvm row) |
+| `06-packaging/copy-media-payloads.sh` | **the row's old wording was WRONG.** `copy_media_payloads` is very much alive and `Dockerfile.package:144` runs it; what was deleted is the llvm-target SONAME-REPAIR loop. A reader acting on "the payload copy is gone" would have skipped the loop the absl defect actually lived in. `/usr/local/include/absl` is now IN that copy list | `import tvm` must still work on all three arches (`smoke-torch-venv.sh`'s tvm row) — **and** the log must NOT print `copy-media-payloads: optional payload missing: …/absl` on any arch |
 | `01-core/guard-helpers.sh`, `01-core/version-forwarding.sh` | `csv_each` and `append_version_build_args` loop bodies became `if`s | `append_common_build_args` → `append_version_build_args` runs for every stage's build-arg assembly; only a chain proves the forwarded `--build-arg` list is byte-identical |
 | `03-media/.../build-gstreamer-stage.sh` | `_dump_gst_build_logs` (the stage's ERR trap) became an `if` | only a FAILING GStreamer build exercises it; a green build proves nothing and a red one is the test |
 | `01-core/cross-gcc.sh` | `export_clang_gcc_toolchain_env` DELETED | watch the toolchain and media stages for `command not found: export_clang_gcc_toolchain_env`. Static evidence is strong (no caller, no `CC=*clang` anywhere, the wrappers bake `--gcc-toolchain` themselves) but a Dockerfile `RUN` assembling the call at runtime is invisible to grep |
@@ -282,6 +317,19 @@ Only `smoke-runtime-image.sh`'s tree-arch and advert arms really ran, amd64 only
 | `03-media/build/onnxruntime/build/{30-build-native,30-build-native-amd,30-build-native-nvidia,60-build-genai}.sh` | four copies of the end-of-stage summary replaced by `report_onnx_build_output` | one per lane. Unproven statically: the `find … \| head -20 \|\| true` pipeline under the stage's `pipefail` (head closing the pipe can SIGPIPE `find`), and that the AMD stage's output is unchanged now that it uses `head -20` where it used `sed -n '1,20p'` |
 | `linux/scripts/lib/slang-compile.sh` | `_slang_emit_one_wgsl` extracted | validated only against a fake `slangc`; a consumer run with the real one against a real manifest is what proves it end to end |
 
+**Rows the 2026-09-05 INTEGRATION wave added.** All of these are inside the build
+closure and none has ever executed:
+
+| file | change | what the log should show |
+|---|---|---|
+| `02-toolchain/vulkan.sh` | `_vulkan_prune_sdk_sources` drops `<ver>/source` in the SAME RUN that consumed it | `Pruning the Vulkan SDK build tree at /opt/vulkan/<ver>/source`, and immediately BEFORE it `Vulkan cross-targets <arch>: N/N component(s) built`. The order is the whole safety argument |
+| `linux/Dockerfile.package` | a NEW `RUN` in the `artifact-source` stage prunes `<ver>/x86_64` ahead of the `/opt/vulkan` COPY | the stage fails fast with the script's own `ERROR` line if the bind mount does not land — cheap, and before any COPY |
+| `02-toolchain/materialize-llvm-target.sh` | `_llvm_target_repair_links`, ending in a `find -xtype l` that HARD-FAILS the sdk stage | it has never run on any arch, and the first rebuild attempt already found a self-link bug in it (HEAD `e109f5ad`). A survivor names its exact path |
+| `03-media/core/common.sh` | NEW `media_compiler_launcher`, called unqualified by ffmpeg and pyav under `set -e` | **the one failure here that kills a run outright.** `media_compiler_launcher: command not found` in the media stage means the image's copy of `03-media/core/common.sh` is an older layer than the two build scripts |
+| `06-packaging/copy-media-payloads.sh` | `/usr/local/include/absl` added to the copy list | 707 of the 1322 shipped LiteRT headers `#include "absl/"` and no arch shipped absl. `smoke-critical-fixes.sh` must go from 1 FAIL to 0 on all three |
+| `02-toolchain/packaging-deps.sh` | `ensure_appimagetool_runtime` (wired at integration — it had no caller), and `INSTALL_FLATPAK_RUNTIMES` now ON with all seven refs | `Staged AppImage runtime-<arch>` once per arch; the flatpak install adds ~1.9 GB to amd64/arm64 and is skipped outright on riscv64 |
+| `06-packaging/setup-package-image.sh` | `install_web_lane_toolchain` | non-fatal throughout, so read the WARNs: a `WARN: the nightly channel is unavailable` means the web lane still auto-installs it per consumer run |
+
 **Two shapes that would be silent if wrong**, unchanged from wave 1: an operator
 whose shell still exports `MYPROJECT_GCC_TOOLCHAIN_PATH` is now ignored rather than
 erroring, and eleven of thirteen `: "${NAME:=default}"` conversions sit at file top
@@ -291,274 +339,6 @@ exactly that reason; a second would look identical. The 2026-09-05 additions wer
 checked against this: `cpython_ext_modules` sits inside a sourced module, and
 `pre-setup.sh` is executed WHOLE (`build-gstreamer-stage.sh:107`), so neither adds a
 slicing hazard.
-
-### CL6. One closure clean-up left of the original eight [S, ★★]
-
-Six of the eight were made on 2026-09-05, each with a suite and a mutation and each
-re-baselining its own allow row in the same change (`shellcheck-warnings.allow` lost
-four rows and re-baselined one 3 → 2; `comment-size.allow` lost the
-`cpython-dev-packages.sh` row when its header shrank 18 lines → 9). Two were
-DECIDED rather than done and their reasons now live in the allow files. What is left
-is the one item that changes what a build does.
-
-**The split — `03-media/.../build-gstreamer-monorepo.sh | _gst_monorepo_tflite_flags`**
-(cc 18) is three unrelated TFLite workarounds under one name: the cross pkg-config
-probe that emits `-idirafter`/`-L`/`-rpath-link`, the idempotent sanitizer for the
-stray `}` an old `generate_pkgconfig_file` left in `tensorflow-lite.pc`, and the
-symlink farm that exists only because Meson probes via `-print-file-name` and ignores
-`-L`. Seams are clean; only an arm64 **and** riscv64 monorepo stage that still
-resolves TFLite proves the split.
-
-**Decided NOT to do, and why — do not re-litigate these.**
-
-* **`06-packaging/package_archive.sh`** is not a build-window item at all; it is an
-  owner question, and it has moved to "What needs the OWNER" above.
-* **The two SC2206 cmake-argv quotings, and the two halves differ.**
-  `build-clang.sh:280` and `:283`: `ENABLE_LTO` and `BOOTSTRAP` are assigned only
-  from literals in that file (`OFF`/`ON`/`Thin`, no env path), so quoting is
-  PROVABLY a no-op — it buys a silenced advisory row and costs a closure edit whose
-  suite could assert nothing but the presence of the quotes. `cross-env.sh:680` is
-  different: `CMAKE_POLICY_VERSION_MINIMUM` IS operator-reachable (`build-litert.sh`
-  exports it), so quoting is a real argv change for a multi-word value, six other
-  sites already pass that variable quoted, and whether the disagreement can bite is
-  a cmake-argv question only a build answers. Neither is subtraction; both reasons
-  are in `shellcheck-warnings.allow`.
-
-**Still flagged, not changed:** `vulkan.sh:268` is the one `SC2155` in the tree whose
-masked callee is not trivially total —
-`export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir …):${host_pkgconfig}"`.
-`cross_pkg_config_libdir` only probes directories today so it cannot fail; if that
-ever changes, the failure is silent and `PKG_CONFIG_LIBDIR` keeps only the host path.
-
-**A cascade worth remembering before the next reader trusts a shellcheck row.**
-Deleting `gi_libdir` in `pre-setup.sh` made `build_triplet` dead — its only reader
-was that block — so the file's SC2034 count moved 2 → 1 with a DIFFERENT variable
-behind it, not 2 → 0. Any similar dead-local deletion should re-run shellcheck on the
-file rather than assume the count drops by exactly what was removed.
-
-### CL7. Three closure defects this wave FOUND and did not fix [S each, ★★]
-
-Each was found while characterising something else, each is a real defect with a
-named failure mode, and each is pinned as a KNOWN-GAP suite case rather than papered
-over. They share CL6's window.
-
-1. **`01-core/python_uv.sh` — `_uv_conflict_groups` cannot read inline TOML.** It
-   closes a group on the `]` it meets during the same character walk that gathers
-   extras after it, so an inline
-   `conflicts = [ [ { extra = "a" }, { extra = "b" } ] ]` — legal TOML that uv
-   accepts — yields NO group and excludes nothing, and `uv sync --all-extras` then
-   fails with the original conflict error. Today's Orchestr-ANT-ion `pyproject` uses
-   the multi-line layout, so it is **latent**. Note the proof shape: no cross stage
-   exercises this at all (`uv_sync_project` is called only from
-   `02-toolchain/python/ci_*.sh`), so what settles it is a consuming repo's CI lane
-   running `uv sync --all-extras`, not a ContainerHub build.
-2. **`lib/agentic-loop.sh` — a mid-function `&&` list in the opencode arm.**
-   `[[ "$role" == "fixer" ]] && oc_agent="executor"` fails for every non-fixer role,
-   which kills the function under a consumer's `set -e`. It is not a trailing
-   conditional, so `trailing-conditional` cannot see it; it was found only because a
-   probe had to use `role=fixer` to route around it.
-3. **`03-media/core/common.sh:152-167` — a provably UNREACHABLE
-   `cross_build_is_active` fallback.** `media_common_init` asserts with `declare -F`
-   at line 113 that the function exists and returns 1 when it does not, so the
-   `if ! command -v cross_build_is_active` sixteen lines later can never be true. It
-   was recorded rather than cut on purpose: 03-media has no unit suite for
-   `media_common_init`, and deleting a fallback because an assertion three lines
-   earlier makes it unreachable couples two things that are independent today. The
-   `build-gstreamer-monorepo.sh` copy is LIVE and a strict superset.
-
-**Related residue from GH3, still out of any gate's reach:** the sibling fallback at
-`01-core/cross-env.sh:433` is `[ -x "${_cxx_fb}" ] && _ert_out[cxx]="${_cxx_fb}" || return 1`.
-Correct today — its last arm is `return 1`, so the sharpened `||` rule passes it —
-and exactly the shape SC2015 warns about. It is out of reach for a stated reason now
-rather than by omission: the gate's `DEF` pattern is column-anchored, so the indented
-`cross_build_is_active` fallbacks are invisible to it and
-`test-cross-fallback-parity.sh` watches them instead.
-
-### GH5. Two preflight slugs stay frozen, with better reasons [M, ★★]
-
-`gate-registry` reports **34 slugs; 32 proven; 2 unproven, 2 frozen in
-`gate-proofs.allow`** — it was 34/23/11 at the start of 2026-09-05. Nine left the
-freeze in one wave (android-parity, patch-integrity, copy-coverage,
-mirror-consistency, runtime-paths, arg-consistency, workflow-lint, secret-scan,
-sbom), each with a characterisation suite driving the REAL gate in a throwaway tree
-and mutations on its own script. The two that remain are frozen for a **named
-reason**, not for want of a suite, and both reasons say what the route out is.
-
-**Both reasons, and the route out of each, are owned by
-[`code-quality-tooling.md`](code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons)
-— read them there, do not restate them here.** What belongs in a backlog is only
-what someone would DO:
-
-* **`critical-fixes` needs a SPLIT before it needs a suite** — a host gate and an
-  in-image smoke — which is a real change to a script the chain runs, not a
-  test-only wave. **If a rebuild happens, run `verify-critical-fixes.sh` from INSIDE
-  a shipped runtime image** (`nerdctl run --rm`, read-only). That is the missing
-  evidence for its `/opt`-probing half, and it would say whether the split is the
-  right shape before anyone writes the suite.
-* **`version-snapshot` needs one fixture per sub-check**, seven of them, because its
-  verdict is an OR and a suite that reddens one would un-freeze the slug while six
-  stayed unproven. One sub-check's targets are Windows-lane files, out of scope here.
-
-**The hollow-mention hazard is unchanged and lives among the 32 proven slugs**, not
-these two — the registry's test half is still a mention match. This wave nearly
-shipped one and the story is in the page above; the operational residue is that
-`test-arg-consistency.sh`'s assertion now stops short of a gate basename on purpose.
-
-**Two fixture traps that will catch the next author,** both now commented in place:
-a test file under `linux/` that spells out an inline `${GCC_VERSION:-…}` fallback is
-scanned as a REAL site by `arg-consistency`'s GCC-literal gate, and a test file under
-`linux/scripts` that spells out any `${UPPERCASE:-default}` registers as a real knob
-with `lint-env-knobs`. Both fixtures assemble the expansion from `printf` arguments.
-
-### GH6. `dead-functions` same-name masking [L, ★★]
-
-The narrow half closed on 2026-09-05: a definition's mentions of ITSELF are now
-subtracted, so a function that names itself in a `printf` (CL3's
-`export_clang_gcc_toolchain_env` was the live instance) and pure recursion no longer
-read as uses. The verdict was byte-identical on that day's tree, which is the point —
-it removes a false-negative shape without moving a single row. Cost: 0.5 s → 0.9 s.
-The census's headline figures are also derived now rather than re-typed, in
-`test-doc-numbers.sh` against the gate's own `--census` CLI (they were stale by 5 and
-1 when someone finally checked).
-
-**The deep half is open, and what closing it costs is now written down** in
-[`code-quality-tooling.md`](code-quality-tooling.md) under "What closing the masking
-hole actually costs" rather than restated here. In one line: one name table for the
-whole corpus means a dead `log()` is kept alive by a live `log()` anywhere, and
-fixing it needs `source_module`-aware scoping — the sourcing graph resolved through
-`SCRIPTS_ROOT` and the container-vs-repo dual layout, the Dockerfile stage graph, a
-rule for the ~40 deliberately shared helper names, and a second tool the size of the
-gate that would still guess at `bash -c` strings. The interim shipped on 2026-09-04:
-`--census`'s second tier reports **94** definitions whose name a second file also
-defines, which is exactly the surface where the gate's verdict comes from a name it
-does not own. That is a watch list, not a fix.
-
-**One measured alternative that is ruled out, so nobody re-tries it:** stripping
-string literals corpus-wide turns 9 live functions dead, the trap handlers among them.
-
-**Read this together with GH3's delegate hop.** `trailing-conditional`'s hop
-deliberately refuses to cross files, because one `log()` anywhere would otherwise
-decide every `log()`. If GH6 ever gets `source_module`-aware scoping, the hop should
-be widened in the same commit, and `test-doc-links.sh`'s "the hop stays inside one
-file" case is the assertion that will have to change.
-
-### GH7. `doc-links` header pointers: the gate ships, 38 rows of debt do not [S, ★]
-
-CL4 closed by building the rule: a bare `docs/*.md` pointer in the first 10 lines of
-a `.sh`/`.py` file is now a `doc-links` finding unless frozen in
-`docs/scripts/doc-header-pointers.allow`, keyed `<file>` TAB `<page>` so a heading
-moving inside its block does not re-flag it, and two-way so a pointer that GAINS an
-anchor makes its row STALE. Re-derived counts, not the ones the old entry quoted:
-**493 code pointers, 153 anchored, 340 bare; 51 file-header pointers of which 6 already carry
-the `page.md § Heading` form, leaving 45 frozen.**
-
-The allow file is grouped by what the rows ARE, and the groups are different jobs:
-
-* **7 rows where the page IS the subject** (`build-resource-monitoring.md`,
-  `riscv64-rva23-baseline.md` and five more). An anchor would be a second name for
-  the same thing. **Not debt** — leave them.
-* **9 rows pointing into `refactoring-backlog.md`.** These must **NOT** be anchored:
-  an OPEN entry is archived when it closes, so the anchor is built to rot. The fix is
-  to RE-POINT each at a durable page. `test-gi-cross-detect.sh`,
-  `test-gstreamer-env.sh`, `test-manifest-wrapper-gate.sh` and
-  `test-uv-conflict-extras.sh` all point at "CL6" specifically, which this very
-  grooming has already shrunk.
-* **29 rows of real debt** into large multi-subject pages:
-  `cross-build-verification.md` 13, `failure-modes.md` 7,
-  `code-quality-tooling.md` 3, `build-cache-tiers.md` 3, `code-quality-gates.md` 2,
-  `linux-cross-builds.md` 1. One anchor each, and each needs the right section chosen
-  for the right file.
-
-**The allow file must be RE-DERIVED, never merged as text** — it is a snapshot of
-every file header in the tree and it went stale twice inside one hour while it was
-being written:
-`python3 -c 'import sys;sys.path.insert(0,"docs/scripts");import verify_doc_links as V;print("\n".join(sorted(V.header_pointers())))'`.
-Keep the three group comments; they are the difference between a reviewed list and a
-queue.
-
-**What the rule still cannot see,** stated so nobody assumes otherwise: a bare
-pointer below line 10, a pointer in a Dockerfile or `.env`, and an anchor that is
-valid but names the wrong section. The 296-wide bare-pointer-in-prose case was
-deliberately declined.
-
-### HT4. `/opt/llvm-target/lib` on amd64 ships dev symlinks that dangle [S, ★★]
-
-Found while walking the amd64 prefix for HT3, measured, and deliberately not fixed in
-that change. `/usr/local/llvm-target/lib` on amd64 contains dev symlinks that point OUT of the
-prefix. In the builder they resolve, because the multiarch dir is right there; after
-`Dockerfile.package` COPYs the tree they would resolve to `/usr/local/x86_64-linux-gnu`,
-which does not exist, so they **dangle in the shipped amd64 image**.
-
-MEASURED in `latest-cross-amd64` on 2026-09-05, not transcribed — an earlier draft of
-this entry named five files and got three of them wrong. There are **nine**:
-
-```
-libclang-23.so  libclang.so  libclang-23.1.0.so
-libc++.so  libc++.a  libc++abi.so  libc++abi.a  libc++experimental.a  libc++.modules.json
-```
-
-`liblldb-23.so.1`, `libc++.so.1.0` and `libc++abi.so.1.0` are NOT among them; the
-`liblldb` argument the draft leaned on does not hold in the builder either, so it is
-gone. What remains is the plain defect: nine dev entries that point at nothing in the
-shipped image. Six are static archives and a JSON manifest, which nothing loads at
-runtime — the three `libclang*` links are the ones a consumer compiling against the
-prefix would hit. The fix belongs with someone who can watch an sdk stage.
-
-**A gate shape that would have caught both halves of HT3 and would catch this:** the
-tree-arch gate can only ever see wrong-ARCH weight, which is why HT3's amd64 twin
-(358 MiB of Ubuntu llvm-20/21 inside a clang-23 prefix) was invisible to it by
-construction. Something like "the `llvm-target` prefix ships no soname whose major
-differs from `LLVM_RELEASE`, and no `lib/` entry that does not resolve inside the
-prefix" is cheap, arch-independent, and would have caught the dead weight AND the
-dangling links. Recorded, not proposed as work.
-
-### HT5. `/opt/vulkan` ships 5.7 GB of builder-arch payload into each foreign image [M, ★★★]
-
-Measured on the shipped bytes, 2026-09-05, while HT2's exemption table was being
-re-derived. `/opt/vulkan` in the arm64 and riscv64 images is **5.8 GB** — 1.8 GB
-`x86_64/` plus 3.9 GB `source/` plus 58 MB / 84 MB of actual target libs — holding
-**1 317 X86-64 and 2 Intel-80386 ELF objects across 33 926 files**. amd64's
-`/opt/vulkan` is 1.8 GB and IS `active/`, so the waste is **foreign-only**: roughly
-**18.5 % of the 30.84 GB arm64 image and 19.2 % of the 29.69 GB riscv64 one**.
-
-**The tree-arch gate cannot see any of it, and that is deliberate.** The probe was
-narrowed to `active/` (122 files, 3 objects, all target) because `active/` is what
-the image RUNS and all the gate can honestly assert. The narrowing was KEPT and the
-number written into
-[`artifact-copy-completeness.md`](artifact-copy-completeness.md).
-
-**The framing above was wrong, and the 2026-09-05 investigation replaced it.** The
-question is not "how much builder-arch payload can be pruned" — it is **why the
-target prefix was worth so little that pruning looked like the win**. Measured on the
-shipped arm64 image: `x86_64/bin` holds **52 tools**, `aarch64/bin` holds **two**
-(`glslang`, `glslangValidator`), while `aarch64/lib` holds the *complete* set of
-`libSPIRV-Tools*`. The cross build had succeeded and been told not to keep its
-binaries:
-
-- `_vulkan_target_build_spirv_tools` passed `-DSPIRV_SKIP_EXECUTABLES=ON`. Its own
-  header says why — *"TVM's Vulkan build links it"*. The target prefix was built to
-  be **linked against**, never to be **used**.
-- `_build_vulkan_targets` attempted only four things: headers, loader, SPIRV-Tools,
-  glslang. Every other SDK component was cross-built for no arch at all.
-
-FIXED 2026-09-05: the flag is `OFF`, and `_vulkan_target_build_sdk_rest` adds
-Vulkan-Headers, SPIRV-Headers, Vulkan-Utility-Libraries, SPIRV-Cross, SPIRV-Reflect
-and **Vulkan-ValidationLayers** through one shared `_vulkan_target_install_component`
-(non-fatal per component, aggregate verdict unchanged). `check_vulkan_toolset` in the
-runtime smoke now FAILS on the shape that shipped, with seven cases in
-`test-runtime-image-gates.sh` proving it bites. Nine `_vulkan_skip` rows that the
-consuming loop never read — and that mislabelled ValidationLayers/shaderc/SPIRV-Cross
-as *"host-only component"* — are deleted: activating them would have skipped the
-CHECKOUTS the target build reads. Design and remaining gaps:
-[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md).
-
-**UNPROVEN until a rebuild ships it.** The six new components are cross-builds that
-have never run; they are wrapped non-fatally, so they either land or they are absent,
-but they cannot fail a lane.
-
-Two other facts nobody had ever checked on a real image, recorded in the same place:
-all 15 manifest trees exist on all three arches, and no tree comes near
-`RT_TREE_CAP` — the largest is `/opt/flutter` at 17 523 of 20 000.
 
 ### VK1. Every SDK component is now cross-built, and none of it is proven [M, ★★★]
 
@@ -634,6 +414,29 @@ Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Unti
 then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
 emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 
+### VK2. Four target components short of the whole SDK, two of them cheap [S, ★★]
+
+Measured on the arm64 lane of the 2026-09-05 rebuild. Eleven of fifteen target
+components cross-built, including the three that matter for building an
+application — `glslc`, `vulkaninfo` and the validation layers. Four did not, and
+the log says exactly why rather than going quiet:
+
+- **`vulkan-profiles`** — `find_package(valijson)` found nothing. valijson is
+  header-only and is ALREADY in the SDK's own `source/` tree; it just has no row of
+  its own before `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Same for `jsoncpp`.
+  Two rows, and the fix is done.
+- **`gfxreconstruct`** — `Could NOT find OpenGL / JsonCpp / X11`, aborting in
+  OpenXR-SDK's `presentation.cmake`. The X11/GL dev packages `vulkan.sh` installs
+  are HOST packages; the cross build needs the `:${arch}` set in the sysroot. That
+  is the real fix, and it would also let `vkcube` link for the target.
+- **`slang`** — host LLVM `tblgen`, i.e. Canadian-cross. Expected, and not worth it.
+- **`vulkanCapsViewer`** — Qt for the target. Expected.
+
+Deliberately NOT fixed during the run that found them: the arm64 lane was already
+built and riscv64 had not started, so touching `vulkan.sh` would have shipped two
+arches built from different sources — the mid-run drift this repo has been bitten
+by before.
+
 ### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
 
 The 2026-09-05 report's remaining items, all landed except two.
@@ -684,6 +487,16 @@ running BARE sccache. Watch for, in a **compile-heavy** chain (media or toolchai
 
 1. Every `sccache-launcher` line prints `[server=/tmp/sccache-<uid>.sock]` and never
    `[server=tcp:4226]`. **That single field is the whole verdict.**
+   **CORRECTED 2026-09-05, and this mattered:** the launcher prints its `[server=]`
+   field **only on the two sccache-FAILED paths**, so on the very run where the fix
+   works the evidence and the verdict cancelled out — there would have been nothing to
+   grep. Both address setters now print it on the healthy path too, identically
+   spelled, so ONE grep covers the whole chain:
+   `grep -o '\[server=[^]]*\]' <log> | sort | uniq -c`. The two lines are
+   `[INFO] Using sccache with SCCACHE_DIR=… (cap …) [server=…]` (`01-core/common.sh`)
+   and `[INFO] sccache enabled: SCCACHE_DIR=…, CACHE_SIZE=… [server=…]`
+   (`01-core/compiler-cache.sh`). A single `[server=tcp:4226]` anywhere is the
+   regression, unfixed.
 2. The ENOENT bypass class collapses in the steps that produced it (#24, #34, #45 on
    2026-09-03) rather than merely moving.
 3. `sccache --show-stats` at the START of each step reports 0 compile requests
@@ -708,12 +521,64 @@ path. A server auto-started from a stage that never ran `setup_ccache` would inh
 `/etc/sccache/config.toml`'s `use_preprocessor_cache_mode = true` and bring back the
 `while hashing the input file` TryCompile class. Not observed in any log read so far.
 
+### R1. The residue the eleven closed entries left [S each, ★]
+
+Small, named, and each one is the honest leftover of something that closed. None is a
+defect with a live failure mode; all four were measured, not guessed.
+
+1. **A runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*`** — HT4's
+   structural half. The sdk stage's self-containment walk checks non-LLVM `NEEDED`
+   sonames against the **BUILDER's** ldconfig cache, so any soname present in the
+   builder and absent in the runtime ships a binary that cannot start. `liblldb` was
+   the instance (3 of amd64's 142 binaries: `lldb`, `lldb-dap`, `lldb-mcp`), and
+   nothing but a runtime-side check catches the next one. The gate is ~10 lines in
+   `smoke-runtime-image.sh` plus one suite case, and would read 0/142, 0/127, 0/127
+   today. It was not added this wave because that file was being rewritten by two
+   lanes at once.
+2. **`VK_LAYER_PATH` is dangling on all three shipped images, and always was.**
+   `Dockerfile.package:240` and `04-runtime/runtime-paths.env` point it at
+   `/opt/vulkan/active/etc/vulkan/explicit_layer.d`, but SDK 1.4.357 puts explicit
+   layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an `etc/`
+   at all. The entrypoint then sources LunarG's `setup-env.sh`, which UNSETS
+   `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH` instead — measured: the variable is
+   **empty in every running image**. Not a size defect and not touched here: it is a
+   behaviour change to a shared env file with its own gates. Note the foreign arches
+   have no layers to point at either, so on arm64/riscv64 the only honest value is
+   "no explicit layers".
+3. **LOG14's cross-lane skip list does not do what its comment claims.**
+   `vulkan.sh` skipped `vulkan-validationlayers`, `shaderc`, `spirv-cross`, `volk`,
+   `vma` and friends "for foreign-arch cross builds (host-only component)" to save
+   ~390 s/lane — yet the shipped foreign images carried `source/Vulkan-ValidationLayers`
+   (2.0 GB), `source/shaderc` (557 MB), `source/valijson` (492 MB) and a BUILT
+   `libspirv-cross-c-shared.so.0.68.0`. `./vulkansdk` fetches, and at least partly
+   builds, components the skip list removed from its argv. **VK1 has since removed the
+   skip list entirely**, so this is now only a question about the claimed saving —
+   re-measure it against a real lane log rather than carrying the number forward.
+4. **GH6's 93 undecided masked rows are a watch list, not a fix.** The `unlinked()`
+   arm decides only the corner where two same-named definitions can never share a
+   shell; the other 93 are almost all `tests/` stubs for a sourced unit under test,
+   which is correct code no static rule should fail. One live hazard is named at the
+   point of failure: any corpus file that starts naming BOTH definers' basenames
+   disarms the arm and turns its frozen row STALE with a message that reads like the
+   function came back to life. `tests/test-dead-functions.sh` is itself that instance
+   and assembles the name and both basenames from `printf` arguments.
+
+**Two things recorded so a future reader does not "simplify" them.** The foreign
+`x86_64/` Vulkan prefix is 4.14 MB LARGER than amd64's over the same 4 399 files, so
+`./vulkansdk`'s host build does overwrite part of the tarball on a cross lane — and
+those host tools have a real build-time consumer (`build-opencv.sh` reads
+`/opt/vulkan/<ver>/x86_64` for headers), which is exactly why HT5 prunes at the
+packaging boundary and not in the SDK stage. And CL6's three TFLite helpers still leak
+`dep`, `_gcc_arch` and `_gcc_dir` into the caller's scope: pre-existing, deliberately
+not changed in a build window, because localising them is a real state change and the
+split's whole claim is that the bodies moved verbatim.
+
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **31** function rows over 80 lines
-and **67** `cc` rows over 15, every one carrying a verdict that says what its number
-IS. Read the reasons, not the numbers.
+transcribe them here.** Both are fully reviewed: **29** function rows over 80 lines
+and **66** `cc` rows over 15 on the 2026-09-05 integrated tree, every one carrying a
+verdict that says what its number IS. Read the reasons, not the numbers.
 
 **Closed 2026-09-05, and both allow rows DELETED rather than re-baselined:**
 `verify_doc_dupes.py main` 81 → 47 lines, cc 23 → under the limit, decomposed into
@@ -772,12 +637,21 @@ loader whose load ORDER is load-bearing, so a table+loop is NOT a free win),
 `build-runtime-manifest.sh` `main` (22 — five phases on one repeated
 `BUILD_IMAGES -eq 1` test).
 
-**The next thing to actually do**, now that the two outside-the-closure items are
-done: `smoke-cross-all-arches.sh main` (96) is the best-shaped candidate left, and it
-is inside the closure. Five numbered probe sections sharing only the harness's
-pass/fail globals, so the `_smoke_probe_*` helpers need no parameters. It needs a
-build window plus the case pinning the clang section's "matches none of" branch —
-the one that used to break after the first arch.
+**CLOSED 2026-09-05 — `smoke-cross-all-arches.sh main`**, which this entry had
+nominated as the best-shaped candidate left. 96 → 22 lines, cc 23 → under the limit,
+four `_smoke_probe_*` helpers plus `_smoke_clang_match_arch`, and **both** allow rows
+DELETED rather than re-baselined. Two things from how it went are worth keeping. The
+output was proven **byte-identical to HEAD, with equal exit codes, over 20 input
+shapes** — five arch-list forms and five clang triples × three arch lists — which is
+what a characterisation of a shipped probe should look like. And the clang section's
+"matches none of" branch, the one this entry asked for, **did not exist at all**: a
+target clang built for the wrong arch shipped green. Pinning it meant writing the arm
+first. `SMOKE_TARGET_CLANG` exists so a host suite can drive the real probe instead of
+a rewritten copy; it self-defaults in the script, so nothing in the image sets it and
+the env-knob registry needs no row.
+
+**With that closed there is no outside-the-closure candidate left on the size queue.**
+Every remaining named row is inside the build closure.
 
 **Two rows carry a "do not do the obvious thing" verdict.** `verify_comment_size.blocks`
 (nesting 6): the honest fix is importing `verify_code_size.scan` like every other
@@ -804,7 +678,7 @@ those were written and caught this wave. Nothing in the harness catches it today
 
 ### F2. Files over ~800 lines [L each, low priority]
 
-**`file-size.allow` is the authority — do not transcribe it here.** The ten-row
+**`file-size.allow` is the authority — do not transcribe it here.** The eleven-row
 table that used to sit in this entry was wrong within a day of being written, twice.
 This entry's prose then broke its own rule again on 2026-09-04 by quoting
 `smoke-runtime-image.sh` at 1739 when the allow file had carried the correct number
@@ -835,9 +709,13 @@ the next pass is a straight move — adapters (`load_engine_config`,
 `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent`;
 roughly lines 89–420) into `lib/agentic-engines.sh`, sourced the way
 `lib/log-bootstrap.sh` already is, leaving the loop driver from line 423 on. The new
-suite covers both halves across the seam. **See CL7 for a real defect found in this
-file while writing that suite**, which is not a trailing conditional and which no
-gate sees.
+suite covers both halves across the seam. **DONE 2026-09-05** — the split landed
+exactly as described (874 → 512 plus a 355-line `lib/agentic-engines.sh`), the
+`file-size.allow` row was DELETED rather than re-baselined, and the 24 pre-existing
+assertions passed unchanged across the seam, which is what makes it a true
+characterisation. The `&&`-shape defect found in this file while writing that suite
+closed with CL7; note its correction, though — the failure mode did NOT reproduce,
+because bash exempts every command of an AND-OR list but the last.
 
 **Two verdicts worth not re-litigating.** `build-app-wheelhouse.sh` is the
 near-miss: the stage suites extract blocks from it **by line range**, so a file
@@ -910,14 +788,17 @@ twice in two waves. Any extraction that takes a block from >6 owners to ≤6 wil
 reveal pairs that were never findings, and the honest response is to read and record
 them, never to re-suppress by widening `MAX_OWNERS`.
 
-**Grown on 2026-09-05, and it wants one owner:** the
-`build-ffmpeg.sh`↔`build-pyav.sh` pair went 12 → 13 because YB gave both the same
-`compiler_cache_launcher_env` line inside the same
-`if command -v compiler_cache_launcher` guard. That guard and its `elif ccache` arm
-are the real twin — both scripts re-implement "resolve a launcher, ccache fallback",
-which `compiler_cache_launcher` already does internally; the `elif` arms exist only
-for when `common.sh` is not sourced. Two media build scripts, inside the closure, so
-it needs the same window as CL6.
+**CLOSED 2026-09-05 — the `build-ffmpeg.sh`↔`build-pyav.sh` launcher twin.** One
+owner, `media_compiler_launcher` in `03-media/core/common.sh`, beside `media_jobs`.
+The pair fell 21 → 4 shared shingles and its `code-dupes.allow` row was DELETED as
+below-threshold. Two things worth keeping from how it went: the owner takes an
+**out-variable name and prints nothing**, because a `$(…)` caller runs
+`compiler_cache_launcher_env` in a subshell and throws away the server address it just
+exported — the exact YB defect, re-created and caught before shipping. And the two
+copies had **already drifted**: ffmpeg tested `USE_CCACHE` with an inline deny-list,
+pyav with the canonical `is_truthy`. The owner uses `is_truthy`; the sole behavioural
+delta is `USE_CCACHE=y` in the ccache-fallback arm, which is unreachable from these
+two scripts and which no Dockerfile or `.env` sets.
 
 **The host-compiler-preference family is still recorded-not-owned:**
 `compiler-resolution.sh` / `android-build-preamble.sh` / `ffmpeg-probe-framework.sh`,
