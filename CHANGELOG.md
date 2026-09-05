@@ -6,6 +6,116 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-05 — GenieX v0.6.1: four of the constraints this repo was built around are gone
+
+Updated the on-device runtime from **v0.5.0 to v0.6.1** (llama.cpp `873e5d8` →
+`0eadefe`) with the CLI's own updater, then re-measured every claim that
+depended on the old behaviour rather than trusting a changelog.
+
+**Gone**, each verified on this host:
+
+| v0.5.0 | v0.6.1 | Check |
+|---|---|---|
+| Returned Qwen's `<tool_call>` template as plain content | **Parses it** | `Qwen3.8-9B-Distill`: populated `tool_calls`, `finish_reason: "tool_calls"` |
+| Ignored `max_tokens` (3000 → 642, 500 → 1249) | **Honours it** | 50 → 50, 400 → 400 |
+| Hard **2048-token** output ceiling | **None** | 3000 requested, 3000 delivered |
+| No prefix cache — every turn re-prefilled everything | **Incremental** | identical ~4k request 13.9 s → **0.1 s**; +800 tokens → **0.9 s** |
+
+**Unchanged**, including the two carrying the strongest conclusions:
+`temperature: 0` still samples (so `--repeats` still earns its place); the
+QAIRT **4096 context is compiled into the bundle** and no release moves it, so
+§ 1m stands — opencode's 8,175-token preamble still does not fit, it merely
+fails with a clean `context_length_exceeded` now instead of a wrapped
+`SDKError`; and **sub-4-bit i-quants still produce garbage** (`IQ3_XXS` 0/3
+while `Q4_0`, `Q3_K_M`, `Q2_K` are 3/3). Surviving a llama.cpp bump makes that
+last one a property of these kernels rather than of one build — a stronger
+claim than the original diagnosis could make.
+
+**The end-to-end agent benchmark, re-run: 3/3 in 657 s against 2118 s, without
+the shim.** The whole suite now costs what one task used to (656 s). The work
+per turn did not change; it stopped being paid again every turn.
+
+**New — how to update, which had no home before.** `geniex update` downloads
+and then launches a GUI installer that waits for a click nobody gives it in an
+automated run, and a running server locks the `.exe`. Both failures are silent.
+[`docs/geniex-local-ai-setup.md` § Updating an existing install](docs/geniex-local-ai-setup.md)
+carries the stop-first order, the Inno Setup silent flags, the verification step
+(`--version` prints three lines and the llama.cpp hash is the one that decides
+GGUF behaviour), and the instruction to re-check what your own tooling assumes.
+
+`bench_coding.py` no longer assumes a 2048-token ceiling: a cut is taken from
+`finish_reason: "length"` first, then `usage.completion_tokens`, then the delta
+count, against the request's own budget. A fixed 2048 would now report a long
+legitimate answer as CUT. `geniex_toolcall_shim.py` is marked pre-0.6 and the
+opencode provider points at the lane again. Version-sensitive numbers in
+§ 1d/1f/1g/1i are **dated rather than rewritten**, with a banner pointing at the
+new § 1n. GenieX was already in the software list at v0.5.0; `deps.json` is the
+source, so that was corrected and the licence table, both website licence pages
+and the curated SPDX SBOM rebuilt from it.
+
+
+## 2026-09-04 — The benchmark suite measured endpoints; nobody had run an agent
+
+Three pieces of work, and each found that the previous one had been measuring
+the wrong thing.
+
+**New — [`linux/llm-stack/bench_agent.py`](linux/llm-stack/bench_agent.py)
+(P3.1).** Every other benchmark here measures an *endpoint*. You run an
+*agent*. This drives opencode against a scratch git repository and scores by
+**running that repository's own tests afterwards** — never by reading the
+transcript, because an agent that says it fixed the bug and did not is exactly
+the failure a transcript cannot catch. `--self-test` proves each fixture is red
+unsolved and green solved before any model is involved; without it a column of
+failures cannot be told from a broken fixture. Context-blocked runs are excluded
+from the denominator rather than scored zero: a model that never received the
+task did not fail it.
+
+It immediately disagreed with every proxy. **opencode's fixed preamble measures
+8,175 tokens** (11,556 chars of system prompt + 21,144 of tool schemas, captured
+off the wire), so the recommended QAIRT bundle — 4096 context, compiled in —
+failed all three tasks with **zero tool calls**. No trimming rescues it: six
+core tools still need 6,008 tokens, and zero tools leave 1,207 for the
+conversation *and* the answer.
+
+**Then "zero tool calls" turned out to be the server.** GenieX v0.5.0 returned
+Qwen's `<tool_call>` template as plain `content` with `tool_calls` empty, so
+every OpenAI-compatible agent saw prose and did nothing. The benchmark had been
+measuring the server, and the same number would have been produced by a
+genuinely incapable model — the 2B, which emits markdown fences, is the control
+that keeps that honest. New
+[`geniex_toolcall_shim.py`](linux/llm-stack/geniex_toolcall_shim.py) translates
+the template; behind it, `Qwen3.8-9B-Distill` scored **3/3** — the first pass
+this suite had ever observed. *(Obsolete as of v0.6.0 — see the entry above.)*
+
+**A seven-dimension audit of the coding benchmark, 53 findings after adversarial
+verification.** Three ways a published number could be wrong: `​```python3`
+fences graded a correct answer `SyntaxError`; the ranking rounded a ratio into a
+count and printed **8/9 for a model that passed seven tasks**; and CUT was
+printed "unmeasured" while the arithmetic counted it as a miss. The grader read
+its verdict from stdout at the *first* marker, in a process the candidate
+shares, so `print("__ASSERTIONS__[]")` scored "all assertions passed" — now a
+per-run nonce, last occurrence, row count checked. Setup lines and helper
+definitions were counted as assertions, inflating the near-miss fractions in
+nine of 21 tasks. `check_forbidden` was a text scan that `s = sorted; s(a + b)`
+walked straight through; it is decided on the syntax tree now. "Standard library
+only" appeared in three prompts and nothing enforced it.
+
+**Six of the 24 new mutation entries SURVIVED on their first run**, each because
+a test proved less than it claimed — a prefix check where equality was needed, a
+probe that always spun, "dead" that was really "finished 60 s later". And the
+mutation gate itself was broken in a way that hid all of it: it copied a 1.5 GB
+gitignored tarball into a 3 GB tmpfs, hit ENOSPC, swallowed the error, produced
+0-byte test files and reported nineteen entries as vacuous bites — a verdict
+about disk space wearing the clothes of a verdict about the tests.
+
+**And a defect in the guard that exists to prevent unattended runs from dying:**
+`keep-awake.ps1` is reached over `\\wsl.localhost\...`, a UNC path Windows
+refuses to run unsigned. Launched hidden, the `SecurityError` goes to a window
+nobody reads — the launcher reports success and no guard runs. Hit live, an hour
+into a benchmark. The docs now carry `-ExecutionPolicy Bypass` and, more
+usefully, tell you to verify with `Get-Process` rather than trust the launch.
+
+
 ## 2026-09-02 — Windows lane: 12 upstream submissions prepared, none sent
 
 The Windows chain carries local edits to a dozen third-party source trees. This
