@@ -25,6 +25,23 @@ Two libraries in this directory have their own pages, because their topic is
 bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
 [`slang-compile.sh`](slang-shader-compilation.md).
 
+## What holds the standalone contract
+
+Two suites, and they split the work. `tests/test-lib-smoke.sh` is the cheap half
+over every `lib/*.sh`: the module parses (`bash -n`), it sources cleanly under
+`set -euo pipefail` — a strict-mode consumer must not be killed by an unbound
+variable or a failing top-level command — and sourcing it defines at least one
+function, counted as a delta inside one shell so functions exported into the
+test environment cannot fake the number. A module that exports nothing is a
+gutted or early-returning copy, not a library. It also parses
+`cmake_build_parse_args` in isolation. No network, no cmake run.
+
+`tests/test-lib-modules.sh` is the strict half described under
+[The logging bootstrap](#the-logging-bootstrap): double-source safety, and that
+`info`/`warn`/`err` arrive from the real `01-core/logging.sh` rather than a
+private fallback copy. It skips `agentic-loop.sh`, which is an executable loop
+rather than a source-library.
+
 ## The logging bootstrap
 
 `log-bootstrap.sh` is the one owner of the block every other library needs
@@ -49,7 +66,7 @@ lands in `verify_code_dupes`' `suppressed as idiom at >6 owners` bucket
 Sourcing a sibling to get logging is not the bootstrap paradox it looks like.
 The block it replaced already sourced a file — `../01-core/logging.sh`, one
 directory further away — and every consumer vendors the whole ContainerHub
-checkout (`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/<lib>.sh`), so
+checkout (`third_party/ContainerHub/linux/scripts/lib/<lib>.sh`), so
 a missing file **next to** the library it serves is a broken checkout, not a
 supported state. `tests/test-lib-modules.sh` holds that line: every `lib/*.sh`
 must source cleanly standalone, define `info`/`warn`/`err`, survive a double

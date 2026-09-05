@@ -313,6 +313,28 @@ t_assert_contains "$(_verdicts "${_SCAN_OUT}" X86-64)" "BAD ${_HT1_FIX}/native A
 t_case "a scan that found no tree at all is a vacuous pass, not a pass"
 t_assert_contains "$(_verdicts "TREESCAN_DONE" AArch64)" "NONE" "nothing asserted must be reportable"
 
+t_case "a cross toolchain's target payload is not a defect, but its own binaries still are"
+# The 2026-09-05 false positives: /opt/gcc-*/aarch64-linux-gnu, rustup's
+# lib/rustlib/<triple> and clang's lib/clang/*/lib/linux hold foreign ELF BY DESIGN.
+# The exemption must not reach the thing HT1 was written for: a builder-arch rustc.
+_XT="$(mktemp -d)"
+mkdir -p "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu"/{bin,lib/rustlib/aarch64-unknown-linux-gnu/lib}
+mkdir -p "${_XT}/gcc-16.2.0"/{bin,aarch64-linux-gnu/lib64,lib/gcc/riscv64-linux-gnu/16.2.0} "${_XT}/llvm/lib/clang/23/lib/linux" "${_XT}/llvm/bin"
+t_fake_elf "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libstd.so" 183
+t_fake_elf "${_XT}/gcc-16.2.0/aarch64-linux-gnu/lib64/libatomic.so.1" 183
+t_fake_elf "${_XT}/gcc-16.2.0/lib/gcc/riscv64-linux-gnu/16.2.0/crtbegin.o" 243
+t_fake_elf "${_XT}/llvm/lib/clang/23/lib/linux/libclang_rt.asan-i386.so" 3
+t_fake_elf "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin/rustc" 183
+t_fake_elf "${_XT}/gcc-16.2.0/bin/gcc" 183
+t_fake_elf "${_XT}/llvm/bin/clang" 183
+_out="$(_scan "${_XT}/rustup" "${_XT}/gcc-16.2.0" "${_XT}/llvm")"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'Intel-80386')" "clang's multilib runtimes are its target payload"
+for _t in rustup gcc-16.2.0 llvm; do
+  t_assert_contains "${_out}" "TREE ${_XT}/${_t} AArch64 1" \
+    "${_t}: exactly ONE object left to assert -- its own binary, not the target payload"
+done
+rm -rf "${_XT}"
+
 t_case "a huge tree cannot crowd the shipped binaries out of the scan"
 # The rustup layout that motivated this gate carries tens of thousands of rust-src
 # .rs files under toolchains/*/lib, sorted BEFORE toolchains/*/bin/rustc — the one
@@ -373,12 +395,13 @@ t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -ve '^/')" \
   "every resolved tree must be an absolute path"
 t_assert_contains "${_TREES}" "/opt/opencv5" "\${OPENCV_OUTPUT_DIR} comes from Dockerfile.package's ARG default"
 
-t_case "the Vulkan tree is probed at what VULKAN_SDK resolves to"
-# /opt/vulkan carries the SDK's x86_64 HOST tools (glslang, spirv-tools -- built for
-# the build host, never loaded by a cross consumer) beside the cross-built target
-# libs under active/. Scanning the whole tree would red every foreign image on
-# purpose-built host tooling; scanning active/ asserts exactly what the image runs.
-t_assert_contains "${_TREES}" "/opt/vulkan/active" "the host-tool half of the SDK is not this image's to assert"
+t_case "the Vulkan tree is probed WHOLE, not narrowed to active/"
+# The narrowing existed because /opt/vulkan shipped the SDK's 1.8 GB x86-64 host
+# prefix plus a 3.9 GB build tree into every foreign image. Both are pruned before
+# the COPY now (backlog HT5), so every byte of the tree is the image's own arch.
+t_assert_contains "${_TREES}" "/opt/vulkan" "the manifest tree must still reach the scanner"
+t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -e '/opt/vulkan/active')" \
+  "a re-narrowed probe would stop seeing a builder-arch prefix that came back"
 
 # Every needle of a table read out of ANOTHER owner of the same fact must appear in
 # ${haystack}, sentinel first so a table that moved fails loudly instead of iterating
@@ -403,6 +426,37 @@ t_case "every arch-exempt tree is still a declared artifact"
 eval "$(sed -n '/^_RT_TREE_ARCH_EXEMPT=/p' "${SMOKE}")"
 _t_all_present "${_TREES}" "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT})" "/opt/" \
   "every arch-exempt tree must still be a declared artifact"
+
+t_case "the arch-exempt table is what the images MEASURED, not what the graph suggested"
+# HT2, measured on the three images shipped 2026-09-05. /opt/android-sdk is one
+# linux-x86_64 tree copied unchanged into all three (582 X86-64 objects in the arm64
+# and riscv64 images), so it stays. /opt/android was exempt on the same "device .so"
+# reasoning and the scan refuted it: 37 X86-64 on amd64, 37 AArch64 on arm64, 34
+# RISC-V on riscv64 and NOTHING else, because arch_android_abi_for maps each build
+# arch to the ABI with the same ELF machine.
+t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android-sdk " \
+  "the SDK's host toolchain is genuinely not this image's to assert"
+t_assert_eq 0 "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT} | grep -cxF -- '/opt/android' || true)" \
+  "/opt/android carries the image's OWN machine on all three arches -- asserting it is free"
+t_assert_contains "$(sed -n '/^arch_android_abi_for() {$/,/^}$/p' "${TESTS_DIR}/../01-core/platform.sh")" \
+  'arm64) printf '"'"'%s'"'"' "arm64-v8a"' "the mapping the deletion rests on: one ABI per arch, same machine"
+
+t_case "an ELF machine label may not contain a space"
+# The verdict line is read back with `read -r verb tree machine count sample`, so a
+# label with a space eats the count column: the 2026-09-04 run printed
+# "ships 80386 Intel object(s) ... e.g. 6 /usr/local/llvm-target/..." and the frozen
+# lookup, which keys on the machine, could never have matched it.
+_EM_LABELS="$(_extract _tree_arch_py | sed -n 's/^EM = {\(.*\)}$/\1/p' | tr ',' '\n' \
+                | sed -n 's/.*: "\([^"]*\)".*/\1/p')"
+t_assert_contains "${_EM_LABELS}" "X86-64" "the EM table moved -- this case reads nothing"
+while IFS= read -r _label; do
+  [ -n "${_label}" ] || continue
+  t_assert_eq "1" "$(printf '%s\n' ${_label} | wc -l | tr -d ' ')" \
+    "EM label '${_label}' must be one word"
+done < <(printf '%s\n' "${_EM_LABELS}")
+t_assert_contains "$(_verdicts "TREE /x Intel-80386 6 /x/libclang_rt.asan-i386.so
+TREESCAN_DONE" AArch64)" "BAD /x Intel-80386 6 /x/libclang_rt.asan-i386.so" \
+  "count and sample must survive a non-target machine name"
 
 # ── the consumer contract: the four defects a consuming lane reported ────────
 # Probe text as the gate would have seen it in :latest-cross-amd64 on 2026-09-04.
@@ -456,6 +510,7 @@ eval "${_CC_ROWS_SRC}"
 
 _CC_PARTS="${_CC_ROWS_SRC}
 $(_extract _consumer_contract_exempt)
+$(_extract _consumer_exempt_fact)
 $(_extract _consumer_contract_fact)
 $(_extract _consumer_dir_verdict)
 $(_extract _consumer_exempt_verdict)
@@ -562,7 +617,11 @@ t_case "the android row asserts exactly the two PATH entries Dockerfile.package 
 t_assert_contains "$(_cc_android yes yes)" "OK android-home" \
   "platform-tools + cmdline-tools/latest/bin is the whole claim -- build-tools and the NDK are deliberately off PATH"
 
-t_case "the riscv64 flutter rows are a documented exemption, not a silent skip"
+# HT2: what the riscv64 image ACTUALLY reports, read out of the shipped bytes on
+# 2026-09-05 -- /opt/flutter exists and is empty, so .dart_tool is absent (the row
+# would read unwritable) while `find /opt/flutter ! -uid 1001` is 0 (the row holds).
+# Only the first of those needs an exemption.
+t_case "the riscv64 flutter rows: dart-tool is exempt, flutter-owner is ASSERTED"
 _CC_RV="$(_cc_verdicts 'WRITE ccache-dir yes
 ENV ccache-dir /var/cache/ccache
 WRITE dart-tool no
@@ -571,15 +630,49 @@ FACT flutter-sdk no
 FACT flutter-foreign 0
 CCPROBE_DONE' riscv64)"
 t_assert_contains "${_CC_RV}" "EXEMPT dart-tool" "upstream ships no riscv64 Flutter SDK"
-t_assert_contains "${_CC_RV}" "EXEMPT flutter-owner" "and nothing to own"
+t_assert_contains "${_CC_RV}" "OK flutter-owner" \
+  "an empty tree owned by the runtime uid is the row PASSING, not a row to skip"
 t_assert_eq 0 "$(printf '%s\n' "${_CC_RV}" | grep -c '^BAD dart-tool')" \
   "the unwritable .dart_tool of an EMPTY riscv64 tree is not a defect"
 
+t_case "a root-owned riscv64 /opt/flutter is now a DEFECT there too"
+# The exemption used to hide CC1 defect 4 on riscv64: 37 root-owned paths would
+# have read as a documented exception.
+t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk no
+FACT flutter-foreign 37
+FACT flutter-foreign-examples /opt/flutter/bin
+CCPROBE_DONE' riscv64 flutter-owner)" "BAD flutter-owner 37 path(s)" \
+  "the ownership row must be able to go red on every arch"
+
 t_case "the exemption fails the day a riscv64 Flutter SDK appears"
 t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk yes
-FACT flutter-foreign 0
-CCPROBE_DONE' riscv64 dart-tool)" "STALE dart-tool a Flutter SDK IS present on riscv64" \
+CCPROBE_DONE' riscv64 dart-tool)" "STALE dart-tool FACT flutter-sdk says it IS present on riscv64" \
   "a table that cannot rot: the arm names itself for deletion"
+
+t_case "each exemption is re-checked by its OWN fact, not by another row's"
+# appimagetool's arm was re-checked with FACT flutter-sdk, so a riscv64 appimagetool
+# would have read EXEMPT forever -- the one thing the rot signal exists to prevent.
+_CC_AI="$(_cc_verdicts 'FACT flutter-sdk no
+FACT appimagetool-readable yes
+ENV appimagetool /usr/local/bin/appimagetool
+CCPROBE_DONE' riscv64 appimagetool)"
+t_assert_contains "${_CC_AI}" "STALE appimagetool FACT appimagetool-readable says it IS present on riscv64" \
+  "an appimagetool that appeared on riscv64 must name its own arm for deletion"
+t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk no
+FACT appimagetool-readable no
+CCPROBE_DONE' riscv64 appimagetool)" "EXEMPT appimagetool" \
+  "and the measured riscv64 shape -- packaging-deps.sh ships no riscv64 asset -- stays exempt"
+
+t_case "every per-arch exemption's rot fact is a fact the probe really emits"
+# A rot signal the probe never prints is a NOFACT on every run: the row can then
+# never be granted, and the gate reds for a reason that has nothing to do with it.
+_CC_PROBE_SRC="$(_extract _consumer_contract_probe)"
+while IFS= read -r _row; do
+  [ -n "${_row}" ] || continue
+  _f="$(bash -c "$(_extract _consumer_exempt_fact)"$'\n'"_consumer_exempt_fact '${_row}'")"
+  t_assert_contains "${_CC_PROBE_SRC}" "FACT ${_f} " "row ${_row} is re-checked by FACT ${_f}"
+done < <(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) return 0 ;;/\1/p' \
+           | tr '|' '\n' | sed 's/^[a-z0-9]*://')
 
 t_case "an exemption whose rot signal is missing fails too"
 t_assert_contains "$(_cc_verdicts 'CCPROBE_DONE' riscv64 dart-tool)" "NOFACT dart-tool" \
@@ -710,11 +803,45 @@ FACT javac yes
 ENV java-home /usr/lib/jvm/default-java")" "OK jdk" "the fixed shape"
 t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitted no java facts proves nothing"
 
+# ── The Vulkan loader gate: WHICH libvulkan answered ────────────────────────
+# Ubuntu's multiarch loader is in every image, so "it loaded" was never evidence
+# that the shipped /opt/vulkan prefix is the one in use.
+_vk_gate() {
+  VK_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(_extract _vk_loaded_path)"'
+    '"$(_extract check_vulkan_loader)"'
+    check_vulkan_loader img arm64'
+}
+
+t_case "a loader resolved inside /opt/vulkan is the pass"
+_VK="$(_vk_gate 'VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357')"
+t_assert_contains "${_VK}" "libvulkan.so.1 loads from /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357" \
+  "the pass line must name the path it read, not just say OK"
+t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "a shipped-prefix loader is not a failure"
+
+t_case "the distro loader answering instead of the shipped prefix FAILS"
+_VK="$(_vk_gate 'VKLIB /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341
+VKOK 1.4.341')"
+t_assert_contains "${_VK}" "FAIL libvulkan.so.1 loaded from /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341" \
+  "a prune that took the prefix the image runs would otherwise pass on Ubuntu's loader"
+
+t_case "a load that names no path is a warning, not a verdict either way"
+_VK="$(_vk_gate 'VKOK 1.4.357')"
+t_assert_contains "${_VK}" "WARN" "/proc/self/maps can be unreadable; that is not a defect"
+t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "an unread maps file must not fail the image"
+
+t_case "an unloadable libvulkan is still the hard failure it was"
+_VK="$(_vk_gate 'OSError: libvulkan.so.1: cannot open shared object file: No such file or directory')"
+t_assert_contains "${_VK}" "FAIL libvulkan.so.1 missing/unloadable" "the pre-existing arm must survive the sharpening"
+
 t_case "every gate this suite pins is actually CALLED by the smoke"
 # A gate can be perfect and never run. Each of these is extracted and driven
 # above, which proves the function and says nothing about the call list.
 _SMOKE_SRC="$(cat "${SMOKE}")"
-for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions; do
+for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions check_vulkan_loader; do
   t_assert_eq 1 "$(printf '%s\n' "${_SMOKE_SRC}" | grep -c "^    ${_g} \"\${image_tag}\"")" \
     "${_g} must be invoked once from the smoke's own call list"
 done
@@ -741,5 +868,104 @@ t_case "every per-arch exemption names a row that still exists"
 _CC_EX="$(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) return 0 ;;/\1/p' | tr '|' '\n' | sed 's/^[a-z0-9]*://')"
 _t_all_present " ${_CONSUMER_CONTRACT_ROWS} " "${_CC_EX}" "-" \
   "every per-arch exemption must name a row the gate still asserts"
+
+# ── the Vulkan SDK toolset gate ─────────────────────────────────────────────
+# VK_OUT is the inventory the probe prints for ${VULKAN_SDK}. The two lists come
+# from the source, so the suite cannot drift from what the gate requires.
+_VK_TOOL_VARS="$(grep -E '^_VK_(REQUIRED|REPORTED)_TOOLS=' "${SMOKE}")"
+eval "${_VK_TOOL_VARS}"
+_vk_inventory() { for _t in $1; do printf 'TOOL %s\n' "${_t}"; done; }
+_vk_toolset() {
+  VK_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    '"${_VK_TOOL_VARS}"'
+    _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(_extract check_vulkan_toolset)"'
+    check_vulkan_toolset img arm64' 2>&1
+}
+
+t_case "the shipped shape -- full libraries, two binaries -- fails"
+t_assert_contains "$(_vk_toolset "TOOL glslangValidator")" \
+  "missing required tools: spirv-opt" \
+  "a prefix you can link against but cannot compile a shader with is the defect"
+
+t_case "one absent required tool fails and names it"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS/spirv-val/}")")" \
+  "spirv-val" "the gate must name what is missing, not just that something is"
+
+t_case "the complete required set passes"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "SDK tools present" "what a correctly cross-built prefix prints"
+
+t_case "an absent REPORTED tool warns and does not fail"
+t_assert_eq "0" \
+  "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")" | grep -c '^FAIL')" \
+  "spirv-cross and friends are new cross-builds; losing one is not a lane failure"
+
+t_case "an absent reported tool is still visible as a WARN"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "WARN spirv-cross absent" "non-fatal must not mean invisible"
+
+t_case "a missing validation layer manifest warns"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+  "no validation layer manifest" "you cannot develop a Vulkan app without the layers"
+
+t_case "the layer manifest is reported when the prefix carries it"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+LAYER yes")" "validation layer manifest present" "the good shape is stated too"
+
+# ── the Android SDK ABI gate ────────────────────────────────────────────────
+# ABI_OUT is what the probe prints: the image's advertised ABI, then one MACH row
+# per ELF machine found under /opt/android. The ABI->machine table is read out of
+# the source so the suite cannot drift from what the gate accepts.
+_ABI_TABLE="$(grep -E '^_ANDROID_ABI_MACHINE=' "${SMOKE}")"
+_abi_gate() {
+  ABI_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    '"${_ABI_TABLE}"'
+    _rt_run() { printf "%s\n" "${ABI_OUT}"; }
+    '"$(_extract _android_abi_want)"'
+    '"$(_extract check_android_abi)"'
+    check_android_abi img arm64' 2>&1
+}
+
+# Measured on the 2026-09-05 image: 420 objects under /opt/android, every one of
+# them machine 62. Same row with 183 is what the fixed android stage produces.
+_ABI_SAMPLE=/opt/android/litert/lib/libbenchmark_main.a
+_abi_shipped="ABI arm64-v8a
+MACH 62 420 ${_ABI_SAMPLE}"
+_abi_fixed="ABI arm64-v8a
+MACH 183 420 ${_ABI_SAMPLE}"
+
+t_case "the shipped shape -- an arm64-v8a claim over an x86-64 payload -- fails"
+t_assert_contains "$(_abi_gate "${_abi_shipped}")" \
+  "is incompatible" "this is the consumer's link error, caught before it ships"
+
+t_case "the failure names the count and a sample object"
+t_assert_contains "$(_abi_gate "${_abi_shipped}")" \
+  "420 object(s) of ELF machine 62" "a count and a path is what makes it actionable"
+
+t_case "a correctly built arm64-v8a payload passes"
+t_assert_contains "$(_abi_gate "${_abi_fixed}")" \
+  "all arm64-v8a" "what the fixed android stage prints"
+
+t_case "an image that does not advertise the ABI fails"
+t_assert_contains "$(_abi_gate "ABI unset")" \
+  "does not advertise ANDROID_TARGET_ABI" "a consumer cannot guess which ABI it got"
+
+t_case "an ABI the table does not know fails rather than passing vacuously"
+t_assert_contains "$(_abi_gate "ABI mips64
+MACH 183 4 /opt/android/x")" "is not an ABI this gate knows" \
+  "an unknown claim must never read as satisfied"
+
+t_case "a mixed payload fails on the wrong half even when the right half is there"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a
+MACH 183 400 /opt/android/ok.so
+MACH 62 20 /opt/android/gstreamer/libgstreamer-1.0.a")" \
+  "libgstreamer-1.0.a" "one stale ABI among many is exactly how it reached the consumer"
+
+t_case "an empty tree warns instead of passing silently"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a")" \
+  "no Android ELF objects" "nothing found is not the same as everything correct"
 
 t_summary

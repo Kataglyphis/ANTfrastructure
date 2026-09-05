@@ -138,7 +138,7 @@ jobs:
       # a copy of the retry loop, so the retry count and timeout live in one
       # place for every repo instead of drifting per workflow.
       - name: Prepare CI host
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/prepare-linux-ci-host@main
+        uses: Kataglyphis/ContainerHub/.github/actions/prepare-linux-ci-host@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           registry-username: Kataglyphis
@@ -147,7 +147,7 @@ jobs:
           submodules: recursive
 
       - name: Python static analysis
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -156,7 +156,7 @@ jobs:
             '${{ matrix.arch }}' '${{ inputs.static-analysis-python-version }}'"
 
       - name: Run Python tests
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -173,7 +173,7 @@ jobs:
 
       - name: Build Docs
         if: ${{ matrix.arch == 'x64' }}
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -199,7 +199,7 @@ jobs:
           local-dir: ${{ inputs.docs-artifact-path }}
 
       - name: Packaging application
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}

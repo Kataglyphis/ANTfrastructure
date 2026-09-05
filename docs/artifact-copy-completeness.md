@@ -216,15 +216,12 @@ image sees it — and it reads bytes, not behaviour:
   `Dockerfile.package`'s own `ARG VAR=default`. A token that resolves from
   neither **fails**; it would otherwise scan nothing and say nothing.
 * The manifest carries the COPY **source** path, so `_rt_tree_probe_path` maps it
-  to where the gate looks in the image. Two arms: the one documented relocation
+  to where the gate looks in the image. **One** arm now: the documented relocation
   (`/opt/llvm-target` → `/usr/local/llvm-target`, listed in
   `verify-artifact-copy-parity.sh`'s `ALLOWED_RELOCATIONS` — the suite fails if the
-  two owners of that fact stop agreeing), and `/opt/vulkan` → `/opt/vulkan/active`.
-  The Vulkan tree deliberately ships the SDK's **x86-64 host tools** (glslang,
-  SPIRV-Tools; `vulkan.sh` skips the rest for cross lanes precisely because no
-  cross consumer loads them) beside the cross-built target libs, and `active` is
-  what `VULKAN_SDK`, `PATH` and `LD_LIBRARY_PATH` resolve to. Asserting the whole
-  tree would red every foreign image on tooling that is host-arch on purpose.
+  two owners of that fact stop agreeing). The second arm, `/opt/vulkan` →
+  `/opt/vulkan/active`, is **gone**: it existed to look past a builder-arch SDK that
+  no longer ships. See [below](#the-vulkan-tree-ships-only-what-the-image-runs).
 * One in-image scanner reads the ELF header of every object under those trees and
   aggregates `(tree, machine) → count`. Header reads in a single process, never a
   `readelf` exec per file, which under QEMU would cost minutes; the walk is sorted
@@ -237,24 +234,187 @@ image sees it — and it reads bytes, not behaviour:
 
 ### What is exempt, and why the arm names the tree
 
-`_RT_TREE_ARCH_EXEMPT` holds `/opt/android` and `/opt/android-sdk`: Android device
-payloads and the SDK's host tooling, whose arch says nothing about this image
-either way. The arm names the **tree**, never an arch — so a newly host-installed
-tree fails by default instead of inheriting somebody's exemption. A tree that is
-present but holds no ELF at all (a per-arch empty dir) is a note, not a pass:
-presence is the ARCH-PARITY table's assertion, and absence of the directory itself
-is fatal here.
+`_RT_TREE_ARCH_EXEMPT` holds `/opt/android-sdk` alone: one linux-x86_64 SDK copied
+unchanged into all three images, so its arch says nothing about this image either
+way. The arm names the **tree**, never an arch — so a newly host-installed tree
+fails by default instead of inheriting somebody's exemption. A tree that is present
+but holds no ELF at all (a per-arch empty dir) is a note, not a pass: presence is
+the ARCH-PARITY table's assertion, and absence of the directory itself is fatal
+here.
 
-### What only a real build can tell you
+### What the exemptions are worth
 
-The table was reasoned from the build graph, not measured on a shipped image:
-`/opt/gcc-*` is target-native because `swap-native-gcc.sh` does
-`rm -rf /opt/gcc-${GCC_VERSION}` and copies the Canadian-cross native tree over it
-in the android stage; `/opt/llvm-target`, `/opt/armnn` and `/opt/acl` are
-cross-built for the target; `/opt/flutter` and `/usr/local/{rustup,cargo}` are the
-two members that were *fixed* to be target-arch. If any tree turns out to carry a
-legitimate builder-arch helper the gate names the tree and an example path, and
-the fix is one arm with a written reason — never a loosened comparison.
+Every exemption above was *reasoned* from the build graph when it was written. On
+2026-09-05 each was re-read from the three shipped `:latest-cross-<arch>` images
+with the gate's own scanner, and the reasons did not all survive.
+
+| exemption | measured, per image | verdict |
+|---|---|---|
+| `/opt/android-sdk` | the same 40 644-file tree in all three: 582 X86-64, 417 Intel-80386, 414 ARM, 414 AArch64, 33 RISC-V | **KEEP.** Without it arm64 and riscv64 red on 1 446 foreign objects that are the SDK's host toolchain and device libs |
+| `/opt/android` | amd64 37 X86-64, arm64 37 AArch64, riscv64 34 RISC-V — and nothing else | **DELETED.** The reason ("device `.so`, arch says nothing") is false: `arch_android_abi_for` maps each build arch to the ABI with the SAME ELF machine (`amd64→x86_64`, `arm64→arm64-v8a`, `riscv64→riscv64`), and each image carries exactly one ABI directory. The gate now asserts it for free |
+| `/opt/vulkan` probed at `/opt/vulkan/active` | `active/` is 122 files, 3 objects, all target. The rest of `/opt/vulkan` on arm64/riscv64 was **1 317 X86-64 + 2 Intel-80386 objects across 33 926 files — 1.8 GB of `x86_64/` plus 3.9 GB of `source/`** | **DELETED 2026-09-05.** The narrowing was hiding a packaging defect, not a legitimate host tree. Both subtrees are pruned before the COPY now and the gate asserts the WHOLE tree on all three arches — [the section below](#the-vulkan-tree-ships-only-what-the-image-runs) |
+| the cross-payload filter (`/lib/rustlib/`, `/lib/clang/`, `/lib/gcc/`, `gcc-*/​<triple>/`) | on amd64 it hides exactly the target payload: rustup's AArch64+RISC-V `libstd`, gcc's per-triple crt objects, clang's i386 multilib runtimes. On the foreign images it hides only own-arch objects | **KEEP.** It also does **not** hide the five X86-64 `libLLVM`/`libclang` in `/usr/local/llvm-target` on either foreign arch, which is how the frozen count of 5 was confirmed exact |
+
+Two further facts the same scan settled, both of which had never been checked on a
+real image: all **15** manifest trees exist as directories on all three arches (so
+no `MISSING` verdict is latent), and no tree comes near the 20 000-file `RT_TREE_CAP`
+— the largest asserted one is `/opt/flutter` at 17 523 candidate files on
+amd64/arm64, 88 % of the cap. A Flutter bump could cross it; that is a `CAPPED`
+failure, not a silent pass.
+
+### The Vulkan tree ships only what the image runs
+
+Measured on the shipped `:latest-cross-<arch>` bytes, 2026-09-05, and re-measured
+after the fix by running the prune inside a throwaway container over the same bytes.
+
+`/opt/vulkan` held **6 010 149 323 B on arm64 and 6 037 710 004 B on riscv64 across
+33 926 files** — 19.5 % / 20.3 % of those two images. Of that, exactly **129 files
+(60 101 090 B / 87 611 162 B)** were the target prefix the image runs. The other two
+subtrees:
+
+| subtree | bytes | what it is | who reaches it in the runtime image |
+|---|---|---|---|
+| `<ver>/x86_64/` | 1 858 995 156 | the LunarG tarball's own prefix — `vulkaninfo`, `glslc`, the validation layers, all x86-64 | **nobody.** `setup-env.sh` derives `VULKAN_SDK` from `uname -m`, so a foreign image resolves `<ver>/aarch64`; `PATH`, `LD_LIBRARY_PATH` and `active` follow it |
+| `<ver>/source/` | 4 091 053 077 | the checkouts + build trees `./vulkansdk` makes, holding 1 256 of the 1 317 X86-64 objects and both Intel-80386 ones | **nobody**, and nobody after the SDK stage either: `_build_vulkan_targets` is its only consumer |
+
+Both are removed at their source rather than filtered at the gate:
+
+* `_vulkan_prune_sdk_sources` (`02-toolchain/vulkan.sh`) drops `<ver>/source` in the
+  **same RUN** that created it, so no layer from the SDK stage onward carries it.
+  It runs only on the cross path — an amd64 install never builds and has no `source/`.
+* `prune-vulkan-host-sdk.sh` runs in `Dockerfile.package`'s `artifact-source` stage,
+  **ahead of** `COPY --from=artifact-source /opt/vulkan`, and drops `<ver>/x86_64`
+  when — and only when — a real (non-symlink) `<ver>/<own-arch>/lib/libvulkan.so.1`
+  exists. On amd64 the two are the same directory and nothing is dropped. When a
+  cross lane's loader failed to build, the host prefix is KEPT and the run says so
+  loudly: the image then reds the tree-arch gate, which is the honest outcome for an
+  image with no Vulkan of its own.
+
+Measured on the shipped bytes with the real script: `/opt/vulkan` goes from
+6 010 149 323 to **60 101 090** bytes on arm64 (33 926 → 129 files) and from
+6 037 710 004 to **87 879 250** on riscv64, with `VULKAN_SDK`, the `active` link,
+`glslangValidator` and a `vkEnumerateInstanceVersion` call through the entrypoint all
+still resolving to the target prefix afterwards. amd64 is byte-identical.
+
+**What the gate now asserts.** The `/opt/vulkan` → `/opt/vulkan/active` narrowing is
+gone, so `check_manifest_tree_arch` walks the whole tree: 3 objects on each foreign
+image, 61 on amd64, every one the image's own machine. Before the prune the same walk
+reported 1 317 X86-64 + 2 Intel-80386, which is exactly the failure the narrowing was
+suppressing. A second, run-based assertion backs it: `check_vulkan_loader` reads
+`/proc/self/maps` after `CDLL("libvulkan.so.1")` and **fails** unless the loader that
+answered lives under `/opt/vulkan`. Ubuntu's multiarch `libvulkan.so.1` is in every
+image, so a prune that took the prefix the image actually runs would otherwise have
+passed a load-only check on the distro copy. On the three shipped images today that
+path is `<ver>/aarch64/lib`, `<ver>/riscv64/lib` and — via `setup-env.sh` —
+`<ver>/x86_64/lib/VulkanLoader/lib`.
+
+### The llvm-target prefix fills what it needs, and nothing else
+
+`/opt/llvm-target` is the one tree that is *repaired* rather than merely copied,
+and until 2026-09-05 both repairs were written as a **glob over the builder's
+multiarch directory** — every `libLLVM*.so.2*` / `libclang*.so.2*` in
+`/usr/lib/x86_64-linux-gnu`, copied in whenever `lib/<soname>` was absent.
+
+The repair exists for a real defect: on amd64 the prefix is an apt LLVM tree whose
+`lib/` holds dev **symlinks** into the multiarch dir, so the runtime sonames never
+entered the prefix and the shipped clang bound to whatever ambient `libLLVM` the
+consuming image carried (the 2026-08-11 franken-toolchain incident). What was wrong
+was the *selection rule*. A glob copies whatever Ubuntu happens to have installed,
+and the builder carries `llvm-20` and `llvm-21` alongside the pinned release.
+
+Measured in the 2026-09-05 images, that shipped **five x86-64 libraries into both
+foreign runtime images** — `libLLVM.so.20.1`, `libLLVM.so.21.1`,
+`libclang-21.so.21`, `libclang-23.so.23`, `libclang-cpp.so.21.1`, 392 MiB — because
+the guard tests the *filename*, and an arm64/riscv64 source build never produces a
+soname named after Ubuntu's llvm-20/21. They were a closed island: the only objects
+in either image that `DT_NEEDED` any of them were the copied libs themselves, and
+the four real consumers (`libgallium`, `libOSMesa`, `doxygen`, the `llvm-21` tools)
+resolve through `/usr/lib/<triplet>` — `ld.so` rejects the wrong `e_machine` and
+falls through, so the copies were never loaded, only carried. The same glob put
+358 MiB of the same Ubuntu libs into the amd64 prefix, where the tree-arch gate
+structurally cannot see them because they are the image's own arch.
+
+The rule is now **demand-driven**: `_llvm_target_fill_needed` in
+`02-toolchain/materialize-llvm-target.sh` reads the `DT_NEEDED` of the prefix's own
+`bin/` and `lib/*.so*`, copies only the LLVM-family sonames that do not resolve
+inside `lib/`, and repeats until a round adds nothing (a filled lib brings its own
+`NEEDED`). `-e` is false for a dangling symlink, which is exactly the apt dev-link
+case, so the entry is removed before the copy. Its correctness is not a matter of
+reading: the NEEDED walk immediately below is a **hard gate** — every LLVM-family
+`NEEDED` of every shipped object must resolve inside the prefix, and every other
+`NEEDED` (libc, libstdc++, zlib) against the base image's `ldconfig` cache, or the
+sdk stage fails. The cache is captured once into a variable and matched with
+`case`, because `ldconfig -p | grep -q` dies of SIGPIPE under `pipefail`.
+
+The package stage no longer keeps a second copy of that logic. `repair_llvm_target_sonames`
+was written as belt-and-braces for pre-2026-08-12 sdk artifacts, and its own note
+said it should be removed once a rebuild showed it copying nothing; the rebuild
+showed it copying nothing on amd64 and **only the five wrong-arch libs** on the
+foreign arches, so the copy half is gone. What remains —
+`publish_llvm_target_ld_path` in `06-packaging/copy-media-payloads.sh` — is
+load-bearing and stays: `libtvm_compiler.so` carries a `DT_NEEDED` on
+`libLLVM.so.<ver>` that resolves through `/etc/ld.so.conf.d/000-llvm-target.conf`
+and nothing else, so dropping it makes `import tvm` die.
+
+### A copied prefix carries links that only resolved where it came from
+
+The demand-driven fill closes `DT_NEEDED`. It does not close the other half of the
+same defect, and the amd64 prefix ships **twelve entries that resolve to nothing**
+(measured in `latest-cross-amd64`, 2026-09-05 — an earlier count of nine walked only
+the top of `lib/`).
+
+The cause is one line: on amd64 the prefix is the apt tree at `/usr/lib/llvm-23`,
+whose Debian layout points its dev entries at `../../x86_64-linux-gnu/…` and
+`../../../include/llvm-23/…` — **relative to that location**. `cp -a` to
+`/opt/llvm-target` keeps the link text and changes the location, so nineteen entries
+break in the sdk stage itself, not at the package `COPY`. `ldconfig` then deletes the
+seven that look like sonames (`libc++.so.1`, `liblldb-23.so.1`, …) because that is
+what `ldconfig` does with a stale soname link, and the twelve dev entries — which it
+has no rule for — ride into the image.
+
+`_llvm_target_repair_links` resolves each broken entry **against the directory the
+prefix was copied from**, which is the only place its text was ever valid, and then:
+
+| what the entry names | treatment | why |
+|---|---|---|
+| something already in `lib/` | re-point at it, relative to the link's own directory | `libclang.so`, `libclang-23.so`, `libclang-23.1.0.so` all name `libclang-23.so.23`, which the fill brings in for `c-index-test`. A bare basename would dangle four levels down in `site-packages`; an absolute `/opt/…` would dangle after the package `COPY`. |
+| an LLVM-family soname (`_is_llvm_family`) | materialise it into `lib/`, then re-point | `liblldb-23.so.1`, 21 MB. Measured on the shipped amd64 image: **3 of the prefix's 142 binaries cannot start** — `lldb`, `lldb-dap` and `lldb-mcp`, all three on this one soname — because the builder's `ldconfig` cache had it, so the self-containment walk's non-family arm passed it, and the runtime image never had it. Every one of its own thirteen `NEEDED` sonames does resolve in the shipped image, so one file takes that count to 0 and makes `import lldb` work as well. |
+| a directory | materialise it in place | `include/llvm` (41 MB) and `include/llvm-c` (516 KB). arm64 and riscv64 ship both as real trees from their source build; amd64 lost them to a packaging symlink, so `lib/cmake/llvm/LLVMConfig.cmake` and 1.3 GB of `libLLVM*.a` were unusable there and nowhere else. |
+| anything else | delete the entry | The six `libc++` entries (`libc++.a`, `libc++abi.a`, `libc++experimental.a`, `libc++.modules.json`, `libc++.so`, `libc++abi.so`) name `libc++-23-dev` and `libc++1`, packages the runtime image does not install. Materialising them would put soname `libc++.so.1` in a directory `000-llvm-target.conf` publishes **ahead** of the multiarch dir, shadowing the base image's libc++ for every existing consumer, and would pull in a `libunwind.so.1` `NEEDED` proven present in the builder and unproven in the runtime — which is this defect again. `ld` already skips a dangling `-lc++` and resolves against the base image's libc++; measured, `clang++ -stdlib=libc++` links before and after. |
+
+`_is_llvm_family` is the one owner of "this toolchain carries it itself, rather than
+borrowing whatever the consuming image has" — the fill, the repair and the
+self-containment walk all ask it, and `liblldb` being outside an inlined copy of that
+pattern is why the walk's `ldconfig` arm passed a debugger that cannot start.
+
+Both halves of this are amd64-only, and measured so rather than assumed: the arm64
+and riscv64 prefixes are source-built at their own final path, and they carry **0
+broken links and 0 of 127 binaries that cannot start**, against amd64's 12 and
+3 of 142.
+
+The repair ends by re-running `find -xtype l` over the prefix and **failing the sdk
+stage** if anything still resolves to nothing. It runs before the fill on amd64 (it
+materialises what the dev links name; the fill then closes `NEEDED` over the result)
+and on the foreign branch with the prefix as its own root, where it measured a no-op:
+the source-built arm64 and riscv64 prefixes have zero broken links, and the call keeps
+that true instead of assuming it.
+
+### What only a real build could tell you — and did
+
+The table used to be reasoned from the build graph alone. The 2026-09-04 run and
+the 2026-09-05 re-read of the shipped images answered it: `/opt/gcc-*` is
+target-native (`swap-native-gcc.sh` `rm -rf`s the cross tree and copies the
+Canadian-cross native one over it in the android stage); `/opt/llvm-target`,
+`/opt/armnn` and `/opt/acl` are cross-built for the target; and the two members
+that could not be ruled out statically — `/opt/flutter` (`bin/cache` engine
+artifacts) and `/usr/local/rustup` (`downloads/` leftovers) — measure clean:
+flutter is 19 objects of the image's own machine on amd64/arm64 and empty on
+riscv64, rustup is 16/16/48 own-machine objects with every foreign one inside
+`lib/rustlib/<triple>`. What the run *did* catch was the gate's own false
+positives (cross payload, now filtered) and the five builder-arch LLVM libraries
+that are backlog HT3. If a tree turns out to carry a legitimate builder-arch
+helper the gate names the tree and an example path, and the fix is one arm with a
+written reason — never a loosened comparison.
 
 ## The end-to-end backstop
 
@@ -301,10 +461,19 @@ verdict line, so the message names the consumer symptom rather than a path.
   on a builder-arch tree in both directions, the missing-sentinel path, and the
   two host-side cross-checks (every manifest path resolves; the relocation and the
   exemption list still agree with their other owners).
+* `tests/test-llvm-target-prefix.sh` — `_llvm_target_fill_needed` over a fixture
+  prefix: the Ubuntu llvm-20/21 libs nobody needs are NOT copied, a dangling dev
+  symlink IS replaced by the real soname, a lib pulled in by a lib is reached, the
+  loop terminates, the package stage no longer copies anything into the prefix, and
+  the loader-path half is still written. Plus `_RT_TREE_ARCH_FROZEN` empty and both
+  of its gate arms.
 * Mutations `artifact-copy.completeness-check`, `flutter.bootstrap-hard-fail`,
   `flutter.bootstrap-cache-handover`, `flutter.bootstrap-whole-tree-chown`,
   `flutter.smoke-offline`, `flutter.smoke-dart-arch`,
   `flutter.smoke-sdk-writable`, `flutter.smoke-root-owned`,
   `probe.tree-arch-mismatch`,
   `probe.tree-arch-machine-word`, `probe.tree-arch-scan-sentinel`,
-  `probe.tree-arch-arg-default`, `probe.tree-arch-relocation`.
+  `probe.tree-arch-arg-default`, `probe.tree-arch-relocation`,
+  `llvm-target.fill-is-needed-driven`, `llvm-target.fill-replaces-dangling`,
+  `llvm-target.fill-reaches-fixpoint`, `llvm-target.no-package-stage-copy`,
+  `llvm-target.ld-path-published`, `tree-arch.frozen-count-must-match`.

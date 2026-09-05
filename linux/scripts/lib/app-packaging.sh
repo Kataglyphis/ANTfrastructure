@@ -107,7 +107,8 @@ app_packaging_setup_dependencies_for_container() {
 
   app_packaging_ensure_appimagetool_via_containerhub
 
-  export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+  XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+  export XDG_RUNTIME_DIR
   mkdir -p "$XDG_RUNTIME_DIR"
   chmod 700 "$XDG_RUNTIME_DIR"
 
@@ -325,18 +326,27 @@ X-GNOME-UsesNotifications=true
 EOF
 }
 
+# The six facts all three bundle packagers derive identically. Sets the CALLER's
+# locals by dynamic scope; each caller still declares them and adds only what is
+# its own -- deb and appimage an `arch` spelling, flatpak its manifest paths.
+app_packaging_resolve_bundle_facts() {
+  local matrix_arch="${1:?matrix_arch is required}" app_name="${2:?app_name is required}"
+
+  bundle_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")"
+  version="$(app_packaging_get_pubspec_version)"
+  package_name="$(app_packaging_sanitize_package_name "$app_name")"
+  app_id="${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}"
+  binary_name="$(app_packaging_detect_bundle_binary "$bundle_dir")"
+  icon_file="$(app_packaging_detect_icon_file)"
+}
+
 app_packaging_package_linux_bundle_deb() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
 
   local bundle_dir version package_name arch deb_root binary_name app_id icon_file icon_name output_name
-  bundle_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")"
-  version="$(app_packaging_get_pubspec_version)"
-  package_name="$(app_packaging_sanitize_package_name "$app_name")"
+  app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_deb "$matrix_arch")"
-  binary_name="$(app_packaging_detect_bundle_binary "$bundle_dir")"
-  app_id="${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}"
-  icon_file="$(app_packaging_detect_icon_file)"
   icon_name="$package_name"
   output_name="${package_name}_${version}_${arch}.deb"
 
@@ -400,13 +410,8 @@ app_packaging_package_linux_bundle_appimage() {
   local app_name="${2:?app_name is required}"
 
   local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd
-  bundle_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")"
-  version="$(app_packaging_get_pubspec_version)"
-  package_name="$(app_packaging_sanitize_package_name "$app_name")"
+  app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_appimage "$matrix_arch")"
-  binary_name="$(app_packaging_detect_bundle_binary "$bundle_dir")"
-  app_id="${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}"
-  icon_file="$(app_packaging_detect_icon_file)"
   icon_name="$package_name"
   # Container-native for the same reason as the deb root: appimagetool chmods
   # its AppDir, which a bind-mounted host drive refuses — AGENTS.md § 4.
@@ -454,12 +459,7 @@ app_packaging_package_linux_bundle_flatpak() {
   local app_name="${2:?app_name is required}"
 
   local bundle_dir version package_name app_id binary_name icon_file manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch
-  bundle_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")"
-  version="$(app_packaging_get_pubspec_version)"
-  package_name="$(app_packaging_sanitize_package_name "$app_name")"
-  app_id="${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}"
-  binary_name="$(app_packaging_detect_bundle_binary "$bundle_dir")"
-  icon_file="$(app_packaging_detect_icon_file)"
+  app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   # Everything flatpak touches needs fchmod, which a bind-mounted host drive
   # refuses — manifest and files/ are staging, the repo and build tree are
   # intermediates. Only the finished bundle belongs in out/. See AGENTS.md § 4.
@@ -548,7 +548,8 @@ EOF
   # refuses — the failure reads as `error: fchmod: Operation not permitted` and
   # looks like it came from the `Pruning cache` line above it. Write it
   # container-native, then copy the finished bundle out.
-  local staged_bundle="${flatpak_work}/$(basename "$output_name")"
+  local staged_bundle
+  staged_bundle="${flatpak_work}/$(basename "$output_name")"
   if ! flatpak build-bundle "$repo_dir" "$staged_bundle" "$app_id"; then
     return 1
   fi

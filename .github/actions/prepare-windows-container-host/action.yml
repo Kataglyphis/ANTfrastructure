@@ -121,7 +121,7 @@ runs:
 
     - name: Clone full tree with submodules into a short path
       if: ${{ inputs.short-path-target != '' }}
-      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/clone-into-short-path@main
+      uses: Kataglyphis/ContainerHub/.github/actions/clone-into-short-path@main
       with:
         target: ${{ inputs.short-path-target }}
         token: ${{ inputs.token || github.token }}
@@ -132,14 +132,14 @@ runs:
     - name: Put the Docker data-root on the big drive
       id: datar
       if: ${{ inputs.data-root != '' }}
-      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
+      uses: Kataglyphis/ContainerHub/.github/actions/set-docker-data-root@main
       with:
         data-root: ${{ inputs.data-root }}
         required-free-gb: ${{ inputs.required-free-gb }}
 
     - name: Cleanup disk space
       if: ${{ inputs.free-disk-space == 'true' }}
-      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
+      uses: Kataglyphis/ContainerHub/.github/actions/cleanup-disk-space@main
 
     - name: Log in to the registry
       if: ${{ inputs.registry-password != '' }}

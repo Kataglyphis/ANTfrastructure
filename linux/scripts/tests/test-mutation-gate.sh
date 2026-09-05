@@ -148,6 +148,52 @@ printf '#!/usr/bin/env bash\nprintf "t.sh\\n"\n' > "${_work}/bin/git"
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" \
   "an entry whose test file is in the diff must be selected"
 
+# --- --stale-check: the half of an entry that ROTS, without running one test ---
+# 378 entries in ~0.06s, which is what makes a whole-manifest pass affordable in
+# a hook. What it must never do is read as a substitute for the gate.
+
+_stale() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --stale-check; }
+_ran() { if [ -e "${_tmp}/ran" ]; then echo ran; else echo not-run; fi; }
+# A test command whose only job is to record that it was executed at all.
+_marker_test() { rm -f "${_tmp}/ran"; printf 'touch "%s/ran"\n' "${_tmp}" > "${_work}/t.sh"; }
+
+t_case "--stale-check fails an entry whose find string no longer matches"
+_fixture "GUARD=nowhere" "x" yes
+_marker_test
+t_assert_contains "$(t_out _stale)" "stale" "the reader has to be told which entry rotted"
+t_assert_eq "1" "$(t_rc _stale)" "a mutation that cannot be applied is silently testing nothing"
+t_assert_eq "not-run" "$(_ran)" \
+  "running the suites would cost minutes; the whole point is one read per target"
+
+t_case "--stale-check passes a manifest that still applies, and runs no test there either"
+_fixture "GUARD=on" "GUARD=off" yes
+_marker_test
+t_assert_contains "$(t_out _stale)" "still applies"
+t_assert_eq "0" "$(t_rc _stale)"
+t_assert_eq "not-run" "$(_ran)"
+
+t_case "--stale-check is NOT the gate: a mutation the tests SURVIVE still passes it"
+# It answers 'does this edit still apply', never 'can the test fail'. A caller that
+# ran only this and called it coverage would be the false green this tool exists for.
+_fixture "GUARD=on" "GUARD=off" no
+t_assert_eq "0" "$(t_rc _stale)" "a survivor is invisible to a check that runs no test"
+t_assert_eq "1" "$(_rc)" "and the real gate still fails on the same manifest"
+
+t_case "--stale-check catches the other ways an entry stops applying"
+_fixture "GUARD=on" "GUARD=off" yes
+printf 'GUARD=on\n' >> "${_work}/subject.sh"
+t_assert_contains "$(t_out _stale)" "ambiguous" "two matches would neuter only the first"
+t_assert_eq "1" "$(t_rc _stale)"
+rm -f "${_work}/subject.sh"
+t_assert_contains "$(t_out _stale)" "target missing" "a renamed or moved target is the commonest rot"
+t_assert_eq "1" "$(t_rc _stale)"
+
+t_case "--stale-check does not write to the tree it was pointed at"
+_fixture "GUARD=on" "GUARD=off" yes
+_before="$(_snapshot)"
+_stale >/dev/null 2>&1
+t_assert_eq "${_before}" "$(_snapshot)" "it reads targets; it must never apply one"
+
 # --- the production call sites: isolation is a DEFAULT, --in-place is one flag away
 _gate_calls() { grep -e 'verify_mutations\.py' "$1" || true; }
 _count() { printf '%s\n' "$1" | grep -c "${@:2}" || true; }
@@ -163,6 +209,13 @@ t_assert_eq "0" "$(_count "${_pf_calls}" -e '--in-place')" \
   "preflight must not opt out of isolation: it points the gate at the tree buildkit reads as a build context"
 t_assert_eq "0" "$(_count "${_hook_calls}" -e '--in-place')" \
   "the hook must not opt out of isolation: it runs against the live working tree"
+_push_calls="$(_gate_calls "${REPO}/linux/host-config/git-hooks/pre-push")"
+t_assert_eq "1" "$(_count "${_push_calls}" -e '--stale-check')" \
+  "the push hook must run the whole-manifest staleness pass -- nothing else does, between a sampled commit and CI"
+t_assert_eq "1" "$(_count "${_push_calls}" -e '--changed')" \
+  "and the real gate over what the push adds"
+t_assert_eq "0" "$(_count "${_push_calls}" -e '--in-place')" \
+  "the push hook must not opt out of isolation either"
 
 t_case "a find string that matches TWICE is an error, not a silent partial edit"
 _fixture "GUARD=on" "GUARD=off" yes .

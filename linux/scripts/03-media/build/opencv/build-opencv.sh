@@ -617,6 +617,7 @@ _opencv_cmake_cuda_opts() {
         # Resolve through compiler_cache_launcher() for the guarded launcher;
         # only accept sccache-class launchers (ccache can't wrap nvcc).
         if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+            compiler_cache_launcher_env 2>/dev/null || true
             _cuda_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
             case "${_cuda_launcher}" in
                 *sccache*)

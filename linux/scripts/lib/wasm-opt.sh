@@ -71,7 +71,7 @@ wasm_opt_load_pin() {
       *) continue ;;
     esac
     name="${line%%=*}"
-    [[ -z "${!name:-}" ]] && export "${name}=${line#*=}"
+    if [[ -z "${!name:-}" ]]; then export "${name}=${line#*=}"; fi
   done < "${versions_file}"
 }
 

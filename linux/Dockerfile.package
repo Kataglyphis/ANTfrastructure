@@ -63,6 +63,15 @@ RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,ta
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
 
+# The Vulkan SDK's builder-arch prefix and its ./vulkansdk build tree: 5.95 GB that
+# nothing on a foreign image's PATH, VULKAN_SDK or LD_LIBRARY_PATH reaches. Pruned
+# HERE, before the /opt/vulkan COPY below, so the runtime layer never carries it.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh,target=/tmp/prune-vulkan-host-sdk.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
+    set -euo pipefail; \
+    bash /tmp/prune-vulkan-host-sdk.sh "${TARGET_ARCH:-${TARGETARCH}}"
+
 
 FROM ${BASE_IMAGE} AS package-image
 
@@ -122,9 +131,10 @@ COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSIO
 # docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/cargo /usr/local/cargo
-# The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
-# target architecture and stores it at /opt/llvm-target.  Copy it into
-# the runtime image so every arch ships its own native clang.
+# The SDK stage materialises a native Clang ${LLVM_RELEASE} toolchain for the
+# target architecture at /opt/llvm-target, self-contained by a hard NEEDED walk;
+# every arch ships its own native clang.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
 # GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
@@ -136,9 +146,10 @@ COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
-    # DF3: the llvm-target soname self-containment repair moved INTO
-    # copy-media-payloads.sh (repair_llvm_target_sonames — history + rationale
-    # documented there); this RUN is now a single script call.
+    # Payload copies + the llvm-target loader path. The prefix's own soname
+    # repair belongs to the sdk stage alone (02-toolchain/materialize-llvm-target.sh);
+    # a second copy here shipped five x86-64 libs into both foreign images.
+    # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
     SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
     rm -f /tmp/copy-media-payloads.sh
 
@@ -167,6 +178,8 @@ ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TO
 ARG ENABLE_NVIDIA ENABLE_AMD
 ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
 ARG JDK_PACKAGE=openjdk-21-jdk-headless
+ARG WASM_PACK_VERSION=0.15.0
+ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
 # NVIDIA_*/VULKAN_VERSION: normally inherited from Dockerfile.base, but the
@@ -177,6 +190,11 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
 ARG VULKAN_VERSION=1.4.357.0
 ENV VULKAN_VERSION=${VULKAN_VERSION}
+# Advertised so the runtime smoke can compare them against what the binaries
+# report -- which is also how it proves the two web-lane tools are installed.
+# docs/consumer-image-contract.md#the-web-lane-toolchain
+ENV WASM_PACK_VERSION=${WASM_PACK_VERSION}
+ENV FLUTTER_RUST_BRIDGE_VERSION=${FLUTTER_RUST_BRIDGE_VERSION}
 # Advertise what the image CONTAINS, so a consumer can read its versions without
 # this repo's versions.env — and so the smoke's advertised-vs-actual gate has
 # something to compare against. ARG does not reach the image config; ENV does.
@@ -262,6 +280,22 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
+
+# The android stage advertises these; Dockerfile.package COPYs the payload they
+# point at but never re-declared the names, so a consumer that found /opt/android
+# still could not be told where anything in it was. One ENV per name: the env-knob
+# owner scan reads the first name of an instruction only.
+# NOT a bare OpenCV_DIR -- that is the name find_package(OpenCV) reads, and pointing
+# it at the Android SDK would hijack every LINUX OpenCV consumer in this image.
+# docs/consumer-image-contract.md#the-android-sdk-roots-are-advertised
+ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
+ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
+ENV LITERT_ROOT_ANDROID=/opt/android/litert
+ENV OPENCV_ROOT_ANDROID=/opt/android/opencv
+ENV IREE_ROOT_ANDROID=/opt/android/iree
+ENV OPENCV_ANDROID_JNI_DIR=/opt/android/opencv/sdk/native/jni
+ARG ANDROID_TARGET_ABI=arm64-v8a
+ENV ANDROID_TARGET_ABI=${ANDROID_TARGET_ABI}
 
 # Gradle reads JAVA_HOME, not PATH. The anchor is a symlink setup-package-image.sh
 # resolves from the installed javac, so a JDK bump never has to be repeated here.
@@ -386,6 +420,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     set -euo pipefail; \
     bash /opt/scripts/packaging/setup-package-image.sh
 # NOTE: no `rm -rf /var/lib/apt/lists/*` in the RUN above — /var/lib/apt is a

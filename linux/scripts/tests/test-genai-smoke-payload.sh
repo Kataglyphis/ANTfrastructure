@@ -3,11 +3,11 @@
 # smoke_genai_py + its six per-tier emitters) as a standalone program.
 #
 # The payload only ever runs inside a foreign-arch runtime image, so nothing
-# else in the tree can see it fail. What is pinned here is the contract
-# check_genai_binding depends on: the GENAI-BIND/GENAI-GEN sentinels, the
-# 0/1/3 exit codes, and the three verdicts that were hand-checked when the
-# code was written — absent -> SKIP(3), installed-but-unimportable -> FAIL(1),
-# working binding -> OK(0). docs/gen1-riscv64-genai.md, docs/failure-modes.md
+# else in the tree can see it fail. Pinned here is the contract
+# check_genai_binding depends on — the GENAI-BIND/GENAI-GEN sentinels, the 0/1/3
+# exit codes, and the three hand-checked verdicts (absent -> SKIP(3),
+# installed-but-unimportable -> FAIL(1), working -> OK(0)). docs/gen1-riscv64-genai.md
+# docs/failure-modes.md#genai-bind-skip-reported-green-while-the-native-binding-is-broken
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

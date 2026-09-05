@@ -39,6 +39,7 @@ append_cmake_cache_linker_args() {
       # 2026-08-26: sccache when usable, ccache otherwise. Hardcoding ccache
       # here would have quietly overridden the switch for every consumer of
       # this shared helper.
+      compiler_cache_launcher_env 2>/dev/null || true
       _accla_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
       _accla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_accla_launcher}")
       _accla_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=${_accla_launcher}")

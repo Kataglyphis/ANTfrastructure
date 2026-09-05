@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Doc numbers that are DERIVED, never re-typed: the mutation-manifest counts and
-# the hook's fast-slug list, measured here and compared against the three pages
-# that quote them. Three waves in a row shipped a stale count that hand-editing
-# failed to catch; --update rewrites the digits instead.
+# Doc numbers that are DERIVED, never re-typed: the mutation-manifest counts, the
+# hook's fast-slug list and the dead-function census, measured here and compared
+# against the three pages that quote them. Three waves in a row shipped a stale
+# count that hand-editing failed to catch; --update rewrites the digits instead.
 # docs/code-quality-tooling.md#doc-numbers-are-derived
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +16,7 @@ _out="$(python3 - "${_mode}" "${ROOT}" <<'PY'
 import json
 import os
 import re
+import subprocess
 import sys
 
 MANIFEST = "docs/scripts/mutations.json"
@@ -27,6 +28,16 @@ FAMILY = re.compile(r"(\d+)([^()\n\d]{0,60}?)\(`([a-z0-9][a-z0-9-]*)\.\*`\)")
 BARE = re.compile(r"all \d+ entries|still run all \d+")
 FAST = re.compile(r"the (\d+) (?:fast|cheap whole-tree) slugs")
 SPAN = re.compile(r"`_FAST_SLUGS` \(`:(\d+)-(\d+)`\)")
+CENSUS_GATE = "linux/scripts/verify_dead_functions.py"
+CENSUS_LINE = re.compile(r"(\d+) definition\(s\) their own file never names again; "
+                         r"(\d+) of those .*?; (\d+) share their name.*?, (\d+) of them "
+                         r"unlinked")
+CENSUS_KEYS = ("considered", "isolated", "masked", "unlinked")
+CENSUS = (("considered", re.compile(r"(\d+) definitions qualify")),
+          ("isolated", re.compile(r"\*\*(\d+)\*\* rows remain")),
+          ("masked", re.compile(r"reports \*\*(\d+)\*\* rows today")),
+          ("unlinked", re.compile(r"the arm reaches \*\*(\d+)\*\* of them today")),
+          ("isolated", re.compile(r"the reachability\s+tier reports (\d+)")))
 
 
 def read(root, rel):
@@ -50,6 +61,16 @@ def fast_slugs(root):
     return len([s for s in body.split(",") if s]), first, last
 
 
+def census(root):
+    """The three --census headline counts, read back through the gate's own CLI."""
+    out = subprocess.run([sys.executable, os.path.join(root, CENSUS_GATE), "--census"],
+                         capture_output=True, text=True).stdout
+    hit = CENSUS_LINE.search(out)
+    if not hit:
+        raise SystemExit("census: %s --census printed no header line" % CENSUS_GATE)
+    return dict(zip(CENSUS_KEYS, (int(g) for g in hit.groups())))
+
+
 def truth(root):
     entries = json.loads(read(root, MANIFEST))
     fam = {}
@@ -58,7 +79,7 @@ def truth(root):
         fam[key] = fam.get(key, 0) + 1
     count, first, last = fast_slugs(root)
     return {"total": len(entries), "distinct": len({e["test"] for e in entries}),
-            "fam": fam, "fast": count, "span": (first, last)}
+            "fam": fam, "fast": count, "span": (first, last), "census": census(root)}
 
 
 def check_totals(root, t, out):
@@ -113,7 +134,19 @@ def check_span(root, t, out):
         out.append("fast-span: no page quotes the _FAST_SLUGS line span any more")
 
 
-CHECKS = (check_totals, check_family, check_bare, check_fast, check_span)
+def check_census(root, t, out):
+    page = read(root, OWNER)
+    for key, rx in CENSUS:
+        hits = rx.findall(page)
+        if len(hits) != 1:
+            out.append("census: %s must quote the %s count exactly once, found %d"
+                       % (OWNER, key, len(hits)))
+        elif int(hits[0]) != t["census"][key]:
+            out.append("census: %s says %s for %s, --census reports %d"
+                       % (OWNER, hits[0], key, t["census"][key]))
+
+
+CHECKS = (check_totals, check_family, check_bare, check_fast, check_span, check_census)
 
 
 def rewrite(root, t):
@@ -127,6 +160,9 @@ def rewrite(root, t):
                            after)
         after = FAST.sub(lambda m: m.group(0).replace(m.group(1), str(t["fast"]), 1), after)
         after = SPAN.sub("`_FAST_SLUGS` (`:%d-%d`)" % t["span"], after)
+        for key, rx in CENSUS:
+            after = rx.sub(lambda m, k=key: m.group(0).replace(
+                m.group(1), str(t["census"][k]), 1), after)
         if after != before:
             write(root, rel, after)
             done.append("updated: %s" % rel)
@@ -142,8 +178,9 @@ def main():
         lines = []
         for check in CHECKS:
             check(root, t, lines)
-    print("derived: total=%d distinct=%d fast=%d span=%d-%d"
-          % (t["total"], t["distinct"], t["fast"], t["span"][0], t["span"][1]))
+    print("derived: total=%d distinct=%d fast=%d span=%d-%d census=%s"
+          % (t["total"], t["distinct"], t["fast"], t["span"][0], t["span"][1],
+             "/".join(str(t["census"][k]) for k in CENSUS_KEYS)))
     print("\n".join(lines))
 
 
@@ -190,5 +227,8 @@ t_assert_eq "" "$(_kind fast-slugs)" "stale fast-slug count"
 
 t_case "the quoted _FAST_SLUGS line span is where the list really is"
 t_assert_eq "" "$(_kind fast-span)" "stale _FAST_SLUGS line span"
+
+t_case "the dead-function census figures on the page are the census's own"
+t_assert_eq "" "$(_kind census)" "re-typed census prose is how it went wrong by 11 functions"
 
 t_summary

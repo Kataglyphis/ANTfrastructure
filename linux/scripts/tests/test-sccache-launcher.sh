@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for 01-core/sccache-launcher.sh: BOTH sccache failure classes must bypass
 # to a direct compiler run, a real compiler error must pass through untouched.
-# Why each class matters: docs/build-cache-tiers.md
+# docs/build-cache-tiers.md#sccache-failure-classes-the-launcher-must-bypass
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -111,5 +111,32 @@ rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
 _rc="$(_launcher_run flakyreal)"
 t_assert_eq "1" "${_rc}" "the compiler's own status must survive the retry path"
 t_assert_ok test ! -f "${_SLC_DIR}/compiler.calls"
+
+# YB (2026-09-05): the bypass lines name the server the client addressed. That is
+# what turns the next compile-heavy chain into the experiment -- "tcp:4226" in a
+# bypass line IS the cross-container-server bug, a UDS path is the fixed shape.
+# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+_launcher_stderr() {
+  SCC_MODE="$1" PATH="${_SLC_DIR}:${PATH}" sh "${LAUNCH}" "${_SLC_DIR}/compiler" -c foo.c \
+    >/dev/null 2>"${_SLC_DIR}/stderr.txt"
+  cat "${_SLC_DIR}/stderr.txt"
+}
+
+t_case "the bypass line names the UNIX socket the client addressed"
+rm -f "${_SLC_DIR}/compiler.calls"
+_msg="$(SCCACHE_SERVER_UDS=/tmp/sccache-test.sock _launcher_stderr enoent)"
+t_assert_contains "${_msg}" "server=/tmp/sccache-test.sock" "the bypass must say which server it used"
+
+t_case "with NO address set, the bypass line names the shared TCP default"
+rm -f "${_SLC_DIR}/compiler.calls"
+env -u SCCACHE_SERVER_UDS -u SCCACHE_SERVER_PORT SCC_MODE=enoent PATH="${_SLC_DIR}:${PATH}" \
+  sh "${LAUNCH}" "${_SLC_DIR}/compiler" -c foo.c >/dev/null 2>"${_SLC_DIR}/stderr.txt"
+_msg="$(cat "${_SLC_DIR}/stderr.txt")"
+t_assert_contains "${_msg}" "server=tcp:4226" "an unset address must be VISIBLE in the log, not implicit"
+
+t_case "the retry-success line names the server too (the counts stay comparable)"
+rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
+_msg="$(SCCACHE_SERVER_UDS=/tmp/sccache-test.sock _launcher_stderr flaky)"
+t_assert_contains "${_msg}" "retry succeeded (cache kept) [server=/tmp/sccache-test.sock]"
 
 t_summary

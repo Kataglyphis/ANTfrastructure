@@ -62,6 +62,19 @@ rm -rf "${_static_dir}"
 t_case "stage graph validates clean"
 t_assert_ok cross_stage_validate_graph
 
+# The two refusals cross_stage_validate_graph exists for. Each perturbs the
+# parent map inside a subshell, so the real graph is intact for the next case.
+# shellcheck disable=SC2034  # the subshell assignment IS the input to the callee
+_validate_with() { ( CROSS_STAGE_PARENT_MAP["$1"]="$2"; cross_stage_validate_graph ); }
+
+t_case "a parent that names no stage is refused, not walked"
+t_assert_eq "1" "$(t_rc _validate_with media ghost)"
+t_assert_contains "$(t_out _validate_with media ghost)" 'unknown parent "ghost"'
+
+t_case "a cycle is refused by the depth cap, and the walk still terminates"
+t_assert_eq "1" "$(t_rc _validate_with base android)"
+t_assert_contains "$(t_out _validate_with base android)" "Cycle detected"
+
 t_case "cross_stage_build_args forwards ENABLE_NVIDIA to media only when set"
 _args=()
 unset ENABLE_NVIDIA ENABLE_AMD || true

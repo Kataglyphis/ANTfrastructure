@@ -32,7 +32,8 @@ if _sccache_own_failure "${_err}"; then
   sccache "$@" 2>"${_err}"
   _rc2=$?
   if [ "${_rc2}" -eq 0 ]; then
-    printf 'sccache-launcher: sccache failed once, retry succeeded (cache kept).\n' >&2
+    printf 'sccache-launcher: sccache failed once, retry succeeded (cache kept) [server=%s].\n' \
+      "${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}" >&2
     cat "${_err}" >&2
     rm -f "${_err}"
     exit 0
@@ -41,7 +42,8 @@ if _sccache_own_failure "${_err}"; then
     # Still sccache's own failure. Report it once so it stays visible in the log --
     # a silent bypass would hide a cache that has stopped working -- then run
     # the compiler directly.
-    printf 'sccache-launcher: sccache failed twice on its own account; compiling directly.\n' >&2
+    printf 'sccache-launcher: sccache failed twice on its own account [server=%s]; compiling directly.\n' \
+      "${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}" >&2
     sed 's/^/sccache-launcher:   /' "${_err}" >&2
     rm -f "${_err}"
     exec "$@"

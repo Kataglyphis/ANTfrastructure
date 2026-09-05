@@ -31,6 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HERE = os.path.dirname(os.path.abspath(__file__))
 FN_ALLOW = os.path.join(HERE, "function-size.allow")
 FILE_ALLOW = os.path.join(HERE, "file-size.allow")
+FN_FMT = "<path> | <function> | <lines> | <reason>"
+FILE_FMT = "<path> | <lines> | <reason>"
 LIMIT = int(os.environ.get("FUNCTION_SIZE_LIMIT", "80"))
 FILE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", "800"))
 SCAN = ("linux/scripts", "linux/host-config", "docs/scripts")
@@ -272,9 +274,9 @@ def main():
     for f, n, c in functions():
         longest[(f, n)] = max(c, longest.get((f, n), 0))
     rc = check_counts("functions", sorted(longest.items()),
-                      load_counts(FN_ALLOW), LIMIT, "function-size.allow")
+                      load_counts(FN_ALLOW, 2, FN_FMT), LIMIT, "function-size.allow")
     rc |= check_counts("files", [((f,), n) for f, n in files()],
-                       load_counts(FILE_ALLOW), FILE_LIMIT, "file-size.allow")
+                       load_counts(FILE_ALLOW, 1, FILE_FMT), FILE_LIMIT, "file-size.allow")
     if rc == 0:
         print("OK: no new or grown oversized functions or files")
     return rc

@@ -41,12 +41,16 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
+- [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
 - [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 - [The copied Rust toolchain is the builder's arch](#the-copied-rust-toolchain-is-the-builders-arch)
 - [A packaging script dies with no message](#a-packaging-script-dies-with-no-message)
+- [A callee invoked in an `if !` condition runs with errexit off](#a-callee-invoked-in-an-if--condition-runs-with-errexit-off)
+- [A checksum probe that cannot reach the server reads as "nothing to verify"](#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify)
+- [A soname with no map entry is resolved by an `apt-cache` prefix guess](#a-soname-with-no-map-entry-is-resolved-by-an-apt-cache-prefix-guess)
 
 **Windows: the layer store (hcsshim)**
 
@@ -401,6 +405,48 @@ the extractor and the check exits 2 before it ever reports green. A gate whose
 input extraction can silently degrade to nothing is the failure this repo keeps
 re-learning; a scanner has to prove it is still scanning.
 
+### A from-source CPython silently drops an extension module
+
+**Symptom.** `import ssl` / `import sqlite3` / `import lzma` raises
+`ModuleNotFoundError` inside a shipped image, or an interactive `python3` has no
+line editing. The toolchain stage was green: `make -k || true` skips an extension
+whose dev header was missing at configure time and says so only in passing.
+
+**The 2026-08-09 incident** was `libsqlite3-dev`: the host closure got sqlite
+transitively through GUI dev packages, the cross-target install list forgot it,
+and half the Python ecosystem imports `sqlite3` on the way to something else.
+
+**One table, two consumers.** `01-core/cpython-dev-packages.sh` holds every row
+as `<dev-package> <required|optional> <ext-module>...`, and nothing else may keep
+a second list:
+
+| consumer | reads | verdict |
+| --- | --- | --- |
+| `package-lists.sh base_image_os_packages` | `cpython_ext_dev_packages` | the HOST closure installs the same set |
+| `build_python.sh _python_cross_stage_target_dev_pkgs` | `cpython_ext_dev_packages` + `cpython_ext_dev_packages_required` | one atomic apt install, then a per-package `dpkg-query`; a missing REQUIRED package is **fatal** |
+| `build_python.sh _python_cross_fixup_libdynload` | `cpython_ext_modules` | audits the staged `lib-dynload`; a missing `.so` **warns**, on every row |
+
+The class column therefore governs the *package*, not the `.so`. The audit is
+warn-only on purpose: promoting the required rows to fatal there flips all three
+arches at once and only a cross rebuild can price that, so the decision stays
+open rather than being smuggled in with a refactor. Until 2026-09-05 the audit
+carried its own hand-written array instead — seven modules that had never gained
+`readline` after LOG23 added it to the table, which is the same desync in
+miniature.
+
+**The parsing trap.** `build_python.sh` runs under `IFS=$'\n\t'`, where an
+unpinned `read` does not split on spaces: a row naming two modules
+(`libssl-dev required _ssl _hashlib`) would arrive as one word and the audit
+would look for an extension called `_ssl _hashlib`. Every accessor in the table
+file pins `IFS=' '` on its `read` for exactly that reason, and
+`tests/test-cpython-ext-table.sh` runs each one under both values of `IFS`.
+
+**What only a real build shows.** Whether the five modules the audit gained on
+2026-09-05 (`_zstd`, `readline`, `_curses`, `_uuid`, `_decimal`) actually land in
+`lib-dynload` on arm64 and riscv64. They are `optional` rows: a warning there is
+information, not a failure, and the toolchain smoke's own stdlib battery is what
+turns a genuinely broken interpreter red.
+
 ### The delete guard denies its own legitimate work
 
 `.claude/hooks/guard-destructive-deletes.py` matched a delete VERB and a
@@ -682,6 +728,94 @@ unrunnable `${CARGO_HOME}/bin/rustc` reports `does not execute` and points at
 caller. Match it against the script in the image
 (`nerdctl run --rm <image> sed -n '<N>p' /opt/scripts/packaging/…`), because the
 line numbers move with every edit to the file.
+
+### A callee invoked in an `if !` condition runs with errexit off
+
+**Symptom.** A multi-hour builder fails, the chain carries on, and the stage
+reports success. Nothing in the log says the exit code was thrown away.
+
+**Cause.** Bash suspends `errexit` for the entire **dynamic extent** of a
+command used as a condition — the callee's body, and everything it calls. So a
+function written to rely on `set -e` for its aborts raises nothing when it is
+reached through `if ! f …`, `f && …`, `f || …` or a condition-context
+substitution. `gcc.sh:386` reaches `build_canadian_native_gcc_for` exactly that
+way, and inside it the invocation of `build-gcc.sh` was a plain command: its
+non-zero exit was discarded, and the missing native GCC only surfaced arches
+later.
+
+**Fix.** Inside such a function every failure has to be raised **explicitly**.
+The builder invocation now ends `|| die "Canadian native GCC build FAILED for
+…"`, and the two `[ -x … ]` checks on the produced `gcc`/`g++` die on their own
+rather than through `errexit`. `tests/test-gcc-errexit-contract.sh` holds both
+halves: one characterisation case that runs a real `bash -c` and records that
+`if ! f` really does suppress `errexit` inside `f` — the mechanism, not our code
+— and contract cases over `gcc.sh` itself asserting the explicit raises are
+still there.
+
+**The check to carry away.** Before trusting `set -e` inside a helper, grep for
+how the helper is *called*. A guard that only works in the default context is
+not a guard; it is a coincidence.
+
+### A checksum probe that cannot reach the server reads as "nothing to verify"
+
+**Symptom.** The build prints `No sha512.sum found on server; continuing.` and
+goes green. The tarball it just unpacked was verified by nothing.
+
+**Cause.** The GCC tarball is fetched **mirror-first** (`ftpmirror`) for speed,
+while both proofs — `sha512.sum` and the detached `.sig` — exist only on
+`gcc.gnu.org`. Verification was gated on a `wget --spider` probe of that host,
+so *any* non-200 answer — outage, 5xx, DNS — took the "the server has no
+checksum" branch and returned 0. The one event the mirror exists to survive was
+also the event that silently disarmed the integrity check on the mirror's bytes.
+
+**Fix.** In `build-gcc.sh`, an unreachable *or* absent `sha512.sum` now goes
+through `_gcc_sha_unverified_or_die`, as does a `sha512.sum` that downloads but
+carries no entry for this tarball; a `sha512.sum` that probes but fails to
+download was already fatal. The `.sig` path routes through
+`_gcc_gpg_require_or_warn`, so `GCC_REQUIRE_GPG=1` makes a missing signature
+fatal too. `tests/test-gcc-tarball-verification.sh` extracts the helpers —
+`build-gcc.sh` is a top-level script, so they cannot be sourced — and drives
+each branch with the probe stubbed.
+
+**The check to carry away.** "The proof was not reachable" and "there is no
+proof" are different answers to different questions. Any verifier that maps the
+first onto the second has stopped being a verifier at the moment it matters
+most.
+
+### A soname with no map entry is resolved by an `apt-cache` prefix guess
+
+**Symptom.** Nothing visible. `validate-media-runtime.sh` reports a missing
+soname as resolved, the media runtime installs *a* package, and the wrong (or
+wrongly versioned) library ships.
+
+**Cause.** Three hand-maintained truths claim to say which apt package provides
+a media runtime library, and only one of them is reachable at build time:
+
+1. the codec-lib baseline in `06-packaging/setup-torch-venv.sh` ::
+   `_install_cv2_runtime_apt` — the torch stage's fallback install list when the
+   ffmpeg manifest is absent;
+2. the SONAME→package map `03-media/runtime/so-package-map.txt`, which
+   `validate-media-runtime.sh` uses to resolve a missing soname deterministically;
+3. `/opt/ffmpeg/runtime-apt-packages.txt` (`emit_runtime_apt_manifest` in
+   `build-ffmpeg.sh`) — the ground truth, which exists only *inside* a built
+   image, so no static check can reach it.
+
+Where (2) has no entry, resolution degrades to `dpkg-query` and then to
+`apt-cache search "^${base}[0-9]" | head -1` — an arbitrary first hit. And
+`known_so_packages_load` is last-wins, so a duplicate soname naming a
+*different* package is a silent override rather than an error. A baseline bump
+(`libx265-215` → `libx265-2xx`) that forgets the map degrades exactly that one
+library to guessing, and says nothing.
+
+**Fix.** `tests/test-codec-so-map-convergence.sh` freezes the statically
+checkable convergence of (1) and (2): the map is well-formed
+(`SONAME<TAB>package`, `*` family keys allowed), no soname maps to two different
+packages, and every versioned runtime lib package hardcoded in the baseline
+appears as a mapping target. `KNOWN_UNMAPPED` is a **ratchet**, not an excuse
+list — it records the divergence that already existed on 2026-08-24, because
+inventing map entries would mean inventing sonames, and it fails in both
+directions so the list can only shrink honestly. Truth (3) stays out of a static
+test's reach; that is stated rather than papered over.
 
 ## Windows: the layer store (hcsshim)
 

@@ -60,6 +60,7 @@ copy_media_payloads() {
     /usr/local/lib/onnxruntime-genai \
     /usr/local/lib/onnxruntime-gpu \
     /usr/local/include/tflite \
+    /usr/local/include/absl \
     /usr/local/include/tensorflow \
     /usr/local/include/flatbuffers \
     /usr/local/include/c \
@@ -88,43 +89,18 @@ copy_media_payloads() {
   unset COPY_TARGET_DIR
 }
 
-# DF3 (2026-08-18, moved verbatim from an inline Dockerfile.package RUN):
-# Make /usr/local/llvm-target SELF-CONTAINED (2026-08-11): the amd64 copy
-# (apt.llvm.org tree) ships only dev symlinks in lib/ — its runtime sonames
-# (libLLVM.so.22.1, libclang-cpp.so.22.1) live in the MULTIARCH dir and were
-# never copied, so the shipped clang silently bound to whatever ambient
-# libLLVM the image carried. Since the dev-surface packages install Ubuntu's
-# libs, amd64's effective clang became a mixed-version franken build —
-# exposed when the clang smoke started EXECUTING the tool. Copy the
-# artifact's matching runtime libs next to the driver and give
-# llvm-target/lib loader priority. No-op on arm64/riscv64 (source-built with
-# $ORIGIN RPATH and their own complete lib/).
-# UPDATE 2026-08-12 (BS3b): the ROOT fix lives in Dockerfile.sdk (amd64
-# branch copies the multiarch sonames + NEEDED-walk gate), so this block
-# should find every soname already present. KEEP: belt-and-braces for
-# pre-fix sdk artifacts + the dangling-symlink repair. Removal candidate
-# once a full rebuild shows it copying nothing on all three arches.
-repair_llvm_target_sonames() {
-  local _lib _soname
-  for _lib in "${SRCPREFIX}"/usr/lib/*-linux-gnu/libLLVM*.so.2*               "${SRCPREFIX}"/usr/lib/*-linux-gnu/libclang-cpp*.so.2*               "${SRCPREFIX}"/usr/lib/*-linux-gnu/libclang*.so.2*; do
-    [ -e "${_lib}" ] || continue
-    _soname="$(basename "${_lib}")"
-    # -e is FALSE for a dangling symlink (the apt.llvm.org tree ships exactly
-    # such a stale .so.22.1 link into the void) — rm it first or cp refuses
-    # "not writing through dangling symlink". A REAL lib (arm64/riscv64
-    # source builds) still short-circuits the copy.
-    if [ ! -e "/usr/local/llvm-target/lib/${_soname}" ]; then
-      rm -f "/usr/local/llvm-target/lib/${_soname}"
-      cp -a "${_lib}" "/usr/local/llvm-target/lib/${_soname}"
-    fi
-  done
+# Give /usr/local/llvm-target/lib loader priority over the distro multiarch dir:
+# libtvm_compiler.so's DT_NEEDED libLLVM.so.<ver> resolves through this and nothing
+# else, so `import tvm` dies without it.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+publish_llvm_target_ld_path() {
   printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf
   ldconfig
 }
 
 main() {
   copy_media_payloads "${1:-}"
-  repair_llvm_target_sonames
+  publish_llvm_target_ld_path
 }
 
 main "$@"

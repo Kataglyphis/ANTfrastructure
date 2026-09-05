@@ -410,17 +410,38 @@ Keys are chosen to survive unrelated edits — file + name, or file + first
 comment line — never a line number. A gate that copies these rules instead of
 importing them is the duplication the `code-dupes` gate exists to refuse.
 
-**One reader, keyed from the left.** `quality_allow.load_rows(path, keys, fmt)`
-parses every counted allow file; `load_counts` is the same call minus the
-reasons. `keys` names how many columns precede the count, so everything after it
-is the reason and a reason may hold `|` and `#` — until 2026-09-04 the count was
-taken as the second field *from the right* and an inline `#` was stripped before
-the split, so one `|` in a hand-written reason raised `ValueError: invalid
-literal for int()` before any gate could report anything, and a `#` silently
-truncated the reason. `keys=None` keeps the from-the-right behaviour for callers
-that have not declared their arity. A row that fits neither shape is now
-`ERROR: <allow file>:<line>: expected '<fmt>'` and exit 2 — a verdict naming the
-offending row, never a traceback.
+**One reader, keyed from the left.** `quality_allow.iter_rows(path, keys, fmt)`
+parses every counted allow file and yields `(key, count, reason, line number)` per
+row, in file order and repeats included; `load_rows` is its dict view and
+`load_counts` that view minus the reasons. `keys` names how many columns precede
+the count, so everything after it is the reason and a reason may hold `|` and `#`
+— until 2026-09-04 the count was taken as the second field *from the right* and an
+inline `#` was stripped before the split, so one `|` in a hand-written reason
+raised `ValueError: invalid literal for int()` before any gate could report
+anything, and a `#` silently truncated the reason. A row that fits neither shape
+is `ERROR: <allow file>:<line>: expected '<fmt>'` and exit 2 — a verdict naming
+the offending row, never a traceback.
+
+**Every counted gate declares its arity (2026-09-05).** `code-complexity.allow`
+passes `keys=3`, `function-size.allow` `keys=2`, `file-size.allow` `keys=1`,
+`shellcheck-warnings.allow` and `code-dupes.allow` `keys=2`. `keys=None` survives
+only as the reader's default and no gate uses it, which closes the last live hole
+in this contract: with the count taken from the right, a reason of the shape
+`… | 90 | …` does not raise, it silently keys the row on five columns and the
+freeze then reads STALE. A named error was never the worst case; a wrong key was.
+
+Declaring the arity also deleted `verify_code_complexity.check_rows`'s
+`len(key) != 3` branch (a short row now fails in the reader, naming its line) and
+the `code-complexity.allow-row-arity` mutation that pinned it, which had become
+unkillable.
+
+**`code-dupes` keys on an UNORDERED pair, and that is why the reader yields rows
+rather than a table.** `a | b` and `b | a` are one entry, so
+`verify_code_dupes.load_allow` folds the reader's two key columns into a
+`frozenset` itself and keeps the line numbers to say `duplicate row for A <-> B
+(first at line N)`. Two *identical* rows have to reach it as two, which a dict
+view would already have folded — hence `iter_rows`. `verify_doc_dupes.load_allow`
+is the last copy of the parse still open; it wants the same three-line body.
 
 ## The mutation gate (`mutations`)
 
@@ -450,7 +471,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **586 entries** over **208 distinct test commands**; both digits are
+manifest holds **838 entries** over **235 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -600,7 +621,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 24 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 29 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, and both halves of
@@ -636,6 +657,44 @@ neuters one of several copies, leaves the guarantee half-standing, and reports a
 `SURVIVED`; zero matches was already `stale`. Every entry matched exactly once when
 the rule landed (2026-09-03).
 
+### The pre-push hook
+
+The commit hook samples; CI runs every entry. Between the two there was nothing,
+so an entry that ROTTED — its target renamed, its `find` string reworded by a
+refactor that had nothing to do with it — stayed invisible for as long as nobody
+touched it. That is the failure this repo keeps hitting, and it is not the
+expensive half of a bite: whether an edit still APPLIES costs one read of the
+target, while whether the suite can fail costs a full suite run.
+
+`--stale-check` splits the two. It runs `applicable()` — the same precondition
+`apply_and_run()` uses, one owner, so the two can never disagree — over every
+selected entry and runs no test at all. Measured 2026-09-05 on this tree: **378
+entries in 0.06 s**, against minutes for the same entries proven for real. It
+reports a missing target, a symlink target, a `find` string that matches zero
+times or more than once, and a no-op `replace`.
+
+What it does NOT do is ask whether a test can fail, and the suite pins that: a
+manifest whose mutation the tests SURVIVE passes `--stale-check` and fails the
+gate. A caller that ran only the cheap pass and called it coverage would be the
+exact false green the gate exists to find.
+
+`linux/host-config/git-hooks/pre-push` runs both halves, in that order:
+
+- `--stale-check` over the WHOLE manifest — the only thing in the repo, outside
+  CI, that reads every entry;
+- `--changed` for real, whose existing semantics (everything committed since
+  `origin/main`, plus the index and the worktree) are push semantics exactly.
+
+`PREPUSH_MUTATION_JOBS` (default **4**, not the gate's 8) is the escape hatch for
+the memory the mirrors hold: one ~200 MB copy of the tree per job, on a host where
+`/tmp` is tmpfs and a cross build may be running. `git push --no-verify` bypasses
+the hook; `make hooks` installs both.
+
+`tests/test-prepush-hook.sh` drives the hook end to end twice — once with a stub
+gate recording its argv, for the two abort paths and the flags, and once with the
+REAL gate over a planted manifest, so that a rotted entry is proven to stop a
+push rather than merely to print.
+
 ## Doc numbers are derived
 
 Three waves in a row shipped prose quoting a manifest count that the next wave
@@ -644,7 +703,8 @@ places at once. Re-typing the digit is what failed; the fix is the same one
 `tests/test-preflight-slugs.sh` already applies to the slug count.
 
 `linux/scripts/tests/test-doc-numbers.sh` measures the truth from
-`docs/scripts/mutations.json` and from `_FAST_SLUGS` in the pre-commit hook, and
+`docs/scripts/mutations.json`, from `_FAST_SLUGS` in the pre-commit hook, and from
+`verify_dead_functions.py --census` run through its own CLI, and
 fails when this page, `cross-build-verification.md` or `AGENTS.md` disagrees.
 `bash linux/scripts/tests/test-doc-numbers.sh --update` rewrites the digits in
 place, so tracking a new wave is one command rather than a hunt.
@@ -656,12 +716,15 @@ Two spellings are load-bearing, because they are what the gate finds:
 | `**<n> entries** over **<m> distinct test commands**` — this page, exactly once | the manifest's length and its distinct `test` commands |
 | ``<n> … (`<prefix>.*`)`` — any of the three pages | how many ids carry that prefix |
 | `the <n> fast slugs` / `the <n> cheap whole-tree slugs`, and ``` `_FAST_SLUGS` (`:<a>-<b>`) ``` | the hook's own list and the lines it spans |
+| `<n> definitions qualify`, `**<n>** rows remain`, `reports **<n>** rows today`, `the reachability tier reports <n>` — this page, each exactly once | the three counts in the `--census` header line |
 
 A count of the whole manifest has ONE owner, the first row above; the other two
 pages say "every entry" and the gate fails if a bare `all <n> entries` comes
-back. Two numbers were never pinnable and are now written as what they are: a
-wall clock moves with the machine, and a per-gate offender census belongs to its
-allow file. Those carry the date they were measured, or no digit at all — a
+back. The dead-function census joined the table on 2026-09-05, for the same reason
+the others did: its three figures were re-typed prose and had drifted by 11
+functions and 8 rows. Two numbers remain unpinnable and are written as what they
+are: a wall clock moves with the machine, and a per-gate offender census belongs to
+its allow file. Those carry the date they were measured, or no digit at all — a
 figure a reader cannot trust is worse than a sentence without one.
 
 ## Code size — functions and files (`code-size`)
@@ -787,6 +850,67 @@ instead of the slug. `windows/` is not scanned: it is its own lane.
 Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
+
+### Header pointers must name a section
+
+A pointer with no `#anchor` passes every check above and still rots: rename the
+section it meant and nothing complains, because the page it names still exists.
+That is CL4 in the backlog, and it was found the hard way — a header pointing at
+the quarantined general-Linux cheat-sheet, a page that said nothing about the
+script pointing at it.
+
+A gate over **every** bare pointer is not worth having: re-derived on 2026-09-05
+there are 463 code pointers, 197 anchored and **266 bare**, and most of the bare
+ones are prose naming a whole page, which is not a broken reference. So the rule
+is narrowed to where the house comment convention already promises an anchor —
+the **header** of a `.sh`/`.py` file, meaning the first `HEADER_LINES` (10) lines.
+A `page.md § Heading` on the line is not bare: the `§` check already validates
+where that lands.
+
+Of the **110** distinct file-header pointers measured on 2026-09-05, 96 name a
+section, 6 use the `§` spelling, and **8** are bare — frozen two-way in
+`docs/scripts/doc-header-pointers.allow`, keyed `<file>` + TAB + `<page>` so a
+header moving within its block does not re-flag it.
+
+**The 38 rows of debt the rule shipped with are closed.** The allow file opened at
+45 rows in three groups, and the two that were debt are gone:
+
+| group | then | now |
+| --- | --- | --- |
+| the page IS the subject | 7 | 8 — unchanged in kind, plus `verify_gate_registry.py`, whose page is its own generated output |
+| into `refactoring-backlog.md` | 9 | 0 — each re-pointed at a durable page, because an OPEN entry is archived when it closes, so an anchor there is built to rot |
+| into a large multi-subject page | 29 | 0 — one anchor each, at the section that actually owns the file |
+
+Nine of those needed a section that did not exist yet, so the section was written
+rather than the pointer bent to fit: three failure classes in `failure-modes.md`
+(errexit suppressed inside an `if !` condition, an unreachable checksum probe
+reading as "nothing to verify", a soname resolved by an `apt-cache` prefix guess),
+four in `cross-build-verification.md` (the `01-core` layer table, the cross
+gobject-introspection wrapper names, `gstreamer-env.sh`, and the wrapper
+generation gate), one in `shared-script-libraries.md`, and one promotion of an
+already-written paragraph — "Verify the shipped BYTES, never the push" — into the
+heading it always deserved. **That is the point of the rule:** a pointer that
+cannot name a section is usually telling you the doc has a hole, not that the
+anchor is optional.
+
+**And that class cannot come back.** `UNFREEZABLE_PAGES` in the gate makes a
+header pointer at `refactoring-backlog.md` a finding whether it is frozen or not,
+and the message carries the fix: re-point at the durable page. Freezing is what
+the nine rows did, and every one of them rotted the way the group comment said it
+would. Mutation `doc-links.header-open-backlog` proves the rule is live.
+
+**Its blind spots, named.** The header window stops at line 10. Dockerfiles and
+`.env` files sit outside the scan entirely. An anchor can resolve and still be the
+wrong section for the file quoting it. And the 266 pointers living in ordinary
+prose were declined on purpose, not overlooked.
+
+**One consequence of the scan set, and it is deliberate.** The manifest and both
+allow files under `docs/scripts/` are inside this gate's own scope, so a reference
+quoted in a mutation entry is held to the same rule as one in code. Break a
+pointer there and the real tree goes red — which is why
+`doc-links.flutter-checks-anchor` neuters the target *heading* rather than the
+pointer text. `dead-functions` exempts the manifest; this gate does not, on the
+grounds that a stale pointer is stale wherever it is written.
 
 ## Gate proof registry (`gate-registry`)
 
@@ -1036,7 +1160,7 @@ same-named stub in a lib nobody sources, run whole-tree by a staged-docs block,
 scoped by `--changed` rather than the guard variable, by-construction) plus the
 `mutation-id:` and `mutation-family:` ratchets in both directions and all three
 convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
-and 26 entries (`gate-registry.*`).
+and 28 entries (`gate-registry.*`).
 
 ## Shell complexity (`code-complexity`)
 
@@ -1195,10 +1319,11 @@ at least once somewhere in the scanned code. Definitions come from
 definition is — including the `function name {` form and a one-liner on a file's
 last line, both of which an earlier brace walker missed, and **excluding** the
 column-0 definition heads inside heredoc fixtures, which that same walker counted
-as definitions until 2026-09-04. 1845 functions on
-2026-09-04, 31 named nowhere else, all of them frozen in
-`linux/scripts/dead-functions.allow` — the gate is what makes "all of them" true.
-The whole pass costs 0.2s, which is why it is in the pre-commit tier.
+as definitions until 2026-09-04. Every function it finds no use for is frozen in
+`linux/scripts/dead-functions.allow` — the gate is what makes "all of them" true —
+and the run prints its own totals rather than this page re-typing them, because the
+one count that WAS re-typed here went stale by 106 in a day. The whole pass costs
+under a second, which is why it is in the pre-commit tier.
 
 **What counts as a use.** The corpus is every text file under `linux/`, `.github/`
 and `docs/scripts/`, plus the `Makefile`. A Dockerfile `RUN bash -c "… && fn"` is
@@ -1206,6 +1331,22 @@ a use — that is how stages call helpers. Before matching, each file has its
 comments *and its definition heads* stripped, so neither a mention in a comment
 nor a second copy of the same function keeps the first one alive. Matching is on
 word boundaries: `used_fn_extra` is not a use of `used_fn`, `run-used_fn` is.
+
+**A definition's mentions of ITSELF are subtracted (2026-09-05).** String literals
+are not stripped from the corpus, so `printf 'export_clang_gcc_toolchain_env: no
+GCC toolchain at %s\n'` inside that function's own body read as a call to it —
+backlog CL3 was the live instance. `self_mentions()` counts, per name, how many
+times its own definitions' bodies name it and `mentions()` subtracts that, so a
+diagnostic that prints the function's name is not a caller and neither is
+recursion. A call anywhere else still outvotes the discount.
+
+Stripping string literals corpus-wide is the fix that looks obvious and is wrong:
+measured on this tree it turns **nine live functions dead**, among them the
+`trap 'on_err' ERR` / `trap '_chain_on_exit' EXIT` handlers and helpers named
+only inside a generated meson cross file. A name inside a string genuinely can be
+a call; a name inside a string *in its own body* cannot be one from outside. The
+narrow rule is the one that holds. It costs one extra walk of the shell scan set
+— 0.5s → 0.9s, still the pre-commit tier.
 
 **What is not corpus, and why:**
 
@@ -1245,8 +1386,8 @@ private `_cpython_ext_modules_by_class`, which went with them.
 
 ### The limitation: same-name masking
 
-The gate keeps **one name table for the whole corpus**. That is what makes it cost
-0.2s, and it is also its hole: a function is "used" as soon as *any* file names it,
+The gate keeps **one name table for the whole corpus**. That is what makes it cheap,
+and it is also its hole: a function is "used" as soon as *any* file names it,
 so a dead `log()` in one script is kept alive by a live `log()` in another. Every
 short helper name — `log`, `warn`, `pass`, `bad`, `err`, `cleanup` — is effectively
 unguarded, and the gate's clean run is not evidence about them.
@@ -1260,11 +1401,61 @@ never called it), `verify-manifest-freshness.sh pass()`/`bad()` together with th
 allow row: masking hides it from the gate, so a row would have read STALE the
 moment it was written. `tests/test-dead-functions.sh` pins its absence instead.
 
+### The unlinked-definer arm: the part of the masking that IS provable
+
+`unlinked()` is a second gate arm, added 2026-09-05 (backlog GH6). It fails a
+definition when all four hold:
+
+1. its **own file** never names it again, once comments and definition heads are gone;
+2. a **second file defines the same name**, so the live verdict comes from a name this
+   file does not own;
+3. **every** other file naming it also defines it — no file that merely *calls* the name
+   exists anywhere in the corpus;
+4. and **no corpus file names two of those definers' basenames**, the subject's own text
+   and the peers' included.
+
+(4) is the whole argument. If nothing in the tree ever mentions two of these files
+together, nothing can source or run them into one shell, so no mention of the name
+can be about this copy — and (3) has already ruled out a caller that owns no
+definition. It answers scope without a call graph, by asking whether the two
+definitions could ever be in scope at the same time. It costs one basename scan per
+surviving candidate, computed lazily; the gate stays under a second.
+
+**It found one row on this tree**, and it is a true one:
+`06-packaging/verify-parity.sh`'s `check_python`, the sixth of the six
+`"check_${check_name}"` dispatch targets. Its five siblings have been frozen since
+2026-09-03; this one could not be, because `06-packaging/smoke-toolchain.sh` defines a
+`check_python` of its own and the name table therefore read it as used — an allow file
+that looked complete and was one row short. The arm makes that row **writable**: a
+masked function used to send its own freeze STALE the moment it was written (the
+ffmpeg `cleanup()` precedent), and now the arm that flags it is also what holds it.
+
+**How it is disarmed, which is the thing to know before editing near it.** Any corpus
+file that starts naming both definers' basenames — a new test, a new runner, a doc
+generator under `docs/scripts` — switches (4) off, the arm goes quiet, and the frozen
+row then reads STALE. The STALE message says so. `tests/test-dead-functions.sh` is the
+live instance of the hazard and assembles the name and both basenames from `printf`
+arguments for exactly that reason, the same trap `arg-consistency` and `lint-env-knobs`
+fixtures carry. The failure direction is a false *negative* plus a loud, explained
+gate failure — never a false positive against correct code.
+
+**What it deliberately does NOT do.** It is not the `source_module`-aware call graph
+the next section prices, and it does not try to be. Two other rules were built and
+measured against this tree first, and both are ruled out:
+
+| rule | result |
+| --- | --- |
+| resolve `source`/`source_module` into a load graph, treat a candidate as dead when no file sharing a shell with it names the name | with unresolvable `source "${VAR}"` statements treated as hubs — the only conservative reading — the 478-file corpus is **one component** and the rule reports nothing |
+| the same graph with the hubs dropped, restricted to files nothing else names by basename | **20 rows, 20 false positives.** Every one is a suite stub for a unit under test that the file loads through a path no resolver follows: a function body cut out with `sed` and fed to `bash -c`, a module path assembled at runtime |
+
+That second measurement is the reason this arm asks whether two files can ever MEET
+rather than trying to resolve what a call site sees.
+
 ### `--census`: the per-file pass, and why it is advisory
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 410 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 428 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1275,14 +1466,41 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "Known limits" — and it reports **93** rows today where the reachability
-tier reports 0. `--census` prints both counts, lists both sets, and always exits 0.
+under "Known limits" — and it reports **94** rows today where the reachability
+tier reports 0. The header also carries the slice of that list the unlinked-definer
+arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
+what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
 
 Reading it: a row in either list is a deletion candidate, the masked list more
 strongly than the other because the gate is provably blind there; the "never names
 again" count is context, not a queue. The sourcing guard on the first tier is not
 decoration — a library a file sources can call back into that file's own functions,
 which is precisely the `command_not_found_handle` and `check_${name}` shape.
+
+**The four numbers in this section are DERIVED, not re-typed.** They moved by 11
+functions and 8 rows between two groomings before anyone noticed, so
+`tests/test-doc-numbers.sh` now runs `--census` and compares its header against the
+prose here — the considered count, the reachability tier, the masked tier and the
+unlinked-definer count — and `--update` rewrites the digits. Nothing else in the repo
+may quote them.
+
+**What closing the masking hole actually costs.** The census is a watch list, not a
+fix: it says *where* the verdict is untrustworthy, never whether a given definition
+is dead. A verdict needs scope, and scope here means resolving, for each call site,
+which definition of that name is in scope at that point — which is a call graph
+over a `source`/`source_module` topology this repo builds at RUNTIME. Concretely it
+needs: the sourcing graph (`source_module <name>` resolved through
+`SCRIPTS_ROOT`, plus the container-vs-repo dual layout `media_load_arch_flags`
+already switches on), the Dockerfile stage graph, because a `RUN` inherits only
+what its stage COPYed, and a rule for the ~40 helper names two files define on
+purpose. That is a second tool the size of the gate, and it would still guess at
+`bash -c` strings — the 20-row measurement in the arm's section above is what that
+guessing costs. What shipped instead is the corner of the problem that needs no
+graph: the unlinked-definer arm decides the cases where the definers can never meet,
+and the census keeps reporting the rest of the 94 as a watch list to delete from by
+hand with the ffmpeg `cleanup()` precedent — pinning the absence in
+`tests/test-dead-functions.sh`, since a masked function the arm does NOT reach can
+never hold an allow row (it would read STALE the moment it was written).
 
 **The quoted `' #'` trap.** Comment stripping removes from a `#` preceded by
 whitespace to end of line. `$#` and `${#arr[@]}` are safe (no whitespace before the
@@ -1300,7 +1518,7 @@ those three rows STALE; that is the deliberate trade, not an oversight.
 
 `linux/scripts/tests/test-dead-functions.sh`, over throwaway trees —
 each case copies the gate plus the two modules it imports and plants a subject,
-callers and an allow file. 24 mutations (`dead-functions.*`), every one proven
+callers and an allow file. 31 mutations (`dead-functions.*`), every one proven
 to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 `patches/`, `linux/webserver/dist`, `.pytest_cache`, `.dart_tool` and
@@ -1308,9 +1526,12 @@ corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 a comment or a definition head at byte 0 is stripped — every fixture used to sit at
 byte 0, so the flags were previously proven only by the real tree), the `(?<=\s)`
 lookbehind that keeps a tab-indented comment a comment, `linux/host-config` being a
-subject and not merely a caller, the two-way freeze contract, and both `--census`
+subject and not merely a caller, the two-way freeze contract, both `--census`
 tiers — the reachability filter, the masked `(file, name)` keying, and the rule
-that the pass reports and never fails.
+that the pass reports and never fails — and every clause of the unlinked-definer
+arm, each shown by a fixture the arm must stay quiet on: the two definers linked by
+a third file, by the peer, and by the subject; a caller that owns no definition; a
+definition its own file names again.
 
 ## Stdout-return gate (`stdout-returns`)
 
@@ -1365,11 +1586,18 @@ exports SC2163 misreads, and variables a *sourced* consumer reads. Two verdicts 
 worth reading before anyone "cleans up" the rest: `verify.sh`'s SC2155 is
 load-bearing (`version_major` returns 1 on an empty version, so splitting the
 declaration would turn a tolerated empty `GCC_WANTED` into a `set -e` abort), and
-the SC2034 rows on `stage-defs.sh`, `python_uv.sh`, `pre-setup.sh`,
-`gstreamer-env.sh` and `package_archive.sh` are genuinely dead code left in place
-only because those files are build-closure and nothing static can prove a chain
-still runs — they are the checklist in backlog CL6, to be deleted and re-baselined
-in one build window.
+the SC2034 rows that CL6 held open were dead code in build-closure files, kept
+only because nothing static can prove a chain still runs. Four are **closed on
+2026-09-05** — `stage-defs.sh`, `python_uv.sh`, `pre-setup.sh` and
+`gstreamer-env.sh` lost their rows entirely, and `build-runtime-manifest.sh`
+re-baselined 3 → 2 — each deletion landing with a suite that executes what
+survives it, not with a grep. `package_archive.sh` stays at 4 by DECISION, not
+by inertia: nothing in this repo invokes it and no stage copies it, so its three
+parsed-and-ignored flags are a CLI contract for callers outside this repo and no
+build can rule on them either. The two `SC2206` cmake-argv rows also stay, with
+sharper reasons: `build-clang.sh`'s two values are file literals, so quoting is
+provably a no-op, while `cross-env.sh`'s is operator-reachable, so quoting is a
+real argv change only a build can price.
 
 **Why it exists.** `lint-shell.sh` gates at `-S error` and prints warnings as
 advisory noise, so those 177 findings were watched by nothing: the 178th was
@@ -1449,7 +1677,7 @@ workaround, not the fix: a shared `(count, reason)` reader belongs in
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 17 mutations (`shellcheck-warnings.*`), every one
+shellcheck cannot produce; 18 mutations (`shellcheck-warnings.*`), every one
 proven to bite. The suite's
 last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it —
 which is what every mutation `test` command sets, so no mutation can be recorded
@@ -1536,10 +1764,26 @@ suppressed as idiom.
 `linux/scripts/lint-env-knobs.sh` against `linux/scripts/lint-env-knobs.allow`,
 preflight slug `env-knobs`. A knob is CONSUMED if some `*.sh` under
 `linux/scripts` reads it as `${VAR:-...}`. It is OWNED by any of four things:
-a `versions.env` key, a Dockerfile `ARG`/`ENV`, an assignment or
-`: "${VAR:=…}"` anywhere in the scripts, or a row in the allow file. Both the
-consumed scan and the two script-side owner scans go through one `_scan`
+a key in a `.env` file a build stage SOURCES, a Dockerfile `ARG`/`ENV`, an
+assignment or `: "${VAR:=…}"` anywhere in the scripts, or a row in the allow file.
+Both the consumed scan and the two script-side owner scans go through one `_scan`
 helper, so *reader* and *owner* are decided by exactly the same line filter.
+
+**Which `.env` files own (2026-09-05).** `ENV_OWNER_FILES` is
+`01-core/versions.env` plus `03-media/core/arch-flags-*.env`. The arch-flags files
+were missing until 2026-09-05, and that was the gap: `MEDIA_SKIP_CSOUND` and its
+five siblings are knobs whose value is **data, not an operator choice** — the
+riscv64 file sets `MEDIA_SKIP_CSOUND=1` and the arm64 file `=0`, and
+`media_load_arch_flags` (`03-media/core/common.sh`) sources whichever matches the
+target arch. Re-homing them to a `: "${MEDIA_SKIP_CSOUND:=0}"` at the reader would
+have been a second, competing claim on the value; teaching the scan the file that
+already owns them retired all six registry rows instead (215 → 209).
+
+`04-runtime/runtime-paths.env` is deliberately NOT in that list. It is reference
+data `verify-runtime-paths.sh` compares Dockerfile `ENV` blocks against, and no
+stage sources it, so counting its 39 keys would invent an owner for every path
+knob. `tests/test-env-knobs.sh` pins both directions, and a mutation each way
+holds them.
 
 Unowned knobs stay advisory unless `KNOB_GATE=1` (preflight always sets it).
 A **stale** row — one whose knob no reader consumes any more — fails
@@ -1597,7 +1841,9 @@ them, so the default is greppable where it is read instead of in a registry:
 `LLVM_INSTALL_PROFILE`, `MEDIA_STRIP`, `NODE_RISCV64_MAJOR_REQUIRED`,
 `OPENCV_GSTREAMER_PASS`, `PYTHON_LTO`, `RUNTIME_CLANG_VERSION_SMOKE`,
 `RUNTIME_COMPILER_SMOKE`, `RUNTIME_IMAGE_SMOKE`, `SKIP_REAL_TREE`,
-`STV_COMPUTE` and the renamed `CROSS_GCC_TOOLCHAIN_PATH`. `:=` and `:-` share
+`STV_COMPUTE` and the renamed `CROSS_GCC_TOOLCHAIN_PATH` — that last one deleted
+outright on 2026-09-05 with the function that read it (backlog CL3), leaving
+twelve. `:=` and `:-` share
 their empty-or-unset fallback rule, so the only behavioural difference is that
 the variable is now SET in the reading shell — which is why a knob whose value
 is data rather than an operator choice must not be converted. `MEDIA_SKIP_CSOUND`
@@ -1724,7 +1970,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-10 entries (`code-dupes.*`) and 27 (`env-knobs.*`) in
+12 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,
@@ -1768,9 +2014,11 @@ Given that statement, in this order:
 
 | shape | verdict |
 | --- | --- |
-| a top-level `\|\|` anywhere | **not** a finding — the author spelled out the other arm |
+| a bare `done` / `fi` / `esac` / `}` | step INTO the block: judge its own last statement instead |
+| a top-level `\|\|` | judge the **last arm** by these same rules, and answer with that |
 | a top-level `&&` | **finding** |
 | first word is `[`, `[[`, `test` or `!` | **finding** |
+| a bare call to a function this FILE defines that is itself a finding | **finding** |
 | anything else | not a finding |
 
 "Top level" means at paren depth 0 and outside `[[ … ]]`, so `[[ -n "${a}" \|\|
@@ -1778,6 +2026,26 @@ Given that statement, in this order:
 fallback arm — and `x="$(a && b)"` returns the assignment, not the inner list.
 `&&` and `||` bind looser than `|`, which is why the presence of `&&` is decided
 before anything is said about pipelines.
+
+The first and last rows are the 2026-09-05 sharpening (backlog GH3), and each has
+a limit built in on purpose:
+
+* **A closer is stepped through only when it is bare.** `done | sort -u` returns
+  the pipeline, not the loop body, so a closer carrying any top-level operator is
+  judged as the ordinary statement it is. Inside the block the last live line is
+  taken as the block's last statement — for an `if` that is the last branch, for a
+  `case` the last arm, and a `;;`-only line is skipped rather than read as empty.
+  The other branches are not examined: one hop, not a path enumeration.
+* **The delegate hop stays inside one file.** A trailing bare call is credited to a
+  definition in the SAME file, iterated to a fixed point, so `is_cross` and
+  `cross_build_enabled` inherit `cross_build_is_active`'s verdict, which inherits
+  `cross_target_is_foreign`'s. Reaching across files would resurrect the same-name
+  masking GH6 describes: one `log()` anywhere would decide every `log()`.
+* **A `||` is no longer blanket cover.** The old rule trusted any top-level `||`;
+  the new one trusts only what the author put in the LAST arm. `a && b || true`
+  still passes; `do_thing || [ -n "${x}" ]` and the SC2015 shape `a || b && c` do
+  not. This found nothing in the tree — a rule that closes a hole rather than one
+  that reports a defect.
 
 The fix the gate asks for is to end on the action:
 
@@ -1806,22 +2074,35 @@ defect, not a predicate.
 
 ### Known limits
 
-* **Only the last statement.** A function ending on a *call to* a predicate
-  inherits the same hazard, and `cross_build_is_active` does exactly that on
-  purpose. Following that one hop needs call-graph knowledge the gate does not
-  have.
-* **A block closer ends the search.** `for f in *; do [ -f "${f}" ] && x; done`
-  returns the last iteration's status, and the gate sees only `done`. Same for
-  `fi` and `esac`.
-* **An explicit `||` is trusted.** `a || b && c` can still return non-zero, but
-  an author who wrote the fallback arm is not the one this gate is for.
-* **A one-line function** (`f() { …; }` on a single line) has no body lines to
-  read and is skipped.
+The four false negatives this section used to list — last-statement-only, the
+block closer, the trusted `||`, and the one-line definition — were closed on
+2026-09-05. A one-line `f() { …; }` now presents the same body as a multi-line
+one: the definition head comes off the first line and the closing brace off the
+last, which is the only thing that trim is for — a `}` on its own line is already
+handled as a block closer. What remains:
 
-Each limit is a false NEGATIVE. The gate is deliberately tuned that way: a noisy
-gate gets an allow row, and an allow row is cover.
+* **One hop, one file.** The delegate rule does not follow a call into another
+  file, and it does not follow a call made through a variable or `eval`.
+* **A block written on ONE line is judged whole.** `if [ -n "${x}" ]; then
+  do_thing; fi` on a single line is not stepped into: its first word is `if`, and
+  an `if` with no matching branch returns 0. Only a bare closer on its own line
+  opens the block.
+* **A definition indented inside a block is not scanned at all.** `DEF` is
+  column-anchored, shared with the size and dead-function gates, so the
+  `cross_build_is_active` fallbacks defined inside `if ! command -v …` blocks in
+  `01-core/common.sh` and `03-media/core/common.sh` are invisible here.
+  `tests/test-cross-fallback-parity.sh` is what watches those.
+* **A `while true` loop never falls out of the loop**, so its body's trailing
+  conditional is not what the function returns. `invoke_agent`
+  (`lib/agentic-loop.sh`) is the one such FALSE POSITIVE in the tree today. It was
+  normalised to an `if` rather than allow-listed, because a `break` added later
+  would make it a real defect — and the behavioural half of that one is honestly
+  unproven: reverting it fails the gate, not a suite.
 
-### The four it found
+Every remaining limit but the last is a false NEGATIVE. The gate is deliberately
+tuned that way: a noisy gate gets an allow row, and an allow row is cover.
+
+### The four the first version found
 
 All four were live, all four are fixed, and each has a mutation that restores the
 old shape and a case that catches it:
@@ -1843,6 +2124,35 @@ old shape and a case that catches it:
   `if`; the other five are not the function's status, and the gate now guards the
   end of the list against a seventh patch being appended.
 
+### The five the sharpening found
+
+Four are the same defect the gate was built for, one file deeper than the old
+rule could see; each is now an `if` whose false path returns 0, and each has a
+case in part B that runs the function off-target under `set -e`.
+
+* `csv_each` (`01-core/guard-helpers.sh`) looped `[ -n "${_item}" ] && "${_fn}"
+  …`, so a CSV with a trailing comma — `a,b,` — made the loop's last iteration
+  the empty one and the helper returned 1, against its own documented contract
+  that empty elements are *skipped*.
+* `append_version_build_args` (`01-core/version-forwarding.sh`) did the same over
+  the tracked-version list, and `append_common_build_args` ends on a call to it,
+  so an empty value in the LAST versions.env key would have taken the
+  orchestrator's build-arg assembly down with it. Latent today only because every
+  tracked key currently has a value.
+* `_dump_gst_build_logs` (`03-media/…/build-gstreamer-stage.sh`) is the GStreamer
+  stage's ERR trap and ended on the last of four `[ -f … ] && echo && cat` lines
+  — the same shape, from the trap side, as the `logging.sh` death of 2026-09-02.
+* `wasm_opt_load_pin` (`lib/wasm-opt.sh`) returned 1 whenever the last
+  `BINARYEN_*` key was already exported, which is its documented normal path
+  ("unless they are already set").
+* `invoke_agent` (`lib/agentic-loop.sh`) is the false positive described under
+  Known limits.
+
+The delegate hop and the one-line rule also made three predicates in
+`01-core/cross-env.sh` visible for the first time (`cross_build_is_active` and
+its two aliases), plus `is_amd64_arch` and ten one-line stub predicates in
+suites. All fourteen are frozen with their reason; none is a defect.
+
 ### Proof
 
 `linux/scripts/tests/test-trailing-conditional.sh` plants one
@@ -1852,5 +2162,238 @@ and runs it under `set -eu`, because none of those three files can be sourced
 whole. The mutation entries neuter the `||` escape hatch, the `[[ … ]]` bracket
 tracking, the `;` cut and the continuation join, plus one per fix.
 
+The 2026-09-05 wave added a case per new shape (one-line body, each of the three
+block closers plus the two shapes a closer must NOT open, the `||` last arm, the
+delegate hop and its cross-file refusal) and one part-B case per fix. It also
+retired one assertion: `a || b \\` + `&& c` was the old proof that continuations
+are joined, and that shape is now a finding on its own, so the join is proven
+instead by `out="$(a \\` + `&& b)"` — a bare `&&` list read alone, an assignment
+once joined.
+
 Cost: 0.49s over the whole tree, next to `dead-functions` at 0.50s and
 `code-complexity` at 0.66s, both already in the hook's fast tier.
+
+## Nine gates that left the unproven list (2026-09-05)
+
+`gate-proofs.allow` froze **12** preflight slugs at the 2026-09-03 baseline with
+neither a suite nor a mutation. Three left on 2026-09-04. This wave closed nine
+more, each the same way: a characterisation suite driving the REAL gate in a
+throwaway tree, every case asserting the exit code and not only the message, plus
+mutations over the gate's own script that turn that suite red.
+
+Two rules shaped every one of them.
+
+**A gate has to be able to be GREEN.** Each suite opens with a healthy fixture.
+Without it a red case proves only that the fixture is broken.
+
+**Advisory is a contract, not an omission.** Four of these gates deliberately
+report findings without failing — the extraction is heuristic, or the divergence
+is sometimes legitimate. Each of those has a mutation that makes the advisory
+FATAL and a case that catches it. A suite that pinned only the message would let
+the two kinds swap places silently.
+
+### Android library stage parity (`android-parity`)
+
+`01-core/verify-android-stage-parity.sh`. The five `android-*` stages in
+`Dockerfile.android` are copy-paste ON PURPOSE — separate stages are what makes
+BuildKit build them concurrently — so the gate makes the copy mechanical:
+normalise `ARG ANDROID_LIB`, drop comments and blanks, require the five blocks to
+be byte-identical.
+
+`tests/test-android-stage-parity.sh` pins the two deliberate differences (the
+LIB value, per-stage comments) against six ways to break it, of which two are the
+ones a reader would not think of: a divergence in the LAST stage (the first is
+the reference, so a loop that stops early lets the tail drift), and a stage the
+gate can no longer FIND — a rename that quietly drops a fifth of the Dockerfile
+from the comparison. `android-parity.stage-list-complete` is the same hazard from
+the other side: the script's own `STAGES` list is the contract.
+
+### Patch integrity (`patch-integrity`)
+
+`verify-patch-integrity.sh`. A malformed or orphaned patch only detonates hours
+into a cross build, so the gate reads every `*.patch` statically: it must parse as
+a unified diff (`---`, `+++`, `@@` all three), and some `*.sh` must name it.
+
+The apply SITE is advisory: a raw `git apply` reports INFO and still passes,
+because some sites legitimately pre-date `apply-patch.sh`.
+`patch-integrity.raw-apply-site-is-advisory` is what keeps a later tightening from
+turning a green tree red for no build reason. The corpus being `*.sh` is also
+pinned: a patch named only in a doc is still applied by nothing.
+
+### Script COPY coverage (`copy-coverage`)
+
+`verify_script_copy_coverage.py`. The bug it was written for was TRANSITIVE:
+`Dockerfile.package` COPY'd and RAN `install-deps.sh`, which sourced
+`/opt/scripts/03-media/core/common.sh` that the image never had — exit 127, deep
+inside a build. So the suite's load-bearing case is the transitive one; a
+direct-references-only check calls that image complete.
+
+Four more shapes are pinned because getting any of them wrong makes the gate red
+on a HEALTHY tree, which is how a gate gets switched off: a directory COPY
+provides everything beneath it, a per-RUN bind mount counts as provided, a COPY
+wrapped over backslash-newlines is one logical line, and `KNOWN_BASE_PROVIDED` is
+keyed per Dockerfile so an inherited path cannot leak to every image. Two more
+cover the vacuity edges: a tree with no Dockerfiles fails rather than reporting a
+clean sweep, and `--report-core-usage` stays read-only — its own docstring calls
+its counts a lower bound.
+
+### Ubuntu mirror consistency (`mirror-consistency`)
+
+`01-core/verify-ubuntu-mirror-consistency.sh`. APT-HTTP is why this gate has two
+halves. The original check only proved `use-fast-ubuntu-mirror.sh` was
+REFERENCED — and that is exactly how the CA-bootstrap http downgrade shipped with
+nothing restoring https for a custom mirror.
+
+So the suite gives each half its own red. The WIRING half: `bootstrap_ca` must
+call `restore_mirror_https_scheme`, and AFTER the ca-certificates install —
+restoring earlier puts apt back into the chicken-and-egg the downgrade existed to
+break. The OUTCOME half runs the real downgrade+restore pipeline on a fixture
+sources file and requires it to END on https; `mirror-consistency.outcome-is-asserted`
+is APT-HTTP itself, a call site that was present while the sources stayed on
+http. A third case guards the fixture's own PRECONDITION: if the downgrade stops
+landing there is nothing left to restore and the outcome check would pass for the
+wrong reason.
+
+### Runtime path consistency (`runtime-paths`)
+
+`04-runtime/verify-runtime-paths.sh`, and the LOG31 note on it is literal: this
+script once NEVER failed, an inner warning swallowed by an outer green. Its
+contract is now split down the middle and the suite proves both sides.
+
+Missing INFRASTRUCTURE — `runtime-paths.env`, `versions.env`,
+`Dockerfile.package`, `Dockerfile.media` — is a broken tree and fails hard, all of
+them reported in one run rather than one per invocation. Every path-mismatch WARN
+stays advisory, because the ENV-block extraction is heuristic and produces false
+positives on a healthy tree; `runtime-paths.warn-is-advisory` and
+`runtime-paths.warn-scope-is-narrow` are the two mutations that keep a
+well-meaning tightening from making the gate unusable.
+
+### Version ARG consistency (`arg-consistency`)
+
+`01-core/verify-arg-consistency.sh` is six sections and they are not all fatal.
+Fatal: an ARG default that drifts from `versions.env` (it wins silently on a plain
+`docker build`), a default-LESS ARG naming a `versions.env` variable (the
+LITERTJS_VERSION class — an empty value), the two case-mapped literals in
+`gcc.sh` and `common.sh`, the ~25 inline GCC fallbacks, and a hand-forward
+duplicating the auto-forward (XC7). Advisory: the `# noforward` coverage warning,
+and the generic `${VAR:-literal}` scan, whose divergence is often deliberate.
+
+The case worth naming is `arg-consistency.scan-vacuity-floor`. The GCC literal
+scan refuses to report OK when it matched fewer than ten sites, because a refactor
+that rewrites those literals into a shape the pattern cannot see would otherwise
+make the gate find nothing, print a pass, and let the next bump drift unnoticed.
+The suite drives that floor directly.
+
+One trap the suite had to dodge, and the next editor will too: this file lives
+under `linux/`, so a literal inline GCC fallback written out in the test source is
+scanned as a REAL site. The fixture assembles the expansion from `printf`
+arguments instead. The same rule applies to the version-snapshot generator's
+basename — see below.
+
+### Workflow lint (`workflow-lint`)
+
+`lint-workflows.sh` names its own hazard: "a lint gate that checks nothing still
+reports green". Two ways that happens, and both are driven against the real
+`actionlint`. Linting the WRONG TREE: the optional root argument exists because a
+submodule checkout puts this script inside the consumer, where the default root
+resolves to ContainerHub; the suite gives it a broken checkout and a clean one and
+requires the verdicts to follow the argument, and a root that does not exist to be
+refused rather than fall back. Running an UNPINNED binary: with no `actionlint` on
+`PATH` and an empty cache, a missing `ACTIONLINT_VERSION` and a missing
+`ACTIONLINT_*_SHA256` each have to refuse, driven offline through a fixture tree
+that carries its own `versions.env`.
+
+### Secret scan (`secret-scan`)
+
+`lint-secrets.sh` over the working tree with the pinned `gitleaks`. The suite
+plants a synthetic credential — assembled at run time, since this repo scans
+itself — and requires four things: the gate FAILS, the finding names the file and
+line (it once failed on main saying "leaks found: 2" and naming neither, which is
+what `--verbose` is for), the value is REDACTED so the CI log does not become the
+leak, and the scan is scoped to the path it was handed. No case scans the whole
+repo: that run is the preflight slug's own job and would cost this suite minutes.
+
+### Curated SBOM (`sbom`)
+
+`generate_sbom.py --check`. The curated half of the inventory is the published
+corresponding-source record for the copyleft components an image scanner cannot
+see, so a document that drifts from `versions.env` is worse than none.
+
+The gate is only possible because the document is byte-REPRODUCIBLE — hence the
+frozen `1970-01-01T00:00:00Z` creation stamp, which the suite asserts directly: a
+wall-clock stamp would make `--check` red on every run, and a gate that is always
+red gets switched off. The other cases are the ways `--check` could be hollow: a
+missing file is not an up-to-date file, comparison is byte equality rather than
+existence, `--stdout` writes nothing, and a `versions.env` bump really does move
+the document.
+
+### The two that stay frozen, with better reasons
+
+Both of them took their route out on 2026-09-05, and `gate-proofs.allow`'s bare-slug
+namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen.** The
+heading keeps its name because several files point at this anchor, and because the
+two stories are the reason the freeze list was worth keeping honest rather than
+deleting.
+
+**`critical-fixes` took the recommended route: the split.** It was two scripts in
+one trench coat — half greps over the repo tree, half probes of
+`/opt/python-cross`, `/opt/litert` and friends that exist only inside a built
+image. Proving the tree half alone would have credited the slug for a suite that
+never touches the checks whose findings gate a rebuild, so the script was cut in
+two instead: `verify-critical-fixes.sh` keeps fix5–fix10 and stays the slug,
+`06-packaging/smoke-critical-fixes.sh` takes fix1–fix4 and is run against a
+shipped image by hand. `test-critical-fixes.sh` then proves BOTH halves — the
+host gate in a fixture tree, the image probes under `CF_SMOKE_ROOT`.
+
+The split was decided by MEASURING first, not by reasoning about testability, and
+the measurement is why it is right. Run in the shipped images for the first time,
+the four moved probes reported four failures and **all four were the probe being
+stale**, while the host half's verdict lost exactly two assertions — fix4's
+amd64-cc-on-an-amd64-host tautology. A frozen slug had been carrying checks that
+could not have gone green in the one place they were meant to run. The numbers,
+and the real 707-header defect a corrected fix2 then found on all three shipped
+arches, are in
+[`cross-build-verification.md`](cross-build-verification.md#the-in-image-half-of-critical-fixes).
+**The generalisable part: before writing the suite a frozen slug is asking for,
+run the gate where it is supposed to run.** Two of these probes had never
+executed anywhere, and no suite written against them would have said so.
+
+**`version-snapshot` got the one-fixture-per-sub-check suite its reason demanded.**
+`sync_versions.py --check` is a fan-out: `result |=` over seven sub-checks plus a
+subprocess into `generate-website-licenses.py`, whose targets span `README.md`
+markers, the deps table, doc literals, Dockerfile ARG defaults and
+`windows/scripts/build-*-from-source.ps1`. Because the verdict is an OR, a suite
+that reddens ONE sub-check would un-freeze the slug while six stayed unproven —
+the hollow-proof shape this list exists to prevent. `test-version-snapshot.sh`
+reddens six of the seven independently, plus the subprocess, and pins the seventh.
+
+**The fixture is a SYMLINK FARM, and that is what made the wave affordable.**
+`collect_versions()` — which `render_snapshot()` calls, so every `--check` run
+depends on it — hard-reads five fixed files (`linux/webserver/Dockerfile` and four
+under `windows/`) and raises an uncaught `FileNotFoundError` on a missing one,
+plus it `KeyError`s on any of eight `versions.env` keys. A hand-built minimal tree
+therefore cannot reach a verdict at all, and a full copy is 8 GB. So the fixture
+mirrors the repo as symlinks one directory at a time, materialising only the file
+under test as a real copy. `sync_versions.py` itself must always be a real copy:
+it derives `REPO_ROOT` from `Path(__file__).resolve()`, and `resolve()` would
+follow a symlink straight back to the real tree. The suite's own first case is the
+green baseline printing all seven verdict lines — without it none of the reds
+would mean anything — and its last case proves the perturbations are DISJOINT,
+which under an OR is the difference between proving a sub-check and hiding one.
+
+**Writing that suite found a sub-check that has never checked anything.**
+`script_default_target_files()` globs `windows/scripts/build-*-from-source.ps1`.
+Those ten scripts live one directory deeper, in `windows/scripts/build/`, so the
+glob returns an EMPTY list and `check_script_defaults` prints
+`Windows build-script -DefaultValue pins match versions.env.` having scanned zero
+files. No fixture can redden it, so the suite pins the emptiness as a KNOWN GAP —
+two `find` counts, 0 here and 10 there — which goes red the day the glob is fixed.
+It was NOT fixed here on purpose: widening it makes ten PowerShell scripts gate
+subjects for the first time, and any fallout is Windows-lane work that this repo's
+standing directive keeps out of a Linux wave. It is the owner's call.
+
+**A hollow mention nearly happened while writing this.** `test-arg-consistency.sh`
+asserted on the gate's own fix hint, which spells `sync_versions.py` — and the
+registry credits a suite that MENTIONS a gate's script. `version-snapshot` flipped
+to `proven` on a suite that asserts nothing about it. The assertion now stops
+short of the basename, with a comment saying why.

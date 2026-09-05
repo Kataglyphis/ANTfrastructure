@@ -16,6 +16,75 @@
 # Requires: /opt/scripts/core/platform.sh (assert_elf_arch).
 set -euo pipefail
 
+# One reader of DT_NEEDED for the fill, the repair and the self-containment walk.
+_elf_needed() {
+    LC_ALL=C readelf -d "$1" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'
+}
+
+# One owner of "this toolchain's own library": what the prefix must carry itself
+# rather than borrow from whatever the consuming image happens to have.
+_is_llvm_family() {
+    case "${1}" in libLLVM*|libclang*|liblldb*) return 0 ;; *) return 1 ;; esac
+}
+
+# Materialise into <prefix>/lib exactly the LLVM-family sonames the prefix's own
+# objects DT_NEED and cannot resolve there, from <src>; repeat until a round adds
+# nothing, because a filled lib brings its own NEEDED.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+_llvm_target_fill_needed() {
+    local prefix="$1" src="$2" round=0 added=1 e n
+    while [ "${added}" = 1 ] && [ "${round}" -lt 4 ]; do
+        added=0
+        round=$((round + 1))
+        for e in "${prefix}"/bin/* "${prefix}"/lib/*.so*; do
+            [ -f "${e}" ] || continue
+            for n in $(_elf_needed "${e}"); do
+                _is_llvm_family "${n}" || continue
+                [ ! -e "${prefix}/lib/${n}" ] || continue
+                [ -e "${src}/${n}" ] || continue
+                rm -f "${prefix}/lib/${n}"
+                cp -a "${src}/${n}" "${prefix}/lib/${n}"
+                added=1
+            done
+        done
+    done
+}
+
+# Repair every entry under <prefix> that resolves to nothing, against <root> --
+# the directory the prefix was copied FROM, because a Debian-layout LLVM tree
+# links lib/ and include/ entries relative to its own original location.
+# docs/artifact-copy-completeness.md#a-copied-prefix-carries-links-that-only-resolved-where-it-came-from
+_llvm_target_repair_links() {
+    local prefix="$1" root="$2" links e real base
+    links="$(find "${prefix}" -xtype l 2>/dev/null || true)"
+    while IFS= read -r e; do
+        [ -n "${e}" ] || continue
+        real="$(readlink -f "${root}/${e#"${prefix}/"}" 2>/dev/null || true)"
+        base="${real##*/}"
+        if [ -n "${real}" ] && [ -d "${real}" ]; then
+            rm -rf "${e}"; cp -a "${real}" "${e}"; continue
+        fi
+        if [ -n "${real}" ] && [ -f "${real}" ] && [ ! -e "${prefix}/lib/${base}" ] \
+           && _is_llvm_family "${base}"; then
+            rm -f "${prefix}/lib/${base}"
+            cp -a "${real}" "${prefix}/lib/${base}"
+        fi
+        if [ -n "${base}" ] && [ -f "${prefix}/lib/${base}" ]; then
+            # Not when the copy landed ON the link's own path: relinking there
+            # replaces the file just written with a symlink to itself, which is
+            # dangling by definition. It IS the answer already.
+            [ "${prefix}/lib/${base}" = "${e}" ] \
+                || ln -sfn "$(realpath -m --relative-to="${e%/*}" "${prefix}/lib/${base}")" "${e}"
+        else
+            rm -f "${e}"
+        fi
+    done <<< "${links}"
+    links="$(find "${prefix}" -xtype l 2>/dev/null || true)"
+    [ -z "${links}" ] || {
+        echo "ERROR: ${prefix} still holds link(s) that resolve to nothing:" >&2
+        printf '%s\n' "${links}" >&2; exit 1; }
+}
+
 _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
 _major="${LLVM_RELEASE%%.*}"
 rm -rf /opt/llvm-target
@@ -40,51 +109,27 @@ if [ "${_arch}" = "amd64" ]; then
     echo "amd64 target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"
     cp -a "${_hostllvm}" /opt/llvm-target
 
-    # Make the amd64 prefix SELF-CONTAINED (root fix for the 2026-08-11
-    # franken-toolchain incident): an apt LLVM tree ships lib/ as dev SYMLINKS
-    # into /usr/lib/x86_64-linux-gnu — the runtime sonames (libLLVM.so.22.1,
-    # libclang-cpp.so.22.1) never entered the prefix, so the shipped clang
-    # silently bound to whatever ambient libLLVM the consuming image carried.
-    # Copy the multiarch runtime sonames next to the driver (no-op when the
-    # source-built prefix already ships real files), then HARD-GATE below:
-    # every LLVM-family NEEDED of the shipped binaries must resolve inside the
-    # prefix. Dockerfile.package keeps a matching copy as belt-and-braces for
-    # older sdk artifacts.
     mkdir -p /opt/llvm-target/lib
-    for _so in /usr/lib/x86_64-linux-gnu/libLLVM*.so.2* \
-               /usr/lib/x86_64-linux-gnu/libclang-cpp*.so.2* \
-               /usr/lib/x86_64-linux-gnu/libclang*.so.2*; do
-        [ -e "${_so}" ] || continue
-        _b="$(basename "${_so}")"
-        if [ ! -e "/opt/llvm-target/lib/${_b}" ]; then
-            # -e is FALSE for a dangling symlink (the apt tree links
-            # lib/<soname> into the multiarch dir it was copied away from) —
-            # rm it first or cp refuses "not writing through dangling
-            # symlink". A REAL file short-circuits the copy.
-            rm -f "/opt/llvm-target/lib/${_b}"
-            cp -a "${_so}" "/opt/llvm-target/lib/${_b}"
-        fi
-    done
+    _llvm_target_repair_links /opt/llvm-target "${_hostllvm}"
+    _llvm_target_fill_needed /opt/llvm-target /usr/lib/x86_64-linux-gnu
 
-    # NEEDED walk: every DT_NEEDED of the prefix's binaries/libs must resolve
-    # inside <prefix>/lib or (for non-LLVM system deps like libc/libstdc++/
-    # zlib) against the base image's ldconfig cache. The cache is captured
-    # ONCE into a variable and matched with `case` — `ldconfig -p | grep -q`
+    # The cache is captured ONCE and matched with `case` -- `ldconfig -p | grep -q`
     # would die of SIGPIPE under pipefail.
     _ldcache="$(ldconfig -p 2>/dev/null || true)"
     _missing=""
     for _e in /opt/llvm-target/bin/* /opt/llvm-target/lib/*.so*; do
         [ -f "${_e}" ] || continue
         LC_ALL=C readelf -h "${_e}" >/dev/null 2>&1 || continue
-        for _n in $(LC_ALL=C readelf -d "${_e}" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'); do
+        for _n in $(_elf_needed "${_e}"); do
             [ ! -e "/opt/llvm-target/lib/${_n}" ] || continue
-            case "${_n}" in
-                libLLVM*|libclang*) _missing="${_missing} ${_e##*/}:${_n}" ;;
-                *) case "${_ldcache}" in
-                       *"${_n} ("*) ;;
-                       *) _missing="${_missing} ${_e##*/}:${_n}" ;;
-                   esac ;;
-            esac
+            if _is_llvm_family "${_n}"; then
+                _missing="${_missing} ${_e##*/}:${_n}"
+            else
+                case "${_ldcache}" in
+                    *"${_n} ("*) ;;
+                    *) _missing="${_missing} ${_e##*/}:${_n}" ;;
+                esac
+            fi
         done
     done
     [ -z "${_missing}" ] || {
@@ -92,6 +137,7 @@ if [ "${_arch}" = "amd64" ]; then
     echo "amd64 /opt/llvm-target NEEDED walk clean: all LLVM-family sonames resolve inside the prefix"
 elif [ -d "/opt/llvm-target-${_arch}" ]; then
     mv "/opt/llvm-target-${_arch}" /opt/llvm-target
+    _llvm_target_repair_links /opt/llvm-target /opt/llvm-target
 else
     echo "ERROR: no target-clang toolchain for ${_arch} at /opt/llvm-target-${_arch}"; exit 1
 fi

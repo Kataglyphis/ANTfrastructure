@@ -320,9 +320,8 @@ cross_stage_init_pins() {
 #
 # Usage: cross_stage_validate_graph && echo "Graph OK"
 cross_stage_validate_graph() {
-  local stage parent dockerfile tag_fn ok=0
+  local stage parent ok=0
   local -A seen=()
-  local -a chain=()
 
   # Build the index of valid stages
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
@@ -360,7 +359,6 @@ cross_stage_validate_graph() {
   # Check for cycles (simple: each stage visits its parent; max depth = array length)
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     [ "${stage}" = "runtime" ] && continue
-    chain=("${stage}")
     local current="${stage}"
     local depth=0
     while [ -n "${current}" ]; do

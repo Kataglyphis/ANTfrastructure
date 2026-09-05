@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # build-cross-chain.sh — full cross lane with digest-pinned stage handoff.
-# Why: docs/linux-cross-builds.md.
+# Why: docs/linux-cross-builds.md#recommended-digest-pinned-orchestrator-build-cross-chainsh
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -506,6 +506,7 @@ _chain_stage_disk_guard() {
     if [ -n "${free_gb}" ] && [ "${free_gb}" -lt "${threshold}" ]; then
       protected="$(_disk_guard_protected_slugs "${completed_stage}")"
       log "[disk-guard] ${free_gb}G free < ${threshold}G after stage ${completed_stage:-?} — LRU-pruning cache exports in ${bc_dir} (protected: ${protected:-none})"
+      _disk_guard_reclaim_begin
       while [ "${free_gb}" -lt "${threshold}" ]; do
         victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
         [ -n "${victim}" ] || break
@@ -521,7 +522,11 @@ _chain_stage_disk_guard() {
         [ -n "${free_gb}" ] || return 0
       done
       if [ "${free_gb}" -lt "${threshold}" ]; then
-        log "[disk-guard] still ${free_gb}G free after pruning — skipping local cache exports for remaining stages (CROSS_NO_LOCAL_CACHE_EXPORT=1)"
+        _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
+        free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+      fi
+      if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
+        log "[disk-guard] still ${free_gb:-?}G free after pruning — skipping local cache exports for remaining stages (CROSS_NO_LOCAL_CACHE_EXPORT=1)"
         export CROSS_NO_LOCAL_CACHE_EXPORT=1
       else
         log "[disk-guard] after pruning: ${free_gb}G free"
@@ -597,7 +602,9 @@ _chain_runtime_lane_disk_gate() {
   fi
   log "[disk-guard] runtime lane needs ~${need}G free but only ${free_gb}G is left — reclaiming before the wrapper builds start."
   protected="$(_disk_guard_protected_slugs '')"
+  _disk_guard_reclaim_begin
   _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
+  _disk_guard_buildkit_fallback "${bc_dir}" "${need}"
   _disk_guard_reclaim_record "runtime-lane-entry" "${free_gb}" "${bc_dir}"
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || return 0

@@ -282,6 +282,62 @@ slang_compile_targets() {
 # the manifest names (e.g. a Rust crate's shader directory, so include_str!
 # picks up the Slang-emitted WGSL).
 # ---------------------------------------------------------------------------
+# One wgslMap row: emit, patch, validate, copy. Four outcomes, and which is
+# which is the contract the caller's counters are built on:
+# 0 copied, 1 emit failed, 2 rejected by the varying validator, 3 source absent.
+# docs/slang-shader-compilation.md#the-combined-emit-outcomes
+_slang_emit_one_wgsl() {
+  local slangc="$1" src_file="$2" out_name="$3" dst_rel="$4" slangc_version="$5"
+  local src_path tmp_out dst_dir offenders
+  local patch_count i pattern replacement sed_repl before_sum after_sum
+
+  src_path="${SLANG_COMPILE_SOURCE_ROOT}/${src_file}"
+  if [[ ! -f "$src_path" ]]; then return 3; fi
+
+  slang_compile_include_args "$(dirname "$src_path")"
+
+  tmp_out="${SLANG_COMPILE_COMBINED_OUTPUT_DIR}/combined_${out_name}"
+  # No -entry/-stage: Slang emits ALL entry points in one WGSL file.
+  if ! "$slangc" -target wgsl "${SLANG_COMPILE_INCLUDE_ARGS[@]}" -o "$tmp_out" "$src_path"; then
+    warn "Combined WGSL emit failed: ${src_file}"
+    return 1
+  fi
+
+  # Post-emit patch table (depthTexturePatches): why each patch exists is
+  # documented in the "_comment" fields next to the patterns in the manifest.
+  # tr strips the CR a Windows host may add (harmless on Linux).
+  patch_count="$(slang_compile_manifest_query patch_count "$out_name" | tr -d '\r')"
+  for ((i = 0; i < patch_count; i++)); do
+    pattern="$(slang_compile_manifest_query patch_field "$out_name" "$i" pattern | tr -d '\r')"
+    replacement="$(slang_compile_manifest_query patch_field "$out_name" "$i" replacement | tr -d '\r')"
+    # Rewrite ${N} group references to sed's \N form.
+    sed_repl="$(printf '%s' "$replacement" | sed -E 's/\$\{([0-9]+)\}/\\\1/g')"
+    before_sum="$(cksum < "$tmp_out")"
+    sed -i -E "s|${pattern}|${sed_repl}|g" "$tmp_out"
+    after_sum="$(cksum < "$tmp_out")"
+    if [[ "$before_sum" == "$after_sum" ]]; then
+      warn "${out_name} depth-texture patch '${pattern}' matched nothing - slangc output may have changed"
+    fi
+  done
+
+  # Reject a structurally invalid emit BEFORE it can overwrite the checked-in
+  # file, so a broken regeneration can never be committed silently.
+  if ! offenders="$(slang_compile_wgsl_varyings_are_located "$tmp_out")"; then
+    {
+      echo "[ERROR] ${out_name}: slangc ${slangc_version} emitted varying struct member(s) with neither"
+      echo "[ERROR]   @builtin nor @location - that is not valid WGSL and wgpu/naga will reject it."
+      echo "[ERROR]   Emit kept at ${tmp_out}; ${dst_rel}/${out_name} NOT overwritten."
+      while IFS= read -r offender; do echo "[ERROR]   ${offender}"; done <<< "$offenders"
+    } >&2
+    return 2
+  fi
+
+  # Copy to the destination shader directory (replaces hand-written WGSL).
+  dst_dir="${SLANG_COMPILE_DEST_ROOT}/${dst_rel}"
+  mkdir -p "$dst_dir"
+  cp "$tmp_out" "${dst_dir}/${out_name}"
+}
+
 # Sets SLANG_COMPILE_WGSL_EMITTED_COUNT and SLANG_COMPILE_INVALID_EMITS (emits
 # that violated the WGSL varying rules; none of those are copied). Always
 # returns 0 - see slang_compile_targets for why - and slang_compile_main reports
@@ -310,57 +366,15 @@ slang_compile_combined_wgsl() {
     echo "[WARN] checked-in Rust-crate WGSL is left untouched. See docs/slang-shader-compilation.md." >&2
   fi
 
-  local src_file out_name dst_rel src_path tmp_out
-  local patch_count i pattern replacement sed_repl before_sum after_sum offenders dst_dir
+  local src_file out_name dst_rel rc
   while [[ $wgsl_emit_enabled -eq 1 ]] && IFS='|' read -r src_file out_name dst_rel; do
-    src_path="${SLANG_COMPILE_SOURCE_ROOT}/${src_file}"
-    if [[ ! -f "$src_path" ]]; then continue; fi
-
-    slang_compile_include_args "$(dirname "$src_path")"
-
-    tmp_out="${SLANG_COMPILE_COMBINED_OUTPUT_DIR}/combined_${out_name}"
-    # No -entry/-stage: Slang emits ALL entry points in one WGSL file.
-    if ! "$slangc" -target wgsl "${SLANG_COMPILE_INCLUDE_ARGS[@]}" -o "$tmp_out" "$src_path"; then
-      warn "Combined WGSL emit failed: ${src_file}"
-      wgsl_failed+=("$src_file")
-      continue
-    fi
-
-    # Post-emit patch table (depthTexturePatches): why each patch exists is
-    # documented in the "_comment" fields next to the patterns in the manifest.
-    # tr strips the CR a Windows host may add (harmless on Linux).
-    patch_count="$(slang_compile_manifest_query patch_count "$out_name" | tr -d '\r')"
-    for ((i = 0; i < patch_count; i++)); do
-      pattern="$(slang_compile_manifest_query patch_field "$out_name" "$i" pattern | tr -d '\r')"
-      replacement="$(slang_compile_manifest_query patch_field "$out_name" "$i" replacement | tr -d '\r')"
-      # Rewrite ${N} group references to sed's \N form.
-      sed_repl="$(printf '%s' "$replacement" | sed -E 's/\$\{([0-9]+)\}/\\\1/g')"
-      before_sum="$(cksum < "$tmp_out")"
-      sed -i -E "s|${pattern}|${sed_repl}|g" "$tmp_out"
-      after_sum="$(cksum < "$tmp_out")"
-      if [[ "$before_sum" == "$after_sum" ]]; then
-        warn "${out_name} depth-texture patch '${pattern}' matched nothing - slangc output may have changed"
-      fi
-    done
-
-    # Reject a structurally invalid emit BEFORE it can overwrite the checked-in
-    # file, so a broken regeneration can never be committed silently.
-    if ! offenders="$(slang_compile_wgsl_varyings_are_located "$tmp_out")"; then
-      {
-        echo "[ERROR] ${out_name}: slangc ${slangc_version} emitted varying struct member(s) with neither"
-        echo "[ERROR]   @builtin nor @location - that is not valid WGSL and wgpu/naga will reject it."
-        echo "[ERROR]   Emit kept at ${tmp_out}; ${dst_rel}/${out_name} NOT overwritten."
-        while IFS= read -r offender; do echo "[ERROR]   ${offender}"; done <<< "$offenders"
-      } >&2
-      wgsl_invalid+=("${out_name}")
-      continue
-    fi
-
-    # Copy to the destination shader directory (replaces hand-written WGSL).
-    dst_dir="${SLANG_COMPILE_DEST_ROOT}/${dst_rel}"
-    mkdir -p "$dst_dir"
-    cp "$tmp_out" "${dst_dir}/${out_name}"
-    SLANG_COMPILE_WGSL_EMITTED_COUNT=$((SLANG_COMPILE_WGSL_EMITTED_COUNT + 1))
+    rc=0
+    _slang_emit_one_wgsl "$slangc" "$src_file" "$out_name" "$dst_rel" "$slangc_version" || rc=$?
+    case "$rc" in
+      0) SLANG_COMPILE_WGSL_EMITTED_COUNT=$((SLANG_COMPILE_WGSL_EMITTED_COUNT + 1)) ;;
+      1) wgsl_failed+=("$src_file") ;;
+      2) wgsl_invalid+=("$out_name") ;;
+    esac
   done < <(slang_compile_manifest_query wgsl_map | tr -d '\r')
 
   if [[ ${#wgsl_failed[@]} -gt 0 ]]; then

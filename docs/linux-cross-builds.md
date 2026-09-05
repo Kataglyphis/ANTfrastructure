@@ -752,8 +752,28 @@ destroys it, and what replacing it costs is in
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 | `VULKAN_CROSS_STRICT=1` | Promote the Vulkan cross-components gate (`vulkan.sh`) from advisory WARN to fatal. It fires when all three cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause. |
-| `CROSS_GCC_TOOLCHAIN_PATH` | GCC root that `export_clang_gcc_toolchain_env` (`01-core/cross-gcc.sh`) points clang at via `--gcc-toolchain`; defaults to `gcc_toolchain_prefix` (`/opt/gcc-$GCC_VERSION`). Renamed 2026-09-04 from `MYPROJECT_GCC_TOOLCHAIN_PATH`, a template leftover — the old name is no longer read anywhere, so an operator still exporting it silently gets the default. **Reviewed 2026-09-04 and the knob currently changes nothing:** `export_clang_gcc_toolchain_env` has no caller in the build, and the one place clang IS the compiler — the `clang-<arch>`/`clang++-<arch>` wrappers `install_cross_clang_wrappers` writes (`02-toolchain/llvm.sh`) — bakes `--gcc-toolchain=<prefix>` into its own `exec` line from the same `gcc_toolchain_prefix`, so this knob is not what points those at the GCC. Note the two disagree on the missing-prefix case: the wrapper falls back to `/usr`, the function warns and exports nothing. See `refactoring-backlog.md` CL3 before wiring or deleting either. |
 | `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
+
+### Clang cross wrappers
+
+`install_cross_clang_wrappers` (`02-toolchain/llvm.sh`) writes
+`/usr/local/bin/clang-<arch>` and `clang++-<arch>`, each a one-line `exec` of the
+selected host clang with `--target=<triplet>`, `--sysroot` and
+`--gcc-toolchain=<gcc_prefix>` already baked in, where `gcc_prefix` is
+`gcc_toolchain_prefix()` (`/opt/gcc-$GCC_VERSION`) or `/usr` when that directory
+is missing. These wrappers are the only path in the build where clang IS the
+compiler; nothing in the tree sets a bare `CC=clang`.
+
+**`CROSS_GCC_TOOLCHAIN_PATH` and `export_clang_gcc_toolchain_env` were deleted on
+2026-09-05** (backlog CL3). The function exported `--gcc-toolchain` into
+`CFLAGS`/`CXXFLAGS`/`LDFLAGS` and had no caller in the build, so the knob changed
+nothing: what points clang at the source-built GCC is the wrapper's own `exec`
+line, from the same `gcc_toolchain_prefix()`. The two also disagreed on the
+missing-prefix case (the wrapper falls back to `/usr`, the function warned and
+exported nothing), so keeping both meant two policies for one question. An
+operator still exporting the name gets no effect and no warning.
+`tests/test-clang-cross-wrappers.sh` now asserts what the wrapper bakes; that was
+untested while the dead knob had a suite of its own.
 
 ### IREE (Linux lane)
 
@@ -852,6 +872,33 @@ opt in per scope via `cross_bare_bin_path()`:
 ```bash
 bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
 ```
+
+### The Android ABI is a target, not the build host
+
+`ANDROID_TARGET_ABI` (`01-core/versions.env`, default `arm64-v8a`) names the ABI the
+prebuilt SDKs under `/opt/android` are compiled for. It used to be derived from
+`arch_oci` — the **build host** — and every cross stage in this repo builds on amd64.
+The whole Android layer therefore shipped as `x86_64`, which is emulator-only, while
+the app asked for `arm64-v8a`. Nothing failed loudly; the payload was simply for the
+wrong machine.
+
+`android_target_arch` now prefers the declared ABI and falls back to `arch_oci` only
+when nothing declared one:
+
+| ABI | OCI arch |
+| --- | --- |
+| `arm64-v8a` | `arm64` |
+| `x86_64` | `amd64` |
+| `x86` | `386` |
+| `riscv64` | `riscv64` |
+
+`arch_for_android_abi` returns non-zero on anything else rather than guessing, so an
+unmappable ABI is a build failure and not a silently mis-targeted layer.
+
+One ABI per image. The ABI is part of the cerbero cache-mount id in
+`Dockerfile.android`, so changing it rebuilds the GStreamer Android payload rather
+than reusing another ABI's state — set it and rebuild the layer to target a
+different device.
 
 ### Android SDK environment in the runtime image
 
@@ -1028,4 +1075,42 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --pa
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+```
+
+## The Android ABI is a target, not the build host
+
+`/opt/android` holds five prebuilt Android SDKs — GStreamer, ONNX Runtime,
+LiteRT, OpenCV, IREE. Each is compiled for exactly one Android ABI, and until
+2026-09-05 that ABI was derived from `arch_oci`: the architecture of the machine
+doing the build. Every cross stage builds on `linux/amd64`, so the answer was
+always `x86_64`, on every image, including the arm64 and riscv64 ones.
+
+The symptom reached a consumer as a linker error, not a missing file — the SDKs
+were all present and all wrong:
+
+```
+ld.lld: error: /opt/android/gstreamer/libgstreamer-1.0.a(gst.c.o)
+        is incompatible with aarch64linux
+```
+
+`x86_64` is the emulator ABI. An app targeting real phones asks for `arm64-v8a`,
+so the layer was useful to almost nobody.
+
+`ANDROID_TARGET_ABI` in `versions.env` now names the target, defaulting to
+`arm64-v8a`. `android_target_abi()` reads it, and `android_target_arch()` maps it
+BACK to a Debian arch through `arch_for_android_abi` so the two never disagree —
+the preamble's `TARGET_ARCH` drives cerbero's `CERBERO_TARGET_ARCH`, the API-level
+floor, and ONNX Runtime's riscv64 skip. With the knob unset the old host-derived
+behaviour is unchanged.
+
+One ABI per image. Switching costs a full rebuild of the android stage, which is
+why the five cerbero cachemounts carry `abi${ANDROID_TARGET_ABI}` in their id:
+without it a switched ABI would resume the previous ABI's cerbero tree and spend
+hours producing the wrong thing, the same class of trap the NDK version key
+already guards.
+
+To build the emulator ABI instead:
+
+```bash
+ANDROID_TARGET_ABI=x86_64 bash linux/scripts/build-cross-chain.sh --only android
 ```

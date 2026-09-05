@@ -61,6 +61,18 @@ right pair for CI. The choice is logged, with a pointer to `UV_SYNC_EXTRAS`.
 A project with no conflicts is unaffected: the exclusion list comes back empty
 and the command is byte-identical to before.
 
+The group scanner reads TOML, not one indentation style. It used to gather the
+`extra = "…"` occurrences of a line only **after** the character walk had already
+closed the group on that line's `]`, so a group written inline —
+`conflicts = [ [ { extra = "a" }, { extra = "b" } ] ]`, which uv accepts — produced
+no group, excluded nothing, and left `--all-extras` to die on the very conflict it
+was meant to route around. The group's text is now accumulated during the same walk
+and read at the `]` that closes it, so the inline, multi-line and mixed layouts all
+give the same answer. Orchestr-ANT-ion writes the multi-line form, so this was
+latent there; what settles it is a consuming repo's CI lane running
+`uv sync --all-extras`, because no ContainerHub cross stage calls `uv_sync_project`
+at all — it is reached only from `02-toolchain/python/ci_*.sh`.
+
 ## Trap 2 — `UV_PYTHON` beats the activated venv
 
 The CI images export `UV_PYTHON=/opt/venv/bin/python` (a root-owned system venv)

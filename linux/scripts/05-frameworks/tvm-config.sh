@@ -69,6 +69,7 @@ _tvm_emit_llvm_args() {
 _tvm_emit_compiler_cache_args() {
   local -n _tvm_emit_ref="$1"
   local _tvm_launcher
+  compiler_cache_launcher_env 2>/dev/null || true
   _tvm_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
   if [ -n "${_tvm_launcher}" ]; then
     _tvm_emit_ref+=(

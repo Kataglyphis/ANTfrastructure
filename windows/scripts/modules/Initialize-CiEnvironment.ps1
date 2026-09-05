@@ -30,7 +30,7 @@ function Initialize-CiEnvironment {
         # ContainerHub checkout" — that was never what the code did, and no
         # caller exists anywhere (all local consumer repos verified) that
         # depends on either reading. A vendored consumer
-        # (<consumer>/ExternalLib/Kataglyphis-ContainerHub/...) wanting ITS
+        # (<consumer>/third_party/ContainerHub/...) wanting ITS
         # OWN root passes -RepoRoot explicitly.
         [switch]$EnterRepoRoot,
         # Explicit repo-root override for vendored-checkout consumers.

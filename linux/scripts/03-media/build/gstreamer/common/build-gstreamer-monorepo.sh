@@ -409,7 +409,7 @@ _gst_monorepo_opencv_flags() {
   done
 }
 
-_gst_monorepo_tflite_flags() {
+_gst_tflite_probe_flags() {
   local tflite_pkg_config_name=""
   local tflite_includedir=""
   local tflite_libdir=""
@@ -439,16 +439,21 @@ _gst_monorepo_tflite_flags() {
       echo "Resolved ${tflite_pkg_config_name} for Meson probes: includedir='${tflite_includedir:-}' libdir='${tflite_libdir:-}'"
     fi
   fi
+}
 
-  # Idempotent sanitizer for the stray `}` a since-fixed generate_pkgconfig_file()
-  # bug left after -ltensorflow-lite in older toolchain images.
+# Idempotent sanitizer for the stray `}` a since-fixed generate_pkgconfig_file()
+# bug left after -ltensorflow-lite in older toolchain images.
+_gst_tflite_fix_pc() {
   if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
     if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
       sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
     fi
   fi
-  # Meson probes libraries via the cross compiler's -print-file-name, which
-  # ignores pkg-config's -L flags; symlink into its default search dirs.
+}
+
+# Meson probes libraries via the cross compiler's -print-file-name, which
+# ignores pkg-config's -L flags; symlink into its default search dirs.
+_gst_tflite_symlink_for_meson() {
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ -f /usr/local/lib/libtensorflow-lite.so ]; then
     for _gcc_arch in aarch64-linux-gnu riscv64-linux-gnu; do
       for _gcc_dir in /opt/gcc-*/${_gcc_arch}/lib* /opt/gcc-*/lib/gcc/${_gcc_arch}/*/; do
@@ -459,6 +464,14 @@ _gst_monorepo_tflite_flags() {
     done
     export LIBRARY_PATH="/usr/local/lib:${LIBRARY_PATH:-}"
   fi
+}
+
+# Three unrelated TFLite workarounds, kept in call order.
+# docs/cross-build-verification.md#tflite-for-the-gstreamer-monorepo-three-workarounds
+_gst_monorepo_tflite_flags() {
+  _gst_tflite_probe_flags
+  _gst_tflite_fix_pc
+  _gst_tflite_symlink_for_meson
 }
 
 _gst_monorepo_meson_setup_run() {

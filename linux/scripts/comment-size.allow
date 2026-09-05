@@ -32,7 +32,6 @@ linux/scripts/01-core/common.sh	# ── run_priv — the safe replacement for t
 linux/scripts/01-core/compiler-cache.sh	#!/usr/bin/env bash
 linux/scripts/01-core/context-management.sh	# Reclaim stage-context trees left behind by runs that never
 linux/scripts/01-core/context-management.sh	#!/usr/bin/env bash
-linux/scripts/01-core/cpython-dev-packages.sh	# shellcheck shell=bash
 linux/scripts/01-core/cross-env-doctor.sh	#!/usr/bin/env bash
 linux/scripts/01-core/cross-env.sh	# URL may carry '|'-separated fallback mirrors so a single-s
 linux/scripts/01-core/cross-env.sh	# Wire the Rust *target* toolchain env for a cross cdylib/st
@@ -125,14 +124,12 @@ linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh	# ccache — the decis
 linux/scripts/05-frameworks/tvm-llvm-compat.sh	# tvm-llvm-compat.sh
 linux/scripts/05-frameworks/tvm.sh	# NO patch_tvm_for_llvm_23 HERE — and that is deliberate (20
 linux/scripts/05-frameworks/tvm.sh	# TVM's FindLLVM does find_package(LLVM CONFIG) then
-linux/scripts/06-packaging/copy-media-payloads.sh	# DF3 (2026-08-18, moved verbatim from an inline Dockerfile.
 linux/scripts/06-packaging/setup-package-image.sh	# Assert that the DEV surface this image intends to expose i
 linux/scripts/06-packaging/setup-package-image.sh	# DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both lo
 linux/scripts/06-packaging/setup-package-image.sh	# Symlink the cargo/rust toolchain binaries into CARGO_HOME/
 linux/scripts/06-packaging/setup-package-image.sh	# The shipped clang{,++} MUST equal LLVM_RELEASE (asserted b
 linux/scripts/06-packaging/smoke-common.sh	# Full compiler validation for a target architecture.
 linux/scripts/06-packaging/smoke-common.sh	# ── generated ONNX fixture (SMOKE-DEPTH item c, 2026-08-23)
-linux/scripts/06-packaging/smoke-cross-all-arches.sh	# smoke-cross-all-arches.sh
 linux/scripts/06-packaging/smoke-toolchain.sh	# smoke-toolchain.sh
 linux/scripts/06-packaging/smoke-torch-venv.sh	# Real InferenceSession: get_available_providers() is a capa
 linux/scripts/06-packaging/smoke-torch-venv.sh	# smoke-torch-venv.sh
@@ -142,7 +139,6 @@ linux/scripts/06-packaging/swap-native-gcc.sh	# swap-native-gcc.sh
 linux/scripts/06-packaging/validate-compilers.sh	# validate-compilers.sh
 linux/scripts/lib-orchestrator.sh	# shellcheck shell=bash
 linux/scripts/lib/agentic-loop.sh	# ── Main loop ─────────────────────────────────────────────
-linux/scripts/lib/agentic-loop.sh	#!/usr/bin/env bash
 linux/scripts/lib/app-runner.sh	#!/usr/bin/env bash
 linux/scripts/lib/code-quality.sh	# ----------------------------------------------------------
 linux/scripts/lib/coverage.sh	# ----------------------------------------------------------
@@ -176,3 +172,5 @@ linux/scripts/tests/test-smoke-arch-parity.sh	# ── ARCH-PARITY component tab
 linux/scripts/tests/test-tvm-wheel-diagnostics.sh	#!/usr/bin/env bash
 linux/scripts/verify-patch-integrity.sh	#!/usr/bin/env bash
 linux/scripts/verify-shipped-wrapper.sh	#!/usr/bin/env bash
+linux/scripts/lib/app-packaging.sh	#!/usr/bin/env bash
+linux/scripts/05-frameworks/flutter/flutter-pin.sh	#!/usr/bin/env bash

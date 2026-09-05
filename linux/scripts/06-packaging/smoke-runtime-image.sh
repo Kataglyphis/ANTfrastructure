@@ -6,7 +6,7 @@ set -euo pipefail
 # run the ML stack, ffmpeg and GStreamer INSIDE the image (qemu for cross arches).
 # RUNTIME_FUNCTIONAL_SMOKE=0 skips the functional half; ALLOW_TORCHLESS_RUNTIME=1
 # accepts a torch-less image. What each gate covers:
-# docs/cross-build-verification.md, "In-image smoke tests".
+# docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -536,7 +536,19 @@ check_rust_toolchain() {
 # image: caches outside the bind-mounted checkout, a writable Rust home, a set
 # ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
 # docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools"
+
+# Rows whose entire contract is "this is staged in the image, or every consumer run
+# pays for it again". One owner for all three: the verdict has the same shape, and
+# the cost is already written down once in _consumer_contract_symptom.
+# docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
+_consumer_present_verdict() {
+  local row="$1" got="$2"
+  case "${got}" in
+    ''|0|no) printf 'FAIL %s absent -- %s' "${row}" "$(_consumer_contract_symptom "${row}")" ;;
+    *)       printf 'OK %s %s' "${row}" "${got}" ;;
+  esac
+}
 
 # The consumer-visible failure each row prevents, quoted verbatim from the lane that
 # hit it, so a red run names the symptom in the OTHER repo and not just our path.
@@ -551,6 +563,9 @@ _consumer_contract_symptom() {
     appimagetool)  printf '%s' 'appimagetool is an AppImage: it reads /proc/self/exe for its own squashfs offset, so a mode that is executable but not READABLE gives "Cannot open /proc/self/exe: Permission denied" and no .AppImage is produced' ;;
     dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
     flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
+    flatpak-runtimes) printf '%s' 'flatpak list --runtime returns 0 refs, so every run re-downloads seven org.freedesktop refs (~1.9 GB) -- the single largest download in a consumer build' ;;
+    appimage-runtime) printf '%s' 'appimagetool refetches runtime-<arch> from the type2-runtime continuous release on every build, so packaging hangs on GitHub being reachable' ;;
+    web-lane-tools) printf '%s' 'flutter_rust_bridge_codegen build-web cargo-installs wasm-pack (258 crates) and itself (174) from source in every run' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -560,11 +575,30 @@ _consumer_contract_symptom() {
 # docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
   case "$1:$2" in
-    # Upstream publishes no riscv64 Flutter SDK, so /opt/flutter ships EMPTY there and
-    # check_flutter asserts that absence instead. The rot signal is the probe's own
-    # FACT flutter-sdk: the day a riscv64 SDK lands, both arms fail and name themselves.
-    riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;
+    # Upstream publishes no riscv64 Flutter SDK, so the .dart_tool directory the row
+    # asks about does not exist there and the row would read as unwritable.
+    # flutter-owner is NOT exempt: measured on the shipped riscv64 image, the row
+    # already holds. docs/consumer-image-contract.md#per-arch-exemptions
+    riscv64:dart-tool) return 0 ;;
+    # AppImage publishes no riscv64 build either: packaging-deps.sh's asset table
+    # covers x86_64/aarch64/armhf/i686 and refuses the rest, so the tool is absent
+    # there by construction and the AppImage format is not offered on riscv64.
+    riscv64:appimagetool) return 0 ;;
+    # Flathub builds the freedesktop runtimes for x86_64 and aarch64 only, and the
+    # AppImage runtime is carved out of the appimagetool AppImage, which riscv64
+    # does not have either. Both are absent there by construction.
+    riscv64:flatpak-runtimes) return 0 ;;
+    riscv64:appimage-runtime) return 0 ;;
     *) return 1 ;;
+  esac
+}
+
+# The probe FACT that re-checks one exempted row. An exemption re-checked by ANOTHER
+# row's fact cannot rot at all — appimagetool's was read from FACT flutter-sdk.
+_consumer_exempt_fact() {
+  case "$1" in
+    appimagetool) printf '%s' 'appimagetool-readable' ;;
+    *)            printf '%s' 'flutter-sdk' ;;
   esac
 }
 
@@ -637,6 +671,17 @@ while IFS= read -r _p; do
 done < <(find /opt/flutter ! -uid "${_u}" 2>/dev/null)
 printf 'FACT flutter-foreign %s\n' "${_n}"
 printf 'FACT flutter-foreign-examples %s\n' "${_ex# }"
+printf 'FACT flatpak-runtimes %s\n' "$(flatpak list --runtime 2>/dev/null | grep -c . || echo 0)"
+if [ -n "$(ls "${HOME:-/nonexistent}"/.local/share/appimagekit/runtime-* 2>/dev/null | head -1)" ]; then
+  printf 'FACT appimage-runtime yes\n'
+else
+  printf 'FACT appimage-runtime no\n'
+fi
+if command -v wasm-pack >/dev/null 2>&1 && command -v flutter_rust_bridge_codegen >/dev/null 2>&1; then
+  printf 'FACT web-lane-tools yes\n'
+else
+  printf 'FACT web-lane-tools no\n'
+fi
 echo CCPROBE_DONE
 PROBE
 }
@@ -667,13 +712,13 @@ _consumer_dir_verdict() {
 }
 
 # An exempted row still has to prove its exemption still applies: the rot signal is the
-# probe's own FACT flutter-sdk, and a missing one is NOFACT, never a grant.
+# row's OWN probe fact, and a missing one is NOFACT, never a grant.
 # docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_exempt_verdict() {
   case "$3" in
-    yes) printf 'STALE %s a Flutter SDK IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$2" "$2" "$1" ;;
+    yes) printf 'STALE %s FACT %s says it IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$4" "$2" "$2" "$1" ;;
     no)  printf 'EXEMPT %s' "$1" ;;
-    *)   printf 'NOFACT %s no FACT flutter-sdk, so the exemption cannot be re-checked' "$1" ;;
+    *)   printf 'NOFACT %s no FACT %s, so the exemption cannot be re-checked' "$1" "$4" ;;
   esac
 }
 
@@ -754,17 +799,21 @@ _consumer_owner_verdict() {
 # <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
 # path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
 _consumer_contract_verdicts() {
-  local arch="$1" probe="$2" row sdk line asserted=0
-  sdk="$(_consumer_contract_fact "${probe}" FACT flutter-sdk)"
+  local arch="$1" probe="$2" row fact line asserted=0
   for row in ${_CONSUMER_CONTRACT_ROWS}; do
     if _consumer_contract_exempt "${arch}" "${row}"; then
-      line="$(_consumer_exempt_verdict "${row}" "${arch}" "${sdk}")"
+      fact="$(_consumer_exempt_fact "${row}")"
+      line="$(_consumer_exempt_verdict "${row}" "${arch}" \
+                "$(_consumer_contract_fact "${probe}" FACT "${fact}")" "${fact}")"
     else
       case "${row}" in
         android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
         jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
         appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
+        flatpak-runtimes|appimage-runtime|web-lane-tools)
+                       line="$(_consumer_present_verdict "${row}" \
+                                 "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;
         *)             line="$(_consumer_dir_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
                                  "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;
@@ -865,23 +914,41 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
 # 127) and Flutter's Dart SDK both did, and only their own gates caught them.
 # docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
 
-# Trees whose ELF machine is NOT this image's by design. The arm names the TREE, never
-# an arch, so a newly host-installed tree fails by default; both here are android-lane
-# payloads (device .so + the SDK's host tooling) whose arch says nothing about the image.
-_RT_TREE_ARCH_EXEMPT="/opt/android /opt/android-sdk"
+# Trees whose ELF machine is NOT this image's by design, MEASURED on shipped bytes
+# rather than reasoned: the SDK is one linux-x86_64 tree copied unchanged into all
+# three images. The arm names the TREE, never an arch, so a newly host-installed tree
+# fails by default. /opt/android was exempt on the same reasoning until the same
+# measurement refuted it. docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
+_RT_TREE_ARCH_EXEMPT="/opt/android-sdk"
+
+# Builder-arch objects a foreign image still ships, frozen WITH their count so a new
+# one fails while a known one is tracked: <arch>:<tree>:<machine>:<count>. These are
+# defects with a backlog entry, not waivers -- the list only ratchets down, and it is
+# EMPTY: the five llvm-target x86-64 libs it held were fixed at the source (HT3).
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+_RT_TREE_ARCH_FROZEN=""
+
+# Prints the frozen count for this finding, empty when it is not frozen.
+_rt_tree_arch_frozen() {
+  local key="$1:$2:$3" entry
+  for entry in ${_RT_TREE_ARCH_FROZEN}; do
+    case "${entry}" in "${key}:"*) printf '%s' "${entry##*:}"; return 0 ;; esac
+  done
+  return 1
+}
 
 _rt_tree_arch_exempt() {
   case " ${_RT_TREE_ARCH_EXEMPT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 # Where the gate probes a manifest tree in the image: the manifest carries the COPY
-# SOURCE path, one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
-# owns the other half), and /opt/vulkan ships the SDK's x86_64 HOST tools beside the
-# cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert.
+# SOURCE path and one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
+# owns the other half). /opt/vulkan used to be narrowed to active/ around a builder-arch
+# SDK that no longer ships; the WHOLE tree is asserted now.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 _rt_tree_probe_path() {
   case "$1" in
     /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
-    /opt/vulkan)      printf '%s' /opt/vulkan/active ;;
     *)                printf '%s' "$1" ;;
   esac
 }
@@ -920,7 +987,26 @@ _rt_manifest_trees() {
 _tree_arch_py() {
   cat <<'PY'
 import os
-EM = {3: "Intel 80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+import re
+# No space in a label: the verdict line is read back with `read -r verb tree machine
+# count sample`, and "Intel 80386" ate the count column on 2026-09-04.
+EM = {3: "Intel-80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+# A cross toolchain SHIPS foreign objects on purpose: these three directory shapes are
+# its target payload, not the image's own binaries. Everything else in the tree -- the
+# compilers and libraries the image itself runs -- is still asserted.
+# docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+CROSS_PAYLOAD = (
+    "/lib/rustlib/",              # rustup: per-target std, one dir per --target
+    "/lib/clang/",                # clang: multilib sanitizer/builtins runtimes
+    "/lib/gcc/",                  # gcc: per-target crt objects, one dir per triple
+)
+GCC_TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/")
+
+
+def _cross_payload(path):
+    if any(marker in path for marker in CROSS_PAYLOAD):
+        return True
+    return bool(GCC_TARGET_DIR.search(path))
 CAP = int(os.environ.get("RT_TREE_CAP") or "20000")
 for tree in os.environ.get("RT_TREES", "").split():
     if not os.path.isdir(tree):
@@ -937,6 +1023,8 @@ for tree in os.environ.get("RT_TREES", "").split():
             try:
                 executable = os.stat(path).st_mode & 0o111
             except OSError:
+                continue
+            if _cross_payload(path):
                 continue
             (first if executable or ".so" in name else rest).append(path)
     for path in first + rest:
@@ -996,7 +1084,7 @@ check_manifest_tree_arch() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
-  local trees="" tree want out verb machine count sample bad=0 ok=0
+  local trees="" tree want out verb machine count sample bad=0 ok=0 _frozen
   while read -r tree; do
     case "${tree}" in
       UNRESOLVED*)
@@ -1025,7 +1113,17 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
     case "${verb}" in
       OK)      ok=$((ok + 1)); echo "  OK   ${tree}: ${count} ELF object(s), all ${machine}" ;;
       NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
-      BAD)     bad=$((bad + 1))
+      BAD)     _frozen="$(_rt_tree_arch_frozen "${target_arch}" "${tree}" "${machine}" || true)"
+               if [ -n "${_frozen}" ] && [ "${_frozen}" = "${count}" ]; then
+                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT3) -- known, counted, not waived"
+                 continue
+               fi
+               if [ -n "${_frozen}" ]; then
+                 bad=$((bad + 1))
+                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT3) -- the count MOVED; find what changed before re-freezing"
+                 continue
+               fi
+               bad=$((bad + 1))
                fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason" ;;
       MISSING) bad=$((bad + 1))
                fail "tree-arch: ${tree} is declared in runtime-artifacts.manifest but is ABSENT from the ${target_arch} image -- the COPY landed elsewhere or the tree was dropped" ;;
@@ -1243,6 +1341,8 @@ printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
 printf 'ADV GSTREAMER_VERSION %s\n'   "${GSTREAMER_VERSION:-}"
 printf 'ADV VULKAN_VERSION %s\n'      "${VULKAN_VERSION:-}"
 printf 'ADV RUST_VERSION %s\n'        "${RUST_VERSION:-}"
+printf 'ADV WASM_PACK_VERSION %s\n' "${WASM_PACK_VERSION:-}"
+printf 'ADV FLUTTER_RUST_BRIDGE_VERSION %s\n' "${FLUTTER_RUST_BRIDGE_VERSION:-}"
 printf 'ADV UBUNTU_VERSION %s\n'             "${UBUNTU_VERSION:-}"
 printf 'ADV CMAKE_VERSION %s\n'              "${CMAKE_VERSION:-}"
 printf 'ADV NODE_VERSION %s\n'               "${NODE_VERSION:-}"
@@ -1294,6 +1394,8 @@ printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
 printf 'HAVE LLVM_RELEASE %s\n'       "$(clang --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE GSTREAMER_VERSION %s\n'  "$(gst-inspect-1.0 --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE VULKAN_VERSION %s\n'     "$(_have_vulkan)"
+printf 'HAVE WASM_PACK_VERSION %s\n' "$(wasm-pack --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'HAVE FLUTTER_RUST_BRIDGE_VERSION %s\n' "$(flutter_rust_bridge_codegen --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 PROBE
 }
 
@@ -1400,7 +1502,7 @@ _shipped_truth_probe() {
 _ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
-LITERT_VERSION RUST_VERSION"
+LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION"
 
 # Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
 # selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.
@@ -1856,10 +1958,19 @@ check_webrtc_signalling() {
     echo ""
 }
 
+# The path /proc/self/maps names for the loaded loader, out of the probe's output.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+_vk_loaded_path() {
+  printf '%s' "${1}" | sed -n 's/^VKLIB //p' | head -1
+}
+
 # Vulkan loader load test -- the .so-closure gate proves libvulkan resolves, not that
 # the loader dlopen()s at runtime. A missing ICD/GPU does NOT stop ctypes.CDLL and the
 # runtime image ALWAYS installs the Vulkan runtime files, so a load failure means the
-# lib is missing/broken and FAILS; only a container-infra error stays WARN.
+# lib is missing/broken and FAILS; only a container-infra error stays WARN. WHICH
+# libvulkan answered is asserted too: Ubuntu's multiarch loader is in every image, so a
+# linker fallback to it would pass a load-only check with /opt/vulkan unused or unshipped.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 check_vulkan_loader() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1870,17 +1981,176 @@ check_vulkan_loader() {
          /opt/venv/bin/python -c 'import ctypes
 l = ctypes.CDLL("libvulkan.so.1")
 try:
+    print("VKLIB %s" % [m.rsplit(" ", 1)[-1].strip()
+                        for m in open("/proc/self/maps") if "libvulkan" in m][0])
+except (OSError, IndexError):
+    pass
+try:
     v = ctypes.c_uint32()
     assert l.vkEnumerateInstanceVersion(ctypes.byref(v)) == 0
     print("VKOK %d.%d.%d" % (v.value >> 22, (v.value >> 12) & 1023, v.value & 4095))
 except AttributeError:
     print("VKOK (pre-1.1 loader)")' 2>&1)" || true
+    _vk_lib="$(_vk_loaded_path "${_vk_out}")"
     if printf '%s' "${_vk_out}" | grep -q "VKOK"; then
-      echo "  OK  libvulkan.so.1 loads (${target_arch})"
+      case "${_vk_lib}" in
+        /opt/vulkan/*) echo "  OK  libvulkan.so.1 loads from ${_vk_lib} (${target_arch})" ;;
+        '')            echo "  WARN libvulkan.so.1 loads but /proc/self/maps named no path -- non-fatal" ;;
+        *)             fail "libvulkan.so.1 loaded from ${_vk_lib} in the ${target_arch} image, not from /opt/vulkan -- the shipped SDK prefix is not what the loader resolves to (pruned too far, or LD_LIBRARY_PATH lost it)" ;;
+      esac
     elif printf '%s' "${_vk_out}" | grep -qiE "OSError|No such file|cannot open shared object|not found"; then
       fail "libvulkan.so.1 missing/unloadable in ${target_arch} image (runtime always ships it): $(printf '%s' "${_vk_out}" | tail -1)"
     else
       echo "  WARN vulkan load check inconclusive (container-infra error?) -- non-fatal: $(printf '%s' "${_vk_out}" | tail -1)"
+    fi
+    echo ""
+}
+
+# A cross-built SDK prefix that carries libraries but no tools links fine and is
+# useless to build an application with -- that shipped for months unnoticed because
+# every Vulkan check here asked about the loader. REQUIRED is the set proven to
+# cross-build; the rest is reported so a silent loss is still visible.
+# docs/vulkan-foreign-arch-sdk.md
+_VK_REQUIRED_TOOLS="glslangValidator spirv-opt spirv-val spirv-dis spirv-as spirv-link"
+_VK_REPORTED_TOOLS="glslc vulkaninfo spirv-cross spirv-reflect spirv-lint spirv-reduce"
+
+check_vulkan_toolset() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out missing found layer
+
+    echo "--- Functional: Vulkan SDK toolset ---"
+    out="$(_rt_run /bin/sh -c '
+      for t in '"${_VK_REQUIRED_TOOLS} ${_VK_REPORTED_TOOLS}"'; do
+        [ -x "${VULKAN_SDK}/bin/${t}" ] && echo "TOOL ${t}"
+      done
+      ls "${VULKAN_SDK}"/share/vulkan/explicit_layer.d/*validation*.json >/dev/null 2>&1 \
+        && echo LAYER yes' 2>&1)" || true
+
+    missing=""
+    for t in ${_VK_REQUIRED_TOOLS}; do
+      printf '%s' "${out}" | grep -qx "TOOL ${t}" || missing="${missing} ${t}"
+    done
+    found="$(printf '%s' "${out}" | grep -c '^TOOL ' || true)"
+
+    if [ -n "${missing}" ]; then
+      fail "the ${target_arch} Vulkan SDK prefix is missing required tools:${missing} -- \
+the prefix carries libraries the linker is happy with but nothing you can build a shader with \
+(see docs/vulkan-foreign-arch-sdk.md)"
+    else
+      echo "  OK  ${found} SDK tools present in \${VULKAN_SDK}/bin (${target_arch})"
+    fi
+
+    for t in ${_VK_REPORTED_TOOLS}; do
+      printf '%s' "${out}" | grep -qx "TOOL ${t}" \
+        || echo "  WARN ${t} absent from the ${target_arch} SDK prefix -- non-fatal"
+    done
+    layer="$(printf '%s' "${out}" | grep -c '^LAYER yes' || true)"
+    [ "${layer}" -gt 0 ] \
+      && echo "  OK  validation layer manifest present (${target_arch})" \
+      || echo "  WARN no validation layer manifest in the ${target_arch} SDK -- non-fatal"
+    echo ""
+}
+
+# The ABI /opt/android is compiled for, asserted against the ABI the image says it
+# targets. That tree is tree-arch EXEMPT on purpose -- an Android arm64-v8a payload
+# is AArch64 in EVERY image, including the amd64 one -- so nothing else could catch
+# a layer built for the wrong ABI, and it derived from the BUILD HOST for months.
+# It reached a consumer as a link error, not a missing file.
+# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+_ANDROID_ABI_MACHINE="arm64-v8a:183 x86_64:62 x86:3 riscv64:243"
+
+_android_abi_want() {
+  local row
+  for row in ${_ANDROID_ABI_MACHINE}; do
+    [ "${row%%:*}" = "$1" ] && { printf '%s' "${row#*:}"; return 0; }
+  done
+  return 1
+}
+
+# Archives matter as much as shared objects here: the reported failure was a .a
+# member, which `file` on the archive itself does not report.
+_android_abi_py() {
+  cat <<'PY'
+import collections, os, struct
+
+def machine(b):
+    return struct.unpack_from("<H", b, 18)[0] if b[:4] == b"\x7fELF" else None
+
+def archive_machine(path):
+    with open(path, "rb") as fh:
+        if fh.read(8) != b"!<arch>\n":
+            return None
+        for _ in range(6):                      # skip "/" and "//" bookkeeping members
+            head = fh.read(60)
+            if len(head) < 60:
+                return None
+            size = int(head[48:58].decode("ascii", "replace").strip() or 0)
+            body = fh.read(min(size, 20))
+            fh.seek(size - len(body) + (size % 2), 1)
+            got = machine(body)
+            if got:
+                return got
+    return None
+
+seen, sample = collections.Counter(), {}
+for root, _dirs, files in os.walk("/opt/android"):
+    for name in files:
+        path = os.path.join(root, name)
+        try:
+            if name.endswith(".a"):
+                got = archive_machine(path)
+            elif name.endswith(".so") or ".so." in name:
+                with open(path, "rb") as fh:
+                    got = machine(fh.read(20))
+            else:
+                continue
+        except OSError:
+            continue
+        if got:
+            seen[got] += 1
+            sample.setdefault(got, path)
+for got, count in seen.most_common():
+    print("MACH %d %d %s" % (got, count, sample[got]))
+PY
+}
+
+check_android_abi() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out abi want mach count path bad=0 total=0
+
+    echo "--- Functional: Android SDK ABI ---"
+    out="$(_rt_run /bin/sh -c "echo \"ABI \${ANDROID_TARGET_ABI:-unset}\"; \
+      /opt/venv/bin/python -c \"$(_android_abi_py | sed 's/"/\\"/g')\"" 2>&1)" || true
+
+    abi="$(printf '%s' "${out}" | sed -n 's/^ABI //p' | head -1)"
+    if [ -z "${abi}" ] || [ "${abi}" = unset ]; then
+      fail "the ${target_arch} image does not advertise ANDROID_TARGET_ABI -- a consumer cannot tell which Android ABI /opt/android was built for"
+      echo ""
+      return 0
+    fi
+    if ! want="$(_android_abi_want "${abi}")"; then
+      fail "ANDROID_TARGET_ABI=${abi} in the ${target_arch} image is not an ABI this gate knows (${_ANDROID_ABI_MACHINE})"
+      echo ""
+      return 0
+    fi
+
+    while read -r _tag mach count path; do
+      [ "${_tag}" = MACH ] || continue
+      total=$((total + count))
+      if [ "${mach}" != "${want}" ]; then
+        fail "/opt/android carries ${count} object(s) of ELF machine ${mach} but the image advertises ANDROID_TARGET_ABI=${abi} (machine ${want}) -- e.g. ${path}; a consumer linking for ${abi} gets \"is incompatible\" at link time"
+        bad=$((bad + 1))
+      fi
+    done <<EOF
+$(printf '%s' "${out}")
+EOF
+
+    if [ "${total}" -eq 0 ]; then
+      echo "  WARN no Android ELF objects found under /opt/android (${target_arch}) -- non-fatal"
+    elif [ "${bad}" -eq 0 ]; then
+      echo "  OK  ${total} Android object(s) are all ${abi} (${target_arch})"
     fi
     echo ""
 }
@@ -2048,6 +2318,8 @@ main() {
     check_healthcheck_exec "${image_tag}" "${target_arch}"
     check_webrtc_signalling "${image_tag}" "${target_arch}"
     check_vulkan_loader "${image_tag}" "${target_arch}"
+    check_vulkan_toolset "${image_tag}" "${target_arch}"
+    check_android_abi "${image_tag}" "${target_arch}"
     check_native_compiler_battery "${image_tag}" "${target_arch}"
     check_clang_llvm_release "${image_tag}" "${target_arch}"
   else

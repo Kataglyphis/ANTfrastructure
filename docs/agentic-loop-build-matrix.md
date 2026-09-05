@@ -184,3 +184,52 @@ are documented in the module API reference,
 | `count_build_matrix <config_json> <platform>` | Count matrix entries for a platform |
 | `get_matrix_entry_name <config_json> <index> <platform>` | Get entry name by index (backward-compatible) |
 | `run_agentic_loop <config_json> <repo_root> <platform>` | Full loop with build matrix, sanitizer tests, quality gates |
+### The two bash files
+
+`agentic-loop.sh` is the only file a consumer sources; it sources
+`agentic-engines.sh` from its own directory on load. The split follows the one
+seam the file had: **which agent to run and how to talk to it** versus **what to
+run it on**.
+
+| File | Owns |
+|------|------|
+| `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
+| `lib/agentic-loop.sh` | `LOG_FILE` and `log`/`section`, `init_agentic_loop`/`complete_agentic_loop`, the BACKLOG helpers, the build/test/quality phases, the matrix readers, the `_AL` loop state and `run_agentic_loop` |
+
+The dependency points one way only. The engine half calls `log` and appends to
+`LOG_FILE`, both defined by the loop half before it sources the engines — so
+`agentic-engines.sh` is a half of one library, not a standalone one. It is
+therefore skipped by `test-lib-modules.sh` for the same reason
+`agentic-loop.sh` always was: neither is a `lib/` module that must reach
+`01-core/logging.sh` and define `info`/`warn`/`err`. `test-lib-smoke.sh` still
+covers both (parses, sources clean under `set -euo pipefail`, defines
+functions), and `test-agentic-loop.sh` drives the seam from the loop side: it
+sources `agentic-loop.sh` only, and its config-precedence and `invoke_agent`
+cases land in the engine half through it.
+
+Two engines are supported: `opencode` invokes
+`opencode run --agent <role> --model <model>`; `claude` invokes
+`claude -p --model <model>` with the role system prompt appended from the
+configured prompt file.
+
+### Environment overrides
+
+All optional; each one beats the value in the config JSON.
+
+| Variable | Effect |
+|----------|--------|
+| `AGENTIC_ENGINE` | `opencode` \| `claude` — overrides `.engine` |
+| `AGENTIC_PLANNER_MODEL` | overrides the planner model id |
+| `AGENTIC_EXECUTOR_MODEL` | overrides the executor model id |
+| `DRY_RUN` | `true` = print actions without invoking anything |
+| `SKIP_BUILD` / `SKIP_TESTS` / `SKIP_QUALITY` | skip that phase |
+| `PLANNER_ONLY` / `EXECUTOR_ONLY` | single-phase mode |
+| `MAX_ITERATIONS_OVERRIDE` | overrides `.intervals.maxIterations` |
+
+Typical use from a project's `Run-AgenticLoop.sh`:
+
+```bash
+source "${SCRIPT_DIR}/lib/agentic-loop.sh"
+init_agentic_loop "MyProject" "/path/to/repo"
+run_agentic_loop "$config_json_path"
+```

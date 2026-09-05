@@ -390,7 +390,7 @@ Bash** (`C:\Program Files\Git\bin\bash.exe`) — do NOT rely on a bare `bash` on
 PATH, which on many hosts resolves to `System32\bash.exe` (WSL).
 
 ```pwsh
-git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
+git clone --recurse-submodules git@github.com:Kataglyphis/ContainerHub.git
 cd Kataglyphis-ContainerHub
 git config core.hooksPath .githooks      # pre-commit runs the same checks CI enforces
 git config core.longpaths true           # deep vendored trees; host LongPathsEnabled=1 recommended too

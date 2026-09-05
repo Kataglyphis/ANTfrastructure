@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Golden argv for append_tvm_cmake_args (05-frameworks/tvm-config.sh): captured
 # byte-for-byte pre-refactor, -D order load-bearing, do NOT tidy the expected
-# blocks. Collaborators are all stubs. docs/cross-build-verification.md
+# blocks. Collaborators are all stubs.
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

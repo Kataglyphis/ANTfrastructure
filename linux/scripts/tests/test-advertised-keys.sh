@@ -2,7 +2,7 @@
 # Tests for verify-advertised-keys.sh's gate and the smoke's advertised-vs-actual
 # verdicts. Both were built to stop a version key shipping unchecked; the point of
 # freezing them here is that each mutation below was PROVEN to go red once.
-# See docs/cross-build-verification.md.
+# See docs/cross-build-verification.md#advertised-version-keys-advert-keys.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Golden trace of _build_vulkan_targets + the _vulkan_target_* helpers it was
-# decomposed into (02-toolchain/vulkan.sh). docs/cross-build-verification.md
+# decomposed into (02-toolchain/vulkan.sh).
+# docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -10,12 +11,17 @@ VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 # file scope and pulls 01-core modules on source.
 _FNS=""
 for _fn in _cross_build_sdk_component \
+           _vulkan_setup_cross_pkgconfig \
            _vulkan_target_copy_headers \
            _vulkan_target_build_loader \
            _vulkan_target_build_spirv_tools \
+           _vulkan_target_install_component \
+           _vulkan_target_src \
+           _vulkan_target_build_sdk_rest \
            _vulkan_target_link_glslang_aliases \
            _vulkan_target_build_glslang \
            _vulkan_target_verdict \
+           _vulkan_prune_sdk_sources \
            _build_vulkan_targets; do
   _src="$(awk "/^${_fn}\(\) \{/,/^\}/" "${VULKAN_SH}")"
   t_case "vulkan.sh still defines ${_fn}"
@@ -23,6 +29,15 @@ for _fn in _cross_build_sdk_component \
   _FNS="${_FNS}
 ${_src}"
 done
+
+# _vulkan_target_build_sdk_rest reads a TABLE, not arguments: a row lost here is
+# a component that silently stops being cross-built, so the suite drives the
+# real one rather than a fixture of its own.
+t_case "vulkan.sh still defines the _VK_TARGET_COMPONENTS table"
+_VK_TABLE_SRC="$(awk '/^_VK_TARGET_COMPONENTS="/,/^"$/' "${VULKAN_SH}")"
+t_assert_contains "${_VK_TABLE_SRC}" 'shaderc|shaderc/src,shaderc|' "table renamed or removed?"
+_FNS="${_FNS}
+${_VK_TABLE_SRC}"
 
 SDK="$(mktemp -d)"
 trap 'rm -rf "${SDK}"' EXIT
@@ -40,6 +55,14 @@ _fixture() {
     glslang-main)
       mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/glslang-main"
       : > "${SDK}/x86_64/include/vulkan/vulkan.h"
+      ;;
+    rest)
+      # None of the four TVM needs; one component per _vulkan_target_src shape:
+      # `volk` matches its only candidate, `shaderc` its FIRST (one level down),
+      # `vulkancapsviewer` its THIRD.
+      mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/x86_64/include/vk_video"
+      : > "${SDK}/x86_64/include/vulkan/vulkan.h"
+      mkdir -p "${SDK}/source/volk" "${SDK}/source/shaderc/src" "${SDK}/source/vcv"
       ;;
     *)
       mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/x86_64/include/vk_video"
@@ -83,16 +106,16 @@ t_assert_contains "${_out}" \
   "CMAKE -S SDK/source/Vulkan-Loader -B TMP/vulkan-loader-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DVULKAN_HEADERS_INSTALL_DIR=SDK/x86_64 -DBUILD_TESTS=OFF -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_WSI_DIRECTFB_SUPPORT=OFF" \
   "loader flags/WSI-off set changed"
 t_assert_contains "${_out}" \
-  "CMAKE -S SDK/source/SPIRV-Tools -B TMP/spirv-tools-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DSPIRV-Headers_SOURCE_DIR=SDK/source/SPIRV-Headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_SKIP_EXECUTABLES=ON -DSPIRV_WERROR=OFF" \
+  "CMAKE -S SDK/source/SPIRV-Tools -B TMP/spirv-tools-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DSPIRV-Headers_SOURCE_DIR=SDK/source/SPIRV-Headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_SKIP_EXECUTABLES=OFF -DSPIRV_WERROR=OFF" \
   "SPIRV-Tools flags changed (SPIRV_WERROR=OFF guards GCC 16 -Warray-bounds)"
 t_assert_contains "${_out}" \
   "CMAKE -S SDK/source/glslang -B TMP/glslang-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DBUILD_TESTING=OFF -DENABLE_GLSLANG_BINARIES=ON -DENABLE_SPVREMAPPER=OFF" \
   "glslang flags changed"
 
-t_case "step order: loader, then SPIRV-Tools, then glslang, then the verdict"
-t_assert_eq "vulkan-loader-aarch64 spirv-tools-aarch64 glslang-aarch64" \
+t_case "step order: the four TVM needs, then the rest of the SDK, then the verdict"
+t_assert_eq "vulkan-loader-aarch64 spirv-tools-aarch64 glslang-aarch64 spirv-headers-aarch64" \
   "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
-t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 3/3 component(s) built"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 4/4 component(s) built"
 t_assert_contains "${_out}" "EXIT 0"
 
 t_case "headers are copied into the target archdir BEFORE the loader configures"
@@ -104,15 +127,15 @@ t_assert_ok test -d "${SDK}/aarch64/lib"
 t_case "every component failing is an env-shaped verdict, not silent success"
 _fixture full
 _out="$(_trace 1 0)"
-t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 0/3 component(s) built"
-t_assert_contains "${_out}" "WARN ALL 3 Vulkan cross-component(s) FAILED for aarch64"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 0/4 component(s) built"
+t_assert_contains "${_out}" "WARN ALL 4 Vulkan cross-component(s) FAILED for aarch64"
 t_assert_contains "${_out}" "broken aarch64-linux-gnu toolchain?"
 t_assert_contains "${_out}" "EXIT 0" "per-component failure stays non-fatal by default"
 
 t_case "VULKAN_CROSS_STRICT=1 promotes the all-failed verdict to fatal"
 _fixture full
 _out="$( VULKAN_CROSS_STRICT=1 _trace 1 0 )"
-t_assert_contains "${_out}" "DIE VULKAN_CROSS_STRICT=1 and all 3 Vulkan cross-components failed for aarch64"
+t_assert_contains "${_out}" "DIE VULKAN_CROSS_STRICT=1 and all 4 Vulkan cross-components failed for aarch64"
 
 # ---------------------------------------------------------------------------
 t_case "missing sources: each component logs its own skip, verdict is 0/0"
@@ -155,6 +178,80 @@ _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
 t_assert_contains "${_out}" "EXIT 0"
 
+# ---------------------------------------------------------------------------
+# Everything the SDK ships beyond the four TVM needs is table-driven, so the
+# table IS the behaviour. docs/vulkan-foreign-arch-sdk.md
+_fixture rest
+_out="$(_trace 0 0)"
+
+t_case "the component table drives one cross-install per row that has a source"
+t_assert_eq "volk-aarch64 shaderc-aarch64 vulkancapsviewer-aarch64" \
+  "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')" \
+  "table order is dependency order: config packages before the components that find_package them"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 3/3 component(s) built"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "_vulkan_target_src picks the FIRST candidate directory that exists"
+t_assert_contains "${_out}" "CMAKE -S SDK/source/shaderc/src -B TMP/shaderc-aarch64" \
+  "shaderc keeps its CMake project one level down; the bare checkout name must lose to it"
+t_assert_contains "${_out}" "CMAKE -S SDK/source/vcv -B TMP/vulkancapsviewer-aarch64" \
+  "a third candidate must be reached, not just the first two"
+
+t_case "every row gets the shared cross contract plus its own extra args"
+t_assert_contains "${_out}" \
+  "CMAKE -S SDK/source/volk -B TMP/volk-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DCMAKE_PREFIX_PATH=SDK/aarch64 -DBUILD_TESTS=OFF -DBUILD_TESTING=OFF -DVULKAN_HEADERS_INSTALL_DIR=SDK/aarch64 -DSPIRV_HEADERS_INSTALL_DIR=SDK/aarch64 -DVOLK_INSTALL=ON" \
+  "the row's extra column must survive word-splitting onto the argv"
+t_assert_contains "${_out}" "-DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_ENABLE_INSTALL=ON" \
+  "a multi-flag extra column must not collapse to one word"
+
+t_case "a row with no source skips, logs, and is not counted as attempted"
+t_assert_contains "${_out}" "LOG vulkan-validationlayers: source missing at SDK/source/Vulkan-ValidationLayers; skipping"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-B TMP/vulkan-validationlayers-aarch64' || true)" \
+  "a skipped row must not configure"
+
+t_case "a row that FAILS to build degrades the prefix, it does not fail the lane"
+_fixture rest
+_out="$(_trace 1 0)"
+t_assert_contains "${_out}" "LOG volk unavailable on aarch64; the target SDK ships without it"
+t_assert_contains "${_out}" "EXIT 0" "a component that will not cross-build is non-fatal by contract"
+
+# ---------------------------------------------------------------------------
+# The ./vulkansdk build tree is dropped in the RUN that produced it, so no layer
+# downstream of the SDK stage carries it.
+_prune() {
+  (
+    set -euo pipefail
+    eval "${_FNS}"
+    log() { printf 'LOG %s\n' "$*"; }
+    unset SUDO
+    _vulkan_prune_sdk_sources "$1"
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1 | sed "s#${SDK}#SDK#g"
+}
+
+t_case "the SDK source tree is pruned, the host prefix the SDK stage still uses is not"
+_fixture full
+_out="$(_prune "${SDK}")"
+t_assert_contains "${_out}" "LOG Pruning the Vulkan SDK build tree at SDK/source"
+t_assert_ok test '!' -e "${SDK}/source"
+t_assert_ok test -d "${SDK}/x86_64"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "no source/ prunes to a no-op that errexit does not turn into an abort"
+_fixture empty
+mkdir -p "${SDK}/x86_64"
+_out="$(_prune "${SDK}")"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^LOG Pruning')" "nothing to prune must log nothing"
+t_assert_contains "${_out}" "EXIT 0" "the directory guard must absorb the miss under errexit"
+
+t_case "the cross install prunes AFTER _build_vulkan_targets consumed the sources"
+_XSRC="$(awk '/^_build_vulkan_sdk_cross\(\) \{/,/^\}/' "${VULKAN_SH}")"
+t_assert_contains "${_XSRC}" '_vulkan_prune_sdk_sources "${target_dir}"' \
+  "the prune is unreachable unless the cross install calls it"
+t_assert_eq "targets prune" \
+  "$(printf '%s\n' "${_XSRC}" | sed -n 's/.*_build_vulkan_targets .*/targets/p; s/.*_vulkan_prune_sdk_sources .*/prune/p' | tr '\n' ' ' | sed 's/ $//')" \
+  "pruning before the targets build would delete the loader/SPIRV-Tools/glslang sources"
+
 # A hardcoded /tmp left 5 of 35 assertions un-normalised under an override.
 if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then
   t_case "the whole suite still passes with TMPDIR pointed elsewhere"
@@ -162,5 +259,59 @@ if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then
   t_assert_ok env "TMPDIR=${_alt}" VULKAN_TMPDIR_CASE=1 bash "${TESTS_DIR}/$(basename "${BASH_SOURCE[0]}")"
   rm -rf "${_alt}"
 fi
+
+# ── the host half of the pkg-config path ────────────────────────────────────
+# _vulkan_run_vulkansdk builds HOST tools while the cross search path is still
+# exported, and is sudo --preserve-env'd with it. A host tool asking for xcb was
+# handed the TARGET module, whose LIBRARY_DIRS became a find_library HINT and
+# resolved to an absolute foreign path -- which ld cannot skip the way it skips
+# an incompatible -l. That took the sdk stage down on 2026-09-05.
+_pkgconf_env() {
+  bash -c '
+    set -u
+    cross_build_is_active() { return 0; }
+    cross_pkg_config_libdir() { printf "/usr/%s/lib/pkgconfig:/usr/lib/%s/pkgconfig" "$1" "$1"; }
+    log() { :; }
+    dpkg-architecture() { printf "x86_64-linux-gnu"; }
+    '"$(sed -n '/^_vulkan_setup_cross_pkgconfig()/,/^}/p' "${VULKAN_SH}")"'
+    _vulkan_setup_cross_pkgconfig aarch64-linux-gnu
+    printf "CROSS=%s\nHOST=%s\n" "${PKG_CONFIG_LIBDIR}" "${VULKAN_HOST_PKG_CONFIG_LIBDIR}"' 2>&1
+}
+
+t_case "the cross path leads with the target triplet -- that is what it is for"
+t_assert_contains "$(_pkgconf_env | sed -n 's/^CROSS=//p')" "aarch64-linux-gnu" \
+  "the target build must find the target's modules first"
+
+t_case "the HOST half is exported separately and names no target triplet"
+_host_half="$(_pkgconf_env | sed -n 's/^HOST=//p')"
+t_assert_eq "0" "$(printf '%s' "${_host_half}" | grep -c aarch64-linux-gnu || true)" \
+  "a host tool searching here is how vulkaninfo got an absolute aarch64 libxcb"
+t_assert_contains "${_host_half}" "pkgconfig" "it still has to be a real search path"
+
+t_case "the host swap is applied and then undone around the host SDK build"
+_run_src="$(sed -n '/^_vulkan_run_vulkansdk()/,/^}/p' "${VULKAN_SH}")"
+t_assert_contains "${_run_src}" "_vulkan_pkgconfig_use_host" \
+  "the host build must not inherit the cross search path"
+t_assert_contains "${_run_src}" "_vulkan_pkgconfig_restore" \
+  "and the cross value has to come back for the target build that follows"
+
+t_case "the swap actually replaces the path, and the restore puts it back"
+_swapped="$(bash -c '
+  set -u
+  log() { :; }
+  '"$(sed -n '/^_vulkan_pkgconfig_use_host()/,/^}/p' "${VULKAN_SH}")"'
+  '"$(sed -n '/^_vulkan_pkgconfig_restore()/,/^}/p' "${VULKAN_SH}")"'
+  export PKG_CONFIG_LIBDIR=/cross/aarch64-linux-gnu/pkgconfig
+  export PKG_CONFIG_SYSROOT_DIR=/ PKG_CONFIG_ALLOW_CROSS=1
+  VULKAN_HOST_PKG_CONFIG_LIBDIR=/host/pkgconfig
+  _saved=$PKG_CONFIG_LIBDIR
+  _vulkan_pkgconfig_use_host
+  printf "during=%s sysroot=%s\n" "${PKG_CONFIG_LIBDIR}" "${PKG_CONFIG_SYSROOT_DIR:-unset}"
+  _vulkan_pkgconfig_restore "$_saved" "/" "1"
+  printf "after=%s\n" "${PKG_CONFIG_LIBDIR}"' 2>&1)"
+t_assert_contains "${_swapped}" "during=/host/pkgconfig" "the host build searches the host half only"
+t_assert_contains "${_swapped}" "sysroot=unset" "a cross sysroot has no meaning for a host tool"
+t_assert_contains "${_swapped}" "after=/cross/aarch64-linux-gnu/pkgconfig" \
+  "the target build that follows still needs the cross path"
 
 t_summary

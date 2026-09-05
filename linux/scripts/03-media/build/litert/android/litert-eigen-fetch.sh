@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Gives LiteRT's single-homed eigen fetch a second host; the ';' in _REPLACE makes
-# the URL a cmake LIST, tried in turn (docs/failure-modes.md, "expected flush").
+# the URL a cmake LIST, tried in turn.
+# docs/failure-modes.md#litert-configure-fatal-expected-flush-after-ref-listing
 #
 # Under android/ because Dockerfile.android COPYs only that dir while Dockerfile.media
 # mounts all of litert/ -- moving it up breaks the android build.

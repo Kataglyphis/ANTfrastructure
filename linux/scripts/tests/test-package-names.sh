@@ -2,7 +2,7 @@
 # Characterisation tests for the extractor in verify_package_names.py: what counts as
 # a package request, and which of them are guarded. Every case reads its rows back
 # through the real `--list` CLI, so none depends on parser internals or the network.
-# docs/cross-build-verification.md
+# docs/cross-build-verification.md#distro-package-names-pkg-names
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/test-harness.sh"
 PY="${PREFLIGHT_PYTHON:-python3}"

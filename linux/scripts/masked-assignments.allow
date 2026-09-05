@@ -41,11 +41,11 @@ linux/scripts/06-packaging/smoke-common.sh	raw
 linux/scripts/06-packaging/smoke-media.sh	PKG_CONFIG_PATH
 linux/scripts/build-cross-chain.sh	rt_need
 linux/scripts/lib/agentic-loop.sh	bar
-linux/scripts/lib/agentic-loop.sh	config_json
+linux/scripts/lib/agentic-engines.sh	config_json
 linux/scripts/lib/agentic-loop.sh	elapsed
 linux/scripts/lib/agentic-loop.sh	line
 linux/scripts/lib/agentic-loop.sh	message
 linux/scripts/lib/agentic-loop.sh	name
 linux/scripts/lib/agentic-loop.sh	repo_root
-linux/scripts/lib/agentic-loop.sh	sleep_s
+linux/scripts/lib/agentic-engines.sh	sleep_s
 linux/scripts/setup-rootless-binfmt.sh	pidfile

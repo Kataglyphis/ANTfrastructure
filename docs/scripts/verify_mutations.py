@@ -31,6 +31,11 @@ shard in its own mirror; the report is reassembled in manifest order.
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
 the entries whose target -- or whose test file -- is in the diff, plain for all.
 
+--stale-check runs NO test: it only asks whether every recorded edit still
+applies. That is the half of the manifest that rots on its own, and it costs a
+read per target instead of a suite per entry, so the whole manifest fits in the
+seconds a hook has.
+
 See docs/code-quality-tooling.md#the-mutation-gate-mutations.
 """
 import argparse
@@ -227,23 +232,44 @@ class Report:
                 stream.write(text)
 
 
-def apply_and_run(entry, root):
-    """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
+def applicable(entry, root):
+    """(original, mutated, reason) -- the precondition half of a bite, and the half
+    that ROTS: mutated is None with the reason when the edit cannot be applied."""
     target = os.path.join(root, entry["target"])
     if os.path.islink(target):
-        return False, False, "target is a symlink -- a write through it escapes the copy"
+        return None, None, "target is a symlink -- a write through it escapes the copy"
     if not os.path.exists(target):
-        return False, False, "target missing"
+        return None, None, "target missing"
     with open(target, encoding="utf-8") as fh:
         original = fh.read()
     hits = original.count(entry["find"])
     if hits == 0:
-        return False, False, "find text not present -- the mutation is stale"
+        return original, None, "find text not present -- the mutation is stale"
     if hits > 1:
-        return False, False, "find text matches %d times -- ambiguous, name one edit" % hits
+        return original, None, "find text matches %d times -- ambiguous, name one edit" % hits
     mutated = original.replace(entry["find"], entry["replace"], 1)
     if mutated == original:
-        return False, False, "replace is a no-op"
+        return original, None, "replace is a no-op"
+    return original, mutated, None
+
+
+def run_stale(entries, root):
+    """Every recorded edit still applies, checked without running one test."""
+    rc = 0
+    for e in entries:
+        _original, mutated, why = applicable(e, root)
+        if mutated is None:
+            rc = 1
+            sys.stderr.write("FAIL: %s -- %s (%s)\n" % (e["id"], why, e["target"]))
+    return rc
+
+
+def apply_and_run(entry, root):
+    """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
+    target = os.path.join(root, entry["target"])
+    original, mutated, why = applicable(entry, root)
+    if mutated is None:
+        return False, False, why
 
     backup = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
     backup.write(original)
@@ -328,6 +354,8 @@ def main():
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                     help="mutations to prove at once, one mirror each (default: %(default)s)")
+    ap.add_argument("--stale-check", action="store_true",
+                    help="only check that every selected edit still applies; run no test")
     args = ap.parse_args()
 
     entries = load(args.manifest)
@@ -339,6 +367,14 @@ def main():
         # tests/test_x.py touched no target and selected nothing.
         entries = [e for e in entries
                    if e["target"] in touched or any(t in e["test"] for t in touched)]
+
+    if args.stale_check:
+        print("=== mutation staleness: does every recorded edit still apply? ===")
+        print("  %d entr(ies), no test run" % len(entries))
+        rc = run_stale(entries, args.root)
+        if rc == 0:
+            print("OK: every recorded mutation still applies to its target")
+        return rc
 
     print("=== mutation gate: can these tests fail? ===")
     if not entries:

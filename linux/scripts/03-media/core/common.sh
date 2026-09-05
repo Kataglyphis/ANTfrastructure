@@ -146,26 +146,6 @@ media_common_init() {
   source_module cmake-cache-linker.sh || true
   source_module abseil-headers.sh    || true
 
-  # Ensure cross_build_is_active is always defined. The canonical definition
-  # lives in cross-env.sh (sourced above), and a fallback exists in
-  # 01-core/common.sh. If neither loaded (e.g. reload guard), define here.
-  if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    if command -v cross_build_enabled >/dev/null 2>&1; then
-      cross_build_is_active() { cross_build_enabled; }
-    else
-      # Last-resort clone of 01-core/common.sh's fallback. MUST normalize both
-      # arches (raw OCI-vs-uname comparison reported "cross active" on native
-      # arm64 hosts — this copy had drifted from the documented fix).
-      cross_build_is_active() {
-        [ "${BUILD_MODE:-native}" = "cross" ] || return 1
-        local _t _b
-        _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
-        _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
-        [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
-      }
-    fi
-  fi
-
   # Load the data-driven per-arch MEDIA_SKIP_* flags now that the cross-env
   # helpers are available.
   media_load_arch_flags
@@ -224,4 +204,25 @@ media_jobs() {
   else
     nproc
   fi
+}
+
+# Compile-cache launcher helper ----------------------------------------------
+#
+# The one owner of "establish the launcher address, resolve a launcher, fall
+# back to ccache" for the media scripts that prefix a compiler with it. Takes an
+# out-variable NAME and prints nothing: it exports the sccache server address
+# into the caller's shell, which a $( ) subshell cannot do.
+# docs/cross-build-verification.md#the-media-compile-cache-launcher
+media_compiler_launcher() {
+  local -n _mcl_launcher="$1"
+  _mcl_launcher=""
+  if declare -F compiler_cache_launcher >/dev/null 2>&1; then
+    compiler_cache_launcher_env 2>/dev/null || true
+    _mcl_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+    return 0
+  fi
+  if command -v ccache >/dev/null 2>&1 && is_truthy "${USE_CCACHE:-true}"; then
+    _mcl_launcher="ccache"
+  fi
+  return 0
 }

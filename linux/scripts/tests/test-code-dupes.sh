@@ -2,11 +2,14 @@
 # Tests for the allowlist contract of verify_code_dupes.py. The gate derives its
 # root from its own path, so each case copies it into a throwaway tree holding two
 # scripts that share one function; the measured overlap is parsed, never hardcoded.
+# SKIP_REAL_TREE=1 drops the live-tree case (what the mutation manifest runs with).
 # docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -u
+: "${SKIP_REAL_TREE:=}"
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 GATE="$(cd "${TESTS_DIR}/../../.." && pwd)/docs/scripts/verify_code_dupes.py"
+SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 A="linux/scripts/a.sh"
 B="linux/scripts/b.sh"
@@ -38,6 +41,7 @@ _fixture() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/docs/scripts" "${fix}/linux/scripts"
   cp "${GATE}" "${fix}/docs/scripts/"
+  cp "${SCRIPTS_DIR}/quality_allow.py" "${fix}/linux/scripts/"
   _twin > "${fix}/${A}"
   _twin | sed 's/probe_widget/probe_gadget/' > "${fix}/${B}"
   [ $# -gt 0 ] && printf '%s\n' "$@" > "${fix}/docs/scripts/code-dupes.allow"
@@ -98,6 +102,23 @@ t_assert_eq "2" "${rc}" "last-wins would silently pick one of two budgets"
 t_assert_contains "${out}" "code-dupes.allow:2: duplicate row"
 t_assert_contains "${out}" "(first at line 1)"
 
+t_case "the shared reader parses the rows: a | or a # in the reason is reason text"
+_check "${A} | ${B} | ${N} | ${WHY} | 12 | and a tail"
+t_assert_eq "0" "${rc}" "the key arity is declared as 2, so the budget is column 3"
+_check "${A} | ${B} | ${N} | ${WHY} # not a comment"
+t_assert_eq "0" "${rc}" "only a row that STARTS with # is a comment"
+
+t_case "a malformed row is a message naming file and line, never a traceback"
+_check "${A} | ${B} | ${WHY}"
+t_assert_eq "2" "${rc}"
+t_assert_contains "${out}" "code-dupes.allow:1: expected 'a | b | budget | reason'"
+t_assert_eq "" "$(printf '%s' "${out}" | grep -e Traceback || true)" "a gate error, not a crash"
+
+t_case "two IDENTICAL rows are caught too, not silently folded into one"
+_check "${A} | ${B} | ${N} | ${WHY}" "${A} | ${B} | ${N} | ${WHY}"
+t_assert_eq "2" "${rc}" "keying the reader by row would drop the repeat before the check saw it"
+t_assert_contains "${out}" "code-dupes.allow:2: duplicate row"
+
 t_case "--kind judges only that kind's rows: a shell pair is not stale under --kind docker"
 _fixture "${A} | ${B} | ${N} | ${WHY}"
 printf 'FROM scratch\nRUN true\n' > "${fix}/linux/Dockerfile.probe"
@@ -151,7 +172,9 @@ t_assert_contains "$(_allow)" "linux/Dockerfile.probe" "the other kind's row mus
 t_assert_contains "$(_allow)" "${A} | ${B} | ${N}" "and so must the kind it WAS given"
 rm -rf "${fix}"
 
-t_case "the REAL tree is clean today"
-t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
+if [ -z "${SKIP_REAL_TREE}" ]; then
+  t_case "the REAL tree is clean today"
+  t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
+fi
 
 t_summary

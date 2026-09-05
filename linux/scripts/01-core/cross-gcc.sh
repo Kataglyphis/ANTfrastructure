@@ -37,37 +37,6 @@ gcc_toolchain_bindir() {
   printf '%s' "$(gcc_toolchain_prefix)/bin"
 }
 
-# Point clang at the source-built GCC (headers, libstdc++, crt). Exports the
-# --gcc-toolchain flags only; CC/CXX selection stays with the caller, and GCC
-# itself rejects the flag, so this is a no-op unless clang is in use.
-# Docs: docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
-export_clang_gcc_toolchain_env() {
-  : "${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_prefix)}"
-  local root="${CROSS_GCC_TOOLCHAIN_PATH}"
-  case "$(basename "${CC:-}")" in clang*) ;; *) return 0 ;; esac
-  if [ ! -d "$root" ]; then
-    printf 'export_clang_gcc_toolchain_env: no GCC toolchain at %s; clang will use its own discovery\n' "$root" >&2
-    return 0
-  fi
-
-  local lib=""
-  [ -d "$root/lib64" ] && lib="$root/lib64" || { [ -d "$root/lib" ] && lib="$root/lib"; }
-
-  export CFLAGS="--gcc-toolchain=${root} ${CFLAGS:-}"
-  export CXXFLAGS="--gcc-toolchain=${root} ${CXXFLAGS:-}"
-  local triple
-  for triple in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu riscv64gc-unknown-linux-gnu i686-unknown-linux-gnu; do
-    export "CFLAGS_${triple//-/_}=--gcc-toolchain=${root}"
-    export "CXXFLAGS_${triple//-/_}=--gcc-toolchain=${root}"
-  done
-
-  if [ -n "$lib" ]; then
-    export LDFLAGS="-L${lib} -Wl,-rpath,${lib} --gcc-toolchain=${root} ${LDFLAGS:-}"
-  else
-    export LDFLAGS="--gcc-toolchain=${root} ${LDFLAGS:-}"
-  fi
-}
-
 resolve_build_gcc_tool() {
   local tool="$1"
   local bindir build_triplet resolved=""

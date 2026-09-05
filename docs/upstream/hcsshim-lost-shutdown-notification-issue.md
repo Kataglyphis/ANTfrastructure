@@ -95,6 +95,6 @@ exporter (its snapshot is never finalized), move the artifacts out through a
 side channel (we use one tar over a LAN WebDAV server), and materialize them
 in a calm, short-lived container whose snapshot finalizes normally. Details:
 `docs/windows-build-lanes.md` § BuildKit/containerd lane in
-https://github.com/Kataglyphis/Kataglyphis-ContainerHub.
+https://github.com/Kataglyphis/ContainerHub.
 
 Full containerd debug logs and per-probe build logs available on request.

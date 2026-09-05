@@ -105,11 +105,6 @@ LLVM_CROSS_MB_PER_JOB
 LLVM_CROSS_ROOT
 LLVM_CROSS_SOURCE_ROOT
 MAX_ITERATIONS_OVERRIDE
-MEDIA_SKIP_CAIRO_PANGO_PIXBUF
-MEDIA_SKIP_GLIB_STACK
-MEDIA_SKIP_GTK_DEV
-MEDIA_SKIP_GUDEV
-MEDIA_SKIP_LIBCXX_DEV
 MESON_ARGS
 MESON_EXE_WRAPPER
 MESON_NATIVE_TOOLCHAIN_DIR
@@ -242,10 +237,10 @@ CARGO_VERSION
 # --- 2026-09-04: re-homed when the OWNERS scan stopped counting comments ---
 # Fifteen landed here; thirteen were given a `: "${NAME:=default}"` at their
 # reader in the 2026-09-04 build window and their rows deleted with them. The
-# two below are what is left.
-# 1 skips the csound GStreamer dependency (03-media gstreamer pre-setup.sh /
-# install-deps.sh, default 0; forced on for arm64+riscv64 anyway).
-MEDIA_SKIP_CSOUND
+# last two were MEDIA_SKIP_CSOUND and its four MEDIA_SKIP_* siblings, whose value
+# is DATA and not an operator choice: 03-media/core/arch-flags-<arch>.env sets
+# them per target arch and media_load_arch_flags sources the matching file. The
+# owner scan reads those files since 2026-09-05, so all six rows are gone.
 
 # --- 2026-09-04: re-homed when the OWNER scan stopped counting quoted text ---
 # All 45 were "owned" only by a NAME=value that sits inside an echo/err message,
@@ -384,3 +379,17 @@ STV_ASSERT_ONLY
 # The release version CI exports: 02-toolchain/rust/version_util.sh writes it to
 # $GITHUB_ENV/$GITHUB_OUTPUT, 06-packaging/package_archive.sh reads it.
 VERSION
+
+# app-packaging.sh's caller contract. The library has no caller in THIS repo by
+# design -- a wrapper in the consuming repo sets these, sources the file and calls
+# the step functions -- so the reader is here and the writer is not. The header of
+# app-packaging.sh is the table that documents each one.
+APP_PACKAGING_APP_ID_PREFIX
+APP_PACKAGING_COMMENT
+APP_PACKAGING_DESCRIPTION
+APP_PACKAGING_MAINTAINER
+# Operator switches for the same library: where it stages (a bind-mounted host
+# drive refuses the chmods flatpak-builder and dpkg-deb need) and how loud it is.
+KATAGLYPHIS_FLATPAK_VERBOSE
+KATAGLYPHIS_FLATPAK_WORKDIR
+KATAGLYPHIS_PACKAGING_WORKDIR

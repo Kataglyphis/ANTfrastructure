@@ -264,6 +264,8 @@ _vulkan_setup_cross_pkgconfig() {
     if [ -n "${host_multiarch}" ]; then
       host_pkgconfig="/usr/lib/${host_multiarch}/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
     fi
+    # _vulkan_run_vulkansdk builds HOST tools and must search ONLY this half.
+    export VULKAN_HOST_PKG_CONFIG_LIBDIR="${host_pkgconfig}"
     if command -v cross_pkg_config_libdir >/dev/null 2>&1; then
       export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}"):${host_pkgconfig}"
     else
@@ -286,31 +288,17 @@ _vulkan_build_components() {
     spirv-cross spirv-reflect vulkan-profiles
   )
 
-  # Per-component skip rules: key=component, value=skip reason (empty=include)
+  # Nothing is skipped for being a cross lane any more. These four used to be,
+  # because the host link died on the TARGET arch's libxcb -- the cause was the
+  # host build inheriting the cross pkg-config search path, fixed in
+  # _vulkan_run_vulkansdk. Skipping also skips the CHECKOUT, and source/ is what
+  # every target-arch build reads. docs/vulkan-foreign-arch-sdk.md
   local -A _vulkan_skip=()
-  if cross_build_enabled; then
-    _vulkan_skip[vulkan-tools]="foreign-arch cross builds"
-    _vulkan_skip[gfxreconstruct]="foreign-arch cross builds"
-    _vulkan_skip[vcv]="foreign-arch cross builds"
-    _vulkan_skip[slang]="foreign-arch cross builds"
-    # LOG14: skip host x86_64 Vulkan components nobody consumes on cross arches.
-    # The cross lanes only need glslang, vulkan-headers, vulkan-loader,
-    # spirv-headers, spirv-tools (they fill source/ for _build_vulkan_targets).
-    # ValidationLayers/shaderc/SPIRV-Cross/Profiles/ExtensionLayer/volk/VMA/SPIRV-Reflect
-    # build host x86_64 binaries (~390 s/lane, ~13 min/run) with no cross consumer.
-    _vulkan_skip[vulkan-validationlayers]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[shaderc]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[spirv-cross]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[spirv-reflect]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[vulkan-profiles]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[vulkan-extensionlayer]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[volk]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[vma]="foreign-arch cross builds (host-only component)"
-    _vulkan_skip[vul]="foreign-arch cross builds (host-only component)"
-  elif [ "${arch_suffix}" = "riscv64" ]; then
-    _vulkan_skip[slang]="riscv64 (not yet ported)"
+  if [ "${arch_suffix}" = "riscv64" ]; then
+    _vulkan_skip[slang]="riscv64 (not yet ported upstream)"
   fi
 
+  local comp
   for comp in vulkan-tools gfxreconstruct vcv slang; do
     if [ -n "${_vulkan_skip[${comp}]:-}" ]; then
       log "Skipping ${comp} for ${_vulkan_skip[${comp}]}"
@@ -318,6 +306,46 @@ _vulkan_build_components() {
       _vulkan_sdk_components_ref+=("${comp}")
     fi
   done
+}
+
+# What ./vulkansdk skipped above but the TARGET build still wants. Source only:
+# the HOST link is what fails; cross-compiling against the target sysroot is
+# exactly the configuration those X11/XCB libs are right for.
+# docs/vulkan-foreign-arch-sdk.md
+_VK_SOURCE_ONLY="Vulkan-Tools:https://github.com/KhronosGroup/Vulkan-Tools.git"
+
+_vulkan_fetch_source_only() {
+  local target_dir="$1" version="$2" row name url dest
+
+  [ -n "${version}" ] || { log "no Vulkan version in scope; skipping the source-only fetch"; return 0; }
+  for row in ${_VK_SOURCE_ONLY}; do
+    name="${row%%:*}"
+    url="${row#*:}"
+    dest="${target_dir}/source/${name}"
+    [ -d "${dest}" ] && continue
+    log "Fetching ${name} (vulkan-sdk-${version}) for the target build"
+    ${SUDO:-} git clone --depth 1 --branch "vulkan-sdk-${version}" "${url}" "${dest}" \
+      || log "${name}: source fetch failed; the target build will skip it"
+  done
+}
+
+# pkg-config needs the same save/restore the compilers already get here, and used
+# not to get it. PKG_CONFIG_LIBDIR lists the TARGET triplet first and the vulkansdk
+# run is sudo --preserve-env'd with it intact, so a HOST tool asking for xcb was
+# handed the target module; its LIBRARY_DIRS became a find_library HINT and the
+# x86_64 link got an absolute aarch64 path, which ld cannot skip the way it skips
+# an incompatible -l. docs/vulkan-foreign-arch-sdk.md
+_vulkan_pkgconfig_use_host() {
+  [ -n "${VULKAN_HOST_PKG_CONFIG_LIBDIR:-}" ] || return 0
+  export PKG_CONFIG_LIBDIR="${VULKAN_HOST_PKG_CONFIG_LIBDIR}"
+  unset PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_ALLOW_CROSS
+  log "Host SDK build uses host-only pkg-config path ${PKG_CONFIG_LIBDIR}"
+}
+
+_vulkan_pkgconfig_restore() {
+  [ -n "$1" ] && export PKG_CONFIG_LIBDIR="$1" || unset PKG_CONFIG_LIBDIR
+  [ -n "$2" ] && export PKG_CONFIG_SYSROOT_DIR="$2" || unset PKG_CONFIG_SYSROOT_DIR
+  [ -n "$3" ] && export PKG_CONFIG_ALLOW_CROSS="$3" || unset PKG_CONFIG_ALLOW_CROSS
 }
 
 _vulkan_run_vulkansdk() {
@@ -336,6 +364,10 @@ EOF
   local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
   local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
   unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
+
+  local _saved_pc_libdir="${PKG_CONFIG_LIBDIR:-}" _saved_pc_sysroot="${PKG_CONFIG_SYSROOT_DIR:-}"
+  local _saved_pc_cross="${PKG_CONFIG_ALLOW_CROSS:-}"
+  _vulkan_pkgconfig_use_host
 
   # GCC 16 promotes several new -W diagnostics that fire (often as false
   # positives) on the older SDK component sources — e.g. -Warray-bounds on
@@ -370,9 +402,22 @@ EOF
   else
     ./vulkansdk -j "$JOBS" "$@"
   fi
+  _vulkan_pkgconfig_restore "${_saved_pc_libdir}" "${_saved_pc_sysroot}" "${_saved_pc_cross}"
   export CC="${_saved_cc}" CXX="${_saved_cxx}"
   [ -n "${_saved_cmake_cc}" ] && export CMAKE_C_COMPILER="${_saved_cmake_cc}" || unset CMAKE_C_COMPILER
   [ -n "${_saved_cmake_cxx}" ] && export CMAKE_CXX_COMPILER="${_saved_cmake_cxx}" || unset CMAKE_CXX_COMPILER
+}
+
+# The ./vulkansdk checkout-and-build tree under <ver>/source: 3.9 GB and 1256
+# builder-arch objects per foreign lane, read by _build_vulkan_targets above and by
+# nothing after it. Dropped in the SAME RUN, so no downstream layer carries it.
+# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+_vulkan_prune_sdk_sources() {
+  local target_dir="$1"
+
+  [ -d "${target_dir}/source" ] || return 0
+  log "Pruning the Vulkan SDK build tree at ${target_dir}/source"
+  ${SUDO:-} rm -rf "${target_dir}/source"
 }
 
 _build_vulkan_sdk_cross() {
@@ -394,9 +439,11 @@ _build_vulkan_sdk_cross() {
     _vulkan_build_components "${arch_suffix}" sdk_components
     _vulkan_run_vulkansdk "${sdk_components[@]}"
 
-    # ./vulkansdk only built HOST (x86_64) tools; also produce TARGET-arch Vulkan
-    # libs (loader + SPIRV-Tools) so cross consumers (e.g. TVM) can link them.
+    # ./vulkansdk only built HOST (x86_64) tools; produce the TARGET-arch SDK the
+    # image actually runs. docs/vulkan-foreign-arch-sdk.md
+    _vulkan_fetch_source_only "${target_dir}" "${version:-${VULKAN_VERSION:-}}"
     _build_vulkan_targets "${arch_suffix}" "${target_dir}" "${target_triplet}"
+    _vulkan_prune_sdk_sources "${target_dir}"
   )
 }
 
@@ -481,8 +528,10 @@ _vulkan_target_build_loader() {
   fi
 }
 
-# SPIRV-Tools (libSPIRV-Tools.a) — TVM's Vulkan build links it. SPIRV_WERROR=OFF:
-# GCC 16's -Warray-bounds false-positives on timer.h would otherwise fail -Werror.
+# SPIRV-Tools — TVM links the libs; the spirv-* executables are what make the
+# foreign-arch prefix a usable SDK instead of link fodder. SPIRV_WERROR=OFF: GCC
+# 16's -Warray-bounds false-positives on timer.h would otherwise fail -Werror.
+# docs/vulkan-foreign-arch-sdk.md
 _vulkan_target_build_spirv_tools() {
   local arch_suffix="$1" archdir="$2" spirv_tools_src="$3" spirv_headers_src="$4"
 
@@ -493,16 +542,91 @@ _vulkan_target_build_spirv_tools() {
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
         -DSPIRV-Headers_SOURCE_DIR="${spirv_headers_src}" \
         -DSPIRV_SKIP_TESTS=ON \
-        -DSPIRV_SKIP_EXECUTABLES=ON \
+        -DSPIRV_SKIP_EXECUTABLES=OFF \
         -DSPIRV_WERROR=OFF; then
       _vk_ok=$((_vk_ok + 1))
-      log "Installed target SPIRV-Tools: $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | tr '\n' ' ')"
+      log "Installed target SPIRV-Tools: $(ls "${archdir}"/bin/spirv-* 2>/dev/null | wc -l) tools, $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | wc -l) libs"
     else
       log "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
     fi
   else
     log "SPIRV-Tools source missing at ${spirv_tools_src}; skipping target SPIRV-Tools"
   fi
+}
+
+# One cross-install per SDK component. Non-fatal by contract: a component that
+# will not cross-build degrades the target prefix, it does not fail the lane.
+# docs/vulkan-foreign-arch-sdk.md
+_vulkan_target_install_component() {
+  local arch_suffix="$1" archdir="$2" src="$3" label="$4"
+  shift 4
+
+  [ -d "${src}" ] || { log "${label}: source missing at ${src}; skipping"; return 0; }
+  _vk_attempted=$((_vk_attempted + 1))
+  log "Cross-building ${label} for ${arch_suffix}"
+  if _cross_build_sdk_component "${src}" "${label}-${arch_suffix}" \
+      -DCMAKE_INSTALL_PREFIX="${archdir}" \
+      -DCMAKE_PREFIX_PATH="${archdir}" \
+      -DBUILD_TESTS=OFF \
+      -DBUILD_TESTING=OFF \
+      "$@"; then
+    _vk_ok=$((_vk_ok + 1))
+  else
+    log "${label} unavailable on ${arch_suffix}; the target SDK ships without it"
+  fi
+}
+
+# LunarG's checkout directory does not always match the component name, and
+# shaderc keeps its CMake project one level down in src/.
+_vulkan_target_src() {
+  local root="$1" d
+  shift
+  for d in "$@"; do
+    [ -d "${root}/${d}" ] && { printf '%s' "${root}/${d}"; return 0; }
+  done
+  printf '%s' "${root}/$1"
+}
+
+# label | checkout candidates (comma-separated) | extra cmake args.
+# Ordered by dependency, then by cost: the config packages the later components
+# resolve through find_package(CONFIG) come first, the heavy ones last.
+# docs/vulkan-foreign-arch-sdk.md
+_VK_TARGET_COMPONENTS="
+vulkan-headers|Vulkan-Headers|
+spirv-headers|SPIRV-Headers|
+vulkan-utility-libraries|Vulkan-Utility-Libraries|
+volk|volk|-DVOLK_INSTALL=ON
+vma|VulkanMemoryAllocator|
+spirv-cross|SPIRV-Cross|-DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_TESTS=OFF
+spirv-reflect|SPIRV-Reflect|-DSPIRV_REFLECT_EXECUTABLE=ON -DSPIRV_REFLECT_STATIC_LIB=ON
+shaderc|shaderc/src,shaderc|-DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_ENABLE_INSTALL=ON
+vulkan-tools|Vulkan-Tools|-DBUILD_VULKANINFO=ON -DBUILD_CUBE=ON
+vulkan-extensionlayer|Vulkan-ExtensionLayer|
+vulkan-profiles|Vulkan-Profiles|-DPROFILES_BUILD_TESTS=OFF
+vulkan-validationlayers|Vulkan-ValidationLayers|-DUPDATE_DEPS=OFF -DBUILD_WERROR=OFF
+gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF
+slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF
+vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
+"
+
+# Everything the LunarG SDK ships beyond the four TVM needed, cross-built for the
+# arch the image runs. docs/vulkan-foreign-arch-sdk.md
+_vulkan_target_build_sdk_rest() {
+  local arch_suffix="$1" archdir="$2" target_dir="$3"
+  local label cands extra src
+
+  while IFS='|' read -r label cands extra; do
+    [ -n "${label}" ] || continue
+    # shellcheck disable=SC2086  # both are deliberately word-split
+    src="$(_vulkan_target_src "${target_dir}/source" ${cands//,/ })"
+    # shellcheck disable=SC2086
+    _vulkan_target_install_component "${arch_suffix}" "${archdir}" "${src}" "${label}" \
+      -DVULKAN_HEADERS_INSTALL_DIR="${archdir}" \
+      -DSPIRV_HEADERS_INSTALL_DIR="${archdir}" \
+      ${extra}
+  done <<EOF
+${_VK_TARGET_COMPONENTS}
+EOF
 }
 
 # Post-install name plumbing for the cross-built glslang.
@@ -619,6 +743,7 @@ _build_vulkan_targets() {
   _vulkan_target_build_loader "${arch_suffix}" "${host_archdir}" "${archdir}" "${loader_src}"
   _vulkan_target_build_spirv_tools "${arch_suffix}" "${archdir}" "${spirv_tools_src}" "${spirv_headers_src}"
   _vulkan_target_build_glslang "${arch_suffix}" "${archdir}" "${target_dir}"
+  _vulkan_target_build_sdk_rest "${arch_suffix}" "${archdir}" "${target_dir}"
   _vulkan_target_verdict "${arch_suffix}" "${target_triplet}"
 }
 

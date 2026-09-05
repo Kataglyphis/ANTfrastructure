@@ -387,14 +387,8 @@ _ffmpeg_linker_ccache_args() {
         echo "Using lld linker for faster linking"
     fi
 
-    # Use the compiler cache launcher (sccache → ccache → none) instead of
-    # hardcoded ccache, so sccache is actually asked when it's the active cache.
-    local _ff_cc_launcher=""
-    if command -v compiler_cache_launcher >/dev/null 2>&1; then
-        _ff_cc_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
-    elif command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
-        _ff_cc_launcher="ccache"
-    fi
+    local _ff_cc_launcher
+    media_compiler_launcher _ff_cc_launcher
     if [ -n "${_ff_cc_launcher}" ]; then
         if cross_build_is_active; then
             _fflc_out+=("--cc=${_ff_cc_launcher} ${CC}")

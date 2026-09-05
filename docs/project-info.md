@@ -10,7 +10,7 @@
 1. Clone the repo:
 
    ```bash
-   git clone --recurse-submodules https://github.com/Kataglyphis/Kataglyphis-ContainerHub.git
+   git clone --recurse-submodules https://github.com/Kataglyphis/ContainerHub.git
    ```
 
 ## Tests
@@ -195,7 +195,7 @@ the licenses in it belong to those projects and are deliberately left untouched.
 
 Jonas Heinle - [@Cataglyphis_](https://twitter.com/Cataglyphis_) - jonasheinle@googlemail.com
 
-Project Link: [https://github.com/Kataglyphis/Kataglyphis-ContainerHub](https://github.com/Kataglyphis/Kataglyphis-ContainerHub)
+Project Link: [https://github.com/Kataglyphis/ContainerHub](https://github.com/Kataglyphis/ContainerHub)
 
 ## Acknowledgements
 
@@ -213,11 +213,11 @@ Some very helpful literature, tutorials, etc.
 
 ## Reusable Sphinx theme package
 
-The shared theme lives in the Kataglyphis-DocumANTation repo and is vendored here as a submodule.
+The shared theme lives in the DocumANTation repo and is vendored here as a submodule.
 
-The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
-as a submodule at `external/Kataglyphis-DocumANTation`. `requirements.txt` installs it
-editable (`-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme`), so
+The shared theme now lives in the **DocumANTation** repo, vendored here
+as a submodule at `third_party/DocumANTation`. `requirements.txt` installs it
+editable (`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`), so
 `docs/conf.py` just imports it:
 
 ```python
@@ -232,6 +232,6 @@ package's `_static/` directory.
 their `requirements.txt`, then use the `conf.py` snippet above.
 
 The canonical CSS lives in the submodule at
-`external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
+`third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
 — edit it **in the DocumANTation repo** to change the global look. The project's own
 `docs/_static/css/` can hold additional per-project overrides.

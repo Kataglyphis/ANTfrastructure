@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for .claude/hooks/guard-destructive-deletes.py — the Linux port of the
 # PreToolUse guard. The PowerShell original needs pwsh, which this build host
-# does not have, so the guard was INERT here. docs/failure-modes.md
+# does not have, so the guard was INERT here.
+# docs/failure-modes.md#the-delete-guard-denies-its-own-legitimate-work
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

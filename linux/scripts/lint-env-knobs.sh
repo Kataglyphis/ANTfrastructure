@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # lint-env-knobs.sh — A1: every `${VAR:-default}` knob consumed in linux/scripts
-# needs an owner: versions.env, a Dockerfile ARG/ENV, a script assignment in
-# command position, or a row in lint-env-knobs.allow. Unowned knobs are advisory
-# unless KNOB_GATE=1; a STALE allow row (knob consumed nowhere) always fails.
+# needs an owner: a .env file a build stage sources, a Dockerfile ARG/ENV, a script
+# assignment in command position, or a row in lint-env-knobs.allow. Unowned knobs are
+# advisory unless KNOB_GATE=1; a STALE allow row (knob consumed nowhere) always fails.
 # docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -uo pipefail
 export LC_ALL=C
@@ -10,7 +10,10 @@ export LC_ALL=C
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS="${REPO_ROOT}/linux/scripts"
 ALLOW="${SCRIPTS}/lint-env-knobs.allow"
-VERSIONS_ENV="${SCRIPTS}/01-core/versions.env"
+# The .env files a build stage SOURCES, so their keys are real declarations.
+# 04-runtime/runtime-paths.env is reference data for verify-runtime-paths.sh and
+# is sourced by no stage, so it owns nothing.
+ENV_OWNER_FILES=("${SCRIPTS}/01-core/versions.env" "${SCRIPTS}"/03-media/core/arch-flags-*.env)
 
 echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale always fails) ==="
 
@@ -95,8 +98,8 @@ _scan '\$\{[A-Za-z_][A-Za-z0-9_]*:-' '\$\{[A-Z][A-Z0-9_]{2,}:-' \
   > "${_tmp}/consumed"
 
 # 2) OWNERS
-#    (a) versions.env keys
-sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_versions"
+#    (a) keys declared in the sourced .env files
+sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${ENV_OWNER_FILES[@]}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_env"
 #    (b) Dockerfile ARG/ENV declarations
 grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
   | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
@@ -113,7 +116,7 @@ else
   : > "${_tmp}/own_allow"
 fi
 
-LC_ALL=C sort -u "${_tmp}/own_versions" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
+LC_ALL=C sort -u "${_tmp}/own_env" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
 
 # 3) verdict (comm under LC_ALL=C like the sorts that fed it, or it disagrees silently)
 LC_ALL=C comm -23 "${_tmp}/consumed" "${_tmp}/owned" > "${_tmp}/unowned"
@@ -121,7 +124,7 @@ LC_ALL=C comm -13 "${_tmp}/consumed" "${_tmp}/own_allow" > "${_tmp}/stale"
 n_consumed="$(wc -l < "${_tmp}/consumed")"
 n_unowned="$(wc -l < "${_tmp}/unowned")"
 n_stale="$(wc -l < "${_tmp}/stale")"
-echo "  consumed \${VAR:-} knobs: ${n_consumed} | owners: versions.env=$(wc -l < "${_tmp}/own_versions") dockerfiles=$(wc -l < "${_tmp}/own_dockerfile") scripts=$(wc -l < "${_tmp}/own_scripts") allowlist=$(wc -l < "${_tmp}/own_allow") | stale allow rows: ${n_stale}"
+echo "  consumed \${VAR:-} knobs: ${n_consumed} | owners: env-files=$(wc -l < "${_tmp}/own_env") dockerfiles=$(wc -l < "${_tmp}/own_dockerfile") scripts=$(wc -l < "${_tmp}/own_scripts") allowlist=$(wc -l < "${_tmp}/own_allow") | stale allow rows: ${n_stale}"
 
 rc=0
 if [ "${n_stale}" -gt 0 ]; then
@@ -133,7 +136,7 @@ fi
 
 if [ "${n_unowned}" -eq 0 ]; then
   if [ "${rc}" -eq 0 ]; then
-    echo "  OK: every consumed knob has an owner (versions.env / Dockerfile ARG-ENV / script assignment / allowlist)"
+    echo "  OK: every consumed knob has an owner (sourced .env / Dockerfile ARG-ENV / script assignment / allowlist)"
   fi
   exit "${rc}"
 fi

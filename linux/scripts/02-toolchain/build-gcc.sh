@@ -212,6 +212,7 @@ if [ "${USE_CCACHE}" = "1" ]; then
   # 2026-08-26: the launcher is now sccache, with ccache as the fallback when
   # sccache is missing or its server will not answer. The flag stays --ccache
   # so callers (llvm.sh:28) keep working; it means "use the compiler cache".
+  compiler_cache_launcher_env 2>/dev/null || true
   CC_LAUNCHER="$(compiler_cache_launcher || true)"
   if [ -n "${CC_LAUNCHER}" ]; then
     if [ -n "${HOST_TRIPLET}" ]; then

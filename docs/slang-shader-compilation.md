@@ -61,6 +61,30 @@ Keys starting with `_` are documentation and ignored.
 Code 2 is deliberately **not** a silent skip: a missing `slangc` once let CI pass
 green with no compiled shaders at all.
 
+## The combined-emit outcomes
+
+`_slang_emit_one_wgsl` handles one `wgslMap` row and reports which of four
+things happened; `slang_compile_combined_wgsl` owns the counters and turns them
+into the summary line and the exit code.
+
+| Return | Meaning | What the caller does |
+|---|---|---|
+| 0 | emitted, patched, validated, copied to `dst` | counts it into `SLANG_COMPILE_WGSL_EMITTED_COUNT` |
+| 1 | `slangc` itself failed | records the source in the emit-failed WARN block; the run still exits 0 |
+| 2 | the emit has a varying struct member with neither `@builtin` nor `@location` | records it in `SLANG_COMPILE_INVALID_EMITS`, which makes `slang_compile_main` exit 1 |
+| 3 | the row names a source file that is not in the tree | nothing — a row can point at a shader another repo owns |
+
+The asymmetry between 1 and 2 is deliberate. A failed `slangc` is a build
+problem the log already shows; an emit that *succeeded* and is structurally
+wrong is the regression this guard exists for, because the only thing standing
+between it and a committed, naga-rejected shader is that exit code. In both
+cases the destination file is left exactly as it was: nothing is copied until
+the validator has passed.
+
+A `depthTexturePatches` pattern that matches nothing is a WARNING, not a
+refusal — it means `slangc`'s output moved under the pattern, which is worth
+seeing but is not itself proof the emit is wrong.
+
 ## Staleness
 
 An output is reused only when it is newer than its source **and** every `.slang`

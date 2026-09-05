@@ -50,7 +50,7 @@ EOF
 # Prove the per-arch wrapper tags are one generation before indexing them.
 _manifest_wrapper_gate() {
   local -a run_ids=()
-  local arch tag rid coherent=1 missing=0 r
+  local arch tag rid coherent=1 missing=0
 
   for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
     tag="$(runtime_wrapper_tag "${arch}")" || return 0

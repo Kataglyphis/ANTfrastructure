@@ -617,6 +617,7 @@ build_torch_wheel() {
     # rebuilds. The launcher works with the cross compiler; CCACHE_DIR is pointed
     # at the persistent /var/cache/ccache mount in _torch_run_setup_py. Guarded so
     # a host without ccache still builds (plain, no launcher).
+    compiler_cache_launcher_env 2>/dev/null || true
     _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
     if [ -n "${_cc_l}" ]; then
         cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_cc_l}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_cc_l}")
@@ -820,6 +821,7 @@ _iree_setup_compiler_cache() {
         # mirrored into the sccache env or IREE silently runs on the 30G
         # inherited from Dockerfile.base, which is the bug fefce7d just fixed
         # for ccache. Same fix, other tool.
+        compiler_cache_launcher_env 2>/dev/null || true
         _iree_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
         # DIAGNOSTIC (2026-08-26, temporary): the IREE target build is the one
         # place sccache died with "failed to spawn Command ... No such file or

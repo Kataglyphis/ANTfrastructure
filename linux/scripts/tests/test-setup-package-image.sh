@@ -245,4 +245,81 @@ t_assert_contains "${_out}" "installed no javac" "Gradle needs a compiler, not a
 t_assert_contains "${_out}" "rc=1" "and the stage must stop"
 rm -rf "${_tmp}"
 
+# ---------------------------------------------------------------------------
+# install_web_lane_toolchain: the Flutter web lane rebuilt its own tools on every
+# consumer run. docs/consumer-image-contract.md#the-web-lane-toolchain
+
+_web="$(t_fn_src "${SUBJECT}" install_web_lane_toolchain)" || exit 1
+
+# Drive the real function with rustup/cargo as recorders under a fake CARGO_HOME.
+_web_run() {
+  local rc_rustup="$1" rc_cargo="$2" home
+  home="$(mktemp -d)"; mkdir -p "${home}/bin"
+  cat > "${home}/bin/rustup" <<RS
+#!/usr/bin/env bash
+printf 'RUSTUP %s\n' "\$*"; exit ${rc_rustup}
+RS
+  cat > "${home}/bin/cargo" <<CG
+#!/usr/bin/env bash
+printf 'CARGO %s\n' "\$*"; exit ${rc_cargo}
+CG
+  chmod +x "${home}/bin/rustup" "${home}/bin/cargo"
+  # shellcheck disable=SC2034  # all three are read by the eval'd function body
+  (
+    set -uo pipefail
+    eval "${_web}"
+    CARGO_HOME="${home}"
+    WASM_PACK_VERSION="0.15.0"
+    FLUTTER_RUST_BRIDGE_VERSION="2.13.0"
+    install_web_lane_toolchain
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1
+  rm -rf "${home}"
+}
+
+t_case "the nightly channel is installed with what wasm-pack -Z build-std needs"
+_out="$(_web_run 0 0)"
+t_assert_contains "${_out}" "RUSTUP toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown" \
+  "cargo +nightly resolves the CHANNEL name, so install-rust.sh's dated pin does not satisfy it"
+t_assert_contains "${_out}" "OK: nightly channel installed"
+
+t_case "both web-lane crates are installed at their pinned versions, --locked"
+t_assert_contains "${_out}" "CARGO install --locked wasm-pack --version 0.15.0" \
+  "258 crates from source in every consumer run otherwise"
+t_assert_contains "${_out}" "CARGO install --locked flutter_rust_bridge_codegen --version 2.13.0" \
+  "and 174 more"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "an unpinned version is skipped loudly, never installed as 'latest'"
+_out="$( WASM_PACK_VERSION="" bash -c '
+  set -uo pipefail
+  '"${_web}"'
+  CARGO_HOME="$(mktemp -d)"; mkdir -p "${CARGO_HOME}/bin"
+  printf "#!/usr/bin/env bash\nprintf \"RUSTUP %%s\\n\" \"\$*\"\n" > "${CARGO_HOME}/bin/rustup"
+  printf "#!/usr/bin/env bash\nprintf \"CARGO %%s\\n\" \"\$*\"\n" > "${CARGO_HOME}/bin/cargo"
+  chmod +x "${CARGO_HOME}/bin/rustup" "${CARGO_HOME}/bin/cargo"
+  WASM_PACK_VERSION="" FLUTTER_RUST_BRIDGE_VERSION="2.13.0" install_web_lane_toolchain
+  echo "EXIT $?"' 2>&1)"
+t_assert_contains "${_out}" "WARN: no version pinned for wasm-pack"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'install --locked wasm-pack')" \
+  "an unpinned crate must not be installed at whatever the index resolves to today"
+t_assert_contains "${_out}" "install --locked flutter_rust_bridge_codegen" \
+  "and its sibling must still be installed"
+
+t_case "every arm is non-fatal: a slow consumer beats an image that will not build"
+_out="$(_web_run 1 1)"
+t_assert_contains "${_out}" "WARN: the nightly channel is unavailable"
+t_assert_contains "${_out}" "WARN: cargo install wasm-pack 0.15.0 failed"
+t_assert_contains "${_out}" "EXIT 0" "a failed cargo install must not stop the package stage"
+
+t_case "no rustup or cargo under CARGO_HOME skips the whole step"
+_out="$( bash -c '
+  set -uo pipefail
+  '"${_web}"'
+  CARGO_HOME="$(mktemp -d)"
+  install_web_lane_toolchain
+  echo "EXIT $?"' 2>&1)"
+t_assert_contains "${_out}" "WARN: no rustup/cargo under"
+t_assert_contains "${_out}" "EXIT 0"
+
 t_summary

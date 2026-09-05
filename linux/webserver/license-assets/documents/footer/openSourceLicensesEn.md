@@ -98,7 +98,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Kataglyphis Orchestr-ANT-ion | v0.0.27 | [github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion](https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion) | MIT |
+| Kataglyphis Orchestr-ANT-ion | v0.0.27 | [github.com/Kataglyphis/Orchestr-ANT-ion](https://github.com/Kataglyphis/Orchestr-ANT-ion) | MIT |
 
 ### LLM Stack (`llm-stack/Dockerfile`)
 
@@ -179,7 +179,7 @@ its own license terms.
 
 ## Documentation Image (`pandoc_all`)
 
-### Document Toolchain (`external/Kataglyphis-DocumANTation/Dockerfile`)
+### Document Toolchain (`third_party/DocumANTation/Dockerfile`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
@@ -190,7 +190,7 @@ its own license terms.
 | Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
 | ImageMagick | Ubuntu apt | [imagemagick.org](https://imagemagick.org/) | ImageMagick License (Apache 2.0-style) |
 
-### Python (`external/Kataglyphis-DocumANTation/Dockerfile`)
+### Python (`third_party/DocumANTation/Dockerfile`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
@@ -198,7 +198,7 @@ its own license terms.
 | uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
-### Base Utilities (`external/Kataglyphis-DocumANTation/Dockerfile`)
+### Base Utilities (`third_party/DocumANTation/Dockerfile`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
@@ -209,7 +209,7 @@ its own license terms.
 | less | Ubuntu apt | [www.greenwoodsoftware.com/less](https://www.greenwoodsoftware.com/less/) | GPLv3+ or Less License |
 | sudo | Ubuntu apt | [www.sudo.ws](https://www.sudo.ws/) | ISC (with BSD-2/3-Clause parts) |
 
-### Vendored LaTeX Themes (`external/Kataglyphis-DocumANTation/Dockerfile`)
+### Vendored LaTeX Themes (`third_party/DocumANTation/Dockerfile`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |

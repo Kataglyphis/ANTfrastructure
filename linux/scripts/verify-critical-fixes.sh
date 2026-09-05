@@ -1,129 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# verify-critical-fixes.sh — the host half of the critical-fixes battery: every
+# check here reads the REPO TREE, so preflight can run it off-target. The probes
+# that only mean anything inside a built image live in
+# 06-packaging/smoke-critical-fixes.sh.
+# docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "${REPO_ROOT}/linux/scripts/01-core/artifact-common.sh"
-# Reuse the shared pass/fail/smoke_summary harness instead of a local copy.
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
 source "${REPO_ROOT}/linux/scripts/06-packaging/smoke-common.sh"
-
-fix1_python_pc() {
-  echo "--- Fix 1: gst-python staged libpython (python pkg-config rewrite) ---"
-  local found=0 arch pc
-  for arch in $(arch_list_to_words "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}"); do
-    pc="/opt/python-cross/${arch}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR:-3.14}.pc"
-    if [ -f "${pc}" ]; then
-      found=1
-      if grep -q '^prefix=/opt/python-cross' "${pc}"; then
-        pass "python-3.14.pc prefix points to /opt/python-cross (${arch})"
-      else
-        fail "python-3.14.pc prefix does NOT point to /opt/python-cross (${arch})"
-      fi
-      if grep -q '^libdir=/opt/python-cross' "${pc}" 2>/dev/null || \
-         grep -q 'libdir=${prefix}/lib' "${pc}" 2>/dev/null; then
-        pass "python-3.14.pc libdir resolves inside staging tree (${arch})"
-      else
-        fail "python-3.14.pc libdir may point outside staging tree (${arch})"
-      fi
-    fi
-  done
-  # Class-5 guard: a bare AND-list as the last statement makes the healthy case
-  # return 1 under set -e. The || true prevents that.
-  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-3.14.pc found (not in cross-compiler context)"; } || true
-}
-
-fix2_abseil_span() {
-  echo "--- Fix 2: libcamera abseil header in LiteRT ---"
-  local dirs=(
-    "/opt/litert/include"
-    "/usr/local/include/tensorflow/lite"
-    "/usr/local/include/litert"
-  )
-  local found=0 dir
-  for dir in "${dirs[@]}"; do
-    if [ -f "${dir}/absl/types/span.h" ]; then
-      pass "absl/types/span.h found in ${dir}"
-      found=1
-      break
-    fi
-  done
-  if [ "${found}" -eq 0 ]; then
-    for dir in "${dirs[@]}"; do
-      if [ -d "${dir}" ]; then
-        if find "${dir}" -name "span.h" -path "*/absl/types/*" 2>/dev/null | grep -q .; then
-          pass "absl/types/span.h found via search in ${dir}"
-          found=1
-          break
-        fi
-      fi
-    done
-  fi
-  if [ "${found}" -eq 0 ]; then
-    if [ -d "/opt/litert" ] || [ -d "/usr/local/include/tensorflow" ]; then
-      fail "absl/types/span.h NOT found in any LiteRT include directory"
-    else
-      echo "  SKIP: no LiteRT include directories found"
-    fi
-  fi
-}
-
-fix3_libdynload_dangling() {
-  echo "--- Fix 3: cross lib-dynload no dangling symlinks ---"
-  local found=0 arch dir count
-  for arch in $(arch_list_to_words "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}"); do
-    dir="/opt/python-cross/${arch}/usr/local/lib/python${PYTHON_MAJOR_MINOR:-3.14}/lib-dynload"
-    if [ -d "${dir}" ]; then
-      found=1
-      count=$(find "${dir}" -xtype l 2>/dev/null | wc -l)
-      if [ "${count}" -eq 0 ]; then
-        pass "No dangling symlinks in lib-dynload (${arch})"
-      else
-        fail "${count} dangling symlinks found in lib-dynload (${arch})"
-        find "${dir}" -xtype l 2>/dev/null | while read -r sl; do
-          echo "    dangling: ${sl}" >&2
-        done
-      fi
-    fi
-  done
-  # Same class-5 guard as fix1 above: healthy case must not become exit 1.
-  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch lib-dynload found (not in cross-compiler context)"; } || true
-}
-
-fix4_cc_dumpmachine() {
-  echo "--- Fix 4: cross GCC architecture guard (cc target triple) ---"
-  local arch
-  arch="$(canonical_target_arch "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || true)"
-  if [ -n "${arch}" ]; then
-    local expected
-    expected="$(arch_uname_name_for "${arch}")"
-    if command -v cc >/dev/null 2>&1; then
-      local actual
-      actual="$(cc -dumpmachine 2>/dev/null | cut -d- -f1 || echo '')"
-      if [ "${actual}" = "${expected}" ]; then
-        pass "cc -dumpmachine reports ${actual} (expected ${expected})"
-      else
-        fail "cc -dumpmachine reports ${actual} (expected ${expected})"
-      fi
-      if command -v readelf >/dev/null 2>&1; then
-        local cc_bin elf_expected elf_actual
-        cc_bin="$(command -v cc)"
-        elf_expected="$(arch_elf_machine_grep_for "${arch}" 2>/dev/null || echo '')"
-        elf_actual="$(elf_machine_name "${cc_bin}" 2>/dev/null || echo '')"
-        if [ -n "${elf_expected}" ] && echo "${elf_actual}" | grep -qF "${elf_expected}"; then
-          pass "cc ELF machine matches expected ${elf_expected}"
-        elif [ -n "${elf_actual}" ]; then
-          fail "cc ELF machine is ${elf_actual} (expected ${elf_expected})"
-        fi
-      fi
-    else
-      echo "  SKIP: cc not found"
-    fi
-  else
-    echo "  SKIP: cannot determine target arch"
-  fi
-}
 
 fix5_gst_geometry_include() {
   echo "--- Fix 5: OpenCV 5 GStreamer compat (geometry.hpp include) ---"
@@ -259,7 +145,7 @@ fix7_hardening_2026_07() {
   fi
   # smoke-vulkan must NOT be invoked in build stages: it probes the full Vulkan
   # SDK this cross-build never installs, so it can only ever fail a build.
-  if grep -rlE 'bash[^\n]*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
+  if grep -rlE 'bash .*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
     fail "a Dockerfile RUNs smoke-vulkan.sh (no full Vulkan SDK here -> always fails)"
   else
     pass "smoke-vulkan.sh is not invoked in any build stage"
@@ -390,10 +276,10 @@ fix10_libstdcxx_nostdinc_2026_08() {
   fi
 }
 
-echo "=== Critical Fixes Regression Tests ==="
+echo "=== Critical Fixes: host tree checks ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07 fix10_libstdcxx_nostdinc_2026_08)
+FIX_FUNCS=(fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07 fix10_libstdcxx_nostdinc_2026_08)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

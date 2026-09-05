@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# test-codec-so-map-convergence.sh — backlog item "codec runtime-list +
-# so-package-map convergence" (docs/refactoring-backlog.md).
+# Freezes the convergence of the two hand-maintained truths about which apt
+# package provides a media runtime library — the codec-lib baseline and the
+# SONAME->package map. Why a gap there is silent:
+# docs/failure-modes.md#a-soname-with-no-map-entry-is-resolved-by-an-apt-cache-prefix-guess
 #
 # THREE truths describe which apt packages provide the media/codec runtime
 # shared libraries:

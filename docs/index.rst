@@ -1,9 +1,9 @@
-.. Kataglyphis-ContainerHub documentation master file, created by
+.. ContainerHub documentation master file, created by
    sphinx-quickstart on Thu Dec 11 16:37:46 2025.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Kataglyphis-ContainerHub documentation
+ContainerHub documentation
 ======================================
 
 .. rst-class:: hero-section
@@ -147,6 +147,7 @@ Common development targets:
    linux-build-basics
    linux-cross-builds
    artifact-copy-completeness
+   vulkan-foreign-arch-sdk
    consumer-image-contract
    gen1-riscv64-genai
    qnn-linux
@@ -216,6 +217,7 @@ Common development targets:
    :caption: Backlogs and archives:
 
    refactoring-backlog
+   build-watch-list
    windows-refactor-backlog
    changelog-archive-2026-08-28
    changelog-archive-2026-08-13

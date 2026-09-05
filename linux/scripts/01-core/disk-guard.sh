@@ -10,6 +10,7 @@
 #   _disk_guard_watch_once / _disk_guard_watch_loop   — in-stage sampling (B2)
 #   _disk_guard_runtime_lane_need_gb                  — runtime-lane free-GB need
 #   _disk_guard_buildkit_fallback <path> <target_gb>  — filtered buildkit prune (DISK1)
+#   _disk_guard_reclaim_begin                         — opens one reclaim episode
 #
 # _disk_guard_protected_slugs expects the caller's environment to provide the
 # stage graph (CROSS_STAGE_ORDER, stage_enabled, cross_stage_is_per_arch,
@@ -180,6 +181,15 @@ _disk_guard_warn() {
 # docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
 _DISK_GUARD_BUILDKIT_FREED_GB=0
 _DISK_GUARD_BUILDKIT_PRUNES=0
+
+# Open a reclaim episode: the once-per-caller credit is per EPISODE, not per run.
+# The sampler's episode is one whole stage, so it never calls this; a gate whose
+# episode is one invocation calls it first, or the second gate of a chain finds
+# the credit spent by the first and refuses a prune hours later.
+_disk_guard_reclaim_begin() {
+  _DISK_GUARD_BUILDKIT_PRUNES=0
+  _DISK_GUARD_BUILDKIT_FREED_GB=0
+}
 
 _disk_guard_buildctl() {
   BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}" buildctl "$@"

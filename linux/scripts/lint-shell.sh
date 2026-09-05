@@ -2,7 +2,8 @@
 # lint-shell.sh — shellcheck gate for the repo's bash scripts.
 #
 # Catches the "undefined/typo'd function, quoting, bad redirection" failure
-# class (see docs/cross-build-verification.md) in seconds, instead of after a
+# class (docs/cross-build-verification.md#failure-classes-from-build-history, row 6)
+# in seconds, instead of after a
 # multi-hour QEMU cross build. The tree is kept clean at -S error; warnings are
 # non-fatal here and ratcheted per file+code by verify_shellcheck_warnings.py.
 #

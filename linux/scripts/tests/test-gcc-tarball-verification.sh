@@ -2,7 +2,8 @@
 # The GCC tarball is fetched MIRROR-first; both proofs (sha512.sum, .sig) live only
 # on gcc.gnu.org. A probe of that host that does not answer must therefore not read
 # as "nothing to verify". build-gcc.sh is a top-level script, so the functions are
-# extracted rather than sourced. See docs/refactoring-backlog.md XK.
+# extracted rather than sourced.
+# docs/failure-modes.md#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

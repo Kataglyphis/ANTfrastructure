@@ -16,7 +16,7 @@ by path. That is what lets a module move between the consumer and this repo
 without its callers changing:
 
 ```cmake
-set(KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ExternalLib/Kataglyphis-ContainerHub/cmake")
+set(KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ContainerHub/cmake")
 if(NOT EXISTS "${KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR}/Sanitizers.cmake")
   message(FATAL_ERROR "ContainerHub submodule not checked out. Run: git submodule update --init --recursive")
 endif()

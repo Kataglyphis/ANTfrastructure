@@ -89,7 +89,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Kataglyphis Orchestr-ANT-ion | v0.0.19 | [github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion](https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion) | MIT |
+| Kataglyphis Orchestr-ANT-ion | v0.0.19 | [github.com/Kataglyphis/Orchestr-ANT-ion](https://github.com/Kataglyphis/Orchestr-ANT-ion) | MIT |
 
 
 ## Webserver Image (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver`)

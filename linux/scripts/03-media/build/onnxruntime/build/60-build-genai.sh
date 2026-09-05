@@ -344,7 +344,4 @@ fi
 
 symlink_output_libraries_into_usr_local "${GENAI_OUTPUT_DIR}"
 
-info "GenAI build complete. Artifacts in ${GENAI_OUTPUT_DIR}"
-info "Wheels in ${GENAI_OUTPUT_DIR}/wheels"
-ls -lh "${GENAI_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-find "${GENAI_OUTPUT_DIR}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
+report_onnx_build_output "GenAI build complete" "${GENAI_OUTPUT_DIR}"

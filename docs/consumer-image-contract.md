@@ -45,6 +45,14 @@ The compiler-cache defaults the shared library already declares
 `/var/cache/sccache`, and the image ships both as `drwxrwxrwt`. An image ENV
 that contradicts our own library is the failure shape row 1 guards.
 
+**Neither cache directory is a `VOLUME`.** The image declares exactly one,
+`/workspace` (`Dockerfile.torch:118`, confirmed in `Config.Volumes` of all three
+shipped children), so a container's compiler cache lives in its writable layer
+and dies with it. A lane that wants the cache to survive has to mount something
+there itself — and that is the reason row 1 is a LOCATION assertion: a cache
+pointed back into the bind-mounted checkout would persist, by polluting the
+consumer's working tree.
+
 
 ### The Android lane needs a JDK
 
@@ -114,15 +122,141 @@ path, because that is the sentence someone will paste into a search.
 
 `_consumer_contract_exempt` is a `<arch>:<row>` table, same contract as
 `_parity_exempt`: listed means reviewed, and an arm that **stops** applying fails
-so the table cannot rot in place. Today it holds exactly two arms, both
-`riscv64`, both about Flutter — upstream publishes no riscv64 SDK, `/opt/flutter`
-ships empty there, and `check_flutter` asserts that absence instead. The rot
-signal is the probe's own `FACT flutter-sdk`: the day a riscv64 SDK lands, both
-arms fail and name themselves for deletion.
+so the table cannot rot in place. Each arm is re-checked by **its own** probe
+fact, named by `_consumer_exempt_fact`; `yes` is `STALE` and names the arm for
+deletion, a missing fact is `NOFACT` and never a grant.
+
+Two arms, both `riscv64`, both measured on the image shipped 2026-09-05 rather
+than argued from the build graph:
+
+| arm | rot fact | what the riscv64 image reports |
+|---|---|---|
+| `dart-tool` | `flutter-sdk` | `/opt/flutter` exists and is **empty**, so `packages/flutter_tools/.dart_tool` is absent and the row would read as unwritable. Upstream publishes no riscv64 SDK; `check_flutter` asserts that absence instead |
+| `appimagetool` | `appimagetool-readable` | no `appimagetool` on `PATH` at all — `packaging-deps.sh`'s asset table covers x86_64/aarch64/armhf/i686 and refuses the rest |
+
+`flutter-owner` **was** a third arm and is gone. The same probe measures
+`find /opt/flutter ! -uid 1001` as **0** on riscv64, which is the row *passing*,
+not a row to skip: an empty tree owned by the runtime uid satisfies the promise.
+Exempting it also hid the defect the row exists for — a root-written SDK would
+have read as a documented exception on that arch. Until 2026-09-05 the
+`appimagetool` arm was re-checked with `FACT flutter-sdk`, i.e. by another row's
+fact, so a riscv64 appimagetool could never have been noticed; that is what
+`_consumer_exempt_fact` fixes.
 
 The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
 was measured present in all three shipped arches on 2026-09-04, and the parity
 table already asserts the `android-sdk` prefix on every arch.
+
+### The Flatpak runtimes ship with the image
+
+`flatpak list --runtime` in the shipped image returned **zero refs**. Every consumer
+run therefore re-downloaded the whole runtime set — roughly 1.9 GB across seven refs,
+the single largest download in their build.
+
+Two of the seven (`Platform` and `Sdk`) were already installed here; the other five
+were left to each consumer run. All seven are installed now:
+
+| ref | pinned by |
+| --- | --- |
+| `org.freedesktop.Platform//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Sdk//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Sdk.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.GL.default//<ver>` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.GL.default//<ver>extra` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.openh264//<ver>` | `FLATPAK_OPENH264_VERSION` |
+
+`GL.default` appears twice on purpose: the base branch and its `extra` sibling are
+two separate refs, and a build that resolves one still fetches the other.
+
+`INSTALL_FLATPAK_RUNTIMES` defaults to **true** since 2026-09-05. Flathub builds
+these for `x86_64` and `aarch64` only, so on any other architecture the install is a
+guaranteed 404 rather than a transient failure — the installer skips those arches
+outright instead of retrying, and riscv64 images ship without Flatpak runtimes by
+construction.
+
+### The web lane toolchain
+
+Measured in a consumer run, the Flutter **web** lane rebuilt its own tools on every
+invocation: `flutter_rust_bridge_codegen build-web` shells out to `wasm-pack`, and
+both were a from-source `cargo install` — 258 crates for `wasm-pack`, 174 for
+`flutter_rust_bridge_codegen` — followed by a nightly `rustup` auto-install through
+a path rustup itself calls deprecated.
+
+The image now installs all three ahead of time:
+
+| what | pin | why it must be here |
+| --- | --- | --- |
+| `nightly` toolchain + `rust-src` + `wasm32-unknown-unknown` | channel | `wasm-pack -Z build-std` runs `cargo +nightly`, which resolves the **channel name**, not a dated pin — so `install-rust.sh`'s dated pin does not satisfy it |
+| `wasm-pack` | `WASM_PACK_VERSION` | 258 crates per consumer run |
+| `flutter_rust_bridge_codegen` | `FLUTTER_RUST_BRIDGE_VERSION` | 174 crates per consumer run |
+
+Both crate versions live in `01-core/versions.env` and are installed with
+`cargo install --locked`, so a consumer gets the pinned build rather than whatever
+the index resolves to that day.
+
+`install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly channel,
+an unpinned version and a failed `cargo install` each `WARN` and continue. The
+trade is deliberate: a consumer that has to build its own tools is slow, a consumer
+that cannot build the image at all is worse.
+
+### The AppImage runtime ships with the tool
+
+Every AppImage begins with a small ELF **runtime** that `appimagetool` prepends to
+the payload. When that runtime is not already on disk, `appimagetool` fetches it
+from GitHub on each run — so a consumer's packaging step depends on GitHub being up
+at build time, and fails offline.
+
+The runtime is staged at image-build time instead, and it is **not downloaded**.
+Upstream publishes it only under the moving `continuous` tag, which is the exact
+mutable-asset trap that already broke `appimagetool` itself once (a `continuous`
+re-upload changed the bytes under a pinned SHA256, and `download_verified_file`
+reported a tamper-shaped "checksum mismatch" that was only upstream drift). Since
+every AppImage *starts* with the runtime, and `appimagetool` is itself an AppImage
+pinned to an immutable versioned tag with a recorded SHA256, the runtime is taken
+out of the tool's own first `--appimage-offset` bytes. It is therefore pinned
+transitively and arch-correct by construction — no second download, no second pin
+to keep in step.
+
+It is written to two places, as `runtime-<uname -m>`:
+
+| path | why |
+| --- | --- |
+| `/etc/skel/.local/share/appimagekit/` | the runtime user is created later, and inherits `/etc/skel` |
+| `${HOME}/.local/share/appimagekit/` | the build user that runs the packaging step now |
+
+`ensure_appimagetool_runtime` is a no-op, not a failure, when `appimagetool` is
+absent (riscv64 has no upstream build) or when it does not report a numeric offset:
+a missing runtime costs a consumer one download, and is never worth failing a
+toolchain stage over.
+
+### The Android SDK roots are advertised
+
+`Dockerfile.android` advertises where each Android payload lives; `Dockerfile.package`
+COPYs the payload those names point at but, until 2026-09-05, never re-declared the
+names. A consumer that found `/opt/android` in the runtime image therefore still had
+no way to be told where anything inside it was, and every Android lane hardcoded the
+paths or re-downloaded the SDKs. The runtime image now re-declares all six:
+
+| variable | value |
+| --- | --- |
+| `GSTREAMER_ROOT_ANDROID` | `/opt/android/gstreamer` |
+| `ONNXRUNTIME_ROOT_ANDROID` | `/opt/android/onnxruntime` |
+| `LITERT_ROOT_ANDROID` | `/opt/android/litert` |
+| `OPENCV_ROOT_ANDROID` | `/opt/android/opencv` |
+| `IREE_ROOT_ANDROID` | `/opt/android/iree` |
+| `OPENCV_ANDROID_JNI_DIR` | `/opt/android/opencv/sdk/native/jni` |
+
+Two shapes here are deliberate and a tidy-up would break both. Each name gets its
+**own** `ENV` instruction, because the env-knob owner scan reads only the first name
+of an instruction — collapsing them into one backslash-continued `ENV`, the way
+`Dockerfile.android` writes them, would leave five of the six with no recorded owner.
+And the OpenCV key is `OPENCV_ROOT_ANDROID`, never a bare `OpenCV_DIR`: that is the
+name `find_package(OpenCV)` reads, so pointing it at the Android SDK would hijack
+every **Linux** OpenCV consumer in the same image.
+
+These are paths, not versions, so they are outside the advertised-version-key gate
+(`verify_advertised_keys.py`); what holds them is the runtime smoke's path checks.
 
 ## Two things worth knowing before you configure a lane
 
@@ -132,3 +266,84 @@ table already asserts the `android-sdk` prefix on every arch.
 - **The image ships Flutter at `/opt/flutter`.** A lane still passing
   `--flutter-dir /workspace/flutter` re-downloads the whole SDK every run for
   nothing. `sccache` and `appimagetool` are on `PATH` as well.
+
+## The Android SDK roots are advertised
+
+`Dockerfile.android` sets `GSTREAMER_ROOT_ANDROID`, `ONNXRUNTIME_ROOT_ANDROID`,
+`LITERT_ROOT_ANDROID`, `OPENCV_ROOT_ANDROID` and `IREE_ROOT_ANDROID`, but that is
+the *build* stage. `Dockerfile.package` COPYs the payload those names point at and
+used to stop there, so a consumer of the shipped image found `/opt/android`
+populated and no name telling it what was where. The reported symptom:
+
+```
+CMake Error at CMakeLists.txt:18 (message):
+  GSTREAMER_ROOT_ANDROID must be set
+```
+
+All five are re-declared in the runtime image, one `ENV` instruction each — the
+env-knob owner scan reads the first name of an instruction only, so a single
+multi-name `ENV` would leave four of them unowned.
+
+There is deliberately **no** bare `OpenCV_DIR`. That is the name
+`find_package(OpenCV)` resolves, and pointing it at the Android SDK would hijack
+every *Linux* OpenCV consumer in the same image. `OPENCV_ANDROID_JNI_DIR` names
+the Android tree instead, to be passed explicitly:
+
+```bash
+cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
+```
+
+## What the image stages so a run does not
+
+Three of the contract rows are not about permissions at all. They ask whether a
+thing is *present*, because the alternative is that every consumer run fetches or
+rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix:
+
+| Row | Absent means |
+| --- | --- |
+| `flatpak-runtimes` | `flatpak list --runtime` returns **0 refs**; seven `org.freedesktop` refs, ~1.9 GB, re-downloaded per run per arch |
+| `appimage-runtime` | `appimagetool` refetches `runtime-<arch>` from GitHub, so packaging hangs on GitHub being reachable |
+| `web-lane-tools` | `wasm-pack` (258 crates) and `flutter_rust_bridge_codegen` (174) are `cargo install`ed from source in every run |
+
+They share one verdict function; the cost of each is written down once, in
+`_consumer_contract_symptom`, which is also what the failure message prints.
+
+### The Flatpak runtimes ship with the image
+
+`install_flatpak_runtime` had existed for months behind
+`INSTALL_FLATPAK_RUNTIMES`, which defaulted to **false** — so the capability was
+there and switched off, and it covered two of the seven refs. It now defaults to
+true and installs all seven, `Platform.GL.default` twice because the base branch
+and its `extra` sibling are separate refs.
+
+Flathub builds these for x86_64 and aarch64 only. On any other arch the install is
+a guaranteed 404 rather than a flake, so the function returns early and the row is
+exempt on riscv64.
+
+### The AppImage runtime ships with the tool
+
+`appimagetool` embeds a type-2 runtime into every AppImage it builds, and fetches
+it at build time if it is not on disk. Upstream publishes that runtime **only**
+under the moving `continuous` tag — the exact mutable-asset trap that made
+`appimagetool` itself move to a pinned version tag (TS1, 2026-08-15), so it cannot
+be SHA-pinned.
+
+It is not downloaded. Every AppImage *begins* with that runtime, and
+`appimagetool` is already SHA-pinned, so `ensure_appimagetool_runtime` reads the
+offset the tool reports for itself and copies its own first bytes out. Pinned
+transitively, correct by construction for whatever arch the tool is. It lands in
+`/etc/skel` as well as root's home, so the runtime user created later inherits it.
+
+### The web-lane toolchain
+
+`flutter_rust_bridge_codegen build-web` shells out to `wasm-pack ... -Z build-std`,
+which resolves the nightly **channel**. The dated pin `install-rust.sh` adds is not
+that name, so rustup auto-installed one per run through a path it calls deprecated.
+The package stage installs the `nightly` channel with `rust-src` and
+`wasm32-unknown-unknown`, plus both binaries at pinned versions, on a cargo
+registry cachemount.
+
+`WASM_PACK_VERSION` and `FLUTTER_RUST_BRIDGE_VERSION` are advertised as image ENV
+and compared against what the binaries report, which is also the proof that they
+are installed. Every step is non-fatal: a consumer that has to build its own tools
+is slow, an image that cannot be built at all is worse.

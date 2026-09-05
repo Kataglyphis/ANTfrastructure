@@ -12,7 +12,6 @@
 linux/scripts/lib/agentic-loop.sh	complete_agentic_loop
 linux/scripts/lib/agentic-loop.sh	get_matrix_entry_name
 linux/scripts/lib/agentic-loop.sh	init_agentic_loop
-linux/scripts/lib/agentic-loop.sh	run_agentic_loop
 linux/scripts/lib/app-runner.sh	app_runner_main
 linux/scripts/lib/cmake-build.sh	cmake_build_main
 linux/scripts/lib/code-quality.sh	code_quality_check_clang_format
@@ -31,7 +30,6 @@ linux/scripts/lib/coverage.sh	coverage_run_gcovr
 linux/scripts/lib/ctest-run.sh	ctest_run_main
 linux/scripts/lib/docs-build.sh	docs_build_main
 linux/scripts/lib/rust-toolchain.sh	ensure_wasm32_target
-linux/scripts/lib/slang-compile.sh	slang_compile_main
 linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize
 
 # uv primitive for the downstream Python CI drivers (docs/python-ci.md, Trap 2
@@ -39,11 +37,27 @@ linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize
 linux/scripts/01-core/python_uv.sh	uv_pip_install_requirements
 
 # Dynamic dispatch: verify-parity.sh runs "check_${check_name}" over CHECK_LIST.
+# check_python joined its five siblings on 2026-09-05: smoke-toolchain.sh defines a
+# check_python of its own, so the name table read this one as used until the
+# unlinked-definer arm proved the two files never meet (backlog GH6).
 linux/scripts/06-packaging/verify-parity.sh	check_files
 linux/scripts/06-packaging/verify-parity.sh	check_imports
 linux/scripts/06-packaging/verify-parity.sh	check_libs
 linux/scripts/06-packaging/verify-parity.sh	check_packages
+linux/scripts/06-packaging/verify-parity.sh	check_python
 linux/scripts/06-packaging/verify-parity.sh	check_versions
 
 # bash hook: bash itself calls it when a command is not found.
 linux/scripts/tests/test-harness.sh	command_not_found_handle
+
+# app-packaging.sh has NO caller in this repo by design: its header says a wrapper
+# in the consuming repo sets the APP_PACKAGING_* variables, sources it and calls the
+# step functions. These are that public API. flutter-pin.sh is the same shape.
+linux/scripts/lib/app-packaging.sh	app_packaging_package_android_apk_outputs_tar
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_appimage
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_deb
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_flatpak
+linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
+linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
+linux/scripts/lib/app-packaging.sh	app_packaging_setup_dependencies_for_container
+linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin

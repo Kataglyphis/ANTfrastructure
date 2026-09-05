@@ -75,8 +75,8 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.revision="${VCS_REF}" `
       org.opencontainers.image.created="${BUILD_DATE}" `
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" `
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" `
+      org.opencontainers.image.url="https://github.com/Kataglyphis/ContainerHub" `
+      org.opencontainers.image.source="https://github.com/Kataglyphis/ContainerHub" `
       org.opencontainers.image.licenses="MIT"
 
 # Launcher script instead of inline cmd: exec-form re-quoting mangles embedded

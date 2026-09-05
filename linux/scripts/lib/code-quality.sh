@@ -157,7 +157,7 @@ code_quality_find_dart_files() {
   local f
   git -C "$root" ls-files -- '*.dart' 2>/dev/null | while IFS= read -r f; do
     case "$f" in
-      build/*|*/build/*|ExternalLib/*|*/ExternalLib/*) continue ;;
+      build/*|*/build/*|ExternalLib/*|*/ExternalLib/*|third_party/*|*/third_party/*) continue ;;
       flutter/*|*/flutter/*|rust_builder/*|*/rust_builder/*) continue ;;
     esac
     if [ "$root" = "." ]; then printf '%s\n' "$f"; else printf '%s/%s\n' "$root" "$f"; fi

@@ -192,9 +192,9 @@ write_qemu_binary_wrapper() {
 # setup_gi_cross_wrappers orchestrates them.)
 #
 # The phases communicate through file-scope variables (deliberately not
-# local): build_triplet, target_triplet, target_gi_bindir/datadir/includedir/
-# libdir/requires/libs/cflags/compiler/generate/pc, gi_version, gi_bindir,
-# gi_libdir, gi_scanner, gi_host_ldd, gi_scanner_wrapper,
+# local): target_triplet, target_gi_bindir/datadir/includedir/
+# libdir/requires/libs/cflags/compiler/generate/pc, gi_version,
+# gi_scanner, gi_host_ldd, gi_scanner_wrapper,
 # gi_scanner_triplet_wrapper, gi_scanner_default, gi_ldd_default,
 # gi_ldd_wrapper, gi_binary_wrapper, meson_binary_wrapper, qemu_runner,
 # qemu_sysroot. write_qemu_binary_wrapper (above) reads target_triplet/
@@ -204,7 +204,6 @@ write_qemu_binary_wrapper() {
 # gobject-introspection metadata (paths, tools, and the Requires/Libs/Cflags
 # taken from the target package's real .pc file when present).
 _gi_cross_detect_target_metadata() {
-  build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
   target_gi_bindir="/usr/bin"
   target_gi_datadir="/usr/share"
@@ -246,7 +245,6 @@ _gi_cross_detect_target_metadata() {
 _gi_cross_detect_host_tools() {
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
-  gi_bindir="/usr/bin"
   # Prefer the distro-provided scanner path even on reruns so we don't recurse
   # back into the wrapper we install under /usr/local/bin for Meson's lookup.
   gi_scanner="$(PATH=/usr/bin:/bin command -v g-ir-scanner 2>/dev/null || command -v g-ir-scanner 2>/dev/null || true)"
@@ -258,13 +256,6 @@ _gi_cross_detect_host_tools() {
   gi_ldd_wrapper="/usr/local/bin/g-ir-scanner-ldd-${gi_cross_wrapper_arch}-cross"
   gi_binary_wrapper="/usr/local/bin/g-ir-scanner-${gi_cross_wrapper_arch}-binary-wrapper"
   meson_binary_wrapper="/usr/local/bin/meson-${gi_cross_wrapper_arch}-exe-wrapper"
-  if [ -n "${gi_scanner}" ]; then
-    gi_bindir="$(dirname "${gi_scanner}")"
-  fi
-  gi_libdir="/usr/lib"
-  if [ -n "${build_triplet}" ] && [ -d "/usr/lib/${build_triplet}" ]; then
-    gi_libdir="/usr/lib/${build_triplet}"
-  fi
   if [ -z "${gi_version}" ]; then
     gi_version="${GOBJECT_INTROSPECTION_VERSION:-1.86.0}"
   fi

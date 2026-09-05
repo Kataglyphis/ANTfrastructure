@@ -54,7 +54,7 @@ OUT_DIR = REPO_ROOT / "docs/deps"
 OUT_FILE = OUT_DIR / "sbom-curated.spdx.json"
 
 SPDX_VERSION = "SPDX-2.3"
-DOC_NAME = "Kataglyphis-ContainerHub-curated"
+DOC_NAME = "ContainerHub-curated"
 
 # SPDX requires any non-listed licence id to be declared. Ours are the two
 # deliberate coarse buckets -- see license_obligations.py for why they exist.
@@ -160,7 +160,7 @@ def build_document(versions: dict[str, str]) -> dict:
         # byte-reproducible so `--check` can gate it. The image-scan SBOM in CI
         # carries the build-time provenance instead.
         "documentNamespace": (
-            "https://github.com/Kataglyphis/Kataglyphis-ContainerHub/spdx/curated"
+            "https://github.com/Kataglyphis/ContainerHub/spdx/curated"
         ),
         "creationInfo": {
             "created": "1970-01-01T00:00:00Z",

@@ -2,7 +2,7 @@
 # Tests for the soname-precedence gate in 06-packaging/smoke-runtime-image.sh.
 # Owner rule: our /opt build must win the ld.so lookup over any distro rival.
 # The BAD case below is what the shipped arm64 image actually did on 2026-09-01.
-# See docs/cross-build-verification.md.
+# docs/cross-build-verification.md#which-shared-library-a-consumer-actually-gets
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
