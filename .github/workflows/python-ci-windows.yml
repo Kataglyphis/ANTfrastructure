@@ -104,7 +104,7 @@ jobs:
       # old one.
       - name: 'Put the Docker data-root on D:'
         id: datar
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
+        uses: Kataglyphis/ContainerHub/.github/actions/set-docker-data-root@main
         with:
           data-root: 'D:\docker'
 
@@ -112,7 +112,7 @@ jobs:
       # live on C:. It just no longer has to claw back room for the image, so
       # deleting Visual Studio is no longer load-bearing.
       - name: Cleanup disk space
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
+        uses: Kataglyphis/ContainerHub/.github/actions/cleanup-disk-space@main
 
       - name: Login to GitHub
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
@@ -168,7 +168,7 @@ jobs:
       # PowerShell 5.1 cannot load them, which is how one caller's lane used to
       # fail with an opaque Import-Module error.
       - name: Run container
-        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-windows-container@main
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-windows-container@main
         with:
           image: ${{ inputs.image }}
           mount-source: ${{ github.workspace }}

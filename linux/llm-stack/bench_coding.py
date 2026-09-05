@@ -628,11 +628,22 @@ def run_candidate(code, tests, timeout=15, forbidden=None, stdlib_only=False):
     return False, detail[:120], {"passed": 0, "total": 0}
 
 
-def ask(base_url, model, prompt, max_tokens, timeout=1800):
+def ask(base_url, model, prompt, max_tokens, timeout=1800, deadline=None):
     """One streamed request.
 
     Returns (text, ttft_s, wall_s, chunks, prompt_tokens, think, finish,
-    completion_tokens) -- the last is None when the server reports no usage.
+    completion_tokens, gave_up) -- completion_tokens is None when the server
+    reports no usage, and `gave_up` says the wall-clock deadline stopped this,
+    not the model.
+
+    `timeout` is urlopen's, which is PER SOCKET READ, not for the request. A
+    model that keeps emitting tokens therefore never trips it: measured
+    2026-09-05, a 4B spent **over an hour** on one task under an 8000-token
+    budget, delivering deltas the whole time, and blocked the sweep. `deadline`
+    is the missing total-duration cap: when the wall-clock passes it the stream
+    is abandoned and what arrived so far is returned, flagged. A run that never
+    ends is not a measurement, and it must not be able to take the sweep with
+    it.
     Reasoning served as a separate delta field (`reasoning_content` on
     llama.cpp/vLLM, `reasoning` on Ollama) is collected too: dropping it made
     `out=` undercount, `think=` read 0 % and, worst, a reply that spent its
@@ -656,8 +667,12 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
     prompt_tokens = None
     completion_tokens = None
     finish = None
+    gave_up = False
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
+            if deadline and time.monotonic() - started > deadline:
+                gave_up = True
+                break
             line = raw.decode("utf-8", "replace").strip()
             if not line.startswith("data:"):
                 continue
@@ -687,11 +702,11 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                     parts.append(piece)
     text = "".join(parts)
     return (text, ttft, time.monotonic() - started, len(parts) + len(think_parts),
-            prompt_tokens, "".join(think_parts), finish, completion_tokens)
+            prompt_tokens, "".join(think_parts), finish, completion_tokens, gave_up)
 
 
 def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
-             context_tokens=0, warmup=True):
+             context_tokens=0, warmup=True, deadline=None):
     """Run every task against one model. Returns a report dict.
 
     `repeats` matters more than it looks: GenieX honours neither `max_tokens`
@@ -725,7 +740,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             prompt = ("Here is context from a repository, for style reference only:\n\n"
                       f"{context}\n\n---\n\nNow, independently of the above:\n" + prompt)
         try:
-            text, ttft, wall, chunks, ptok, think, finish, ctok = ask(base_url, model, prompt, max_tokens)
+            text, ttft, wall, chunks, ptok, think, finish, ctok, gave_up = ask(
+                base_url, model, prompt, max_tokens, deadline=deadline)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
             print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
             # A transport failure is not evidence about the model; excluding it
@@ -740,11 +756,24 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
                                            forbidden=task.get("forbidden"),
                                            stdlib_only=task.get("stdlib_only", False))
         count = ctok if ctok is not None else chunks
-        truncated = (not ok) and looks_truncated(text, count, code, finish,
-                                                cap=generation_cap(max_tokens))
-        if truncated:
+        # A deadline hit is UNMEASURED for the same reason a server cut is: the
+        # model never finished. Named apart from it, because the cause differs
+        # -- one is a budget, the other is a model that does not terminate.
+        truncated = (not ok) and (gave_up or looks_truncated(
+            text, count, code, finish, cap=generation_cap(max_tokens)))
+        if gave_up:
+            detail = (f"GAVE UP after {wall:.0f}s ({count} tokens and still "
+                      f"generating) - not graded as wrong")
+        elif truncated:
             unit = "tokens" if ctok is not None else "deltas"
-            detail = f"CUT OFF at {count} {unit} (server cap) - not graded as wrong"
+            # Not "the server cap" any more: since GenieX v0.6 the ceiling is
+            # whichever binds first -- the request's own max_tokens, or the
+            # model's context. A QAIRT bundle stopped at 3961 output tokens
+            # under a 8000-token budget because 136 prompt + 3961 = its
+            # compiled 4096 context, which no budget can raise.
+            room = f"{ptok} prompt + {count} out" if ptok else f"{count} {unit}"
+            detail = (f"CUT OFF at {count} {unit} ({room}; budget {max_tokens}) "
+                      f"- not graded as wrong")
         think_share = 0.0
         if think:
             think_share = len(think) / (len(think) + len(text))
@@ -761,7 +790,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
               f"think={100*think_share:3.0f}%  {partial}{'' if ok else detail[:58]}",
               flush=True)
         entry = {"task": task["name"], "attempt": attempt,
-                 "passed": ok, "truncated": truncated, "detail": detail,
+                 "passed": ok, "truncated": truncated, "gave_up": gave_up,
+                 "detail": detail,
                  "output_sha256": hashlib.sha256((think + text).encode()).hexdigest(),
                  "assertions_passed": credit["passed"],
                  "assertions_total": credit["total"],
@@ -812,7 +842,10 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     else:
         effective_n, effective_k = attempts, passed
 
+    abandoned = sum(1 for r in results if r.get("gave_up"))
     extra = f", {cut} cut off (unmeasured, excluded)" if cut else ""
+    if abandoned:
+        extra += f" of which {abandoned} ABANDONED at the deadline"
     if errored:
         extra += f", {errored} EXCLUDED (transport errors)"
     unit = "attempts" if repeats > 1 else "tasks"
@@ -835,6 +868,7 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             "passed": passed, "wrong": wrong, "truncated": cut,
             "total": attempts, "repeats": repeats, "tasks": len(TASKS),
             "errored": errored,
+            "abandoned": abandoned,
             "deterministic": deterministic, "repeats_agreed": repeats_agreed,
             "effective_n": effective_n, "effective_k": effective_k,
             "context_tokens": context_tokens,
@@ -879,6 +913,11 @@ def main():
                          "specified in the prompt, which cannot have been memorised. "
                          "Compare the two: a model much better on classic than on "
                          "novel is recalling rather than reasoning.")
+    ap.add_argument("--deadline", type=float, default=1800,
+                    help="Give up on one attempt after N seconds of wall-clock and "
+                         "record it UNMEASURED. urlopen's timeout is per socket "
+                         "read, so a model that keeps emitting tokens never trips "
+                         "it -- one blocked a sweep for over an hour (default 1800)")
     ap.add_argument("--no-warmup", action="store_true",
                     help="Skip the warmup request. The first task then carries the "
                          "model load time, which the ranking will attribute to the "
@@ -901,13 +940,14 @@ def main():
 
     reports = [evaluate(url, model, label, args.max_tokens, args.keep_output,
                         repeats=args.repeats, context_tokens=args.context_tokens,
-                        warmup=not args.no_warmup)
+                        warmup=not args.no_warmup, deadline=args.deadline)
                for label, url, model in candidates]
 
 
     if args.output:
         write_report(args.output, "bench_coding",
                      {"max_tokens": args.max_tokens, "repeats": args.repeats,
+                      "deadline": args.deadline,
                       "context_tokens": args.context_tokens,
                       "warmup": not args.no_warmup, "task_set": args.task_set},
                      reports, candidates[0][1] if candidates else None,

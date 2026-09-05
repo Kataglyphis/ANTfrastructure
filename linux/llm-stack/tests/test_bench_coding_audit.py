@@ -202,7 +202,7 @@ class TestAskReasoningDeltas:
         chunks = [{"choices": [{"delta": {"reasoning_content": "hmm"}, "finish_reason": None}]}] * 3
         chunks.append({"choices": [{"delta": {}, "finish_reason": "length"}]})
         self._stream(monkeypatch, chunks)
-        text, ttft, wall, n, ptok, think, finish, ctok = bc.ask("http://x", "m", "p", 10)
+        text, ttft, wall, n, ptok, think, finish, ctok, gave_up = bc.ask("http://x", "m", "p", 10)
         assert text == "" and think == "hmmhmmhmm" and n == 3 and finish == "length"
         assert ttft is not None
         assert looks_truncated(text, n, extract_code(text), finish)
@@ -211,16 +211,16 @@ class TestAskReasoningDeltas:
         self._stream(monkeypatch, [{"choices": [{"delta": {"reasoning": "r"}, "finish_reason": None}]},
                                    {"choices": [{"delta": {"content": "def f(): pass"},
                                                  "finish_reason": "stop"}]}])
-        text, _t, _w, _n, _p, think, finish, _c = bc.ask("http://x", "m", "p", 10)
+        text, _t, _w, _n, _p, think, finish, _c, _g = bc.ask("http://x", "m", "p", 10)
         assert think == "r" and text == "def f(): pass" and finish == "stop"
 
 
 def _fake_ask_factory(script):
     """script: list of (text, chunks, finish) consumed per call."""
     calls = iter(script)
-    def fake(base_url, model, prompt, max_tokens, timeout=1800):
+    def fake(base_url, model, prompt, max_tokens, timeout=1800, deadline=None):
         text, chunks, finish = next(calls)
-        return text, 0.1, 1.0, chunks, 10, "", finish, None
+        return text, 0.1, 1.0, chunks, 10, "", finish, None, False
     return fake
 
 
@@ -264,7 +264,7 @@ class TestEvaluateAccounting:
             item = next(it)
             if item is None:
                 raise ConnectionError("dropped")
-            return item, 0.1, 1.0, 5, 10, "", "stop", None
+            return item, 0.1, 1.0, 5, 10, "", "stop", None, False
         monkeypatch.setattr(bc, "TASKS", nine); monkeypatch.setattr(bc, "ask", fake)
         r = bc.evaluate("http://x", "m", "lbl", 100, repeats=3, warmup=False)
         assert r["passed"] == 21 and r["total"] == 25 and r["errored"] == 2
@@ -279,7 +279,7 @@ class TestEvaluateAccounting:
             if item is None:
                 raise ConnectionError("dropped")
             text, chunks, finish = item
-            return text, 0.1, 1.0, chunks, 10, "", finish, None
+            return text, 0.1, 1.0, chunks, 10, "", finish, None, False
         monkeypatch.setattr(bc, "TASKS", [MERGE]); monkeypatch.setattr(bc, "ask", fake)
         r = bc.evaluate("http://x", "m", "lbl", 100, repeats=3, warmup=False)
         assert r["errored"] == 1 and r["deterministic"]
@@ -426,7 +426,7 @@ class TestRealTokenCount:
         # proxy alone would call this a cut. usage says 100 tokens were
         # generated, and usage wins: a server that batches deltas must not turn
         # a short, complete answer into CUT.
-        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 5000, 10, "", "stop", 100))
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 5000, 10, "", "stop", 100, False))
         r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
         assert r["truncated"] == 0 and r["results"][0]["tokens"] == 100
         assert r["results"][0]["tokens_estimated"] is False
@@ -436,7 +436,7 @@ class TestRealTokenCount:
         # own budget is all there is, and reaching it is a cut.
         bad = "```python\n" + STUB + "```"
         monkeypatch.setattr(bc, "TASKS", [MERGE])
-        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 3000, 10, "", None, None))
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 3000, 10, "", None, None, False))
         r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
         assert r["truncated"] == 1 and r["results"][0]["tokens_estimated"] is True
 
@@ -445,7 +445,7 @@ class TestRealTokenCount:
         # under a 3000-token budget must read FAIL, not CUT.
         bad = "```python\n" + STUB + "```"
         monkeypatch.setattr(bc, "TASKS", [MERGE])
-        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 2500, 10, "", "stop", 2500))
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 2500, 10, "", "stop", 2500, False))
         r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
         assert r["truncated"] == 0 and r["passed"] == 0 and r["wrong"] == 1
 
@@ -454,7 +454,7 @@ class TestRealTokenCount:
                   {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 42}}]
         lines = [b"data: " + json.dumps(c).encode() + b"\n" for c in chunks] + [b"data: [DONE]\n"]
         monkeypatch.setattr(bc.urllib.request, "urlopen", lambda req, timeout=0: _FakeResp(lines))
-        *_, ctok = bc.ask("http://x", "m", "p", 10)
+        *_, ctok, _gave = bc.ask("http://x", "m", "p", 10)
         assert ctok == 42
 
 
@@ -511,3 +511,55 @@ class TestAsciiDigits:
         lenient = task["reference"].replace("all(c in '0123456789' for c in left)", "left.lstrip('+').isdigit()")
         assert lenient != task["reference"]
         assert not run_candidate(lenient, task["tests"])[0]
+
+
+class TestWallClockDeadline:
+    """urlopen's timeout is per socket READ, not for the request.
+
+    A model that keeps emitting tokens never trips it. Measured 2026-09-05: a
+    4B under an 8000-token budget generated for over an hour on one task and
+    blocked the sweep. A run that never ends is not a measurement, and it must
+    not be able to take the sweep with it.
+    """
+
+    def _endless(self, monkeypatch, chunks_before_check=10_000):
+        one = json.dumps({"choices": [{"delta": {"content": "x"}, "finish_reason": None}]})
+        line = b"data: " + one.encode() + b"\n"
+
+        class Endless:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def __iter__(self):
+                while True:
+                    yield line
+
+        monkeypatch.setattr(bc.urllib.request, "urlopen", lambda req, timeout=0: Endless())
+
+    def test_a_stream_that_never_ends_is_abandoned(self, monkeypatch):
+        self._endless(monkeypatch)
+        t0 = time.monotonic()
+        text, _ttft, wall, n, _p, _th, _f, _c, gave_up = bc.ask(
+            "http://x", "m", "p", 10, deadline=0.5)
+        assert gave_up is True
+        assert time.monotonic() - t0 < 15, "the deadline did not stop it"
+        assert n > 0 and text, "what arrived before the deadline must be kept"
+
+    def test_without_a_deadline_nothing_changes(self, monkeypatch):
+        chunks = [{"choices": [{"delta": {"content": "hi"}, "finish_reason": "stop"}]}]
+        lines = [b"data: " + json.dumps(c).encode() + b"\n" for c in chunks] + [b"data: [DONE]\n"]
+        monkeypatch.setattr(bc.urllib.request, "urlopen", lambda req, timeout=0: _FakeResp(lines))
+        *_, gave_up = bc.ask("http://x", "m", "p", 10)
+        assert gave_up is False
+
+    def test_evaluate_records_it_unmeasured_not_wrong(self, monkeypatch):
+        # Token count deliberately WELL UNDER the budget and no finish_reason,
+        # so nothing but `gave_up` can make this unmeasured. The first version
+        # said 9999 tokens against a 100-token budget, which the cap rule
+        # caught on its own -- and the mutation gate proved that test vacuous.
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask",
+                            lambda *a, **k: ("", 0.1, 3600.0, 5, 10, "", None, None, True))
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False, deadline=1800)
+        assert r["truncated"] == 1 and r["abandoned"] == 1
+        assert r["passed"] == 0 and r["wrong"] == 0 and r["total"] == 0
+        assert "GAVE UP" in r["results"][0]["detail"]
