@@ -66,7 +66,7 @@ lands in `verify_code_dupes`' `suppressed as idiom at >6 owners` bucket
 Sourcing a sibling to get logging is not the bootstrap paradox it looks like.
 The block it replaced already sourced a file — `../01-core/logging.sh`, one
 directory further away — and every consumer vendors the whole ContainerHub
-checkout (`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/<lib>.sh`), so
+checkout (`third_party/ContainerHub/linux/scripts/lib/<lib>.sh`), so
 a missing file **next to** the library it serves is a broken checkout, not a
 supported state. `tests/test-lib-modules.sh` holds that line: every `lib/*.sh`
 must source cleanly standalone, define `info`/`warn`/`err`, survive a double

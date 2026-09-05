@@ -57,7 +57,7 @@ try {
     Invoke-BuildOptional -Context $script:BuildContext -Name "bandit" -Script {
         Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @(
             "run", "--active", "bandit", "-r", $PackageName,
-            "-x", "tests,.venv,.venv_static_analysis,ExternalLib,archive,docs/test_results"
+            "-x", "tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results"
         ) | Out-Null
     }
 

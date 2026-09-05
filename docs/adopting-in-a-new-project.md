@@ -13,7 +13,7 @@ is ambiguous, read how that repo does it.
 ## 0. Add the submodule
 
 ```bash
-git submodule add https://github.com/Kataglyphis/ContainerHub.git ExternalLib/Kataglyphis-ContainerHub
+git submodule add https://github.com/Kataglyphis/ContainerHub.git third_party/ContainerHub
 git submodule update --init --recursive
 ```
 
@@ -147,7 +147,7 @@ to `scripts/windows/Resolve-BuildModule.ps1` and adjust
 `$script:RepoRootRelativeToHere` if the script does not sit exactly two
 directories below the repo root. It resolves a module
 name to
-`ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/<Name>.psm1`
+`third_party/ContainerHub/windows/scripts/modules/<Name>.psm1`
 first, then a local `modules/` fallback beside itself, and throws with both
 paths if neither exists.
 
@@ -163,7 +163,7 @@ instead — that test is what moved `WindowsTesting.Common` and
 
 Bash consumers have no equivalent bootstrap problem — they source libraries by
 relative path directly, e.g.
-`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/app-runner.sh`. Resolve
+`third_party/ContainerHub/linux/scripts/lib/app-runner.sh`. Resolve
 that path from `${BASH_SOURCE[0]}` rather than assuming the caller's working
 directory is the repo root, and fail loudly (naming the
 `git submodule update --init --recursive` command) when the submodule is not
@@ -338,7 +338,7 @@ then source a per-repo bridge that pulls in `01-core/common.sh`:
 set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/ci_common.sh"          # or lib/common.sh
-source "${_SCRIPT_DIR}/../../ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/<lib>.sh"
+source "${_SCRIPT_DIR}/../../third_party/ContainerHub/linux/scripts/lib/<lib>.sh"
 ```
 
 Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`

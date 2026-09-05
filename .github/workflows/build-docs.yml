@@ -39,7 +39,7 @@ jobs:
         with:
           fetch-depth: 0
           # Non-recursive: we only need the flat docs tooling from the
-          # Kataglyphis-DocumANTation submodule, not its own nested submodules.
+          # DocumANTation submodule, not its own nested submodules.
           # (DocumANTation also references ContainerHub, so recursing would
           # re-clone this repo in a cycle.)
           submodules: true

@@ -16,7 +16,7 @@ NODE_MAJOR="$(grep -E '^NODE_VERSION=' "${_VERSIONS_ENV}" | head -1 | cut -d= -f
 NODE_IMAGE="node:${NODE_MAJOR:-20}-alpine"
 
 # We mount the repo root so Vite can resolve the @import of brand.css
-# from the Kataglyphis-DocumANTation submodule at build time.
+# from the DocumANTation submodule at build time.
 REPO_ROOT="$(cd ../../.. && pwd)"
 SRC_DIR="/repo"
 VIEWER_DIR="$SRC_DIR/linux/llm-stack/benchmark-viewer"

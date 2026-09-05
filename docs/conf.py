@@ -4,14 +4,14 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 # The reusable theme package (sphinx_kataglyphis) is installed via
-# requirements.txt as an editable install from the Kataglyphis-DocumANTation
+# requirements.txt as an editable install from the DocumANTation
 # submodule under external/. See requirements.txt.
 from sphinx_kataglyphis import brand, setup_theme
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-PROJECT = "Kataglyphis-ContainerHub"
+PROJECT = "ContainerHub"
 
 # Author and copyright are NOT set here: setup_theme() takes them from the
 # `identity` section of the submodule's style/brand.json, the same source as the

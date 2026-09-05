@@ -42,7 +42,7 @@ containerhub_exec linux/scripts/02-toolchain/python/ci_tests.sh "$@"   # delegat
 `containerhub_exec` is the wrapper pattern, and it exports `WORKSPACE_ROOT`
 before handing off. That line is not optional: upstream's `detect_workspace`
 derives the workspace from the sourcing script's own location, which for a
-*delegated* driver resolves inside `ExternalLib/Kataglyphis-ContainerHub/`
+*delegated* driver resolves inside `third_party/ContainerHub/`
 rather than the consuming repo — so every tool would run against the submodule
 tree. It honours a pre-set value and still overrides to `/workspace` in the
 container, so CI is unaffected either way.

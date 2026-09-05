@@ -52,7 +52,7 @@ Place the module in your repository's module path, then import it:
 
 ```pwsh
 # If using Kataglyphis-ContainerHub as a submodule:
-$modulePath = Resolve-Path 'ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
+$modulePath = Resolve-Path 'third_party/ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
 Import-Module $modulePath -Force
 ```
 
@@ -70,7 +70,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $configPath = Join-Path $PSScriptRoot 'AgenticLoop.config.json'
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-Import-Module (Join-Path $repoRoot 'ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1') -Force
+Import-Module (Join-Path $repoRoot 'third_party/ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1') -Force
 
 Initialize-AgenticLoop -ConfigPath $configPath -RepoRoot $repoRoot
 

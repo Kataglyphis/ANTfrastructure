@@ -54,7 +54,7 @@ OUT_DIR = REPO_ROOT / "docs/deps"
 OUT_FILE = OUT_DIR / "sbom-curated.spdx.json"
 
 SPDX_VERSION = "SPDX-2.3"
-DOC_NAME = "Kataglyphis-ContainerHub-curated"
+DOC_NAME = "ContainerHub-curated"
 
 # SPDX requires any non-listed licence id to be declared. Ours are the two
 # deliberate coarse buckets -- see license_obligations.py for why they exist.
