@@ -536,7 +536,19 @@ check_rust_toolchain() {
 # image: caches outside the bind-mounted checkout, a writable Rust home, a set
 # ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
 # docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools"
+
+# Rows whose entire contract is "this is staged in the image, or every consumer run
+# pays for it again". One owner for all three: the verdict has the same shape, and
+# the cost is already written down once in _consumer_contract_symptom.
+# docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
+_consumer_present_verdict() {
+  local row="$1" got="$2"
+  case "${got}" in
+    ''|0|no) printf 'FAIL %s absent -- %s' "${row}" "$(_consumer_contract_symptom "${row}")" ;;
+    *)       printf 'OK %s %s' "${row}" "${got}" ;;
+  esac
+}
 
 # The consumer-visible failure each row prevents, quoted verbatim from the lane that
 # hit it, so a red run names the symptom in the OTHER repo and not just our path.
@@ -551,6 +563,9 @@ _consumer_contract_symptom() {
     appimagetool)  printf '%s' 'appimagetool is an AppImage: it reads /proc/self/exe for its own squashfs offset, so a mode that is executable but not READABLE gives "Cannot open /proc/self/exe: Permission denied" and no .AppImage is produced' ;;
     dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
     flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
+    flatpak-runtimes) printf '%s' 'flatpak list --runtime returns 0 refs, so every run re-downloads seven org.freedesktop refs (~1.9 GB) -- the single largest download in a consumer build' ;;
+    appimage-runtime) printf '%s' 'appimagetool refetches runtime-<arch> from the type2-runtime continuous release on every build, so packaging hangs on GitHub being reachable' ;;
+    web-lane-tools) printf '%s' 'flutter_rust_bridge_codegen build-web cargo-installs wasm-pack (258 crates) and itself (174) from source in every run' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -569,6 +584,11 @@ _consumer_contract_exempt() {
     # covers x86_64/aarch64/armhf/i686 and refuses the rest, so the tool is absent
     # there by construction and the AppImage format is not offered on riscv64.
     riscv64:appimagetool) return 0 ;;
+    # Flathub builds the freedesktop runtimes for x86_64 and aarch64 only, and the
+    # AppImage runtime is carved out of the appimagetool AppImage, which riscv64
+    # does not have either. Both are absent there by construction.
+    riscv64:flatpak-runtimes) return 0 ;;
+    riscv64:appimage-runtime) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -651,6 +671,17 @@ while IFS= read -r _p; do
 done < <(find /opt/flutter ! -uid "${_u}" 2>/dev/null)
 printf 'FACT flutter-foreign %s\n' "${_n}"
 printf 'FACT flutter-foreign-examples %s\n' "${_ex# }"
+printf 'FACT flatpak-runtimes %s\n' "$(flatpak list --runtime 2>/dev/null | grep -c . || echo 0)"
+if [ -n "$(ls "${HOME:-/nonexistent}"/.local/share/appimagekit/runtime-* 2>/dev/null | head -1)" ]; then
+  printf 'FACT appimage-runtime yes\n'
+else
+  printf 'FACT appimage-runtime no\n'
+fi
+if command -v wasm-pack >/dev/null 2>&1 && command -v flutter_rust_bridge_codegen >/dev/null 2>&1; then
+  printf 'FACT web-lane-tools yes\n'
+else
+  printf 'FACT web-lane-tools no\n'
+fi
 echo CCPROBE_DONE
 PROBE
 }
@@ -780,6 +811,9 @@ _consumer_contract_verdicts() {
         jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
         appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
+        flatpak-runtimes|appimage-runtime|web-lane-tools)
+                       line="$(_consumer_present_verdict "${row}" \
+                                 "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;
         *)             line="$(_consumer_dir_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
                                  "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;

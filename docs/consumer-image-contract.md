@@ -264,3 +264,58 @@ the Android tree instead, to be passed explicitly:
 ```bash
 cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
 ```
+
+## What the image stages so a run does not
+
+Three of the contract rows are not about permissions at all. They ask whether a
+thing is *present*, because the alternative is that every consumer run fetches or
+rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix:
+
+| Row | Absent means |
+| --- | --- |
+| `flatpak-runtimes` | `flatpak list --runtime` returns **0 refs**; seven `org.freedesktop` refs, ~1.9 GB, re-downloaded per run per arch |
+| `appimage-runtime` | `appimagetool` refetches `runtime-<arch>` from GitHub, so packaging hangs on GitHub being reachable |
+| `web-lane-tools` | `wasm-pack` (258 crates) and `flutter_rust_bridge_codegen` (174) are `cargo install`ed from source in every run |
+
+They share one verdict function; the cost of each is written down once, in
+`_consumer_contract_symptom`, which is also what the failure message prints.
+
+### The Flatpak runtimes ship with the image
+
+`install_flatpak_runtime` had existed for months behind
+`INSTALL_FLATPAK_RUNTIMES`, which defaulted to **false** — so the capability was
+there and switched off, and it covered two of the seven refs. It now defaults to
+true and installs all seven, `Platform.GL.default` twice because the base branch
+and its `extra` sibling are separate refs.
+
+Flathub builds these for x86_64 and aarch64 only. On any other arch the install is
+a guaranteed 404 rather than a flake, so the function returns early and the row is
+exempt on riscv64.
+
+### The AppImage runtime ships with the tool
+
+`appimagetool` embeds a type-2 runtime into every AppImage it builds, and fetches
+it at build time if it is not on disk. Upstream publishes that runtime **only**
+under the moving `continuous` tag — the exact mutable-asset trap that made
+`appimagetool` itself move to a pinned version tag (TS1, 2026-08-15), so it cannot
+be SHA-pinned.
+
+It is not downloaded. Every AppImage *begins* with that runtime, and
+`appimagetool` is already SHA-pinned, so `ensure_appimagetool_runtime` reads the
+offset the tool reports for itself and copies its own first bytes out. Pinned
+transitively, correct by construction for whatever arch the tool is. It lands in
+`/etc/skel` as well as root's home, so the runtime user created later inherits it.
+
+### The web-lane toolchain
+
+`flutter_rust_bridge_codegen build-web` shells out to `wasm-pack ... -Z build-std`,
+which resolves the nightly **channel**. The dated pin `install-rust.sh` adds is not
+that name, so rustup auto-installed one per run through a path it calls deprecated.
+The package stage installs the `nightly` channel with `rust-src` and
+`wasm32-unknown-unknown`, plus both binaries at pinned versions, on a cargo
+registry cachemount.
+
+`WASM_PACK_VERSION` and `FLUTTER_RUST_BRIDGE_VERSION` are advertised as image ENV
+and compared against what the binaries report, which is also the proof that they
+are installed. Every step is non-fatal: a consumer that has to build its own tools
+is slow, an image that cannot be built at all is worse.

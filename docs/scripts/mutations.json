@@ -2930,8 +2930,8 @@
   {
     "id": "probe.jdk-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
   },
@@ -2970,10 +2970,18 @@
   {
     "id": "probe.appimagetool-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
+  },
+  {
+    "id": "probe.flatpak-row-asserted",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
   },
   {
     "id": "probe.appimagetool-readability",

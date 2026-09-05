@@ -3,7 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGING_DEPS_MODE="${PACKAGING_DEPS_MODE:-required}"
-INSTALL_FLATPAK_RUNTIMES="${INSTALL_FLATPAK_RUNTIMES:-false}"
+# ON by default since 2026-09-05: `flatpak list --runtime` in the shipped image
+# returned ZERO refs, so every consumer run re-downloaded ~1.9 GB across seven of
+# them -- the single largest download in their build.
+# docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+INSTALL_FLATPAK_RUNTIMES="${INSTALL_FLATPAK_RUNTIMES:-true}"
 PACKAGING_DEPS_COMMAND="${PACKAGING_DEPS_COMMAND:-all}"
 
 # common.sh is a hard dependency: it provides download_verified_file,
@@ -264,15 +268,43 @@ ensure_appimagetool_if_supported() {
 
 # ── Flatpak Runtime/SDK installation ──────────────────────────────────
 
+# The seven refs a Flatpak build actually resolves. Two of them (Platform and Sdk)
+# were installed here before; the other five were left to every consumer run.
+# GL.default appears twice on purpose -- the base branch and its `extra` sibling
+# are separate refs. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+_flatpak_refs() {
+    local version="$1" openh264="$2"
+
+    printf '%s\n' \
+        "org.freedesktop.Platform//${version}" \
+        "org.freedesktop.Sdk//${version}" \
+        "org.freedesktop.Platform.Locale//${version}" \
+        "org.freedesktop.Sdk.Locale//${version}" \
+        "org.freedesktop.Platform.GL.default//${version}" \
+        "org.freedesktop.Platform.GL.default//${version}extra" \
+        "org.freedesktop.Platform.openh264//${openh264}"
+}
+
 install_flatpak_runtime() {
     if ! command -v flatpak >/dev/null 2>&1; then
         warn "flatpak not found; skipping runtime/SDK installation"
         return 1
     fi
 
-    # Overridable via versions.env (FLATPAK_RUNTIME_VERSION); was the last
-    # hardcoded version literal in the packaging lane.
+    # Flathub builds these for x86_64 and aarch64 only; on any other arch the
+    # install is a guaranteed 404, not a transient failure worth retrying.
+    local machine
+    machine="$(uname -m)"
+    case "${machine}" in
+        x86_64|aarch64) ;;
+        *)
+            warn "Flathub publishes no freedesktop runtimes for ${machine}; skipping"
+            return 0
+            ;;
+    esac
+
     local runtime_version="${FLATPAK_RUNTIME_VERSION:-24.08}"
+    local openh264_version="${FLATPAK_OPENH264_VERSION:-2.5.1}"
 
     info "Adding Flathub repository (if not present)"
     if ! flatpak remote-list | grep -q flathub; then
@@ -280,15 +312,17 @@ install_flatpak_runtime() {
             https://dl.flathub.org/repo/flathub.flatpakrepo
     fi
 
-    info "Installing Freedesktop Platform runtime $runtime_version"
-    try_or_sudo flatpak install -y --noninteractive flathub \
-        org.freedesktop.Platform//"$runtime_version"
+    local ref failed=0
+    while IFS= read -r ref; do
+        [ -n "${ref}" ] || continue
+        info "Installing ${ref}"
+        try_or_sudo flatpak install -y --noninteractive flathub "${ref}" \
+            || { warn "${ref} did not install; consumers will fetch it per run"; failed=$((failed + 1)); }
+    done <<EOF
+$(_flatpak_refs "${runtime_version}" "${openh264_version}")
+EOF
 
-    info "Installing Freedesktop SDK $runtime_version"
-    try_or_sudo flatpak install -y --noninteractive flathub \
-        org.freedesktop.Sdk//"$runtime_version"
-
-    info "Flatpak runtime/SDK installation complete"
+    info "Flatpak runtime installation complete ($((7 - failed))/7 refs)"
 }
 
 usage() {
@@ -321,12 +355,14 @@ run_requested_command() {
                     ;;
             esac
             run_step "appimagetool installation" ensure_appimagetool_if_supported
+            run_step "AppImage runtime staging" ensure_appimagetool_runtime
             ;;
         apt)
             run_apt_step_if_available
             ;;
         appimagetool)
             run_step "appimagetool installation" ensure_appimagetool
+            run_step "AppImage runtime staging" ensure_appimagetool_runtime
             ;;
         flatpak-runtime)
             run_step "Flatpak runtime installation" install_flatpak_runtime
