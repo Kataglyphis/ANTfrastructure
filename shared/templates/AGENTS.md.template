@@ -13,7 +13,7 @@ Section 2 is links only, on purpose. The moment a procedure gets retyped here it
 starts drifting from upstream - that is not hypothetical, see
 ContainerHub docs/INDEX.md for the three-broken-copies case that motivated this.
 
-Topic -> owning document: ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md
+Topic -> owning document: third_party/ContainerHub/docs/INDEX.md
 -->
 
 Guidance for coding agents (and new contributors) working in <PROJECT>.
@@ -27,7 +27,7 @@ Guidance for coding agents (and new contributors) working in <PROJECT>.
 | --- | --- |
 | `src/…` | |
 | `scripts/windows/`, `scripts/linux/` | Thin wrappers over ContainerHub drivers + this project's payload |
-| `ExternalLib/Kataglyphis-ContainerHub/` | The submodule that owns every reusable script, module and doc |
+| `third_party/ContainerHub/` | The submodule that owns every reusable script, module and doc |
 
 ## 2. What ContainerHub owns — links only
 
@@ -36,7 +36,7 @@ link. If you catch yourself typing a command that would work in another repo,
 it belongs upstream.
 
 Start at
-[`ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md`](ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md)
+[`third_party/ContainerHub/docs/INDEX.md`](third_party/ContainerHub/docs/INDEX.md)
 — topic → owning document, so these links stay valid when upstream reorganises.
 
 | Topic | Where |

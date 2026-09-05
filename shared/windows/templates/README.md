@@ -32,7 +32,7 @@ Import-BuildModule @(
 ```
 
 `Resolve-BuildModule <Name>` probes
-`ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/<Name>.psm1`
+`third_party/ContainerHub/windows/scripts/modules/<Name>.psm1`
 **first**, then `<script dir>/modules/<Name>.psm1`, and throws naming both
 paths when neither exists (the message includes the `git submodule update`
 command, because that is nearly always the cause).

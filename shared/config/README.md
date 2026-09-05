@@ -19,7 +19,7 @@ Every other shared thing in this repo is consumed by reference — CMake modules
 via `CMAKE_MODULE_PATH`, PowerShell modules via a resolver, composite actions via
 `uses:`. These four cannot be, because **the tools that read them discover them
 by walking up the directory tree from the file being processed**. A config
-sitting in `ExternalLib/Kataglyphis-ContainerHub/shared/config/` is never found:
+sitting in `third_party/ContainerHub/shared/config/` is never found:
 it is below the source tree, not above it.
 
 Passing explicit paths (`clang-format --style=file:<path>`, `clang-tidy
@@ -31,8 +31,8 @@ CI kept passing, which is worse than the duplication.
 So the copy stays, and drift is made **impossible instead of unnoticed**:
 
 ```pwsh
-pwsh -File ExternalLib/Kataglyphis-ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check
-pwsh -File ExternalLib/Kataglyphis-ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write
+pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check
+pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write
 ```
 
 `-Check` exits non-zero on any difference and is meant to run as a test in the

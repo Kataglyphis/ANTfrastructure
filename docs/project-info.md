@@ -213,9 +213,9 @@ Some very helpful literature, tutorials, etc.
 
 ## Reusable Sphinx theme package
 
-The shared theme lives in the Kataglyphis-DocumANTation repo and is vendored here as a submodule.
+The shared theme lives in the DocumANTation repo and is vendored here as a submodule.
 
-The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
+The shared theme now lives in the **DocumANTation** repo, vendored here
 as a submodule at `third_party/DocumANTation`. `requirements.txt` installs it
 editable (`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`), so
 `docs/conf.py` just imports it:

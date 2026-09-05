@@ -21,8 +21,8 @@ info "Detected crate name: $CRATE_NAME (doc dir: $CRATE_DIR_NAME)"
 # Combine CSS files to create a custom rustdoc theme
 # Assuming the ExternalLib submodule is available locally, or paths are provided
 EXT_CSS=""
-if [ -f "./ExternalLib/Kataglyphis-ContainerHub/docs/_static/css/custom.css" ]; then
-    EXT_CSS="./ExternalLib/Kataglyphis-ContainerHub/docs/_static/css/custom.css"
+if [ -f "./third_party/ContainerHub/docs/_static/css/custom.css" ]; then
+    EXT_CSS="./third_party/ContainerHub/docs/_static/css/custom.css"
 elif [ -f "$SCRIPT_DIR/../../../docs/_static/css/custom.css" ]; then
     EXT_CSS="$SCRIPT_DIR/../../../docs/_static/css/custom.css"
 fi

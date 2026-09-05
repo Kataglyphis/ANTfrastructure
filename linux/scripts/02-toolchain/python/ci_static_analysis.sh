@@ -34,7 +34,7 @@ uv_sync_project --no-wxpython
 
 uv_run codespell "$PACKAGE_NAME" tests docs/source/conf.py setup.py README.md 2>/dev/null || true
 uv_run --active bandit -r "$PACKAGE_NAME" \
-  -x tests,.venv,.venv_static_analysis,ExternalLib,archive,docs/test_results 2>/dev/null || true
+  -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results 2>/dev/null || true
 uv_run --active vulture "$PACKAGE_NAME" tests docs/source/conf.py setup.py 2>/dev/null || true
 uv_run --active ruff check --fix "$PACKAGE_NAME" tests docs/source/conf.py setup.py || true
 uv_run --active ruff format "$PACKAGE_NAME" tests docs/source/conf.py setup.py || true

@@ -5,7 +5,7 @@
 # NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
 # callers inside THIS repo, but Kataglyphis-Inference-Engine's
 # scripts/windows/Build-Windows.ps1 imports it from its ContainerHub submodule at
-# ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/. It was deleted
+# third_party/ContainerHub/windows/scripts/modules/. It was deleted
 # once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
 # future sweep of windows/scripts/modules/.
 

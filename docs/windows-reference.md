@@ -81,7 +81,7 @@ Count lines of code, skipping the usual noise:
 
 ```powershell
 Get-ChildItem -Recurse -File -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -notmatch '(\.git|node_modules|venv|build|dist|archive|ExternalLib)' } |
+  Where-Object { $_.FullName -notmatch '(\.git|node_modules|venv|build|dist|archive|ExternalLib|third_party)' } |
   Where-Object { $_.Extension -match '^\.(c|cpp|h|hpp|py|rs|java|js|ts|go|dart|sh|ps1)$' } |
   ForEach-Object { ([System.IO.File]::ReadLines($_.FullName) | Measure-Object -Line).Lines } |
   Measure-Object -Sum | Select-Object -ExpandProperty Sum

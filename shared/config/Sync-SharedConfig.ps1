@@ -134,7 +134,7 @@ if ($missing.Count -gt 0 -or $drifted.Count -gt 0) {
   Write-Host ''
   Write-Host 'Local tool config differs from the canonical copy in ContainerHub.' -ForegroundColor Red
   Write-Host 'Edit the config UPSTREAM (shared/config/), then refresh here with:' -ForegroundColor Red
-  Write-Host '  pwsh -File ExternalLib/Kataglyphis-ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write' -ForegroundColor Red
+  Write-Host '  pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write' -ForegroundColor Red
   Write-Host 'If this project genuinely owns the file, pass -Ignore <name> instead.' -ForegroundColor Red
   exit 1
 }

@@ -1,4 +1,4 @@
-# Kataglyphis-ContainerHub — agent guardrails
+# ContainerHub — agent guardrails
 
 **This file is the rulebook, not the manual.** It captures what an automated
 agent must and must not do to avoid regressing the build, plus the canonical

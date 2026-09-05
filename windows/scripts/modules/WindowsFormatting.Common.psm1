@@ -26,7 +26,7 @@ function Get-ProjectCmakeFiles {
           ForEach-Object { Join-Path $WorkspacePath $_ } |
           Where-Object {
             ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-            ($_.ToString() -notmatch '\\ExternalLib\\') -and
+            ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
             ($_.ToString() -notmatch '\\_deps\\') -and
             ($_.ToString() -notmatch '\\vcpkg_installed\\')
           })
@@ -42,7 +42,7 @@ function Get-ProjectCmakeFiles {
     Where-Object {
       ($_.Name -eq 'CMakeLists.txt' -or $_.Extension -eq '.cmake') -and
       ($_.FullName -notmatch '\\build([\\-]|\\)') -and
-      ($_.FullName -notmatch '\\ExternalLib\\') -and
+      ($_.FullName -notmatch '\\(ExternalLib|third_party)\\') -and
       ($_.FullName -notmatch '\\_deps\\') -and
       ($_.FullName -notmatch '\\.git\\modules\\') -and
       ($_.FullName -notmatch '\\vcpkg_installed\\') -and
@@ -71,7 +71,7 @@ function Get-ProjectCppFiles {
           ForEach-Object { Join-Path $WorkspacePath $_ } |
           Where-Object {
             ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-            ($_.ToString() -notmatch '\\ExternalLib\\') -and
+            ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
             # -notmatch, not -match. This read `-match '\\_deps\\'` until
             # 2026-07-20, which inverted the intent: it kept ONLY files under a
             # CMake _deps/ directory and dropped every project source. _deps is
@@ -99,7 +99,7 @@ function Get-ProjectCppFiles {
     Where-Object {
       ($cppExtensions -contains $_.Extension.ToLowerInvariant()) -and
       ($_.FullName -notmatch '\\build([\\-]|\\)') -and
-      ($_.FullName -notmatch '\\ExternalLib\\') -and
+      ($_.FullName -notmatch '\\(ExternalLib|third_party)\\') -and
       ($_.FullName -notmatch '\\_deps\\') -and
       ($_.FullName -notmatch '\\.git\\modules\\') -and
       ($_.FullName -notmatch '\\vcpkg_installed\\') -and
@@ -325,7 +325,7 @@ function Get-ProjectDartFiles {
     ForEach-Object { Join-Path $WorkspacePath $_ } |
     Where-Object {
       ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-      ($_.ToString() -notmatch '\\ExternalLib\\') -and
+      ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
       ($_.ToString() -notmatch '\\.git\\modules\\') -and
       ($_.ToString() -notmatch '\\flutter\\') -and
       ($_.ToString() -notmatch '\\rust_builder\\')

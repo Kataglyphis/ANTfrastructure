@@ -10,7 +10,7 @@ set -euo pipefail
 # shared/agentic-loop/prompts/*.md - do not hard-code prompt text here.
 #
 # Thin wrapper around the reusable library in
-# ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/agentic-loop.sh.
+# third_party/ContainerHub/linux/scripts/lib/agentic-loop.sh.
 #
 # Engines (config .engine, or --engine / AGENTIC_ENGINE):
 #   claude   — Claude Code CLI; models come from the config
@@ -36,7 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # ── Source reusable library from ContainerHub ───────────────────────────
-AGENTIC_LIB="${REPO_ROOT}/ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/agentic-loop.sh"
+AGENTIC_LIB="${REPO_ROOT}/third_party/ContainerHub/linux/scripts/lib/agentic-loop.sh"
 if [[ -f "$AGENTIC_LIB" ]]; then
     source "$AGENTIC_LIB"
 else
