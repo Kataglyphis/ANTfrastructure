@@ -82,8 +82,8 @@ function Invoke-EarlyWebDavDownload {
     Write-BuildLog -Context $Context -Message "DEBUG: Running: $($uvCmd.Source) pip install --upgrade pip"
     Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', '--upgrade', 'pip') -IgnoreExitCode | Out-Null
 
-    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: git+https://github.com/Kataglyphis/Kataglyphis-WebDavClient"
-    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', 'git+https://github.com/Kataglyphis/Kataglyphis-WebDavClient') -IgnoreExitCode | Out-Null
+    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: git+https://github.com/Kataglyphis/WebDavClient"
+    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', 'git+https://github.com/Kataglyphis/WebDavClient') -IgnoreExitCode | Out-Null
   } catch {
     Write-BuildLogWarning -Context $Context -Message "uv pip install step failed: $($_.Exception.Message)"
   }

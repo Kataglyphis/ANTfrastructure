@@ -8,8 +8,8 @@
   <h4>Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and a Windows build image.</h4>
 </div>
 
-[![CI](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml)
-[![ghcr-cleanup](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml)
+[![CI](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu24.04.yml)
+[![ghcr-cleanup](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ghcr-cleanup.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
 ---
@@ -67,7 +67,7 @@ Lane mechanics, why the classic-docker lane was removed, and every host gate:
 ### Clone the repository
 
 ```bash
-git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
+git clone --recurse-submodules git@github.com:Kataglyphis/ContainerHub.git
 ```
 
 ### If something fails on first touch

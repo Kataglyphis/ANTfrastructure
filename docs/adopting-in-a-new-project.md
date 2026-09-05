@@ -13,7 +13,7 @@ is ambiguous, read how that repo does it.
 ## 0. Add the submodule
 
 ```bash
-git submodule add https://github.com/Kataglyphis/Kataglyphis-ContainerHub.git ExternalLib/Kataglyphis-ContainerHub
+git submodule add https://github.com/Kataglyphis/ContainerHub.git ExternalLib/Kataglyphis-ContainerHub
 git submodule update --init --recursive
 ```
 
@@ -288,7 +288,7 @@ holding defaults and hooks.
 
 Composite actions live in [`.github/actions/`](../.github/actions/README.md)
 and are referenced from a consumer workflow as
-`Kataglyphis/Kataglyphis-ContainerHub/.github/actions/<name>@main`:
+`Kataglyphis/ContainerHub/.github/actions/<name>@main`:
 
 | Action | Use |
 |---|---|

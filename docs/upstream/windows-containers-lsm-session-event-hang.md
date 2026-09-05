@@ -317,9 +317,9 @@ than closing.
 Open source; needs an elevated shell and the WinDbg package (`cdb.exe` ships in
 it):
 
-- [`capture-lsm-waitstack.ps1`](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/blob/main/windows/scripts/diagnostics/capture-lsm-waitstack.ps1)
+- [`capture-lsm-waitstack.ps1`](https://github.com/Kataglyphis/ContainerHub/blob/main/windows/scripts/diagnostics/capture-lsm-waitstack.ps1)
   — dumps the silo's svchosts twice, 30 s apart.
-- [`find-lsm-event-holder.ps1`](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/blob/main/windows/scripts/diagnostics/find-lsm-event-holder.ps1)
+- [`find-lsm-event-holder.ps1`](https://github.com/Kataglyphis/ContainerHub/blob/main/windows/scripts/diagnostics/find-lsm-event-holder.ps1)
   — starts its own container, attaches non-invasively during the hang, resolves
   the waited object and its holders.
 

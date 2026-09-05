@@ -160,7 +160,7 @@ def build_document(versions: dict[str, str]) -> dict:
         # byte-reproducible so `--check` can gate it. The image-scan SBOM in CI
         # carries the build-time provenance instead.
         "documentNamespace": (
-            "https://github.com/Kataglyphis/Kataglyphis-ContainerHub/spdx/curated"
+            "https://github.com/Kataglyphis/ContainerHub/spdx/curated"
         ),
         "creationInfo": {
             "created": "1970-01-01T00:00:00Z",

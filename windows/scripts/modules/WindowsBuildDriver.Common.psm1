@@ -187,7 +187,7 @@ function Resolve-TorchAppRef {
     $ref = Get-VersionTableValue $VersionTable 'APP_REF'
     if ($LatestApp) {
         try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git 2>$null
+            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Orchestr-ANT-ion.git 2>$null
             if ($LASTEXITCODE -eq 0 -and $tagRaw) {
                 $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
                 if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }

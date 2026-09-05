@@ -52,7 +52,7 @@ function Install-TorchAppEnvironment {
     Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Split-Path $AppDir -Parent) | Out-Null
-    [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git ""$AppDir""")
+    [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 https://github.com/Kataglyphis/Orchestr-ANT-ion.git ""$AppDir""")
 
     # Venv on the SOURCE-built CPython (matches our cp314 wheels; see the
     # media-merge UV_PYTHON seeding fix). copy link mode: hardlinks don't

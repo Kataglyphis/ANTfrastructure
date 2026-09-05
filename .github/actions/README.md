@@ -6,7 +6,7 @@ cross-repo with the fully-qualified path:
 
 ```yaml
 - name: Cleanup disk space
-  uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
+  uses: Kataglyphis/ContainerHub/.github/actions/cleanup-disk-space@main
 ```
 
 Pin `@main` for latest, or `@<sha>` for reproducibility.

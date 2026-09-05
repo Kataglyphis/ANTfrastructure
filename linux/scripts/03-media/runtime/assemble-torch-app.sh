@@ -36,7 +36,7 @@ prepare_project_tree() {
   # Retry inlined rather than reusing 01-core's retry(): this script ships
   # standalone into images (Dockerfile.torch) that carry no 01-core.
   for _attempt in 1 2 3; do
-    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git "${APP_DIR}"; then
+    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Orchestr-ANT-ion.git "${APP_DIR}"; then
       break
     fi
     rm -rf "${APP_DIR}"

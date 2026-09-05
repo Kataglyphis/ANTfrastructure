@@ -10,7 +10,7 @@
 1. Clone the repo:
 
    ```bash
-   git clone --recurse-submodules https://github.com/Kataglyphis/Kataglyphis-ContainerHub.git
+   git clone --recurse-submodules https://github.com/Kataglyphis/ContainerHub.git
    ```
 
 ## Tests
@@ -195,7 +195,7 @@ the licenses in it belong to those projects and are deliberately left untouched.
 
 Jonas Heinle - [@Cataglyphis_](https://twitter.com/Cataglyphis_) - jonasheinle@googlemail.com
 
-Project Link: [https://github.com/Kataglyphis/Kataglyphis-ContainerHub](https://github.com/Kataglyphis/Kataglyphis-ContainerHub)
+Project Link: [https://github.com/Kataglyphis/ContainerHub](https://github.com/Kataglyphis/ContainerHub)
 
 ## Acknowledgements
 
