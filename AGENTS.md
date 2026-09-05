@@ -387,8 +387,9 @@ silently benchmarking the wrong host.
   OK / LIKELY OK / RISKY, exit 1 on RISKY.
 
 **Why correctness is gated first: a broken model is fast.** Sub-4-bit i-quants
-on GenieX v0.5.0 produce fluent nonsense that every throughput metric rates as
-an excellent run. Rank models by **time to a finished answer**, not `tok/s` — a
+on GenieX produce fluent nonsense that every throughput metric rates as an
+excellent run — unchanged across two llama.cpp builds (v0.5.0 `873e5d8` and
+v0.6.1 `0eadefe`), so it is a property of these kernels, not of one release. Rank models by **time to a finished answer**, not `tok/s` — a
 1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
 spent ~1900 tokens thinking.
 
@@ -442,11 +443,22 @@ and stripping tools does not rescue it (6 core tools still need 6,008). Use the
 QAIRT 4B for chat and completion; use a **GGUF lane** (`--nctx 16384`) for agent
 work. `linux/llm-stack/bench_agent.py` measures this end-to-end against a
 scratch repo, scoring by whether the repo's tests pass rather than by the
-transcript. **And GenieX has no prefix cache** — the identical request twice
-costs 126 s then 122 s — so every agent turn re-prefills the whole conversation
-at 38-61 tok/s. Budget **~2 min per turn**; trimming the tool set from 10 to 6
-is the only lever that helps (-37%), and a smaller model does not (the 4B
-prefills slower than the 9B).
+transcript.
+
+**Mind the GenieX version — v0.6 changed four of the constraints this section
+was written around** (all re-measured on v0.6.1, 2026-09-05; see § 1n of the
+GenieX page). Gone: the hard 2048-token output cap, `max_tokens` being ignored,
+the missing prefix cache (an identical request now costs 0.1 s warm instead of
+122 s, and ~800 appended tokens cost 0.9 s), and the missing tool-call parsing
+(`Qwen3.8-9B-Distill` now returns proper `tool_calls`, so
+`linux/llm-stack/geniex_toolcall_shim.py` is only needed on pre-0.6 builds).
+Unchanged: `temperature: 0` still samples, so `--repeats` still earns its place;
+the QAIRT 4096 ceiling is compiled into the bundle and no release moves it.
+
+Still worth doing on any version: trim opencode's tool set via its top-level
+`tools` block (8,175 -> 5,234 tokens, and on a pre-cache build that was 36% off
+every turn), and compare prefill only *within one quant format* — a 2B Q4_K_M
+prefills 3.5x faster than a 9B Q4_K_M while a 4B in Q4_0 is slower than either.
 `windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly.
 
 ### Triggering the opt-in CI lanes

@@ -227,7 +227,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | containerd | host install | [containerd.io](https://containerd.io/) | Apache 2.0 |
 | BuildKit (buildkitd) | host install | [github.com/moby/buildkit](https://github.com/moby/buildkit) | Apache 2.0 |
 | Stevedore (Windows builds — bundled docker.exe) | host install | [github.com/slonopotamus/stevedore](https://github.com/slonopotamus/stevedore) | Apache 2.0 |
-| GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server) | host install (GenieX CLI v0.5.0) | [github.com/qualcomm/GenieX](https://github.com/qualcomm/GenieX) | BSD 3-Clause |
+| GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server) | host install (GenieX CLI v0.6.1) | [github.com/qualcomm/GenieX](https://github.com/qualcomm/GenieX) | BSD 3-Clause |
 
 
 ---

@@ -29,7 +29,7 @@ Every mutation is still proven on its own, but --jobs of them run at once, each
 shard in its own mirror; the report is reassembled in manifest order.
 
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
-the entries whose target is in the diff, plain for all.
+the entries whose target -- or whose test file -- is in the diff, plain for all.
 
 See docs/code-quality-tooling.md#the-mutation-gate-mutations.
 """
@@ -38,6 +38,7 @@ import concurrent.futures
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -45,8 +46,45 @@ import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
-COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist")
+COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist",
+                 # 1.5 GB, gitignored, read by no gate test -- and it was
+                 # copied into every mirrored workspace, including the hook's.
+                 # With --jobs that cost is paid once per shard.
+                 "linux/llm-stack/ollama-binary.tar.zst",
+                 "linux/llm-stack/benchmark-viewer/node_modules")
+_IGNORED_CACHE = {}
+_IGNORED_LOCK = threading.Lock()
 DEFAULT_JOBS = min(8, os.cpu_count() or 1)
+
+
+def _git_ignored(src):
+    """Every path git ignores under src, or an empty set when git cannot answer.
+
+    Asked at the SOURCE, where .git still exists. The mirror is exactly the
+    place where it will not, so this is the last moment the question can be
+    put -- and the answer is what keeps a 1.5 GB gitignored tarball out of a
+    3 GB tmpfs. A hand-kept list could not: COPY_EXCLUDES was only ever applied
+    to directories, so a file listed there was still copied.
+
+    Cached per source tree: --jobs mirrors the tree once per shard, and the
+    answer cannot differ between them.
+    """
+    with _IGNORED_LOCK:
+        if src in _IGNORED_CACHE:
+            return _IGNORED_CACHE[src]
+    try:
+        proc = subprocess.run(
+            ["git", "-C", src, "ls-files", "--others", "--ignored",
+             "--exclude-standard", "--directory", "-z"],
+            capture_output=True, text=True, timeout=120)
+        out = ({os.path.normpath(os.path.join(src, rel))
+                for rel in proc.stdout.split("\0") if rel}
+               if proc.returncode == 0 else set())
+    except Exception:  # noqa: BLE001 -- no git, or it failed
+        out = set()
+    with _IGNORED_LOCK:
+        _IGNORED_CACHE[src] = out
+    return out
 
 
 def within(root, path):
@@ -58,22 +96,37 @@ def within(root, path):
 
 
 def mirror_tree(src, dst):
-    """Cheap throwaway copy of src, minus the trees no gate test reads."""
-    skip = {os.path.join(src, rel) for rel in COPY_EXCLUDES} | {dst}
+    """Throwaway copy of src, minus what no gate test reads.
+
+    Skips git-ignored paths (build output, caches, downloaded binaries) and the
+    COPY_EXCLUDES fallback -- both as directories AND as files. Keeps symlinks
+    as symlinks, and drops the ones resolving outside the tree.
+
+    A copy that fails is an error, never a shrug. This used to `except OSError:
+    pass`; on a full tmpfs that produced 0-byte test files, pytest collected
+    nothing, and every entry was reported as a vacuous bite -- a verdict about
+    the tests that was really a verdict about disk space.
+    """
+    skip = {os.path.normpath(os.path.join(src, rel)) for rel in COPY_EXCLUDES}
+    skip |= {os.path.normpath(dst)} | _git_ignored(src)
     home = os.path.realpath(src)
     for dirpath, dirnames, filenames in os.walk(src):
-        dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d) not in skip]
+        dirnames[:] = [d for d in dirnames
+                       if os.path.normpath(os.path.join(dirpath, d)) not in skip]
         here = os.path.join(dst, os.path.relpath(dirpath, src))
         os.makedirs(here, exist_ok=True)
         for name in filenames:
             path = os.path.join(dirpath, name)
+            if os.path.normpath(path) in skip:
+                continue
             if os.path.islink(path) and not within(home, path):
                 continue
             try:
-                shutil.copy2(path, os.path.join(here, name),
-                             follow_symlinks=False)
-            except OSError:
-                pass
+                shutil.copy2(path, os.path.join(here, name), follow_symlinks=False)
+            except OSError as e:
+                raise SystemExit(
+                    "mirror_tree: could not copy %s: %s -- refusing to run the gate "
+                    "on an incomplete copy (is the temp filesystem full?)" % (path, e))
     return dst
 
 
@@ -103,14 +156,34 @@ def changed_files():
     return touched
 
 
+def _run_test(cmd, root, timeout):
+    """Run one test command; on timeout kill the WHOLE tree, not just the shell.
+
+    subprocess.run(timeout=) kills only its direct child. A test that spawns a
+    pytest which spawns a candidate left the grandchildren alive when the gate
+    was interrupted -- one orphan burned CPU for twenty minutes beside the
+    timing-sensitive tests of the next run. Own session, then kill the group.
+    Returns (returncode, timed_out).
+    """
+    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        proc.communicate(timeout=timeout)
+        return proc.returncode, False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        proc.kill()
+        proc.communicate()
+        return None, True
+
+
 def passes(cmd, root, timeout):
     """Run one test command unmutated; a timeout is not a pass."""
-    try:
-        proc = subprocess.run(cmd, shell=True, cwd=root, capture_output=True,
-                              text=True, timeout=timeout)
-        return proc.returncode == 0
-    except subprocess.TimeoutExpired:
-        return False
+    rc, timed_out = _run_test(cmd, root, timeout)
+    return (not timed_out) and rc == 0
 
 
 class Baselines:
@@ -178,11 +251,10 @@ def apply_and_run(entry, root):
     try:
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(mutated)
-        proc = subprocess.run(entry["test"], shell=True, cwd=root,
-                              capture_output=True, text=True, timeout=entry.get("timeout", 300))
-        return True, proc.returncode != 0, "exit %d" % proc.returncode
-    except subprocess.TimeoutExpired:
-        return True, True, "test timed out (counts as failing)"
+        rc, timed_out = _run_test(entry["test"], root, entry.get("timeout", 300))
+        if timed_out:
+            return True, True, "test timed out (counts as failing)"
+        return True, rc != 0, "exit %d" % rc
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
@@ -263,7 +335,10 @@ def main():
         entries = [e for e in entries if e["id"] in set(args.only)]
     if args.changed:
         touched = changed_files()
-        entries = [e for e in entries if e["target"] in touched]
+        # By target OR by the test the entry runs: a commit that only weakens
+        # tests/test_x.py touched no target and selected nothing.
+        entries = [e for e in entries
+                   if e["target"] in touched or any(t in e["test"] for t in touched)]
 
     print("=== mutation gate: can these tests fail? ===")
     if not entries:

@@ -237,8 +237,13 @@ at another backend without editing anything:
 | Tool | Answers |
 |---|---|
 | [`benchmark_openai_api.py`](linux/llm-stack/benchmark_openai_api.py) | How fast — and, with `--correctness`, **whether the model is working at all** |
+| [`bench_coding.py`](linux/llm-stack/bench_coding.py) | Does its code **run**? (extracted, executed in a subprocess against hidden tests) |
+| [`bench_tools.py`](linux/llm-stack/bench_tools.py) | Can it call tools — the right one, with the right arguments? |
+| [`bench_agent.py`](linux/llm-stack/bench_agent.py) | Does the whole **agent loop** work? (a scratch repo, scored by whether its tests pass afterwards — never by the transcript) |
 | [`bench_lanes.py`](linux/llm-stack/bench_lanes.py) | Does one server batch concurrent requests? Do several servers add up, or fight? |
+| [`bench_compare.py`](linux/llm-stack/bench_compare.py) | Did this change make it worse — or is the sample simply too small to tell? |
 | [`inspect_gguf.py`](linux/llm-stack/inspect_gguf.py) | Is this GGUF sane? (tensor-type histogram, header-only read) |
+| [`geniex_toolcall_shim.py`](linux/llm-stack/geniex_toolcall_shim.py) | Pre-GenieX-0.6 only: translates Qwen's `<tool_call>` template into real `tool_calls`, which that build dropped |
 
 The correctness probe exists because **a broken model is fast**: sub-4-bit
 i-quant kernels on one runtime produced fluent nonsense that every throughput

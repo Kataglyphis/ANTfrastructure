@@ -273,7 +273,18 @@ error at all.
 
 Results are also reported in three states, not two: **PASS / FAIL / CUT**. A
 reply the server truncated mid-function is *unmeasured*, not wrong — grading it
-as a failure once scored a perfectly usable model 0/3.
+as a failure once scored a perfectly usable model 0/3. Cut attempts are listed
+and then **excluded** from the rate, the interval and the rank, exactly like a
+transport error; for a while the footer said "unmeasured" while the arithmetic
+counted them as misses.
+
+A cut is recognised from `finish_reason: "length"` first, then from
+`usage.completion_tokens`, and only then from the streamed delta count — and
+against the request's own output budget, not a fixed number. GenieX v0.5.0
+stopped at 2048 tokens whatever you asked for; v0.6.1 honours `max_tokens` and
+has no ceiling, so a hard-coded 2048 would now report a long, legitimate answer
+as CUT. `BENCH_GENERATION_CAP` overrides the budget for a server that imposes
+its own.
 
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
@@ -287,11 +298,20 @@ combination cannot have been memorised. **Run both and compare** — a model muc
 stronger on `classic` than on `novel` is recalling. Measured: the QAIRT
 4B-Instruct scores 3/3 classic and **2/3 novel**.
 
-**Constraints stated in a prompt are now enforced.** The merge task says "do not
+The sets by name, because for a while three places disagreed on what
+`extended` meant: `classic` = 3 textbook tasks (the default, and too small to
+prove any drop), `novel` = 3, `extended` = the 21 authored tasks, `all` = all
+27. The published 17/27 is `--task-set all`.
+
+**Constraints stated in a prompt are enforced.** The merge task says "do not
 use `sorted()`" and for a while nothing checked it — `return sorted(a + b)`
-passed every assertion. Each task may declare `forbidden` tokens, checked
-against the code with comments and strings stripped so that merely *mentioning*
-`sorted()` in a docstring is not punished.
+passed every assertion. Each task may declare `forbidden` tokens, checked on
+the syntax tree: a name, an attribute, or a string handed to `getattr` counts
+(`s = sorted; s(a + b)` and `builtins.sorted` used to slip through a text
+scan), a docstring that merely *mentions* `sorted()` does not. Tasks whose
+prompt says "standard library only" declare `stdlib_only` and any import
+outside `sys.stdlib_module_names` fails them — for a while that sentence was
+in three prompts and nothing enforced it.
 
 ### Can it call tools at all? (`bench_tools.py`)
 
@@ -339,6 +359,74 @@ see the failure agents actually hit:
   fine; **inventing the contents of a file that could not be read is not**, and
   that is the dangerous answer a single-turn benchmark never sees.
 
+### Does the whole agent loop work? (`bench_agent.py`)
+
+Every other benchmark here measures an **endpoint**. You run an **agent**. This
+one connects them: a scratch git repository, a task with a verifiable outcome,
+and success defined as *the repository's tests pass afterwards* — never by
+reading the transcript. An agent that says it fixed the bug and did not is
+exactly the failure a transcript cannot catch.
+
+```bash
+python3 bench_agent.py --self-test          # prove the fixtures, no model
+python3 bench_agent.py --list
+python3 bench_agent.py --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
+                       --timeout 1800 --output agent.json
+```
+
+Run `--self-test` first, and read a run without it with suspicion. It applies a
+known-good solution to each fixture by hand and asserts the verification is red
+before and green after. Without that, a column of failures is unreadable — a
+broken fixture and a weak model look identical, and this suite spent a session
+learning to tell those apart.
+
+Three things the scoring does that a naive pass count does not:
+
+- **A blocked run is not a failed run.** If the prompt never fitted the model's
+  context, the model never received the task and did not fail it. Those are
+  excluded from the denominator, so three blocked tasks report `0/0` — rendered
+  `n/a` over a [0%, 100%] interval, never "0%, it cannot code".
+- **A timeout keeps its evidence.** The events captured before the deadline are
+  parsed, so an agent that made twenty tool calls and ran long is not reported
+  as having made none.
+- **The fixtures refuse cheap fakes.** Aliasing the old name is not a rename;
+  an `assert True` does not test a `clamp` that never clamps. Both are pinned by
+  tests.
+
+Expect **minutes per task** on this hardware. That is prefill cost, not model
+quality — see `docs/geniex-local-ai-setup.md` § 1m.
+
+### When the lane loses the tool call (`geniex_toolcall_shim.py`)
+
+> **Not needed on GenieX v0.6.0 and later**, which added tool-call parsing for
+> the Qwen template — verified on v0.6.1 (2026-09-05): `Qwen3.8-9B-Distill`
+> returns a populated `tool_calls` with `finish_reason: "tool_calls"` straight
+> from the lane. Point the agent at the lane. The shim stays for older builds
+> and is harmless in front of a new one; it skips any message the server has
+> already parsed.
+
+If an agent run scores **zero tool calls**, suspect the server before the model.
+GenieX v0.5.0 served Qwen GGUFs over an OpenAI-compatible API without parsing
+their chat template: the model correctly emits
+
+```text
+<tool_call><function=bash><parameter=command>…</parameter></function></tool_call>
+```
+
+and the server hands it back as `content`, with `tool_calls` empty and
+`finish_reason` `"stop"`. The agent sees prose, runs nothing, and ends the turn.
+
+```bash
+python3 geniex_toolcall_shim.py --upstream http://localhost:18184 --port 18190
+# then point the agent's provider at 18190
+```
+
+The shim translates the template into real `tool_calls` and sets
+`finish_reason` accordingly. It never invents a call from markdown code fences —
+a model that writes ```` ```bash ```` is not requesting execution, and guessing
+there runs commands nobody asked for — and a call cut off mid-template yields no
+call at all, only its markup removed.
+
 ### What every report records
 
 All tools write a `provenance` block: UTC timestamp, host, OS, architecture,
@@ -359,8 +447,13 @@ Fields that cannot be determined are recorded as `null` and listed in
 - **`effective_n` is reported, not just the raw total.** On a deterministic
   endpoint (the QAIRT/NPU path) every repeat returns the identical answer, so
   counting repeats inflates the apparent sample without adding information.
-  When all repeats agree, the tools say so and report the number of distinct
-  *tasks* instead.
+  Determinism is decided on the **output** — one hash per task across its
+  measured repeats — not on pass/fail agreement, which a sampling endpoint
+  that fails every draw also produces; the latter is reported separately as
+  `repeats_agreed`. When the lane is deterministic the unit is the task:
+  `effective_k`/`effective_n` are counts of tasks observed and passed, never a
+  ratio rounded back into a count (that printed 8/9 for seven passes).
+  Errored and cut attempts do not vote.
 - **Median, min, max and stdev** accompany every total, because a mean over a
   cold first run and two warm ones describes neither.
 
@@ -375,7 +468,9 @@ Reads only the file header (instant on a 16 GB model) and prints the
 architecture, imatrix metadata and the **tensor quantisation histogram**. That
 histogram is what diagnosed a real failure no benchmark could have caught:
 files dominated by sub-4-bit i-quants (`IQ3_S`, `IQ3_XXS`, `IQ2_*`, `IQ1_*`)
-produced fluent garbage on GenieX v0.5.0, while plain K-quants at the same bit
+produced fluent garbage on GenieX — v0.5.0 (llama.cpp `873e5d8`) and v0.6.1
+(`0eadefe`) alike, so it is these kernels rather than one build — while plain
+K-quants at the same bit
 width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
 
 | Verdict | Meaning |

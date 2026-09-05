@@ -56,7 +56,7 @@ def normalise(report):
             cases = {}
             for item in r.get("results", []):
                 key = item.get("case") or item.get("task")
-                if key is None or item.get("errored"):
+                if key is None or item.get("errored") or item.get("truncated"):
                     continue  # a transport failure says nothing about the model
                 cases.setdefault(key, []).append(bool(item.get("passed")))
             entries.append({
@@ -67,6 +67,8 @@ def normalise(report):
                 "wall_s": r.get("total_wall_s"),
                 "median_wall_s": r.get("median_wall_s"),
                 "effective_n": r.get("effective_n"),
+                # A count of tasks observed to pass; absent in older reports.
+                "effective_k": r.get("effective_k"),
                 "deterministic": r.get("deterministic"),
                 # Counts, not a bool. Collapsing repeats with all() was wrong in
                 # BOTH directions on a sampling lane: 3/3 -> 2/3 read as a hard
@@ -196,7 +198,16 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
             # independent trials manufactures significance that is not there.
             a_n = a.get("effective_n") or a["total"]
             b_n = b.get("effective_n") or b["total"]
-            a_k, b_k = round(a_rate * a_n), round(b_rate * b_n)
+            # Counts of something observed, never a rounded ratio: rounding
+            # printed 8/9 for seven passing tasks and "improved" for no change.
+            # Reports written before effective_k existed carry only the ratio;
+            # for those the rounding is the only option left, clamped to n.
+            a_k = a.get("effective_k")
+            if a_k is None:
+                a_k = min(a_n, round(a_rate * a_n))
+            b_k = b.get("effective_k")
+            if b_k is None:
+                b_k = min(b_n, round(b_rate * b_n))
             line = (f"  {label}: {format_score(a_k, a_n)} -> {format_score(b_k, b_n)}")
             if b_rate < a_rate:
                 if intervals_overlap(a_k, a_n, b_k, b_n):
@@ -355,7 +366,10 @@ def main():
     else:
         # "No regression" must not be mistaken for "nothing changed" when the
         # suite is too small to tell the difference.
-        sizes = [e["total"] for e in new["entries"] if e.get("total")]
+        # Power on the EFFECTIVE sample, as the interval five lines up: on a
+        # deterministic lane 9 tasks x 3 repeats is n=9, and "n=27 cannot
+        # see a drop below 74%" was printed right after missing a 67% drop.
+        sizes = [e.get("effective_n") or e["total"] for e in new["entries"] if e.get("total")]
         has_cases = any(e.get("cases") for e in new["entries"])
         print("  no regression detected")
         if sizes:

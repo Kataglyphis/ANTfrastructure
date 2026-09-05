@@ -22,11 +22,18 @@
     the power scheme instead would survive the run and silently leave the
     machine unable to sleep.
 
-.EXAMPLE
-    pwsh -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+    -ExecutionPolicy Bypass is required when this file is reached over a UNC
+    path -- which is what \\wsl.localhost\... is, and this repository lives in
+    WSL. Without it Windows refuses the unsigned script, and launched hidden
+    (Start-Process -WindowStyle Hidden) the SecurityError is never seen: the
+    launcher reports success and no guard is running. Confirm with
+    `Get-Process pwsh` rather than trusting the launch.
 
 .EXAMPLE
-    pwsh -File windows/scripts/host/keep-awake.ps1 -Minutes 180
+    pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+
+.EXAMPLE
+    pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Minutes 180
     Holds the machine awake for three hours, for a run started elsewhere.
 #>
 [CmdletBinding(DefaultParameterSetName = 'Duration')]
