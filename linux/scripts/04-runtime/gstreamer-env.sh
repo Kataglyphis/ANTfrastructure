@@ -16,10 +16,8 @@ fi
 
 if [ -n "${TRIPLET}" ]; then
   MULTIARCH_DIR="lib/${TRIPLET}"
-  SYSTEM_LIB="/usr/lib/${TRIPLET}"
 else
   MULTIARCH_DIR="lib/multiarch"
-  SYSTEM_LIB="/usr/lib"
 fi
 
 export PATH="${GSTREAMER_PREFIX}/bin:${PATH}"

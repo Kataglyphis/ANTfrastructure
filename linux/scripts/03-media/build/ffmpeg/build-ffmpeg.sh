@@ -391,6 +391,7 @@ _ffmpeg_linker_ccache_args() {
     # hardcoded ccache, so sccache is actually asked when it's the active cache.
     local _ff_cc_launcher=""
     if command -v compiler_cache_launcher >/dev/null 2>&1; then
+        compiler_cache_launcher_env 2>/dev/null || true
         _ff_cc_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
     elif command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
         _ff_cc_launcher="ccache"

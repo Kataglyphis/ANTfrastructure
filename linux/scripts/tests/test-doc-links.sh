@@ -17,18 +17,21 @@ D='docs/'
 _fixture() {
   local d; d="$(mktemp -d)"
   mkdir -p "${d}/docs" "${d}/tools/gate" "${d}/linux/scripts"
-  cp "${GATE}" "${d}/tools/gate/"
+  cp "${GATE}" "${REPO_ROOT}/linux/scripts/quality_allow.py" "${d}/tools/gate/"
   printf '# Guide\n\n<a id="stable"></a>\n## Real Heading\n\ntext\n' > "${d}/docs/guide.md"
   printf '# Index\n\n- [guide](guide.md)\n' > "${d}/docs/INDEX.md"
   printf '.. toctree::\n\n   guide\n' > "${d}/docs/index.rst"
   printf '%s\n' "$1" > "${d}/linux/scripts/subject.sh"
   printf '%s' "${d}"
 }
+# _freeze <tree> <row>... — plant doc-header-pointers.allow beside the copied gate.
+_freeze() { local d="$1"; shift; printf '%s\n' "$@" > "${d}/tools/gate/doc-header-pointers.allow"; }
 _run() { t_out "${PY}" "$1/tools/gate/verify_doc_links.py"; }
 _rc()  { t_rc "${PY}" "$1/tools/gate/verify_doc_links.py"; }
 
 t_case "valid code pointers (page, heading slug, stable id) pass"
 fix="$(_fixture "# see ${D}guide.md and ${D}guide.md#real-heading and ${D}guide.md#stable")"
+_freeze "${fix}" "$(printf 'linux/scripts/subject.sh\t%sguide.md' "${D}")"
 t_assert_eq "0" "$(_rc "${fix}")"
 t_assert_contains "$(_run "${fix}")" "3 code pointers"
 rm -rf "${fix}"
@@ -110,6 +113,38 @@ t_case "a cross-file reference is not read as a local one"
 fix="$(_fixture ':')"
 printf '# Guide\n\n## 1b. Real\n\nSee CHANGELOG.md \xc2\xa7 2026-09-01 for it.\n' > "${fix}/docs/guide.md"
 t_assert_eq "0" "$(_rc "${fix}")"
+rm -rf "${fix}"
+
+t_case "a bare pointer in a file HEADER is a finding until it is frozen"
+fix="$(_fixture "# see ${D}guide.md")"
+t_assert_eq "1" "$(_rc "${fix}")"
+t_assert_contains "$(_run "${fix}")" \
+  "[header]  linux/scripts/subject.sh:1 -> ${D}guide.md" \
+  "the house rule says a header ends in an anchor, and this one names no section"
+_freeze "${fix}" "$(printf 'linux/scripts/subject.sh\t%sguide.md' "${D}")"
+t_assert_eq "0" "$(_rc "${fix}")" "a frozen row is the deliberate exception"
+rm -rf "${fix}"
+
+t_case "the header rule is two-way: a row whose pointer gained an anchor is STALE"
+fix="$(_fixture "# see ${D}guide.md#stable")"
+_freeze "${fix}" "$(printf 'linux/scripts/subject.sh\t%sguide.md' "${D}")"
+t_assert_eq "1" "$(_rc "${fix}")"
+t_assert_contains "$(_run "${fix}")" "STALE doc-header-pointers.allow row" \
+  "a frozen row that stopped biting is cover, so it has to go"
+rm -rf "${fix}"
+
+t_case "the header rule stops at the header, and a section reference is not bare"
+fix="$(_fixture ":")"
+printf '#\n#\n#\n#\n#\n#\n#\n#\n#\n#\n# see %sguide.md\n' "${D}" > "${fix}/linux/scripts/subject.sh"
+t_assert_eq "0" "$(_rc "${fix}")" "line 11 is body, not header: the wider rule was declined"
+printf '# see %sguide.md Â§ Real Heading\n' "${D}" > "${fix}/linux/scripts/subject.sh"
+t_assert_eq "0" "$(_rc "${fix}")" "the section-sign form already says where it lands"
+rm -rf "${fix}"
+
+t_case "only .sh and .py carry a header pointer rule"
+fix="$(_fixture ":")"
+printf '# see %sguide.md\n' "${D}" > "${fix}/linux/scripts/subject.mk"
+t_assert_eq "0" "$(_rc "${fix}")" "a Makefile fragment has no house header convention"
 rm -rf "${fix}"
 
 t_case "the REAL tree is clean today"

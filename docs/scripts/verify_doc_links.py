@@ -26,8 +26,16 @@ So this checks the four ways a docs tree rots, all of them silent:
                every other kind -- and nothing rendered them, so nothing
                complained when the page or heading moved.
                See docs/code-quality-tooling.md#code-to-docs-pointers-doc-links.
+6. **header**  a code file's HEADER pointer that names a page and no section.
+               The house comment rule says a header ends in a
+               ``docs/*.md#anchor``; a bare page name there survives a rename
+               of the section it meant, so nothing tells the next reader the
+               pointer now lands on a page that no longer explains this file.
+               Frozen, two-way, in ``doc-header-pointers.allow``.
 
-No network, no imports of project code, no build -- safe for hooks and CI.
+No network, no build -- safe for hooks and CI. The one project import is
+quality_allow, the repo's single owner of the two-way allow contract; a fixture
+that copies this gate out must copy that module beside it.
 
 Usage:  python3 docs/scripts/verify_doc_links.py [--quiet]
 Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
@@ -58,6 +66,10 @@ HISTORY_FILES = ("CHANGELOG.md",)
 
 # Code trees whose docs/ pointers are checked. windows/ is its own lane.
 CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
+# The header rule's scope: a leading comment block in a shell or Python file.
+HEADER_LINES = 10
+HEADER_SUFFIXES = (".sh", ".py")
+HEADER_ALLOW = Path(__file__).with_name("doc-header-pointers.allow")
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
 CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__"}
 
@@ -91,6 +103,9 @@ def _ignored_paths(paths: list) -> set:
 CODE_POINTER = re.compile(
     r"(?<![\w/.-])((?:\.\./)*docs/[A-Za-z0-9._/-]+\.md)(?:#([A-Za-z0-9_-]+))?"
 )
+
+sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+from quality_allow import load_keys  # noqa: E402
 
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.MULTILINE)
@@ -307,6 +322,49 @@ def check_code_pointers(docs: dict[str, Doc], findings: list[str]) -> int:
     return checked
 
 
+def header_pointers() -> dict[str, str]:
+    """{"<file>\t<page>": "<file>:<line>"} for every BARE docs pointer in the header of
+    a .sh/.py file. `page.md § Heading` on the same line is not bare -- SECTION_REF
+    already checks where that lands. The key carries no line number, so moving the
+    header inside the block does not re-flag it."""
+    found: dict[str, str] = {}
+    for f in code_files():
+        if f.suffix not in HEADER_SUFFIXES:
+            continue
+        try:
+            head = f.read_text(encoding="utf-8").split("\n")[:HEADER_LINES]
+        except UnicodeDecodeError:
+            continue
+        rel = f.relative_to(REPO_ROOT).as_posix()
+        for lineno, line in enumerate(head, 1):
+            if SECTION_SIGN in line:
+                continue
+            for m in CODE_POINTER.finditer(line):
+                if m.group(2):
+                    continue
+                found.setdefault(f"{rel}\t{m.group(1)}", f"{rel}:{lineno}")
+    return found
+
+
+def check_header_pointers(findings: list[str]) -> int:
+    """The two-way freeze: a bare header pointer that is not frozen is NEW, and a frozen
+    one that gained an anchor (or left) is STALE and its row goes."""
+    found = header_pointers()
+    frozen = load_keys(str(HEADER_ALLOW))
+    for key in sorted(k for k in found if k not in frozen):
+        rel, page = key.split("\t")
+        findings.append(
+            f"[header]  {found[key]} -> {page}  (bare pointer in a file header; "
+            f"name the section it means, or freeze it in {HEADER_ALLOW.name})"
+        )
+    for key in sorted(frozen - set(found)):
+        findings.append(
+            f"[header]  {key.replace(chr(9), '  ')}  "
+            f"(STALE {HEADER_ALLOW.name} row -- the bare pointer is gone, delete the line)"
+        )
+    return len(found)
+
+
 # A bare, same-page reference: "(§ 1a)", "see § 3". Deliberately narrow.
 #   file group  when a filename precedes it -- "CHANGELOG.md § 2026-09-01",
 #               even with a link or whitespace between -- the reference belongs
@@ -398,6 +456,7 @@ def main() -> int:
     n_sections += check_local_section_refs(docs, findings)
     n_pages = check_index_coverage(docs, findings)
     n_pointers = check_code_pointers(docs, findings)
+    n_headers = check_header_pointers(findings)
 
     if findings:
         print(f"docs cross-reference gate: {len(findings)} finding(s)\n", file=sys.stderr)
@@ -414,7 +473,8 @@ def main() -> int:
         print(
             f"docs cross-reference gate OK: {len(docs)} pages, {n_links} links, "
             f"{n_anchors} anchors, {n_sections} {SECTION_SIGN}-refs, "
-            f"{n_pages} pages index-covered, {n_pointers} code pointers."
+            f"{n_pages} pages index-covered, {n_pointers} code pointers, "
+            f"{n_headers} bare header pointers frozen."
         )
     return 0
 

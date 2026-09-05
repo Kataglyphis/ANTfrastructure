@@ -107,6 +107,7 @@ pyav_compile_cc() {
     local cc="$1"
     local _launcher=""
     if command -v compiler_cache_launcher >/dev/null 2>&1; then
+        compiler_cache_launcher_env 2>/dev/null || true
         _launcher="$(compiler_cache_launcher 2>/dev/null || true)"
     elif command -v ccache >/dev/null 2>&1 && is_truthy "${USE_CCACHE:-true}"; then
         _launcher="ccache"

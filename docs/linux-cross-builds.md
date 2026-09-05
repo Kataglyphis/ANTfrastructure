@@ -752,8 +752,28 @@ destroys it, and what replacing it costs is in
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 | `VULKAN_CROSS_STRICT=1` | Promote the Vulkan cross-components gate (`vulkan.sh`) from advisory WARN to fatal. It fires when all three cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause. |
-| `CROSS_GCC_TOOLCHAIN_PATH` | GCC root that `export_clang_gcc_toolchain_env` (`01-core/cross-gcc.sh`) points clang at via `--gcc-toolchain`; defaults to `gcc_toolchain_prefix` (`/opt/gcc-$GCC_VERSION`). Renamed 2026-09-04 from `MYPROJECT_GCC_TOOLCHAIN_PATH`, a template leftover — the old name is no longer read anywhere, so an operator still exporting it silently gets the default. **Reviewed 2026-09-04 and the knob currently changes nothing:** `export_clang_gcc_toolchain_env` has no caller in the build, and the one place clang IS the compiler — the `clang-<arch>`/`clang++-<arch>` wrappers `install_cross_clang_wrappers` writes (`02-toolchain/llvm.sh`) — bakes `--gcc-toolchain=<prefix>` into its own `exec` line from the same `gcc_toolchain_prefix`, so this knob is not what points those at the GCC. Note the two disagree on the missing-prefix case: the wrapper falls back to `/usr`, the function warns and exports nothing. See `refactoring-backlog.md` CL3 before wiring or deleting either. |
 | `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
+
+### Clang cross wrappers
+
+`install_cross_clang_wrappers` (`02-toolchain/llvm.sh`) writes
+`/usr/local/bin/clang-<arch>` and `clang++-<arch>`, each a one-line `exec` of the
+selected host clang with `--target=<triplet>`, `--sysroot` and
+`--gcc-toolchain=<gcc_prefix>` already baked in, where `gcc_prefix` is
+`gcc_toolchain_prefix()` (`/opt/gcc-$GCC_VERSION`) or `/usr` when that directory
+is missing. These wrappers are the only path in the build where clang IS the
+compiler; nothing in the tree sets a bare `CC=clang`.
+
+**`CROSS_GCC_TOOLCHAIN_PATH` and `export_clang_gcc_toolchain_env` were deleted on
+2026-09-05** (backlog CL3). The function exported `--gcc-toolchain` into
+`CFLAGS`/`CXXFLAGS`/`LDFLAGS` and had no caller in the build, so the knob changed
+nothing: what points clang at the source-built GCC is the wrapper's own `exec`
+line, from the same `gcc_toolchain_prefix()`. The two also disagreed on the
+missing-prefix case (the wrapper falls back to `/usr`, the function warned and
+exported nothing), so keeping both meant two policies for one question. An
+operator still exporting the name gets no effect and no warning.
+`tests/test-clang-cross-wrappers.sh` now asserts what the wrapper bakes; that was
+untested while the dead knob had a suite of its own.
 
 ### IREE (Linux lane)
 

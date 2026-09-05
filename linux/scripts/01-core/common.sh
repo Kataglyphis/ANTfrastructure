@@ -426,6 +426,7 @@ ensure_sccache_env() {
   return 0
 }
 
+
 # Name of the compiler-cache launcher to prefix onto CC/CXX, echoed on stdout.
 # Prefers sccache (the 2026-08-26 decision) and falls back to ccache when
 # sccache is absent or its server will not answer. Returns non-zero when
@@ -464,6 +465,19 @@ compiler_cache_launcher() {
   fi
   warn "no usable compiler cache (neither sccache nor ccache) — building uncached"
   return 1
+}
+
+# Establish the compiler-cache environment in the shell that will run the
+# COMPILES. Every caller resolves the launcher with $( ), and a subshell cannot
+# export to its parent, so the sccache server address set inside that
+# substitution never reaches ninja/cmake. Total and idempotent; stdout is kept
+# clean because callers capture the launcher next.
+# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+compiler_cache_launcher_env() {
+  if [ "${USE_SCCACHE:-1}" != "0" ]; then
+    ensure_sccache_env >&2 || true
+  fi
+  return 0
 }
 
 # Why apt calls retry and how the mirror fallback works:

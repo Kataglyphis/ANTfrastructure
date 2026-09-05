@@ -192,6 +192,7 @@ BUILD_ARGS+=(
 # Resolve through compiler_cache_launcher() for the guarded launcher;
 # only accept sccache-class launchers (ccache can't wrap nvcc).
 if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+  compiler_cache_launcher_env 2>/dev/null || true
   _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
   case "${_gpu_launcher}" in
     *sccache*)
@@ -214,7 +215,4 @@ collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "G
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
 finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
-info "GPU build complete. Artifacts in ${NATIVE_GPU_OUTPUT_DIR}"
-info "Wheels in ${NATIVE_GPU_OUTPUT_DIR}/wheels"
-ls -lh "${NATIVE_GPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-find "${NATIVE_GPU_OUTPUT_DIR}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
+report_onnx_build_output "GPU build complete" "${NATIVE_GPU_OUTPUT_DIR}"

@@ -318,6 +318,7 @@ _llvm_cross_setup_and_build() {
     # docs/build-cache-tiers.md.
     local -a extra_cmake_args=()
     local _xc_launcher
+    compiler_cache_launcher_env 2>/dev/null || true
     _xc_launcher="$(compiler_cache_launcher || true)"
     _llvm_cross_launcher_cmake_args extra_cmake_args "${_xc_launcher}"
 

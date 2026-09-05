@@ -452,8 +452,12 @@ out="$(_run_on _ors 19 "${ROW} | cc | 20 | baseline" "${ROW} | CC | 20 | baselin
 t_assert_contains "${out}" "row 'linux/scripts/subject.sh | f | CC' must name a metric column"
 t_assert_contains "${out}" "rc=1" "an unknown metric name must not be silently ignored"
 out="$(_run_on _ors 19 "${ROW} | cc | 20 | baseline" "linux/scripts/other.sh | g | 20 | baseline")"
-t_assert_contains "${out}" "row 'linux/scripts/other.sh | g' must name a metric column"
-t_assert_contains "${out}" "nesting:" "a row missing the metric column must not crash the gate"
+t_assert_contains "${out}" "code-complexity.allow:2: expected '<path> | <function> | cc|nesting | <count> | <reason>'"
+t_assert_contains "${out}" "rc=2" "a row missing the metric column is a named shape error, not a crash"
+
+t_case "a reason may carry a |, because the key arity is declared and not counted"
+out="$(_run_on _ors 19 "${ROW} | cc | 20 | baseline | 3 | see the table")"
+t_assert_contains "${out}" "rc=0" "three key columns are declared, so the rest of the row is the reason"
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${SRC}/${GATE}" >/dev/null 2>&1; echo $? )"

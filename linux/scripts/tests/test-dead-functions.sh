@@ -118,6 +118,17 @@ _verdict 1 "a dart tool cache is generated too" "${USED}" "" \
 _verdict 1 "a mutation manifest quotes code, it does not run it" "${USED}" "" \
   docs/scripts/mutations.json '[{"find": "used_fn", "replace": ":"}]'
 
+t_case "a definition naming ITSELF is not a use: a diagnostic is not a caller"
+_verdict 1 "the corpus scan strips comments and heads, never string literals" \
+  $'dead_fn() {\n  printf \'dead_fn: no toolchain\\n\' >&2\n}'
+_verdict 1 "and recursion is not an external caller either" \
+  $'dead_fn() {\n  [ "$#" -gt 0 ] && dead_fn "${@:2}"\n}'
+_verdict 0 "a real caller elsewhere still wins over the discount" "${USED}" "" \
+  linux/scripts/caller.sh 'used_fn'
+_verdict 0 "a self-mention next to a real call does not subtract that call away" \
+  $'used_fn() {\n  printf \'used_fn: ok\\n\'\n}' "" \
+  linux/scripts/caller.sh 'used_fn'
+
 t_case "word boundaries: a longer identifier is not a use"
 _called 1 "a suffix is a different name" 'used_fn_extra'
 _called 1 "a prefix is a different name" 'my_used_fn'

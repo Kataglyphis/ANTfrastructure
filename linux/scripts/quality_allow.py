@@ -9,13 +9,16 @@ import os
 import sys
 
 
-def load_rows(path, keys=None, fmt="<key> | ... | <count> | <reason>"):
-    """`key | count | reason` rows -> {key-tuple: (count, reason)}. `keys` fixes the
-    number of key columns so a reason may carry `|` and `#`; None keeps the count in
-    the second column from the right. A row that fits neither is a named gate error."""
-    rows = {}
+FMT = "<key> | ... | <count> | <reason>"
+
+
+def iter_rows(path, keys=None, fmt=FMT):
+    """`key | count | reason` rows -> (key-tuple, count, reason, line number), in file
+    order and repeats included. `keys` fixes the number of key columns so a reason may
+    carry `|` and `#`; None keeps the count in the second column from the right. A row
+    that fits neither is a named gate error."""
     if not os.path.exists(path):
-        return rows
+        return
     with open(path, encoding="utf-8") as fh:
         for num, raw in enumerate(fh, 1):
             line = raw.strip()
@@ -27,11 +30,15 @@ def load_rows(path, keys=None, fmt="<key> | ... | <count> | <reason>"):
                 sys.stderr.write("ERROR: %s:%d: expected '%s'\n"
                                  % (os.path.basename(path), num, fmt))
                 raise SystemExit(2)
-            rows[tuple(parts[:at])] = (int(parts[at]), " | ".join(parts[at + 1:]))
-    return rows
+            yield tuple(parts[:at]), int(parts[at]), " | ".join(parts[at + 1:]), num
 
 
-def load_counts(path, keys=None, fmt="<key> | ... | <count> | <reason>"):
+def load_rows(path, keys=None, fmt=FMT):
+    """iter_rows as a {key: (count, reason)} table; a repeated key keeps its last row."""
+    return {key: (count, reason) for key, count, reason, _num in iter_rows(path, keys, fmt)}
+
+
+def load_counts(path, keys=None, fmt=FMT):
     """load_rows without the reasons -- what check_counts compares against."""
     return {key: count for key, (count, _reason) in load_rows(path, keys, fmt).items()}
 

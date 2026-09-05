@@ -1,4 +1,28 @@
 #!/usr/bin/env python3
+"""sync_versions.py — propagate linux/scripts/01-core/versions.env everywhere.
+
+`versions.env` is the single authority for every pinned version in the tree.
+This walks the six places that repeat one of those numbers and either checks
+them or rewrites them:
+
+  --check   (default) fail if any generated section, marker, table, ARG default
+            or documented literal disagrees with versions.env
+  --write   rewrite them all in place
+
+The six consumers are the README version snapshot, the paired inline
+`generated:<key>` markers in the docs, the dependency table, Dockerfile `ARG`
+defaults, shell-script defaults, and the website license pages (delegated to
+generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
+snapshot reads its numbers back out of them, so the other order needs two
+passes to converge.
+
+A malformed marker fails BOTH modes. The updater silently skips a marker it
+cannot parse, so without that check a typo would read as "in sync" forever.
+
+`--check` is the `version-snapshot` preflight slug; after a `--write`, finish
+the ritual in AGENTS.md § Version Bumping.
+docs/cross-build-verification.md#pre-flight
+"""
 
 from __future__ import annotations
 

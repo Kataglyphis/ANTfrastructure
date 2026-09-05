@@ -362,15 +362,17 @@ _python_cross_fixup_libdynload() {
     err "target Python is missing critical C extensions (make -k may have silently failed)"
   fi
 
-  # These depend on target dev packages. _ctypes is deliberately off via
-  # ac_cv_header_ffi_h=no above, so its warning is expected on cross builds.
-  local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes _sqlite3)
-  for _ext in "${_optional_exts[@]}"; do
+  # One owner for the package/extension mapping: 01-core/cpython-dev-packages.sh.
+  # Warn-only for every row, required included — the fatal assert is on the apt
+  # install in _python_cross_stage_target_dev_pkgs. _ctypes is deliberately off
+  # via ac_cv_header_ffi_h=no above, so its warning is expected on cross builds.
+  while IFS= read -r _ext; do
+    [ -n "${_ext}" ] || continue
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
        ! ls "${dynload_dir}"/"${_ext}".so >/dev/null 2>&1; then
       warn "Optional C extension missing: ${_ext} (target dev package may not be installed)"
     fi
-  done
+  done < <(cpython_ext_modules)
 }
 
 _python_cross_stage_into_compiler() {

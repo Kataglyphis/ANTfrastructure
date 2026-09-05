@@ -122,9 +122,10 @@ COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSIO
 # docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/cargo /usr/local/cargo
-# The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
-# target architecture and stores it at /opt/llvm-target.  Copy it into
-# the runtime image so every arch ships its own native clang.
+# The SDK stage materialises a native Clang ${LLVM_RELEASE} toolchain for the
+# target architecture at /opt/llvm-target, self-contained by a hard NEEDED walk;
+# every arch ships its own native clang.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
 # GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
@@ -136,9 +137,10 @@ COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
-    # DF3: the llvm-target soname self-containment repair moved INTO
-    # copy-media-payloads.sh (repair_llvm_target_sonames — history + rationale
-    # documented there); this RUN is now a single script call.
+    # Payload copies + the llvm-target loader path. The prefix's own soname
+    # repair belongs to the sdk stage alone (02-toolchain/materialize-llvm-target.sh);
+    # a second copy here shipped five x86-64 libs into both foreign images.
+    # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
     SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
     rm -f /tmp/copy-media-payloads.sh
 

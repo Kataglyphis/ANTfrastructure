@@ -27,7 +27,8 @@ mechanism page explains the mechanism, and both name the same thing. Those pairs
 live in ``doc-dupes.allow`` with a budget and a reason, so a *deliberate* twin
 stays quiet while a *regression* past its budget fails.
 
-No network, no project imports -- safe for hooks and CI.
+No network; the one project import is the shared allowlist reader
+(``linux/scripts/quality_allow.py``). Safe for hooks and CI.
 
 Usage:  python3 docs/scripts/verify_doc_dupes.py [--report] [--threshold N]
 Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
@@ -45,6 +46,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS = REPO_ROOT / "docs"
 ALLOW_FILE = Path(__file__).with_name("doc-dupes.allow")
+ALLOW_FMT = "a | b | budget | reason"
+
+sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+from quality_allow import iter_rows  # noqa: E402
 
 ROOT_DOCS = ("README.md", "AGENTS.md")
 
@@ -96,20 +101,88 @@ def collect() -> list[Path]:
 
 
 def load_allow() -> dict[frozenset[str], tuple[int, str]]:
-    """`fileA | fileB | budget | reason` -- '#' comments, blank lines ignored."""
+    """The shared reader's rows folded onto the UNORDERED file pair this gate keys on."""
     allow: dict[frozenset[str], tuple[int, str]] = {}
-    if not ALLOW_FILE.is_file():
-        return allow
-    for n, raw in enumerate(ALLOW_FILE.read_text(encoding="utf-8").split("\n"), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) != 4 or not parts[2].isdigit():
-            print(f"ERROR: {ALLOW_FILE.name}:{n}: expected 'a | b | budget | reason'", file=sys.stderr)
+    at: dict[frozenset[str], int] = {}
+    for pair, budget, why, n in iter_rows(str(ALLOW_FILE), 2, ALLOW_FMT):
+        key = frozenset(pair)
+        if key in allow:
+            print(f"ERROR: {ALLOW_FILE.name}:{n}: duplicate row for "
+                  f"{' <-> '.join(sorted(key))} (first at line {at[key]}); keep one",
+                  file=sys.stderr)
             raise SystemExit(2)
-        allow[frozenset((parts[0], parts[1]))] = (int(parts[2]), parts[3])
+        allow[key] = (budget, why)
+        at[key] = n
     return allow
+
+
+def _index_paragraphs(files):
+    """Shingle-index every prose paragraph in scope.
+
+    Returns (owners, texts): which paragraphs hold each 8-word shingle, and the
+    text of each paragraph for later reporting.
+    """
+    owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
+    texts: dict[tuple[str, int], str] = {}
+    for path in files:
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        for i, para in enumerate(paragraphs(path)):
+            words = WORD.findall(para.lower())
+            if len(words) < MIN_WORDS:
+                continue
+            texts[(rel, i)] = para
+            for j in range(len(words) - SHINGLE + 1):
+                owners[tuple(words[j:j + SHINGLE])].add((rel, i))
+    return owners, texts
+
+
+def _collect_shared(owners) -> Counter:
+    """Turn the shingle index into cross-file paragraph-pair counts.
+
+    A shingle held by more than MAX_OWNERS paragraphs is shared vocabulary, and
+    same-file pairs are a page restating itself -- neither is duplication here.
+    """
+    shared: Counter = Counter()
+    for holders in owners.values():
+        if 1 < len(holders) <= MAX_OWNERS:
+            for a, b in itertools.combinations(sorted(holders), 2):
+                if a[0] != b[0]:
+                    shared[(a, b)] += 1
+    return shared
+
+
+def _print_report(args, files, texts, allowed) -> None:
+    """The --report listing: what was scanned, then every allowed pair."""
+    print(f"scanned {len(texts)} paragraphs in {len(files)} files "
+          f"(threshold {args.threshold} shared {SHINGLE}-word shingles)\n")
+    for n, a, b, why in allowed:
+        print(f"  allowed {n:4d}  {a[0]}  <->  {b[0]}   ({why})")
+    if allowed:
+        print()
+
+
+def _print_findings(findings, texts) -> None:
+    """Every pair over its budget, with both excerpts and what to do about it."""
+    print(f"docs duplication gate: {len(findings)} copied passage(s)\n", file=sys.stderr)
+    for n, a, b, budget in findings:
+        over = f", over its budget of {budget[0]}" if budget else ""
+        print(f"  {n} shared shingles{over}", file=sys.stderr)
+        print(f"    {a[0]}:  {texts[a][:150]}", file=sys.stderr)
+        print(f"    {b[0]}:  {texts[b][:150]}\n", file=sys.stderr)
+    print("Give the passage ONE owner and link to it from the other page "
+          f"(docs/INDEX.md decides which). If the overlap is deliberate, add it to "
+          f"{ALLOW_FILE.name} with a budget and a reason.", file=sys.stderr)
+
+
+def _print_bookkeeping(stale) -> int:
+    """The stale half of the allow contract: a row whose overlap is gone fails."""
+    if not stale:
+        return 0
+    print(f"docs duplication gate: {len(stale)} stale allowlist entr(ies)\n", file=sys.stderr)
+    for k in stale:
+        print(f"  {' <-> '.join(sorted(k))} no longer overlaps -- remove it from "
+              f"{ALLOW_FILE.name}", file=sys.stderr)
+    return 1
 
 
 def main() -> int:
@@ -125,24 +198,8 @@ def main() -> int:
         print("ERROR: no Markdown found to check", file=sys.stderr)
         return 2
 
-    owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
-    texts: dict[tuple[str, int], str] = {}
-    for path in files:
-        rel = path.relative_to(REPO_ROOT).as_posix()
-        for i, para in enumerate(paragraphs(path)):
-            words = WORD.findall(para.lower())
-            if len(words) < MIN_WORDS:
-                continue
-            texts[(rel, i)] = para
-            for j in range(len(words) - SHINGLE + 1):
-                owners[tuple(words[j:j + SHINGLE])].add((rel, i))
-
-    shared: Counter = Counter()
-    for holders in owners.values():
-        if 1 < len(holders) <= MAX_OWNERS:
-            for a, b in itertools.combinations(sorted(holders), 2):
-                if a[0] != b[0]:
-                    shared[(a, b)] += 1
+    owners, texts = _index_paragraphs(files)
+    shared = _collect_shared(owners)
 
     allow = load_allow()
     used: set[frozenset[str]] = set()
@@ -162,31 +219,13 @@ def main() -> int:
     allowed.sort(reverse=True, key=lambda f: f[0])
 
     if args.report:
-        print(f"scanned {len(texts)} paragraphs in {len(files)} files "
-              f"(threshold {args.threshold} shared {SHINGLE}-word shingles)\n")
-        for n, a, b, why in allowed:
-            print(f"  allowed {n:4d}  {a[0]}  <->  {b[0]}   ({why})")
-        if allowed:
-            print()
+        _print_report(args, files, texts, allowed)
 
     if findings:
-        print(f"docs duplication gate: {len(findings)} copied passage(s)\n", file=sys.stderr)
-        for n, a, b, budget in findings:
-            over = f", over its budget of {budget[0]}" if budget else ""
-            print(f"  {n} shared shingles{over}", file=sys.stderr)
-            print(f"    {a[0]}:  {texts[a][:150]}", file=sys.stderr)
-            print(f"    {b[0]}:  {texts[b][:150]}\n", file=sys.stderr)
-        print("Give the passage ONE owner and link to it from the other page "
-              f"(docs/INDEX.md decides which). If the overlap is deliberate, add it to "
-              f"{ALLOW_FILE.name} with a budget and a reason.", file=sys.stderr)
+        _print_findings(findings, texts)
         return 1
 
-    stale = sorted(k for k in allow if k not in used)
-    if stale:
-        print(f"docs duplication gate: {len(stale)} stale allowlist entr(ies)\n", file=sys.stderr)
-        for k in stale:
-            print(f"  {' <-> '.join(sorted(k))} no longer overlaps -- remove it from "
-                  f"{ALLOW_FILE.name}", file=sys.stderr)
+    if _print_bookkeeping(sorted(k for k in allow if k not in used)):
         return 1
 
     print(f"docs duplication gate OK: {len(texts)} paragraphs in {len(files)} files, "

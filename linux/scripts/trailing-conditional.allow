@@ -6,19 +6,25 @@
 
 # Pure predicates. Every call site is a condition (`if f`, `f || return 0`,
 # `f && x`), so a false answer is the point and returning 1 is the contract.
+# cross_build_is_active ends on a CALL to the frozen cross_target_is_foreign, and
+# is_cross/cross_build_enabled are its one-line aliases: three rows for one body.
 linux/scripts/01-core/ancestry.sh	ancestry_run_ids_coherent
 linux/scripts/01-core/context-management.sh	runtime_pushes_intermediate_images
 linux/scripts/01-core/context-management.sh	runtime_use_local_artifact_context
 linux/scripts/01-core/context-management.sh	runtime_use_local_stage_context_outputs
 linux/scripts/01-core/cross-apt.sh	cross_package_has_install_candidate
 linux/scripts/01-core/cross-apt.sh	is_cross_riscv64
+linux/scripts/01-core/cross-env.sh	cross_build_enabled
+linux/scripts/01-core/cross-env.sh	cross_build_is_active
 linux/scripts/01-core/cross-env.sh	cross_mode_requested
 linux/scripts/01-core/cross-env.sh	cross_target_is_foreign
+linux/scripts/01-core/cross-env.sh	is_cross
 linux/scripts/01-core/platform.sh	android_build_host_supported
 linux/scripts/01-core/ubuntu-mirror.sh	ubuntu_archive_mirror_is_official
 linux/scripts/01-core/verify.sh	verify_cross_mode_requested
 linux/scripts/02-toolchain/packaging-deps.sh	best_effort_mode
 linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh	cerbero_state_is_mounted
+linux/scripts/03-media/build/onnxruntime/build/lib/common.sh	is_amd64_arch
 linux/scripts/03-media/runtime/verify-media-artifacts.sh	probe_lib
 linux/scripts/06-packaging/smoke-common.sh	smoke_is_elf
 linux/scripts/build-cross-chain.sh	stage_enabled
@@ -29,3 +35,18 @@ linux/scripts/build-cross-chain.sh	stage_enabled
 # anything", and both its callers say so (`|| true` at :511, `&& retry` at :522).
 linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh	smoke_test_ffmpeg
 linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh	patch_csound_sys_char_signedness
+
+# One-line stub predicates planted by a suite to stand in for the real function
+# (`stage_enabled`, `cross_build_is_active`, `is_dry_run`). The stub reproduces the
+# contract of the thing it replaces, status included, and the suite reads it as an
+# answer. Visible since the gate started reading one-line definitions.
+linux/scripts/tests/test-chain-lifecycle.sh	is_dry_run
+linux/scripts/tests/test-chain-lifecycle.sh	stage_enabled
+linux/scripts/tests/test-disk-guard.sh	cross_stage_is_per_arch
+linux/scripts/tests/test-disk-guard.sh	stage_enabled
+linux/scripts/tests/test-iree-wheelhouse-stages.sh	cross_build_is_active
+linux/scripts/tests/test-iree-wheelhouse-stages.sh	resolve_qnn_sdk
+linux/scripts/tests/test-iree-wheelhouse-stages.sh	wheel_platform_tag
+linux/scripts/tests/test-parallel-loop.sh	worker_fail
+linux/scripts/tests/test-runtime-smoke-gate.sh	is_dry_run
+linux/scripts/tests/test-tvm-cmake-args.sh	cross_build_is_active

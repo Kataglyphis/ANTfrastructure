@@ -191,4 +191,72 @@ t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR)" "${_lib_dirs}"
 t_case "MUTATION: the shipped cache dirs must not sit in the consumer's /workspace"
 t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR | grep -c -e '/workspace' || true)" "0"
 
+# YB (2026-09-05): the server ADDRESS must reach the caller's environment, because
+# that is the environment ninja hands to every sccache client. Computing it inside
+# a $( ) substitution is what re-opened the cross-container-server bug on 2026-08-30.
+# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+_expected_uds="/tmp/sccache-$(id -u).sock"
+
+t_case "setup_ccache exports the server address to its CALLER"
+(
+  set -u
+  _mk_fakes ok present >/dev/null
+  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
+  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
+  # shellcheck disable=SC1090
+  source "${CCSH}"
+  _cc_info() { :; }
+  setup_ccache
+  printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}"
+) > "${TMPDIR:-/tmp}/ccf_uds1.$$" 2>/dev/null
+_uds1="$(cat "${TMPDIR:-/tmp}/ccf_uds1.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds1.$$"
+t_assert_eq "${_uds1}" "${_expected_uds}"
+
+t_case "setup_sccache exports the server address to its CALLER"
+(
+  set -u
+  _mk_fakes ok present >/dev/null
+  export USE_CCACHE=true USE_SCCACHE=true
+  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
+  # shellcheck disable=SC1090
+  source "${CCSH}"
+  _cc_info() { :; }
+  setup_sccache
+  printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}"
+) > "${TMPDIR:-/tmp}/ccf_uds2.$$" 2>/dev/null
+_uds2="$(cat "${TMPDIR:-/tmp}/ccf_uds2.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds2.$$"
+t_assert_eq "${_uds2}" "${_expected_uds}"
+
+t_case "MUTATION: setting the address inside \$( ) loses it — the 2026-08-30 regression"
+(
+  set -u
+  _mk_fakes ok present >/dev/null
+  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+  # shellcheck disable=SC1090
+  source "${CCSH}"
+  _inner="$(sccache_export_server_address; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
+  printf '%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}"
+) > "${TMPDIR:-/tmp}/ccf_uds3.$$" 2>/dev/null
+_uds3="$(cat "${TMPDIR:-/tmp}/ccf_uds3.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds3.$$"
+t_assert_eq "${_uds3}" "${_expected_uds}|UNSET"
+
+t_case "an address the caller already chose is never overridden"
+(
+  set -u
+  _mk_fakes ok present >/dev/null
+  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
+  unset SCCACHE_SERVER_UDS
+  export SCCACHE_SERVER_PORT=24226
+  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
+  # shellcheck disable=SC1090
+  source "${CCSH}"
+  _cc_info() { :; }
+  setup_ccache
+  printf '%s|%s' "${SCCACHE_SERVER_UDS:-UNSET}" "${SCCACHE_SERVER_PORT}"
+) > "${TMPDIR:-/tmp}/ccf_uds4.$$" 2>/dev/null
+_uds4="$(cat "${TMPDIR:-/tmp}/ccf_uds4.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds4.$$"
+t_assert_eq "${_uds4}" "UNSET|24226"
+
 t_summary

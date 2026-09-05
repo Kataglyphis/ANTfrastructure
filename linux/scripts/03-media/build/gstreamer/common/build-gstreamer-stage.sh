@@ -136,7 +136,10 @@ _dump_gst_build_logs() {
   local _log
   echo "=== GStreamer build failed — dumping diagnostic logs ===" >&2
   for _log in /tmp/meson-compile.log /tmp/meson-setup.log /tmp/gst-install.log /tmp/gstreamer-cairo-debug.txt; do
-    [ -f "${_log}" ] && echo "--- ${_log} ---" >&2 && cat "${_log}" >&2
+    if [ -f "${_log}" ]; then
+      echo "--- ${_log} ---" >&2
+      cat "${_log}" >&2
+    fi
   done
 }
 trap '_dump_gst_build_logs' ERR

@@ -48,7 +48,8 @@ one about work nobody plans to undo is a gate people learn to ignore.
 
 Windows files are out of scope on purpose: that lane has its own backlog.
 
-No network, no project imports -- safe for hooks and CI.
+No network, and one project import: the shared allow reader
+(``linux/scripts/quality_allow.py``). Safe for hooks and CI.
 
 ``--baseline`` rewrites the WHOLE file, so the parser refuses it together with
 ``--kind``: scoping the rewrite would drop every other kind's curated rows --
@@ -72,6 +73,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = Path(__file__).with_name("code-dupes.allow")
+ALLOW_FMT = "a | b | budget | reason"
+
+sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+from quality_allow import iter_rows  # noqa: E402
 
 # Never scanned: vendored trees, generated output, the Windows lane (own
 # backlog), and the records that narrate the same work on purpose.
@@ -271,27 +276,17 @@ UNIT_READERS = {"shell": shell_units, "docker": docker_units, "md": md_units}
 
 
 def load_allow() -> dict[frozenset[str], tuple[int, str]]:
-    """`fileA | fileB | budget | reason` -- '#' comments, blank lines ignored."""
+    """The shared reader's rows folded onto the UNORDERED file pair this gate keys on."""
     allow: dict[frozenset[str], tuple[int, str]] = {}
     at: dict[frozenset[str], int] = {}
-    if not ALLOW_FILE.is_file():
-        return allow
-    for n, raw in enumerate(ALLOW_FILE.read_text(encoding="utf-8").split("\n"), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) != 4 or not parts[2].isdigit():
-            print(f"ERROR: {ALLOW_FILE.name}:{n}: expected 'a | b | budget | reason'",
-                  file=sys.stderr)
-            raise SystemExit(2)
-        key = frozenset((parts[0], parts[1]))
+    for pair, budget, why, n in iter_rows(str(ALLOW_FILE), 2, ALLOW_FMT):
+        key = frozenset(pair)
         if key in allow:
             print(f"ERROR: {ALLOW_FILE.name}:{n}: duplicate row for "
                   f"{' <-> '.join(sorted(key))} (first at line {at[key]}); keep one",
                   file=sys.stderr)
             raise SystemExit(2)
-        allow[key] = (int(parts[2]), parts[3])
+        allow[key] = (budget, why)
         at[key] = n
     return allow
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fail on NEW dead shell functions: defined under linux/scripts or linux/host-config
-and named nowhere else in the scanned code once comments and definition heads are
-removed. Dispatch the scanner cannot see is frozen two-way in dead-functions.allow;
---census is the advisory per-file listing that same-name masking defeats here.
+and named nowhere else once comments, definition heads and a definition's mentions of
+itself are removed. Dispatch the scanner cannot see is frozen two-way in
+dead-functions.allow; --census is the advisory per-file listing masking defeats here.
 docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 """
 import os
@@ -12,7 +12,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_keys, load_keys  # noqa: E402
-from verify_code_size import DEF_HEAD, ROOT, functions  # noqa: E402
+from verify_code_size import DEF_HEAD, ROOT, functions, scan, shell_functions  # noqa: E402
 
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dead-functions.allow")
 CORPUS = ("linux", ".github", "docs/scripts", "Makefile")
@@ -61,11 +61,23 @@ def texts():
     return out
 
 
+def self_mentions():
+    """Name -> times its own definitions' bodies name it. A diagnostic that prints
+    the function's name is not a caller, and neither is recursion."""
+    own = Counter()
+    for path, rel in scan(".sh"):
+        for _rel, name, _start, body in shell_functions(path, rel):
+            own[name] += len(re.findall(r"\b%s\b" % re.escape(name),
+                                        _code("\n".join(body))))
+    return own
+
+
 def mentions(corpus_texts):
-    """Identifier -> occurrences, comments and definition heads removed."""
+    """Identifier -> occurrences, comments, definition heads and self-mentions removed."""
     seen = Counter()
     for text in corpus_texts.values():
         seen.update(WORD.findall(_code(text)))
+    seen.subtract(self_mentions())
     return seen
 
 

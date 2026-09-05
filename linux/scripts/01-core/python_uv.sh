@@ -275,7 +275,7 @@ _uv_extras_to_exclude() {
       [ -n "$e" ] || continue
       case "$keep$drop" in *" $e "*) continue ;; esac
       # conflicts with something already kept?
-      local conflicted=0 g x y
+      local conflicted=0 x y
       while read -r x y; do
         case " $x $y " in
           *" $e "*)

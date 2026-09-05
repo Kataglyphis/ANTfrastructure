@@ -422,8 +422,8 @@ append_onnx_native_base_build_args() {
 #
 # The verify -> copy-libs -> ensure-symlink -> usr-local-symlink sequence is
 # byte-identical across the three native build scripts. The preceding wheel and
-# header copies (and each script's own diagnostics) differ, so those stay in
-# the callers. Args: <build_dir> <config> <output_dir> <src_dir>.
+# header copies differ, so those stay in the callers; the closing diagnostics
+# are report_onnx_build_output below. Args: <build_dir> <config> <output_dir> <src_dir>.
 finalize_onnx_native_output() {
   local build_dir="${1:?build dir required}"
   local build_config="${2:?build config required}"
@@ -434,6 +434,21 @@ finalize_onnx_native_output() {
   copy_onnx_libraries_to_output "${build_dir}" "${build_config}" "${output_dir}"
   ensure_onnxruntime_symlink "${output_dir}"
   symlink_output_libraries_into_usr_local "${output_dir}"
+}
+
+# The closing "what did this stage produce" summary, one owner for all four
+# native/GPU/GenAI builds. Four copies had already drifted apart -- one listed
+# libraries with `sed -n '1,20p'` where the rest used `head -20`.
+# Args: <headline> <output_dir>. Every line is advisory: a stage must not fail
+# because a wheel directory it never fills is absent.
+report_onnx_build_output() {
+  local headline="${1:?headline required}"
+  local output_dir="${2:?output dir required}"
+
+  info "${headline}. Artifacts in ${output_dir}"
+  info "Wheels in ${output_dir}/wheels"
+  ls -lh "${output_dir}/wheels"/*.whl 2>/dev/null || true
+  find "${output_dir}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
 }
 
 append_onnx_cross_cmake_build_args() {
@@ -546,6 +561,7 @@ append_onnx_ccache_build_args() {
   if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
       # 2026-08-26: resolve the launcher instead of hardcoding ccache.
+      compiler_cache_launcher_env 2>/dev/null || true
       _ort_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
       build_args_ref+=(
         --cmake_extra_defines

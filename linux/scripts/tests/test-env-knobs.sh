@@ -15,6 +15,9 @@ cp "${LIVE}" "${_work}/linux/scripts/"
 ALLOW="${_work}/linux/scripts/lint-env-knobs.allow"
 SUBJECT="${_work}/linux/scripts/subject.sh"
 printf 'PINNED_KNOB=1\n' > "${_work}/linux/scripts/01-core/versions.env"
+mkdir -p "${_work}/linux/scripts/03-media/core" "${_work}/linux/scripts/04-runtime"
+printf 'ARCH_FLAG_KNOB=1\n' > "${_work}/linux/scripts/03-media/core/arch-flags-riscv64.env"
+printf 'PATHS_ENV_KNOB=/opt/x\n' > "${_work}/linux/scripts/04-runtime/runtime-paths.env"
 printf 'FROM scratch\nARG DOCKER_KNOB\n' > "${_work}/linux/Dockerfile.subject"
 # The copied gate reads its own ${KNOB_GATE:-0}; preflight.sh owns it in the real
 # tree with `env KNOB_GATE=1 bash …`, so the fixture tree carries that caller too.
@@ -32,6 +35,20 @@ t_assert_eq "0" "$(_rc)"
 t_assert_eq "0" "$(_rc 1)"
 t_assert_contains "$(_knobs)" "stale allow rows: 0"
 t_assert_contains "$(_knobs)" "OK: every consumed knob has an owner"
+
+t_case "a per-arch media flag file owns its knobs: media_load_arch_flags sources it"
+_consume PINNED_KNOB DOCKER_KNOB OP_KNOB ARCH_FLAG_KNOB > "${SUBJECT}"
+printf '# operator switch\nOP_KNOB\n' > "${ALLOW}"
+t_assert_eq "0" "$(_rc 1)" "a knob whose VALUE is per-arch data needs no registry row"
+t_assert_contains "$(_knobs)" "OK: every consumed knob has an owner"
+
+t_case "runtime-paths.env is reference data for a checker, so it owns nothing"
+_consume PINNED_KNOB DOCKER_KNOB OP_KNOB PATHS_ENV_KNOB > "${SUBJECT}"
+out="$(_knobs)"
+t_assert_eq "1" "$(_rc 1)" "no stage sources it; counting it would invent an owner"
+t_assert_contains "${out}" "    PATHS_ENV_KNOB"
+
+_consume PINNED_KNOB DOCKER_KNOB OP_KNOB > "${SUBJECT}"
 
 t_case "an allow row whose knob is consumed nowhere is STALE and fails without KNOB_GATE"
 printf 'OP_KNOB\nGONE_KNOB\n' > "${ALLOW}"
@@ -259,9 +276,9 @@ t_assert_contains "${_out}" "UNOWNED knobs (1)" "the assignment in the next file
 t_assert_contains "${_out}" "    HD_BODY_KNOB" "and the runaway body still owns nothing"
 rm -f "${_eat}"
 
-t_case "the thirteen 2026-09-04 build-window knobs default at their reader, not in a row"
+t_case "the 2026-09-04 build-window knobs default at their reader, not in a row"
 _REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
-for _k in CROSS_GCC_TOOLCHAIN_PATH IREE_CROSS_BUILD_COMPILER LINT_DOCKERFILES_BUILD_CHECK \
+for _k in IREE_CROSS_BUILD_COMPILER LINT_DOCKERFILES_BUILD_CHECK \
           LLVM_INSTALL_PROFILE MEDIA_STRIP NODE_RISCV64_MAJOR_REQUIRED OPENCV_GSTREAMER_PASS \
           PYTHON_LTO RUNTIME_CLANG_VERSION_SMOKE RUNTIME_COMPILER_SMOKE RUNTIME_IMAGE_SMOKE \
           SKIP_REAL_TREE STV_COMPUTE; do

@@ -104,6 +104,12 @@ _says function 100 "linux/scripts/subject.sh | big | 110 | baseline" \
 _says file 900 "linux/scripts/subject.sh | 950 | baseline" \
   "shrank from 950 to 900" "same for files"
 
+t_case "a reason may carry a |, because each allow file declares its key arity"
+_exits function 100 "linux/scripts/subject.sh | big | 100 | baseline | 90 | see the table" 0 \
+  "two key columns are declared, so a | in the reason cannot shift the count"
+_exits file 900 "linux/scripts/subject.sh | 900 | baseline | 850 | see the table" 0 \
+  "one key column for files, same rule"
+
 t_case "a freeze for something no longer over the limit is stale"
 _says function 10 "linux/scripts/subject.sh | big | 100 | baseline" \
   "STALE freeze" "delete the line once it drops under"

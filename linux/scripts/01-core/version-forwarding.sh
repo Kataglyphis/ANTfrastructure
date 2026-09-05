@@ -62,6 +62,8 @@ append_version_build_args() {
       override="${var_name}_$(printf '%s' "${_avba_arch}" | tr '[:lower:]' '[:upper:]')"
       if [ -n "${!override:-}" ] && ! _vf_is_tracked "${override}"; then value="${!override}"; fi
     fi
-    [ -n "${value}" ] && append_optional_build_arg "${_avba_name}" "${var_name}" "${value}"
+    if [ -n "${value}" ]; then
+      append_optional_build_arg "${_avba_name}" "${var_name}" "${value}"
+    fi
   done
 }

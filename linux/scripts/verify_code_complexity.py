@@ -15,6 +15,7 @@ from verify_code_size import code_lines, scan, shell_functions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOW = os.path.join(HERE, "code-complexity.allow")
+ALLOW_FMT = "<path> | <function> | cc|nesting | <count> | <reason>"
 CC_LIMIT = int(os.environ.get("COMPLEXITY_LIMIT", "15"))
 NEST_LIMIT = int(os.environ.get("NESTING_LIMIT", "5"))
 TOKEN = re.compile(r"\n|\$\(|&&|\|\||;;&|;;|;&|[();|&]|(?:[^\s;()|&$]|\$(?!\())+")
@@ -167,12 +168,11 @@ def check_rows(frozen):
     """1 if any frozen key is not `<path> | <function> | cc|nesting`, naming each bad row."""
     rc = 0
     for key in sorted(frozen):
-        if len(key) != 3 or key[2] not in METRICS:
+        if key[2] not in METRICS:
             rc = 1
-            sys.stderr.write("FAIL: %s row '%s' must name a metric column (%s) -- "
-                             "%d key field(s) before the count.\n"
+            sys.stderr.write("FAIL: %s row '%s' must name a metric column (%s).\n"
                              % (os.path.basename(ALLOW), " | ".join(key),
-                                " or ".join(METRICS), len(key)))
+                                " or ".join(METRICS)))
     return rc
 
 
@@ -182,14 +182,14 @@ def main():
     for rel, name, cc, nest in measure():
         was = worst.get((rel, name), (0, 0))
         worst[(rel, name)] = (max(cc, was[0]), max(nest, was[1]))
-    frozen = load_counts(ALLOW)
+    frozen = load_counts(ALLOW, 3, ALLOW_FMT)
     rc = check_rows(frozen)
     for metric, limit, unit, i in (("cc", CC_LIMIT, "paths", 0),
                                    ("nesting", NEST_LIMIT, "levels", 1)):
         items = [((f, n, metric), v[i]) for (f, n), v in sorted(worst.items())]
         rc |= check_counts(metric, items,
                            {k: c for k, c in frozen.items()
-                            if len(k) == 3 and k[2] == metric},
+                            if k[2] == metric},
                            limit, os.path.basename(ALLOW), unit)
     if rc == 0:
         print("OK: no new or grown complexity offenders")

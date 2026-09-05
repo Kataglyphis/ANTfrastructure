@@ -578,8 +578,8 @@
   {
     "id": "code-complexity.metric-split",
     "target": "linux/scripts/verify_code_complexity.py",
-    "find": "if len(k) == 3 and k[2] == metric}",
-    "replace": "if len(k) == 3}",
+    "find": "if k[2] == metric}",
+    "replace": "if True}",
     "test": "bash linux/scripts/tests/test-code-complexity.sh",
     "why": "a cc row must not read as a stale nesting row"
   },
@@ -658,18 +658,10 @@
   {
     "id": "code-complexity.allow-row-metric",
     "target": "linux/scripts/verify_code_complexity.py",
-    "find": "        if len(key) != 3 or key[2] not in METRICS:",
+    "find": "        if key[2] not in METRICS:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-complexity.sh",
     "why": "an allow row naming no known metric must fail, not be ignored"
-  },
-  {
-    "id": "code-complexity.allow-row-arity",
-    "target": "linux/scripts/verify_code_complexity.py",
-    "find": "                            if len(k) == 3 and k[2] == metric},",
-    "replace": "                            if k[2] == metric},",
-    "test": "bash linux/scripts/tests/test-code-complexity.sh",
-    "why": "a row missing the metric column must fail, not crash the gate"
   },
   {
     "id": "dead-functions.new-dead",
@@ -1242,8 +1234,8 @@
   {
     "id": "gate-registry.hook-scoped-tier",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "return \"hook (scoped)+CI\" if mentions(needle, text) else \"CI\"",
-    "replace": "return \"CI\"",
+    "find": "                        (\"scoped\", \"hook (scoped)+CI\")):",
+    "replace": "                        ):",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
     "why": "_FAST_SLUGS is not the whole hook: four gates run through their own blocks and read CI-only without this, understating what a commit already checks."
   },
@@ -1754,24 +1746,24 @@
   {
     "id": "gate-registry.hook-whole-tree-tier",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "    if unscoped_hook_block(needle, text):",
-    "replace": "    if False:",
+    "find": "                        (\"relevant\", \"hook (whole tree, when relevant)+CI\"),",
+    "replace": "                        (\"relevant\", \"hook (scoped)+CI\"),",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
     "why": "a conditionally-run WHOLE-TREE gate must not read as scoped to the staged files"
   },
   {
     "id": "gate-registry.hook-block-staged-list",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "            return CHANGED not in body and not mentions(var, body)",
-    "replace": "            return CHANGED not in body",
+    "find": "            return \"scoped\" if CHANGED in body or mentions(var, body) else \"relevant\"",
+    "replace": "            return \"scoped\" if CHANGED in body else \"relevant\"",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
     "why": "a block that expands its guard variable into the gate command IS scoped to the staged files"
   },
   {
     "id": "gate-registry.hook-block-changed",
     "target": "linux/scripts/verify_gate_registry.py",
-    "find": "            return CHANGED not in body and not mentions(var, body)",
-    "replace": "            return not mentions(var, body)",
+    "find": "            return \"scoped\" if CHANGED in body or mentions(var, body) else \"relevant\"",
+    "replace": "            return \"scoped\" if mentions(var, body) else \"relevant\"",
     "test": "bash linux/scripts/tests/test-gate-registry.sh",
     "why": "--changed is the staged list under another name, so the block that passes it is scoped"
   },
@@ -1930,8 +1922,8 @@
   {
     "id": "mutations.symlink-checked-before-exists",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "    if os.path.islink(target):\n        return False, False, \"target is a symlink -- a write through it escapes the copy\"\n    if not os.path.exists(target):\n        return False, False, \"target missing\"",
-    "replace": "    if not os.path.exists(target):\n        return False, False, \"target missing\"\n    if os.path.islink(target):\n        return False, False, \"target is a symlink -- a write through it escapes the copy\"",
+    "find": "    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not os.path.exists(target):\n        return None, None, \"target missing\"",
+    "replace": "    if not os.path.exists(target):\n        return None, None, \"target missing\"\n    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "os.path.exists follows the link, so checking it first reports a dangling symlink as a stale manifest entry and hides the escape"
   },
@@ -1958,22 +1950,6 @@
     "replace": "cleanup() {\n    rm -rf \"${FFMPEG_SRC}\" || true\n}\n\nmain() {\n    local _ff_stamp=",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "same-name masking blinds the gate to ffmpeg's cleanup(); only the suite pin sees it come back"
-  },
-  {
-    "id": "cross-gcc.toolchain-knob-renamed",
-    "target": "linux/scripts/01-core/cross-gcc.sh",
-    "find": "  : \"${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_prefix)}\"\n  local root=\"${CROSS_GCC_TOOLCHAIN_PATH}\"",
-    "replace": "  : \"${MYPROJECT_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_prefix)}\"\n  local root=\"${MYPROJECT_GCC_TOOLCHAIN_PATH}\"",
-    "test": "bash linux/scripts/tests/test-cross-gcc-toolchain-knob.sh",
-    "why": "the renamed knob, not the template leftover, is the name the reader honours"
-  },
-  {
-    "id": "cross-gcc.toolchain-knob-self-defaults",
-    "target": "linux/scripts/01-core/cross-gcc.sh",
-    "find": "  : \"${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_prefix)}\"\n  local root=\"${CROSS_GCC_TOOLCHAIN_PATH}\"",
-    "replace": "  local root=\"${CROSS_GCC_TOOLCHAIN_PATH:-}\"",
-    "test": "bash linux/scripts/tests/test-cross-gcc-toolchain-knob.sh",
-    "why": "an unset knob must still resolve to gcc_toolchain_prefix, not to nothing"
   },
   {
     "id": "disk-guard.buildkit-fallback-unwired",
@@ -2066,8 +2042,8 @@
   {
     "id": "trailing-conditional.explicit-or-tail",
     "target": "linux/scripts/verify_trailing_conditional.py",
-    "find": "    if \"||\" in ops:\n        return False",
-    "replace": "    if False:\n        return False",
+    "find": "    if fallback >= 0:",
+    "replace": "    if False:",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
     "why": "`... && x || true` is how a deliberate no-op path is spelled; without the escape hatch the gate reports every one of them and the allow file becomes cover"
   },
@@ -2090,8 +2066,8 @@
   {
     "id": "trailing-conditional.continuation-joined-first",
     "target": "linux/scripts/verify_trailing_conditional.py",
-    "find": "CONT_END = (\"\\\\\", \"&&\", \"||\", \"|\", \"{\", \"(\", \"then\", \"do\", \"else\")",
-    "replace": "CONT_END = (\"&&\", \"||\", \"|\", \"{\", \"(\", \"then\", \"do\", \"else\")",
+    "find": "CONT_END = (\"\\\\\", \"&&\", \"||\", \"|\", \"(\", \"then\", \"do\", \"else\")",
+    "replace": "CONT_END = (\"&&\", \"||\", \"|\", \"(\", \"then\", \"do\", \"else\")",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
     "why": "a backslash-continued line read on its own loses the `a ||` that precedes it and the gate reports a finding the author already handled"
   },
@@ -3038,5 +3014,1253 @@
     "replace": "CROSS_PAYLOAD = (\"/\",)",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "the exemption must cover the target payload and nothing else: widened to the whole tree it hides the builder-arch rustc HT1 exists for"
+  },
+  {
+    "id": "llvm-target.fill-is-needed-driven",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "            for n in $(_elf_needed \"${e}\"); do",
+    "replace": "            for n in $(cd \"${src}\" && ls); do",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "this IS the old rule: a glob over the builder's multiarch dir shipped libLLVM.so.20.1/21.1, libclang-21.so.21, libclang-23.so.23 and libclang-cpp.so.21.1 -- 392 MiB of x86-64 -- into both foreign runtime images"
+  },
+  {
+    "id": "llvm-target.fill-keeps-existing",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "                [ ! -e \"${prefix}/lib/${n}\" ] || continue",
+    "replace": "                :",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "without it the builder's x86-64 lib overwrites the arm64/riscv64 source-built soname of the same name, which is the wrong-arch defect with the file count unchanged"
+  },
+  {
+    "id": "llvm-target.fill-replaces-dangling",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "                rm -f \"${prefix}/lib/${n}\"\n                cp -a \"${src}/${n}\" \"${prefix}/lib/${n}\"",
+    "replace": "                cp -a \"${src}/${n}\" \"${prefix}/lib/${n}\"",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "an apt LLVM tree ships lib/<soname> as a link into the multiarch dir it was copied away from; cp refuses to write through a dangling symlink, so the prefix keeps a link to nothing"
+  },
+  {
+    "id": "llvm-target.fill-reaches-fixpoint",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "    while [ \"${added}\" = 1 ] && [ \"${round}\" -lt 4 ]; do",
+    "replace": "    while [ \"${round}\" -lt 1 ]; do",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "a filled lib brings its own NEEDED: one pass leaves libclang-cpp.so.23.1 in the prefix with libLLVM.so.23.1 unresolved, which is the franken-toolchain the walk exists to stop"
+  },
+  {
+    "id": "llvm-target.needed-not-soname",
+    "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+    "find": "    LC_ALL=C readelf -d \"$1\" 2>/dev/null | sed -n 's/.*(NEEDED).*\\[\\(.*\\)\\].*/\\1/p'",
+    "replace": "    LC_ALL=C readelf -d \"$1\" 2>/dev/null | sed -n 's/.*\\[\\(.*\\)\\].*/\\1/p'",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "SONAME and RUNPATH carry brackets too; reading them as NEEDED makes every lib a consumer of itself and pulls its own name back out of the multiarch dir"
+  },
+  {
+    "id": "llvm-target.ld-path-published",
+    "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+    "find": "  printf '/usr/local/llvm-target/lib\\n' > /etc/ld.so.conf.d/000-llvm-target.conf\n  ldconfig",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "libtvm_compiler.so's DT_NEEDED libLLVM.so.<ver> resolves through this conf and nothing else, so dropping it makes `import tvm` die in the shipped image"
+  },
+  {
+    "id": "llvm-target.no-package-stage-copy",
+    "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+    "find": "  ldconfig\n}",
+    "replace": "  ldconfig\n  cp -a \"${_lib}\" \"/usr/local/llvm-target/lib/${_soname}\"\n}",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "the package stage held a second copy of the fill for months and its filename-only guard is what let the foreign arches take the builder's libs; one owner or the bug comes back"
+  },
+  {
+    "id": "tree-arch.frozen-table-empty",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_RT_TREE_ARCH_FROZEN=\"\"",
+    "replace": "_RT_TREE_ARCH_FROZEN=\"arm64:/usr/local/llvm-target:X86-64:5\"",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "the freeze list only ratchets down; a row that outlives its defect turns the gate's loudest arm into a note"
+  },
+  {
+    "id": "tree-arch.frozen-key-is-per-arch",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    case \"${entry}\" in \"${key}:\"*) printf '%s' \"${entry##*:}\"; return 0 ;; esac",
+    "replace": "    case \"${entry}\" in *) printf '%s' \"${entry##*:}\"; return 0 ;; esac",
+    "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
+    "why": "a freeze is <arch>:<tree>:<machine>:<count>; matched loosely, one arch's known finding silently waives the same tree on the other two"
+  },
+  {
+    "id": "disk-guard.lane-gate-unwired",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  _disk_guard_buildkit_fallback \"${bc_dir}\" \"${need}\"\n",
+    "replace": "  :\n",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the gate that REFUSES the runtime lane must reach the store before it refuses; DISK1 shipped this reachable only from the sampler"
+  },
+  {
+    "id": "disk-guard.stage-guard-unwired",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "        _disk_guard_buildkit_fallback \"${bc_dir}\" \"${threshold}\"\n        free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n",
+    "replace": "        :\n",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "CROSS_NO_LOCAL_CACHE_EXPORT=1 costs every remaining stage its cache export; the store is the last thing to try before paying that"
+  },
+  {
+    "id": "disk-guard.stage-guard-recheck",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "      if [ -z \"${free_gb}\" ] || [ \"${free_gb}\" -lt \"${threshold}\" ]; then\n        log \"[disk-guard] still",
+    "replace": "      if [ \"${free_gb}\" -lt \"${threshold}\" ] || true; then\n        log \"[disk-guard] still",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "a store that DID rescue the stage must keep the cache exports on; re-reading free space and then ignoring it makes the reclaim pointless"
+  },
+  {
+    "id": "disk-guard.lane-gate-episode",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  _disk_guard_reclaim_begin\n  _disk_guard_trim_cache_export",
+    "replace": "  _disk_guard_trim_cache_export",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the once-per-caller latch is per PROCESS: a prune the base stage made would still be latched when the lane refuses hours later"
+  },
+  {
+    "id": "disk-guard.stage-guard-episode",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "      _disk_guard_reclaim_begin\n      while [",
+    "replace": "      while [",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "same latch, other gate: after the first between-stage prune every later stage would log `already pruned once here` and reclaim nothing"
+  },
+  {
+    "id": "disk-guard.episode-clears-latch",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "_disk_guard_reclaim_begin() {\n  _DISK_GUARD_BUILDKIT_PRUNES=0",
+    "replace": "_disk_guard_reclaim_begin() {\n  :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "the episode owner must actually restore the credit; an empty body makes both call sites decorative"
+  },
+  {
+    "id": "tree-arch.android-not-exempt",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_RT_TREE_ARCH_EXEMPT=\"/opt/android-sdk\"",
+    "replace": "_RT_TREE_ARCH_EXEMPT=\"/opt/android /opt/android-sdk\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "measured 37/37/34 objects of the image's OWN machine and nothing else -- an exemption there is 34-37 objects the gate stops asserting for no reason"
+  },
+  {
+    "id": "tree-arch.machine-label-one-word",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "EM = {3: \"Intel-80386\"",
+    "replace": "EM = {3: \"Intel 80386\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the verdict is read with `read -r verb tree machine count sample`; a space in the label ate the count column in the 2026-09-04 run and would stop the frozen lookup matching"
+  },
+  {
+    "id": "probe.contract-flutter-owner-asserted",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    riscv64:dart-tool) return 0 ;;",
+    "replace": "    riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the riscv64 image measures 0 foreign-owned paths, so the row PASSES; exempting it would let CC1 defect 4 ship green on that arch"
+  },
+  {
+    "id": "probe.contract-exempt-fact-per-row",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    appimagetool) printf '%s' 'appimagetool-readable' ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an exemption re-checked by ANOTHER row's fact cannot rot at all: a riscv64 appimagetool would read EXEMPT forever"
+  },
+  {
+    "id": "probe.contract-exempt-fact-is-read",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fact=\"$(_consumer_exempt_fact \"${row}\")\"",
+    "replace": "      fact=flutter-sdk",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the per-row table is only worth anything if the verdict loop actually consults it"
+  },
+  {
+    "id": "mutations.stale-check-runs-no-test",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        rc = run_stale(entries, args.root)",
+    "replace": "        rc = run_entries(args, entries, Report())",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the staleness pass is affordable in a hook only because it runs no suite; running them turns a 0.06s whole-manifest sweep into minutes"
+  },
+  {
+    "id": "mutations.stale-check-verdict",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        if mutated is None:\n            rc = 1",
+    "replace": "        if False:\n            rc = 1",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "an entry that can no longer be applied must FAIL the pass; reporting nothing is how the rot stayed invisible until CI"
+  },
+  {
+    "id": "mutations.push-stale-check-aborts",
+    "target": "linux/host-config/git-hooks/pre-push",
+    "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since origin/main…\"",
+    "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since origin/main…\"",
+    "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+    "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
+  },
+  {
+    "id": "mutations.push-stale-check-whole-manifest",
+    "target": "linux/host-config/git-hooks/pre-push",
+    "find": "python3 docs/scripts/verify_mutations.py --stale-check ||",
+    "replace": "python3 docs/scripts/verify_mutations.py --stale-check --changed ||",
+    "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+    "why": "scoping the staleness pass to the diff leaves every entry the push does not touch as invisible as it was before the hook existed"
+  },
+  {
+    "id": "mutations.push-runs-the-gate",
+    "target": "linux/host-config/git-hooks/pre-push",
+    "find": "python3 docs/scripts/verify_mutations.py --changed --jobs",
+    "replace": "true --changed --jobs",
+    "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+    "why": "staleness alone never asks whether a test can fail; without this call the push hook proves only that the edits still apply"
+  },
+  {
+    "id": "gate-registry.hooks-are-all-of-them",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    paths = [os.path.join(HOOK_DIR, fn) for fn in sorted(os.listdir(HOOK_DIR))]",
+    "replace": "    paths = [os.path.join(HOOK_DIR, \"pre-commit\")]",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "reading a single hook path reports every gate a second versioned hook runs as CI-only -- a false statement in a generated file"
+  },
+  {
+    "id": "gate-registry.hook-top-level-tier",
+    "target": "linux/scripts/verify_gate_registry.py",
+    "find": "    for scope, tier in ((\"whole\", \"hook (whole tree)+CI\"),",
+    "replace": "    for scope, tier in ((\"whole\", \"hook (scoped)+CI\"),",
+    "test": "bash linux/scripts/tests/test-gate-registry.sh",
+    "why": "a gate a hook runs unconditionally at top level is not scoped to anything; calling it scoped tells the reader the push only checked what it changed"
+  },
+  {
+    "id": "android-parity.divergence-fails",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "if [ \"${FAIL}\" -ne 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "a drifted stage must FAIL the gate; printing a diff and exiting 0 is the shape this repo keeps finding"
+  },
+  {
+    "id": "android-parity.missing-stage-fails",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "    FAIL=1\n    continue\n  fi",
+    "replace": "    continue\n  fi",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "a stage the gate can no longer find is a check that silently stopped covering a fifth of Dockerfile.android"
+  },
+  {
+    "id": "android-parity.block-ends-at-next-from",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "    grab && /^FROM / { grab = 0 }",
+    "replace": "    grab && /^NEVERFROM / { grab = 0 }",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "without the boundary every block swallows the rest of the file and the comparison becomes a stage against itself"
+  },
+  {
+    "id": "android-parity.lib-value-normalized",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "      sub(/^ARG ANDROID_LIB=.*/, \"ARG ANDROID_LIB=<LIB>\")",
+    "replace": "      sub(/^NEVER_ANDROID_LIB=.*/, \"x\")",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "ANDROID_LIB is the ONE difference the five stages are allowed; unnormalized, the gate is red on a healthy tree"
+  },
+  {
+    "id": "android-parity.comments-normalized",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "      if ($0 ~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*$/) next   # comments/blanks",
+    "replace": "      if ($0 ~ /^[[:space:]]*$/) next",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "a per-stage comment is the point of keeping them separate stages, and must not read as drift"
+  },
+  {
+    "id": "android-parity.stage-list-complete",
+    "target": "linux/scripts/01-core/verify-android-stage-parity.sh",
+    "find": "STAGES=(android-gstreamer android-onnx android-litert android-opencv android-iree)",
+    "replace": "STAGES=(android-gstreamer android-onnx)",
+    "test": "bash linux/scripts/tests/test-android-stage-parity.sh",
+    "why": "the gate's own list is the contract; a stage dropped from it drifts unwatched for as long as nobody rereads the script"
+  },
+  {
+    "id": "patch-integrity.malformed-diff-fails",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "  if grep -qE '^--- ' \"${_p}\" && grep -qE '^\\+\\+\\+ ' \"${_p}\" && grep -qE '^@@ ' \"${_p}\"; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "a truncated patch only detonates hours into a cross build, which is the entire reason this static check exists"
+  },
+  {
+    "id": "patch-integrity.orphan-fails",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "  if grep -rlF \"${_base}\" \"${SCRIPTS_DIR}\" --include='*.sh' | grep -q .; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "a patch no build script names has quietly stopped being applied, and its fix with it"
+  },
+  {
+    "id": "patch-integrity.corpus-is-shell-scripts",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "  if grep -rlF \"${_base}\" \"${SCRIPTS_DIR}\" --include='*.sh' | grep -q .; then",
+    "replace": "  if grep -rlF \"${_base}\" \"${SCRIPTS_DIR}\" | grep -q .; then",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "a patch named only in a doc or a changelog is still applied by nothing; the corpus is *.sh on purpose"
+  },
+  {
+    "id": "patch-integrity.helper-routing-reported",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "    if grep -rlF \"${_base}\" \"${SCRIPTS_DIR}\" --include='*.sh' \\\n         | xargs grep -lE 'apply-patch\\.sh|android_apply_patch' 2>/dev/null | grep -q .; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "the advisory has to tell the two apply shapes apart, or every site reads as raw and the INFO line means nothing"
+  },
+  {
+    "id": "patch-integrity.raw-apply-site-is-advisory",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "      pass \"referenced: ${_base}\"",
+    "replace": "      fail \"referenced: ${_base}\"",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "some apply sites legitimately pre-date apply-patch.sh; making the advisory fatal breaks a green tree for no build reason"
+  },
+  {
+    "id": "patch-integrity.failure-count-is-the-exit",
+    "target": "linux/scripts/verify-patch-integrity.sh",
+    "find": "[ \"${fail_n}\" -eq 0 ]",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-patch-integrity.sh",
+    "why": "a per-file loop that reports failures and exits 0 is the vacuous-gate shape; the count must reach the exit code"
+  },
+  {
+    "id": "runtime-paths.missing-infra-fails",
+    "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+    "find": "if [ \"${_infra_fail}\" -ne 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+    "why": "LOG31: this gate once never failed at all. A missing tracked file is a broken tree, not a heuristic mismatch"
+  },
+  {
+    "id": "runtime-paths.infra-loop-reports-all",
+    "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+    "find": "  if [ ! -f \"${_req}\" ]; then\n    echo \"FAIL: required file missing: ${_req}\" >&2\n    _infra_fail=1\n  fi",
+    "replace": "  if [ ! -f \"${_req}\" ]; then\n    echo \"FAIL: required file missing: ${_req}\" >&2\n    _infra_fail=1\n    break\n  fi",
+    "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+    "why": "stopping at the first missing file sends the reader back for a second run to find the next one"
+  },
+  {
+    "id": "runtime-paths.warn-is-advisory",
+    "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+    "find": "echo \"Done: path-mismatch WARN lines above are advisory; infrastructure errors fail hard (LOG31).\"\nexit 0",
+    "replace": "echo \"Done: path-mismatch WARN lines above are advisory; infrastructure errors fail hard (LOG31).\"\nexit 1",
+    "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+    "why": "the path extraction is heuristic and WARNs on a healthy tree; promoting that to an exit code makes the gate unusable, not stronger"
+  },
+  {
+    "id": "runtime-paths.warn-scope-is-narrow",
+    "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+    "find": "        /opt/*|/usr/local/*)",
+    "replace": "        /*)",
+    "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+    "why": "the WARN case list is narrow on purpose; widening it floods a healthy tree until nobody reads the output"
+  },
+  {
+    "id": "runtime-paths.canonical-paths-expanded",
+    "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+    "find": "    | while IFS= read -r line; do envsubst <<<\"$line\"; done \\",
+    "replace": "    | while IFS= read -r line; do printf '%s\\n' \"$line\"; done \\",
+    "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+    "why": "a canonical path holding ${GCC_VERSION} would never match a Dockerfile that spells the version out"
+  },
+  {
+    "id": "workflow-lint.findings-fail",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "if \"${ACTIONLINT_BIN}\"; then\n  printf 'WORKFLOW LINT OK\\n'\nelse\n  printf 'WORKFLOW LINT FAILED\\n' >&2\n  exit 1\nfi",
+    "replace": "\"${ACTIONLINT_BIN}\"\nprintf 'WORKFLOW LINT OK\\n'",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "a lint gate that prints findings and exits 0 still reports green, which is the hazard its own header names"
+  },
+  {
+    "id": "workflow-lint.root-argument-is-the-tree",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "LINT_ROOT=\"$(cd \"${1:-${SCRIPT_REPO_ROOT}}\" && pwd)\" || exit 1",
+    "replace": "LINT_ROOT=\"${SCRIPT_REPO_ROOT}\"",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "a submodule checkout puts this script inside the consumer; ignoring the argument lints ContainerHub and reports OK for a tree nobody looked at"
+  },
+  {
+    "id": "workflow-lint.cd-into-lint-root",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "cd \"${LINT_ROOT}\" || exit 1",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "actionlint discovers workflows from its cwd, so resolving the root and then not entering it lints the wrong tree just as silently"
+  },
+  {
+    "id": "workflow-lint.version-pin-required",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "  [ -n \"${ACTIONLINT_VERSION:-}\" ] || err \"ACTIONLINT_VERSION is not set (versions.env not found?).\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "without the pin the bootstrap builds a URL for version '', and a lint verdict nobody can reproduce is not a gate"
+  },
+  {
+    "id": "workflow-lint.sha-pin-required",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "  [ -n \"${expected_sha}\" ] || err \"No pinned actionlint SHA256 for ${asset}; add one to versions.env.\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "downloading a release nobody checksummed is how a lint gate starts running a binary the repo never chose"
+  },
+  {
+    "id": "secret-scan.leak-fails",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "err \"gitleaks found potential secrets (values redacted, file:line shown above).",
+    "replace": "echo \"gitleaks found potential secrets (values redacted, file:line shown above).",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "a scanner that reports findings and exits 0 gates nothing; the leak ships"
+  },
+  {
+    "id": "secret-scan.scope-is-the-argument",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "--source \"${1:-.}\"",
+    "replace": "--source \".\"",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "the path argument is what lets a consumer checkout be scanned; ignoring it grades the wrong tree, green or red for the wrong reason"
+  },
+  {
+    "id": "secret-scan.values-are-redacted",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "--no-banner --redact --verbose; then",
+    "replace": "--no-banner --verbose; then",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "without --redact every CI log that ran the gate becomes a copy of the credential it found"
+  },
+  {
+    "id": "secret-scan.findings-are-printed",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "--no-banner --redact --verbose; then",
+    "replace": "--no-banner --redact; then",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "this gate once failed on main saying 'leaks found: 2' and naming neither; a finding nobody can locate is not actionable"
+  },
+  {
+    "id": "copy-coverage.missing-fails",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "    if total_missing:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "a referenced script nobody COPY'd is exit 127 deep inside a multi-hour build; reporting it and returning 0 ships that build"
+  },
+  {
+    "id": "copy-coverage.transitive-refs",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "        collect_refs(ref, provided, seen, out)",
+    "replace": "        pass",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "the media_load_arch_flags bug was transitive: the Dockerfile COPY'd what it ran, and what THAT sourced was missing"
+  },
+  {
+    "id": "copy-coverage.dir-copy-expands",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "            for f in src_path.rglob(\"*.sh\"):",
+    "replace": "            for f in []:",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "a directory COPY provides every script beneath it; not expanding it makes the gate red on a healthy tree until someone deletes it"
+  },
+  {
+    "id": "copy-coverage.bind-mount-provides",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "        for m in MOUNT_RE.findall(s):\n            kv = dict(KV_RE.findall(m))\n            if \"source\" in kv and \"target\" in kv:",
+    "replace": "        for m in []:\n            kv = dict(KV_RE.findall(m))\n            if \"source\" in kv and \"target\" in kv:",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "a per-RUN bind mount is ephemeral but present while that RUN executes, and counting only COPY is a false red"
+  },
+  {
+    "id": "copy-coverage.continuations-joined",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "        if line.rstrip().endswith(\"\\\\\"):",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "a COPY wrapped over backslash-newlines provides nothing when the logical line is never rejoined"
+  },
+  {
+    "id": "copy-coverage.known-base-is-per-dockerfile",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "    base_ok = KNOWN_BASE_PROVIDED.get(dockerfile.name, [])",
+    "replace": "    base_ok = [p for v in KNOWN_BASE_PROVIDED.values() for p in v]",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "the inheritance table is keyed by Dockerfile on purpose; an entry that leaked to every image would silence the class the gate exists for"
+  },
+  {
+    "id": "copy-coverage.no-dockerfiles-fails",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "        print(\"no Dockerfiles found\", file=sys.stderr)\n        return 1",
+    "replace": "        return 0",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "zero subjects is a broken checkout, and a gate that grades nothing must not report a clean sweep"
+  },
+  {
+    "id": "copy-coverage.report-is-read-only",
+    "target": "linux/scripts/verify_script_copy_coverage.py",
+    "find": "    if \"--report-core-usage\" in sys.argv[1:]:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+    "why": "the core-usage report is a lower bound by its own docstring; wiring a verdict to it would gate on a figure nobody should act on alone"
+  },
+  {
+    "id": "mirror-consistency.missing-arg-fails",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "      echo \"ERROR: ${df} is missing ARG ${arg}\" >&2\n      errors=$((errors + 1))",
+    "replace": "      echo \"ERROR: ${df} is missing ARG ${arg}\" >&2",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "a Dockerfile that cannot receive the mirror ARGs silently builds against the upstream archive; the count has to reach the exit code"
+  },
+  {
+    "id": "mirror-consistency.base-needs-the-run",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "    if ! grep -q 'use-fast-ubuntu-mirror.sh' \"$df_path\"; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "downstream images inherit the mirror RUN from base; without it in base nothing rewrites the sources at all"
+  },
+  {
+    "id": "mirror-consistency.restore-is-wired",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if [ -z \"${restore_ln}\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "a working-but-unwired restore is exactly how the CA-bootstrap http downgrade shipped with nothing undoing it"
+  },
+  {
+    "id": "mirror-consistency.restore-runs-after-install",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "elif [ -z \"${install_ln}\" ] || [ \"${restore_ln}\" -le \"${install_ln}\" ]; then",
+    "replace": "elif false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "restoring https before the CA store exists puts apt back into the chicken-and-egg the downgrade was there to break"
+  },
+  {
+    "id": "mirror-consistency.outcome-is-asserted",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "  if ! grep -q '^URIs: https://mirror.invalid/ubuntu/$' \"${fixture_root}/etc/apt/sources.list.d/ubuntu.sources\" \\\n     || grep -q 'http://mirror.invalid' \"${fixture_root}/etc/apt/sources.list.d/ubuntu.sources\"; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "APT-HTTP itself: the call site was present and the sources still ended on http. Referenced != restored, and only the outcome check can tell"
+  },
+  {
+    "id": "mirror-consistency.downgrade-precondition",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if ! grep -q '^URIs: http://mirror.invalid/ubuntu/$' \"${fixture_root}/etc/apt/sources.list.d/ubuntu.sources\"; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "if the downgrade stops landing there is nothing left to restore, and the outcome check would pass for the wrong reason"
+  },
+  {
+    "id": "mirror-consistency.errors-reach-exit",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if [ \"$errors\" -gt 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "every ERROR above is printed to stderr; a gate that prints them and exits 0 is the vacuous shape this repo keeps finding"
+  },
+  {
+    "id": "sbom.check-fails-when-stale",
+    "target": "docs/scripts/generate_sbom.py",
+    "find": "    print(\"Curated SBOM is out of date.\", file=sys.stderr)\n    print(\"Run: python docs/scripts/generate_sbom.py --write\", file=sys.stderr)\n    return 1",
+    "replace": "    return 0",
+    "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+    "why": "the published corresponding-source record is only as good as the check that it matches the tree it claims to describe"
+  },
+  {
+    "id": "sbom.check-is-byte-equality",
+    "target": "docs/scripts/generate_sbom.py",
+    "find": "    if OUT_FILE.exists() and OUT_FILE.read_text(encoding=\"utf-8\") == content:",
+    "replace": "    if OUT_FILE.exists():",
+    "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+    "why": "existence is not currency: a committed document edited by hand would pass a check that only asks whether the file is there"
+  },
+  {
+    "id": "sbom.timestamp-is-frozen",
+    "target": "docs/scripts/generate_sbom.py",
+    "find": "            \"created\": \"1970-01-01T00:00:00Z\",",
+    "replace": "            \"created\": __import__(\"datetime\").datetime.now().isoformat() + \"Z\",",
+    "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+    "why": "a wall-clock stamp makes --check fail on every run, and a gate that is always red is a gate that gets switched off"
+  },
+  {
+    "id": "sbom.stdout-writes-nothing",
+    "target": "docs/scripts/generate_sbom.py",
+    "find": "    if args.stdout:\n        sys.stdout.write(content)\n        return 0",
+    "replace": "    if args.stdout:\n        sys.stdout.write(content)\n        OUT_DIR.mkdir(parents=True, exist_ok=True)\n        OUT_FILE.write_text(content, encoding=\"utf-8\", newline=\"\\n\")\n        return 0",
+    "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+    "why": "--stdout is the read-only mode; writing from it would make the check pass by rewriting the thing it was about to compare"
+  },
+  {
+    "id": "sbom.tracks-versions-env",
+    "target": "docs/scripts/generate_sbom.py",
+    "find": "    content = render(build_document(parse_versions_env()))",
+    "replace": "    content = render(build_document({}))",
+    "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+    "why": "the curated half exists to name the source-built versions; a document that ignores versions.env drifts silently from the image it describes"
+  },
+  {
+    "id": "arg-consistency.arg-default-drift-fatal",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "if [ \"$VALUE_ERRORS\" -gt 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "a Dockerfile ARG default that drifts from versions.env wins silently on any non-orchestrated docker build"
+  },
+  {
+    "id": "arg-consistency.defaultless-arg-fatal",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "if [ \"$DEFAULTLESS_ERRORS\" -gt 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "the LITERTJS_VERSION class: a default-less ARG builds with an EMPTY value and the image ships built against nothing"
+  },
+  {
+    "id": "arg-consistency.derived-arg-skipped",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "    case \"$val_raw\" in '${'*) continue ;; esac\n    # Strip surrounding double quotes from Dockerfile value",
+    "replace": "    # Strip surrounding double quotes from Dockerfile value",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "an ARG computed from another ARG has no literal to compare; reporting it is a permanent false red nobody can fix"
+  },
+  {
+    "id": "arg-consistency.gcc-case-mapping-pinned",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "    echo \"  ERROR: gcc.sh case default for major ${_gcc_major} does not map to ${_gcc_full} (versions.env GCC_VERSION)\"\n    LITERAL_ERRORS=$((LITERAL_ERRORS + 1))",
+    "replace": "    echo \"  ERROR: gcc.sh case default for major ${_gcc_major} does not map to ${_gcc_full} (versions.env GCC_VERSION)\"",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "the case arm OVERRIDES the real version and no ARG check can see it; printing without counting leaves the drift shipping"
+  },
+  {
+    "id": "arg-consistency.llvm-mapping-pinned",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "    echo \"  ERROR: common.sh llvm_release_version mapping does not contain ${_llvm_full} (versions.env LLVM_RELEASE)\"\n    LITERAL_ERRORS=$((LITERAL_ERRORS + 1))",
+    "replace": "    echo \"  ERROR: common.sh llvm_release_version mapping does not contain ${_llvm_full} (versions.env LLVM_RELEASE)\"",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "the second case-mapped literal drifts exactly as silently as the first, and misreports the LLVM the image carries"
+  },
+  {
+    "id": "arg-consistency.gcc-literal-drift-fatal",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+    "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
+  },
+  {
+    "id": "arg-consistency.scan-vacuity-floor",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "  if [ \"${_gcc_sites}\" -lt 10 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "a refactor that rewrites the literals into a shape the pattern cannot see makes the gate find nothing and print OK -- the stale-gate class twice over"
+  },
+  {
+    "id": "arg-consistency.handforward-fatal",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "if [ \"$HANDFWD_ERRORS\" -gt 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "XC7: a literal --build-arg beside the auto-forward is a second channel that survives refactors of the first and then diverges"
+  },
+  {
+    "id": "arg-consistency.handforward-excludes-tests",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "done < <(grep -rnP --include='*.sh' --exclude-dir=tests \\",
+    "replace": "done < <(grep -rnP --include='*.sh' \\",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "a suite quotes the pattern as assertion text; counting that makes the gate red for describing itself, which is how a gate gets deleted"
+  },
+  {
+    "id": "arg-consistency.forwarding-check-advisory",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "  echo \"Remove the # noforward marker in versions.env or drop the Dockerfile ARG\"",
+    "replace": "  echo \"Remove the # noforward marker in versions.env or drop the Dockerfile ARG\"; exit 1",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "the noforward marker is an orchestrator choice; gating a build on a comment turns a hint into a blocker"
+  },
+  {
+    "id": "arg-consistency.script-drift-advisory",
+    "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+    "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+    "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+    "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+    "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
+  },
+  {
+    "id": "shellcheck-warnings.allow-reader-yields-rows",
+    "target": "linux/scripts/quality_allow.py",
+    "find": "    return {key: (count, reason) for key, count, reason, _num in iter_rows(path, keys, fmt)}",
+    "replace": "    return dict.fromkeys((k for k, _c, _r, _n in iter_rows(path, keys, fmt)), (0, \"\"))",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "load_rows is the dict VIEW of iter_rows; dropping the count and reason it carries makes every frozen budget 0"
+  },
+  {
+    "id": "code-dupes.allow-keys-declared",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    for pair, budget, why, n in iter_rows(str(ALLOW_FILE), 2, ALLOW_FMT):",
+    "replace": "    for pair, budget, why, n in iter_rows(str(ALLOW_FILE)):",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "the pair is two declared key columns, so a | in the reason cannot shift the budget; counting from the right keys the row on four columns and it matches no measured pair"
+  },
+  {
+    "id": "code-dupes.allow-rows-not-folded",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    for pair, budget, why, n in iter_rows(str(ALLOW_FILE), 2, ALLOW_FMT):",
+    "replace": "    for (pair, (budget, why)), n in zip(load_rows(str(ALLOW_FILE), 2, ALLOW_FMT).items(), range(1, 999)):",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "the shared reader must hand this gate every ROW: a dict view folds two identical rows into one before the duplicate check can see them"
+  },
+  {
+    "id": "code-complexity.allow-keys-declared",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "    frozen = load_counts(ALLOW, 3, ALLOW_FMT)",
+    "replace": "    frozen = load_counts(ALLOW)",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "three declared key columns are what let a reason carry |; counting from the right mis-keys the row and reports it STALE"
+  },
+  {
+    "id": "code-size.fn-allow-keys-declared",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "load_counts(FN_ALLOW, 2, FN_FMT), LIMIT",
+    "replace": "load_counts(FN_ALLOW), LIMIT",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "function-size.allow has two key columns; without the declaration a | in the reason shifts the count"
+  },
+  {
+    "id": "code-size.file-allow-keys-declared",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "load_counts(FILE_ALLOW, 1, FILE_FMT), FILE_LIMIT",
+    "replace": "load_counts(FILE_ALLOW), FILE_LIMIT",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "file-size.allow has one key column; same rule, and its reasons already carry a docs anchor"
+  },
+  {
+    "id": "dead-functions.self-mention-not-a-use",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "    seen.subtract(self_mentions())",
+    "replace": "    pass",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "a function that names itself in a printf, or calls only itself, must stay dead: string literals are not stripped from the corpus"
+  },
+  {
+    "id": "env-knobs.arch-flags-are-owners",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+    "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\")",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "media_load_arch_flags sources arch-flags-<arch>.env, so its keys own their knobs; without them the MEDIA_SKIP_* knobs read as unowned again"
+  },
+  {
+    "id": "env-knobs.runtime-paths-owns-nothing",
+    "target": "linux/scripts/lint-env-knobs.sh",
+    "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+    "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env \"${SCRIPTS}\"/04-runtime/*.env)",
+    "test": "bash linux/scripts/tests/test-env-knobs.sh",
+    "why": "runtime-paths.env is reference data for verify-runtime-paths.sh and no stage sources it; counting it would invent an owner for every path knob"
+  },
+  {
+    "id": "doc-numbers.census-count-stale",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "    return dict(zip(CENSUS_KEYS, (int(g) for g in hit.groups())))",
+    "replace": "    return dict(zip(CENSUS_KEYS, (int(g) + 1 for g in hit.groups())))",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "the census figures on the page are COMPARED against the gate's own --census, so a wrong derivation must fail rather than pass"
+  },
+  {
+    "id": "doc-numbers.census-keys-in-order",
+    "target": "linux/scripts/tests/test-doc-numbers.sh",
+    "find": "CENSUS_KEYS = (\"considered\", \"isolated\", \"masked\")",
+    "replace": "CENSUS_KEYS = (\"considered\", \"masked\", \"isolated\")",
+    "test": "bash linux/scripts/tests/test-doc-numbers.sh",
+    "why": "each quoted number binds to its own tier; swapping the isolated and masked counts must not read as correct"
+  },
+  {
+    "id": "trailing-conditional.one-line-body",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "    brace = lines[-1].rfind(\"}\")",
+    "replace": "    brace = -1",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "the closing-brace trim is what gives a one-line `f() { ...; }` a body at all; without it the last statement reads as `... ; }` and the `;` cut hands back the brace, so every one-line predicate goes silently missing"
+  },
+  {
+    "id": "trailing-conditional.block-closer-verdict",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "        if stmt and not closes_a_block(stmt):",
+    "replace": "        if stmt:",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a loop returns its last iteration and an if returns the branch it took, so stopping at `done`/`fi`/`esac` is how reconcile_local_wheels' shape stayed invisible; judging the closer word itself reports nothing, ever"
+  },
+  {
+    "id": "trailing-conditional.closer-not-in-a-pipeline",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "    return is_simple(stmt) and stmt.split()[0] in CLOSERS",
+    "replace": "    return stmt.split()[0] in CLOSERS",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "`done | sort -u` returns the PIPELINE, not the loop body; opening the block there reports the loop's guarded action as the function's status and invents a finding the author already handled"
+  },
+  {
+    "id": "trailing-conditional.separator-only-line-skipped",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "        if last < 0:\n            break",
+    "replace": "        if not stmt:\n            break",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a case arm's `;;` line strips to nothing once separators are trimmed; treating that empty result as end-of-body abandons the walk one line short and every `esac` finding disappears"
+  },
+  {
+    "id": "trailing-conditional.or-last-arm-judged",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "        return is_finding(stmt[fallback + 2:].strip())",
+    "replace": "        return False",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "an author who wrote a fallback arm is trusted only for WHAT THEY WROTE THERE: `do_thing || [ -n \"$x\" ]` still returns a condition, and `a || b && c` is SC2015's own shape"
+  },
+  {
+    "id": "trailing-conditional.delegate-hop",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "        elif delegate(stmt):",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a function ending on a bare call to a predicate returns that predicate; without the hop cross_build_is_active and its two aliases read clean while carrying the exact hazard the gate exists for"
+  },
+  {
+    "id": "trailing-return.csv-each-skips-empty-element",
+    "target": "linux/scripts/01-core/guard-helpers.sh",
+    "find": "    if [ -n \"${_item}\" ]; then \"${_fn}\" \"${_item}\"; fi",
+    "replace": "    [ -n \"${_item}\" ] && \"${_fn}\" \"${_item}\"",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a CSV with a trailing comma makes the LAST iteration the empty one, so the loop -- and csv_each -- returns 1 and kills the caller under set -e, against the helper's own documented contract that empty elements are skipped"
+  },
+  {
+    "id": "trailing-return.version-build-args-empty-value",
+    "target": "linux/scripts/01-core/version-forwarding.sh",
+    "find": "    if [ -n \"${value}\" ]; then\n      append_optional_build_arg \"${_avba_name}\" \"${var_name}\" \"${value}\"\n    fi",
+    "replace": "    [ -n \"${value}\" ] && append_optional_build_arg \"${_avba_name}\" \"${var_name}\" \"${value}\"",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "an empty value in the LAST tracked versions.env key returns 1 from the loop, and append_common_build_args ends on a call to this function, so the orchestrator's whole build-arg assembly dies under set -e"
+  },
+  {
+    "id": "trailing-return.gst-log-dump-err-trap",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+    "find": "    if [ -f \"${_log}\" ]; then\n      echo \"--- ${_log} ---\" >&2\n      cat \"${_log}\" >&2\n    fi",
+    "replace": "    [ -f \"${_log}\" ] && echo \"--- ${_log} ---\" >&2 && cat \"${_log}\" >&2",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "_dump_gst_build_logs is the stage's ERR trap; a trap whose own last statement is a guarded action returns 1 when the last diagnostic log is absent -- the 2026-09-02 logging.sh ERR-trap death seen from the trap side"
+  },
+  {
+    "id": "trailing-return.wasm-opt-pin-already-exported",
+    "target": "linux/scripts/lib/wasm-opt.sh",
+    "find": "    if [[ -z \"${!name:-}\" ]]; then export \"${name}=${line#*=}\"; fi",
+    "replace": "    [[ -z \"${!name:-}\" ]] && export \"${name}=${line#*=}\"",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "the while-read loop returns its last iteration, so wasm_opt_load_pin returns 1 exactly when the last BINARYEN_* key is already exported -- which the function's own header calls the normal case"
+  },
+  {
+    "id": "trailing-return.agentic-retry-sleep-skipped",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "        if [[ \"${DRY_RUN:-false}\" != \"true\" ]]; then sleep \"$sleep_s\"; fi",
+    "replace": "        [[ \"${DRY_RUN:-false}\" != \"true\" ]] && sleep \"$sleep_s\"",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "STATIC proof only: the `while true` above it never falls out of the loop, so this line is not what invoke_agent returns today. The gate is the test -- it reports the shape as a NEW finding -- and the line is normalised so a `break` added later cannot turn it into a real defect"
+  },
+  {
+    "id": "cross-build.clang-wrapper-bakes-gcc-toolchain",
+    "target": "linux/scripts/02-toolchain/llvm.sh",
+    "find": " --gcc-toolchain=${gcc_prefix}",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-clang-cross-wrappers.sh",
+    "why": "this flag in the wrapper's exec line is the entire reason export_clang_gcc_toolchain_env could be deleted (CL3); without it the wrappers fall back to clang's own GCC discovery and nothing points them at the source-built /opt/gcc-$GCC_VERSION"
+  },
+  {
+    "id": "cross-build.clang-wrapper-fixes-the-triple",
+    "target": "linux/scripts/02-toolchain/llvm.sh",
+    "find": "--target=${triplet} ",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-clang-cross-wrappers.sh",
+    "why": "a clang-<arch> wrapper without --target is the host compiler wearing a cross name; it compiles and links host objects into a foreign-arch image with no error until runtime"
+  },
+  {
+    "id": "doc-links.header-scope",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "HEADER_LINES = 10",
+    "replace": "HEADER_LINES = 0",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "the header rule is scoped to a leading comment block ON PURPOSE -- a zero window finds nothing, so the whole check goes inert while its allow file still reads as 45 reviewed rows, which is exactly the cover an allowlist must never become"
+  },
+  {
+    "id": "doc-links.header-anchor-exempt",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "                if m.group(2):\n                    continue",
+    "replace": "                if False:\n                    continue",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "an anchored pointer is the shape the house rule ASKS for; counting it as bare reports every compliant header and makes the gate's advice contradict itself"
+  },
+  {
+    "id": "doc-links.header-section-ref-exempt",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "            if SECTION_SIGN in line:\n                continue",
+    "replace": "            if False:\n                continue",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  },
+  {
+    "id": "doc-links.header-stale-row",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "    for key in sorted(frozen - set(found)):",
+    "replace": "    for key in sorted(set()):",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "without the stale half the freeze is one-way: a row whose pointer gained an anchor, or whose file was deleted, sits there forever reading as a reviewed exception for something that no longer exists"
+  },
+  {
+    "id": "doc-links.header-suffix-scope",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "        if f.suffix not in HEADER_SUFFIXES:\n            continue",
+    "replace": "        if False:\n            continue",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "the house header convention is a .sh/.py comment-block rule; applying it to every scanned file (Makefile fragments, YAML, patches) reports first-10-line prose that was never promised an anchor"
+  },
+  {
+    "id": "python.ext-modules-ifs",
+    "target": "linux/scripts/01-core/cpython-dev-packages.sh",
+    "find": "    IFS=' ' read -r -a mod_words <<< \"${mods}\"",
+    "replace": "    read -r -a mod_words <<< \"${mods}\"",
+    "test": "bash linux/scripts/tests/test-cpython-ext-table.sh",
+    "why": "build_python.sh runs under IFS=$'\\n\\t', where an unpinned read leaves a two-module row as the single word '_ssl _hashlib' -- the exact trap the table header names"
+  },
+  {
+    "id": "python.dynload-audit-derives-its-list",
+    "target": "linux/scripts/02-toolchain/python/build_python.sh",
+    "find": "  done < <(cpython_ext_modules)",
+    "replace": "  done < <(printf '%s\\n' zlib _bz2)",
+    "test": "bash linux/scripts/tests/test-cpython-ext-table.sh",
+    "why": "the lib-dynload audit must read the table, never a second list of its own -- the desync CL2 exists for"
+  },
+  {
+    "id": "python.uv-greedy-keeps-first",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "            case \"$keep\" in *\" $other \"*) conflicted=1 ;; esac",
+    "replace": "            case \"$drop\" in *\" $other \"*) conflicted=1 ;; esac",
+    "test": "bash linux/scripts/tests/test-uv-conflict-extras.sh",
+    "why": "conflicting against the DROPPED set excludes nothing, so `uv sync --all-extras` fails again with the error the helper exists to avoid"
+  },
+  {
+    "id": "stage-graph.validate-graph-verdict",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "find": "  return \"${ok}\"",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-stage-defs.sh",
+    "why": "a graph error must be the function's exit status; build-cross-chain.sh and preflight's stage-graph slug read nothing else"
+  },
+  {
+    "id": "stage-graph.cycle-is-a-verdict",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "find": "'[ERROR] Cycle detected in stage chain near \"%s\"\\n' \"${stage}\" >&2\n        ok=1",
+    "replace": "'[ERROR] Cycle detected in stage chain near \"%s\"\\n' \"${stage}\" >&2\n        ok=0",
+    "test": "bash linux/scripts/tests/test-stage-defs.sh",
+    "why": "printing the cycle is not refusing it -- the depth cap has to set the verdict, which is what the deleted `chain` array never did"
+  },
+  {
+    "id": "gst.env-multiarch-triplet-dir",
+    "target": "linux/scripts/04-runtime/gstreamer-env.sh",
+    "find": "  MULTIARCH_DIR=\"lib/${TRIPLET}\"",
+    "replace": "  MULTIARCH_DIR=\"lib\"",
+    "test": "bash linux/scripts/tests/test-gstreamer-env.sh",
+    "why": "the multiarch dir is the whole point of the file: smoke-runtime-image.sh proves the entrypoint sourced it by looking for that GST_PLUGIN_PATH entry"
+  },
+  {
+    "id": "gst.env-dead-system-lib",
+    "target": "linux/scripts/04-runtime/gstreamer-env.sh",
+    "find": "  MULTIARCH_DIR=\"lib/multiarch\"",
+    "replace": "  MULTIARCH_DIR=\"lib/multiarch\"\n  SYSTEM_LIB=\"/usr/lib\"",
+    "test": "bash linux/scripts/tests/test-gstreamer-env.sh",
+    "why": "re-introducing the write-only SYSTEM_LIB must fail: the suite asserts set-ness, not emptiness, so an assignment of \"\" would not slip through either"
+  },
+  {
+    "id": "gst.gi-scanner-wrapper-arch",
+    "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+    "find": "  gi_scanner_wrapper=\"/usr/local/bin/g-ir-scanner-${gi_cross_wrapper_arch}-cross\"",
+    "replace": "  gi_scanner_wrapper=\"/usr/local/bin/g-ir-scanner-cross\"",
+    "test": "bash linux/scripts/tests/test-gi-cross-detect.sh",
+    "why": "the wrapper paths are per-target-arch; an arch-less name makes arm64 and riscv64 share one scanner wrapper"
+  },
+  {
+    "id": "gst.gi-dead-host-bindir",
+    "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+    "find": "  gi_version=\"${gi_version%%-*}\"",
+    "replace": "  gi_version=\"${gi_version%%-*}\"\n  gi_bindir=\"/usr/bin\"",
+    "test": "bash linux/scripts/tests/test-gi-cross-detect.sh",
+    "why": "the deleted host bindir/libdir must not come back -- the .pc metadata is written from target_gi_*, and the suite pins both the state and the header comment that lists it"
+  },
+  {
+    "id": "handoff.manifest-missing-rid-refuses",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  [ \"${missing}\" -gt 0 ] && [ \"${BUILD_IMAGES}\" -eq 0 ] && refuse=1",
+    "replace": "  [ \"${missing}\" -gt 0 ] && [ \"${BUILD_IMAGES}\" -eq 2 ] && refuse=1",
+    "test": "bash linux/scripts/tests/test-manifest-wrapper-gate.sh",
+    "why": "ancestry_run_ids_coherent drops empty ids, so on the --repair/--manifest-only path unverifiable provenance MUST refuse rather than be assumed coherent"
+  },
+  {
+    "id": "doc-dupes.owner-cutoff",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "        if 1 < len(holders) <= MAX_OWNERS:",
+    "replace": "        if 1 < len(holders):",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "a phrase held by more paragraphs than MAX_OWNERS is shared vocabulary; without the cutoff the gate reports every stock sentence as a copy"
+  },
+  {
+    "id": "doc-dupes.cross-file-only",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "                if a[0] != b[0]:",
+    "replace": "                if True:",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "a page restating itself is not docs duplication; pairing same-file paragraphs makes every long page a finding"
+  },
+  {
+    "id": "doc-dupes.word-floor",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "            if len(words) < MIN_WORDS:",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "a paragraph too short to carry a shingle must never be indexed, or the scanned count stops meaning what it says"
+  },
+  {
+    "id": "doc-dupes.stale-row-fails",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "    if not stale:\n        return 0",
+    "replace": "    if True:\n        return 0",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "an allow row whose overlap is gone must fail; a silent stale row is cover for the next copy"
+  },
+  {
+    "id": "doc-dupes.report-lists-allowed",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "    for n, a, b, why in allowed:\n        print(f\"  allowed {n:4d}",
+    "replace": "    for n, a, b, why in []:\n        print(f\"  allowed {n:4d}",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "--report exists to show the allowed pairs and their reasons; a report that lists none is a blank page that still exits 0"
+  },
+  {
+    "id": "lib.slang-invalid-emit-not-copied",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "  if ! offenders=\"$(slang_compile_wgsl_varyings_are_located \"$tmp_out\")\"; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "an emit whose varying struct members carry no @builtin/@location must never reach the destination file; skipping the validator is how a naga-rejected shader gets committed"
+  },
+  {
+    "id": "lib.slang-invalid-emit-is-fatal",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "      2) wgsl_invalid+=(\"$out_name\") ;;",
+    "replace": "      2) : ;;",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "outcome 2 is what makes slang_compile_main exit 1; dropping it turns a toolchain regression into a silent green run"
+  },
+  {
+    "id": "lib.slang-emit-failure-reported",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "      1) wgsl_failed+=(\"$src_file\") ;;",
+    "replace": "      1) : ;;",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "a slangc that failed must be named in the summary, or a shader silently stops being regenerated"
+  },
+  {
+    "id": "lib.slang-outcome-survives-errexit",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "    _slang_emit_one_wgsl \"$slangc\" \"$src_file\" \"$out_name\" \"$dst_rel\" \"$slangc_version\" || rc=$?",
+    "replace": "    _slang_emit_one_wgsl \"$slangc\" \"$src_file\" \"$out_name\" \"$dst_rel\" \"$slangc_version\"",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "the helper reports its outcome as a return code, so the call must be guarded: unguarded, the caller's set -e kills the whole run on the first failed emit instead of collecting it"
+  },
+  {
+    "id": "lib.slang-version-floor",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "    wgsl_emit_enabled=0",
+    "replace": "    wgsl_emit_enabled=1",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "below the manifest's slangc floor the combined emit drops @location(N); emitting anyway overwrites the correct checked-in WGSL with output naga rejects"
+  },
+  {
+    "id": "lib.slang-dead-patch-warns",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "    if [[ \"$before_sum\" == \"$after_sum\" ]]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "a depth-texture patch that matches nothing means slangc's output moved under the pattern; silence there is how a patch table rots unnoticed"
+  },
+  {
+    "id": "lib.slang-missing-source-skipped",
+    "target": "linux/scripts/lib/slang-compile.sh",
+    "find": "  if [[ ! -f \"$src_path\" ]]; then return 3; fi",
+    "replace": "  if false; then return 3; fi",
+    "test": "bash linux/scripts/tests/test-slang-compile.sh",
+    "why": "a wgslMap row naming a file this tree does not have must be skipped, not compiled from a path that does not exist"
+  },
+  {
+    "id": "wheels.ort-summary-one-owner",
+    "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+    "find": "report_onnx_build_output \"Build complete\" \"${NATIVE_CPU_OUTPUT_DIR}\"",
+    "replace": "info \"Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}\"\ninfo \"Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels\"\nls -lh \"${NATIVE_CPU_OUTPUT_DIR}/wheels\"/*.whl 2>/dev/null || true\nfind \"${NATIVE_CPU_OUTPUT_DIR}/lib\" -maxdepth 1 -type f -name \"*.so*\" -printf '%f\\n' 2>/dev/null | head -20 || true",
+    "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+    "why": "a build script that re-lists its own wheels is the fifth copy of a block whose four copies had already drifted"
+  },
+  {
+    "id": "wheels.ort-summary-listing-cap",
+    "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+    "find": "  find \"${output_dir}/lib\" -maxdepth 1 -type f -name \"*.so*\" -printf '%f\\n' 2>/dev/null | head -20 || true",
+    "replace": "  find \"${output_dir}/lib\" -maxdepth 1 -type f -name \"*.so*\" -printf '%f\\n' 2>/dev/null || true",
+    "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+    "why": "the summary lists at most 20 libraries; uncapped it buries the stage's own result under a shared-object dump"
+  },
+  {
+    "id": "wheels.ort-summary-advisory",
+    "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+    "find": "  info \"Wheels in ${output_dir}/wheels\"\n  ls -lh \"${output_dir}/wheels\"/*.whl 2>/dev/null || true",
+    "replace": "  info \"Wheels in ${output_dir}/wheels\"\n  ls -lh \"${output_dir}/wheels\"/*.whl 2>/dev/null",
+    "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+    "why": "every line of the summary is advisory: under set -euo pipefail an unguarded ls kills a stage whose wheels directory it never fills"
+  },
+  {
+    "id": "lib.agentic-engine-env-override",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "        (if $eo != \"\" then $eo else (.engine // \"opencode\" | v) end) as $e |",
+    "replace": "        ((.engine // \"opencode\" | v)) as $e |",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "AGENTIC_ENGINE is the documented way to run the loop on the other engine without editing the config; ignoring it silently runs the wrong CLI"
+  },
+  {
+    "id": "lib.agentic-missing-model-fatal",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "    if [[ -z \"$PLANNER_MODEL\" || -z \"$EXECUTOR_MODEL\" ]]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "a config with no model for the selected engine must stop here; continuing invokes the CLI with an empty model id"
+  },
+  {
+    "id": "lib.agentic-retry-exhaustion",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "        if (( attempt > retries )); then",
+    "replace": "        if (( attempt > 0 )); then",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "AGENT_RETRIES is the number of retries the loop actually spends; giving up on the first failure makes a flaky engine look like a broken one"
+  },
+  {
+    "id": "lib.agentic-unknown-engine-fatal",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "            *)\n                log \"Unknown engine: '${AGENTIC_ENGINE}' (expected opencode|claude)\" \"FATAL\"\n                return 1 ;;",
+    "replace": "            *)\n                invoke_opencode \"$role\" \"$model\" \"$message\" || rc=$? ;;",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "an unrecognised engine name must fail loudly; falling back to a default runs a typo'd config against the wrong CLI for hours"
+  },
+  {
+    "id": "lib.agentic-drain-counts-progress",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "            _AL[tasks_completed]=$(( _AL[tasks_completed] + 1 ))",
+    "replace": "            _AL[tasks_completed]=$(( _AL[tasks_completed] ))",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "the completed-task count is the loop's only record of what it achieved, and the after-task phases hang off the same branch"
+  },
+  {
+    "id": "lib.agentic-blocked-not-queued",
+    "target": "linux/scripts/lib/agentic-loop.sh",
+    "find": "    n=$(grep -c '^- \\[ \\]' \"$backlog\" 2>/dev/null) || true",
+    "replace": "    n=$(grep -c '^- \\[' \"$backlog\" 2>/dev/null) || true",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "blocked tasks are deliberately not queue depth: counting them keeps the executor grinding on work it cannot do instead of letting the planner run"
+  },
+  {
+    "id": "sccache.server-address-hoisted-setup-ccache",
+    "target": "linux/scripts/01-core/compiler-cache.sh",
+    "find": "    if _sccache_available; then\n      sccache_export_server_address\n    fi\n    _cc_launcher=\"$(_resolve_compiler_cache_launcher)\"",
+    "replace": "    _cc_launcher=\"$(_resolve_compiler_cache_launcher)\"",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "YB root cause: with the address set only inside the $( ) resolver it never reaches ninja, every client falls back to TCP 4226 and concurrent BuildKit steps are served by each other's sccache server"
+  },
+  {
+    "id": "sccache.server-address-hoisted-setup-sccache",
+    "target": "linux/scripts/01-core/compiler-cache.sh",
+    "find": "  mkdir -p \"${SCCACHE_DIR}\" 2>/dev/null || true\n  sccache_export_server_address",
+    "replace": "  mkdir -p \"${SCCACHE_DIR}\" 2>/dev/null || true",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "same defect on the RUSTC_WRAPPER path: setup_sccache must export the address to its caller, not compute it inside the substitution"
+  },
+  {
+    "id": "sccache.server-address-respects-the-caller",
+    "target": "linux/scripts/01-core/compiler-cache.sh",
+    "find": "  if [ -n \"${SCCACHE_SERVER_UDS:-}\" ] || [ -n \"${SCCACHE_SERVER_PORT:-}\" ]; then\n    return 0\n  fi",
+    "replace": "  if false; then\n    return 0\n  fi",
+    "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+    "why": "an address the operator or an outer stage already chose must never be overwritten -- otherwise the shell and the compiles address two different servers, which is the same split this bug is made of"
+  },
+  {
+    "id": "sccache.bypass-line-names-the-server",
+    "target": "linux/scripts/01-core/sccache-launcher.sh",
+    "find": "    printf 'sccache-launcher: sccache failed twice on its own account [server=%s]; compiling directly.\\n' \\\n      \"${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}\" >&2",
+    "replace": "    printf 'sccache-launcher: sccache failed twice on its own account; compiling directly.\\n' >&2",
+    "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
+    "why": "the address on the bypass line is what turns the next compile-heavy chain into the experiment: tcp:4226 in a bypass line is this bug still live in that step"
+  },
+  {
+    "id": "sccache.launcher-env-exports-to-caller",
+    "target": "linux/scripts/01-core/common.sh",
+    "find": "    ensure_sccache_env >&2 || true\n  fi\n  return 0",
+    "replace": "    (ensure_sccache_env) >&2 || true\n  fi\n  return 0",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "YB: the address has to land in the shell that runs the compiles. Established inside a subshell it dies with it, every client falls back to TCP 4226, and concurrent rootless BuildKit steps are served by each other's sccache server"
+  },
+  {
+    "id": "sccache.launcher-env-is-total",
+    "target": "linux/scripts/01-core/common.sh",
+    "find": "    ensure_sccache_env >&2 || true\n  fi\n  return 0",
+    "replace": "    ensure_sccache_env >&2\n  fi\n  return 0",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "it runs in the CALLER's shell, ahead of the launcher substitution, so a host with no usable sccache would kill a build that was about to compile uncached perfectly well"
+  },
+  {
+    "id": "sccache.launcher-env-honours-the-switch",
+    "target": "linux/scripts/01-core/common.sh",
+    "find": "  if [ \"${USE_SCCACHE:-1}\" != \"0\" ]; then\n    ensure_sccache_env >&2 || true",
+    "replace": "  if true; then\n    ensure_sccache_env >&2 || true",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "USE_SCCACHE=0 is the way a stage opts out; probing anyway starts a server for a build that asked for none"
+  },
+  {
+    "id": "sccache.launcher-env-at-every-site",
+    "target": "linux/scripts/05-frameworks/tvm-config.sh",
+    "find": "  compiler_cache_launcher_env 2>/dev/null || true\n  _tvm_launcher=",
+    "replace": "  _tvm_launcher=",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "one owner is only worth something if every resolution site calls it; a site that resolves the launcher without it addresses TCP 4226 exactly as before"
+  },
+  {
+    "id": "sccache.toolchain-mounts-the-guard",
+    "target": "linux/Dockerfile.toolchain",
+    "find": "    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh",
+    "replace": "    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "these stages mount 01-core per FILE; without sccache-launcher.sh beside common.sh the GCC/LLVM stages run BARE sccache, where an sccache fault aborts the build instead of costing a cache entry"
+  },
+  {
+    "id": "sccache.launcher-env-guarded",
+    "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+    "find": "      compiler_cache_launcher_env 2>/dev/null || true",
+    "replace": "      compiler_cache_launcher_env",
+    "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+    "why": "this file documents running WITHOUT 01-core and the next line falls back to ccache for exactly that reason; a bare call is rc 127 under set -e and aborts the stage instead of degrading"
+  },
+  {
+    "id": "trailing-conditional.group-is-unwrapped",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "    inner = unwrap_group(stmt)\n    if inner:\n        return is_finding(inner)",
+    "replace": "    pass",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a brace group returns its LAST inner statement's status; judging the group by its first word `{` misses every predicate inside one"
+  },
+  {
+    "id": "trailing-conditional.brace-not-a-continuation",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "CONT_END = (\"\\\\\", \"&&\", \"||\", \"|\", \"(\", \"then\", \"do\", \"else\")",
+    "replace": "CONT_END = (\"\\\\\", \"&&\", \"||\", \"|\", \"{\", \"(\", \"then\", \"do\", \"else\")",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "a `{` on its own line joined forward, so the predicate after it read as `{ [ -n .. ]` and hid behind the closer arm"
   }
 ]

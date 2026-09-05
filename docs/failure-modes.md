@@ -41,6 +41,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
+- [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 - [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
@@ -400,6 +401,48 @@ be (an sdkmanager component, a table column, a word from an `echo` string). Brea
 the extractor and the check exits 2 before it ever reports green. A gate whose
 input extraction can silently degrade to nothing is the failure this repo keeps
 re-learning; a scanner has to prove it is still scanning.
+
+### A from-source CPython silently drops an extension module
+
+**Symptom.** `import ssl` / `import sqlite3` / `import lzma` raises
+`ModuleNotFoundError` inside a shipped image, or an interactive `python3` has no
+line editing. The toolchain stage was green: `make -k || true` skips an extension
+whose dev header was missing at configure time and says so only in passing.
+
+**The 2026-08-09 incident** was `libsqlite3-dev`: the host closure got sqlite
+transitively through GUI dev packages, the cross-target install list forgot it,
+and half the Python ecosystem imports `sqlite3` on the way to something else.
+
+**One table, two consumers.** `01-core/cpython-dev-packages.sh` holds every row
+as `<dev-package> <required|optional> <ext-module>...`, and nothing else may keep
+a second list:
+
+| consumer | reads | verdict |
+| --- | --- | --- |
+| `package-lists.sh base_image_os_packages` | `cpython_ext_dev_packages` | the HOST closure installs the same set |
+| `build_python.sh _python_cross_stage_target_dev_pkgs` | `cpython_ext_dev_packages` + `cpython_ext_dev_packages_required` | one atomic apt install, then a per-package `dpkg-query`; a missing REQUIRED package is **fatal** |
+| `build_python.sh _python_cross_fixup_libdynload` | `cpython_ext_modules` | audits the staged `lib-dynload`; a missing `.so` **warns**, on every row |
+
+The class column therefore governs the *package*, not the `.so`. The audit is
+warn-only on purpose: promoting the required rows to fatal there flips all three
+arches at once and only a cross rebuild can price that, so the decision stays
+open rather than being smuggled in with a refactor. Until 2026-09-05 the audit
+carried its own hand-written array instead — seven modules that had never gained
+`readline` after LOG23 added it to the table, which is the same desync in
+miniature.
+
+**The parsing trap.** `build_python.sh` runs under `IFS=$'\n\t'`, where an
+unpinned `read` does not split on spaces: a row naming two modules
+(`libssl-dev required _ssl _hashlib`) would arrive as one word and the audit
+would look for an extension called `_ssl _hashlib`. Every accessor in the table
+file pins `IFS=' '` on its `read` for exactly that reason, and
+`tests/test-cpython-ext-table.sh` runs each one under both values of `IFS`.
+
+**What only a real build shows.** Whether the five modules the audit gained on
+2026-09-05 (`_zstd`, `readline`, `_curses`, `_uuid`, `_decimal`) actually land in
+`lib-dynload` on arm64 and riscv64. They are `optional` rows: a warning there is
+information, not a failure, and the toolchain smoke's own stdlib battery is what
+turns a genuinely broken interpreter red.
 
 ### The delete guard denies its own legitimate work
 

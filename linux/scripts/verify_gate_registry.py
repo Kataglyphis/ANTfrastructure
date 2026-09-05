@@ -22,7 +22,7 @@ PREFLIGHT = os.path.join(HERE, "preflight.sh")
 ALLOW = os.path.join(HERE, "gate-proofs.allow")
 TESTS_DIR = os.path.join(HERE, "tests")
 MUTATIONS = os.path.join(ROOT, "docs", "scripts", "mutations.json")
-HOOK = os.path.join(ROOT, "linux", "host-config", "git-hooks", "pre-commit")
+HOOK_DIR = os.path.join(ROOT, "linux", "host-config", "git-hooks")
 REGISTRY = os.path.join(ROOT, "docs", "code-quality-gates.md")
 BY_CONSTRUCTION = ("script-tests", "mutations")
 UNPROVEN = "UNPROVEN (frozen)"
@@ -245,11 +245,22 @@ def suites():
     return out
 
 
-def hook_slugs(text):
-    m = FAST.search(text)
-    if not m:
-        return set()
-    return {s.strip() for s in m.group(1).replace("\\\n", "").split(",") if s.strip()}
+def hook_texts():
+    """Every versioned git hook, as text. The tier column is a statement about ALL
+    of them: reading one path made a second hook's gates report as CI-only."""
+    if not os.path.isdir(HOOK_DIR):
+        return []
+    paths = [os.path.join(HOOK_DIR, fn) for fn in sorted(os.listdir(HOOK_DIR))]
+    return [_read(p) for p in paths if os.path.isfile(p)]
+
+
+def hook_slugs(texts):
+    out = set()
+    for text in texts:
+        m = FAST.search(text)
+        if m:
+            out |= {s.strip() for s in m.group(1).replace("\\\n", "").split(",") if s.strip()}
+    return out
 
 
 def hook_blocks(text):
@@ -267,25 +278,29 @@ def hook_blocks(text):
     return out
 
 
-def unscoped_hook_block(needle, text):
-    """True when the hook names the gate inside a staged-files block whose body never
-    hands it that list: the whole-tree gate, run only when the commit is relevant.
-    `--changed` is the same list under another name."""
+def hook_scope(needle, text):
+    """How ONE hook runs the gate: "scoped" when a staged-files block hands it that
+    list (`--changed` is the same list under another name), "relevant" when such a
+    block runs it whole-tree, "whole" at the hook's top level, None if unnamed."""
     for var, body in hook_blocks(text):
         if mentions(needle, body):
-            return CHANGED not in body and not mentions(var, body)
-    return False
+            return "scoped" if CHANGED in body or mentions(var, body) else "relevant"
+    return "whole" if mentions(needle, text) else None
 
 
-def hook_tier(slug, needle, fast, text):
-    """_FAST_SLUGS runs the whole gate on every commit; a later hook block runs it
-    either over the staged files or whole-tree behind a staged-files `if`, and the
-    column must say which; anything else is CI-only."""
+def hook_tier(slug, needle, fast, texts):
+    """_FAST_SLUGS runs the whole gate on every commit; any other hook runs it
+    unconditionally, whole-tree behind a staged-files `if`, or over that list, and
+    the column must say which. The widest scope any hook gives it wins."""
     if slug in fast:
         return "hook+CI"
-    if unscoped_hook_block(needle, text):
-        return "hook (whole tree, when relevant)+CI"
-    return "hook (scoped)+CI" if mentions(needle, text) else "CI"
+    scopes = {hook_scope(needle, text) for text in texts}
+    for scope, tier in (("whole", "hook (whole tree)+CI"),
+                        ("relevant", "hook (whole tree, when relevant)+CI"),
+                        ("scoped", "hook (scoped)+CI")):
+        if scope in scopes:
+            return tier
+    return "CI"
 
 
 def rows():
@@ -299,8 +314,8 @@ def rows():
     defs = shell_defs()
     tests = suites()
     entries = mutation_entries()
-    hook = _read(HOOK) if os.path.isfile(HOOK) else ""
-    fast = hook_slugs(hook)
+    hooks = hook_texts()
+    fast = hook_slugs(hooks)
     out = []
     for slug in order:
         _s, name, tokens, cmd = checks[slug]
@@ -315,7 +330,7 @@ def rows():
             "allow files": allow_files(rel, body),
             "tests": suite_names,
             "mutations": mutation_ids(entries, slug, rel, files, suite_names),
-            "hook tier": hook_tier(slug, needle, fast, hook),
+            "hook tier": hook_tier(slug, needle, fast, hooks),
             "own files": files,
         }
         row["proof"] = proof_of(row)
@@ -347,11 +362,13 @@ def render(table):
               "registered gate's file at all -- it is a descriptive family over ordinary "
               "build scripts, and the family has to be declared in `gate-proofs.allow`. "
               "Anything else fails until it is renamed, declared or frozen. "
-              "Hook tier: `hook+CI` sits in `_FAST_SLUGS` and runs "
-              "whole-tree on every commit, `hook (scoped)+CI` is run by a later hook block "
-              "over the staged files alone, `hook (whole tree, when relevant)+CI` is run "
+              "Hook tier: the widest scope any versioned hook gives the gate. "
+              "`hook+CI` sits in `_FAST_SLUGS` and runs "
+              "whole-tree on every commit, `hook (whole tree)+CI` is named at a hook's top "
+              "level and runs unconditionally, `hook (whole tree, when relevant)+CI` is run "
               "whole-tree by a block that fires only when the commit touches its inputs, "
-              "`CI` is none of those. Rationale: "
+              "`hook (scoped)+CI` is run by a hook block "
+              "over the staged files alone, `CI` is none of those. Rationale: "
               "docs/code-quality-tooling.md#gate-proof-registry-gate-registry"), "",
              "| " + " | ".join(COLUMNS) + " |",
              "|" + " --- |" * len(COLUMNS)]

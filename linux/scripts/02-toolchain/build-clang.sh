@@ -300,6 +300,7 @@ if [ "$USE_CCACHE" = "1" ]; then
     # 2026-08-26: prefer sccache, fall back to ccache if its server will not
     # answer, and add NEITHER if there is no usable cache (an empty launcher
     # would make CMake try to exec "" for every TU).
+    compiler_cache_launcher_env 2>/dev/null || true
     _clang_launcher="$(compiler_cache_launcher || true)"
     if [ -n "${_clang_launcher}" ]; then
         CMAKE_FLAGS+=(

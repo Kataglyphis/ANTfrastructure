@@ -328,7 +328,7 @@ t_fake_elf "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin/rustc" 
 t_fake_elf "${_XT}/gcc-16.2.0/bin/gcc" 183
 t_fake_elf "${_XT}/llvm/bin/clang" 183
 _out="$(_scan "${_XT}/rustup" "${_XT}/gcc-16.2.0" "${_XT}/llvm")"
-t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'Intel 80386')" "clang's multilib runtimes are its target payload"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'Intel-80386')" "clang's multilib runtimes are its target payload"
 for _t in rustup gcc-16.2.0 llvm; do
   t_assert_contains "${_out}" "TREE ${_XT}/${_t} AArch64 1" \
     "${_t}: exactly ONE object left to assert -- its own binary, not the target payload"
@@ -426,6 +426,37 @@ eval "$(sed -n '/^_RT_TREE_ARCH_EXEMPT=/p' "${SMOKE}")"
 _t_all_present "${_TREES}" "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT})" "/opt/" \
   "every arch-exempt tree must still be a declared artifact"
 
+t_case "the arch-exempt table is what the images MEASURED, not what the graph suggested"
+# HT2, measured on the three images shipped 2026-09-05. /opt/android-sdk is one
+# linux-x86_64 tree copied unchanged into all three (582 X86-64 objects in the arm64
+# and riscv64 images), so it stays. /opt/android was exempt on the same "device .so"
+# reasoning and the scan refuted it: 37 X86-64 on amd64, 37 AArch64 on arm64, 34
+# RISC-V on riscv64 and NOTHING else, because arch_android_abi_for maps each build
+# arch to the ABI with the same ELF machine.
+t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android-sdk " \
+  "the SDK's host toolchain is genuinely not this image's to assert"
+t_assert_eq 0 "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT} | grep -cxF -- '/opt/android' || true)" \
+  "/opt/android carries the image's OWN machine on all three arches -- asserting it is free"
+t_assert_contains "$(sed -n '/^arch_android_abi_for() {$/,/^}$/p' "${TESTS_DIR}/../01-core/platform.sh")" \
+  'arm64) printf '"'"'%s'"'"' "arm64-v8a"' "the mapping the deletion rests on: one ABI per arch, same machine"
+
+t_case "an ELF machine label may not contain a space"
+# The verdict line is read back with `read -r verb tree machine count sample`, so a
+# label with a space eats the count column: the 2026-09-04 run printed
+# "ships 80386 Intel object(s) ... e.g. 6 /usr/local/llvm-target/..." and the frozen
+# lookup, which keys on the machine, could never have matched it.
+_EM_LABELS="$(_extract _tree_arch_py | sed -n 's/^EM = {\(.*\)}$/\1/p' | tr ',' '\n' \
+                | sed -n 's/.*: "\([^"]*\)".*/\1/p')"
+t_assert_contains "${_EM_LABELS}" "X86-64" "the EM table moved -- this case reads nothing"
+while IFS= read -r _label; do
+  [ -n "${_label}" ] || continue
+  t_assert_eq "1" "$(printf '%s\n' ${_label} | wc -l | tr -d ' ')" \
+    "EM label '${_label}' must be one word"
+done < <(printf '%s\n' "${_EM_LABELS}")
+t_assert_contains "$(_verdicts "TREE /x Intel-80386 6 /x/libclang_rt.asan-i386.so
+TREESCAN_DONE" AArch64)" "BAD /x Intel-80386 6 /x/libclang_rt.asan-i386.so" \
+  "count and sample must survive a non-target machine name"
+
 # ── the consumer contract: the four defects a consuming lane reported ────────
 # Probe text as the gate would have seen it in :latest-cross-amd64 on 2026-09-04.
 # Every line was measured in the shipped image, not invented.
@@ -478,6 +509,7 @@ eval "${_CC_ROWS_SRC}"
 
 _CC_PARTS="${_CC_ROWS_SRC}
 $(_extract _consumer_contract_exempt)
+$(_extract _consumer_exempt_fact)
 $(_extract _consumer_contract_fact)
 $(_extract _consumer_dir_verdict)
 $(_extract _consumer_exempt_verdict)
@@ -584,7 +616,11 @@ t_case "the android row asserts exactly the two PATH entries Dockerfile.package 
 t_assert_contains "$(_cc_android yes yes)" "OK android-home" \
   "platform-tools + cmdline-tools/latest/bin is the whole claim -- build-tools and the NDK are deliberately off PATH"
 
-t_case "the riscv64 flutter rows are a documented exemption, not a silent skip"
+# HT2: what the riscv64 image ACTUALLY reports, read out of the shipped bytes on
+# 2026-09-05 -- /opt/flutter exists and is empty, so .dart_tool is absent (the row
+# would read unwritable) while `find /opt/flutter ! -uid 1001` is 0 (the row holds).
+# Only the first of those needs an exemption.
+t_case "the riscv64 flutter rows: dart-tool is exempt, flutter-owner is ASSERTED"
 _CC_RV="$(_cc_verdicts 'WRITE ccache-dir yes
 ENV ccache-dir /var/cache/ccache
 WRITE dart-tool no
@@ -593,15 +629,49 @@ FACT flutter-sdk no
 FACT flutter-foreign 0
 CCPROBE_DONE' riscv64)"
 t_assert_contains "${_CC_RV}" "EXEMPT dart-tool" "upstream ships no riscv64 Flutter SDK"
-t_assert_contains "${_CC_RV}" "EXEMPT flutter-owner" "and nothing to own"
+t_assert_contains "${_CC_RV}" "OK flutter-owner" \
+  "an empty tree owned by the runtime uid is the row PASSING, not a row to skip"
 t_assert_eq 0 "$(printf '%s\n' "${_CC_RV}" | grep -c '^BAD dart-tool')" \
   "the unwritable .dart_tool of an EMPTY riscv64 tree is not a defect"
 
+t_case "a root-owned riscv64 /opt/flutter is now a DEFECT there too"
+# The exemption used to hide CC1 defect 4 on riscv64: 37 root-owned paths would
+# have read as a documented exception.
+t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk no
+FACT flutter-foreign 37
+FACT flutter-foreign-examples /opt/flutter/bin
+CCPROBE_DONE' riscv64 flutter-owner)" "BAD flutter-owner 37 path(s)" \
+  "the ownership row must be able to go red on every arch"
+
 t_case "the exemption fails the day a riscv64 Flutter SDK appears"
 t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk yes
-FACT flutter-foreign 0
-CCPROBE_DONE' riscv64 dart-tool)" "STALE dart-tool a Flutter SDK IS present on riscv64" \
+CCPROBE_DONE' riscv64 dart-tool)" "STALE dart-tool FACT flutter-sdk says it IS present on riscv64" \
   "a table that cannot rot: the arm names itself for deletion"
+
+t_case "each exemption is re-checked by its OWN fact, not by another row's"
+# appimagetool's arm was re-checked with FACT flutter-sdk, so a riscv64 appimagetool
+# would have read EXEMPT forever -- the one thing the rot signal exists to prevent.
+_CC_AI="$(_cc_verdicts 'FACT flutter-sdk no
+FACT appimagetool-readable yes
+ENV appimagetool /usr/local/bin/appimagetool
+CCPROBE_DONE' riscv64 appimagetool)"
+t_assert_contains "${_CC_AI}" "STALE appimagetool FACT appimagetool-readable says it IS present on riscv64" \
+  "an appimagetool that appeared on riscv64 must name its own arm for deletion"
+t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk no
+FACT appimagetool-readable no
+CCPROBE_DONE' riscv64 appimagetool)" "EXEMPT appimagetool" \
+  "and the measured riscv64 shape -- packaging-deps.sh ships no riscv64 asset -- stays exempt"
+
+t_case "every per-arch exemption's rot fact is a fact the probe really emits"
+# A rot signal the probe never prints is a NOFACT on every run: the row can then
+# never be granted, and the gate reds for a reason that has nothing to do with it.
+_CC_PROBE_SRC="$(_extract _consumer_contract_probe)"
+while IFS= read -r _row; do
+  [ -n "${_row}" ] || continue
+  _f="$(bash -c "$(_extract _consumer_exempt_fact)"$'\n'"_consumer_exempt_fact '${_row}'")"
+  t_assert_contains "${_CC_PROBE_SRC}" "FACT ${_f} " "row ${_row} is re-checked by FACT ${_f}"
+done < <(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) return 0 ;;/\1/p' \
+           | tr '|' '\n' | sed 's/^[a-z0-9]*://')
 
 t_case "an exemption whose rot signal is missing fails too"
 t_assert_contains "$(_cc_verdicts 'CCPROBE_DONE' riscv64 dart-tool)" "NOFACT dart-tool" \

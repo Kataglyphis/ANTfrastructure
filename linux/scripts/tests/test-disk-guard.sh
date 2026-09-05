@@ -388,6 +388,21 @@ _bk_reset
 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 t_assert_eq "1" "$(_bk_prunes)" "a fresh caller must be able to prune again"
 
+t_case "_disk_guard_reclaim_begin is what opens the next episode (DISK2)"
+# The latch is a plain global, so in the orchestrator PROCESS the between-stage
+# guard's prune after `base` would still be latched when the runtime lane refuses
+# hours later. The two chain gates open their own episode with this; the sampler
+# does not, because its episode is the whole stage it backgrounds.
+_bk_reset
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+rm -f "${BUILDCTL_PRUNED}"
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
+t_assert_eq "1" "$(_bk_prunes)" "without a new episode the latch still holds"
+t_assert_contains "$(cat "${_bk}/o.txt")" "already pruned once here"
+_disk_guard_reclaim_begin
+_disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_eq "2" "$(_bk_prunes)" "a new episode must be able to reach the store again"
+
 t_case "a cache-mount record that did NOT survive is reported loudly"
 _bk_reset
 BUILDCTL_MOUNTS_AFTER=90 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1

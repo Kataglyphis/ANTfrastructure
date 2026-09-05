@@ -7,6 +7,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 HOOK="${TESTS_DIR}/../../host-config/git-hooks/pre-commit"
 
 _work="$(mktemp -d)"
@@ -75,23 +76,16 @@ case "$*" in
 esac
 STUB
 chmod +x "${_work}/bin/git"
-cat > "${_root}/docs/scripts/verify_mutations.py" <<'STUB'
-import os
-import sys
-
-with open(os.environ["HOOK_TEST_ARGV"], "w", encoding="utf-8") as fh:
-    fh.write("\n".join(sys.argv[1:]))
-sys.exit(int(os.environ["HOOK_TEST_GATE_RC"]))
-STUB
+gate_stub_recorder "${_root}/docs/scripts/verify_mutations.py"
 
 _run_hook() {
   rm -f "${_ARGV}"
   PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_STAGED="$2" \
-    HOOK_TEST_ARGV="${_ARGV}" HOOK_TEST_GATE_RC="${3-0}" \
+    HOOK_TEST_ARGV="${_ARGV}" HOOK_TEST_GATE_RC="${3-0}" HOOK_TEST_STALE_RC=0 \
     PRECOMMIT_MUTATION_CAP="$1" PRECOMMIT_MUTATION_MANIFEST="${_work}/manifest.json" \
     bash "${HOOK}" 2>&1
 }
-_gate_ids() { grep -c -v -x -e '--only' "${_ARGV}"; }
+_gate_ids() { grep -o -e '--only' "${_ARGV}" | grep -c .; }
 _notice_ran() { sed -n 's/.*SAMPLED \([0-9]*\) of [0-9]*.*/\1/p' <<<"$1"; }
 
 t_case "capped, end to end: the SAMPLED notice reaches the developer's terminal"

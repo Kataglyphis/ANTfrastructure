@@ -193,10 +193,7 @@ if [ "${MEDIA_STRIP:-1}" = "1" ]; then
     -exec "${STRIP:-strip}" --strip-all {} + 2>/dev/null || true
 fi
 
-info "Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}"
-info "Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels"
-ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true
-find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
+report_onnx_build_output "Build complete" "${NATIVE_CPU_OUTPUT_DIR}"
 
 # Validation step
 lib_dir="${NATIVE_CPU_OUTPUT_DIR}/lib"

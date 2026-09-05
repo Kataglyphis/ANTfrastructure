@@ -114,11 +114,26 @@ path, because that is the sentence someone will paste into a search.
 
 `_consumer_contract_exempt` is a `<arch>:<row>` table, same contract as
 `_parity_exempt`: listed means reviewed, and an arm that **stops** applying fails
-so the table cannot rot in place. Today it holds exactly two arms, both
-`riscv64`, both about Flutter — upstream publishes no riscv64 SDK, `/opt/flutter`
-ships empty there, and `check_flutter` asserts that absence instead. The rot
-signal is the probe's own `FACT flutter-sdk`: the day a riscv64 SDK lands, both
-arms fail and name themselves for deletion.
+so the table cannot rot in place. Each arm is re-checked by **its own** probe
+fact, named by `_consumer_exempt_fact`; `yes` is `STALE` and names the arm for
+deletion, a missing fact is `NOFACT` and never a grant.
+
+Two arms, both `riscv64`, both measured on the image shipped 2026-09-05 rather
+than argued from the build graph:
+
+| arm | rot fact | what the riscv64 image reports |
+|---|---|---|
+| `dart-tool` | `flutter-sdk` | `/opt/flutter` exists and is **empty**, so `packages/flutter_tools/.dart_tool` is absent and the row would read as unwritable. Upstream publishes no riscv64 SDK; `check_flutter` asserts that absence instead |
+| `appimagetool` | `appimagetool-readable` | no `appimagetool` on `PATH` at all — `packaging-deps.sh`'s asset table covers x86_64/aarch64/armhf/i686 and refuses the rest |
+
+`flutter-owner` **was** a third arm and is gone. The same probe measures
+`find /opt/flutter ! -uid 1001` as **0** on riscv64, which is the row *passing*,
+not a row to skip: an empty tree owned by the runtime uid satisfies the promise.
+Exempting it also hid the defect the row exists for — a root-written SDK would
+have read as a documented exception on that arch. Until 2026-09-05 the
+`appimagetool` arm was re-checked with `FACT flutter-sdk`, i.e. by another row's
+fact, so a riscv64 appimagetool could never have been noticed; that is what
+`_consumer_exempt_fact` fixes.
 
 The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
 was measured present in all three shipped arches on 2026-09-04, and the parity

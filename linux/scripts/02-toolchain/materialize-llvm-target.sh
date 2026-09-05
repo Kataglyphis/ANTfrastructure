@@ -16,6 +16,34 @@
 # Requires: /opt/scripts/core/platform.sh (assert_elf_arch).
 set -euo pipefail
 
+# One reader of DT_NEEDED for both the amd64 fill and the self-containment walk.
+_elf_needed() {
+    LC_ALL=C readelf -d "$1" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'
+}
+
+# Materialise into <prefix>/lib exactly the LLVM-family sonames the prefix's own
+# objects DT_NEED and cannot resolve there, from <src>; repeat until a round adds
+# nothing, because a filled lib brings its own NEEDED.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+_llvm_target_fill_needed() {
+    local prefix="$1" src="$2" round=0 added=1 e n
+    while [ "${added}" = 1 ] && [ "${round}" -lt 4 ]; do
+        added=0
+        round=$((round + 1))
+        for e in "${prefix}"/bin/* "${prefix}"/lib/*.so*; do
+            [ -f "${e}" ] || continue
+            for n in $(_elf_needed "${e}"); do
+                case "${n}" in libLLVM*|libclang*) ;; *) continue ;; esac
+                [ ! -e "${prefix}/lib/${n}" ] || continue
+                [ -e "${src}/${n}" ] || continue
+                rm -f "${prefix}/lib/${n}"
+                cp -a "${src}/${n}" "${prefix}/lib/${n}"
+                added=1
+            done
+        done
+    done
+}
+
 _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
 _major="${LLVM_RELEASE%%.*}"
 rm -rf /opt/llvm-target
@@ -40,43 +68,17 @@ if [ "${_arch}" = "amd64" ]; then
     echo "amd64 target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"
     cp -a "${_hostllvm}" /opt/llvm-target
 
-    # Make the amd64 prefix SELF-CONTAINED (root fix for the 2026-08-11
-    # franken-toolchain incident): an apt LLVM tree ships lib/ as dev SYMLINKS
-    # into /usr/lib/x86_64-linux-gnu — the runtime sonames (libLLVM.so.22.1,
-    # libclang-cpp.so.22.1) never entered the prefix, so the shipped clang
-    # silently bound to whatever ambient libLLVM the consuming image carried.
-    # Copy the multiarch runtime sonames next to the driver (no-op when the
-    # source-built prefix already ships real files), then HARD-GATE below:
-    # every LLVM-family NEEDED of the shipped binaries must resolve inside the
-    # prefix. Dockerfile.package keeps a matching copy as belt-and-braces for
-    # older sdk artifacts.
     mkdir -p /opt/llvm-target/lib
-    for _so in /usr/lib/x86_64-linux-gnu/libLLVM*.so.2* \
-               /usr/lib/x86_64-linux-gnu/libclang-cpp*.so.2* \
-               /usr/lib/x86_64-linux-gnu/libclang*.so.2*; do
-        [ -e "${_so}" ] || continue
-        _b="$(basename "${_so}")"
-        if [ ! -e "/opt/llvm-target/lib/${_b}" ]; then
-            # -e is FALSE for a dangling symlink (the apt tree links
-            # lib/<soname> into the multiarch dir it was copied away from) —
-            # rm it first or cp refuses "not writing through dangling
-            # symlink". A REAL file short-circuits the copy.
-            rm -f "/opt/llvm-target/lib/${_b}"
-            cp -a "${_so}" "/opt/llvm-target/lib/${_b}"
-        fi
-    done
+    _llvm_target_fill_needed /opt/llvm-target /usr/lib/x86_64-linux-gnu
 
-    # NEEDED walk: every DT_NEEDED of the prefix's binaries/libs must resolve
-    # inside <prefix>/lib or (for non-LLVM system deps like libc/libstdc++/
-    # zlib) against the base image's ldconfig cache. The cache is captured
-    # ONCE into a variable and matched with `case` — `ldconfig -p | grep -q`
+    # The cache is captured ONCE and matched with `case` -- `ldconfig -p | grep -q`
     # would die of SIGPIPE under pipefail.
     _ldcache="$(ldconfig -p 2>/dev/null || true)"
     _missing=""
     for _e in /opt/llvm-target/bin/* /opt/llvm-target/lib/*.so*; do
         [ -f "${_e}" ] || continue
         LC_ALL=C readelf -h "${_e}" >/dev/null 2>&1 || continue
-        for _n in $(LC_ALL=C readelf -d "${_e}" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'); do
+        for _n in $(_elf_needed "${_e}"); do
             [ ! -e "/opt/llvm-target/lib/${_n}" ] || continue
             case "${_n}" in
                 libLLVM*|libclang*) _missing="${_missing} ${_e##*/}:${_n}" ;;

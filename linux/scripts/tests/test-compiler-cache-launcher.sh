@@ -104,4 +104,97 @@ case "${_leaky}" in
   *)      t_assert_eq "mutation NOT detected (${_leaky})" "detected" ;;
 esac
 
+
+# ── the address must reach the shell that runs the COMPILES (YB) ─────────────
+# compiler_cache_launcher is always resolved with $( ), and a subshell cannot
+# export to its parent, so the sccache server address set inside it never
+# reached ninja: every client fell back to TCP 4226 and rootless BuildKit steps
+# were served by each other's server. compiler_cache_launcher_env is the one
+# owner of the parent-shell half.
+_load_env_fn() {
+  # shellcheck disable=SC1090
+  source "${TESTS_DIR}/../01-core/logging.sh"
+  eval "$(sed -n '/^compiler_cache_launcher_env() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
+}
+
+t_case "the env owner exports the address into the CALLER's shell"
+_env_out="$(
+  _load_env_fn
+  ensure_sccache_env() { export SCCACHE_SERVER_UDS=/tmp/probe.sock; info "Using sccache"; return 0; }
+  compiler_cache_launcher_env
+  printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}"
+)"
+t_assert_eq "${_env_out}" "/tmp/probe.sock" "a \$( ) resolver cannot do this; that is the whole defect"
+
+t_case "MUTATION: the same call inside \$( ) leaves the caller UNSET"
+_env_lost="$(
+  _load_env_fn
+  ensure_sccache_env() { export SCCACHE_SERVER_UDS=/tmp/probe.sock; return 0; }
+  _inner="$(compiler_cache_launcher_env; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
+  printf '%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}"
+)"
+t_assert_eq "${_env_lost}" "/tmp/probe.sock|UNSET" "the address is set and then discarded with the subshell"
+
+t_case "the env owner is TOTAL: no usable sccache must not kill the caller"
+_env_rc="$(
+  set -e
+  _load_env_fn
+  ensure_sccache_env() { warn "sccache not found"; return 1; }
+  compiler_cache_launcher_env
+  printf 'survived'
+)"
+t_assert_eq "${_env_rc}" "survived" "it runs under the caller's set -e, before the launcher is resolved"
+
+t_case "USE_SCCACHE=0 never probes for a server"
+_probe_mark="${TMPDIR:-/tmp}/ccl-probed.$$"
+rm -f "${_probe_mark}"
+(
+  _load_env_fn
+  ensure_sccache_env() { : > "${_probe_mark}"; return 0; }
+  USE_SCCACHE=0 compiler_cache_launcher_env
+) >/dev/null 2>&1
+t_assert_eq "$([ -e "${_probe_mark}" ] && echo probed || echo quiet)" "quiet" \
+  "the switch is honoured before anything starts a server"
+rm -f "${_probe_mark}"
+
+t_case "the env owner writes nothing to stdout"
+_env_quiet="$(
+  _load_env_fn
+  ensure_sccache_env() { info "Using sccache with SCCACHE_DIR=/x (cap 30G)"; return 0; }
+  compiler_cache_launcher_env 2>/dev/null
+)"
+t_assert_eq "${_env_quiet}" "" "callers capture the launcher next; a leak here is the 2026-08-26 CC= disaster again"
+
+# ── drift pins: the owner has to be AT the sites, and the guard has to be mounted
+t_case "every launcher resolution in the closure is preceded by the env owner"
+_SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
+_unpaired=""
+while IFS=: read -r _f _n _; do
+  case "${_f}" in
+    */tests/*|*/01-core/common.sh|*/01-core/compiler-cache.sh) continue ;;
+  esac
+  [ -n "${_n}" ] || continue
+  # The owner is called guarded (2>/dev/null || true): 01-core may be absent, and a
+  # bare call there is rc 127 under set -e where the line below degrades to ccache.
+  if [ "$(sed -n "$((_n - 1))p" "${_f}" | tr -d ' \t')" != "compiler_cache_launcher_env2>/dev/null||true" ]; then
+    _unpaired="${_unpaired} ${_f}:${_n}"
+  fi
+done < <(grep -rn --include='*.sh' -F '$(compiler_cache_launcher' "${_SCRIPTS}" 2>/dev/null)
+t_assert_eq "${_unpaired}" "" "a site that resolves the launcher without establishing the address addresses TCP 4226"
+
+t_case "the toolchain stages mount the guarded launcher beside common.sh"
+_DF="${TESTS_DIR}/../../Dockerfile.toolchain"
+t_assert_eq \
+  "$(grep -c 'source=linux/scripts/01-core/common.sh' "${_DF}")" \
+  "$(grep -c 'source=linux/scripts/01-core/sccache-launcher.sh' "${_DF}")" \
+  "without it these stages run BARE sccache, where an sccache fault ABORTS the build"
+
+t_case "every production call to compiler_cache_launcher_env tolerates 01-core being absent"
+# Four of these files document running without 01-core, and each call sits directly
+# above `compiler_cache_launcher 2>/dev/null || echo ccache` -- a fallback that exists
+# BECAUSE the function may be missing. A bare call there is rc 127 under set -e.
+_unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include='*.sh' \
+  | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v '2>/dev/null || true' || true)"
+t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage instead of degrading to ccache"
+
 t_summary

@@ -560,15 +560,25 @@ _consumer_contract_symptom() {
 # docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
   case "$1:$2" in
-    # Upstream publishes no riscv64 Flutter SDK, so /opt/flutter ships EMPTY there and
-    # check_flutter asserts that absence instead. The rot signal is the probe's own
-    # FACT flutter-sdk: the day a riscv64 SDK lands, both arms fail and name themselves.
-    riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;
+    # Upstream publishes no riscv64 Flutter SDK, so the .dart_tool directory the row
+    # asks about does not exist there and the row would read as unwritable.
+    # flutter-owner is NOT exempt: measured on the shipped riscv64 image, the row
+    # already holds. docs/consumer-image-contract.md#per-arch-exemptions
+    riscv64:dart-tool) return 0 ;;
     # AppImage publishes no riscv64 build either: packaging-deps.sh's asset table
     # covers x86_64/aarch64/armhf/i686 and refuses the rest, so the tool is absent
     # there by construction and the AppImage format is not offered on riscv64.
     riscv64:appimagetool) return 0 ;;
     *) return 1 ;;
+  esac
+}
+
+# The probe FACT that re-checks one exempted row. An exemption re-checked by ANOTHER
+# row's fact cannot rot at all — appimagetool's was read from FACT flutter-sdk.
+_consumer_exempt_fact() {
+  case "$1" in
+    appimagetool) printf '%s' 'appimagetool-readable' ;;
+    *)            printf '%s' 'flutter-sdk' ;;
   esac
 }
 
@@ -671,13 +681,13 @@ _consumer_dir_verdict() {
 }
 
 # An exempted row still has to prove its exemption still applies: the rot signal is the
-# probe's own FACT flutter-sdk, and a missing one is NOFACT, never a grant.
+# row's OWN probe fact, and a missing one is NOFACT, never a grant.
 # docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_exempt_verdict() {
   case "$3" in
-    yes) printf 'STALE %s a Flutter SDK IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$2" "$2" "$1" ;;
+    yes) printf 'STALE %s FACT %s says it IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$4" "$2" "$2" "$1" ;;
     no)  printf 'EXEMPT %s' "$1" ;;
-    *)   printf 'NOFACT %s no FACT flutter-sdk, so the exemption cannot be re-checked' "$1" ;;
+    *)   printf 'NOFACT %s no FACT %s, so the exemption cannot be re-checked' "$1" "$4" ;;
   esac
 }
 
@@ -758,11 +768,12 @@ _consumer_owner_verdict() {
 # <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
 # path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
 _consumer_contract_verdicts() {
-  local arch="$1" probe="$2" row sdk line asserted=0
-  sdk="$(_consumer_contract_fact "${probe}" FACT flutter-sdk)"
+  local arch="$1" probe="$2" row fact line asserted=0
   for row in ${_CONSUMER_CONTRACT_ROWS}; do
     if _consumer_contract_exempt "${arch}" "${row}"; then
-      line="$(_consumer_exempt_verdict "${row}" "${arch}" "${sdk}")"
+      fact="$(_consumer_exempt_fact "${row}")"
+      line="$(_consumer_exempt_verdict "${row}" "${arch}" \
+                "$(_consumer_contract_fact "${probe}" FACT "${fact}")" "${fact}")"
     else
       case "${row}" in
         android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
@@ -869,15 +880,19 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
 # 127) and Flutter's Dart SDK both did, and only their own gates caught them.
 # docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
 
-# Trees whose ELF machine is NOT this image's by design. The arm names the TREE, never
-# an arch, so a newly host-installed tree fails by default; both here are android-lane
-# payloads (device .so + the SDK's host tooling) whose arch says nothing about the image.
-_RT_TREE_ARCH_EXEMPT="/opt/android /opt/android-sdk"
+# Trees whose ELF machine is NOT this image's by design, MEASURED on shipped bytes
+# rather than reasoned: the SDK is one linux-x86_64 tree copied unchanged into all
+# three images. The arm names the TREE, never an arch, so a newly host-installed tree
+# fails by default. /opt/android was exempt on the same reasoning until the same
+# measurement refuted it. docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
+_RT_TREE_ARCH_EXEMPT="/opt/android-sdk"
 
 # Builder-arch objects a foreign image still ships, frozen WITH their count so a new
 # one fails while a known one is tracked: <arch>:<tree>:<machine>:<count>. These are
-# defects with a backlog entry (HT2), not waivers -- the list only ratchets down.
-_RT_TREE_ARCH_FROZEN="arm64:/usr/local/llvm-target:X86-64:5 riscv64:/usr/local/llvm-target:X86-64:5"
+# defects with a backlog entry, not waivers -- the list only ratchets down, and it is
+# EMPTY: the five llvm-target x86-64 libs it held were fixed at the source (HT3).
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+_RT_TREE_ARCH_FROZEN=""
 
 # Prints the frozen count for this finding, empty when it is not frozen.
 _rt_tree_arch_frozen() {
@@ -894,8 +909,10 @@ _rt_tree_arch_exempt() {
 
 # Where the gate probes a manifest tree in the image: the manifest carries the COPY
 # SOURCE path, one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
-# owns the other half), and /opt/vulkan ships the SDK's x86_64 HOST tools beside the
+# owns the other half), and /opt/vulkan ships a whole builder-arch SDK beside the
 # cross-built target libs, so only what VULKAN_SDK resolves to is this image's to assert.
+# What that narrowing does NOT look at was measured, and it is not small:
+# docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
 _rt_tree_probe_path() {
   case "$1" in
     /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
@@ -939,7 +956,9 @@ _tree_arch_py() {
   cat <<'PY'
 import os
 import re
-EM = {3: "Intel 80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+# No space in a label: the verdict line is read back with `read -r verb tree machine
+# count sample`, and "Intel 80386" ate the count column on 2026-09-04.
+EM = {3: "Intel-80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
 # A cross toolchain SHIPS foreign objects on purpose: these three directory shapes are
 # its target payload, not the image's own binaries. Everything else in the tree -- the
 # compilers and libraries the image itself runs -- is still asserted.
@@ -1064,12 +1083,12 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
       NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
       BAD)     _frozen="$(_rt_tree_arch_frozen "${target_arch}" "${tree}" "${machine}" || true)"
                if [ -n "${_frozen}" ] && [ "${_frozen}" = "${count}" ]; then
-                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT2) -- known, counted, not waived"
+                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT3) -- known, counted, not waived"
                  continue
                fi
                if [ -n "${_frozen}" ]; then
                  bad=$((bad + 1))
-                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT2) -- the count MOVED; find what changed before re-freezing"
+                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT3) -- the count MOVED; find what changed before re-freezing"
                  continue
                fi
                bad=$((bad + 1))

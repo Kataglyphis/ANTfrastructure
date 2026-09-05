@@ -56,9 +56,10 @@ help: ## List available targets
 	@echo ""
 	@echo "Variables: ARCHES=$(ARCHES)  STAGE=$(STAGE)  LOG_DIR=$(LOG_DIR)"
 
-hooks: ## Install the versioned git hooks (pre-commit fast gate)
+hooks: ## Install the versioned git hooks (pre-commit fast gate, pre-push mutation coverage)
 	git config core.hooksPath linux/host-config/git-hooks
 	@echo "core.hooksPath -> linux/host-config/git-hooks (pre-commit runs the 8-27s gate; its mutation step is SAMPLED)"
+	@echo "  pre-push adds what the sample skips: staleness over the whole mutation manifest, then --changed for real"
 
 preflight: ## Fast no-build gate (shellcheck + verify-* suite)
 	bash $(SCRIPTS)/preflight.sh

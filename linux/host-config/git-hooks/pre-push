@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# pre-push — the mutation coverage a per-commit sample cannot pay for.
+#
+# pre-commit proves at most PRECOMMIT_MUTATION_CAP entries of the STAGED files and
+# CI proves all of them; between the two there was nothing. Staleness over the
+# whole manifest costs one read per target, and `--changed` is push scope by
+# definition. docs/code-quality-tooling.md#the-pre-push-hook
+set -euo pipefail
+
+_root="$(git rev-parse --show-toplevel)"
+cd "${_root}"
+
+echo "pre-push: mutation staleness over the whole manifest…"
+python3 docs/scripts/verify_mutations.py --stale-check || {
+  echo "pre-push: a recorded mutation no longer applies — re-point or delete it, or 'git push --no-verify'" >&2
+  exit 1
+}
+
+echo "pre-push: mutation gate over everything since origin/main…"
+python3 docs/scripts/verify_mutations.py --changed --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
+  echo "pre-push: a recorded mutation SURVIVED — a test here cannot fail" >&2
+  exit 1
+}
+
+echo "pre-push: OK"

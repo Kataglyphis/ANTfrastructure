@@ -63,6 +63,6 @@ csv_each() {
   local -a _items=()
   IFS=',' read -ra _items <<< "${_csv}"
   for _item in "${_items[@]}"; do
-    [ -n "${_item}" ] && "${_fn}" "${_item}"
+    if [ -n "${_item}" ]; then "${_fn}" "${_item}"; fi
   done
 }

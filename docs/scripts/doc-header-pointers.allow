@@ -1,0 +1,64 @@
+# Frozen 2026-09-05: code-file HEADER pointers that name a docs page and no section.
+# Two-way: a row whose file stops carrying that bare pointer -- because it gained an
+# anchor, or moved -- is STALE and the line goes. The key is <file>\t<page>, never a
+# line number. Backlog CL4.
+# docs/code-quality-tooling.md#header-pointers-must-name-a-section
+
+# (a) The page IS the subject. Naming it names the section: these pages exist for
+# exactly the one file that points at them, so an anchor would add a second name for
+# the same thing and rot on the next heading rewrite. Not debt.
+docs/scripts/verify_doc_dupes.py	docs/INDEX.md
+linux/scripts/01-core/resource-monitor.sh	docs/build-resource-monitoring.md
+linux/scripts/lib/slang-compile.sh	docs/slang-shader-compilation.md
+linux/scripts/tests/test-artifact-copy-completeness.sh	docs/artifact-copy-completeness.md
+linux/scripts/tests/test-genai-smoke-payload.sh	docs/gen1-riscv64-genai.md
+linux/scripts/tests/test-litert-qairt-guard.sh	docs/qnn-linux.md
+linux/scripts/tests/test-riscv64-isa-gate.sh	docs/riscv64-rva23-baseline.md
+
+# (b) Pointers into refactoring-backlog.md. These must NOT be anchored: an OPEN
+# backlog entry is archived when it closes, so an anchor there is built to rot, and
+# the gate exempts archives from the anchor check precisely because dated records
+# must not be edited to keep a gate quiet. The fix is to re-point each of these at
+# the durable page that explains the behaviour -- per file, not mechanical.
+linux/scripts/tests/test-codec-so-map-convergence.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-gcc-errexit-contract.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-gcc-tarball-verification.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-gi-cross-detect.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-gstreamer-env.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-layer-order.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-lib-smoke.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-manifest-wrapper-gate.sh	docs/refactoring-backlog.md
+linux/scripts/tests/test-uv-conflict-extras.sh	docs/refactoring-backlog.md
+
+# (c) The real debt: a header naming a large multi-subject page. Each of these wants
+# one anchor at the section that actually owns the file. They are frozen so the 46th
+# cannot be added silently, NOT because they were approved.
+linux/scripts/01-core/compiler-cache.sh	docs/build-cache-tiers.md
+linux/scripts/03-media/build/litert/android/litert-eigen-fetch.sh	docs/failure-modes.md
+linux/scripts/06-packaging/smoke-runtime-image.sh	docs/cross-build-verification.md
+linux/scripts/build-cross-chain.sh	docs/linux-cross-builds.md
+linux/scripts/lint-shell.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-advertised-keys.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-base-image-parse-options.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-cache-salvage-gate.sh	docs/build-cache-tiers.md
+linux/scripts/tests/test-code-size.sh	docs/code-quality-tooling.md
+linux/scripts/tests/test-cpython-ext-table.sh	docs/failure-modes.md
+linux/scripts/tests/test-delete-guard.sh	docs/failure-modes.md
+linux/scripts/tests/test-embedded-python-extract.sh	docs/code-quality-tooling.md
+linux/scripts/tests/test-genai-smoke-payload.sh	docs/failure-modes.md
+linux/scripts/tests/test-iree-wheelhouse-stages.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-llvm-cross-stanza.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-logging-err-trap.sh	docs/failure-modes.md
+linux/scripts/tests/test-masked-assignments.sh	docs/failure-modes.md
+linux/scripts/tests/test-package-names.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-sccache-launcher.sh	docs/build-cache-tiers.md
+linux/scripts/tests/test-soname-precedence.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-tvm-cmake-args.sh	docs/cross-build-verification.md
+linux/scripts/tests/test-vulkan-target-decomposition.sh	docs/cross-build-verification.md
+linux/scripts/verify-manifest-freshness.sh	docs/cross-build-verification.md
+linux/scripts/verify_advertised_keys.py	docs/cross-build-verification.md
+linux/scripts/verify_comment_size.py	docs/code-quality-tooling.md
+linux/scripts/verify_gate_registry.py	docs/code-quality-gates.md
+linux/scripts/verify_masked_assignments.py	docs/failure-modes.md
+linux/scripts/verify_script_copy_coverage.py	docs/cross-build-verification.md
+linux/scripts/tests/test-agentic-loop.sh	docs/agentic-loop-build-matrix.md

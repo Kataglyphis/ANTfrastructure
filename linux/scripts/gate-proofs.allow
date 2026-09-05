@@ -1,12 +1,18 @@
 # gate-proofs.allow -- three namespaces for the gate-registry meta-gate.
 #
 # Bare lines: preflight slugs with neither a test suite naming their script nor a
-# mutations.json entry. Baseline frozen 2026-09-03 at 15 of 33 slugs; 11 of 34
-# today -- doc-dupes left on 2026-09-04, stdout-returns left the same day with a
-# suite and four mutations, pkg-names left with a 20-assertion characterisation
-# suite, the new trailing-conditional slug shipped proven, and dockerfile-lint
-# left the same day when its ENV-ordering pass arrived with a suite and eight
-# mutations.
+# mutations.json entry. Baseline frozen 2026-09-03 at 15 of 33 slugs; 2 of 34
+# today. Three left on 2026-09-04 (doc-dupes, stdout-returns, pkg-names) and
+# dockerfile-lint with them; the 2026-09-05 wave closed nine more --
+# copy-coverage, patch-integrity, arg-consistency, mirror-consistency,
+# runtime-paths, workflow-lint, secret-scan, android-parity, sbom -- each with a
+# characterisation suite over the real gate plus mutations on its own script.
+# The two that remain are frozen for a NAMED reason, not for want of a suite:
+# critical-fixes is half host-testable and half only meaningful inside a built
+# image, and version-snapshot's verdict is an OR over seven sub-checks, so a
+# suite reddening one of them would un-freeze it while six stayed unproven.
+# Both reasons, and the route out of each, are in
+# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons.
 # The list only ratchets DOWN -- a NEW unproven slug fails gate-registry, and a
 # line that has gained a proof is STALE and must be deleted. The cheapest
 # proof per slug is sketched in docs/code-quality-tooling.md.
@@ -21,23 +27,13 @@
 # mutation-family: lines: declared descriptive prefixes for mutations over
 # ORDINARY build scripts, which no gate owns. Not debt -- a vocabulary. An
 # undeclared prefix fails, and a family no id carries any more is STALE.
-android-parity
-arg-consistency
-copy-coverage
 critical-fixes
-mirror-consistency
-patch-integrity
-runtime-paths
-sbom
-secret-scan
 version-snapshot
-workflow-lint
 mutation-family:android-env
 mutation-family:bench-agent
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build
-mutation-family:cross-gcc
 mutation-family:version-forwarding
 mutation-family:dead-code
 mutation-family:delete-guard
@@ -46,14 +42,17 @@ mutation-family:doc-numbers
 mutation-family:env-knob-default
 mutation-family:flutter
 mutation-family:gate-fixture
+mutation-family:gst
 mutation-family:guard-helpers
 mutation-family:handoff
 mutation-family:harvest
 mutation-family:lib
+mutation-family:llvm-target
 mutation-family:pre-commit
 mutation-family:preflight-slugs
 mutation-family:packaging
 mutation-family:probe
+mutation-family:python
 mutation-family:qairt
 mutation-family:rust
 mutation-family:sccache

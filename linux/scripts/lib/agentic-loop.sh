@@ -415,7 +415,7 @@ invoke_agent() {
         fi
         local sleep_s=$((delay * attempt))
         log "Agent failed (exit=$rc). Retry $attempt/$retries in ${sleep_s}s..." "WARN"
-        [[ "${DRY_RUN:-false}" != "true" ]] && sleep "$sleep_s"
+        if [[ "${DRY_RUN:-false}" != "true" ]]; then sleep "$sleep_s"; fi
     done
 }
 

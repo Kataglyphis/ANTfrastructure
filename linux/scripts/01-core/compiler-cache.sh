@@ -54,6 +54,27 @@ _flag_disabled() {
   esac
 }
 
+# One owner for the sccache server ADDRESS, and it must run in the shell that
+# runs the compiles: exporting it inside a $( ) substitution loses it, every
+# client then falls back to the shared TCP port, and concurrent BuildKit steps
+# reach each other's server. That was measured, twice.
+# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+sccache_export_server_address() {
+  if [ -n "${SCCACHE_SERVER_UDS:-}" ] || [ -n "${SCCACHE_SERVER_PORT:-}" ]; then
+    return 0
+  fi
+  local _scv _scv_maj _scv_rest _scv_min _scp_off
+  _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
+  _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
+  if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
+    SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
+    export SCCACHE_SERVER_UDS
+  else
+    _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
+    export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+  fi
+}
+
 # Single resolver for the launcher name (backlog F2): every caller resolves
 # through common.sh's compiler_cache_launcher() -- the one place that knows
 # the guarded-launcher preference, the sccache server start, and the ccache
@@ -68,17 +89,7 @@ _resolve_compiler_cache_launcher() {
   fi
   # Bootstrap path (no 01-core loaded): identical resolution, inline.
   if command -v sccache >/dev/null 2>&1; then
-    if [ -z "${SCCACHE_SERVER_UDS:-}" ] && [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
-      _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
-      _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
-      if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
-        SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
-        export SCCACHE_SERVER_UDS
-      else
-        _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
-        export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
-      fi
-    fi
+    sccache_export_server_address
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
       # Guarded launcher, never bare sccache: sccache ABORTS the build on its own
@@ -124,6 +135,9 @@ setup_ccache() {
   export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
   _cc_launcher="ccache"
   if ! _flag_disabled "${USE_SCCACHE}"; then
+    if _sccache_available; then
+      sccache_export_server_address
+    fi
     _cc_launcher="$(_resolve_compiler_cache_launcher)"
     case "${_cc_launcher}" in
       *sccache*) : ;;
@@ -170,6 +184,7 @@ setup_sccache() {
   export SCCACHE_CACHE_SIZE
 
   mkdir -p "${SCCACHE_DIR}" 2>/dev/null || true
+  sccache_export_server_address
 
   # Guarded launcher, never the bare string (AGENTS.md): setup-gstreamer.sh calls this
   # BEFORE build-gstreamer-monorepo.sh tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so whatever

@@ -1,25 +1,12 @@
 # shellcheck shell=bash
 # Source-only helper -- do not execute directly.
-# cpython-dev-packages.sh - THE single table tying CPython's external-library
-# stdlib extension modules to the apt -dev packages they link against.
-#
-# Structural parity (backlog TS3): before this table there were three
-# independently hand-maintained truths -- the HOST dev-package list
-# (package-lists.sh base_image_os_packages), the CROSS-target install list
-# (02-toolchain/python/build_python.sh), and the extension-assert lists
-# (build_python.sh cross staging + smoke-toolchain.sh). The 2026-08-09
-# libsqlite3-dev incident was exactly this desync: the host closure only got
-# sqlite transitively (via GUI dev packages), the cross list forgot it, and no
-# assert noticed. Both package sites now derive from this table, so a
-# PYTHON_VERSION bump or a new dev-package dependency cannot desync host and
-# target again. The <ext-module> column is documentation only -- its two class
-# accessors were deleted 2026-09-04 with no caller ever having used them.
+# cpython-dev-packages.sh - THE table tying CPython's stdlib extension modules to
+# the apt -dev packages they link against. Three consumers derive from it and none
+# may keep a second list; the class governs the PACKAGE (a missing required one is
+# fatal on cross staging), while a missing .so only ever warns.
+# docs/failure-modes.md#a-from-source-cpython-silently-drops-an-extension-module
 #
 # Row format: "<dev-package> <required|optional> <ext-module>[ <ext-module>...]"
-#   required - the target-arch dev-package install is FATAL on cross staging,
-#              and the listed extension .so files MUST land in lib-dynload.
-#   optional - tolerated when apt cannot install the package or the extension
-#              is deliberately not built; asserts are warn-only.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2
@@ -61,9 +48,8 @@ _CPYTHON_EXT_DEV_PKG_TABLE=(
   "libmpdec-dev optional _decimal"
 )
 
-# All parsing below pins IFS=' ' on the read builtin: several consumers
-# (build_python.sh) run under IFS=$'\n\t', where an unpinned read would NOT
-# split the space-separated row fields.
+# Every read below pins IFS=' ': build_python.sh runs under IFS=$'\n\t', where
+# an unpinned read does not split a row into fields at all.
 
 # Every dev package in the table, one per line.
 cpython_ext_dev_packages() {
@@ -84,3 +70,16 @@ _cpython_dev_pkgs_by_class() {
 }
 
 cpython_ext_dev_packages_required() { _cpython_dev_pkgs_by_class required; }
+
+# Every extension module the table names, one per line; a row may name several.
+cpython_ext_modules() {
+  local row pkg class mods
+  local -a mod_words
+  for row in "${_CPYTHON_EXT_DEV_PKG_TABLE[@]}"; do
+    IFS=' ' read -r pkg class mods <<< "${row}"
+    IFS=' ' read -r -a mod_words <<< "${mods}"
+    if [ "${#mod_words[@]}" -gt 0 ]; then
+      printf '%s\n' "${mod_words[@]}"
+    fi
+  done
+}

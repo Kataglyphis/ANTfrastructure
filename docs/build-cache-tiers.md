@@ -283,10 +283,15 @@ Landed 2026-09-04, after the 2026-09-03 runtime run died at **4 G** free while
 rescue, `PRUNE_KEEP_GB=120 linux/host-config/prune-safe.sh`, freed **223 G in
 36 s** with all **97** cache-mount records surviving.
 
-`_disk_guard_buildkit_fallback` is that rescue, wired into
-`_disk_guard_watch_once` **after** the cache-export trim: it re-measures free
-space and returns immediately unless the trim left the path still under the
-threshold. Only then does it run
+`_disk_guard_buildkit_fallback` is that rescue, wired **after** the cache-export
+trim at all three places the chain reclaims — `_disk_guard_watch_once` (the
+in-stage sampler, where 2026-09-03 actually bit), `_chain_stage_disk_guard`
+(between stages, just before it gives up and sets
+`CROSS_NO_LOCAL_CACHE_EXPORT=1`) and `_chain_runtime_lane_disk_gate` (lane entry,
+between the trim and the `[disk-reclaim]` record). The two chain gates are the
+ones that REFUSE a run, so a fallback unreachable from them could not save the
+run it was written for. It re-measures free space and returns immediately unless
+the trim left the path still under the threshold. Only then does it run
 
 ```
 buildctl prune --filter type==regular --keep-storage <keep_gb * 1000>
@@ -314,12 +319,16 @@ the store is smaller than the keep value the prune is a no-op and the log says
 it freed 0 G — honest, and the operator still gets the `NOTHING was reclaimable`
 warning from the reclaim record.
 
-**Once per caller, not once per sample.** The watchdog samples every
+**Once per reclaim episode.** The watchdog samples every
 `CROSS_DISK_WATCH_SECS` (120 s). After the first prune the store is already at
 `--keep-storage`, so a repeat would walk the whole store — 36 s of I/O during a
 running build — and free nothing. The second and later samples log `already
-pruned once here` and stop. The latch is per process, so the next stage's
-watchdog starts fresh.
+pruned once here` and stop. An episode is one whole stage for the sampler, which
+is a backgrounded subshell and so latches on its own; for the two chain gates,
+which run in the orchestrator process and are hours apart, it is one invocation.
+Those call `_disk_guard_reclaim_begin` first — without it the store the base
+stage pruned would still be latched when the runtime lane refuses, which is the
+same "reclaim unreachable from the gate that refuses" defect one level down.
 
 **What it logs.** Every arm is greppable as `[disk-buildkit]`:
 
@@ -349,8 +358,29 @@ worse than the drain.
 Unit coverage: the DISK1 section of `linux/scripts/tests/test-disk-guard.sh`
 (trim-first ordering, the filter and keep-storage argument, the keep floor,
 the once-latch, the survival count, both SKIP arms, and a structural assertion
-that `disk-guard.sh` does not name `nerdctl` or `builder prune` anywhere), plus
-the `disk-guard.*` mutations.
+that `disk-guard.sh` does not name `nerdctl` or `builder prune` anywhere), the
+DISK2 cases in `test-chain-lifecycle.sh` (both gates reach the store before they
+refuse, and each opens its own episode), plus the `disk-guard.*` mutations.
+
+**What DISK2 left open, measured on the live store 2026-09-05** (buildkit
+v0.31.2, 219.13 GB total / 187.99 GB reclaimable, no build running):
+
+* `--keep-storage` is documented by `buildctl prune --help` as **MB**, so the
+  guard's `keep_gb * 1000` really is ~120 GB. The convention was inherited from
+  what worked in anger; it is now checked against the installed flag.
+* the readiness probe is not the expensive half: bare `buildctl du` and
+  `du --filter type==exec.cachemount` both return in **under a second** on that
+  store, and the second reports the same **97** records the 2026-09-03 rescue
+  saw. The 36 s belonged to the prune.
+* `BUILDKIT_HOST` defaulting to `unix:///run/user/$(id -u)/buildkit/buildkitd.sock`
+  resolves for the chain's own uid on this rootless host — `buildctl du` answers
+  rc 0 — so `_disk_guard_buildkit_ready` passes rather than logging its SKIP.
+
+Still unanswered, and still needing a real run: whether a prune issued *while a
+build holds records open* reclaims anything like the idle number, and whether
+120 G of retained layers avoids recompile churn afterwards. The 2026-09-04
+`--only runtime` run entered with 275 G free and never crossed 40 G, so it
+sampled (`[disk-watch]` down to 106 G) and reclaimed nothing.
 
 ### 3.3 Runtime-failure summary (B3)
 
@@ -571,7 +601,7 @@ There is no per-language split any more, and every site resolves through ONE
 resolver: `compiler_cache_launcher()` (`01-core/common.sh:443-467`) direct
 from the 02-toolchain GCC/LLVM builds and the CMake/onnxruntime/wheelhouse
 call sites, and via `_resolve_compiler_cache_launcher()` on the media lane
-(`01-core/compiler-cache.sh:36-93` — the single seam that forwards to the
+(`01-core/compiler-cache.sh:85-106` — the single seam that forwards to the
 common.sh resolver when 01-core is loaded, 2026-08-30 backlog F2). Either
 way: the guarded launcher if sccache's server answers, else ccache, else
 build uncached.
@@ -579,7 +609,7 @@ build uncached.
 It is never *bare* sccache in a stage that mounts `01-core`: each site starts
 at `sccache` and upgrades to `sccache-launcher.sh` as soon as one is
 executable, keeping the bare name only where the helper is absent
-(`common.sh:451-458`, `compiler-cache.sh:84-87`). The gate at
+(`common.sh:451-458`, `compiler-cache.sh:97-99`). The gate at
 `verify-critical-fixes.sh:220-231` is what stops the *hardcoded* bare form
 coming back — that is how the first cut shipped inert.
 
@@ -622,7 +652,7 @@ only after a detour through the config file:
   have NO environment-variable path in sccache, which is why the config file
   exists at all. But the runtime turns the mode back off: both entry points
   export `SCCACHE_DIRECT=false` (`01-core/common.sh:404-418`,
-  `01-core/compiler-cache.sh:119`), and the environment variable wins over
+  `01-core/compiler-cache.sh:132`), and the environment variable wins over
   the config file. That is the TryCompile trap seen from the other end —
   preprocessor-cache mode re-reads the INPUT FILE *after* the compile in order
   to store the entry, so a deleted scratch dir surfaces as `while hashing the
@@ -642,18 +672,18 @@ so the invalidation that setting prevents does not arise.
 **Rust rejoined this on 2026-08-27; nvcc did not.** The hard clear that used to
 sit in `build-gstreamer-monorepo.sh` is gone. `RUSTC_WRAPPER` resolves to the
 same guarded launcher from two places: `setup_sccache` exports it
-(`01-core/compiler-cache.sh:156-195`), and `build_gstreamer_monorepo` installs
+(`01-core/compiler-cache.sh:172-210`), and `build_gstreamer_monorepo` installs
 it for any process where the variable was never set at all
 (`build-gstreamer-monorepo.sh:581-590`). What made that safe is the UDS fix in
-§ 5.4 (`compiler-cache.sh:69-79`, `common.sh:394-403`), not optimism — the
+§ 5.4 (`compiler-cache.sh:62-76`, `common.sh:394-403`), not optimism — the
 deaths at 99 % were the *wrong server* answering, and the launcher is the
 second belt that turns a remaining sccache hiccup into lost hits instead of a
 lost build. To go back to uncached Rust, export
 `RUSTC_WRAPPER=""`; that is what `Dockerfile.toolchain:58` and
 `Dockerfile.package:173` do, and it holds for every stage that never calls
 `setup_sccache`. Where `setup_sccache` *does* run it overwrites the empty value
-(`compiler-cache.sh:182`), so the off switch on that lane is `USE_SCCACHE=0` —
-which also drops C/C++ back to ccache (`compiler-cache.sh:123-129`). nvcc and hipcc
+(`compiler-cache.sh:199`), so the off switch on that lane is `USE_SCCACHE=0` —
+which also drops C/C++ back to ccache (`compiler-cache.sh:136-147`). nvcc and hipcc
 stay untouched (§ 5.4), and the Windows lane records that released sccache
 breaks the build around them.
 
@@ -661,7 +691,7 @@ breaks the build around them.
 
 The precedence is explicit and correct:
 
-- `setup_ccache` (`01-core/compiler-cache.sh:95-155`) sets
+- `setup_ccache` (`01-core/compiler-cache.sh:108-170`) sets
   `CMAKE_C/CXX_COMPILER_LAUNCHER` to the **guarded launcher**
   (`01-core/sccache-launcher.sh`, resolved via `_resolve_compiler_cache_launcher`, `:84-87`) when `USE_SCCACHE` is
   not disabled, sccache is on `PATH`, and its server answers `--show-stats`;
@@ -725,14 +755,14 @@ are outside this change's scope):
 3. **`USE_CCACHE=false` does not disable compile caching — it migrates C/C++ to
    sccache.** With ccache off (or simply absent from `PATH`), `setup_ccache`
    returns early leaving the launchers unset, and any later `setup_sccache`
-   fills them (`compiler-cache.sh:156-195`). There is no log line that
+   fills them (`compiler-cache.sh:172-210`). There is no log line that
    distinguishes "ccache disabled" from "sccache silently took over C/C++".
 
 ### 5.4 Where sccache is actually worth it
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:156-195`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:172-210`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
 | **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:558`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
 | **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
@@ -743,7 +773,7 @@ The targets whose recommendation needs more than a table cell.
 
 #### **rustc** (gst-plugins-rs, the monorepo's Rust)
 
-**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:116`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:122`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
+**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero (it then regressed on 2026-08-30 and was re-fixed on 2026-09-05 — [why](#the-server-address-must-be-exported-where-the-compiles-run)), so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:129`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:135`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
 
 #### **nvcc / hipcc**
 
@@ -847,9 +877,9 @@ From the 2026-09-01 run, 3062 bypasses:
 * **110x** `sccache: error: failed to execute compile` + `Failed to send data to
   or receive data from server` — the sccache server died mid-build.
 
-Root cause is inside sccache's spawn and is **still open**. Do NOT derive one
-from the message alone; several plausible theories have already been disproved by
-experiment and are listed in `refactoring-backlog.md` under YB.
+Root cause **FOUND 2026-09-05**, and it is not inside sccache's spawn at all: the
+client was addressing another container's server. See
+[the server address section](#the-server-address-must-be-exported-where-the-compiles-run).
 
 ### The single retry (2026-09-03)
 
@@ -874,11 +904,110 @@ count was taken on the 2026-09-03 media-arm64 build and the question is
 | `retry succeeded (cache kept)` | **27** |
 | `failed twice` | **514** |
 
-**~5% recovery: this class is NOT transient.** The retry stays — it costs
-nothing and 27 recovered entries are 27 recovered entries — but it is a
-mitigation, not the fix, and nothing here should be sized as though the bug were
-handled. What that 5% rules out, and where it points the root-cause hunt next,
-is `refactoring-backlog.md` under YB.
+**The retry stays** — it costs nothing and 27 recovered entries are 27 recovered
+entries — but it is a mitigation, not the fix.
+
+**Read that table by STEP, not as one rate (2026-09-05).** Splitting the same log
+by BuildKit vertex dissolves the "5%": every one of the 514 sits in `#24` (litert,
+364), `#34` (ORT genai, 100) and `#45` (pyav, 50), and all 27 recoveries sit in
+`#29` (TVM) — which has no failures of the other kind at all. Four containers,
+each all-or-nothing, not one population recovering 5% of the time. A per-request
+property inside one server cannot produce that segregation; a per-CONTAINER one
+does, which is what the next section shows it was.
+
+### The server address must be exported where the compiles run
+
+**This is the root cause of both classes above, and it is a regression of a bug
+this document already carried as fixed (§ 5.4).** `SCCACHE_SERVER_UDS` makes the
+server address container-local. `4aa92fb6` (2026-08-27) exported it from the body
+of `setup_ccache`, i.e. in the shell that then ran cmake and ninja, and the media
+stage went from 2359 faults to zero. The F2 one-resolver refactor (`8c97cdd8`,
+2026-08-30) moved that block, unchanged, into
+`_resolve_compiler_cache_launcher` — a function every caller invokes as
+`$(_resolve_compiler_cache_launcher)`. **A subshell cannot export to its parent.**
+From that commit on, the launcher name reached the build and the server address
+did not, so every sccache client fell back to the default TCP port 4226, which
+under rootless buildkitd is reachable from every concurrently running step.
+
+The same shape predates F2 on the other resolver: `compiler_cache_launcher()`
+(`common.sh`) is called as `CC="$(compiler_cache_launcher) gcc"` at every one of
+its ~15 sites, so `ensure_sccache_env`'s exports have never reached a compile
+there either.
+
+Reproduced statically, no build needed: source `compiler-cache.sh`, run
+`setup_ccache` with a fake sccache on `PATH`, and read the caller's environment —
+`CMAKE_C_COMPILER_LAUNCHER` is set, `SCCACHE_SERVER_UDS` is not.
+
+**The evidence in the run logs is arithmetic, not inference.** `sccache
+--show-stats` reports the counters of whichever server answered:
+
+| log | step | at | Compile requests reported |
+|---|---|---|---|
+| `sccache-retry-20260903-150440` | `#71` libcamera | **0.357 s** into the step | **1264** (1230 hits) |
+| `sccache-retry-20260903-150440` | `#34` ORT genai | 0.382 s / 0.634 s | 90 → 131 … then **97** at 199.5 s |
+| `rvv-media-20260902-025642` | `#73` | 0.226 s / 0.372 s | 65 → **544** (+479 in 0.15 s) |
+| `qnn-media-arm64-20260903-125457` | `#34` | 0.305 s | **423** |
+
+A step cannot have made 1264 compile requests in the third of a second it has
+been alive, and a single server's request counter cannot go 131 → 97. Both are
+only possible if the client is talking to a server in another container — and in
+`#34`'s case to two different ones inside one step. Three independent runs, one
+signature.
+
+The cost is larger than the bypass counts suggest, because a compile the foreign
+server *does* serve is stored in the foreign container's cache mount: in that
+same log `#24` (litert, `id=sccache-arm64`) and `#29` (TVM, `id=sccache-amd64`)
+were running concurrently, mounting different cache directories at
+`/var/cache/sccache` while addressing one port.
+
+That also explains the retry's per-step segregation: the foreign server spawns the
+compiler by the path the request carries, that path exists only in the caller's
+container, and it stays missing for as long as that server owns the port — so an
+immediate retry changes nothing, while the direct fallback runs in the caller's
+own container and always works. It explains the second class too — "Failed to send data to or
+receive data from server" is what a client sees when the container that owned the
+server finishes its step.
+
+**The fix** puts the address back where it has to be: `sccache_export_server_address`
+in `01-core/compiler-cache.sh` is the one owner of the address, and `setup_ccache`
+and `setup_sccache` call it **before** the substitution, so cmake, ninja, every
+launcher process and `--show-stats` all address the same container-local socket.
+Pinned by `test-compiler-cache.sh`; the resolver's bootstrap arm calls the same
+function instead of repeating it.
+
+**The other resolver has its own owner, for the same reason.**
+`compiler_cache_launcher_env` in `common.sh` runs `ensure_sccache_env >&2 || true`
+and is called by all 13 `$(compiler_cache_launcher)` sites — `02-toolchain`'s
+GCC/clang/llvm-cross, opencv, ffmpeg, pyav, onnxruntime (lib + AMD + NVIDIA), tvm,
+`cmake-cache-linker` and the wheelhouse's two. It is a one-line wrapper on purpose:
+it is where the RULE is named, it is what a mutation can pin, and it keeps the
+`>&2` discipline that the 2026-08-26 `CC="[INFO] …sccache gcc"` disaster taught in
+one place rather than thirteen. It is TOTAL (`|| true`) because it runs in the
+caller's shell ahead of the substitution, where a host with no usable sccache must
+not kill a build that would compile uncached perfectly well, and it honours
+`USE_SCCACHE=0` before anything starts a server. `test-compiler-cache-launcher.sh`
+pins the parent-shell propagation, the totality, the switch, the empty stdout, AND
+that every resolution site in the closure is preceded by the call — that last one is
+a drift pin, because one owner is worth nothing if a site forgets it.
+
+**`Dockerfile.toolchain` now mounts `sccache-launcher.sh` beside `common.sh`** in
+both per-file `01-core` blocks. Before that the GCC/LLVM stages resolved to **bare**
+sccache — no guarded launcher — so an sccache fault there was a build abort rather
+than a lost cache entry. The suite asserts the two mount counts are equal, so a
+future block that mounts one without the other fails.
+
+**One duplication is left and it is blocked on a Dockerfile, not on judgement.**
+`ensure_sccache_env` still carries its own copy of the address block. It is not dead
+— it is what makes the server exist for the subshell's own `--start-server` — but it
+is a second owner, and collapsing it means `common.sh` sourcing `compiler-cache.sh`,
+which `Dockerfile.base`'s six per-file blocks do not mount. Measured cost of leaving
+it: 28 shingles, inside its recorded budget.
+
+**How the next chain proves it.** The launcher now prints the address it used on
+both of its lines (`[server=/tmp/sccache-0.sock]` versus `[server=tcp:4226]`).
+`tcp:4226` in any bypass line is this bug, still live, in whichever step printed
+it; a socket path in every line is the fix holding. Count the two message classes
+per step, not over the whole log.
 
 Reading these counts out of a log needs one caution: a **cached** BuildKit step
 replays its old output verbatim, so a pre-retry launcher's messages can reappear

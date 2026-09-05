@@ -465,6 +465,80 @@ t_assert_eq "0" "${_lane_rc}" "an unreadable df must never refuse a multi-hour l
 _disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
 
 # ---------------------------------------------------------------------------
+# DISK2: the buildkit fallback must be reachable from the two gates that REFUSE.
+# DISK1 shipped it wired into the in-stage sampler only, so a run that died at
+# lane entry or between stages still logged `NOTHING was reclaimable` while the
+# store held 415G. Behaviour of the fallback itself is proven in
+# test-disk-guard.sh; what is proven here is the WIRING and the episode latch.
+# docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
+eval "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")"
+# Both gates run in a subshell, so the record has to be a file, not a variable.
+_BK_LOG="${workdir}/bk.txt"
+_disk_guard_buildkit_fallback() {
+  printf 'CALL %s %s latch=%s\n' "$1" "$2" "${_DISK_GUARD_BUILDKIT_PRUNES}" >> "${_BK_LOG}"
+  _DISK_GUARD_BUILDKIT_PRUNES=1
+  _DISK_GUARD_BUILDKIT_FREED_GB="${_BK_FREED:-0}"
+  [ -z "${_BK_RESCUE_TO:-}" ] || _lane_free="${_BK_RESCUE_TO}"
+}
+# $1 = free GB at entry. The latch is left DIRTY on purpose: a gate that does not
+# open its own episode would find it spent and never reach the store.
+_bk_reset_calls() { : > "${_BK_LOG}"; _lane_free="$1"; _DISK_GUARD_BUILDKIT_PRUNES=9; }
+_bk_calls() { cat "${_BK_LOG}"; }
+
+t_case "the lane-entry gate reaches the buildkit store before it refuses the run"
+_bk_reset_calls 88
+_BK_FREED=0 _BK_RESCUE_TO="" _lane_run
+t_assert_eq "1" "${_lane_rc}" "a fallback that cannot help must still leave the refusal intact"
+t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 120 latch=0" \
+  "the lane gate must offer the store the SAME need it is about to refuse on, on a fresh episode"
+
+t_case "a store that CAN be reclaimed rescues the lane instead of refusing it"
+_bk_reset_calls 88
+_BK_FREED=223 _BK_RESCUE_TO=311 _lane_run
+t_assert_eq "0" "${_lane_rc}" "223G reclaimed from the store must let the lane start"
+t_assert_contains "$(cat "${workdir}/lane.txt")" "+ 223G of buildkit layer cache" \
+  "the reclaim record must credit the store, not cry defeat"
+_BK_FREED=0; _BK_RESCUE_TO=""
+
+t_case "the between-stage guard reaches the store before giving up on cache exports"
+# CROSS_NO_LOCAL_CACHE_EXPORT=1 costs every remaining stage its local cache
+# export; the store is the last thing to try before paying that.
+_chain_runtime_lane_is_next() { return 1; }
+_bk_reset_calls 10
+unset CROSS_NO_LOCAL_CACHE_EXPORT
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
+t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 latch=0" "the guard must offer the store its own threshold"
+t_assert_contains "$(cat "${workdir}/sg.txt")" "CROSS_NO_LOCAL_CACHE_EXPORT=1" \
+  "a store that frees nothing must still reach the give-up"
+
+t_case "a reclaimed store keeps the cache exports ON for the remaining stages"
+_bk_reset_calls 10
+_BK_RESCUE_TO=200
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
+t_assert_contains "$(cat "${workdir}/sg.txt")" "after pruning: 200G free"
+t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" || true)" \
+  "the give-up must not fire after the store rescued the stage"
+_BK_RESCUE_TO=""
+
+t_case "each gate opens its OWN reclaim episode"
+# The latch is per process and the two gates are hours apart: without the reset
+# the base stage's prune would still be latched when the runtime lane refuses.
+_bk_reset_calls 88
+_lane_run
+t_assert_contains "$(_bk_calls)" "latch=0" "the lane gate must clear a stale latch before pruning"
+_bk_reset_calls 10
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 latch=0" \
+  "a latch left set by an earlier stage must not silence this one"
+
+t_case "an ample-disk stage never reaches the store at all"
+_bk_reset_calls 500
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+t_assert_eq "" "$(_bk_calls)" "40G threshold with 500G free must never touch buildkit"
+unset CROSS_NO_LOCAL_CACHE_EXPORT
+_lane_free=999
+
+# ---------------------------------------------------------------------------
 # B3: a runtime failure skips EVERY gate downstream of the per-arch wrapper loop
 # in build-runtime-manifest.sh. The 2026-09-01 run ended with a bare
 # "[ERROR] runtime stage failed" and `grep -c` returning 0 for all of them.
