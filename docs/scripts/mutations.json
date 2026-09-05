@@ -3326,5 +3326,21 @@
     "replace": "    return GENERATION_CAP or 2048",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
     "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling"
+  },
+  {
+    "id": "coding.wall-clock-deadline",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            if deadline and time.monotonic() - started > deadline:\n                gave_up = True\n                break",
+    "replace": "            if False:\n                gave_up = True\n                break",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour"
+  },
+  {
+    "id": "coding.gave-up-is-unmeasured",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        truncated = (not ok) and (gave_up or looks_truncated(",
+    "replace": "        truncated = (not ok) and (False or looks_truncated(",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "an abandoned attempt is unmeasured, not a wrong answer"
   }
 ]

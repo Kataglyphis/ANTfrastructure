@@ -42,8 +42,15 @@ DEFAULT_PROMPT = ("Write a Python function that merges two sorted lists. "
                   "Explain briefly.")
 
 
-def stream_once(base_url, model, prompt, max_tokens=256, timeout=900):
-    """One streaming request. Returns timing dict (never raises)."""
+def stream_once(base_url, model, prompt, max_tokens=256, timeout=900, deadline=900):
+    """One streaming request. Returns timing dict (never raises).
+
+    `timeout` is urlopen's and applies PER SOCKET READ, so a model that keeps
+    emitting tokens never trips it -- one blocked a bench_coding sweep for over
+    an hour on 2026-09-05. `deadline` bounds the whole request; what arrived by
+    then is returned with `gave_up`. The 256-token default makes this unlikely
+    here, but a lane sweep exists to measure lanes, not to hang on one.
+    """
     body = json.dumps({
         "model": model, "stream": True, "max_tokens": max_tokens,
         "temperature": 0, "messages": [{"role": "user", "content": prompt}],
@@ -55,9 +62,13 @@ def stream_once(base_url, model, prompt, max_tokens=256, timeout=900):
     started = time.monotonic()
     ttft = None
     tokens = 0
+    gave_up = False
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             for raw in resp:
+                if deadline and time.monotonic() - started > deadline:
+                    gave_up = True
+                    break
                 line = raw.decode("utf-8", "replace").strip()
                 # The space after "data:" is optional per the SSE spec.
                 if not line.startswith("data:"):
@@ -81,6 +92,7 @@ def stream_once(base_url, model, prompt, max_tokens=256, timeout=900):
     decode_window = wall - (ttft or 0)
     return {
         "ttft_s": round(ttft, 3) if ttft is not None else None,
+        "gave_up": gave_up,
         "tokens": tokens,
         "wall_s": round(wall, 2),
         "decode_tok_per_sec": round((tokens - 1) / decode_window, 2)

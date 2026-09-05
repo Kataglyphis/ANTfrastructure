@@ -694,12 +694,18 @@ lane, or do not run the 27B.
 > lane QAIRT-only and put GGUFs on the CPU lane — which is faster for them
 > anyway.
 
-### 1d. Which model writes code that actually runs (measured 2026-08-31)
+### 1d. Which model writes code that actually runs (measured 2026-08-31, GenieX v0.5.0)
 
 Every claim above is about speed. This one is about *output*: each model was
 given three coding tasks with an exact required signature, its code was
 extracted and **executed** against hidden tests
 (`linux/llm-stack/bench_coding.py`). Nothing judged by eye.
+
+> **Re-run on v0.6.1 (2026-09-05) — § 1n.** The ranking below survives: the
+> QAIRT 4B-Instruct is still 3/3 and still fastest by 3x. The wall-clock column
+> does not: with the 2048-token cap gone, the reasoning models think longer and
+> read *slower*, while the models that do not think got faster. Read this table
+> as the v0.5.0 record it is.
 
 | Model | Lane | Pass | Cut | Total | ø/task | ø TTFT | ø tokens | think |
 |---|---|---|---|---|---|---|---|---|
@@ -1610,6 +1616,99 @@ shape the client could not read.
 - The numbers in § 1d, § 1f, § 1g, § 1i and § 1m are **v0.5.0 measurements**
   and are left as measured. Where the cap or the missing cache distorted them,
   the section says so.
+
+#### The coding benchmark, re-run on v0.6.1
+
+§ 1d's six models on the classic set, same lanes, same tasks. Ranked as the
+tool now ranks — by pass rate over *measured* attempts, cuts and transport
+errors excluded:
+
+| Model | Lane | v0.5.0 | **v0.6.1** | Wall v0.5.0 → v0.6.1 |
+|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct W4A16** | NPU | 3/3, 0 cut | **3/3, 0 cut** | 30.2 s → **26.7 s** |
+| GGUF Qwen3.8-27B `Q4_0` | CPU | 3/3, 0 cut | **3/3, 0 cut** | 128.7 s → **93.0 s** |
+| GGUF Qwen3.8-9B-Distill `Q4_K_M` | CPU | 3/3, 0 cut | 3/3, 0 cut | 251.1 s → 358.2 s |
+| GGUF Qwen3-4B `Q4_0` | CPU | 2/3, 1 cut | 1/1, **2 cut** | 227.2 s → 452.6 s |
+| QAIRT Qwen3-1.7B W4A16 | NPU | 1/3, 2 cut | 1/2, 1 cut | 173.8 s → 180.9 s |
+| GGUF Qwen3.8-2B-Distill `Q4_K_M` | CPU | 2/3, 0 cut | 1/3, 0 cut | 32.2 s → 32.3 s |
+
+**The recommendation is unchanged**: the QAIRT 4B-Instruct is still 3/3 and
+still fastest by a factor of three.
+
+Three things in that table are not what they look like.
+
+**The wall-clock went UP for the reasoning models, and that is the cap being
+gone.** The 9B and the 4B `Q4_0` spend their `<think>` budget; on v0.5.0 the
+server cut them at 2048 tokens, which *looked* like speed. Given room they
+think longer. The models that do not think — both QAIRT bundles and the 27B —
+simply got faster.
+
+**The cuts moved from the server to the request.** They are now `max_tokens`
+(3000 by default) rather than a ceiling nobody could raise. That makes the
+budget a parameter of the experiment: see below.
+
+**The 2B's 2/3 → 1/3 is not a regression.** It samples — `temperature: 0` is
+still ignored — and § 1d's own repeat table puts its real rate at 4/9 = 44 %.
+Both scores sit inside that. A single run of a sampling model is one draw, which
+is exactly what `--repeats` exists to say.
+
+And one thing that is exactly what it looks like: `GGUF Qwen3-4B Q4_0` scores
+**1/1 = 100 %** and ranks *below* three models at 3/3. That is the coverage
+guard in the ranking key working as intended — one surviving attempt does not
+outrank three clean ones.
+
+#### The budget moved from the server to the request — and that has two edges
+
+With the 2048-token ceiling gone, `--max-tokens` is the binding limit, which
+makes it a parameter of the experiment rather than a fact about the server.
+Re-running the two models that were cut, at 8000 instead of 3000:
+
+| Model | at 3000 | at 8000 |
+|---|---|---|
+| GGUF `Qwen3-4B:Q4_0` (CPU) | 1/1, 2 cut | `merge_sorted` **PASS** (1213 tok, 91 % think), `balanced` **PASS** (1527 tok, 94 %) |
+| QAIRT `Qwen3-1.7B:W4A16` (NPU) | 1/2, 1 cut | 1/2, **still 1 cut** |
+
+**More budget rescues a GGUF model and cannot rescue a QAIRT one.** The 1.7B
+was cut at **3961 output tokens under an 8000-token budget** — and its prompt
+was 136 tokens. 136 + 3961 = 4097: the compiled 4096 context, shared between
+input and output. For a QAIRT bundle `--max-tokens` above `4096 - prompt` is
+a number with no effect.
+
+**The other edge cost an hour.** `Qwen3-4B:Q4_0` on `parse_version` was cut at
+128 s under the 3000-token budget; given 8000 it generated for **over an hour
+without finishing**, and the sweep sat behind it. The cause is in the harness,
+not the model: `ask()` passed its timeout to `urlopen`, where it applies **per
+socket read**, so a stream that keeps delivering never trips it. `bench_coding.py`
+now takes a `--deadline` (1800 s by default) that bounds the whole attempt and
+records what arrived as `GAVE UP ... - not graded as wrong`, unmeasured for the
+same reason a cut is. `bench_lanes.py` had the same shape and the same fix;
+`bench_tools.py` does not — its requests are non-streaming and capped at 600
+tokens.
+
+That result is left as "did not finish within the hour". It is a fact about the
+model, and a more useful one than a number obtained after two.
+
+#### The 27-task set, re-run on v0.6.1 — and why it is not comparable
+
+**16/26 in 624 s**, against the published **17/27 in 631 s**. Those two numbers
+should not be set beside each other, for three reasons that all point the same
+way:
+
+1. **The tasks are stricter now.** `validation_parse_seat_code` and
+   `validation_parse_range_spec` gained non-ASCII-digit assertions,
+   `validation_parse_kv_pairs` gained whitespace-only cases, `parsing_item_list`
+   had its own reference corrected, and three prompts saying "standard library
+   only" are now enforced. `seat_code` fails on an assertion that did not exist
+   when 17/27 was measured.
+2. **CUT is no longer counted as a miss.** The old 17/27 had two truncations in
+   its denominator; under today's accounting that run reads 17/25.
+3. **The partial-credit denominators changed**, because setup lines and helper
+   definitions are no longer counted as assertions.
+
+What *is* comparable is the shape, and it is unchanged: **nine of the eleven
+failures are near misses** — 19/20, 22/23, 13/15, 12/14, 11/12, 11/12 — the same
+"mostly right, loses edge cases" picture § 1i described. `rank_quants` (2/6)
+remains the one task the model does not understand rather than nearly solves.
 
 #### The end-to-end agent benchmark, re-run on v0.6.1
 
