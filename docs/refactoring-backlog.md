@@ -565,12 +565,25 @@ What to add, in this order because it is also the risk order:
 
 1. **Dangling images.** `nerdctl image prune` (no `-a`). Zero risk, and it
    returned 20 GB on its own in this run.
+   **Size is not the metric — unique layers are.** Deleting the three
+   `cross-sdk-*` images (80 GB by `nerdctl images`) freed *zero* bytes, because
+   every layer they hold is also held by the `cross-android-*` images built on top
+   of them. The previous release's `latest-cross*` freed 113 GB from a similar
+   nominal size, because its layers are nobody else's. A guard that picks the
+   biggest tags will do nothing; it has to pick tags whose layers nothing else
+   references.
 2. **Stage images this run did not produce.** `cross-<stage>-<arch>` whose digest
    is not among the parents this run pinned. They are all on ghcr and every one is
    re-pullable; the chain already records the digests it pinned, so the comparison
    is available rather than guessed.
 3. **NEVER the current run's parents**, and never `nerdctl system prune` — see
    [[rebuild-disk-management]] for why the cachemounts must survive.
+
+There is a second, milder instance of the same blindness: the runtime lane's own
+pre-flight (`runtime lane refused: 74G free, ~120G needed`) correctly refuses to
+start rather than dying on ENOSPC mid-build — good — but the reclaim it runs first
+reports `NOTHING was reclaimable` for the same reason. The refusal is right; the
+reclaim under it is looking in one store while the space is in another.
 
 The guard should also stop reporting `NOTHING was reclaimable` when it has not
 looked at the largest store. A guard that gives up loudly reads like an
