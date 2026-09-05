@@ -30,10 +30,18 @@ Everything below is measured on this host (Snapdragon X X126100, 8x Oryon,
 Adreno X1-45, single Hexagon HTP). Full method and caveats in
 § Getting the most out of this machine.
 
+> **Version matters more than usual on this page.** Every measurement dated
+> 2026-08-31 to 2026-09-04 was taken on **GenieX v0.5.0** (llama.cpp
+> `873e5d8`). The host now runs **v0.6.1** (llama.cpp `0eadefe`), and four of
+> the constraints those measurements were built around are gone: the 2048-token
+> output cap, `max_tokens` being ignored, the missing tool-call parsing, and the
+> missing prefix cache. **§ 1n lists what changed and what did not** — read it
+> before trusting a number below.
+
 | You want | Use | Speed |
 |---|---|---|
 | **The fastest finished answer** (chat and completion) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores. Also **3/3 on the executed-code benchmark, 4.3x faster than any other model that scored 3/3** (§ 1d). **Not for agents** — opencode's preamble is 2x its 4096 context (§ 1m) |
-| **Driving a real coding agent** (opencode) | CPU lane + `Qwen3.8-9B-Distill:Q4_K_M`, **behind `geniex_toolcall_shim.py`**, tool set trimmed to four | **3/3 end-to-end tasks, verified by the repo's own tests** — but 10-14 min each. Without the shim the lane discards every tool call (§ 1m) |
+| **Driving a real coding agent** (opencode) | CPU lane + `Qwen3.8-9B-Distill:Q4_K_M`, tool set trimmed to four | **3/3 end-to-end tasks, verified by the repo's own tests**, ~3.5 min each on GenieX v0.6.1 (was 10-14 min on v0.5.0, which also needed `geniex_toolcall_shim.py` — § 1m, § 1n) |
 | The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
 | Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
 | Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
@@ -52,10 +60,11 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
    13.1 s before the first token; opencode's real 8,175-token preamble costs
    **135 s** on the fastest lane. Context discipline beats every other tuning
    knob here.
-4. **There is no prefix cache.** Sending the identical request twice costs the
-   same both times (126 s, then 122 s), so every agent turn re-prefills the
-   whole conversation. This — not tok/s and not model quality — is what limits
-   on-device agents on this machine (§ 1m).
+4. **The prefix cache is what makes agents viable — and it arrived in v0.6.**
+   On v0.5.0 the identical request twice cost the same both times (126 s, then
+   122 s): every agent turn re-prefilled the whole conversation, and that — not
+   tok/s, not model quality — was the limit (§ 1m). On v0.6.1 the same repeat
+   costs 0.1 s and appending ~800 tokens costs 0.9 s (§ 1n).
 
 ---
 
@@ -93,6 +102,50 @@ firewall rule, no LAN exposure needed.
    ```bash
    powershell.exe -NoProfile -Command "& 'C:\Users\<you>\AppData\Local\GenieX CLI\geniex.exe' --version"
    ```
+
+### Updating an existing install (from WSL2, unattended)
+
+The CLI checks for updates on every invocation and prints the offer; `geniex
+update` downloads the right installer for the host. It does **not** finish the
+job on its own, and the two ways it surprises you are both silent:
+
+```bash
+GX="$env:LOCALAPPDATA\GenieX CLI\geniex.exe"
+
+# 1. Stop every server first. Windows keeps a running .exe locked, and the
+#    installer will not replace a file that is in use.
+powershell.exe -NoProfile -Command "Get-Process geniex -EA SilentlyContinue | Stop-Process -Force"
+
+# 2. Download. This leaves an installer in %TEMP% and LAUNCHES ITS GUI, which
+#    then waits for a click nobody will give it in an automated run.
+powershell.exe -NoProfile -Command "& \"$GX\" update"
+
+# 3. Close that GUI and run the installer silently instead. It is Inno Setup.
+powershell.exe -NoProfile -Command "Get-Process 'geniex-cli-setup*' -EA SilentlyContinue | Stop-Process -Force"
+powershell.exe -NoProfile -Command \
+  "Start-Process \"\$env:TEMP\geniex-cli-setup-windows-arm64-vX.Y.Z.exe\" \
+   -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS' -Wait"
+
+# 4. VERIFY. `update` reporting success is not evidence that anything changed.
+powershell.exe -NoProfile -Command "& \"$GX\" --version"
+```
+
+`--version` prints three lines, and all three matter — the CLI version, the
+QAIRT runtime, and the **llama.cpp runtime hash**, which is what actually
+decides GGUF behaviour:
+
+```text
+GenieX CLI Version:     v0.6.1
+QAIRT Runtime Version:  2.45
+LlamaCPP Runtime Hash:  0eadefe
+```
+
+Then **restart the lanes** (`windows/scripts/host/start-geniex-servers.ps1`)
+and **re-check the assumptions your tooling encodes.** A minor release changed
+four of them here (§ 1n): the output cap, `max_tokens`, tool-call parsing and
+the prefix cache. The model cache in `%USERPROFILE%\.cache\geniex\models`
+survives the update untouched — take `geniex list` before and after if you want
+that in writing.
 
 ### Inside WSL2 / native Linux ARM64 (optional — CPU only)
 
@@ -666,8 +719,10 @@ against the 9B's 1151.
 demonstration that ranking by tok/s picks the wrong model. It writes 149 tokens
 of correct code where the 9B writes 1151 tokens of mostly thinking.
 
-**A hard 2048-token output cap decides more than model quality here.** GenieX
-stops generating at 2048 tokens and ignores `max_tokens` entirely
+**A hard 2048-token output cap decides more than model quality here.**
+*(v0.5.0 only — gone in v0.6.x, § 1n. It shaped every number in this section,
+which is why they are labelled with the version.)* GenieX v0.5.0 stopped
+generating at 2048 tokens and ignored `max_tokens` entirely
 (`max_tokens=3000` produced 642 tokens; `max_tokens=500` produced 1249). A
 reasoning model spends that budget inside `<think>` and is cut mid-function.
 The 4B GGUF's `balanced` solution finished at **1896 tokens — 152 short of the
@@ -1308,22 +1363,26 @@ Replaying that exact captured request:
 That is time to the *first token* of the *first* turn. The GPU lane duly timed
 out on the agent benchmark at a 600 s ceiling without finishing one task.
 
-#### Consequence 3 — there is no prefix cache, so every turn pays it again
+#### Consequence 3 — there was no prefix cache, so every turn paid it again
+
+> **Fixed in v0.6.x — see § 1n.** This section describes v0.5.0. It is kept
+> because it explains why the v0.5.0 agent numbers look the way they do, and
+> because it is the measurement that was decisive at the time.
 
 The measurement that decides whether any of this is viable. Same lane, same
 model, three requests:
 
-| Request | TTFT |
+| Request | TTFT (v0.5.0) |
 |---|---:|
 | The preamble, cold | 126.2 s |
 | **The identical request again** | **122.1 s** |
 | Same prefix, ~500 tokens appended (a realistic turn 2) | 129.1 s |
 
 A cache would have made the second request near-instant and the third cost only
-its increment. Instead all three cost the same: **GenieX re-prefills the whole
-conversation on every turn.** An agent loop therefore costs **~2 minutes per
-turn** on the best lane before a single token of output, and a five-turn bug fix
-is ten minutes of prefill alone.
+its increment. Instead all three cost the same: **GenieX v0.5.0 re-prefilled the
+whole conversation on every turn.** An agent loop therefore cost **~2 minutes
+per turn** on the best lane before a single token of output, and a five-turn bug
+fix was ten minutes of prefill alone.
 
 #### Two levers: prompt size, and model size within one quant format
 
@@ -1413,9 +1472,10 @@ python3 linux/llm-stack/geniex_toolcall_shim.py \
 
 It calls upstream without streaming even when the client asked for a stream — a
 tool call cannot be recognised before its closing tag arrives — and re-emits the
-answer as the stream the client expects. That costs nothing measurable here:
-there is no prefix cache and prefill dominates, so the response was already one
-long wait.
+answer as the stream the client expects. On v0.5.0 that cost nothing
+measurable: there was no prefix cache and prefill dominated, so the response was
+already one long wait. On v0.6.x it would cost the streaming experience — but
+there the shim is not needed at all (§ 1n).
 
 Two things it deliberately does **not** do. It never invents a call from
 markdown fences: guessing there is how an agent runs a command the model never
@@ -1453,20 +1513,24 @@ drive opencode**, and no configuration changes that.
 
 For agent work the recipe that actually completes tasks is:
 
-1. a **GGUF lane** (`--nctx 16384`) — the QAIRT context is not negotiable;
-2. **behind `geniex_toolcall_shim.py`** — without it the lane discards every
-   tool call and the agent does nothing;
-3. **tool set trimmed** in `opencode.jsonc` — 36% off every turn;
-4. and patience: **10-14 minutes per task**, all of it prefill.
+1. a **GGUF lane** (`--nctx 16384`) — the QAIRT context is not negotiable, on
+   any version;
+2. **tool set trimmed** in `opencode.jsonc` — always worth it, and on a
+   pre-cache build it was 36% off every turn;
+3. on **GenieX v0.5.0 only**, `geniex_toolcall_shim.py` in front of the lane —
+   without it that build discarded every tool call and the agent did nothing.
+   v0.6.0 parses them itself (§ 1n);
+4. and patience: **~3.5 minutes per task** on v0.6.1, 10-14 on v0.5.0.
 
-The three constraints stack, and the order in which we found them is the order
-of increasing embarrassment: the first was visible in an error message, the
-second only in a wall-clock, and the third looked exactly like the models being
-bad at their job.
+The constraints stacked, and the order in which we found them is the order of
+increasing embarrassment: the first was visible in an error message, the second
+only in a wall-clock, and the third looked exactly like the models being bad at
+their job.
 
-**On-device agent work here went from impossible to slow.** That is the honest
-summary. It is not a throughput result and not a quality result: the models were
-never the limit.
+**On-device agent work here went from impossible to slow, and then from slow to
+usable** — the last step by a vendor release rather than by anything measured
+here. That is the honest summary. It was never a throughput result and never a
+quality result: the models were not the limit at any point.
 
 #### The harness proves itself before it judges anything
 
@@ -1493,7 +1557,86 @@ tasks only. Three blocked tasks report `0/0`, which the statistics layer renders
 code". Confusing those two is how a hardware limit gets written up as a model
 being bad at its job.
 
-## Debugged: i-quants below 4 bits are broken in this GenieX build
+### 1n. GenieX v0.6.1 — what the update changed (measured 2026-09-05)
+
+The host ran **v0.5.0** (llama.cpp `873e5d8`) for every measurement dated
+2026-08-31 to 2026-09-04. It now runs **v0.6.1** (llama.cpp `0eadefe`), pulled
+with the CLI's own `geniex update`. Four of the constraints this page was
+written around are gone. Three others are not — including the two that carry
+the strongest conclusions.
+
+Each row was re-measured on this host after the update, not read from a
+changelog:
+
+| v0.5.0 | v0.6.1 | How it was checked |
+|---|---|---|
+| Returned Qwen's `<tool_call>` template as plain `content`, `tool_calls` empty | **Parses it** | `Qwen3.8-9B-Distill` on the CPU lane: populated `tool_calls`, `finish_reason: "tool_calls"`, 16 s |
+| Ignored `max_tokens` outright (3000 → 642, 500 → 1249) | **Honours it exactly** | 50 → 50 and 400 → 400 completion tokens, `finish_reason: "length"` |
+| Hard **2048-token** output ceiling | **Gone** | `max_tokens: 3000` → 3000 completion tokens |
+| **No prefix cache** — every turn re-prefilled the whole conversation | **Incremental prefill** | identical ~4k-token request: 13.9 s cold → **0.1 s** warm; same prefix with ~800 tokens appended: **0.9 s** |
+| `temperature: 0` still sampled | **unchanged** | two identical requests, two different answers |
+| QAIRT bundles hard-capped at 4096 context | **unchanged** — but a clean error | ~2.3k tokens answers; ~5.7k and ~9.1k return HTTP 400 `context_length_exceeded` instead of v0.5.0's `SDKError(Input prompt too long)` wrapped in a type-validation failure |
+| Sub-4-bit **i-quants produce garbage** | **unchanged** | `IQ3_XXS` 0/3 on three trivial questions (`'一侧osesnce majority coli…'`); `Q4_0`, `Q3_K_M` and `Q2_K` all 3/3 |
+| The 2B cannot do function calling | **unchanged** | same prompt, still markdown fences and no template |
+
+Two of those deserve emphasis because they were load-bearing here.
+
+**The i-quant bug survived a llama.cpp bump.** It was diagnosed on `873e5d8`
+and is unchanged on `0eadefe` — same garbage, same clean K-quants beside it,
+down to 2 bits. Two independent runtimes make it a property of these kernels
+rather than of one build, which is stronger evidence than the original section
+could claim. `inspect_gguf.py` still refuses these files, and should.
+
+**The QAIRT 4096 ceiling is not negotiable.** It is compiled into the bundle,
+not a server setting, so no release moves it. opencode's preamble is 8,175
+tokens (§ 1m), and it still does not fit — the conclusion of § 1m stands
+entirely. What changed is only the diagnosis: the lane now says
+`context_length_exceeded` instead of failing schema validation on an error
+shape the client could not read.
+
+#### What this means for the tooling in this repository
+
+- **`geniex_toolcall_shim.py` is obsolete on v0.6+.** It exists because v0.5.0
+  dropped the tool call; v0.6.0 added the parsing. It is kept for older builds
+  and is harmless in front of a new one — it skips any message the server
+  already parsed — but the opencode provider now points straight at the lane.
+- **`bench_coding.py` no longer assumes a 2048-token ceiling.** A cut is
+  recognised from `finish_reason: "length"` first, then from
+  `usage.completion_tokens`, and only then from the streamed delta count; the
+  threshold is the request's own budget rather than a server constant. A fixed
+  2048 would now report a long legitimate answer as CUT.
+- **`--repeats` still earns its place.** `temperature: 0` samples, so a single
+  run is still one draw rather than the model.
+- The numbers in § 1d, § 1f, § 1g, § 1i and § 1m are **v0.5.0 measurements**
+  and are left as measured. Where the cap or the missing cache distorted them,
+  the section says so.
+
+#### The end-to-end agent benchmark, re-run on v0.6.1
+
+Same harness, same three tasks, same model and lane, scored the same way — by
+running each scratch repository's own tests afterwards. The only differences
+are the GenieX version and that the shim is gone:
+
+| Task | v0.5.0 + shim | **v0.6.1, no shim** | Tool calls |
+|---|---:|---:|---:|
+| `fix_failing_test` | 655.8 s | **212.4 s** | 7 |
+| `add_function_and_test` | 841.1 s | **225.8 s** | 7 |
+| `multi_file_rename` | 621.2 s | **219.2 s** | 11 |
+| **Total** | **2118.1 s** | **657.3 s** | — |
+
+3/3 both times; **3.2x faster overall**, and the whole suite now costs what a
+single task used to. The gain is the prefix cache: the work per turn did not
+change, it stopped being paid again on every turn.
+
+Reproduce with:
+
+```bash
+python3 linux/llm-stack/bench_agent.py --self-test    # prove the fixtures first
+python3 linux/llm-stack/bench_agent.py \
+    --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M --timeout 1800
+```
+
+## Debugged: i-quants below 4 bits are broken in GenieX's llama.cpp
 
 The 27B's `Q3_K_XL` and `IQ3_S` answer with garbage. The first explanation on
 this page — "3-bit quality collapses, there is a hard floor at Q4" — was wrong.
@@ -1526,7 +1669,14 @@ but not a hundred of them. The failure reproduces across two model families
 (`qwen3` and `qwen35`), two model sizes (4B and 27B) and both compute lanes, on
 files verified byte-identical to what Hugging Face published — so it is neither
 a bad download nor a bad quantisation, but the **i-quant dequantisation path in
-the llama.cpp build GenieX v0.5.0 ships** (runtime hash `873e5d8`, aarch64).
+the llama.cpp build GenieX ships** (aarch64).
+
+**Re-verified on 2026-09-05 after updating to v0.6.1**, which bumps that build
+from `873e5d8` to `0eadefe`: `IQ3_XXS` still answers three trivial questions
+0/3 (`'一侧osesnce majority coli…'`) while `Q4_0`, `Q3_K_M` and `Q2_K` from the
+same repository answer 3/3. Two independent runtimes, the same split — this is
+a property of the i-quant kernels on this target, not of one release, which is
+a stronger claim than the original diagnosis could make (§ 1n).
 
 The two failure signatures differ but are equally incoherent: the 27B emits
 whitespace and punctuation (`'\n\n\n....\n\n'`), the 4B emits real-but-random
@@ -1547,7 +1697,9 @@ multilingual tokens (`' majorityathersyreyrelicht reconciliation…'`).
 **Both NPU paths failed on the original driver** (Qualcomm FastRPC 1.0.4175.2700
 from 20.11.2024; CDSP `libcdsprpc.dll` 30.0.0140.1000 from 16.02.2025), and
 they failed for the **same underlying reason**: the installed Qualcomm
-CDSP/FastRPC driver predated the runtimes GenieX v0.5.0 bundles.
+CDSP/FastRPC driver predated the runtimes GenieX bundles (v0.5.0 at the time;
+v0.6.0 moved to bundling the QAIRT runtime by default, with `--qairt-lib` as an
+override).
 
 | Path | Symptom on the OLD driver | Root cause |
 |---|---|---|

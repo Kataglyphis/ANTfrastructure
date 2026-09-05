@@ -280,13 +280,31 @@ def build_context(approx_tokens):
         body += "\n\n" + "\n\n".join(chunks)
     return body[: approx_tokens * 4]
 
-# GenieX v0.5.0 stops generating at 2048 tokens regardless of max_tokens (which
-# it ignores outright: max_tokens=3000 produced 642 tokens, max_tokens=500
-# produced 1249). A reasoning model can spend that entire budget inside <think>
-# and get cut off mid-function -- which grades as a SyntaxError and looks like
-# incompetence. It is neither: it is an unmeasured task. Detected and reported
-# apart from a genuine wrong answer, exactly as the correctness probe does.
-GENERATION_CAP = int(os.environ.get("BENCH_GENERATION_CAP", "2048"))
+# A reasoning model can spend its whole output budget inside <think> and get cut
+# off mid-function -- which grades as a SyntaxError and looks like incompetence.
+# It is neither: it is an unmeasured task, reported apart from a genuine wrong
+# answer exactly as the correctness probe does.
+#
+# HOW A CUT IS RECOGNISED, in order of trust:
+#   1. finish_reason == "length" from the server. Authoritative, and available
+#      on GenieX v0.6+ and on Ollama.
+#   2. usage.completion_tokens reaching this cap.
+#   3. the streamed delta count reaching it -- a proxy, exact only where one
+#      delta is one token.
+#
+# The cap is no longer a constant of the server: GenieX v0.5.0 stopped at 2048
+# regardless of max_tokens (which it ignored outright -- max_tokens=3000 gave
+# 642 tokens, max_tokens=500 gave 1249). v0.6.1 honours max_tokens exactly and
+# has no hard ceiling (3000 requested, 3000 delivered, measured 2026-09-05), so
+# a fixed 2048 would now report a long, legitimate answer as CUT. It therefore
+# defaults to the request's own budget and only falls back to 2048 for servers
+# that impose one; BENCH_GENERATION_CAP overrides both.
+GENERATION_CAP = int(os.environ.get("BENCH_GENERATION_CAP", "0")) or None
+
+
+def generation_cap(max_tokens):
+    """The token count at which a reply counts as cut off."""
+    return GENERATION_CAP or max_tokens or 2048
 
 
 def extract_code(text, want=None):
@@ -336,7 +354,7 @@ def extract_code(text, want=None):
     return (tail[:cut.start()] if cut else tail).strip()
 
 
-def looks_truncated(text, chunks, code, finish=None):
+def looks_truncated(text, chunks, code, finish=None, cap=None):
     """Was the reply cut off by the server rather than finished by the model?
 
     Two independent signals, either of which is enough:
@@ -345,7 +363,9 @@ def looks_truncated(text, chunks, code, finish=None):
         string is what a mid-token cut looks like).
     Requiring both would miss a cut that lands on a syntactically valid prefix.
     """
-    if chunks >= GENERATION_CAP or finish == "length":
+    if finish == "length":
+        return True          # the server said so; nothing to infer
+    if cap and chunks >= cap:
         return True
     if code:
         try:
@@ -720,7 +740,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
                                            forbidden=task.get("forbidden"),
                                            stdlib_only=task.get("stdlib_only", False))
         count = ctok if ctok is not None else chunks
-        truncated = (not ok) and looks_truncated(text, count, code, finish)
+        truncated = (not ok) and looks_truncated(text, count, code, finish,
+                                                cap=generation_cap(max_tokens))
         if truncated:
             unit = "tokens" if ctok is not None else "deltas"
             detail = f"CUT OFF at {count} {unit} (server cap) - not graded as wrong"
@@ -917,8 +938,8 @@ def main():
                   f"{r.get('wrong', 0):5d} {r.get('truncated', 0):4d} "
                   f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:10.1f}s")
         if any(r.get("truncated") for r in ranked):
-            print("\n  'cut' = the server stopped generation at its 2048-token cap "
-                  "before the model\n  finished. Those attempts are UNMEASURED: listed "
+            print("\n  'cut' = generation stopped at the output budget before the "
+                  "model\n  finished. Those attempts are UNMEASURED: listed "
                   "here, excluded from the rate,\n  the interval and the rank - a "
                   "reasoning model can spend the whole budget inside <think>.")
         print()

@@ -41,7 +41,7 @@
     "geniex-cpu-shim": {
       "base_url": "http://127.0.0.1:18190",
       "model": "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M",
-      "note": "The CPU lane behind geniex_toolcall_shim.py. Use this, not geniex-cpu, for anything agentic: GenieX returns Qwen's <tool_call> template as plain content, so tool calls are invisible without the shim. Start it first: python3 geniex_toolcall_shim.py --upstream http://localhost:18184 --port 18190"
+      "note": "PRE-0.6 ONLY. The CPU lane behind geniex_toolcall_shim.py. GenieX v0.6.0 added Qwen tool-call parsing, so on v0.6+ use geniex-cpu directly -- verified on v0.6.1, 2026-09-05. Keep this for older builds: without the shim they return Qwen's <tool_call> template as plain content and every tool call is invisible. Start it first: python3 geniex_toolcall_shim.py --upstream http://localhost:18184 --port 18190"
     },
     "geniex-hybrid": {
       "base_url": "http://127.0.0.1:18183",

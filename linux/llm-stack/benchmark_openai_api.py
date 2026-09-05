@@ -244,7 +244,8 @@ def print_backends(path=None):
 #
 # Speed metrics alone cannot tell a working model from a broken one: a model
 # emitting fluent nonsense scores EXCELLENT tokens/sec. This was not
-# hypothetical -- GenieX v0.5.0's i-quant kernels produced fast garbage
+# hypothetical -- GenieX's i-quant kernels produce fast garbage (v0.5.0 and
+# v0.6.1 alike)
 # ('\n\n\n....\n\n', ' majorityathersyre...') that every throughput metric
 # rated as a good run (see docs/geniex-local-ai-setup.md).
 #

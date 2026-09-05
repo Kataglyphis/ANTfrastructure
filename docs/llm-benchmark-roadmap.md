@@ -114,13 +114,15 @@ The suite measures *endpoints*. You run an *agent*. Nothing connects the two.
   preamble measures **8,175 tokens**, so the recommended QAIRT bundle (4096
   compiled in) fails all three tasks with **zero tool calls** — the models were
   never the constraint, the short prompts in every prior benchmark were.
-  Then "zero tool calls" turned out to be the *server*: GenieX returns Qwen's
-  `<tool_call>` template as plain content, so no agent ever sees a call.
+  Then "zero tool calls" turned out to be the *server*: GenieX v0.5.0 returned
+  Qwen's `<tool_call>` template as plain content, so no agent ever saw a call.
   Behind `geniex_toolcall_shim.py`, on the CPU lane with a trimmed tool set,
-  `Qwen3.8-9B-Distill` scores **3/3, verified by the repositories' own tests**,
+  `Qwen3.8-9B-Distill` scored **3/3, verified by the repositories' own tests**,
   at 10-14 minutes per task. **The suite has now observed a pass** — until then
   it had only ever seen failures, and a bug that made everything fail would have
-  looked identical.
+  looked identical. Re-run on **GenieX v0.6.1** (2026-09-05), which parses the
+  template itself and has a prefix cache: still 3/3, no shim, **657 s for all
+  three tasks** where one used to take 656 s.
 - **P3.2 Long context *and* tool calling together** [M·★★★] **Answered by
   P3.1** for the QAIRT lane: what breaks first is the context, and it breaks
   before any tool call is attempted. Ten tool schemas are 5,286 tokens on their

@@ -278,6 +278,14 @@ and then **excluded** from the rate, the interval and the rank, exactly like a
 transport error; for a while the footer said "unmeasured" while the arithmetic
 counted them as misses.
 
+A cut is recognised from `finish_reason: "length"` first, then from
+`usage.completion_tokens`, and only then from the streamed delta count — and
+against the request's own output budget, not a fixed number. GenieX v0.5.0
+stopped at 2048 tokens whatever you asked for; v0.6.1 honours `max_tokens` and
+has no ceiling, so a hard-coded 2048 would now report a long, legitimate answer
+as CUT. `BENCH_GENERATION_CAP` overrides the budget for a server that imposes
+its own.
+
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
 
@@ -390,9 +398,16 @@ quality — see `docs/geniex-local-ai-setup.md` § 1m.
 
 ### When the lane loses the tool call (`geniex_toolcall_shim.py`)
 
+> **Not needed on GenieX v0.6.0 and later**, which added tool-call parsing for
+> the Qwen template — verified on v0.6.1 (2026-09-05): `Qwen3.8-9B-Distill`
+> returns a populated `tool_calls` with `finish_reason: "tool_calls"` straight
+> from the lane. Point the agent at the lane. The shim stays for older builds
+> and is harmless in front of a new one; it skips any message the server has
+> already parsed.
+
 If an agent run scores **zero tool calls**, suspect the server before the model.
-GenieX serves Qwen GGUFs over an OpenAI-compatible API without parsing their
-chat template: the model correctly emits
+GenieX v0.5.0 served Qwen GGUFs over an OpenAI-compatible API without parsing
+their chat template: the model correctly emits
 
 ```text
 <tool_call><function=bash><parameter=command>…</parameter></function></tool_call>
@@ -453,7 +468,9 @@ Reads only the file header (instant on a 16 GB model) and prints the
 architecture, imatrix metadata and the **tensor quantisation histogram**. That
 histogram is what diagnosed a real failure no benchmark could have caught:
 files dominated by sub-4-bit i-quants (`IQ3_S`, `IQ3_XXS`, `IQ2_*`, `IQ1_*`)
-produced fluent garbage on GenieX v0.5.0, while plain K-quants at the same bit
+produced fluent garbage on GenieX — v0.5.0 (llama.cpp `873e5d8`) and v0.6.1
+(`0eadefe`) alike, so it is these kernels rather than one build — while plain
+K-quants at the same bit
 width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
 
 | Verdict | Meaning |

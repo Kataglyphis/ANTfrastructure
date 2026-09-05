@@ -244,7 +244,7 @@ class TestEvaluateAccounting:
 
     def test_cut_attempts_are_excluded_not_failed(self, monkeypatch):
         good = "```python\n" + GOOD + "```"
-        r = self._run(monkeypatch, [(good, 5, "stop"), ("<think>", bc.GENERATION_CAP, "length")],
+        r = self._run(monkeypatch, [(good, 5, "stop"), ("<think>", 9999, "length")],
                       repeats=2)
         assert r["truncated"] == 1 and r["total"] == 1 and r["passed"] == 1 and r["wrong"] == 0
 
@@ -422,17 +422,32 @@ class TestRealTokenCount:
     def test_server_usage_overrides_the_delta_count(self, monkeypatch):
         bad = "```python\n" + STUB + "```"
         monkeypatch.setattr(bc, "TASKS", [MERGE])
-        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, bc.GENERATION_CAP, 10, "", "stop", 100))
-        r = bc.evaluate("http://x", "m", "lbl", 100, warmup=False)
+        # The delta count says 5000 -- at or past a 3000-token budget, so the
+        # proxy alone would call this a cut. usage says 100 tokens were
+        # generated, and usage wins: a server that batches deltas must not turn
+        # a short, complete answer into CUT.
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 5000, 10, "", "stop", 100))
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
         assert r["truncated"] == 0 and r["results"][0]["tokens"] == 100
         assert r["results"][0]["tokens_estimated"] is False
 
     def test_no_usage_keeps_the_delta_proxy(self, monkeypatch):
+        # No usage and no finish_reason: the delta count against the request's
+        # own budget is all there is, and reaching it is a cut.
         bad = "```python\n" + STUB + "```"
         monkeypatch.setattr(bc, "TASKS", [MERGE])
-        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, bc.GENERATION_CAP, 10, "", None, None))
-        r = bc.evaluate("http://x", "m", "lbl", 100, warmup=False)
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 3000, 10, "", None, None))
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
         assert r["truncated"] == 1 and r["results"][0]["tokens_estimated"] is True
+
+    def test_a_long_legitimate_answer_is_not_cut_by_a_stale_2048(self, monkeypatch):
+        # v0.6.1 has no hard ceiling. A wrong-but-complete 2500-token answer
+        # under a 3000-token budget must read FAIL, not CUT.
+        bad = "```python\n" + STUB + "```"
+        monkeypatch.setattr(bc, "TASKS", [MERGE])
+        monkeypatch.setattr(bc, "ask", lambda *a, **k: (bad, 0.1, 1.0, 2500, 10, "", "stop", 2500))
+        r = bc.evaluate("http://x", "m", "lbl", 3000, warmup=False)
+        assert r["truncated"] == 0 and r["passed"] == 0 and r["wrong"] == 1
 
     def test_ask_reads_completion_tokens(self, monkeypatch):
         chunks = [{"choices": [{"delta": {"content": "x"}, "finish_reason": "stop"}]},

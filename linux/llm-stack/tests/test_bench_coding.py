@@ -141,8 +141,17 @@ class TestTruncationDetection:
     first run of this benchmark made against Qwen3-4B."""
 
     def test_hitting_the_generation_cap_counts_as_truncated(self):
-        from bench_coding import GENERATION_CAP, looks_truncated
-        assert looks_truncated("some text", GENERATION_CAP, "def f(): pass")
+        # The cap is the request's own output budget now, not a server
+        # constant: GenieX v0.5.0 stopped at 2048 whatever you asked for,
+        # v0.6.1 honours max_tokens and has no ceiling.
+        from bench_coding import generation_cap, looks_truncated
+        assert looks_truncated("some text", 2048, "def f(): pass", cap=2048)
+        assert generation_cap(3000) == 3000
+        assert generation_cap(None) == 2048
+
+    def test_a_server_reported_length_finish_is_a_cut_without_any_cap(self):
+        from bench_coding import looks_truncated
+        assert looks_truncated("some text", 10, "def f(): pass", finish="length")
 
     def test_short_reply_is_not_truncated(self):
         from bench_coding import looks_truncated

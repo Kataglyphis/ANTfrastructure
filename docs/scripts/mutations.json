@@ -2034,10 +2034,10 @@
   {
     "id": "coding.finish-length-is-cut",
     "target": "linux/llm-stack/bench_coding.py",
-    "find": "    if chunks >= GENERATION_CAP or finish == \"length\":",
-    "replace": "    if chunks >= GENERATION_CAP:",
+    "find": "    if finish == \"length\":\n        return True          # the server said so; nothing to infer",
+    "replace": "    if False:\n        return True          # the server said so; nothing to infer",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a server-reported cut must not be graded wrong"
+    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas"
   },
   {
     "id": "coding.reasoning-deltas",
@@ -2230,5 +2230,13 @@
     "replace": "                   if e[\"target\"] in touched]",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a commit that only weakened a test selected no mutation"
+  },
+  {
+    "id": "coding.cap-is-the-request-budget",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    return GENERATION_CAP or max_tokens or 2048",
+    "replace": "    return GENERATION_CAP or 2048",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling"
   }
 ]

@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Translate Qwen's tool-call template into OpenAI `tool_calls`.
 
-GenieX serves these GGUF models over an OpenAI-compatible API but does not
-parse their chat template. Asked to fix a bug, Qwen3.8-9B answers:
+NOT NEEDED ON GenieX v0.6.0 AND LATER. That release added "enhanced tool-call
+parsing" for the Qwen template, and v0.6.1 was verified here on 2026-09-05:
+Qwen3.8-9B-Distill returns a populated `tool_calls` with
+`finish_reason: "tool_calls"`, straight from the lane. Point the agent at the
+lane itself. This shim remains for older builds, and is harmless if left in
+front of a new one -- it skips any message the server already parsed.
+
+On v0.5.0 GenieX served these GGUF models over an OpenAI-compatible API but did
+not parse their chat template. Asked to fix a bug, Qwen3.8-9B answers:
 
     <tool_call>
     <function=bash>
