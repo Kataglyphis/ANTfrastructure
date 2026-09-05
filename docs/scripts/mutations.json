@@ -1906,7 +1906,7 @@
   {
     "id": "pre-commit.fast-tier-aborts",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+    "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
     "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -2442,7 +2442,7 @@
   {
     "id": "pre-commit.pinned-shellcheck-or-refuse",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+    "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
     "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3218,10 +3218,10 @@
   {
     "id": "mutations.ignored-not-copied",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "    skip |= ignored",
-    "replace": "    skip |= set()",
+    "find": "    skip |= {os.path.normpath(dst)} | _git_ignored(src)",
+    "replace": "    skip |= {os.path.normpath(dst)}",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-    "why": "gitignored bulk filled the temp filesystem on every gate run"
+    "why": "gitignored bulk filled the temp filesystem on every gate run -- and with --jobs that cost is paid once per shard"
   },
   {
     "id": "coding.harness-catches-exits",

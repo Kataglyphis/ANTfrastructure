@@ -136,17 +136,32 @@ for name in g.CODE_SCAN:
                 g.CODE_SKIP_PARTS & set(f.parts)):
             cand.append(f)
 rel = [f.relative_to(g.REPO_ROOT) for f in cand]
+# A SYNTHETIC list for the floor, so this proves the same thing in a full
+# checkout and in the gate's mirror. The mirror now prunes git-ignored paths,
+# so measuring the floor against what is on disk found nothing there and this
+# test failed for the very reason it exists to guard -- two correct changes,
+# broken together, the second time in one day.
+probe = [pathlib.Path(e) / "probe.bin" if not e.endswith((".zst", ".env", ".cjs"))
+         else pathlib.Path(e) for e in g.UNTRACKED_OUTPUT]
+keep = [pathlib.Path("linux/llm-stack/bench_coding.py"),
+        pathlib.Path("linux/llm-stack/.env.example")]
+floor_probe = g._static_ignores(probe + keep)
 with_git = g._ignored_paths(rel)
 floor = g._static_ignores(rel)
 g.REPO_ROOT = pathlib.Path(tempfile.mkdtemp())   # not a git repository
 without_git = g._ignored_paths(rel)
+without_git_probe = g._ignored_paths(probe + keep)
 problems = []
-if not floor:
-    problems.append("the floor is empty, so it proves nothing")
+if len(floor_probe) != len(probe):
+    problems.append("the floor skips %d of %d output paths" % (len(floor_probe), len(probe)))
+if any(str(k) in floor_probe for k in keep):
+    problems.append("the floor swallowed a tracked file beside an excluded one")
 if with_git != floor:
     problems.append("git says %d, floor says %d" % (len(with_git), len(floor)))
 if without_git != floor:
     problems.append("no-git path returned %d, not the floor" % len(without_git))
+if without_git_probe != floor_probe:
+    problems.append("no-git path ignored the floor on the probe list")
 print("wired" if not problems else "BROKEN: " + "; ".join(problems))
 PYCHK
 )"
