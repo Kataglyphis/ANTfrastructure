@@ -1,4 +1,4 @@
-[submodule "external/Kataglyphis-DocumANTation"]
-	path = external/Kataglyphis-DocumANTation
+[submodule "third_party/DocumANTation"]
+	path = third_party/DocumANTation
 	url = https://github.com/Kataglyphis/DocumANTation.git
 	branch = main

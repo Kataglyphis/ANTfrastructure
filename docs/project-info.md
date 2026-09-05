@@ -216,8 +216,8 @@ Some very helpful literature, tutorials, etc.
 The shared theme lives in the Kataglyphis-DocumANTation repo and is vendored here as a submodule.
 
 The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
-as a submodule at `external/Kataglyphis-DocumANTation`. `requirements.txt` installs it
-editable (`-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme`), so
+as a submodule at `third_party/DocumANTation`. `requirements.txt` installs it
+editable (`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`), so
 `docs/conf.py` just imports it:
 
 ```python
@@ -232,6 +232,6 @@ package's `_static/` directory.
 their `requirements.txt`, then use the `conf.py` snippet above.
 
 The canonical CSS lives in the submodule at
-`external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
+`third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
 — edit it **in the DocumANTation repo** to change the global look. The project's own
 `docs/_static/css/` can hold additional per-project overrides.

@@ -2,7 +2,7 @@
 /* Single source of truth: edit style/brand.json in the submodule, run
    generate_style.py --write, rebuild the viewer to pick up changes.    */
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
-@import url('../../../../external/Kataglyphis-DocumANTation/style/brand.css');
+@import url('../../../../third_party/DocumANTation/style/brand.css');
 
 :root {
   --error: #ef4444;

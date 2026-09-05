@@ -1049,7 +1049,7 @@
       "licenseDeclared": "LicenseRef-Distro-Bundle",
       "licenseConcluded": "LicenseRef-Distro-Bundle",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1062,7 +1062,7 @@
       "licenseDeclared": "GPL-2.0-or-later",
       "licenseConcluded": "GPL-2.0-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.10.2"
     },
     {
@@ -1075,7 +1075,7 @@
       "licenseDeclared": "LicenseRef-Distro-Bundle",
       "licenseConcluded": "LicenseRef-Distro-Bundle",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1088,7 +1088,7 @@
       "licenseDeclared": "LPPL-1.3c",
       "licenseConcluded": "LPPL-1.3c",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes"
     },
     {
@@ -1101,7 +1101,7 @@
       "licenseDeclared": "AGPL-3.0-or-later",
       "licenseConcluded": "AGPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence, network-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1114,7 +1114,7 @@
       "licenseDeclared": "ImageMagick",
       "licenseConcluded": "ImageMagick",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes"
     },
     {
@@ -1127,7 +1127,7 @@
       "licenseDeclared": "PSF-2.0",
       "licenseConcluded": "PSF-2.0",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Python (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -1140,7 +1140,7 @@
       "licenseDeclared": "Apache-2.0 OR MIT",
       "licenseConcluded": "Apache-2.0 OR MIT",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Python (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
@@ -1153,7 +1153,7 @@
       "licenseDeclared": "BSD-2-Clause",
       "licenseConcluded": "BSD-2-Clause",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Python (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -1166,7 +1166,7 @@
       "licenseDeclared": "LGPL-2.1-or-later",
       "licenseConcluded": "LGPL-2.1-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1179,7 +1179,7 @@
       "licenseDeclared": "curl",
       "licenseConcluded": "curl",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -1192,7 +1192,7 @@
       "licenseDeclared": "GPL-3.0-or-later",
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1205,7 +1205,7 @@
       "licenseDeclared": "MPL-2.0 AND GPL-2.0-or-later",
       "licenseConcluded": "MPL-2.0 AND GPL-2.0-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1218,7 +1218,7 @@
       "licenseDeclared": "GPL-3.0-or-later",
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
     },
     {
@@ -1231,7 +1231,7 @@
       "licenseDeclared": "ISC AND BSD-2-Clause AND BSD-3-Clause",
       "licenseConcluded": "ISC AND BSD-2-Clause AND BSD-3-Clause",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Base Utilities (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -1244,7 +1244,7 @@
       "licenseDeclared": "BSD-3-Clause",
       "licenseConcluded": "BSD-3-Clause",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -1257,7 +1257,7 @@
       "licenseDeclared": "BSD-3-Clause",
       "licenseConcluded": "BSD-3-Clause",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (third_party/DocumANTation/Dockerfile)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
