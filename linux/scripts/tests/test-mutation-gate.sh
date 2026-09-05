@@ -140,6 +140,14 @@ printf '#!/usr/bin/env bash\nprintf "somewhere/else.sh\\n"\n' > "${_work}/bin/gi
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
   "a target outside the diff must be skipped, not run"
 
+t_case "--changed also selects by the TEST an entry runs, not only by target"
+# A commit that only weakens tests/t.sh touches no target; matching the test
+# path is what makes the gate re-verify the guarantee that test carries.
+_fixture "GUARD=on" "GUARD=off" yes .
+printf '#!/usr/bin/env bash\nprintf "t.sh\\n"\n' > "${_work}/bin/git"
+t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" \
+  "an entry whose test file is in the diff must be selected"
+
 # --- --stale-check: the half of an entry that ROTS, without running one test ---
 # 378 entries in ~0.06s, which is what makes a whole-manifest pass affordable in
 # a hook. What it must never do is read as a substitute for the gate.
@@ -246,6 +254,65 @@ for _d in ${_heavy}; do
     *) t_assert_ok true ;;
   esac
 done
+
+# --- the copy asks git, copies files as carefully as dirs, and fails loudly ---
+#
+# All three were found at once on 2026-09-04: a 1.5 GB gitignored tarball was
+# copied into a 3 GB tmpfs on every run (COPY_EXCLUDES only ever pruned
+# DIRECTORIES, so listing the file there changed nothing), the copy hit ENOSPC,
+# `except OSError: pass` produced 0-byte test files, pytest collected nothing,
+# and nineteen entries were reported as vacuous bites -- a verdict about disk
+# space wearing the clothes of a verdict about the tests.
+
+t_case "a gitignored file in the source is not copied (git is asked at the SOURCE)"
+_fixture "GUARD=on" "GUARD=off" yes .
+( cd "${_work}" && git init -q . && printf 'blob.bin\nbuild/\n' > .gitignore ) 2>/dev/null
+printf 'ignored\n' > "${_work}/blob.bin"; mkdir -p "${_work}/build"; printf 'ignored\n' > "${_work}/build/out"
+printf 'tracked\n' > "${_work}/keep.txt"
+printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' "${_tmp}" > "${_work}/t.sh"
+t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+_copied="$(cat "${_tmp}/copied")"
+t_assert_contains "${_copied}" "./keep.txt" "an ordinary file is still copied"
+case "${_copied}" in *"./blob.bin"*|*"./build/out"*) t_assert_eq "ignored paths absent" "ignored paths copied" \
+  "git-ignored output must not be cloned into the throwaway copy" ;; *) t_assert_ok true ;; esac
+rm -rf "${_work}/.git" "${_work}/.gitignore" "${_work}/blob.bin" "${_work}/build" "${_work}/keep.txt"
+
+t_case "a COPY_EXCLUDES entry that names a FILE is skipped, not just a directory"
+_fixture "GUARD=on" "GUARD=off" yes .
+mkdir -p "${_work}/linux/llm-stack"; printf 'x' > "${_work}/linux/llm-stack/ollama-binary.tar.zst"
+printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' "${_tmp}" > "${_work}/t.sh"
+t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+case "$(cat "${_tmp}/copied")" in *"ollama-binary.tar.zst"*) t_assert_eq "file excluded" "file copied" \
+  "an excluded FILE was still copied -- the skip only pruned dirnames" ;; *) t_assert_ok true ;; esac
+rm -rf "${_work}/linux"
+
+if [ "$(id -u)" != 0 ]; then
+t_case "a copy that fails is a loud error, never a vacuous-bite verdict"
+_fixture "GUARD=on" "GUARD=off" yes .
+printf 'secret\n' > "${_work}/unreadable"; chmod 000 "${_work}/unreadable"
+_out="$(_iso_run)"; _code="$(_iso_rc)"
+chmod 644 "${_work}/unreadable"; rm -f "${_work}/unreadable"
+t_assert_eq "0" "$( [ "${_code}" != 0 ]; echo $? )" "an incomplete copy must fail the gate"
+t_assert_contains "${_out}" "mirror_tree: could not copy" "the failure must name the copy, not the tests"
+case "${_out}" in *"vacuous bite"*) t_assert_eq "no vacuous verdict" "vacuous verdict" \
+  "disk trouble must not be reported as a test defect" ;; *) t_assert_ok true ;; esac
+fi
+
+t_case "a test that times out is killed as a TREE, its grandchildren with it"
+# A test that forks a sleeper, records its pid, then spins past the entry's
+# timeout. Killing only the shell left the sleeper (and, in the real gate, a
+# whole pytest) running: one such orphan burned CPU for twenty minutes.
+_fixture "GUARD=on" "GUARD=off" yes .
+# Green unmutated, spinning once the guard is gone: a probe that ALWAYS spins
+# fails its own baseline and is reported vacuous before the kill is exercised.
+printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile :; do :; done\n' "${_tmp}" > "${_work}/t.sh"
+printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":2}]\n' > "${_work}/m.json"
+_out="$(_iso_run)"
+t_assert_contains "${_out}" "bites" "the spinning mutant times out, and a timeout counts as a bite"
+sleep 1
+_g="$(cat "${_tmp}/gpid" 2>/dev/null)"
+t_assert_eq "dead" "$( kill -0 "${_g}" 2>/dev/null && echo alive || echo dead )" "the sleeper grandchild must not survive the timeout"
+kill -9 "${_g}" 2>/dev/null; rm -f "${_tmp}/gpid"
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 

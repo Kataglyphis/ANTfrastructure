@@ -76,7 +76,21 @@ HEADER_ALLOW = Path(__file__).with_name("doc-header-pointers.allow")
 # hides that. Re-point at the durable page instead.
 UNFREEZABLE_PAGES = ("refactoring-backlog.md",)
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
-CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__"}
+CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__", ".pytest_cache", "node_modules"}
+# Output trees that must be skipped even when git cannot be consulted. The gate
+# runs inside a mirrored tree with no .git (verify_mutations.py copies the repo
+# minus .git before mutating), and there `git check-ignore` answers nothing --
+# which silently turned 566 scanned files into 5,467 and failed the gate on
+# model output. Git stays the source of truth when it is available; this is the
+# floor that keeps both answers identical. test-doc-links.sh pins that equality,
+# so a new output directory fails loudly here instead of rotting the gate.
+UNTRACKED_OUTPUT = (
+    "linux/llm-stack/benchmark-viewer/dist",
+    "linux/llm-stack/benchmark-viewer/ssr-smoke/out.cjs",
+    "linux/llm-stack/benchmark_results",
+    "linux/llm-stack/.env",
+    "linux/llm-stack/ollama-binary.tar.zst",
+)
 
 
 def _ignored_paths(paths: list) -> set:
@@ -93,6 +107,13 @@ def _ignored_paths(paths: list) -> set:
     Asking git is better than a hand-kept skip list: the same .gitignore that
     keeps the data out of the repo now keeps it out of the lint, so the next
     output directory needs no second decision.
+
+    But git is not always there. The mutation gate mirrors the repo WITHOUT
+    .git and runs this from the copy, where check-ignore answers nothing -- and
+    "scan everything" is not a safe default: it re-introduced exactly the
+    findings this function exists to suppress, and killed two mutation entries
+    by making their test fail before it was ever mutated. So a missing or
+    unhappy git falls back to UNTRACKED_OUTPUT rather than to silence.
     """
     if not paths:
         return set()
@@ -103,8 +124,29 @@ def _ignored_paths(paths: list) -> set:
             capture_output=True, text=True, cwd=REPO_ROOT, timeout=60,
         )
     except Exception:
-        return set()  # no git, or it failed — scan everything rather than skip
+        return _static_ignores(paths)
+    if proc.returncode not in (0, 1):
+        # 0 = some ignored, 1 = none ignored. Anything else (128: not a repo)
+        # means git could not answer, and scanning everything would report
+        # findings in generated data that nobody can act on.
+        return _static_ignores(paths)
     return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
+def _static_ignores(paths: list) -> set:
+    """The git-free floor: the output trees, matched on path boundaries.
+
+    Boundaries matter: a bare prefix test lets "linux/llm-stack/.env" swallow
+    the tracked ".env.example" next to it.
+    """
+    out = set()
+    for p in paths:
+        s = str(p)
+        for entry in UNTRACKED_OUTPUT:
+            if s == entry or s.startswith(entry + "/"):
+                out.add(s)
+                break
+    return out
 CODE_POINTER = re.compile(
     r"(?<![\w/.-])((?:\.\./)*docs/[A-Za-z0-9._/-]+\.md)(?:#([A-Za-z0-9_-]+))?"
 )

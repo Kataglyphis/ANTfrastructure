@@ -7,7 +7,8 @@ A benchmark cannot tell you *why* a model is broken -- and a broken model is
 often FAST, so throughput numbers look great while the output is nonsense.
 What actually diagnosed one such case was the tensor-type histogram: files
 dominated by sub-4-bit **i-quants** (IQ3_S, IQ3_XXS, IQ2_*, IQ1_*) produced
-garbage on GenieX v0.5.0, on both its CPU and GPU lanes, while plain K-quants
+garbage on GenieX (v0.5.0 llama.cpp 873e5d8 AND v0.6.1 llama.cpp 0eadefe,
+re-verified 2026-09-05), on both its CPU and GPU lanes, while plain K-quants
 at the same bit width (Q3_K_M) and IQ4_XS were fine. See
 docs/geniex-local-ai-setup.md.
 
@@ -103,7 +104,7 @@ def inspect(path):
     else:
         verdict, note = ("RISKY",
                          f"{risky_count} sub-4-bit i-quant tensors ({share:.1%}) — "
-                         "this pattern produced garbage output on GenieX v0.5.0")
+                         "this pattern produced garbage output on GenieX v0.5.0 and v0.6.1")
 
     return {
         "file": path,

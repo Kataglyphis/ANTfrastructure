@@ -681,7 +681,12 @@ def main():
         print("  RANKING — correct tool calls, then time")
         print("=" * 70)
         from bench_stats import format_score
-        for r in sorted(reports, key=lambda x: (-x["passed"], x["total_wall_s"])):
+        # Rate over measured attempts, then coverage, then time -- the same
+        # key as bench_coding, for the same reason: excluded errors must not
+        # cost rank, and one surviving attempt must not outrank twenty.
+        for r in sorted(reports, key=lambda x: (
+                -(x["passed"] / x["total"] if x["total"] else 0.0),
+                -x["total"], x["total_wall_s"])):
             # With the interval, not as a bare fraction: this table is what a
             # reader takes away, and 25/27 vs 27/27 does NOT support the
             # conclusion the bare numbers invite.

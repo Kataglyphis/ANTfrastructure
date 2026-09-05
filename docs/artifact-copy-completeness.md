@@ -95,6 +95,16 @@ happen:
   root) behind a WARNING — the one time a masked failure was the lucky
   outcome. `setup-flutter.sh` now ships the checkout bare on purpose, and the
   `Dockerfile.sdk` cache-restore path strips `bin/cache` as well.
+* **`setup-flutter.sh` is a build-stage script and returns early if the
+  requested version is already bootstrapped.** Calling it from a running
+  container used to undo the package stage: it re-extracted the tarball over
+  `/opt/flutter` and stripped `bin/cache`, so the very next `flutter` call
+  re-downloaded the Dart SDK — 227 MB and a `flutter_tools` rebuild on *every*
+  run of every lane. Measured 2026-09-05 in Kataglyphis-Inference-Engine, whose
+  Linux, Android and web lanes all called it from `setup_flutter_sdk`. The
+  guard reads `frameworkVersion` from `bin/cache/flutter.version.json`, which
+  exists only once the SDK is bootstrapped, so a fresh `/opt` still installs
+  and still ships bare.
 * **Only the target-arch `package` stage can bootstrap.** `setup-package-image.sh`
   `bootstrap_flutter_sdk` registers `/opt/flutter` as a git `safe.directory`,
   runs `flutter --suppress-analytics --version`, fails the stage with

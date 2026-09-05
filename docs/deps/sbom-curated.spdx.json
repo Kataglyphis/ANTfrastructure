@@ -1315,7 +1315,7 @@
     {
       "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d56fdd5c",
       "name": "GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server)",
-      "versionInfo": "host install (GenieX CLI v0.5.0)",
+      "versionInfo": "host install (GenieX CLI v0.6.1)",
       "downloadLocation": "https://github.com/qualcomm/GenieX",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

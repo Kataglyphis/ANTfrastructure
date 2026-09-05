@@ -21,6 +21,7 @@ never told.
 EXTENDED_TASKS = [
     {
         "name": "strings_normalize_tag",
+        "stdlib_only": True,
         "prompt": """You are writing the slug helper for a tagging system.
 
 Write a Python function with this exact signature:
@@ -68,6 +69,7 @@ assert normalize_tag("-") == "untitled\"""",
     },
     {
         "name": "strings_split_steps",
+        "stdlib_only": True,
         "prompt": """A recipe app stores an instruction list as one string in which steps are separated by the exact three-character marker `-->` (hyphen, hyphen, greater-than sign).
 
 Write a Python function with this exact signature:
@@ -109,6 +111,7 @@ assert split_steps("  step one  -->\\n step two \\n") == ["step one", "step two"
     },
     {
         "name": "strings_dominant_case",
+        "stdlib_only": True,
         "prompt": """Write a Python function with this exact signature:
     def dominant_case(words: list[str]) -> str
 
@@ -601,7 +604,8 @@ assert _bad("12G")
 assert _bad("12AB")
 assert _bad("1 A")
 assert _bad("-1A")
-assert _bad("1.5A")""",
+assert _bad("1.5A")
+assert _bad("١A")""",
         "reference": """def validation_parse_seat_code(code: str) -> tuple[int, str]:
     if len(code) < 2:
         raise ValueError("seat code too short")
@@ -679,7 +683,10 @@ assert _bad("A=1")
 assert _bad("a b=1")
 assert _bad("a1=2")
 assert _bad("a=1 2")
-assert _bad("a=x;;b=y")""",
+assert _bad("a=x;;b=y")
+assert _bad(" ")
+assert _bad("   ")
+assert _bad("\t")""",
         "reference": """def validation_parse_kv_pairs(text: str) -> dict:
     KEY = set("abcdefghijklmnopqrstuvwxyz_")
     VAL = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
@@ -772,7 +779,8 @@ assert _bad("1,")
 assert _bad(",1")
 assert _bad("1, 2")
 assert _bad("a")
-assert _bad("1.5")""",
+assert _bad("1.5")
+assert _bad("٣")""",
         "reference": """def validation_parse_range_spec(spec: str) -> list:
     def num(s):
         if not s or any(c not in "0123456789" for c in s):
@@ -1444,6 +1452,16 @@ try:
     parse_item_list("apple,")
     assert False, "expected ValueError for trailing comma"
 except ValueError:
+    pass
+try:
+    parse_item_list("٣*egg")
+    assert False, "expected ValueError for a non-ASCII digit"
+except ValueError:
+    pass
+try:
+    parse_item_list("+2*x")
+    assert False, "expected ValueError for a signed count"
+except ValueError:
     pass""",
         "reference": """def parse_item_list(s: str) -> list[tuple[str, int]]:
     if s.strip() == '':
@@ -1457,7 +1475,7 @@ except ValueError:
             left, right = item.split('*', 1)
             left = left.strip()
             name = right.strip()
-            if left == '' or not left.isdigit():
+            if left == '' or not all(c in '0123456789' for c in left):
                 raise ValueError("bad count")
             count = int(left)
             if count < 1:

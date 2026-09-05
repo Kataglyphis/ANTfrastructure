@@ -352,6 +352,14 @@
     "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
   },
   {
+    "id": "doc-links.git-free-floor",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "        return _static_ignores(paths)\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "replace": "        return set()\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "without git the gate must skip the same paths, or it lints model output and kills its own mutation entries"
+  },
+  {
     "id": "gate-registry.new-unproven",
     "target": "linux/scripts/quality_allow.py",
     "find": "    if new:\n        rc = 1",
@@ -1626,10 +1634,10 @@
   {
     "id": "mutations.copy-excludes-heavy-trees",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "COPY_EXCLUDES = (\".git\", \"external\", \"out\", \"logs\", \"archive\", \"linux/webserver/dist\")",
+    "find": "COPY_EXCLUDES = (\".git\", \"external\", \"out\", \"logs\", \"archive\", \"linux/webserver/dist\",\n                 # 1.5 GB, gitignored, read by no gate test -- and it was\n                 # copied into every mirrored workspace, including the hook's.\n                 # With --jobs that cost is paid once per shard.\n                 \"linux/llm-stack/ollama-binary.tar.zst\",\n                 \"linux/llm-stack/benchmark-viewer/node_modules\")",
     "replace": "COPY_EXCLUDES = ()",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-    "why": "without the excludes every invocation clones .git/out/logs/archive/external too, and the gate runs once per pre-commit"
+    "why": "without the excludes every invocation clones .git/out/logs/archive/external plus the 1.5 GB ollama tarball and node_modules too, and the gate runs once per pre-commit -- once per shard under --jobs"
   },
   {
     "id": "mutations.find-must-match-once",
@@ -2996,7 +3004,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        if \"too long\" in msg.lower() or \"context\" in msg.lower():\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
     "replace": "        if False:\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
-    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k context",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k context",
     "why": "a context-blocked run must never be scored as a capability failure"
   },
   {
@@ -3004,7 +3012,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return (parse(text(e.stdout)), time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
     "replace": "        return ([], time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
-    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k TimeoutKeepsEvidence",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k TimeoutKeepsEvidence",
     "why": "a timed-out agent that made 20 tool calls must not report 0"
   },
   {
@@ -3012,7 +3020,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return proc.returncode == 0, (proc.stdout + proc.stderr)[-300:]",
     "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
-    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
   },
   {
@@ -5038,5 +5046,301 @@
     "replace": "    if false; then",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "without the precondition the function runs ${CARGO_HOME}/bin/rustup as a bare path that is not there, and the stage dies on 127 in an arch that simply has no Rust rather than skipping"
+  },
+  {
+    "id": "toolcall-shim.finish-reason",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "        choice[\"finish_reason\"] = \"tool_calls\"",
+    "replace": "        pass",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
+    "why": "a recognised call with finish_reason 'stop' still ends the turn -- the agent never runs it"
+  },
+  {
+    "id": "toolcall-shim.invents-calls",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "    if not text or \"<function=\" not in text:\n        return strip_thinking(text or \"\"), []",
+    "replace": "    if not text or \"<function=\" not in text:\n        if \"```bash\" in (text or \"\"):\n            return \"\", [{\"id\": \"call_1\", \"type\": \"function\",\n                         \"function\": {\"name\": \"bash\", \"arguments\": \"{}\"}}]\n        return strip_thinking(text or \"\"), []",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
+    "why": "markdown fences are not a call; inventing one runs a command the model never asked for"
+  },
+  {
+    "id": "toolcall-shim.truncated-markup-leaks",
+    "target": "linux/llm-stack/geniex_toolcall_shim.py",
+    "find": "        return strip_thinking(TOOL_CALL_BLOCK_RE.sub(\"\", text)).strip(), []",
+    "replace": "        return strip_thinking(text), []",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_geniex_toolcall_shim.py -q",
+    "why": "a call cut off mid-template must not reach the user as raw markup pretending to be an answer"
+  },
+  {
+    "id": "coding.fence-variants",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "CODE_FENCE = re.compile(r\"```[ \\t]*(?:python3?|py3?)?[^\\n]*\\n(.*?)```\", re.S | re.I)",
+    "replace": "CODE_FENCE = re.compile(r\"```(?:python|py)?\\s*\\n(.*?)```\", re.S | re.I)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a correct answer in a ```python3 fence was graded SyntaxError"
+  },
+  {
+    "id": "coding.unclosed-think",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    elif \"<think>\" in text:\n        # Unclosed",
+    "replace": "    elif False:\n        # Unclosed",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a draft inside an unclosed <think> was graded PASS at the cap"
+  },
+  {
+    "id": "coding.marker-last-occurrence",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "payload = json.loads(out.rsplit(marker, 1)[1].splitlines()[0])",
+    "replace": "payload = json.loads(out.split(marker, 1)[1].splitlines()[0])",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the first marker occurrence is the one a candidate can print"
+  },
+  {
+    "id": "coding.row-count-checked",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if len(rows) != expected:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "zero rows scored as all assertions passed"
+  },
+  {
+    "id": "coding.setup-denies-pass",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if setup:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
+    "replace": "        if False:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a raising setup line must deny PASS, not let a trivial check pass"
+  },
+  {
+    "id": "coding.setup-not-counted",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        counted = isinstance(node, ast.Assert) or (",
+    "replace": "        counted = True or (",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "setup lines and helper defs padded the partial-credit denominator"
+  },
+  {
+    "id": "coding.own-session-killpg",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                                start_new_session=True)",
+    "replace": "                                start_new_session=False)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a grandchild outlived the timeout in the bench's process group"
+  },
+  {
+    "id": "coding.not-main",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    program = (f\"_MARKER = {marker!r}\\n__name__ = 'candidate'\\n\"",
+    "replace": "    program = (f\"_MARKER = {marker!r}\\n\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a demo under if __name__ == '__main__' failed a correct function"
+  },
+  {
+    "id": "coding.finish-length-is-cut",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if finish == \"length\":\n        return True          # the server said so; nothing to infer",
+    "replace": "    if False:\n        return True          # the server said so; nothing to infer",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas"
+  },
+  {
+    "id": "coding.reasoning-deltas",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "                thought = delta.get(\"reasoning_content\") or delta.get(\"reasoning\")",
+    "replace": "                thought = None",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "reasoning served as a separate delta was dropped, hiding a cut as wrong"
+  },
+  {
+    "id": "coding.deterministic-by-output",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"output_sha256\"])",
+    "replace": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"passed\"])",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "pass/fail agreement is not determinism; a sampling lane was labelled deterministic"
+  },
+  {
+    "id": "coding.errored-do-not-vote",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    measured = [r for r in results if not r.get(\"errored\") and not r.get(\"truncated\")]",
+    "replace": "    measured = list(results)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "one dropped connection flipped a deterministic lane and narrowed the interval"
+  },
+  {
+    "id": "coding.cut-excluded",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    attempts = len(TASKS) * repeats - errored - cut",
+    "replace": "    attempts = len(TASKS) * repeats - errored",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "CUT was printed as unmeasured and then counted as a miss"
+  },
+  {
+    "id": "coding.count-not-ratio",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        effective_k = sum(1 for v in per_task_outcome.values() if v == {True})",
+    "replace": "        effective_k = round(passed * effective_n / max(attempts, 1))",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "rounding a ratio printed 8/9 for seven passing tasks"
+  },
+  {
+    "id": "coding.extended-is-21",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    elif args.task_set == \"extended\":\n        TASKS = EXTENDED_TASKS",
+    "replace": "    elif args.task_set == \"extended\":\n        TASKS = NOVEL_TASKS + EXTENDED_TASKS",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "'extended' meant 21, 24 and 27 in three places"
+  },
+  {
+    "id": "coding.think-test-not-vacuous",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if \"</think>\" in text:\n        text = text.split(\"</think>\")[-1]\n    elif",
+    "replace": "    if False:\n        text = text.split(\"</think>\")[-1]\n    elif",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the think-stripping test passed with stripping disabled"
+  },
+  {
+    "id": "coding.prefer-defining-block",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if want:\n            defining = [b for b in blocks",
+    "replace": "        if False:\n            defining = [b for b in blocks",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the want branch was never exercised by its test"
+  },
+  {
+    "id": "coding.kv-pairs-whitespace",
+    "target": "linux/llm-stack/bench_tasks.py",
+    "find": "assert _bad(\" \")\nassert _bad(\"   \")\nassert _bad(\"\\t\")",
+    "replace": "",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "whitespace-only input returned {} and passed 21/21"
+  },
+  {
+    "id": "compare.effective-k",
+    "target": "linux/llm-stack/bench_compare.py",
+    "find": "            a_k = a.get(\"effective_k\")\n            if a_k is None:\n                a_k = min(a_n, round(a_rate * a_n))\n            b_k = b.get(\"effective_k\")\n            if b_k is None:\n                b_k = min(b_n, round(b_rate * b_n))",
+    "replace": "            a_k, b_k = round(a_rate * a_n), round(b_rate * b_n)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the tripwire rounded a ratio into a fabricated pass"
+  },
+  {
+    "id": "mutations.copy-failure-loud",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "            except OSError as e:\n                raise SystemExit(",
+    "replace": "            except OSError as e:\n                continue; raise SystemExit(",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a swallowed copy error produced 0-byte tests and nineteen false vacuous bites"
+  },
+  {
+    "id": "mutations.ignored-not-copied",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    skip |= {os.path.normpath(dst)} | _git_ignored(src)",
+    "replace": "    skip |= {os.path.normpath(dst)}",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "gitignored bulk filled the temp filesystem on every gate run -- and with --jobs that cost is paid once per shard"
+  },
+  {
+    "id": "coding.harness-catches-exits",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            body.append(f\"except BaseException as _e:\\n    _RESULTS.append(({i}, False, \"",
+    "replace": "            body.append(f\"except Exception as _e:\\n    _RESULTS.append(({i}, False, \"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "sys.exit() inside the tested function discarded every assertion already passed"
+  },
+  {
+    "id": "coding.forbidden-ignores-docstrings",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    stripped = re.sub(r'\"\"\"[\\s\\S]*?\"\"\"|\\'\\'\\'[\\s\\S]*?\\'\\'\\'', \"\", stripped)",
+    "replace": "    pass",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a docstring that mentions sorted() must not fail the forbidden-token check"
+  },
+  {
+    "id": "mutations.timeout-kills-tree",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "                            stderr=subprocess.PIPE, text=True, start_new_session=True)",
+    "replace": "                            stderr=subprocess.PIPE, text=True, start_new_session=False)",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a timed-out test left its grandchildren running; one orphan burned CPU for twenty minutes"
+  },
+  {
+    "id": "coding.forbidden-on-the-tree",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if isinstance(node, ast.Name) and node.id in wanted:\n            return f\"used {node.id}(), which the prompt forbids\"",
+    "replace": "        if False:\n            return f\"used {node.id}(), which the prompt forbids\"",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "an aliased sorted() evaded the text scan"
+  },
+  {
+    "id": "coding.forbidden-attribute",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if isinstance(node, ast.Attribute) and node.attr in wanted:",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "builtins.sorted and .sort() must count as use"
+  },
+  {
+    "id": "coding.unclosed-last-fence",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "            if re.search(r\"```[^\\n]*\\n(?:(?!```).)*\\Z\", tail, re.S):",
+    "replace": "            if text.count(\"```\") % 2 == 1:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a ``` in prose turned a plain typo into CUT"
+  },
+  {
+    "id": "coding.real-token-count",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        count = ctok if ctok is not None else chunks",
+    "replace": "        count = chunks",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a server that batches deltas reported a complete answer as CUT"
+  },
+  {
+    "id": "coding.stdlib-only",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    if stdlib_only:\n        extra = _nonstd_imports(code)",
+    "replace": "    if False:\n        extra = _nonstd_imports(code)",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "three prompts said standard library only and nothing enforced it"
+  },
+  {
+    "id": "coding.env-scrubbed",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
+    "replace": "        proc = subprocess.Popen(cmd, cwd=tmp,",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the candidate inherited HOME, tokens and agent sockets"
+  },
+  {
+    "id": "coding.netns",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "        if _netns_available():\n            cmd = [\"unshare\", \"-rn\"] + cmd",
+    "replace": "        if False:\n            cmd = [\"unshare\", \"-rn\"] + cmd",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the candidate could open sockets"
+  },
+  {
+    "id": "coding.ascii-digits",
+    "target": "linux/llm-stack/bench_tasks.py",
+    "find": "assert _bad(\"1.5A\")\nassert _bad(\"١A\")",
+    "replace": "assert _bad(\"1.5A\")",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "the prompt says ASCII digits and every tested input was ASCII"
+  },
+  {
+    "id": "mutations.changed-by-test-path",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "                   if e[\"target\"] in touched or any(t in e[\"test\"] for t in touched)]",
+    "replace": "                   if e[\"target\"] in touched]",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a commit that only weakened a test selected no mutation"
+  },
+  {
+    "id": "coding.cap-is-the-request-budget",
+    "target": "linux/llm-stack/bench_coding.py",
+    "find": "    return GENERATION_CAP or max_tokens or 2048",
+    "replace": "    return GENERATION_CAP or 2048",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
+    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling"
   }
 ]

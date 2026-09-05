@@ -1058,7 +1058,7 @@
             {
               "name": "GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server)",
               "var": null,
-              "version_fixed": "host install (GenieX CLI v0.5.0)",
+              "version_fixed": "host install (GenieX CLI v0.6.1)",
               "url": "https://github.com/qualcomm/GenieX",
               "license": "BSD 3-Clause",
               "spdx": "BSD-3-Clause"

@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import bench_agent as ba
 
@@ -176,14 +176,14 @@ class TestCli:
     def test_self_test_passes(self):
         # The gate that makes every other row in a report readable.
         r = subprocess.run([sys.executable, "bench_agent.py", "--self-test"],
-                           cwd=os.path.dirname(os.path.abspath(__file__)),
+                           cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
                            capture_output=True, text=True, timeout=300)
         assert r.returncode == 0, r.stdout + r.stderr
         assert "Harness validated" in r.stdout
 
     def test_list_needs_no_server(self):
         r = subprocess.run([sys.executable, "bench_agent.py", "--list"],
-                           cwd=os.path.dirname(os.path.abspath(__file__)),
+                           cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
                            capture_output=True, text=True, timeout=60)
         assert r.returncode == 0
         for task in ba.TASKS:
@@ -209,7 +209,7 @@ class TestScoreExcludesBlockedRuns:
             [sys.executable, "bench_agent.py", "--model", "nonexistent/model",
              "--task", "fix_failing_test", "--timeout", "45",
              "--output", str(out)],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+            cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
             capture_output=True, text=True, timeout=180)
         if not out.exists():
             pytest.skip("opencode unavailable")

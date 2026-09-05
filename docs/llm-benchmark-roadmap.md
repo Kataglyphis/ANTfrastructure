@@ -114,6 +114,15 @@ The suite measures *endpoints*. You run an *agent*. Nothing connects the two.
   preamble measures **8,175 tokens**, so the recommended QAIRT bundle (4096
   compiled in) fails all three tasks with **zero tool calls** — the models were
   never the constraint, the short prompts in every prior benchmark were.
+  Then "zero tool calls" turned out to be the *server*: GenieX v0.5.0 returned
+  Qwen's `<tool_call>` template as plain content, so no agent ever saw a call.
+  Behind `geniex_toolcall_shim.py`, on the CPU lane with a trimmed tool set,
+  `Qwen3.8-9B-Distill` scored **3/3, verified by the repositories' own tests**,
+  at 10-14 minutes per task. **The suite has now observed a pass** — until then
+  it had only ever seen failures, and a bug that made everything fail would have
+  looked identical. Re-run on **GenieX v0.6.1** (2026-09-05), which parses the
+  template itself and has a prefix cache: still 3/3, no shim, **657 s for all
+  three tasks** where one used to take 656 s.
 - **P3.2 Long context *and* tool calling together** [M·★★★] **Answered by
   P3.1** for the QAIRT lane: what breaks first is the context, and it breaks
   before any tool call is attempted. Ten tool schemas are 5,286 tokens on their
@@ -202,9 +211,12 @@ and the proposal had not.
 2. **P1.1** — stop publishing fractions that the sample cannot support.
 3. **P4.1** — the one model that could still change the recommendation.
 4. ~~**P3.1**~~ — done 2026-09-04. It was **not** predictive: the suite ranked
-   models while the binding constraint was prompt size and prefill throughput,
-   which no benchmark here measured because every one of them used a short
-   prompt. Prefer a cheap end-to-end check *early* over a deep proxy suite.
+   models while the binding constraints were prompt size, prefill throughput,
+   and a server that silently discarded every tool call. None of the three was
+   measurable through a short prompt, and the third was indistinguishable from
+   "the model is bad at tools" until someone read the raw response body. Prefer
+   a cheap end-to-end check *early* over a deep proxy suite — and when a
+   benchmark reports zero of something, look at the wire before believing it.
 5. Everything else, as the need appears.
 
 ## What would change the recommendation
