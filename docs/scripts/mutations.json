@@ -234,8 +234,8 @@
   {
     "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all — admit it only on a shell shebang.",
+    "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -349,7 +349,7 @@
     "find": "            if m.group(\"sec\") in have:\n                continue",
     "replace": "            if True:\n                continue",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
-    "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+    "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
   },
   {
     "id": "gate-registry.new-unproven",
@@ -3004,7 +3004,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        if \"too long\" in msg.lower() or \"context\" in msg.lower():\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
     "replace": "        if False:\n            out.append((\"CONTEXT\", \"prompt exceeds the model's context\"))",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k context",
+    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k context",
     "why": "a context-blocked run must never be scored as a capability failure"
   },
   {
@@ -3012,7 +3012,7 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return (parse(text(e.stdout)), time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
     "replace": "        return ([], time.monotonic() - started, True,\n                text(e.stderr)[-400:])",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k TimeoutKeepsEvidence",
+    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k TimeoutKeepsEvidence",
     "why": "a timed-out agent that made 20 tool calls must not report 0"
   },
   {
@@ -3020,7 +3020,23 @@
     "target": "linux/llm-stack/bench_agent.py",
     "find": "        return proc.returncode == 0, (proc.stdout + proc.stderr)[-300:]",
     "replace": "        return True, (proc.stdout + proc.stderr)[-300:]",
-    "test": "python3 -m pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
+    "test": "uvx --quiet pytest linux/llm-stack/test_bench_agent.py -q -k Verification",
     "why": "the fixtures must fail when unsolved -- otherwise every model scores 3/3"
+  },
+  {
+    "id": "tree-arch.cross-payload-exempt",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "            if _cross_payload(path):\n                continue",
+    "replace": "            if False:\n                continue",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a cross toolchain ships target runtimes by design; asserting them fails every correct cross image"
+  },
+  {
+    "id": "tree-arch.exemption-is-narrow",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "CROSS_PAYLOAD = (\n    \"/lib/rustlib/\",              # rustup: per-target std, one dir per --target\n    \"/lib/clang/\",                # clang: multilib sanitizer/builtins runtimes\n    \"/lib/gcc/\",                  # gcc: per-target crt objects, one dir per triple\n)",
+    "replace": "CROSS_PAYLOAD = (\"/\",)",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the exemption must cover the target payload and nothing else: widened to the whole tree it hides the builder-arch rustc HT1 exists for"
   }
 ]

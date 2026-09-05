@@ -313,6 +313,28 @@ t_assert_contains "$(_verdicts "${_SCAN_OUT}" X86-64)" "BAD ${_HT1_FIX}/native A
 t_case "a scan that found no tree at all is a vacuous pass, not a pass"
 t_assert_contains "$(_verdicts "TREESCAN_DONE" AArch64)" "NONE" "nothing asserted must be reportable"
 
+t_case "a cross toolchain's target payload is not a defect, but its own binaries still are"
+# The 2026-09-05 false positives: /opt/gcc-*/aarch64-linux-gnu, rustup's
+# lib/rustlib/<triple> and clang's lib/clang/*/lib/linux hold foreign ELF BY DESIGN.
+# The exemption must not reach the thing HT1 was written for: a builder-arch rustc.
+_XT="$(mktemp -d)"
+mkdir -p "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu"/{bin,lib/rustlib/aarch64-unknown-linux-gnu/lib}
+mkdir -p "${_XT}/gcc-16.2.0"/{bin,aarch64-linux-gnu/lib64,lib/gcc/riscv64-linux-gnu/16.2.0} "${_XT}/llvm/lib/clang/23/lib/linux" "${_XT}/llvm/bin"
+t_fake_elf "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libstd.so" 183
+t_fake_elf "${_XT}/gcc-16.2.0/aarch64-linux-gnu/lib64/libatomic.so.1" 183
+t_fake_elf "${_XT}/gcc-16.2.0/lib/gcc/riscv64-linux-gnu/16.2.0/crtbegin.o" 243
+t_fake_elf "${_XT}/llvm/lib/clang/23/lib/linux/libclang_rt.asan-i386.so" 3
+t_fake_elf "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin/rustc" 183
+t_fake_elf "${_XT}/gcc-16.2.0/bin/gcc" 183
+t_fake_elf "${_XT}/llvm/bin/clang" 183
+_out="$(_scan "${_XT}/rustup" "${_XT}/gcc-16.2.0" "${_XT}/llvm")"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'Intel 80386')" "clang's multilib runtimes are its target payload"
+for _t in rustup gcc-16.2.0 llvm; do
+  t_assert_contains "${_out}" "TREE ${_XT}/${_t} AArch64 1" \
+    "${_t}: exactly ONE object left to assert -- its own binary, not the target payload"
+done
+rm -rf "${_XT}"
+
 t_case "a huge tree cannot crowd the shipped binaries out of the scan"
 # The rustup layout that motivated this gate carries tens of thousands of rust-src
 # .rs files under toolchains/*/lib, sorted BEFORE toolchains/*/bin/rustc — the one

@@ -33,6 +33,7 @@ secret-scan
 version-snapshot
 workflow-lint
 mutation-family:android-env
+mutation-family:bench-agent
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build

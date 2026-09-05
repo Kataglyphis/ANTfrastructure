@@ -564,6 +564,10 @@ _consumer_contract_exempt() {
     # check_flutter asserts that absence instead. The rot signal is the probe's own
     # FACT flutter-sdk: the day a riscv64 SDK lands, both arms fail and name themselves.
     riscv64:dart-tool|riscv64:flutter-owner) return 0 ;;
+    # AppImage publishes no riscv64 build either: packaging-deps.sh's asset table
+    # covers x86_64/aarch64/armhf/i686 and refuses the rest, so the tool is absent
+    # there by construction and the AppImage format is not offered on riscv64.
+    riscv64:appimagetool) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -870,6 +874,20 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
 # payloads (device .so + the SDK's host tooling) whose arch says nothing about the image.
 _RT_TREE_ARCH_EXEMPT="/opt/android /opt/android-sdk"
 
+# Builder-arch objects a foreign image still ships, frozen WITH their count so a new
+# one fails while a known one is tracked: <arch>:<tree>:<machine>:<count>. These are
+# defects with a backlog entry (HT2), not waivers -- the list only ratchets down.
+_RT_TREE_ARCH_FROZEN="arm64:/usr/local/llvm-target:X86-64:5 riscv64:/usr/local/llvm-target:X86-64:5"
+
+# Prints the frozen count for this finding, empty when it is not frozen.
+_rt_tree_arch_frozen() {
+  local key="$1:$2:$3" entry
+  for entry in ${_RT_TREE_ARCH_FROZEN}; do
+    case "${entry}" in "${key}:"*) printf '%s' "${entry##*:}"; return 0 ;; esac
+  done
+  return 1
+}
+
 _rt_tree_arch_exempt() {
   case " ${_RT_TREE_ARCH_EXEMPT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
@@ -920,7 +938,24 @@ _rt_manifest_trees() {
 _tree_arch_py() {
   cat <<'PY'
 import os
+import re
 EM = {3: "Intel 80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+# A cross toolchain SHIPS foreign objects on purpose: these three directory shapes are
+# its target payload, not the image's own binaries. Everything else in the tree -- the
+# compilers and libraries the image itself runs -- is still asserted.
+# docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+CROSS_PAYLOAD = (
+    "/lib/rustlib/",              # rustup: per-target std, one dir per --target
+    "/lib/clang/",                # clang: multilib sanitizer/builtins runtimes
+    "/lib/gcc/",                  # gcc: per-target crt objects, one dir per triple
+)
+GCC_TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/")
+
+
+def _cross_payload(path):
+    if any(marker in path for marker in CROSS_PAYLOAD):
+        return True
+    return bool(GCC_TARGET_DIR.search(path))
 CAP = int(os.environ.get("RT_TREE_CAP") or "20000")
 for tree in os.environ.get("RT_TREES", "").split():
     if not os.path.isdir(tree):
@@ -937,6 +972,8 @@ for tree in os.environ.get("RT_TREES", "").split():
             try:
                 executable = os.stat(path).st_mode & 0o111
             except OSError:
+                continue
+            if _cross_payload(path):
                 continue
             (first if executable or ".so" in name else rest).append(path)
     for path in first + rest:
@@ -996,7 +1033,7 @@ check_manifest_tree_arch() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
-  local trees="" tree want out verb machine count sample bad=0 ok=0
+  local trees="" tree want out verb machine count sample bad=0 ok=0 _frozen
   while read -r tree; do
     case "${tree}" in
       UNRESOLVED*)
@@ -1025,7 +1062,17 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
     case "${verb}" in
       OK)      ok=$((ok + 1)); echo "  OK   ${tree}: ${count} ELF object(s), all ${machine}" ;;
       NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
-      BAD)     bad=$((bad + 1))
+      BAD)     _frozen="$(_rt_tree_arch_frozen "${target_arch}" "${tree}" "${machine}" || true)"
+               if [ -n "${_frozen}" ] && [ "${_frozen}" = "${count}" ]; then
+                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT2) -- known, counted, not waived"
+                 continue
+               fi
+               if [ -n "${_frozen}" ]; then
+                 bad=$((bad + 1))
+                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT2) -- the count MOVED; find what changed before re-freezing"
+                 continue
+               fi
+               bad=$((bad + 1))
                fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason" ;;
       MISSING) bad=$((bad + 1))
                fail "tree-arch: ${tree} is declared in runtime-artifacts.manifest but is ABSENT from the ${target_arch} image -- the COPY landed elsewhere or the tree was dropped" ;;

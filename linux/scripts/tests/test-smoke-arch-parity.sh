@@ -87,7 +87,9 @@ t_assert_contains "$(_rt_table 'printf "%s" "${_PARITY_PREFIXES}"')" "cmake"
 t_assert_contains "$(_rt_table 'printf "%s" "${_PARITY_WHEELS}"')" "onnxruntime_genai"
 
 t_case "every documented exemption names a component the table actually tracks"
-# Parse the case arms of _parity_exempt: "<arch>:<component>)".
+# Parse the case arms of _parity_exempt: "<arch>:<component>)". Scoped to that
+# function: the file holds other <arch>:<name>) tables (the consumer contract) whose
+# components this one does not track.
 _tracked="$(_rt_table 'printf "%s %s" "${_PARITY_PREFIXES}" "${_PARITY_WHEELS}"')"
 _orphans=""
 while IFS= read -r _arm; do
@@ -96,7 +98,8 @@ while IFS= read -r _arm; do
     *" ${_comp} "*) ;;
     *) _orphans="${_orphans} ${_arm}" ;;
   esac
-done < <(sed -n 's/^[[:space:]]*\(amd64\|arm64\|riscv64\):\([A-Za-z0-9_.+-]*\)).*/\1:\2/p' "${RT_SMOKE}" \
+done < <(t_fn_src "${RT_SMOKE}" _parity_exempt \
+         | sed -n 's/^[[:space:]]*\(amd64\|arm64\|riscv64\):\([A-Za-z0-9_.+-]*\)).*/\1:\2/p' \
          | grep -v ':libgst')
 t_assert_eq "" "${_orphans}" "exemption(s) for components the parity table does not track (dead entries)"
 

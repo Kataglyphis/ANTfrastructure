@@ -709,6 +709,36 @@ its old output verbatim. The first read of the 2026-09-03 build showed 496 hits 
 the pre-retry message, all from one cached step (`#30`), which would have looked
 like the new launcher failing to take effect.
 
+### HT2. Five builder-arch LLVM libraries ship in both foreign images [M, ★★★]
+
+The tree-arch gate, once it could see past its own file cap, found this in the
+images shipped on 2026-09-05 — and it is exactly the class HT1 was written for:
+
+```
+/usr/local/llvm-target/lib/libLLVM.so.20.1      X86-64, in the arm64 AND riscv64 images
+/usr/local/llvm-target/lib/libLLVM.so.21.1      X86-64
+/usr/local/llvm-target/lib/libclang-21.so.21    X86-64
+/usr/local/llvm-target/lib/libclang-23.so.23    X86-64
+/usr/local/llvm-target/lib/libclang-cpp.so.21.1 X86-64
+```
+
+Five files, the same five on both foreign arches, in the tree that is supposed
+to hold the TARGET-built LLVM. The rest of that tree measures correctly, so
+this is not a wholesale wrong-arch copy: something adds host libraries to the
+target prefix. The version spread is the clue — 20.1, 21.1 and 23 against a
+pinned `LLVM_RELEASE=23.1.0`, so at least two of them are not even this
+release, which points at Ubuntu's `llvm-20`/`llvm-21` packages rather than the
+source build.
+
+FROZEN, NOT WAIVED: `_RT_TREE_ARCH_FROZEN` in `smoke-runtime-image.sh` carries
+the count, so a sixth file fails the gate and a fix that removes one fails it
+too (the count moved). The list only ratchets down.
+
+To close: find what writes those five into `/usr/local/llvm-target/lib`, decide
+whether anything in the image loads them (they are libraries, so `readelf -d`
+on the target binaries answers it), and either build them for the target or
+stop copying them. Then delete the two frozen rows.
+
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
