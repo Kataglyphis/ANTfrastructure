@@ -71,6 +71,19 @@ FLUTTER_PATH="${INSTALL_DIR}/flutter"
 ARCHIVE="flutter_linux${ARCH_SUFFIX}_${FLUTTER_VERSION}-stable.tar.xz"
 URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${ARCHIVE}"
 
+# Build-stage only; reinstalling over a bootstrapped SDK strips its cache.
+# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+_flutter_have=""
+if [ -f "${FLUTTER_PATH}/bin/cache/flutter.version.json" ]; then
+  _flutter_have="$(sed -n 's/.*"frameworkVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${FLUTTER_PATH}/bin/cache/flutter.version.json" | head -1)"
+fi
+if [ "${_flutter_have}" = "${FLUTTER_VERSION}" ]; then
+  echo "Flutter ${FLUTTER_VERSION} already bootstrapped at ${FLUTTER_PATH}; nothing to do."
+  exit 0
+fi
+unset _flutter_have
+
 echo "Installing Flutter ${FLUTTER_VERSION} for ${ARCH_LABEL}..."
 echo "  Archive: ${ARCHIVE}"
 echo "  Target:  ${FLUTTER_PATH}"
