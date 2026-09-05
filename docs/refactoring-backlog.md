@@ -79,7 +79,7 @@ gate itself on 2026-09-05 after integration, not carried forward):
 | `mutations` | **630** entries over **74** distinct test commands, every one proven to bite, none vacuous, none stale |
 | `gate-registry` | **34** slugs; **34** proven; **0** unproven, **0** frozen — the bare-slug namespace is empty; 279 ids in 31 declared families |
 | `script-tests` | **100** suites, **3322** assertions |
-| `preflight` | 45 checks, rc 0 |
+| `preflight` | **45** checks, rc 0. Wall clock **14 m 46 s** — but that was measured with a 3-arch chain compiling on the same box, so it is not comparable to the 10 m 31 s baseline; re-time it on an idle host before reading anything into it |
 | `code-size` | 29 functions over 80 lines, 11 files over 800 — all frozen, all with a verdict |
 | `code-complexity` | 66 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
 | `shellcheck-warnings` | **88** findings over a **348**-file scope — all frozen, all with a verdict |
@@ -87,11 +87,19 @@ gate itself on 2026-09-05 after integration, not carried forward):
 | `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 30 / 32 / 169 / 46 frozen |
 | `doc-links` | 73 pages, **507** code pointers, **8** bare header pointers frozen (was 45) |
 
-**Ten entries remain** (`grep -c '^### '` counts twelve; "Next up" and "What needs
-the OWNER" are not entries), and they divide cleanly: **CC1, CL1, VK1, AB1 and YB are
-watch lists** that the running chain either closes or re-opens with evidence; **CS1**
-has one open owner decision; **R1** is the named residue of the eleven that closed;
-**F1/F2/F3** are tracks, not defects.
+**Eleven entries remain** (`grep -c '^### '` counts thirteen; "Next up" and "What
+needs the OWNER" are not entries), and they divide cleanly: **CC1, CL1, VK1, AB1 and
+YB are watch lists** that the running chain either closes or re-opens with evidence;
+**VK2** is the first entry this wave produced from REAL build evidence rather than
+static proof, and two of its four items are a two-row fix; **CS1** has one open owner
+decision; **R1** is the named residue of the eleven that closed; **F1/F2/F3** are
+tracks, not defects.
+
+**VK2 is the shape to notice.** The chain had been running for well under an hour when
+it produced a better-grounded entry than anything eleven lanes of static analysis
+managed: eleven of fifteen target components built, four did not, and the log said
+exactly why for each. That is the argument for reading
+[`build-watch-list.md`](build-watch-list.md) rather than this page.
 
 **What the integration wave itself had to fix, because it is the pattern to expect
 next time.** Three lanes landed behaviour changes with no suite case and no mutation
@@ -125,14 +133,22 @@ the full battery after the merge rather than trusting each lane's own green.
    deciding: the tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree,
    and that only holds while the prune runs. Keeping `x86_64/` means re-narrowing the
    gate and giving back the 1.86 GB.
-4. **The residue the closed entries left, all small and all named** [S each, ★]:
+4. **VK2's two cheap rows** [S, ★★]. `valijson` and `jsoncpp` are header-only, are
+   ALREADY in the SDK's own `source/` tree, and simply have no row of their own before
+   `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Two table rows. The other two items
+   (`gfxreconstruct` needs the `:${arch}` X11/GL dev set in the sysroot; `slang` and
+   `vulkanCapsViewer` are Canadian-cross and Qt-for-target respectively) are real work
+   or deliberate declines. **Do not touch `vulkan.sh` while the chain is running** —
+   the arm64 lane is already built and riscv64 has not started, and two arches built
+   from different sources is the mid-run drift this repo has been bitten by before.
+5. **The residue the closed entries left, all small and all named** [S each, ★]:
    the runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*` (HT4's structural
    half — the builder's ldconfig cache is what let `liblldb` through, and only an
    in-image check catches the next one); `VK_LAYER_PATH` dangling on all three shipped
    images and always having done so; LOG14's cross-lane skip list claiming a ~390 s/lane
    saving the shipped bytes contradict; and GH6's 93 remaining masked rows, which are a
    watch list and not a fix.
-5. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
+6. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
    With `smoke-cross-all-arches.sh main`, the `agentic-loop.sh` split and the
    ffmpeg↔pyav twin all closed, what is left inside the build closure is the
    `_cross_stage_build_impl` registry-cache drop (still uncovered — `grep -rn
@@ -414,28 +430,58 @@ Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Unti
 then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
 emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 
-### VK2. Four target components short of the whole SDK, two of them cheap [S, ★★]
+### VK2. Close the last four — none of them is actually a wall [M, ★★★]
 
-Measured on the arm64 lane of the 2026-09-05 rebuild. Eleven of fifteen target
-components cross-built, including the three that matter for building an
-application — `glslc`, `vulkaninfo` and the validation layers. Four did not, and
-the log says exactly why rather than going quiet:
+Measured on the arm64 lane of the 2026-09-05 rebuild: **20 native tools in
+`aarch64/bin`, up from 2**, including `glslc`, `vulkaninfo`, `vkcube`, the whole
+`spirv-*` family and four validation-layer manifests. Four components did not
+cross-build. Each has a route, and two of them are trivial. **This entry is closed
+only when `<arch>/bin` carries everything `x86_64/bin` does that is not
+structurally host-only.**
 
-- **`vulkan-profiles`** — `find_package(valijson)` found nothing. valijson is
-  header-only and is ALREADY in the SDK's own `source/` tree; it just has no row of
-  its own before `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Same for `jsoncpp`.
-  Two rows, and the fix is done.
-- **`gfxreconstruct`** — `Could NOT find OpenGL / JsonCpp / X11`, aborting in
-  OpenXR-SDK's `presentation.cmake`. The X11/GL dev packages `vulkan.sh` installs
-  are HOST packages; the cross build needs the `:${arch}` set in the sysroot. That
-  is the real fix, and it would also let `vkcube` link for the target.
-- **`slang`** — host LLVM `tblgen`, i.e. Canadian-cross. Expected, and not worth it.
-- **`vulkanCapsViewer`** — Qt for the target. Expected.
+**1. `vulkan-profiles` — two table rows. [S]**
+`find_package(valijson)` found nothing. `valijson` and `jsoncpp` are ALREADY in
+the SDK's own `source/` tree; they simply have no row of their own in
+`_VK_TARGET_COMPONENTS` ahead of the components that need them. valijson is
+header-only. Add both rows before `vulkan-profiles` and `gfxreconstruct`.
 
-Deliberately NOT fixed during the run that found them: the arm64 lane was already
-built and riscv64 had not started, so touching `vulkan.sh` would have shipped two
-arches built from different sources — the mid-run drift this repo has been bitten
-by before.
+**2. `gfxreconstruct` — the dev packages are the host's, not the target's. [S/M]**
+`Could NOT find OpenGL / JsonCpp / X11`, aborting in OpenXR-SDK's
+`presentation.cmake`. `vulkan.sh` installs `libx11-dev`, `libxcb*-dev`,
+`libwayland-dev` and friends for the BUILD HOST only. The cross build needs the
+same set as `:${arch}` in the sysroot. The same packages would also let `vkcube`'s
+WSI backends link everywhere, so this one fix pays twice.
+
+**3. `slang` and the `dx*` family — this repo already solves this exact problem. [M]**
+Both are LLVM-shaped: their build runs generators (tablegen and slang's own
+`slang-generate`/`slang-cpp-extractor`) that must EXECUTE on the build host while
+the rest cross-compiles. That is a Canadian cross, and
+`linux/scripts/02-toolchain/llvm-cross.sh` has been doing it for the target-clang
+build all along:
+
+```
+-DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"   # llvm-cross.sh:202
+-DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"     # llvm-cross.sh:264
+```
+
+with `llvm_host_native_tool_dir()` (llvm.sh:370) resolving the host tools. The
+host `./vulkansdk` build ALREADY produces host `slang`, `slangc` and the `dx*`
+binaries in `x86_64/bin` — so the generators exist on disk before the cross build
+starts. Point slang's cross configure at them the way llvm-cross.sh points at
+tblgen, and add `dxc` as its own row using the same `native_tool_dir`. "Host-only
+component" was a description of the failure, not a property of the software.
+
+**4. `vulkanCapsViewer` — Qt, or its CLI. [M]**
+Needs Qt for the target. Two routes: install `qt6-base-dev:${arch}` into the
+sysroot alongside (2), or build the command-line variant, which is the useful half
+in a container anyway — a GUI caps viewer has no display to open there.
+
+Order by value per hour: (1), then (2) because it also fixes `vkcube`'s WSI, then
+(3) because it is a known pattern rather than new work, then (4).
+
+Not fixed during the run that found them, on purpose: arm64 was built and riscv64
+had not started, and editing `vulkan.sh` there would have shipped two arches from
+different sources. docs/vulkan-foreign-arch-sdk.md
 
 ### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
 

@@ -157,6 +157,7 @@ exists only in one of these, promote it to its owning page above.
 | Looking for | Read | What's in it |
 |---|---|---|
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
+| What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the exact log line that proves each one worked and the exact line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Written because eleven backlog entries closed on static proof and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
 | Changelog entries 2026-08-14 … 2026-08-28 | [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) |

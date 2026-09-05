@@ -216,6 +216,7 @@ Common development targets:
    :caption: Backlogs and archives:
 
    refactoring-backlog
+   build-watch-list
    windows-refactor-backlog
    changelog-archive-2026-08-28
    changelog-archive-2026-08-13
