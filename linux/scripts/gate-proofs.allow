@@ -54,6 +54,7 @@ mutation-family:lib
 mutation-family:llvm-target
 mutation-family:pre-commit
 mutation-family:preflight-slugs
+mutation-family:package
 mutation-family:packaging
 mutation-family:probe
 mutation-family:python

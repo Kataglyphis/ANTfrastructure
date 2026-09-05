@@ -5048,6 +5048,14 @@
     "why": "without the precondition the function runs ${CARGO_HOME}/bin/rustup as a bare path that is not there, and the stage dies on 127 in an arch that simply has no Rust rather than skipping"
   },
   {
+    "id": "package.rust-wipe-spares-the-cargo-registry",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    rm -rf \"${RUSTUP_HOME:?}\"\n    if [ -d \"${CARGO_HOME:?}\" ]; then\n        find \"${CARGO_HOME}\" -mindepth 1 -maxdepth 1 ! -name registry -exec rm -rf {} +\n    fi",
+    "replace": "    rm -rf \"${RUSTUP_HOME}\" \"${CARGO_HOME}\"",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "Dockerfile.package keeps the crate downloads on a BuildKit cache mount at ${CARGO_HOME}/registry, and rm -rf over a live mountpoint fails EBUSY -- it took the entire arm64 package image down on 2026-09-05. amd64 never reaches the wipe because its copied toolchain is already native, so the defect ships looking green"
+  },
+  {
     "id": "toolcall-shim.finish-reason",
     "target": "linux/llm-stack/geniex_toolcall_shim.py",
     "find": "        choice[\"finish_reason\"] = \"tool_calls\"",
