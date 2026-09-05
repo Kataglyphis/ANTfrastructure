@@ -819,7 +819,7 @@
       "subsections": [
         {
           "title": "Document Toolchain",
-          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "dockerfile": "third_party/DocumANTation/Dockerfile",
           "entries": [
             {
               "name": "Ubuntu",
@@ -891,7 +891,7 @@
         },
         {
           "title": "Python",
-          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "dockerfile": "third_party/DocumANTation/Dockerfile",
           "entries": [
             {
               "name": "Python",
@@ -920,7 +920,7 @@
         },
         {
           "title": "Base Utilities",
-          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "dockerfile": "third_party/DocumANTation/Dockerfile",
           "entries": [
             {
               "name": "GNU C Library locales (locales)",
@@ -994,7 +994,7 @@
         },
         {
           "title": "Vendored LaTeX Themes",
-          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "dockerfile": "third_party/DocumANTation/Dockerfile",
           "entries": [
             {
               "name": "awesome-beamer (fork of LukasPietzschmann/awesome-beamer)",

@@ -500,7 +500,7 @@ def dockerfile_target_files() -> list[Path]:
     # than by the cross chain, so its PANDOC_*/UV_VERSION pins are `# noforward`.
     # Its ARG defaults are still the real values that image is built from, so they
     # are synced here like any other. Guarded: the submodule may not be checked out.
-    doc_image = REPO_ROOT / "external/Kataglyphis-DocumANTation/Dockerfile"
+    doc_image = REPO_ROOT / "third_party/DocumANTation/Dockerfile"
     if doc_image.exists():
         result.append(doc_image)
     return result

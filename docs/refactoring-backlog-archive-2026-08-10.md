@@ -1336,7 +1336,7 @@ pointed at a real interpreter on this host (`~/.local/bin/python3.14.exe`) —
 bare `python3` hits the Microsoft Store stub, which fails two Python-based
 checks for reasons that have nothing to do with the commit. The hook header
 documents this. With it set, one genuine failure remains and is NOT from the
-Windows lane: `external/Kataglyphis-DocumANTation` (a **submodule**) has stale
+Windows lane: `third_party/DocumANTation` (a **submodule**) has stale
 Dockerfile ARG defaults after the concurrent pin bump. That fix belongs in that
 repository.
 
@@ -1460,7 +1460,7 @@ environment setup at all. `PREFLIGHT_PYTHON` still overrides.
 
 ### ✅ Submodule ARG staleness
 
-`external/Kataglyphis-DocumANTation` pinned `UV_VERSION=0.12.1` against
+`third_party/DocumANTation` pinned `UV_VERSION=0.12.1` against
 versions.env's `0.12.3` (Pandoc already matched), which kept the version-snapshot
 check red and therefore blocked enabling the hooks. `sync_versions.py` includes
 that Dockerfile deliberately — the doc image is meant to follow this repo's pins.
