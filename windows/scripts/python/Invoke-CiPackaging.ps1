@@ -9,7 +9,7 @@
 
 .DESCRIPTION
     Builds source distribution and binary wheels for Python packages.
-    Uses shared modules from Kataglyphis-ContainerHub.
+    Uses shared modules from ContainerHub.
 
 .PARAMETER PythonVersion
     Python version to use (default: "3.14")

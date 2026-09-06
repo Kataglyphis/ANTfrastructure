@@ -637,7 +637,7 @@ Housekeeping and sharing:
   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
-       -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -LogPath C:\rebuild.log -RetireOld
+       -VerifyPath D:\GitHub\ContainerHub -LogPath C:\rebuild.log -RetireOld
   ```
 
   The COPY phase touches nothing live. The SWAP phase detaches the volume and
@@ -1414,7 +1414,7 @@ driver caches a verdict since `build.ps1` went — but the first outlives it:
 The same `wcifs` filter that breaks layer *commits* on this host/base skew also
 breaks **runtime file operations inside image-layer directories** of
 process-isolated containers (surfaced 2026-07 building
-Kataglyphis-Inference-Engine inside the image):
+OmniAccelerANT inside the image):
 
 - **Create-then-rename of fresh files fails `ERROR_PATH_NOT_FOUND`**
   (deterministic in hot paths). This breaks `git init/clone/checkout` (*"could
@@ -1540,7 +1540,7 @@ intermediate tag comes from **`Get-BkTag`** in `build-buildkit.ps1` (which also
 appends the `-arm64` suffix for a cross target) — never type a
 `docker.io/local/kataglyphis:bk-*` literal elsewhere.
 
-**Orchestr-ANT-ion app stage (`windows/Dockerfile.torch`):** the Windows mirror
+**OrchestrANT app stage (`windows/Dockerfile.torch`):** the Windows mirror
 of `linux/Dockerfile.torch`, a real chain stage between media and final
 (`media -> torch -> final`): it assembles the app env at `APP_REF` on the
 windows-media image (tag `docker.io/local/kataglyphis:bk-windows-torch`,

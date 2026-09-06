@@ -7,7 +7,7 @@
 # checks. ErrorActionPreference=Continue so no single failure aborts the run;
 # every step prints a verdict line.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\host\reset-container-stores.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\reset-container-stores.ps1'
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off

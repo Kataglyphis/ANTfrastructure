@@ -4,7 +4,7 @@
 #requires -Version 7.0
 #
 # Windows mirror of linux/scripts/03-media/runtime/assemble-torch-app.sh:
-# clone Kataglyphis-Orchestr-ANT-ion at $AppRef, `uv sync` its environment on the
+# clone OrchestrANT at $AppRef, `uv sync` its environment on the
 # source-built CPython, then RECONCILE so the wheels built by this lane
 # (onnxruntime / onnxruntime-genai / tvm, staged at C:\runtime\wheels) always win
 # over anything PyPI resolved -- remaining dependencies come from PyPI/pytorch
@@ -14,7 +14,7 @@
 param(
 
     [string]$AppRef = '',
-    [string]$AppDir = 'C:\opt\Kataglyphis-Orchestr-ANT-ion',
+    [string]$AppDir = 'C:\opt\OrchestrANT',
     [string]$WheelDir = 'C:\runtime\wheels',
     [ValidateSet('install', 'verify', 'all')][string]$Mode = 'all',
     # Torch BACKEND extra (torch is declared ONLY inside these extras in the
@@ -52,7 +52,7 @@ function Install-TorchAppEnvironment {
     Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Split-Path $AppDir -Parent) | Out-Null
-    [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 https://github.com/Kataglyphis/Orchestr-ANT-ion.git ""$AppDir""")
+    [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 https://github.com/Kataglyphis/OrchestrANT.git ""$AppDir""")
 
     # Venv on the SOURCE-built CPython (matches our cp314 wheels; see the
     # media-merge UV_PYTHON seeding fix). copy link mode: hardlinks don't
@@ -196,8 +196,8 @@ print('torch-app-env OK')
     # v0.0.24/v0.0.25 (pyav check on top of v0.0.23's genai + tvm), 11/12 ok
     # once a tag ships the iree check -- always with ONE WARN (ai-edge-litert,
     # skipped by design: no cp314 wheel exists).
-    [void](Invoke-ShieldedNative -Label 'app smoke suite (python -m orchestr_ant_ion.smoke)' `
-            -CommandLine """$venvPython"" -m orchestr_ant_ion.smoke")
+    [void](Invoke-ShieldedNative -Label 'app smoke suite (python -m orchestrant.smoke)' `
+            -CommandLine """$venvPython"" -m orchestrant.smoke")
     [void](Invoke-ShieldedNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython""")
     Write-Host '=== torch app: verify complete ==='
 }

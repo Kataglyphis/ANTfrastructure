@@ -516,7 +516,7 @@ write down**, and one question decides it:
 
 Most topics split down the middle. "Allow the `bindFlt`/`wcifs` filters on a Dev
 Drive" is ours; "Dart's `copySync` fails on a bind mount" is
-Kataglyphis-Inference-Engine's, because it only matters for a Flutter app.
+OmniAccelerANT's, because it only matters for a Flutter app.
 
 **Link rather than restate** — restating has produced three broken copies of
 one command before (the 2026-08-11 Dev Drive filter incident; the story lives
@@ -529,7 +529,7 @@ hunting links across seven repositories.
 consumer-side skeleton that keeps the split visible.
 
 One caution against automating this: a keyword check ("this consumer doc
-mentions wcifs") cannot tell *restating* from *applying*. Inference-Engine's
+mentions wcifs") cannot tell *restating* from *applying*. OmniAccelerANT's
 AddressSanitizer section legitimately discusses image-level runtimes, because
 which ASan runtime a Flutter/COM app can survive is a property of that app. A
 human has to read it.
@@ -730,7 +730,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -846,7 +846,7 @@ linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
                          wired into CI or builds
 linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          assembly — consumer surface. Called from
-                         Kataglyphis-RustProjectTemplate's
+                         OxidANT's
                          .github/workflows/rust_ubuntu24_04.yml release job.
                          Deleted by the 2026-08-08 orphan sweep as
                          "zero-reference" and restored 2026-08-11: the sweep

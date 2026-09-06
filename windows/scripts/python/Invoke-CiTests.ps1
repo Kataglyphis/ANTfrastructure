@@ -9,7 +9,7 @@
 
 .DESCRIPTION
     Runs tests across multiple Python versions with coverage reporting.
-    Uses shared modules from Kataglyphis-ContainerHub.
+    Uses shared modules from ContainerHub.
 
 .PARAMETER PythonVersions
     Array of Python versions to test (default: @("3.13", "3.14", "3.14t"))

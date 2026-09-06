@@ -5,7 +5,7 @@
 
 <#
 .SYNOPSIS
-  Build script for running inside the Windows container, using the Kataglyphis-ContainerHub build framework.
+  Build script for running inside the Windows container, using the ContainerHub build framework.
 
 .DESCRIPTION
   - Uses WindowsBuild.Common.psm1 for structured logging and step management.

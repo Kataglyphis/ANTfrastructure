@@ -1,7 +1,7 @@
 # .github/workflows/python-ci-windows.yml
 #
-# Reusable Windows CI lane for the Python consumers (Kataglyphis-Orchestr-ANT-ion,
-# Kataglyphis-WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
+# Reusable Windows CI lane for the Python consumers (OrchestrANT,
+# WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
 # inside the winamd64 image and uploads whatever it produced.
 #
 # Twin of python-ci-linux.yml. Before this existed the two callers each carried a
@@ -9,15 +9,15 @@
 # deliberate policy choice - they were drift. Where the copies disagreed this
 # takes the SAFER of the two, which in every case was WebDavClient's:
 #
-#   * upload on always()      - Orchestr-ANT-ion uploaded only on success, so a
+#   * upload on always()      - OrchestrANT uploaded only on success, so a
 #                               failing build discarded the logs that explain it
 #   * if-no-files-found: warn - instead of failing the job a second time on an
 #                               empty dist/ when the real failure is upstream
 #   * logs/ + docs/test_results/ in the artifact, not just dist/
-#   * upload-artifact v7      - Orchestr-ANT-ion was a major version behind
+#   * upload-artifact v7      - OrchestrANT was a major version behind
 #
 # fetch-depth is the one difference that is a real choice, so it is an input:
-# WebDavClient fetches full history (0), Orchestr-ANT-ion shallow (1).
+# WebDavClient fetches full history (0), OrchestrANT shallow (1).
 name: Python CI (Windows, reusable)
 
 # Least privilege: this lane reads the repo, pulls an image and pushes artifacts.

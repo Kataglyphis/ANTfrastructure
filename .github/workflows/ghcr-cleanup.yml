@@ -165,7 +165,7 @@ jobs:
             // multi-arch, each with 3/3 children gone. The 74 single-manifest
             // tags were unaffected (nothing to orphan) and latest-cross was the
             // one healthy multi-arch tag. Narrow, but `latest` is what the
-            // Python CI lanes and Kataglyphis-Inference-Engine pull, so those
+            // Python CI lanes and OmniAccelerANT pull, so those
             // lanes had been red on every commit for at least a day.
             //
             // So: resolve every kept tagged version's manifest and keep whatever

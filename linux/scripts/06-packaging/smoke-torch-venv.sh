@@ -76,7 +76,7 @@ _stv_vpin() {
 assert_pinned_versions() {
   local versions_env="${VERSIONS_ENV:-/opt/scripts/core/versions.env}"
   [ -f "${versions_env}" ] || versions_env="${_SCRIPT_DIR}/../01-core/versions.env"
-  local uvlock="${APP_UV_LOCK:-/opt/Kataglyphis-Orchestr-ANT-ion/uv.lock}"
+  local uvlock="${APP_UV_LOCK:-/opt/OrchestrANT/uv.lock}"
 
   echo "--- version-pin assertion (uv.lock + versions.env) ---"
   if [ ! -f "${versions_env}" ] && [ ! -f "${uvlock}" ]; then
@@ -439,7 +439,7 @@ assert_app_venv_parity() {
   echo "--- app venv parity (uv sync extras) ---"
   # Images that carry a venv but never ran assemble-torch-app.sh have no extras
   # to assert; the app package is the marker that it ran.
-  if ! "${PY}" -c 'import orchestr_ant_ion' >/dev/null 2>&1; then
+  if ! "${PY}" -c 'import orchestrant' >/dev/null 2>&1; then
     printf '  SKIP app package not installed in this venv -- extras parity not applicable\n'
     return 0
   fi

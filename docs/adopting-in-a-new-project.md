@@ -7,7 +7,7 @@ planner–executor agentic loop, reusable PowerShell modules and bash libraries,
 and CI composite actions.
 
 This page is the checklist for wiring a **new** project to all of it.
-Kataglyphis-BeschleunigerBallett is the reference consumer — when a detail here
+BeschleunigerBallett is the reference consumer — when a detail here
 is ambiguous, read how that repo does it.
 
 ## 0. Add the submodule
@@ -167,7 +167,7 @@ relative path directly, e.g.
 that path from `${BASH_SOURCE[0]}` rather than assuming the caller's working
 directory is the repo root, and fail loudly (naming the
 `git submodule update --init --recursive` command) when the submodule is not
-checked out. Kataglyphis-Inference-Engine's `scripts/linux/lib/containerhub.sh`
+checked out. OmniAccelerANT's `scripts/linux/lib/containerhub.sh`
 is a two-function example.
 
 ## 2. Windows container builds (Stevedore)
@@ -343,7 +343,7 @@ source "${_SCRIPT_DIR}/../../third_party/ContainerHub/linux/scripts/lib/<lib>.sh
 
 Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`
 drivers should be ~30 lines: source the library, set the project's defaults,
-call its `*_main`. `Kataglyphis-BeschleunigerBallett/scripts/linux/run-ctest.sh`
+call its `*_main`. `BeschleunigerBallett/scripts/linux/run-ctest.sh`
 is the canonical example.
 
 **Shell safety** — the five bug classes in this repo's `AGENTS.md`
@@ -358,7 +358,7 @@ that sweep. Use lowercase in a new consumer; there is no per-repo casing rule
 to look up any more.
 
 **Bash filenames still differ**: kebab-case in BeschleunigerBallett and
-Inference-Engine, snake_case in the rest. That one is left alone deliberately —
+OmniAccelerANT, snake_case in the rest. That one is left alone deliberately —
 unlike a directory rename it buys no structural consistency, and renaming every
 script would churn history across five repos for a purely lexical preference.
 Match the repo you are in.

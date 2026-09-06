@@ -3,7 +3,7 @@
     <img src="images/logo.png" alt="logo" width="200" />
   </a>
 
-  <h1>🦀 Kataglyphis-RustProjectTemplate 🦀</h1>
+  <h1>🦀 OxidANT 🦀</h1>
 
   <h4>Collecting Rust best practices.</h4>
 </div>
@@ -14,16 +14,16 @@
   </a>
 </div>
 
-[![Rust workflow on Ubuntu-24.04 (x86_64/ARM)](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/rust_ubuntu24_04.yml/badge.svg)](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/rust_ubuntu24_04.yml)
-[![Rust workflow on Windows 2025](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/rust_windows2025.yml/badge.svg)](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/rust_windows2025.yml)
-[![CodeQL](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/Kataglyphis/RustProjectTemplate/actions/workflows/github-code-scanning/codeql)
+[![Rust workflow on Ubuntu-24.04 (x86_64/ARM)](https://github.com/Kataglyphis/OxidANT/actions/workflows/rust_ubuntu24_04.yml/badge.svg)](https://github.com/Kataglyphis/OxidANT/actions/workflows/rust_ubuntu24_04.yml)
+[![Rust workflow on Windows 2025](https://github.com/Kataglyphis/OxidANT/actions/workflows/rust_windows2025.yml/badge.svg)](https://github.com/Kataglyphis/OxidANT/actions/workflows/rust_windows2025.yml)
+[![CodeQL](https://github.com/Kataglyphis/OxidANT/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/Kataglyphis/OxidANT/actions/workflows/github-code-scanning/codeql)
 
 For **__official docs__** follow this [link](https://rust.jonasheinle.de).
 
 <!-- [![Linux build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Linux.yml)
 [![Windows build](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml/badge.svg)](https://github.com/Kataglyphis/GraphicsEngineVulkan/actions/workflows/Windows.yml)
 -->
-[![TopLang](https://img.shields.io/github/languages/top/Kataglyphis/RustProjectTemplate)]() 
+[![TopLang](https://img.shields.io/github/languages/top/Kataglyphis/OxidANT)]() 
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 [![Twitter](https://img.shields.io/twitter/follow/Cataglyphis_?style=social)](https://twitter.com/Cataglyphis_)
  
@@ -106,7 +106,7 @@ cargo upgrade --incompatible
 
 1. Clone the repo
    ```bash
-   git clone --recurse-submodules git@github.com:Kataglyphis/RustProjectTemplate.git
+   git clone --recurse-submodules git@github.com:Kataglyphis/OxidANT.git
    ```
  
 ## Tests
@@ -236,7 +236,7 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\windows\New-MsixPackage.ps1 `
 ```
 
 Output:
-- Paket: `dist\msix\Kataglyphis.RustProjectTemplate_<VERSION>_x64.msix`
+- Paket: `dist\msix\Kataglyphis.OxidANT_<VERSION>_x64.msix`
 - Staging-Inhalt: `dist\msix\staging\`
 
 Wichtige Parameter:
@@ -253,8 +253,8 @@ MSIX installieren (mit Testzertifikat):
 3. Paket installieren.
 
 ```pwsh
-$certPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate.testcert.pfx"
-$msixPath = "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_0.1.0.0_x64.msix"
+$certPath = "C:\\GitHub\\OmniAccelerANT\\ExternalLib\\OxidANT\\dist\\msix\\Kataglyphis.OxidANT.testcert.pfx"
+$msixPath = "C:\\GitHub\\OmniAccelerANT\\ExternalLib\\OxidANT\\dist\\msix\\Kataglyphis.OxidANT_0.1.0.0_x64.msix"
 $pwd = ConvertTo-SecureString "<TEST_CERT_PASSWORD>" -AsPlainText -Force
 
 Import-PfxCertificate -FilePath $certPath -Password $pwd -CertStoreLocation "Cert:\\LocalMachine\\Root"
@@ -266,7 +266,7 @@ Add-AppxPackage -Path $msixPath
 Installationsprüfung:
 
 ```pwsh
-Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Select-Object Name, PackageFullName, Status
+Get-AppxPackage -Name "Kataglyphis.OxidANT" | Select-Object Name, PackageFullName, Status
 ```
 
 Troubleshooting:
@@ -280,11 +280,11 @@ Get-AppxLog -ActivityID <ACTIVITY_ID>
 
 App nach Installation starten:
 
-- Über das Startmenü nach `Kataglyphis RustProjectTemplate` suchen und starten.
+- Über das Startmenü nach `Kataglyphis OxidANT` suchen und starten.
 - Oder per PowerShell:
 
 ```pwsh
-$pkg = Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate"
+$pkg = Get-AppxPackage -Name "Kataglyphis.OxidANT"
 Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
 ```
 
@@ -294,13 +294,13 @@ MSIX Update / Reinstall:
 - Dann erneut installieren:
 
 ```pwsh
-Add-AppxPackage -Path "C:\\GitHub\\Kataglyphis-Inference-Engine\\ExternalLib\\Kataglyphis-RustProjectTemplate\\dist\\msix\\Kataglyphis.RustProjectTemplate_<NEW_VERSION>_x64.msix"
+Add-AppxPackage -Path "C:\\GitHub\\OmniAccelerANT\\ExternalLib\\OxidANT\\dist\\msix\\Kataglyphis.OxidANT_<NEW_VERSION>_x64.msix"
 ```
 
 MSIX deinstallieren:
 
 ```pwsh
-Get-AppxPackage -Name "Kataglyphis.RustProjectTemplate" | Remove-AppxPackage
+Get-AppxPackage -Name "Kataglyphis.OxidANT" | Remove-AppxPackage
 ```
 
 ### Linux

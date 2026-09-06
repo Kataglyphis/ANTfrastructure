@@ -202,7 +202,7 @@ Nothing in the entries below is blocked on you. These are:
 ### CC1. The consumer-contract fixes are static until the next runtime build [S to watch, ★★★]
 
 **Evidence: a consuming repo's CI lane, not a gate.** The
-Kataglyphis-Inference-Engine lane ran against `:latest-cross-amd64` as uid 1001 on
+OmniAccelerANT lane ran against `:latest-cross-amd64` as uid 1001 on
 2026-09-04 and reported four defects; all four were reproduced here in the shipped
 bytes, and all four are fixed in the tree. Their acceptance script prints
 `ALL SIX FIXED` on amd64 and arm64 today. What is still open is the half no probe
@@ -383,7 +383,7 @@ components genuinely cross-build and drop the ones that never will.
 
 ### AB1. The Android layer was built for the build host, not for a phone [M, ★★★]
 
-Reported by the Kataglyphis-Inference-Engine android lane 2026-09-05, as a link
+Reported by the OmniAccelerANT android lane 2026-09-05, as a link
 error rather than a missing file — every SDK was present and every one was wrong:
 
 ```

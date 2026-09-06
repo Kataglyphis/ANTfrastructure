@@ -52,10 +52,10 @@ rather than letting an unexplained diff sit there looking like drift.
 The standing example: this canonical set is written for **C++** projects, so a
 Python consumer owns its own `.pre-commit-config.yaml` — ruff hooks rather than
 clang-format — and runs `-Ignore .pre-commit-config.yaml`.
-Kataglyphis-Orchestr-ANT-ion is that case, and its difference is a deliberate
+OrchestrANT is that case, and its difference is a deliberate
 override, not drift.
 
-**Kataglyphis-Cpp-Inference** owns three of the four:
+**AccelerANTgine** owns three of the four:
 `-Ignore .clang-tidy gcovr.cfg .pre-commit-config.yaml`.
 
 - `.clang-tidy` — it additionally disables `clang-diagnostic-error` and sets a
@@ -74,8 +74,8 @@ was corrected to match (below).
 ## The 2026-08-11 correction: canonical was the stale copy
 
 Three canonical files were wrong for **every** C++ consumer, and the drift
-report had been reading as "Cpp-Inference deviates" when it was in fact
-"Cpp-Inference is ahead":
+report had been reading as "AccelerANTgine deviates" when it was in fact
+"AccelerANTgine is ahead":
 
 - `Standard: c++20` while BeschleunigerBallett sets `CMAKE_CXX_STANDARD 23`.
 - `.pre-commit-config.yaml`'s clang-format `files:` regex omitted `.ixx`, so

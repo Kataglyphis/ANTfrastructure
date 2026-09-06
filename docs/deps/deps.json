@@ -418,9 +418,9 @@
           "dockerfile": "Dockerfile.torch",
           "entries": [
             {
-              "name": "Kataglyphis Orchestr-ANT-ion",
+              "name": "OrchestrANT",
               "var": "APP_REF",
-              "url": "https://github.com/Kataglyphis/Orchestr-ANT-ion",
+              "url": "https://github.com/Kataglyphis/OrchestrANT",
               "license": "MIT",
               "spdx": "MIT"
             }

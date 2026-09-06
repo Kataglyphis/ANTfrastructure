@@ -8,7 +8,7 @@ index 4db0ed8..679fd8a 100644
  #endif
 -#elif defined(HAS_SM80_OR_LATER) || !defined(__CUDACC__)
 +#else
-+// PORT PATCH (Kataglyphis-ContainerHub): emit the host stub unconditionally.
++// PORT PATCH (ContainerHub): emit the host stub unconditionally.
 +// Upstream keys the host pass on the cmake-provided HAS_SM80_OR_LATER define,
 +// but an nvcc launcher that decomposes the compilation (sccache via
 +// CMAKE_CUDA_COMPILER_LAUNCHER) can drop target -D defines in the host

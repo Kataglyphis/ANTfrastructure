@@ -33,7 +33,7 @@ owning document had it right and even warned about that exact mistake. See
 
 Do not add a lint that fails a consumer doc for mentioning `wcifs`,
 `--isolation process` or similar. A keyword cannot distinguish *restating* an
-upstream procedure from *applying* it. Kataglyphis-Inference-Engine's
+upstream procedure from *applying* it. OmniAccelerANT's
 AddressSanitizer notes discuss image-level runtimes legitimately, because which
 ASan runtime a Flutter/COM application survives is a property of that
 application. Reviewing this needs a person reading the paragraph.

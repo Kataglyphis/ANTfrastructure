@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Windows mirror of linux/Dockerfile.torch: assembles the
-# Kataglyphis-Orchestr-ANT-ion app environment as its OWN chain stage between
+# OrchestrANT app environment as its OWN chain stage between
 # media and final (media -> torch -> final; windows/Dockerfile builds FROM this
 # image and adds only the cheap dev-image trimmings). An APP_REF bump therefore
 # rebuilds torch + final — minutes, network-bound — never the compile chain.
@@ -15,7 +15,7 @@
 # -TorchBaseImage went with build.ps1 (deleted 2026-08-31); overriding BASE_IMAGE
 # now needs a direct buildctl solve.
 #
-# The assembly script deletes + reclones C:\opt\Kataglyphis-Orchestr-ANT-ion
+# The assembly script deletes + reclones C:\opt\OrchestrANT
 # wholesale, so re-running on a base that already carries an older app env
 # (e.g. the published image) is safe and total.
 
@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     $env:UV_CACHE_DIR = 'C:\uvcache'; $env:PIP_CACHE_DIR = 'C:\uvcache\pip'; `
     & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 
-ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
+ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 
 # Provenance stamps DELIBERATELY declared below the assembly RUN: ARGs enter
 # the env (and thus the cache key) of every later instruction, and the drivers
@@ -80,10 +80,10 @@ ARG VCS_REF=""
 # this with the broader dev-image probe; this one stands when the torch image
 # is run directly. WORKDIR/VOLUME/ENTRYPOINT come from the final stage.
 HEALTHCHECK --interval=5m --timeout=30s --start-period=60s --retries=3 `
-  CMD ["C:\\opt\\Kataglyphis-Orchestr-ANT-ion\\.venv\\Scripts\\python.exe", "-c", "import onnxruntime"]
+  CMD ["C:\\opt\\OrchestrANT\\.venv\\Scripts\\python.exe", "-c", "import onnxruntime"]
 
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger torch app" `
-      org.opencontainers.image.description="Orchestr-ANT-ion app environment on the Windows developer image (ONNX Runtime, GenAI, OpenCV 5, TVM, PyTorch)" `
+      org.opencontainers.image.description="OrchestrANT app environment on the Windows developer image (ONNX Runtime, GenAI, OpenCV 5, TVM, PyTorch)" `
       org.opencontainers.image.version="${APP_REF}" `
       org.opencontainers.image.revision="${VCS_REF}" `
       org.opencontainers.image.created="${BUILD_DATE}" `

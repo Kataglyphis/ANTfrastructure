@@ -253,14 +253,14 @@ check_torchless_sentinel() {
 }
 
 # Wheel smoke -- delegate to the APP's own smoke module (single source of truth):
-# `python -m orchestr_ant_ion.smoke` exercises each shipped wheel with REAL work, and
+# `python -m orchestrant.smoke` exercises each shipped wheel with REAL work, and
 # the app OWNS what its wheels must do. Torch-less images fall back to a bare
 # onnx/numpy import, since the suite treats torch as required.
 check_app_wheel_smoke() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
-      echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
+      echo "--- Functional: app wheel smoke (python -m orchestrant.smoke) ---"
       # RATCHET on the ok-count, not the exit status: the smoke exits 0 whenever
       # failures==0 and reports a vanished component as a WARNING, so one identical
       # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
@@ -274,7 +274,7 @@ check_app_wheel_smoke() {
         riscv64) _wheel_floor=13 ;;
         *)       _wheel_floor=0  ;;
       esac
-      if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestr_ant_ion.smoke 2>&1)"; then
+      if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestrant.smoke 2>&1)"; then
         printf '%s\n' "${_wheel_out}"
         _wheel_ok="$(printf '%s\n' "${_wheel_out}" | sed -n 's/.*=== \([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p' | tail -1)"
         # An unreadable count must FAIL. Falling through to pass would leave only the
@@ -1204,7 +1204,7 @@ check_venv_bytecode() {
 # component nobody wrote down is invisible to it. That blind spot, and why the stale arm
 # fails rather than warns: docs/cross-build-verification.md, "In-image smoke tests".
 # Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump needs no edit.
-_PARITY_PREFIXES="Kataglyphis-Orchestr-ANT-ion android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
+_PARITY_PREFIXES="OrchestrANT android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
 # Wheel names in dist-info form ('-' and '.' normalised to '_').
 _PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"
 
@@ -1420,7 +1420,7 @@ for d in md.distributions():
 for x in sorted(inst):
     print("PKG", x)
 app = None
-for cand in ("orchestr-ant-ion", "orchestr_ant_ion"):
+for cand in ("orchestrant", "orchestrant"):
     try:
         app = md.distribution(cand); break
     except Exception:
@@ -1916,10 +1916,10 @@ check_application_import() {
     # The actual deliverable: a broken/incomplete app install (missing runtime dep)
     # shipped silently before, so import it through the venv python.
     if _rt_run \
-         /opt/venv/bin/python -c "import orchestr_ant_ion" >/dev/null 2>&1; then
+         /opt/venv/bin/python -c "import orchestrant" >/dev/null 2>&1; then
       pass "application module imports (${target_arch})"
     else
-      fail "application module (orchestr_ant_ion) failed to import in the venv (${target_arch})"
+      fail "application module (orchestrant) failed to import in the venv (${target_arch})"
     fi
     echo ""
 }

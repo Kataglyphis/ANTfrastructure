@@ -71,7 +71,7 @@ for V in $PY_VERSIONS; do
   # taking the matrix down - that is the whole point of listing it separately.
   # Venv CREATION above was already guarded this way; the sync was not, so a
   # free-threaded build with one unbuildable wheel still failed the whole run.
-  # Picked up from Kataglyphis-Orchestr-ANT-ion, which had added the guard to
+  # Picked up from OrchestrANT, which had added the guard to
   # its private copy of this script (2026-08-11).
   if is_experimental_python "$V"; then
     if ! uv_sync_project --no-wxpython; then

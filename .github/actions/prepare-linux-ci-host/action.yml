@@ -8,7 +8,7 @@ description: >-
   pays this prologue once per job, so it stops being boilerplate in one place
   and becomes boilerplate in ten - and any drift between those copies (a
   different retry count, a missing submodule flag) turns into a failure that
-  only reproduces in one lane. Consumers: Kataglyphis-BeschleunigerBallett
+  only reproduces in one lane. Consumers: BeschleunigerBallett
   Linux.yml.
 
 inputs:

@@ -6,7 +6,7 @@
 <#
 .SYNOPSIS
   Generic MSIX packaging script for Rust desktop applications.
-  Can be upstreamed to Kataglyphis-ContainerHub.
+  Can be upstreamed to ContainerHub.
 
 .DESCRIPTION
   - Uses WindowsBuild.Common.psm1 for structured logging.

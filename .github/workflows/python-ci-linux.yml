@@ -1,12 +1,12 @@
 # .github/workflows/python-ci-linux.yml
 #
-# Reusable Linux CI lane for the Python consumers (Kataglyphis-Orchestr-ANT-ion,
-# Kataglyphis-WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
+# Reusable Linux CI lane for the Python consumers (OrchestrANT,
+# WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
 # packaging, on the x86-64 and arm64 native runners.
 #
 # Before this existed the two callers each carried a 112-line copy that differed
 # on 14 lines, and every one of those differences was a parameter. Two of them
-# were not even real: Orchestr-ANT-ion passed '3.14' to ci_static_analysis.sh and
+# were not even real: OrchestrANT passed '3.14' to ci_static_analysis.sh and
 # ci_packaging.sh, which is exactly what those drivers default to, so the two
 # repos were running identical commands through different-looking YAML.
 #
@@ -27,11 +27,11 @@ on:
     inputs:
       package-name:
         description: >-
-          Importable package/module directory, e.g. orchestr_ant_ion. NOT the
-          distribution name from pyproject.toml - Orchestr-ANT-ion's distribution
-          is "Orchestr-ANT-ion" while its module is "orchestr_ant_ion", and
-          passing the former makes coverage silently target a path that does not
-          exist.
+          Importable package/module directory, e.g. orchestrant. NOT the
+          distribution name from pyproject.toml - the two are allowed to differ
+          in case and separators (OrchestrANT ships its distribution as
+          "OrchestrANT" and its module as "orchestrant"), and passing the former
+          makes coverage silently target a path that does not exist.
         required: true
         type: string
       container-image:
@@ -90,7 +90,7 @@ on:
       FTP_PASSWORD:
         description: >-
           Docs deploy password. Callers map their own secret name onto this -
-          Orchestr-ANT-ion stores it as PW, WebDavClient as PASSWORD. Renaming
+          OrchestrANT stores it as PW, WebDavClient as PASSWORD. Renaming
           either repo's secret is not required.
         required: false
 

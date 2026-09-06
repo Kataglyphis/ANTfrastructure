@@ -317,7 +317,7 @@ ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platf
 # `cargo` still resolves — to Ubuntu's /usr/bin/cargo, installed as a plain deb
 # by setup-package-image.sh — while `rustup` is not found at all, because that
 # deb ships none. A consumer's `rustup component add rustfmt` therefore died
-# with exit 127 on every build for months (Kataglyphis-RustProjectTemplate,
+# with exit 127 on every build for months (OxidANT,
 # found 2026-08-07), and `continue-on-error: true` made it look green.
 #
 # Same mechanism the GCC (configure-gcc-env.sh) and Flutter (Dockerfile.sdk)

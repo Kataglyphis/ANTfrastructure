@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
-# callers inside THIS repo, but Kataglyphis-Inference-Engine's
+# callers inside THIS repo, but OmniAccelerANT's
 # scripts/windows/Build-Windows.ps1 imports it from its ContainerHub submodule at
 # third_party/ContainerHub/windows/scripts/modules/. It was deleted
 # once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
@@ -187,7 +187,12 @@ function Sync-FastLocalArtifactsToHost {
         $BuildRoot,
         $OriginalBuildRoot,
         "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD",
-        "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*",
+        # CMakeCache.txt is bound to the directory and generator that wrote it
+        # ($BuildRoot, Ninja). Copied onto the host it breaks the NEXT run: Flutter
+        # configures the host tree with the Visual Studio generator, CMake finds this
+        # cache pointing at another dir with another generator and aborts. CMakeFiles
+        # is excluded below for the same reason - the host gets artifacts, not state.
+        "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*", "CMakeCache.txt",
         "/XD", "*.dir", "CMakeFiles", "x64_x64-ClangCL*",
         "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
     )

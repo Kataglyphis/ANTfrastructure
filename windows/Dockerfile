@@ -2,14 +2,14 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Final Windows developer image built on top of the torch app image
-# (media -> torch -> final; the Orchestr-ANT-ion app env is assembled by
+# (media -> torch -> final; the OrchestrANT app env is assembled by
 # windows/Dockerfile.torch, this stage adds only the cheap dev trimmings).
 # Contains: VS Build Tools, LLVM/clang-cl, CUDA/cuDNN, CPython 3.14,
 # ONNX Runtime + GenAI, OpenCV 5, FFmpeg, GStreamer and LiteRT on both lanes;
 # the TVM and IREE RUNTIMES on both lanes with their compilers amd64-only, and
 # LiteRT-LM amd64-only (each absence named inside the arm64 bundle by an
 # ABSENT-ON-ARM64 marker -- see docs/windows-cross-builds.md), plus the app env
-# at C:\opt\Kataglyphis-Orchestr-ANT-ion (amd64 only: uv sync must run the
+# at C:\opt\OrchestrANT (amd64 only: uv sync must run the
 # target interpreter).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-torch
@@ -53,7 +53,7 @@ COPY windows\scripts\build\healthcheck.ps1 windows\scripts\build\smoke-test-cont
 # imported from this path by downstream Invoke-Ci* / rust build scripts).
 COPY windows\scripts\modules C:\temp\scripts\modules
 
-# The Orchestr-ANT-ion app environment (the Windows "torch step") is INHERITED
+# The OrchestrANT app environment (the Windows "torch step") is INHERITED
 # from the base: windows/Dockerfile.torch assembles it at APP_REF and sets
 # TORCH_APP_DIR. Keeping the assembly out of this stage means an app bump
 # rebuilds torch + this cheap tail only, and the logic exists in one place.

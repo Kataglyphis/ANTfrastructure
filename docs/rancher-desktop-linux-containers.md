@@ -92,7 +92,7 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 $image   = "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
 
 & $nerdctl --namespace default run --rm `
-  -v "D:\GitHub\Kataglyphis-BeschleunigerBallett:/workspace" `
+  -v "D:\GitHub\BeschleunigerBallett:/workspace" `
   -w /workspace `
   $image `
   bash ./scripts/linux/cmake-configure-build.sh --preset linux-debug-clang --build-dir build-linux

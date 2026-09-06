@@ -123,7 +123,7 @@ if [ -z "${FLUTTER_SDK_SHA256:-}" ]; then
   # SHA cannot possibly match. That failed as
   #   Checksum verification FAILED for /tmp/flutter-sdk-XXXX.tar.xz
   # which reads like a corrupted download and sent the search in the wrong
-  # direction entirely. Measured 2026-08-12: Kataglyphis-Inference-Engine asked
+  # direction entirely. Measured 2026-08-12: OmniAccelerANT asked
   # for 3.41.6 while versions.env pinned 3.44.9, and all three of its Flutter
   # lanes died here.
   #

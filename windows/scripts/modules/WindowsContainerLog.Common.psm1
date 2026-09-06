@@ -7,7 +7,7 @@
   Console+file logging for scripts running INSIDE a Windows build container.
 
 .DESCRIPTION
-  Lifted from a consumer (Kataglyphis-RustProjectTemplate's
+  Lifted from a consumer (OxidANT's
   scripts/windows/Container/rust-build-all.ps1 and rust-test-all.ps1), which
   carried two byte-identical copies of it.
 

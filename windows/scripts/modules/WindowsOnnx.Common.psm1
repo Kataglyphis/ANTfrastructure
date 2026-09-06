@@ -6,7 +6,7 @@
 # ONNX Runtime NuGet layout + optional-package installation.
 #
 # RESTORED 2026-08-11. Deleted in f0d12ff (2026-06-24) as part of a wider
-# cleanup, but Kataglyphis-Cpp-Inference's Build-Windows.ps1 still imports this
+# cleanup, but AccelerANTgine's Build-Windows.ps1 still imports this
 # module and calls Get-OnnxPackageLayout - the same "zero callers in THIS repo"
 # blind spot that lost Sync-BuildArtifacts, and for the same reason: consumers
 # pin a submodule commit, so they neither break at delete time nor show up in
@@ -28,7 +28,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 
 # Get-WindowsRuntimeIdentifier, on the same unforced terms. This module is NOT
 # reached through WindowsSourceBuild.Common (which re-exports the arch
-# accessors) -- it is imported directly by the external Kataglyphis-Cpp-Inference
+# accessors) -- it is imported directly by the external AccelerANTgine
 # Build-Windows.ps1, so it cannot borrow that re-export and must import the arch
 # table itself. Both files live in windows\scripts\modules, which windows\Dockerfile
 # COPYs as a whole directory, so co-location is guaranteed.
@@ -51,7 +51,7 @@ function Get-OnnxPackageLayout {
         # Target arch. '' delegates to Get-WindowsTargetArch's own precedence:
         # explicit -Arch, then $env:WINDOWS_TARGET_ARCH, then 'amd64'. Appended
         # LAST and optional so every existing caller -- including the external
-        # Kataglyphis-Cpp-Inference Build-Windows.ps1, named or positional --
+        # AccelerANTgine Build-Windows.ps1, named or positional --
         # binds exactly as it does today and lands on win-x64.
         [string]$Arch = ''
     )

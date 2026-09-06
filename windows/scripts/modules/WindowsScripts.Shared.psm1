@@ -733,7 +733,7 @@ Export-ModuleMember -Function @(
 
 # --------------------------------------------------------------------------
 # Restored from 04e1e07 (pre-refactor): functions still consumed by
-# downstream Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine).
+# downstream Build-Windows.ps1 scripts (OmniAccelerANT).
 # --------------------------------------------------------------------------
 function Resolve-WorkspacePath {
     param(

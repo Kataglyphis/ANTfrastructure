@@ -9,7 +9,7 @@
 # internet/WU), then sfc /scannow. Then re-test whether DISM works again.
 # ELEVATED. Long-running (10-40 min). Safe with nothing building.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\host\repair-windows-componentstore.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\repair-windows-componentstore.ps1'
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off

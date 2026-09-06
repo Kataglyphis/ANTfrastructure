@@ -178,7 +178,7 @@ function Get-BuildVcsRef {
 }
 
 function Resolve-TorchAppRef {
-    # Orchestr-ANT-ion ref: DETERMINISTIC by default (versions.env APP_REF pin). -LatestApp
+    # OrchestrANT ref: DETERMINISTIC by default (versions.env APP_REF pin). -LatestApp
     # resolves the app repo's newest release tag, falling back to the pin when offline.
     param(
         [Parameter(Mandatory)][hashtable]$VersionTable,
@@ -187,7 +187,7 @@ function Resolve-TorchAppRef {
     $ref = Get-VersionTableValue $VersionTable 'APP_REF'
     if ($LatestApp) {
         try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/Orchestr-ANT-ion.git 2>$null
+            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/OrchestrANT.git 2>$null
             if ($LASTEXITCODE -eq 0 -and $tagRaw) {
                 $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
                 if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
@@ -195,7 +195,7 @@ function Resolve-TorchAppRef {
         } catch {
             Write-Verbose "ls-remote tag resolution failed, using pinned APP_REF: $($_.Exception.Message)"
         }
-        Write-Host "-LatestApp: resolved Orchestr-ANT-ion ref: $ref (versions.env pin: $(Get-VersionTableValue $VersionTable 'APP_REF'))"
+        Write-Host "-LatestApp: resolved OrchestrANT ref: $ref (versions.env pin: $(Get-VersionTableValue $VersionTable 'APP_REF'))"
     }
     return $ref
 }

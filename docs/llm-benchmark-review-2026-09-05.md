@@ -607,7 +607,7 @@ Only claims read from the cited page are listed; anything the researchers rated
 - Windows: Task Manager Performance tab shows NPU utilisation %, memory, driver; recent Windows 11 builds add NPU / NPU Engine columns per process; Windows Performance Recorder ships a Neural Processing profile recording NPU/MCDM activity. HWiNFO cannot report package/NPU power on first-generation Snapdragon X (X1) — only on X2.  
   <https://learn.microsoft.com/en-us/windows/ai/npu-devices/>
 - Repo conventions to fit: bench_coding.py uses TASKS with exact required signatures, hidden asserts, PASS/FAIL/CUT verdicts (CUT from finish_reason=length, then token cap, then unclosed fence), --backend from backends.json with a 'control' calibration backend, repeats, provenance block (UTC, host, OS, arch, endpoint, model, server version). backends.json geniex-npu note: 'QAIRT bundles only - loading a GGUF after a QAIRT bundle crashes the server'. geniex serve handles one request at a time (docs/geniex-local-ai-setup.md).  
-  <file:///home/jonas/GitHub/Kataglyphis-ContainerHub/linux/llm-stack/bench_coding.py>
+  <file:///home/jonas/GitHub/ContainerHub/linux/llm-stack/bench_coding.py>
 
 ### Models and runtimes
 

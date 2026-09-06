@@ -16,7 +16,7 @@
 #
 #   pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1            # default: enable
 #   pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\host\toggle-rdna4-gpu.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\toggle-rdna4-gpu.ps1'
 
 [CmdletBinding()]
 param(

@@ -11,7 +11,7 @@ install_err_trap
 : "${ONNX_PACKAGE:?ONNX_PACKAGE must be set}"
 : "${PYTORCH_EXTRA:=pytorch-cpu}"
 
-APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
+APP_DIR="/opt/OrchestrANT"
 APP_REF="${APP_REF:-v0.0.27}"
 
 # Single list of the PyPI opencv-family names, so the call sites cannot drift.
@@ -36,12 +36,12 @@ prepare_project_tree() {
   # Retry inlined rather than reusing 01-core's retry(): this script ships
   # standalone into images (Dockerfile.torch) that carry no 01-core.
   for _attempt in 1 2 3; do
-    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Orchestr-ANT-ion.git "${APP_DIR}"; then
+    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/OrchestrANT.git "${APP_DIR}"; then
       break
     fi
     rm -rf "${APP_DIR}"
     if [ "${_attempt}" -eq 3 ]; then
-      echo "ERROR: git clone of Kataglyphis-Orchestr-ANT-ion (${APP_REF}) failed after 3 attempts" >&2
+      echo "ERROR: git clone of OrchestrANT (${APP_REF}) failed after 3 attempts" >&2
       return 1
     fi
     echo "WARNING: git clone attempt ${_attempt}/3 failed; retrying in 10s..." >&2
@@ -521,7 +521,7 @@ install_project_environment() {
   ensure_project_package_installed
 }
 
-# `uv sync` installs the app project itself (Orchestr-ANT-ion -> orchestr_ant_ion)
+# `uv sync` installs the app project itself (OrchestrANT -> orchestrant)
 # alongside its dependencies on amd64/arm64. On riscv64 the [tool.uv] environments-gate
 # strip makes uv re-resolve, which drags the riscv64-gated `torch @ git+...` source build
 # into the graph; that build times out, so `uv sync` aborts BEFORE installing the app's
@@ -537,11 +537,11 @@ install_project_environment() {
 # no core dep requires torch). Guarded by an import probe -- a no-op on amd64/arm64 where
 # uv sync already installed project + deps (the probe imports cleanly there).
 ensure_project_package_installed() {
-  if uv run --no-sync --active python -c 'import orchestr_ant_ion' >/dev/null 2>&1; then
-    echo "Project package orchestr_ant_ion already installed"
+  if uv run --no-sync --active python -c 'import orchestrant' >/dev/null 2>&1; then
+    echo "Project package orchestrant already installed"
     return 0
   fi
-  echo "Project package orchestr_ant_ion (+ core deps) missing after uv sync; installing from ${APP_DIR}"
+  echo "Project package orchestrant (+ core deps) missing after uv sync; installing from ${APP_DIR}"
   uv pip install "${APP_DIR}"
   install_fallback_project_extras || return 1
 }

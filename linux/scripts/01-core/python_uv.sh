@@ -224,7 +224,7 @@ uv_venv_remove() {
 # `[tool.uv] conflicts` — uv refuses with
 #   error: Extras `a` and `b` are incompatible with the declared conflicts
 # and there is no "install as much as possible" flag. Measured 2026-08-11:
-# Kataglyphis-Orchestr-ANT-ion declares 12 pairwise conflicts across two
+# OrchestrANT declares 12 pairwise conflicts across two
 # mutually-exclusive families (the ml-ai backends and the pytorch backends), so
 # every one of its CI lanes failed here regardless of what it was asked to do.
 _uv_conflict_groups() {
@@ -263,7 +263,7 @@ _uv_conflict_groups() {
 #
 # Greedy over the groups in DECLARATION ORDER: keep an extra unless it conflicts
 # with one already kept, otherwise exclude it. Deterministic, and it keeps the
-# first-declared member of each family — which for Orchestr-ANT-ion means the
+# first-declared member of each family — which for OrchestrANT means the
 # plain `ml-ai` and `pytorch-cpu`, the right choices for CI. A project that wants
 # a different member sets UV_SYNC_EXTRAS and skips all of this.
 _uv_extras_to_exclude() {
@@ -388,7 +388,7 @@ uv_sync_project() {
     # play uv resolved the environment to VIRTUAL_ENV=/opt/venv and tried to
     # rewrite it, so a correctly-pinned interpreter still produced
     #   failed to remove file `/opt/venv/CACHEDIR.TAG`: Permission denied
-    # (Orchestr-ANT-ion, both arches, 2026-08-14). Name the environment
+    # (OrchestrANT, both arches, 2026-08-14). Name the environment
     # explicitly and drop --active: with VIRTUAL_ENV cleared there is no active
     # environment for it to mean anything about.
     _env_clear+=("UV_PROJECT_ENVIRONMENT=${_venv}")

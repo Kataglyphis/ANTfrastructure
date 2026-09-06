@@ -9,7 +9,7 @@
 
 .DESCRIPTION
     Builds Sphinx documentation with coverage reports.
-    Uses shared modules from Kataglyphis-ContainerHub.
+    Uses shared modules from ContainerHub.
 
 .PARAMETER PythonVersion
     Python version to use (default: "3.13")

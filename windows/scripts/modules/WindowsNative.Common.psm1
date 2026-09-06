@@ -8,7 +8,7 @@
 # module is only picked up by the final stage's whole-dir modules COPY (cheap).
 # NOTE for future migrations: the two "no callers in this repo" path helpers in
 # Shared (Resolve-WorkspacePath/Resolve-NormalizedPath) are EXTERNAL-consumer
-# API (Kataglyphis-Inference-Engine's Build-Windows.ps1) — same caution applies.
+# API (OmniAccelerANT's Build-Windows.ps1) — same caution applies.
 
 Set-StrictMode -Version Latest
 
