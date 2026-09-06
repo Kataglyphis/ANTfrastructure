@@ -1625,7 +1625,7 @@ the gate's own `shutil.which` lookup is gone.
 correct locally. It now accepts a `PATH` copy **only** when its reported version
 equals the pin, and otherwise falls through to the bootstrap it already had — the
 pinned release, downloaded once into a version-keyed cache and SHA256-verified.
-The `Install shellcheck` step in `.github/workflows/ubuntu24.04.yml` is therefore
+The `Install shellcheck` step in `.github/workflows/ubuntu26.04.yml` is therefore
 removed: the gate brings its own, verified.
 
 **The commit hook is inside the scope (2026-09-04).** `lint-shell.sh` admitted

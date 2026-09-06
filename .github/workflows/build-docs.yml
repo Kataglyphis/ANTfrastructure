@@ -57,10 +57,10 @@ jobs:
           uv pip install -r requirements.txt
 
       # The verification list lives in preflight.sh (single source of the gate
-      # list — the same one ubuntu24.04.yml runs in full and the commit hook
+      # list — the same one ubuntu26.04.yml runs in full and the commit hook
       # subsets). Deliberately narrowed to the docs-relevant slugs: this
       # reusable workflow must stay self-sufficient for callers that have no
-      # preflight job of their own, but ubuntu24.04.yml's dedicated preflight
+      # preflight job of their own, but ubuntu26.04.yml's dedicated preflight
       # job already carries the FULL gate, so re-running everything here just
       # doubled the work on every PR/push.
       - name: Run preflight verification (docs-relevant subset)
@@ -76,7 +76,7 @@ jobs:
           make html
 
       # Deploy gate: a reusable workflow sees the CALLER's event, and
-      # ubuntu24.04.yml calls this on pull_request too — without the
+      # ubuntu26.04.yml calls this on pull_request too — without the
       # event_name guard, PR content would deploy straight to production.
       - name: 📂 Sync files to domain
         if: success() && github.event_name == 'push'

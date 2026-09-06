@@ -9,7 +9,7 @@
 #
 # ADVISORY RAMP — NOW A GATE (backlog Batch 6 C4 residual, flipped 2026-08-13):
 # the ramp condition ("first green run on a real runner proves the service/model
-# bootstrap") is met. Run 31435175821 on main (push, ubuntu-latest, real ollama
+# bootstrap") is met. Run 31435175821 on main (push, ubuntu-26.04, real ollama
 # service) had the "Run non-inference contract tests" STEP conclude success —
 # step-level, so it was not masked by continue-on-error. continue-on-error is
 # now false; a red test step fails the job. If the service/model bootstrap
@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   v1-api-contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     continue-on-error: false  # gate — flipped 2026-08-13 after run 31435175821 (see header)
     timeout-minutes: 20
     services:

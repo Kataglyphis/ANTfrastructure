@@ -847,7 +847,7 @@ linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
 linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          assembly — consumer surface. Called from
                          OxidANT's
-                         .github/workflows/rust_ubuntu24_04.yml release job.
+                         .github/workflows/rust_ubuntu26_04.yml release job.
                          Deleted by the 2026-08-08 orphan sweep as
                          "zero-reference" and restored 2026-08-11: the sweep
                          searched only THIS repo, so a consumer's CI lane was
@@ -1372,7 +1372,7 @@ base ─┬─ onnxruntime ───────┐
   | --- | --- | --- |
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most 6 entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/ubuntu24.04.yml` — `bash linux/scripts/preflight.sh` | CI |
+  | every push | `.github/workflows/ubuntu26.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 
   Install the hook once with **`make hooks`**. It sets `core.hooksPath` rather
   than copying into `.git/hooks`, so the hook is version-controlled and arrives

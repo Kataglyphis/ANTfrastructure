@@ -8,7 +8,7 @@
   <h4>Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and a Windows build image.</h4>
 </div>
 
-[![CI](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu24.04.yml)
+[![CI](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu26.04.yml/badge.svg)](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ubuntu26.04.yml)
 [![ghcr-cleanup](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ContainerHub/actions/workflows/ghcr-cleanup.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
@@ -255,7 +255,7 @@ check before spending hours measuring.
 
 | Workflow | Purpose |
 |----------|---------|
-| `ubuntu24.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
+| `ubuntu26.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
 | `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |

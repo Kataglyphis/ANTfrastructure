@@ -120,11 +120,11 @@ jobs:
         # the index resolves, every child 404s, and `docker pull` reports only
         # "manifest unknown".
         include:
-          - runs_on: ubuntu-24.04
+          - runs_on: ubuntu-26.04
             arch: x64
             platform: linux/amd64
             image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-          - runs_on: ubuntu-24.04-arm
+          - runs_on: ubuntu-26.04-arm
             arch: arm64
             platform: linux/arm64
             image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross

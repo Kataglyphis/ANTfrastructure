@@ -1,4 +1,4 @@
-# .github/workflows/ubuntu24.04.yml
+# .github/workflows/ubuntu26.04.yml
 # Entry-point workflow: runs docs validation/build and the shell preflight gates.
 name: Ubuntu 24.04 Workflow
 
@@ -30,7 +30,7 @@ jobs:
   # (linux/host-config/git-hooks/pre-commit),
   # which is opt-in and silently skipped by contributors who don't enable it.
   preflight:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,7 +49,7 @@ jobs:
   build-docs:
     uses: ./.github/workflows/build-docs.yml
     with:
-      runner: ubuntu-24.04
+      runner: ubuntu-26.04
     secrets:
       SERVER: ${{ secrets.SERVER }}
       USERNAME: ${{ secrets.USERNAME }}

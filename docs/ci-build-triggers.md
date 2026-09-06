@@ -1,7 +1,7 @@
 # CI Build Triggers (commit-message opt-ins)
 
 > **These lanes live in CONSUMER repos, not here.** ContainerHub's own CI is
-> `ubuntu24.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
+> `ubuntu26.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
 > lint/tests), `llm-stack-tests.yml` (push/PR, path-filtered on
 > `linux/llm-stack/**`), and three scheduled housekeeping workflows —
 > `ghcr-cleanup.yml` (Sundays), `sbom.yml` and `stale-docs-check.yml` (both
