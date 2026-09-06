@@ -2,7 +2,7 @@
 # Tests for the lane-shared media helpers in WindowsBuildDriver.Common.psm1
 # (Get-MediaBranchVersionArg / Get-MediaMergeVersionArg / Assert-SccacheEndpoint /
 # Get-MediaMemoryBudget). These are the ONE canonical definition both drivers
-# (build.ps1 classic, build-buildkit.ps1 BK) consume — a drifting key set here
+# (build.ps1 classic, Build-Buildkit.ps1 BK) consume — a drifting key set here
 # silently rebuilds hours of cached layers in one lane or starves the merge
 # builder of a version pin. Everything runs against a fake version table; no
 # versions.env, docker, or network involved (the only endpoint probed is a

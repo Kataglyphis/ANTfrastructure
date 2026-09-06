@@ -825,7 +825,7 @@ test's reach; that is stated rather than papered over.
 
 **Cause.** **RESOLVED 2026-08-10: an ENABLED AMD RDNA4 dGPU (RX 9xxx + Adrenalin) locks freshly-written container layers** (upstream docker/for-win#14977, open; same-boot A/B-proven). Failed finalizes additionally WEDGE hcs state until a REBOOT (survives service bounces + vmcompute restart).
 
-**Fix.** Probe with `Test-BuildCopy.ps1 -Heavy` (only a `-Heavy`-green verdict counts), then build inside the `Set-Rdna4Gpu.ps1 -Disable` window — `build-buildkit.ps1` enforces that via `Assert-NoActiveRdna4Gpu`. **After ANY red finalize, reboot before testing anything else**: a wedged host falsifies every later experiment. Full A/B history and the superseded 2026-08-09 verdict: [`windows-build-lanes.md`](windows-build-lanes.md#rdna4-dgpu-layer-lock-ab-history-and-diagnostics).
+**Fix.** Probe with `Test-BuildCopy.ps1 -Heavy` (only a `-Heavy`-green verdict counts), then build inside the `Set-Rdna4Gpu.ps1 -Disable` window — `Build-Buildkit.ps1` enforces that via `Assert-NoActiveRdna4Gpu`. **After ANY red finalize, reboot before testing anything else**: a wedged host falsifies every later experiment. Full A/B history and the superseded 2026-08-09 verdict: [`windows-build-lanes.md`](windows-build-lanes.md#rdna4-dgpu-layer-lock-ab-history-and-diagnostics).
 
 ### `ExportLayer 0x3`, spawn flakes, `ExportLayer 0x70` — disk exhaustion in costume
 
@@ -888,7 +888,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **A half-committed snapshot is in the way.** Prime cause, measured 2026-08-07: **killing `buildctl` mid-finalize leaves exactly this debris** (a chain was aborted deliberately at 23 GB free to escape the disk danger band, and the next run died three times on the same IDs). `prune` does NOT clear it — it is not a reclaimable BK cache record (495 MB returned, nothing relevant); the transient-retry engine cannot help either, because the failure is deterministic, not a flake.
 
-**Fix.** **`-NoCache` on the affected stage only** — e.g. `.\windows\build-buildkit.ps1 -Gpu -Stages sdk -NoCache`. Re-running the RUN yields a NEW layer digest (its output is not bit-identical), hence fresh chain IDs downstream, and the poisoned snapshot is simply no longer in the path. **Verified 2026-08-07:** the stage that had failed 3× exported cleanly, `Done in 00:17:10`. Prefer this over the in-file `CACHE-BUST` comment technique (`Install-ScoopTools.ps1`, `Build-ToolchainAll.ps1`): same effect, costs one stage re-run, leaves NO trace in the source. Only reach for a source-level cache-bust when the debris sits in a layer you cannot isolate with `-Stages`. Corollary: **prefer letting a doomed solve fail cleanly over killing it** — a clean finalize failure leaves no debris, a kill does.
+**Fix.** **`-NoCache` on the affected stage only** — e.g. `.\windows\Build-Buildkit.ps1 -Gpu -Stages sdk -NoCache`. Re-running the RUN yields a NEW layer digest (its output is not bit-identical), hence fresh chain IDs downstream, and the poisoned snapshot is simply no longer in the path. **Verified 2026-08-07:** the stage that had failed 3× exported cleanly, `Done in 00:17:10`. Prefer this over the in-file `CACHE-BUST` comment technique (`Install-ScoopTools.ps1`, `Build-ToolchainAll.ps1`): same effect, costs one stage re-run, leaves NO trace in the source. Only reach for a source-level cache-bust when the debris sits in a layer you cannot isolate with `-Stages`. Corollary: **prefer letting a doomed solve fail cleanly over killing it** — a clean finalize failure leaves no debris, a kill does.
 
 ### `ImportLayer ... (0xb7)` on the SAME chain-IDs across retries
 
@@ -926,7 +926,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Symptom.** BK lane: a stage fails instantly with `exit code: 1` and **ZERO container output** — no script banner, no stderr, deterministic across retries
 
-**Cause.** **Two solves racing on the same freshly-invalidated ancestor stage.** Measured 2026-08-07: a second `build-buildkit.ps1` was started while the main chain ran, right after a change to the `common` stage invalidated it for BOTH. Each solve tried to build the same new snapshot chain; one died before its process ever started, hence no output. NOT a script bug — a probe running the identical mounts, module import and `Initialize-SourceBuildScript` against the same base passed cleanly.
+**Cause.** **Two solves racing on the same freshly-invalidated ancestor stage.** Measured 2026-08-07: a second `Build-Buildkit.ps1` was started while the main chain ran, right after a change to the `common` stage invalidated it for BOTH. Each solve tried to build the same new snapshot chain; one died before its process ever started, hence no output. NOT a script bug — a probe running the identical mounts, module import and `Initialize-SourceBuildScript` against the same base passed cleanly.
 
 **Fix.** Do not run a second solve that shares an ancestor stage you just invalidated. `-ConcurrentAux` is safe because its two branches sit on an ALREADY-BUILT common ancestor. Wait for the running chain, then start the second build. If you must parallelise, first build the shared ancestor once on its own.
 
@@ -940,7 +940,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **The CNI `.conf` is missing** — buildkitd then gives the container NO NETWORK ADAPTER AT ALL (not a DNS fault). Confirm in 30 s with a probe RUN: `ipconfig` prints nothing and a raw TCP connect to a literal IP fails *"unreachable network"*; the containerd debug log shows the `HcsCreateComputeSystem` spec with no networking block. Usual cause: someone "converted" `0-containerd-nat.conf` → `.conflist` to fix nerdctl (2026-08-07, cost a launched chain). The subnet-drift guard does NOT catch this and stays green.
 
-**Fix.** Restore it (admin): `Copy-Item '…\0-containerd-nat.conflist' '…\0-containerd-nat.conf'`, edit to the single-plugin form, `Restart-Service buildkitd -Force`. **Keep BOTH files** — buildkitd needs `.conf`, nerdctl needs `.conflist`. `build-buildkit.ps1` now fail-fasts (`Get-CniConfFormIssue`) and `Test-HostSetup.ps1` FAILs on a missing `.conf`.
+**Fix.** Restore it (admin): `Copy-Item '…\0-containerd-nat.conflist' '…\0-containerd-nat.conf'`, edit to the single-plugin form, `Restart-Service buildkitd -Force`. **Keep BOTH files** — buildkitd needs `.conf`, nerdctl needs `.conflist`. `Build-Buildkit.ps1` now fail-fasts (`Get-CniConfFormIssue`) and `Test-HostSetup.ps1` FAILs on a missing `.conf`.
 
 ### `The remote name could not be resolved` — CNI nat subnet drift
 
@@ -948,7 +948,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **CNI nat subnet drift**: dockerd restarts recreate the `nat` HNS network on a new subnet; the static CNI conf then hands out IPs whose gateway doesn't exist
 
-**Fix.** Update `ipam.subnet`/`GW` in `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` to match the live `vEthernet (nat)` adapter (`ipconfig`), then `Restart-Service buildkitd -Force` (admin). `build-buildkit.ps1`'s preflight guard detects this and prints the fix.
+**Fix.** Update `ipam.subnet`/`GW` in `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` to match the live `vEthernet (nat)` adapter (`ipconfig`), then `Restart-Service buildkitd -Force` (admin). `Build-Buildkit.ps1`'s preflight guard detects this and prints the fix.
 
 ### nerdctl DNS failure in build
 
@@ -984,7 +984,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** The `type=local` exporter cannot receive a full Windows rootfs client-side — NOT a host/commit defect (measured 2026-08-10 on a host whose `type=image,...,unpack=true` export of the same solve was green)
 
-**Fix.** Export `type=image` (what `build-buildkit.ps1` and, since 2026-08-10, `Test-BuildCopy.ps1` do) or the tar-stream `type=docker,dest=<file>` (`-FinalTar`); never judge host health from a `type=local` export of a Windows image.
+**Fix.** Export `type=image` (what `Build-Buildkit.ps1` and, since 2026-08-10, `Test-BuildCopy.ps1` do) or the tar-stream `type=docker,dest=<file>` (`-FinalTar`); never judge host health from a `type=local` export of a Windows image.
 
 ---
 
@@ -1126,7 +1126,7 @@ curl -s https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/<app
 ```
 `spec_vulkan` in `bump_versions.py` now reads `latest.json` and pins the OLDEST platform this repo
 installs — a shared key can only carry a version that exists on every lane consuming it — and
-prints the disagreement. `build-buildkit.ps1`'s Vulkan preseed probes the installer URL before any
+prints the disagreement. `Build-Buildkit.ps1`'s Vulkan preseed probes the installer URL before any
 solve and throws on 404 ONLY (403/5xx/timeouts stay fail-open, so a LunarG outage cannot block a
 build the container could still complete). Note the preseed had ALREADY warned "host download
 failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an outage.

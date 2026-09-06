@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# BuildKit-lane helpers (host-side; consumed by windows/build-buildkit.ps1 and
+# BuildKit-lane helpers (host-side; consumed by windows/Build-Buildkit.ps1 and
 # the test suites). Deliberately a SEPARATE module from WindowsScripts.Shared:
 # the shared module is COPY'd into the base image, so edits there cascade a
 # full-chain rebuild — this one is only picked up by the final stage's

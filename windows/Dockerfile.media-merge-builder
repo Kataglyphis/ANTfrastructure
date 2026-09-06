@@ -4,7 +4,7 @@
 #
 # The media fan-in: COPY --from of the three media branch trees, the canonical env
 # layout, then the GStreamer build and the four bundle gates — all as plain layers
-# in the `built` target, driven by windows/build-buildkit.ps1.
+# in the `built` target, driven by windows/Build-Buildkit.ps1.
 #
 # It used to end at a `merge` target that only staged scripts, because the compile
 # then ran as `docker run` + `docker commit` on the docker-classic lane (dockerd is
@@ -228,7 +228,7 @@ FROM merge-fanin AS built
 # ARGs do not cross stage boundaries — redeclare for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
-# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+# this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
 # WebDAV-ONLY sccache, same reasoning and same caveats as Dockerfile.media-builder's
 # `common` stage (read the block there before changing either). This stage is not

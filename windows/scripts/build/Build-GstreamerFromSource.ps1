@@ -357,7 +357,7 @@ int _isatty(int);
             } else {
                 # LAN preseed FIRST, upstream second: retries do not help against a
                 # sustained outage (the same reasoning as the Vulkan SDK in
-                # build-buildkit.ps1). Self-seeding -- whichever source works, the
+                # Build-Buildkit.ps1). Self-seeding -- whichever source works, the
                 # archive is PUT back, so the first success immunises the next run.
                 # Every step is fail-open; a preseed miss is not an error.
                 $wpcUpstream = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"

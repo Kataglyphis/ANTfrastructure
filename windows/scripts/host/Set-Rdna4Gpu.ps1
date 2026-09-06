@@ -10,7 +10,7 @@
 # hcsshim::ActivateLayer 0x20 (upstream docker/for-win#14977; severity shifts
 # with the Windows patch level - post-KB5101684 even 10-byte RUN layers trip).
 # Workflow: -Disable, build the chain (display falls back to the iGPU),
-# re-enable (default action). build-buildkit.ps1's Assert-NoActiveRdna4Gpu
+# re-enable (default action). Build-Buildkit.ps1's Assert-NoActiveRdna4Gpu
 # preflight refuses to start while the dGPU is enabled.
 # Leaves the RDNA2 iGPU alone (it is not implicated). ELEVATED.
 #

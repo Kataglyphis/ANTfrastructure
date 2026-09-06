@@ -8,8 +8,8 @@
 # image and adds only the cheap dev-image trimmings). An APP_REF bump therefore
 # rebuilds torch + final — minutes, network-bound — never the compile chain.
 #
-# In-chain (default): .\windows\build-buildkit.ps1        (torch is in the default stages)
-# App-only iteration:  .\windows\build-buildkit.ps1 -Stages torch,final
+# In-chain (default): .\windows\Build-Buildkit.ps1        (torch is in the default stages)
+# App-only iteration:  .\windows\Build-Buildkit.ps1 -Stages torch,final
 # Building on the PUBLISHED image is NOT driver-supported: the torch stage's
 # BASE_IMAGE is pinned to the local `windows-media` tag. The classic lane's
 # -TorchBaseImage went with build.ps1 (deleted 2026-08-31); overriding BASE_IMAGE
@@ -22,7 +22,7 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-media
 FROM ${BASE_IMAGE}
 
-# Kept in sync with versions.env by sync_versions.py; build-buildkit.ps1 overrides it
+# Kept in sync with versions.env by sync_versions.py; Build-Buildkit.ps1 overrides it
 # (versions.env pin, or the latest release tag with -LatestApp).
 ARG APP_REF=v0.0.27
 # Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),

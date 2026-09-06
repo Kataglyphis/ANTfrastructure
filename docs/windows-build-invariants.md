@@ -114,8 +114,8 @@ quote characters, not a two-element array. Cost (2026-08-18): the deadlock
 repro's `-BuildArg` pair reached buildctl as one mangled undeclared ARG
 name, buildctl silently discarded it, and an 88-minute repro measured
 nothing while reporting success. Invoke repo scripts DIRECTLY (`&
-'windows\build-buildkit.ps1' …`) when already in pwsh 7;
-`build-buildkit.ps1` now throws on non-identifier `-BuildArg` keys so the
+'windows\Build-Buildkit.ps1' …`) when already in pwsh 7;
+`Build-Buildkit.ps1` now throws on non-identifier `-BuildArg` keys so the
 flattened form fails loudly instead of vanishing downstream.
 
 ### Never put double quotes inside shell-form `RUN` lines
@@ -249,7 +249,7 @@ hygiene.
 ### Every BK chain ends with a mandatory smoke gate
 
 **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
-`build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
+`Build-Buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
 finished image after `final`, and a failure fails the chain (backlog #44).
 It is the only gate since the classic driver's deletion on 2026-08-31
 (mechanism and gating history: `docs/windows-builds.md` § Smoke Testing).
@@ -565,7 +565,7 @@ Starting it is NOT a safe reflex:
 a dockerd start recreates the nat HNS network and can move the subnet out
 from under `0-containerd-nat.conf`, leaving BuildKit containers with
 unroutable IPs — so start it deliberately, then RE-CHECK the CNI subnet
-(`build-buildkit.ps1` fail-fasts on that drift with the exact fix).
+(`Build-Buildkit.ps1` fail-fasts on that drift with the exact fix).
 
 ### Two BK-driver guards to know before debugging around them
 
@@ -598,7 +598,7 @@ converted away to fix nerdctl, which silently killed buildkitd's networking,
 and nothing caught it because no chain build ran in between. Restoring the
 `.conf` beside the `.conflist` + `Restart-Service buildkitd -Force` fixed it
 on the spot (IPv4 172.31.44.107, GW 172.31.32.1, DNS 192.168.188.1,
-github.com resolved). `build-buildkit.ps1` now fail-fasts via
+github.com resolved). `Build-Buildkit.ps1` now fail-fasts via
 `Get-CniConfFormIssue`. **When you edit one file, edit both** — nothing
 detects the two drifting apart in CONTENT, only absence.
 
@@ -710,7 +710,7 @@ flags them next will be the same audit, not new evidence.
 
 ### `versions.env` is the single source of truth
 
-**`versions.env` is the single source of truth.** `build-buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `Install-ScoopTools.ps1` splits its installs into exactly those two blocks.
+**`versions.env` is the single source of truth.** `Build-Buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `Install-ScoopTools.ps1` splits its installs into exactly those two blocks.
 
 ### CMake cross configures must carry the ASM language target too
 

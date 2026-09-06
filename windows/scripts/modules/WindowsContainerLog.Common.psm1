@@ -8,7 +8,7 @@
 
 .DESCRIPTION
   Lifted from a consumer (OxidANT's
-  scripts/windows/Container/rust-build-all.ps1 and rust-test-all.ps1), which
+  scripts/windows/Container/Build-RustAll.ps1 and Test-RustAll.ps1), which
   carried two byte-identical copies of it.
 
   Deliberately DEPENDENCY-FREE and self-contained. An in-container script is

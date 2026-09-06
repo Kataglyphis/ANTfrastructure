@@ -7,7 +7,7 @@
 # aggregate result.
 #
 # Lifted out of a consumer repo (BeschleunigerBallett,
-# Scripts/test-all-configs.ps1) on 2026-08-07. Everything here is the harness;
+# scripts/Test-AllConfigs.ps1) on 2026-08-07. Everything here is the harness;
 # WHICH builds to run - configuration names, CMake presets, image tags, build
 # directories - stays in the consuming script, which is the only part that knows
 # about a particular project.

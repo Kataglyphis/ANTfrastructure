@@ -5,7 +5,7 @@
 # The BK media-core solve ORDER is encoded twice — as the FROM graph in
 # Dockerfile.media-builder (media-core-built-ffmpeg FROM ${MEDIA_CORE_ONNX_IMAGE}
 # etc.) and as the Invoke-BkStage sequence + MEDIA_CORE_*_IMAGE build-args in
-# build-buildkit.ps1. The driver's own comment admits "the two encode the same
+# Build-Buildkit.ps1. The driver's own comment admits "the two encode the same
 # order twice". A mismatch does not error: buildctl resolves whatever image the
 # build-arg names, so a drifted driver silently builds the chain on a stale
 # ancestor (old common-stage ENV included). Order is load-bearing (#94: OpenCV
@@ -16,7 +16,7 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
 
     $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-builder')
-    $drvText = Get-Content -Raw (Join-Path $repoWin 'build-buildkit.ps1')
+    $drvText = Get-Content -Raw (Join-Path $repoWin 'Build-Buildkit.ps1')
 
     # Dockerfile side: stage -> parent ARG key, from `FROM ${MEDIA_CORE_X_IMAGE} AS stage`
     $dfMap = @{}

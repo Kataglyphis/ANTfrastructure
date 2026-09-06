@@ -304,7 +304,7 @@ function Test-BuildArtifactsDelivered {
 .DESCRIPTION
   Stevedore's docker.exe is the supported classic-lane client (nerdctl needs an
   elevated shell for containerd's admin-only pipe; the BuildKit lane uses
-  buildctl instead — see windows/build-buildkit.ps1). Checks an explicit
+  buildctl instead — see windows/Build-Buildkit.ps1). Checks an explicit
   override, then $env:DOCKER_EXE, then the usual Stevedore install locations,
   then PATH.
 #>

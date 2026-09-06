@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # The per-run resource CSV (Build-ResourceSampler.ps1) was wired into the
-# classic driver build.ps1 but NOT into build-buildkit.ps1 — so no building
+# classic driver build.ps1 but NOT into Build-Buildkit.ps1 — so no building
 # driver produced it (#134 free follow-up: "do it, or drop the sampler"). This
 # suite pins the wiring so it cannot regress.
 
@@ -11,7 +11,7 @@ Describe 'BK driver resource sampler wiring (#134)' {
 
     BeforeAll {
         $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $script:drv = Get-Content -Raw (Join-Path $repoWin 'build-buildkit.ps1')
+        $script:drv = Get-Content -Raw (Join-Path $repoWin 'Build-Buildkit.ps1')
     }
 
     It 'exposes a -NoResourceLog switch' {

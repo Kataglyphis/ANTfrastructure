@@ -129,9 +129,9 @@ When bumping any upstream version, audit these `.patch` files before letting the
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into staged images:
 
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.2, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build-buildkit.ps1` handles this automatically via its `-Gpu` switch.
+- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
-- The **media stage fans out into three branch images** by `windows/build-buildkit.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
+- The **media stage fans out into three branch images** by `windows/Build-Buildkit.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
   - **media-core** (`--target media-core` + `Build-MediaCoreAll.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.2 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
   - **media-litert** (`--target media-litert` + `Build-LitertAll.ps1`) — LiteRT 2.1.6 (CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM 0.15.0 (independent of ONNX; built via **Bazel** with `Build-LitertLmBazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`Build-LitertLmFromSource.ps1`) is a frozen fallback, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `Build-MediaTvmAll.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
@@ -225,12 +225,12 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 | Tool | Build | Run |
 |------|-------|-----|
 | `"D:\Stevedore\bin\docker.exe"` (non-admin) | ✅ classic lane | ✅ Works (NAT + DNS + process isolation) |
-| `buildctl` via `windows\build-buildkit.ps1` (non-admin) | ✅ preferred lane | n/a |
+| `buildctl` via `windows\Build-Buildkit.ps1` (non-admin) | ✅ preferred lane | n/a |
 | `nerdctl` (**admin shell only**) | ✅ Works (verified 2026-08-07) — but the chain still uses `buildctl` on purpose, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane | ✅ Works — needs the CNI nat **conflist**, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane |
 
 ## Build Commands
 
-> **Use the BuildKit/containerd lane** — `.\windows\build-buildkit.ps1 -Gpu` builds
+> **Use the BuildKit/containerd lane** — `.\windows\Build-Buildkit.ps1 -Gpu` builds
 > the Dockerfiles with **process isolation** (full host CPUs, no Hyper-V 2-CPU cap,
 > no run+commit) and real per-stage layer caching. One-time host setup + launch:
 > see [`windows-build-lanes.md`](windows-build-lanes.md) § BuildKit/containerd lane.
@@ -238,7 +238,7 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 > **The docker-classic lane was RETIRED on 2026-08-26 and its driver
 > `windows/build.ps1` DELETED on 2026-08-31** (why, in
 > [windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired).
-> `build-buildkit.ps1` is now the only driver; a `.\windows\build.ps1` recipe from
+> `Build-Buildkit.ps1` is now the only driver; a `.\windows\build.ps1` recipe from
 > an older page or from shell history has nothing left to run.
 
 Use the driver script from the repository root. It parses `linux/scripts/01-core/versions.env`
@@ -247,32 +247,32 @@ fallbacks), builds the stages in order, and applies the correct tags:
 
 ```pwsh
 # CPU lane (default): base -> tag sdk -> toolchain -> media -> torch -> final
-.\windows\build-buildkit.ps1
+.\windows\Build-Buildkit.ps1
 
 # arm64 cross lane (clang-cl x64 host -> windows-arm64; torch is auto-dropped —
 # `uv sync` must execute the target interpreter — and -Gpu is refused):
-.\windows\build-buildkit.ps1 -TargetArch arm64
+.\windows\Build-Buildkit.ps1 -TargetArch arm64
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
 # Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
-.\windows\build-buildkit.ps1 -Gpu
+.\windows\Build-Buildkit.ps1 -Gpu
 
 # Iterate on a single stage (layer cache makes this cheap):
-.\windows\build-buildkit.ps1 -Gpu -Stages media,final
+.\windows\Build-Buildkit.ps1 -Gpu -Stages media,final
 
 # One media branch only (the merge is skipped unless all three are asked for):
-.\windows\build-buildkit.ps1 -Gpu -Stages media -MediaBranches media-tvm
+.\windows\Build-Buildkit.ps1 -Gpu -Stages media -MediaBranches media-tvm
 
 # Deliberate clean rebuild (only when you really need it — this discards ALL layer
 # caching and rebuilds everything from scratch, which takes many hours):
-.\windows\build-buildkit.ps1 -Gpu -NoCache
+.\windows\Build-Buildkit.ps1 -Gpu -NoCache
 
 # OrchestrANT app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
 # a chain stage between media and final (media -> torch -> final) — it assembles the
 # app env at APP_REF on windows-media, and the final image builds FROM it. An APP_REF
 # bump therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
-.\windows\build-buildkit.ps1 -Stages torch,final               # versions.env APP_REF pin
-.\windows\build-buildkit.ps1 -Stages torch,final -LatestApp    # newest release tag
+.\windows\Build-Buildkit.ps1 -Stages torch,final               # versions.env APP_REF pin
+.\windows\Build-Buildkit.ps1 -Stages torch,final -LatestApp    # newest release tag
 ```
 
 Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<stage>`
@@ -281,7 +281,7 @@ Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<s
 `-TorchBaseImage` equivalent: the torch stage's `BASE_IMAGE` is pinned to the local
 `windows-media` tag, so `-Stages torch,final` needs the local chain images and cannot
 be pointed at a published one. `pwsh -File` cannot build arrays — call the script
-directly, or `& .\windows\build-buildkit.ps1 -Gpu -Stages @('media','final')`.
+directly, or `& .\windows\Build-Buildkit.ps1 -Gpu -Stages @('media','final')`.
 
 Layer caching is **on by default**: the Dockerfiles are ordered so that
 editing one build script only rebuilds that script's stage and later ones
@@ -544,7 +544,7 @@ but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 ## Smoke Testing
 
 **Since 2026-08-14 this runs AUTOMATICALLY as the last step of every amd64 BK chain
-(backlog #44).** `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate`
+(backlog #44).** `Build-Buildkit.ps1` solves `windows/Dockerfile.smoke-gate`
 against the freshly built `winamd64` image after `final`, and a failure fails
 the chain. **On `-TargetArch arm64` the gate RUNS since 2026-08-24** (the 2026-08-23 blanket
 "inapplicable" verdict was over-broad — roughly half the suite never touches the payload): the
@@ -686,7 +686,7 @@ The final image bakes the runtime orchestrator at
 `windows/scripts/build/Build-TorchApp.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
-- **Ref**: `build-buildkit.ps1` uses versions.env's **`APP_REF` pin by default** (the
+- **Ref**: `Build-Buildkit.ps1` uses versions.env's **`APP_REF` pin by default** (the
   same commit always builds the same final image); pass `-LatestApp` to opt
   into resolving the app repo's newest release tag at build time via a live
   `git ls-remote` (the old always-on behavior). The resolved ref reaches the
@@ -840,7 +840,7 @@ HOST bring-up (admin, run `-ReportOnly` first, never while a build solves): the 
 
 #### `Set-Rdna4Gpu.ps1`
 
-HOST maintenance (admin): enable/disable the RDNA4 dGPU in Device Manager (`-GpuName` overrides the RX 9070 XT default — the gate fires for ALL RX 9xxx/R9700 SKUs, so the remedy must reach them too; added 2026-08-10 W1). **RE-INSTATED 2026-08-10 as the RDNA4 build-window workaround** (the 2026-08-09 "obsolete" verdict is superseded): an enabled RDNA4 dGPU kills every process-isolated RUN-layer finalize (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven). Workflow: `-Disable` → build (display falls back to the iGPU) → default action re-enables. `build-buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight refuses while the dGPU is enabled.
+HOST maintenance (admin): enable/disable the RDNA4 dGPU in Device Manager (`-GpuName` overrides the RX 9070 XT default — the gate fires for ALL RX 9xxx/R9700 SKUs, so the remedy must reach them too; added 2026-08-10 W1). **RE-INSTATED 2026-08-10 as the RDNA4 build-window workaround** (the 2026-08-09 "obsolete" verdict is superseded): an enabled RDNA4 dGPU kills every process-isolated RUN-layer finalize (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven). Workflow: `-Disable` → build (display falls back to the iGPU) → default action re-enables. `Build-Buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight refuses while the dGPU is enabled.
 
 #### `Get-HostDockerState.ps1`
 

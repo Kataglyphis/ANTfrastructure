@@ -687,7 +687,7 @@ def spec_appimagetool(cur):
 
 def spec_app_ref(cur):
     # The app repo publishes TAGS, not GitHub releases — same tag-scan
-    # build-buildkit.ps1's -LatestApp uses via ls-remote.
+    # Build-Buildkit.ps1's -LatestApp uses via ls-remote.
     return gh_latest("Kataglyphis/OrchestrANT", pattern=r"^v?\d+(\.\d+)*$"), {}
 
 

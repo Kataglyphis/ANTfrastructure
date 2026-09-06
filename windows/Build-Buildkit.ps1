@@ -30,16 +30,16 @@
     Optional path: additionally export the final image as a docker-load tar.
 
 .EXAMPLE
-    .\windows\build-buildkit.ps1 -Gpu
+    .\windows\Build-Buildkit.ps1 -Gpu
 .EXAMPLE
-    .\windows\build-buildkit.ps1 -Stages toolchain -Verbose   # one stage
+    .\windows\Build-Buildkit.ps1 -Stages toolchain -Verbose   # one stage
 .NOTES
     INVOCATION TRAP: `pwsh -File ... -Stages sdk,toolchain,media` passes the
     list as ONE string and dies on the ValidateSet — `-File` cannot build
     arrays. Fix the CALL, not the ValidateSet — call the script directly, or use
     the call operator with a real array:
 
-        & .\windows\build-buildkit.ps1 -Gpu -Stages @('sdk','toolchain','media')
+        & .\windows\Build-Buildkit.ps1 -Gpu -Stages @('sdk','toolchain','media')
 #>
 [CmdletBinding()]
 param(
@@ -344,7 +344,7 @@ function Invoke-BkStage {
         if ($extra -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') {
             throw ("-BuildArg '$extra' is not in KEY=VALUE form with a clean identifier key. " +
                 'If several args arrived as ONE quoted string, the caller crossed a process boundary ' +
-                '(`pwsh -File` flattens comma arrays, quotes included) - invoke build-buildkit.ps1 ' +
+                '(`pwsh -File` flattens comma arrays, quotes included) - invoke Build-Buildkit.ps1 ' +
                 'directly or pass one -BuildArg element per KEY=VALUE.')
         }
         $bkArgs += @('--opt', "build-arg:$extra")

@@ -101,7 +101,7 @@ Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows 
 `windows/amd64` only; Windows **targets**: `amd64` (image, production) and `arm64`
 (cross-compiled artifact bundle — plumbing landed 2026-08-22 and the lane **BUILDS** since
 2026-08-23; **nothing it produces has ever been RUN**, because Windows x64 has no ARM64 emulation,
-so every arm64 signal is a static PE machine-type check. `build-buildkit.ps1 -TargetArch arm64`
+so every arm64 signal is a static PE machine-type check. `Build-Buildkit.ps1 -TargetArch arm64`
 just works: `torch` is dropped from the DEFAULT stage list with a notice (asking for it
 **explicitly** still throws — it runs `uv sync`, which must execute the target interpreter).
 Which components are through is tracked in the status banner of `docs/windows-cross-builds.md` —
@@ -143,7 +143,7 @@ marker, so a consumer never has to guess.
 ### Windows-Specific Naming
 
 The Windows lane names its local intermediate tags with `Get-BkTag`
-(`windows/build-buildkit.ps1:225`), which yields
+(`windows/Build-Buildkit.ps1:225`), which yields
 `docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
 `bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches
 `bk-windows-media-core` / `-media-litert` / `-media-tvm` (media-core is itself
@@ -279,12 +279,12 @@ allows:
 
 | Task | Tool | Shell |
 |---|---|---|
-| Build the chain | `windows\build-buildkit.ps1` → `buildctl` | non-admin |
+| Build the chain | `windows\Build-Buildkit.ps1` → `buildctl` | non-admin |
 | Inspect / run the `bk-*` images | `nerdctl --namespace buildkit` | **admin** |
 | Publish / inspect images | Stevedore's `docker.exe` | non-admin |
 
 ```pwsh
-.\windows\build-buildkit.ps1 -Gpu          # build (non-admin)
+.\windows\Build-Buildkit.ps1 -Gpu          # build (non-admin)
 ```
 
 **The lane mechanics live in
@@ -296,7 +296,7 @@ history.
 
 Four things an agent gets wrong without reading it:
 
-- **There is ONE Windows driver, `build-buildkit.ps1`.** The classic lane was
+- **There is ONE Windows driver, `Build-Buildkit.ps1`.** The classic lane was
   retired 2026-08-26 and `build.ps1` DELETED 2026-08-31. Two independent
   structural defects, both verified; reviving it is a redesign, not a target-pin
   change. Reasoning and the cut list live in
@@ -730,7 +730,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -1584,7 +1584,7 @@ base ─┬─ onnxruntime ───────┐
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
   zero-dependency and guards *classes* of defect, not just instances — e.g.
-  `Driver.ClosureScope.Tests.ps1` walks the AST of `build-buildkit.ps1` and fails any
+  `Driver.ClosureScope.Tests.ps1` walks the AST of `Build-Buildkit.ps1` and fails any
   `.GetNewClosure()` block inside a function that reads a top-level `param()`
   variable, because that silently resolves to EMPTY and broke the scripted
   resume for months (backlog #40). Same shape elsewhere:

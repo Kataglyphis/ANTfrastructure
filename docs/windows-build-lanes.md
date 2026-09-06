@@ -7,12 +7,12 @@ SPDX-License-Identifier: MIT
 
 Two live ways to build the Windows image and one that is now history, what each
 can and cannot do, and the host-level failures specific to each. **Use the
-BuildKit/containerd lane** (`windows/build-buildkit.ps1`) — it is the only
+BuildKit/containerd lane** (`windows/Build-Buildkit.ps1`) — it is the only
 driver left; nerdctl runs and inspects its results.
 
 | Lane | Driver | Shell | Status |
 |---|---|---|---|
-| BuildKit + containerd | `windows\build-buildkit.ps1` → `buildctl` | non-admin | **The lane. Preferred since 2026-08, sole driver since 2026-08-31** |
+| BuildKit + containerd | `windows\Build-Buildkit.ps1` → `buildctl` | non-admin | **The lane. Preferred since 2026-08, sole driver since 2026-08-31** |
 | nerdctl | `nerdctl --namespace buildkit` | **admin** | Run / inspect / administer; can also build |
 | docker classic | *none — `windows\build.ps1` deleted* | — | **RETIRED 2026-08-26, DRIVER DELETED 2026-08-31** — could not build `base`, and its `merge` target could not pass the smoke gate |
 
@@ -100,7 +100,7 @@ the scratch rule in the second one still binds every BK compile RUN):
   removes its own via `Remove-SourceBuildTree`. The toolchain stage is
   deliberately excluded: its CPython tree at `C:\temp\cpython` IS the deliverable.
 
-## BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`)
+## BuildKit/containerd lane (PREFERRED, `windows/Build-Buildkit.ps1`)
 
 **This is the lane to use from 2026-08 on, and the only one since 2026-08-31** —
 full host CPUs on every stage, process-isolated layer commits, and real
@@ -190,7 +190,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    > fixed it immediately (IPv4 `172.31.44.107`, gateway `172.31.32.1`, DNS
    > `192.168.188.1`, `github.com` resolved).
    >
-   > `build-buildkit.ps1` now fail-fasts on this in milliseconds
+   > `Build-Buildkit.ps1` now fail-fasts on this in milliseconds
    > (`Get-CniConfFormIssue`). Note the subnet-drift guard does **not** catch it:
    > it compares subnets of whichever file it finds and passed green throughout.
    > Different failure, different check. **When you edit one file, edit both.**
@@ -228,7 +228,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
 
    **Subnet drift warning:** dockerd recreates the `nat` HNS network with a NEW
    subnet on service restarts, silently orphaning this conf (containers then get
-   unroutable IPs). `build-buildkit.ps1` fail-fasts on the mismatch at preflight
+   unroutable IPs). `Build-Buildkit.ps1` fail-fasts on the mismatch at preflight
    with the exact fix; re-sync the conf to `ipconfig`'s `vEthernet (nat)` values
    (`Install-NewHost.ps1 -ReportOnly` re-derives and shows any drift) and
    `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
@@ -273,7 +273,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    ```pwsh
    & "$env:ProgramFiles\Stevedore\bin\buildctl.exe" --addr npipe:////./pipe/buildkitd debug workers   # worker: windows/amd64
    # network smoke: any tiny Dockerfile whose RUN resolves a hostname; or just start
-   # the chain - build-buildkit.ps1's preflight guards (buildkitd reachability +
+   # the chain - Build-Buildkit.ps1's preflight guards (buildkitd reachability +
    # CNI subnet drift) fail fast with the exact fix if something is off.
    ```
 
@@ -281,9 +281,9 @@ Launch:
 
 ```pwsh
 $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
-.\windows\build-buildkit.ps1 -Gpu                        # full chain from base
-.\windows\build-buildkit.ps1 -Stages toolchain           # one stage
-.\windows\build-buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar  # + docker-loadable export
+.\windows\Build-Buildkit.ps1 -Gpu                        # full chain from base
+.\windows\Build-Buildkit.ps1 -Stages toolchain           # one stage
+.\windows\Build-Buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar  # + docker-loadable export
 ```
 
 > **AMD RDNA4-GPU host (RX 9xxx)?** An ENABLED RDNA4 dGPU makes every
@@ -339,7 +339,7 @@ Housekeeping and sharing:
   What DOES work, and it is cheap:
 
   ```pwsh
-  .\windows\build-buildkit.ps1 -Gpu -Stages sdk -NoCache   # the affected stage ONLY
+  .\windows\Build-Buildkit.ps1 -Gpu -Stages sdk -NoCache   # the affected stage ONLY
   ```
 
   That works for a top-level stage because `-Stages sdk` already narrows the
@@ -350,8 +350,8 @@ Housekeeping and sharing:
   against the stage label shown in the build output and in the log filename:
 
   ```pwsh
-  .\windows\build-buildkit.ps1 -Gpu -Stages media -NoCacheStage opencv
-  .\windows\build-buildkit.ps1 -Gpu -NoCacheStage media-merge,torch   # several
+  .\windows\Build-Buildkit.ps1 -Gpu -Stages media -NoCacheStage opencv
+  .\windows\Build-Buildkit.ps1 -Gpu -NoCacheStage media-merge,torch   # several
   ```
 
   For a one-off build-arg that no driver parameter covers, `-BuildArg
@@ -649,7 +649,7 @@ Housekeeping and sharing:
   The script therefore refuses rather than forces the detach, and keeps the
   verified copy for a later `-SwapOnly` run. The old disk is kept as `.old`
   unless `-RetireOld` is passed — until it is deleted, NO space is reclaimed.
-- **Cross-host / CI cache**: `build-buildkit.ps1 -ExportCacheRef <registry-ref>`
+- **Cross-host / CI cache**: `Build-Buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
   from cache instead of from source.
@@ -659,7 +659,7 @@ Housekeeping and sharing:
 **Both possibilities exist and both are supported.** Verified end-to-end on the
 reference host 2026-08-07. Use whichever fits the job:
 
-| | `buildctl` (via `build-buildkit.ps1`) | `nerdctl` |
+| | `buildctl` (via `Build-Buildkit.ps1`) | `nerdctl` |
 |---|---|---|
 | Shell | **non-admin** | **admin, always** |
 | Builds the chain | ✅ this is the production lane | ✅ works, but see "why the chain still uses buildctl" |
@@ -779,7 +779,7 @@ steps; the remaining work is the Dockerfile surgery):
   so the freshly COPY'd versions.env is re-read instead of the base image's
   baked (possibly stale) Machine env.
 - **Concurrent aux branch solves**: available OPT-IN via
-  `build-buildkit.ps1 -ConcurrentAux` (2026-08-04) — media-core stays the
+  `Build-Buildkit.ps1 -ConcurrentAux` (2026-08-04) — media-core stays the
   sequential long pole, then litert + tvm build side by side via child
   drivers on half the media memory budget each. Measure host RAM headroom
   before making it the default. Two costs to know: (a) children run a single
@@ -788,7 +788,7 @@ steps; the remaining work is the Dockerfile surgery):
   (b) `MEMORY_LIMIT_GB` is baked as ENV in the media `common` stage, so
   TOGGLING -ConcurrentAux (which halves the aux budget) changes that ENV and
   invalidates the aux branches' compile RUNs — pick a mode and stay in it.
-- **Registry push**: available via `build-buildkit.ps1 -PushRef <ref>`
+- **Registry push**: available via `Build-Buildkit.ps1 -PushRef <ref>`
   (2026-08-04) — re-solves the final image from cache with a push exporter;
   needs a prior `docker login` in the invoking shell (buildctl forwards the
   client credential store).
@@ -856,7 +856,7 @@ steps; the remaining work is the Dockerfile surgery):
 - **Per-library media-core split**: DONE, and escalated on 2026-08-04 from
   4 RUN layers to **4 chained SOLVES** (targets `media-core-built-onnx` →
   `-opencv` → `-ffmpeg` → `media-core-built`, image handoffs via the
-  `MEDIA_CORE_*_IMAGE` ARGs; build-buildkit.ps1 drives them in order). An
+  `MEDIA_CORE_*_IMAGE` ARGs; Build-Buildkit.ps1 drives them in order). An
   FFmpeg-only change still recompiles nothing else — and each library's
   export is now independent of the others' finalize behavior.
 <a id="defect-solved"></a>
@@ -900,7 +900,7 @@ steps; the remaining work is the Dockerfile surgery):
   `WindowsTvm.Common.psm1`, and `Build-TvmFromSource.ps1` now throws without
   the `tvmmods` mount — fix that before anyone needs the rollback.
   **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
-  shim — `build-buildkit.ps1`'s `Assert-ShimPatch` preflight catches it before
+  shim — `Build-Buildkit.ps1`'s `Assert-ShimPatch` preflight catches it before
   the build starts. Since 2026-08-07 the check is a **SHA256 comparison**
   against the hash `Publish-ShimPatch.ps1` recorded when it installed the
   binary (`C:\ProgramData\kataglyphis\shim-patch.json`), which is exact and
@@ -1248,7 +1248,7 @@ story now):**
   Integrity was falsified too (off + reboot + retest = identical `0x20`).
 - **2026-08-10 morning: LIGHT-probe-green but NOT chain-green.** The fixed
   3-layer probe (now exporting `type=image,...,unpack=true`, the same output
-  path as `build-buildkit.ps1`) passed commit + export + unpack — but the real
+  path as `Build-Buildkit.ps1`) passed commit + export + unpack — but the real
   chain's first COPY after the heavy pwsh-install RUN died deterministically
   (`ActivateLayer 0x20` at child finalize/reimport, FRESH snapshot IDs under
   `-NoCache` — not poisoned cache). This is why probe verdict discipline says
@@ -1278,7 +1278,7 @@ story now):**
   probe; only `-Heavy`-green counts), (2) RDNA4 dGPU present? elevated
   `Set-Rdna4Gpu.ps1 -Disable` → re-probe `-Heavy` → build → re-enable
   (display falls back to the iGPU; DirectML-on-host is unavailable during the
-  window; `build-buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight enforces
+  window; `Build-Buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight enforces
   this — `-SkipHostChecks` overrides, and a verified-healthy host can bypass
   just this gate via `-SkipRdna4Gate`), (3) after ANY red finalize: REBOOT
   before further A/Bs.
@@ -1479,9 +1479,9 @@ All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). The Windo
 
 | Task | Tool | Shell |
 |---|---|---|
-| Build the chain | `windows\build-buildkit.ps1` → `buildctl` (buildkitd pipe is docker-users) | non-admin |
+| Build the chain | `windows\Build-Buildkit.ps1` → `buildctl` (buildkitd pipe is docker-users) | non-admin |
 | Inspect / run the `bk-*` images | `nerdctl --namespace buildkit` (containerd pipe is admin-only upstream — no `--group` option exists; never attempt pipe-ACL hacks) | **admin** |
-| Publish / inspect via docker | Stevedore's `docker.exe` (`-FinalTar` bridges the containerd→docker store gap; registry push directly from the BK lane is available via `build-buildkit.ps1 -PushRef <ref>`, needs a prior `docker login`) | non-admin |
+| Publish / inspect via docker | Stevedore's `docker.exe` (`-FinalTar` bridges the containerd→docker store gap; registry push directly from the BK lane is available via `Build-Buildkit.ps1 -PushRef <ref>`, needs a prior `docker login`) | non-admin |
 
 **Isolation policy: there is no policy left to configure** — the BK lane is process-isolated by construction (full CPUs everywhere), and `build.ps1`'s `-Isolation auto`, its ~10s commit probe call and the cached verdict in `out\windows-build-logs\isolation-probe-cache.json` were deleted with that driver on 2026-08-31. `windows/scripts/diagnostics/Test-ProcessIsolationCommit.ps1` is a hand-run diagnostic now (§ Re-testing process isolation on new versions), and its one durable lesson survives the driver: a probe log line `BUILD FAILED (exit 1) but NOT with the known signature -- investigate` means the verdict is worthless — the probe itself broke, not the host — which in 2026-08 silently cost the full CPU count for a day (the ProbeShell incident). **sccache is required by default for the media stages** (fail-fast when `-SccacheEndpoint`/`SCCACHE_WEBDAV_ENDPOINT` is missing or unreachable; `-NoSccache` overrides). The gate is media-only (`Assert-SccacheEndpoint`'s `$compileStages = @('media')` in `WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL CPython) has no sccache wiring, so toolchain-only builds are not blocked on an endpoint they never use. **AMD RDNA4-GPU hosts (RX 9xxx): the BK preflight also runs `Assert-NoActiveRdna4Gpu`** — an ENABLED RDNA4 dGPU makes every process-isolated RUN-layer finalize fail (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven 2026-08-10), so the chain builds with the dGPU disabled (`Set-Rdna4Gpu.ps1 -Disable` → build → re-enable; display falls back to the iGPU; the toggle resolves ALL RDNA4 hazard SKUs by default and takes `-NoPrompt` for automation). A verified-healthy host (green `Test-BuildCopy.ps1 -Heavy` with the dGPU enabled, e.g. after a driver fix) can bypass just this gate via `-SkipRdna4Gate` — unlike `-SkipHostChecks` it leaves the disk/shim gates armed. **The BK preflight also runs `Assert-BuildkitdStepLogEnv`**: it refuses to launch while the buildkitd service env lacks `BUILDKIT_STEP_LOG_MAX_SIZE=-1` (a Stevedore repair once wiped it and the 2 MiB step-log clip buried verdicts for a day — never swallow logs); fix elevated between runs via `Install-NewHost.ps1` or the registry Multi-String + `Restart-Service buildkitd`; `-SkipStepLogGate` bypasses ONLY this gate for one launch when no admin is at hand (the 2 MiB clip then stays active — restore ASAP). Details + the wedge-cascade warning: [`failure-modes.md`](failure-modes.md) § "`hcsshim::ActivateLayer 0x20` on an AMD Radeon host".
 
@@ -1502,7 +1502,7 @@ Both directions of error are real: an earlier 80 GB media floor refused a legiti
 - **There is no fallback lane.** The classic one could not build `base` (twelve
   `windows/Dockerfile.*` use BuildKit-only `RUN --mount`; `build.ps1` never set
   `DOCKER_BUILDKIT`), was retired 2026-08-26 and deleted 2026-08-31. When
-  `build-buildkit.ps1` refuses, fix the host — do not "just add
+  `Build-Buildkit.ps1` refuses, fix the host — do not "just add
   `-SkipHostChecks`" → `docs/windows-host-setup.md` § Phase R.
 - **The BK lane cannot bootstrap `base` from an EMPTY/damaged containerd content
   store** (`--opt image-resolve-mode=local` forbids fetching the public pinned
@@ -1519,7 +1519,7 @@ Both directions of error are real: an earlier 80 GB media floor refused a legiti
   `Assert-BuildkitdStepLogEnv` caught it on the next launch). Check the
   registry after any update, not only after reinstalls.
 
-**BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`):** the driver builds the same Dockerfiles via buildctl, selecting the heavy targets (toolchain-builder `patched-llvm` by default — plain `built` is the `-StockLlvm` opt-out — media-builder `media-<branch>-built`, merge-builder `built`) that run the heavy compile scripts as plain LAYERS — no run+commit, real per-stage caching; heavy-lane RUN steps bind-mount their script closures (per-file) instead of COPY. **MAINTENANCE: every Stevedore/containerd update overwrites the patched runhcs shim** — `Assert-ShimPatch` fails the BK lane's preflight on it, comparing the live binary's SHA256 against the hash `Publish-ShimPatch.ps1` recorded at install time (`C:\ProgramData\kataglyphis\shim-patch.json`; the size table is only the fallback for hosts that never re-ran the deploy script). Check with `Publish-ShimPatch.ps1 -ReportOnly`, re-deploy, and re-run one OPENCV canary after any update. Rollback path if it ever 0x3s again: warm/materialize from git history (`c9586c1^`) — but treat it as a SHAPE to re-derive, not a patch: four independent breakages, and the derivation rule lives in `Invoke-BkWarm.ps1:15-38` (#149). The Defender exclusions stay — they cure the hcs-temp FLAKE family (they were never the 0x3 root cause). Lane history, the shim root cause and all measurements: `docs/windows-build-lanes.md` § BuildKit/containerd lane. **Getting it going (one-time setup + launch): see `docs/windows-build-lanes.md` § BuildKit/containerd lane.** Requirements: buildkitd service (docker-users group) + `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` (without it RUN steps have no network) — and the conf's `ipam.subnet` MUST match the live `vEthernet (nat)` adapter: dockerd restarts recreate the nat HNS network on a new subnet and silently orphan the conf. `build-buildkit.ps1` fail-fasts on that drift with the exact fix. Gotchas: results live in the CONTAINERD store as `docker.io/local/kataglyphis:bk-*` (fully-qualified on purpose — buildkit normalizes FROM refs to docker.io/ and stage handoff needs `--opt image-resolve-mode=local` to match); they are INVISIBLE to docker (separate windowsfilter store) — export with `-FinalTar`, or push straight from the lane with `-PushRef` (needs a prior `docker login`).
+**BuildKit/containerd lane (PREFERRED, `windows/Build-Buildkit.ps1`):** the driver builds the same Dockerfiles via buildctl, selecting the heavy targets (toolchain-builder `patched-llvm` by default — plain `built` is the `-StockLlvm` opt-out — media-builder `media-<branch>-built`, merge-builder `built`) that run the heavy compile scripts as plain LAYERS — no run+commit, real per-stage caching; heavy-lane RUN steps bind-mount their script closures (per-file) instead of COPY. **MAINTENANCE: every Stevedore/containerd update overwrites the patched runhcs shim** — `Assert-ShimPatch` fails the BK lane's preflight on it, comparing the live binary's SHA256 against the hash `Publish-ShimPatch.ps1` recorded at install time (`C:\ProgramData\kataglyphis\shim-patch.json`; the size table is only the fallback for hosts that never re-ran the deploy script). Check with `Publish-ShimPatch.ps1 -ReportOnly`, re-deploy, and re-run one OPENCV canary after any update. Rollback path if it ever 0x3s again: warm/materialize from git history (`c9586c1^`) — but treat it as a SHAPE to re-derive, not a patch: four independent breakages, and the derivation rule lives in `Invoke-BkWarm.ps1:15-38` (#149). The Defender exclusions stay — they cure the hcs-temp FLAKE family (they were never the 0x3 root cause). Lane history, the shim root cause and all measurements: `docs/windows-build-lanes.md` § BuildKit/containerd lane. **Getting it going (one-time setup + launch): see `docs/windows-build-lanes.md` § BuildKit/containerd lane.** Requirements: buildkitd service (docker-users group) + `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` (without it RUN steps have no network) — and the conf's `ipam.subnet` MUST match the live `vEthernet (nat)` adapter: dockerd restarts recreate the nat HNS network on a new subnet and silently orphan the conf. `Build-Buildkit.ps1` fail-fasts on that drift with the exact fix. Gotchas: results live in the CONTAINERD store as `docker.io/local/kataglyphis:bk-*` (fully-qualified on purpose — buildkit normalizes FROM refs to docker.io/ and stage handoff needs `--opt image-resolve-mode=local` to match); they are INVISIBLE to docker (separate windowsfilter store) — export with `-FinalTar`, or push straight from the lane with `-PushRef` (needs a prior `docker login`).
 
 **HISTORICAL — the docker-classic HYPERV fallback state.** The paragraph below describes the deleted lane; it is kept because the memory arithmetic in it still governs BK compiles:
 
@@ -1534,9 +1534,9 @@ the real tag. `-ResumeFrom`/`-Until` outlived the driver — the BK Dockerfiles
 use them to split media-core into its four solves.
 
 **Determinism:** the final stage uses the versions.env `APP_REF` pin by
-default; pass `-LatestApp` to `build-buildkit.ps1` to resolve the app repo's
+default; pass `-LatestApp` to `Build-Buildkit.ps1` to resolve the app repo's
 newest release tag at build time (`Resolve-TorchAppRef`). Every local
-intermediate tag comes from **`Get-BkTag`** in `build-buildkit.ps1` (which also
+intermediate tag comes from **`Get-BkTag`** in `Build-Buildkit.ps1` (which also
 appends the `-arm64` suffix for a cross target) — never type a
 `docker.io/local/kataglyphis:bk-*` literal elsewhere.
 
@@ -1546,7 +1546,7 @@ of `linux/Dockerfile.torch`, a real chain stage between media and final
 windows-media image (tag `docker.io/local/kataglyphis:bk-windows-torch`,
 app-venv healthcheck), and `windows/Dockerfile` (final) builds FROM it — the assembly
 logic lives in exactly one place. App-only iteration:
-`.\windows\build-buildkit.ps1 -Stages torch,final` (minutes, never a
+`.\windows\Build-Buildkit.ps1 -Stages torch,final` (minutes, never a
 compile-chain rebuild). Building on the PUBLISHED image is **not
 driver-supported**: the stage's `BASE_IMAGE` is pinned to the local
 `windows-media` tag, `build.ps1`'s `-TorchBaseImage` went with that driver, and

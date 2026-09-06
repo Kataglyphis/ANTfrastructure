@@ -1,7 +1,7 @@
 # Fresh Windows Host Bring-Up (BK lane + repo gates)
 
 Goal: take a **fresh Windows 11 machine** to (1) a green
-`.\windows\build-buildkit.ps1 -Gpu` on the preferred BuildKit/containerd lane
+`.\windows\Build-Buildkit.ps1 -Gpu` on the preferred BuildKit/containerd lane
 and (2) working repo gates (lint / tests / preflight) — using only this
 checklist and the sections it links. Every step names its shell
 (**[admin]** / **[non-admin]**) and ends with a verify command. Deep rationale
@@ -87,7 +87,7 @@ Phases:
 >    only a `-Heavy`-green verdict counts; the light lanes can pass while
 >    RUN-layer finalize is broken.
 > 2. RDNA4 present? Elevated `Set-Rdna4Gpu.ps1 -Disable` → re-probe
->    `-Heavy` → build → re-enable. `build-buildkit.ps1` enforces this via its
+>    `-Heavy` → build → re-enable. `Build-Buildkit.ps1` enforces this via its
 >    `Assert-NoActiveRdna4Gpu` preflight.
 > 3. **After ANY red finalize, REBOOT before testing anything else** — a
 >    failed finalize wedges hcs state and falsifies every later experiment.
@@ -220,7 +220,7 @@ the conflist-only state cost a launched chain).** Same content, two filenames:
 The earlier claim here that "containerd and BuildKit read either form" was
 wrong. The 2026-08-07 conversion fixed nerdctl and silently killed the buildctl
 lane; it went unnoticed because no chain build ran in between. Keep both files,
-and **when you edit one, edit both** — `build-buildkit.ps1` fail-fasts on a
+and **when you edit one, edit both** — `Build-Buildkit.ps1` fail-fasts on a
 missing `.conf` (`Get-CniConfFormIssue`), but nothing detects the two drifting
 apart in content.
 
@@ -537,7 +537,7 @@ host state):
 
 Without this, heavy steps deadlock silently at the 2 MiB clip
 ([Windows Build Image](windows-build-lanes.md) § Getting it going, step 4).
-Since 2026-08-10 this is ENFORCED: `build-buildkit.ps1`'s
+Since 2026-08-10 this is ENFORCED: `Build-Buildkit.ps1`'s
 `Assert-BuildkitdStepLogEnv` preflight refuses to launch while the value is
 missing (a Stevedore repair once wiped it silently); `-SkipStepLogGate` is
 the documented one-launch escape when no admin is at hand:
@@ -721,7 +721,7 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    agent session. Losing that volume mid-session is how a working session
    died on 2026-08-06.
 4. **CNI subnet drift** — if dockerd/the host restarted since the last run,
-   expect it; `build-buildkit.ps1`'s preflight fail-fasts with the exact fix
+   expect it; `Build-Buildkit.ps1`'s preflight fail-fasts with the exact fix
    (see Phase A5).
 5. **Debug log size** — `C:\ProgramData\containerd\containerd-debug.log`
    grows unbounded; if it is huge, truncate (admin:
@@ -756,9 +756,9 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 
 ```pwsh
 # endpoint via machine env (C5) or explicitly:
-.\windows\build-buildkit.ps1 -Gpu                                    # full chain
-.\windows\build-buildkit.ps1 -Gpu -SccacheEndpoint http://<LAN-IP>:5000
-.\windows\build-buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar      # + docker-loadable tar
+.\windows\Build-Buildkit.ps1 -Gpu                                    # full chain
+.\windows\Build-Buildkit.ps1 -Gpu -SccacheEndpoint http://<LAN-IP>:5000
+.\windows\Build-Buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar      # + docker-loadable tar
 ```
 
 The driver's preflight verifies buildkitd reachability and CNI subnet before
@@ -795,7 +795,7 @@ OS-build skew).
 
 ```pwsh
 & "$env:ProgramFiles\Stevedore\bin\docker.exe" login ghcr.io      # once, same shell
-.\windows\build-buildkit.ps1 -Gpu -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+.\windows\Build-Buildkit.ps1 -Gpu -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
 ```
 
 ---
@@ -803,7 +803,7 @@ OS-build skew).
 ## Classic-lane fallback — there is none any more
 
 `windows\build.ps1` (docker-classic, Hyper-V run+commit) was **retired on
-2026-08-26** and **deleted on 2026-08-31** — `build-buildkit.ps1` is the only
+2026-08-26** and **deleted on 2026-08-31** — `Build-Buildkit.ps1` is the only
 driver. It could not build `base`, and its `merge` target could not pass the
 smoke gate — the reasoning is in
 [Windows build lanes](windows-build-lanes.md) § The classic lane was retired.
@@ -916,7 +916,7 @@ their script closures and `build.ps1` never set `DOCKER_BUILDKIT`, so the legacy
 builder died at `Dockerfile.base` step 8 with *"the --mount option requires
 BuildKit"*. And even given a chain, its `merge` target skipped the OpenCV GStreamer
 plugin, so the smoke gate that ends the run hard-failed on `cv2.CAP_GSTREAMER`. Use
-`build-buildkit.ps1`; full reasoning in
+`Build-Buildkit.ps1`; full reasoning in
 [windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired.
 
 ### R4. When surgical repair is the wrong tool: reset the stores

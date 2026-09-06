@@ -131,16 +131,16 @@ this repo's cp314 pin).
   (`Set-ContainerdConfig.ps1` 45m default, host-setup § R1 recipe). The rest
   is DEFERRED because the container-side files are cache inputs of the running
   chain — apply them in **one closure window** so the re-key is paid once:
-  - CRITICAL `build-buildkit.ps1:577` — forward `-TargetArch` to the
+  - CRITICAL `Build-Buildkit.ps1:577` — forward `-TargetArch` to the
     `-ConcurrentAux` children (today: arm64+ConcurrentAux clobbers amd64 tags
     or merges stale trees, chain green).
   - `Dockerfile.media-merge-builder:301` — move the `DEPS_MIN_*` ARG/ENV block
     above the RUN that reads it; the wheel floors have been dead since landing.
-  - `build-buildkit.ps1:751` — exempt `final-tar`/`final-push` labels from
+  - `Build-Buildkit.ps1:751` — exempt `final-tar`/`final-push` labels from
     `-NoCache(-Stage)` matching (post-smoke export re-solves must be cache hits).
-  - `build-buildkit.ps1:743` — register child-forwarded `-NoCacheStage` entries
+  - `Build-Buildkit.ps1:743` — register child-forwarded `-NoCacheStage` entries
     as matched in the parent (correct runs currently end red).
-  - `build-buildkit.ps1:574` — refuse or re-plumb `-ConcurrentAux -NoSccache`
+  - `Build-Buildkit.ps1:574` — refuse or re-plumb `-ConcurrentAux -NoSccache`
     (memory budget halving only exists via the webdav publish).
   - `Build-ToolchainAll.ps1:96` + `Build-LlvmFromSource.ps1:202` — actually
     call `Disable-ContainerWindowsUpdate` (docs promise it; the toolchain lane
@@ -228,7 +228,7 @@ this repo's cp314 pin).
   needs a new subsection in windows-builds.md), `WindowsAgenticLoop.Common.psm1:1036`
   (executor drain-loop duplicated with exit-code drift — `-ExecutorOnly`, a
   consumer API, may report exit 0 on the build-failure cap: potential real
-  bug), `build-buildkit.ps1:437` (halving formula duplicated; prework for
+  bug), `Build-Buildkit.ps1:437` (halving formula duplicated; prework for
   #158's :574 fix). Plus the audit's low classes: driver-local structure
   cleanups (land with #158), free host-comment trims, docs staleness
   one-liners (build-lanes:789 stale ConcurrentAux deterrent, cross-builds
@@ -369,7 +369,7 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
 - **#134 free follow-ups** — ALL DONE 2026-08-28: smoke floor recalibrated (85→66),
   §19 PROVISIONAL marker removed, pin parity updated for `TVM_COMMIT`, TVM
   fixtures fixed (single-quoted `` `n `` → real newlines), three merge-stage
-  test suites added (39 tests), resource sampler wired into `build-buildkit.ps1`.
+  test suites added (39 tests), resource sampler wired into `Build-Buildkit.ps1`.
 - **#133 (a)+(b)+(c)** — DONE 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md`.
 - **#128, #129** — DONE 2026-08-25/26. GStreamer webrtc/nice, OpenCV NEON dispatch.
 - **#124, #125, #126, #127** — DONE 2026-08-25. vcruntime140, sitecustomize, staged deps, import walk.

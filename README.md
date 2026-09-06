@@ -51,7 +51,7 @@ The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
 
 ```pwsh
 # BUILD — non-admin shell, buildctl against buildkitd
-.\windows\build-buildkit.ps1 -Gpu
+.\windows\Build-Buildkit.ps1 -Gpu
 
 # INSPECT / RUN — ADMIN shell; containerd's pipe is admin-only upstream
 & "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
@@ -288,7 +288,7 @@ clones the prose gate cannot see; deliberate twins are budgeted in
 `docs/scripts/code-dupes.allow`.
 
 **None of these builds a container image.** The image lanes are not CI here —
-they run on the build host (`windows/build-buildkit.ps1`, `linux/scripts/…`).
+they run on the build host (`windows/Build-Buildkit.ps1`, `linux/scripts/…`).
 The `[build-win]` / `[build-arm]` commit-message opt-ins are the convention of
 the *consuming* application repos, not of this one: no workflow above reacts to
 those tokens. See [docs/ci-build-triggers.md](docs/ci-build-triggers.md), which

@@ -1,13 +1,13 @@
 #requires -Version 7.0
 # Backlog 0c, single-driver since 2026-08-31: this suite owned PARITY between build.ps1
-# and build-buildkit.ps1 until the classic driver was deleted. What survives is the half
+# and Build-Buildkit.ps1 until the classic driver was deleted. What survives is the half
 # that still bites — a preflight gate silently added or dropped in the one driver left.
 
 
-Describe 'driver preflight contract (build-buildkit.ps1)' {
+Describe 'driver preflight contract (Build-Buildkit.ps1)' {
 
     $windowsDir = Split-Path $PSScriptRoot -Parent | Split-Path -Parent
-    $bk = Get-Content (Join-Path $windowsDir 'build-buildkit.ps1') -Raw
+    $bk = Get-Content (Join-Path $windowsDir 'Build-Buildkit.ps1') -Raw
 
     # Every gate the surviving driver must wire. Dropping one is the regression.
     $requiredPreflights = @(
@@ -22,7 +22,7 @@ Describe 'driver preflight contract (build-buildkit.ps1)' {
 
     It 'wires every required preflight' {
         foreach ($gate in $requiredPreflights) {
-            Assert-True ($bk -match [regex]::Escape($gate)) "build-buildkit.ps1 must call $gate"
+            Assert-True ($bk -match [regex]::Escape($gate)) "Build-Buildkit.ps1 must call $gate"
         }
     }
 
@@ -34,6 +34,6 @@ Describe 'driver preflight contract (build-buildkit.ps1)' {
     It 'catches a NEW Assert-* preflight that was never added to the contract' {
         $called = @([regex]::Matches($bk, '(?m)^\s*(Assert-[A-Za-z0-9]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
         $unknown = @($called | Where-Object { $_ -notin $requiredPreflights })
-        Assert-Equal 0 $unknown.Count "build-buildkit.ps1 calls unlisted preflight(s): $($unknown -join ', ') - add it to the contract above"
+        Assert-Equal 0 $unknown.Count "Build-Buildkit.ps1 calls unlisted preflight(s): $($unknown -join ', ') - add it to the contract above"
     }
 }

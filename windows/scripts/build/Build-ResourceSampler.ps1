@@ -6,7 +6,7 @@
 <#
 .SYNOPSIS
     Host resource sampler + analyzer for the Windows container build
-    (started/stopped by windows/build-buildkit.ps1; can also run standalone).
+    (started/stopped by windows/Build-Buildkit.ps1; can also run standalone).
 
 .DESCRIPTION
     SAMPLING (default): appends one CSV row every -IntervalSeconds with host CPU,

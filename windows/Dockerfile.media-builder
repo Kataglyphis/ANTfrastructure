@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Consolidated builder image for the three media branches, driven by
-# windows/build-buildkit.ps1. Each branch is a `*-built` target that runs its
+# windows/Build-Buildkit.ps1. Each branch is a `*-built` target that runs its
 # heavy compile as a plain LAYER with real per-stage caching:
 #   media-core-built-onnx -> -ffmpeg -> -opencv -> media-core-built  (chained)
 #   media-litert-built, media-tvm-built                              (parallel)
@@ -42,12 +42,12 @@ ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
-# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+# this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
 
 # THE CACHE LAYOUT. Empty (the default) = NO chain: the WebDAV remote is the one
 # and only cache. To restore the two-level layout later:
-#   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
+#   Build-Buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
 #
 # WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99): Windows BuildKit cache
 # mounts LOSE WRITES into a directory an earlier RUN populated (isolated A/B:

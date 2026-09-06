@@ -16,7 +16,7 @@
 # WHY IT EXISTS AT ALL
 # --------------------
 # Until 2026-08-14 NEITHER driver invoked the smoke test: `grep -i smoke
-# windows/build.ps1 windows/build-buildkit.ps1` returned zero hits in both, the
+# windows/build.ps1 windows/Build-Buildkit.ps1` returned zero hits in both, the
 # final Dockerfile has no RUN, and CI never referenced it. A ~5 h chain ended
 # with "Done in hh:mm:ss" and zero evidence the image worked — in a repo whose
 # defect history is dominated by "builds fine, fails to LOAD" (OPENGL32 on

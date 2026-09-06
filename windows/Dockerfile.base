@@ -16,7 +16,7 @@ ARG WINDOWS_BASE_DIGEST=sha256:eeaa17aefe5d949f03b1db17182f5855cf40e757533468cf5
 # (the inline :-2025 fallback duplicated the ARG default, #127).
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIGEST}
 # PowerShell 7 (pwsh) version — single source of truth is versions.env, forwarded
-# by build-buildkit.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
+# by Build-Buildkit.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
 # as the default container shell instead of Windows PowerShell 5.1.
 # The zip's SHA256 rides along as an ARG because this bootstrap runs before any
 # shared module (Invoke-DownloadWithRetry) or versions.env baking is available.
@@ -84,7 +84,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      C:\temp\scripts\modules\
 # Install-Vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
 # bust the most expensive layer. Its ONE versioned input -- the Windows SDK component
-# build -- therefore arrives as an ARG (build-buildkit.ps1 passes versions.env's
+# build -- therefore arrives as an ARG (Build-Buildkit.ps1 passes versions.env's
 # WINDOWS_SDK_BUILD as --build-arg; ARG values are env vars during this stage's RUNs,
 # which is where Install-Vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
 # the SDK pin SHOULD rebuild the VS layer.

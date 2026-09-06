@@ -57,7 +57,7 @@ create default network: needs CNI plugin "nat" to be installed in CNI_PATH` —
 the conf, not the binary, was missing), so `docker.exe` was the only working
 tool. Current state: with `0-containerd-nat.conf` installed (see § Getting it
 going, step 2) `nerdctl` works from **admin** shells; builds go through
-`build-buildkit.ps1`/buildctl on the preferred lane — Stevedore ships that
+`Build-Buildkit.ps1`/buildctl on the preferred lane — Stevedore ships that
 `buildctl.exe` too. Stevedore's `docker.exe` needs no CNI plugin and survives as
 the **publish/inspect** tool, but it is not a build lane: twelve
 `windows/Dockerfile.*` use BuildKit-only `RUN --mount`, so a `docker.exe build`

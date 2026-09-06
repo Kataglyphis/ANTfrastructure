@@ -8,7 +8,7 @@
 #   2. PSScriptAnalyzer (optional) — runs only if the module is installed; skipped with
 #      a note otherwise, so the gate is always usable on an offline/bare host.
 # Exit code is non-zero if any parse error (or, with -FailOnAnalyzer, any analyzer
-# finding of Warning or Error severity) is found. Run it before build-buildkit.ps1 and in CI.
+# finding of Warning or Error severity) is found. Run it before Build-Buildkit.ps1 and in CI.
 
 [CmdletBinding()]
 param(

@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Tests for WindowsBuildDriver.Common.psm1 — the transient-failure classifier and
-# cooldown gate behind build-buildkit.ps1. These failure paths previously only ever executed
+# cooldown gate behind Build-Buildkit.ps1. These failure paths previously only ever executed
 # during real multi-hour builds; a regression here silently changes when hours
 # of compile work get retried, preserved, or thrown away.
 

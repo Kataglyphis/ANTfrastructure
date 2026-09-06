@@ -129,7 +129,7 @@ faster configuration to unlock, and the full-chain rebuild of 2026-07-12
   `SCCACHE_WEBDAV_ENDPOINT`) to make *re*builds warm — cold full-chain is
   ~5–6 h with ~2.5 h of that in the media fan-out.
 
-**Per-run resource log.** Every `build-buildkit.ps1` run samples host CPU / free
+**Per-run resource log.** Every `Build-Buildkit.ps1` run samples host CPU / free
 RAM / commit charge / container-VM (`vmmem`) size every 20 s into
 `out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
 phase — the BK stage label (`Dockerfile.media-builder:media-core-built-onnx`),
@@ -161,7 +161,7 @@ run later with
 Without BuildKit cache mounts a container-local sccache cache dies with the
 layer, so the WebDAV remote is the only compile cache that survives a
 container. **sccache is therefore REQUIRED by default for the media stages:
-build-buildkit.ps1 fails fast when a media stage is requested and no reachable
+Build-Buildkit.ps1 fails fast when a media stage is requested and no reachable
 endpoint is configured** (`-NoSccache` opts into a deliberate cache-less build). The
 gate is media-only (`Assert-SccacheEndpoint`, `$compileStages = @('media')` in
 `WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL
@@ -177,7 +177,7 @@ dufs C:\sccache-cache -A -p 5000
 
 # then build with the endpoint (use an IP reachable from inside containers,
 # e.g. the host's LAN IP — not localhost)
-.\windows\build-buildkit.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
+.\windows\Build-Buildkit.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 ```
 
 CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route

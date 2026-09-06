@@ -2,12 +2,12 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Build-driver core for windows/build-buildkit.ps1: transient-failure classification,
+# Build-driver core for windows/Build-Buildkit.ps1: transient-failure classification,
 # version/build-arg shaping, host gates. In a module so the failure paths are UNIT-TESTABLE
 # (BuildDriver.Retry.Tests.ps1).
 # Edit cost: the final stage's whole-dir modules COPY (windows/Dockerfile) — cheap, it is
 # the last stage. The docker-classic half died with build.ps1 (deleted 2026-08-31).
-# build-buildkit.ps1 calls Initialize-BuildDriverContext once; functions read that module
+# Build-Buildkit.ps1 calls Initialize-BuildDriverContext once; functions read that module
 # scope so call sites keep their signatures, and explicit parameters always win.
 
 Set-StrictMode -Version Latest

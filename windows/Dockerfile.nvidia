@@ -4,7 +4,7 @@
 # NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
 # Optional stage between base and toolchain: build this (tagged windows-sdk) for a
 # GPU image, or skip it and tag windows-base as windows-sdk for a CPU-only image
-# (windows/build-buildkit.ps1 does this automatically; the former Dockerfile.sdk no-op shim
+# (windows/Build-Buildkit.ps1 does this automatically; the former Dockerfile.sdk no-op shim
 # was removed). Lineage: base → [nvidia] → toolchain → media → final.
 # There is no Windows Dockerfile.amd (ROCm-on-Windows is not supported).
 
@@ -15,7 +15,7 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 # just the extracted directory via COPY --from, so the ~2 GB zip layer never lands
 # in the shipped image. CUDA + cuDNN are downloaded from NVIDIA's CDN by
 # Install-Cuda.ps1.
-# NB: build-buildkit.ps1 builds THIS file with context `windows` (not the repo root) so the
+# NB: Build-Buildkit.ps1 builds THIS file with context `windows` (not the repo root) so the
 # ~2 GB zip stays out of every other stage's build context — the root .dockerignore
 # excludes *.zip with no re-include. COPY paths below are therefore RELATIVE TO
 # windows/ (no windows\ prefix).
@@ -62,7 +62,7 @@ ARG CUDNN_VERSION=9.25.0.15
 # Download hashes travel as ARGs (not just baked env): the base image bakes
 # versions.env at ITS build time, so after a CUDA/cuDNN bump the baked
 # *_SHA256 values are STALE until base rebuilds — the ARG (forwarded by
-# build-buildkit.ps1 from the current versions.env) always matches the version ARGs
+# Build-Buildkit.ps1 from the current versions.env) always matches the version ARGs
 # above. ARG-injected env wins over machine env inside the RUN.
 ARG CUDA_INSTALLER_SHA256=d68839fcce644576f0a1c6b066e0c5bc146a62db2fcac9fc6b4e6418e7ec533f
 ARG CUDNN_ZIP_SHA256=1ee69c966cfd43d883d7e00e10b6e3052112a7b2abd2a9b0ef293eea1eae5f1e

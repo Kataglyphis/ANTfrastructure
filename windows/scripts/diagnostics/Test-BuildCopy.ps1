@@ -13,7 +13,7 @@
 # 3-layer RUN+COPY probe" - run IT before trusting a new Windows host.
 #
 # The buildkit lane exports "type=image,...,unpack=true" - the SAME output path
-# build-buildkit.ps1 uses - so a green probe covers layer commit AND the
+# Build-Buildkit.ps1 uses - so a green probe covers layer commit AND the
 # finalize/unpack reimport (the step that carried the 0x20 host-residual).
 # Never "simplify" it to type=local: the local exporter cannot receive a
 # Windows rootfs (dies mid-copy with "error from receiver: write ...\Boot\
@@ -117,7 +117,7 @@ function Invoke-ProbeLane {
 
 Write-Host '== buildkit (buildctl) lane ==' -ForegroundColor Cyan
 # Candidate list, not a single hardcoded path: D:\Stevedore is a supported
-# layout (build-buildkit.ps1 resolves the same way; backlog item #2). Kept
+# layout (Build-Buildkit.ps1 resolves the same way; backlog item #2). Kept
 # INLINE deliberately: this is the first script a new host runs, so it must
 # stay module-free (Get-PreferredToolPath lives in a module).
 $buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |

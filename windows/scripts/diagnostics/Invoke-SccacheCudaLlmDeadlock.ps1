@@ -103,7 +103,7 @@ try {
     # undeclared ARG name it silently discarded. That produced exactly the
     # false all-clear described above on the first live run (2026-08-18,
     # 88 min: patch 006 applied, CUDA bare, build green, zero signal).
-    & 'windows\build-buildkit.ps1' `
+    & 'windows\Build-Buildkit.ps1' `
         -Gpu -Stages media -MediaBranches media-core -NoCacheStage onnx `
         -BuildArg 'SCCACHE_REPRO_CUDA_LLM=1', 'SCCACHE_CUDA_LAUNCHER=1' *>&1 | Tee-Object -FilePath $log
     $code = $LASTEXITCODE
