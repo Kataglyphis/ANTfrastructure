@@ -6,6 +6,93 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-06 — Every PowerShell file renamed and version-pinned, the Linux lanes on 26.04, and the host stops receiving CMake state
+
+Four repo-wide sweeps and one behaviour fix, all consumer-visible. If you pin
+this submodule, read the first three before bumping.
+
+**Every PowerShell script is PascalCase `Verb-Noun` now.**
+[`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) § 8 has
+demanded that shape since 2026-08-11 and the consumers followed it; this repo
+did not. 101 of its own scripts were not in that shape
+(`19982134`, 100 of them; `9b819f28`, the last, `windows/build-buildkit.ps1` →
+`Build-Buildkit.ps1`). Every new name starts with a verb `Get-Verb` approves —
+only 9 of the 39 old prefixes did: `probe-*`/`verify-*` → `Test-*`, `setup-*` →
+`Install-*`, `run-*` → `Invoke-*`, `apply-*` → `Set-*`, `stage-*` → `Copy-*`,
+`inspect-*`/`collect-*` → `Get-*`, `free-*` → `Clear-*`, `compact-*` →
+`Optimize-*`, `bootstrap-*` → `Initialize-*`, `finalize-*` → `Complete-*`. 191
+files referenced the old names — Dockerfiles, build scripts, modules, docs — and
+all were updated, so nothing in this repo or its consumers still resolves one.
+**Anything outside these repos that spells a `windows/scripts/**` path has to be
+re-pointed by hand.** Deliberately not renamed:
+`.claude/hooks/guard-destructive-deletes.ps1` (Claude Code registers it by that
+exact string in `.claude/settings.json`, and a `PreToolUse` guard that fails to
+register fails OPEN), the `diagnostics/probe-build-copy/` asset directory (a
+Dockerfile and a text file, not a script — `Test-BuildCopy.ps1` still resolves
+it, its docker tag and its log prefix). (`9b819f28` lists three
+more exemptions that live in consumer repos, not here.) `diagnostics/archive/`
+was *not* exempt — all seven scripts in it were renamed with the rest. The
+convention is now stated in `AGENTS.md` § "When adding here"
+rather than only in the consumer adoption guide, together with the two shapes
+that are *not* `Verb-Noun` and must not be "fixed": `Windows<Area>.<Facet>.psm1`
+modules and `<Subject>.Tests.ps1` suites — 37 of the 84 are Pester-style, the
+other 47 are written against the zero-dependency `TestHarness.psm1`.
+
+**`#requires -Version 7.0` is on every PowerShell file but two.** A family-wide
+sweep (`193cf8fe`) found 24 of 295 `.ps1`/`.psm1` files with no directive; three
+of them were here. Without it Windows PowerShell 5.1 dies deep inside the script
+on a 7.x ternary or `??` instead of refusing to start, so the directive goes on
+line 1, before any `param()` block. 241 of the 243 tracked `.ps1`/`.psm1` now
+carry it. The two that do not are
+`windows/scripts/host/Initialize-Pwsh.ps1` — the first `RUN` of
+`Dockerfile.base`, which installs pwsh and therefore cannot demand it (`61ad31f2`
+took the directive back off after the sweep put it on; pinned by
+`windows/scripts/tests/Bootstrap.Ps51Compat.Tests.ps1`) — and
+`guard-destructive-deletes.ps1`, kept 5.1-parsable for the same fail-open reason
+as above.
+
+**The Linux lanes run on `ubuntu-26.04`** (`1900260a`, `ce752374`). Every Linux
+`runs-on:` in `.github/workflows/` is now `ubuntu-26.04` — six of the twelve
+`runs-on:` lines in that directory; the two Windows jobs in
+`windows-scripts.yml` stay on `windows-latest`, and the three reusable
+workflows (`build-docs.yml`, `python-ci-linux.yml`, `python-ci-windows.yml`)
+keep taking their runner from a `workflow_call` input or a matrix. The
+entry-point workflow was renamed `ubuntu24.04.yml` → `ubuntu26.04.yml`. Two
+consequences for anyone outside: a badge or link pointing at
+`actions/workflows/ubuntu24.04.yml` 404s, and a branch-protection rule naming
+the old workflow file no longer matches. The `concurrency` group id was left
+behind by that move — neither commit above touched it — and follows the file
+here (`ubuntu24-04-` → `ubuntu26-04-`); a run in flight under the old id will
+not be cancelled by the first run under the new one, once, at no cost but
+runner minutes.
+
+**The submodule directory is `third_party/`, not `external/` or `ExternalLib/`**
+— moved 2026-09-05, recorded here because that day's entry had already been cut.
+`08741b47` moved `external/Kataglyphis-DocumANTation` →
+`third_party/DocumANTation` (`.gitmodules`, and `requirements.txt` now installs
+the theme from `./third_party/DocumANTation/sphinx-kataglyphis-theme`), and
+`5c3b3820` fixed the other direction: consumers vendor *this* repo at
+`third_party/ContainerHub`, but the `git submodule add` target in the adoption
+guide and the `shared/` templates copied verbatim into new repos still handed
+out `ExternalLib/Kataglyphis-ContainerHub`. The path-exclusion filters in
+`code-quality.sh`, `WindowsFormatting.Common.psm1` and both static-analysis
+entry points had `third_party/` **added** rather than substituted, so a consumer
+mid-migration is not caught between the two layouts.
+
+**The sync-back to the host copies artifacts, never CMake state** (`86e55b66`).
+`Sync-FastLocalArtifactsToHost` (`windows/scripts/modules/WindowsFlutter.Common.psm1`)
+now excludes `CMakeCache.txt` (`/XF`) and `CMakeFiles` (`/XD`) when it robocopies
+the container-local fast build root back onto the bind-mounted host tree. A cache
+is bound to the directory and generator that wrote it, so the copied one made the
+NEXT `flutter build windows --config-only` abort — *"the current CMakeCache.txt
+directory … is different than the directory … where it was created"*, plus
+*"Does not match the generator used previously: Ninja"*. The step therefore failed
+on **every** run, and stayed invisible because the consumer swallowed the exit
+code and reported the build green. New invariant:
+[`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) § The host
+gets artifacts, never CMake state.
+
+
 ## 2026-09-05 — The panel review, applied: the grader was wrong in both directions, and every published coding number is now un-comparable
 
 The review below found 36 defects and changed nothing. This is the work unit

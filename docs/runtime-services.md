@@ -76,9 +76,9 @@ The `beschleuniger` container starts the signalling server automatically on port
 nerdctl compose -f linux/docker-compose.yml up -d beschleuniger
 ```
 
-### Streaming from KataglyphisCppInference
+### Streaming from AccelerANTgine
 
-The cppInference project includes WebRTC streaming support via GStreamer's `webrtcsink`:
+The AccelerANTgine project includes WebRTC streaming support via GStreamer's `webrtcsink`:
 
 ```bash
 # Build the project (inside container or on host with GStreamer)
@@ -87,13 +87,13 @@ cmake --preset=linux-release-clang
 cmake --build build-release
 
 # Stream with test pattern
-./build-release/bin/KataglyphisCppInference --webrtc --source test --server ws://localhost:8443
+./build-release/bin/AccelerANTgine --webrtc --source test --server ws://localhost:8443
 
 # Stream from libcamera (Raspberry Pi camera)
-./build-release/bin/KataglyphisCppInference --webrtc --source libcamera --server ws://localhost:8443
+./build-release/bin/AccelerANTgine --webrtc --source libcamera --server ws://localhost:8443
 
 # Stream from V4L2 USB camera
-./build-release/bin/KataglyphisCppInference --webrtc --source v4l2 --device /dev/video0 --server ws://localhost:8443
+./build-release/bin/AccelerANTgine --webrtc --source v4l2 --device /dev/video0 --server ws://localhost:8443
 ```
 
 ### CLI Options

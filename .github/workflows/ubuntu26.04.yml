@@ -17,7 +17,7 @@ on:
 # carries its own job-level docs-deploy concurrency group
 # (cancel-in-progress: false) so two runs can never FTP-sync concurrently.
 concurrency:
-  group: ubuntu24-04-${{ github.ref }}
+  group: ubuntu26-04-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

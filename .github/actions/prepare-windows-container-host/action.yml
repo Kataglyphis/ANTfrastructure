@@ -25,7 +25,7 @@ description: >-
   model all of it. The shared part is the prologue; that is what this is.
 
   Consumers: BeschleunigerBallett, OxidANT,
-  KataglyphisCppInference, OmniAccelerANT.
+  AccelerANTgine, OmniAccelerANT.
 
 inputs:
   image:

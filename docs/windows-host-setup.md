@@ -396,7 +396,7 @@ git config core.hooksPath .githooks      # pre-commit runs the same checks CI en
 git config core.longpaths true           # deep vendored trees; host LongPathsEnabled=1 recommended too
 ```
 
-- The `external/` submodule (DocumANTation Sphinx theme) is **optional for
+- The `third_party/DocumANTation` submodule (Sphinx theme) is **optional for
   building images** — it is only needed for `cd docs && make html`. A plain
   clone builds the Windows chain fine.
 - **Line endings:** `.gitattributes` pins the load-bearing files, so

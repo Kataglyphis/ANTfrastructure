@@ -11,7 +11,7 @@ what you are about to do:
 
 | Before you… | Read |
 |---|---|
-| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 46 load-bearing rules |
+| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 47 load-bearing rules |
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
@@ -582,7 +582,31 @@ read it before hand-rolling any of that in a consumer.
 
 When adding here:
 
-- PowerShell 7 (pwsh) is the standard shell. All `.ps1` scripts require `#Requires -Version 7.0`. Windows containers use pwsh as the default SHELL.
+- PowerShell 7 (pwsh) is the standard shell, and Windows containers use pwsh as their
+  default SHELL. Every `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 — or
+  directly under the SPDX header — and in every case before any `param()` block.
+  Exactly two of the 243 tracked files omit the directive, both deliberately:
+  `windows/scripts/host/Initialize-Pwsh.ps1`, which runs under Windows PowerShell 5.1
+  as the FIRST `RUN` of `Dockerfile.base` because it is the script that installs pwsh
+  (the directive would make it refuse to start; it is pinned 5.1-parseable by
+  `windows/scripts/tests/Bootstrap.Ps51Compat.Tests.ps1`), and
+  `.claude/hooks/guard-destructive-deletes.ps1`, kept 5.1-parsable so a PreToolUse
+  guard that cannot launch pwsh does not fail OPEN — `.claude/settings.json` falls
+  back to `powershell.exe` when pwsh is missing.
+- **PowerShell file names.** Three shapes, and every tracked file fits one of them:
+  PascalCase `Verb-Noun.ps1` with a `Get-Verb`-approved verb for executable scripts;
+  `Windows<Area>.<Facet>.psm1` for the modules in `windows/scripts/modules/`;
+  `<Subject>.Tests.ps1` for the suites in `windows/scripts/tests/` (harness- or
+  Pester-style — `Invoke-Tests.ps1` routes both). Three files sit outside all three
+  shapes, each on purpose: `.claude/hooks/guard-destructive-deletes.ps1` is kebab-case
+  deliberately, because Claude Code registers it by that exact string in
+  `.claude/settings.json` and a rename would silently unregister the guard;
+  `windows/scripts/certificates/GenerateCertificateMSIX.ps1` was left untouched; and
+  `windows/scripts/tests/TestHarness.psm1` is a zero-dependency non-Pester harness, so
+  a module rather than a suite — neither the `modules/` nor the `.Tests.ps1` shape
+  applies. 101 scripts were renamed into the Verb-Noun shape on 2026-09-06
+  (`19982134`, `9b819f28`), so an old `verb-noun-name.ps1` spelling in a doc, a
+  Dockerfile `COPY` or a module import is stale, not a variant.
 - PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and
   consumers resolve it ContainerHub-first with a vendored fallback. The resolver
   itself is a copied template:
@@ -633,7 +657,7 @@ build dir, deep paths aborting tar transfers) are all in that page.
 
 ### Windows Build Invariants (do not regress)
 
-46 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
+47 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
 and log discipline, layer/scratch rules, lane and CNI rules, and the
 build-input invariants — live in
 [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md),
@@ -855,12 +879,13 @@ linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          deleting anything under lib/, rust/, python/ or
                          06-packaging/.
 windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
-                         build/ (chain components: build-*-from-source.ps1,
-                         *-all wrappers, smoke-test-container, load-versions),
-                         host/ (setup-*/apply-*/repair-*/reset-* + elevated
-                         maintenance), diagnostics/ (probe-*/test-* + the
-                         run-diagnostic-probe runner; settled one-shots in
-                         diagnostics/archive/, still runnable via
+                         build/ (chain components: Build-*FromSource.ps1,
+                         Build-*All.ps1 wrappers, Test-Container.ps1,
+                         Import-Versions.ps1), host/ (Install-*/Set-*/
+                         Repair-*/Reset-* + elevated maintenance),
+                         diagnostics/ (Test-*/Get-*/Invoke-*/Measure-* probes
+                         + the Invoke-DiagnosticProbe.ps1 runner; settled
+                         one-shots in diagnostics/archive/, still runnable via
                          -ProbeScript archive/<name>.ps1). Container mounts
                          stay FLAT (C:\bkmnt, C:\temp\scripts) — the
                          $scriptAssetRoot resolver bridges both layouts and
@@ -1683,7 +1708,19 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 
 ## Development Rules
 
-- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()` from `build-helpers.sh` (`run_quiet()` was removed 2026-08-08).
+- Every script starts with `#!/usr/bin/env bash`. `set -euo pipefail` is for **entry
+  points** only — a sourced file must not change its caller's shell options. The
+  libraries under `linux/scripts/lib/` set no shell options at all
+  ([`docs/shared-script-libraries.md`](docs/shared-script-libraries.md)), and neither
+  do the `01-core/` framework modules loaded through `source_module` (`logging.sh`,
+  `common.sh`, `build-helpers.sh`, `platform.sh`, `verify.sh`, `downloads.sh`, …).
+  Two deliberate exceptions: `linux/scripts/01-core/python_uv.sh` DOES set
+  `set -euo pipefail` at file scope (inside its `_PYTHON_UV_LOADED` guard) even though
+  `linux/scripts/02-toolchain/python/ci-common.sh` sources it — so a consumer inherits
+  strict mode from it; and the suites under `linux/scripts/tests/test-*.sh` run
+  `set -u` without `-e`, because the harness accumulates failed assertions and
+  `t_summary` decides the exit code. Use `run()` from `build-helpers.sh`
+  (`run_quiet()` was removed 2026-08-08).
 - Source `artifact-common.sh` for shared utilities. Use `parse_shared_orchestrator_args()`/`parse_shared_runtime_args()`.
 - Call `cross_stage_init_pins()` before the build loop.
 - Use centralized helpers: `resolve_arch_list()`, `is_dry_run()`, `append_mirror_build_args_from_env()`, `append_version_build_args()`, `normalize_target_arches()`.

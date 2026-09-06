@@ -5,7 +5,7 @@
 
 # The reusable theme package (sphinx_kataglyphis) is installed via
 # requirements.txt as an editable install from the DocumANTation
-# submodule under external/. See requirements.txt.
+# submodule under third_party/. See requirements.txt.
 from sphinx_kataglyphis import brand, setup_theme
 
 # -- Project information -----------------------------------------------------
@@ -22,9 +22,9 @@ PROJECT = "ContainerHub"
 #
 # The repository URL is derived rather than typed for the same reason. It is
 # spelled out here rather than defaulted inside setup_theme() because a repo's
-# GitHub name and its Sphinx project name are not always the same string --
-# AccelerANTgine is "KataglyphisCppInference" to Sphinx -- so the
-# theme cannot guess it safely. Here they do match.
+# GitHub name and its Sphinx project name are not guaranteed to be the same
+# string -- every consumer happens to match today, and the theme still must
+# not assume it.
 setup_theme(
     globals(),
     repository_url=f"{brand()['identity']['github_url']}/{PROJECT}",

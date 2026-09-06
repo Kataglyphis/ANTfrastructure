@@ -167,8 +167,10 @@ this repo's cp314 pin).
   dead-by-construction (they mount the #137-deleted `sccache-nvcc-quote-fix`
   tree); none is referenced by a live doc. Move to `diagnostics/archive/`
   (pattern #127); re-point `Dockerfile.probe`'s default `PROBE_SCRIPT` and mind
-  `**/archive/` in .dockerignore. Keep live: probe-onnx-tu-replay,
-  repro-sccache-cuda-llm-deadlock, probe-build-copy, the write/video trios.
+  `**/archive/` in .dockerignore. Keep live: `Test-OnnxTuReplay.ps1`,
+  `Invoke-SccacheCudaLlmDeadlock.ps1`, `Test-BuildCopy.ps1` (plus its
+  `probe-build-copy/` asset dir, which keeps its name per 19982134), the
+  write/video trios.
   Closure window — bundle with #158's probe-mount fixes.
 
 - **#160 — compiler-rt mining recipe: contract drift across its three copies.**

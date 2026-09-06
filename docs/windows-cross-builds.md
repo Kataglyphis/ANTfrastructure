@@ -150,10 +150,10 @@ Tools install — the chain's most expensive layer — on **every lane switch**.
 
 For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer, in
 the same group as `Test-Toolchain.ps1` — its only consumer there. The host provisioning scripts
-(`setup-scoop-tools`, `setup-vcpkg`) spell their few arm64 facts inline and import just the three
-modules that precede the VS layer. Placing the module higher invalidated scoop, vcpkg **and** the
-~30-minute rust layer on every edit to a file whose whole point is that adding a target is a
-one-line table edit.
+(`Install-ScoopTools.ps1`, `Install-Vcpkg.ps1`) spell their few arm64 facts inline and import
+just the three modules that precede the VS layer. Placing the module higher invalidated scoop,
+vcpkg **and** the ~30-minute rust layer on every edit to a file whose whole point is that adding
+a target is a one-line table edit.
 
 The one-time cost is a single base rebuild for the VS ARM64 component + the Vulkan component.
 **Batch them**, and see the sequencing warning below.
