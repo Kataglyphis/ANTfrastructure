@@ -66,3 +66,21 @@ mutation-family:toolcall-shim
 mutation-family:vulkan
 mutation-family:wheels
 mutation-family:trailing-return
+
+# Arrived by merge 2026-09-06 with the shared/ agentic-loop work. Declared as a
+# group: each names a subject the mutations already describe in their own why.
+mutation-family:agent
+mutation-family:backends
+mutation-family:bench-cli
+mutation-family:lanes
+mutation-family:llm-stack-tests
+mutation-family:provenance
+mutation-family:report
+mutation-family:stats
+mutation-family:sweep
+mutation-family:tools
+mutation-family:tools-opencode
+mutation-family:bench_cli
+mutation-family:bench_sweep
+mutation-family:benchmark_openai_api
+mutation-family:build_viewer

@@ -517,6 +517,30 @@ while a chain is running is the mid-run drift this file keeps warning about.
 Closing VK2 raises the floor again, so land VK2 first and record the new numbers
 once. docs/vulkan-foreign-arch-sdk.md
 
+### CS3. The web-lane tools cost riscv64 an hour of QEMU per rebuild [S, ★]
+
+Measured in the 2026-09-05 runtime lane, same two `cargo install`s on each arch:
+
+| arch | wasm-pack | flutter_rust_bridge_codegen |
+| --- | --- | --- |
+| amd64 | 87 s | 113 s |
+| arm64 | 768 s | ~1170 s |
+| riscv64 | 1813 s | 3500 s |
+
+Roughly 9x on arm64 and 20x on riscv64 — the shape of QEMU user-mode emulation,
+not a defect. They all succeed, and the point stands: a consumer that would
+otherwise pay 432 crates PER RUN now pays nothing.
+
+Worth deciding, not worth guessing: is there a riscv64 web lane? The tools are
+installed uniformly because an arch-conditional image is harder to reason about
+than a slower one, and because "we assumed nobody uses it" is how the Android
+layer ended up x86_64-only (AB1). If a riscv64 web build is genuinely impossible
+rather than merely unused, gate it on that fact and say so. Otherwise leave it.
+
+A cheaper route for both foreign arches: install from the projects' prebuilt
+release binaries where they publish aarch64/riscv64 ones, and keep `cargo install`
+as the fallback. That trades an hour of emulation for a download.
+
 ### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
 
 Measured in the runtime stage of the 2026-09-05 rebuild: six of the seven refs
