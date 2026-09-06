@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Tests for bk-warm.ps1 — the WARM-solve payload wrapper (build + WebDAV
+# Tests for Invoke-BkWarm.ps1 — the WARM-solve payload wrapper (build + WebDAV
 # handoff export, see docs/windows-builds.md § BuildKit/containerd lane). The
 # load-bearing detail: it relaunches the build script via `pwsh -File` so that
 # -BuildArgs elements like '-ResumeFrom' bind as NAMED parameters (array
@@ -11,11 +11,11 @@
 # a file, which is the proof the forwarding survived both hops (including an
 # -Until value containing a space).
 
-Describe 'bk-warm.ps1 argument forwarding' {
+Describe 'Invoke-BkWarm.ps1 argument forwarding' {
 
     It 'forwards -BuildArgs as named parameters (space-containing value intact), then attempts the export' {
         Invoke-InTestDir { param($dir)
-            $bkWarm = Join-Path $PSScriptRoot '..\host\bk-warm.ps1'
+            $bkWarm = Join-Path $PSScriptRoot '..\host\Invoke-BkWarm.ps1'
             $outFile = Join-Path $dir 'params.txt'
             # Fixture build script: records its NAMED parameters, exits green.
             $fixture = Join-Path $dir 'fake-build.ps1'
@@ -46,7 +46,7 @@ Describe 'bk-warm.ps1 argument forwarding' {
 
     It 'a failing build script aborts bk-warm before any export is attempted' {
         Invoke-InTestDir { param($dir)
-            $bkWarm = Join-Path $PSScriptRoot '..\host\bk-warm.ps1'
+            $bkWarm = Join-Path $PSScriptRoot '..\host\Invoke-BkWarm.ps1'
             $marker = Join-Path $dir 'ran.txt'
             $fixture = Join-Path $dir 'fake-build.ps1'
             Set-Content -LiteralPath $fixture -Encoding ASCII -Value @(

@@ -37,7 +37,7 @@ Earlier tranches: `windows-backlog-archive-2026-08-11.md`,
   Lowest priority: highest cost, narrowest benefit, medium confidence. First, a retraction: an
   earlier note claimed TVM's "codegen cannot emit aarch64 … not fixable in this repository" — false
   since it was written, because `LLVM_TARGETS_TO_BUILD=X86;NVPTX` is set **by this repo** in
-  `build-tvm-from-source.ps1`, in an array the script fully controls. **Phase 0 is worth doing on
+  `Build-TvmFromSource.ps1`, in an array the script fully controls. **Phase 0 is worth doing on
   its own merits and is amd64-only:** adding `AArch64` to that list is a one-token edit that
   lets the **x64** image's TVM emit aarch64 code (`tvm.build(target='llvm -mtriple=aarch64-…')`) for
   one extra LLVM target of build time. It does **not** unblock the arm64 branch — do not conflate
@@ -179,7 +179,7 @@ Earlier tranches: `windows-backlog-archive-2026-08-11.md`,
   glib(build) `buildable: NO`, the same by-name libnice lookup fails as in run 23, and webrtc/nice
   take gst-plugins-bad down (`gst-libs/gst/webrtc/nice/meson.build:16:14: ERROR: Subproject
   "subprojects/libnice" required but not found`). **Fix:** `Invoke-MesonBuildSubprojectSummaryPatch`
-  (defined in `build-gstreamer-from-source.ps1` — deliberately NOT in a module. **Correction
+  (defined in `Build-GstreamerFromSource.ps1` — deliberately NOT in a module. **Correction
   2026-08-26:** this was first recorded here as "`/bkmods` is bind-mounted whole"; it is not —
   `buildmods` is a curated 6-module stage. The real reason is that those six ARE the import
   closure, they are mounted into all 11 media/merge RUNs, and the classic lane COPYs the same six
@@ -300,7 +300,7 @@ Earlier tranches: `windows-backlog-archive-2026-08-11.md`,
   `$crossBlockedBranches = @()` is an unreachable mechanism contradicting the "ship your own marker"
   convention (drop it); the LiteRT-LM Bazel blocker paragraph lives in five places; 36-line
   HISTORY comments in the ORT/GenAI/OpenCV scripts restate `docs/windows-cross-builds.md`.
-  **Hot spots:** `build-onnx-from-source.ps1` (811 lines: DML patch fn, QNN block, python args,
+  **Hot spots:** `Build-OnnxFromSource.ps1` (811 lines: DML patch fn, QNN block, python args,
   MLAS tagging → move the DML patch into the Patches module and QNN into a `WindowsSourceBuild.Qnn`
   module with a fake-zip test); the IREE cross branch; the TVM cross branch; the positional
   three-column smoke floor table (→ named `Gpu/Cpu/Arm64` keys). **Test gaps:** `Get-PeFileMachine`,
@@ -365,7 +365,7 @@ Earlier tranches: `windows-backlog-archive-2026-08-11.md`,
   prebuilt at the price of grammar-constrained decoding. A cross-build of `litert_lm_main` for
   arm64 through that path (clang-cl, our LiteRT core from #115, WebGPU/dawn prebuilts absent →
   CPU only) is a **work item**, unproven, with the repo's retired CMake builder
-  (`build-litert-lm-from-source.ps1`) as the starting point.
+  (`Build-LitertLmFromSource.ps1`) as the starting point.
   (2) **TVM compiler + `tvm` python** — needs an LLVM built FOR aarch64-windows (cross-building
   LLVM with clang-cl is feasible, ~hours) plus a host `llvm-config`; the python package is pure
   python + DLLs, so a `win_arm64` wheel can be assembled on the host exactly like the ORT/av
@@ -397,7 +397,7 @@ Earlier tranches: `windows-backlog-archive-2026-08-11.md`,
   lanes now ship it. Rust for the target is thereby available to any later stage (LiteRT-LM).
   (b)/(c) did NOT run on run 29: the tvm branch starts from the media-core fan-in, not from the
   ONNX layer that builds the target CPython, so `Get-TargetBuildPython.Available` was false in
-  both scripts — `build-media-tvm-all.ps1` now runs `build-target-cpython.ps1` first (~90 s, same
+  both scripts — `Build-MediaTvmAll.ps1` now runs `Build-TargetCpython.ps1` first (~90 s, same
   contract as media-core; BK mounts + classic COPY carry it, parity test B6). Proof: run 30.
   **Run 30 (2026-08-26):** the target CPython now builds in the branch (91 s, `python.exe`
   0xAA64) and the wheel path switched on — then `ninja: unknown target 'tvm_ffi_cython'`:
@@ -521,7 +521,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`. That the failing message
   itself said `ARM64` is what proves the variable's casing, and therefore that `TOLOWER` lands on
   the directory that exists.
-  **Fix:** two `Invoke-InlineRegexPatch` edits in `build-onnx-from-source.ps1` — one inserts
+  **Fix:** two `Invoke-InlineRegexPatch` edits in `Build-OnnxFromSource.ps1` — one inserts
   `string(TOLOWER "${onnxruntime_target_platform}" onnxruntime_dml_redist_platform)` above the
   `if (NOT onnxruntime_USE_CUSTOM_DIRECTML)` block, the other reroutes both consumers through it;
   a re-read then throws if either edit misses, so upstream drift fails loudly instead of silently
@@ -547,7 +547,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   arm64 — `$d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''` resolves through
   `Get-WindowsTargetArch`, i.e. the **target**, giving `arm64` on this lane, and the nuget's
   directory names are exactly those RID arch components. That was made target-derived deliberately
-  (see the comment at `build-onnx-genai-from-source.ps1:286`) precisely for this eventuality.
+  (see the comment at `Build-OnnxGenaiFromSource.ps1:286`) precisely for this eventuality.
 
 - **#114 — aarch64 CPython, and the Python bindings it unblocks.** L · ★★★ · **SUPERSEDED-BY #120** (its Phase-0 questions still apply — answer them there first) · ✅ **CLOSED 2026-08-25 through #120** (target CPython from source, all four bindings staged, proven by arm64 run 14)
   The highest-leverage item: it is what keeps `cv2`, the ONNX Runtime wheel, ONNX GenAI's bindings
@@ -570,7 +570,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   zip — the version derives from the VENDORED protobuf commit `90b73ac3` = C++ runtime 3.21.9, NOT
   the LM lane's `PROTOC_VERSION=31.1`, whose gencode needs a `google/protobuf/runtime_version.h`
   that 3.21.9 does not ship). XNNPACK needed the MLAS-class per-TU treatment, now in
-  `build-litert-from-source.ps1`: 569 C microkernel TUs tagged per-FAMILY in `build.ninja`
+  `Build-LitertFromSource.ps1`: 569 C microkernel TUs tagged per-FAMILY in `build.ninja`
   post-configure (families completed against upstream's `PROD_*` list; SME skipped; floor 100),
   while the 335 hand-written aarch64 `.S` kernels get a FULL-UNION in-source
   `.arch armv8.2-a+fp16+dotprod+i8mm+bf16` directive — an assembler validates but never emits, so
@@ -661,7 +661,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   7 DLLs; the stage went green in 6:15 including the PyAV wheel and its `import av` gate. The
   lld-link-vs-nasm-object question the original entry raised is answered by that link step.
   Found 2026-08-24 while checking whether #112 could regress amd64. It cannot — but the check turned
-  up something else: `build-ffmpeg-from-source.ps1` appended `--disable-x86asm` **unconditionally**
+  up something else: `Build-FfmpegFromSource.ps1` appended `--disable-x86asm` **unconditionally**
   (present since `bd6adca4`, 2026-06-25 -- it entered with the file itself; an earlier note here blamed `8c5c50e7`, which is only the relicense commit that MOVED the file), so FFmpeg built none of its hand-written x86 SIMD
   on either lane. After #112 the cross lane assembled 99 NEON objects while amd64 assembled zero —
   the arm64 bundle was, in this one respect, *ahead* of the shipped amd64 image.
@@ -670,9 +670,9 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   between `--toolchain=msvc` and the CUDA comment with **no rationale, no failing configure, no
   nasm/lld-link note** — a first-bring-up simplification that later got documented as a premise. The
   script now enables x86asm on the amd64 lane (`--x86asmexe=<pinned nasm>`, asserting nasm is on
-  PATH — `verify-toolchain.ps1` already pins it) and keeps `--disable-x86asm` **explicitly** on the
+  PATH — `Test-Toolchain.ps1` already pins it) and keeps `--disable-x86asm` **explicitly** on the
   cross lane, where the knob is meaningless for aarch64. The comment at
-  `build-ffmpeg-from-source.ps1:410` no longer calls the disabled state a premise of the toolchain
+  `Build-FfmpegFromSource.ps1:410` no longer calls the disabled state a premise of the toolchain
   choice; it was never load-bearing for the msvc-preset-plus-compiler-override approach (configure
   assembles nasm fragments independently of `--cc`).
   **What "proof" meant here, and what delivered it:** configure names the x86 assembler only when
@@ -680,9 +680,9 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   kernels. The deciding artifact was the amd64 `media-core-built-ffmpeg` solve of 2026-08-24
   ~23:10 (see the DONE line above) — nasm invoked through its scoop shim, 154 objects, clean link.
   **The misattribution this uncovered** (three places claimed nasm was *FFmpeg's* assembler: the pins
-  table, `verify-toolchain.ps1`, the old #112 text) was corrected the same morning — and then
+  table, `Test-Toolchain.ps1`, the old #112 text) was corrected the same morning — and then
   re-corrected the same evening, because the flip made the original attribution *true again*: nasm
-  now shapes both GStreamer's openh264 (`build-gstreamer-from-source.ps1:482`) and FFmpeg's amd64
+  now shapes both GStreamer's openh264 (`Build-GstreamerFromSource.ps1:482`) and FFmpeg's amd64
   kernels.
 
 - **#120 — target aarch64 CPython built from source (`PCbuild -p ARM64`, ClangCL), and the
@@ -779,7 +779,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   any `/I`. Behind that include sits the Windows SDK's MASM macro layer (`macamd64.inc`:
   `NESTED_ENTRY`, `rex_push_reg`, …). That is missing MASM coverage, not a flag, and rewriting ~40
   upstream kernels plus SDK includes is not this repo's job. Reverted in
-  `build-onnx-from-source.ps1`: no ASM_MASM override on the native configure, the tee'd
+  `Build-OnnxFromSource.ps1`: no ASM_MASM override on the native configure, the tee'd
   configure log now asserts **ml64** (a drift stops at configure, not 40 min into ninja), the
   reason sits beside the check. `Resolve-LlvmMasm`/`Get-LlvmMasmCmakeArg` stay in the module for
   IREE. AGENTS' assembler paragraph names the split. **amd64 run 7 (2026-08-26, `[bk] Done
@@ -788,7 +788,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
 
 - **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
   is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)
-  `build-target-cpython.ps1:133-138` copies `python*.exe`/`python*.dll` to the root and every
+  `Build-TargetCpython.ps1:133-138` copies `python*.exe`/`python*.dll` to the root and every
   other DLL — the CRT included — into `DLLs\`. `python314.dll` imports `vcruntime140.dll` through
   the normal loader search (exe dir, System32, PATH); `DLLs\` is a *Python* search path, not a
   loader one. On a box with the ARM64 VC redist it works by accident; on a clean box the
@@ -796,7 +796,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   next to the exe. **Fix:** stage `vcruntime140.dll` (+ `msvcp140*.dll` when present) beside
   `python.exe`, keep the copy in `DLLs\` for the `.pyd`s, and extend the stage's self-check; the
   whole-tree import walk of #127 is what would have caught it.
-  **DONE 2026-08-25 (arm64 run 14):** `build-target-cpython.ps1` stages the target-arch CRT set —
+  **DONE 2026-08-25 (arm64 run 14):** `Build-TargetCpython.ps1` stages the target-arch CRT set —
   `vcruntime140.dll`, `vcruntime140_threads.dll` (added after run 13's import walk), `msvcp140*.dll`,
   `concrt140.dll`, `vccorlib140.dll` — from the build output or the VS ARM64 redist, PE-checked,
   beside `python.exe` **and** into `C:\runtime\bin`; throws if `vcruntime140.dll` cannot be staged.
@@ -809,14 +809,14 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   writes one into `C:\runtime\python\Lib\site-packages`. Python ≥ 3.8 ignores `PATH` for
   extension-module dependencies, so `cv2.pyd → opencv_videoio500.dll → avcodec-63.dll` and
   `opencv_gapi → onnxruntime.dll` cannot resolve, and the PyAV wheel (49 `.pyd`, 0 bundled DLLs) is
-  built on the same assumption (`build-ffmpeg-from-source.ps1` says its DLLs "resolve via the
+  built on the same assumption (`Build-FfmpegFromSource.ps1` says its DLLs "resolve via the
   sitecustomize shim"). **Fix:** emit a second shim — DLL directories only, no `get_platform`
   override (the target reports `win-arm64` itself) — into the target site-packages at the
   target-cpython stage (arch-aware paths from the same table), and assert its presence in the
   merge.
   **DONE 2026-08-25 (arm64 run 14):** the shim writer is one function
   (`Write-PythonDllDirectoryShim`, used by `Initialize-PythonPlatformTag` for the host tree);
-  `build-target-cpython.ps1` calls it for `C:\runtime\python\Lib\site-packages` with the arch-aware
+  `Build-TargetCpython.ps1` calls it for `C:\runtime\python\Lib\site-packages` with the arch-aware
   DLL homes and no platform/`EXT_SUFFIX` override, after emptying the target site-packages of the
   host tree's pip/setuptools. Measured in-stage: `wrote the DLL-directory sitecustomize shim for
   the target interpreter`.
@@ -832,7 +832,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   -m ensurepip` works offline — `Lib\ensurepip\_bundled` ships with the stdlib copy; install ours
   with `--no-deps` so PyPI's `onnxruntime` never shadows the staged one), and a static gate that
   every `Requires-Dist` of the staged wheels resolves inside the wheel store.
-  **Implemented 2026-08-25** as `windows/scripts/build/stage-target-python-deps.ps1`, a cross-only
+  **Implemented 2026-08-25** as `windows/scripts/build/Copy-TargetPythonDeps.ps1`, a cross-only
   merge step before the arch gate: it reads `Requires-Dist` from every wheel in `C:\runtime\wheels`
   (extras dropped, numpy added for cv2), downloads with the HOST pip
   (`--only-binary=:all: --platform win_arm64 --python-version 3.14 --abi cp314/none/abi3`) only
@@ -845,7 +845,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   `--wheel_name_suffix` on purpose). Microsoft publishes no `win_arm64` `onnxruntime-directml`, and
   on amd64 the same edge makes a consumer's `pip install` pull a *second* onnxruntime over ours (the
   2026-07-13 DmlExecutionProvider loss that the build's `-NoDeps` only papers over). **Fix, both
-  lanes:** `build-onnx-genai-from-source.ps1` rewrites the configured `build\wheel\setup.py`
+  lanes:** `Build-OnnxGenaiFromSource.ps1` rewrites the configured `build\wheel\setup.py`
   mapping to `dependency = "onnxruntime"` before packing (fail-loud when the pattern is gone), so
   the wheel declares `onnxruntime>=v1.29.0` — the package the store actually holds. numpy 2.5.2
   publishes a `cp314-win_arm64` wheel; flatbuffers, packaging, protobuf resolve as pure wheels.
@@ -862,7 +862,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   (or `llvm-readobj --coff-imports`) walk over everything under `C:\runtime` plus extracted wheel
   members, resolving against the bundle and a Windows 11 ARM64 `System32` name list; report
   unresolved imports per file, floor on the file count, fail on any unresolved non-system import.
-  **Implemented 2026-08-25** as `verify-target-arch.ps1 -ImportWalk` (merge arch gate, cross lane):
+  **Implemented 2026-08-25** as `Test-TargetArch.ps1 -ImportWalk` (merge arch gate, cross lane):
   a dependency-free PE import-table parser (`Get-PeImportNames`, import + delay-load directories,
   PE32/PE32+) walks every inspected PE plus the native members of every wheel and resolves each
   name against the bundle, the loader's `api-ms-`/`ext-ms-` API sets, this container's `System32`
@@ -944,8 +944,8 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   the GenAI wheel embeds `onnxruntime.dll`. (d) Stale labels/comments: `windows\Dockerfile` LABEL
   and header still call TVM/IREE/LiteRT "empty markers on arm64", the merge Dockerfile says the
   arm64 site-packages "wait on #120", `WindowsGstPlugins.Common.psm1` says LiteRT "cannot be built
-  for Windows-on-ARM", `healthcheck.ps1` says the arm64 contract drops tflite.
-  **Implemented 2026-08-25, proof pending arm64 run 20:** (a)+(b) `write-bundle-manifest.ps1`
+  for Windows-on-ARM", `Test-Health.ps1` says the arm64 contract drops tflite.
+  **Implemented 2026-08-25, proof pending arm64 run 20:** (a)+(b) `Write-BundleManifest.ps1`
   runs in the merge stage on both lanes and writes `C:\runtime\BUNDLE-ENV.cmd`, `BUNDLE-ENV.ps1`
   (every existing DLL home from the merge ENV plus `C:\runtime\bin`, the target python and the
   wheel store) and `BUNDLE-README.md` (the arch facts, the `--no-index --find-links` install
@@ -999,8 +999,8 @@ entry. Kept for the measured facts, which correct two prior records.
 at any 13.3.x or 12.x.** Wiring is blocked on NVIDIA publishing a
 `windows-arm64` CUDA redist, not on this repo.
 
-**(1) The hardcoded `windows-x86_64` literal in `setup-cuda.ps1` — CONFIRMED,
-one site.** `setup-cuda.ps1:138` builds the cuDNN URL with a literal
+**(1) The hardcoded `windows-x86_64` literal in `Install-Cuda.ps1` — CONFIRMED,
+one site.** `Install-Cuda.ps1:138` builds the cuDNN URL with a literal
 `windows-x86_64` segment:
 `…/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-{0}_cuda{1}-archive.zip`.
 The CUDA installer URL (`:40`) carries no arch — it is
@@ -1055,7 +1055,7 @@ does not exist at all" was itself half-wrong: cuDNN exists, CUDA
 ORT's CUDA EP needs the toolkit, not just cuDNN.
 
 **One free, build-free fix that fell out of this probe (PARKED, not done):
-arch-parameterise the cuDNN URL in `setup-cuda.ps1:138`** so the arm64 GPU
+arch-parameterise the cuDNN URL in `Install-Cuda.ps1:138`** so the arm64 GPU
 lane fetches the 90 MB arm64 archive instead of the 633 MB x86_64 one. That is
 a correctness fix for the arm64 GPU lane's cuDNN layer (it currently downloads
 the wrong arch), independent of whether CUDA itself ever ships for arm64. Do
@@ -1070,7 +1070,7 @@ and was proven on 2026-08-26; the entry was kept OPEN only because the
 narrative had not been archived. Kept for the `0B` = "already pruned to floor"
 inversion lesson, which is the general rule worth remembering.
 
-Every launch replays `#9 RUN setup-vs.ps1` while `#6` (a RUN with a bind mount),
+Every launch replays `#9 RUN Install-Vs.ps1` while `#6` (a RUN with a bind mount),
 `#7` and `#8` (the COPY of that very script) all report CACHED. Reproducible
 across five consecutive launches on 2026-08-26.
 
@@ -1086,7 +1086,7 @@ reports `Reclaimable: 4.27MB` of a 499.9 GB store, and the two ~37.6/37.8 GB
 VS-class records are present); a build-arg that varies per run (the driver
 passes only version pins — no timestamp, VCS ref or GUID reaches this stage);
 `-NoCache`/`-NoCacheStage` (not passed); and a changed COPY input, since `#8`
-— the COPY of `setup-vs.ps1` itself — is CACHED, so its parent chain and that
+— the COPY of `Install-Vs.ps1` itself — is CACHED, so its parent chain and that
 file are byte-identical.
 
 **SOLVED 2026-08-26 (`916c91f0`) — it was the GC reserve, and the answer was
@@ -1143,7 +1143,7 @@ would make a correct deploy look failed.
   keeps every table on 4-byte entries. `value evaluated as` went 4 → **0** in the cross build.
   Cost 4522 → 4650 bytes of object, ~2.8 %, all jump-table DATA; full `/O2` retained.
   **(2) `tbnz` just out of branch range — FIXED (2026-08-27,** per-TU `/Ob1` in
-  `build-opencv-from-source.ps1`**).** At `/O2` the whole baseline median filter collapses into ONE
+  `Build-OpencvFromSource.ps1`**).** At `/O2` the whole baseline median filter collapses into ONE
   function, `cv::cpu_baseline::medianBlur`, 8,465 instructions ≈ 33,860 bytes, and
   `tbnz w9, #31, .LBB546_847` inside it must reach a block ~32,916 bytes away against the ±32,768
   a 14-bit displacement encodes. `BranchRelaxation` exists to catch that and its estimate came out
@@ -1192,7 +1192,7 @@ would make a correct deploy look failed.
   Windows-on-ARM with C++ exceptions that route was closed. **(a) turned out to be TWO independent
   defects, not one — see the root-cause block below.**
   **Settling any future candidate:** don't reason about it, run
-  `windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1` — the five real offenders frozen as
+  `windows\scripts\diagnostics\Invoke-LlvmAarch64Layout.ps1` — the five real offenders frozen as
   preprocessed `.i`, compiled with the workaround OFF, with the stock compiler's reproduce-and-
   suppress arms gating the verdict so a stale corpus reports `INVALID` instead of a false fix.
   A `FIXED` verdict licenses the `NINJA_KEEP_GOING=1` census; it does not replace it.
@@ -1229,7 +1229,7 @@ would make a correct deploy look failed.
   **Both workarounds are now removable — but they STAY until the patched toolchain is the DEFAULT.**
   `windows/Dockerfile.toolchain-builder` still carries `ARG BUILD_PATCHED_LLVM=0`, so a stock image
   ships unpatched clang-cl 23.1.0 and still needs both settings. Delete the flags from
-  `build-opencv-from-source.ps1` in the SAME change that flips that default, never before.
+  `Build-OpencvFromSource.ps1` in the SAME change that flips that default, never before.
 
   **The stage is reachable since 2026-08-28: `build-buildkit.ps1 -PatchedLlvm`.** Until then it was
   not — the driver always targeted `built` and `BUILD_PATCHED_LLVM` appeared in no `.ps1` at all,
@@ -1350,7 +1350,7 @@ would make a correct deploy look failed.
   Both fixes **apply cleanly to the pinned `llvmorg-23.1.0`** (verified with
   `git apply --check`), which is what makes this cheap. Building the pinned release
   plus the two patches keeps the banner at `clang version 23.1.0`, so
-  `verify-toolchain.ps1`'s provenance gate passes with `LLVM_WINDOWS_VERSION`
+  `Test-Toolchain.ps1`'s provenance gate passes with `LLVM_WINDOWS_VERSION`
   untouched and every clang-cl-shaped source patch (`#129` probes, `mlasi.h`,
   `softfloat`) stays valid. Moving to LLVM `main` would disturb all of that for no
   extra benefit — the fixes are the only delta that matters.
@@ -1359,7 +1359,7 @@ would make a correct deploy look failed.
     `002-aarch64-seh-pseudo-size.patch` — the two upstream commits
     ([llvm#219275](https://github.com/llvm/llvm-project/pull/219275),
     [llvm#219276](https://github.com/llvm/llvm-project/pull/219276)).
-  * `windows/scripts/build/build-llvm-from-source.ps1` — downloads the SAME pinned
+  * `windows/scripts/build/Build-LlvmFromSource.ps1` — downloads the SAME pinned
     tarball and SHA256 the TVM stage already uses (so the no-unpinned-download rule,
     #47, is satisfied by a pin already in the repo), applies both patches through
     `Invoke-SourcePatch`, builds clang+lld, and **throws if the patched source does
@@ -1374,10 +1374,10 @@ would make a correct deploy look failed.
   ### 2026-08-28 — BUILT AND MEASURED IN THE CONTAINER. The fork fixes it.
 
   The shim patch was redeployed (`gate hash MATCHES`, 25,937,920 bytes) and the whole
-  path was run for real. `build-llvm-from-source.ps1` works end to end: pinned
+  path was run for real. `Build-LlvmFromSource.ps1` works end to end: pinned
   tarball, SHA256-checked, **both patches applied**, the `eh-asynch` drift assertion
   passed, install in **~9.5 min**, and the banner reads `clang version 23.1.0` — so
-  `verify-toolchain.ps1`'s provenance gate accepts it. Image tagged
+  `Test-Toolchain.ps1`'s provenance gate accepts it. Image tagged
   `docker.io/local/kataglyphis:bk-llvm-patched`.
 
   **Stock clang-cl 23.1.0 vs the same 23.1.0 + the two fork patches. Same sources,
@@ -1412,7 +1412,7 @@ would make a correct deploy look failed.
     RDNA4 dGPU (`ConfigManagerErrorCode=22`, i.e. disabled).
     [docker/for-win#14977](https://github.com/docker/for-win/issues/14977) is still
     `open` and still `needs-triage` as of 2026-08-28, so the
-    `toggle-rdna4-gpu.ps1 -Disable` workflow stays.
+    `Set-Rdna4Gpu.ps1 -Disable` workflow stays.
 
   **Strong open hypothesis — this may also be (a1), i.e. `/Ob1`.** `BranchRelaxation` consumes the
   same size function, `median_blur.dispatch.cpp` and `multiview_calibration.cpp` are also compiled

@@ -3,7 +3,7 @@
 # THE parameterized diagnostic probe (2026-08-21): one Dockerfile for every
 # script-based probe in windows/scripts/diagnostics/. Replaces 14 per-probe
 # skeleton files that differed only in one script name + 0-2 mounts. Run via:
-#   run-diagnostic-probe.ps1 -ProbeScript probe-<name>.ps1 [-BaseImage <tag>]
+#   Invoke-DiagnosticProbe.ps1 -ProbeScript probe-<name>.ps1 [-BaseImage <tag>]
 # (archived probes stay runnable: -ProbeScript archive/probe-<name>.ps1)
 #
 # Mount contract (matches what the probe scripts hard-code):
@@ -23,7 +23,7 @@ FROM ${BASE_IMAGE} AS probe
 
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
-ARG PROBE_SCRIPT="probe-sccache-options-strict.ps1"
+ARG PROBE_SCRIPT="Test-SccacheOptionsStrict.ps1"
 # Pass-through for probes that read it (probe-onnx-tu-replay); an undeclared
 # ARG would silently discard a -BuildArg ORT_REF=... override.
 ARG ORT_REF=""

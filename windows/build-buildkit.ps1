@@ -46,7 +46,7 @@ param(
     [switch]$Gpu,
     # #135: the patched clang (AArch64 getInstSizeInBytes fix, llvm#219275 +
     # #219276) is now the DEFAULT toolchain. The workarounds in
-    # build-opencv-from-source.ps1 have been removed in the same change.
+    # Build-OpencvFromSource.ps1 have been removed in the same change.
     [switch]$PatchedLlvm,
     # Opt OUT of the patched toolchain (use the stock scoop clang-cl). Only for
     # debugging the patches themselves.
@@ -72,7 +72,7 @@ param(
     # one-off investigations. Inert unless a Dockerfile declares a matching ARG.
     [string[]]$BuildArg = @(),
     # SMOKE GATE (backlog #44): after `final` the image must pass
-    # smoke-test-container.ps1. -SkipSmokeGate is for iterating on the chain
+    # Test-Container.ps1. -SkipSmokeGate is for iterating on the chain
     # itself; it does not make an unverified image safe to ship.
     [switch]$SkipSmokeGate,
     # Coverage floors, not just "0 failures" — a fully-skipped run used to exit 0.
@@ -103,9 +103,9 @@ param(
     [switch]$SkipRdna4Gate,
     # Bypass ONLY the buildkitd step-log-env gate (0a) for one launch. The 2MiB
     # clip stays active, so chatty step middles are lost (causal errors still
-    # reach stderr); restore properly via setup-new-host.ps1.
+    # reach stderr); restore properly via Install-NewHost.ps1.
     [switch]$SkipStepLogGate,
-    # Disable the per-run resource CSV sampler (build-resource-sampler.ps1).
+    # Disable the per-run resource CSV sampler (Build-ResourceSampler.ps1).
     # The sampler is a detached process writing CPU/RAM/commit/vmmem every 20s,
     # phase-tagged; disable it only when you do not want the overhead.
     [switch]$NoResourceLog,
@@ -137,7 +137,7 @@ $script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
 $script:StageTimings = [ordered]@{}
 # Resource sampler (#134 free follow-up): the classic driver wired this; the BK
 # driver did not, so no building driver produced the per-run resource CSV. The
-# sampler is a detached process (build-resource-sampler.ps1) that appends
+# sampler is a detached process (Build-ResourceSampler.ps1) that appends
 # CPU/RAM/commit/vmmem every 20s, phase-tagged from $script:PhaseFile.
 $script:PhaseFile = Join-Path $script:LogDir 'current-phase.txt'
 $script:ResourceCsv = $null
@@ -217,7 +217,7 @@ $script:MergeRequiredBranches = @('media-core', 'media-litert', 'media-tvm')
 # Forwarded to the stages AFTER the arch fork only: declaring this ARG on the
 # shared base/sdk/toolchain would re-pay the VS Build Tools layer on every switch.
 # OPENCV_ARCH_DIR rides along because the merge Dockerfile bakes OPENCV_LIB/BIN
-# as ENV, which WINS over the arch-aware fallback in build-gstreamer-from-source.ps1.
+# as ENV, which WINS over the arch-aware fallback in Build-GstreamerFromSource.ps1.
 $archArgs = @{
     WINDOWS_TARGET_ARCH = $TargetArch
     OPENCV_ARCH_DIR     = Get-OpenCvArchDir -Arch $TargetArch
@@ -458,7 +458,7 @@ $started = Get-Date
 if (-not $NoResourceLog) {
     $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + $script:RunId + ".csv")
     Set-BuildPhase 'init'
-    $samplerScript = Join-Path $repoRoot 'windows\scripts\build\build-resource-sampler.ps1'
+    $samplerScript = Join-Path $repoRoot 'windows\scripts\build\Build-ResourceSampler.ps1'
     $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
         '-NoProfile', '-File', $samplerScript,
         '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
@@ -518,7 +518,7 @@ if ($Stages -contains 'sdk') {
 
 if ($Stages -contains 'toolchain') {
     # No $sccache here: neither Dockerfile.toolchain-builder nor
-    # build-toolchain-all.ps1 has sccache wiring, so it is an unused build-arg.
+    # Build-ToolchainAll.ps1 has sccache wiring, so it is an unused build-arg.
     $toolchainArgs = @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
@@ -709,7 +709,7 @@ if ($Stages -contains 'final') {
         if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
         Write-Host ("[bk:smoke-gate] cross lane: HOST-toolchain sections run (floors: MIN_PASSED=$armMinPassed, " +
                     "MAX_SKIPPED=$armMaxSkipped); payload sections are skipped in-suite — the aarch64 payload " +
-                    'itself remains statically verified only (verify-target-arch.ps1, merge stage).') -ForegroundColor Yellow
+                    'itself remains statically verified only (Test-TargetArch.ps1, merge stage).') -ForegroundColor Yellow
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs @{
             BASE_IMAGE  = Get-BkTag $script:FinalTagName
             MIN_PASSED  = "$armMinPassed"
@@ -722,7 +722,7 @@ if ($Stages -contains 'final') {
         # LANE-AWARE FLOOR: 160 is the CPU number (just under its section-floor
         # sum of 161); on the GPU lane it would tolerate losing 60 of the 220
         # assertions a green run executes. 190 is the GPU column's sum in
-        # smoke-test-container.ps1. An explicit -SmokeMinPassed always wins.
+        # Test-Container.ps1. An explicit -SmokeMinPassed always wins.
         $effectiveMinPassed = $SmokeMinPassed
         if ($Gpu -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
             $effectiveMinPassed = 190
@@ -795,7 +795,7 @@ Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stage
             Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
         }
         if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
-            & (Join-Path $repoRoot 'windows\scripts\build\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+            & (Join-Path $repoRoot 'windows\scripts\build\Build-ResourceSampler.ps1') -Summarize -CsvPath $script:ResourceCsv
         }
     } catch {
         Write-Warning "resource-sampler teardown failed (build verdict above is unaffected): $($_.Exception.Message)"

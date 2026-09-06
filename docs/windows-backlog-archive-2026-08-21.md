@@ -197,7 +197,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   but the retry budget is 2 and it self-heals only because a fallback URL
   exists. The pre-seed fix already applied to nuget was never extended to the
   VS bootstrapper or Adoptium.
-- **80 [S·★★, none] DONE 2026-08-20 - the suppression half shipped too (Get-WarningNoiseSuppressionFlags, ONE module-exported list feeding onnx/opencv/tvm/genai/litert-lm; gstreamer=meson deliberately untouched) and rode the green batch-verify ride. Earlier: HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
+- **80 [S·★★, none] DONE 2026-08-20 - the suppression half shipped too (Get-WarningNoiseSuppressionFlags, ONE module-exported list feeding onnx/opencv/tvm/genai/litert-lm; gstreamer=meson deliberately untouched) and rode the green batch-verify ride. Earlier: HALF DONE 2026-08-17 — the observability half shipped: `Measure-WarningStream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
   genuine signals.** Corpus totals: `-Wunused-parameter` 68,502,
   `-Wdocumentation-unknown-command` 18,144, `-Wdeprecated-copy…` 17,887,
   `-Wundef` 17,056, `-Wmissing-field-initializers` 12,294 — vs the signal
@@ -216,14 +216,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   avdevice YES; was prebuilt 61/NO). Four parts, all required: stage swap
   (ffmpeg before opencv), `pkgconfig-shim.cmake` via CMAKE_PROJECT_INCLUDE,
   SKIP_DOWNLOAD + ENABLE_LIBAVDEVICE, and the FFmpeg-9 source patch
-  (`ffmpeg9-avcodec-config.ps1` — AVCodec::pix_fmts/supported_framerates were
+  (`Get-Ffmpeg9AvcodecConfig.ps1` — AVCodec::pix_fmts/supported_framerates were
   removed upstream). Full-chain smoke: 188/1/1. `(prebuilt binaries)` is NOT a
   provenance signal — the avcodec-major comparison is.
 - **#95 DONE** — smoke asserts the video backends (runtime-aware since the
   plugin route). Watched failing before the fixes, as designed.
 - **#93 IMPLEMENTED, awaiting its first merge build** — standalone
   `opencv_videoio_gstreamer` plugin built in the merge stage AFTER GStreamer
-  (`build-opencv-gstreamer-plugin.ps1`); breaks the circularity without a
+  (`Build-OpencvGstreamerPlugin.ps1`); breaks the circularity without a
   second OpenCV pass. `getBuildInformation()` stays `GStreamer: NO` BY DESIGN
   (compile-time string; plugin is runtime) — the smoke guard asserts
   `hasBackend(CAP_GSTREAMER)` + an actual videotestsrc frame read instead.
@@ -248,7 +248,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   tarball detour and the 4-fix path are in the 2026-08-17 commits). Loud
   cuDNN/Vulkan OFF-paths shipped as planned. Original finding: TVM silently
   drops LLVM / Vulkan / cuDNN.**
-  `build-tvm-from-source.ps1:76-82` (and :68-73, :53-64) print on the ON path
+  `Build-TvmFromSource.ps1:76-82` (and :68-73, :53-64) print on the ON path
   and print NOTHING on the OFF path. `USE_LLVM=OFF` removes TVM's CPU codegen
   entirely: build green, `import tvm` green, and every `tvm.build` for an LLVM
   target fails at runtime in the shipped image. An LLVM/scoop bump that drops
@@ -258,7 +258,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 - **65 [S·★★★, none] DONE 2026-08-17 (verify in the next merge build) — GStreamer compiles with NO job budget, NO retry ladder and
   NO sccache stall guard — while using sccache.** Verified: 0 hits for
   `Start-SccacheStallGuard` / `Get-BuildJobCount` / `MemGBPerJob` in
-  `build-gstreamer-from-source.ps1`. It sets `$env:CC = 'sccache clang-cl'`
+  `Build-GstreamerFromSource.ps1`. It sets `$env:CC = 'sccache clang-cl'`
   (:205) then runs `meson compile` (:879) with no `-j`, so ninja's default
   (cores+2) ignores `MEMORY_LIMIT_GB` entirely — exactly the OOM shape
   `MemGBPerJob` exists to prevent. It is also the ONE compile stage using
@@ -295,7 +295,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   logged **22 failed wrap downloads** in one merge stage:
   `gst-plugins-base` ×15, `theora` ×5, `pango` ×2, each as
   `WARNING: failed to download ... features may be disabled`, and the build went
-  green. The fetch is `curl.exe ... 2>nul` (`build-gstreamer-from-source.ps1`
+  green. The fetch is `curl.exe ... 2>nul` (`Build-GstreamerFromSource.ps1`
   ~:294 and the libffi fetch at ~:313), so the ONE thing that distinguishes a
   moved wrap revision (404) from a DNS/TLS problem is discarded — and 20 lines
   earlier the main tarball already uses `Invoke-DownloadWithRetry` with backoff
@@ -307,7 +307,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   numbers came from the audit's list, and this one fell out; re-verify the P2b
   set against the audit before assuming it is complete.
 - **69 [S·★★, none] DONE 2026-08-20: W1c AST scanner covers the if($env:KEY){...}else{'<literal>'} idiom (pin membership filters behavior defaults; scanner-rot guard pins 9 sites) and caught 3 LIVE drifts, all fixed: build-ffmpeg NV_CODEC_HEADERS_REF n13.0.19.0->n13.1.15.0 (the documented 404/NVENC-skip seed), build-litert-lm-bazel 0.15.0->0.16.1, assemble-torch-app v0.0.22->v0.0.27. Original finding: live pin drift that the parity gate structurally cannot
-  see.** `build-ffmpeg-from-source.ps1:241` hardcodes
+  see.** `Build-FfmpegFromSource.ps1:241` hardcodes
   `else { 'n13.0.19.0' }` against `versions.env:184 NV_CODEC_HEADERS_REF=n13.1.15.0`
   — verified drift. `SourceBuild.PinParity.Tests.ps1:80` scans only
   `Get-SourceBuildVersion` call sites, so the `if ($env:X) {…} else {<literal>}`
@@ -340,7 +340,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   `:114-120`, then `:156`. versions.env is shared by BOTH lanes, so editing a
   purely *Linux* key (`PANDOC_VERSION`, `ROCM_VERSION`, `UBUNTU_DIGEST`)
   re-pays GB-scale scoop + vcpkg + the 30-min rust layer on the next base
-  build. The file already proves it knows the pattern — `setup-vs.ps1` was
+  build. The file already proves it knows the pattern — `Install-Vs.ps1` was
   deliberately hoisted above this COPY for exactly this reason (`:71-76`). Only
   8 keys are needed below the COPY; promote those to ARGs and move the COPY
   down. (The sibling ARG-below-the-expensive-RUN fix for TensorRT shipped
@@ -350,12 +350,12 @@ Upstream follow-ups: see "Pending" at the bottom.
   what the three RUNs below the COPY actually read (both `$env:X` *and*
   `Resolve-ContainerImageValue -EnvironmentVariable 'X'`, which the first pass
   missed because it uses no `$env:` syntax):
-  - `setup-scoop-tools.ps1`: CMAKE_VERSION, FLUTTER_VERSION, GIT_INSTALLER_URL,
+  - `Install-ScoopTools.ps1`: CMAKE_VERSION, FLUTTER_VERSION, GIT_INSTALLER_URL,
     GIT_VERSION, GIT_WINDOWS_INSTALLER_SHA256, LLVM_WINDOWS_VERSION,
     NASM_WINDOWS_VERSION, NINJA_WINDOWS_VERSION, SCOOP_INSTALLER_SHA256,
     VULKAN_VERSION, WIX_UI_EXT_VERSION, WIX_VERSION
-  - `setup-vcpkg.ps1`: VCPKG_REF
-  - `setup-rust-toolchain.ps1`: SCCACHE_GIT_REV, RUSTUP_DIST_SERVER,
+  - `Install-Vcpkg.ps1`: VCPKG_REF
+  - `Install-RustToolchain.ps1`: SCCACHE_GIT_REV, RUSTUP_DIST_SERVER,
     RUSTUP_IO_THREADS
 
   Five of those (CMAKE/LLVM/NINJA/NASM/VULKAN) **already have ARGs** and are
@@ -406,7 +406,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
   actual cuDNN 9 nesting against the installed tree before removing the stage —
   the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
-- **100 [M·★★★, media-core] SOLVED 2026-08-20 after 5 probe rounds - make-time launcher ON, 2198/2198 compile requests through sccache (was 0 forever):** the crash trigger was `-options:strict` - cl.exe-only; clang-cl parses the PREFIX as the deprecated `-o` (output). Bare builds survived by ORDER (the later -Fo wins); sccache's generate_compile_commands REORDERS (-Fo first), the hijack wins, and the object lands in an NTFS ALTERNATE DATA STREAM (`ptions:strict.obj`, literally recovered by probe-sccache-options-strict.ps1) at exit 0 -> 'failed to zip up compiler outputs'. Chain fix: the flag is stripped in Remove-MakefileShowIncludes (a bare-build correctness fix too - the silent -o hijack was always there, just overridden). configure stays bare (its own tests still break through sccache). UPSTREAM angles (owner decides, possible PR 3): (a) sccache's -Fo-first reorder is a semantic hazard for ANY unknown flag whose prefix parses as -o; fix = emit the output flag AFTER the forwarded args; (b) sccache never logs the spawned compile line even at trace. Hit-run VERIFIED 2026-08-20: 2198/2198 hits, 100.00%, 0 misses. PyAV remains the open lower-value half. Previous state: (1) configure --cc='sccache clang-cl': configure's own compiler tests produce objects lld-link rejects ("unknown file type"); (2) make-time CC override: dies ~20 files in with sccache "failed to zip up compiler outputs" on the RELATIVE forward-slash -Fo outputs (libavdevice/dshow*.o resolved to C:	emp\...\libavdevice/dshow_pin.o, file absent) - and the bare `make install` then silently recompiled everything launcher-less (15 min), so both "green" rides were uncached anyway. Next angle: sccache-side (does it mishandle relative -Fo through a server whose cwd differs? possibly upstream PR 3 material - owner decides); PyAV unchanged. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
+- **100 [M·★★★, media-core] SOLVED 2026-08-20 after 5 probe rounds - make-time launcher ON, 2198/2198 compile requests through sccache (was 0 forever):** the crash trigger was `-options:strict` - cl.exe-only; clang-cl parses the PREFIX as the deprecated `-o` (output). Bare builds survived by ORDER (the later -Fo wins); sccache's generate_compile_commands REORDERS (-Fo first), the hijack wins, and the object lands in an NTFS ALTERNATE DATA STREAM (`ptions:strict.obj`, literally recovered by Test-SccacheOptionsStrict.ps1) at exit 0 -> 'failed to zip up compiler outputs'. Chain fix: the flag is stripped in Remove-MakefileShowIncludes (a bare-build correctness fix too - the silent -o hijack was always there, just overridden). configure stays bare (its own tests still break through sccache). UPSTREAM angles (owner decides, possible PR 3): (a) sccache's -Fo-first reorder is a semantic hazard for ANY unknown flag whose prefix parses as -o; fix = emit the output flag AFTER the forwarded args; (b) sccache never logs the spawned compile line even at trace. Hit-run VERIFIED 2026-08-20: 2198/2198 hits, 100.00%, 0 misses. PyAV remains the open lower-value half. Previous state: (1) configure --cc='sccache clang-cl': configure's own compiler tests produce objects lld-link rejects ("unknown file type"); (2) make-time CC override: dies ~20 files in with sccache "failed to zip up compiler outputs" on the RELATIVE forward-slash -Fo outputs (libavdevice/dshow*.o resolved to C:	emp\...\libavdevice/dshow_pin.o, file absent) - and the bare `make install` then silently recompiled everything launcher-less (15 min), so both "green" rides were uncached anyway. Next angle: sccache-side (does it mishandle relative -Fo through a server whose cwd differs? possibly upstream PR 3 material - owner decides); PyAV unchanged. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
   BYPASSED — the whole ffmpeg branch is uncached, every build, forever.**
   Measured 2026-08-15 in the #99 verification run: the `media-core-built-ffmpeg`
   stage reported `Compile requests 0` — not "0 hits", *zero requests*. sccache
@@ -416,7 +416,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   `WindowsBuild.Common.psm1:642-643` (`CMAKE_C_COMPILER_LAUNCHER` /
   `CMAKE_CXX_COMPILER_LAUNCHER`). FFmpeg does not use CMake — it configures with
   `--toolchain=msvc --cc=clang-cl --ld=lld-link`
-  (`build-ffmpeg-from-source.ps1:317`), so every one of its C files goes
+  (`Build-FfmpegFromSource.ps1:317`), so every one of its C files goes
   straight to `clang-cl`. PyAV is the same story from the other direction: it
   builds through setuptools, which invokes MSVC `cl.exe` directly (visible in
   the same log right before `Staged wheel: av-18.0.0-…`).
@@ -458,14 +458,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   print the table at the end AND in a `finally` on failure.
 ## P6 — 2026-08-17 static audit, OPEN remainder (done items #101/#102/#103/#105 + methodology: archive)
 
-- **104 [S·★, none] DONE 2026-08-17 — with a finding: the corpse was ALREADY GONE.** `clean-sccache-mount.ps1` (+ `Dockerfile.cache-mount-clean`, via the shared probe runner, network-free) found the mount root holding only KB-scale bucket remnants — **no v2, no v3, no v4** — and freed just 0.1 MiB. v4 (~63 MiB, experiment B) verifiably existed yesterday; something reclaimed the mount contents during today's build churn, most plausibly buildkitd GC treating the exec.cachemount as reclaimable under the shared tier-0 budget. RELEVANT LATER: when the disk,webdav tier returns (#99 restore), do not assume cache-mount contents survive GC pressure between runs. Fixtures probe-persist/bulk-inherit kept (the #99 repro). Original finding: The sccache cache mount carries dead weight that no build will ever read again.** The damaged original root tree (buckets `0..f`,
+- **104 [S·★, none] DONE 2026-08-17 — with a finding: the corpse was ALREADY GONE.** `Clear-SccacheMount.ps1` (+ `Dockerfile.cache-mount-clean`, via the shared probe runner, network-free) found the mount root holding only KB-scale bucket remnants — **no v2, no v3, no v4** — and freed just 0.1 MiB. v4 (~63 MiB, experiment B) verifiably existed yesterday; something reclaimed the mount contents during today's build churn, most plausibly buildkitd GC treating the exec.cachemount as reclaimable under the shared tier-0 budget. RELEVANT LATER: when the disk,webdav tier returns (#99 restore), do not assume cache-mount contents survive GC pressure between runs. Fixtures probe-persist/bulk-inherit kept (the #99 repro). Original finding: The sccache cache mount carries dead weight that no build will ever read again.** The damaged original root tree (buckets `0..f`,
   ~114 MiB — the #99 corpse), the empty `v3`, experiment B''s `v4` (~63 MiB),
   and the probe fixtures `probe-persist`/`bulk-inherit` (keep those until the
   BuildKit upstream report is filed). Only `v2` is referenced. One probe-style
   cleanup RUN reclaims ~200 MiB of the shared 40 GB tier-0 budget. Builder
   disk, not image size. BLOCKED while any build holds the locked mount.
-- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 09f97bab (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - bootstrap-pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
-  corrected the entry''s own premise** (only `bootstrap-pwsh.ps1` runs under
+- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 09f97bab (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - Initialize-Pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
+  corrected the entry''s own premise** (only `Initialize-Pwsh.ps1` runs under
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
   are bind-mounted into media stages, land between builds.
@@ -477,7 +477,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   cpp4 preprocess loses `USE_CUDA` & friends, cudafe++ emits no stubs. The
   package (patch + README + verify probe) lives in
   `windows/upstream/sccache-nvcc-quote-fix/`. Shipping = editing
-  `setup-rust-toolchain.ps1` (clone+apply+install instead of `cargo install
+  `Install-RustToolchain.ps1` (clone+apply+install instead of `cargo install
   --git`) = BASE rebuild — rides the next base-tier batch, never alone.
   After shipping: three canaries + a cache-hit second run, THEN the
   SCCACHE_CUDA_LAUNCHER default discussion reopens (~50 min/chain at stake).
@@ -514,13 +514,13 @@ Upstream follow-ups: see "Pending" at the bottom.
   STATUS_DLL_NOT_FOUND** — `--enable-libonnxruntime` links avfilter-12.dll
   against the chain's onnxruntime.dll (lib\onnxruntime-source\bin), which the
   bin-dir-on-PATH fix never covered. Measured in-image via
-  the ffmpeg-provenance probe, now scripts/diagnostics/archive/probe-ffmpeg-provenance.ps1 (symptom → dumpbin walker names the DLL
+  the ffmpeg-provenance probe, now scripts/diagnostics/archive/Test-FfmpegProvenance.ps1 (symptom → dumpbin walker names the DLL
   → fixed-gate replay exit 0 / avcodec 63). Gate now adds the discovered
   onnxruntime.dll dir to the probe PATH and prints the exit code hex on a
   parse miss instead of a silent chain=''. Original finding: verify5
   (2026-08-17) logged `could not compare avcodec majors (chain=''
   configure='63')`. Not release-gating: the
-  authoritative #94/#95 assertion runs in `smoke-test-container.ps1` against
+  authoritative #94/#95 assertion runs in `Test-Container.ps1` against
   the shipped image. But the stage gate exists to fail 25 minutes earlier than
   the smoke does; today it can only ever throw when BOTH majors read back,
   so the empty-read path silently waives exactly the case it was built for.
@@ -640,7 +640,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   inline dumpbin walker + llvm-config's inline body to diagnostics scripts
   (both files carry quoting-trap scar tissue); check in the CPython
   Directory.Build.props as a real file (toolchain-builder:36's 300-char
-  Set-Content); nvidia's TRT-zip-discovery regex → setup-tensorrt.ps1
+  Set-Content); nvidia's TRT-zip-discovery regex → Install-Tensorrt.ps1
   (-LocalZipDir) so the filename contract is unit-testable; WINDOWS_LTSC
   drop the redundant inline default; the 4 reader-less merge ENVs
   (ONNX_GPU_VARIANT/LITERT_LM_INCLUDE/LITERT_LM_LIB/FFMPEG_ROOT) — add to

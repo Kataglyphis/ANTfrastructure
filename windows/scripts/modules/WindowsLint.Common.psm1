@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # AST detectors for pwsh traps that each silently broke a lane of
-# probe-build-copy.ps1 until 2026-08-10. Hosted as a module (backlog #21) so
+# Test-BuildCopy.ps1 until 2026-08-10. Hosted as a module (backlog #21) so
 # Invoke-Lint.ps1 runs them inside its existing parse loop (one parse per
 # file, \archive\ excluded) and Native.ArgQuoting.Tests.ps1 keeps its
 # positive controls against the same implementations.

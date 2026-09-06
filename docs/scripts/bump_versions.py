@@ -379,7 +379,7 @@ def spec_pwsh(cur):
 
 
 def spec_git(cur):
-    # ONLY .windows.1 releases: setup-scoop-tools.ps1 derives the installer URL
+    # ONLY .windows.1 releases: Install-ScoopTools.ps1 derives the installer URL
     # with a hardcoded ".windows.1" tag suffix (respins need -GitInstallerUrl).
     tag = gh_latest("git-for-windows/git", pattern=r"^v\d+\.\d+\.\d+\.windows\.1$")
     v = tag.split(".windows.")[0].lstrip("v")
@@ -610,7 +610,7 @@ def spec_vulkan(cur):
     # {"linux":"1.4.357.1","mac":"1.4.357.1","windows":"1.4.357.0"}.
     #
     # This used to read linux.txt alone. The 2026-08-26 bump therefore wrote
-    # 1.4.357.1, and the Windows base build died in setup-scoop-tools.ps1 with a
+    # 1.4.357.1, and the Windows base build died in Install-ScoopTools.ps1 with a
     # 404 on vulkansdk-windows-X64-1.4.357.1.exe -- after the VS Build Tools
     # layer, i.e. the expensive way to find out. Same shape as LLVM_WINDOWS_VERSION,
     # which cannot follow LLVM_RELEASE to 23.1.0 because upstream ships no

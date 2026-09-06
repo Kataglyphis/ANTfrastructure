@@ -10,7 +10,7 @@
 #
 # SHELL is `powershell` (Windows PowerShell 5.1), NOT `pwsh`, and must stay so:
 # servercore ships 5.1 only, and pwsh arrives later in the real chain via
-# bootstrap-pwsh.ps1. A `pwsh` SHELL here made every RUN die with
+# Initialize-Pwsh.ps1. A `pwsh` SHELL here made every RUN die with
 # `hcs::System::CreateProcess ... The system cannot find the file specified`,
 # which the driver read as "process isolation cannot commit" and silently
 # downgraded every classic-lane build to Hyper-V isolation - i.e. to 2 CPUs on

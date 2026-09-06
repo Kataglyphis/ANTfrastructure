@@ -35,7 +35,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH} `
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
-# Rust note: provisioned by setup-rust-toolchain.ps1 via rustup WITH a stable default
+# Rust note: provisioned by Install-RustToolchain.ps1 via rustup WITH a stable default
 # toolchain (DELIBERATELY unpinned -- versions.env's RUST_VERSION pins only the Linux
 # lane). rustup is REQUIRED by Flutter's Cargokit (flutter_rust_bridge consumers);
 # only a toolchain-LESS rustup is forbidden (its proxy shims shadow cargo/rustc and
@@ -48,7 +48,7 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 # Docker's 125-layer cap (hit 2026-08-03). Modules dir COPY stays separate
 # (different dest). Copied here — the cheapest, last stage — so script edits
 # never invalidate the base or media layers.
-COPY windows\scripts\build\healthcheck.ps1 windows\scripts\build\smoke-test-container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
+COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
 # Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
 # imported from this path by downstream Invoke-Ci* / rust build scripts).
 COPY windows\scripts\modules C:\temp\scripts\modules
@@ -63,7 +63,7 @@ VOLUME ["C:\\workspace"]
 
 # Dev image: a relaxed interval keeps the healthcheck from burning cycles every 30s.
 HEALTHCHECK --interval=5m --timeout=15s --start-period=60s --retries=3 `
-  CMD pwsh -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\healthcheck.ps1
+  CMD pwsh -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\Test-Health.ps1
 
 # Description corrected 2026-08-24: it named LiteRT/LiteRT-LM/TVM
 # unconditionally -- empty marker stubs in :winarm64 for as long as the cross

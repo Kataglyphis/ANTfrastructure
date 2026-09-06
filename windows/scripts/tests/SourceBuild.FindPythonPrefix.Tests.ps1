@@ -25,9 +25,9 @@ Describe 'FindPython prefix: ORT and GenAI ask the helper for the names their CM
 
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $script:ort    = Get-Content -Raw (Join-Path $root 'scripts\build\build-onnx-from-source.ps1')
-        $script:genai  = Get-Content -Raw (Join-Path $root 'scripts\build\build-onnx-genai-from-source.ps1')
-        $script:ffmpeg = Get-Content -Raw (Join-Path $root 'scripts\build\build-ffmpeg-from-source.ps1')
+        $script:ort    = Get-Content -Raw (Join-Path $root 'scripts\build\Build-OnnxFromSource.ps1')
+        $script:genai  = Get-Content -Raw (Join-Path $root 'scripts\build\Build-OnnxGenaiFromSource.ps1')
+        $script:ffmpeg = Get-Content -Raw (Join-Path $root 'scripts\build\Build-FfmpegFromSource.ps1')
     }
 
     It 'ORT asks for the Python prefix with the NumPy include hint, from the target-build object' {

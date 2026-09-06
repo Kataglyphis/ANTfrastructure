@@ -31,7 +31,7 @@ Describe 'BuildKit module closure' {
         # Every `modules\<Name>.psm1` mentioned in a file, whatever the idiom
         # (Join-Path .. 'modules\X.psm1', a foreach list of bare names, a COPY
         # line). Bare-name form is matched separately so the foreach list in
-        # build-gstreamer-from-source.ps1 counts.
+        # Build-GstreamerFromSource.ps1 counts.
         function script:Get-ReferencedModules {
             param([string]$Path)
             $t = [System.IO.File]::ReadAllText($Path)

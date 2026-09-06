@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Select-MesonLogExcerpt (build-gstreamer-from-source.ps1): the bounded
+# Select-MesonLogExcerpt (Build-GstreamerFromSource.ps1): the bounded
 # meson-log.txt excerpt that replaced streaming 400k-800k lines through `log`
 # after a failed `meson setup` (30-60 min per attempt on arm64 runs 23-25).
 # The function is lifted out of the script's AST -- it is a pure function, and

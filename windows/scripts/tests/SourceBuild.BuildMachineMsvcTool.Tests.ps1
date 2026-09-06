@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Resolve-BuildMachineMsvcTool (build-gstreamer-from-source.ps1): the x64-
+# Resolve-BuildMachineMsvcTool (Build-GstreamerFromSource.ps1): the x64-
 # targeting cl.exe / ml64.exe the meson native file names for the BUILD machine
 # after arm64 run 26 (the build-machine libffi found HostX64\ARM64\cl.exe on
 # PATH and ml64 died on FFI_TYPE_SMALL_STRUCT_4B). Lifted out of the script's

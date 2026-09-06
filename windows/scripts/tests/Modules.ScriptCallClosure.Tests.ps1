@@ -16,7 +16,7 @@
 # to every existing suite. It surfaces as a bare CommandNotFoundException
 # inside a container, typically well into a compile stage. It has now happened
 # twice:
-#   * #113 / verify12 -- two names used directly by build-gstreamer-from-source.ps1
+#   * #113 / verify12 -- two names used directly by Build-GstreamerFromSource.ps1
 #     threw CommandNotFound at compile start.
 #   * #134 / arm64 run 37 -- Resolve-BuildMachineMsvcTool was promoted into
 #     WindowsTargetArch.Common and exported THERE, but not added to

@@ -247,7 +247,7 @@ function Assert-DiskHeadroom {
         'buildctl prune --free-storage <MB ABOVE total disk size, it is a minimum-free TARGET>; ' +
         'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags. ' +
         'For a VHDX-backed checkout the lever is a different one entirely: ' +
-        'windows\scripts\host\compact-host-vhdx.ps1 / rebuild-host-vhdx.ps1.'
+        'windows\scripts\host\Optimize-HostVhdx.ps1 / Update-HostVhdx.ps1.'
     # Normalize: accept 'C', 'C:', 'C:\' and full paths alike, dedupe, keep order.
     $letters = [System.Collections.Generic.List[string]]::new()
     foreach ($d in (@('C') + $Drive)) {
@@ -281,7 +281,7 @@ function Assert-DiskHeadroom {
 }
 
 function Get-ShimPatchStatePath {
-    # Where deploy-shim-patch.ps1 records what it installed. HOST state, not repo state: it
+    # Where Publish-ShimPatch.ps1 records what it installed. HOST state, not repo state: it
     # describes THIS machine's Stevedore install, so it must not travel with a checkout.
     param([string]$StatePath = '')
     if ($StatePath) { return $StatePath }
@@ -325,7 +325,7 @@ function Assert-ShimPatch {
     # BuildKit-lane gate: the patched containerd-shim-runhcs-v1 (upstream microsoft/hcsshim#2855)
     # is silently restored to stock by every Stevedore/containerd update, and stock means the
     # 30s tearDownTimeout -- the first heavy media finalize then dies ExportLayer 0x3, hours in.
-    # PRIMARY: SHA256 recorded by deploy-shim-patch.ps1 (refreshes when YOU deploy, so unlike a
+    # PRIMARY: SHA256 recorded by Publish-ShimPatch.ps1 (refreshes when YOU deploy, so unlike a
     # size table it cannot rot). FALLBACK (no state file): the weak size heuristic, which warns
     # instead of failing. Only the OpenCV canary PROVES the patch took effect.
     param(
@@ -343,7 +343,7 @@ function Assert-ShimPatch {
         [switch]$Force
     )
     # Defined BEFORE the not-found branch below, which quotes it in its throw.
-    $advice = 'Re-install it before building: pwsh -File windows\scripts\host\deploy-shim-patch.ps1 ' +
+    $advice = 'Re-install it before building: pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 ' +
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
@@ -404,7 +404,7 @@ function Assert-ShimPatch {
 
     # ── fallback: size heuristic (no recorded hash on this host yet) ──────────
     $record = "Record the deployed binary's hash so this gate stops guessing: re-run " +
-        'windows\scripts\host\deploy-shim-patch.ps1 (it writes ' + $statePath + ' on a successful swap).'
+        'windows\scripts\host\Publish-ShimPatch.ps1 (it writes ' + $statePath + ' on a successful swap).'
     if ($PatchedSize -contains $size) {
         Write-Host "runhcs shim: patched build by SIZE ($('{0:N0}' -f $size) bytes; no recorded hash)" -ForegroundColor Cyan
         Write-Warning $record
@@ -504,7 +504,7 @@ function Assert-BuildkitdStepLogEnv {
     }
     if ((@($envStrings) -join "`n") -match 'BUILDKIT_STEP_LOG_MAX_SIZE\s*=\s*-1') { return }
     $msg = ("buildkitd service env is missing BUILDKIT_STEP_LOG_MAX_SIZE=-1 - step logs will clip at 2MiB. " +
-        "Fix (elevated, between chain runs): windows\scripts\host\setup-new-host.ps1, or " +
+        "Fix (elevated, between chain runs): windows\scripts\host\Install-NewHost.ps1, or " +
         "Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment " +
         "-Value @('BUILDKIT_STEP_LOG_MAX_SIZE=-1','BUILDKIT_STEP_LOG_MAX_SPEED=-1') ; Restart-Service buildkitd.")
     if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
@@ -534,7 +534,7 @@ function Get-Rdna4HazardDevice {
 }
 
 function Set-Rdna4DeviceState {
-    # Toggle primitive shared by toggle-rdna4-gpu.ps1 and the layer-lock A/B (backlog #6).
+    # Toggle primitive shared by Set-Rdna4Gpu.ps1 and the layer-lock A/B (backlog #6).
     # ELEVATED callers only, and always verify the post-state: a swallowed Enable-PnpDevice
     # failure strands the host on the iGPU while the console claims otherwise.
     param(
@@ -558,7 +558,7 @@ function Assert-NoActiveRdna4Gpu {
     # files, so EVERY process-isolated RUN-layer finalize dies `hcsshim::ActivateLayer 0x20`
     # (docker/for-win#14977; A/B-proven here; COPY-only layers are unaffected, which is why
     # light probes look green). Build window: disable the dGPU, build, re-enable via
-    # windows\scripts\host\toggle-rdna4-gpu.ps1 (elevated).
+    # windows\scripts\host\Set-Rdna4Gpu.ps1 (elevated).
     # docs/failure-modes.md § `hcsshim::ActivateLayer 0x20` on an AMD Radeon host.
     param(
         # Injectable for tests. Default: live display-class PnP devices.
@@ -575,14 +575,14 @@ function Assert-NoActiveRdna4Gpu {
         # -f binds TIGHTER than + (an unwrapped concat printed a literal {0}): keep the
         # concat parenthesized.
         Write-Host (("RDNA4 gate: {0} present but DISABLED - RUN-layer finalize is safe; re-enable after the " +
-            "build with windows\scripts\host\toggle-rdna4-gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
+            "build with windows\scripts\host\Set-Rdna4Gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
         return
     }
     $msg = (("'{0}' is ENABLED. On this host family an active RDNA4 dGPU makes EVERY process-isolated RUN-layer " +
         "finalize fail with hcsshim::ActivateLayer 0x20 (docker/for-win#14977; A/B-proven here 2026-08-10) - the " +
         "chain would die on its first RUN commit. Disable it for the build window (display falls back to the " +
-        "iGPU): elevated pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable, build, then re-enable with " +
-        "the same script (default action). Verify first with probe-build-copy.ps1 -Heavy.") -f $active[0].FriendlyName)
+        "iGPU): elevated pwsh -File windows\scripts\host\Set-Rdna4Gpu.ps1 -Disable, build, then re-enable with " +
+        "the same script (default action). Verify first with Test-BuildCopy.ps1 -Heavy.") -f $active[0].FriendlyName)
     if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
     throw "REFUSING to start: $msg Pass -SkipHostChecks to override."
 }

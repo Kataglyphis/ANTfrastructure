@@ -10,7 +10,7 @@
 # glib holder and libnice/webrtc/nice vanish (runs 25-27, 2026-08-26) -- so the
 # regexes must (a) hit the real 1.12.0 layout, (b) rewrite exactly those lines,
 # (c) be idempotent per fix, and (d) THROW on layout drift rather than warn.
-# The function lives in build-gstreamer-from-source.ps1 (NOT a module: the
+# The function lives in Build-GstreamerFromSource.ps1 (NOT a module: the
 # mounted module set is one shared closure -- `buildmods`' six .psm1, which the
 # classic lane also COPYs into `common`, every BK compile stage's ancestor --
 # so a module edit re-keys all branches on both lanes; #134 splits that).

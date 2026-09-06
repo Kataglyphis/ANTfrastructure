@@ -10,7 +10,7 @@
 # the corresponding env pin is NOT forwarded (local runs, new lanes, forgotten
 # ARG plumbing), so a drifted default silently builds a DIFFERENT version than
 # the pinned chain. The classic case is the LITERT_VERSION twin:
-# build-litert-from-source.ps1 and litert-lm-export-bridge.ps1 both bake the
+# Build-LitertFromSource.ps1 and Export-LitertLmBridge.ps1 both bake the
 # same tag and must be bumped together — this suite pins the pair explicitly.
 #
 # Discovery is AST-based (CommandAst scan of top-level windows\scripts\*.ps1
@@ -77,7 +77,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     # nothing to drift) and are dropped by the scanner, e.g. build-tvm's VULKAN_SDK.
     function Get-PinParityAllowlist {
         return @(
-            'build-litert-lm-from-source.ps1|VCPKG_ROOT'   # local toolchain root, not a version
+            'Build-LitertLmFromSource.ps1|VCPKG_ROOT'   # local toolchain root, not a version
         )
     }
 
@@ -164,7 +164,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     # TAG pin (TVM_REF), not the commit override. Maps "<script>|<resolved key>"
     # to the versions.env key the DefaultValue is actually baked from.
     $script:DefaultValueKeyOverride = @{
-        'build-tvm-from-source.ps1|TVM_COMMIT' = 'TVM_REF'
+        'Build-TvmFromSource.ps1|TVM_COMMIT' = 'TVM_REF'
     }
     function Resolve-DefaultValueKey {
         param($Site, $ResolvedKey)
@@ -192,23 +192,23 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 # #134: TVM_COMMIT (a commit-hash override for the LLVM 23 break)
                 # is first in the array and wins the key resolution; the DefaultValue
                 # is the tag fallback, compared against TVM_REF below.
-                'build-tvm-from-source.ps1|TVM_COMMIT',
-                'build-iree-from-source.ps1|IREE_VERSION',
-                'build-litert-from-source.ps1|LITERT_VERSION',
-                'litert-lm-export-bridge.ps1|LITERT_VERSION',
-                'build-litert-lm-from-source.ps1|LITERT_LM_VERSION',
-                'build-litert-lm-from-source.ps1|PROTOC_VERSION',
-                'build-litert-lm-from-source.ps1|JRE_VERSION',
-                'build-opencv-from-source.ps1|OPENCV_VERSION',
-                'build-ffmpeg-from-source.ps1|FFMPEG_VERSION',
-                'build-ffmpeg-from-source.ps1|PYAV_VERSION',
-                'build-gstreamer-from-source.ps1|GSTREAMER_VERSION',
+                'Build-TvmFromSource.ps1|TVM_COMMIT',
+                'Build-IreeFromSource.ps1|IREE_VERSION',
+                'Build-LitertFromSource.ps1|LITERT_VERSION',
+                'Export-LitertLmBridge.ps1|LITERT_VERSION',
+                'Build-LitertLmFromSource.ps1|LITERT_LM_VERSION',
+                'Build-LitertLmFromSource.ps1|PROTOC_VERSION',
+                'Build-LitertLmFromSource.ps1|JRE_VERSION',
+                'Build-OpencvFromSource.ps1|OPENCV_VERSION',
+                'Build-FfmpegFromSource.ps1|FFMPEG_VERSION',
+                'Build-FfmpegFromSource.ps1|PYAV_VERSION',
+                'Build-GstreamerFromSource.ps1|GSTREAMER_VERSION',
                 # 2026-08-21: gstreamer's .pc writer used a variable-indirected
                 # fallback W1c cannot see and drifted to 1.28.0 — converted to
                 # Get-SourceBuildVersion; this pin keeps it under W1's eye.
-                'build-gstreamer-from-source.ps1|ONNXRUNTIME_VERSION',
-                'build-onnx-from-source.ps1|ONNXRUNTIME_VERSION',
-                'build-onnx-genai-from-source.ps1|ONNXRUNTIME_GENAI_VERSION')) {
+                'Build-GstreamerFromSource.ps1|ONNXRUNTIME_VERSION',
+                'Build-OnnxFromSource.ps1|ONNXRUNTIME_VERSION',
+                'Build-OnnxGenaiFromSource.ps1|ONNXRUNTIME_GENAI_VERSION')) {
             Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite deliberately"
         }
     }
@@ -263,12 +263,12 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         }
     }
 
-    It 'LITERT_VERSION twin defaults (build-litert-from-source.ps1 + litert-lm-export-bridge.ps1) both equal the canonical tag' {
+    It 'LITERT_VERSION twin defaults (Build-LitertFromSource.ps1 + Export-LitertLmBridge.ps1) both equal the canonical tag' {
         $pins = Get-PinParityPins
         Assert-True ($pins.Contains('LITERT_VERSION')) 'LITERT_VERSION is pinned in versions.env'
         $canonical = [string]$pins['LITERT_VERSION']
         $twins = @(Get-PinParitySite | Where-Object {
-                ($_.Script -eq 'build-litert-from-source.ps1' -or $_.Script -eq 'litert-lm-export-bridge.ps1') -and
+                ($_.Script -eq 'Build-LitertFromSource.ps1' -or $_.Script -eq 'Export-LitertLmBridge.ps1') -and
                 (@($_.EnvVars) -contains 'LITERT_VERSION') })
         Assert-Equal 2 $twins.Count 'exactly the two twin LITERT_VERSION default sites exist (build script + export bridge)'
         foreach ($s in $twins) {
@@ -329,10 +329,10 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     # *_SHA256 pins and verify-toolchain's tool-version gates).
     function Get-RcivAllowlist {
         return @(
-            'setup-cuda.ps1|CUDNN_ROOT',               # install root path, default derived from $CudnnVersion - not a version
-            'setup-tensorrt.ps1|TENSORRT_ROOT',        # install root path literal - not a version
-            'setup-scoop-tools.ps1|GIT_INSTALLER_URL', # URL default derived from $gitVer; GIT_VERSION parity is asserted at ITS site
-            'smoke-test-container.ps1|<dynamic>'       # Get-ExpectedVersion wrapper: env name AND default are pass-through variables
+            'Install-Cuda.ps1|CUDNN_ROOT',               # install root path, default derived from $CudnnVersion - not a version
+            'Install-Tensorrt.ps1|TENSORRT_ROOT',        # install root path literal - not a version
+            'Install-ScoopTools.ps1|GIT_INSTALLER_URL', # URL default derived from $gitVer; GIT_VERSION parity is asserted at ITS site
+            'Test-Container.ps1|<dynamic>'       # Get-ExpectedVersion wrapper: env name AND default are pass-through variables
         )
     }
 
@@ -460,11 +460,11 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             if ($null -ne $resolved) { $found["$($s.Script)|$($resolved.Key)"] = $true }
         }
         foreach ($expected in @(
-                'setup-scoop-tools.ps1|GIT_VERSION',
-                'setup-scoop-tools.ps1|WIX_VERSION',
-                'setup-scoop-tools.ps1|WIX_UI_EXT_VERSION',
-                'verify-toolchain.ps1|WIX_UI_EXT_VERSION',
-                'setup-tensorrt.ps1|CUDA_VERSION_MAJOR_MINOR')) {
+                'Install-ScoopTools.ps1|GIT_VERSION',
+                'Install-ScoopTools.ps1|WIX_VERSION',
+                'Install-ScoopTools.ps1|WIX_UI_EXT_VERSION',
+                'Test-Toolchain.ps1|WIX_UI_EXT_VERSION',
+                'Install-Tensorrt.ps1|CUDA_VERSION_MAJOR_MINOR')) {
             Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite (and any KnownDrift entry) deliberately"
         }
     }
@@ -548,14 +548,14 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         }
     }
 
-    It 'WIX_UI_EXT_VERSION twin defaults (setup-scoop-tools.ps1 + verify-toolchain.ps1) carry the SAME literal - install and verify gates must never disagree' {
+    It 'WIX_UI_EXT_VERSION twin defaults (Install-ScoopTools.ps1 + Test-Toolchain.ps1) carry the SAME literal - install and verify gates must never disagree' {
         # Same twin economics as the W1 LITERT pair: setup installs the WiX UI
         # extension the default names, verify-toolchain asserts the extension the
         # default names. Even while both are (known-)drifted from versions.env,
         # they must at least agree with EACH OTHER, or a defaults-only container
         # build installs one version and then fails its own toolchain gate.
         $twins = @(Get-RcivSite | Where-Object {
-                ($_.Script -eq 'setup-scoop-tools.ps1' -or $_.Script -eq 'verify-toolchain.ps1') -and
+                ($_.Script -eq 'Install-ScoopTools.ps1' -or $_.Script -eq 'Test-Toolchain.ps1') -and
                 $_.EnvVar -eq 'WIX_UI_EXT_VERSION' })
         Assert-Equal 2 $twins.Count 'exactly the two twin WIX_UI_EXT_VERSION default sites exist (install script + verify gate)'
         foreach ($s in $twins) {
@@ -634,15 +634,15 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
             if ($pins.Contains($s.Key)) { $found["$($s.Script)|$($s.Key)"] = $true }
         }
         foreach ($expected in @(
-                'build-ffmpeg-from-source.ps1|NV_CODEC_HEADERS_REF',
-                'build-litert-lm-bazel.ps1|LITERT_LM_VERSION',
-                'assemble-torch-app.ps1|APP_REF',
-                'build-opencv-from-source.ps1|PYTHON_VERSION',
-                'build-gstreamer-from-source.ps1|LIBFFI_MESON_VERSION',
-                'build-toolchain-all.ps1|NUGET_VERSION',
-                'setup-vcpkg.ps1|VCPKG_REF',
-                'setup-vs.ps1|VISUAL_STUDIO_VERSION',
-                'setup-vs.ps1|WINDOWS_SDK_BUILD')) {
+                'Build-FfmpegFromSource.ps1|NV_CODEC_HEADERS_REF',
+                'Build-LitertLmBazel.ps1|LITERT_LM_VERSION',
+                'Build-TorchApp.ps1|APP_REF',
+                'Build-OpencvFromSource.ps1|PYTHON_VERSION',
+                'Build-GstreamerFromSource.ps1|LIBFFI_MESON_VERSION',
+                'Build-ToolchainAll.ps1|NUGET_VERSION',
+                'Install-Vcpkg.ps1|VCPKG_REF',
+                'Install-Vs.ps1|VISUAL_STUDIO_VERSION',
+                'Install-Vs.ps1|WINDOWS_SDK_BUILD')) {
             Assert-True ($found.ContainsKey($expected)) "scanner no longer sees the known idiom site $expected - the scan broke or the site changed shape; update this suite deliberately"
         }
     }

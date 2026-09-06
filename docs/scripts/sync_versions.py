@@ -158,7 +158,7 @@ def collect_versions() -> dict[str, str]:
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_nvidia = read_repo_file("windows/Dockerfile.nvidia")
     windows_media = read_repo_file("windows/Dockerfile.media-merge-builder")
-    windows_vs = read_repo_file("windows/scripts/host/setup-vs.ps1")
+    windows_vs = read_repo_file("windows/scripts/host/Install-Vs.ps1")
 
     return {
         "linux_ubuntu": v["UBUNTU_VERSION"],
@@ -189,12 +189,12 @@ def collect_versions() -> dict[str, str]:
         # ONNX builds in the media-core branch; Dockerfile.media-merge-builder re-declares the
         # ARG for the merged image's version env vars — both are checked against versions.env.
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
-        # setup-vs.ps1 no longer hardcodes a `Visual Studio\<major>\BuildTools`
+        # Install-Vs.ps1 no longer hardcodes a `Visual Studio\<major>\BuildTools`
         # path (refactored 2026-07-12, 63d405c). The VS major now lives only in
         # the `$vsMajor = ... else { '<major>' }` fallback, which must stay in
         # sync with versions.env's VISUAL_STUDIO_VERSION.
         "windows_vs": extract(
-            # setup-vs.ps1 hoisted the assignment to $script:VsMajor (2026-08-03);
+            # Install-Vs.ps1 hoisted the assignment to $script:VsMajor (2026-08-03);
             # accept both the old local and the new script-scoped spelling.
             r"\$(?:script:)?[Vv]sMajor\s*=.*'([0-9]+)'",
             windows_vs,

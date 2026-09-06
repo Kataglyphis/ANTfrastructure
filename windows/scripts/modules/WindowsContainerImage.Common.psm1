@@ -43,10 +43,10 @@ function Resolve-ContainerImageValue {
     return $resolved
 }
 
-# Single source for the VS Build Tools root: setup-vs.ps1 and the smoke test each
+# Single source for the VS Build Tools root: Install-Vs.ps1 and the smoke test each
 # probed for VsDevCmd.bat with their own (divergent) Program Files lists. Probes
 # both PF roots, keyed on the file every caller actually needs (VsDevCmd.bat);
-# honors VISUAL_STUDIO_VERSION with the same '18' fallback as setup-vs.ps1.
+# honors VISUAL_STUDIO_VERSION with the same '18' fallback as Install-Vs.ps1.
 # Returns the BuildTools root (string) or $null when not installed. ADDITIVE export.
 function Resolve-VsBuildToolsRoot {
     param(

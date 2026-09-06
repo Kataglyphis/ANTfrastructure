@@ -8,11 +8,11 @@ Place the **TensorRT** zip here for the GPU lane (`windows/build-buildkit.ps1 -G
   account and EULA acceptance — which is why this cannot be downloaded by the
   build automatically).
 - Optional integrity pin: set `TENSORRT_ZIP_SHA256` in versions.env to
-  `(Get-FileHash .\TensorRT-*.zip).Hash` so setup-tensorrt.ps1 verifies the
+  `(Get-FileHash .\TensorRT-*.zip).Hash` so Install-Tensorrt.ps1 verifies the
   zip before extraction.
 
 An **empty** directory is fine: the CPU lane never looks here, and the GPU
-lane's `setup-tensorrt.ps1` degrades gracefully (TensorRT EP disabled) when no
+lane's `Install-Tensorrt.ps1` degrades gracefully (TensorRT EP disabled) when no
 zip is present.
 
 Everything in this directory except this README is gitignored. This file is

@@ -73,7 +73,7 @@ Two corollaries worth stating plainly, because both have already been guessed wr
    payload is a `windows/amd64` image; an arm64 platform descriptor on it produces a manifest
    nothing can run, and someone will `pull` it onto a Windows-on-ARM box and file a bug.
 2. **arm64 binaries cannot execute on the build host.** Windows x64 has no ARM64 emulation (only
-   the reverse). Every "run it and see" smoke in `smoke-test-container.ps1` is unavailable here,
+   the reverse). Every "run it and see" smoke in `Test-Container.ps1` is unavailable here,
    which is why the static gates below carry so much weight.
 
 ## Why clang-cl makes this cheap
@@ -94,7 +94,7 @@ on this lane.)
 MSVC ABI, so an aarch64 link needs Microsoft's ARM64 CRT and import libraries
 (`VC\Tools\MSVC\<ver>\lib\arm64`), which ship only with
 `Microsoft.VisualStudio.Component.VC.Tools.ARM64`. Its `Hostx64\arm64\cl.exe` rides along unused.
-This is why `setup-vs.ps1` and `verify-toolchain.ps1` assert the **library** directories rather
+This is why `Install-Vs.ps1` and `Test-Toolchain.ps1` assert the **library** directories rather
 than the compiler binary — a `cl.exe` probe would pass even when the libraries, the part that is
 actually load-bearing, are absent.
 
@@ -109,7 +109,7 @@ Lib-ARM64 / Bin-ARM64     for cross compiling from Intel based development envir
 ```
 
 scoop installs the SDK with the manifest's default component set, so a stock base image has **no**
-`$VULKAN_SDK\Lib-ARM64`. `setup-scoop-tools.ps1` adds it explicitly through the SDK's Qt Installer
+`$VULKAN_SDK\Lib-ARM64`. `Install-ScoopTools.ps1` adds it explicitly through the SDK's Qt Installer
 Framework `maintenancetool.exe`.
 
 **That step warns, it does not fail — deliberately.** Every arm64 prerequisite in the base
@@ -121,7 +121,7 @@ chain's most expensive layer.
 
 Set **`WINDOWS_ARM64_STRICT=1`** to turn them into hard gates — the same opt-in shape as
 `CUDA_STACK_STRICT=1` on the Linux side. **All of them except one** (this sentence said "all"
-until 2026-08-24, disagreeing with AGENTS.md): `setup-vs.ps1`'s MSVC `lib\arm64` check runs in a
+until 2026-08-24, disagreeing with AGENTS.md): `Install-Vs.ps1`'s MSVC `lib\arm64` check runs in a
 RUN that sits *above* the `ARG WINDOWS_ARM64_STRICT` declaration in `Dockerfile.base` and
 therefore never sees the flag — that one check stays warn-only regardless. Use STRICT once the
 arm64 lane is real; it is the flag that says "this image claims a complete arm64 toolchain".
@@ -149,7 +149,7 @@ keys its cache on the ARG's value"): declaring the arch ARG in base would re-pay
 Tools install — the chain's most expensive layer — on **every lane switch**.
 
 For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer, in
-the same group as `verify-toolchain.ps1` — its only consumer there. The host provisioning scripts
+the same group as `Test-Toolchain.ps1` — its only consumer there. The host provisioning scripts
 (`setup-scoop-tools`, `setup-vcpkg`) spell their few arm64 facts inline and import just the three
 modules that precede the VS layer. Placing the module higher invalidated scoop, vcpkg **and** the
 ~30-minute rust layer on every edit to a file whose whole point is that adding a target is a
@@ -182,7 +182,7 @@ mode, guarded here by a throwing stub.
 
 ## SIMD: the failure that hides inside a green build
 
-The kernel SIMD flags were never an ordinary flag helper's output. `build-onnx-from-source.ps1`
+The kernel SIMD flags were never an ordinary flag helper's output. `Build-OnnxFromSource.ps1`
 injects them **per-TU into `build.ninja` post-configure** — via `Get-WindowsTargetKernelSimdFlags
 -Arch`; the old `Get-WindowsX86Avx512Flags` survives only as a zero-caller compat shim — onto
 exactly the MLAS kernels matched by `Get-MlasKernelTuPattern`. Globally-enabled AVX-512 was field-proven to crash protoc
@@ -195,7 +195,7 @@ build would go green with MLAS's NEON/dotprod/i8mm kernels compiled without thei
 unoptimised at best, absent at worst, and undetectable from the build host.
 
 So the pattern is arch-parameterized (`Get-MlasKernelTuPattern`) alongside a **minimum match
-count** (`Get-MlasKernelTuMinimum`), and `build-onnx-from-source.ps1` **throws** when the tagged-TU
+count** (`Get-MlasKernelTuMinimum`), and `Build-OnnxFromSource.ps1` **throws** when the tagged-TU
 count falls below that floor. The floor is the actual guard; the pattern alone is not — a warning
 there would have preserved exactly the failure mode this exists to prevent.
 
@@ -224,15 +224,15 @@ With nothing runnable on the build host, verification is layered:
 
 | Gate | Where | What it proves |
 |---|---|---|
-| `verify-toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
-| `verify-target-arch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
+| `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
+| `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
 
 The one gate that does **not** exist yet is native execution: a `windows-11-arm` CI job would be
 the only proof the artifacts actually **run**. Until it exists, treat every arm64 output as
 unvalidated — see the prose below.
 
-`verify-target-arch.ps1` is the Windows twin of the Linux lane's ELF check in
+`Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
 
 - **A minimum inspected count.** A mis-pathed or empty tree otherwise passes green with zero files
@@ -248,10 +248,10 @@ Usage:
 
 ```powershell
 # strict: every binary must be arm64, at least 20 inspected
-windows\scripts\build\verify-target-arch.ps1 -Path C:\runtime -Arch arm64 -MinInspected 20
+windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspected 20
 
 # permit genuinely host-arch build tools that never ship to the target
-windows\scripts\build\verify-target-arch.ps1 -Path C:\runtime -Arch arm64 `
+windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 ```
 
@@ -261,7 +261,7 @@ problem to solve, since no Server Core arm64 exists.
 
 ## Sequencing: rebuild base twice, on purpose
 
-`setup-vs.ps1` deliberately does **not** SHA-pin the VS bootstrapper (the installer refreshes
+`Install-Vs.ps1` deliberately does **not** SHA-pin the VS bootstrapper (the installer refreshes
 within a channel every few weeks; the hash is logged for provenance instead). Adding the ARM64
 component therefore also pulls whatever newer VS servicing build is current — and any regression
 it carries will look exactly like "the arm64 change broke the build".
@@ -555,7 +555,7 @@ release zip, its version derived from the **vendored** protobuf commit (`90b73ac
 `google/protobuf/runtime_version.h`, a header 3.21.9 does not ship. The vendored runtime picks
 the protoc family; nothing else may.
 
-**XNNPACK gets the MLAS-class per-TU treatment** (`build-litert-from-source.ps1`). 569 C
+**XNNPACK gets the MLAS-class per-TU treatment** (`Build-LitertFromSource.ps1`). 569 C
 microkernel TUs are tagged **per feature family** in `build.ninja` post-configure — families
 completed against upstream's `PROD_*` source lists: scalar `fp16arith`, `neonfp16`,
 `neonfp16arith`, `neondot`, `neondotfp16arith`, `neonbf16`, `neoni8mm`, `neoni8mmbf16`; SME
@@ -603,7 +603,7 @@ is `C:\runtime\python`, and the host CPython stays build tooling.
 Since 2026-08-24 (#115) `media-litert` is a **real branch on this lane** — plain LiteRT
 cross-builds; see the machinery section above. Inside it, the LiteRT-**LM** stage self-skips
 (its two real Bazel blockers are recorded in the exclusion table) and stages the empty
-`litert-lm` stand-in tree itself — `build-litert-all.ps1`'s skip path — so the merge's
+`litert-lm` stand-in tree itself — `Build-LitertAll.ps1`'s skip path — so the merge's
 unconditional `COPY` still finds every path it expects. **No branch is absent any more** (2026-08-24
 evening): `media-tvm` — which also carries **IREE** — cross-builds runtime-only (#116, see its own
 section), so the merge fans in three real images on both lanes. History of this paragraph, kept
@@ -618,8 +618,8 @@ branches, then only `media-tvm`), providing the expected paths empty plus an `AB
 marker in each. **That stage is retired** (#116 made `media-tvm` real, runtime-only — see the next
 section): `$script:MergeRequiredBranches` is the same three-branch list on both lanes, and the
 surviving convention is that **a branch which cannot build a component ships its own empty,
-marker-carrying tree** — `build-litert-all.ps1` does exactly that for LiteRT-LM, and
-`build-tvm-from-source.ps1` / `build-iree-from-source.ps1` drop `COMPILER-ABSENT-ON-ARM64.txt` next to
+marker-carrying tree** — `Build-LitertAll.ps1` does exactly that for LiteRT-LM, and
+`Build-TvmFromSource.ps1` / `Build-IreeFromSource.ps1` drop `COMPILER-ABSENT-ON-ARM64.txt` next to
 their runtime installs. The merge's pointer contract is unchanged: `TVM_LIBRARY_PATH` / `IREE_BIN`
 must resolve on both lanes, and smoke section 19 asserts it (the first arm64 smoke run found
 exactly that pair dangling).
@@ -737,7 +737,7 @@ So on the cross lane:
   `dumpbin`, and asserts the per-plugin export marker `gst_plugin_<name>_get_desc` (see the
   machinery section for its measured recalibration) — and still says explicitly (`cross lane - load
   probe impossible on an x64 host`) why it stops there. Whether it is the right machine is
-  `verify-target-arch.ps1`'s job.
+  `Test-TargetArch.ps1`'s job.
 - Since 2026-08-24 the smoke gate's **host-toolchain sections (1-6, 14-16, and 19, arch-filtered:
   `TORCH_APP_DIR` is dropped) run on this lane** against their own floors — measured **97 passed /
   0 failed / 15 skipped** on the green run — and the payload sections are skipped **as sections**,
@@ -753,7 +753,7 @@ So on the cross lane:
 - The shipped image's **`HEALTHCHECK` skips payload execution.** `windows/Dockerfile` declares it
   unconditionally (a Dockerfile cannot branch on an ARG) and the same file produces `:winarm64`, so
   without this the bundle would sit permanently `unhealthy`, retrying failing checks every five
-  minutes forever. `healthcheck.ps1` reads the baked `WINDOWS_TARGET_ARCH`; since 2026-08-24 it
+  minutes forever. `Test-Health.ps1` reads the baked `WINDOWS_TARGET_ARCH`; since 2026-08-24 it
   still runs its four host-tool checks on arm64 and skips **only payload execution**, reporting
   that the payload is a cross-compiled **artifact bundle, deliberately not runnable**.
 
@@ -790,7 +790,7 @@ Both would have produced a **green** result:
 ## aarch64 compiler-rt is a base prerequisite
 
 scoop's `main/llvm` is the **x64** Windows release, and LLVM ships compiler-rt for the host architecture
-only: the install contains `clang_rt.builtins-x86_64.lib` and nothing else. `probe-arm64-prereqs.ps1` Q5
+only: the install contains `clang_rt.builtins-x86_64.lib` and nothing else. `Test-Arm64Prereqs.ps1` Q5
 has checked for the aarch64 counterpart since this lane was designed, and reported `[FAIL]` the whole time.
 
 That is not cosmetic. clang lowers 128-bit integer arithmetic to compiler-rt libcalls on aarch64, so the
@@ -804,7 +804,7 @@ lld-link: error: undefined symbol: __udivti3
 ONNX Runtime, FFmpeg and OpenCV happen not to need it. GStreamer does — which is why the gap stayed
 invisible until the merge stage.
 
-`setup-scoop-tools.ps1` now fetches the official
+`Install-ScoopTools.ps1` now fetches the official
 `clang+llvm-<ver>-aarch64-pc-windows-msvc.tar.xz`, extracts **only**
 `clang_rt.builtins-aarch64.lib` (280 KB out of a 704 MB archive), drops it beside the host library, and
 deletes the archive. Measured on the build host: 0.8 min to download, 0.4 min to extract.
@@ -816,7 +816,7 @@ Three details worth keeping:
   new path.
 - **It installs unconditionally**, like the MSVC ARM64 toolset and the Vulkan ARM64 component. Gating it on
   an arch ARG would re-pay the chain's most expensive layers on every lane switch. It sits *after*
-  `setup-vs.ps1` in `Dockerfile.base`, so adding it does not invalidate the VS layer.
+  `Install-Vs.ps1` in `Dockerfile.base`, so adding it does not invalidate the VS layer.
 - **The URL must encode the `+` as `%2B`.** That is the canonical `browser_download_url` the GitHub release
   API returns, and the unencoded form 404s. Note also that GitHub refuses **HEAD** on release assets, so a
   failed HEAD is *not* evidence the asset is missing — verify with a ranged GET instead.
@@ -831,9 +831,9 @@ linking `gstreamer-1.0-0.dll`), with the script's own warning naming the cause.
 
 Rather than rebuild the whole chain to add the lib to the toolchain layer (the media branches derive FROM
 `bk-windows-toolchain`, so one added layer re-pays ~2 h of media compiles), the **GStreamer merge stage
-self-heals**: `build-gstreamer-from-source.ps1` § 5d, on the cross lane only, mines
+self-heals**: `Build-GstreamerFromSource.ps1` § 5d, on the cross lane only, mines
 `clang_rt.builtins-aarch64.lib` from the official release archive (same URL/recipe as
-`setup-scoop-tools.ps1`) next to the x86_64 lib, then re-runs its candidate search. The existing
+`Install-ScoopTools.ps1`) next to the x86_64 lib, then re-runs its candidate search. The existing
 warn-and-link-without policy stays for the case the fetch fails. Regression: `SourceBuild.GstreamerCompilerRt.Tests.ps1`.
 The toolchain-level fix (builtins in the `patched-llvm` stage) is a tracked follow-up for the next natural
 toolchain rebuild.
@@ -860,7 +860,7 @@ stub DLLs (`QnnHtpV*Stub.dll`, `calculator*.dll` — staged beside every
 framework by `Copy-QnnRuntime`) import `libcdsprpc.dll`/`libadsprpc.dll`,
 Qualcomm's FastRPC ADSP/CDSP drivers. Those are device-OS libraries: present in
 every Windows-on-Snapdragon image, never in the SDK zip and never on the
-Server Core reference host — so `verify-target-arch.ps1`'s `ClientOsPattern`
+Server Core reference host — so `Test-TargetArch.ps1`'s `ClientOsPattern`
 now allows them, and the arch gate reports the QNN payload as inspected PE +
 resolved imports instead of 63 phantom unresolved edges.
 
@@ -871,7 +871,7 @@ scoop installs **one architecture per app**, and that is the host's — so the i
 failed identically: `ext/hls` (HTTP Live Streaming), `ext/dtls` (WebRTC), `ext/aes`, and
 glib-networking's OpenSSL TLS backend.
 
-`setup-scoop-tools.ps1` now installs the arm64 build **beside** the x64 one, using the same
+`Install-ScoopTools.ps1` now installs the arm64 build **beside** the x64 one, using the same
 upstream artifact and the same SHA256 that scoop's own `openssl` manifest pins for its `arm64`
 entry. Three things about that step are load-bearing:
 

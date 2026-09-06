@@ -182,7 +182,7 @@ $tool = [string]$ev.tool_name
 $in = $ev.tool_input
 
 # Files whose whole job is to describe or test these patterns.
-$exemptNames = @('guard-destructive-deletes.ps1', 'guard.destructivedeletes.tests.ps1', 'free-disk-space.ps1')
+$exemptNames = @('guard-destructive-deletes.ps1', 'guard.destructivedeletes.tests.ps1', 'Clear-DiskSpace.ps1')
 
 switch -Regex ($tool) {
     '^(Bash|PowerShell)$' {
@@ -190,7 +190,7 @@ switch -Regex ($tool) {
         if ($verdict) {
             Write-Decision -Decision $verdict.Decision -Reason (
                 'Blocked by guard-destructive-deletes: this command ' + $verdict.Reason + '. ' +
-                'Host disk reclaim goes through windows\scripts\host\free-disk-space.ps1 ' +
+                'Host disk reclaim goes through windows\scripts\host\Clear-DiskSpace.ps1 ' +
                 '(allowlisted paths, report-only by default). A delete that must reach a ' +
                 'protected root is for the user to run themselves, not the agent.')
         }
@@ -210,7 +210,7 @@ switch -Regex ($tool) {
                 'Blocked by guard-destructive-deletes: this file content ' + $verdict.Reason + '. ' +
                 'Handing the user a script that deletes from a protected root is the exact ' +
                 'shape of the 2026-08-21 host wipe. Route the reclaim through ' +
-                'windows\scripts\host\free-disk-space.ps1 instead.')
+                'windows\scripts\host\Clear-DiskSpace.ps1 instead.')
         }
         break
     }

@@ -42,7 +42,7 @@ Earlier tranches: [`2026-08-11`](windows-backlog-archive-2026-08-11.md) ·
 #### 2. ✅ RESOLVED (2026-07-10) — MSVC-STL `experimental/coroutine` inline patch dropped; `yvals_core.h` now carries the load with a loud drift-assertion
 - **Where:** media-core / ONNX GenAI configure (MSVC 14.51.36231 STL headers). Log ~line 193613.
 - **Was:** `WARNING: experimental/coroutine: STL1009 macro matched the guard but not the replace pattern; MSVC layout may have changed. Verify ...\include\experimental\coroutine (clang static_assert errors may resurface later).` — **pre-existing** (also 1 hit in `rebuild-refactor-2026-07-10b.log`). The coroutine-file edit's single-line regex never matched this toolset's *multi-line* `STL1009` macro call, so it was a silent no-op.
-- **Fix (exactly the refactor idea below):** removed the `<experimental/coroutine>`-specific edit from `build-onnx-genai-from-source.ps1`. It was (a) redundant — wrapping the single `_EMIT_STL_ERROR` define in `yvals_core.h` in `#ifdef __clang__` no-ops *every* STL error code (STL1009/1010/1011) under clang-cl — and (b) permanently broken. The remaining `yvals_core.h` patch is now followed by a **loud drift-assertion** that `throw`s if the `_EMIT_STL_ERROR` define is present but the exact patch target no longer matches (i.e. a future MSVC toolset changed the macro format), so drift fails the build loudly instead of silently resurfacing clang `static_assert`s mid-compile. Validated against MSVC 14.51.36231; the removed edit is a proven no-op on build output.
+- **Fix (exactly the refactor idea below):** removed the `<experimental/coroutine>`-specific edit from `Build-OnnxGenaiFromSource.ps1`. It was (a) redundant — wrapping the single `_EMIT_STL_ERROR` define in `yvals_core.h` in `#ifdef __clang__` no-ops *every* STL error code (STL1009/1010/1011) under clang-cl — and (b) permanently broken. The remaining `yvals_core.h` patch is now followed by a **loud drift-assertion** that `throw`s if the `_EMIT_STL_ERROR` define is present but the exact patch target no longer matches (i.e. a future MSVC toolset changed the macro format), so drift fails the build loudly instead of silently resurfacing clang `static_assert`s mid-compile. Validated against MSVC 14.51.36231; the removed edit is a proven no-op on build output.
 
 <!-- NEXT-ENTRY-ANCHOR (monitor appends below) -->
 
@@ -104,7 +104,7 @@ never explained it:
   `tensorflow-lite`), `cc.has_function('TfLiteInterpreterCreate')` and
   `cc.has_header('tensorflow/lite/c/c_api.h')`. That header path is the
   **pre-rename TensorFlow** one; LiteRT v2.x ships the post-rename layout and
-  `build-litert-from-source.ps1` stages headers under `include\tflite\`, so the
+  `Build-LitertFromSource.ps1` stages headers under `include\tflite\`, so the
   probe could never succeed no matter what PKG_CONFIG_PATH said. Fixed by
   mirroring a `tensorflow\lite\` alias tree, resolving the C API library by
   name, and putting LiteRT's include/lib on `INCLUDE`/`LIB` (what
@@ -177,7 +177,7 @@ STILL UNPROVEN after this run:
 <summary>Original observation (2026-07-11) — kept for context</summary>
 
 ### Observation — gst plugins opencv/libav/tensorfilter are NOT in the shipped image (2026-07-11)
-Ground-truthed while fixing healthcheck.ps1's stale-`$LASTEXITCODE` false-PASS: `gst-inspect-1.0
+Ground-truthed while fixing Test-Health.ps1's stale-`$LASTEXITCODE` false-PASS: `gst-inspect-1.0
 opencv|tensorfilter|libav` all exit -1 ("No such element or plugin") in `winamd64`. The old
 healthcheck printed `[PASS] gst-plugin opencv found` for all three — a lie; the fixed check now
 reports `[SKIP]` (non-fatal by design). Consistent root cause: meson auto-detection never found
@@ -215,7 +215,7 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
      (3 tests, one driver); floor 763 → 762 with provenance at
      `windows/scripts/tests/Invoke-Tests.ps1:154` — the first DROP, measured, not
      hiding a red run. Stale `build.ps1` references corrected in 19 files;
-     `verify-host-setup.ps1` was a LIVE CHECK reporting stevedore as the "classic
+     `Test-HostSetup.ps1` was a LIVE CHECK reporting stevedore as the "classic
      fallback lane" and now reports it as the publish/inspect tool.
      `Dockerfile.torch`'s `-TorchBaseImage` recipe has NO BuildKit equivalent
      (the driver pins the torch stage's `BASE_IMAGE` to the local windows-media
@@ -226,7 +226,7 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
      default (`build-buildkit.ps1:526`; `-StockLlvm` is the opt-out) — so ANY
      `.psm1` edit re-keyed a full LLVM 23.1.0 compile **and** every media lane
      deriving from that image. Now six per-FILE mounts, exactly the closure
-     `build-llvm-from-source.ps1` imports (`Dockerfile.toolchain-builder:66-76`),
+     `Build-LlvmFromSource.ps1` imports (`Dockerfile.toolchain-builder:66-76`),
      gated by a new test at `BuildKit.ModuleClosure.Tests.ps1:190` that fails a
      whole-dir modules mount in any windows Dockerfile except `Dockerfile.probe`
      (exempt by design — `PROBE_NONCE` busts its layer anyway; its header says
@@ -240,27 +240,27 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
      `Get-PyprojectDependencies` moved from `WindowsSourceBuild.Common.psm1` (the
      `buildmods` six, mounted into all 11 media RUNs) to
      `WindowsTvm.Common.psm1:60,92` (the `tvmmods` leaf, mounted by media-tvm
-     only). Sole consumer: `build-tvm-from-source.ps1:316-326`.
+     only). Sole consumer: `Build-TvmFromSource.ps1:316-326`.
   4. **`Set-StrictMode -Version Latest`** added to `build-llvm-from-source`,
      `debug-litertlm-link`, `load-versions`, `normalize-tensorrt-tree`,
      `stage-cuda-runtime`, `clean-sccache-mount`, `bootstrap-pwsh`. Making that
      safe needed FOUR latent-bug fixes, each verified on pwsh 7.6.5 (where
      `.Count` throws on a scalar **and** on an empty pipeline result):
-     `normalize-tensorrt-tree.ps1`'s `$dllDirs` was not `@()`-wrapped, so `.Count`
+     `Set-TensorrtTree.ps1`'s `$dllDirs` was not `@()`-wrapped, so `.Count`
      threw on the **normal success path** (TensorRT 10+/11 ship the DLLs in `bin`
-     only — exactly one dir survives); `stage-cuda-runtime.ps1`'s `$roots` had the
+     only — exactly one dir survives); `Copy-CudaRuntime.ps1`'s `$roots` had the
      same shape and would have re-broken the arm64/CPU merge lane that the
-     2026-08-23 degrade-cleanly fix unblocked; `clean-sccache-mount.ps1` inlined
+     2026-08-23 degrade-cleanly fix unblocked; `Clear-SccacheMount.ps1` inlined
      `.Sum` on a `Measure-Object -Property`, which emits NOTHING for empty input;
-     `debug-litertlm-link.ps1` took `.Source` off an absent `llvm-nm.exe` —
-     **already a live bug**, because its caller `build-litert-lm-from-source.ps1`
+     `Debug-LitertlmLink.ps1` took `.Source` off an absent `llvm-nm.exe` —
+     **already a live bug**, because its caller `Build-LitertLmFromSource.ps1`
      sets StrictMode and `&`-invocation inherits it.
   5. **GStreamer wrap provisioning extracted.** The phase-5 wrap-git prefetch +
      libffi force-download (~64 lines) became `Invoke-GstWrapProvisioning`
      (`WindowsMeson.Common.psm1:293`, a merge-lane leaf). It takes a `-Logger`
      scriptblock, accumulates failures in a LOCAL list and RETURNS them; the #88
      fail-closed throw stays at the call site
-     (`build-gstreamer-from-source.ps1:288`) so that gate stays visible where it
+     (`Build-GstreamerFromSource.ps1:288`) so that gate stays visible where it
      fires. The libffi version expression deliberately STAYED in the stage script
      (`:283-285`) — `SourceBuild.PinParity`'s W1c scanner keys the pin site by
      FILE NAME. Script 1574 → 1514 lines. New suite:
@@ -294,20 +294,20 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
      external-consumer API and a module does NOT inherit its caller's strict mode,
      so adding it is a real downstream behaviour change;
      `Initialize-CiEnvironment.ps1` is dot-sourced and would leak strict mode into
-     seven in-repo callers plus external consumers; `litert-lm-export-bridge.ps1`
+     seven in-repo callers plus external consumers; `Export-LitertLmBridge.ps1`
      is dot-sourced by a caller that already sets it, so the line is a no-op with
      leak risk.
   3. **`Export-BuildHandoff` / `Import-BuildHandoff` stay on the hot facade.**
-     They look host-only, but `bk-warm.ps1`'s header keeps them plus
-     `bk-materialize.ps1` as the TESTED ROLLBACK PATH, and the retired
+     They look host-only, but `Invoke-BkWarm.ps1`'s header keeps them plus
+     `Invoke-BkMaterialize.ps1` as the TESTED ROLLBACK PATH, and the retired
      `media-core-built-opencv` RUN in `c9586c1^` mounts
      `WindowsSourceBuild.Common.psm1` into the container precisely so
      `bk-materialize` can call `Import-BuildHandoff`. Moving them breaks that path
      silently. See #149 for why that path is not currently safe anyway.
 
 - **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
-  stale.** NOTE REPAIRED 2026-08-31 (`bk-warm.ps1:5-18`); the restore itself stays
-  OPEN until someone needs it. `bk-warm.ps1` promised that if the ExportLayer-0x3
+  stale.** NOTE REPAIRED 2026-08-31 (`Invoke-BkWarm.ps1:5-18`); the restore itself stays
+  OPEN until someone needs it. `Invoke-BkWarm.ps1` promised that if the ExportLayer-0x3
   canary fires again you can restore those targets and "these payloads work
   unchanged". The payloads do; the targets do not. Measured: all **ten** retired
   RUNs mount the same five modules (`WindowsSourceBuild.Common`, `Shared`,
@@ -316,7 +316,7 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
      import** without it (#116, the deliberate throw at its line 36), so every
      restored RUN dies before executing a line. This is the one that makes the
      recipe dead rather than partial.
-  2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
+  2. `WindowsTvm.Common.psm1` — `Build-TvmFromSource.ps1:27` throws without the
      `tvmmods` mount (#134), so TVM still fails once the import is fixed.
   The fix is two mount lines per restored target. The header now says so; do not
   delete the recipe, and do not trust it verbatim.
@@ -340,31 +340,31 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
 ## Resolved 2026-08-31 (second pass): #149, #154, #156
 
 Taken off the live backlog's OPEN list once their work was done or decided:
-#149's restore recipe now lives in `bk-warm.ps1` as a derivation rule, #154's
+#149's restore recipe now lives in `Invoke-BkWarm.ps1` as a derivation rule, #154's
 correction landed (its one surviving lead is #155, still OPEN), and #156 is a
 decision, not a task. Lean-OPEN-only, per this repo's standing policy.
 
 - **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
-  stale.** Note repaired 2026-08-31 (`bk-warm.ps1:15-22`); THE RESTORE ITSELF IS
+  stale.** Note repaired 2026-08-31 (`Invoke-BkWarm.ps1:15-22`); THE RESTORE ITSELF IS
   STILL OPEN. All ten retired RUNs mount the same five modules and neither module
   the tree has needed since:
   1. `WindowsTargetArch.Common.psm1` — `WindowsSourceBuild.Common` **throws at
      import** without it (`:37`, a deliberate throw rather than a stub), so every
      restored RUN dies before executing a line. This is what makes the recipe dead
      rather than partial, and it is not TVM-specific.
-  2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
+  2. `WindowsTvm.Common.psm1` — `Build-TvmFromSource.ps1:27` throws without the
      `tvmmods` mount (#134), so TVM still fails once the import is fixed.
   AND TWO MORE, both verified 2026-08-31:
   3. **Every script path is wrong.** All sixteen `source=windows/scripts/<n>.ps1`
      predate the reorganisation — fourteen are now under `scripts/build/`, and
-     `bk-warm.ps1` / `bk-materialize.ps1` under `scripts/host/`. This fails at SOLVE
+     `Invoke-BkWarm.ps1` / `Invoke-BkMaterialize.ps1` under `scripts/host/`. This fails at SOLVE
      time, before any of the above can even run.
   4. **The media-core chain order was swapped (#94).** The retired targets chain
      onnx → opencv → ffmpeg; the live lane is onnx → ffmpeg → opencv, so a verbatim
      restore wires each stage to the wrong `${MEDIA_CORE_*_IMAGE}` ancestor.
   Plus: any restored stage that mounts `windows/qnn-sdk` needs ARG+ENV
   `QNN_SDK_ZIP_SHA256` (#154) or the SDK is extracted unverified.
-  **THE RECIPE IS NOW IN THE CODE**, at `bk-warm.ps1:15-38`, as a derivation rule
+  **THE RECIPE IS NOW IN THE CODE**, at `Invoke-BkWarm.ps1:15-38`, as a derivation rule
   rather than ten pasted blocks: replace the five per-file module mounts with the
   live `from=buildmods` stage mount (`from=tvmmods` for media-tvm), re-path every
   script, and derive each RUN from the stage that runs that script TODAY. Treat

@@ -52,7 +52,7 @@ EXEMPT_FILES = {
     "guard-destructive-deletes.ps1",
     "test-delete-guard.sh",
     "prune-safe.sh",
-    "free-disk-space.ps1",
+    "Clear-DiskSpace.ps1",
 }
 
 

@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# stage-target-python-deps.ps1 is the arm64 cross lane's Python dependency
+# Copy-TargetPythonDeps.ps1 is the arm64 cross lane's Python dependency
 # gate: every Requires-Dist of every staged wheel must resolve to a wheel in
 # the store, and a drop in wheel or requirement count is a hard failure (the
 # run-34/35 defect class: empty Requires-Dist from a CRLF regex bug made the
@@ -15,7 +15,7 @@
 Describe 'stage-target-python-deps: wheel requirement parsing' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\stage-target-python-deps.ps1' `
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' `
                 -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('stagedeps-' + [guid]::NewGuid().ToString('N'))

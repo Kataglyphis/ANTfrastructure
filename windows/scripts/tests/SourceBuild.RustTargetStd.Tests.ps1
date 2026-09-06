@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Install-RustTargetStdFromPinnedManifest (build-gstreamer-from-source.ps1):
+# Install-RustTargetStdFromPinnedManifest (Build-GstreamerFromSource.ps1):
 # pre-seeds the tarball `rustup target add` wants at the file:// path the
 # image's PINNED channel manifest names, fetching the bytes from upstream
 # (runs 23-28: "could not download file from 'file:///...rustup-dist/...'").
@@ -22,7 +22,7 @@ Describe 'Install-RustTargetStdFromPinnedManifest' {
         $tcDir = Join-Path $script:rustupHome 'toolchains\1.98.0-x86_64-pc-windows-msvc\lib\rustlib'
         New-Item -ItemType Directory -Force -Path $tcDir | Out-Null
         $mirrorUrl = 'file:///' + ($script:mirror -replace '\\', '/')
-        # The shape setup-rust-toolchain.ps1 leaves behind: upstream manifest, URLs rewritten to the mirror.
+        # The shape Install-RustToolchain.ps1 leaves behind: upstream manifest, URLs rewritten to the mirror.
         @(
             'manifest-version = "2"',
             'date = "2026-08-20"',

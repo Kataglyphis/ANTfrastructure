@@ -161,7 +161,7 @@ the report row's `linter` field.
 `ctest` and `pwsh` are all absent on this aarch64 host, so the CMake task's
 reference and known-wrong answer, the `fix_cmake_link` fixture's red-then-green,
 the four bash references' shellcheck-cleanliness, the Dockerfile reference's
-hadolint-cleanliness and the whole of `start-geniex-servers.ps1` have never been
+hadolint-cleanliness and the whole of `Start-GeniexServers.ps1` have never been
 executed. They skip visibly here; **the first run on a host that has those tools
 must check those rows before any number from them is published.**
 
@@ -176,7 +176,7 @@ measurement, not an edit:
    rather than on the model. On the Windows host:
 
    ```pwsh
-   pwsh -File windows/scripts/host/start-geniex-servers.ps1 -Restart -WithCpu -Pull `
+   pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -Restart -WithCpu -Pull `
         -Nctx 16384 -MaxTokens 4096 `
         -Models @{ npu = 'qualcomm/Qwen3-8B:W4A16'
                    cpu = 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M' }
@@ -394,7 +394,7 @@ gitignored tarball into a 3 GB tmpfs, hit ENOSPC, swallowed the error, produced
 about disk space wearing the clothes of a verdict about the tests.
 
 **And a defect in the guard that exists to prevent unattended runs from dying:**
-`keep-awake.ps1` is reached over `\\wsl.localhost\...`, a UNC path Windows
+`Disable-Sleep.ps1` is reached over `\\wsl.localhost\...`, a UNC path Windows
 refuses to run unsigned. Launched hidden, the `SecurityError` goes to a window
 nobody reads — the launcher reports success and no guard runs. Hit live, an hour
 into a benchmark. The docs now carry `-ExecutionPolicy Bypass` and, more
@@ -529,7 +529,7 @@ stall is 5 %.
 
 **The lever that matters.** 45 min was never the requirement: the measured
 *legitimate* worst-case teardown here is **117 s** (`ISSUE.md`, OpenCV), so
-2700 s is 23× the number it was raised to cover. `deploy-shim-patch.ps1
+2700 s is 23× the number it was raised to cover. `Publish-ShimPatch.ps1
 -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (the
 `upstream-env` variant, already supported) keeps ~2.5× headroom, caps the
 pathological case at 5 min and takes a RUN step from ~47 min to ~7 min — with
@@ -575,7 +575,7 @@ canary under the 5 min cap** (RUN 965.4 s, `exporting layers 20.6s`, no
 The 2026-09-01 11:20 deploy swapped the binary correctly but then hit, in one
 run, two latent defects that had never been exercised:
 
-- **`deploy-shim-patch.ps1` could not set a service's FIRST Environment value.**
+- **`Publish-ShimPatch.ps1` could not set a service's FIRST Environment value.**
   containerd ships with no `Environment` value, and under `Set-StrictMode` the
   bare `(Get-ItemProperty $svcKey).Environment` read throws
   (`The property 'Environment' cannot be found`) — so exactly the deploy the
@@ -592,7 +592,7 @@ run, two latent defects that had never been exercised:
   restarted in STOP order: buildkitd came up before containerd and died on the
   missing containerd pipe (`buildkitd START ERROR`, measured in
   `out/deploy-shim-patch.log`). All three host scripts
-  (`deploy-shim-patch.ps1`, `compact-host-vhdx.ps1`, `rebuild-host-vhdx.ps1`)
+  (`Publish-ShimPatch.ps1`, `Optimize-HostVhdx.ps1`, `Update-HostVhdx.ps1`)
   share the pattern; fixed once at the source — the module now returns
   `$stopped.ToArray()`. Both fixes behaviourally verified (List reverse no-op
   reproduced, array reverse works; old env read throws, new read returns empty)
@@ -645,7 +645,7 @@ probe mount files deleted/archived weeks ago (the diagnostics lane is dead);
 sketches: this entry's audit record, findings 1-15 plus 3 unverified majors
 and 36 minors (fail-open error paths dominate). **Fixed immediately because
 they re-arm the 45 min regression with every gate green:**
-`apply-containerd-config.ps1` defaulted `-TeardownTimeout '45m'` and its
+`Set-ContainerdConfig.ps1` defaulted `-TeardownTimeout '45m'` and its
 drift-repair would have silently reverted the deployed 5 m on the next apply
 (now defaults `5m`), and `docs/windows-host-setup.md` § R1 still prescribed
 the retired 81e2e01+45 min rebuild recipe (now the fork branch + the mandatory
@@ -661,7 +661,7 @@ amd64 lane it must match. Tracked as **#158** in
 Lenses per the owner's priorities — dedup/cleanliness, build performance,
 consumer fitness, comment discipline — deduplicated against both backlogs and
 the protected deliberate-design lists; 0 refuted. **Fixed immediately (all
-safe-now):** #161 `build-resource-sampler.ps1` swallowed the exception on
+safe-now):** #161 `Build-ResourceSampler.ps1` swallowed the exception on
 every failed sample (the running chain's CSV is 100 % bare `sample-error` rows
 — 4.7 h of resource axis lost undiagnosably; the reason now lands in the row
 and `-Summarize` reports an all-error CSV as a broken sampler instead of "no
@@ -690,7 +690,7 @@ import surface is genuinely strong at the core.
   `windows/upstream/hcsshim-teardown-timeout/README.md` no longer claims the
   45 min constant build is what runs. `README.md`: the identical-RUN-timing
   symptom added to the first-touch list.
-- Recurrence hardening: `windows/scripts/diagnostics/capture-lsm-waitstack.ps1`
+- Recurrence hardening: `windows/scripts/diagnostics/Get-LsmWaitstack.ps1`
   (new, elevated — dumps a fresh silo's earliest svchosts twice inside the LSM
   hang window via comsvcs, for the WinDbg wait-object analysis that names the
   never-signalling component), a timing-decode playbook in the failure-modes
@@ -981,7 +981,7 @@ RUN's cache key. `patched-llvm` is the DEFAULT toolchain target
 host-only driver module no container ever imports included — re-keyed a full
 LLVM 23.1.0 compile plus every media lane that derives from
 `bk-windows-toolchain`. It is now a per-FILE mount of exactly the six modules
-`build-llvm-from-source.ps1` imports. Regression test:
+`Build-LlvmFromSource.ps1` imports. Regression test:
 `BuildKit.ModuleClosure.Tests.ps1` fails on a whole-directory modules mount in
 any windows Dockerfile except `Dockerfile.probe` (exempt by design —
 `PROBE_NONCE` busts that layer anyway, and its own header says so).
@@ -1017,8 +1017,8 @@ Stale `build.ps1` references were corrected in both `.dockerignore` files,
 `Dockerfile.base` / `.nvidia` / `.torch` / `.toolchain-builder`, `versions.env`,
 `bump_versions.py`, `sync_versions.py`, `windows/downloads/README.md`,
 `Invoke-Lint.ps1`, the three `build-*-all.ps1` payload headers,
-`build-toolchain-all.ps1`, `build-resource-sampler.ps1` and both diagnostics
-probes. Two were not mechanical renames: `verify-host-setup.ps1` was a LIVE
+`Build-ToolchainAll.ps1`, `Build-ResourceSampler.ps1` and both diagnostics
+probes. Two were not mechanical renames: `Test-HostSetup.ps1` was a LIVE
 CHECK reporting stevedore as the "classic fallback lane" and now reports it as
 the publish/inspect tool (which is what `docker.exe` still is), and
 `Dockerfile.torch`'s `-TorchBaseImage` recipe has NO BuildKit equivalent — the
@@ -1034,22 +1034,22 @@ Added to `build-llvm-from-source`, `debug-litertlm-link`, `load-versions`,
 AND on an empty pipeline result, which is what made four sites bugs rather than
 style:
 
-- `debug-litertlm-link.ps1` — `(Get-Command 'llvm-nm.exe' -EA SilentlyContinue).Source`
-  was ALREADY LIVE: its caller `build-litert-lm-from-source.ps1` sets StrictMode
+- `Debug-LitertlmLink.ps1` — `(Get-Command 'llvm-nm.exe' -EA SilentlyContinue).Source`
+  was ALREADY LIVE: its caller `Build-LitertLmFromSource.ps1` sets StrictMode
   and `&`-invocation inherits it, so the "no llvm-nm" branch the script already
   had could never be reached. Bound first now.
-- `normalize-tensorrt-tree.ps1` — `$dllDirs` was not `@()`-wrapped, so `.Count`
+- `Set-TensorrtTree.ps1` — `$dllDirs` was not `@()`-wrapped, so `.Count`
   threw on the NORMAL SUCCESS PATH (TensorRT 10+/11 ship the DLLs in `bin` only,
   leaving exactly one surviving dir).
-- `stage-cuda-runtime.ps1` — same shape on `$roots`; would have re-broken the
+- `Copy-CudaRuntime.ps1` — same shape on `$roots`; would have re-broken the
   arm64/CPU merge lane the 2026-08-23 degrade-cleanly fix unblocked.
-- `clean-sccache-mount.ps1` — `Measure-Object -Property` emits NOTHING for empty
+- `Clear-SccacheMount.ps1` — `Measure-Object -Property` emits NOTHING for empty
   input, so the inline `.Sum` threw on an empty cache dir.
 
 NOT added, on purpose: `WindowsFlutter.Common.psm1` and
 `WindowsContainerLog.Common.psm1` (a module does not inherit its caller's strict
 mode, so adding it is a real behaviour change downstream), and the dot-sourced
-`Initialize-CiEnvironment.ps1` / `litert-lm-export-bridge.ps1` (strict mode
+`Initialize-CiEnvironment.ps1` / `Export-LitertLmBridge.ps1` (strict mode
 would leak into every caller).
 
 ### Two helper sets pushed down to their leaf modules
@@ -1057,10 +1057,10 @@ would leak into every caller).
 `Write-AssembledWheelDistInfo` and `Get-PyprojectDependencies` moved off the
 `WindowsSourceBuild.Common.psm1` facade — mounted into all 11 media RUNs — into
 `WindowsTvm.Common.psm1`, the `tvmmods` leaf only media-tvm mounts. Their sole
-consumer is `build-tvm-from-source.ps1`.
+consumer is `Build-TvmFromSource.ps1`.
 
 The GStreamer wrap-git prefetch plus the libffi force-download (~64 lines of
-phase 5) moved out of `build-gstreamer-from-source.ps1` (1575 → 1514 lines) into
+phase 5) moved out of `Build-GstreamerFromSource.ps1` (1575 → 1514 lines) into
 `Invoke-GstWrapProvisioning` in `WindowsMeson.Common.psm1`, the merge-lane leaf.
 It takes a `-Logger` scriptblock, accumulates failures in a LOCAL list and
 RETURNS them; the caller keeps the #88 fail-closed throw so that gate stays
@@ -1084,11 +1084,11 @@ machine that had never installed the toolchain, i.e. never on a build host.
 `Get-LlvmMasmCmakeArg` and four facade re-exports are dead in-tree but are
 exported API for other Kataglyphis repos — the never-delete-on-a-zero-reference
 audit rule in `docs/windows-builds.md`. `Export-BuildHandoff` /
-`Import-BuildHandoff` stay on the facade because `bk-warm.ps1`'s header names
+`Import-BuildHandoff` stay on the facade because `Invoke-BkWarm.ps1`'s header names
 them the TESTED ROLLBACK PATH (restore the warm/materialize targets from
 c9586c1^ and the payloads work unchanged) — but that recipe is ALREADY partially
 stale: those retired targets mount the pre-#134 module set with no
-`WindowsTvm.Common.psm1`, and `build-tvm-from-source.ps1` now throws without the
+`WindowsTvm.Common.psm1`, and `Build-TvmFromSource.ps1` now throws without the
 `tvmmods` mount. Worth repairing before anyone needs the rollback.
 `.claude/settings.local.json` still holds 4 allowlist entries for `build.ps1`
 invocations — permission config is the owner's call: flagged, not changed.
@@ -1388,7 +1388,7 @@ what keeps the machine usable while the agent answers. Measurement note: the
 inference worker is a *separate* `geniex` process from the port holder; sampling
 the listener reads ~11 % and tells you nothing.
 
-- `start-geniex-servers.ps1`: new `-WithCpu` opt-in lane on 18184
+- `Start-GeniexServers.ps1`: new `-WithCpu` opt-in lane on 18184
 - docs: new § 1b, and the estimated CPU row replaced with measured numbers
 
 ## 2026-08-31 — GenieX throughput pass: QAIRT bundle + NPU/GPU dual lane (~6x faster agent answers)
@@ -1432,7 +1432,7 @@ cost, separate silicon), while adding `hybrid` (NPU+CPU, same HTP) buys
 `--nctx` 4096 was *below* the 8192 the opencode config advertised, and overflow
 does not error — a 6.4k-token prompt never returned within 400 s.
 
-- New `windows/scripts/host/start-geniex-servers.ps1`: brings up the NPU + GPU
+- New `windows/scripts/host/Start-GeniexServers.ps1`: brings up the NPU + GPU
   lanes with `--nctx 16384 --keepalive 86400`, `-WithHybrid` for the third lane,
   `-Restart` to recycle. Validated live.
 - `~/.config/opencode/opencode.jsonc`: QAIRT bundle promoted to primary, new
@@ -1472,13 +1472,13 @@ for the first time on a full `-TargetArch arm64` cross run:
 
 `C:\llvm-patched` (the source-built default toolchain) ships
 `clang_rt.builtins-x86_64.lib` only, so the arm64 GStreamer link died on
-`__udivti3` in the merge stage. `build-gstreamer-from-source.ps1` § 5d now
+`__udivti3` in the merge stage. `Build-GstreamerFromSource.ps1` § 5d now
 self-heals on the cross lane: it mines `clang_rt.builtins-aarch64.lib` from the
 official LLVM release archive next to the x86_64 lib (same recipe as
-`setup-scoop-tools.ps1`), then re-runs its candidate search. The first live
+`Install-ScoopTools.ps1`), then re-runs its candidate search. The first live
 attempt used the GNU tar on PATH, which parses `C:\...` as a remote-host spec
 ("Cannot connect to C:") — the extract now forces System32's bsdtar (the same
-trap build-llvm-from-source.ps1 already avoids). Chosen over adding the lib to
+trap Build-LlvmFromSource.ps1 already avoids). Chosen over adding the lib to
 the toolchain layer because the media branches derive FROM
 `bk-windows-toolchain` — that would have re-paid ~2 h of media compiles for one
 lib. Regression test: `SourceBuild.GstreamerCompilerRt.Tests.ps1` (4 tests).
@@ -1592,7 +1592,7 @@ cause: `Exception 0xc00000fd` (STATUS_STACK_OVERFLOW) in HTP runtime init.
   load log), so the 27B fails at graph compute with `dspqueue_read failed:
   0x00000072` — a memory limit, not a driver bug (same class as
   ggml-org/llama.cpp#26123).
-- New probe `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`: checks
+- New probe `windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1`: checks
   the **active** CDSP `libcdsprpc.dll` (matched by Hexagon-NPU device driver
   version, so stale DriverStore copies cannot falsify the verdict) for the
   `dspqueue_*` symbols. Reporting-only, never throws on a negative. Documented
@@ -1844,7 +1844,7 @@ now the default toolchain. Changes:
 - `build-buildkit.ps1`: `patched-llvm` is the default target; new `-StockLlvm`
   switch opts out (for patch debugging only); `-PatchedLlvm` kept as a no-op
   for backwards compatibility
-- `build-opencv-from-source.ps1`: both AArch64 workarounds REMOVED — the
+- `Build-OpencvFromSource.ps1`: both AArch64 workarounds REMOVED — the
   `+force-32bit-jump-tables` flag and the per-TU `/Ob1` pass for
   `median_blur.dispatch` / `multiview_calibration`. The patched toolchain fixes
   the root cause (EH_LABEL under `/EHa` emits a 4-byte nop counted as zero by

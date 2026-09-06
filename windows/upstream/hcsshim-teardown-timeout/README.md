@@ -133,14 +133,14 @@ Then install it with the repo script (admin; it keeps `.orig` and a timestamped
 backup, and refuses while a build or a shim process is alive):
 
 ```pwsh
-pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe
+pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe
 
 # for a build made from the UPSTREAM patch, which is inert without the env var:
-pwsh -File windows\scripts\deploy-shim-patch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe `
+pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe `
      -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m
 
-pwsh -File windows\scripts\deploy-shim-patch.ps1 -ReportOnly     # what is installed?
-pwsh -File windows\scripts\deploy-shim-patch.ps1 -Restore .orig  # back to stock
+pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ReportOnly     # what is installed?
+pwsh -File windows\scripts\Publish-ShimPatch.ps1 -Restore .orig  # back to stock
 ```
 
 containerd does NOT need a restart for the swap itself - the shim is spawned per

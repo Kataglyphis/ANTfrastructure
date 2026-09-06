@@ -11,7 +11,7 @@
 # WindowsSourceBuild.Common and is mounted into ALL media/merge RUNs. Anything
 # put there re-keyed the ~75 min ONNX branch, the OpenCV branch and the FFmpeg
 # branch to change a TVM constant. So TVM-only helpers had no choice but to live
-# inside build-tvm-from-source.ps1, where they were stage-local and cheap but
+# inside Build-TvmFromSource.ps1, where they were stage-local and cheap but
 # reachable by tests only through the script's AST.
 #
 # Dockerfile.media-builder now derives `FROM buildmods AS tvmmods` and adds this

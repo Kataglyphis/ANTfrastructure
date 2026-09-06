@@ -59,14 +59,14 @@ Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-dr
 upgrade with the self-contained probe under `windows/scripts/diagnostics/`:
 
 ```pwsh
-.\windows\scripts\diagnostics\test-gpu-passthrough.ps1
+.\windows\scripts\diagnostics\Test-GpuPassthrough.ps1
 ```
 
 It prints host/image builds and partitionable GPUs, runs a process-isolation control,
 attaches the GPU device, compiles + runs a DXGI adapter enumerator inside the
 container, and gives a verdict: **PASSTHROUGH WORKS** (a HARDWARE adapter is visible),
 **BLOCKED** (build-skew `CreateComputeSystem` failure), or **DEVICE-NOT-INJECTED**
-(started but only WARP). Note the DML probes in `smoke-test-container.ps1` validate
+(started but only WARP). Note the DML probes in `Test-Container.ps1` validate
 that the provider is *built and registered* (`GetAvailableProviders` → `dml=1`, plus
 the x64 `D3D12Core.dll` PE-machine check); they do **not** create a device, so they
 pass under either isolation regardless of whether a hardware adapter is present.
@@ -138,7 +138,7 @@ including on failure. The sampler starts only after every preflight gate has
 passed, so a rejected launch leaves nothing orphaned, and `-ConcurrentAux`
 children run without one (the parent's already covers the machine). Re-analyze any
 run later with
-`pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
+`pwsh -File windows/scripts/build/Build-ResourceSampler.ps1 -Summarize -CsvPath <csv>`;
 `MinFreeGB` per phase shows which step pushed the host hardest, and an
 `AvgCpuPct` far below 100 during a compile phase means the step was memory-bound
 (`jobs = min(cores, MEMORY_LIMIT_GB/perJob)`), not CPU-bound. Disable with
@@ -182,7 +182,7 @@ dufs C:\sccache-cache -A -p 5000
 
 CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route
 clang-cl through sccache, and since 2026-08-04 GStreamer (Meson) is cached too
-(`build-gstreamer-from-source.ps1` sets `CC`/`CXX` to `'sccache clang-cl'`
+(`Build-GstreamerFromSource.ps1` sets `CC`/`CXX` to `'sccache clang-cl'`
 when the remote backend is configured). FFmpeg (MSVC/make) remains uncached.
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
@@ -193,7 +193,7 @@ AGENTS.md and a closed backlog archive):** released sccache cannot wrap nvcc
 on CUDA 13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved
 `--simt-only` after the input file, and the build DIES with `fatbinary fatal:
 Could not open input file '<tu>.compute_80.cubin'` (mozilla/sccache#2722,
-merged 2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
+merged 2026-08-04, five days AFTER v0.17.0 shipped). `Test-Toolchain.ps1`
 asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell the
 fixed and broken builds apart — main still reports 0.17.0. Never bump
 `SCCACHE_GIT_REV` without checking the local patch series still applies (the
@@ -214,7 +214,7 @@ after a decision history worth keeping:
   green, providers_cuda link green COLD (153 CUDA device writes), link green
   on the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —
   onnx's CUDA portion drops from ~60 to ~33 min warm. The canaries are
-  `verify-cuda-cache.ps1` + a fused_moe compile + a full providers_cuda LINK —
+  `Test-CudaCache.ps1` + a fused_moe compile + a full providers_cuda LINK —
   the miscompile class is invisible until link, which is why all three are
   required before trusting any new sccache with the launcher.
 - The #2808 DEADLOCK separately proved to be #99 collateral (gone under a

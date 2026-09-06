@@ -408,7 +408,7 @@ already ships, and for local code that more than one of them needed.
   (verified against the tag's runtime/proto listing); (2) their absl pin
   20260107.1 predates absl/status/status_macros.h, which 0.15.0's own
   sources include (header exists from 20260526.0 - verified against
-  abseil-cpp tags). Fixes in build-litert-lm-from-source.ps1, port style:
+  abseil-cpp tags). Fixes in Build-LitertLmFromSource.ps1, port style:
   proto-list append after token.proto + absl GIT_TAG bump to the repo-wide
   ABSEIL_VERSION (scope: absl_external only; tflite/litert fetch their own).
   Fourth genuine upstream bug of the night (sccache, opencv, 2x litert-lm) -
@@ -450,7 +450,7 @@ already ships, and for local code that more than one of them needed.
   (library.mak -> ffbuild/libversion.sh awk/eval); under the Git-Bash port
   that chain emitted empty MAJOR/MINOR/MICRO -> 'Version: ..' in every .pc
   (the guard existed because the OLD version of this failure shipped
-  silently once). Fix: build-ffmpeg-from-source.ps1 pre-generates all eight
+  silently once). Fix: Build-FfmpegFromSource.ps1 pre-generates all eight
   libX/libX.version files from the version(.major).h macros (LF, no BOM -
   make -includes them for LIBVERSION/LIBMAJOR = DLL naming), hard-throwing
   if the macros are not found. Run 15 resumes at FFmpeg.
@@ -508,7 +508,7 @@ already ships, and for local code that more than one of them needed.
   `SCCACHE_CUDA_LAUNCHER=1` (three-canary bar in the comment); the
   per-script opt-out env var is gone. Landed BEFORE run 13's OpenCV solve,
   so its CUDA compiles run bare too.
-- **cachetest.ps1 per-run nonce**: byte-identical source false-failed the
+- **Test-Cache.ps1 per-run nonce**: byte-identical source false-failed the
   `writes>=1` assertion on the second-ever run against a warm WebDAV L2
   (first compile = L2 hit, nothing stored). **onnx-ninja.log rotation** now
   Copy+Remove instead of Move-Item (cache mount is rename-hostile - probed
@@ -627,12 +627,12 @@ already ships, and for local code that more than one of them needed.
 - **#9/#29**: probe-build-copy's three lanes collapsed into one
   `Invoke-ProbeLane` runner; diagnostic tags adopted the `diag-` prefix
   (cleanup one-liner documented). Not yet live-smoked — one
-  `probe-build-copy.ps1 -Heavy` after run 12's media-core is the last check.
+  `Test-BuildCopy.ps1 -Heavy` after run 12's media-core is the last check.
 - **#8/#30**: `Get-DiagnosticLogPath` + `Limit-DiagnosticLogs` own the
   diagnostics' log path/retention (driver keeps newest 80 stage logs,
   diagnostics newest 60).
 - **#14**: verify-cuda-cache's 21-statement RUN line became a COPY'd,
-  lintable `cachetest.ps1`. **#15**: renamed to `sync-defender-exclusions.ps1`.
+  lintable `Test-Cache.ps1`. **#15**: renamed to `Sync-DefenderExclusions.ps1`.
 - **#2 finish**: reset-container-stores + verify-cuda-cache resolve tools via
   `Get-PreferredToolPath`; fixed reset-container-stores' hardcoded `D:\GitHub`
   repo path and a latent `Test-Path $null` throw on missing buildctl.
@@ -671,7 +671,7 @@ already ships, and for local code that more than one of them needed.
   (`Get-Rdna4HazardDevice`) and the toggle primitive lifted into the module
   (`Set-Rdna4DeviceState`, post-state-verified); toggle script resolves all
   hazard SKUs by default, gained `-NoPrompt`/exit-1-on-failure; the A/B
-  delegates its lanes to `probe-build-copy.ps1 -Heavy`; both drivers offer
+  delegates its lanes to `Test-BuildCopy.ps1 -Heavy`; both drivers offer
   gate-specific `-SkipRdna4Gate`. **#24:** `#requires -Version 7.0` across
   all 40 remaining test files, per-file EOL preserved.
 - Gates after every sub-batch: Invoke-Lint 139 files 0/0, test suite grew
@@ -711,7 +711,7 @@ already ships, and for local code that more than one of them needed.
   target must not silently follow a stale `D:\` layout (that path vanished
   on this host once before).
 - **#26 closed**: both probe Dockerfiles take `ARG BASE`;
-  `probe-build-copy.ps1` pins it to versions.env's `WINDOWS_BASE_DIGEST`
+  `Test-BuildCopy.ps1` pins it to versions.env's `WINDOWS_BASE_DIGEST`
   (dependency-free parse — no module import in the first script a new host
   runs) on all three lanes. Smoke-verified live: probe green with
   `probe base pinned: ...@sha256:d5bbb830…`. The RDNA4 A/B keeps the tag
@@ -728,7 +728,7 @@ already ships, and for local code that more than one of them needed.
   (probe-build-copy, verify-cuda-cache, test-rdna4-layer-lock) resolve
   buildctl/docker from the supported candidate list (`Program Files` +
   `D:\Stevedore`) instead of a single hardcoded path (7 legacy files
-  remain); **#6 partial** — `toggle-rdna4-gpu.ps1 -GpuName` closes the
+  remain); **#6 partial** — `Set-Rdna4Gpu.ps1 -GpuName` closes the
   wrong-SKU dead end (gate names a remedy that can now act on RX 9060/
   R9700 hosts). Media-closure items (#10/#11/#16/#17) deliberately deferred
   until run 11 finishes — editing bind-mounted modules mid-chain would
@@ -758,7 +758,7 @@ already ships, and for local code that more than one of them needed.
 - Owner asked "is my chain clean code, what should I refactor" → systematic
   8-finder review over `windows/`. Verified correctness findings were FIXED
   immediately (each with the failure it prevents): probe zero-lane
-  false-green; `repair-windows-componentstore.ps1` still on the retired
+  false-green; `Repair-WindowsComponentstore.ps1` still on the retired
   `type=local` probe shape (false-red on healthy hosts); classic lane
   `build.ps1` missing the RDNA4 gate (isolation-probe verdict does not key
   on dGPU state); **`Get-SccacheStatsText` not re-exported from
@@ -798,16 +798,16 @@ already ships, and for local code that more than one of them needed.
   (they were never observable before; the ~zero-hit-rate claim can now be
   confirmed or retired with data). Candidate-sccache re-enable criteria for
   the cuda_llm target stay encoded at the versions.env pin:
-  `verify-cuda-cache.ps1` + an ONNX canary through the fused_moe launchers.
+  `Test-CudaCache.ps1` + an ONNX canary through the fused_moe launchers.
 - Stall guard + full-speed retry ladder stay armed for the whole wrapped set.
 - **Never-swallow-logs sweep (owner directive)**: the buildkitd service env
   was found EMPTY — the repo-required `BUILDKIT_STEP_LOG_MAX_SIZE=-1`
-  (unlimited step logs, `setup-new-host.ps1` applies it) had been wiped by
+  (unlimited step logs, `Install-NewHost.ps1` applies it) had been wiped by
   the 2026-08-09 Stevedore/repair work, and the default 2 MiB clip hid the
   stall-guard verdicts and sccache stats for three runs (re-apply + buildkitd
   restart pending the next between-runs window). `SCCACHE_ERROR_LOG` now
   persists inside the sccache cache mount (server postmortems survive the
-  container). `probe-build-copy.ps1` and `verify-cuda-cache.ps1` Tee their
+  container). `Test-BuildCopy.ps1` and `Test-CudaCache.ps1` Tee their
   FULL lane output to `out\build-logs\` and print the path (display keeps
   showing tails only). New AGENTS.md invariant bullet pins the principle.
 
@@ -835,7 +835,7 @@ already ships, and for local code that more than one of them needed.
 - **Lint-scope gap closed**: `Invoke-Lint.ps1` never covered
   `windows\scripts\diagnostics\` — its scripts (GPU/isolation probes, now the RDNA4
   A/B) were silently unlinted. Added recursively; 136 files, all clean.
-- **NEW diagnostic `windows/scripts/diagnostics/test-rdna4-layer-lock.ps1`**
+- **NEW diagnostic `windows/scripts/diagnostics/Test-Rdna4LayerLock.ps1`**
   (elevated): the RDNA4 A/B as a durable ~2-min tool — probes RUN-layer
   finalize with the dGPU enabled then disabled (finally-guarded re-enable),
   verdicts GONE / PRESENT / INCONCLUSIVE. Re-run after every
@@ -844,9 +844,9 @@ already ships, and for local code that more than one of them needed.
   wired into `build-buildkit.ps1` after `Assert-ShimPatch`; `-SkipHostChecks`
   overrides; 7 tests in BuildDriver.HostGates): refuses to start a chain that
   would die on its first RUN commit while an RDNA4 dGPU is enabled, and names
-  the workflow — elevated `toggle-rdna4-gpu.ps1 -Disable` → build (display
+  the workflow — elevated `Set-Rdna4Gpu.ps1 -Disable` → build (display
   falls back to the iGPU; DirectML-on-host unavailable during the window) →
-  re-enable. `toggle-rdna4-gpu.ps1`'s "obsolete" header is retracted.
+  re-enable. `Set-Rdna4Gpu.ps1`'s "obsolete" header is retracted.
 - Chain relaunched with the dGPU disabled: base stage committed the
   previously-failing COPY and the VS Build Tools layer on the first attempt.
 - **Run 5 milestone: the ONNX vertex went GREEN end-to-end** (compile, link,
@@ -856,7 +856,7 @@ already ships, and for local code that more than one of them needed.
   treats clang-cl as GNU-Clang and passes `-include` + `cstring`, which the
   CL dialect parses as an input file; the patch adds an MSVC-frontend branch
   (`/FIcstring` + `/w`). 10/10 patches validate.
-- **NEW diagnostic `windows/scripts/diagnostics/verify-cuda-cache.ps1`** — proves the
+- **NEW diagnostic `windows/scripts/diagnostics/Test-CudaCache.ps1`** — proves the
   sccache→nvcc(decomposed)→WebDAV path end to end: a tiny buildctl solve FROM
   the local toolchain image compiles one `.cu` twice; asserts the recompile
   HIT and that objects reached the store. First run verified 2026-08-10:
@@ -910,7 +910,7 @@ already ships, and for local code that more than one of them needed.
   into the nonexistent `Severity::k0` in `tunable.h` (nvcc: `enum ... has no
   member "k0"` at the `LOGS_DEFAULT(ERROR)` line, first TU
   `triton_kernel.cu`); fixed with guarded `#undef ERROR`/`#undef VERBOSE`
-  after the header's includes, applied in `build-onnx-from-source.ps1`'s CUDA
+  after the header's includes, applied in `Build-OnnxFromSource.ps1`'s CUDA
   branch with an inline-regex fallback. (First fix attempt undef'd only
   VERBOSE — a summarizer misreported which `LOGS_DEFAULT(...)` sat on the
   error line; the moved-but-identical error exposed it. Read the line, not
@@ -923,7 +923,7 @@ already ships, and for local code that more than one of them needed.
 
 ## 2026-08-10 - build probe was lying: two pwsh bugs fixed (probe verdicts trustworthy again; the same day's RESOLUTION entry above tells where "green" actually ended)
 
-- **`probe-build-copy.ps1` carried two bugs since its introduction that made a
+- **`Test-BuildCopy.ps1` carried two bugs since its introduction that made a
   healthy BuildKit lane read as broken.** (1) The unquoted
   `--output type=local,dest=$outDir` reached buildctl as VERBATIM SOURCE TEXT —
   pwsh passes a bareword comma-attribute argument to native commands with no
@@ -980,8 +980,8 @@ already ships, and for local code that more than one of them needed.
   both lanes, every COPY layer, surviving `-NoCache`, restarts, Defender
   exclusions, a full store reset and a reboot - was caused by a **FAULTY AMD
   ADRENALINE installation**. A clean **reinstall fixed it** (probe:
-  `windows/scripts/diagnostics/probe-build-copy.ps1`). GPU-disable never cured it;
-  `toggle-rdna4-gpu.ps1` is now obsolete as a fix. The Linux cross lane and
+  `windows/scripts/diagnostics/Test-BuildCopy.ps1`). GPU-disable never cured it;
+  `Set-Rdna4Gpu.ps1` is now obsolete as a fix. The Linux cross lane and
   all repo gates were never affected. Docs updated (superseding the night
   entry below): `AGENTS.md` Common Failure Modes + script table,
   `docs/windows-host-setup.md` gate, `docs/windows-builds.md` diagnostic
@@ -1022,14 +1022,14 @@ a wall that turned out to be the HOST OS, not the repo.
   the pinned `SCCACHE_GIT_REV = e9b15a3` is confirmed from upstream to BE the
   mozilla/sccache#2722 merge ("Fix nvcc dryrun parsing for CUDA 13.3", carries
   `test_group_nvcc_subcommands_with_simt_only_cicc_input`); the EXACT command
-  `setup-rust-toolchain.ps1` runs (`cargo install sccache --locked --git
+  `Install-RustToolchain.ps1` runs (`cargo install sccache --locked --git
   https://github.com/mozilla/sccache --rev <rev>`) compiles, links and installs
   cleanly (exit 0, 3m25s, sccache.exe in CARGO_BIN, `--version` = 0.17.0 exactly
   as the commit documented). The wiring itself remains covered by the 412-test /
   0-lint gates (verify-toolchain CARGO_BIN assert, CMAKE_CUDA_COMPILER_LAUNCHER).
   The one thing still pending is a real ONNX CUDA kernel cache-hit in an image
   build - which needs a supporting (non-25H2) host.
-- New-host bring-up (setup-new-host.ps1 + verify-host-setup fix + magic-constant
+- New-host bring-up (Install-NewHost.ps1 + verify-host-setup fix + magic-constant
   purge, this morning's entry) proved out on this fresh host: verify-host-setup
   all-green, patched shim deployed and hash-recorded, CNI confs on the live
   subnet, dufs L2 up with logon task. Host-side probe toolchain (rustup gnu via
@@ -1042,7 +1042,7 @@ Verified live while bringing up a brand-new host (this one) for the sccache
 source-build verification run; every fix below is what a fresh Stevedore box
 actually trips over.
 
-- **NEW `windows/scripts/host/setup-new-host.ps1`** - the scriptable half of
+- **NEW `windows/scripts/host/Install-NewHost.ps1`** - the scriptable half of
   `docs/windows-host-setup.md` Phases A5+C as ONE elevated, idempotent run
   (`-ReportOnly` safe, refuses while a build is live): authors the CNI
   `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW
@@ -1055,7 +1055,7 @@ actually trips over.
   Every sub-script is called with a HASHTABLE splat - the first draft used
   array splats and hit the documented position-binding trap in `-ReportOnly`
   (`-ReportOnly` arriving as `$ServiceName`), exactly the AGENTS array-splat rule.
-- **`verify-host-setup.ps1` line-212 crash fixed**: `(Get-ItemProperty ...).Environment`
+- **`Test-HostSetup.ps1` line-212 crash fixed**: `(Get-ItemProperty ...).Environment`
   on a service whose `Environment` value does not exist threw PropertyNotFound,
   which under StrictMode surfaced as an unset-variable error and CRASHED the
   script mid-run on the common drifted host - silently skipping the teardown-env
@@ -1066,7 +1066,7 @@ actually trips over.
 - **Docs purge of stale example values**: `docs/windows-host-setup.md` A5 and
   `docs/windows-builds.md` section Getting it going no longer hand out the
   reference host's `172.31.32.0/20` subnet as copy-paste gospel - both now say
-  "derive" and point at `setup-new-host.ps1`; README's fresh-machine pointer
+  "derive" and point at `Install-NewHost.ps1`; README's fresh-machine pointer
   gains the one-run path.
 
 ## 2026-08-09 (early) — Linux lane: validator split + a locale bug the split's own probe caught
@@ -1339,7 +1339,7 @@ The verified-but-queued remainder of the four audit reports:
   literal guard): GenAI `v0.15.0`→`v0.15.2`, VVdec `v3.1.0`→`v3.2.0`,
   Python `3.14.6`→`3.14.7` ×2 (build_python.sh would have died on the 3.14.7
   checksum with a misleading error) + the same stale 3.14.6 on the Windows
-  side (build-opencv-from-source.ps1).
+  side (Build-OpencvFromSource.ps1).
 - **`ENABLE_NVIDIA`/`ENABLE_AMD` now reach the cross lane**: the runtime lane
   honored them, `cross_stage_build_args` dropped them — a GPU-configured
   runtime could sit on CPU-only media artifacts with no warning. Forwarded
@@ -1790,7 +1790,7 @@ independently of the wrap. Both fixed, and gated at the end of the FFmpeg stage.
 - **Disk** is checked per stage, with floors calibrated against measured
   consumption, on every drive the build uses (not just `C:`), in **both** lanes.
 - **The runhcs shim** is identified by the SHA256 recorded at install time
-  instead of by file size; `deploy-shim-patch.ps1 -RecordCurrent` arms that
+  instead of by file size; `Publish-ShimPatch.ps1 -RecordCurrent` arms that
   without a redeploy.
 - **The CNI conf must exist as BOTH `.conf` and `.conflist`** — buildkitd reads
   one, nerdctl the other, and "converting" between them cost a launched chain.

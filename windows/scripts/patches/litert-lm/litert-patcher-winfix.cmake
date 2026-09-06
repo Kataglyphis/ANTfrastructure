@@ -1,6 +1,6 @@
 
 # [LiteRTLM-winfix dynamic-loading] narrow std::filesystem::path uses for Windows (see
-# build-litert-lm-from-source.ps1). setenv is supplied by the Windows <unistd.h> shim.
+# Build-LitertLmFromSource.ps1). setenv is supplied by the Windows <unistd.h> shim.
 patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "access(path.c_str(), R_OK)" "access(path.string().c_str(), R_OK)" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "results.push_back(path);" "results.push_back(path.string());" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/core/dynamic_loading.cc" "FindLiteRtSharedLibsHelper(path, lib_pattern, full_match, results)" "FindLiteRtSharedLibsHelper(path.string(), lib_pattern, full_match, results)" FALSE)

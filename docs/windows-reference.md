@@ -44,7 +44,7 @@ Get-CimInstance Win32_LogicalDisk |
 ```
 
 > Reclaiming space on a build host goes through
-> `windows\scripts\host\free-disk-space.ps1`, which works from an allowlist and
+> `windows\scripts\host\Clear-DiskSpace.ps1`, which works from an allowlist and
 > is report-only by default. Prefer it over ad-hoc recursive deletes.
 
 Long paths are a build-host concern and are covered in

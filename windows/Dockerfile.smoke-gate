@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Backlog #44: runs smoke-test-container.ps1 against a BUILT image and fails the
+# Backlog #44: runs Test-Container.ps1 against a BUILT image and fails the
 # solve if it does not pass.
 #
 # WHY A DOCKERFILE AND NOT `nerdctl run`
@@ -61,11 +61,11 @@ ARG EXPECT_GPU=0
 # testing a configuration no user ever runs.
 # DIRECTORY mount of scripts\ (2026-08-21, lane parity with the classic gate):
 # the former file-mount of ONLY the smoke script left $PSScriptRoot without
-# assemble-torch-app.ps1 beside it, so section 21 (the whole torch-app venv
+# Build-TorchApp.ps1 beside it, so section 21 (the whole torch-app venv
 # verification) SKIPPED silently on this lane forever. scripts\ also carries
 # modules\ one level up from build\, so the separate modules mount is gone.
 RUN --mount=type=bind,source=windows/scripts,target=C:\gate\scripts `
-    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\scripts\build\smoke-test-container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
+    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\scripts\build\Test-Container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
     if ($env:EXPECT_GPU -eq '1') { $cmdline = $cmdline + ' -ExpectGpu' }; `
     & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
     if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }

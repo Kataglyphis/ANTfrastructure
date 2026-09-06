@@ -539,7 +539,7 @@ function Get-WindowsTargetSimdFlags {
     STATUS_ILLEGAL_INSTRUCTION. But entirely without them MLAS's arch TUs
     (qgemm_kernel_amx, intrinsics/avx512/*) fail to COMPILE: clang-cl gates
     intrinsics behind target features and ORT's mlas.cmake adds no per-file -m
-    flags on its MSVC branch. The settled design: build-onnx-from-source.ps1
+    flags on its MSVC branch. The settled design: Build-OnnxFromSource.ps1
     appends this string per-TU to exactly the MLAS FLAGS lines matched by
     Get-MlasKernelTuPattern in build.ninja post-configure -- the only place the
     features may be assumed, because those kernels are runtime-dispatched.
@@ -573,7 +573,7 @@ function Get-WindowsTargetKernelSimdFlags {
 .SYNOPSIS
     Regex matching the MLAS translation units that need per-TU kernel flags.
 .DESCRIPTION
-    Consumed by build-onnx-from-source.ps1's post-configure build.ninja patch.
+    Consumed by Build-OnnxFromSource.ps1's post-configure build.ninja patch.
 
     This is arch-specific and MUST be, because the x86 pattern
     (qgemm_kernel_amx / intrinsics/avx512) matches NOTHING in an aarch64 build.

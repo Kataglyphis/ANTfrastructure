@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # The smoke gate has TWO floors and they drifted apart unnoticed:
-#   * per-section floors ($sectionFloors in smoke-test-container.ps1), lane-aware
+#   * per-section floors ($sectionFloors in Test-Container.ps1), lane-aware
 #   * one global floor (-SmokeMinPassed, passed as MIN_PASSED by the drivers)
 # On 2026-08-22 the global floor was 160 on BOTH lanes while the GPU sections
 # alone floor at 190 — i.e. the global gate could not fire before the section
@@ -23,7 +23,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
 
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $s = Join-Path $root 'scripts\build\smoke-test-container.ps1'
+        $s = Join-Path $root 'scripts\build\Test-Container.ps1'
         if (-not (Test-Path $s)) { throw "smoke test not found: $s" }
         $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
         # Named columns since #131 (2026-08-25): '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }.
@@ -35,7 +35,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
     It 'section floors parse and cover all three lanes' {
         Assert-True ($script:floorTriples.Count -ge 20) "expected the full three-column section floor table, parsed $($script:floorTriples.Count) entries"
         # A section entry without an Arm64 key means one section silently has no arm64 floor.
-        $s = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\smoke-test-container.ps1'
+        $s = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-Container.ps1'
         $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
         $entries = @([regex]::Matches($block, "'(\d+)'\s*=\s*@\{[^}]*\}"))
         $incomplete = @($entries | Where-Object { $_.Value -notmatch 'Gpu\s*=' -or $_.Value -notmatch 'Cpu\s*=' -or $_.Value -notmatch 'Arm64\s*=' })

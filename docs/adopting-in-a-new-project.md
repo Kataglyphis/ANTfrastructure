@@ -258,7 +258,7 @@ wrappers). A consumer supplies four things:
    `intervals.*`, per-platform `buildMatrix.{windows,linux}` entries
    (`name`/`sanitizer`/`buildDir`/`buildType`/`testCommand`), `build.*`
    commands, `git.*` auto-commit settings, `backlog.*` policy, `logging.logDir`.
-3. **Thin runner wrappers** — `Run-AgenticLoop.ps1` / `.sh`. These load the
+3. **Thin runner wrappers** — `Invoke-AgenticLoop.ps1` / `.sh`. These load the
    config, resolve the module/library, and call `Invoke-AgenticLoop` /
    `run_agentic_loop`. Build configs and prompts both default from the config
    and the shared prompt files, so the wrappers stay tiny.

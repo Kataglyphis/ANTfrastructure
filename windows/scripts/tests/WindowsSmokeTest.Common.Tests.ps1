@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Tests for the smoke-test assertion harness, extracted from
-# smoke-test-container.ps1 on 2026-08-08.
+# Test-Container.ps1 on 2026-08-08.
 #
 # The extraction's one real hazard is scope: Assert-Test used to read
 # $ExitOnFirstFailure and $script:passed out of the CALLING SCRIPT's scope

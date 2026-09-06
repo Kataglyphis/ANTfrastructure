@@ -117,14 +117,14 @@ function Get-RequiredGstPlugin {
             # The header path is the pre-rename TensorFlow one. LiteRT v2.x
             # stages its headers under tflite/ (Google renamed TFLite → LiteRT),
             # so an alias tree is required — see the pre-flight in
-            # build-gstreamer-from-source.ps1.
+            # Build-GstreamerFromSource.ps1.
             NeedsHeader = 'tensorflow/lite/c/c_api.h'
             NeedsLib    = @('tensorflowlite_c', 'tensorflow-lite')
             Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
             # arm64 key REMOVED 2026-08-24 (#115): media-litert now RUNS on the
             # cross lane (plain LiteRT is pure CMake; only the LiteRT-LM stage
             # self-skips for its Bazel reasons), tensorflowlite_c.lib is fanned
-            # into the merge, and build-gstreamer-from-source.ps1 enables the
+            # into the merge, and Build-GstreamerFromSource.ps1 enables the
             # tflite feature presence-driven. The contract is 4 on BOTH lanes
             # again -- and per the never-auto doctrine, a cross merge where the
             # plugin fails to build must go RED here, not quietly ship 3.
@@ -238,7 +238,7 @@ function Assert-PkgConfigModule {
     $pkgConfig = Get-Command pkg-config -ErrorAction SilentlyContinue
     if (-not $pkgConfig) {
         throw ("pkg-config is not on PATH, so $Context cannot be resolved at all. " +
-            'It is installed by setup-scoop-tools.ps1 into the base image; a missing binary here means the base is wrong.')
+            'It is installed by Install-ScoopTools.ps1 into the base image; a missing binary here means the base is wrong.')
     }
     $missing = @()
     $tooOld = @()

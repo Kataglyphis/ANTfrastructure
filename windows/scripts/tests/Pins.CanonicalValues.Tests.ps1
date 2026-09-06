@@ -59,7 +59,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
 
     It 'keeps every version ARG default in the merge + toolchain Dockerfiles equal to versions.env (backlog #60, extended 2026-08-21)' {
         # toolchain-builder joined 2026-08-21: its ARG defaults feed the
-        # versions.env precedence rule in build-toolchain-all.ps1 (a stale
+        # versions.env precedence rule in Build-ToolchainAll.ps1 (a stale
         # Dockerfile literal would now beat the fresh file for that key).
         $dfFiles = @('Dockerfile.media-merge-builder', 'Dockerfile.toolchain-builder') | ForEach-Object { Join-Path $repoRoot ('windows\' + $_) }
         $checked = 0

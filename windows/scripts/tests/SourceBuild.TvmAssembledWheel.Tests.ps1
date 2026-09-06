@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # The pure helpers behind the cross lane's hand-assembled TVM wheels (#133,
-# build-tvm-from-source.ps1): Write-AssembledWheelDistInfo (METADATA / WHEEL /
+# Build-TvmFromSource.ps1): Write-AssembledWheelDistInfo (METADATA / WHEEL /
 # top_level.txt for `python -m wheel pack`), Get-VendoredTvmFfiVersion (the
 # submodule's v* tag, PEP 440-normalised, else TVM's own >= bound) and
 # Get-PyprojectDependencies (the [project] dependencies block, never

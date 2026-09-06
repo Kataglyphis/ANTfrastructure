@@ -27,7 +27,7 @@ FROM ${TVM_IMAGE} AS media-tvm
 # Flatten the CUDA/cuDNN runtime DLLs into one dir the merge image can put on
 # PATH. A COPY cannot do this: the sources are under "C:\Program Files\..."
 # (spaces) and cuDNN 9 buries its DLLs in a CUDA-major subdir under bin\, so a
-# recursive script is needed. See stage-cuda-runtime.ps1.
+# recursive script is needed. See Copy-CudaRuntime.ps1.
 #
 # FROM ${BASE_IMAGE}, not ${CORE_IMAGE} (#134, 2026-08-26). Both carry the CUDA
 # install — the GPU lane's chain is base -> Dockerfile.nvidia (= windows-sdk,
@@ -40,15 +40,15 @@ FROM ${BASE_IMAGE} AS cuda-runtime-stage
 # Target arch, REDECLARED (ARGs do not cross a FROM boundary). This stage flattens
 # the CUDA/cuDNN runtime DLLs, which do not exist on Windows-on-ARM at all -- so it
 # needs to know the lane in order to degrade cleanly instead of hunting for a CUDA
-# install that cannot be there. stage-cuda-runtime.ps1 stages an EMPTY C:\cuda-rt
+# install that cannot be there. Copy-CudaRuntime.ps1 stages an EMPTY C:\cuda-rt
 # and exits 0 when neither CUDA_ROOT nor CUDNN_ROOT is set, so the COPY below still
 # succeeds; it throws only when one IS set but does not resolve (nvidia base
 # expected, layout broken). Until 2026-08-23 it threw in BOTH cases, which made
 # this stage a hard blocker for every non-GPU merge.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-COPY windows\scripts\build\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
-RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
+COPY windows\scripts\build\Copy-CudaRuntime.ps1 C:\Copy-CudaRuntime.ps1
+RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Copy-CudaRuntime.ps1
 
 # ── Mount source for the BK lane's module closure ────────────────────────────
 # Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
@@ -63,7 +63,7 @@ RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
 # plugin contract, the meson interpreter patch or the rust-std repair into
 # Shared/SourceBuild.Common would make every edit to them re-run ONNX (~75 min),
 # OpenCV, FFmpeg, GenAI, litert and tvm — for code none of them call. Meson and
-# RustToolchain were stage-local functions inside build-gstreamer-from-source.ps1
+# RustToolchain were stage-local functions inside Build-GstreamerFromSource.ps1
 # until #134 for exactly that reason; the leaf-module split is what let them out.
 # Parent is BASE_IMAGE so the fan-in COPYs (and therefore the three branch
 # images) never key into it.
@@ -96,7 +96,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # OpenCV's install layout is <root>\<arch>\vc18\{bin,lib}. This has to be its own
 # ARG because a Dockerfile cannot branch on WINDOWS_TARGET_ARCH, and the ENV
 # below is not decoration: it WINS over the arch-aware fallback in
-# build-gstreamer-from-source.ps1 (that fallback only runs when $env:OPENCV_LIB
+# Build-GstreamerFromSource.ps1 (that fallback only runs when $env:OPENCV_LIB
 # is unset). Left at x64 on an arm64 build, GStreamer's pkg-config step looks for
 # import libs in the x64 tree, finds none, and throws. The driver derives it from
 # the arch table and forwards it alongside WINDOWS_TARGET_ARCH.
@@ -260,11 +260,11 @@ ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-GstreamerFromSource.ps1,target=C:\bkmnt\Build-GstreamerFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
-    & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
+    & 'C:\bkmnt\Build-GstreamerFromSource.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
 
 # OpenCV's STANDALONE GStreamer videoio plugin (backlog #93). MUST run after
 # the GStreamer RUN above — that is the whole point: OpenCV itself configured
@@ -279,28 +279,28 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 # test since 2026-08-17).
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-OpencvGstreamerPlugin.ps1,target=C:\bkmnt\Build-OpencvGstreamerPlugin.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'
+    & 'C:\bkmnt\Build-OpencvGstreamerPlugin.ps1' -InstallDir 'C:\runtime'
 
 # #130 (2026-08-25): the bundle describes ITSELF -- BUNDLE-ENV.cmd/.ps1 (every
 # DLL home, the target python, the wheel store) and BUNDLE-README.md (install
 # steps, the one-time gio-querymodules run on a device, what is absent on this
 # lane in the branches' own words). Both lanes, same facts; three text files,
 # invisible to the arch gate below.
-RUN --mount=type=bind,source=windows/scripts/build/write-bundle-manifest.ps1,target=C:\bkmnt\write-bundle-manifest.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\write-bundle-manifest.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\Write-BundleManifest.ps1' -ScriptDir 'C:\bkmnt'
 # #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
 # bundle's wheels for the TARGET tag (host pip in download mode) and gate that
 # every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice
 # only (deps are installed into the shipped interpreter itself). Runs BEFORE
 # the arch gate so the downloaded wheels are machine-checked and import-walked
 # like everything else.
-RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,target=C:\bkmnt\stage-target-python-deps.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,target=C:\bkmnt\Copy-TargetPythonDeps.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt' `
+    & 'C:\bkmnt\Copy-TargetPythonDeps.ps1' -ScriptDir 'C:\bkmnt' `
         -MinBundleWheels ([int]$env:DEPS_MIN_BUNDLE_WHEELS) `
         -MinFirstTouchRequirements ([int]$env:DEPS_MIN_FIRST_TOUCH_REQS)
 
@@ -325,7 +325,7 @@ RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,
 # scan root -- "0 violations" is only a whole-image statement if the gate saw
 # the whole image.
 #
-# Both scan roots are listed unconditionally; verify-target-arch.ps1 warns and
+# Both scan roots are listed unconditionally; Test-TargetArch.ps1 warns and
 # continues on a root that does not exist (amd64 keeps its coverage, and on
 # amd64 the site-packages tree is native x64 and simply passes).
 #
@@ -351,11 +351,11 @@ ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
 # -ImportWalk (#127): every shipped PE + every wheel's native members must
 # resolve their imports against the bundle, the loader's API sets or this
 # container's System32 names -- CRT excluded from System32 on a cross lane.
-# Mounts ONE module, not the buildmods closure: verify-target-arch.ps1 imports
+# Mounts ONE module, not the buildmods closure: Test-TargetArch.ps1 imports
 # exactly WindowsTargetArch.Common.psm1 (and that module is dependency-free by
 # design). Mounting ten to use one is how a script silently grows a dependency
 # nobody declared — this way an added import fails the gate loudly instead.
-RUN --mount=type=bind,source=windows/scripts/build/verify-target-arch.ps1,target=C:\bkmnt\verify-target-arch.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Test-TargetArch.ps1,target=C:\bkmnt\Test-TargetArch.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
-    & 'C:\bkmnt\verify-target-arch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `
+    & 'C:\bkmnt\Test-TargetArch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `
         -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) -HostToolPattern $env:ARCH_GATE_HOST_TOOLS -IncludeArchives -ImportWalk

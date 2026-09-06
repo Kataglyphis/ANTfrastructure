@@ -5,14 +5,14 @@
 # The patched-llvm toolchain (#135, default) builds compiler-rt builtins for the
 # HOST arch only, so the arm64 GStreamer link died on __udivti3 (found on the
 # 2026-08-30 arm64 cross run, merge stage). This pins the self-heal in
-# build-gstreamer-from-source.ps1: on the cross lane it mines
+# Build-GstreamerFromSource.ps1: on the cross lane it mines
 # clang_rt.builtins-aarch64.lib from the LLVM release archive next to the x86_64
 # one; the warn-and-continue policy is preserved on amd64 and as a fallback.
 
 Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
 
     $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $gstPath = Join-Path $repoWin 'scripts\build\build-gstreamer-from-source.ps1'
+    $gstPath = Join-Path $repoWin 'scripts\build\Build-GstreamerFromSource.ps1'
     $gstText = Get-Content -Raw $gstPath
 
     It 'mines the aarch64 builtins from the LLVM release archive' {
@@ -42,7 +42,7 @@ Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
 Describe 'GStreamer cross-lane opus intrinsics (reverted to the proven disabled state)' {
 
     $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $gstPath = Join-Path $repoWin 'scripts\build\build-gstreamer-from-source.ps1'
+    $gstPath = Join-Path $repoWin 'scripts\build\Build-GstreamerFromSource.ps1'
     $gstText = Get-Content -Raw $gstPath
 
     It 'keeps opus intrinsics DISABLED on both lanes (the 08-26 proven shape)' {

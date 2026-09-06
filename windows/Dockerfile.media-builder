@@ -60,7 +60,7 @@ ARG SCCACHE_LOG="warn"
 # in PR #5885; "cache mounts fail silently" is #1648). Re-verify by rebuilding
 # media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
 # genai reports 0 write errors — not by assuming a newer buildkit fixed it.
-# `windows/scripts/diagnostics/probe-sccache-write.ps1` answers it in ~2 minutes.
+# `windows/scripts/diagnostics/Test-SccacheWrite.ps1` answers it in ~2 minutes.
 ARG SCCACHE_MULTILEVEL_CHAIN=""
 #
 # THE C:\sccache CACHE MOUNTS BELOW USE sharing=shared, NOT locked (#134,
@@ -113,7 +113,7 @@ ARG SCCACHE_FORCE_LOCAL=""
 #
 # Requires sccache >= v0.16.0 (2026-06-19). Older versions ignore the variable
 # SILENTLY, which is why sccache is now PINNED in versions.env and asserted by
-# verify-toolchain.ps1 -- a speed feature that can vanish without a signal is
+# Test-Toolchain.ps1 -- a speed feature that can vanish without a signal is
 # worse than no feature at all.
 #
 # SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule bounds
@@ -180,7 +180,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 
 # NO versions.env COPY HERE — deliberately removed 2026-08-07.
 #
-# It used to sit in this stage so the run-time `load-versions.ps1` would read
+# It used to sit in this stage so the run-time `Import-Versions.ps1` would read
 # CURRENT values instead of the stale copy baked into the base image. The cost
 # was brutal and invisible: this stage is the ancestor of all three branch envs,
 # so ANY byte changed in versions.env invalidated all six media compiles — three
@@ -189,7 +189,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Versions now arrive as build-args (Get-MediaBranchVersionArg, forwarded by both
 # drivers) and are declared as ARG+ENV in each `media-*-env` stage below, so a
 # pin only invalidates the branch that actually consumes it. The stale-file trap
-# is closed at the other end: `load-versions.ps1` now treats a value already
+# is closed at the other end: `Import-Versions.ps1` now treats a value already
 # present in the process environment as authoritative and never overwrites it,
 # so the base-baked file can only fill gaps, never win.
 #
@@ -329,15 +329,15 @@ ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-target-cpython.ps1,target=C:\bkmnt\build-target-cpython.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-OnnxFromSource.ps1,target=C:\bkmnt\Build-OnnxFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
-    & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # FFMPEG BEFORE OPENCV (swapped 2026-08-16, backlog #94). OpenCV's videoio
 # needs FFmpeg to EXIST at configure time or it silently falls back to the
@@ -364,7 +364,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # (A KATA_ARCH_PROBE ENV sat here from 2026-08-23: a second ENV carrying the same
 # ARG under a different name, to discriminate "the build-arg never reached the
 # ARG" from "something re-sets the WINDOWS_TARGET_ARCH name specifically". It was
-# the former. Removed 2026-08-26 with its reader in build-ffmpeg-from-source.ps1
+# the former. Removed 2026-08-26 with its reader in Build-FfmpegFromSource.ps1
 # (#134) — a diagnostic left in place after its question is answered becomes a
 # thing future readers must first prove is not load-bearing.)
 # #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
@@ -377,12 +377,12 @@ ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-FfmpegFromSource.ps1,target=C:\bkmnt\Build-FfmpegFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
 # Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
@@ -392,7 +392,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # (avcodec 63) instead of downloading its own prebuilt one (avcodec 61,
 # avdevice NO). Verified by the full-chain smoke gate: 188 passed / 1 failed,
 # the 1 being the deliberately-red #93 GStreamer guard. Requires the FFmpeg-9
-# source patch + PkgConfig shim (both applied by build-opencv-from-source.ps1
+# source patch + PkgConfig shim (both applied by Build-OpencvFromSource.ps1
 # when this is 1). Opt OUT with: -BuildArg OPENCV_LINK_CHAIN_FFMPEG=
 #
 # Declared HERE, not in `common` (#103): only this stage reads it, and in the
@@ -434,14 +434,14 @@ ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     OPENCV_VERSION="${OPENCV_VERSION}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-OpencvFromSource.ps1,target=C:\bkmnt\Build-OpencvFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
     $env:SCCACHE_CUDA_LAUNCHER = $env:OPENCV_CUDA_LAUNCHER; `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
 # Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
@@ -458,12 +458,12 @@ ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8B
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-OnnxGenaiFromSource.ps1,target=C:\bkmnt\Build-OnnxGenaiFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
@@ -476,24 +476,24 @@ ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
 # mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
 # - it is rename-heavy and this cache mount is wcifs rename-hostile). The
-# frozen CMake litert-lm fallback (build-litert-lm-from-source.ps1 + export
+# frozen CMake litert-lm fallback (Build-LitertLmFromSource.ps1 + export
 # bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
 # BAZEL_REPO_CACHE-less / fallback run still has it.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
-    --mount=type=bind,source=windows/scripts/build/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-litert-lm-bazel.ps1,target=C:\bkmnt\build-litert-lm-bazel.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
-    --mount=type=bind,source=windows/scripts/build/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-LitertAll.ps1,target=C:\bkmnt\Build-LitertAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-LitertFromSource.ps1,target=C:\bkmnt\Build-LitertFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-LitertLmBazel.ps1,target=C:\bkmnt\Build-LitertLmBazel.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-LitertLmFromSource.ps1,target=C:\bkmnt\Build-LitertLmFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Export-LitertLmBridge.ps1,target=C:\bkmnt\Export-LitertLmBridge.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Debug-LitertlmLink.ps1,target=C:\bkmnt\Debug-LitertlmLink.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
-    $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\Build-LitertAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
@@ -505,13 +505,13 @@ ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8B
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-target-cpython.ps1,target=C:\bkmnt\build-target-cpython.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-MediaTvmAll.ps1,target=C:\bkmnt\Build-MediaTvmAll.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
-    --mount=type=bind,source=windows/scripts/build/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-TvmFromSource.ps1,target=C:\bkmnt\Build-TvmFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-IreeFromSource.ps1,target=C:\bkmnt\Build-IreeFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
-    & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaTvmAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter

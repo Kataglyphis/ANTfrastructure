@@ -39,11 +39,11 @@ Stage chain (each `FROM` the previous stage's local tag):
 |-------|------------|----------|----------|
 | 1 | `windows/Dockerfile.base` | `local/kataglyphis:windows-base` | VS Build Tools 18 (ClangCL toolset), Scoop (LLVM 22, Rust, Flutter, Vulkan SDK, WiX 4), Git, Python bootstrapping, `versions.env` |
 | 2 | `docker tag` of base (CPU) **or** `windows/Dockerfile.nvidia` (GPU) | `local/kataglyphis:windows-sdk` | CPU lane simply re-tags `windows-base` (the former `Dockerfile.sdk` no-op shim was removed); GPU lane builds the NVIDIA layer (CUDA 13.3 + cuDNN 9.25 + optional TensorRT 11.2.1.2). `windows/build-buildkit.ps1 [-Gpu]` picks the variant — both produce the `windows-sdk` tag. |
-| 3 | `windows/Dockerfile.toolchain-builder` (+ run+commit) | `local/kataglyphis:windows-toolchain` | CPython 3.14 source-built with ClangCL via `build-toolchain-all.ps1` (`PCbuild\build.bat`) |
+| 3 | `windows/Dockerfile.toolchain-builder` (+ run+commit) | `local/kataglyphis:windows-toolchain` | CPython 3.14 source-built with ClangCL via `Build-ToolchainAll.ps1` (`PCbuild\build.bat`) |
 | 4 | `windows/Dockerfile.media-merge-builder` (+ per-branch media builders) | `local/kataglyphis:windows-media` | AI/media stack: ONNX Runtime 1.27.0, ONNX GenAI 0.14.0, OpenCV 5.x, LiteRT 2.1.6, LiteRT-LM 0.13.1, TVM 0.25.0, FFmpeg `master` (`--enable-libonnxruntime`; DNN filters ship with the backend, no separate `--enable-dnn`), GStreamer 1.29.2 — all source-built with Ninja/clang-cl in dependency order |
 | 5 | `windows/Dockerfile` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
 
-Container validation uses `windows/scripts/build/smoke-test-container.ps1` (22 test categories; its assertion harness lives in `windows/scripts/modules/WindowsSmokeTest.Common.psm1`) and the Docker `HEALTHCHECK` defined in `windows/scripts/healthcheck.ps1`.
+Container validation uses `windows/scripts/build/Test-Container.ps1` (22 test categories; its assertion harness lives in `windows/scripts/modules/WindowsSmokeTest.Common.psm1`) and the Docker `HEALTHCHECK` defined in `windows/scripts/Test-Health.ps1`.
 
 The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Clang+Flutter+WiX, (5) VS Build Tools, (6) Vulkan SDK, (7) CUDA+cuDNN (skippable), (8) ONNX Runtime, (9) ONNX GenAI, (10) OpenCV 5, (11) GStreamer, (12) LiteRT, (13) LiteRT-LM, (14) compiler smoke, (15) CMake+Ninja+clang-cl integration, (16) MSBuild+ClangCL, (17) TVM (source-built), (18) FFmpeg (source-built with DNN/ONNX).
 

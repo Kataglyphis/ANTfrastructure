@@ -17,14 +17,14 @@
 Describe 'Dockerfile.base WPS-5.1 bootstrap scripts stay 5.1-parseable (#106)' {
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
     # EXACTLY ONE script runs under WPS 5.1 — this gate's own first run proved
-    # the audit wrong about that. #106 claimed setup-vs.ps1 and
-    # setup-scoop-tools.ps1 were 5.1 too; both declare `#requires -Version 7.0`
+    # the audit wrong about that. #106 claimed Install-Vs.ps1 and
+    # Install-ScoopTools.ps1 were 5.1 too; both declare `#requires -Version 7.0`
     # and both run AFTER Dockerfile.base's SHELL switches to pwsh (line ~69),
-    # while they execute at lines ~93/~125. Only bootstrap-pwsh.ps1 executes
+    # while they execute at lines ~93/~125. Only Initialize-Pwsh.ps1 executes
     # under the initial `powershell` SHELL (line ~30 → RUN at ~45). Keep this
     # list in step with the SHELL ordering in Dockerfile.base, not with lore.
     $bootstrapScripts = @(
-        'windows\scripts\host\bootstrap-pwsh.ps1'    # first RUN of Dockerfile.base, WPS 5.1 SHELL
+        'windows\scripts\host\Initialize-Pwsh.ps1'    # first RUN of Dockerfile.base, WPS 5.1 SHELL
     )
 
     foreach ($rel in $bootstrapScripts) {

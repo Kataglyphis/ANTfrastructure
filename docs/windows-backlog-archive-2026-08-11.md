@@ -13,7 +13,7 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 ## Addendum — closed 2026-08-14 (Batch D: nothing verified the artifact)
 
 Four items treated as ONE piece of work, because they all live in
-`smoke-test-container.ps1`. **The gate found 8 real failures in the shipped
+`Test-Container.ps1`. **The gate found 8 real failures in the shipped
 image on its first run** — see backlog P0c (#83-#87).
 
 **The gate's own first lesson — 8 reported failures, ZERO image defects.**
@@ -82,7 +82,7 @@ fact cost a retraction; probe first, publish second.
   test skipped itself when `DirectML.dll` was absent — keyed on the very
   artifact it exists to verify — while the staging helper only `Write-Warning`s
   on a missing sidecar. `USE_DML=ON` is unconditional in
-  build-onnx-from-source.ps1, so an absent redist is never legitimate, and on
+  Build-OnnxFromSource.ps1, so an absent redist is never legitimate, and on
   the AMD reference host DirectML is the ONLY working GPU path. Now a hard
   failure.
 - **67 (DONE) LiteRT exports are pinned.** The build gates on
@@ -240,7 +240,7 @@ scripts and patch dirs are bind-mounted and were deliberately left alone.
 
 - **53 (DONE) `TENSORRT_VERSION` ARG+ENV moved BELOW the CUDA RUN.** An ARG in
   scope keys every following RUN, and nothing up to and including
-  `setup-cuda.ps1` consumes it — TensorRT arrives via `COPY --from`. With it
+  `Install-Cuda.ps1` consumes it — TensorRT arrives via `COPY --from`. With it
   declared above, bumping the TensorRT pin forced a ~3.8 GB CUDA + cuDNN
   re-download, which is precisely what made fixing #38 expensive. It now rides
   the existing `GPU_TYPE`/`CUDA_ROOT` ENV block, so **no extra layer** is spent.
@@ -262,7 +262,7 @@ scripts and patch dirs are bind-mounted and were deliberately left alone.
   `Dockerfile.base` sets `ENV PATH=...` explicitly, so the image config wins and
   a registry PATH written inside a RUN is invisible to later stages. The fix
   that works *with* the ENV is a stable directory NAME:
-  - NEW `windows/scripts/normalize-tensorrt-tree.ps1`, bind-mounted into the
+  - NEW `windows/scripts/Set-TensorrtTree.ps1`, bind-mounted into the
     `trt-extract` stage: renames the NEWEST `TensorRT-<version>` tree (by
     `[version]` comparison, not a lexical sort — see the correction below) →
     **`current`**, WARNS (never fails) on pin-vs-zip drift so it can no longer
@@ -359,7 +359,7 @@ scripts and patch dirs are bind-mounted and were deliberately left alone.
   RESULT loaded=14 failed=0
   ```
 
-  The rebuild took **2:24 vs 12:00** because `setup-cuda.ps1` came back
+  The rebuild took **2:24 vs 12:00** because `Install-Cuda.ps1` came back
   **CACHED** — #53 paying for itself on its first real use: a TensorRT restage
   no longer re-downloads ~3.8 GB of CUDA + cuDNN.
 
@@ -445,29 +445,29 @@ guard). All eight came out of the 2026-08-14 deep audit.
 - **34 + ELEVATED WINDOW + dufs (DONE 2026-08-13, applied by owner).** Owner ran
   the between-runs elevated bundle: (1) buildkitd service env restored
   (`BUILDKIT_STEP_LOG_MAX_SIZE/-SPEED=-1`) so `-SkipStepLogGate` is no longer
-  needed; (2) GC budgets deployed (`apply-buildkitd-gcpolicy.ps1`, buildkitd.toml
+  needed; (2) GC budgets deployed (`Set-BuildkitdGcpolicy.ps1`, buildkitd.toml
   400/450GB) — fixes the cross-run snapshot eviction (#34); (3) poisoned
-  probe-build-copy layer chain pruned (`probe-build-copy.ps1` no longer FALSE
-  RED); (4) diagnostic tag cleanup. Also ran `setup-dufs-service.ps1` → dufs is
+  probe-build-copy layer chain pruned (`Test-BuildCopy.ps1` no longer FALSE
+  RED); (4) diagnostic tag cleanup. Also ran `Install-DufsService.ps1` → dufs is
   now a session-independent SYSTEM ONSTART task (no more mid-run WebDAV-write
   fail-open). Sanity: `buildctl debug workers -v` should show reservedSpace=200GB.
 - **Upstream issues (POSTED 2026-08-13):** mozilla/sccache#2808 (nvcc deadlock +
   miscompile) and google-ai-edge/LiteRT-LM#3245 (CMake-lane staleness). opencv/opencv
   (dnn ORT `char*`/`wchar_t`) draft still unposted.
 - **28 (LANDED 2026-08-13) Ninja job-count `-MemGBPerJob 2`.** Changed `4`→`2`
-  at the build-onnx-from-source.ps1 (line ~451) and build-opencv-from-source.ps1
+  at the Build-OnnxFromSource.ps1 (line ~451) and Build-OpencvFromSource.ps1
   (line ~295) `Invoke-NinjaBuildWithRetry` call sites → ~19 jobs (from ~9) at the
   measured ~1 GB/process, well under the 39 GB budget. Code landed + lint/tests
   green; the throughput win verifies on the next full media-core build.
 - **27 (DONE + VERIFIED 2026-08-14) Dockerfile.base 1214-char single-line RUN →
   mounted script.** Extracted the pwsh-7 bootstrap blob into
-  `windows/scripts/bootstrap-pwsh.ps1` (WPS-5.1-safe, byte-identical logic:
+  `windows/scripts/Initialize-Pwsh.ps1` (WPS-5.1-safe, byte-identical logic:
   3-attempt backoff + in-loop SHA256 + original-exception rethrow) and rewrote
-  the base RUN to `RUN --mount=type=bind,source=windows/scripts/bootstrap-pwsh.ps1,target=C:\bootstrap-pwsh.ps1 & 'C:\bootstrap-pwsh.ps1'`.
+  the base RUN to `RUN --mount=type=bind,source=windows/scripts/Initialize-Pwsh.ps1,target=C:\Initialize-Pwsh.ps1 & 'C:\Initialize-Pwsh.ps1'`.
   Bind-mount, NOT COPY — no layer, nothing COPY'd this early in base by design;
   runs under WPS 5.1 (SHELL not yet switched to pwsh). Despite the item's
   "never alone / batch with a base bump" caveat, verified standalone with a
-  scoped `-Stages base` build: **step `#6 … RUN --mount=…bootstrap-pwsh.ps1… DONE
+  scoped `-Stages base` build: **step `#6 … RUN --mount=…Initialize-Pwsh.ps1… DONE
   11.1s`**, build proceeded to VS Build Tools (#9) — the mounted-script bootstrap
   behaves exactly as the inline blob did. Lint 151/0, parse-clean. NOTE: landing
   it busts the base-tier cache (base instruction changed) → the next full chain
@@ -480,13 +480,13 @@ guard). All eight came out of the 2026-08-14 deep audit.
   at an UNRELEASED commit (0.1.13.dev1, not on PyPI), so the PyPI `apache-tvm-ffi`
   wheel pip pulled was ABI-skewed vs our source-built `tvm_runtime.dll`. Fix =
   build tvm_ffi FROM the vendored source + install the tvm wheel `--no-deps`
-  (build-tvm-from-source.ps1). Three sub-fixes gated that source build:
+  (Build-TvmFromSource.ps1). Three sub-fixes gated that source build:
   `Copy-CpythonPyConfigHeader` (CMake-4.4 FindPython can't read in-tree
   pyconfig.h), install `cython` (core.pyx transpile → MSB8066), install
   `typing_extensions` (`--no-deps` starves tvm_ffi's only declared dep). See
   memory `tvm-ffi-source-build-winfix`.
 - **36 (DONE 2026-08-13) litert branch → BAZEL — chain integration complete.**
-  The canary recipe (`build-litert-lm-bazel.ps1`) was wired into the media-litert
+  The canary recipe (`Build-LitertLmBazel.ps1`) was wired into the media-litert
   branch and the full chain built green; media-litert now produces
   litert_lm_main.exe via bazel, CMake path frozen as fallback. Included the
   zlib.net→GitHub-mirror WORKSPACE patch (flaky-download fix).
@@ -495,7 +495,7 @@ guard). All eight came out of the 2026-08-14 deep audit.
   clang-cl, opencv-5 data-dir + API relocation (xobjdetect/geometry/calib),
   tflite C-API export, cpp_std c++11→c++17 (MSVC 14.51 STL), plugin-LOAD gate
   (recursive dumpbin walker), and CUDA-runtime FLATTEN-deploy for opencv's
-  cudnn64_9.dll (`stage-cuda-runtime.ps1`). Full detail in memory
+  cudnn64_9.dll (`Copy-CudaRuntime.ps1`). Full detail in memory
   `gstreamer-merge-winfix`. Verified: `[bk] Done in 00:41:30` →
   `local/kataglyphis:bk-winamd64` (all stages, GPU).
 
@@ -551,10 +551,10 @@ miss, cascade. `BUILD_DATE`/`VCS_REF` stamps are exonerated (they reach
 only torch/final). FIX (elevated window, bundle with the W0 env restore):
 raise tier-2 maxUsedSpace 150→350GB and tier-3 240→450GB in
 windows/buildkitd.toml (930 GB disk, ~790 free — satisfiable; keep the
-2026-08-08 invariants), redeploy via apply-buildkitd-gcpolicy.ps1.
+2026-08-08 invariants), redeploy via Set-BuildkitdGcpolicy.ps1.
 SIDE-FINDING from the fix research: `rewrite-timestamp=true` on the
 Windows image exporter CRASHES mid-finalize and poisons the layer chain —
-never use it here (see the probe-chain cleanup pending-action). Item-34 fix research (2026-08-11 ~08:00): **`rewrite-timestamp=true` on the Windows image exporter is DANGEROUS** — it crashed mid-finalize (`hcsshim::ActivateLayer ... process cannot access the file`) and left a POISONED SNAPSHOT in the probe's layer chain (same snapshot id failed identically on the next two solves; a unique-layer discriminator solve was green, so the damage is chain-local, not a host wedge). ⚠ Until that snapshot is pruned (`buildctl prune` of the probe refs / worst case reboot), **probe-build-copy.ps1 will return a FALSE RED on this host** — do not trust a probe verdict before the cleanup. Epoch-only canary (no rewrite-timestamp) running separately. **NEW 35 [observe·★]**: run-15's ffmpeg stage stalled
+never use it here (see the probe-chain cleanup pending-action). Item-34 fix research (2026-08-11 ~08:00): **`rewrite-timestamp=true` on the Windows image exporter is DANGEROUS** — it crashed mid-finalize (`hcsshim::ActivateLayer ... process cannot access the file`) and left a POISONED SNAPSHOT in the probe's layer chain (same snapshot id failed identically on the next two solves; a unique-layer discriminator solve was green, so the damage is chain-local, not a host wedge). ⚠ Until that snapshot is pruned (`buildctl prune` of the probe refs / worst case reboot), **Test-BuildCopy.ps1 will return a FALSE RED on this host** — do not trust a probe verdict before the cleanup. Epoch-only canary (no rewrite-timestamp) running separately. **NEW 35 [observe·★]**: run-15's ffmpeg stage stalled
 for ~120 min between `Enter-VsDevCmdEnvironment`'s vswhere-fallback line
 (15 s) and the awk-replacement line (7216 s) — a section that runs in
 seconds normally (run 14: whole prefix 177 s; no scoop-install messages,
@@ -575,7 +575,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
 - **Restore the buildkitd service env** (`BUILDKIT_STEP_LOG_MAX_SIZE=-1`,
   `MAX_SPEED=-1`): found EMPTY on 2026-08-10 (wiped by the Stevedore/repair
   work); the default 2 MiB step-log clip hid verdicts all day. Elevated
-  `setup-new-host.ps1` (idempotent, refuses during builds) or the registry
+  `Install-NewHost.ps1` (idempotent, refuses during builds) or the registry
   Multi-String + `Restart-Service buildkitd` — ONLY between chain runs.
   **Since 2026-08-10 night this is ENFORCED: `Assert-BuildkitdStepLogEnv`
   refuses to launch the BK driver until restored (0a).**
@@ -613,7 +613,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
     2026-08-10 blockers were pure host drift (dufs ONLOGON task dead after
     reboot, buildkitd service env wiped by the Stevedore repair, Defender
     exclusion uncertainty, dGPU state): the code is reproducible, the host
-    is not. `verify-host-setup.ps1` already exists — carve out its CHEAP
+    is not. `Test-HostSetup.ps1` already exists — carve out its CHEAP
     subset (service-env registry read, dufs HEAD request, RDNA4 state,
     shim hash) and run it at the top of BOTH drivers. Seconds at launch
     instead of minute-80 surprises.
@@ -648,8 +648,8 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
    **RDNA4 hazard set exists in THREE divergent copies**: the
    `Assert-NoActiveRdna4Gpu` regex (covers RX 9xxx + AI PRO R9700), the
    hardcoded `FriendlyName -eq 'AMD Radeon RX 9070 XT'` in
-   `toggle-rdna4-gpu.ps1`, and the same literal as `-GpuName` default in
-   `test-rdna4-layer-lock.ps1`. Concrete dead end: on an RX 9060 host the
+   `Set-Rdna4Gpu.ps1`, and the same literal as `-GpuName` default in
+   `Test-Rdna4LayerLock.ps1`. Concrete dead end: on an RX 9060 host the
    gate refuses and points at a toggle script that cannot find the device.
    Fix: export ONE `Get-Rdna4HazardDevice` from WindowsBuildDriver.Common and
    let toggle + A/B resolve through it. *(The gate regex additionally
@@ -688,10 +688,10 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
 ### P2 — reuse / single-source-of-truth
 
 5. *(DONE 2026-08-10 night: the A/B now delegates each GPU-state side to
-   `probe-build-copy.ps1 -Heavy` — digest-pinned base, lane logs and the
+   `Test-BuildCopy.ps1 -Heavy` — digest-pinned base, lane logs and the
    output-shape lessons live once; the A/B only orchestrates GPU state.)*
-   **`test-rdna4-layer-lock.ps1` re-implements the finalize probe** that
-   `probe-build-copy.ps1` (exit codes + `-Heavy` + per-lane Tee logs) was
+   **`Test-Rdna4LayerLock.ps1` re-implements the finalize probe** that
+   `Test-BuildCopy.ps1` (exit codes + `-Heavy` + per-lane Tee logs) was
    just upgraded to provide. Fix: call the probe (or extract a shared
    lane-runner) so the load-bearing output-shape/quoting lessons live once.
    *(Its log-swallowing was fixed same-day — the duplication remains.)*
@@ -699,7 +699,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
    `Set-Rdna4DeviceState` (post-state-verified); toggle script + A/B finally
    block both consume it, and the toggle gained `-NoPrompt` + exit 1 on a
    failed state change.)*
-   **GPU toggle logic duplicated** between `toggle-rdna4-gpu.ps1` and the
+   **GPU toggle logic duplicated** between `Set-Rdna4Gpu.ps1` and the
    A/B script's finally-block re-enable (the safety-critical path). Fix:
    parameterize the toggle script (`-GpuName`, `-NoPrompt`) and call it, or
    lift the toggle into the module.
@@ -707,7 +707,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
    WindowsSourceBuild.Patches (fallback scriptblock runs in caller scope,
    `-Fatal` throws on a double miss); all six build-onnx stanzas collapsed;
    4 unit tests incl. the Fatal rung. See #19.)*
-   **Patch-apply stanzas ×6 in build-onnx-from-source.ps1** (try →
+   **Patch-apply stanzas ×6 in Build-OnnxFromSource.ps1** (try →
    Invoke-SourcePatch → catch → inline fallback → WarnMessage, near-identical
    each time; 3 added on 2026-08-10 alone). Fix: `Invoke-PatchWithFallback`
    helper in WindowsSourceBuild.Patches.psm1.
@@ -720,7 +720,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
 9. *(DONE 2026-08-10 night: script-local `Invoke-ProbeLane` (exe check, Tee
    log, tail echo, exit report, attempted/failed bookkeeping) called for
    all three lanes; args are quoted array elements per the ArgQuoting
-   lesson. NOTE: not yet live-smoked — run `probe-build-copy.ps1 -Heavy`
+   lesson. NOTE: not yet live-smoked — run `Test-BuildCopy.ps1 -Heavy`
    once after run 12's media-core finishes, before trusting a verdict.)*
    **probe-build-copy's three lanes are the same 9-line block ×3.**
 
@@ -743,11 +743,11 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
     (SourceBuild.NinjaRetry.Tests) — fold into one guarded block like the
     FAILONCE line below it.
 14. *(DONE 2026-08-10 night: payload lives at
-    `windows/diagnostics/verify-cuda-cache/cachetest.ps1` (lint scope),
-    copied into the solve context and run as `RUN & C:\cachetest.ps1`.)*
-    **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line.**
+    `windows/diagnostics/verify-cuda-cache/Test-Cache.ps1` (lint scope),
+    copied into the solve context and run as `RUN & C:\Test-Cache.ps1`.)*
+    **`Test-CudaCache.ps1`'s 21-statement concatenated RUN line.**
 15. *(DONE 2026-08-10 night: `git mv verify-defender-exclusions.ps1
-    sync-defender-exclusions.ps1`, all references updated — the name now
+    Sync-DefenderExclusions.ps1`, all references updated — the name now
     says what it does.)*
     **`verify-defender-exclusions.ps1` naming**: it verified AND applied.
 
@@ -766,11 +766,11 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
     (fail-fail-succeed at full `-j` ×2). The former POISONING paragraph is
     RETRACTED: run 11 failed byte-identically on a FRESH mount — the run-10
     link failure was the sccache nvcc MISCOMPILE (see the CUDA-launcher-OFF
-    block in build-onnx-from-source.ps1), not truncated cache objects. The
+    block in Build-OnnxFromSource.ps1), not truncated cache objects. The
     mount-id bump to `sccache-winamd64-2` stays, harmlessly.)*
     **Marker-based retry classification is not attempt-scoped.**
 18. *(DONE 2026-08-10 night, pragmatic form: gate-specific `-SkipRdna4Gate`
-    in BOTH drivers (message points at `probe-build-copy.ps1 -Heavy` as the
+    in BOTH drivers (message points at `Test-BuildCopy.ps1 -Heavy` as the
     evidence to earn it); the full probe-as-verdict altitude change is
     deliberately NOT built — the probe costs minutes, the gate seconds, and
     the skip-switch covers the healthy-host-after-driver-fix case.)*
@@ -804,7 +804,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
     the gate) over a now fully-recursive windows\ walk that also picked up
     `windows\upstream`; the test suite keeps the 6 positive controls.)*
     **AST sweep double-parses the tree** every gate cycle.
-22. *(DONE 2026-08-10 W1)* **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
+22. *(DONE 2026-08-10 W1)* **`Test-CudaCache.ps1` exports a throwaway image** nobody consumes —
     drop `--output` (solve-only is enough for the hit/write assertions;
     contrast: the finalize probes NEED `type=image,unpack=true`).
 23. *(DONE 2026-08-10 night: moved to `C:\sccache\logs\` in both media
@@ -817,7 +817,7 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
 24. *(DONE 2026-08-10 night: prepended to all 40 remaining files, each
     matching its own EOL style.)*
     **`#Requires -Version 7.0` missing across `windows/scripts/tests/`.**
-25. *(DONE 2026-08-10 W1)* **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
+25. *(DONE 2026-08-10 W1)* **`Test-Rdna4LayerLock.ps1` StrictMode fragility**: `$offTiny`/
     `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
     future try/catch edit cannot turn the verdict line into a StrictMode
     error on the exact host being diagnosed.
@@ -830,7 +830,7 @@ Checked and deliberately NOT flagged: isolation-probe already parameterizes
 its FROM; scrub coverage matches its documented tier map; `.dockerignore`
 guards the context; the ENV/ARG mirrors are the documented deliberate ones.
 
-26. *(DONE 2026-08-10 W1: ARG BASE in both probe Dockerfiles; probe-build-copy.ps1 pins it to versions.env WINDOWS_BASE_DIGEST via dependency-free parse on all three lanes, smoke-verified; the A/B script inherits the tag default until #5)* **Probe Dockerfiles float their base** (`FROM ...servercore:ltsc2025`
+26. *(DONE 2026-08-10 W1: ARG BASE in both probe Dockerfiles; Test-BuildCopy.ps1 pins it to versions.env WINDOWS_BASE_DIGEST via dependency-free parse on all three lanes, smoke-verified; the A/B script inherits the tag default until #5)* **Probe Dockerfiles float their base** (`FROM ...servercore:ltsc2025`
     without a digest) while the chain pins `WINDOWS_BASE_DIGEST` — when MS
     rolls the tag, the probe certifies a DIFFERENT base than the chain
     builds on, and pulls a fresh multi-GB image to do it. Fix: `ARG BASE`
@@ -889,7 +889,7 @@ guards the context; the ENV/ARG mirrors are the documented deliberate ones.
 
 The sweep also surfaced correctness bugs in same-day code; these were fixed
 immediately rather than backlogged: probe zero-lane false-green (exit 0 with
-no lane run), `repair-windows-componentstore.ps1` still using the retired
+no lane run), `Repair-WindowsComponentstore.ps1` still using the retired
 `type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
 gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
 multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest

@@ -25,7 +25,7 @@
 # as well is harmless.
 #
 # VERIFIED inside bk-windows-media-core before wiring this
-# (probe-opencv-video-backends.ps1, the "#94 route test" section):
+# (Test-OpencvVideoBackends.ps1, the "#94 route test" section):
 #     PKG_CONFIG_FOUND=TRUE
 #     FFMPEG_FOUND=1   FFMPEG_libavcodec_VERSION=63.1.100
 #     FFMPEG_INCLUDE_DIRS=C:/runtime/ffmpeg/include

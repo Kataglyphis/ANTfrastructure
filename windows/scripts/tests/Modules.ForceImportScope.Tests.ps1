@@ -8,7 +8,7 @@
 # 2026-08-21, media-core/ONNX: the chain entrypoint imported
 # WindowsSourceBuild.Common with -Force (module instance M1) and called
 # Invoke-SourceBuildChain, which runs the leaf builders in-process
-# (`& (Join-Path $ScriptDir $stage.Script)`). build-onnx-from-source.ps1 then
+# (`& (Join-Path $ScriptDir $stage.Script)`). Build-OnnxFromSource.ps1 then
 # did its own `Import-Module ... -Force`, which REMOVES M1 while
 # Invoke-SourceBuildChain is still on the stack. ONNX compiled fine for 53
 # minutes; the chain tail then died on

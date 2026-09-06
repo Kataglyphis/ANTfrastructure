@@ -8,8 +8,8 @@
 # defect it was meant to catch.
 #
 # Point it at the image that carries OpenCV + the python bindings:
-#   .\windows\scripts\diagnostics\run-opencv-video-probe.ps1
-#   .\windows\scripts\diagnostics\run-opencv-video-probe.ps1 -BaseImage local/kataglyphis:bk-windows-media-core
+#   .\windows\scripts\diagnostics\Invoke-OpencvVideoProbe.ps1
+#   .\windows\scripts\diagnostics\Invoke-OpencvVideoProbe.ps1 -BaseImage local/kataglyphis:bk-windows-media-core
 # =============================================================================
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-media-core-ffmpeg
 FROM ${BASE_IMAGE} AS probe
@@ -23,5 +23,5 @@ ARG PROBE_NONCE="0"
 # including opencv-configure.log — which survives a failed solve and is the only
 # way to read why a configure disabled a backend without rebuilding.
 RUN --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/diagnostics/probe-opencv-video-backends.ps1,target=C:\bkmnt\probe-opencv-video-backends.ps1 `
-    & 'C:\bkmnt\probe-opencv-video-backends.ps1' -Nonce "${PROBE_NONCE}"
+    --mount=type=bind,source=windows/scripts/diagnostics/Test-OpencvVideoBackends.ps1,target=C:\bkmnt\Test-OpencvVideoBackends.ps1 `
+    & 'C:\bkmnt\Test-OpencvVideoBackends.ps1' -Nonce "${PROBE_NONCE}"

@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Get-MesonSetupFailureClass (build-gstreamer-from-source.ps1): the retry
+# Get-MesonSetupFailureClass (Build-GstreamerFromSource.ps1): the retry
 # classifier for a failed `meson setup`. Lifted out of the script's AST. Pins
 # the arm64 run-25 misfire -- the SDK constant BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE
 # inlined from a probe source must NOT read as a transient network failure --

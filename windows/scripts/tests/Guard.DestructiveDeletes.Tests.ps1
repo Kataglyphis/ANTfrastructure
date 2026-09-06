@@ -139,10 +139,10 @@ Start-Service buildkitd
     }
 }
 
-Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
+Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
 
     # Dot-sourcing gives the functions without running anything.
-    $reclaim = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+    $reclaim = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
     . $reclaim
 
     It 'refuses every protected root, and the drive roots' {
@@ -238,7 +238,7 @@ Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'is report-only by default and never deletes without -Apply' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
         Assert-True (Test-Path $script) "reclaim script not found at $script"
         $raw = Get-Content -Raw $script
         # The delete is downstream of the -Apply gate: the report path exits
@@ -250,7 +250,7 @@ Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'honours the linked flag at delete time, not just in the report' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
         $raw = Get-Content -Raw $script
         Assert-Match 'Test-HasReparsePoint' $raw 'the reparse-point check is gone from the reclaim script'
         Assert-Match '\$t\.Linked' $raw 'the delete loop no longer honours the reparse-point check'
@@ -258,7 +258,7 @@ Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'runs on pwsh 7 like the rest of the repo' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
         Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $script) 'the reclaim script is not pinned to pwsh 7'
     }
 }

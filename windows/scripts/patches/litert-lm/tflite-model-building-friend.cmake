@@ -1,5 +1,5 @@
 
-# [LiteRTLM-winfix model_building-friend] see build-litert-lm-from-source.ps1
+# [LiteRTLM-winfix model_building-friend] see Build-LitertLmFromSource.ps1
 include("${CMAKE_CURRENT_LIST_DIR}/patch-assert.cmake")
 set(_lrtlm_mb "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/core/model_building.h")
 if(EXISTS "${_lrtlm_mb}")

@@ -15,7 +15,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 > deliberately different in one decisive way: **nothing it produces can be executed at
 > all.** Windows x64 has no ARM64 emulation, so there is no Windows counterpart to the
 > "compile+link+RUN under qemu" half of class 4 below — only the static half. That lane's
-> equivalent of the per-arch ELF/machine check is `windows/scripts/build/verify-target-arch.ps1`
+> equivalent of the per-arch ELF/machine check is `windows/scripts/build/Test-TargetArch.ps1`
 > (PE `Machine` field over the whole install prefix, with a minimum-inspected floor so a
 > lane that staged nothing cannot pass green), and its smoke gate runs the host-toolchain
 > sections against an arm64-specific floor column (66/25, measured green 97/0/15), reporting

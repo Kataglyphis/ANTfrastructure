@@ -121,10 +121,10 @@ marker, so a consumer never has to guess.
 >
 > **The base carries four arm64-only prerequisites, all installed UNCONDITIONALLY in the shared
 > base** — never gate them on an arch ARG (that re-pays the chain's most expensive layers on every
-> lane switch). They are warn-only in the base (`probe-arm64-prereqs.ps1` reports on all four); the
+> lane switch). They are warn-only in the base (`Test-Arm64Prereqs.ps1` reports on all four); the
 > GStreamer build **throws** on the ones it actually needs. `WINDOWS_ARM64_STRICT=1` promotes the
 > base checks to hard gates, but it must be passed as a build-arg (`-BuildArg
-> WINDOWS_ARM64_STRICT=1`; a host env var alone does nothing) and it never reaches `setup-vs.ps1`'s
+> WINDOWS_ARM64_STRICT=1`; a host env var alone does nothing) and it never reaches `Install-Vs.ps1`'s
 > MSVC `lib\arm64` check (that RUN sits above the `ARG` declaration in `Dockerfile.base`). The
 > prerequisite list, rationale and traps: `docs/windows-cross-builds.md`.
 
@@ -271,7 +271,7 @@ linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 **Fresh Windows machine?** Follow
 [`docs/windows-host-setup.md`](docs/windows-host-setup.md) rather than
 reconstructing the sequence — after the interactive steps, the scriptable half
-is one elevated `setup-new-host.ps1` run.
+is one elevated `Install-NewHost.ps1` run.
 
 All stages use **Ninja + clang-cl + lld-link**. The container toolchain is
 **containerd + BuildKit + nerdctl**. Role split — each tool where its pipe ACL
@@ -306,7 +306,7 @@ Four things an agent gets wrong without reading it:
   upstream, and there is no `--group` equivalent. Do not attempt pipe-ACL
   hacks and do not re-litigate it.
 - **Every Stevedore/containerd update reverts the patched runhcs shim.**
-  `windows/scripts/host/deploy-shim-patch.ps1 -ReportOnly` belongs in your
+  `windows/scripts/host/Publish-ShimPatch.ps1 -ReportOnly` belongs in your
   post-update routine. Since 2026-09-01 the deployed shim is the
   **`upstream-env` variant built from the owner's fork**
   (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout`), and it is only
@@ -314,14 +314,14 @@ Four things an agent gets wrong without reading it:
   `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` — a **Go duration string**;
   a bare number silently means stock 30 s. So an update now reverts TWO things:
   the binary AND (via reinstall) possibly that env value — check both, restore
-  both with `deploy-shim-patch.ps1 -ShimPath <fork build> -ServiceEnvironment
+  both with `Publish-ShimPatch.ps1 -ShimPath <fork build> -ServiceEnvironment
   CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`. Changing the env value needs
   a containerd restart (the shim inherits containerd's environment at spawn).
   **It can also wipe the buildkitd service `Environment`**
   (the `BUILDKIT_STEP_LOG_MAX_SIZE=-1` / `BUILDKIT_STEP_LOG_MAX_SPEED=-1` keys
   that prevent the 2 MiB step-log clip) — check with
   `(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment).Environment`
-  after any update, and re-apply via `setup-new-host.ps1` or the registry
+  after any update, and re-apply via `Install-NewHost.ps1` or the registry
   `Set-ItemProperty` if empty. The build driver refuses to start without them.
 - **A Stevedore REINSTALL wipes more than the shim** — the buildkitd service
   `Environment`, the dufs task and its serve directory all go with it. See
@@ -419,7 +419,7 @@ Windows host (`geniex serve --compute npu --host 0.0.0.0:18181`) and WSL2's
 agent reaches it at `127.0.0.1:18181` via mirrored networking. **The NPU needs
 a recent Qualcomm Hexagon NPU driver** — the llama.cpp Hexagon backend dlsyms
 the `dspqueue_*` API from `libcdsprpc.dll`, which older drivers lack; diagnose
-with `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. The full flow —
+with `windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1`. The full flow —
 install, the non-interactive chipset config, sharing the model cache across
 Windows/WSL2 without re-downloading, the opencode provider blocks, and the
 measured NPU/GPU/CPU envelope — is owned by
@@ -459,7 +459,7 @@ Still worth doing on any version: trim opencode's tool set via its top-level
 `tools` block (8,175 -> 5,234 tokens, and on a pre-cache build that was 36% off
 every turn), and compare prefill only *within one quant format* — a 2B Q4_K_M
 prefills 3.5x faster than a 9B Q4_K_M while a 4B in Q4_0 is slower than either.
-`windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly — it reads the model ids from `linux/llm-stack/backends.json`, passes `--nctx` and `-MaxTokens` (default 4096; the CLI's own 2048 default was invisible in every report), warms every lane **it starts** (a busy lane is left alone; re-run with `-Restart` to guarantee the recorded caps), and takes `-Models` / `-Pull`.
+`windows/scripts/host/Start-GeniexServers.ps1` brings the fleet up correctly — it reads the model ids from `linux/llm-stack/backends.json`, passes `--nctx` and `-MaxTokens` (default 4096; the CLI's own 2048 default was invisible in every report), warms every lane **it starts** (a busy lane is left alone; re-run with `-Restart` to guarantee the recorded caps), and takes `-Models` / `-Pull`.
 
 ### Triggering the opt-in CI lanes
 
@@ -702,7 +702,7 @@ toggles section) and `docs/refactoring-backlog.md` A2. QNN-LINUX.
 
 ### Windows Build Notes
 
-The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `build-litert-lm-bazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `build-media-core-all.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
+The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `Build-LitertLmBazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `Build-MediaCoreAll.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
 
 - **Per-library reference** (generator/compiler per component, EP/delegate flags, patch stacks, RAM budgets, fallback paths): the authoritative table is `docs/windows-builds.md` § Component Build Matrix.
 - **Per-script reference** (every build/setup/verify and HOST-maintenance script, with flags, gotchas and refusal conditions): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
@@ -1076,7 +1076,7 @@ The rules an agent must never violate:
    corrupt the in-flight process. Sourced library files are safe to edit for
    FUTURE runs (the running process holds them in memory) but see rule 1.
 5. **The WINDOWS chain caches differently — do not assume rules 1-4 apply.**
-   It relies on (a) deliberate layer ORDERING — `setup-vs.ps1` sits ABOVE the
+   It relies on (a) deliberate layer ORDERING — `Install-Vs.ps1` sits ABOVE the
    `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
    Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
    PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED, PER-FILE
@@ -1099,7 +1099,7 @@ The rules an agent must never violate:
    prune below, and it must exceed the **fresh chain spine** (~120–150 GB: base
    incl. VS + sdk + toolchain + branch images). Set below that, the ~37 GB
    VS-class layer is evicted between driver runs and every run re-solves the
-   prefix — `#9 RUN setup-vs.ps1` re-executing for 4–7 min while `#8`, the COPY
+   prefix — `#9 RUN Install-Vs.ps1` re-executing for 4–7 min while `#8`, the COPY
    of that very script, reports CACHED. It has happened twice (2026-08-11,
    2026-08-26). **Before blaming a cache key, check the reserve against
    `buildctl du`'s Total and against the store size**: `Reclaimable: 0B` is not
@@ -1120,7 +1120,7 @@ The rules an agent must never violate:
       mounted by `media-tvm-built` alone. That branch runs parallel to
       media-core, so an edit costs nothing on the long pole. `Write-AssembledWheelDistInfo`
       and `Get-PyprojectDependencies` moved off the tier-1 facade into this leaf
-      on 2026-08-31 — `build-tvm-from-source.ps1` is their only caller.
+      on 2026-08-31 — `Build-TvmFromSource.ps1` is their only caller.
    3. The **merge leaves** in `Dockerfile.media-merge-builder`'s `buildmods`:
       `WindowsGstPlugins.Common`, `WindowsMeson.Common`,
       `WindowsRustToolchain.Common`, `WindowsInstaller.Common`. An edit costs
@@ -1163,7 +1163,7 @@ The rules an agent must never violate:
    are shallow (`Invoke-GitClone` passes `--depth`), so they cost minutes
    against compiles that cost hours. If you do it, cache the ARCHIVES/CLONES
    only, never the working tree — directory RENAMES fail on cache mounts and
-   `build-gstreamer-from-source.ps1` moves the extracted tree. Also raise the
+   `Build-GstreamerFromSource.ps1` moves the extracted tree. Also raise the
    tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
    **shared** by every cache mount plus local sources and git checkouts, and
    the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
@@ -1525,7 +1525,7 @@ base ─┬─ onnxruntime ───────┐
   `build-runtime-manifest.sh` publishes only the cross manifest, so the native
   lane has no build path any more.
 - **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
-  `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
+  `windows/scripts/host/Clear-DiskSpace.ps1`, and NOTHING ad hoc** (2026-08-21,
   the worst incident this repo has produced). A "let's free some space"
   command was composed on the spot, handed over for an elevated shell, and did
   not stop at the container stores: it walked into the installed programs and
@@ -1662,8 +1662,8 @@ After changing versions:
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
 Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` requires adding the new
-version's SHA256 to `$llvmSrcSha` in **TWO** scripts — `build-tvm-from-source.ps1`
-(the #47 mini-LLVM heal) and `build-llvm-from-source.ps1` (the #135 patched
+version's SHA256 to `$llvmSrcSha` in **TWO** scripts — `Build-TvmFromSource.ps1`
+(the #47 mini-LLVM heal) and `Build-LlvmFromSource.ps1` (the #135 patched
 toolchain). Both pin the same llvm-project source tarball per version and THROW
 on an unknown one — deliberately, unpinned downloads are forbidden. Patching only
 one gives a green TVM stage and then a throw in the `patched-llvm` stage, hours

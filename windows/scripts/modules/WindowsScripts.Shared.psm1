@@ -229,7 +229,7 @@ function Invoke-DownloadWithRetry {
     (linux/scripts/01-core/versions.env): blank lines and #-comments are skipped,
     each remaining line is split on the FIRST '=', keys/values are trimmed and
     surrounding quotes stripped from values. Replaces the hand-rolled copies that
-    used to live in load-versions.ps1, build.ps1, smoke-test-container.ps1 and
+    used to live in Import-Versions.ps1, build.ps1, Test-Container.ps1 and
     Test-PatchesApplyClean.ps1.
 .PARAMETER Path
     Path to the versions.env file (must exist).
@@ -386,7 +386,7 @@ function Limit-DiagnosticLogs {
 function Get-DiagnosticLogPath {
     # One owner for the diagnostics' log-persistence convention (backlog #8):
     # <repo>\out\build-logs\<name>-<timestamp>.log, directory created,
-    # retention applied. probe-build-copy.ps1 alone keeps its inline copy BY
+    # retention applied. Test-BuildCopy.ps1 alone keeps its inline copy BY
     # DESIGN - it must run module-free on a fresh host (first-script rule).
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
@@ -663,7 +663,7 @@ function Assert-Elevated {
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
 # Assert-Command lived as a private copy in windows/scripts/rust/
-# New-MsixPackage.ps1, windows/scripts/build/smoke-test-container.ps1 and a
+# New-MsixPackage.ps1, windows/scripts/build/Test-Container.ps1 and a
 # consumer's Build-Windows.ps1, all three identical. One home now.
 #
 # There is deliberately NO general Resolve-Executable here. Both the

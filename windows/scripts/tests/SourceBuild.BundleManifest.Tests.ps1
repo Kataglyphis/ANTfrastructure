@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# write-bundle-manifest.ps1 (#130) writes the bundle's self-description into
+# Write-BundleManifest.ps1 (#130) writes the bundle's self-description into
 # C:\runtime: BUNDLE-ENV.cmd, BUNDLE-ENV.ps1 and BUNDLE-README.md. It is the
 # consumer-side entry point: a consumer who copies C:\runtime to a device had
 # to reverse-engineer the DLL homes from the tree before this existed.
@@ -17,7 +17,7 @@ Describe 'write-bundle-manifest: bundle self-description' {
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('bundlemanifest-' + [guid]::NewGuid().ToString('N'))
         $script:runtime = Join-Path $script:tmp 'runtime'
         New-Item -ItemType Directory -Force -Path $script:runtime | Out-Null
-        $script:scriptPath = Join-Path (Get-RepoRoot) 'windows\scripts\build\write-bundle-manifest.ps1'
+        $script:scriptPath = Join-Path (Get-RepoRoot) 'windows\scripts\build\Write-BundleManifest.ps1'
 
         # Save env vars we mutate so AfterAll can restore them.
         $script:savedArch = [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Process')

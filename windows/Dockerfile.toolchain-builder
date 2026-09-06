@@ -44,28 +44,28 @@ ENV PATH=$PYTHON_BUILD_BIN;$PATH
 # edit to any of them no longer invalidates this stage's ancestry, and the
 # script prefers the SIBLING versions.env under C:\bkmnt over $env:TEMP_DIR.
 FROM builder AS built
-RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,target=C:\bkmnt\build-toolchain-all.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Build-ToolchainAll.ps1,target=C:\bkmnt\Build-ToolchainAll.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
-    & 'C:\bkmnt\build-toolchain-all.ps1'
+    & 'C:\bkmnt\Build-ToolchainAll.ps1'
 
 # ── clang/LLVM at the pin, plus the two AArch64 instruction-size fixes ───────
 # DEFAULT since #135 (BUILD_PATCHED_LLVM=1; `-StockLlvm` is the opt-out). Rebuilds
 # clang from the SAME pinned 23.1.0 tarball the TVM stage already uses and applies
 # two upstream commits (llvm/llvm-project#219275 and #219276) that remove the
 # OpenCV/protobuf aarch64 aborts -- see docs/windows-refactor-backlog.md § #135.
-# The workarounds this replaced are gone from build-opencv-from-source.ps1.
+# The workarounds this replaced are gone from Build-OpencvFromSource.ps1.
 #
-# The banner still reads 23.1.0, so verify-toolchain.ps1's provenance gate
+# The banner still reads 23.1.0, so Test-Toolchain.ps1's provenance gate
 # passes unchanged and every clang-cl-shaped source patch stays valid -- which
 # is exactly why this builds the release plus patches and not an LLVM main
 # snapshot.
 FROM built AS patched-llvm
 ARG BUILD_PATCHED_LLVM=1
-# Per-FILE module mounts, exactly the closure build-llvm-from-source.ps1 imports
+# Per-FILE module mounts, exactly the closure Build-LlvmFromSource.ps1 imports
 # (SourceBuild.Common + the five it nest-imports). A whole-dir mount here made every
 # one of the 41 modules re-key this LLVM compile, and the media lanes derive from it.
-RUN --mount=type=bind,source=windows/scripts/build/build-llvm-from-source.ps1,target=C:\bkmnt\build-llvm-from-source.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Build-LlvmFromSource.ps1,target=C:\bkmnt\Build-LlvmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
@@ -74,7 +74,7 @@ RUN --mount=type=bind,source=windows/scripts/build/build-llvm-from-source.ps1,ta
     --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/llvm,target=C:\bkmnt\patches\llvm `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
-    if ($env:BUILD_PATCHED_LLVM -eq '1') { & 'C:\bkmnt\build-llvm-from-source.ps1' -SkipIfPresent } `
+    if ($env:BUILD_PATCHED_LLVM -eq '1') { & 'C:\bkmnt\Build-LlvmFromSource.ps1' -SkipIfPresent } `
     else { Write-Host 'BUILD_PATCHED_LLVM != 1 - keeping the scoop clang-cl' }
 
 # Ahead of the scoop shims: every build script resolves the compiler by bare

@@ -9,12 +9,12 @@ lives in [Windows Build Image](windows-builds.md); this page is the ordered
 path through it, not a replacement.
 
 > **Check yourself against the machine, not against this page.**
-> `windows/scripts/verify-host-setup.ps1` asserts every claim below and prints
+> `windows/scripts/Test-HostSetup.ps1` asserts every claim below and prints
 > a fix for each failure. Run it **first** (to see what a fresh box still
 > needs), **last** (to confirm bring-up), and after any host change:
 >
 > ```pwsh
-> pwsh -File windows\scripts\verify-host-setup.ps1 -SccacheEndpoint http://<lan-ip>:5000
+> pwsh -File windows\scripts\Test-HostSetup.ps1 -SccacheEndpoint http://<lan-ip>:5000
 > ```
 >
 > It needs no admin (Defender exclusions are reported UNKNOWN rather than
@@ -26,7 +26,7 @@ path through it, not a replacement.
 > they refuse with a `#requires` message and change nothing. That refusal is
 > easy to miss: wrapped in a command that collects only the pipeline stream it
 > looks exactly like "the script ran and did nothing" — it cost two round trips
-> on 2026-08-08 against `apply-buildkitd-gcpolicy.ps1`, whose effect
+> on 2026-08-08 against `Set-BuildkitdGcpolicy.ps1`, whose effect
 > (`reservedSpace` in the deployed toml) then silently stayed at the old value.
 > **Verify the effect, not the exit.**
 >
@@ -50,23 +50,23 @@ Phases:
 - **E** — first build + verification
 - **R** — recovering after a Stevedore reinstall / repair **[admin]**
 
-> **Fast path for Phase A5 + C: `setup-new-host.ps1`.** Once the interactive
+> **Fast path for Phase A5 + C: `Install-NewHost.ps1`.** Once the interactive
 > steps are done (A1 Stevedore+reboot, A2 docker-users + a new shell, A3
 > services, B0 Git/B1 repo), a single elevated run of
-> `windows\scripts\host\setup-new-host.ps1` does the *entire* scriptable half — CNI
+> `windows\scripts\host\Install-NewHost.ps1` does the *entire* scriptable half — CNI
 > `.conflist` authored from the **live** `vEthernet (nat)` subnet (magic
 > constants removed: it derives `network/prefix` + gateway at runtime), then
-> `apply-containerd-config.ps1` (debug flags, teardown env var, Defender
-> exclusions, `.conf` derive), `apply-buildkitd-gcpolicy.ps1` + the step-log
+> `Set-ContainerdConfig.ps1` (debug flags, teardown env var, Defender
+> exclusions, `.conf` derive), `Set-BuildkitdGcpolicy.ps1` + the step-log
 > env var, the patched runhcs shim (built from hcsshim source if no `-ShimPath`
 > is given — Go installed via scoop as needed — then deployed), and dufs
 > (scooped if missing, started serving the cache dir, ONLOGON task registered,
 > machine `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP).
 >
 > ```pwsh
-> pwsh -File windows\scripts\host\setup-new-host.ps1 -ReportOnly   # plan first (safe, non-admin)
-> pwsh -File windows\scripts\host\setup-new-host.ps1               # admin - bring the host to green
-> pwsh -File windows\scripts\host\setup-new-host.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
+> pwsh -File windows\scripts\host\Install-NewHost.ps1 -ReportOnly   # plan first (safe, non-admin)
+> pwsh -File windows\scripts\host\Install-NewHost.ps1               # admin - bring the host to green
+> pwsh -File windows\scripts\host\Install-NewHost.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
 > ```
 >
 > It is idempotent and refuses to run while a build is live (unless `-Force`).
@@ -83,10 +83,10 @@ Phases:
 >
 > Order of operations:
 >
-> 1. `pwsh -File windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` —
+> 1. `pwsh -File windows\scripts\diagnostics\Test-BuildCopy.ps1 -Heavy` —
 >    only a `-Heavy`-green verdict counts; the light lanes can pass while
 >    RUN-layer finalize is broken.
-> 2. RDNA4 present? Elevated `toggle-rdna4-gpu.ps1 -Disable` → re-probe
+> 2. RDNA4 present? Elevated `Set-Rdna4Gpu.ps1 -Disable` → re-probe
 >    `-Heavy` → build → re-enable. `build-buildkit.ps1` enforces this via its
 >    `Assert-NoActiveRdna4Gpu` preflight.
 > 3. **After ANY red finalize, REBOOT before testing anything else** — a
@@ -194,7 +194,7 @@ new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 
 **No magic subnets — derive them.** Every example number shipped in these docs
 (`172.31.32.0/20`, etc.) was a snapshot of ONE host and went stale; the only
-correct values are the live adapter's. `setup-new-host.ps1` derives them
+correct values are the live adapter's. `Install-NewHost.ps1` derives them
 automatically; to do it by hand:
 
 ```pwsh
@@ -484,7 +484,7 @@ AGENTS.md § Validation.
 ## Phase C — Build-service tuning [admin]
 
 Do C1–C3 in this order: C1 and C2 are plain registry edits, C3
-(`apply-buildkitd-gcpolicy.ps1`) preserves the existing flags, adds
+(`Set-BuildkitdGcpolicy.ps1`) preserves the existing flags, adds
 `--config`, and performs the one buildkitd restart. **Never restart buildkitd
 while a build is solving.**
 
@@ -499,14 +499,14 @@ capture the debug evidence again").
 **Use the script — it is the source of truth for the containerd side:**
 
 ```pwsh
-pwsh -File windows\scripts\host\apply-containerd-config.ps1 -ReportOnly   # inspect, no admin needed
-pwsh -File windows\scripts\host\apply-containerd-config.ps1               # admin; restarts containerd
+pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1 -ReportOnly   # inspect, no admin needed
+pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1               # admin; restarts containerd
 ```
 
 containerd runs with **no `config.toml`** here — every setting lives in the
 service's `ImagePath`/`Environment` registry values, which is why it needs a
 script to be reproducible at all (buildkitd has `buildkitd.toml` +
-`apply-buildkitd-gcpolicy.ps1`; this is the missing counterpart, added
+`Set-BuildkitdGcpolicy.ps1`; this is the missing counterpart, added
 2026-08-07). It owns three things a fresh host must have: the debug flags
 below, `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits
 the SERVICE environment — a shim built from the upstream patch keeps its 30 s
@@ -563,7 +563,7 @@ history pinned a 414 GB store at `Reclaimable: 0B`. The repo policy
 `[history] maxAge/maxEntries` cap) is deployed by:
 
 ```pwsh
-pwsh -File windows\scripts\host\apply-buildkitd-gcpolicy.ps1    # admin; refuses while a build runs
+pwsh -File windows\scripts\host\Set-BuildkitdGcpolicy.ps1    # admin; refuses while a build runs
 ```
 
 **Sizing on a different disk:** the toml's literals assume a ~930 GB C:.
@@ -631,7 +631,7 @@ Get-MpPreference | Select-Object -Expand ExclusionProcess
 This server is load-bearing twice: it is the compile cache (sccache WebDAV
 backend) AND the transport for the warm/materialize handoff tars (the
 `bkhandoff/` subdir) that neutralize the `ExportLayer 0x3` snapshotter defect
-— **without it the BK media solves fail fast**. `setup-new-host.ps1` automates
+— **without it the BK media solves fail fast**. `Install-NewHost.ps1` automates
 all of it (scoop install if missing, cache dir, start, ONLOGON task,
 machine-level endpoint env with the host's LAN IP — never localhost). By hand
 (non-admin, except the machine-env line):
@@ -685,11 +685,11 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    exhaustion mode that a C:-only check cannot see (§ VHDX-backed checkouts in
    [windows-builds.md](windows-builds.md)).
    The shim gate compares the live binary's **SHA256** against the hash
-   `deploy-shim-patch.ps1` recorded when it installed the patch (state file:
+   `Publish-ShimPatch.ps1` recorded when it installed the patch (state file:
    `C:\ProgramData\kataglyphis\shim-patch.json`); a Stevedore update overwriting
    the binary is then an unambiguous hard failure. Hosts that have not yet
    re-run the deploy script fall back to the older file-size heuristic and get a
-   warning telling them so — **run `deploy-shim-patch.ps1` once to record the
+   warning telling them so — **run `Publish-ShimPatch.ps1` once to record the
    hash.** `-ReportOnly` prints the recorded hash and whether it still matches.
    `(Get-PSDrive C).Free / 1GB` — below ~25 GB free, hcsshim gets "weird"
    *before* an honest disk-full error (`ExportLayer 0x3`/`0x70`, spawn
@@ -708,13 +708,13 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    it — the report costs nothing and stops nothing:
 
    ```pwsh
-   pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath <your.vhdx> -ReportOnly   # admin
+   pwsh -File windows\scripts\host\Optimize-HostVhdx.ps1 -VhdxPath <your.vhdx> -ReportOnly   # admin
    ```
 
    Without `-ReportOnly` it stops the build services, compacts and restores
    the disk — **admin, and never while a build solves.** Read the ReFS
    caveat in [`windows-build-lanes.md`](windows-build-lanes.md) § Store GC first: on ReFS guests compaction reclaims ~nothing,
-   and the reclaim that does work is `rebuild-host-vhdx.ps1`, which rebuilds
+   and the reclaim that does work is `Update-HostVhdx.ps1`, which rebuilds
    the disk around its live data. Run its `-CopyOnly` phase whenever you like
    — it touches nothing live — but the swap detaches the volume, so nothing
    may hold a handle on it: no shell sitting in the checkout, no editor, no
@@ -780,11 +780,11 @@ Without `-ExpectGpu`, a broken CUDA env is silently SKIPPED instead of failed
 # (a) via docker after a -FinalTar export (loads as local/kataglyphis:winamd64):
 & "$env:ProgramFiles\Stevedore\bin\docker.exe" load -i out\bk-winamd64.tar
 & "$env:ProgramFiles\Stevedore\bin\docker.exe" run --memory 48g --rm --isolation process `
-  local/kataglyphis:winamd64 pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
+  local/kataglyphis:winamd64 pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 
 # (b) directly from the containerd store (admin shell):
 & "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm `
-  docker.io/local/kataglyphis:bk-winamd64 pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
+  docker.io/local/kataglyphis:bk-winamd64 pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 ```
 
 Expected: the § Smoke Testing baseline (167 passed / 0 failed / 1 skipped on
@@ -822,13 +822,13 @@ A–C here, then § Phase R for a Stevedore reinstall), **not** to switch driver
 |---|---|---|
 | The **patched runhcs shim** | `Assert-ShimPatch` refuses the BK lane at preflight (and without the gate: `hcsshim::ExportLayer 0x3` on a heavy media layer, after the compile is paid for) | Rebuild — see below. There is **no local rollback**: `.exe.orig` and every `.exe.bak-*` are stock too |
 | The **buildkitd service `Environment`** | `Assert-BuildkitdStepLogEnv` refuses the BK lane; ungated, the 2 MiB step-log clip buries build verdicts | § C2, or the registry Multi-String + `Restart-Service buildkitd` |
-| The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `setup-dufs-service.ps1 -NoPrompt`. Without the directory the script has nothing to serve and the endpoint stays dead |
+| The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `Install-DufsService.ps1 -NoPrompt`. Without the directory the script has nothing to serve and the endpoint stays dead |
 | Nothing — but note the **containerd content store** can also be left inconsistent (e.g. by killing a `docker build` mid-pull) | `failed to resolve source metadata ... blob sha256:<config> ... blob not found` at `Dockerfile.base` | R2 below — and note a plain `pull` CANNOT fix it, see the warning there |
 | — likewise the **windows snapshotter** | `failed to create scratch layer: failed to open ...\io.containerd.snapshotter.v1.windows\snapshots\<n>\blank.vhdx: The system cannot find the path specified` at the first `RUN` | R4 — this one has no surgical fix; reset the stores |
 
 ### R1. Rebuild + deploy the patched shim
 
-`deploy-shim-patch.ps1` installs a binary; it does not build one. Go is
+`Publish-ShimPatch.ps1` installs a binary; it does not build one. Go is
 required (`scoop install go`):
 
 ```powershell
@@ -840,14 +840,14 @@ go build -o containerd-shim-runhcs-v1.exe .\cmd\containerd-shim-runhcs-v1
 
 ~15 s. The 2026-09-01 build was **25 998 336 bytes** with Go 1.27.0 against
 stock's 23 279 616 — the exact size drifts with the Go release and the branch
-head, which is why the gate keys on the SHA256 that `deploy-shim-patch.ps1`
+head, which is why the gate keys on the SHA256 that `Publish-ShimPatch.ps1`
 records at install time and treats the size table only as a fallback. Then,
 elevated — **the `-ServiceEnvironment` part is NOT optional**: this build keeps
 stock 30 s defaults until the knob is set, and the value must be a Go duration
 string (`5m`, never a bare `300` — unparseable silently means stock):
 
 ```powershell
-pwsh -File windows\scripts\host\deploy-shim-patch.ps1 `
+pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 `
   -ShimPath D:\src\hcsshim\containerd-shim-runhcs-v1.exe `
   -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m
 ```
@@ -858,7 +858,7 @@ env line must show the knob. (The pre-2026-09-01 recipe — `microsoft/hcsshim`
 lost-notification regression the fixed 45 min taxed every RUN with 2841.2 s;
 see `docs/failure-modes.md` § "Every RUN step reports DONE 2841.2s".)
 
-**The other `deploy-shim-patch.ps1` modes:**
+**The other `Publish-ShimPatch.ps1` modes:**
 
 | Goal | Command |
 |---|---|
@@ -923,7 +923,7 @@ plugin, so the smoke gate that ends the run hard-failed on `cv2.CAP_GSTREAMER`. 
 
 Two independent inconsistencies in one store (a content blob gone while the
 metadata claimed it, then the snapshotter missing `blank.vhdx`) mean the store
-is not worth repairing piece by piece. `reset-container-stores.ps1` (elevated)
+is not worth repairing piece by piece. `Reset-ContainerStores.ps1` (elevated)
 RENAMES `C:\ProgramData\{containerd,buildkitd,Docker}` aside as `.bak-<stamp>`
 — reversible, nothing is deleted — restarts the three services and re-applies
 the GC policy.
@@ -939,7 +939,7 @@ public base itself — without the re-seed the very next build fails at
 like the reset did not work.
 
 Afterwards the `.bak-<stamp>` husks are exactly what
-`windows/scripts/host/free-disk-space.ps1` is allow-listed to reclaim.
+`windows/scripts/host/Clear-DiskSpace.ps1` is allow-listed to reclaim.
 
 ---
 

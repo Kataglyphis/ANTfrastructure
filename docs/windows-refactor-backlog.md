@@ -43,8 +43,8 @@ below are the 2026-08-31 measurements and were not re-extracted.
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
 `ABSENT-ON-ARM64.txt` (LiteRT-LM, the default name) or a `COMPILER-ABSENT-ON-ARM64.txt`
 (the two compilers, which pass `-FileName` explicitly) — the manifest globs both
-families. Call sites: `build-tvm-from-source.ps1:341`,
-`build-iree-from-source.ps1:340`, `build-litert-all.ps1:79`: the **TVM compiler**, the **IREE
+families. Call sites: `Build-TvmFromSource.ps1:341`,
+`Build-IreeFromSource.ps1:340`, `Build-LitertAll.ps1:79`: the **TVM compiler**, the **IREE
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
@@ -128,7 +128,7 @@ this repo's cp314 pin).
   dual-lane run.** A 26-agent adversarially-verified audit (full narratives +
   fix sketches: CHANGELOG 2026-09-01) confirmed 17 defects; the two that could
   silently re-arm the 45 min teardown regression are already fixed
-  (`apply-containerd-config.ps1` 45m default, host-setup § R1 recipe). The rest
+  (`Set-ContainerdConfig.ps1` 45m default, host-setup § R1 recipe). The rest
   is DEFERRED because the container-side files are cache inputs of the running
   chain — apply them in **one closure window** so the re-key is paid once:
   - CRITICAL `build-buildkit.ps1:577` — forward `-TargetArch` to the
@@ -142,24 +142,24 @@ this repo's cp314 pin).
     as matched in the parent (correct runs currently end red).
   - `build-buildkit.ps1:574` — refuse or re-plumb `-ConcurrentAux -NoSccache`
     (memory budget halving only exists via the webdav publish).
-  - `build-toolchain-all.ps1:96` + `build-llvm-from-source.ps1:202` — actually
+  - `Build-ToolchainAll.ps1:96` + `Build-LlvmFromSource.ps1:202` — actually
     call `Disable-ContainerWindowsUpdate` (docs promise it; the toolchain lane
     never runs it; a WU spool write kills the layer finalize).
   - `WindowsSourceBuild.Common.psm1:148` — capture the submodule-update exit
     code on the commit-pin path (TVM's real path).
-  - `setup-new-host.ps1:214/249` — build from the PINNED fork branch with the
+  - `Install-NewHost.ps1:214/249` — build from the PINNED fork branch with the
     5m env (not unpinned HEAD + the retired 45min constant patch) and assert
     the patched constant post-replace instead of failing open.
-  - `rebuild-host-vhdx.ps1:253/282` — both rollback paths start services in
+  - `Update-HostVhdx.ps1:253/282` — both rollback paths start services in
     stop order with swallowed errors (the measured 2026-09-01 bug, twice).
   - `Dockerfile.probe:39` / `Dockerfile.sccache-write-probe:51` — the probe
     lane mounts a deleted (#137) and an archived (9377c0ac) path; every
     `-ProbeScript` solve dies at checksum (mind `**/archive/` in .dockerignore).
   - `WindowsAgenticLoop.Common.psm1:418` — `ConcurrentBag` → `ConcurrentQueue`
     (captured output is documented API and currently LIFO).
-  - Unverified majors to check while there: `build-onnx-genai-from-source.ps1:189`
-    (no post-copy floor), `rebuild-host-vhdx.ps1:214` ($RECYCLE.BIN skews the
-    copy-verify), `setup-new-host.ps1:351` (unguarded buildkitd restart).
+  - Unverified majors to check while there: `Build-OnnxGenaiFromSource.ps1:189`
+    (no post-copy floor), `Update-HostVhdx.ps1:214` ($RECYCLE.BIN skews the
+    copy-verify), `Install-NewHost.ps1:351` (unguarded buildkitd restart).
   - 36 minors, dominated by fail-open error paths (nuget/scoop/git-lfs class) —
     sweep opportunistically, each with a mutate-the-guard test (standing rule).
 
@@ -173,7 +173,7 @@ this repo's cp314 pin).
 
 - **#160 — compiler-rt mining recipe: contract drift across its three copies.**
   versions.env:478-483 promises verified-or-warn SHA for all three; only the
-  LLVM copy implements it, and `setup-scoop-tools.ps1:311` also calls bare
+  LLVM copy implements it, and `Install-ScoopTools.ps1:311` also calls bare
   `tar.exe` (the documented GNU-tar `C:\`-as-hostname trap). Port the ~10-line
   verify+System32-tar block into the scoop and gstreamer copies (placement of
   the three copies itself is deliberate, #135 — not the finding). Closure
@@ -194,7 +194,7 @@ this repo's cp314 pin).
   hidden 1425 s (its bazel half grew 18→59 min since July).
 
 - **#164 — patched-LLVM compile bypasses sccache (dead launcher gate).**
-  `build-llvm-from-source.ps1:192` tests SCCACHE_DIR/SERVE which the
+  `Build-LlvmFromSource.ps1:192` tests SCCACHE_DIR/SERVE which the
   toolchain stage never sets → every toolchain re-key pays LLVM cold
   (617 s + 1157 s within three days) while media-tvm compiles the same pin
   THROUGH sccache. Gate on `Test-SccacheRemoteConfigured`, add the
@@ -203,8 +203,8 @@ this repo's cp314 pin).
 
 - **#167 — smoke gate is blind to the baked `C:\temp\scripts` surface.** The
   suite runs entirely from the bind mount; nothing exercises the shipped
-  modules dir, the baked `smoke-test-container.ps1` the docs tell consumers to
-  hand-run, or `healthcheck.ps1` (a lying healthcheck shipped green once,
+  modules dir, the baked `Test-Container.ps1` the docs tell consumers to
+  hand-run, or `Test-Health.ps1` (a lying healthcheck shipped green once,
   archive 08-31). Add a host-arch section: four baked files exist, module
   import from the in-container set works, healthcheck exits 0 (skip on
   pre-layout images). Closure window (cheap final-tail COPY re-key).
@@ -212,19 +212,19 @@ this repo's cp314 pin).
 - **#168-#174 — comment-discipline wave (owner rule: 1-2 lines + doc link;
   ~170 comment lines move to docs).** Safe now: `Reuse.psm1:535` (#169 — the
   30-line transport essay in Get-Help serves consumers a fsutil form the docs
-  declare broken/machine-wide; same rot in `test-layer-rename.ps1:142`),
+  declare broken/machine-wide; same rot in `Test-LayerRename.ps1:142`),
   `Reuse.psm1:455` (#170 — dead `container-build-caching.md` link; FIRST add
   the 2026-07-20 os-error-3 diagnosis to the perf doc, THEN trim),
-  `start-geniex-servers.ps1:9` (#171 — topology study duplicated and already
+  `Start-GeniexServers.ps1:9` (#171 — topology study duplicated and already
   drifting), `WindowsSlang.Common.psm1:16` (#173 — manifest schema defined
   twice). Closure window (cache inputs): `WindowsMeson.Common.psm1:32` (#168 —
   42-line essay fully covered by failure-modes.md),
-  `normalize-tensorrt-tree.ps1:8` (#172), `build-litert-all.ps1:35` (#174 —
+  `Set-TensorrtTree.ps1:8` (#172), `Build-LitertAll.ps1:35` (#174 —
   lines 44-46 actively false since #128; fix the backlog's :79 line-ref in the
   same commit).
 
 - **#175 — check while in the neighbourhood (unverified by the audit):**
-  `build-opencv-gstreamer-plugin.ps1:7` (only comment find with NO docs home —
+  `Build-OpencvGstreamerPlugin.ps1:7` (only comment find with NO docs home —
   needs a new subsection in windows-builds.md), `WindowsAgenticLoop.Common.psm1:1036`
   (executor drain-loop duplicated with exit-code drift — `-ExecutorOnly`, a
   consumer API, may report exit 0 on the build-failure cap: potential real
@@ -243,11 +243,11 @@ untouched there and are recorded here instead. **Each was verified only against
 the repo tree — no Windows host was involved**, so re-check before acting.
 
 - **`docs/windows-host-setup.md:12,17`** — points at
-  `windows/scripts/verify-host-setup.ps1`, including a copy-pasteable
-  `pwsh -File` command. The script is at `windows/scripts/host/verify-host-setup.ps1`.
+  `windows/scripts/Test-HostSetup.ps1`, including a copy-pasteable
+  `pwsh -File` command. The script is at `windows/scripts/host/Test-HostSetup.ps1`.
   A reader following the doc gets "file not found".
 - **`docs/project-info.md:46`** — locates the HEALTHCHECK script at
-  `windows/scripts/healthcheck.ps1`; it is `windows/scripts/build/healthcheck.ps1`.
+  `windows/scripts/Test-Health.ps1`; it is `windows/scripts/build/Test-Health.ps1`.
 - **`docs/project-info.md:43`** — restates Windows media-stage versions (ORT
   1.27.0, GenAI 0.14.0, LiteRT 2.1.6, LiteRT-LM 0.13.1, TVM 0.25.0). All five are
   behind `versions.env`, and `AGENTS.md:681` says not to restate versions ahead of
@@ -282,7 +282,7 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
 - **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
   FOUR independent breakages (every script path, the missing TargetArch + Tvm
   modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
-  a derivation rule in `bk-warm.ps1:15-38` — derive each RUN from the stage that
+  a derivation rule in `Invoke-BkWarm.ps1:15-38` — derive each RUN from the stage that
   runs that script TODAY. Archive: `windows-backlog-archive-2026-08-31.md`
   § Resolved 2026-08-31 (second pass).
 
@@ -320,19 +320,19 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
 
 - **#135** — LLVM 23.1.0 AArch64 codegen: DONE 2026-08-29. `BUILD_PATCHED_LLVM=1`
   is now the DEFAULT (Dockerfile ARG + driver default), workarounds removed from
-  `build-opencv-from-source.ps1`. `-StockLlvm` is the opt-out. Items 1+3 closed;
+  `Build-OpencvFromSource.ps1`. `-StockLlvm` is the opt-out. Items 1+3 closed;
   item 2 (NINJA_KEEP_GOING census) is now unnecessary (root cause fixed); item 4
   filed as llvm#219200. Archive: `windows-backlog-archive-2026-08-26.md` § #135.
 - **#135 follow-up — patched toolchain lacks the aarch64 compiler-rt** — DONE
   2026-08-31. The source-built `C:\llvm-patched` ships `clang_rt.builtins-x86_64.lib`
   only, so the arm64 GStreamer link died on `__udivti3` (2026-08-30 cross run,
-  merge stage). The merge stage now self-heals: `build-gstreamer-from-source.ps1`
+  merge stage). The merge stage now self-heals: `Build-GstreamerFromSource.ps1`
   § 5d mines `clang_rt.builtins-aarch64.lib` from the LLVM release archive on the
-  cross lane (same recipe as setup-scoop-tools.ps1). Chosen over adding the lib to
+  cross lane (same recipe as Install-ScoopTools.ps1). Chosen over adding the lib to
   the toolchain layer because the media branches derive FROM `bk-windows-toolchain`,
   so that would re-pay ~2 h of media compiles for one lib. Toolchain-level fix
   LANDED 2026-08-31 (`bd150ae1`, `Install-TargetCompilerRt` in
-  build-llvm-from-source.ps1) and shipped with the 2026-09-01/02 toolchain
+  Build-LlvmFromSource.ps1) and shipped with the 2026-09-01/02 toolchain
   rebuilds — the merge-stage self-heal is now the never-firing fallback.
   Nothing left here. Regression:
   `SourceBuild.GstreamerCompilerRt.Tests.ps1`. Docs:
@@ -391,7 +391,7 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
   been wrong since 2026-08-18. The 2026-08-10 miscompile it rested on was
   root-caused to sccache's dryrun quote-collapse and fixed upstream
   (mozilla/sccache#2811, merged 2026-08-19); patch 006 is retired
-  (`build-onnx-from-source.ps1:147`). A directive is the worst place for a stale
+  (`Build-OnnxFromSource.ps1:147`). A directive is the worst place for a stale
   rule — acting on this one would have cost ~25 min per rebuild against an
   explicit Dockerfile warning.
 - **Do NOT collapse the media-core checkpoints** (#72: export is ~1.2% of the
@@ -420,7 +420,7 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
   zero-references audit is not evidence of zero consumers); `Set-StrictMode` on
   `WindowsFlutter.Common` / `WindowsContainerLog.Common` (same rule, and a module does
   not inherit its caller's strict mode), on `Initialize-CiEnvironment.ps1` or
-  `litert-lm-export-bridge.ps1` (dot-sourced — it leaks, or is a no-op); moving
+  `Export-LitertLmBridge.ps1` (dot-sourced — it leaks, or is a no-op); moving
   `Export-`/`Import-BuildHandoff` off the hot facade (they are the #149 rollback
   payload). Full reasoning in the 2026-08-31 archive § Backlog wave.
 - **GES `_commit` retry is DORMANT INSURANCE** (#77): re-open only if its
@@ -451,7 +451,7 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
      a two-sentence correction protects the report''s credibility. Also note
      CUDA was launcher-off by default only between 2026-08-10 and 2026-08-18
      and has been launcher-ON since (post-#2811); the repro is explicit either
-     way — `repro-sccache-cuda-llm-deadlock.ps1:108` passes
+     way — `Invoke-SccacheCudaLlmDeadlock.ps1:108` passes
      SCCACHE_CUDA_LAUNCHER=1 itself.
   3. **Restore `disk,webdav`** once WCOW cache mounts stop losing inherited
      writes — owner intent; two-step re-verification recipe in the archive
@@ -501,12 +501,12 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
   found EMPTY, so there was never a log to recover.
   What remains here — RE-AUDITED 2026-08-31, and only item (2) is still open:
   (1) **CLOSED 2026-08-18/19.** The exact-TU replay exists and ran
-  (`probe-onnx-tu-replay.ps1`, `bias_softmax_impl.cu`): it root-caused the
+  (`Test-OnnxTuReplay.ps1`, `bias_softmax_impl.cu`): it root-caused the
   miscompile to sccache's dryrun quote-collapse (verified bare 3189 == wrapped
   3189 symbols; mozilla/sccache#2811 merged 2026-08-19), and the nvcc/CUDA crash
   proved to be #99 collateral, gone under a healthy backend. #75's `-j` ladder is
   no longer silent either — it warns before and after (archive 2026-08-21:150).
-  (2) **STILL OPEN:** one `probe-build-copy.ps1 -Heavy` smoke after the
+  (2) **STILL OPEN:** one `Test-BuildCopy.ps1 -Heavy` smoke after the
   poisoned-chain prune.
   (3) **CLOSED.** The at-scale hit rate was measured twice on real media builds:
   the 2026-08-18 base ride (100.00 % CUDA/PTX/CUBIN, 207/816 hits) and the

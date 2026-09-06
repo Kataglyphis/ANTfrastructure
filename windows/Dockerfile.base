@@ -40,12 +40,12 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # RETRY (added 2026-08-07): this is the FIRST network fetch of the chain's most
 # expensive stage — a transient blip cost the whole base build, so the fetch
 # retries three times with backoff + a SHA256 check inside the loop. The logic
-# lives in windows/scripts/host/bootstrap-pwsh.ps1 (backlog #27: was a 1200-char
+# lives in windows/scripts/host/Initialize-Pwsh.ps1 (backlog #27: was a 1200-char
 # single-line RUN). It is BIND-MOUNTED, not COPY'd — no layer, and nothing is
 # COPY'd this early in base by design. It runs under Windows PowerShell 5.1
 # (the SHELL is not switched to pwsh until below) and cannot use
 # Invoke-DownloadWithRetry (no module is mounted yet).
-RUN --mount=type=bind,source=windows/scripts/host/bootstrap-pwsh.ps1,target=C:\bootstrap-pwsh.ps1 & 'C:\bootstrap-pwsh.ps1'
+RUN --mount=type=bind,source=windows/scripts/host/Initialize-Pwsh.ps1,target=C:\Initialize-Pwsh.ps1 & 'C:\Initialize-Pwsh.ps1'
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
@@ -75,25 +75,25 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # right before the step that consumes it, so editing a LATER script (or versions.env)
 # can never bust an EARLIER expensive layer. The most expensive layer of the whole
 # chain -- VS Build Tools -- therefore depends ONLY on the three modules its script
-# imports + setup-vs.ps1 itself. (Copying the full modules directory here would bust
+# imports + Install-Vs.ps1 itself. (Copying the full modules directory here would bust
 # it on every module edit; the media stage copies its own build modules and the full
 # module set ships in the final image (windows/Dockerfile) for in-container CI.)
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
-# setup-vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
+# Install-Vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
 # bust the most expensive layer. Its ONE versioned input -- the Windows SDK component
 # build -- therefore arrives as an ARG (build-buildkit.ps1 passes versions.env's
 # WINDOWS_SDK_BUILD as --build-arg; ARG values are env vars during this stage's RUNs,
-# which is where setup-vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
+# which is where Install-Vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
 # the SDK pin SHOULD rebuild the VS layer.
 ARG WINDOWS_SDK_BUILD=26100
 # Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
-# setup-vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
+# Install-Vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
 ARG VISUAL_STUDIO_VERSION=18
-COPY windows\scripts\host\setup-vs.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
+COPY windows\scripts\host\Install-Vs.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\Install-Vs.ps1' -TempDir $env:TEMP_DIR
 
 # versions.env's COPY moved BELOW the expensive layers (#50, 2026-08-18):
 # it is shared by BOTH lanes, so editing a purely Linux key (PANDOC_VERSION,
@@ -116,7 +116,7 @@ RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 # shape compiled output, and an unpinned clang-cl made the base image — the
 # most expensive layer in the chain — unreproducible. versions.env's
 # LLVM_RELEASE still pins only the LINUX lane; the two are independent on
-# purpose. The remaining scoop tools stay floating (see setup-scoop-tools.ps1).
+# purpose. The remaining scoop tools stay floating (see Install-ScoopTools.ps1).
 # The pins are declared HERE (not at the top): every RUN after an ARG
 # declaration keys its cache on the ARG's value, so declaring them above the
 # VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
@@ -155,21 +155,21 @@ ARG VULKAN_PRESEED_ENDPOINT=""
 # silently DISCARDS --build-arg for names no Dockerfile declares, so a bare
 # $env: read would be unreachable from `docker build`.
 ARG WINDOWS_ARM64_STRICT=""
-COPY windows\scripts\host\setup-scoop-tools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
+COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\Install-ScoopTools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -SccacheVersion $env:SCCACHE_WINDOWS_VERSION -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 
 # #50: VCPKG_REF as ARG for the same reason (was baked env).
 ARG VCPKG_REF=2026.07.29
-COPY windows\scripts\host\setup-vcpkg.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
+COPY windows\scripts\host\Install-Vcpkg.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\Install-Vcpkg.ps1'
 
 # LLVM_GLOBAL_BIN removed 2026-07-14: llvm is a user-scope install and it
 # pointed at a never-created C:\ProgramData dir.
 #
 # SCOOP_GLOBAL_SHIMS was removed in the same pass for the same reason, and
-# RESTORED 2026-08-08: flutter IS installed `--global` (setup-scoop-tools.ps1),
+# RESTORED 2026-08-08: flutter IS installed `--global` (Install-ScoopTools.ps1),
 # so scoop DOES create C:\ProgramData\scoop\shims. Only FLUTTER_BIN being on
 # PATH separately masked the gap -- any future global package would have been
 # silently unresolvable. User shims keep priority (listed first below).
@@ -201,38 +201,38 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # assertion list cost a full rust reinstall).
 # #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
 ARG SCCACHE_GIT_REV=8ab39266246b26d736bee44dfa313ab0d5fceb1d
-COPY windows\scripts\host\setup-rust-toolchain.ps1 C:\temp\scripts\
+COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a
 # patch change must re-pay this layer, because it produces a different
 # sccache built from source at SCCACHE_GIT_REV (both upstream PRs #2811 + #2816
 # merged; no local patches needed since 2026-08-28).
-RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
+RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'
 
 # versions.env bake, relocated BELOW the expensive layers (#50): a Linux-key
 # edit now invalidates only this cheap RUN + verify/finalize. load-versions
 # sets Machine env, which persists in the image regardless of layer position -
 # verify/finalize below and every later stage (FROM this image) read it
 # exactly as before. Windows keys consumed ABOVE this line ride as ARGs.
-COPY windows\scripts\build\load-versions.ps1 C:\temp\scripts\
+COPY windows\scripts\build\Import-Versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
-RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
+RUN & 'C:\temp\scripts\Import-Versions.ps1' 2>&1 | Out-Null
 
-# verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
+# Test-Toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
 # matched exactly this one file, but a future verify-* script would have
 # silently busted the layers above). Pure assertion pass + the tiny
 # finalize config step share one RUN (125-layer budget); both are seconds.
 # WindowsTargetArch.Common.psm1 rides in THIS layer group, not higher up:
-# verify-toolchain.ps1 is its ONLY consumer in the base (the host provisioning
+# Test-Toolchain.ps1 is its ONLY consumer in the base (the host provisioning
 # scripts spell their few arm64 facts inline and import just the three modules
 # COPY'd before the VS layer). Placed above setup-scoop-tools it invalidated
 # scoop, vcpkg AND the ~30-min rust layer on every edit to a module whose whole
 # point is that adding a target is a one-line table edit.
 COPY windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
-COPY windows\scripts\build\verify-toolchain.ps1 `
-     windows\scripts\build\finalize-container.ps1 `
+COPY windows\scripts\build\Test-Toolchain.ps1 `
+     windows\scripts\build\Complete-Container.ps1 `
      C:\temp\scripts\
-RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\finalize-container.ps1'
+RUN & 'C:\temp\scripts\Test-Toolchain.ps1'; & 'C:\temp\scripts\Complete-Container.ps1'
 
 # Metadata-only: lives at the tail so a maintainer/label tweak never rebuilds
 # anything above it (it used to sit ABOVE the VS Build Tools layer).

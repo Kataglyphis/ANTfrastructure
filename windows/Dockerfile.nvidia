@@ -14,7 +14,7 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 # The EULA-gated TensorRT zip is COPY'd and extracted here; the final stage pulls
 # just the extracted directory via COPY --from, so the ~2 GB zip layer never lands
 # in the shipped image. CUDA + cuDNN are downloaded from NVIDIA's CDN by
-# setup-cuda.ps1.
+# Install-Cuda.ps1.
 # NB: build-buildkit.ps1 builds THIS file with context `windows` (not the repo root) so the
 # ~2 GB zip stays out of every other stage's build context — the root .dockerignore
 # excludes *.zip with no re-include. COPY paths below are therefore RELATIVE TO
@@ -31,7 +31,7 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-COPY scripts\host\setup-tensorrt.ps1 C:\temp\scripts\
+COPY scripts\host\Install-Tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
 
 # Extract to the space-free canonical root. GRACEFUL-SKIP CONTRACT (restored
@@ -41,12 +41,12 @@ COPY downloads C:\temp\downloads
 # directory below always exists. This host's GPU lane has always built
 # zip-less; a 2026-08-04 fail-fast hardening briefly broke that and was
 # reverted after the first hardened rebuild died here.
-RUN --mount=type=bind,source=scripts/build/normalize-tensorrt-tree.ps1,target=C:\normalize-tensorrt-tree.ps1 `
-    # zip discovery lives in setup-tensorrt.ps1 (Find-TensorRtZipIn, newest-
+RUN --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-TensorrtTree.ps1 `
+    # zip discovery lives in Install-Tensorrt.ps1 (Find-TensorRtZipIn, newest-
     # by-version — #127): its downloads-dir search covers C:\temp\downloads.
-    & 'C:\temp\scripts\setup-tensorrt.ps1' -TensorRtRoot 'C:\tensorrt'; `
+    & 'C:\temp\scripts\Install-Tensorrt.ps1' -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
-    & 'C:\normalize-tensorrt-tree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
+    & 'C:\Set-TensorrtTree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
 
 # ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}
@@ -56,7 +56,7 @@ ARG CUDA_VERSION_MAJOR_MINOR=13.3
 ARG CUDNN_VERSION=9.25.0.15
 # NB: ARG TENSORRT_VERSION is declared BELOW the CUDA RUN on purpose (backlog
 # #53). An ARG in scope keys every following RUN, and nothing up to and
-# including setup-cuda.ps1 consumes it — TensorRT arrives via COPY --from. With
+# including Install-Cuda.ps1 consumes it — TensorRT arrives via COPY --from. With
 # it declared here, bumping the TensorRT pin forced a ~3.8 GB CUDA + cuDNN
 # re-download for no reason, which is what made fixing the pin expensive.
 # Download hashes travel as ARGs (not just baked env): the base image bakes
@@ -72,7 +72,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
 # the CUDA layer on every unrelated script edit). Modules were already populated
 # by the base stage. (Path relative to the `windows` build context.)
-COPY scripts\host\setup-cuda.ps1 C:\temp\scripts\
+COPY scripts\host\Install-Cuda.ps1 C:\temp\scripts\
 
 # One ENV instruction = one layer (125-cap budget; see docs/windows-builds.md).
 # TENSORRT_VERSION moved out of this block (backlog #53) — it now rides the
@@ -81,9 +81,9 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
 # CUDA installer extracts to C:\temp. Without BuildKit cache mounts (not available
 # on Windows Containers), the scratch directory is discarded after the RUN completes.
-# setup-cuda.ps1 cleans up its own temp files; the final image layer contains only
+# Install-Cuda.ps1 cleans up its own temp files; the final image layer contains only
 # the installed CUDA binaries.
-RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
+RUN & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR
 
 # TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
 # zip was provided — build scripts then skip the TensorRT EP gracefully
@@ -112,7 +112,7 @@ ENV GPU_TYPE="nvidia" `
 # Neither failed the build, because ONNX resolves its BUILD-time root with a
 # glob and only the RUNTIME lookup was wrong — ORT then dropped the TensorRT EP
 # with no error. bin\ first (runtime), lib\ kept for the 8.x/9.x layout where
-# the DLLs lived there. normalize-tensorrt-tree.ps1 fails closed if neither
+# the DLLs lived there. Set-TensorrtTree.ps1 fails closed if neither
 # carries DLLs. When no zip is staged the directories do not exist and the
 # entries are inert — the documented graceful-skip contract is unchanged.
 ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$PATH

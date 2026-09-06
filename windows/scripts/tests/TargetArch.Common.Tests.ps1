@@ -286,7 +286,7 @@ Describe 'versions.env parity' {
 
     It 'WINDOWS_TARGET_ARCH is NOT a versions.env key' {
         # It is a per-BUILD switch, not a pin. Keeping it here made
-        # load-versions.ps1 rewrite the value in any stage where process and
+        # Import-Versions.ps1 rewrite the value in any stage where process and
         # machine env agreed -- which is exactly what happens in a stage built
         # FROM a previous arm64 stage, and it silently reverted the lane to
         # amd64 (measured 2026-08-23; FFmpeg then failed as "libonnxruntime not
@@ -294,7 +294,7 @@ Describe 'versions.env parity' {
         $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         $v = ConvertFrom-VersionsEnv -Path $envPath
         Assert-False ($v.Contains('WINDOWS_TARGET_ARCH')) `
-            'versions.env must NOT define WINDOWS_TARGET_ARCH - load-versions.ps1 would overwrite the build-arg in inherited stages'
+            'versions.env must NOT define WINDOWS_TARGET_ARCH - Import-Versions.ps1 would overwrite the build-arg in inherited stages'
     }
 }
 
@@ -306,7 +306,7 @@ Describe 'COFF machine decoding (byte-shift trap)' {
     #
     # That is the most damaging way an arch check can be wrong: a false FAIL on
     # the very probe that decides whether the cross toolchain works at all. It
-    # was live in verify-toolchain.ps1 and the arm64 prereq probe on 2026-08-23.
+    # was live in Test-Toolchain.ps1 and the arm64 prereq probe on 2026-08-23.
     It 'demonstrates why the [int] casts are load-bearing' {
         $b = [byte[]](0x64, 0xAA)
         Assert-Equal 0x0064 ($b[0] -bor ($b[1] -shl 8))            # the trap

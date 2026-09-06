@@ -6,7 +6,7 @@
 # no longer exists.
 #
 # WHY THIS IS ITS OWN MODULE — CACHE BOUNDARY, NOT TASTE.
-# This lived inside build-gstreamer-from-source.ps1 (backlog #133) because the
+# This lived inside Build-GstreamerFromSource.ps1 (backlog #133) because the
 # only module homes then available were the six in `buildmods` — the import
 # closure of WindowsSourceBuild.Common, mounted into all 11 media/merge RUNs, so
 # an edit there re-keyed every media branch on both lanes. #134 gave the merge
@@ -40,7 +40,7 @@ if (Test-Path $rustSharedPath) {
 }
 
 # Makes `rustup target add <triple>` possible in an image whose rustup was fed
-# from a local mirror that is gone (#128 / #133). setup-rust-toolchain.ps1
+# from a local mirror that is gone (#128 / #133). Install-RustToolchain.ps1
 # rewrote the channel manifest's URLs to file:///<mirror>/dist/<date>/<file>
 # and deleted the mirror after the install; the cached manifest under
 # <rustup home>\toolchains\<tc>\lib\rustlib\multirust-channel-manifest.toml

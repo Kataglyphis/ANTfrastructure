@@ -87,7 +87,7 @@ Describe 'Resolve-TensorRtRoot' {
         }
     }
 
-    # Backlog #38: normalize-tensorrt-tree.ps1 renames the extracted tree to a
+    # Backlog #38: Set-TensorrtTree.ps1 renames the extracted tree to a
     # stable 'current' so Dockerfile.nvidia's runtime PATH never spells the pin
     # (deriving it from TENSORRT_VERSION put a nonexistent dir on PATH and
     # silently killed the ORT TensorRT EP). The resolver must agree with that

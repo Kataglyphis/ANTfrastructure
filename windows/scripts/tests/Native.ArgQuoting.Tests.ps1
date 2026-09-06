@@ -5,7 +5,7 @@
 # Positive controls for the three AST trap detectors in
 # modules\WindowsLint.Common.psm1 (bareword comma-attribute native args +
 # [switch] parameter shadowing - each silently broke a lane of
-# probe-build-copy.ps1 until 2026-08-10 - and glued parameter tokens, which
+# Test-BuildCopy.ps1 until 2026-08-10 - and glued parameter tokens, which
 # broke the arm64 target-cpython stage on 2026-08-25).
 #
 # The REPO SWEEP lives in Invoke-Lint.ps1 since 2026-08-10 (backlog #21): the

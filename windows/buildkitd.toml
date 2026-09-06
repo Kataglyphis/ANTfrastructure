@@ -1,6 +1,6 @@
 # buildkitd worker GC policy for the Windows BK lane host.
 # Deployed to C:\ProgramData\buildkitd\buildkitd.toml by
-# windows\scripts\apply-buildkitd-gcpolicy.ps1 (admin; restarts buildkitd —
+# windows\scripts\Set-BuildkitdGcpolicy.ps1 (admin; restarts buildkitd —
 # NEVER while a build is running).
 #
 # Why this exists (2026-08-04 incident): with no config file buildkitd runs on
@@ -162,7 +162,7 @@
     # gives" and "keep reservedSpace >= 150 GB regardless". At 40 GB the reserve
     # was BELOW the single ~37 GB VS-class layer, so the base spine could not
     # survive between driver runs -- measured: six consecutive Windows base builds
-    # on 2026-08-26 all re-ran `#9 RUN setup-vs.ps1` (260-431 s each) while `#8`,
+    # on 2026-08-26 all re-ran `#9 RUN Install-Vs.ps1` (260-431 s each) while `#8`,
     # the COPY of that very script, reported CACHED every time. That is exactly
     # the symptom the maxUsedSpace note below records from 2026-08-11, and it was
     # only half-fixed then: maxUsedSpace was raised, the reserve was not.

@@ -434,7 +434,7 @@ function Get-TargetBuildPython {
     # TARGET-arch complement to Get-SourceBuildPython (#120): .Exe stays the HOST
     # interpreter, .Include is arch-neutral, .LibDir/.Lib are the TARGET import
     # lib. Consumers MUST honour .Available -- -ResumeFrom can enter this chain
-    # after build-target-cpython.ps1 would have run.
+    # after Build-TargetCpython.ps1 would have run.
     param(
         [string]$CpythonDir = ''
     )
@@ -1218,7 +1218,7 @@ function Import-CanonicalVersions {
         [string]$ScriptRoot = ''
     )
     if ([string]::IsNullOrWhiteSpace($ScriptRoot)) { $ScriptRoot = Split-Path $PSScriptRoot -Parent }
-    $versionsScript = Join-Path $ScriptRoot 'load-versions.ps1'
+    $versionsScript = Join-Path $ScriptRoot 'Import-Versions.ps1'
     if (Test-Path $versionsScript) { & $versionsScript }
 }
 
@@ -1285,7 +1285,7 @@ function Initialize-PythonPlatformTag {
 .DESCRIPTION
     ONE writer for two interpreters (#125): the TARGET interpreter shipped at
     C:\runtime\python needs it too, because Python >= 3.8 ignores PATH for
-    extension-module dependencies. build-target-cpython.ps1 passes -PlatformName
+    extension-module dependencies. Build-TargetCpython.ps1 passes -PlatformName
     and -CrossExtTag EMPTY -- the target reports its own platform, and the
     EXT_SUFFIX pin is a build-time concern of the host interpreter only.
     EXPANDING here-string: the python body must contain NO '$' and NO backtick.
@@ -1956,7 +1956,7 @@ Export-ModuleMember -Function @(
     'Get-MlasKernelTuPattern',
     'Get-MlasKernelTuMinimum',
     'Get-CMakeCrossArgs',
-    # Called DIRECTLY by build-gstreamer-from-source.ps1's meson native file (#134);
+    # Called DIRECTLY by Build-GstreamerFromSource.ps1's meson native file (#134);
     # invisible to Modules.ReExport.Tests.ps1, so Modules.ScriptCallClosure.Tests.ps1
     # gates it.
     'Resolve-BuildMachineMsvcTool',
@@ -1964,10 +1964,10 @@ Export-ModuleMember -Function @(
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
-    # Called directly by build-tvm-from-source.ps1's LLVM-source fallback (#47).
+    # Called directly by Build-TvmFromSource.ps1's LLVM-source fallback (#47).
     # Latent on both lanes, so no build ever caught it -- Modules.ScriptCallClosure.Tests.ps1 did.
     'Get-PreferredToolPath',
-    # #113: used directly by build-gstreamer-from-source.ps1 -- module-internal use
+    # #113: used directly by Build-GstreamerFromSource.ps1 -- module-internal use
     # never needs the export list, direct script calls do.
     'Start-SccacheStallGuard',
     'Stop-SccacheStallGuard'

@@ -2,8 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# repro-llvm-aarch64-layout.ps1 decides whether a candidate clang-cl lets this
-# repo DELETE the two #135 workarounds from build-opencv-from-source.ps1. That
+# Invoke-LlvmAarch64Layout.ps1 decides whether a candidate clang-cl lets this
+# repo DELETE the two #135 workarounds from Build-OpencvFromSource.ps1. That
 # makes its command-line surgery load-bearing in an unusual direction: if
 # Get-CodegenFlags leaves either workaround spelling in the flag list, the
 # "workaround OFF" arm is not off, the control compiles clean, and the harness
@@ -23,7 +23,7 @@ if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue
 }
 
 $script:Target = 'aarch64-pc-windows-msvc'
-. (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1' `
+. (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\Invoke-LlvmAarch64Layout.ps1' `
         -FunctionName 'Split-CommandLine', 'Get-CodegenFlags')
 
 # Get-CodegenFlags reads $Target from its enclosing scope, as it does in the script.

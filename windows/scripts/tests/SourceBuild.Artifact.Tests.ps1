@@ -53,11 +53,11 @@ Describe 'Copy-BuildArtifact' {
 
 Describe 'Remove-MakefileShowIncludes' {
     # The function moved from WindowsSourceBuild.Common.psm1 into its only
-    # consumer, build-ffmpeg-from-source.ps1 (2026-08-03, layer economics).
+    # consumer, Build-FfmpegFromSource.ps1 (2026-08-03, layer economics).
     # These tests keep pinning the PRODUCTION definition: extract exactly the
     # function's AST from the script (dot-sourcing the whole script would start
     # a build) and load it into this scope.
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-ffmpeg-from-source.ps1' -FunctionName 'Remove-MakefileShowIncludes')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegFromSource.ps1' -FunctionName 'Remove-MakefileShowIncludes')
 
     It 'strips /showIncludes and the awk dep pipeline, keeping unrelated lines' {
         Invoke-InTestDir { param($dir)
@@ -94,7 +94,7 @@ Describe 'Remove-MakefileShowIncludes' {
 Describe 'Assert-FfmpegPkgConfig' {
     # Same AST-extraction rationale as above: the gate lives in the FFmpeg script
     # so it stays out of the three media branches' compile closure.
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-ffmpeg-from-source.ps1' -FunctionName 'Assert-FfmpegPkgConfig')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegFromSource.ps1' -FunctionName 'Assert-FfmpegPkgConfig')
 
     # Shape of a healthy file, as FFmpeg's configure emits it once the VERSION
     # file exists and the MSYS prefix has been rewritten.

@@ -7,7 +7,7 @@
 # download/extract pair.
 #
 # WHY THIS IS ITS OWN MODULE — CACHE BOUNDARY, NOT TASTE.
-# These five functions lived inside build-gstreamer-from-source.ps1 (backlog
+# These five functions lived inside Build-GstreamerFromSource.ps1 (backlog
 # #128/#133) with a comment explaining that a module was the WRONG home: at the
 # time the only module homes available were the six in `buildmods`, which are
 # the import closure of WindowsSourceBuild.Common and are mounted into all 11

@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# Assertion harness for smoke-test-container.ps1 (the test sections stay in the script).
+# Assertion harness for Test-Container.ps1 (the test sections stay in the script).
 # Run state (-ExitOnFirstFailure, counters) is MODULE state: a module has its own session
 # state, so $script: vars never cross the caller boundary in either direction.
 

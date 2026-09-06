@@ -1,7 +1,7 @@
 # escape=`
 # =============================================================================
-# Verify the load-versions.ps1 override-persist fix (post-#50 env gap). Run:
-#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.load-versions-probe -BaseImage local/kataglyphis:bk-windows-toolchain
+# Verify the Import-Versions.ps1 override-persist fix (post-#50 env gap). Run:
+#   Invoke-DiagnosticProbe.ps1 -Dockerfile Dockerfile.load-versions-probe -BaseImage local/kataglyphis:bk-windows-toolchain
 # =============================================================================
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
@@ -15,7 +15,7 @@ ENV SCCACHE_GIT_REV="probe-override-value"
 
 RUN --mount=type=bind,source=windows/scripts,target=C:\bkmnt `
     Write-Host ('machine BEFORE: [' + [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine') + ']'); `
-    & C:\bkmnt\build\load-versions.ps1 2>&1 | Select-String 'SCCACHE_GIT_REV|loaded' | ForEach-Object { "$_" }; `
+    & C:\bkmnt\build\Import-Versions.ps1 2>&1 | Select-String 'SCCACHE_GIT_REV|loaded' | ForEach-Object { "$_" }; `
     $m = [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine'); `
     Write-Host ('machine AFTER: [' + $m + ']'); `
     if ($m -ne 'probe-override-value') { throw 'override was NOT baked to Machine env' }; `

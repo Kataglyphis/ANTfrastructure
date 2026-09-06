@@ -56,7 +56,7 @@ stub. Nothing in this file is open work.
 > buildctl solve after `final` and FAILS the chain. It paid for itself
 > immediately: pointed at the existing image it returned **176 passed, 8
 > FAILED** — see P0c. Treating the four as one piece was right; they all landed
-> in `smoke-test-container.ps1` plus one new Dockerfile.
+> in `Test-Container.ps1` plus one new Dockerfile.
 >
 > **Batch E — base-tier. MUST be batched; never land alone.** #50 + #81. One
 > base rebuild (~30 min + full downstream invalidation) pays for both. Add any
@@ -250,7 +250,7 @@ stub. Nothing in this file is open work.
   it is evidence of nothing. Always read it next to the miss count.
 
   **CONFIRMED CAUSE 2026-08-15 — it is the BUILDKIT CACHE MOUNT.** Isolated by
-  `windows/scripts/probe-sccache-write.ps1`, which reproduces the failure with
+  `windows/scripts/Test-SccacheWrite.ps1`, which reproduces the failure with
   ONE compile in ~2 minutes and varies one factor at a time:
 
   | variant | SCCACHE_DIR | chain | write errors |
@@ -280,7 +280,7 @@ stub. Nothing in this file is open work.
   two-variable comparison as a cause, however good the story sounds.
 
   **ACTUAL CAUSE: stale directory entries in the pre-existing bucket tree.**
-  Bisecting the root (`probe-sccache-write.ps1`, ~2 min/round):
+  Bisecting the root (`Test-SccacheWrite.ps1`, ~2 min/round):
   - the foreign entries (`logs`, 65.8 MB, left over from before #90; `wtest.txt`)
     were **not** it — removing them changed nothing;
   - `preprocessor` was not it;
@@ -322,7 +322,7 @@ stub. Nothing in this file is open work.
   bucket `f`, process detachment, concurrency (16 at once writes fine), tree
   damage, path length (239-char source path writes fine), and a fresh cache dir.
 
-  **METHOD LESSON, the expensive one:** `probe-sccache-write.ps1` reproduces the
+  **METHOD LESSON, the expensive one:** `Test-SccacheWrite.ps1` reproduces the
   environment but NOT the failure — every configuration it blessed then failed in
   a real build, and it never once predicted build behaviour. A probe that cannot
   reproduce the bug cannot clear a fix either. Only build-stage `--show-stats`
@@ -389,11 +389,11 @@ stub. Nothing in this file is open work.
 
     **Best remaining thread:** why exactly 13 writes succeed before the turn.
     That number is identical across both configurations and is the only
-    deterministic handle found so far; `probe-sccache-write.ps1` can chase it in
+    deterministic handle found so far; `Test-SccacheWrite.ps1` can chase it in
     minutes instead of 90-minute builds.
 
   **ROOT CAUSE, 2026-08-16 — IT IS THE BUILDKIT CACHE MOUNT, NOT SCCACHE.**
-  The bulk section of `probe-sccache-write.ps1` isolates it with one program, one
+  The bulk section of `Test-SccacheWrite.ps1` isolates it with one program, one
   moment, two target directories, 250 unique objects each:
 
   | target | inherited content | result |
@@ -439,7 +439,7 @@ stub. Nothing in this file is open work.
   sole cache. Owner intent: **restore `disk,webdav` later, once BuildKit's WCOW
   cache mounts have matured.** Re-verification recipe when that day comes — do
   NOT assume a newer buildkit fixed it:
-  1. `probe-sccache-write.ps1` twice against the real media base image; the bulk
+  1. `Test-SccacheWrite.ps1` twice against the real media base image; the bulk
      section's ON-mount row must read 0 failures on the SECOND (inheriting) run;
   2. then one media build with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`;
      genai must report 0 write errors next to its 157 misses.
@@ -582,7 +582,7 @@ stub. Nothing in this file is open work.
      plugin turns out not to link against this image's OpenCV.
 
   **IMPLEMENTED 2026-08-17 (option 1) — awaiting its first merge build.**
-  `build-opencv-gstreamer-plugin.ps1` + a second RUN in the merge builder's
+  `Build-OpencvGstreamerPlugin.ps1` + a second RUN in the merge builder's
   `built` stage, directly after the GStreamer RUN: shallow-clones the OpenCV
   source at the same pin, points the standalone plugin project at the installed
   OpenCV (`OpenCV_DIR` located by searching for OpenCVConfig.cmake) and at
@@ -613,7 +613,7 @@ stub. Nothing in this file is open work.
   generations and `cv::VideoCapture`'s FFmpeg path uses the older one. Also
   costs an extra download and leaves `avdevice: NO`.
   **This one is nearly free to fix: FFmpeg does NOT depend on OpenCV** (no
-  `--enable-libopencv` anywhere in build-ffmpeg-from-source.ps1), so the
+  `--enable-libopencv` anywhere in Build-FfmpegFromSource.ps1), so the
   opencv/ffmpeg stages can simply SWAP — no circularity, no second pass. Verify
   with `getBuildInformation()` afterwards that avcodec reports the n9.0 line.
 
@@ -630,12 +630,12 @@ stub. Nothing in this file is open work.
 
   Both symptoms gone. Four parts, all required:
   1. **stage swap** — FFmpeg builds before OpenCV (three places kept in step:
-     `build-media-core-all.ps1`, the `FROM` graph, `build-buildkit.ps1`);
+     `Build-MediaCoreAll.ps1`, the `FROM` graph, `build-buildkit.ps1`);
   2. **`patches/opencv/pkgconfig-shim.cmake`** via `CMAKE_PROJECT_INCLUDE` —
      runs the `find_package(PkgConfig)` OpenCV skips on Windows, which is the
      only thing standing between its pkg-config route and this chain's FFmpeg;
   3. **`OPENCV_FFMPEG_SKIP_DOWNLOAD=ON` + `OPENCV_FFMPEG_ENABLE_LIBAVDEVICE=ON`**;
-  4. **`patches/opencv/ffmpeg9-avcodec-config.ps1`** — OpenCV 5.0.0 does not
+  4. **`patches/opencv/Get-Ffmpeg9AvcodecConfig.ps1`** — OpenCV 5.0.0 does not
      compile against FFmpeg 9 without it (`AVCodec::pix_fmts` and
      `supported_framerates` were removed in favour of
      `avcodec_get_supported_config()`); 3 + 2 call sites, two compat shims.
@@ -659,7 +659,7 @@ stub. Nothing in this file is open work.
   exploit it REGRESSED and was reverted the same day.**
 
   Shipped and kept: FFmpeg now builds BEFORE OpenCV
-  (`build-media-core-all.ps1` stage order, the `FROM` graph in
+  (`Build-MediaCoreAll.ps1` stage order, the `FROM` graph in
   `Dockerfile.media-builder`, the `Invoke-BkStage` order in
   `build-buildkit.ps1` — three places, all three verified in agreement), and
   every RUN passes BOTH `-ResumeFrom` and `-Until`. The ffmpeg step previously
@@ -752,13 +752,13 @@ stub. Nothing in this file is open work.
     distinguishes the chain's FFmpeg from OpenCV's own download (#94)
   - the avcodec version line matching the `FFMPEG_VERSION` pin, so a future
     silent fallback to a bundled build fails instead of shipping
-  This belongs with the existing OpenCV section in `smoke-test-container.ps1`,
+  This belongs with the existing OpenCV section in `Test-Container.ps1`,
   next to the bulk DLL-load enumeration (#57). Add the assertions FIRST, watch
   them fail, then land the fix — a guard written after the fact proves nothing
   about the defect it was meant to catch.
 
   **DONE 2026-08-16 — three assertions landed and VERIFIED FAILING on the real
-  artifact.** They sit in the python section of `smoke-test-container.ps1`
+  artifact.** They sit in the python section of `Test-Container.ps1`
   (where `cv2` is importable) and parse `cv2.getBuildInformation()` only:
   1. `GStreamer: YES` — guards #93
   2. `FFMPEG: YES` **without** `(prebuilt binaries)`, via a negative lookahead — guards #94
@@ -766,7 +766,7 @@ stub. Nothing in this file is open work.
      `ffmpeg -version` at runtime rather than hard-coded, so an `FFMPEG_VERSION`
      bump needs no edit and a silent fallback to a bundled build still fails
 
-  Watched failing with `windows/scripts/run-opencv-video-probe.ps1` (+
+  Watched failing with `windows/scripts/Invoke-OpencvVideoProbe.ps1` (+
   `Dockerfile.opencv-video-probe`, ~4 s against a media image instead of a full
   chain). Measured against `bk-windows-media-core-ffmpeg`:
 
@@ -818,17 +818,17 @@ stub. Nothing in this file is open work.
   itself wrong (grep counted `-CandidatePaths` ARGUMENTS as pastes).** Real
   picture after reading each site:
   - genuinely duplicated, now fixed: `build-buildkit.ps1` and both probe
-    runners (the latter via the shared `run-diagnostic-probe.ps1`, #102);
-  - already used the helper all along: `verify-cuda-cache.ps1`,
-    `reset-container-stores.ps1` — false positives;
-  - deliberately inline, now ANNOTATED as such: `probe-build-copy.ps1`
-    (first script on a fresh host), `reset-container-locks.ps1` and
-    `apply-buildkitd-gcpolicy.ps1` (elevated repair tools — a module import is
+    runners (the latter via the shared `Invoke-DiagnosticProbe.ps1`, #102);
+  - already used the helper all along: `Test-CudaCache.ps1`,
+    `Reset-ContainerStores.ps1` — false positives;
+  - deliberately inline, now ANNOTATED as such: `Test-BuildCopy.ps1`
+    (first script on a fresh host), `Reset-ContainerLocks.ps1` and
+    `Set-BuildkitdGcpolicy.ps1` (elevated repair tools — a module import is
     one more thing that can be broken exactly when they are needed).
   Lesson for the next audit: a grep hit on the candidate PATH string is not a
   grep hit on the candidate WALK.
 - **102 [S·★★, none] DONE 2026-08-17 — probe runners folded into
-  `run-diagnostic-probe.ps1`.** The PROBE_NONCE + `probe complete` fail-closed
+  `Invoke-DiagnosticProbe.ps1`.** The PROBE_NONCE + `probe complete` fail-closed
   machinery now exists exactly once; the two original names stay as thin
   wrappers with their defaults, so muscle memory and doc references keep
   working. The shared runner also uses `Get-PreferredToolPath` instead of the
@@ -859,23 +859,23 @@ stub. Nothing in this file is open work.
     `Build-Windows-Container.ps1` (8 functions) + RustProjectTemplate
     `Invoke-StevedoreBuild.ps1` (`Resolve-DockerExe`)
   - `WindowsAgenticLoop.Common.psm1` ← BeschleunigerBallett
-    `Run-AgenticLoop.ps1`
+    `Invoke-AgenticLoop.ps1`
   Both headers state explicitly that an in-repo dead-code sweep WILL flag the
   module and would be wrong, and that renames are breaking changes downstream.
 - **106 [S·★, none] PARTLY DONE 2026-08-17 — and the gate's FIRST RUN corrected
   the entry's own premise.** The parse gate
   (`Bootstrap.Ps51Compat.Tests.ps1`: PSParser tokenization + no
   `#requires -Version 7` + no `?.`) shipped, and immediately flagged two of the
-  "trio": **`setup-vs.ps1` and `setup-scoop-tools.ps1` are NOT 5.1 scripts** —
+  "trio": **`Install-Vs.ps1` and `Install-ScoopTools.ps1` are NOT 5.1 scripts** —
   both declare 7.0 and both run AFTER Dockerfile.base switches SHELL to pwsh
   (SHELL ~:69, their RUNs ~:93/:125). Exactly ONE script runs under WPS 5.1:
-  `bootstrap-pwsh.ps1` (RUN ~:45). The gate now covers precisely that one and
+  `Initialize-Pwsh.ps1` (RUN ~:45). The gate now covers precisely that one and
   documents the SHELL-order evidence. Lesson, same family as #101's: the
   "which scripts are 5.1" claim came from comments/lore, and the first
   measurement disagreed.
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files (many
   are bind-mounted into media stages — land between builds).
-  (Original trigger, still true: `probe-sccache-write.ps1` declared 5.1 while
+  (Original trigger, still true: `Test-SccacheWrite.ps1` declared 5.1 while
   using `ProcessStartInfo.ArgumentList`, which 5.1 does not have.)
 - **107 [M·★★, none] `Invoke-SourceBuildChain` / `Complete-SourceBuildChain`
   have grown to 134/158 lines of inline sccache choreography.** The prologue

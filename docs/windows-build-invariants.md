@@ -134,7 +134,7 @@ legally use single quotes.
 a module, and never in a script that gets `&`-invoked FROM module scope.**
 A forced re-import from module context unloads the caller's top-level copy
 and rebinds it into the module's private session state (probed 2026-08-05:
-`load-versions.ps1`'s `Import-Module Shared -Force`, run via
+`Import-Versions.ps1`'s `Import-Module Shared -Force`, run via
 Import-CanonicalVersions, made `Resolve-DirectoryPath` CommandNotFound at
 gstreamer top level and killed the merge-warm solve). Nested imports use the
 guarded form `if (-not (Get-Module -Name 'X')) { Import-Module $path }`.
@@ -143,7 +143,7 @@ Import-CanonicalVersions, then `Get-Command Resolve-DirectoryPath` must still
 resolve.
 **The "REPO-COMPLETE since 2026-08-05" claim that stood here was WRONG, and
 it cost a 53-minute compile on 2026-08-21.** Every leaf builder
-(`build-onnx-from-source.ps1`, `-opencv-`, `-ffmpeg-`, `-gstreamer-`, `-tvm-`,
+(`Build-OnnxFromSource.ps1`, `-opencv-`, `-ffmpeg-`, `-gstreamer-`, `-tvm-`,
 `-litert-`, `-iree-`, …) still opened with `Import-Module $modulePath -Force`
 — and those are precisely "scripts `&`-invoked from module scope": the chain
 runs them in-process via `& (Join-Path $ScriptDir $stage.Script)`. ONNX built
@@ -167,13 +167,13 @@ parameter 1 (silently wrong without CmdletBinding, "positional parameter
 cannot be found" with it) — this killed the opencv warm solve on 2026-08-04
 and reproduces identically on host pwsh 7.6. Route such argv through a child
 process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
-re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
+re-parsed into named parameters; `Invoke-BkWarm.ps1` is the reference), or splat a
 HASHTABLE. Splatting arrays onto native executables stays fine.
 
 ### Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores
 
 **Four more pwsh traps — (a) and (b) found live 2026-08-10 in
-`probe-build-copy.ps1`, (c) and (d) on 2026-08-25 in the arm64 target-cpython
+`Test-BuildCopy.ps1`, (c) and (d) on 2026-08-25 in the arm64 target-cpython
 and LiteRT stages (regression pins: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`
 for (a)–(c), which are AST traps in `Invoke-Lint.ps1`, and
 `SourceBuild.HostArchLibEnv.Tests.ps1` for (d)):**
@@ -222,22 +222,22 @@ for all four, and both are about `.Count`/`.Sum` on a pipeline result:
 **(a) `@()`-wrap a pipeline result before touching `.Count`** — on pwsh 7.6.5 a
 one-element result is the scalar (`.Count` throws) and an empty result is
 `AutomationNull` (`.Count` throws too), so the working and the empty case both
-fail while only the two-or-more case passes. `normalize-tensorrt-tree.ps1`'s
+fail while only the two-or-more case passes. `Set-TensorrtTree.ps1`'s
 `$dllDirs` hit exactly this on its success path (TensorRT 10+/11 keep the DLLs
 in `bin` only, so precisely one dir survives the filter), and
-`stage-cuda-runtime.ps1`'s `$roots` would have re-broken the arm64/CPU merge
+`Copy-CudaRuntime.ps1`'s `$roots` would have re-broken the arm64/CPU merge
 lane that the 2026-08-23 degrade-cleanly fix unblocked.
 **(b) `Measure-Object -Property` emits NOTHING for empty input**, so an inline
 `(… | Measure-Object Length -Sum).Sum` throws on an empty directory — bind the
-result first (`clean-sccache-mount.ps1`, empty cache dir).
+result first (`Clear-SccacheMount.ps1`, empty cache dir).
 **StrictMode is INHERITED across `&`-invocation, so a script can already be
-under it without saying so.** `debug-litertlm-link.ps1`'s
+under it without saying so.** `Debug-LitertlmLink.ps1`'s
 `(Get-Command 'llvm-nm.exe' -EA SilentlyContinue).Source` was a LIVE bug for
-that reason: its only caller, `build-litert-lm-from-source.ps1`, sets
+that reason: its only caller, `Build-LitertLmFromSource.ps1`, sets
 StrictMode, and a missing `llvm-nm` — the case the code was written to
 handle — threw instead. Deliberately EXCLUDED: modules and dot-sourced
 scripts (`WindowsFlutter.Common`, `WindowsContainerLog.Common`,
-`Initialize-CiEnvironment.ps1`, `litert-lm-export-bridge.ps1`). A module does
+`Initialize-CiEnvironment.ps1`, `Export-LitertLmBridge.ps1`). A module does
 not inherit its caller's strict mode, and a dot-sourced script leaks it into
 every caller — in-repo and external — so those are behaviour changes, not
 hygiene.
@@ -262,7 +262,7 @@ smoke-test fix is re-verifiable without an image rebuild; and it enforces
 run that asserted nothing used to print "All smoke tests passed!" and exit 0.
 `-SkipSmokeGate` is for chain iteration only.
 **On `-TargetArch arm64` the gate is arch-SPLIT (2026-08-24).**
-`smoke-test-container.ps1` mostly verifies by EXECUTING the staged binaries,
+`Test-Container.ps1` mostly verifies by EXECUTING the staged binaries,
 and Windows x64 has no ARM64 emulation — so the payload sections keep floor 0
 on arm64 and the driver reports them `NOT APPLICABLE`, never "passed", while
 the host-toolchain sections (1-6, 14-16, and 19 arch-filtered:
@@ -275,7 +275,7 @@ runs live in `docs/windows-builds.md` § Smoke Testing. **Never lower the
 amd64 floors** toward the arm64 column: a reduced `-SmokeMinPassed` would
 leave a number a later amd64 change could quietly be measured against, which
 is exactly how this gate became decorative once before. The cross lane's
-execution-side verification is `verify-target-arch.ps1` (PE machine type over
+execution-side verification is `Test-TargetArch.ps1` (PE machine type over
 `C:\runtime` AND the fanned-in site-packages, `.lib` archives included,
 inside the merge stage, floor raised to 100 there) plus the fact that every
 artifact linked at all — neither proves the code RUNS, and nothing available
@@ -295,11 +295,11 @@ non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
 
 ### AVX-512/AMX flags never go in global CXX flags
 
-**AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `build-onnx-from-source.ps1` appends `Get-WindowsTargetKernelSimdFlags -Arch` per-TU (the name this line carried until 2026-08-24, `Get-WindowsX86Avx512Flags`, survives only as a zero-caller compat shim) to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and **asserts the tagged count against `Get-MlasKernelTuMinimum` — a THROW, not a log**. Two field lessons shape that floor: on aarch64 the x86 pattern matches nothing and a no-match patch *succeeds* (why the pattern is arch-parameterized), and on 2026-08-24 the amd64 lane broke with the floor PRESENT but too low — ORT v1.29.0 added six AVX-512 TUs outside `intrinsics/`, the stale pattern still matched 5 ≥ floor 4, and five kernels failed to compile. Floor rule: **it must be high enough that the previous broken state trips it** (now 8 against 11 matched; the stale pattern's 5 fails loudly). When bumping `ONNXRUNTIME_VERSION`, re-measure BOTH arches' patterns against the new MLAS tree — the 1.29 bump re-measured only aarch64 and amd64 paid for it. Don't "simplify" in either direction.
+**AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `Build-OnnxFromSource.ps1` appends `Get-WindowsTargetKernelSimdFlags -Arch` per-TU (the name this line carried until 2026-08-24, `Get-WindowsX86Avx512Flags`, survives only as a zero-caller compat shim) to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and **asserts the tagged count against `Get-MlasKernelTuMinimum` — a THROW, not a log**. Two field lessons shape that floor: on aarch64 the x86 pattern matches nothing and a no-match patch *succeeds* (why the pattern is arch-parameterized), and on 2026-08-24 the amd64 lane broke with the floor PRESENT but too low — ORT v1.29.0 added six AVX-512 TUs outside `intrinsics/`, the stale pattern still matched 5 ≥ floor 4, and five kernels failed to compile. Floor rule: **it must be high enough that the previous broken state trips it** (now 8 against 11 matched; the stale pattern's 5 fails loudly). When bumping `ONNXRUNTIME_VERSION`, re-measure BOTH arches' patterns against the new MLAS tree — the 1.29 bump re-measured only aarch64 and amd64 paid for it. Don't "simplify" in either direction.
 
 ### The mandatory GStreamer plugin set is a contract, never `auto`
 
-**The mandatory GStreamer plugin set is a CONTRACT, never `auto` (2026-08-07).** `Get-RequiredGstPlugin` (`WindowsGstPlugins.Common.psm1`) is the SINGLE definition of which integrations must exist — `libav`, `opencv`, `onnx`, `tflite`, the same four on BOTH lanes — enforced at four points that must never disagree: the pkg-config pre-flight in `build-gstreamer-from-source.ps1`, meson features set to `enabled` (meson's `auto` means **skip silently** — never use it; tflite's flag is presence-driven `-Dgst-plugins-bad:tflite=enabled`), a post-install gate that throws, and smoke-test assertions that fail. Any arch filtering lives in the CONTRACT, never in a caller — teaching only one enforcement point about an arch would recreate the 2026-07-11 regression. `tensorfilter` is an NNStreamer element, not a GStreamer plugin — never add it to the set. Deliberate exception: `-SkipPluginGate`, which marks the image unshippable. The root causes, per-plugin mechanisms and the hardened export-marker gate: `docs/windows-builds.md` § Mandatory GStreamer plugins (the contract); the cross-lane arch conditionals: `docs/windows-cross-builds.md` § The merge stage on arm64.
+**The mandatory GStreamer plugin set is a CONTRACT, never `auto` (2026-08-07).** `Get-RequiredGstPlugin` (`WindowsGstPlugins.Common.psm1`) is the SINGLE definition of which integrations must exist — `libav`, `opencv`, `onnx`, `tflite`, the same four on BOTH lanes — enforced at four points that must never disagree: the pkg-config pre-flight in `Build-GstreamerFromSource.ps1`, meson features set to `enabled` (meson's `auto` means **skip silently** — never use it; tflite's flag is presence-driven `-Dgst-plugins-bad:tflite=enabled`), a post-install gate that throws, and smoke-test assertions that fail. Any arch filtering lives in the CONTRACT, never in a caller — teaching only one enforcement point about an arch would recreate the 2026-07-11 regression. `tensorfilter` is an NNStreamer element, not a GStreamer plugin — never add it to the set. Deliberate exception: `-SkipPluginGate`, which marks the image unshippable. The root causes, per-plugin mechanisms and the hardened export-marker gate: `docs/windows-builds.md` § Mandatory GStreamer plugins (the contract); the cross-lane arch conditionals: `docs/windows-cross-builds.md` § The merge stage on arm64.
 
 ### A missing stage artifact is a THROW, not a warning
 
@@ -331,7 +331,7 @@ from "broken probe".**
 ### Reproducing the ENVIRONMENT is not reproducing the FAILURE
 
 **A probe that reproduces the ENVIRONMENT does not necessarily reproduce the
-FAILURE — and until it does, it can clear nothing.** `probe-sccache-write.ps1`
+FAILURE — and until it does, it can clear nothing.** `Test-SccacheWrite.ps1`
 ran the real image, the real cache mount ids and the real ENV, and for two days
 every configuration it pronounced clean then failed in the next 90-minute
 build: a repaired cache tree, a fresh `SCCACHE_DIR`, the multilevel chain,
@@ -440,7 +440,7 @@ stats go to STDERR (survives the step-log clip); and
 `BUILDKIT_STEP_LOG_MAX_SIZE=-1`/`MAX_SPEED=-1` on the buildkitd service is
 a REQUIRED host setting — a Stevedore reinstall/repair wipes the service
 env silently (found empty 2026-08-10; that clip hid guard verdicts and
-stats for three runs). Verify with `setup-new-host.ps1 -ReportOnly`;
+stats for three runs). Verify with `Install-NewHost.ps1 -ReportOnly`;
 re-apply + `Restart-Service buildkitd` only between builds.
 
 ---
@@ -457,7 +457,7 @@ the onnx/opencv/ffmpeg/litert/tvm/gstreamer layers each carried their own
 forever. Every chain wrapper now takes `-ScrubAfter` and every heavy RUN in
 the BK lane passes it; the shared epilogue is `Complete-SourceBuildChain`.
 Safe because `Clear-BuildScratch` targets `$env:TEMP` (the container profile
-temp) — `setup-vs.ps1` repoints `$env:TEMP` to `C:\temp` but only inside its
+temp) — `Install-Vs.ps1` repoints `$env:TEMP` to `C:\temp` but only inside its
 own process in the base layer, so `C:\temp\cpython` and the mounted
 script/patch trees are never touched. **Check that before widening it
 further**: a scrub of `C:\temp` would delete the CPython tree the merge stage
@@ -494,7 +494,7 @@ fans in.
 > `docker build` finding below is still true of this host, and the re-test
 > pointer is still a valid hand run.
 
-**media-core built via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core therefore ran as `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`) — the only way to get >2 CPUs *and* a committable image. Regression symptom of the era: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-build-lanes.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/scripts/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see [`windows-build-lanes.md`](windows-build-lanes.md) § Re-testing process isolation on new versions).
+**media-core built via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core therefore ran as `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`) — the only way to get >2 CPUs *and* a committable image. Regression symptom of the era: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-build-lanes.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/scripts/diagnostics/Test-ProcessIsolationCommit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see [`windows-build-lanes.md`](windows-build-lanes.md) § Re-testing process isolation on new versions).
 
 ### Parallelism is memory-bounded, not CPU-bounded
 
@@ -559,7 +559,7 @@ daemon, and on a Stevedore host that daemon is the `stevedore` SERVICE.**
 lane ran happily — i.e. the documented fallback was unavailable and nothing
 said so. `docker.exe` sitting on PATH proves nothing — and since 2026-08-31
 **nothing fail-fasts on it**: `Assert-DockerDaemon` was deleted with
-`build.ps1`. `verify-host-setup.ps1` reports the service state (WARN:
+`build.ps1`. `Test-HostSetup.ps1` reports the service state (WARN:
 "docker.exe publish/inspect unavailable"), which is the only check left.
 Starting it is NOT a safe reflex:
 a dockerd start recreates the nat HNS network and can move the subnet out
@@ -612,7 +612,7 @@ either file — it is load-bearing for every media compile via sccache.
 
 ### The CNI `.conf` is DERIVED from the `.conflist`, not hand-edited
 
-**The CNI `.conf` is DERIVED from the `.conflist`, not hand-edited (2026-08-07).** `apply-containerd-config.ps1` rewrites it via `ConvertFrom-CniConfList` whenever the two differ, so the two forms the clients each require cannot drift in content. Edit the **`.conflist`** and re-run that script; a multi-plugin conflist is refused rather than truncated to `plugins[0]`.
+**The CNI `.conf` is DERIVED from the `.conflist`, not hand-edited (2026-08-07).** `Set-ContainerdConfig.ps1` rewrites it via `ConvertFrom-CniConfList` whenever the two differ, so the two forms the clients each require cannot drift in content. Edit the **`.conflist`** and re-run that script; a multi-plugin conflist is refused rather than truncated to `plugins[0]`.
 
 ---
 
@@ -627,7 +627,7 @@ silently `USE_LLVM=OFF` — no CPU codegen, `tvm.build` for llvm targets dies
 at runtime. The official `clang+llvm-*-windows-msvc` dev tarball is NOT the
 fix: its static libs are /MT and want `xml2s.lib`, fatally mismatched
 against this /MD chain (verified by one link attempt). The heal in
-`build-tvm-from-source.ps1` builds a SHA-pinned llvm-project from source
+`Build-TvmFromSource.ps1` builds a SHA-pinned llvm-project from source
 (X86+NVPTX, no xml2/zlib/tests, `LLVM_ENABLE_DIA_SDK=OFF` — no ATL in these
 Build Tools, RTTI ON, full-`:FILEPATH` archiver) and passes
 `USE_LLVM=<path>/llvm-config.exe`. sccache makes it a one-time ~6 min cost.
@@ -677,7 +677,7 @@ did exactly this, and it is the DEFAULT toolchain target (`-StockLlvm` is the
 opt-out, #135): editing *any* module — `WindowsBuildDriver.Common.psm1`
 included, which no container ever loads — re-paid a full LLVM 23.1.0 compile
 plus every media lane derived from that image. That RUN now mounts the six
-modules `build-llvm-from-source.ps1` actually imports, and
+modules `Build-LlvmFromSource.ps1` actually imports, and
 `BuildKit.ModuleClosure.Tests.ps1` fails any windows Dockerfile that
 re-introduces the directory form. `Dockerfile.probe` is exempt BY DESIGN
 (`PROBE_NONCE` busts its layer regardless, and it dispatches arbitrary
@@ -706,11 +706,11 @@ flags them next will be the same audit, not new evidence.
 
 ### Rust: rustup WITH a default toolchain is the sole provider
 
-**Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `setup-rust-toolchain.ps1` runs `rustup-init -y --default-toolchain stable --profile minimal` and `setup-scoop-tools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
+**Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `Install-RustToolchain.ps1` runs `rustup-init -y --default-toolchain stable --profile minimal` and `Install-ScoopTools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
 
 ### `versions.env` is the single source of truth
 
-**`versions.env` is the single source of truth.** `build-buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `setup-scoop-tools.ps1` splits its installs into exactly those two blocks.
+**`versions.env` is the single source of truth.** `build-buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `Install-ScoopTools.ps1` splits its installs into exactly those two blocks.
 
 ### CMake cross configures must carry the ASM language target too
 
@@ -722,4 +722,4 @@ flags them next will be the same audit, not new evidence.
 
 ### Python bindings plumbing is load-bearing
 
-**Python bindings plumbing is load-bearing (added 2026-07-13; full detail in `docs/windows-builds.md` § What is verified: native vs. Python).** (1) The `sitecustomize.py` shim written by `Initialize-PythonPlatformTag` fixes clang-built CPython's win32 platform misreport (pip pulls 32-bit wheels without it) AND registers native DLL dirs (`os.add_dll_directory`; python ignores PATH for pyd deps) — never remove it. (2) OpenCV must keep `WITH_MSMF=OFF` **and** `WITH_OBSENSOR=OFF`: both hard-import Media Foundation, absent on Server Core — either ON makes videoio and the cv2 pyd unloadable. (3) Always `@()`-wrap `Save-PythonWheel` results: PS unwraps a 1-element array so `[0]` becomes the first *character* and pip once installed the PyPI package literally named `c`. (4) Binding asserts go through `Test-PythonImport` (cmd.exe-shielded): tvm writes warnings to stderr on successful imports, which raw `&` under EAP=Stop turns into false failures. (5) Wheels live at `C:\runtime\wheels` (`PYTHON_WHEELS`); the OrchestrANT torch step resolves the app's LATEST tag per build and its wheel-smoke suite gates the final docker build — both amd64-lane facts. On arm64 (#120, 2026-08-24) the target CPython ships at `C:\runtime\python` (source-built, `PCbuild\build.bat -e -p ARM64`, ClangCL props, PE `0xAA64` verified in-stage) and the wheel store holds the `onnxruntime`/`onnxruntime_genai_directml`/`av` wheels tagged `cp314-win_arm64` plus `cv2.cp314-win_arm64.pyd` in the target site-packages — **staged, never installed or imported** (nothing here can run aarch64). Load-bearing rules on that lane: the HOST interpreter runs every build and the TARGET import lib is linked (`Get-TargetBuildPython` — `.Exe` host, `.Lib` target; never conflate them); wheels go through `Invoke-PythonWheelBuild -CrossStage` (one call for both lanes: on cross it appends the target `--plat-name`, stages, and runs `Assert-WheelTargetArch` — PE machine + `EXT_SUFFIX` name tag of every member; natively it installs + import-asserts); the shim pins `EXT_SUFFIX` to the target while `get_platform()` stays host — two different facts (what this interpreter *builds* vs what pip may *download*); ORT/GenAI take `Python_*` hints (GenAI additionally the legacy `PYTHON_*` trio for vendored pybind11) — `Python3_*` is silently ignored, see `SourceBuild.FindPythonPrefix.Tests.ps1`. The GenAI wheel's ORT requirement is rewritten to plain `onnxruntime` before packing (both lanes, #126): upstream's `setup.py.in` derives `onnxruntime-directml`/`-gpu` from the package name, but our combined ORT wheel is named `onnxruntime` — unpatched, the edge is unsatisfiable on arm64 (no `win_arm64` `onnxruntime-directml` exists) and pulls a second ORT over ours on amd64. The cross merge then stages the target's runtime deps (`stage-target-python-deps.ps1`: host pip `download --platform win_arm64 --python-version 3.14` for what the bundle does not provide; gate: every wheel pure or `win_arm64`, every `Requires-Dist` resolves inside `C:\runtime\wheels`) and the arch gate walks every PE's import table (`verify-target-arch.ps1 -ImportWalk`, #127: each import must resolve to a bundle DLL, an `api-ms-`/System32 name — CRT DLLs excluded from System32 on cross — the driver allowlist, or the client-OS list `-ClientOsPattern` for DLLs a Windows client SKU ships but Server Core does not: `dsound`, `mf*`, `winspool.drv`). Its first run (arm64 run 13) found 13 real unresolved imports — the OpenSSL runtime DLLs nobody installed, the client-OS set, and `vcruntime140_threads.dll` — so treat a green walk as the gate it is, not decoration. It is a hard gate on cross lanes only: on the native lane the deliverable is the image, whose PATH carries the host CPython, scoop's OpenSSL and the toolkits, so the same walk reports (amd64: 186× `python314.dll` + 8× `python3.dll` from the host interpreter outside the roots, 6× `libcrypto/libssl-4-x64`) and never throws. (6) PyAV is built from sdist against OUR FFmpeg (`setup.py --ffmpeg-dir`) — PyPI's `av` wheel is unloadable on Server Core (bundled avdevice imports desktop-only `AVICAP32.dll`); in headless code request software encoders by name (`mpeg4`) — the generic `h264` alias resolves to the hardware `h264_d3d12va`. (7) IREE (media-tvm branch, TVM→IREE chain) is a shallow-submodule git clone (release tarballs lack LLVM); its wheels come from the ninja build tree's synthesized `compiler/`+`runtime` pip dirs with `--no-build-isolation` — plain `pip wheel` of the repo would rebuild all of LLVM in an isolated tree. Native tools at `IREE_ROOT` (`C:\runtime\iree`); CUDA HAL/target need no nvcc (PTX via NVPTX, driver dlopens nvcuda.dll).
+**Python bindings plumbing is load-bearing (added 2026-07-13; full detail in `docs/windows-builds.md` § What is verified: native vs. Python).** (1) The `sitecustomize.py` shim written by `Initialize-PythonPlatformTag` fixes clang-built CPython's win32 platform misreport (pip pulls 32-bit wheels without it) AND registers native DLL dirs (`os.add_dll_directory`; python ignores PATH for pyd deps) — never remove it. (2) OpenCV must keep `WITH_MSMF=OFF` **and** `WITH_OBSENSOR=OFF`: both hard-import Media Foundation, absent on Server Core — either ON makes videoio and the cv2 pyd unloadable. (3) Always `@()`-wrap `Save-PythonWheel` results: PS unwraps a 1-element array so `[0]` becomes the first *character* and pip once installed the PyPI package literally named `c`. (4) Binding asserts go through `Test-PythonImport` (cmd.exe-shielded): tvm writes warnings to stderr on successful imports, which raw `&` under EAP=Stop turns into false failures. (5) Wheels live at `C:\runtime\wheels` (`PYTHON_WHEELS`); the OrchestrANT torch step resolves the app's LATEST tag per build and its wheel-smoke suite gates the final docker build — both amd64-lane facts. On arm64 (#120, 2026-08-24) the target CPython ships at `C:\runtime\python` (source-built, `PCbuild\build.bat -e -p ARM64`, ClangCL props, PE `0xAA64` verified in-stage) and the wheel store holds the `onnxruntime`/`onnxruntime_genai_directml`/`av` wheels tagged `cp314-win_arm64` plus `cv2.cp314-win_arm64.pyd` in the target site-packages — **staged, never installed or imported** (nothing here can run aarch64). Load-bearing rules on that lane: the HOST interpreter runs every build and the TARGET import lib is linked (`Get-TargetBuildPython` — `.Exe` host, `.Lib` target; never conflate them); wheels go through `Invoke-PythonWheelBuild -CrossStage` (one call for both lanes: on cross it appends the target `--plat-name`, stages, and runs `Assert-WheelTargetArch` — PE machine + `EXT_SUFFIX` name tag of every member; natively it installs + import-asserts); the shim pins `EXT_SUFFIX` to the target while `get_platform()` stays host — two different facts (what this interpreter *builds* vs what pip may *download*); ORT/GenAI take `Python_*` hints (GenAI additionally the legacy `PYTHON_*` trio for vendored pybind11) — `Python3_*` is silently ignored, see `SourceBuild.FindPythonPrefix.Tests.ps1`. The GenAI wheel's ORT requirement is rewritten to plain `onnxruntime` before packing (both lanes, #126): upstream's `setup.py.in` derives `onnxruntime-directml`/`-gpu` from the package name, but our combined ORT wheel is named `onnxruntime` — unpatched, the edge is unsatisfiable on arm64 (no `win_arm64` `onnxruntime-directml` exists) and pulls a second ORT over ours on amd64. The cross merge then stages the target's runtime deps (`Copy-TargetPythonDeps.ps1`: host pip `download --platform win_arm64 --python-version 3.14` for what the bundle does not provide; gate: every wheel pure or `win_arm64`, every `Requires-Dist` resolves inside `C:\runtime\wheels`) and the arch gate walks every PE's import table (`Test-TargetArch.ps1 -ImportWalk`, #127: each import must resolve to a bundle DLL, an `api-ms-`/System32 name — CRT DLLs excluded from System32 on cross — the driver allowlist, or the client-OS list `-ClientOsPattern` for DLLs a Windows client SKU ships but Server Core does not: `dsound`, `mf*`, `winspool.drv`). Its first run (arm64 run 13) found 13 real unresolved imports — the OpenSSL runtime DLLs nobody installed, the client-OS set, and `vcruntime140_threads.dll` — so treat a green walk as the gate it is, not decoration. It is a hard gate on cross lanes only: on the native lane the deliverable is the image, whose PATH carries the host CPython, scoop's OpenSSL and the toolkits, so the same walk reports (amd64: 186× `python314.dll` + 8× `python3.dll` from the host interpreter outside the roots, 6× `libcrypto/libssl-4-x64`) and never throws. (6) PyAV is built from sdist against OUR FFmpeg (`setup.py --ffmpeg-dir`) — PyPI's `av` wheel is unloadable on Server Core (bundled avdevice imports desktop-only `AVICAP32.dll`); in headless code request software encoders by name (`mpeg4`) — the generic `h264` alias resolves to the hardware `h264_d3d12va`. (7) IREE (media-tvm branch, TVM→IREE chain) is a shallow-submodule git clone (release tarballs lack LLVM); its wheels come from the ninja build tree's synthesized `compiler/`+`runtime` pip dirs with `--no-build-isolation` — plain `pip wheel` of the repo would rebuild all of LLVM in an isolated tree. Native tools at `IREE_ROOT` (`C:\runtime\iree`); CUDA HAL/target need no nvcc (PTX via NVPTX, driver dlopens nvcuda.dll).

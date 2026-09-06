@@ -2,7 +2,7 @@
 rem Container entrypoint: load the VS developer environment, then run the given
 rem command (or an interactive pwsh (PowerShell 7) when none is given). A launcher script
 rem avoids the exec-form quoting hell around the spaces in the VS install path.
-rem VS major from the baked VISUAL_STUDIO_VERSION Machine env (load-versions.ps1 /
+rem VS major from the baked VISUAL_STUDIO_VERSION Machine env (Import-Versions.ps1 /
 rem versions.env); fall back to 18 for images from older bases without the key.
 if not defined VISUAL_STUDIO_VERSION set VISUAL_STUDIO_VERSION=18
 rem Two-root probe, mirroring Resolve-VsBuildToolsRoot (WindowsContainerImage.Common.psm1):

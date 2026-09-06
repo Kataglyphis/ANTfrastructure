@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# verify-target-arch.ps1 is the arm64 cross lane's PRIMARY correctness signal:
+# Test-TargetArch.ps1 is the arm64 cross lane's PRIMARY correctness signal:
 # every shipped binary is PE-machine-checked against the target, and a COFF
 # archive (.lib) machine check that is NOT a naive bytes[0x3C] walk. The
 # Get-ArchiveMachine bound was fixed in production (the +6 bound was two bytes
@@ -32,7 +32,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
             0x5032 = 'RISCV32'
             0x5064 = 'RISCV64'
         }
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\verify-target-arch.ps1' `
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-TargetArch.ps1' `
                 -FunctionName 'Get-CoffMachine', 'Get-ArchiveMachine', 'Format-Machine')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('archgate-' + [guid]::NewGuid().ToString('N'))
@@ -271,7 +271,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
 
     It 'classifies the Qualcomm FastRPC drivers as device OS (libcdsprpc/libadsprpc)' {
-        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\verify-target-arch.ps1')
+        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-TargetArch.ps1')
         Assert-True ($scriptText.Contains('lib(cds|ads)prpc\.dll')) 'libcdsprpc/libadsprpc must be client-OS allowed (QAIRT HTP stubs import them; they ship in every Windows-on-Snapdragon OS image)'
         Assert-True ($scriptText.Contains('FastRPC')) 'the comment must say why'
     }

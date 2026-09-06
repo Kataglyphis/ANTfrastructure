@@ -61,9 +61,9 @@ scanner-rot guards. NOT yet executed (no pwsh on this host) — watch the first
 Invoke-Tests.ps1 run on Windows. Corrections vs the W1 write-up: the "18.0.0"
 site is PYAV_VERSION (no LLVM site exists); TVM's key is TVM_REF.
 **NEW → W1b (Batch 4):** the scan surfaced LIVE drift in the ADJACENT helper
-`Resolve-ContainerImageValue` (out of W1 scope): setup-scoop-tools.ps1:105
-GIT_VERSION '2.54.0' vs pin 2.55.0; setup-scoop-tools.ps1:128 +
-verify-toolchain.ps1:122 WIX_UI_EXT_VERSION '4.0.4' vs pin 4.0.6. Fix the 3
+`Resolve-ContainerImageValue` (out of W1 scope): Install-ScoopTools.ps1:105
+GIT_VERSION '2.54.0' vs pin 2.55.0; Install-ScoopTools.ps1:128 +
+Test-Toolchain.ps1:122 WIX_UI_EXT_VERSION '4.0.4' vs pin 4.0.6. Fix the 3
 defaults + extend the parity suite to Resolve-ContainerImageValue sites in the
 next Windows rebuild window (lane rule: script edits ride pin-bump rebuilds).
 ⏸ DEFERRED while the chain runs (unlock post-chain): S1 + kata-cache cap +
@@ -191,7 +191,7 @@ Dawn-fails finding (→ 07-20 fix, WebGPU live); P5 degraded-plugin re-verify
 - **→ Batch 3 (+5):** pyav dead pin removal; LLVM_COMMIT opt-in key;
   setup-package-image bare cmake/numpy pins; ffmpeg-DNN SHA keys (rides #4);
   renovate/ollama/ghcr peripheral pins.
-- **→ Batch 4 (+2):** 🔴 nv/target.h host-only stub (setup-cuda.ps1:103-122
+- **→ Batch 4 (+2):** 🔴 nv/target.h host-only stub (Install-Cuda.ps1:103-122
   still writes NV_IS_HOST=1 over a real extensionless nv/target);
   Test-CniHealth check-fn unification.
 - **→ Batch 5 (+3):** stage-barrier fail-fast interplay (with O4); --no-push
@@ -943,11 +943,11 @@ rough per-stage cost table beats one global number.
 ### P4 — ✅ DONE (see below) — CNI conf: presence was guarded, CONTENT drift was not
 
 `Get-CniConfFormIssue` (added today) checks that both `0-containerd-nat.conf`
-and `.conflist` exist, and `verify-host-setup.ps1` compares their `ipam.subnet`.
+and `.conflist` exist, and `Test-HostSetup.ps1` compares their `ipam.subnet`.
 Nothing keeps the rest of the two files in sync, and they are hand-maintained
 copies of each other — the classic two-copies-drift shape this repo eliminates
 everywhere else. Better: generate the `.conf` FROM the `.conflist` (unwrap
-`plugins[0]`) in `apply-containerd-config.ps1`, so one file is authored and the
+`plugins[0]`) in `Set-ContainerdConfig.ps1`, so one file is authored and the
 other is derived.
 
 Related, smaller: `Get-CniNatSubnetDrift` and `Get-CniConfFormIssue` are two
@@ -965,7 +965,7 @@ would let the driver report every problem at once instead of the first.
 - `pwsh -File build-buildkit.ps1 -Stages a,b,c` passes the list as ONE string
   and dies on the `ValidateSet` (hit today). Either document the call operator
   form in the examples or accept a comma-separated string and split it.
-- `smoke-test-container.ps1` is ~1500 lines in one file; the section structure
+- `Test-Container.ps1` is ~1500 lines in one file; the section structure
   is already there in comments and would split cleanly.
 
 ### P6 — harvested from the ONNX build log of the same run (compiler-flag noise)
@@ -992,7 +992,7 @@ rather than assumed (`grep` over `windows/` + `linux/`):
   investigation or "clean up" a flag the CUDA build depends on.
 - **`-fdelayed-template-parsing is deprecated after C++20` (307× in ONNX) —
   NOT ours in this stage.** We pass it only in
-  `build-litert-lm-from-source.ps1` (with a matching `-Wno-…` right next to it);
+  `Build-LitertLmFromSource.ps1` (with a matching `-Wno-…` right next to it);
   the ONNX occurrences come from upstream's own CMake. No action on ONNX, but
   **the pin makes this a scheduled problem**: LLVM is now fixed at 22.1.8, and
   a future bump can turn this deprecation into a removal, which would break
@@ -1044,7 +1044,7 @@ Libs: -L${libdir}  -lavcodec
 2. **MSYS-style paths** (`/c/runtime/...`). pkg-config hands those to the
    compiler verbatim, and clang-cl / lld-link cannot resolve them; a consumer
    that gets past the version check still gets unusable `-I`/`-L` flags. Note
-   `build-ffmpeg-from-source.ps1` already knows this class of problem — it takes
+   `Build-FfmpegFromSource.ps1` already knows this class of problem — it takes
    care to give nv-codec-headers a forward-slashed *Windows* path (`C:/...`) so
    `ffnvcodec.pc` comes out right — but FFmpeg's own `--prefix` evidently goes in
    MSYS form.
@@ -1282,7 +1282,7 @@ together.
 `$SCOOP_HOME` and `$SCOOP_GLOBAL` are scoop's *app roots* (`apps\`, `buckets\`,
 `shims\` live under them; no executables of their own) — dead weight on PATH.
 The interesting half is what was absent: flutter is installed `--global`
-(`setup-scoop-tools.ps1`), so scoop DOES create `C:\ProgramData\scoop\shims`,
+(`Install-ScoopTools.ps1`), so scoop DOES create `C:\ProgramData\scoop\shims`,
 and that directory was on no PATH entry at all. A 2026-07-14 comment justified
 removing `SCOOP_GLOBAL_SHIMS` as pointing at a "never-created ProgramData dir",
 which stopped being true once anything was installed globally. Only
@@ -1365,7 +1365,7 @@ path against `*.*`, which matched `.githooks/pre-commit` on the dot in the
   this batch: a wrong `-Wno-` either breaks a compile or hides a real diagnostic,
   and the counts in the P8 table need re-measuring against the bumped OpenCV
   5.0.0 / ONNX v0.15.2 before choosing flags. Do it against a fresh log.
-- **Smoke-test split** (`smoke-test-container.ps1`, ~1600 lines). Still deferred
+- **Smoke-test split** (`Test-Container.ps1`, ~1600 lines). Still deferred
   on purpose: it is the gate that has not yet run green end-to-end with the new
   plugin assertions, and splitting a test file before you have seen it pass
   removes the baseline you would compare against.
@@ -1381,9 +1381,9 @@ Targeted suppressions, one per identified upstream construct, never a blanket `-
 
 | family | lever | where |
 |---|---|---|
-| `-Wdeprecated-copy` (~7 700) | `-Wno-deprecated-copy` in `CMAKE_CXX_FLAGS` | `build-opencv-from-source.ps1` |
-| `-Wunused-value` (~2 460) | `/clang:-Wno-unused-value` | `build-onnx-from-source.ps1` |
-| `-Wdocumentation-unknown-command` (~900) | `-Wno-documentation-unknown-command` | `build-tvm-from-source.ps1` |
+| `-Wdeprecated-copy` (~7 700) | `-Wno-deprecated-copy` in `CMAKE_CXX_FLAGS` | `Build-OpencvFromSource.ps1` |
+| `-Wunused-value` (~2 460) | `/clang:-Wno-unused-value` | `Build-OnnxFromSource.ps1` |
+| `-Wdocumentation-unknown-command` (~900) | `-Wno-documentation-unknown-command` | `Build-TvmFromSource.ps1` |
 | `STL4037` (657) | `_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING` | `patches/iree/enable-ehsc.cmake` |
 
 Three points decided the shape:
@@ -1420,7 +1420,7 @@ because it carries no `-W` group.
 
 ### ✅ Smoke-test split
 
-`smoke-test-container.ps1` 1 573 -> 1 386 lines; the ~210-line assertion harness
+`Test-Container.ps1` 1 573 -> 1 386 lines; the ~210-line assertion harness
 is now `modules\WindowsSmokeTest.Common.psm1`. The 22 test SECTIONS deliberately
 stay in the script — they are a linear probe run against a built image and gain
 nothing from modularisation.
@@ -1546,7 +1546,7 @@ Verified availability, not assumed:
 So the lever is available on this host today.
 
 **Consequence worth deciding deliberately:** sccache currently sits in
-`setup-scoop-tools.ps1`'s FLOATING block, justified as "the build only invokes
+`Install-ScoopTools.ps1`'s FLOATING block, justified as "the build only invokes
 them". Wiring the chain changes that — the L1 tier would exist or not depending
 on the installed sccache VERSION, and on an older one the variable is ignored
 **silently**, so the cache degrades with no error anywhere. That is exactly the
@@ -1631,7 +1631,7 @@ So every `.cu` translation unit goes through nvcc uncached — before the
 two-tier change and after it. The two-tier wiring only accelerates what was
 already cacheable: the C/C++ TUs.
 
-Scale, from this repo's own source (`build-onnx-from-source.ps1:197`):
+Scale, from this repo's own source (`Build-OnnxFromSource.ps1:197`):
 
 > ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the **~1h CUDA/TensorRT kernel
 > compiles**)
@@ -1820,7 +1820,7 @@ contract — all queued with the post-chain closure batch.
 Answering "are you tracking what could be refactored, detected during the
 build?" — honestly, not systematically since the restarts. This is the sweep.
 
-### 🔴 `nv/target.h` stub SHADOWS the real `nv/target` (setup-cuda.ps1)
+### 🔴 `nv/target.h` stub SHADOWS the real `nv/target` (Install-Cuda.ps1)
 
 Three log lines from the sdk stage that only mean something together:
 
@@ -1857,7 +1857,7 @@ FORWARD to it (`#pragma once` + `#include <nv/target>`), never re-declare a
 host-only view of the world. Keep the standalone stub only for the case where
 NEITHER exists. Same one-line change makes the log line honest too.
 
-### ⚠️ rustup honours a PRE-EXISTING settings.toml (setup-rust-toolchain.ps1)
+### ⚠️ rustup honours a PRE-EXISTING settings.toml (Install-RustToolchain.ps1)
 
 ```text
 warn: It looks like you have an existing rustup settings file at:
@@ -2265,7 +2265,7 @@ bridge function is condition-gated on its breakage signature, self-retiring,
 endgame hard-gated — leave it alone. Residuals:
 
 **W1 — no automated parity guard on the -DefaultValue shadow pins [free].**
-build-litert-from-source.ps1:22 and litert-lm-export-bridge.ps1:135 BOTH
+Build-LitertFromSource.ps1:22 and Export-LitertLmBridge.ps1:135 BOTH
 hardcode 'v2.1.6' under a "update BOTH defaults" comment; ~14 more DefaultValue
 literals mirror versions.env keys (all currently in sync — verified). One
 Pester suite: AST the Get-SourceBuildVersion call sites, assert each default ==
@@ -2281,7 +2281,7 @@ their COPY layers — the lane's own recorded rule).
 
 **W3 — SHA/signature hardening exists but thin: 4/26 call sites pass a sha,
 6/26 a signature.** Invoke-DownloadWithRetry is the full download_verified_file
-twin. Bare: setup-vcpkg.ps1:37 (tag zip, sha-pinnable), setup-rust-
+twin. Bare: Install-Vcpkg.ps1:37 (tag zip, sha-pinnable), setup-rust-
 toolchain.ps1:120 (floating rustup-init), get-pip.py (Common.psm1:395).
 Add ExpectSignature everywhere (behavior-neutral) + *_SHA256 pins for the
 immutable ones. TENSORRT_ZIP_SHA256 empty is documented-deliberate (EULA).

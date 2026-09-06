@@ -4,7 +4,7 @@
 #
 # `SHELL ["pwsh", ...]` on a PUBLIC Windows base image is a silent trap: the
 # servercore/nanoserver images ship Windows PowerShell 5.1 ONLY - pwsh arrives
-# later in the real chain via bootstrap-pwsh.ps1. Every RUN under such a SHELL
+# later in the real chain via Initialize-Pwsh.ps1. Every RUN under such a SHELL
 # dies with `hcs::System::CreateProcess ... The system cannot find the file
 # specified`, which does not look like "wrong shell" at all.
 #

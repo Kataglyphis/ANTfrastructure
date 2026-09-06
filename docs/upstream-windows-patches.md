@@ -40,15 +40,15 @@ Full descriptions in [`windows/upstream/`](../windows/upstream/README.md).
 | 1 | onnxruntime | `main` | `softmax.cc` uses the alternative token `or` | `onnxruntime/001-softmax-clangcl-keywords.patch` | **A** |
 | 2 | onnxruntime | `main` | `tunable.h` vs the `ERROR` macro from `wingdi.h` | `onnxruntime/004-tunable-severity-macro-collision.patch` | **B** |
 | 3 | opencv | `5.x` | MLAS forces `<cstring>` with GNU syntax under clang-cl | `opencv/002-mlas-clangcl-force-include.patch` | **A** |
-| 4 | opencv | `5.x` | `mlasi.h` remaps NEON intrinsics onto MSVC aliases under clang | inline, `build-opencv-from-source.ps1` | **A** |
+| 4 | opencv | `5.x` | `mlasi.h` remaps NEON intrinsics onto MSVC aliases under clang | inline, `Build-OpencvFromSource.ps1` | **A** |
 | 5 | opencv | **`4.x`** | `FindONNX` builds an IMPORTED target with `ocv_add_library` | part of `opencv/001-cmake-clang-cl-compat.patch` | **A** |
-| 6 | opencv | **`4.x`** | NEON dotprod/fp16 probes reject clang-cl | inline, `build-opencv-from-source.ps1` (#129) | **B** |
+| 6 | opencv | **`4.x`** | NEON dotprod/fp16 probes reject clang-cl | inline, `Build-OpencvFromSource.ps1` (#129) | **B** |
 | 7 | opencv_contrib | `5.x` | cudev uses `ulong`, which Windows does not declare | `opencv_contrib/001-cudev-windows-llp64.patch` | **A** |
-| 8 | gstreamer | `main` | `have_sse`/`have_sse2` not gated on `cpu_family` | inline, `build-gstreamer-from-source.ps1` | **A** |
-| 9 | gstreamer | `main` | Vulkan lib dir chosen from `build_machine` | inline, `build-gstreamer-from-source.ps1` | **A** |
-| 10 | gstreamer | `main` | mediafoundation lacks the `msvc` guard GstWinRt has | inline, `build-gstreamer-from-source.ps1` | **A** |
-| 11 | iree | `main` | `MATCHES 64` also matches `ARM64` | inline, `build-iree-from-source.ps1` | **A** |
-| 12 | iree | `main` | s8s4s32 i8mm tile defined `inline`, referenced across TUs | inline, `build-iree-from-source.ps1` | **A** |
+| 8 | gstreamer | `main` | `have_sse`/`have_sse2` not gated on `cpu_family` | inline, `Build-GstreamerFromSource.ps1` | **A** |
+| 9 | gstreamer | `main` | Vulkan lib dir chosen from `build_machine` | inline, `Build-GstreamerFromSource.ps1` | **A** |
+| 10 | gstreamer | `main` | mediafoundation lacks the `msvc` guard GstWinRt has | inline, `Build-GstreamerFromSource.ps1` | **A** |
+| 11 | iree | `main` | `MATCHES 64` also matches `ARM64` | inline, `Build-IreeFromSource.ps1` | **A** |
+| 12 | iree | `main` | s8s4s32 i8mm tile defined `inline`, referenced across TUs | inline, `Build-IreeFromSource.ps1` | **A** |
 
 **Branch is not a detail for OpenCV.** A defect that exists on `4.x` is fixed
 there and merged forward; `5.x` is right only when the code does not exist on
@@ -105,7 +105,7 @@ a competing PR. When it merges, drop the matching hunks from
 
 | Upstream | What | Why not yet |
 | --- | --- | --- |
-| opencv | videoio does not build against FFmpeg 8/9 (`AVCodec::pix_fmts` and `supported_framerates` removed) | Upstream fixed this on `4.x` and **not** on `5.x`. The right submission is a port of upstream's own two commits, already staged in [`docs/upstream/patches/`](upstream/patches/); see `upstreamable-patches.md` entry 2. Shared with the Linux lane — one PR covers both. Our Windows form is `opencv/ffmpeg9-avcodec-config.ps1`. |
+| opencv | videoio does not build against FFmpeg 8/9 (`AVCodec::pix_fmts` and `supported_framerates` removed) | Upstream fixed this on `4.x` and **not** on `5.x`. The right submission is a port of upstream's own two commits, already staged in [`docs/upstream/patches/`](upstream/patches/); see `upstreamable-patches.md` entry 2. Shared with the Linux lane — one PR covers both. Our Windows form is `opencv/Get-Ffmpeg9AvcodecConfig.ps1`. |
 | opencv | MLAS's vendored kernels are GAS/ELF-only, and clang-cl *is* a working GAS assembler, so `check_language(ASM)` does not spare Windows the way it spares MSVC | `opencv/003-mlas-windows-skip.patch` returns early on `WIN32`. Upstream has to choose: skip MLAS on Windows as the Android path already does, or port the kernels to MASM/COFF. Raised as a reviewer note in submission 5. |
 | opencv | CUDA with a clang-cl host compiler is refused outright, and `ocv_cuda_filter_options` leaks clang-cl-only flags into nvcc's `cl.exe` host pass | The rest of `opencv/001-cmake-clang-cl-compat.patch`. This is a feature — "support clang-cl as the CUDA host compiler" — not a bug fix, and wants agreement before code. |
 | iree | `add_custom_command` invokes a literal `ml64`, unoverridable and absent from a clang-only toolchain | Needs a decision on which variable should name the assembler (`CMAKE_ASM_MASM_COMPILER`). Raised as a reviewer note in submission 13. |

@@ -1,7 +1,7 @@
 # Qualcomm AI Engine Direct (QAIRT / "QNN") SDK drop — ONNX Runtime QNN EP (backlog #121)
 
 This directory is the **opt-in** drop point for the Qualcomm AI Engine Direct SDK zip.
-When a zip is staged here, `build-onnx-from-source.ps1` builds ONNX Runtime with the
+When a zip is staged here, `Build-OnnxFromSource.ps1` builds ONNX Runtime with the
 **QNN execution provider** (`onnxruntime_USE_QNN=ON`) and stages the QNN runtime DLLs
 beside `onnxruntime.dll`. When the directory holds nothing but this README, the build
 skips the QNN EP with a one-line notice — no zip is the default, supported state.

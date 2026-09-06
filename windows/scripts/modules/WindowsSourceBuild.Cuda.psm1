@@ -26,7 +26,7 @@ function Resolve-TensorRtRoot {
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
     if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
-    # 'current' first (backlog #38): normalize-tensorrt-tree.ps1 renames the
+    # 'current' first (backlog #38): Set-TensorrtTree.ps1 renames the
     # extracted TensorRT-<version> tree to a stable name so the Dockerfile's
     # runtime PATH can reference it WITHOUT spelling the pin — deriving that
     # path from TENSORRT_VERSION is what silently killed the EP when the pin

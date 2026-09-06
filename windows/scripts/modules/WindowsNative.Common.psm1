@@ -24,7 +24,7 @@ function Invoke-ShieldedNative {
         too late). Routing through cmd.exe merges the streams before PowerShell
         sees them. Target replacement for the ~40 hand-rolled
         `& cmd /c "... 2>&1"` + exit-check pairs across the build scripts
-        (promoted from assemble-torch-app.ps1's Invoke-TorchAppNative) —
+        (promoted from Build-TorchApp.ps1's Invoke-TorchAppNative) —
         migrate call sites incrementally, and only together with a planned
         rebuild of the layers that COPY the touched script.
         ALWAYS normalizes $LASTEXITCODE afterwards so a shielded call can never

@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# The per-run resource CSV (build-resource-sampler.ps1) was wired into the
+# The per-run resource CSV (Build-ResourceSampler.ps1) was wired into the
 # classic driver build.ps1 but NOT into build-buildkit.ps1 — so no building
 # driver produced it (#134 free follow-up: "do it, or drop the sampler"). This
 # suite pins the wiring so it cannot regress.

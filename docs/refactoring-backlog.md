@@ -186,7 +186,7 @@ Nothing in the entries below is blocked on you. These are:
    audit are parked in
    [`windows-refactor-backlog.md`](windows-refactor-backlog.md), verified against
    the tree only. Three of the six are wrong paths a reader would follow into a
-   "file not found" (`verify-host-setup.ps1`, `healthcheck.ps1`,
+   "file not found" (`Test-HostSetup.ps1`, `Test-Health.ps1`,
    `Dockerfile.toolchain`); the fourth is the QNN version contradiction at
    `README.md:204`. Also unresolved:
    `windows/scripts/tests/Pins.CanonicalValues.Tests.ps1` reads `CUDA_ARCHITECTURES`

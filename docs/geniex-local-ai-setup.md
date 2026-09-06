@@ -140,7 +140,7 @@ QAIRT Runtime Version:  2.45
 LlamaCPP Runtime Hash:  0eadefe
 ```
 
-Then **restart the lanes** (`windows/scripts/host/start-geniex-servers.ps1`)
+Then **restart the lanes** (`windows/scripts/host/Start-GeniexServers.ps1`)
 and **re-check the assumptions your tooling encodes.** A minor release changed
 four of them here (§ 1n): the output cap, `max_tokens`, tool-call parsing and
 the prefix cache. The model cache in `%USERPROFILE%\.cache\geniex\models`
@@ -206,7 +206,7 @@ One command starts the measured-optimal fleet (NPU + GPU lanes, correct
 `--nctx` and `--keepalive`):
 
 ```powershell
-pwsh -File windows/scripts/host/start-geniex-servers.ps1 -Restart
+pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -Restart
 # add -WithHybrid for a third (contending) lane on 18183
 ```
 
@@ -302,7 +302,7 @@ GX="/mnt/c/Users/<you>/AppData/Local/GenieX CLI/geniex.exe"
 ### Step 2 — start the server lane
 
 ```powershell
-pwsh -File windows/scripts/host/start-geniex-servers.ps1 -Restart
+pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -Restart
 ```
 
 This binds the NPU lane on **18181** (and a GPU lane on 18182) with
@@ -1335,7 +1335,7 @@ either lane alone (14.1 vs 15.2 tok/s on the 4B).
 | `--keepalive` | 300 s | `86400` | The model unloads after 5 idle minutes; the next prompt pays a 14–15 s cold load. A coding session pauses constantly. |
 | `--nctx` | 4096 | `16384` | Smaller than the context the agent config advertises. Overflow does not error — a 6.4k-token prompt never returned within 400 s. |
 
-`windows/scripts/host/start-geniex-servers.ps1` sets both and brings up both
+`windows/scripts/host/Start-GeniexServers.ps1` sets both and brings up both
 lanes in one command.
 
 ### What is still slow, honestly
@@ -1895,7 +1895,7 @@ override).
    updates**, or download from Lenovo's support page for this model.
 2. Install, **reboot**.
 3. Re-run the probe:
-   `pwsh -File windows/scripts/diagnostics/probe-geniex-npu-driver.ps1` — it must
+   `pwsh -File windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1` — it must
    report the **active** `libcdsprpc.dll` with all `dspqueue_*` symbols **OK**.
 
 On this host the update took `libcdsprpc.dll` **30.0.0140.1000 → 30.0.0220.3000**
@@ -1945,10 +1945,10 @@ Wrap any run longer than a few minutes:
 
 ```powershell
 # hold it awake for the duration of a run started elsewhere
-pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Minutes 240
+pwsh -ExecutionPolicy Bypass -File windows/scripts/host/Disable-Sleep.ps1 -Minutes 240
 
 # or run the command under it
-pwsh -ExecutionPolicy Bypass -File windows/scripts/host/keep-awake.ps1 -Command "bash run-sweep.sh"
+pwsh -ExecutionPolicy Bypass -File windows/scripts/host/Disable-Sleep.ps1 -Command "bash run-sweep.sh"
 ```
 
 **`-ExecutionPolicy Bypass` is not optional from WSL, and leaving it out fails
@@ -1957,7 +1957,7 @@ silently.** This repository lives inside WSL, so Windows sees the script at
 refuses to run unsigned:
 
 ```text
-SecurityError: File \\wsl.localhost\...\keep-awake.ps1 cannot be loaded.
+SecurityError: File \\wsl.localhost\...\Disable-Sleep.ps1 cannot be loaded.
 The file is not digitally signed.
 ```
 
@@ -1984,7 +1984,7 @@ Every row below was hit live on 2026-08-31.
 |---|---|---|
 | `No chipset configured. Please select your chipset first.` then `could not open a new TTY` | Fresh install; the picker needs an interactive TTY, absent from scripts/CI | `geniex config set chipset qualcomm-snapdragon-x-elite` (non-interactive) |
 | Windows `geniex serve` exits with `bind: Only one usage of each socket address` | A WSL-side GenieX server on `127.0.0.1:18181` shadows the port through localhost forwarding | Stop the WSL server (`fuser -k 18181/tcp`) |
-| `SDKError(Invalid input parameters or handle)` on `--compute npu`; log shows `ggml-hex: failed to dlsym dspqueue_create` and `Device 'HTP0' not found` | Installed Qualcomm CDSP driver's `libcdsprpc.dll` does not export the `dspqueue_create`/`read`/`write`/`export`/`close` symbols the bundled llama.cpp Hexagon backend needs — a stale driver/backend mismatch | **Update the Qualcomm Hexagon NPU driver** (Windows Update optional updates / Lenovo support), reboot, re-run `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. Full analysis: § The NPU problem |
+| `SDKError(Invalid input parameters or handle)` on `--compute npu`; log shows `ggml-hex: failed to dlsym dspqueue_create` and `Device 'HTP0' not found` | Installed Qualcomm CDSP driver's `libcdsprpc.dll` does not export the `dspqueue_create`/`read`/`write`/`export`/`close` symbols the bundled llama.cpp Hexagon backend needs — a stale driver/backend mismatch | **Update the Qualcomm Hexagon NPU driver** (Windows Update optional updates / Lenovo support), reboot, re-run `windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1`. Full analysis: § The NPU problem |
 | QAIRT bundle `--compute npu` crashes with `Exception 0xc00000fd` (STACK_OVERFLOW) in native code | QNN HTP runtime init stack-overflows against the old CDSP transport | Same driver update (above) |
 | `dspqueue_read failed: 0x00000072` during generation on `--compute npu` | **Model too large for the HTP** (~2,93 GiB vmem budget) — a memory limit, not a driver bug | Use a smaller model (4B fits at 15.2 tok/s) or a different compute. Matches upstream ggml-org/llama.cpp#26123 |
 | `--compute hybrid` server accepts the request but never answers (HTTP 000 after 600 s), unlike NPU which crashes fast | 27B Q3_K_XL straddles the HTP budget: the HTP stages what fits, the CPU portion is so large it never finishes in practical time — neither crashes nor completes | The 27B is CPU-only territory on this machine. Do not use hybrid at all — plain `--compute cpu` beats it on every model (9B: 15.2 vs 7.5 tok/s) |

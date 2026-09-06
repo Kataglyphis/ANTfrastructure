@@ -32,7 +32,7 @@ builder's 28 ENV lines collapsed into 5 blocks removed ~23 layers. Updated
 
 ### Resource sampler wired into build-buildkit.ps1 (#134 free follow-up)
 
-The per-run resource CSV (`build-resource-sampler.ps1`) was wired into the
+The per-run resource CSV (`Build-ResourceSampler.ps1`) was wired into the
 classic `build.ps1` but not the BK driver, so no building driver produced it.
 The BK driver now starts the detached sampler after preflight gates pass,
 writes phase transitions at each `Invoke-BkStage` via `Set-BuildPhase`, and
@@ -50,12 +50,12 @@ entry below, but 85 EXCEEDS the arm64 section-floor sum of 72
 (`Smoke.FloorCalibration.Tests.ps1` enforces `armFloor ≤ armSum`). A run
 sitting exactly at every section floor — a legitimate result — would have
 FAILED the global gate. Reverted to 66 (≤ 72, ≥ 90% of 72). The §19 PROVISIONAL
-marker in `smoke-test-container.ps1` removed: three green arm64 runs confirmed
+marker in `Test-Container.ps1` removed: three green arm64 runs confirmed
 the floor.
 
 ### SourceBuild.PinParity — TVM_REF → TVM_COMMIT (#134 follow-up)
 
-`build-tvm-from-source.ps1` now reads `TVM_COMMIT` first (the commit-hash
+`Build-TvmFromSource.ps1` now reads `TVM_COMMIT` first (the commit-hash
 override for the LLVM 23.1.0 break). The pin-parity scanner-rot guard still
 expected `TVM_REF` as the resolved key and compared the `-DefaultValue 'v0.26.0'`
 against `TVM_COMMIT=994e0216...` (a commit hash, not a tag). Fixed: the
@@ -89,7 +89,7 @@ All three now do (39 tests total, all green):
   parenthesised versions, extras-dropping), and wheel METADATA reading via
   synthetic .whl ZIP archives.
 - `SourceBuild.BundleManifest.Tests.ps1` (9 tests) — runs
-  `write-bundle-manifest.ps1` against a synthetic bundle tree with
+  `Write-BundleManifest.ps1` against a synthetic bundle tree with
   `WINDOWS_TARGET_ARCH` set, verifying the three output files
   (`BUNDLE-ENV.cmd`, `BUNDLE-ENV.ps1`, `BUNDLE-README.md`) for both amd64
   and arm64, including ENV-var registration, the cross-build caveat, and
@@ -106,7 +106,7 @@ Suite total: 726 → 765 tests (764 pass; 1 pre-existing environmental
 
 The Windows TVM build used `TVM_REF=v0.26.0` (the tag without LLVM 23 guards).
 The Linux lane already used `TVM_COMMIT=994e0216` (upstream main, with
-`TVM_LLVM_VERSION >= 230` guards). Fix: `build-tvm-from-source.ps1` now reads
+`TVM_LLVM_VERSION >= 230` guards). Fix: `Build-TvmFromSource.ps1` now reads
 `TVM_COMMIT` first; `Dockerfile.media-builder` ARG/ENV updated to forward it.
 
 ### sccache — #137 DONE
@@ -114,11 +114,11 @@ The Linux lane already used `TVM_COMMIT=994e0216` (upstream main, with
 `SCCACHE_GIT_REV` bumped `ffac4a5` to `8ab39266` (main HEAD, both PRs #2811 +
 #2816 merged). The 0003 patch file and `windows/upstream/sccache-nvcc-quote-fix/`
 deleted. `Dockerfile.base` COPY of the patch dir removed. Comments updated in
-`setup-rust-toolchain.ps1`, `Dockerfile.base`, `Dockerfile.media-builder`.
+`Install-RustToolchain.ps1`, `Dockerfile.base`, `Dockerfile.media-builder`.
 
 ### Target python deps gate — floor added (#134 free follow-up)
 
-`stage-target-python-deps.ps1` gains `-MinBundleWheels` and
+`Copy-TargetPythonDeps.ps1` gains `-MinBundleWheels` and
 `-MinFirstTouchRequirements` parameters — a drop in wheel or requirement count
 is now a hard failure (the run-34/35 defect class: empty `Requires-Dist` from a
 CRLF regex bug made the gate greener, not red). Wired through
@@ -158,7 +158,7 @@ for the TVM compiler build.
    rotated `get.scoop.sh` again (verified against GitHub raw master, Unlicense
    header, 787 lines). Updated `versions.env` + `Dockerfile.base` ARG default.
 2. **Arm64 OpenSSL URL** bumped `Win64ARMOpenSSL-4_0_1` to `4_0_2` — slproweb
-   404'd the old version. Updated `setup-scoop-tools.ps1` (URL + SHA256:
+   404'd the old version. Updated `Install-ScoopTools.ps1` (URL + SHA256:
    `5d2653ef…`). Without this, the arm64 GStreamer merge stage throws on the
    missing `C:\opt\openssl-arm64\libcrypto.lib`.
 3. **`ARCH_GATE_MIN_INSPECTED`** for arm64 corrected 840 to 580 — 840 was set
@@ -434,7 +434,7 @@ it.
 **What changed on disk:** the root-cause blocks in `docs/failure-modes.md`,
 `docs/windows-refactor-backlog.md` § #135 and
 `out/upstream-llvm-aarch64-seh-instsize.md` now say EH_LABEL, not #202716. Both
-workarounds STAY in `build-opencv-from-source.ps1` until `BUILD_PATCHED_LLVM`
+workarounds STAY in `Build-OpencvFromSource.ps1` until `BUILD_PATCHED_LLVM`
 defaults to on — the patched compiler is opt-in, and the stock one still
 miscounts.
 
@@ -486,7 +486,7 @@ consequence to plan around: the fix reaches a tagged release only in **24.1.0**
 (~Feb–Mar 2027 on the observed 6-month major cadence), so `/Ob1` stays until the
 toolchain actually moves, and **`+force-32bit-jump-tables` stays regardless**.
 
-**Also landed:** `repro-llvm-aarch64-layout.ps1`, the A/B that settles "does this
+**Also landed:** `Invoke-LlvmAarch64Layout.ps1`, the A/B that settles "does this
 compiler retire the workaround" in seconds instead of a lane run — the real
 offenders frozen as preprocessed `.i`, gated on control arms that must reproduce
 the abort and then suppress it, so a stale corpus reports `INVALID` instead of a
@@ -1013,7 +1013,7 @@ PowerShell suite surfaced.
 - **Pester installed (user scope)** so `windows/scripts/tests/Invoke-Tests.ps1`
   actually runs. It had been exiting 0 while silently skipping every test, which
   reads as green — the suite had not executed once all day, including against
-  the `verify-target-arch.ps1` change that arrived with the merge. **668 tests
+  the `Test-TargetArch.ps1` change that arrived with the merge. **668 tests
   now run: 667 pass.** The one remaining failure is environmental, not code:
   `Assert-ShimPatch` finds no patched containerd shim installed on this host.
 - **Three patch files were CRLF in the worktree against an LF index**
@@ -1294,7 +1294,7 @@ capture/trim recipes.
 
 Deliberately omitted a bare recursive force-delete recipe that the source note
 carried: this repo routes host reclaim through
-`windows\scripts\host\free-disk-space.ps1`, which is allowlisted and report-only
+`windows\scripts\host\Clear-DiskSpace.ps1`, which is allowlisted and report-only
 by default, and a general-purpose delete-a-tree snippet in the docs would
 contradict that. The page points at the script instead.
 

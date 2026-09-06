@@ -158,7 +158,7 @@ if ($FailOnAnalyzer -and ($errs.Count -gt 0 -or $warns.Count -gt 0)) { $fail = $
 # reporting it FIRST would let a CI retry loop re-run a build that has a genuine
 # parse error while the operator never sees LINT FAILED. Announce the
 # infrastructure problem either way, but let a real defect win the exit code.
-# (smoke-test-container.ps1 already gets this ordering right: failures branch
+# (Test-Container.ps1 already gets this ordering right: failures branch
 # before the coverage branch.)
 if ($analyzerCrashes.Count -gt 0) {
     Write-Host "`nLINT INCONCLUSIVE - PSScriptAnalyzer failed on $($analyzerCrashes.Count) file(s)" -ForegroundColor Red

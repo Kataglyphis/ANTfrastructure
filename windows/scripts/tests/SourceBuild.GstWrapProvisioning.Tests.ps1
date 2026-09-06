@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Invoke-GstWrapProvisioning's #88 contract, lifted out of build-gstreamer-from-source.ps1
+# Invoke-GstWrapProvisioning's #88 contract, lifted out of Build-GstreamerFromSource.ps1
 # on 2026-08-31. The property that matters is the one the extraction could have broken
 # SILENTLY: failures must be RETURNED to the caller, because the caller owns the
 # fail-closed throw. A module function accumulating into `$script:` writes MODULE scope,

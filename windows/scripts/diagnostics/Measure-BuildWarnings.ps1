@@ -111,9 +111,9 @@ if ($Baseline) {
     # by a later -W flag from the project's own warning machinery, or the
     # upstream construct moved to a different diagnostic group.
     $known = [ordered]@{
-        '-Wdeprecated-copy'                = @{ Was = 7700; Where = 'OpenCV core/matx.hpp'; Flag = '-Wno-deprecated-copy (build-opencv-from-source.ps1)' }
-        '-Wunused-value'                   = @{ Was = 2460; Where = 'ONNX stream_handles.h / execution_provider.h'; Flag = '/clang:-Wno-unused-value (build-onnx-from-source.ps1)' }
-        '-Wdocumentation-unknown-command'  = @{ Was = 900; Where = 'TVM tvm/ffi/reflection/accessor.h'; Flag = '-Wno-documentation-unknown-command (build-tvm-from-source.ps1)' }
+        '-Wdeprecated-copy'                = @{ Was = 7700; Where = 'OpenCV core/matx.hpp'; Flag = '-Wno-deprecated-copy (Build-OpencvFromSource.ps1)' }
+        '-Wunused-value'                   = @{ Was = 2460; Where = 'ONNX stream_handles.h / execution_provider.h'; Flag = '/clang:-Wno-unused-value (Build-OnnxFromSource.ps1)' }
+        '-Wdocumentation-unknown-command'  = @{ Was = 900; Where = 'TVM tvm/ffi/reflection/accessor.h'; Flag = '-Wno-documentation-unknown-command (Build-TvmFromSource.ps1)' }
         'STL4037'                          = @{ Was = 657; Where = 'IREE/MLIR BuiltinAttributes.h'; Flag = '_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING (patches/iree/enable-ehsc.cmake)' }
     }
     Write-Host ""
