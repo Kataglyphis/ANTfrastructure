@@ -506,7 +506,7 @@ minutes-long cold `cargo install` per fresh container.
 
 rustup is **required**, not merely tolerated: Flutter's **Cargokit** (the build
 glue used by `flutter_rust_bridge`-style plugins, e.g. `rust_builder/cargokit` in
-Kataglyphis-Inference-Engine) enumerates toolchains/targets via rustup and aborts
+OmniAccelerANT) enumerates toolchains/targets via rustup and aborts
 with *"rustup not found in PATH."* otherwise — a scoop-only Rust (the previous
 setup) failed every Flutter+Rust consumer build at the CMake install step.
 

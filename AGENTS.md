@@ -516,7 +516,7 @@ write down**, and one question decides it:
 
 Most topics split down the middle. "Allow the `bindFlt`/`wcifs` filters on a Dev
 Drive" is ours; "Dart's `copySync` fails on a bind mount" is
-Kataglyphis-Inference-Engine's, because it only matters for a Flutter app.
+OmniAccelerANT's, because it only matters for a Flutter app.
 
 **Link rather than restate** — restating has produced three broken copies of
 one command before (the 2026-08-11 Dev Drive filter incident; the story lives
@@ -529,7 +529,7 @@ hunting links across seven repositories.
 consumer-side skeleton that keeps the split visible.
 
 One caution against automating this: a keyword check ("this consumer doc
-mentions wcifs") cannot tell *restating* from *applying*. Inference-Engine's
+mentions wcifs") cannot tell *restating* from *applying*. OmniAccelerANT's
 AddressSanitizer section legitimately discusses image-level runtimes, because
 which ASan runtime a Flutter/COM app can survive is a property of that app. A
 human has to read it.
@@ -846,7 +846,7 @@ linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
                          wired into CI or builds
 linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          assembly — consumer surface. Called from
-                         Kataglyphis-RustProjectTemplate's
+                         OxidANT's
                          .github/workflows/rust_ubuntu24_04.yml release job.
                          Deleted by the 2026-08-08 orphan sweep as
                          "zero-reference" and restored 2026-08-11: the sweep

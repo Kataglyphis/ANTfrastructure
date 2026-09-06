@@ -53,7 +53,7 @@ if (-not $Write) { $Check = $true }
 # ONE element "a,b,c", which then matches no file name and the ignore silently
 # does nothing. A consumer that legitimately owns several of these files would
 # see its documented escape hatch fail with no explanation (found doing exactly
-# that for Kataglyphis-Cpp-Inference, 2026-08-11). Splitting here makes -File
+# that for AccelerANTgine, 2026-08-11). Splitting here makes -File
 # and -Command behave the same.
 $Ignore = @($Ignore | Where-Object { $_ } | ForEach-Object { $_ -split ',' } |
   ForEach-Object { $_.Trim() } | Where-Object { $_ })

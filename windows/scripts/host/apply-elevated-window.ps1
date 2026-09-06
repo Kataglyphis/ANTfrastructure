@@ -15,7 +15,7 @@
 #      still red afterwards).
 # NEVER run while a chain build is solving.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\host\apply-elevated-window.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\apply-elevated-window.ps1'
 
 [CmdletBinding()]
 param([switch]$NoPrompt)

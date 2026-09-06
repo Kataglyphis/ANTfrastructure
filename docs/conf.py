@@ -23,7 +23,7 @@ PROJECT = "ContainerHub"
 # The repository URL is derived rather than typed for the same reason. It is
 # spelled out here rather than defaulted inside setup_theme() because a repo's
 # GitHub name and its Sphinx project name are not always the same string --
-# Kataglyphis-Cpp-Inference is "KataglyphisCppInference" to Sphinx -- so the
+# AccelerANTgine is "KataglyphisCppInference" to Sphinx -- so the
 # theme cannot guess it safely. Here they do match.
 setup_theme(
     globals(),

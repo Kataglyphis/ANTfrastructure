@@ -764,7 +764,7 @@ candidate is skipped and we stay quiet, exactly as before.
 Resolve the version a CI run should stamp, from the sources every consumer
 has: a VERSION.txt at the repo root, else the ref name, else the run number.
 
-Lifted out of a consumer (Kataglyphis-RustProjectTemplate's
+Lifted out of a consumer (OxidANT's
 scripts/compute_version.sh) because every repo with a CI lane needs exactly
 this and had to reimplement it around the primitives above.
 

@@ -9,7 +9,7 @@
 
 .DESCRIPTION
     Runs static analysis tools (codespell, bandit, vulture, ruff, ty) on Python code.
-    Uses shared modules from Kataglyphis-ContainerHub.
+    Uses shared modules from ContainerHub.
 
 .PARAMETER PythonVersion
     Python version to use (default: "3.14")

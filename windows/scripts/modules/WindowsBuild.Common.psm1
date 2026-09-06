@@ -584,8 +584,8 @@ Export-ModuleMember -Function @(
 
 # --------------------------------------------------------------------------
 # Restored from 04e1e07 (pre-refactor): functions still consumed by downstream
-# Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine,
-# Kataglyphis-RustProjectTemplate).
+# Build-Windows.ps1 scripts (OmniAccelerANT,
+# OxidANT).
 #
 # The lesson these keep re-teaching: cef62c3 deleted six exported functions
 # after a repo-wide sweep found "zero callers" — but the sweep could only see
@@ -593,7 +593,7 @@ Export-ModuleMember -Function @(
 # time nor appear in the sweep, and a consumer that starts calling one
 # afterwards is broken the moment it bumps its pin. That is exactly what
 # happened to Sync-BuildArtifacts: deleted 2026-07-07, first called by
-# RustProjectTemplate later, found broken at three call sites on 2026-08-11.
+# OxidANT later, found broken at three call sites on 2026-08-11.
 # Before deleting an EXPORTED function here, grep the consumer repos too — or
 # deprecate instead of deleting.
 # --------------------------------------------------------------------------
@@ -800,7 +800,7 @@ function Sync-BuildArtifacts {
         needs to avoid paying filter-driver I/O per object.
 
         Deleted in cef62c3 as "zero callers" (a sweep that could only see this
-        repo), then re-implemented locally in Kataglyphis-RustProjectTemplate,
+        repo), then re-implemented locally in OxidANT,
         which is where the robocopy exit-code handling below was actually
         debugged. Restored 2026-08-11 with THAT implementation, not the 2026-07
         original: the original treated exit >= 8 as noteworthy and the original

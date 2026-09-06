@@ -6,7 +6,7 @@
 # WindowsRepoHygiene.Common - repository-state guards that every repo wants and
 # none of which know anything about a particular project.
 #
-# Lifted out of a consumer repo (Kataglyphis-BeschleunigerBallett,
+# Lifted out of a consumer repo (BeschleunigerBallett,
 # scripts/windows/tests) on 2026-08-07: both checks were written there as
 # standalone Pester suites with the repo root hard-coded three levels up from
 # $PSScriptRoot, which is the only project-specific thing about them.

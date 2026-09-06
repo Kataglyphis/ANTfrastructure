@@ -19,7 +19,7 @@ Import-Module $modulePath -Force
 
 # rustup WITH a default toolchain -- NOT scoop rust, NOT toolchain-less rustup.
 # Flutter's Cargokit (flutter_rust_bridge-style plugins, e.g. rust_builder/cargokit
-# in Kataglyphis-Inference-Engine) hard-requires rustup: its build_tool enumerates
+# in OmniAccelerANT) hard-requires rustup: its build_tool enumerates
 # toolchains/targets via rustup and aborts with "rustup not found in PATH."
 # otherwise, so scoop-only Rust broke every Flutter+Rust consumer build.
 # The old "never rustup" rule targeted a NARROWER failure than the rule: a

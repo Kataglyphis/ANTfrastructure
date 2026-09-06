@@ -100,7 +100,7 @@ happen:
   container used to undo the package stage: it re-extracted the tarball over
   `/opt/flutter` and stripped `bin/cache`, so the very next `flutter` call
   re-downloaded the Dart SDK — 227 MB and a `flutter_tools` rebuild on *every*
-  run of every lane. Measured 2026-09-05 in Kataglyphis-Inference-Engine, whose
+  run of every lane. Measured 2026-09-05 in OmniAccelerANT, whose
   Linux, Android and web lanes all called it from `setup_flutter_sdk`. The
   guard reads `frameworkVersion` from `bin/cache/flutter.version.json`, which
   exists only once the SDK is bootstrapped, so a fresh `/opt` still installs

@@ -1,7 +1,7 @@
 # .github/workflows/python-ci-windows.yml
 #
 # Reusable Windows CI lane for the Python consumers (OrchestrANT,
-# Kataglyphis-WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
+# WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
 # inside the winamd64 image and uploads whatever it produced.
 #
 # Twin of python-ci-linux.yml. Before this existed the two callers each carried a

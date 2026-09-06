@@ -4,7 +4,7 @@
   TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.ps1.
 
   Agentic loop: planner adds tasks to BACKLOG.md, executor drains the queue.
-  Uses the WindowsAgenticLoop.Common module from Kataglyphis-ContainerHub, so
+  Uses the WindowsAgenticLoop.Common module from ContainerHub, so
   this wrapper stays thin: it resolves the module, loads the config, and calls
   Invoke-AgenticLoop. Build configurations come from the config's buildMatrix
   and the planner/executor task prompts default to ContainerHub's

@@ -10,7 +10,7 @@
 #   3. verify buildctl still reaches the workers.
 # Safe now: no build is running.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\host\reset-container-locks.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\reset-container-locks.ps1'
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

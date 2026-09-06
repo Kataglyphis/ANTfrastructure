@@ -51,7 +51,7 @@ Agent invocations retry with linear backoff (`agentRetries` ×
 Place the module in your repository's module path, then import it:
 
 ```pwsh
-# If using Kataglyphis-ContainerHub as a submodule:
+# If using ContainerHub as a submodule:
 $modulePath = Resolve-Path 'third_party/ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
 Import-Module $modulePath -Force
 ```

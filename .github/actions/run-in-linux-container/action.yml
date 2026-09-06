@@ -52,7 +52,7 @@ runs:
       # `defaults.run.shell: bash`. pipefail is load-bearing here: without it
       # the `| tee` pipeline below reports tee's exit code and masks docker's,
       # which hid failed configures/builds for months (see the Linux workflow
-      # header comment in Kataglyphis-BeschleunigerBallett).
+      # header comment in BeschleunigerBallett).
       shell: bash
       run: |
         if [ -n "${{ inputs.log-file }}" ]; then

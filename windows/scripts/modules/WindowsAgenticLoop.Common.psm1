@@ -5,7 +5,7 @@
 # CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
 # 2026-08-17; nothing INSIDE this repo imports this module except its tests, so
 # an in-repo dead-code sweep WILL flag it and would be wrong, backlog #105):
-#   Kataglyphis-BeschleunigerBallett/scripts/agentic-loop/Run-AgenticLoop.ps1
+#   BeschleunigerBallett/scripts/agentic-loop/Run-AgenticLoop.ps1
 # Renames/removals here are BREAKING changes for that repo.
 #
 # Reusable building blocks for a planner/executor agentic loop.

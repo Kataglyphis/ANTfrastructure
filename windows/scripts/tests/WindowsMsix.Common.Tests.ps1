@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Moved up from a consumer repo (Kataglyphis-BeschleunigerBallett,
+# Moved up from a consumer repo (BeschleunigerBallett,
 # scripts/windows/tests) on 2026-08-07 - see WindowsCMake.Common.Tests.ps1 for
 # the rationale. Converted from Pester 3.4 to Pester 5+ syntax in the move.
 

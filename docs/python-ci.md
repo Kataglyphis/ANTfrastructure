@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Python CI: the drivers, and the two traps in `uv`
 
-The Python consumers (OrchestrANT, Kataglyphis-WebDavClient)
+The Python consumers (OrchestrANT, WebDavClient)
 share their whole CI surface with this repository:
 
 | Layer | Where |

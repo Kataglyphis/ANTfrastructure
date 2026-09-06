@@ -86,7 +86,7 @@ rustup component add clippy
 # rustup for a consumer to add one itself, and a consumer lane that calls
 # `cargo fmt` therefore cannot run its format gate at all - it dies with
 #   error: 'cargo-fmt' is not installed for the toolchain '<ver>-<host>'
-# RustProjectTemplate's workflow had been asserting in a comment that "rustfmt
+# OxidANT's workflow had been asserting in a comment that "rustfmt
 # and clippy are baked in at image-build time" while only clippy actually was;
 # the format gate was dead from the moment it stopped being
 # continue-on-error. Failing the image build is the correct response to a
@@ -97,7 +97,7 @@ rustup component add rustfmt
 # The browser build target, on the DEFAULT (stable) toolchain: consumer CI
 # lanes run `cargo check --target wasm32-unknown-unknown` on stable, and the
 # runtime containers have no rustup on PATH to add it themselves - without
-# this the RustProjectTemplate wasm gate can only skip (found 2026-07-22).
+# this the OxidANT wasm gate can only skip (found 2026-07-22).
 # Not optional (no try_): if the wasm target is missing the gate is dead.
 rustup target add wasm32-unknown-unknown
 

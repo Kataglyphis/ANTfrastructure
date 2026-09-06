@@ -12,7 +12,7 @@ hunting links across seven repositories.
 
 Why it matters, concretely: on 2026-08-11 the Dev Drive filter command was
 written out in three separate places — `windows-builds.md` here, plus
-Kataglyphis-Inference-Engine's `AGENTS.md` and `docs/source/platforms.md`. All
+OmniAccelerANT's `AGENTS.md` and `docs/source/platforms.md`. All
 three copies were **wrong** in the same way (unquoted filter list, missing
 `/volume`), and `windows-container-build-performance.md` had the correct version
 the whole time *plus* a warning that people get it wrong exactly that way.
@@ -32,7 +32,7 @@ The two halves of one topic often split:
 | Knowledge | Owner | Why |
 |---|---|---|
 | How to allow the `bindFlt`/`wcifs` filters on a Dev Drive | **here** | True for any repo on a Dev Drive |
-| Dart's `copySync`/`renameSync` failing on a bind mount | Inference-Engine | Only matters because that app is Flutter |
+| Dart's `copySync`/`renameSync` failing on a bind mount | OmniAccelerANT | Only matters because that app is Flutter |
 | `--isolation process` caps, and never using it for `docker build` | **here** | A property of the engine and image |
 | Which CMake presets a project ships | the project | Nobody else has those presets |
 | The `#requires -Version 7.0` rule for the build modules | **here** | A property of the modules |
@@ -177,6 +177,6 @@ exists only in one of these, promote it to its owning page above.
 
 Check this page first. If the topic is listed, link instead — one sentence of
 orientation plus the link, then whatever is genuinely specific to your project.
-Kataglyphis-BeschleunigerBallett's `AGENTS.md` does this well: it states the
+BeschleunigerBallett's `AGENTS.md` does this well: it states the
 Dev Drive command and its one gotcha, links here for setup/verify/revert, and
 keeps only *its own measured transport numbers* locally.

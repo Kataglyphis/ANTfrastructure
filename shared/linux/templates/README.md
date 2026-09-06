@@ -18,7 +18,7 @@ Copying six different ones is the failure mode, and that is what was measured on
 | Repo | Bootstrap |
 |---|---|
 | BeschleunigerBallett | `source_module()` in `lib/common.sh` |
-| Inference-Engine | `containerhub_path` / `containerhub_source` |
+| OmniAccelerANT | `containerhub_path` / `containerhub_source` |
 | KataglyphisCppInference | `_CONTAINER_HUB_CORE` |
 | OrchestrANT | `_DRIVER`, re-inlined in every wrapper |
 | WebDavClient | `CONTAINERHUB_SETUP_SCRIPT` + `_DRIVER` |

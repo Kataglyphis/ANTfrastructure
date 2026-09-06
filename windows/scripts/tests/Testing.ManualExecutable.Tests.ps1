@@ -3,7 +3,7 @@
 # WindowsTesting.Common that needs the process-launcher stubbed out:
 # Invoke-ManualTestExecutable's three-way outcome.
 #
-# Ported from Kataglyphis-BeschleunigerBallett's scripts/windows/tests copy when
+# Ported from BeschleunigerBallett's scripts/windows/tests copy when
 # the module was upstreamed (2026-08-11). The original stubbed the launcher with
 # `function global:Invoke-BuildExternal`, which worked only because the vendored
 # module declared no imports and picked the command up from the caller's global

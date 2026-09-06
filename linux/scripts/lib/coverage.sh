@@ -124,7 +124,7 @@ coverage_llvm_generate_profile() {
 # Set COVERAGE_LLVM_HTML_DIR to ALSO emit the browsable `llvm-cov show` report
 # into that directory. Optional because the two consumers genuinely differ:
 # BeschleunigerBallett only feeds Codecov from the JSON, while
-# Kataglyphis-Cpp-Inference publishes the HTML next to its docs. Without it that
+# AccelerANTgine publishes the HTML next to its docs. Without it that
 # second consumer could not use this function at all and had to keep a private
 # llvm-cov pipeline - exactly the duplication this library exists to remove.
 coverage_llvm_report() {

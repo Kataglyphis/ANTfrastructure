@@ -13,7 +13,7 @@
 #
 # Worse, the two can be mixed WITHIN one step, because the proxies are not a
 # complete set: a step could get cargo/clippy from the pinned toolchain while
-# `rustc` still resolved to the deb. Measured on Kataglyphis-RustProjectTemplate
+# `rustc` still resolved to the deb. Measured on OxidANT
 # 2026-08-14:
 #
 #   rustc 1.93 / clippy-driver 1.97

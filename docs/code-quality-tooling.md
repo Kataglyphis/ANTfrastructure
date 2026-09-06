@@ -191,7 +191,7 @@ same set for a given repo.
 **Never `dart format .` in a CI lane.** The Linux lanes install the Flutter SDK
 inside the mounted workspace (`flutter_dir: /workspace/flutter`), so the
 recursive walk reformats the SDK. Measured 2026-09-03 on
-Kataglyphis-Inference-Engine: `Formatted 7404 files (627 changed)`, 604 of them
+OmniAccelerANT: `Formatted 7404 files (627 changed)`, 604 of them
 under `flutter/` — by itself enough to fail `--set-exit-if-changed`.
 
 #### Known divergences from the Windows path — read before "unifying" the two

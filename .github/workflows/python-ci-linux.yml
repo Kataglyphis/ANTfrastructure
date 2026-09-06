@@ -1,7 +1,7 @@
 # .github/workflows/python-ci-linux.yml
 #
 # Reusable Linux CI lane for the Python consumers (OrchestrANT,
-# Kataglyphis-WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
+# WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
 # packaging, on the x86-64 and arm64 native runners.
 #
 # Before this existed the two callers each carried a 112-line copy that differed

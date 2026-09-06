@@ -1029,7 +1029,7 @@ repository: it pollutes their working tree, can be swept into CI artifacts, and
 on a non-ext4 host mount `flatpak-builder` aborts outright with
 `Can't initialize ccache use: Failed to set permissions of
 /workspace/.ccache/disabled/ccache.conf: Operation not permitted`. Reported by
-the Kataglyphis-Inference-Engine lane and reproduced as uid 1001.
+the OmniAccelerANT lane and reproduced as uid 1001.
 
 **Where the value came from.** `eff8deac` (2026-06-01) added `CCACHE_DIR` next to
 `CCACHE_SECONDARY_STORAGE=true`, i.e. as one half of a "cache travels with the

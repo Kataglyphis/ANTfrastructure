@@ -24,8 +24,8 @@ description: >-
   MSIX/MSI, one builds on the host as well - so a reusable WORKFLOW would have to
   model all of it. The shared part is the prologue; that is what this is.
 
-  Consumers: Kataglyphis-BeschleunigerBallett, Kataglyphis-RustProjectTemplate,
-  KataglyphisCppInference, Kataglyphis-Inference-Engine.
+  Consumers: BeschleunigerBallett, OxidANT,
+  KataglyphisCppInference, OmniAccelerANT.
 
 inputs:
   image:

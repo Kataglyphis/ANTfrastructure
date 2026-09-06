@@ -95,7 +95,7 @@ Describe 'guard-destructive-deletes: the reclaimable set still works' {
     }
 
     It 'asks (does not deny) for a recursive delete inside the repo' {
-        $c = 'Remove-Item d:\GitHub\Kataglyphis-ContainerHub\out\build-logs -Recurse -Force'
+        $c = 'Remove-Item d:\GitHub\ContainerHub\out\build-logs -Recurse -Force'
         Assert-Equal 'ask' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
     }
 }

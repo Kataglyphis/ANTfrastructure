@@ -690,9 +690,9 @@ cheap" is a claim about the MOUNTS, not about the module.
 never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
 Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/
 Build.Common/WebDav/Toolchain/Config/Formatting/**ContainerLog** (verified
-live 2026-08-21: RustProjectTemplate's container scripts import it —
+live 2026-08-21: OxidANT's container scripts import it —
 Invoke-StevedoreBuild + rust-build/test-all — vendored into
-BeschleunigerBallett and Inference-Engine) plus `scripts/rust/` and
+BeschleunigerBallett and OmniAccelerANT) plus `scripts/rust/` and
 `scripts/python/` are the shared build framework other Kataglyphis repos
 consume (this repo IS the upstream). Repo-internal reference audits will
 flag them as dead — they are library surface. Keep them lint-clean; do not

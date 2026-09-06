@@ -112,7 +112,7 @@ select_dev_packages() {
     # base has no rustup-installed toolchain, `cargo` silently resolves to
     # /usr/bin/cargo and `rustup` resolves to nothing at all. A consumer then
     # sees the confusing pair "cargo works, rustup: command not found"
-    # (Kataglyphis-RustProjectTemplate, 2026-08-07). report_rust_provenance()
+    # (OxidANT, 2026-08-07). report_rust_provenance()
     # at the end of main() now prints which one actually won.
     # (Nothing is added to this list here - see the note below the
     # append_available_packages call about gstreamer/gtk4 dev packages.)
@@ -313,7 +313,7 @@ preserve_custom_gcc() {
 # and this function quietly demoted it afterwards.
 #
 # Measured 2026-08-12: the image carried RUST_VERSION=1.97.1 as pinned, yet
-# consumers ran rustc 1.93.1 and Kataglyphis-RustProjectTemplate died on
+# consumers ran rustc 1.93.1 and OxidANT died on
 # "rustc 1.93.1 is not supported by ... sysinfo@0.39.6 requires rustc 1.95".
 #
 # The fallback these links exist for - an image with NO rustup at all - still
