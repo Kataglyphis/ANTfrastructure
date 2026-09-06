@@ -35,7 +35,7 @@ ContainerHub `main` **first** — CI resolves composite actions at `@main`.
 
 ### Resolving a submodule conflict on merge
 
-Merges that touch the pin from both sides leave `ExternalLib/` paths unmerged,
+Merges that touch the pin from both sides leave `third_party/` paths unmerged,
 and `git checkout --theirs` alone does not resolve them: the conflict is over
 *which commit the superproject records*, not over file contents.
 
@@ -57,7 +57,7 @@ git merge --allow-unrelated-histories --no-commit -X theirs develop
 git diff --name-only --diff-filter=U
 
 # take the incoming side's commit for every conflicted submodule
-for p in $(git diff --name-only --diff-filter=U | grep '^ExternalLib/' || true); do
+for p in $(git diff --name-only --diff-filter=U | grep '^third_party/' || true); do
   echo "Resolving submodule conflict: $p"
   git submodule update --init --recursive "$p" || true
   git checkout --theirs -- "$p"

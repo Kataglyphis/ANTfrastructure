@@ -59,7 +59,7 @@ Works on the host with no build directory — it needs only the source and
 `.clang-format`.
 
 **Scope matters.** `git ls-files '*.cpp'` from a repo root also matches vendored
-third-party code under `ExternalLib/`, which is not yours to reformat. Always
+third-party code under `third_party/`, which is not yours to reformat. Always
 scope to your own sources:
 
 ```pwsh
@@ -183,7 +183,7 @@ fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
 #### Dart file enumeration
 
 `code_quality_find_dart_files [root]` prints every tracked `*.dart` path
-(default root `.`), excluding `build/`, `ExternalLib/`, `flutter/` and
+(default root `.`), excluding `build/`, `third_party/`, `flutter/` and
 `rust_builder/`. It is the twin of `Get-ProjectDartFiles`
 (`windows/scripts/modules/WindowsFormatting.Common.psm1`) and both return the
 same set for a given repo.
@@ -207,7 +207,7 @@ these were "fixed" during the extraction.
 |---|---|---|---|
 | 1 | Source roots | clang-format **and** clang-tidy walk `Src` and `Test` | `Get-ProjectCppFiles` walks the whole workspace for clang-format, but clang-tidy is filtered to `Src` only, so `Test` is never tidied |
 | 2 | C++20 module TUs | every `.c/.cc/.cpp/.cxx` goes to clang-tidy | files matching `^import\s+kataglyphis` are skipped |
-| 3 | `--header-filter` | not passed, so clang-tidy's default applies (headers matching the main file's stem) | `--header-filter=<escaped Src dir>.*`, to suppress ExternalLib noise |
+| 3 | `--header-filter` | not passed, so clang-tidy's default applies (headers matching the main file's stem) | `--header-filter=<escaped Src dir>.*`, to suppress third_party noise |
 | 4 | `--checks` | a checks argument is passed (the consumer disables one check that crashes its clang-tidy) | `$Checks` defaults to an **empty** array; an imposed `--checks=-misc-include-cleaner` used to crash some versions |
 | 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | per file in a loop — slower, isolates failures, logs per-file skips |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
