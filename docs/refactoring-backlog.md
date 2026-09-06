@@ -641,6 +641,20 @@ start rather than dying on ENOSPC mid-build — good — but the reclaim it runs
 reports `NOTHING was reclaimable` for the same reason. The refusal is right; the
 reclaim under it is looking in one store while the space is in another.
 
+**One prune is NOT safe mid-run, and the guard should say so.** `nerdctl image
+prune -f` killed the arm64 runtime lane on 2026-09-06: the chain was
+`unpacking overlayfs@sha256:...` — the OCI stage handoff — and the prune removed a
+blob it was mid-read on (`content digest sha256:d694...: not found`). The same
+command had worked several times earlier that day, which is luck, not safety: it
+only bites while content is being read.
+
+So the reclaim ladder above has an ordering constraint, not just a risk order:
+BuildKit pruning (`buildctl prune`) never touches the containerd image store and
+is safe while a chain runs; anything that removes IMAGES is safe only between
+runs. If the guard grows the image-store lever, it must refuse to pull it while a
+stage is in flight — and the operator-facing message at 28G should say "stop the
+lane, then reclaim", not just "the chain cannot free".
+
 The guard should also stop reporting `NOTHING was reclaimable` when it has not
 looked at the largest store. A guard that gives up loudly reads like an
 environment limit; this one was a coverage gap.
