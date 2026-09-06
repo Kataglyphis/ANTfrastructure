@@ -1,4 +1,8 @@
-#requires -Version 7.0
+# No pwsh-7 version directive here, deliberately: Dockerfile.base runs this
+# script under the initial Windows PowerShell 5.1 SHELL, before pwsh exists in
+# the image - this is the script that installs it. The directive would make it
+# refuse to start on its own first line. Guarded by
+# windows/scripts/tests/Bootstrap.Ps51Compat.Tests.ps1 (backlog #106).
 
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
