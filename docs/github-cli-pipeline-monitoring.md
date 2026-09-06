@@ -51,7 +51,7 @@ gh run list --limit 10
 gh run list --limit 20 --status failure
 
 # One workflow
-gh run list --workflow "Linux build + test + coverage on Ubuntu 24.04 x86"
+gh run list --workflow "Linux build + test + coverage on Ubuntu 26.04 x86"
 
 # Watch an in-progress run to completion
 gh run watch <run-id>

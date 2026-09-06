@@ -1,6 +1,6 @@
 # .github/workflows/ubuntu26.04.yml
 # Entry-point workflow: runs docs validation/build and the shell preflight gates.
-name: Ubuntu 24.04 Workflow
+name: Ubuntu 26.04 Workflow
 
 # Least privilege: nothing in this workflow writes to the repo.
 permissions:
