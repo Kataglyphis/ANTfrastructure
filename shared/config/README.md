@@ -52,7 +52,7 @@ rather than letting an unexplained diff sit there looking like drift.
 The standing example: this canonical set is written for **C++** projects, so a
 Python consumer owns its own `.pre-commit-config.yaml` — ruff hooks rather than
 clang-format — and runs `-Ignore .pre-commit-config.yaml`.
-Kataglyphis-Orchestr-ANT-ion is that case, and its difference is a deliberate
+OrchestrANT is that case, and its difference is a deliberate
 override, not drift.
 
 **Kataglyphis-Cpp-Inference** owns three of the four:

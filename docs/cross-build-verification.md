@@ -408,7 +408,7 @@ These validate a built/pulled image and also run during the build to fail fast:
     `videotestsrc ! videoconvert ! fakesink`.
   - **onnxruntime inference** (fail) — runs a tiny embedded Add model and asserts the
     output (proves the CPU EP executes, not just imports). **cv2 encode/decode**
-    roundtrip. **Application import** — the shipped venv must `import orchestr_ant_ion`.
+    roundtrip. **Application import** — the shipped venv must `import orchestrant`.
   - **Native compiler battery compile+link+RUN** — an 8-case battery with the image's
     `gcc`/`g++`, each running the resulting binary on-target: C hello (stdout),
     pthreads, libm, libatomic; C++ hello (libstdc++), **exceptions+STL** (throw/catch +
@@ -996,7 +996,7 @@ non-root user `kataglyphis`, so `--active` alone still resolves to that
 root-owned system venv and the sync dies with
 error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
 Permission denied (os error 13)
-Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
+Observed on both arches in OrchestrANT's lane on 2026-08-11, right after
 the extras fix let the resolve get this far. --python forces the writable
 local environment.
 

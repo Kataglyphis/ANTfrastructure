@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Python CI: the drivers, and the two traps in `uv`
 
-The Python consumers (Kataglyphis-Orchestr-ANT-ion, Kataglyphis-WebDavClient)
+The Python consumers (OrchestrANT, Kataglyphis-WebDavClient)
 share their whole CI surface with this repository:
 
 | Layer | Where |
@@ -37,10 +37,10 @@ declares `[tool.uv] conflicts`, uv refuses outright:
 
 ```
 error: Extras `ml-ai` and `ml-ai-webgpu` are incompatible with the declared
-       conflicts: {`orchestr-ant-ion[ml-ai]`, `orchestr-ant-ion[ml-ai-webgpu]`}
+       conflicts: {`orchestrant[ml-ai]`, `orchestrant[ml-ai-webgpu]`}
 ```
 
-There is no flag that means "pick a satisfiable subset". Orchestr-ANT-ion
+There is no flag that means "pick a satisfiable subset". OrchestrANT
 declares 12 pairwise conflicts across two mutually-exclusive families (the
 `ml-ai-*` backends and the `pytorch-*` backends), so every one of its lanes died
 here regardless of what it had been asked to do.
@@ -55,7 +55,7 @@ here regardless of what it had been asked to do.
    unless it conflicts with one already kept.
 
 Declaration order is not arbitrary — it keeps the first-declared member of each
-family, which for Orchestr-ANT-ion resolves to `ml-ai` and `pytorch-cpu`, the
+family, which for OrchestrANT resolves to `ml-ai` and `pytorch-cpu`, the
 right pair for CI. The choice is logged, with a pointer to `UV_SYNC_EXTRAS`.
 
 A project with no conflicts is unaffected: the exclusion list comes back empty
@@ -68,7 +68,7 @@ closed the group on that line's `]`, so a group written inline —
 no group, excluded nothing, and left `--all-extras` to die on the very conflict it
 was meant to route around. The group's text is now accumulated during the same walk
 and read at the `]` that closes it, so the inline, multi-line and mixed layouts all
-give the same answer. Orchestr-ANT-ion writes the multi-line form, so this was
+give the same answer. OrchestrANT writes the multi-line form, so this was
 latent there; what settles it is a consuming repo's CI lane running
 `uv sync --all-extras`, because no ContainerHub cross stage calls `uv_sync_project`
 at all — it is reached only from `02-toolchain/python/ci_*.sh`.

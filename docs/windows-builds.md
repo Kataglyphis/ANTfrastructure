@@ -136,7 +136,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
   - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 (CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM 0.15.0 (independent of ONNX; built via **Bazel** with `build-litert-lm-bazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`build-litert-lm-from-source.ps1`) is a frozen fallback, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, plus a `cuda-runtime-stage` (via `stage-cuda-runtime.ps1`) that FLATTENS the CUDA/cuDNN runtime DLLs into `C:\runtime\cuda-runtime\bin` on PATH — the CUDA-linked libs (notably OpenCV, which hard-links `cudnn64_9.dll`) otherwise fail to load in this non-nvidia-based image. Then GStreamer 1.29.2 is built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
-- `windows/Dockerfile.torch` assembles the Orchestr-ANT-ion app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
+- `windows/Dockerfile.torch` assembles the OrchestrANT app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
 
 ## Component Build Matrix
 
@@ -267,7 +267,7 @@ fallbacks), builds the stages in order, and applies the correct tags:
 # caching and rebuilds everything from scratch, which takes many hours):
 .\windows\build-buildkit.ps1 -Gpu -NoCache
 
-# Orchestr-ANT-ion app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
+# OrchestrANT app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
 # a chain stage between media and final (media -> torch -> final) — it assembles the
 # app env at APP_REF on windows-media, and the final image builds FROM it. An APP_REF
 # bump therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
@@ -679,10 +679,10 @@ runtime DLLs in `bin\x64`; python 3.8+ ignores PATH for pyd dependencies);
 OpenCV builds with `WITH_MSMF=OFF` *and* `WITH_OBSENSOR=OFF` because both
 hard-import Media Foundation, which Server Core does not ship.
 
-### The torch step (Orchestr-ANT-ion app environment)
+### The torch step (OrchestrANT app environment)
 
 The final image bakes the runtime orchestrator at
-**`C:\opt\Kataglyphis-Orchestr-ANT-ion`** (`TORCH_APP_DIR`), assembled by
+**`C:\opt\OrchestrANT`** (`TORCH_APP_DIR`), assembled by
 `windows/scripts/build/assemble-torch-app.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
@@ -705,7 +705,7 @@ The final image bakes the runtime orchestrator at
   path is unavailable in this venv.
 - **Gates**: the docker build itself fails unless the venv passes the import
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
-  **and the app's own wheel-smoke suite** (`python -m orchestr_ant_ion.smoke`
+  **and the app's own wheel-smoke suite** (`python -m orchestrant.smoke`
   — real torch/torchvision/ORT-inference/OpenCV work). The check inventory is
   the app's per-tag choice, so the expected pass count moves with `APP_REF`;
   the rule on this lane is: **all checks pass except a single WARN for the
@@ -713,7 +713,7 @@ The final image bakes the runtime orchestrator at
   pinned app tag does not yet ship (e.g. an iree check counts only once a tag
   includes it). Smoke section 21 re-runs the same verification offline on
   every suite run.
-- **Usage**: `C:\opt\Kataglyphis-Orchestr-ANT-ion\.venv\Scripts\python.exe`
+- **Usage**: `C:\opt\OrchestrANT\.venv\Scripts\python.exe`
   (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
   `import onnxruntime, onnxruntime_genai, cv2, tvm, torch` all resolve to the
   source-built wheels plus the app's locked PyPI dependency set.

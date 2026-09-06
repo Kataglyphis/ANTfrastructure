@@ -1540,7 +1540,7 @@ intermediate tag comes from **`Get-BkTag`** in `build-buildkit.ps1` (which also
 appends the `-arm64` suffix for a cross target) — never type a
 `docker.io/local/kataglyphis:bk-*` literal elsewhere.
 
-**Orchestr-ANT-ion app stage (`windows/Dockerfile.torch`):** the Windows mirror
+**OrchestrANT app stage (`windows/Dockerfile.torch`):** the Windows mirror
 of `linux/Dockerfile.torch`, a real chain stage between media and final
 (`media -> torch -> final`): it assembles the app env at `APP_REF` on the
 windows-media image (tag `docker.io/local/kataglyphis:bk-windows-torch`,

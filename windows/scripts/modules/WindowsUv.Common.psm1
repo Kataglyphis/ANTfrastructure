@@ -218,7 +218,7 @@ function Sync-UvProjectDependencies {
         `uv sync --dev --all-extras`, optionally pinned to the lockfile.
     .PARAMETER RetryWithoutLocked
         With -UseLocked, retry once WITHOUT --locked when uv reports the
-        lockfile is out of date. Upstreamed from Kataglyphis-Orchestr-ANT-ion
+        lockfile is out of date. Upstreamed from OrchestrANT
         (2026-08-11), which had re-implemented this whole function locally just
         to get the fallback.
 

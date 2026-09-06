@@ -1404,9 +1404,9 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 
 }
 # ============================================================================
-Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
+Write-TestHeader '21. OrchestrANT app environment (torch step)'
 if ($smokeCross) {
-    Skip-Test "section 21 (Orchestr-ANT-ion app environment (torch step)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+    Skip-Test "section 21 (OrchestrANT app environment (torch step)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
 # ============================================================================
 # The final image bakes the runtime orchestrator (assemble-torch-app.ps1); verification re-runs
@@ -1430,7 +1430,7 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
         ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
     } -FailMessage "assemble-torch-app.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
 } else {
-    Skip-Test 'Orchestr-ANT-ion app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
+    Skip-Test 'OrchestrANT app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
 }
 
 }

@@ -407,7 +407,7 @@ build time anyway. Without `GENAI_MODEL_DIR` the tier is **skipped and says so**
 
 ### The app-wheel floor
 
-`smoke-runtime-image.sh` ratchets the `orchestr_ant_ion.smoke` ok-count per arch.
+`smoke-runtime-image.sh` ratchets the `orchestrant.smoke` ok-count per arch.
 It may only ever be raised when an arch **gains** a component, never to turn a
 red run green.
 

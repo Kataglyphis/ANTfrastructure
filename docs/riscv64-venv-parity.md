@@ -123,5 +123,5 @@ listed in `REQUIRED`; each per-arch absence that is a decision is one line in
 — including on riscv64, where the four `docs` packages are now armed. An
 exemption that is no longer needed prints `??` so the table cannot rot.
 
-The assert skips when `orchestr_ant_ion` is not importable, i.e. in images that
+The assert skips when `orchestrant` is not importable, i.e. in images that
 carry a venv but never ran `assemble-torch-app.sh`.

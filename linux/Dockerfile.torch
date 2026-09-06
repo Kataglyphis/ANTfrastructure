@@ -29,7 +29,7 @@ ARG TORCH_APP_MODE=all
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
-# APP_REF: the Orchestr-ANT-ion tag assemble-torch-app.sh clones. The runtime
+# APP_REF: the OrchestrANT tag assemble-torch-app.sh clones. The runtime
 # orchestrator already forwards --build-arg APP_REF from versions.env; this ARG +
 # ENV is what actually lets it reach the assemble RUN (previously unconsumed, so the
 # clone always fell back to the script default). Default kept in sync with

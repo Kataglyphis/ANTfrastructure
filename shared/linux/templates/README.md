@@ -20,7 +20,7 @@ Copying six different ones is the failure mode, and that is what was measured on
 | BeschleunigerBallett | `source_module()` in `lib/common.sh` |
 | Inference-Engine | `containerhub_path` / `containerhub_source` |
 | KataglyphisCppInference | `_CONTAINER_HUB_CORE` |
-| Orchestr-ANT-ion | `_DRIVER`, re-inlined in every wrapper |
+| OrchestrANT | `_DRIVER`, re-inlined in every wrapper |
 | WebDavClient | `CONTAINERHUB_SETUP_SCRIPT` + `_DRIVER` |
 | jotrockenmitlocken | `CONTAINERHUB_DIR` / `CONTAINERHUB_SCRIPTS_DIR` |
 
