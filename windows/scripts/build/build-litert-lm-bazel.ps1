@@ -1,3 +1,5 @@
+#requires -Version 7.0
+
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
