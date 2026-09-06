@@ -187,7 +187,12 @@ function Sync-FastLocalArtifactsToHost {
         $BuildRoot,
         $OriginalBuildRoot,
         "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD",
-        "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*",
+        # CMakeCache.txt is bound to the directory and generator that wrote it
+        # ($BuildRoot, Ninja). Copied onto the host it breaks the NEXT run: Flutter
+        # configures the host tree with the Visual Studio generator, CMake finds this
+        # cache pointing at another dir with another generator and aborts. CMakeFiles
+        # is excluded below for the same reason - the host gets artifacts, not state.
+        "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*", "CMakeCache.txt",
         "/XD", "*.dir", "CMakeFiles", "x64_x64-ClangCL*",
         "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
     )
