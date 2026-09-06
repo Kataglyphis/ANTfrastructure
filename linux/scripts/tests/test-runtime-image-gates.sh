@@ -430,14 +430,15 @@ _t_all_present "${_TREES}" "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT})" "/opt/" \
 t_case "the arch-exempt table is what the images MEASURED, not what the graph suggested"
 # HT2, measured on the three images shipped 2026-09-05. /opt/android-sdk is one
 # linux-x86_64 tree copied unchanged into all three (582 X86-64 objects in the arm64
-# and riscv64 images), so it stays. /opt/android was exempt on the same "device .so"
-# reasoning and the scan refuted it: 37 X86-64 on amd64, 37 AArch64 on arm64, 34
-# RISC-V on riscv64 and NOTHING else, because arch_android_abi_for maps each build
-# arch to the ABI with the same ELF machine.
+# and riscv64 images), so it stays.
+# /opt/android is exempt again, for the OPPOSITE reason to the one that removed it:
+# the old scan matched the image everywhere only because the ABI was derived from
+# the image arch, and that derivation WAS the defect (AB1).
+# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android-sdk " \
   "the SDK's host toolchain is genuinely not this image's to assert"
-t_assert_eq 0 "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT} | grep -cxF -- '/opt/android' || true)" \
-  "/opt/android carries the image's OWN machine on all three arches -- asserting it is free"
+t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android " \
+  "an Android payload's arch is the ANDROID target's, and check_android_abi owns it"
 t_assert_contains "$(sed -n '/^arch_android_abi_for() {$/,/^}$/p' "${TESTS_DIR}/../01-core/platform.sh")" \
   'arm64) printf '"'"'%s'"'"' "arm64-v8a"' "the mapping the deletion rests on: one ABI per arch, same machine"
 
@@ -967,5 +968,18 @@ MACH 62 20 /opt/android/gstreamer/libgstreamer-1.0.a")" \
 t_case "an empty tree warns instead of passing silently"
 t_assert_contains "$(_abi_gate "ABI arm64-v8a")" \
   "no Android ELF objects" "nothing found is not the same as everything correct"
+
+# An exemption is only legitimate when another gate takes the tree over. /opt/android
+# is exempt from tree-arch because its arch is the ANDROID target's, never the
+# image's -- and check_android_abi asserts it against the ABI the image advertises,
+# which is stricter than "matches the image".
+t_case "/opt/android is exempt from tree-arch and owned by the ABI gate instead"
+_EXEMPT="$(grep -E '^_RT_TREE_ARCH_EXEMPT=' "${SMOKE}")"
+t_assert_contains "${_EXEMPT}" "/opt/android" \
+  "on amd64 an arm64-v8a payload is legitimately AArch64; tree-arch asks the wrong question"
+t_assert_contains "$(_extract _android_abi_py)" "/opt/android" \
+  "the exemption is only honest while the ABI gate actually walks that tree"
+t_assert_contains "$(_extract check_android_abi)" "ANDROID_TARGET_ABI" \
+  "and judges it against the ABI the image advertises, not against the image arch"
 
 t_summary

@@ -917,9 +917,12 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
 # Trees whose ELF machine is NOT this image's by design, MEASURED on shipped bytes
 # rather than reasoned: the SDK is one linux-x86_64 tree copied unchanged into all
 # three images. The arm names the TREE, never an arch, so a newly host-installed tree
-# fails by default. /opt/android was exempt on the same reasoning until the same
-# measurement refuted it. docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
-_RT_TREE_ARCH_EXEMPT="/opt/android-sdk"
+# fails by default. docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
+# /opt/android is exempt HERE and asserted THERE: an Android payload's arch is the
+# ANDROID target's, never the image's, so check_android_abi judges it against the
+# ABI the image advertises -- stricter than "matches the image", not a waiver.
+# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+_RT_TREE_ARCH_EXEMPT="/opt/android-sdk /opt/android"
 
 # Builder-arch objects a foreign image still ships, frozen WITH their count so a new
 # one fails while a known one is tracked: <arch>:<tree>:<machine>:<count>. These are
