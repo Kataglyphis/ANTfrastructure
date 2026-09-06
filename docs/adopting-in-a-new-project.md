@@ -357,11 +357,17 @@ falsified or killed a real build here; they are not style preferences.
 that sweep. Use lowercase in a new consumer; there is no per-repo casing rule
 to look up any more.
 
-**Bash filenames still differ**: kebab-case in BeschleunigerBallett and
-OmniAccelerANT, snake_case in the rest. That one is left alone deliberately —
-unlike a directory rename it buys no structural consistency, and renaming every
-script would churn history across five repos for a purely lexical preference.
-Match the repo you are in.
+**Bash filenames still differ**, but not the way this note used to claim.
+Measured 2026-09-06: kebab-case everywhere except OrchestrANT, which is
+snake_case in 4 of its 5 scripts. The old wording said "snake_case in the rest"
+and was wrong about OxidANT and AccelerANTgine — both are kebab. That one is
+left alone deliberately: unlike a directory rename it buys no structural
+consistency, and renaming every script would churn history for a purely lexical
+preference. Match the repo you are in.
+
+`set -euo pipefail` applies to **entry points**, not to sourced libraries — a
+file-scope `set -e` in a library leaks into whoever sources it. `lib/common.sh`
+in BeschleunigerBallett says so in its own header.
 
 ## Checklist
 
