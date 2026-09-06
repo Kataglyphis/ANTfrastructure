@@ -34,7 +34,7 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 # ENV is what actually lets it reach the assemble RUN (previously unconsumed, so the
 # clone always fell back to the script default). Default kept in sync with
 # versions.env so a plain `docker build` matches the orchestrated build.
-ARG APP_REF=v0.0.27
+ARG APP_REF=v0.0.28
 # ONNX_PACKAGE / PYTORCH_EXTRA: documented operator overrides (runtime-build-fns.sh
 # usage). These ARGs are what let the orchestrator's --build-arg reach the venv
 # setup (previously hardcoded here, so a documented GPU override silently baked
@@ -102,7 +102,7 @@ ARG BUILD_DATE=""
 ARG VCS_REF=""
 # POS2: re-declared for the version LABEL below (ARGs are per-stage; the torch
 # stage's APP_REF does not reach this stage). Default matches versions.env.
-ARG APP_REF=v0.0.27
+ARG APP_REF=v0.0.28
 
 # Runtime scripts, entrypoint, CMD, VOLUME, HEALTHCHECK, user, and OCI
 # labels.  This is the canonical source for shared final-stage elements.

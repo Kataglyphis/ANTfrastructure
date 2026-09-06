@@ -12,7 +12,7 @@ install_err_trap
 : "${PYTORCH_EXTRA:=pytorch-cpu}"
 
 APP_DIR="/opt/OrchestrANT"
-APP_REF="${APP_REF:-v0.0.27}"
+APP_REF="${APP_REF:-v0.0.28}"
 
 # Single list of the PyPI opencv-family names, so the call sites cannot drift.
 uv_uninstall_pip_opencv() {

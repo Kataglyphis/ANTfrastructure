@@ -194,7 +194,7 @@ halves fit together and why neither is sufficient alone.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| OrchestrANT | v0.0.27 | [github.com/Kataglyphis/OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | MIT |
+| OrchestrANT | v0.0.28 | [github.com/Kataglyphis/OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | MIT |
 
 ### LLM Stack (`llm-stack/Dockerfile`)
 

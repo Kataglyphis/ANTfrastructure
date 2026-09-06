@@ -24,7 +24,7 @@ FROM ${BASE_IMAGE}
 
 # Kept in sync with versions.env by sync_versions.py; Build-Buildkit.ps1 overrides it
 # (versions.env pin, or the latest release tag with -LatestApp).
-ARG APP_REF=v0.0.27
+ARG APP_REF=v0.0.28
 # Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),
 # pytorch-cu130, ... 'none' disables (torch is only declared inside the extras).
 ARG PYTORCH_EXTRA=pytorch-cpu

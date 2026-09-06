@@ -541,6 +541,38 @@ A cheaper route for both foreign arches: install from the projects' prebuilt
 release binaries where they publish aarch64/riscv64 ones, and keep `cargo install`
 as the fallback. That trades an hour of emulation for a download.
 
+### APP1. The app rename crossed two repos, and one of them was half done [M, ★★★]
+
+The 2026-09-06 runtime smoke failed on amd64 with three findings that are one
+cause: `app wheel smoke FAILED`, `ARCH-PARITY: OrchestrANT missing`, and
+`application module (orchestrant) failed to import`.
+
+The GitHub repo was renamed to `OrchestrANT` and ContainerHub followed (it clones
+`OrchestrANT.git` into `/opt/OrchestrANT` and runs `python -m orchestrant.smoke`).
+The app repo's CONTENTS had not: at tag `v0.0.27` it still declared
+`name = "Orchestr-ANT-ion"`, shipped the module as `orchestr_ant_ion/`, and carried
+`VERSION.txt = 0.0.22` — a version that had not been bumped in five tags.
+
+FIXED in the app repo (2026-09-06): module `orchestr_ant_ion/` -> `orchestrant/`
+via `git mv`, dist name -> `orchestrant`, console script -> `orchestrant-smoke`,
+`VERSION.txt` -> `0.0.28`, every GitHub URL -> `Kataglyphis/OrchestrANT`, display
+name -> `OrchestrANT` (which keeps the ANT), remote URL updated, `uv.lock`
+regenerated. The two CHANGELOGs deliberately keep the old name: they are a record
+of what happened, not a description of what is. ContainerHub's `APP_REF` is
+`v0.0.28` in all four Linux places, and the repo's own `sync_versions.py --write`
+carried the same pin into `windows/Dockerfile.torch` and the dependency table.
+
+**Open, with a hypothesis and its test.** The shipped amd64 image carries
+`/opt/Kataglyphis-Orchestr-ANT-ion` (88 MB) and does NOT carry `/opt/OrchestrANT`,
+while the build log shows BOTH being cloned in the same `[torch 4/5]` step. The old
+path appears in neither repo's current source, nor in the android ancestor image —
+checked all three. The remaining explanation is a BuildKit layer cached from before
+the rename, whose recorded output was replayed and whose filesystem is what shipped.
+If that is right, the `APP_REF` bump invalidates it and the next run produces
+`/opt/OrchestrANT` alone. If the old path survives a run with `v0.0.28`, the
+explanation is wrong and something still writes it — find that first, before
+touching the parity table.
+
 ### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
 
 Measured in the runtime stage of the 2026-09-05 rebuild: six of the seven refs

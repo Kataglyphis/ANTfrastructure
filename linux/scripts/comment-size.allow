@@ -114,7 +114,6 @@ linux/scripts/03-media/build/opencv/install-deps.sh	# Try to install freetype + 
 linux/scripts/03-media/core/common.sh	# Bootstrap entry point for install-deps.sh scripts --------
 linux/scripts/03-media/core/common.sh	#!/usr/bin/env bash
 linux/scripts/03-media/runtime/assemble-torch-app.sh	# Partition IREE runtime wheels (riscv64 cross-built, best-e
-linux/scripts/03-media/runtime/assemble-torch-app.sh	# `uv sync` installs the app project itself (Orchestr-ANT-io
 linux/scripts/03-media/runtime/media-env.sh	# media-env.sh
 linux/scripts/03-media/runtime/verify-wheels.sh	# ----------------------------------------------------------
 linux/scripts/05-frameworks/flutter/setup-flutter.sh	# setup-flutter.sh — unified Flutter SDK installer for amd64
@@ -174,3 +173,5 @@ linux/scripts/verify-patch-integrity.sh	#!/usr/bin/env bash
 linux/scripts/verify-shipped-wrapper.sh	#!/usr/bin/env bash
 linux/scripts/lib/app-packaging.sh	#!/usr/bin/env bash
 linux/scripts/05-frameworks/flutter/flutter-pin.sh	#!/usr/bin/env bash
+
+linux/scripts/03-media/runtime/assemble-torch-app.sh	# `uv sync` installs the app project itself (OrchestrANT ->
