@@ -1,0 +1,60 @@
+# Shared Dart/Flutter analyzer configuration for the Kataglyphis family.
+#
+# Consumed BY REFERENCE, not by copy: a consumer repo's own
+# analysis_options.yaml starts with
+#
+#   include: third_party/ContainerHub/shared/config/analysis_options.yaml
+#
+# (Dart's native relative include, resolved from the including file) and then
+# adds only its own deltas. That is deliberately NOT the Sync-SharedConfig.ps1
+# mechanism used by .clang-format/.clang-tidy/.cmake-format.yaml/gcovr.cfg:
+# Sync-SharedConfig copies verbatim, which would erase each app's legitimate
+# extra `analyzer.exclude` entries (vendored trees, plugin examples, the
+# in-workspace Flutter SDK). The analyzer merges an included file with the
+# including one, and `analyzer.exclude` merges as a UNION — so a consumer's
+# extra excludes are additive and nothing here has to know about them.
+#
+# The `package:` include below is resolved against the CONSUMER's package
+# config (the same way package:flutter_lints/flutter.yaml itself includes
+# package:lints/recommended.yaml from the pub cache), so this file works even
+# though third_party/ContainerHub is not a Dart package. Every consumer must
+# therefore keep `flutter_lints` in its dev_dependencies.
+#
+# Common subset extracted 2026-09-07 from OmniAccelerANT's and
+# jotrockenmitlocken's forked copies, which were byte-identical apart from
+# Omni's extra excludes.
+
+# The following line activates a set of recommended lints for Flutter apps,
+# packages, and plugins designed to encourage good coding practices.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Build output and the per-platform runner projects: generated or
+    # platform-owned code that no app lint has anything useful to say about.
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
+linter:
+  # The lint rules applied to a project can be customized in the section below
+  # to disable rules from the `package:flutter_lints/flutter.yaml` included
+  # above or to enable additional rules. A list of all available lints and
+  # their documentation is published at https://dart.dev/lints.
+  #
+  # Instead of disabling a lint rule for the entire project in the section
+  # below, it can also be suppressed for a single line of code or a specific
+  # dart file by using the `// ignore: name_of_lint` and
+  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
+  # producing the lint.
+  #
+  # Project-specific rules belong in the CONSUMER's analysis_options.yaml, not
+  # here — only rules the whole family agrees on may be added below.
+  rules:
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options
