@@ -63,8 +63,19 @@ code_quality_ensure_cmake_format() {
 
   info "cmake-format not found. Preparing Python environment..."
 
+  # A venv from the OTHER platform (Scripts/python.exe in a tree mounted into
+  # a Linux container, or bin/python on a Windows host) dies in uv with
+  # "Exec format error" - probe the interpreter and recreate instead of dying.
   if [[ -d "${venv_dir}" ]]; then
-    info "Found .venv - installing requirements..."
+    local venv_python="${venv_dir}/bin/python"
+    [[ -x "${venv_python}" ]] || venv_python="${venv_dir}/Scripts/python.exe"
+    if [[ -x "${venv_python}" ]] && "${venv_python}" -c 'pass' >/dev/null 2>&1; then
+      info "Found .venv - installing requirements..."
+    else
+      info "Found .venv but its interpreter does not run here (foreign platform or broken) - recreating..."
+      rm -rf "${venv_dir}"
+      (cd "${root}" && "${create_script}")
+    fi
   else
     info "No .venv found - creating one with uv..."
     (cd "${root}" && "${create_script}")

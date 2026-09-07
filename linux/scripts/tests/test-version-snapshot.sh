@@ -105,7 +105,8 @@ _red "Dockerfile ARG defaults are stale:" \
 
 t_case "6/7 check_script_defaults is KNOWN-GAP: its glob matches nothing"
 # script_default_target_files() globs windows/scripts/build-*-from-source.ps1.
-# Those scripts live one directory deeper, in windows/scripts/build/, so the
+# Those scripts live one directory deeper, in windows/scripts/build/, and are
+# named Build-*FromSource.ps1 since the Verb-Noun rename (19982134), so the
 # glob returns an EMPTY list and the sub-check prints its green line having
 # scanned zero files. It cannot be reddened by any fixture, which is why this
 # case pins the emptiness instead of faking a pass. Widening the glob turns ~10
@@ -114,7 +115,7 @@ t_case "6/7 check_script_defaults is KNOWN-GAP: its glob matches nothing"
 # goes red, which is the point of pinning it.
 t_assert_eq "0" "$(find "${REPO}/windows/scripts" -maxdepth 1 -name 'build-*-from-source.ps1' | wc -l)" \
   "the glob's own directory"
-t_assert_eq "10" "$(find "${REPO}/windows/scripts/build" -maxdepth 1 -name 'build-*-from-source.ps1' | wc -l)" \
+t_assert_eq "10" "$(find "${REPO}/windows/scripts/build" -maxdepth 1 -name 'Build-*FromSource.ps1' | wc -l)" \
   "and where the scripts actually are"
 t_assert_contains "${_ok_out}" "Windows build-script -DefaultValue pins match versions.env." \
   "a green line over an empty file list is the whole finding"

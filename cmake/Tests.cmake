@@ -42,7 +42,11 @@ function(myproject_enable_coverage project_name)
           -fcoverage-mapping)
       endif()
     else()
-      message(" -- ** Coverage reporting not supported for this compiler/platform **")
+      message(
+        FATAL_ERROR
+          "Coverage was requested (myproject_ENABLE_COVERAGE=ON) but is not supported for compiler "
+          "'${CMAKE_CXX_COMPILER_ID}' on this platform. Configure with "
+          "-Dmyproject_ENABLE_COVERAGE=OFF to turn coverage off.")
     endif()
   else()
     message("We do not enable coverage on release builds.")

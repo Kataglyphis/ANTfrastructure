@@ -292,7 +292,7 @@ _fixture "GUARD=on" "GUARD=off" yes .
 printf 'secret\n' > "${_work}/unreadable"; chmod 000 "${_work}/unreadable"
 _out="$(_iso_run)"; _code="$(_iso_rc)"
 chmod 644 "${_work}/unreadable"; rm -f "${_work}/unreadable"
-t_assert_eq "0" "$( [ "${_code}" != 0 ]; echo $? )" "an incomplete copy must fail the gate"
+t_assert_eq "1" "${_code}" "an incomplete copy must fail the gate"
 t_assert_contains "${_out}" "mirror_tree: could not copy" "the failure must name the copy, not the tests"
 case "${_out}" in *"vacuous bite"*) t_assert_eq "no vacuous verdict" "vacuous verdict" \
   "disk trouble must not be reported as a test defect" ;; *) t_assert_ok true ;; esac

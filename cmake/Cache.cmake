@@ -51,11 +51,9 @@ function(myproject_enable_cache)
       NAMES "${COMPILER_CACHE}"
       DOC "Path to the compiler cache executable") # creates CACHE_BINARY_${COMPILER_CACHE} or <VAR>-NOTFOUND
 
-    if(CACHE_BINARY_${COMPILER_CACHE}
-       AND NOT
-           CACHE_BINARY_${COMPILER_CACHE}
-           STREQUAL
-           "${PATH}-NOTFOUND")
+    # find_program's <VAR>-NOTFOUND is already falsey; the old second test
+    # compared against "${PATH}-NOTFOUND" with PATH undefined, so it never fired.
+    if(CACHE_BINARY_${COMPILER_CACHE})
       message(STATUS "${COMPILER_CACHE} found at ${CACHE_BINARY_${COMPILER_CACHE}}. Enabling compiler cache.")
 
       # 6. Hook into C/C++ compiler launches
@@ -90,9 +88,9 @@ function(myproject_enable_cache)
       endif()
 
     else()
-      message(WARNING "${COMPILER_CACHE} was requested but not found. Skipping cache integration.")
-      unset(CMAKE_C_COMPILER_LAUNCHER CACHE)
-      unset(CMAKE_CXX_COMPILER_LAUNCHER CACHE)
+      message(
+        FATAL_ERROR "${COMPILER_CACHE} was requested via COMPILER_CACHE but no ${COMPILER_CACHE} executable was found. "
+                    "Install it, or configure with -DCOMPILER_CACHE=\"\" to turn compiler caching off.")
     endif()
   else()
     unset(CMAKE_C_COMPILER_LAUNCHER CACHE)

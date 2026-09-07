@@ -34,6 +34,8 @@
 _APP_PACKAGING_SH_LOADED=1
 
 _APP_PACKAGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./log-bootstrap.sh
+source "${_APP_PACKAGING_DIR}/log-bootstrap.sh"
 # shellcheck source=../01-core/platform.sh
 source "${_APP_PACKAGING_DIR}/../01-core/platform.sh"   # arch_normalize, arch_uname_name_for
 # shellcheck source=../01-core/common.sh

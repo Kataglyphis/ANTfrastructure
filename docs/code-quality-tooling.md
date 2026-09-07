@@ -2304,6 +2304,14 @@ refused rather than fall back. Running an UNPINNED binary: with no `actionlint` 
 `ACTIONLINT_*_SHA256` each have to refuse, driven offline through a fixture tree
 that carries its own `versions.env`.
 
+`.github/actionlint.yaml` extends the known-runner-label set with the family's
+`ubuntu-26.04` / `ubuntu-26.04-arm` preview labels, which the pinned actionlint
+(still the newest release) predates. The config only ADDS labels — a genuinely
+unknown label still fails, so the `runner-label` check stays live. actionlint
+resolves that config from the project it LINTS, not from this repo: a consumer
+calling `lint-workflows.sh <root>` lints its own tree with its own
+`.github/actionlint.yaml`, so this file covers ContainerHub alone.
+
 ### Secret scan (`secret-scan`)
 
 `lint-secrets.sh` over the working tree with the pinned `gitleaks`. The suite

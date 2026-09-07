@@ -6,6 +6,93 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — Cache.cmake and Tests.cmake stop warning past a requested-but-unsatisfiable tool
+
+Two warn-and-continue branches had survived the 2026-09-06 decision that a
+coverage build which cannot instrument fails at configure; both now fail the
+same way.
+
+`Cache.cmake`: "requested but not found → WARNING + skip" becomes
+`FATAL_ERROR` naming the tool and the escape (`-DCOMPILER_CACHE=""`); the two
+`unset(... CACHE)` calls in that branch go with it, unreachable after
+`FATAL_ERROR`. The found-branch sheds a dead guard on the way: its extra
+`STREQUAL "${PATH}-NOTFOUND"` compared against an undefined `PATH` (never
+true), and `find_program`'s `<VAR>-NOTFOUND` is already falsey on its own.
+Precondition verified before arming the fatal: every cache-enabling preset in
+both consumers configures where the binary is pinned — the Linux presets
+inside the Linux images (apt installs `sccache ccache`, then
+`install_sccache_pinned` overlays the pinned build), the Windows presets
+inside the winamd64 image (sccache built from a pinned rev), and
+AccelerANTgine's bare-host lanes (`windows-clang`, `linux-clang`) already
+carry `COMPILER_CACHE: ""`. So no preset gains an off-knob; a bare host
+without the tool now gets the named escape instead of a silent uncached
+build. Known edge, unchanged in substance: BeschleunigerBallett's
+`-DisableSccache` switch only clears launcher env vars, which the module's
+FORCEd cache writes always beat — real disabling was and remains
+`-DCOMPILER_CACHE=""`, and on a tool-less host the switch alone now fails at
+configure instead of pretending.
+
+`Tests.cmake`: the `else()` "Coverage reporting not supported for this
+compiler/platform" message-and-continue becomes `FATAL_ERROR` naming
+`-Dmyproject_ENABLE_COVERAGE=OFF` — coverage was requested. Census of every
+preset across both consumers that reaches `myproject_enable_coverage` with an
+unsupported compiler: exactly one, BeschleunigerBallett's
+`x64-MSVC-Windows-Debug` (MSVC `cl`, Debug, coverage defaults ON there). It
+is pinned `myproject_ENABLE_COVERAGE: OFF` in its own preset, and
+`x64-MSVC-Windows-Release` alongside it — that one never reaches the call
+(ProjectOptions' NOT-Release gate) but records the same unsatisfiability —
+extending the 2026-09-07 clang-cl non-Debug pair decision. AccelerANTgine
+needs no guard anywhere: its coverage option defaults OFF and no preset,
+script, or workflow turns it on, so its windows-msvc presets never reach the
+branch. Every other preset lands in the supported GNU/Clang/clang-cl branches
+or the Release skip.
+
+Proven by scratch include()-probes on cmake 3.29 (Windows host): the
+Cache.cmake fatal (sccache requested under a PATH-isolated env) plus the
+found/skip/invalid-value survivors, and the Tests.cmake fatal (compiler id
+`MSVC` and empty) plus the GNU, Clang and Release survivors; both modules
+re-pass `cmake-format --check` (0.6.13).
+
+## 2026-09-07 — four red suites, four root causes: a missing bootstrap, one SC2319, a renamed pin, a stale SBOM
+
+`lib/app-packaging.sh` landed in the absorb merge without the one line every
+lib module owes: sourcing `log-bootstrap.sh`. It worked anyway — info/warn/err
+arrived transitively through `01-core/common.sh` — which is exactly the drift
+`test-lib-modules.sh` exists to catch; the module now sources the bootstrap
+first, in the sibling shape (54 assertions green). The tree's one SC2319 sat
+in `test-mutation-gate.sh`, deriving a boolean with `[ ... ]; echo $?`; the
+assertion now pins the exit code the gate actually produces — `mirror_tree`'s
+copy failure is `raise SystemExit(str)`, always 1 — so the shellcheck
+ratchet's zero-new-findings contract stands with no allow row.
+`test-version-snapshot.sh`'s 6/7 KNOWN-GAP case pins where the Windows build
+scripts actually are, and the Verb-Noun rename moved them out from under the
+pin's `-name` pattern: `build-*-from-source.ps1` counted 0 where 10 was
+asserted. The pin now counts `Build-*FromSource.ps1` (still 10, still in
+`windows/scripts/build/`); the generator's dead glob is untouched — widening
+it stays the owner's call, and the case still goes red the day that happens
+(26 assertions green). And `docs/deps/sbom-curated.spdx.json` is regenerated
+for the APP_REF v0.0.27 → v0.0.28 bump it had missed: three lines —
+OrchestrANT's `versionInfo`, its hash-suffixed SPDXID, and the DESCRIBES
+relationship — with the frozen 1970 creation stamp intact (14 assertions
+green).
+
+## 2026-09-07 — workflow lint learns the 26.04 preview labels: a config, because no pin bump exists
+
+`ubuntu-26.04` / `ubuntu-26.04-arm` went family-wide on 2026-09-06, and the
+pinned actionlint 1.7.12 — checked against upstream: still the NEWEST release
+(2026-03-30) — predates the preview labels, so `workflow-lint` went red on
+every `runs-on` that names them (eight findings across six workflows). A
+version bump therefore cannot fix it; actionlint's own suggestion can:
+`.github/actionlint.yaml` now declares exactly the two labels a grep of the
+family's workflows turns up. The config only ADDS to the known-label set — a
+fixture carrying this config plus `runs-on: ubuntu-99.99` still fails, so the
+`runner-label` check stays live — and `test-workflow-lint.sh` stays green (15
+assertions). Scope, as the gate's header warns: actionlint reads the config
+from the project it lints, so a consumer calling `lint-workflows.sh <root>`
+(BeschleunigerBallett does, with `github.workspace`) needs its own copy once
+it adopts the labels; this file covers ContainerHub alone. Registered in
+`docs/code-quality-tooling.md#workflow-lint-workflow-lint`.
+
 ## 2026-09-07 — housekeeping after the round: dupes scanner learns third_party/, two registries stop lying
 
 Three small truths restored in one sweep. `docs/scripts/verify_code_dupes.py`
