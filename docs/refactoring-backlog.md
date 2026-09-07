@@ -22,130 +22,77 @@ host-tree or gate-scope work left OPEN. **DISK** is retired (DISK1 and DISK2 clo
 **QW/TC/SMK** were retired by the 2026-09-04 waves; everything else
 (**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#**) is archive-only.
 
-Last groomed: **2026-09-05, at the integration of the six-lane wave**, with a
-validating chain already in flight. Every number below was re-derived from the gate
-that produces it, on the integrated tree, after the merge — not carried forward from
-any lane's own report. Four figures that lanes carried forward did not survive that
-re-derivation; see the corrections below.
+Last groomed: **2026-09-07, after the chain reported and the wave that answered
+it landed.** Every number below was re-derived from the gate or the log that
+produces it — not carried forward from any lane's own report. The one class of
+claim this file cannot make is the one only a build can: everything the
+2026-09-07 wave landed is proven by gates and unit suites on an idle tree, and by
+nothing that compiled a target.
 
-## THIS FILE IS A BUILD-WATCH LIST, AND THE BUILD IS RUNNING
+## THE BUILD REPORTED, AND THE WAVE AFTER IT CLOSED EVERYTHING
 
-Read this before anything else. **A validating chain is in flight right now** —
-`chain-status.json` run `20260905-120554-7b7a0d4e`, `sdk..runtime`, all three arches.
-It is the first chain since the 2026-09-04 `--only runtime` run, and that run FAILED
-(`=== Results: 5 failure(s) ===` / `[ERROR] runtime stage failed`, so the arm64 and
-riscv64 runtime smokes never ran at all). Everything below that says "unproven by any
-build" is asking a question this run answers. The exact log lines to read, grouped by
-stage, are in **[`build-watch-list.md`](build-watch-list.md)** — that page, not this
-one, is what to have open while the chain runs.
+Read this before anything else. The validating chain
+(`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
+`runtime` run) **finished green** and published a 3-arch `:latest-cross`. The
+watch entries it was asked to settle are all marked CLOSED below with what it
+measured, and the wave that followed closed the rest: CS1 by an owner decision,
+VK2/VK3 in the Vulkan SDK, CS2, CS3, DISK3, R1, YB, F1 and F3.
 
-**A first rebuild attempt already found two build-killing bugs** (HEAD `e109f5ad`),
-which is the honest measure of what static proof is worth: a `_llvm_target_repair_links`
-self-link that relinked a file onto its own path, and a Vulkan defect in the same
-class. Both were found by a chain in minutes after surviving a full green battery.
-Assume the running chain will find more, and read the watch list rather than trusting
-this file.
+**What that leaves is one build, not a queue** — see *Next up*. Every change in
+that wave was landed against a green static battery on an idle tree, and a
+static battery is worth exactly what the 2026-09-05 experience says it is: a
+first rebuild attempt found two build-killing bugs (HEAD `e109f5ad`) in minutes
+after a full green battery. Assume the next chain finds more, and read
+**[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
 **The 2026-09-05 integration wave closed eleven entries and folded three lanes'
 concurrent work in.** Gone entirely, and living in git history rather than here:
-**CL6** (the `_gst_monorepo_tflite_flags` split, three named helpers with the bodies
-moved verbatim), **CL7** (all three — the inline-TOML `_uv_conflict_groups` walk, the
-`agentic-engines.sh` `&&` shape, and the unreachable `03-media` `cross_build_is_active`
-clone), **GH5** (both frozen slugs left the freeze; `gate-proofs.allow`'s bare-slug
-namespace is EMPTY for the first time), **GH6** (the deep half closed as a real gate
-arm, `unlinked()`, which found `verify-parity.sh check_python`), **GH7** (the header-pointer
-allow file ratcheted 45 rows → 8, with nine durable doc sections written to absorb the
-re-points), **HT4** (twelve dangling `/opt/llvm-target` dev symlinks on amd64, and the
-3-of-142 unstartable binaries `liblldb` was hiding), **HT5** (5.7 GB of builder-arch
-Vulkan payload per foreign image, removed at both the SDK and packaging boundaries),
-and **F1/F2/F3's named rows** (`smoke-cross-all-arches.sh main`, the
-`lib/agentic-loop.sh` split, and the ffmpeg↔pyav launcher twin).
+**CL6** (the `_gst_monorepo_tflite_flags` split), **CL7** (all three),
+**GH5** (both frozen slugs left the freeze), **GH6** (the `unlinked()` arm, which
+found `verify-parity.sh check_python`), **GH7** (45 rows → 8), **HT4** (twelve
+dangling `/opt/llvm-target` dev symlinks and the 3-of-142 unstartable binaries
+`liblldb` was hiding), **HT5** (5.7 GB of builder-arch Vulkan payload per foreign
+image), and **F1/F2/F3's named rows**.
 
 **Four numbers in the closed entries did not survive re-measurement, and the
-corrections are the point.** HT4 said nine dangling links; there are **twelve**, and
-"in the builder they resolve" was false — nineteen are already broken in
+corrections are the point.** HT4 said nine dangling links; there are **twelve**,
+and "in the builder they resolve" was false — nineteen are already broken in
 `cross-android-amd64`. HT5's share-of-image was 18.5 %/19.2 %; measured against
-nerdctl's decimal GB it is **19.5 %/20.3 %**. CL7.2's stated failure mode does **not
-reproduce** — bash exempts every command of an AND-OR list but the last, so the shape
-was fixed and the entry corrected rather than closed as a bug. And CC1's ownership
-half was **already green on today's bytes** on all three arches, which makes it a
-regression watch, not a discovery. Re-measure before you trust a number in here.
+nerdctl's decimal GB it is **19.5 %/20.3 %**. CL7.2's stated failure mode does
+**not reproduce** — bash exempts every command of an AND-OR list but the last.
+And CC1's ownership half was **already green on today's bytes** on all three
+arches, which makes it a regression watch, not a discovery. Re-measure before you
+trust a number in here.
 
-**Where the gates stand on the integrated tree** (every reading re-derived from the
-gate itself on 2026-09-05 after integration, not carried forward):
+### Next up — everything above is landed; what is left is ONE build
 
-| gate | reading |
-|---|---|
-| `mutations` | **630** entries over **74** distinct test commands, every one proven to bite, none vacuous, none stale |
-| `gate-registry` | **34** slugs; **34** proven; **0** unproven, **0** frozen — the bare-slug namespace is empty; 279 ids in 31 declared families |
-| `script-tests` | **100** suites, **3322** assertions |
-| `preflight` | **45** checks, rc 0. Wall clock **14 m 46 s** — but that was measured with a 3-arch chain compiling on the same box, so it is not comparable to the 10 m 31 s baseline; re-time it on an idle host before reading anything into it |
-| `code-size` | 29 functions over 80 lines, 11 files over 800 — all frozen, all with a verdict |
-| `code-complexity` | 66 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
-| `shellcheck-warnings` | **88** findings over a **348**-file scope — all frozen, all with a verdict |
-| `code-dupes` | 3706 units in 380 files, **248** allowlisted pairs, 852 shingles suppressed as idiom |
-| `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 30 / 32 / 169 / 46 frozen |
-| `doc-links` | 73 pages, **507** code pointers, **8** bare header pointers frozen (was 45) |
+The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
+(`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
+this file carried. What remains is not a queue, it is a **verification**:
 
-**Eleven entries remain** (`grep -c '^### '` counts thirteen; "Next up" and "What
-needs the OWNER" are not entries), and they divide cleanly: **CC1, CL1, VK1, AB1 and
-YB are watch lists** that the running chain either closes or re-opens with evidence;
-**VK2** is the first entry this wave produced from REAL build evidence rather than
-static proof, and two of its four items are a two-row fix; **CS1** has one open owner
-decision; **R1** is the named residue of the eleven that closed; **F1/F2/F3** are
-tracks, not defects.
+1. **Run a compile-heavy chain — that is the whole list.** Everything below was
+   landed against a green static battery and an idle tree, and nothing here has
+   been through a real build:
+   * **VK2** wired four components that have never cross-built (`vulkan-profiles`
+     and its two config packages, `gfxreconstruct` behind `CMAKE_LIBRARY_ARCHITECTURE`,
+     `slang` behind the host generators, `vulkanCapsViewer` behind target Qt6).
+     The entry stays OPEN until `<arch>/bin` shows them.
+   * **VK3**'s two `>=` floors get promoted to exact counts from that run's
+     `RATCHET: floor 20 -> N` line, and the four `_VK_REPORTED_TOOLS` names move
+     into the required set in the same edit — once, not twice.
+   * **DISK3**'s image lever has never fired in anger; the `[disk-images]` lines
+     are what to read.
+   * **CS3**'s prebuilt download replaces ~1900 s of QEMU on arm64 and riscv64
+     keeps the source build. The runtime lane's `OK: … installed from the upstream
+     … release binary` line is the proof.
+   * **R1.1**'s llvm-target walk should read `0 of 142` on amd64 and `0 of 127`
+     on the foreign pair.
+2. **Then re-groom this file against that run**, the way the 2026-09-05 grooming
+   re-derived every number from the gate that produces it. Four figures did not
+   survive that exercise last time; assume some will not survive the next.
 
-**VK2 is the shape to notice.** The chain had been running for well under an hour when
-it produced a better-grounded entry than anything eleven lanes of static analysis
-managed: eleven of fifteen target components built, four did not, and the log said
-exactly why for each. That is the argument for reading
-[`build-watch-list.md`](build-watch-list.md) rather than this page.
-
-**What the integration wave itself had to fix, because it is the pattern to expect
-next time.** Three lanes landed behaviour changes with no suite case and no mutation
-— the Vulkan `_VK_TARGET_COMPONENTS` table and its two helpers, the Android ABI
-mapper's doc anchors, and the whole packaging set (AppImage runtime staging, the seven
-Flatpak refs, the web-lane toolchain). One of them, `ensure_appimagetool_runtime`, was
-written and documented but **never called from anywhere**. The integration added 20
-mutations and 40 assertions to cover them, wired the dead function into both of
-`ensure_appimagetool`'s success paths, and wrote the five doc sections their pointers
-already named. A lane that ships a function without a caller ships nothing; the
-`dead-functions` gate is what caught it, and it caught it only because the wave ran
-the full battery after the merge rather than trusting each lane's own green.
-
-### Next up — what the 2026-09-07 chain settled, and what it did not
-
-The chain ran green end to end and published a 3-arch `:latest-cross`
-(`manifest-freshness PASS`). Five watch entries are answered and marked CLOSED
-above; what follows is only what is still open.
-
-1. **CS1's one owner decision** [S, ★★] — the only item that is not the agent's to
-   take. `prune-vulkan-host-sdk.sh` ships wired and removes `x86_64/` from the
-   FOREIGN images only (a no-op on amd64, where it IS the downloaded SDK). The
-   evidence is one-sided — those 52 binaries are x86-64 ELF in the arm64 image and
-   exit 127 — but the owner has twice said not to remove Vulkan payload. Note the
-   coupling before deciding: the tree-arch gate was un-narrowed to assert the WHOLE
-   `/opt/vulkan` tree, and that only holds while the prune runs. Keeping `x86_64/`
-   means re-narrowing the gate and giving back 1.86 GB.
-2. **VK2's two cheap rows** [S, ★★] — `valijson` and `jsoncpp` are header-only, are
-   already in the SDK's own `source/` tree, and simply have no row of their own
-   before `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Two table rows, and
-   `vulkan-profiles` cross-builds. The chain is idle, so `vulkan.sh` is safe to edit.
-3. **VK3 — the ratchet the owner asked for** [S, ★★★]. The floor is now measured and
-   stable: **20 tools and 4 layer manifests on both foreign arches, 52 on amd64.**
-   Promote the measured set from `_VK_REPORTED_TOOLS` to `_VK_REQUIRED_TOOLS`, freeze
-   the count PER ARCH, and require the layer manifests. Land VK2 first if it is going
-   to happen soon, so the floor is recorded once rather than twice.
-4. **DISK3 — the disk guard is blind to the store the disk is in** [M, ★★★]. This
-   cost six manual rescues in one session and one killed lane. The guard knows its
-   own log slugs and BuildKit; the space was in containerd. Read the ORDERING
-   constraint in that entry before implementing: BuildKit pruning is safe mid-run,
-   anything that removes IMAGES is safe only between runs.
-5. **The small named ones** — CS2 (one Flatpak ref resolves to no branch; ask
-   flathub with `remote-ls` and pin `FLATPAK_OPENH264_VERSION`), CS3 (the web-lane
-   tools cost riscv64 an hour of QEMU; prebuilt release binaries are the cheaper
-   route), and R1's residue.
-6. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
+**Nothing else is open.** No entry in this file names a defect with a known
+failure mode, and the two things that are genuinely not the agent's are below.
 
 **Image sizes from this run**, which CC1 asked for at three groomings and never got:
 
@@ -563,7 +510,7 @@ all. It is recorded at
 rather than assumed away — "we assumed nobody uses it" is how the Android layer
 ended up built for the wrong ABI (AB1).
 
-### APP1. The app rename crossed two repos, and one of them was half done [M, ★★★]
+### APP1. CLOSED — the rename landed in both repos, and the stale path was a cached layer [done 2026-09-07]
 
 The 2026-09-06 runtime smoke failed on amd64 with three findings that are one
 cause: `app wheel smoke FAILED`, `ARCH-PARITY: OrchestrANT missing`, and
@@ -667,84 +614,45 @@ for any consumer whose lock differs, which is every consumer that is not this on
 Staging it would trade a real download for a silent wrong-version risk. `flutter
 pub get` stays a per-run cost.
 
-### YB. sccache: the address now reaches the compiles; hit counts still unread [S to watch, ★★]
+### YB. CLOSED — the cache is being hit, and the counters were there all along [done 2026-09-07]
 
-**Half answered by the 2026-09-07 chain.** The media stage logs
+**Both halves are answered.** The address arrives: the media stage logs
 `[CACHE] sccache enabled: SCCACHE_DIR=/var/cache/sccache, CACHE_SIZE=30G
 [server=/tmp/sccache-...]` — a Unix socket path, which is exactly what the fix was
-for: the defect was every client falling back to the DEFAULT TCP port 4226 because
-the address never reached them. So the address arrives.
+for (every client used to fall back to the DEFAULT TCP port 4226 because the
+address never reached it).
 
-**What is still unproven:** that the cache is actually being hit. `--show-stats` is
-not in the chain's output, so nothing here says whether requests turn into hits.
-Closing this needs one `sccache --show-stats` line captured from a lane that
-compiles, and the four-row counter table in
-`build-cache-tiers.md` names what a healthy reading looks like.
+**And the hits are real.** This entry said `--show-stats` was "not in the chain's
+output". It is — `dump_compiler_cache_stats` has been wired as an EXIT trap in
+`media_common_init` all along, and the 2026-09-05 arm64 media log carries **88**
+dumps. What made it look absent is that **79 of those 88 report zero requests**:
+they are the t≈0 snapshot `setup_ccache` prints before the first object, and a
+reader scrolling past a wall of zeros concludes there is nothing to read. The
+nine that ran after real compiles, paired requests→hits from that log:
 
+| compile requests | cache hits | misses | errors | hit rate |
+| ---: | ---: | ---: | ---: | ---: |
+| 3104 | 2732 | 10 | 0 | **88.0 %** |
+| 1335 | 763 | 202 | 0 | 57.2 % |
+| 500 | 499 | 0 | 0 | 99.8 % |
+| 402 | 365 | 0 | 0 | 90.8 % |
+| 201 | 201 | 0 | 0 | 100 % |
 
-**This entry is no longer an investigation.** The 2026-09-05 wave found the mechanism
-exactly, and every hypothesis the old entry carried (argv shape, cwd, spawn
-internals, per-request server state) is refuted by the evidence. The full write-up,
-the four-row table of impossible `--show-stats` counters and the regression window
-are owned by
-[`build-cache-tiers.md`](build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run).
-In one paragraph:
+Zero errors anywhere, which is the counter the four-row table in
+[`build-cache-tiers.md`](build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run)
+calls impossible on a broken cache.
 
-the server ADDRESS never reached the compiles, so every client fell back to the
-default TCP port 4226 and was served by another container's sccache server. It is a
-REGRESSION, not a new bug — the same class was fixed by `4aa92fb6` on 2026-08-27 and
-undone by the F2 one-resolver refactor `8c97cdd8` on 2026-08-30, which is what the
-2026-09-01 measurement (2952 + 110 faults) actually recorded.
+**One honest gap, and it does not need its own entry.** That reading is from
+2026-09-05 and the socket-address line is from the 2026-09-07 run, which was
+`--only runtime` and compiles almost nothing — so no single lane has yet printed
+both. The next compile-heavy chain does, without anyone doing anything: the trap
+is wired, and the numbers above are what a healthy reading looks like.
 
-**Correct the old entry's arithmetic while you are here.** The 27 / 514 figure is not
-a 5 % recovery rate; it is four containers each all-or-nothing. All 514
-`failed twice` sit in step #24 litert (364), #34 ORT genai (100) and #45 pyav (50);
-all 27 `retry succeeded` sit in #29 TVM, which has zero failures of the other kind.
-Use the per-step split from `sccache-retry-20260903-150440`, not the aggregate.
-
-**The fix, and what only a chain can confirm.** `sccache_export_server_address` is the
-one owner of the address and `setup_ccache`/`setup_sccache` call it in the PARENT
-shell; `compiler_cache_launcher_env` is the one owner of the same rule for the 13
-`$(compiler_cache_launcher)` sites in 11 other files; `Dockerfile.toolchain` now
-mounts `sccache-launcher.sh` in both per-file blocks, so the GCC/LLVM stages stop
-running BARE sccache. Watch for, in a **compile-heavy** chain (media or toolchain —
-`--only runtime` emits no launcher lines at all):
-
-1. Every `sccache-launcher` line prints `[server=/tmp/sccache-<uid>.sock]` and never
-   `[server=tcp:4226]`. **That single field is the whole verdict.**
-   **CORRECTED 2026-09-05, and this mattered:** the launcher prints its `[server=]`
-   field **only on the two sccache-FAILED paths**, so on the very run where the fix
-   works the evidence and the verdict cancelled out — there would have been nothing to
-   grep. Both address setters now print it on the healthy path too, identically
-   spelled, so ONE grep covers the whole chain:
-   `grep -o '\[server=[^]]*\]' <log> | sort | uniq -c`. The two lines are
-   `[INFO] Using sccache with SCCACHE_DIR=… (cap …) [server=…]` (`01-core/common.sh`)
-   and `[INFO] sccache enabled: SCCACHE_DIR=…, CACHE_SIZE=… [server=…]`
-   (`01-core/compiler-cache.sh`). A single `[server=tcp:4226]` anywhere is the
-   regression, unfixed.
-2. The ENOENT bypass class collapses in the steps that produced it (#24, #34, #45 on
-   2026-09-03) rather than merely moving.
-3. `sccache --show-stats` at the START of each step reports 0 compile requests
-   instead of another container's hundreds. Cheap, decisive, and worth putting in the
-   log deliberately.
-4. The hit rate per step is non-zero with the RIGHT cache-mount id — entries stop
-   landing in a foreign arch's `/var/cache/sccache`.
-5. The container-local UDS server actually starts under the tmpfs `/tmp` these RUN
-   steps mount, and `sccache --version` on the riscv64/apt 0.13 fallback path still
-   takes the hashed-port arm. Neither is provable statically.
-
-**One duplication is left, it is blocked on a `Dockerfile.base` mount rather than on
-judgement, and the page above owns the reasoning.** The work item is: decide whether
-`compiler-cache.sh` should join `Dockerfile.base`'s six per-file `01-core` blocks. If
-it should, `ensure_sccache_env`'s copy of the address block collapses onto
-`sccache_export_server_address` and the pair drops out of `code-dupes.allow`. If it
-should not, the second owner is permanent and the row's reason should say so.
-
-**One thing to grep the next chain for:** `SCCACHE_DIRECT=false` is exported by
-`setup_ccache` in the parent but only inside `ensure_sccache_env` on the `common.sh`
-path. A server auto-started from a stage that never ran `setup_ccache` would inherit
-`/etc/sccache/config.toml`'s `use_preprocessor_cache_mode = true` and bring back the
-`while hashing the input file` TryCompile class. Not observed in any log read so far.
+**The correction the old entry asked for, kept:** the 27 / 514 figure was never a
+5 % recovery rate; it is four containers each all-or-nothing. All 514
+`failed twice` sit in step #24 litert (364), #34 ORT genai (100) and #45 pyav
+(50); all 27 `retry succeeded` sit in #29 TVM, which has zero failures of the
+other kind. Use the per-step split, not the aggregate.
 
 ### R1. CLOSED — all four, three fixed and one re-measured [done 2026-09-07]
 

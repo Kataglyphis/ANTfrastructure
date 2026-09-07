@@ -6,6 +6,33 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — YB answered from the log that already had the numbers, and the backlog re-groomed
+
+**The sccache cache IS being hit, and `--show-stats` was never missing.** The YB
+entry said the counters were not in the chain's output. They are:
+`dump_compiler_cache_stats` has been wired as an EXIT trap in `media_common_init`
+all along, and the 2026-09-05 arm64 media log carries **88** dumps. What made it
+look absent is that **79 of them report zero requests** — they are the t≈0
+snapshot `setup_ccache` prints before the first object, and a reader scrolling
+past a wall of zeros concludes there is nothing to read. The nine that ran after
+real compiles, paired requests→hits: **3104→2732 (88.0 %)**, 1335→763 (57.2 %),
+500→499 (99.8 %), 402→365 (90.8 %), 201→201 (100 %), with **zero errors**
+anywhere — the counter `build-cache-tiers.md` calls impossible on a broken cache.
+One honest gap remains and needs no entry: that reading is from 2026-09-05 and
+the socket-address line is from the 2026-09-07 `--only runtime` run, which
+compiles almost nothing, so no single lane has printed both yet. The next
+compile-heavy chain does, with nobody doing anything.
+
+**`docs/refactoring-backlog.md` re-groomed.** Its header still said "THIS FILE IS
+A BUILD-WATCH LIST, AND THE BUILD IS RUNNING" for a build that finished two days
+ago, and APP1 was still titled as open although its own last line says CLOSED.
+Every entry now carries its verdict, and *Next up* is one item long: **run a
+compile-heavy chain**, because everything this wave landed — VK2's four
+components, VK3's floors, DISK3's image lever, CS3's prebuilt download, R1.1's
+llvm-target walk — is proven by gates and unit suites on an idle tree and by
+nothing that compiled a target. The entries name exactly which log line settles
+each one.
+
 ## 2026-09-07 — F3: two clone families get an owner, two get a verdict
 
 **`media_jobs` takes its cap as an argument.** The name has two definitions on
