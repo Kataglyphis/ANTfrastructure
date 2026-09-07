@@ -982,4 +982,24 @@ t_assert_contains "$(_extract _android_abi_py)" "/opt/android" \
 t_assert_contains "$(_extract check_android_abi)" "ANDROID_TARGET_ABI" \
   "and judges it against the ABI the image advertises, not against the image arch"
 
+# Every verb a verdict function can emit must be one check_consumer_contract's
+# reader handles. It reads `verb row rest` and has a case list; an unknown verb
+# is reported as a dropped row -- which is what a FAIL-instead-of-BAD verdict did
+# on 2026-09-06, turning three healthy rows into one gate failure. The suite
+# checked that each row HAS a symptom, never that its verdict could be read.
+t_case "every verdict verb a producer emits is one the reader's case list handles"
+_VERBS_READ="$(_extract check_consumer_contract | sed -n 's/^ *\([A-Z]\{2,\}\)).*/\1/p' | sort -u)"
+_VERBS_EMITTED="$(for _f in _consumer_present_verdict _consumer_dir_verdict _consumer_jdk_verdict \
+                            _consumer_tool_verdict _consumer_owner_verdict _consumer_android_verdict \
+                            _consumer_exempt_verdict; do
+    _extract "${_f}" 2>/dev/null | grep -o "printf '[A-Z]\{2,\}" | sed "s/printf '//"
+  done | sort -u)"
+_unknown=""
+for _v in ${_VERBS_EMITTED}; do
+  printf '%s\n' "${_VERBS_READ}" | grep -qx "${_v}" || _unknown="${_unknown} ${_v}"
+done
+t_assert_eq "" "${_unknown}" "a verb no case arm names is a row the gate silently drops"
+t_assert_eq "0" "$(printf '%s\n' "${_VERBS_EMITTED}" | grep -c . 2>/dev/null | grep -x 0 || echo 0)" \
+  "and the extraction must actually find verbs, or this case proves nothing"
+
 t_summary

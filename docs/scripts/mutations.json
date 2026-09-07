@@ -4816,6 +4816,14 @@
     "why": "/usr/local/include/tensorflow ships as an EMPTY two-directory stub on all three arches; treating a directory's existence as evidence is what made the old probe red against healthy images"
   },
   {
+    "id": "probe.consumer-verdict-verb-is-readable",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    ''|0|no) printf 'BAD %s absent' \"${row}\" ;;",
+    "replace": "    ''|0|no) printf 'FAIL %s absent' \"${row}\" ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "check_consumer_contract reads `verb row rest` through a case list of OK/EXEMPT/BAD/STALE/NOFACT/ASSERTED; any other verb falls to the catch-all and the row is reported as silently dropped. Emitting FAIL turned three healthy rows into one gate failure on 2026-09-06 and cost a whole runtime lane"
+  },
+  {
     "id": "packaging.absl-headers-copied",
     "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
     "find": "    /usr/local/include/absl \\",

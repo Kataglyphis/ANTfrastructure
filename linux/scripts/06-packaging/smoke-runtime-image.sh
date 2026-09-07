@@ -545,7 +545,7 @@ _CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-ho
 _consumer_present_verdict() {
   local row="$1" got="$2"
   case "${got}" in
-    ''|0|no) printf 'FAIL %s absent -- %s' "${row}" "$(_consumer_contract_symptom "${row}")" ;;
+    ''|0|no) printf 'BAD %s absent' "${row}" ;;
     *)       printf 'OK %s %s' "${row}" "${got}" ;;
   esac
 }
