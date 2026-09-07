@@ -6,6 +6,50 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — The backlog loses its closed half, and five F1 rows lose their debt
+
+**Thirteen closed entries left `refactoring-backlog.md`** for
+`refactoring-backlog-archive-2026-09-07.md`, which is what that file's own header
+has always asked for ("Lean working document. Every item here is OPEN."). It went
+**1141 → 359 lines**, and what is left is one open entry — VK2, open because only
+a build can close it — plus F1 and F2, which are registers of reviewed verdicts
+rather than queues. The header no longer announces a build that finished two days
+ago, and the prefix glossary lists only the two prefixes still in use.
+
+**Five of F1's six named debt rows are gone, each cut at the seam it had named.**
+
+* `_opencv_target_adjustments` (cc 33, 114 lines) → `_ota_riscv64_freetype` and
+  `_ota_riscv64_png`, the two seams the row itself named. Under BOTH limits now,
+  **both allow rows deleted rather than re-baselined**. `test-opencv-riscv64-seams.sh`
+  pins what is testable off-target: nothing staged → the named fallback with the
+  four-file WARN, and no external libpng → `exit 1` rather than a silent
+  `WITH_PNG=OFF`, because failing LATE there cost iree-0714a..e.
+* `_cgroup_mem_remaining_mb` (cc 20) → one `_cgroup_remaining_mb_from`. The two
+  cgroup generations differ only in their paths and in how each spells "no limit"
+  — v2 the literal `max`, v1 a kernel-huge number or 0 — so everything after that
+  is the same arithmetic, written once. `CGROUP_ROOT` is what makes it testable at
+  all: these are absolute kernel paths, and a suite that cannot redirect them can
+  only assert about the host it runs on. The `parallelism.sh` duplication row fell
+  below threshold and was deleted with it.
+* `build-runtime-manifest.sh main` (cc 22, 90 lines) → `_manifest_build_and_smoke`
+  behind ONE `BUILD_IMAGES -eq 1` test instead of the same test in front of three
+  phases. Both allow rows deleted. The suite now asserts that no build-only phase
+  has drifted back into `main()`, which is exactly what `--manifest-only` and
+  `--repair` exist to avoid.
+* `_gst_rs_build_plugins` (cc 25) → the five copies of the exclusion preamble (log
+  the reason, prune the workspace member, exclude the family) share
+  `_gst_rs_exclude`. **The cc did not move, and that is the finding**: it counts
+  the six predicates, and each is separately earned knowledge about one
+  arch/plugin pair. The row stays, with that as its reason.
+* `_chain_stage_disk_guard` closed earlier the same day with DISK3.
+* **KEPT: `media_common_init` (cc 35)** — a module loader whose load ORDER is
+  load-bearing. A table plus a loop reads shorter and says less.
+
+Eleven mutations hold the new arms. One thing the gates caught on the way, worth
+keeping: the first cut of the OpenCV suite used a `FAKE_TRIPLET` env var, and the
+knob registry failed it as an unowned knob — correctly, because a test fixture is
+not an operator switch. It is a function stub now.
+
 ## 2026-09-07 — YB answered from the log that already had the numbers, and the backlog re-groomed
 
 **The sccache cache IS being hit, and `--show-stats` was never missing.** The YB

@@ -240,6 +240,48 @@ verify_foreign_binfmt() {
   log "QEMU binfmt verified for: ${arches}"
 }
 
+# The build-only half of main(): binfmt, the per-arch wrapper builds and the two
+# smoke passes. One region behind ONE `--manifest-only/--repair` test instead of
+# the same test in front of three phases; everything after it in main() publishes
+# what already exists. docs/refactoring-backlog.md F1
+_manifest_build_and_smoke() {
+  local arch
+  # Foreign-arch wrappers are built ON the target platform under QEMU, so the
+  # emulators must exist BEFORE the build loop -- not merely before the smokes.
+  ensure_foreign_binfmt "${TARGET_ARCHES}"
+
+  run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+
+  # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
+  # can never ship as :latest-cross. RUNTIME_IMAGE_SMOKE=0 skips.
+  if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
+    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
+    local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+    local wrapper_tag
+    # Two-pass order is load-bearing: content gate for EVERY arch first, then the
+    # boot smokes (docs/cross-build-verification.md § Verify the shipped BYTES).
+    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
+      log "Wrapper content gate: ${wrapper_tag} (${arch})"
+      # Pull only when MISSING: an unconditional pull re-points the tag at the
+      # previously PUBLISHED image, so --no-push runs smoke the stale release.
+      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
+        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      fi
+      # Byte-gate: a stale wrapper boots green too, so assert shipped content. 0 → advisory.
+      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
+    done
+    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
+      log "Runtime-image smoke: ${wrapper_tag} (${arch})"
+      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
+        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      fi
+      run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
+    done
+  fi
+}
+
 main() {
   run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
@@ -266,50 +308,13 @@ main() {
     CREATE_MANIFEST=0
   fi
 
+  # ONE test for the one question --manifest-only/--repair asks. Everything after
+  # this publishes an index over wrappers that already exist.
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${TARGET_ARCHES}"
+    _manifest_build_and_smoke
   else
     log "Creating manifest only for architectures: ${TARGET_ARCHES}"
-  fi
-
-  # Foreign-arch wrappers are built ON the target platform under QEMU, so the
-  # emulators must exist BEFORE the build loop -- not merely before the smokes.
-  if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    ensure_foreign_binfmt "${TARGET_ARCHES}"
-  fi
-
-  local arch
-  if [ "${BUILD_IMAGES}" -eq 1 ]; then
-    run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
-  fi
-
-  # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
-  # can never ship as :latest-cross. RUNTIME_IMAGE_SMOKE=0 skips.
-  if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
-    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
-    local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
-    local wrapper_tag
-    # Two-pass order is load-bearing: content gate for EVERY arch first, then the
-    # boot smokes (docs/cross-build-verification.md § Verify the shipped BYTES).
-    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
-      log "Wrapper content gate: ${wrapper_tag} (${arch})"
-      # Pull only when MISSING: an unconditional pull re-points the tag at the
-      # previously PUBLISHED image, so --no-push runs smoke the stale release.
-      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
-        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
-      fi
-      # Byte-gate: a stale wrapper boots green too, so assert shipped content. 0 → advisory.
-      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
-    done
-    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
-      log "Runtime-image smoke: ${wrapper_tag} (${arch})"
-      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
-        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
-      fi
-      run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
-    done
   fi
 
   # Publish the multi-arch manifest only after every per-arch image passed its smoke.
