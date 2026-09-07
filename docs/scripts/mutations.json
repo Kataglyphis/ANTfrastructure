@@ -5802,10 +5802,10 @@
   {
     "id": "bench-agent.ctest-count-is-asserted",
     "target": "linux/llm-stack/bench_agent.py",
-    "find": "        \"printf '%s\\\\n' \\\"$out\\\" | grep -q -e '0 tests failed out of 1'\\n\")]",
-    "replace": "        \"true\\n\")]",
+    "find": "            \"printf '%s\\\\n' \\\"$out\\\" | grep -q -E '100% tests passed(, 0 tests failed)? out of 1'\\n\")],",
+    "replace": "            \"printf '%s\\\\n' \\\"$out\\\" | grep -q -E '100% tests passed'\\n\")],",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k refuses_a_run_with_no_tests",
-    "why": "ctest exits 0 when it finds NO tests, so without the count assertion deleting add_test() is a free pass."
+    "why": "ctest exits 0 when it finds NO tests, so the verify command asserts the COUNT as well: dropping 'out of 1' lets a run with add_test() deleted read as a pass. The tolerant spelling (26.04 ctest omits ', 0 tests failed') must not cost the count"
   },
   {
     "id": "bench-agent.unbuildable-selection-exits-nonzero",
