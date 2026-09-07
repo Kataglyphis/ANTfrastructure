@@ -256,7 +256,10 @@ API that hides encoder time into a measurable image cost and separates
    span 5-44 % scanned; every sizing decision is a linear function of your
    number, and nobody has it. **Gate: if scanned+image-only is under ~10 %,
    the VLM is a footnote** — redirect the budget to extraction + embeddings +
-   retrieval.
+   retrieval. Implemented as
+   [`linux/llm-stack/nas_census.py`](../linux/llm-stack/nas_census.py)
+   (stdlib-only; `pip install pymupdf` enables the page classification,
+   which otherwise skips visibly).
 2. **Day 2 — turn on what exists.** Flip the `fulltextsearch` profile in
    `linux/nextcloud-aio/.env` (raise the toy 512M ES heap; note the
    tesseract-OCR app for it has no NC 33+ build — OCR happens outside

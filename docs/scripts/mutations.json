@@ -6710,5 +6710,29 @@
     "replace": "",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k a_file_outside_the_source_is_a_loud_failure",
     "why": "a path the strip could not shorten was copied to $dst/$file — outside $dst for a relative source — and reported success"
+  },
+  {
+    "id": "census.text-gate-weakened",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "TEXT_CHARS_MIN = 50",
+    "replace": "TEXT_CHARS_MIN = 0",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_a_page_just_under_the_text_gate_is_not_born_digital",
+    "why": "with the text gate at zero every blank scan classifies born-digital and the scanned fraction the page's whole budget hangs on reads near zero"
+  },
+  {
+    "id": "census.degenerate-check-disabled",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "        if is_degenerate_text(text):",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_a_long_nul_ridden_text_layer_is_degenerate_not_born_digital",
+    "why": "a NUL-soup text layer counted as born-digital hides the documented paperless failure mode from the very census meant to surface it"
+  },
+  {
+    "id": "census.gate-threshold-inverted",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "    if fraction < GATE_SCANNED_MIN:",
+    "replace": "    if fraction >= GATE_SCANNED_MIN:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_the_gate_flips_exactly_at_ten_percent",
+    "why": "an inverted gate calls the VLM a footnote on exactly the corpora that need OCR measured first"
   }
 ]

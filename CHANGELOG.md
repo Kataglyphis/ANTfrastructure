@@ -6,6 +6,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — The NAS census tool
+
+[`docs/nas-document-ai.md`](docs/nas-document-ai.md) § 6 called the corpus
+"the largest unknown and the cheapest to close"; now the closer exists.
+[`linux/llm-stack/nas_census.py`](linux/llm-stack/nas_census.py) walks a tree
+and answers day 1's question: **the four numbers** (total PDF pages, scanned
+fraction, German fraction, table density) and the gate — scanned+image-only
+under ~10 % of classified pages makes the VLM a footnote. Per-extension and
+per-category counts are stdlib-only; PDF pages classify born-digital /
+degenerate-layer / image-only / sparse via PyMuPDF, which is optional and
+**skips visibly** when absent — the summary and JSON say SKIPPED rather than
+reporting a fabricated zero scanned pages. In the same spirit: table density
+prints `not measured` until `--tables`, page sampling (`--page-sample`, 40)
+announces how many PDFs it extrapolated, and `--max-files` truncation is
+loud in both outputs. Language is a documented de/en stopword heuristic
+that admits "undecided" instead of guessing. 44 offline tests in
+[`linux/llm-stack/tests/test_nas_census.py`](linux/llm-stack/tests/test_nas_census.py)
+pin every classification gate on both sides of its threshold, and three new
+`census.*` entries in [`docs/scripts/mutations.json`](docs/scripts/mutations.json)
+prove the text gate, the degenerate check and the 10 % gate can each fail.
+
 ## 2026-09-06 — The NAS document-AI question answered: a new page, and the benchmark's multimodal gap named precisely
 
 New page [`docs/nas-document-ai.md`](docs/nas-document-ai.md) (wired into
