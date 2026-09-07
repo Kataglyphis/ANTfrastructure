@@ -562,16 +562,18 @@ of what happened, not a description of what is. ContainerHub's `APP_REF` is
 `v0.0.28` in all four Linux places, and the repo's own `sync_versions.py --write`
 carried the same pin into `windows/Dockerfile.torch` and the dependency table.
 
-**Open, with a hypothesis and its test.** The shipped amd64 image carries
-`/opt/Kataglyphis-Orchestr-ANT-ion` (88 MB) and does NOT carry `/opt/OrchestrANT`,
-while the build log shows BOTH being cloned in the same `[torch 4/5]` step. The old
-path appears in neither repo's current source, nor in the android ancestor image —
-checked all three. The remaining explanation is a BuildKit layer cached from before
-the rename, whose recorded output was replayed and whose filesystem is what shipped.
-If that is right, the `APP_REF` bump invalidates it and the next run produces
-`/opt/OrchestrANT` alone. If the old path survives a run with `v0.0.28`, the
-explanation is wrong and something still writes it — find that first, before
-touching the parity table.
+**The hypothesis held.** The shipped amd64 image carried
+`/opt/Kataglyphis-Orchestr-ANT-ion` (88 MB) and NOT `/opt/OrchestrANT`, while the
+build log showed both being cloned in the same `[torch 4/5]` step. The old path was
+in neither repo's source and not in the android ancestor — all three checked — so
+the remaining explanation was a BuildKit layer cached from before the rename, whose
+filesystem is what shipped. The prediction was that the `APP_REF` bump invalidates
+it. Measured on the 2026-09-07 `:latest-cross`: `ls -d /opt/*rchestr*` returns
+`/opt/OrchestrANT` and nothing else. CLOSED.
+
+Worth keeping as a pattern rather than an anecdote: a cached layer replays its
+ORIGINAL output into the log, so the log can describe work that this run did not
+do. Two clone lines for one clone is what that looks like from outside.
 
 ### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
 
