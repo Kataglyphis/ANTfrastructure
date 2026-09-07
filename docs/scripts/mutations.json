@@ -6933,5 +6933,37 @@
     "replace": "            if base in text or pbase in text:",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "the arm is disarmed only when ONE file could load BOTH definitions; either basename alone names a file that cannot mask anything, so 'or' explains rows that were never disarmed"
+  },
+  {
+    "id": "gate-fixture.harness-catches-a-misused-assertion",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  [ \"$2\" = \"2\" ] || return 1",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "`t_assert_fails test -f X \"why\"` runs `test -f X why`, which exits 2 -- 'not zero', so the case passes for the wrong reason; four of those were written in one wave and nothing in the harness caught them"
+  },
+  {
+    "id": "gate-fixture.harness-guard-is-narrow",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  case \"$1\" in test|'[') return 0 ;; *) return 1 ;; esac",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "only test/[ report a usage error as rc 2; treating every rc 2 as a misuse rewrites a real failure into a harness complaint"
+  },
+  {
+    "id": "cross-build.regcache-drop-after-two",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "      if [ \"${_regcache_fails}\" -ge 2 ]; then",
+    "replace": "      if [ \"${_regcache_fails}\" -ge 99 ]; then",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "the ghcr cache IMPORT is itself the failing read (2026-08-18), so a retry that keeps type=registry re-reads the same broken blob for the rest of the ladder"
+  },
+  {
+    "id": "cross-build.regcache-drop-keeps-local",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "            --cache-from:type=registry*|--cache-to:type=inline*)",
+    "replace": "            --cache-from:*|--cache-to:*)",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "widening the drop to every cache tier takes the LOCAL export with it, and the local cache is exactly what still fast-forwards the retry"
   }
 ]

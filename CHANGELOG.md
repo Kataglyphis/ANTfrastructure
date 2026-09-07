@@ -6,6 +6,36 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — F1: the harness stops passing vacuously, and the registry-cache drop gets its characterisation
+
+**The harness caught the trap that four assertions fell into.** `t_assert_ok`
+and `t_assert_fails` take a COMMAND and no message, so
+`t_assert_fails test -f X "why"` ran `test -f X why` — which exits **2**, i.e.
+"not zero", i.e. exactly the failure the case was asking for, for entirely the
+wrong reason. Four of those were written and caught by review in one wave and
+nothing in the harness could see them. Both assertions now share
+`_t_assert_run`, which fails the case BY NAME when the command is `test`/`[`
+and the rc is 2. The guard is deliberately narrow — a real command that exits 2
+is still judged on its exit code — and a mutation widening it to every rc 2 is
+caught. `test-harness-guards.sh` holds it in 12 assertions; the whole suite
+corpus was re-run against the stricter harness and nothing relied on the old
+behaviour.
+
+**The registry-cache drop is covered.** `_cross_stage_build_impl`'s ghcr
+cache-import drop (2026-08-18: the IMPORT is itself the failing read, so a retry
+that keeps `type=registry` re-reads the same broken blob) had no test at all —
+`grep -rn DeadlineExceeded linux/scripts/tests/` returned nothing. Five cases
+now drive the real loop with a log file whose tail carries the flake text and
+assert the argv of EACH attempt: the registry pair survives the first hit, is
+gone from the third on, stays gone, and the LOCAL export plus the caller's own
+args survive with it; a transient push error that is not a cache-import read
+costs nothing. Two things the characterisation had to learn are worth keeping:
+with a log file set, the impl pipes `run` into `tee` and the left side of a pipe
+is a SUBSHELL, so an in-process attempt counter never leaves it — the argv log
+is the only honest record; and `cross_stage_log_redirect` is defined by the
+subject, so a stub for it must be applied AFTER the source, which is what the
+shared `restubs.sh` is for. The extraction F1 wanted next is now unblocked.
+
 ## 2026-09-07 — R1: the residue four closed entries left, three fixed and one re-measured
 
 **A runtime-side `ldd` walk over the shipped LLVM prefix.** The sdk stage's

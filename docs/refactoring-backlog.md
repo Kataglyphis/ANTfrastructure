@@ -891,10 +891,19 @@ non-failing path. Write the characterisation first — fake `log_file`, assert t
 counter reaches 2 and that the registry cache pairs vanish from `build_cmd` while
 local cache args survive — then extract. Re-checked 2026-09-05: still uncovered.
 
-**A harness trap worth a note before the next suite is written.** `t_assert_ok` and
+**CLOSED 2026-09-07 — the harness now catches that trap.** `t_assert_ok` and
 `t_assert_fails` take a COMMAND and no message, so `t_assert_fails test -f X "msg"`
-runs `test -f X msg` — it fails for the wrong reason and passes vacuously. Four of
-those were written and caught this wave. Nothing in the harness catches it today.
+ran `test -f X msg`, which exits **2** — "not zero", i.e. the failure the case
+asked for, for entirely the wrong reason. Four of those were written and caught by
+review in one wave. Both assertions now share `_t_assert_run`, which fails the case
+BY NAME when the command is `test`/`[` and the rc is 2. The guard is deliberately
+narrow: a real command that exits 2 is still judged on its exit code, and a
+mutation widening it to every rc 2 is caught. `test-harness-guards.sh` is the suite
+(12 assertions), and the whole corpus was re-run against the stricter harness —
+no existing case relied on the old behaviour.
+
+**`_chain_stage_disk_guard`'s two eviction loops CLOSED 2026-09-07** with DISK3:
+one `_chain_evict_slugs` owner, cc 30 → 21.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
