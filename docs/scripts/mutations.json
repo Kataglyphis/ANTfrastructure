@@ -7021,5 +7021,69 @@
     "replace": "    if not dry_run:",
     "test": "bash linux/scripts/tests/test-version-snapshot.sh",
     "why": "rewriting every scanned file on every --write churns files nothing changed in, and the shared owner is now the only place that decision lives"
+  },
+  {
+    "id": "lib.cgroup-remaining-clamps-at-zero",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "    [ \"${remaining}\" -lt 0 ] 2>/dev/null && remaining=0",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "usage above the limit makes remaining NEGATIVE, and a negative reads as the smallest cap in _mem_available_mb's min -- every job throttled by a number that is not memory"
+  },
+  {
+    "id": "lib.cgroup-unlimited-is-unknown",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "  { [ \"${max}\" -gt 0 ] && [ \"${max}\" -lt 9223372036854771712 ]; } 2>/dev/null || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "cgroup v1 spells 'no limit' as 0 or a kernel-huge number; taking either as a real limit caps the build at 0 MB or hands the caller a nonsense ceiling"
+  },
+  {
+    "id": "lib.cgroup-v1-is-reached",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "  _cgroup_remaining_mb_from \"${root}/memory/memory.limit_in_bytes\" \\\n                            \"${root}/memory/memory.usage_in_bytes\" && return 0\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "a cgroup v1 host would silently report no limit at all, which is how a memory-capped builder ends up choosing jobs for a machine it is not on"
+  },
+  {
+    "id": "handoff.manifest-build-region-is-guarded",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "    _manifest_build_and_smoke\n  else",
+    "replace": "    :\n  else",
+    "test": "bash linux/scripts/tests/test-manifest-wrapper-gate.sh",
+    "why": "unguarded there is nothing left to build the wrappers or smoke them, and the index would go live over whatever happened to be tagged"
+  },
+  {
+    "id": "handoff.manifest-build-phases-stay-inside",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  if [ \"${BUILD_IMAGES}\" -eq 1 ]; then\n    log \"Building ${ARTIFACT_BUILD_MODE}",
+    "replace": "  ensure_foreign_binfmt \"${TARGET_ARCHES}\"\n  if [ \"${BUILD_IMAGES}\" -eq 1 ]; then\n    log \"Building ${ARTIFACT_BUILD_MODE}",
+    "test": "bash linux/scripts/tests/test-manifest-wrapper-gate.sh",
+    "why": "a build-only phase that drifts back into main() runs on --manifest-only and --repair, which exist precisely NOT to build"
+  },
+  {
+    "id": "probe.opencv-riscv64-png-fails-early",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "genuinely acceptable.\" >&2\n        exit 1",
+    "replace": "genuinely acceptable.\" >&2\n        _otarp_opts+=(\"-DWITH_PNG=OFF\")",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "a PNG-less riscv64 OpenCV builds green and only surfaces as a red runtime smoke a stage later -- that fail-late footgun cost iree-0714a..e, which is why this exits instead of degrading"
+  },
+  {
+    "id": "probe.opencv-riscv64-freetype-says-what-is-missing",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "        echo \"[WARN] riscv64 OpenCV: static target harfbuzz not staged",
+    "replace": "        echo \"[WARN] riscv64 OpenCV: freetype off (",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "the WARN names each of the four files and whether it is there; without that the operator cannot tell a missing .a from a missing .pc, and the freetype module just silently is not there"
+  },
+  {
+    "id": "probe.opencv-riscv64-seams-are-wired",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "            _ota_riscv64_freetype _ota_cmake_opts\n            _ota_riscv64_png _ota_cmake_opts\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "two extracted helpers nothing calls are two functions' worth of riscv64 knowledge that stops reaching the cmake line -- the dead-function gate is what catches an extraction that forgot its call site"
   }
 ]

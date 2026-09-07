@@ -69,4 +69,51 @@ _div_out="$(bash -c '
 t_assert_eq "24;8;24" "${_div_out}" \
   "divisor must divide usable RAM (3x concurrency -> 1/3 jobs each; invalid divisor -> 1)"
 
+# ── _cgroup_mem_remaining_mb: one owner for two cgroup generations (F1) ──────
+# The two halves were the same four tests twice over. CGROUP_ROOT lets the suite
+# stand a fixture in for absolute kernel paths, which is what made this
+# untestable before. docs/build-parallelism-memory-tuning.md
+_cg() {
+  local root; root="$(mktemp -d)"
+  mkdir -p "${root}/memory"
+  [ -z "${1:-}" ] || printf '%s\n' "$1" > "${root}/memory.max"
+  [ -z "${2:-}" ] || printf '%s\n' "$2" > "${root}/memory.current"
+  [ -z "${3:-}" ] || printf '%s\n' "$3" > "${root}/memory/memory.limit_in_bytes"
+  [ -z "${4:-}" ] || printf '%s\n' "$4" > "${root}/memory/memory.usage_in_bytes"
+  CGROUP_ROOT="${root}" _cgroup_mem_remaining_mb
+  rm -rf "${root}"
+}
+_GB=1073741824
+
+t_case "cgroup v2: remaining is limit minus current, in MB"
+t_assert_eq "1024" "$(_cg $(( 2 * _GB )) $(( 1 * _GB )))"
+t_assert_eq "2048" "$(_cg $(( 2 * _GB )) 0)"
+
+t_case "cgroup v1 answers when v2 is absent, with the SAME arithmetic"
+t_assert_eq "1024" "$(_cg '' '' $(( 2 * _GB )) $(( 1 * _GB )))" \
+  "two generations that disagree about the maths are two functions wearing one name"
+
+t_case "an unreadable current falls back to the whole limit, not to unknown"
+t_assert_eq "2048" "$(_cg $(( 2 * _GB )))"
+t_assert_eq "2048" "$(_cg '' '' $(( 2 * _GB )))"
+
+t_case "usage above the limit clamps at 0 instead of going negative"
+t_assert_eq "0" "$(_cg $(( 1 * _GB )) $(( 2 * _GB )))" \
+  "a negative remaining would read as the SMALLEST cap and throttle every job"
+
+t_case "each generation's spelling of 'no limit' yields unknown, not a number"
+t_assert_eq "" "$(_cg max 12345)" "cgroup v2 writes the literal max"
+t_assert_eq "" "$(_cg '' '' 9223372036854771712 0)" "cgroup v1 writes a huge number"
+t_assert_eq "" "$(_cg '' '' 0 0)" "and 0 means unlimited there too"
+t_assert_eq "" "$(_cg)" "no cgroup files at all is unknown"
+
+t_case "garbage in a limit file is unknown, and never reaches the arithmetic"
+# Unguarded, `$(( max - current ))` on a non-number aborts the caller under errexit.
+t_assert_eq "" "$(_cg 'not-a-number' 5)"
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/parallelism.sh"
+  d="$(mktemp -d)"; printf "garbage\n" > "${d}/memory.max"
+  CGROUP_ROOT="${d}" _cgroup_mem_remaining_mb >/dev/null
+  rm -rf "${d}"'
+
 t_summary

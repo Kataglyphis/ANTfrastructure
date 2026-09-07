@@ -229,6 +229,20 @@ _gst_rs_cargo_config() {
   fi
 }
 
+# One exclusion, said once: log the reason, drop the workspace member when the
+# plugin has one, and exclude its crates from the cargo build. Five sites below
+# were this same triple with a different predicate in front of it.
+# $1=reason  $2=workspace member ("" when there is none)  $3=family  $4..=fallback crates
+_gst_rs_exclude() {
+  local why="$1" member="$2" family="$3"
+  shift 3
+  echo "${why}"
+  if [ -n "${member}" ]; then
+    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "${member}"
+  fi
+  _gst_rs_exclude_family "${family}" "$@"
+}
+
 _gst_rs_build_plugins() {
   local arch_for_excludes=""
   local arch_probes=""
@@ -257,35 +271,29 @@ _gst_rs_build_plugins() {
 
   arch_probes="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
-    echo "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build"
-    _gst_rs_exclude_family csound gst-plugin-csound csound csound-sys
+    _gst_rs_exclude "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build" \
+      "" csound gst-plugin-csound csound csound-sys
   fi
 
   if [ "${build_all_rs}" != "true" ] && echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
-    echo "skia disabled via Meson args: excluding skia-related workspace crates from cargo build"
-    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/skia"
-    _gst_rs_exclude_family skia gst-plugin-skia gst-plugin-skia-sys
+    _gst_rs_exclude "skia disabled via Meson args: excluding skia-related workspace crates from cargo build" \
+      video/skia skia gst-plugin-skia gst-plugin-skia-sys
   fi
 
   if [ "${build_all_rs}" != "true" ] && [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
-    echo "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build"
-    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "audio/whisper"
-    _gst_rs_exclude_family whisper gst-plugin-whisper
+    _gst_rs_exclude "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build" \
+      audio/whisper whisper gst-plugin-whisper
   fi
 
   if [ "${build_all_rs}" != "true" ] && { cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; }; then
     echo "Cross/RISC-V build detected: devtools is disabled, gstreamer-validate-1.0.pc not available"
-    echo "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep"
-    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "utils/validate"
-
-    _gst_rs_exclude_family validate gst-plugin-validate
+    _gst_rs_exclude "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep" \
+      utils/validate validate gst-plugin-validate
   fi
 
   if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
-    echo "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin"
-    prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "video/dav1d"
-
-    _gst_rs_exclude_family dav1d gst-plugin-dav1d
+    _gst_rs_exclude "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin" \
+      video/dav1d dav1d gst-plugin-dav1d
   fi
 
   if ! "${build_cmd[@]}"; then
