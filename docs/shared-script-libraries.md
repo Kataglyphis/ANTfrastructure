@@ -157,3 +157,47 @@ Both `UV_*` scripts run with the project root as cwd — the same contract as
 **A missing SVG is fatal on purpose.** An empty diagram set means the generating
 build did not run, and shipping docs with holes in them is worse than failing
 here.
+
+## `dartdoc-build.sh` — theme and enrich a `dart doc` site
+
+The Dart/Flutter counterpart of `docs-build.sh`. `dart doc` has no theme and no
+navigation hook, so the library works the only two seams it leaves: the
+generated `doc/api/static-assets/styles.css`, and the emitted HTML.
+
+**The theme sheet is generated, never hand-written.** `DARTDOC_BUILD_THEME_CSS`
+points at `style/dartdoc.css`, which DocumANTation's `style/generate_style.py`
+renders from `style/brand.json` — the same single source of truth the LaTeX,
+Pandoc and Sphinx consumers read. That file exists because the hand-written
+predecessor had drifted onto a Tailwind slate/sky palette (`#0284c7` links,
+`#22c55e` hover) while the brand's link colour was `#0e7490`, so one site in the
+family rendered a different brand from every other. Its two marker lines are
+load-bearing: `dartdoc_build_apply_theme` truncates a previous append at the
+first line, so rebuilding cannot stack copies of the sheet.
+
+`dartdoc-guides.py` next to it renders the configured Markdown into dartdoc's
+own `index.html` shell, so a guide page carries the same header, sidebars and
+theme as an API page, and rewrites every relative `*.md` link onto the guide
+page rendered from that file.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `DARTDOC_BUILD_PROJECT_ROOT` | project root | cwd |
+| `DARTDOC_BUILD_DOC_ROOT` | directory `dart doc` writes into | `<root>/doc` |
+| `DARTDOC_BUILD_CLEAN_CMD` | array run before generation; unset skips | — |
+| `DARTDOC_BUILD_DOC_CMD` | array that generates the site | `dart doc` |
+| `DARTDOC_BUILD_THEME_CSS` | generated brand sheet appended to dartdoc's stylesheet | — (required) |
+| `DARTDOC_BUILD_IMAGES_DIR` | directory copied to `doc/api/images`; empty skips | — |
+| `DARTDOC_BUILD_GUIDES` | array of `<source markdown>\|<slug>\|<nav title>` | — |
+| `DARTDOC_BUILD_FOOTER_LINKS` | array of `<label>\|<url>` for the page footer | — |
+| `DARTDOC_BUILD_FOOTER_TITLE` | bold name in front of those links | — |
+| `DARTDOC_BUILD_TITLE_SUFFIX` | appended to each guide page's `<title>` | — |
+| `DARTDOC_BUILD_VENV_DIR` | venv for the renderer | `${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv` |
+| `DARTDOC_BUILD_REQUIREMENTS` | its requirements file | `lib/dartdoc-guides.requirements.txt` |
+| `DARTDOC_BUILD_PYTHON` | interpreter for the renderer | the venv's, created on demand |
+
+**A configured input that is missing is fatal.** An absent
+`DARTDOC_BUILD_IMAGES_DIR`, guide source or theme sheet fails the build instead
+of being skipped: a docs site quietly missing its theme and half its pages is
+worse than a build that stops and says so. The same rule governs the CI
+ownership fix — the container writes `doc/` as root over a bind mount, and a
+`chown` that fails leaves a tree the host user cannot rebuild.

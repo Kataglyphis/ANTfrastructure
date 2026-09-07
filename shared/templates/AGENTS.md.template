@@ -56,7 +56,46 @@ repo owns them:
 - Workflows resolve ContainerHub's composite actions at `@main`, so an upstream
   change a workflow depends on must be pushed **before** the consumer change.
 
-## 3. Pitfalls specific to this project
+## 3. Critical invariant: submodule pins
+
+<!-- Kept here rather than linked away with the rest of section 2 for two
+     reasons: it is the invariant that makes every command in section 4
+     meaningful (they are only supported against the recorded pins), and the
+     coupling list below is genuinely project-specific - nobody upstream can
+     write it for you. -->
+
+Builds are only supported against the **recorded submodule gitlinks** — the commits
+CI builds green. `git submodule update --checkout --recursive` restores every pin. If
+a drifted submodule is what you actually want, update the gitlink **and** fix the
+fallout in the same change.
+
+<!-- FILL IN: the couplings a pin bump breaks in THIS repo. Shape:
+
+       - `third_party/<X>` pins its own <dependency> (`<var>` in <file>); this
+         repo declares `<var>` first and wins, so it must stay >= the pinned one
+         or configure fails with <the exact error you get>.
+
+     If there are none yet, say so — an empty list that was checked is worth
+     more than a missing section. -->
+
+Drift is guarded by ContainerHub's shared suite. It asserts that every configured
+submodule is checked out at all, sits at its recorded commit, and is pinned to a
+commit a fresh clone could restore — a pin that is on no remote branch works only on
+the machine that made it:
+
+```yaml
+- uses: ./third_party/ContainerHub/.github/actions/run-pester-suite
+  with:
+    path: third_party/ContainerHub/shared/windows/tests/Submodule.Pins.Tests.ps1
+```
+
+The suite takes the repo root as a parameter, falling back to
+`CONTAINERHUB_PIN_CHECK_REPO_ROOT` and then `GITHUB_WORKSPACE`, and the checkout that
+runs it needs `submodules: true` — without it the suite FAILS rather than passing on
+an empty tree, which is the point. Run it after any pin bump. It does **not** check
+the version couplings above; those are on you.
+
+## 4. Pitfalls specific to this project
 
 <!-- This is where you write things out in full. The test: would this sentence
      be false, or meaningless, in another repo? If so it belongs here.
@@ -75,7 +114,7 @@ repo owns them:
        - why docker cp into a Windows container copies nothing
 -->
 
-## 4. Build, run, test
+## 5. Build, run, test
 
 <!-- The commands. Keep them exact and keep them working; a stale command here
      is worse than no command. Note which are gated (CI opt-in, host-only, GPU). -->
@@ -86,7 +125,7 @@ repo owns them:
 # run
 ```
 
-## 5. Docs owned by this repo
+## 6. Docs owned by this repo
 
 <!-- Where the project's own documentation lives, and the rule that a change to
      user-facing behaviour updates its doc in the same PR. -->

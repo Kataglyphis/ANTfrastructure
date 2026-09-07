@@ -29,6 +29,19 @@ makedef -text eol=lf
 *.cc -text
 *.h -text
 *.cmd -text
+# The five shared config files that shared/config/Sync-SharedConfig.ps1 copies
+# into every consumer repo. Pinned to LF so a -Write run from a Windows host
+# (core.autocrlf=true) cannot hand the canonical copies back as CRLF and set
+# every consumer drifting against bytes that only differ in line endings.
+# Name-only patterns, so they cover the canonical shared/config/ originals and
+# any synced copy at another depth. Deliberately BEFORE the path rules below:
+# windows/scripts/** and windows/downloads/** must keep winning inside the
+# Docker build contexts, where byte content is a layer-cache key.
+.clang-format text eol=lf
+.clang-tidy text eol=lf
+.cmake-format.yaml text eol=lf
+.pre-commit-config.yaml text eol=lf
+gcovr.cfg text eol=lf
 # PATH rules, deliberately last so they win: everything under these two trees is
 # COPY'd or bind-mounted into a Windows image, so its bytes are a layer-cache
 # key REGARDLESS of extension. The per-extension rules above miss whatever

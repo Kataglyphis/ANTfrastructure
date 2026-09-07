@@ -28,6 +28,31 @@ _dir() {
   printf '%s' "${d}"
 }
 
+# _abs <dir>: the path the gate itself will print, so an assertion compares the
+# same spelling (mktemp roots are symlinked on some hosts).
+_abs() { ( cd "$1" && pwd ); }
+
+# _from <dir> <args...>: run the gate WITH <dir> as the working directory. That
+# is how a consumer calls it -- third_party/ContainerHub/linux/scripts/lint-secrets.sh .
+# from its own root -- and a relative argument only means the right tree if the
+# gate resolves it before it cd's into the hub checkout.
+_from() { local d="$1"; shift; ( cd "${d}" && bash "${GATE}" "$@" ); }
+
+# _own_config <dir>: give <dir> a .gitleaks.toml of its OWN. It does not extend
+# the default rule set and its single rule matches nothing, so under this config
+# the planted credential is not a finding -- a run that still reports the leak is
+# a run that read the hub's config instead of the scanned tree's.
+_own_config() {
+  cat > "$1/.gitleaks.toml" <<'TOML'
+title = "consumer fixture"
+
+[[rules]]
+id = "fixture-matches-nothing"
+description = "proves the SCANNED tree's config is the one in force"
+regex = 'zzzz-no-such-token-zzzz'
+TOML
+}
+
 t_case "a clean directory passes"
 clean="$(_dir clean)"
 t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" \
@@ -59,9 +84,57 @@ t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" "the leaky sibling directory
 t_assert_eq "0" "$(t_out bash "${GATE}" "${clean}" | grep -c -F -e "$(basename "${leaky}")")"
 
 t_case "the pinned gitleaks version is the one it reports running"
-_pin="$(sed -n 's/^GITLEAKS_PIN="\([^"]*\)".*/\1/p' "${GATE}")"
+# The pin is read FROM versions.env, exactly as lint-secrets.sh's NOTE for test
+# authors says: the gate holds no literal to grep for (its only GITLEAKS_PIN
+# assignment is indented and interpolated from load_versions_env). Grepping the
+# gate for one yielded an EMPTY ${_pin}, and the assertion below then degenerated
+# into a search for "gitleaks " -- which the banner always prints, so the case
+# passed no matter what version ran. The non-empty guard is what stops that
+# failure mode from returning silently.
+_versions_env="${TESTS_DIR}/../01-core/versions.env"
+_pin="$(sed -n 's/^GITLEAKS_VERSION=//p' "${_versions_env}")"
+t_assert_ok test -n "${_pin}"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "gitleaks ${_pin}" \
   "a scan verdict nobody can reproduce is not a gate"
+
+t_case "a RELATIVE scan root is resolved against the CALLER's cwd, not the hub"
+# The shipped bug: `cd "${REPO_ROOT}"` ran BEFORE SCAN_ROOT="${1:-.}", so the
+# consumer's own `... lint-secrets.sh .` re-anchored on the hub checkout. The hub
+# is clean, so the consumer's leak passed the gate that was supposed to find it.
+rel_leaky="$(_dir leaky)"
+rel_leaky_abs="$(_abs "${rel_leaky}")"
+t_assert_eq "1" "$(t_rc _from "${rel_leaky}" .)" \
+  "'.' must mean the caller's tree; the hub checkout is clean and would pass"
+_rel_out="$(t_out _from "${rel_leaky}" .)"
+t_assert_contains "${_rel_out}" "scan root: ${rel_leaky_abs}" \
+  "the resolved root is printed, so a wrong tree is visible in the log"
+t_assert_contains "${_rel_out}" "deploy.env" "and the consumer's own file is what was graded"
+
+t_case "a relative scan root that does not exist is refused, not silently reinterpreted"
+t_assert_eq "1" "$(t_rc _from "${rel_leaky}" no-such-subdir)"
+t_assert_contains "$(t_out _from "${rel_leaky}" no-such-subdir)" "scan root not found" \
+  "an unresolvable argument must not fall back to scanning the hub"
+
+t_case "the scanned tree's own .gitleaks.toml wins over the hub's"
+# A consumer's allowlist entries are written about ITS false positives; the hub's
+# say nothing about them. Grading a consumer tree by the hub config is the same
+# category of error as scanning the wrong tree.
+consumer="$(_dir leaky)"
+_own_config "${consumer}"
+consumer_abs="$(_abs "${consumer}")"
+t_assert_contains "$(t_out bash "${GATE}" "${consumer}")" "config:    ${consumer_abs}/.gitleaks.toml" \
+  "the config actually in force is printed"
+t_assert_eq "0" "$(t_rc bash "${GATE}" "${consumer}")" \
+  "graded by ITS rules the planted credential is no finding; a red here means the hub config was used"
+
+t_case "a tree WITHOUT a .gitleaks.toml is graded by the hub's"
+# The fallback is what grades every consumer that ships no config of its own;
+# losing it leaves those trees ungraded.
+_hub_root="$(_abs "${TESTS_DIR}/../../..")"
+t_assert_contains "$(t_out bash "${GATE}" "${leaky}")" "config:    ${_hub_root}/.gitleaks.toml" \
+  "no config in the scanned tree means the hub's, by absolute path"
+t_assert_eq "1" "$(t_rc bash "${GATE}" "${leaky}")" \
+  "the same leaky tree, minus its own permissive config, is a finding"
 
 # No case scans the real tree: the whole-repo run is the `secret-scan` preflight
 # slug's own job, and paying for it again here would cost this suite minutes.

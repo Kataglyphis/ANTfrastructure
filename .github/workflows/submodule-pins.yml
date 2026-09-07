@@ -1,0 +1,68 @@
+# .github/workflows/submodule-pins.yml
+# The hub gating ITSELF on the invariant it hands the consumers.
+#
+# ContainerHub has shipped the submodule-pin guards (WindowsRepoHygiene.Common)
+# since 2026-08-07 and the shared suite that drives them
+# (shared/windows/tests/Submodule.Pins.Tests.ps1) since 2026-09-07 - and until
+# this workflow existed, nothing checked this repository's OWN
+# third_party/DocumANTation pin. A gate published for other repos and not run
+# here is a gate nobody has tested against a real bump.
+#
+# Runner is windows-latest, not one of the ubuntu-26.04 runners the rest of the
+# Linux jobs use, because .github/actions/run-pester-suite installs Pester 3.4.0
+# by default - the dialect BeschleunigerBallett's Windows lane pins - and 3.4.0
+# is a Windows PowerShell-era module. The suite itself is version-agnostic (it
+# asserts with `throw`, not `Should`, and was verified under both 3.4.0 and
+# 6.1.0), so this can move to a cheaper runner the day the action can be told a
+# Core-compatible version.
+name: Submodule Pins
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.gitmodules'
+      - 'third_party/**'
+      - 'shared/windows/tests/Submodule.Pins.Tests.ps1'
+      - 'windows/scripts/modules/WindowsRepoHygiene.Common.psm1'
+      - '.github/workflows/submodule-pins.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.gitmodules'
+      - 'third_party/**'
+      - 'shared/windows/tests/Submodule.Pins.Tests.ps1'
+      - 'windows/scripts/modules/WindowsRepoHygiene.Common.psm1'
+      - '.github/workflows/submodule-pins.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: submodule-pins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pins:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      # The suite takes the repo root as a parameter and the composite action can
+      # only pass a path, so the root comes through the environment. It would
+      # fall back to GITHUB_WORKSPACE on its own; naming it here keeps the wiring
+      # visible instead of implied.
+      CONTAINERHUB_PIN_CHECK_REPO_ROOT: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Without this the submodule is never checked out, and the suite fails
+          # on its own vacuity guard rather than passing on an empty tree.
+          # Top-level only (the drift guard is non-recursive for the same
+          # reason) and at the default depth, which is what makes the
+          # reachability check exercise its shallow-clone escalation.
+          submodules: true
+
+      - name: Submodule pins sit at their recorded, restorable commits
+        uses: ./.github/actions/run-pester-suite
+        with:
+          path: shared/windows/tests/Submodule.Pins.Tests.ps1

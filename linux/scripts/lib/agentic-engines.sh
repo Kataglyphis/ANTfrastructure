@@ -18,6 +18,161 @@ _AGENTIC_ENGINES_SH_LOADED=1
 # trailing newlines stripped (command substitution strips those too).
 _AGENTIC_JQ_PRELUDE='def v: if . == null then "null" else tostring end | sub("\n+$"; "");'
 
+# ── Role-prompt composition (Bash twin of the PS module's ───────────────
+#    New-AgenticComposedPrompt / Write-AgenticOpenCodeAgentFile)
+# The two silent gaps it closes, and why it runs for every engine and both
+# roles: docs/agentic-loop-build-matrix.md#role-prompt-composition
+
+# <hub>/linux/scripts/lib -> <hub>
+_agentic_hub_root() {
+    (cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+}
+
+# The shared, engine-agnostic ROLE prompt.  NOT the same artefact as
+# shared/agentic-loop/prompts/<role>.md (the short task message).
+agentic_system_prompt_path() {
+    echo "$(_agentic_hub_root)/shared/agentic-loop/system-prompts/${1}.md"
+}
+
+# PowerShell's String.TrimEnd() over a file: drop trailing blank lines.
+_agentic_trim_trailing_blanks() {
+    awk '{ lines[NR] = $0 }
+         END { last = NR
+               while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+               for (i = 1; i <= last; i++) print lines[i] }' "$1"
+}
+
+# PowerShell's String.Trim(): drop leading AND trailing blank lines.
+_agentic_trim_blanks() {
+    _agentic_trim_trailing_blanks "$1" |
+        awk 'NF || started { started = 1; print }'
+}
+
+# Write <repo_root>/.opencode/agents/<role>.md from an already composed body.
+# Idempotent (unchanged content is not rewritten) and deliberately runs under
+# DRY_RUN too: the file is a derived artefact, not repo content, and a dry run
+# whose whole point is checking the prompt wiring has to produce it.
+write_opencode_agent_file() {
+    local role="$1" repo_root="$2" body_file="$3" source_label="$4"
+    local out="${repo_root}/.opencode/agents/${role}.md"
+    mkdir -p "$(dirname "$out")"
+    local tmp="${out}.tmp.$$"
+    {
+        cat <<EOF
+<!--
+GENERATED FILE - DO NOT EDIT.
+
+Written on every agentic-loop start by write_opencode_agent_file
+(ContainerHub linux/scripts/lib/agentic-engines.sh).
+opencode takes no system-prompt file on its command line, so this is the
+only way \`opencode run --agent <role>\` can be given the shared role prompt.
+
+Composed from: shared/agentic-loop/system-prompts/${role}.md + ${source_label}
+Change the shared prompt or the project overlay - edits here are lost on
+the next run, and a committed copy is how the prompts forked before.
+-->
+
+EOF
+        _agentic_trim_trailing_blanks "$body_file"
+    } > "$tmp"
+
+    if [[ -f "$out" ]] && cmp -s "$tmp" "$out"; then
+        rm -f "$tmp"
+        log "opencode agent prompt up to date: $out"
+        return 0
+    fi
+    mv "$tmp" "$out"
+    log "Generated opencode agent prompt: $out ($source_label)"
+    if [[ -f "${repo_root}/.gitignore" ]] \
+       && ! grep -qE '^[[:space:]]*\.opencode/agents/' "${repo_root}/.gitignore"; then
+        log "$out is generated but .gitignore does not exclude '.opencode/agents/' — add it, or the copy will be committed and fork again." "WARN"
+    fi
+}
+
+# Resolve one role's claude prompt file AND emit its .opencode/agents/<role>.md.
+# Sets _AGENTIC_RESOLVED_PROMPT_FILE (a global, because log() writes to stdout
+# and would poison a command substitution).  Three branches, one invariant: the
+# opencode agent file is always written, so the two engines can never be told
+# different things.
+_AGENTIC_RESOLVED_PROMPT_FILE=""
+resolve_role_prompt_file() {
+    local role="$1" override="$2" overlay="$3" repo_root="$4"
+    _AGENTIC_RESOLVED_PROMPT_FILE=""
+
+    if [[ -n "$overlay" && ! -f "$overlay" ]]; then
+        log "Prompt overlay not found: $overlay (using the shared role prompt alone)" "WARN"
+        overlay=""
+    fi
+
+    local shared
+    shared="$(agentic_system_prompt_path "$role")"
+
+    if [[ -n "$overlay" ]]; then
+        if [[ -n "$override" ]]; then
+            log "Both ${role}PromptFile and ${role}PromptOverlayFile set; the overlay wins." "WARN"
+        fi
+        if [[ ! -f "$shared" ]]; then
+            log "Shared system prompt missing: $shared" "FATAL"
+            return 1
+        fi
+        local composed="${TMPDIR:-/tmp}/agentic-prompt-${role}-composed.md"
+        {
+            _agentic_trim_trailing_blanks "$shared"
+            printf '\n---\n\n<!-- project overlay: %s -->\n\n' "$overlay"
+            _agentic_trim_blanks "$overlay"
+        } > "$composed"
+        log "Composed $role prompt: shared default + $(basename "$overlay")"
+        write_opencode_agent_file "$role" "$repo_root" "$composed" "$(basename "$overlay")"
+        _AGENTIC_RESOLVED_PROMPT_FILE="$composed"
+        return 0
+    fi
+
+    if [[ -n "$override" ]]; then
+        if [[ -f "$override" ]]; then
+            write_opencode_agent_file "$role" "$repo_root" "$override" \
+                "full override $(basename "$override") (migrate it to an overlay)"
+        else
+            log "Prompt file not found: $override (no opencode agent prompt generated for $role)" "WARN"
+        fi
+        _AGENTIC_RESOLVED_PROMPT_FILE="$override"
+        return 0
+    fi
+
+    # Neither shape configured. This branch is why the call is unconditional:
+    # a consumer with no prompt config at all used to hand opencode nothing,
+    # which is the vacuum a hand-written .opencode/agents/<role>.md filled.
+    if [[ -f "$shared" ]]; then
+        write_opencode_agent_file "$role" "$repo_root" "$shared" "no project overlay configured"
+    else
+        log "No prompt configured for $role and the shared role prompt is unavailable ($shared); opencode will run without a role prompt." "WARN"
+    fi
+    return 0
+}
+
+# A prompt/overlay path is stored repo-relative in the config; anchor a relative
+# one at the repo root.  An empty value stays empty, an absolute one is untouched.
+_agentic_repo_path() {
+    local path="$1" repo_root="$2"
+    if [[ -n "$path" && "$path" != /* ]]; then
+        printf '%s/%s\n' "$repo_root" "$path"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
+# Composes BOTH role prompts from the globals load_engine_config just read and
+# writes each resolved path back over its global.  Kept out of the config reader
+# because it WRITES files (the composed prompt and .opencode/agents/<role>.md).
+_agentic_compose_role_prompts() {
+    local repo_root="$1"
+    resolve_role_prompt_file planner "$CLAUDE_PLANNER_PROMPT_FILE" \
+        "$AGENTIC_PLANNER_OVERLAY_FILE" "$repo_root" || return 1
+    CLAUDE_PLANNER_PROMPT_FILE="$_AGENTIC_RESOLVED_PROMPT_FILE"
+    resolve_role_prompt_file executor "$CLAUDE_EXECUTOR_PROMPT_FILE" \
+        "$AGENTIC_EXECUTOR_OVERLAY_FILE" "$repo_root" || return 1
+    CLAUDE_EXECUTOR_PROMPT_FILE="$_AGENTIC_RESOLVED_PROMPT_FILE"
+}
+
 # Reads engine selection + per-engine model/prompt settings from the config
 # JSON.  Sets globals consumed by invoke_agent / invoke_claude.
 # Precedence: env override > .engines.<engine>.* > legacy .models.*
@@ -42,6 +197,8 @@ load_engine_config() {
         @sh "_c[planner_fallback]=\(.engines.claude.plannerFallbackModel // "" | v)",
         @sh "_c[planner_prompt]=\(.engines.claude.plannerPromptFile // "" | v)",
         @sh "_c[executor_prompt]=\(.engines.claude.executorPromptFile // "" | v)",
+        @sh "_c[planner_overlay]=\(.promptOverlays.plannerPromptOverlayFile // .engines[$e].plannerPromptOverlayFile // ([.engines[]? | .plannerPromptOverlayFile? | select(. != null)] | first) // "" | v)",
+        @sh "_c[executor_overlay]=\(.promptOverlays.executorPromptOverlayFile // .engines[$e].executorPromptOverlayFile // ([.engines[]? | .executorPromptOverlayFile? | select(. != null)] | first) // "" | v)",
         @sh "_c[permission_mode]=\(.engines.claude.permissionMode // "bypassPermissions" | v)",
         @sh "_c[planner_allowed_tools]=\(.engines.claude.plannerAllowedTools // "" | v)",
         @sh "_c[extra_args]=\(.engines.claude.extraArgs // "" | v)",
@@ -66,20 +223,20 @@ load_engine_config() {
     fi
 
     CLAUDE_PLANNER_FALLBACK_MODEL="${_c[planner_fallback]-}"
-    CLAUDE_PLANNER_PROMPT_FILE="${_c[planner_prompt]-}"
-    CLAUDE_EXECUTOR_PROMPT_FILE="${_c[executor_prompt]-}"
+    CLAUDE_PLANNER_PROMPT_FILE="$(_agentic_repo_path "${_c[planner_prompt]-}" "$repo_root")"
+    CLAUDE_EXECUTOR_PROMPT_FILE="$(_agentic_repo_path "${_c[executor_prompt]-}" "$repo_root")"
     CLAUDE_PERMISSION_MODE="${_c[permission_mode]-}"
     CLAUDE_PLANNER_ALLOWED_TOOLS="${_c[planner_allowed_tools]-}"
     CLAUDE_EXTRA_ARGS="${_c[extra_args]-}"
     CLAUDE_STREAM_OUTPUT="${_c[stream_output]-}"
 
-    # Prompt files are stored repo-relative in the config
-    if [[ -n "$CLAUDE_PLANNER_PROMPT_FILE" && "$CLAUDE_PLANNER_PROMPT_FILE" != /* ]]; then
-        CLAUDE_PLANNER_PROMPT_FILE="${repo_root}/${CLAUDE_PLANNER_PROMPT_FILE}"
-    fi
-    if [[ -n "$CLAUDE_EXECUTOR_PROMPT_FILE" && "$CLAUDE_EXECUTOR_PROMPT_FILE" != /* ]]; then
-        CLAUDE_EXECUTOR_PROMPT_FILE="${repo_root}/${CLAUDE_EXECUTOR_PROMPT_FILE}"
-    fi
+    AGENTIC_PLANNER_OVERLAY_FILE="$(_agentic_repo_path "${_c[planner_overlay]-}" "$repo_root")"
+    AGENTIC_EXECUTOR_OVERLAY_FILE="$(_agentic_repo_path "${_c[executor_overlay]-}" "$repo_root")"
+
+    # Runs for EVERY engine, not just claude: the composer's second output is
+    # <repo_root>/.opencode/agents/<role>.md, the only channel opencode has for
+    # a role prompt.  docs/agentic-loop-build-matrix.md#role-prompt-composition
+    _agentic_compose_role_prompts "$repo_root" || return 1
 
     AGENT_TIMEOUT="${_c[timeout]-}"
     AGENT_PLANNER_TIMEOUT="${_c[planner_timeout]-}"
