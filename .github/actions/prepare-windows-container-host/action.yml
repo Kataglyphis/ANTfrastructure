@@ -25,7 +25,12 @@ description: >-
   model all of it. The shared part is the prologue; that is what this is.
 
   Consumers: BeschleunigerBallett, OxidANT,
-  AccelerANTgine, OmniAccelerANT.
+  AccelerANTgine, OmniAccelerANT, and this repo's own
+  python-ci-windows.yml. That last one was the fifth lane and it kept its
+  hand-rolled copy until 2026-09-06 - seven steps that re-spelled these,
+  including the same pinned checkout SHA - while its Linux twin had called
+  prepare-linux-ci-host from the day it was written. Two inputs exist because of
+  it: `submodules`, and `measure-data-root`.
 
 inputs:
   image:
@@ -51,6 +56,20 @@ inputs:
     description: 'Checkout depth. 0 = full history (needed if the build derives a version from git).'
     required: false
     default: '1'
+  submodules:
+    description: >-
+      actions/checkout submodules: 'recursive', 'true' or 'false'. Reaches the
+      checkout only when short-path-target is EMPTY - with a short-path clone the
+      checkout deliberately takes none (see below) and this then only decides
+      whether that clone updates them at all.
+
+      Default 'true' is the value this action passed before the input existed,
+      so no caller changes behaviour by upgrading. A lane WITHOUT a short-path
+      clone almost certainly wants 'recursive': 'true' stops at the first level,
+      and a second-level submodule missing from the build tree surfaces much
+      later as a missing header rather than as a checkout error.
+    required: false
+    default: 'true'
   short-path-target:
     description: >-
       Clone the full tree with submodules here, in MSYS form (e.g. /d/ws). This
@@ -88,6 +107,20 @@ inputs:
     description: 'Run cleanup-disk-space. The build and toolchain still live on C:.'
     required: false
     default: 'true'
+  measure-data-root:
+    description: >-
+      Add a third probe to the disk report after the pull: the size of the
+      data-root ON DISK. Off by default because it walks every layer file the
+      import just wrote (~54 GB for winamd64), which costs the lane roughly a
+      minute it does not otherwise spend.
+
+      Turn it on where that evidence is worth the minute. The other two signals
+      are only suggestive on their own: cleanup-disk-space frees C: in the same
+      job, so free space alone cannot say WHERE the image went, and `docker
+      system df` reports what the daemon believes rather than what is on the
+      disk. This probe is the one that answers it.
+    required: false
+    default: 'false'
 
 outputs:
   data-root:
@@ -111,13 +144,17 @@ runs:
 
     # submodules: false when a short-path clone follows, because that clone is
     # what brings the tree in at a length MAX_PATH tolerates. Taking them twice
-    # would just reproduce the failure this avoids.
+    # would just reproduce the failure this avoids. With no short-path clone the
+    # checkout is the ONLY thing that fetches them, and then `submodules` says
+    # how deep - which is why it is an input rather than the bare
+    # `short-path-target == ''` this used to be: that expression can only ever
+    # produce 'true', i.e. first level only.
     - name: Checkout
       if: ${{ inputs.checkout == 'true' }}
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: ${{ inputs.fetch-depth }}
-        submodules: ${{ inputs.short-path-target == '' }}
+        submodules: ${{ inputs.short-path-target == '' && inputs.submodules || 'false' }}
 
     - name: Clone full tree with submodules into a short path
       if: ${{ inputs.short-path-target != '' }}
@@ -126,6 +163,10 @@ runs:
         target: ${{ inputs.short-path-target }}
         token: ${{ inputs.token || github.token }}
         exclude-submodules: ${{ inputs.exclude-submodules }}
+        # 'false' is the only value that means "no submodules" here; 'true' and
+        # 'recursive' both land on `submodule update --init --recursive`, the
+        # single mode that clone has.
+        submodules: ${{ inputs.submodules != 'false' }}
 
     # Before the pull, always: moving the data-root afterwards would hide the
     # image that was just fetched.
@@ -173,6 +214,35 @@ runs:
 
         Write-Host '=== docker system df ==='
         docker system df 2>&1 | ForEach-Object { Write-Host ("  " + $_) }
+
+        # Third, independent signal: the bytes have to be physically under the
+        # data-root. Walking them is what costs the minute, hence the input.
+        if ('${{ inputs.measure-data-root }}' -eq 'true') {
+          $root = '${{ inputs.data-root }}'
+          if (-not $root) {
+            Write-Host '::warning::measure-data-root is on but data-root is empty - the move was skipped, so there is nothing to measure and the image is on the system drive.'
+          } elseif (-not (Test-Path -LiteralPath $root)) {
+            Write-Host "::warning::$root does not exist after the pull."
+          } else {
+            # -ErrorVariable, not a silent swallow: a layer directory the runner
+            # cannot read is printed and warned about below. It must not TERMINATE
+            # a report step that runs under always(), because the failure it is
+            # being run to explain is somewhere else.
+            $walkErrors = @()
+            $bytes = (Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue -ErrorVariable +walkErrors |
+                      Measure-Object -Property Length -Sum).Sum
+            $gb = [math]::Round(($bytes / 1GB), 1)
+            Write-Host "=== size of $root on disk ==="
+            Write-Host "  $root holds $gb GB"
+            if ($walkErrors.Count) {
+              $walkErrors | Select-Object -First 5 | ForEach-Object { Write-Host ("  unreadable: " + $_.Exception.Message) }
+              Write-Host "::warning::$($walkErrors.Count) path(s) under $root could not be read; $gb GB is a floor, not the total."
+            }
+            if ($gb -lt 1) {
+              Write-Host "::warning::$root holds only $gb GB after pulling a multi-GB image - the daemon may be storing elsewhere."
+            }
+          }
+        }
 
     - name: Resolve the workspace path
       id: ws

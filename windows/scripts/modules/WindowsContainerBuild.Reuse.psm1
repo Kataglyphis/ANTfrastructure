@@ -8,7 +8,8 @@
 #     (Invoke-ContainerBuild, Get-ReusableBuildContainer, Copy-Into/From...,
 #      Resolve-DockerExe, Get-ContainerIsolationArgs, ...)
 #   OxidANT/scripts/windows/container/Invoke-StevedoreBuild.ps1
-#     (Resolve-DockerExe)
+#     (Resolve-DockerExe, Get-ContainerIsolationArgs, Remove-BuildContainerSafe;
+#      list re-read 2026-09-06 - it had drifted)
 # Renames/removals here are BREAKING changes for those repos.
 #
 # Building a large project inside a Windows container is dominated by two
@@ -422,6 +423,201 @@ function Remove-BuildContainerSafe {
 
 <#
 .SYNOPSIS
+  Reads one 'docker inspect' format field and classifies the failure if it fails.
+.DESCRIPTION
+  Internal helper for Wait-ContainerExit (deliberately not exported). It exists
+  to keep three outcomes apart that need OPPOSITE reactions: the field was read;
+  the container is GONE (no amount of waiting will ever produce an answer); or
+  the client could not reach the daemon, which is a statement about the CLI and
+  says nothing at all about the container.
+
+  $ErrorActionPreference is pinned to 'Continue' around the call for the reason
+  it is everywhere else in this module: docker's stderr must not turn into a
+  terminating NativeCommandError.
+
+  Value comes ONLY from stdout: docker prints client notices (deprecations,
+  context warnings) on stderr BEFORE the field value, so a first-line pick over
+  a merged stream returns the notice as the "value" - a clean container read as
+  a non-numeric exit code. stderr is kept separately for the classification.
+.OUTPUTS
+  [pscustomobject] with Ok, Value, ExitCode, Error, Missing, DaemonUnreachable.
+#>
+function Get-ContainerInspectField {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$DockerExe,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Format
+    )
+
+    $stdoutLines = [System.Collections.Generic.List[string]]::new()
+    $stderrLines = [System.Collections.Generic.List[string]]::new()
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        # Redirected native stderr arrives as ErrorRecords - split the streams
+        # so a stderr notice can never be mistaken for the field value.
+        & $DockerExe inspect -f $Format $Name 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $stderrLines.Add("$_") }
+            else { $stdoutLines.Add("$_") }
+        }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    $value = ''
+    if ($code -eq 0) {
+        $first = @($stdoutLines | Where-Object { $_.Trim() }) | Select-Object -First 1
+        if ($first) { $value = $first.Trim() }
+    }
+    # Classification prefers stderr; a docker that reports its failure on
+    # stdout instead must still be classifiable, hence the fallback.
+    $errorSource = if ($stderrLines.Count -gt 0) { $stderrLines } else { $stdoutLines }
+    $text = (@($errorSource) -join "`n").Trim()
+
+    return [pscustomobject]@{
+        Ok                = ($code -eq 0)
+        Value             = $value
+        ExitCode          = $code
+        Error             = $text
+        # 'Error: No such object: <name>' (inspect) / 'No such container'.
+        Missing           = (($code -ne 0) -and ($text -match 'No such (object|container)'))
+        # 'error during connect: ... open //./pipe/docker_engine: The system
+        # cannot find the file specified.' - the client, not the container.
+        DaemonUnreachable = (($code -ne 0) -and
+            ($text -match 'error during connect|docker_engine|Cannot connect to the Docker daemon|daemon is not running'))
+    }
+}
+
+<#
+.SYNOPSIS
+  Waits for a named container to stop and returns the exit code it really had.
+.DESCRIPTION
+  The docker CLI intermittently drops its pipe mid-run while the container keeps
+  working, and the client then reports a failure that did not happen - the build
+  is still compiling and usually goes on to succeed. OxidANT's Stevedore lane hit
+  it often enough to change shape for it; its
+  scripts/windows/container/Invoke-StevedoreBuild.ps1 header states the rule
+  this function upstreams verbatim: "The docker CLI intermittently drops its pipe
+  mid-run while the container keeps working, so the container is named (not
+  --rm) and this script waits on the actual container state, not the client exit
+  code." Same host, same family as the 2026-09-01 finding that a RUN step's
+  container exit NOTIFICATION is what goes missing while the work itself
+  completes (CHANGELOG, "the container-start wedge is a lost exit notification").
+
+  Only meaningful for a container whose MAIN process IS the workload
+  ('docker run --name ...' WITHOUT --rm - with --rm the daemon deletes the
+  container the instant it exits and takes the exit code with it). It does NOT
+  apply to 'docker exec' inside the reusable build container: that container's
+  main process is a 7-day ping, so State.Status reads 'running' no matter what
+  the exec'd build did.
+
+  Every failure is named instead of being folded into a bogus exit code. The
+  consumer's loop returned an EMPTY string when inspect failed and its caller
+  reported that as "exit ", which reads like a build failure and is not one. A
+  daemon that cannot be reached DURING the wait is the very fault being
+  tolerated, so it is retried until -TimeoutMinutes and then thrown with its own
+  count; a vanished container, any other inspect failure, and the timeout each
+  throw immediately, saying which case fired.
+.PARAMETER PollSeconds
+  Seconds between state probes (15 in the consumer this came from: a wasted
+  build-minute is cheap, a daemon round trip is not free).
+.PARAMETER TimeoutMinutes
+  Upper bound on the wait - the consumer's loop had none and could hang a lane
+  forever. [double] so sub-minute waits are expressible (the suite uses that);
+  the default is four hours, well past any cold build measured here (the slowest
+  is 474 s).
+.PARAMETER Label
+  Prefix for the messages, so a caller running several phases can tell them
+  apart ('build' / 'test' in the consumer).
+.OUTPUTS
+  [int] - the container's real exit code.
+#>
+function Wait-ContainerExit {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)][string]$DockerExe,
+        [Parameter(Mandatory)][string]$Name,
+        [ValidateRange(1, 3600)][int]$PollSeconds = 15,
+        [ValidateRange(0.01, 10080)][double]$TimeoutMinutes = 240,
+        [string]$Label = 'container'
+    )
+
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    $unreachable = 0
+    $announced = $false
+    $status = ''
+    $stall = "container '$Name' was still running"
+
+    while ($true) {
+        $probe = Get-ContainerInspectField -DockerExe $DockerExe -Name $Name -Format '{{.State.Status}}'
+
+        if ($probe.Ok) {
+            $unreachable = 0
+            $status = $probe.Value
+            # Fail CLOSED: only states documented to carry a final ExitCode end
+            # the wait; an empty or unknown state must not read as "finished".
+            if ($status -in @('exited', 'dead', 'removing', 'created')) { break }
+            if ($status -notin @('running', 'paused', 'restarting')) {
+                throw ("[$Label] docker reported state '$status' for '$Name' - neither a running state " +
+                    "nor a terminal one this function knows (exited, dead, removing, created). Refusing " +
+                    'to read an exit code against a state it does not understand.')
+            }
+            $stall = "container '$Name' was still '$status'"
+            if (-not $announced) {
+                Write-Host ("[$Label] the docker client returned but container '$Name' is still $status - " +
+                    "waiting on the container, not the client (poll ${PollSeconds}s).") -ForegroundColor Yellow
+                $announced = $true
+            }
+        } elseif ($probe.Missing) {
+            throw ("[$Label] container '$Name' no longer exists, so its exit code can never be read. " +
+                "Something removed it while it was being waited on - a concurrent 'docker rm', or --rm on the " +
+                'run that created it (a container that is waited on must be created WITHOUT --rm). ' +
+                "docker said: $($probe.Error)")
+        } elseif ($probe.DaemonUnreachable) {
+            # An unreachable daemon says nothing about the container - keep
+            # asking until the timeout instead of failing a live build.
+            $unreachable++
+            $stall = "the docker daemon was unreachable for $unreachable consecutive probe(s) ($($probe.Error))"
+            if ($unreachable -eq 1) {
+                Write-Warning ("[$Label] docker inspect cannot reach the daemon - retrying until the timeout; " +
+                    "the container is unaffected. docker said: $($probe.Error)")
+            }
+        } else {
+            throw ("[$Label] docker inspect of '$Name' failed (exit $($probe.ExitCode)) for a reason that is " +
+                "neither a missing container nor an unreachable daemon, so the container's state is unknown " +
+                "and waiting longer cannot help: $($probe.Error)")
+        }
+
+        if ((Get-Date) -ge $deadline) {
+            throw ("[$Label] gave up after $TimeoutMinutes minute(s): $stall. Raise -TimeoutMinutes if the " +
+                "build legitimately takes that long, or look at it with: docker logs $Name")
+        }
+        Start-Sleep -Seconds $PollSeconds
+    }
+
+    if ($status -eq 'created') {
+        throw ("[$Label] container '$Name' never started (state 'created'), so its ExitCode is 0 without a " +
+            'single instruction having run. Refusing to report that as a successful build.')
+    }
+
+    $exit = Get-ContainerInspectField -DockerExe $DockerExe -Name $Name -Format '{{.State.ExitCode}}'
+    if (-not $exit.Ok) {
+        throw ("[$Label] container '$Name' reached state '$status' but its exit code could not be read " +
+            "(inspect exit $($exit.ExitCode)): $($exit.Error). Refusing to guess - an unreadable exit code is " +
+            'not a zero one.')
+    }
+    $parsed = 0
+    if (-not [int]::TryParse($exit.Value, [ref]$parsed)) {
+        throw "[$Label] docker reported a non-numeric exit code for '$Name': '$($exit.Value)'."
+    }
+    return $parsed
+}
+
+<#
+.SYNOPSIS
   Turns an environment hashtable into docker '-e NAME=VALUE' arguments.
 .DESCRIPTION
   Plain hashtables are unordered, so their keys are emitted sorted to keep the
@@ -581,6 +777,9 @@ function Resolve-ContainerBuildCommand {
 .PARAMETER CacheEnv
   Environment entries applied to the container (compiler cache, image
   contract flags, ...). See Get-SccacheContainerEnv.
+.PARAMETER WaitTimeoutMinutes
+  How long the bind-mount transport waits on a container that is still running
+  after the docker client returned. See Wait-ContainerExit.
 .OUTPUTS
   [pscustomobject] with Transport ('bindmount' | 'tarpipe'), Container (the
   container actually used, or $null for a bind-mount run) and Verified (a
@@ -606,6 +805,9 @@ function Invoke-ContainerBuild {
         [string[]]$IsolationArgs = @(),
         [string]$EntrypointPath = 'C:\temp\scripts\entrypoint.cmd',
         [string]$ProbeFile = 'CMakePresets.json',
+        # Bound for Wait-ContainerExit (~30x the slowest cold build measured);
+        # raise it for a slower project rather than removing the bound.
+        [ValidateRange(0.01, 10080)][double]$WaitTimeoutMinutes = 240,
         # Opt into the bind-mount transport. Off by default because it is
         # MEASURED SLOWER on a Dev Drive host - see the measurements below.
         [switch]$UseBindMount,
@@ -646,10 +848,62 @@ function Invoke-ContainerBuild {
 
     if ($bindMountUsable) {
         Write-Host 'Bind mount usable - building directly in the working tree.'
-        & $DockerExe run --rm @IsolationArgs @cacheArgs `
-            --mount "type=bind,source=$RepoRoot,target=$WorkspacePath" `
-            -w $WorkspacePath $Image @buildArgs
-        if ($LASTEXITCODE -ne 0) { throw "Container build failed (exit $LASTEXITCODE)." }
+        # NAMED and NOT --rm - both load-bearing for Wait-ContainerExit:
+        # see docs/windows-container-build-performance.md § Reusable implementation.
+        $runContainer = "$ContainerName-bindmount"
+        $leftover = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer -Format '{{.State.Status}}'
+        if ($leftover.Ok -and $leftover.Value -in @('running', 'paused', 'restarting')) {
+            throw ("A bind-mount build container '$runContainer' is already $($leftover.Value) - another " +
+                "build of this tree, or a runaway a timed-out wait kept for inspection. Refusing to kill " +
+                "it: wait for it, read it with 'docker logs $runContainer', or remove it with " +
+                "'docker rm -f $runContainer'.")
+        }
+        if (-not (Remove-BuildContainerSafe -DockerExe $DockerExe -Name $runContainer)) {
+            # A held name makes 'docker run --name' fail 125 and the wait below
+            # read the STALE exit code; fall back unique, like -Fresh does.
+            $runContainer = "$runContainer-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+            Write-Warning "Falling back to '$runContainer' so this run cannot inherit the old container's exit code."
+        }
+        $keep = $false
+        $created = $false
+        try {
+            & $DockerExe run --name $runContainer @IsolationArgs @cacheArgs `
+                --mount "type=bind,source=$RepoRoot,target=$WorkspacePath" `
+                -w $WorkspacePath $Image @buildArgs
+            $clientExit = $LASTEXITCODE
+            $created = $true
+            if ($clientExit -ne 0) {
+                # No container, no state to wait on (unresolvable image, mount
+                # refused): see the performance doc § Reusable implementation.
+                $started = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer `
+                    -Format '{{.State.Status}}'
+                if ($started.Missing) {
+                    $created = $false
+                    throw ("Container build failed (exit $clientExit) - docker run never created a container " +
+                        "to wait on. docker said: $($started.Error)")
+                }
+            }
+            $buildExit = Wait-ContainerExit -DockerExe $DockerExe -Name $runContainer -Label 'bindmount' `
+                -TimeoutMinutes $WaitTimeoutMinutes
+            if ($clientExit -ne $buildExit) {
+                # Client and container disagree - never silent: if a green
+                # build is ever wrong, this line is the first place to look.
+                Write-Warning ("The docker client exited $clientExit but the container's real exit code is " +
+                    "$buildExit (dropped client pipe). Trusting the container.")
+            }
+            if ($buildExit -ne 0) { throw "Container build failed (exit $buildExit)." }
+        } catch {
+            # Every throw above points the operator at 'docker logs'; removing
+            # the container here would destroy the evidence it just promised.
+            if ($created) {
+                $keep = $true
+                Write-Warning ("Keeping container '$runContainer' so it can be inspected: " +
+                    "docker logs $runContainer - remove it with: docker rm -f $runContainer")
+            }
+            throw
+        } finally {
+            if (-not $keep) { [void](Remove-BuildContainerSafe -DockerExe $DockerExe -Name $runContainer) }
+        }
         return [pscustomobject]@{ Transport = 'bindmount'; Container = $null; Verified = @{} }
     }
 
@@ -758,7 +1012,22 @@ function Invoke-ContainerBuild {
             }
         }
 
-        if ($buildExit -ne 0) { throw "Container build failed (exit $buildExit)." }
+        if ($buildExit -ne 0) {
+            # A dead/missing container is not a compile error - classify it:
+            # see docs/windows-builds.md (exec exit codes are unrecoverable).
+            $state = Get-ContainerInspectField -DockerExe $DockerExe -Name $container -Format '{{.State.Status}}'
+            if ($state.Missing) {
+                throw ("The build container '$container' disappeared while the build was running (docker exec " +
+                    "exit $buildExit). Nothing compiled past that point, so this is not a build failure to " +
+                    "look for in the log. docker said: $($state.Error)")
+            }
+            if ($state.Ok -and $state.Value -ne 'running') {
+                throw ("The build container '$container' stopped (state '$($state.Value)') while the build was " +
+                    "running (docker exec exit $buildExit) - the build died with the container, not on an " +
+                    'error in the code.')
+            }
+            throw "Container build failed (exit $buildExit)."
+        }
 
         # A green build is not proof that anything was produced or delivered -
         # both halves of that have already failed here silently (see
@@ -795,6 +1064,7 @@ Export-ModuleMember -Function @(
     'Resolve-DockerExe',
     'Get-ContainerIsolationArgs',
     'Test-ContainerBindMount',
-    'Remove-BuildContainerSafe'
+    'Remove-BuildContainerSafe',
+    'Wait-ContainerExit'
 )
 

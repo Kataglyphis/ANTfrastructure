@@ -55,6 +55,15 @@ install_vulkan_prereqs() {
     wayland-protocols
   )
 
+  # The TARGET halves of what gfxreconstruct, vkcube's WSI and the caps viewer
+  # link against. Optional: a ports arch that lacks one degrades that component,
+  # it does not sink the stage.
+  # docs/vulkan-foreign-arch-sdk.md#the-target-needs-its-own-dev-packages
+  local -a target_optional_packages=(
+    libgl-dev libglx-dev libopengl-dev libegl-dev
+    qt6-base-dev
+  )
+
   apt_install "${host_packages[@]}"
 
   # LOG6 (2026-08-17): the Vulkan-Profiles generator validated ×0 profiles —
@@ -72,6 +81,9 @@ install_vulkan_prereqs() {
     # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
     # Install the WSI and compression dev packages for that target too.
     install_target_packages "${target_pkgconfig_packages[@]}"
+    if command -v install_optional_target_packages >/dev/null 2>&1; then
+      install_optional_target_packages "${target_optional_packages[@]}"
+    fi
   fi
 }
 
@@ -450,8 +462,11 @@ _build_vulkan_sdk_cross() {
 # Cross-configure/build/install one bundled SDK component into the target arch dir.
 # $1=source dir, $2=label (for logs + build subdir); remaining args are extra cmake
 # -D flags (e.g. -DCMAKE_INSTALL_PREFIX=...). Reads the cross toolchain from the
-# caller's _xbuild_cc/_xbuild_cxx/_xbuild_proc (dynamic scope). Non-fatal: returns
-# non-zero on any failure so the caller can log and continue.
+# caller's _xbuild_cc/_xbuild_cxx/_xbuild_proc/_xbuild_triplet (dynamic scope).
+# CMAKE_LIBRARY_ARCHITECTURE is what makes find_library look in
+# /usr/lib/<triplet>: without it X11, XCB, ZSTD and OpenGL are all "NOT found"
+# with the target dev packages installed, which is what stopped gfxreconstruct.
+# Non-fatal: returns non-zero on any failure so the caller can log and continue.
 _cross_build_sdk_component() {
   local src="$1" label="$2"
   shift 2
@@ -464,6 +479,7 @@ _cross_build_sdk_component() {
       -DCMAKE_SYSTEM_PROCESSOR="${_xbuild_proc}" \
       -DCMAKE_C_COMPILER="${_xbuild_cc}" \
       -DCMAKE_CXX_COMPILER="${_xbuild_cxx}" \
+      -DCMAKE_LIBRARY_ARCHITECTURE="${_xbuild_triplet}" \
       -DCMAKE_INSTALL_LIBDIR=lib \
       "$@"; then
     log "${label}: cross-configure failed (non-fatal)"
@@ -521,7 +537,7 @@ _vulkan_target_build_loader() {
       _vk_ok=$((_vk_ok + 1))
       log "Installed target Vulkan loader: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
     else
-      log "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
+      _vk_note_failure vulkan-loader "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
     fi
   else
     log "Vulkan-Loader source or host headers missing; skipping target loader"
@@ -547,11 +563,21 @@ _vulkan_target_build_spirv_tools() {
       _vk_ok=$((_vk_ok + 1))
       log "Installed target SPIRV-Tools: $(ls "${archdir}"/bin/spirv-* 2>/dev/null | wc -l) tools, $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | wc -l) libs"
     else
-      log "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
+      _vk_note_failure spirv-tools "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
     fi
   else
     log "SPIRV-Tools source missing at ${spirv_tools_src}; skipping target SPIRV-Tools"
   fi
+}
+
+# Record a component as failed and say so in one place: the label goes into
+# _vk_failed (the caller's, by dynamic scope) where _vulkan_target_verdict reads
+# it, and the rest is the message a reader sees.
+_vk_note_failure() {
+  local label="$1"
+  shift
+  _vk_failed="${_vk_failed} ${label}"
+  log "$*"
 }
 
 # One cross-install per SDK component. Non-fatal by contract: a component that
@@ -572,7 +598,7 @@ _vulkan_target_install_component() {
       "$@"; then
     _vk_ok=$((_vk_ok + 1))
   else
-    log "${label} unavailable on ${arch_suffix}; the target SDK ships without it"
+    _vk_note_failure "${label}" "${label} unavailable on ${arch_suffix}; the target SDK ships without it"
   fi
 }
 
@@ -602,28 +628,61 @@ spirv-reflect|SPIRV-Reflect|-DSPIRV_REFLECT_EXECUTABLE=ON -DSPIRV_REFLECT_STATIC
 shaderc|shaderc/src,shaderc|-DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_ENABLE_INSTALL=ON
 vulkan-tools|Vulkan-Tools|-DBUILD_VULKANINFO=ON -DBUILD_CUBE=ON
 vulkan-extensionlayer|Vulkan-ExtensionLayer|
+jsoncpp|jsoncpp|-DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF -DJSONCPP_WITH_EXAMPLE=OFF -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON
+valijson|valijson|-Dvalijson_BUILD_TESTS=OFF -Dvalijson_BUILD_EXAMPLES=OFF -Dvalijson_INSTALL_HEADERS=ON
 vulkan-profiles|Vulkan-Profiles|-DPROFILES_BUILD_TESTS=OFF
 vulkan-validationlayers|Vulkan-ValidationLayers|-DUPDATE_DEPS=OFF -DBUILD_WERROR=OFF
 gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF
-slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF
+slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF -DSLANG_SLANG_LLVM_FLAVOR=DISABLE -DSLANG_ENABLE_DXIL=OFF
 vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
 "
+
+# Row flags that only exist as a PATH, so the static table cannot carry them.
+# Both are the Canadian cross llvm-cross.sh already does for tblgen: a generator
+# or a moc that must EXECUTE on the build host while the rest cross-compiles.
+# $5 is an out-array name. docs/vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool
+_vulkan_target_dynamic_args() {
+  local label="$1" target_dir="$2" archdir="$3" triplet="$4"
+  local -n _vk_dyn_ref="$5"
+  local gen
+
+  _vk_dyn_ref=()
+  case "${label}" in
+    slang)
+      # ./vulkansdk's HOST slang build leaves its generators here; without them
+      # the cross build links slang-embed for the TARGET and runs it: exit 127.
+      gen="${target_dir}/source/slang/build/generators/Release/bin"
+      if [ -x "${gen}/slang-embed" ]; then
+        _vk_dyn_ref+=(-DSLANG_GENERATORS_PATH="${gen}")
+      else
+        log "slang: no host generators at ${gen}; the cross build will try to run its own"
+      fi
+      ;;
+    vulkancapsviewer)
+      # Target Qt6 from the sysroot, host moc/rcc/uic from the build host's own.
+      _vk_dyn_ref+=(-DQT_HOST_PATH=/usr)
+      _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
+      ;;
+  esac
+}
 
 # Everything the LunarG SDK ships beyond the four TVM needed, cross-built for the
 # arch the image runs. docs/vulkan-foreign-arch-sdk.md
 _vulkan_target_build_sdk_rest() {
-  local arch_suffix="$1" archdir="$2" target_dir="$3"
+  local arch_suffix="$1" archdir="$2" target_dir="$3" triplet="${4:-${_xbuild_triplet:-}}"
   local label cands extra src
+  local -a dyn=()
 
   while IFS='|' read -r label cands extra; do
     [ -n "${label}" ] || continue
     # shellcheck disable=SC2086  # both are deliberately word-split
     src="$(_vulkan_target_src "${target_dir}/source" ${cands//,/ })"
+    _vulkan_target_dynamic_args "${label}" "${target_dir}" "${archdir}" "${triplet}" dyn
     # shellcheck disable=SC2086
     _vulkan_target_install_component "${arch_suffix}" "${archdir}" "${src}" "${label}" \
       -DVULKAN_HEADERS_INSTALL_DIR="${archdir}" \
       -DSPIRV_HEADERS_INSTALL_DIR="${archdir}" \
-      ${extra}
+      ${extra} ${dyn[@]+"${dyn[@]}"}
   done <<EOF
 ${_VK_TARGET_COMPONENTS}
 EOF
@@ -679,24 +738,39 @@ _vulkan_target_build_glslang() {
       _vk_ok=$((_vk_ok + 1))
       log "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
     else
-      log "Target glslang unavailable; GLSL shader compilation will fail on ${arch_suffix}"
+      _vk_note_failure glslang "Target glslang unavailable; GLSL shader compilation will fail on ${arch_suffix}"
     fi
   else
     log "glslang source missing at ${target_dir}/source/glslang; skipping target glslang"
   fi
 }
 
-# TS6 aggregate verdict: a per-component failure is tolerated (each logs its own
-# "unavailable; downstream may fail"), but if EVERY attempted component failed
-# the cause is almost certainly systemic (a broken ${target_triplet} toolchain,
-# missing cross sysroot, …) rather than three independent optional misses — and
-# the old code returned 0 regardless, so downstream only discovered it much
-# later as a baffling Vulkan/TVM/KOMPUTE configure failure. Surface it loudly;
-# VULKAN_CROSS_STRICT=1 promotes it to fatal for callers that want the hard stop.
+# The components without which the target prefix is not a Vulkan SDK: the loader
+# the image loads, the SPIRV libraries TVM links, and the shader toolchain an
+# application is compiled with. Each one built on BOTH foreign lanes of the
+# 2026-09-05 chain, so a failure here is a regression, not optionality — and the
+# runtime smoke's tool count would fail the lane hours later anyway.
+# docs/vulkan-foreign-arch-sdk.md#failures-here-are-non-fatal-on-purpose
+_VK_REQUIRED_COMPONENTS="${VULKAN_CROSS_REQUIRED-vulkan-loader spirv-tools glslang shaderc vulkan-tools vulkan-validationlayers}"
+
+# TS6 aggregate verdict, in two halves. A per-component failure is tolerated for
+# the OPTIONAL rows (each logs its own "unavailable; downstream may fail"), but a
+# REQUIRED component that was attempted and failed is fatal here rather than a
+# baffling Vulkan/TVM/KOMPUTE failure much later. And if EVERY attempted
+# component failed the cause is systemic (a broken ${target_triplet} toolchain,
+# missing cross sysroot, …); the old code returned 0 regardless, so surface it —
+# VULKAN_CROSS_STRICT=1 promotes that one to fatal too.
 _vulkan_target_verdict() {
   local arch_suffix="$1" target_triplet="$2"
+  local comp lost=""
 
   log "Vulkan cross-targets ${arch_suffix}: ${_vk_ok}/${_vk_attempted} component(s) built"
+  for comp in ${_VK_REQUIRED_COMPONENTS}; do
+    case " ${_vk_failed} " in *" ${comp} "*) lost="${lost} ${comp}" ;; esac
+  done
+  if [ -n "${lost}" ]; then
+    die "REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}:${lost} — the ${arch_suffix} prefix would ship without them and the runtime toolset gate would fail the lane later. Set VULKAN_CROSS_REQUIRED='' to build anyway."
+  fi
   if [ "${_vk_attempted}" -gt 0 ] && [ "${_vk_ok}" -eq 0 ]; then
     warn "ALL ${_vk_attempted} Vulkan cross-component(s) FAILED for ${arch_suffix} (loader/SPIRV-Tools/glslang) — this is an env-shaped failure (broken ${target_triplet} toolchain?), not per-component optionality; downstream cross Vulkan will be disabled. Set VULKAN_CROSS_STRICT=1 to make this fatal."
     if [ "${VULKAN_CROSS_STRICT:-0}" = "1" ]; then
@@ -725,11 +799,11 @@ _build_vulkan_targets() {
   local loader_src="${target_dir}/source/Vulkan-Loader"
   local spirv_tools_src="${target_dir}/source/SPIRV-Tools"
   local spirv_headers_src="${target_dir}/source/SPIRV-Headers"
-  local _xbuild_cc _xbuild_cxx _xbuild_proc
+  local _xbuild_cc _xbuild_cxx _xbuild_proc _xbuild_triplet="${target_triplet}"
   # TS6: aggregate verdict — individual component failures are tolerated (each is
   # optional downstream), but ALL of them failing at once is an env-shaped cause
   # (a broken cross toolchain), which used to exit 0 silently. Count attempts/ok.
-  local _vk_attempted=0 _vk_ok=0
+  local _vk_attempted=0 _vk_ok=0 _vk_failed=""
 
   _xbuild_cc="${CC:-${target_triplet}-gcc}"
   _xbuild_cxx="${CXX:-${target_triplet}-g++}"
@@ -743,7 +817,7 @@ _build_vulkan_targets() {
   _vulkan_target_build_loader "${arch_suffix}" "${host_archdir}" "${archdir}" "${loader_src}"
   _vulkan_target_build_spirv_tools "${arch_suffix}" "${archdir}" "${spirv_tools_src}" "${spirv_headers_src}"
   _vulkan_target_build_glslang "${arch_suffix}" "${archdir}" "${target_dir}"
-  _vulkan_target_build_sdk_rest "${arch_suffix}" "${archdir}" "${target_dir}"
+  _vulkan_target_build_sdk_rest "${arch_suffix}" "${archdir}" "${target_dir}" "${target_triplet}"
   _vulkan_target_verdict "${arch_suffix}" "${target_triplet}"
 }
 

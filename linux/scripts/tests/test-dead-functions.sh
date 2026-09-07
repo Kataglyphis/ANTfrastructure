@@ -41,6 +41,7 @@ _expect() {
   case "${mode}" in
     rc)        t_assert_eq "${want}" "$(_rc "${fix}")" "${why}" ;;
     says)      t_assert_contains "$(_run "${fix}")" "${want}" "${why}" ;;
+    says-not)  t_assert_eq "0" "$(_run "${fix}" | grep -c -e "${want}" || true)" "${why}" ;;
     census)    t_assert_contains "$(_run "${fix}" --census)" "${want}" "${why}" ;;
     census-rc) t_assert_eq "${want}" "$(_rc "${fix}" --census)" "${why}" ;;
   esac
@@ -48,6 +49,7 @@ _expect() {
 }
 _verdict()   { _expect rc "$@"; }
 _says()      { _expect says "$@"; }
+_says_not()  { _expect says-not "$@"; }
 _census()    { _expect census "$@"; }
 _census_rc() { _expect census-rc "$@"; }
 # _called <rc> <why> <caller.sh content>: used_fn defined, one line in caller.sh
@@ -194,6 +196,30 @@ _verdict 0 "a definition its own file names again was never a candidate" \
 _verdict 1 "a stale unlinked freeze fails once the two files are linked" \
   "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
   "${LINKED[@]}"
+# R1.4: that stale row's HEADING says "the function is called again or gone", which
+# is false here -- an unrelated file naming both basenames disarmed the arm. The row
+# has to say which file did it, or the reader deletes a freeze that still holds.
+_says "unlinked arm DISARMED by" "a disarmed row must not read as a revived function" \
+  "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
+  "${LINKED[@]}"
+_says "which now names both subject.sh and other.sh" "name the two basenames, so the claim is checkable" \
+  "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
+  "${LINKED[@]}"
+_says "the function is not called again" "the correction the heading needs" \
+  "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
+  "${LINKED[@]}"
+# The other half of the same claim: a row that went stale because the function IS
+# called again must stay PLAIN. An explanation that fires on every stale row --
+# e.g. one file naming ONE definer's basename -- explains nothing and misleads.
+# TWO definers, so `disarmer` has a peer to look for -- and the only file that
+# mentions a basename mentions ONE of them. Nothing can load both definitions into
+# one shell, so nothing is disarmed; the row is stale because subject.sh now calls
+# its own foo_fn.
+_says_not DISARMED "a file naming ONE definer cannot disarm anything, so the row stays plain" \
+  "${MASKING}" $'linux/scripts/subject.sh\tfoo_fn' \
+  linux/scripts/other.sh "${MASKING}" \
+  linux/scripts/third.sh $'# loads subject.sh\n:' 
+
 _mask _census "1 definition(s) their own file never names again" "the considered count"
 _mask _census "1 of those in a file that sources nothing" "the isolated tier counts it too"
 _census_rc 0 "the census reports, it never fails a build" "${MASKED}"

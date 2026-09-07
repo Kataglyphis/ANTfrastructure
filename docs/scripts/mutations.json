@@ -154,7 +154,7 @@
   {
     "id": "mutations.vacuous-bite",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "        if not baseline_ok(e, args.root, baselines):",
+    "find": "        if not base_ok:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
@@ -1970,8 +1970,8 @@
   {
     "id": "disk-guard.buildkit-trim-first",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  [ \"${before}\" -lt \"${target_gb}\" ] || return 0\n  _disk_guard_buildkit_ready",
-    "replace": "  _disk_guard_buildkit_ready",
+    "find": "  before=\"$(_disk_guard_lever_needed \"${path}\" \"${target_gb}\")\" || return 0\n  _disk_guard_buildkit_ready",
+    "replace": "  before=\"$(_disk_guard_free_gb \"${path}\")\"\n  _disk_guard_buildkit_ready",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
     "why": "the cheap trim runs first; the store is pruned only when it came up short"
   },
@@ -1994,18 +1994,18 @@
   {
     "id": "disk-guard.buildkit-prune-once",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "one prune per caller: a repeat walks the whole store and frees nothing"
+    "why": "one prune per caller: a repeat walks the whole store and frees nothing (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-missing-tool",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if ! command -v buildctl >/dev/null 2>&1; then",
+    "find": "  if ! command -v \"${tool}\" >/dev/null 2>&1; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "a host without buildctl must get the named SKIP, not a mystery"
+    "why": "a host without buildctl must get the named SKIP, not a mystery (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-unreachable-store",
@@ -2498,10 +2498,10 @@
   {
     "id": "disk-guard.prune-credit-per-caller",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
-    "replace": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt -1 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
+    "replace": "  if [ \"${prunes:-0}\" -gt -1 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space"
+    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "probe.advert-empty-table-is-vacuous",
@@ -3146,8 +3146,8 @@
   {
     "id": "disk-guard.stage-guard-episode",
     "target": "linux/scripts/build-cross-chain.sh",
-    "find": "      _disk_guard_reclaim_begin\n      while [",
-    "replace": "      while [",
+    "find": "      _disk_guard_reclaim_begin\n      _chain_evict_slugs",
+    "replace": "      _chain_evict_slugs",
     "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
     "why": "same latch, other gate: after the first between-stage prune every later stage would log `already pruned once here` and reclaim nothing"
   },
@@ -4514,8 +4514,8 @@
   {
     "id": "dead-functions.unlinked-tag",
     "target": "linux/scripts/verify_dead_functions.py",
-    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"))",
-    "replace": "+ \"\")",
+    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"),",
+    "replace": "+ \"\",",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "the two arms ask for different fixes; an untagged row leaves the author guessing which one fired"
   },
@@ -4816,6 +4816,14 @@
     "why": "/usr/local/include/tensorflow ships as an EMPTY two-directory stub on all three arches; treating a directory's existence as evidence is what made the old probe red against healthy images"
   },
   {
+    "id": "probe.consumer-verdict-verb-is-readable",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    ''|0|no) printf 'BAD %s absent' \"${row}\" ;;",
+    "replace": "    ''|0|no) printf 'FAIL %s absent' \"${row}\" ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "check_consumer_contract reads `verb row rest` through a case list of OK/EXEMPT/BAD/STALE/NOFACT/ASSERTED; any other verb falls to the catch-all and the row is reported as silently dropped. Emitting FAIL turned three healthy rows into one gate failure on 2026-09-06 and cost a whole runtime lane"
+  },
+  {
     "id": "packaging.absl-headers-copied",
     "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
     "find": "    /usr/local/include/absl \\",
@@ -5085,7 +5093,8 @@
     "find": "CODE_FENCE = re.compile(r\"```[ \\t]*(?:python3?|py3?)?[^\\n]*\\n(.*?)```\", re.S | re.I)",
     "replace": "CODE_FENCE = re.compile(r\"```(?:python|py)?\\s*\\n(.*?)```\", re.S | re.I)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a correct answer in a ```python3 fence was graded SyntaxError"
+    "why": "a correct answer in a ```python3 fence was graded SyntaxError",
+    "timeout": 900
   },
   {
     "id": "coding.unclosed-think",
@@ -5093,7 +5102,8 @@
     "find": "    elif \"<think>\" in text:\n        # Unclosed",
     "replace": "    elif False:\n        # Unclosed",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a draft inside an unclosed <think> was graded PASS at the cap"
+    "why": "a draft inside an unclosed <think> was graded PASS at the cap",
+    "timeout": 900
   },
   {
     "id": "coding.marker-last-occurrence",
@@ -5101,7 +5111,8 @@
     "find": "payload = json.loads(out.rsplit(marker, 1)[1].splitlines()[0])",
     "replace": "payload = json.loads(out.split(marker, 1)[1].splitlines()[0])",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the first marker occurrence is the one a candidate can print"
+    "why": "the first marker occurrence is the one a candidate can print",
+    "timeout": 900
   },
   {
     "id": "coding.row-count-checked",
@@ -5109,7 +5120,8 @@
     "find": "        if len(rows) != expected:",
     "replace": "        if False:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "zero rows scored as all assertions passed"
+    "why": "zero rows scored as all assertions passed",
+    "timeout": 900
   },
   {
     "id": "coding.setup-denies-pass",
@@ -5117,7 +5129,8 @@
     "find": "        if setup:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
     "replace": "        if False:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a raising setup line must deny PASS, not let a trivial check pass"
+    "why": "a raising setup line must deny PASS, not let a trivial check pass",
+    "timeout": 900
   },
   {
     "id": "coding.setup-not-counted",
@@ -5125,7 +5138,8 @@
     "find": "        counted = isinstance(node, ast.Assert) or (",
     "replace": "        counted = True or (",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "setup lines and helper defs padded the partial-credit denominator"
+    "why": "setup lines and helper defs padded the partial-credit denominator",
+    "timeout": 900
   },
   {
     "id": "coding.own-session-killpg",
@@ -5133,7 +5147,8 @@
     "find": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=True)",
     "replace": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=False)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a grandchild outlived the timeout in the bench's process group"
+    "why": "a grandchild outlived the timeout in the bench's process group",
+    "timeout": 900
   },
   {
     "id": "coding.not-main",
@@ -5141,7 +5156,8 @@
     "find": "    program = (f\"_MARKER = {marker!r}\\n__name__ = 'candidate'\\n\"\n               + code + \"\\n\\n\" + harness)",
     "replace": "    program = (f\"_MARKER = {marker!r}\\n\"\n               + code + \"\\n\\n\" + harness)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a demo under if __name__ == '__main__' failed a correct function"
+    "why": "a demo under if __name__ == '__main__' failed a correct function",
+    "timeout": 900
   },
   {
     "id": "coding.finish-length-is-cut",
@@ -5149,7 +5165,8 @@
     "find": "    if finish == \"length\":\n        return True          # the server said so; nothing to infer",
     "replace": "    if False:\n        return True          # the server said so; nothing to infer",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas"
+    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas",
+    "timeout": 900
   },
   {
     "id": "coding.reasoning-deltas",
@@ -5157,7 +5174,8 @@
     "find": "                thought = delta.get(\"reasoning_content\") or delta.get(\"reasoning\")",
     "replace": "                thought = None",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "reasoning served as a separate delta was dropped, hiding a cut as wrong"
+    "why": "reasoning served as a separate delta was dropped, hiding a cut as wrong",
+    "timeout": 900
   },
   {
     "id": "coding.deterministic-by-output",
@@ -5165,7 +5183,8 @@
     "find": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"output_sha256\"])",
     "replace": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"passed\"])",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "pass/fail agreement is not determinism; a sampling lane was labelled deterministic"
+    "why": "pass/fail agreement is not determinism; a sampling lane was labelled deterministic",
+    "timeout": 900
   },
   {
     "id": "coding.errored-do-not-vote",
@@ -5173,7 +5192,8 @@
     "find": "    measured = [r for r in results if _measured(r)]",
     "replace": "    measured = list(results)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "one dropped connection flipped a deterministic lane and narrowed the interval"
+    "why": "one dropped connection flipped a deterministic lane and narrowed the interval",
+    "timeout": 900
   },
   {
     "id": "coding.cut-excluded",
@@ -5181,7 +5201,8 @@
     "find": "    attempts = len(TASKS) * repeats - errored - cut",
     "replace": "    attempts = len(TASKS) * repeats - errored",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "CUT was printed as unmeasured and then counted as a miss"
+    "why": "CUT was printed as unmeasured and then counted as a miss",
+    "timeout": 900
   },
   {
     "id": "coding.count-not-ratio",
@@ -5189,7 +5210,8 @@
     "find": "        effective_k = sum(1 for v in per_task_outcome.values() if v == {True})",
     "replace": "        effective_k = round(passed * effective_n / max(attempts, 1))",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "rounding a ratio printed 8/9 for seven passing tasks"
+    "why": "rounding a ratio printed 8/9 for seven passing tasks",
+    "timeout": 900
   },
   {
     "id": "coding.extended-is-21",
@@ -5197,7 +5219,8 @@
     "find": "    elif args.task_set == \"extended\":\n        TASKS = EXTENDED_TASKS",
     "replace": "    elif args.task_set == \"extended\":\n        TASKS = NOVEL_TASKS + EXTENDED_TASKS",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "'extended' meant 21, 24 and 27 in three places"
+    "why": "'extended' meant 21, 24 and 27 in three places",
+    "timeout": 900
   },
   {
     "id": "coding.think-test-not-vacuous",
@@ -5205,7 +5228,8 @@
     "find": "    if \"</think>\" in text:\n        text = text.split(\"</think>\")[-1]\n    elif",
     "replace": "    if False:\n        text = text.split(\"</think>\")[-1]\n    elif",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the think-stripping test passed with stripping disabled"
+    "why": "the think-stripping test passed with stripping disabled",
+    "timeout": 900
   },
   {
     "id": "coding.prefer-defining-block",
@@ -5213,7 +5237,8 @@
     "find": "        if want:\n            defining = [i for i, b in enumerate(blocks)",
     "replace": "        if False:\n            defining = [i for i, b in enumerate(blocks)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the want branch was never exercised by its test"
+    "why": "the want branch was never exercised by its test",
+    "timeout": 900
   },
   {
     "id": "coding.kv-pairs-whitespace",
@@ -5221,7 +5246,8 @@
     "find": "assert _bad(\" \")\nassert _bad(\"   \")\nassert _bad(\"\\t\")",
     "replace": "",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "whitespace-only input returned {} and passed 21/21"
+    "why": "whitespace-only input returned {} and passed 21/21",
+    "timeout": 900
   },
   {
     "id": "compare.effective-k",
@@ -5229,7 +5255,8 @@
     "find": "            a_k = a.get(\"effective_k\")\n            if a_k is None:\n                a_k = min(a_n, round(a_rate * a_n))\n            b_k = b.get(\"effective_k\")\n            if b_k is None:\n                b_k = min(b_n, round(b_rate * b_n))",
     "replace": "            a_k, b_k = round(a_rate * a_n), round(b_rate * b_n)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the tripwire rounded a ratio into a fabricated pass"
+    "why": "the tripwire rounded a ratio into a fabricated pass",
+    "timeout": 900
   },
   {
     "id": "mutations.copy-failure-loud",
@@ -5253,7 +5280,8 @@
     "find": "            body.append(f\"except BaseException as _e:\\n    _RESULTS.append(({i}, False, \"",
     "replace": "            body.append(f\"except Exception as _e:\\n    _RESULTS.append(({i}, False, \"",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "sys.exit() inside the tested function discarded every assertion already passed"
+    "why": "sys.exit() inside the tested function discarded every assertion already passed",
+    "timeout": 900
   },
   {
     "id": "coding.forbidden-ignores-docstrings",
@@ -5277,7 +5305,8 @@
     "find": "        if isinstance(node, ast.Name) and node.id in wanted and node in unbound:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "replace": "        if False:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "an aliased sorted() evaded the text scan"
+    "why": "an aliased sorted() evaded the text scan",
+    "timeout": 900
   },
   {
     "id": "coding.forbidden-attribute",
@@ -5285,7 +5314,8 @@
     "find": "        if isinstance(node, ast.Attribute) and node.attr in wanted:",
     "replace": "        if False:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "builtins.sorted and .sort() must count as use"
+    "why": "builtins.sorted and .sort() must count as use",
+    "timeout": 900
   },
   {
     "id": "coding.unclosed-last-fence",
@@ -5293,7 +5323,8 @@
     "find": "    if not _unclosed_fence(text):\n        return False",
     "replace": "    if False:\n        return False",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a ``` in prose turned a plain typo into CUT"
+    "why": "a ``` in prose turned a plain typo into CUT",
+    "timeout": 900
   },
   {
     "id": "coding.real-token-count",
@@ -5301,7 +5332,8 @@
     "find": "        count = ctok if ctok is not None else chunks",
     "replace": "        count = chunks",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a server that batches deltas reported a complete answer as CUT"
+    "why": "a server that batches deltas reported a complete answer as CUT",
+    "timeout": 900
   },
   {
     "id": "coding.stdlib-only",
@@ -5309,7 +5341,8 @@
     "find": "    if stdlib_only:\n        extra = _nonstd_imports(code)",
     "replace": "    if False:\n        extra = _nonstd_imports(code)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "three prompts said standard library only and nothing enforced it"
+    "why": "three prompts said standard library only and nothing enforced it",
+    "timeout": 900
   },
   {
     "id": "coding.env-scrubbed",
@@ -5317,7 +5350,8 @@
     "find": "    proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
     "replace": "    proc = subprocess.Popen(cmd, cwd=tmp,",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the candidate inherited HOME, tokens and agent sockets"
+    "why": "the candidate inherited HOME, tokens and agent sockets",
+    "timeout": 900
   },
   {
     "id": "coding.netns",
@@ -5325,7 +5359,8 @@
     "find": "    if _netns_available():\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
     "replace": "    if False:\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the candidate could open sockets"
+    "why": "the candidate could open sockets",
+    "timeout": 900
   },
   {
     "id": "coding.ascii-digits",
@@ -5333,7 +5368,8 @@
     "find": "assert _bad(\"1.5A\")\nassert _bad(\"١A\")",
     "replace": "assert _bad(\"1.5A\")",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the prompt says ASCII digits and every tested input was ASCII"
+    "why": "the prompt says ASCII digits and every tested input was ASCII",
+    "timeout": 900
   },
   {
     "id": "mutations.changed-by-test-path",
@@ -5349,7 +5385,8 @@
     "find": "    return GENERATION_CAP or max_tokens or 2048",
     "replace": "    return GENERATION_CAP or 2048",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling"
+    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling",
+    "timeout": 900
   },
   {
     "id": "coding.wall-clock-deadline",
@@ -5357,7 +5394,8 @@
     "find": "            if self._deadline and time.monotonic() - self.started > self._deadline:\n                self.gave_up = True\n                return",
     "replace": "            if False:\n                self.gave_up = True\n                return",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour. ask() now inherits the cap from bench_cli.post_json, so the coding suite must still see it bite there."
+    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour. ask() now inherits the cap from bench_cli.post_json, so the coding suite must still see it bite there.",
+    "timeout": 900
   },
   {
     "id": "coding.gave-up-is-unmeasured",
@@ -5365,7 +5403,8 @@
     "find": "        truncated = (not ok) and (not skipped) and (gave_up or looks_truncated(",
     "replace": "        truncated = (not ok) and (not skipped) and (False or looks_truncated(",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "an abandoned attempt is unmeasured, not a wrong answer"
+    "why": "an abandoned attempt is unmeasured, not a wrong answer",
+    "timeout": 900
   },
   {
     "id": "bench-agent.tests-may-be-modified",
@@ -5794,10 +5833,10 @@
   {
     "id": "bench-agent.ctest-count-is-asserted",
     "target": "linux/llm-stack/bench_agent.py",
-    "find": "        \"printf '%s\\\\n' \\\"$out\\\" | grep -q -e '0 tests failed out of 1'\\n\")]",
-    "replace": "        \"true\\n\")]",
+    "find": "            \"printf '%s\\\\n' \\\"$out\\\" | grep -q -E '100% tests passed(, 0 tests failed)? out of 1'\\n\")],",
+    "replace": "            \"printf '%s\\\\n' \\\"$out\\\" | grep -q -E '100% tests passed'\\n\")],",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_agent.py -q -k refuses_a_run_with_no_tests",
-    "why": "ctest exits 0 when it finds NO tests, so without the count assertion deleting add_test() is a free pass."
+    "why": "ctest exits 0 when it finds NO tests, so the verify command asserts the COUNT as well: dropping 'out of 1' lets a run with add_test() deleted read as a pass. The tolerant spelling (26.04 ctest omits ', 0 tests failed') must not cost the count"
   },
   {
     "id": "bench-agent.unbuildable-selection-exits-nonzero",
@@ -6734,5 +6773,253 @@
     "replace": "    if fraction >= GATE_SCANNED_MIN:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_the_gate_flips_exactly_at_ten_percent",
     "why": "an inverted gate calls the VLM a footnote on exactly the corpora that need OCR measured first"
+  },
+  {
+    "id": "vulkan.cross-library-architecture",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      -DCMAKE_LIBRARY_ARCHITECTURE=\"${_xbuild_triplet}\" \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "without it find_library never looks in /usr/lib/<triplet>, so the TARGET's X11, XCB, ZSTD and OpenGL read as 'NOT found' with the dev packages installed -- the 2026-09-05 gfxreconstruct failure"
+  },
+  {
+    "id": "vulkan.required-component-is-fatal",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    die \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "replace": "    log \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "a lost loader/SPIRV-Tools/glslang/shaderc/Vulkan-Tools/ValidationLayers is a regression, not optionality; downgrading it to a log is how the prefix shipped 2 tools of 52 for months"
+  },
+  {
+    "id": "vulkan.dynamic-args-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    _vulkan_target_dynamic_args \"${label}\" \"${target_dir}\" \"${archdir}\" \"${triplet}\" dyn\n",
+    "replace": "    dyn=()\n",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the path-shaped flags a static table cannot carry: without the call slang cross-builds its own generators and runs them (exit 127) and the caps viewer never finds the target Qt6"
+  },
+  {
+    "id": "vulkan.slang-generators-must-exist",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      if [ -x \"${gen}/slang-embed\" ]; then",
+    "replace": "      if true; then",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "pointing SLANG_GENERATORS_PATH at a directory the host build never produced hands the cross configure a path with no generators in it, which fails later and further from the cause"
+  },
+  {
+    "id": "probe.vk-toolset-floor-below-fails",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${have}\" -lt \"${floor}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a prefix can keep every REQUIRED name and still lose tools; the frozen floor is the only thing that notices, and 2-of-52 is what that looks like"
+  },
+  {
+    "id": "probe.vk-toolset-frozen-row-required",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fail \"no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "replace": "      echo \"  WARN no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an arch with no frozen row would inherit silence -- exactly the shape that let the foreign prefixes ship unasserted"
+  },
+  {
+    "id": "probe.vk-layer-manifest-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      || fail \"no validation layer manifest in the ${target_arch} SDK prefix",
+    "replace": "      || echo \"  WARN no validation layer manifest in the ${target_arch} SDK prefix",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the layers are what the foreign-arch SDK exercise was for; as a WARN their loss is invisible in a green run"
+  },
+  {
+    "id": "package.webtools-prebuilt-needs-a-pin",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ -z \"${sha}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "without the pin check an unpinned arch downloads and installs release bytes nothing verified, which is strictly worse than the cargo build it replaces"
+  },
+  {
+    "id": "package.webtools-prebuilt-arch-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        *) echo \"NOTE: no ${name} release binary for ${machine}; building it from source\"; return 1 ;;",
+    "replace": "        *) target=\"${machine}-unknown-linux-musl\" ;;",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "upstream publishes no riscv64 asset; inventing the target name turns a from-source build into a 404 the lane discovers instead of a documented fallback"
+  },
+  {
+    "id": "packaging.flatpak-failed-ref-is-diagnosed",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "            || { _flatpak_diagnose_ref \"${ref}\"",
+    "replace": "            || { :",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "a published branch whose extra-data payload would not download and a branch that does not exist read identically as 'did not install'; the remote is the only thing that tells them apart"
+  },
+  {
+    "id": "disk-guard.image-lever-refuses-in-flight",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "  if [ \"${in_flight}\" = \"1\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "removing an image while a stage is unpacking pulls a blob out from under it -- that killed the arm64 runtime lane on 2026-09-06, and the sampler calls this lever on every sample"
+  },
+  {
+    "id": "disk-guard.image-lever-spares-protected-tags",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "        printf '%s\\n' \"${protected_nl}\" | grep -qxF -- \"${tag}\" && continue",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "without the filter the lever removes the stage image the NEXT stage builds FROM, which under the local OCI handoff is not re-pullable at all"
+  },
+  {
+    "id": "disk-guard.image-lever-tries-each-tag-once",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "    protected=\"${protected}\n${tag}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a tag still listed after its own rmi stays the head of the candidate list forever -- the loop spins for the rest of the run, which is the exact defect the cache-export victim loop already guards"
+  },
+  {
+    "id": "disk-guard.give-up-names-the-image-store",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "by itself. $(_disk_guard_image_store_hint)\"",
+    "replace": "by itself.\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "'NOTHING was reclaimable' reads like an environment limit; on 2026-09-05 it was a coverage gap with 295 GB in the store the guard never looked at"
+  },
+  {
+    "id": "chain-status.image-lever-wired-between-stages",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "        _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \\\n          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the between-stage guard is one of the two places nothing is in flight; unwired, the chain gives up on cache exports with the image store untouched"
+  },
+  {
+    "id": "chain-status.image-lever-protects-the-completed-stage",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0",
+    "replace": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the stage just completed is the NEXT stage's parent; dropping it from the protected set is how a local OCI handoff loses the image it is about to read"
+  },
+  {
+    "id": "chain-status.evict-protects-the-undeletable",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "      _prot_ref=\"${_prot_ref},${victim}\"",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "an undeletable slug that does not join the protected list stays the LRU pick forever and the eviction loop spins for the rest of the run"
+  },
+  {
+    "id": "chain-status.evict-protected-is-a-nameref",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  local -n _prot_ref=\"$2\"",
+    "replace": "  local _prot_ref=\"$2\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a by-value copy makes the anti-spin append invisible to the next pick_victim call -- the same spin, one level further from the symptom"
+  },
+  {
+    "id": "probe.llvm-target-startable-wired",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_llvm_target_startable \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a gate main() never calls is the shape this repo keeps finding: liblldb shipped 3 unstartable binaries past every green run"
+  },
+  {
+    "id": "probe.llvm-target-broken-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif [ \"${broken:-1}\" -gt 0 ]; then",
+    "replace": "    elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the sdk stage resolved these sonames against the BUILDER's ldconfig cache; a binary that cannot start in the shipped image is a defect, not a warning"
+  },
+  {
+    "id": "probe.llvm-target-empty-walk-is-not-clean",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if [ -z \"${total}\" ]; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "replace": "    if false; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a probe that never ran prints no COUNT, and without this arm that reads exactly like a prefix with zero broken binaries"
+  },
+  {
+    "id": "dead-functions.stale-row-names-its-disarmer",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "                    describe_stale=lambda k: k.replace(\"\\t\", \"  \") + _stale_note(k, corpus_texts))",
+    "replace": "                    )",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the stale heading says 'the function is called again or gone'; for a disarmed unlinked row both halves are false, and the reader deletes a freeze that still holds"
+  },
+  {
+    "id": "dead-functions.disarmer-needs-both-basenames",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "            if base in text and pbase in text:",
+    "replace": "            if base in text or pbase in text:",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the arm is disarmed only when ONE file could load BOTH definitions; either basename alone names a file that cannot mask anything, so 'or' explains rows that were never disarmed"
+  },
+  {
+    "id": "gate-fixture.harness-catches-a-misused-assertion",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  [ \"$2\" = \"2\" ] || return 1",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "`t_assert_fails test -f X \"why\"` runs `test -f X why`, which exits 2 -- 'not zero', so the case passes for the wrong reason; four of those were written in one wave and nothing in the harness caught them"
+  },
+  {
+    "id": "gate-fixture.harness-guard-is-narrow",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  case \"$1\" in test|'[') return 0 ;; *) return 1 ;; esac",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "only test/[ report a usage error as rc 2; treating every rc 2 as a misuse rewrites a real failure into a harness complaint"
+  },
+  {
+    "id": "cross-build.regcache-drop-after-two",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "      if [ \"${_regcache_fails}\" -ge 2 ]; then",
+    "replace": "      if [ \"${_regcache_fails}\" -ge 99 ]; then",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "the ghcr cache IMPORT is itself the failing read (2026-08-18), so a retry that keeps type=registry re-reads the same broken blob for the rest of the ladder"
+  },
+  {
+    "id": "cross-build.regcache-drop-keeps-local",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "            --cache-from:type=registry*|--cache-to:type=inline*)",
+    "replace": "            --cache-from:*|--cache-to:*)",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "widening the drop to every cache tier takes the LOCAL export with it, and the local cache is exactly what still fast-forwards the retry"
+  },
+  {
+    "id": "gst.media-jobs-default-cap",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    compute_jobs_with_mem_cap \"\" \"${1:-2000}\"",
+    "replace": "    compute_jobs_with_mem_cap \"\" 2000",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "a fixed 2000 is what forced the android gstreamer lane to keep its own copy of the whole block for one number"
+  },
+  {
+    "id": "gst.media-jobs-android-caller",
+    "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+    "find": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs \"${PER_JOB_MB}\")\"",
+    "replace": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs)\"",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "ANDROID_GSTREAMER_PER_JOB_MB exists because that lane OOMs at the generic budget; dropping it at the call site silently restores the 2000 MB it was tuned away from"
+  },
+  {
+    "id": "version-snapshot.sync-unquotes-once",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        return value[1:-1]",
+    "replace": "        return value",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "a quoted versions.env value (CUDA_ARCHITECTURES has to be quoted) re-quotes its target on every run, so --write is never idempotent and --check never goes green"
+  },
+  {
+    "id": "version-snapshot.sync-writes-only-on-change",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "    if not dry_run and changed:",
+    "replace": "    if not dry_run:",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "rewriting every scanned file on every --write churns files nothing changed in, and the shared owner is now the only place that decision lives"
   }
 ]

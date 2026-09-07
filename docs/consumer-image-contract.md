@@ -191,9 +191,23 @@ The image now installs all three ahead of time:
 | `wasm-pack` | `WASM_PACK_VERSION` | 258 crates per consumer run |
 | `flutter_rust_bridge_codegen` | `FLUTTER_RUST_BRIDGE_VERSION` | 174 crates per consumer run |
 
-Both crate versions live in `01-core/versions.env` and are installed with
-`cargo install --locked`, so a consumer gets the pinned build rather than whatever
-the index resolves to that day.
+Both crate versions live in `01-core/versions.env`. Where upstream publishes a
+release binary for the arch, the image takes that instead of compiling: the same
+two `cargo install`s cost 87 s / 113 s on amd64 but **768 s / ~1170 s on arm64**
+and **1813 s / 3500 s on riscv64**, which is the shape of QEMU user-mode
+emulation rather than a defect. `install_web_lane_prebuilt` downloads the
+`x86_64-` or `aarch64-unknown-linux-musl` asset and verifies it against a
+per-arch `*_SHA256` pin in `versions.env`, the way sccache and binaryen are
+already fetched. Anything else — riscv64, which upstream publishes no asset for,
+a missing pin, a failed or mismatching download, a tarball without the binary in
+it — falls back to `cargo install --locked`, so a consumer still gets the pinned
+build rather than whatever the index resolves to that day, and nothing
+unverified is ever installed. **The four hashes bump with the two versions.**
+
+That leaves one open question rather than an assumption: whether a riscv64 web
+lane exists at all. The tools are installed uniformly because an arch-conditional
+image is harder to reason about than a slower one, and because "we assumed nobody
+uses it" is how the Android layer ended up built for the wrong ABI.
 
 `install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly channel,
 an unpinned version and a failed `cargo install` each `WARN` and continue. The

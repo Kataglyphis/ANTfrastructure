@@ -908,9 +908,11 @@ class TestOtherLanguageFixtures:
 
     def test_the_cmake_verify_refuses_a_run_with_no_tests(self):
         # `ctest` exits 0 when it finds NO tests, so deleting add_test() would
-        # otherwise be a free pass. The command asserts the count itself.
+        # otherwise be a free pass. The command asserts the count itself - via
+        # the format-tolerant pattern (newer ctest drops ", 0 tests failed"),
+        # whose "out of 1" tail is what a zero-test run can never print.
         command = " ".join(task_named("fix_cmake_link")["verify"])
-        assert "0 tests failed out of 1" in command
+        assert "100% tests passed(, 0 tests failed)? out of 1" in command
 
     def test_the_cmake_fixture_is_missing_exactly_the_link_line(self):
         task = task_named("fix_cmake_link")

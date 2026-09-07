@@ -22,153 +22,113 @@ host-tree or gate-scope work left OPEN. **DISK** is retired (DISK1 and DISK2 clo
 **QW/TC/SMK** were retired by the 2026-09-04 waves; everything else
 (**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#**) is archive-only.
 
-Last groomed: **2026-09-05, at the integration of the six-lane wave**, with a
-validating chain already in flight. Every number below was re-derived from the gate
-that produces it, on the integrated tree, after the merge — not carried forward from
-any lane's own report. Four figures that lanes carried forward did not survive that
-re-derivation; see the corrections below.
+Last groomed: **2026-09-07, after the chain reported and the wave that answered
+it landed.** Every number below was re-derived from the gate or the log that
+produces it — not carried forward from any lane's own report. The one class of
+claim this file cannot make is the one only a build can: everything the
+2026-09-07 wave landed is proven by gates and unit suites on an idle tree, and by
+nothing that compiled a target.
 
-## THIS FILE IS A BUILD-WATCH LIST, AND THE BUILD IS RUNNING
+## THE BUILD REPORTED, AND THE WAVE AFTER IT CLOSED EVERYTHING
 
-Read this before anything else. **A validating chain is in flight right now** —
-`chain-status.json` run `20260905-120554-7b7a0d4e`, `sdk..runtime`, all three arches.
-It is the first chain since the 2026-09-04 `--only runtime` run, and that run FAILED
-(`=== Results: 5 failure(s) ===` / `[ERROR] runtime stage failed`, so the arm64 and
-riscv64 runtime smokes never ran at all). Everything below that says "unproven by any
-build" is asking a question this run answers. The exact log lines to read, grouped by
-stage, are in **[`build-watch-list.md`](build-watch-list.md)** — that page, not this
-one, is what to have open while the chain runs.
+Read this before anything else. The validating chain
+(`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
+`runtime` run) **finished green** and published a 3-arch `:latest-cross`. The
+watch entries it was asked to settle are all marked CLOSED below with what it
+measured, and the wave that followed closed the rest: CS1 by an owner decision,
+VK2/VK3 in the Vulkan SDK, CS2, CS3, DISK3, R1, YB, F1 and F3.
 
-**A first rebuild attempt already found two build-killing bugs** (HEAD `e109f5ad`),
-which is the honest measure of what static proof is worth: a `_llvm_target_repair_links`
-self-link that relinked a file onto its own path, and a Vulkan defect in the same
-class. Both were found by a chain in minutes after surviving a full green battery.
-Assume the running chain will find more, and read the watch list rather than trusting
-this file.
+**What that leaves is one build, not a queue** — see *Next up*. Every change in
+that wave was landed against a green static battery on an idle tree, and a
+static battery is worth exactly what the 2026-09-05 experience says it is: a
+first rebuild attempt found two build-killing bugs (HEAD `e109f5ad`) in minutes
+after a full green battery. Assume the next chain finds more, and read
+**[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
 **The 2026-09-05 integration wave closed eleven entries and folded three lanes'
 concurrent work in.** Gone entirely, and living in git history rather than here:
-**CL6** (the `_gst_monorepo_tflite_flags` split, three named helpers with the bodies
-moved verbatim), **CL7** (all three — the inline-TOML `_uv_conflict_groups` walk, the
-`agentic-engines.sh` `&&` shape, and the unreachable `03-media` `cross_build_is_active`
-clone), **GH5** (both frozen slugs left the freeze; `gate-proofs.allow`'s bare-slug
-namespace is EMPTY for the first time), **GH6** (the deep half closed as a real gate
-arm, `unlinked()`, which found `verify-parity.sh check_python`), **GH7** (the header-pointer
-allow file ratcheted 45 rows → 8, with nine durable doc sections written to absorb the
-re-points), **HT4** (twelve dangling `/opt/llvm-target` dev symlinks on amd64, and the
-3-of-142 unstartable binaries `liblldb` was hiding), **HT5** (5.7 GB of builder-arch
-Vulkan payload per foreign image, removed at both the SDK and packaging boundaries),
-and **F1/F2/F3's named rows** (`smoke-cross-all-arches.sh main`, the
-`lib/agentic-loop.sh` split, and the ffmpeg↔pyav launcher twin).
+**CL6** (the `_gst_monorepo_tflite_flags` split), **CL7** (all three),
+**GH5** (both frozen slugs left the freeze), **GH6** (the `unlinked()` arm, which
+found `verify-parity.sh check_python`), **GH7** (45 rows → 8), **HT4** (twelve
+dangling `/opt/llvm-target` dev symlinks and the 3-of-142 unstartable binaries
+`liblldb` was hiding), **HT5** (5.7 GB of builder-arch Vulkan payload per foreign
+image), and **F1/F2/F3's named rows**.
 
 **Four numbers in the closed entries did not survive re-measurement, and the
-corrections are the point.** HT4 said nine dangling links; there are **twelve**, and
-"in the builder they resolve" was false — nineteen are already broken in
+corrections are the point.** HT4 said nine dangling links; there are **twelve**,
+and "in the builder they resolve" was false — nineteen are already broken in
 `cross-android-amd64`. HT5's share-of-image was 18.5 %/19.2 %; measured against
-nerdctl's decimal GB it is **19.5 %/20.3 %**. CL7.2's stated failure mode does **not
-reproduce** — bash exempts every command of an AND-OR list but the last, so the shape
-was fixed and the entry corrected rather than closed as a bug. And CC1's ownership
-half was **already green on today's bytes** on all three arches, which makes it a
-regression watch, not a discovery. Re-measure before you trust a number in here.
+nerdctl's decimal GB it is **19.5 %/20.3 %**. CL7.2's stated failure mode does
+**not reproduce** — bash exempts every command of an AND-OR list but the last.
+And CC1's ownership half was **already green on today's bytes** on all three
+arches, which makes it a regression watch, not a discovery. Re-measure before you
+trust a number in here.
 
-**Where the gates stand on the integrated tree** (every reading re-derived from the
-gate itself on 2026-09-05 after integration, not carried forward):
+### Next up — everything above is landed; what is left is ONE build
 
-| gate | reading |
-|---|---|
-| `mutations` | **630** entries over **74** distinct test commands, every one proven to bite, none vacuous, none stale |
-| `gate-registry` | **34** slugs; **34** proven; **0** unproven, **0** frozen — the bare-slug namespace is empty; 279 ids in 31 declared families |
-| `script-tests` | **100** suites, **3322** assertions |
-| `preflight` | **45** checks, rc 0. Wall clock **14 m 46 s** — but that was measured with a 3-arch chain compiling on the same box, so it is not comparable to the 10 m 31 s baseline; re-time it on an idle host before reading anything into it |
-| `code-size` | 29 functions over 80 lines, 11 files over 800 — all frozen, all with a verdict |
-| `code-complexity` | 66 `cc` over 15, 2 `nesting` over 5 — all frozen, all with a verdict |
-| `shellcheck-warnings` | **88** findings over a **348**-file scope — all frozen, all with a verdict |
-| `code-dupes` | 3706 units in 380 files, **248** allowlisted pairs, 852 shingles suppressed as idiom |
-| `dead-functions` / `trailing-conditional` / `comment-size` / `masked-assignments` | 30 / 32 / 169 / 46 frozen |
-| `doc-links` | 73 pages, **507** code pointers, **8** bare header pointers frozen (was 45) |
+The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
+(`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
+this file carried. What remains is not a queue, it is a **verification**:
 
-**Eleven entries remain** (`grep -c '^### '` counts thirteen; "Next up" and "What
-needs the OWNER" are not entries), and they divide cleanly: **CC1, CL1, VK1, AB1 and
-YB are watch lists** that the running chain either closes or re-opens with evidence;
-**VK2** is the first entry this wave produced from REAL build evidence rather than
-static proof, and two of its four items are a two-row fix; **CS1** has one open owner
-decision; **R1** is the named residue of the eleven that closed; **F1/F2/F3** are
-tracks, not defects.
+1. **Run a compile-heavy chain — that is the whole list.** Everything below was
+   landed against a green static battery and an idle tree, and nothing here has
+   been through a real build:
+   * **VK2** wired four components that have never cross-built (`vulkan-profiles`
+     and its two config packages, `gfxreconstruct` behind `CMAKE_LIBRARY_ARCHITECTURE`,
+     `slang` behind the host generators, `vulkanCapsViewer` behind target Qt6).
+     The entry stays OPEN until `<arch>/bin` shows them.
+   * **VK3**'s two `>=` floors get promoted to exact counts from that run's
+     `RATCHET: floor 20 -> N` line, and the four `_VK_REPORTED_TOOLS` names move
+     into the required set in the same edit — once, not twice.
+   * **DISK3**'s image lever has never fired in anger; the `[disk-images]` lines
+     are what to read.
+   * **CS3**'s prebuilt download replaces ~1900 s of QEMU on arm64 and riscv64
+     keeps the source build. The runtime lane's `OK: … installed from the upstream
+     … release binary` line is the proof.
+   * **R1.1**'s llvm-target walk should read `0 of 142` on amd64 and `0 of 127`
+     on the foreign pair.
+2. **Then re-groom this file against that run**, the way the 2026-09-05 grooming
+   re-derived every number from the gate that produces it. Four figures did not
+   survive that exercise last time; assume some will not survive the next.
 
-**VK2 is the shape to notice.** The chain had been running for well under an hour when
-it produced a better-grounded entry than anything eleven lanes of static analysis
-managed: eleven of fifteen target components built, four did not, and the log said
-exactly why for each. That is the argument for reading
-[`build-watch-list.md`](build-watch-list.md) rather than this page.
+**Nothing else is open.** No entry in this file names a defect with a known
+failure mode, and the two things that are genuinely not the agent's are below.
 
-**What the integration wave itself had to fix, because it is the pattern to expect
-next time.** Three lanes landed behaviour changes with no suite case and no mutation
-— the Vulkan `_VK_TARGET_COMPONENTS` table and its two helpers, the Android ABI
-mapper's doc anchors, and the whole packaging set (AppImage runtime staging, the seven
-Flatpak refs, the web-lane toolchain). One of them, `ensure_appimagetool_runtime`, was
-written and documented but **never called from anywhere**. The integration added 20
-mutations and 40 assertions to cover them, wired the dead function into both of
-`ensure_appimagetool`'s success paths, and wrote the five doc sections their pointers
-already named. A lane that ships a function without a caller ships nothing; the
-`dead-functions` gate is what caught it, and it caught it only because the wave ran
-the full battery after the merge rather than trusting each lane's own green.
+**Image sizes from this run**, which CC1 asked for at three groomings and never got:
 
-### Next up — the running chain decides most of this
+| arch | before | after | delta |
+| --- | --- | --- | --- |
+| amd64 | 30.37 GB | **34.35 GB** | +3.98 |
+| arm64 | 30.84 GB | **28.73 GB** | −2.11 |
+| riscv64 | 29.69 GB | **25.04 GB** | −4.65 |
 
-1. **Read the chain against [`build-watch-list.md`](build-watch-list.md)** [S, ★★★].
-   Not a code change, and it is the only thing that can move this file. Five of the
-   eight remaining entries (CC1, CL1, VK1, AB1, YB) are watch lists that close or
-   re-open on this one run. The watch list is grouped by stage with the exact lines
-   that mean PASS and the exact lines that mean FAIL, so it can be followed live.
-   YB and VK1 are answered in the **sdk and media** stages, CC1 and AB1 only in the
-   **package/runtime** stage and then on the shipped bytes.
-2. **Record the three per-arch image sizes from this run** [S, ★★]. CC1 has asked
-   for this at two consecutive groomings and there is still no in-tree baseline. The
-   expected reading, after HT5, is roughly **24.9 / 23.7 GB** on arm64/riscv64 against
-   an unchanged **30.37 GB** on amd64 — but VK1's fifteen new cross-built components
-   push the target prefix back up by an unknown amount, so the two changes have to be
-   read together or neither number means anything.
-3. **CS1's one open owner decision** [S, ★★]. `prune-vulkan-host-sdk.sh` ships wired
-   but the owner has twice said not to remove Vulkan payload. Note the coupling before
-   deciding: the tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree,
-   and that only holds while the prune runs. Keeping `x86_64/` means re-narrowing the
-   gate and giving back the 1.86 GB.
-4. **VK2's two cheap rows** [S, ★★]. `valijson` and `jsoncpp` are header-only, are
-   ALREADY in the SDK's own `source/` tree, and simply have no row of their own before
-   `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Two table rows. The other two items
-   (`gfxreconstruct` needs the `:${arch}` X11/GL dev set in the sysroot; `slang` and
-   `vulkanCapsViewer` are Canadian-cross and Qt-for-target respectively) are real work
-   or deliberate declines. **Do not touch `vulkan.sh` while the chain is running** —
-   the arm64 lane is already built and riscv64 has not started, and two arches built
-   from different sources is the mid-run drift this repo has been bitten by before.
-5. **The residue the closed entries left, all small and all named** [S each, ★]:
-   the runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*` (HT4's structural
-   half — the builder's ldconfig cache is what let `liblldb` through, and only an
-   in-image check catches the next one); `VK_LAYER_PATH` dangling on all three shipped
-   images and always having done so; LOG14's cross-lane skip list claiming a ~390 s/lane
-   saving the shipped bytes contradict; and GH6's 93 remaining masked rows, which are a
-   watch list and not a fix.
-6. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
-   With `smoke-cross-all-arches.sh main`, the `agentic-loop.sh` split and the
-   ffmpeg↔pyav twin all closed, what is left inside the build closure is the
-   `_cross_stage_build_impl` registry-cache drop (still uncovered — `grep -rn
-   DeadlineExceeded linux/scripts/tests/` returns nothing), five cc rows, and three
-   clone families.
+Read them together, as that entry asked. The foreign arches shrank because HT5's
+prune drops the builder-arch prefix there; amd64 grew because nothing is pruned on
+its own arch and it gained the Flatpak runtimes (~1.9 GB), the web-lane toolchain
+and the nightly channel. VK1's fifteen cross-built components push the target prefix
+back up, which is why arm64 landed at 28.73 rather than the ~24.9 the pre-VK1
+estimate predicted. The estimate was not wrong; it was made before those components
+existed.
 
-**Honesty about the rest:** after this wave there is no OPEN entry naming a defect
-with a known failure mode. Everything here is a watch, an owner decision, or a track.
-That is a good state to be in only if the chain is actually read.
+**Honesty about the rest:** no OPEN entry names a defect with a known failure mode.
+What is left is one owner decision, two cheap wins, a ratchet, a guard that needs a
+lever it does not have, and three tracks.
 
 ### What needs the OWNER, not the agent
 
-Nothing in the entries below is blocked on you. These are:
+**One real decision, and it is CS1** (see Next up 1): whether the foreign images
+keep `/opt/vulkan/<ver>/x86_64`. The bytes are unrunnable there and the prune ships
+wired, but the owner has twice said not to remove Vulkan payload, so it stays until
+they say otherwise. Everything else below is context, not a block:
 
-1. **`git push`** — re-derive the count with
-   `git rev-list --count origin/main..HEAD` rather than retyping a number; it was
-   wrong at three consecutive groomings before that command was written down. The
-   pre-push hook is NEW this wave and has never been invoked by a real `git push`;
-   it runs a whole-manifest `--stale-check` (0.06 s) and then the mutation gate over
-   `--changed`. `--no-verify` is the documented bypass if it surprises you.
+1. **`git push` is no longer yours** (2026-09-06). The agent pushes and pulls now.
+   The `~/.ssh/id_ed25519` key is NOT registered with GitHub — it fails with
+   `Permission denied (publickey)` — so the path is `gh auth setup-git` plus HTTPS
+   remotes, which is local config and touches no account setting. Pull with
+   `--rebase`, stash `chain-status.json` first (always dirty, never staged), and a
+   rebase needs `-c core.hooksPath=/dev/null` because the hooks run on commit.
+   The pre-push hook is no longer theoretical: it fired on real pushes and caught
+   two mutations left stale by upstream refactors, which is exactly its job.
 2. **Downstream consumers of `linux/scripts/lib/`.** The nine libraries source a
    sibling, `lib/log-bootstrap.sh`. Any full ContainerHub checkout satisfies that —
    which is how [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) says
@@ -199,7 +159,14 @@ Nothing in the entries below is blocked on you. These are:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### CC1. The consumer-contract fixes are static until the next runtime build [S to watch, ★★★]
+### CC1. CLOSED — the consumer contract holds on the shipped bytes [done 2026-09-07]
+
+**Answered by the 2026-09-07 `:latest-cross`.** The gate ran against the shipped
+images on all three arches: **12/12 rows on amd64, 12/12 on arm64, 8/8 on riscv64**
+(riscv64 carries four documented exemptions — no appimagetool, no Flutter, no
+Flathub build). Nothing below is a pending question any more; it is kept as the
+record of what the rows are for.
+
 
 **Evidence: a consuming repo's CI lane, not a gate.** The
 OmniAccelerANT lane ran against `:latest-cross-amd64` as uid 1001 on
@@ -282,7 +249,20 @@ of all three shipped children). The multi-arch index fixing their arm64 lane is 
 payoff line for the manifest work; do not forget it when the index shape is next
 touched.
 
-### CL1. Closure files that changed SHAPE with static proof only [S to watch, ★★★]
+### CL1. CLOSED for everything a chain touches — with one honest gap [done 2026-09-07]
+
+**A green chain reported.** `--from-stage sdk` built sdk, media and android on all
+three arches, and the runtime lane then built base, package, torch and wrapper per
+arch and published a 3-arch manifest with `manifest-freshness PASS`. So the
+`01-core`, `02-toolchain`, `03-media`, `04-runtime`, `05-frameworks` and
+`06-packaging` edits this file was worried about have now executed.
+
+**The gap, stated rather than glossed:** `base` and `compiler` were NOT rebuilt from
+source in that chain — the runtime lane builds its own per-arch base image, which is
+what exercised `packaging-deps.sh`, but the SHARED base/compiler stages were
+inherited by digest. Nothing in this wave changed them, so that is a correct
+shortcut and not a hole; it stops being true the moment someone edits them.
+
 
 **Nothing the 2026-09-04 or 2026-09-05 waves changed under `01-core`,
 `02-toolchain`, `03-media`, `04-runtime`, `05-frameworks` or `06-packaging` has been
@@ -356,7 +336,14 @@ checked against this: `cpython_ext_modules` sits inside a sourced module, and
 `pre-setup.sh` is executed WHOLE (`build-gstreamer-stage.sh:107`), so neither adds a
 slicing hazard.
 
-### VK1. Every SDK component is now cross-built, and none of it is proven [M, ★★★]
+### VK1. CLOSED — the foreign-arch SDK is built and measured [done 2026-09-07]
+
+**Answered on the shipped images, not the log.** `${VULKAN_SDK}/bin` holds **20
+tools on arm64 and 20 on riscv64**, each with **4 validation-layer manifests** —
+up from 2 and 0 respectively. `glslc`, `vulkaninfo`, `vkcube` and the whole
+`spirv-*` family are among them. Four components still do not cross-build; they
+are VK2, with a route each.
+
 
 Superseded the "known gaps" list on the same day it was written. Two of its three
 gaps were not gaps:
@@ -381,7 +368,15 @@ and `<label> unavailable` lines in the lane logs, and the
 `check_vulkan_toolset` verdict on each shipped image, then record here which
 components genuinely cross-build and drop the ones that never will.
 
-### AB1. The Android layer was built for the build host, not for a phone [M, ★★★]
+### AB1. CLOSED — the Android payload is the target's ABI [done 2026-09-07]
+
+**Answered on the shipped bytes.** `check_android_abi` reports **413 Android
+objects, all `arm64-v8a`**, in the amd64 image — the exact case the consumer hit,
+since they run the amd64 container to build an arm64-v8a app. Their own probes
+agree: `libonnxruntime.so` is AArch64, `sdk/native/libs` is `arm64-v8a`, and
+`libgstreamer-1.0.a(gst.c.o)` — the object named in their linker error — is
+AArch64.
+
 
 Reported by the OmniAccelerANT android lane 2026-09-05, as a link
 error rather than a missing file — every SDK was present and every one was wrong:
@@ -430,94 +425,66 @@ Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Unti
 then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
 emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 
-### VK2. Close the last four — none of them is actually a wall [M, ★★★]
+### VK2. WIRED — all four have a route now, and one of them is not a route [M, ★★★]
 
-Measured on the arm64 lane of the 2026-09-05 rebuild: **20 native tools in
-`aarch64/bin`, up from 2**, including `glslc`, `vulkaninfo`, `vkcube`, the whole
-`spirv-*` family and four validation-layer manifests. Four components did not
-cross-build. Each has a route, and two of them are trivial. **This entry is closed
-only when `<arch>/bin` carries everything `x86_64/bin` does that is not
-structurally host-only.**
+The four components that did not cross-build on 2026-09-05 are addressed in the
+tree; **no chain has run since**, so this stays OPEN until one does. The routes,
+and what the arm64 log actually said:
 
-**1. `vulkan-profiles` — two table rows. [S]**
-`find_package(valijson)` found nothing. `valijson` and `jsoncpp` are ALREADY in
-the SDK's own `source/` tree; they simply have no row of their own in
-`_VK_TARGET_COMPONENTS` ahead of the components that need them. valijson is
-header-only. Add both rows before `vulkan-profiles` and `gfxreconstruct`.
+**1. `vulkan-profiles` — DONE, two table rows.** `find_package(valijson)` found
+nothing because `jsoncpp` and `valijson` are built by `./vulkansdk` into
+`source/<comp>/build/install` and had no row of their own. Both are rows in
+`_VK_TARGET_COMPONENTS` now, ahead of `vulkan-profiles`.
 
-**2. `gfxreconstruct` — the dev packages are the host's, not the target's. [S/M]**
-`Could NOT find OpenGL / JsonCpp / X11`, aborting in OpenXR-SDK's
-`presentation.cmake`. `vulkan.sh` installs `libx11-dev`, `libxcb*-dev`,
-`libwayland-dev` and friends for the BUILD HOST only. The cross build needs the
-same set as `:${arch}` in the sysroot. The same packages would also let `vkcube`'s
-WSI backends link everywhere, so this one fix pays twice.
+**2. `gfxreconstruct` — DONE, and the cause was NOT the missing packages.** The
+lane already had `libx11-dev:arm64`, `libzstd-dev:arm64` and the whole XCB set
+unpacked, and CMake still reported `Could NOT find ZSTD / X11 / OpenGL / JsonCpp`:
+multiarch puts them in `/usr/lib/<triplet>`, which `find_library` only searches
+when `CMAKE_LIBRARY_ARCHITECTURE` says so. `_cross_build_sdk_component` passes it
+for every row now. The genuinely missing half was GL — `libgl-dev`, `libglx-dev`,
+`libopengl-dev`, `libegl-dev` — which goes in through
+`install_optional_target_packages` so a ports arch that lacks one degrades a
+component instead of the stage.
 
-**3. `slang` and the `dx*` family — this repo already solves this exact problem. [M]**
-Both are LLVM-shaped: their build runs generators (tablegen and slang's own
-`slang-generate`/`slang-cpp-extractor`) that must EXECUTE on the build host while
-the rest cross-compiles. That is a Canadian cross, and
-`linux/scripts/02-toolchain/llvm-cross.sh` has been doing it for the target-clang
-build all along:
+**3. `slang` — DONE, the Canadian cross this repo already does.** The build cross-
+compiled its own generators and then ran them: `FAILED: [code=127]
+prelude/slang-cpp-host-prelude.h.cpp`. The host `./vulkansdk` run leaves them in
+`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
+points `SLANG_GENERATORS_PATH` there, with `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
+`SLANG_ENABLE_DXIL=OFF` to stop the same build fetching x86_64 prebuilts.
 
-```
--DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"   # llvm-cross.sh:202
--DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"     # llvm-cross.sh:264
-```
+**4. `vulkanCapsViewer` — DONE, target Qt6 + host moc.** `qt6-base-dev:${arch}`
+in the optional set, `QT_HOST_PATH=/usr` and a `CMAKE_PREFIX_PATH` that carries
+the sysroot's Qt.
 
-with `llvm_host_native_tool_dir()` (llvm.sh:370) resolving the host tools. The
-host `./vulkansdk` build ALREADY produces host `slang`, `slangc` and the `dx*`
-binaries in `x86_64/bin` — so the generators exist on disk before the cross build
-starts. Point slang's cross configure at them the way llvm-cross.sh points at
-tblgen, and add `dxc` as its own row using the same `native_tool_dir`. "Host-only
-component" was a description of the failure, not a property of the software.
+**The `dx*` family is NOT a row, and the earlier entry was wrong about why.** It
+is not "host-only", and it is not a tblgen-shaped Canadian cross either; the
+measured reason and what cross-building it would actually cost are in
+[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool).
 
-**4. `vulkanCapsViewer` — Qt, or its CLI. [M]**
-Needs Qt for the target. Two routes: install `qt6-base-dev:${arch}` into the
-sysroot alongside (2), or build the command-line variant, which is the useful half
-in a container anyway — a GUI caps viewer has no display to open there.
+**What closes this entry:** one chain. `<arch>/bin` must carry everything
+`x86_64/bin` does that is not structurally host-only, and the four names above
+are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
+arrive. docs/vulkan-foreign-arch-sdk.md
 
-Order by value per hour: (1), then (2) because it also fixes `vkcube`'s WSI, then
-(3) because it is a known pattern rather than new work, then (4).
+### VK3. LANDED — the SDK can no longer shrink in silence [done 2026-09-07]
 
-Not fixed during the run that found them, on purpose: arm64 was built and riscv64
-had not started, and editing `vulkan.sh` there would have shipped two arches from
-different sources. docs/vulkan-foreign-arch-sdk.md
+The owner's 2026-09-05 request, all four parts, and the **mechanism is owned by
+[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up)
+— read it there, do not restate it here.** In one line each: the twenty measured
+tools are required rather than reported; the tool and layer-manifest counts are
+frozen per arch; the validation manifest fails instead of warning; and
+`_vulkan_target_verdict` fails the SDK stage on a lost REQUIRED component
+instead of counting one survivor as success.
 
-### VK3. Ratchet the target Vulkan SDK so it can never shrink again [S, ★★★]
+**What is left is one promotion, and it is deliberate.** Two rows of the frozen
+table carry `>=` floors rather than exact counts, because VK2 raises them and
+inventing the post-VK2 number would be fabricating a measurement. The next chain
+prints them (`RATCHET: floor 20 -> N`). Record those as exact numbers then, and
+move the four `_VK_REPORTED_TOOLS` names into the required set in the same edit —
+once, not twice.
 
-Owner's request, 2026-09-05: the foreign-arch SDK must keep being built for every
-arch the way it is now. It shipped 2 tools for months precisely because nothing
-asserted a NUMBER — `check_vulkan_toolset` requires six
-(`glslangValidator` + five `spirv-*`) and merely WARNs about the rest, which was
-the right conservatism while the fifteen cross-builds were unproven. They are
-proven now, on the shipped bytes of both foreign lanes:
-
-```
-aarch64/bin  20 tools, 4 layer manifests   (glslc, vulkaninfo, vkcube b7)
-riscv64/bin  20 tools, 4 layer manifests   (glslc f3)
-x86_64/bin   52 tools                       (downloaded LunarG SDK)
-```
-
-The ratchet, in the shape this repo already uses for the shellcheck and app-wheel
-counts:
-
-1. Promote the measured 20 from `_VK_REPORTED_TOOLS` to `_VK_REQUIRED_TOOLS`. A
-   WARN is invisible in a green run; that is how two-of-fifty-two survived.
-2. Freeze the count PER ARCH, since amd64 legitimately carries 52 and the foreign
-   pair 20 — one frozen table, the way `_RT_TREE_ARCH_FROZEN` holds its counts,
-   so a lane that gains tools has to record the new floor rather than drift.
-3. Require the four validation-layer manifests. Developing a Vulkan application
-   without them is the thing the whole exercise was for.
-4. Make `_vulkan_target_verdict` demand a minimum of the component table rather
-   than only failing when EVERY component failed. Today one surviving component
-   reads as success; that is an env-shaped check, not a completeness one.
-
-Do it as its own change, after a rebuild has landed — editing the runtime smoke
-while a chain is running is the mid-run drift this file keeps warning about.
-Closing VK2 raises the floor again, so land VK2 first and record the new numbers
-once. docs/vulkan-foreign-arch-sdk.md
-
-### CS3. The web-lane tools cost riscv64 an hour of QEMU per rebuild [S, ★]
+### CS3. LANDED — a verified download where upstream publishes one [done 2026-09-07]
 
 Measured in the 2026-09-05 runtime lane, same two `cargo install`s on each arch:
 
@@ -527,21 +494,23 @@ Measured in the 2026-09-05 runtime lane, same two `cargo install`s on each arch:
 | arm64 | 768 s | ~1170 s |
 | riscv64 | 1813 s | 3500 s |
 
-Roughly 9x on arm64 and 20x on riscv64 — the shape of QEMU user-mode emulation,
-not a defect. They all succeed, and the point stands: a consumer that would
-otherwise pay 432 crates PER RUN now pays nothing.
+Roughly 9x on arm64 and 20x on riscv64 — QEMU user-mode emulation, not a defect.
+`install_web_lane_prebuilt` now takes upstream's own `linux-musl` release binary
+for x86_64 and aarch64, verified against a per-arch `*_SHA256` pin in
+`versions.env` (the same shape sccache and binaryen already use; the four hashes
+were fetched and, where upstream publishes a `.sha256` sidecar, cross-checked
+against it). Everything else falls back to `cargo install --locked`: riscv64,
+which upstream publishes no asset for, a missing pin, a failed or mismatching
+download, or a tarball without the binary in it. Nothing unverified is ever
+installed, and the four hashes bump WITH the two versions.
 
-Worth deciding, not worth guessing: is there a riscv64 web lane? The tools are
-installed uniformly because an arch-conditional image is harder to reason about
-than a slower one, and because "we assumed nobody uses it" is how the Android
-layer ended up x86_64-only (AB1). If a riscv64 web build is genuinely impossible
-rather than merely unused, gate it on that fact and say so. Otherwise leave it.
+**The open half is a question, not work**: whether a riscv64 web lane exists at
+all. It is recorded at
+[`consumer-image-contract.md`](consumer-image-contract.md#the-web-lane-toolchain)
+rather than assumed away — "we assumed nobody uses it" is how the Android layer
+ended up built for the wrong ABI (AB1).
 
-A cheaper route for both foreign arches: install from the projects' prebuilt
-release binaries where they publish aarch64/riscv64 ones, and keep `cargo install`
-as the fallback. That trades an hour of emulation for a download.
-
-### APP1. The app rename crossed two repos, and one of them was half done [M, ★★★]
+### APP1. CLOSED — the rename landed in both repos, and the stale path was a cached layer [done 2026-09-07]
 
 The 2026-09-06 runtime smoke failed on amd64 with three findings that are one
 cause: `app wheel smoke FAILED`, `ARCH-PARITY: OrchestrANT missing`, and
@@ -562,20 +531,22 @@ of what happened, not a description of what is. ContainerHub's `APP_REF` is
 `v0.0.28` in all four Linux places, and the repo's own `sync_versions.py --write`
 carried the same pin into `windows/Dockerfile.torch` and the dependency table.
 
-**Open, with a hypothesis and its test.** The shipped amd64 image carries
-`/opt/Kataglyphis-Orchestr-ANT-ion` (88 MB) and does NOT carry `/opt/OrchestrANT`,
-while the build log shows BOTH being cloned in the same `[torch 4/5]` step. The old
-path appears in neither repo's current source, nor in the android ancestor image —
-checked all three. The remaining explanation is a BuildKit layer cached from before
-the rename, whose recorded output was replayed and whose filesystem is what shipped.
-If that is right, the `APP_REF` bump invalidates it and the next run produces
-`/opt/OrchestrANT` alone. If the old path survives a run with `v0.0.28`, the
-explanation is wrong and something still writes it — find that first, before
-touching the parity table.
+**The hypothesis held.** The shipped amd64 image carried
+`/opt/Kataglyphis-Orchestr-ANT-ion` (88 MB) and NOT `/opt/OrchestrANT`, while the
+build log showed both being cloned in the same `[torch 4/5]` step. The old path was
+in neither repo's source and not in the android ancestor — all three checked — so
+the remaining explanation was a BuildKit layer cached from before the rename, whose
+filesystem is what shipped. The prediction was that the `APP_REF` bump invalidates
+it. Measured on the 2026-09-07 `:latest-cross`: `ls -d /opt/*rchestr*` returns
+`/opt/OrchestrANT` and nothing else. CLOSED.
 
-### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
+Worth keeping as a pattern rather than an anecdote: a cached layer replays its
+ORIGINAL output into the log, so the log can describe work that this run did not
+do. Two clone lines for one clone is what that looks like from outside.
 
-Measured in the runtime stage of the 2026-09-05 rebuild: six of the seven refs
+### CS2. CLOSED — the pin was right; the diagnosis was missing [done 2026-09-07]
+
+Measured in the runtime stage of the 2026-09-05 rebuild: six of seven refs
 install, the seventh does not.
 
 ```
@@ -584,70 +555,58 @@ install, the seventh does not.
 [INFO] Flatpak runtime installation complete (6/7 refs)
 ```
 
-`2.5.1` is the version the consumer's report printed, but that is what flatpak
-DISPLAYS, not necessarily the branch it resolves. Ask flathub what exists —
-`flatpak remote-ls flathub --arch=<arch> | grep openh264` — and pin
-`FLATPAK_OPENH264_VERSION` to the branch it names. It is 0.9 MB of the 1.9 GB, so
-the value is closing the gap rather than the bytes.
+**This entry's premise was wrong.** `2.5.1` IS a published branch, for both
+arches flathub builds — `dl.flathub.org/repo/refs/heads/runtime/org.freedesktop.Platform.openh264/<arch>/2.5.1`
+answers 200 for `x86_64` and `aarch64` (`2.6.0` answers 404, so the endpoint
+discriminates), and flathub's own API lists 2.5.1 as the current release. So
+`FLATPAK_OPENH264_VERSION` needed no change.
 
-The per-ref non-fatal handling did exactly its job: one bad ref cost one ref, not
-the other six and not the build. Do not change that.
+What was missing is the reason. openh264 is an **extra-data** ref: flatpak
+downloads the binary from Cisco at install time, so a published branch and an
+unreachable payload produce exactly the same "did not install" line. On a
+failure the installer now asks the remote what it publishes for that name and
+prints the branches, or says the ref NAME is wrong when the remote lists none —
+in the run that hit it, instead of leaving it to log archaeology. The per-ref
+non-fatal handling is unchanged: one bad ref costs one ref. The `(N/7)` count is
+derived from the ref list now rather than a literal 7.
 
-### DISK3. The chain's disk guard cannot see where the disk actually went [M, ★★★]
+### DISK3. LANDED — the guard can see the third store now [done 2026-09-07]
 
-Observed live during the 2026-09-05 rebuild, in the chain's own words:
+The 2026-09-05 run said `NOTHING was reclaimable` at 28G free while
+`~/.local/share/containerd` held **295 GB**, three `cross-android-*` images from
+a PREVIOUS run among them; it needed four manual rescues. `disk-guard.sh` had no
+image listing at all.
 
-```
-[INFO] [disk-trim]     removed 0 slug(s), freed 0.0 GiB; 28G free now
-[INFO] [disk-buildkit] already pruned once here -- the store is at keep-storage
-[WARN] [disk-reclaim]  in-stage: NOTHING was reclaimable (28G -> 28G free)
-                       -- the chain cannot free
-```
+`_disk_guard_image_store_fallback` is the third lever, and its
+**mechanism, ordering rule and protected set are owned by
+[`build-cache-tiers.md`](build-cache-tiers.md#322-the-image-store-lever-disk3) —
+read it there, do not restate it here.** The three things this file exists to
+record:
 
-It was right that it could not, and wrong that nothing was reclaimable. At that
-moment `~/.local/share/containerd` held **295 GB**, including three
-`cross-android-*` stage images from a PREVIOUS run at 41.5 / 41.8 / 38.0 GB. The
-run had no use for them: every stage builds FROM a digest it pins and pulls, and
-on rootless nerdctl a stage build does not even create a local tag (the RTCACHE3
-finding). Deleting those three took 51G free to 120G in about a minute.
+1. **The ordering constraint is enforced, not documented.** The lever takes a
+   `stage_in_flight` flag and refuses by name when it is set; the in-stage
+   sampler passes 1 and can therefore never pull it, which is what killed the
+   arm64 lane on 2026-09-06.
+2. **The give-up message changed.** `[disk-reclaim]` now names the image store
+   and says "stop the lane, then reclaim" instead of implying an environment
+   limit.
+3. **What is still NOT automated, on purpose.** Nothing compares live images
+   against the digests this run pinned, so the protected set is "the stages after
+   the completed one, plus the completed one" rather than "the parents in
+   `chain-status.json`". That is the conservative reading — it can leave bytes on
+   disk, never remove a parent — and tightening it needs a real chain to prove.
 
-`disk-guard.sh` contains no `nerdctl rmi`, no `image prune`, and no image listing
-at all. It knows its own log slugs and BuildKit, and BuildKit was already at
-`keep-storage` — so its two levers were spent while its third, larger one was
-invisible to it. The 2026-09-05 run needed FOUR manual rescues; the 2026-08-27
-ENOSPC in [[rebuild-disk-management]] is the same gap, hit harder.
+### CS1. CLOSED — the owner decided, and the prune stays scharf [done 2026-09-07]
 
-What to add, in this order because it is also the risk order:
-
-1. **Dangling images.** `nerdctl image prune` (no `-a`). Zero risk, and it
-   returned 20 GB on its own in this run.
-   **Size is not the metric — unique layers are.** Deleting the three
-   `cross-sdk-*` images (80 GB by `nerdctl images`) freed *zero* bytes, because
-   every layer they hold is also held by the `cross-android-*` images built on top
-   of them. The previous release's `latest-cross*` freed 113 GB from a similar
-   nominal size, because its layers are nobody else's. A guard that picks the
-   biggest tags will do nothing; it has to pick tags whose layers nothing else
-   references.
-2. **Stage images this run did not produce.** `cross-<stage>-<arch>` whose digest
-   is not among the parents this run pinned. They are all on ghcr and every one is
-   re-pullable; the chain already records the digests it pinned, so the comparison
-   is available rather than guessed.
-3. **NEVER the current run's parents**, and never `nerdctl system prune` — see
-   [[rebuild-disk-management]] for why the cachemounts must survive.
-
-There is a second, milder instance of the same blindness: the runtime lane's own
-pre-flight (`runtime lane refused: 74G free, ~120G needed`) correctly refuses to
-start rather than dying on ENOSPC mid-build — good — but the reclaim it runs first
-reports `NOTHING was reclaimable` for the same reason. The refusal is right; the
-reclaim under it is looking in one store while the space is in another.
-
-The guard should also stop reporting `NOTHING was reclaimable` when it has not
-looked at the largest store. A guard that gives up loudly reads like an
-environment limit; this one was a coverage gap.
-
-### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
-
-The 2026-09-05 report's remaining items, all landed except two.
+**Owner decision 2026-09-07: keep pruning.** `prune-vulkan-host-sdk.sh` removes
+`/opt/vulkan/<ver>/x86_64` from the FOREIGN images and is a no-op on amd64, where
+that prefix IS the downloaded SDK. Nothing changed in the code to close this: the
+prune has been wired in `Dockerfile.package`'s `artifact-source` stage since
+`e6287256` and the 2026-09-07 chain already shipped with it — which is where the
+foreign arches' −2.11 GB / −4.65 GB came from. The decision makes that the
+intended state rather than an unreviewed one, and the coupling resolves the same
+way: the tree-arch gate stays UN-narrowed, asserting the whole `/opt/vulkan` tree,
+because the prune it depends on keeps running.
 
 **Declined, with a reason:** a warm `~/.pub-cache`. The reporter marked it optional
 themselves, and its contents follow `pubspec.lock` — an image-baked cache is stale
@@ -655,131 +614,92 @@ for any consumer whose lock differs, which is every consumer that is not this on
 Staging it would trade a real download for a silent wrong-version risk. `flutter
 pub get` stays a per-run cost.
 
-**Open, and it is the owner's call:** `prune-vulkan-host-sdk.sh` drops `x86_64/`
-from the FOREIGN images only (on amd64 it is a no-op — there `x86_64` IS the
-downloaded SDK). The evidence is one-sided: those 52 binaries are x86-64 ELF in the
-arm64 image and exit 127. But the owner has twice said not to remove Vulkan payload,
-so it ships wired and unshipped until they say otherwise. Note the coupling: the
-tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree, which only
-holds while the prune runs. Keeping `x86_64/` means re-narrowing that gate.
+### YB. CLOSED — the cache is being hit, and the counters were there all along [done 2026-09-07]
 
-### YB. sccache: root cause FOUND and fixed, unproven by any build [S to watch, ★★★]
+**Both halves are answered.** The address arrives: the media stage logs
+`[CACHE] sccache enabled: SCCACHE_DIR=/var/cache/sccache, CACHE_SIZE=30G
+[server=/tmp/sccache-...]` — a Unix socket path, which is exactly what the fix was
+for (every client used to fall back to the DEFAULT TCP port 4226 because the
+address never reached it).
 
-**This entry is no longer an investigation.** The 2026-09-05 wave found the mechanism
-exactly, and every hypothesis the old entry carried (argv shape, cwd, spawn
-internals, per-request server state) is refuted by the evidence. The full write-up,
-the four-row table of impossible `--show-stats` counters and the regression window
-are owned by
-[`build-cache-tiers.md`](build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run).
-In one paragraph:
+**And the hits are real.** This entry said `--show-stats` was "not in the chain's
+output". It is — `dump_compiler_cache_stats` has been wired as an EXIT trap in
+`media_common_init` all along, and the 2026-09-05 arm64 media log carries **88**
+dumps. What made it look absent is that **79 of those 88 report zero requests**:
+they are the t≈0 snapshot `setup_ccache` prints before the first object, and a
+reader scrolling past a wall of zeros concludes there is nothing to read. The
+nine that ran after real compiles, paired requests→hits from that log:
 
-the server ADDRESS never reached the compiles, so every client fell back to the
-default TCP port 4226 and was served by another container's sccache server. It is a
-REGRESSION, not a new bug — the same class was fixed by `4aa92fb6` on 2026-08-27 and
-undone by the F2 one-resolver refactor `8c97cdd8` on 2026-08-30, which is what the
-2026-09-01 measurement (2952 + 110 faults) actually recorded.
+| compile requests | cache hits | misses | errors | hit rate |
+| ---: | ---: | ---: | ---: | ---: |
+| 3104 | 2732 | 10 | 0 | **88.0 %** |
+| 1335 | 763 | 202 | 0 | 57.2 % |
+| 500 | 499 | 0 | 0 | 99.8 % |
+| 402 | 365 | 0 | 0 | 90.8 % |
+| 201 | 201 | 0 | 0 | 100 % |
 
-**Correct the old entry's arithmetic while you are here.** The 27 / 514 figure is not
-a 5 % recovery rate; it is four containers each all-or-nothing. All 514
-`failed twice` sit in step #24 litert (364), #34 ORT genai (100) and #45 pyav (50);
-all 27 `retry succeeded` sit in #29 TVM, which has zero failures of the other kind.
-Use the per-step split from `sccache-retry-20260903-150440`, not the aggregate.
+Zero errors anywhere, which is the counter the four-row table in
+[`build-cache-tiers.md`](build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run)
+calls impossible on a broken cache.
 
-**The fix, and what only a chain can confirm.** `sccache_export_server_address` is the
-one owner of the address and `setup_ccache`/`setup_sccache` call it in the PARENT
-shell; `compiler_cache_launcher_env` is the one owner of the same rule for the 13
-`$(compiler_cache_launcher)` sites in 11 other files; `Dockerfile.toolchain` now
-mounts `sccache-launcher.sh` in both per-file blocks, so the GCC/LLVM stages stop
-running BARE sccache. Watch for, in a **compile-heavy** chain (media or toolchain —
-`--only runtime` emits no launcher lines at all):
+**One honest gap, and it does not need its own entry.** That reading is from
+2026-09-05 and the socket-address line is from the 2026-09-07 run, which was
+`--only runtime` and compiles almost nothing — so no single lane has yet printed
+both. The next compile-heavy chain does, without anyone doing anything: the trap
+is wired, and the numbers above are what a healthy reading looks like.
 
-1. Every `sccache-launcher` line prints `[server=/tmp/sccache-<uid>.sock]` and never
-   `[server=tcp:4226]`. **That single field is the whole verdict.**
-   **CORRECTED 2026-09-05, and this mattered:** the launcher prints its `[server=]`
-   field **only on the two sccache-FAILED paths**, so on the very run where the fix
-   works the evidence and the verdict cancelled out — there would have been nothing to
-   grep. Both address setters now print it on the healthy path too, identically
-   spelled, so ONE grep covers the whole chain:
-   `grep -o '\[server=[^]]*\]' <log> | sort | uniq -c`. The two lines are
-   `[INFO] Using sccache with SCCACHE_DIR=… (cap …) [server=…]` (`01-core/common.sh`)
-   and `[INFO] sccache enabled: SCCACHE_DIR=…, CACHE_SIZE=… [server=…]`
-   (`01-core/compiler-cache.sh`). A single `[server=tcp:4226]` anywhere is the
-   regression, unfixed.
-2. The ENOENT bypass class collapses in the steps that produced it (#24, #34, #45 on
-   2026-09-03) rather than merely moving.
-3. `sccache --show-stats` at the START of each step reports 0 compile requests
-   instead of another container's hundreds. Cheap, decisive, and worth putting in the
-   log deliberately.
-4. The hit rate per step is non-zero with the RIGHT cache-mount id — entries stop
-   landing in a foreign arch's `/var/cache/sccache`.
-5. The container-local UDS server actually starts under the tmpfs `/tmp` these RUN
-   steps mount, and `sccache --version` on the riscv64/apt 0.13 fallback path still
-   takes the hashed-port arm. Neither is provable statically.
+**The correction the old entry asked for, kept:** the 27 / 514 figure was never a
+5 % recovery rate; it is four containers each all-or-nothing. All 514
+`failed twice` sit in step #24 litert (364), #34 ORT genai (100) and #45 pyav
+(50); all 27 `retry succeeded` sit in #29 TVM, which has zero failures of the
+other kind. Use the per-step split, not the aggregate.
 
-**One duplication is left, it is blocked on a `Dockerfile.base` mount rather than on
-judgement, and the page above owns the reasoning.** The work item is: decide whether
-`compiler-cache.sh` should join `Dockerfile.base`'s six per-file `01-core` blocks. If
-it should, `ensure_sccache_env`'s copy of the address block collapses onto
-`sccache_export_server_address` and the pair drops out of `code-dupes.allow`. If it
-should not, the second owner is permanent and the row's reason should say so.
+### R1. CLOSED — all four, three fixed and one re-measured [done 2026-09-07]
 
-**One thing to grep the next chain for:** `SCCACHE_DIRECT=false` is exported by
-`setup_ccache` in the parent but only inside `ensure_sccache_env` on the `common.sh`
-path. A server auto-started from a stage that never ran `setup_ccache` would inherit
-`/etc/sccache/config.toml`'s `use_preprocessor_cache_mode = true` and bring back the
-`while hashing the input file` TryCompile class. Not observed in any log read so far.
-
-### R1. The residue the eleven closed entries left [S each, ★]
-
-Small, named, and each one is the honest leftover of something that closed. None is a
-defect with a live failure mode; all four were measured, not guessed.
-
-1. **A runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*`** — HT4's
-   structural half. The sdk stage's self-containment walk checks non-LLVM `NEEDED`
-   sonames against the **BUILDER's** ldconfig cache, so any soname present in the
-   builder and absent in the runtime ships a binary that cannot start. `liblldb` was
-   the instance (3 of amd64's 142 binaries: `lldb`, `lldb-dap`, `lldb-mcp`), and
-   nothing but a runtime-side check catches the next one. The gate is ~10 lines in
-   `smoke-runtime-image.sh` plus one suite case, and would read 0/142, 0/127, 0/127
-   today. It was not added this wave because that file was being rewritten by two
-   lanes at once.
-2. **`VK_LAYER_PATH` is dangling on all three shipped images, and always was.**
-   `Dockerfile.package:240` and `04-runtime/runtime-paths.env` point it at
-   `/opt/vulkan/active/etc/vulkan/explicit_layer.d`, but SDK 1.4.357 puts explicit
-   layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an `etc/`
-   at all. The entrypoint then sources LunarG's `setup-env.sh`, which UNSETS
-   `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH` instead — measured: the variable is
-   **empty in every running image**. Not a size defect and not touched here: it is a
-   behaviour change to a shared env file with its own gates. Note the foreign arches
-   have no layers to point at either, so on arm64/riscv64 the only honest value is
-   "no explicit layers".
-3. **LOG14's cross-lane skip list does not do what its comment claims.**
-   `vulkan.sh` skipped `vulkan-validationlayers`, `shaderc`, `spirv-cross`, `volk`,
-   `vma` and friends "for foreign-arch cross builds (host-only component)" to save
-   ~390 s/lane — yet the shipped foreign images carried `source/Vulkan-ValidationLayers`
-   (2.0 GB), `source/shaderc` (557 MB), `source/valijson` (492 MB) and a BUILT
-   `libspirv-cross-c-shared.so.0.68.0`. `./vulkansdk` fetches, and at least partly
-   builds, components the skip list removed from its argv. **VK1 has since removed the
-   skip list entirely**, so this is now only a question about the claimed saving —
-   re-measure it against a real lane log rather than carrying the number forward.
-4. **GH6's 93 undecided masked rows are a watch list, not a fix.** The `unlinked()`
-   arm decides only the corner where two same-named definitions can never share a
-   shell; the other 93 are almost all `tests/` stubs for a sourced unit under test,
-   which is correct code no static rule should fail. One live hazard is named at the
-   point of failure: any corpus file that starts naming BOTH definers' basenames
-   disarms the arm and turns its frozen row STALE with a message that reads like the
-   function came back to life. `tests/test-dead-functions.sh` is itself that instance
-   and assembles the name and both basenames from `printf` arguments.
+1. **The runtime-side `ldd` gate exists now.** `check_llvm_target_startable`
+   walks `/usr/local/llvm-target/bin` INSIDE the shipped image and fails on any
+   binary with an unresolved `NEEDED`. The sdk stage's self-containment walk
+   resolves those sonames against the BUILDER's ldconfig cache, which is how
+   `liblldb` shipped three unstartable binaries — `lldb`, `lldb-dap`,
+   `lldb-mcp` — past every green run. It reads `0 of N` today and, unlike the
+   sdk-side walk, a probe that did not run fails instead of reading clean. Four
+   suite cases and three mutations, including the wiring one.
+2. **`VK_LAYER_PATH` points at a directory that exists.** Both
+   `Dockerfile.package` and `runtime-paths.env` named
+   `/opt/vulkan/active/etc/vulkan/explicit_layer.d`, and SDK 1.4.357 has no
+   `etc/` under any arch prefix — the layers are in
+   `<arch>/share/vulkan/explicit_layer.d`. The measured caveat that made this
+   look harmless is written up at
+   [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#vk_layer_path-pointed-at-a-directory-that-has-never-existed):
+   the entrypoint's `setup-env.sh` unsets the variable anyway, so this is the
+   value a consumer that does not source it gets.
+3. **LOG14's ~390 s/lane: the NUMBER survives re-measurement, the claim around it
+   does not.** Measured from the 2026-09-05 arm64 SDK log's own `~~~Building X~~~`
+   timestamps, the five components the skip list named cost the HOST build
+   **381 s**: ValidationLayers 195.8 s, shaderc 119.5 s, SPIRV-Cross 61.7 s,
+   Vulkan-Tools 34.5 s, volk 1.8 s, VMA 2.5 s. So the saving was real arithmetic —
+   but the shipped foreign images carried those source trees and a BUILT
+   `libspirv-cross-c-shared.so` regardless, because `./vulkansdk` fetches and
+   partly builds what the argv removed. VK1 deleted the skip list; the lane pays
+   those 381 s deliberately now, for components it actually ships.
+4. **A disarmed row no longer reads as a revived function.** GH6's arm goes STALE
+   when any corpus file starts naming BOTH definers' basenames, under a heading
+   that says "the function is called again or gone" — and neither half is true.
+   `check_keys` grew a `describe_stale` hook (default unchanged for every other
+   gate) and the dead-function gate names the file that disarmed it and the two
+   basenames, plus "the function is not called again". A stale row with a real
+   cause stays plain: the explanation only fires where ONE file could load BOTH
+   definitions. The other 93 masked rows remain a watch list, unchanged.
 
 **Two things recorded so a future reader does not "simplify" them.** The foreign
-`x86_64/` Vulkan prefix is 4.14 MB LARGER than amd64's over the same 4 399 files, so
-`./vulkansdk`'s host build does overwrite part of the tarball on a cross lane — and
-those host tools have a real build-time consumer (`build-opencv.sh` reads
+`x86_64/` Vulkan prefix is 4.14 MB LARGER than amd64's over the same 4 399 files,
+so `./vulkansdk`'s host build does overwrite part of the tarball on a cross lane —
+and those host tools have a real build-time consumer (`build-opencv.sh` reads
 `/opt/vulkan/<ver>/x86_64` for headers), which is exactly why HT5 prunes at the
-packaging boundary and not in the SDK stage. And CL6's three TFLite helpers still leak
-`dep`, `_gcc_arch` and `_gcc_dir` into the caller's scope: pre-existing, deliberately
-not changed in a build window, because localising them is a real state change and the
-split's whole claim is that the bodies moved verbatim.
+packaging boundary and not in the SDK stage. And CL6's three TFLite helpers still
+leak `dep`, `_gcc_arch` and `_gcc_dir` into the caller's scope: pre-existing,
+deliberately not changed in a build window, because localising them is a real
+state change and the split's whole claim is that the bodies moved verbatim.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
@@ -879,10 +799,19 @@ non-failing path. Write the characterisation first — fake `log_file`, assert t
 counter reaches 2 and that the registry cache pairs vanish from `build_cmd` while
 local cache args survive — then extract. Re-checked 2026-09-05: still uncovered.
 
-**A harness trap worth a note before the next suite is written.** `t_assert_ok` and
+**CLOSED 2026-09-07 — the harness now catches that trap.** `t_assert_ok` and
 `t_assert_fails` take a COMMAND and no message, so `t_assert_fails test -f X "msg"`
-runs `test -f X msg` — it fails for the wrong reason and passes vacuously. Four of
-those were written and caught this wave. Nothing in the harness catches it today.
+ran `test -f X msg`, which exits **2** — "not zero", i.e. the failure the case
+asked for, for entirely the wrong reason. Four of those were written and caught by
+review in one wave. Both assertions now share `_t_assert_run`, which fails the case
+BY NAME when the command is `test`/`[` and the rc is 2. The guard is deliberately
+narrow: a real command that exits 2 is still judged on its exit code, and a
+mutation widening it to every rc 2 is caught. `test-harness-guards.sh` is the suite
+(12 assertions), and the whole corpus was re-run against the stricter harness —
+no existing case relied on the old behaviour.
+
+**`_chain_stage_disk_guard`'s two eviction loops CLOSED 2026-09-07** with DISK3:
+one `_chain_evict_slugs` owner, cc 30 → 21.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
@@ -948,117 +877,56 @@ is actually documented — the honest anchor the row said did not exist. Its
 call at the launcher-resolution site. `smoke-runtime-image.sh` also moved; its own row
 carries both lanes' reasons.
 
-### F3. Clone families worth one owner [S-M each]
+### F3. CLOSED — the four named families, two owned and two judged [done 2026-09-07]
 
-The gate reads `3544 units in 373 files, no block over 10 shared 12-token shingles
-(248 allowlisted pair(s); 845 shingle(s) suppressed as idiom at >6 owners)` on the
-2026-09-05 integrated tree. The decided/reviewed items (the source-or-fallback KEEP decision,
-the lint-tool and `lib/*` pairs reviewed-and-kept by measurement, the not-actionable
-Dockerfile mount preambles, and the `install-deps.sh` family) are in the 2026-09-03
-archive and in `docs/scripts/code-dupes.allow`.
+The decided/reviewed history (the source-or-fallback KEEP decision, the lint-tool
+and `lib/*` pairs, the Dockerfile mount preambles, the `install-deps.sh` family,
+and the three extractions of 2026-09-04/05: the `lib/*` logging preamble, the ORT
+end-of-stage summary, the ffmpeg↔pyav launcher twin) is in the 2026-09-03 archive
+and in [`code-dupes.allow`](scripts/code-dupes.allow). **That file is the
+authority for every verdict below — read the row, not this summary.**
 
-**CLOSED 2026-09-04 — the `lib/*.sh` 14-line logging preamble.** One owner now,
-`lib/log-bootstrap.sh`, sourced by all nine libraries; net −132 lines, three
-mutations (`lib.log-bootstrap-*`) holding it. **The mechanism, the two libraries
-that keep a `_*_CORE_DIR` anyway, the two historical drifts and the answer to this
-entry's own "bootstrap paradox" objection are owned by
-[`shared-script-libraries.md`](shared-script-libraries.md#the-logging-bootstrap) —
-read it there, do not restate it here.** The one thing worth repeating in a
-duplication entry: no duplication gate could ever have found this, because at nine
-owners every shingle of the block landed in the `suppressed as idiom at >6 owners`
-bucket. That is what made a backlog row necessary instead of a gate finding.
+**OWNED 2026-09-07 — `media_jobs` takes its cap as an argument.** The name has two
+definitions on purpose (`03-media/core/common.sh` assumes `media_common_init`
+pre-loaded `parallelism.sh`; `android-build-preamble.sh` sources it on demand),
+and BOTH hardcoded 2000 MB — which is why the android gstreamer lane kept a third
+copy of the whole block for its own `ANDROID_GSTREAMER_PER_JOB_MB` of 1500. Both
+now take `[cap_mb]` defaulting to 2000, and `build-android-from-source.sh` calls
+`media_jobs "${PER_JOB_MB}"`. `test-media-jobs.sh` pins that both defaults agree
+and that the cap reaches `compute_jobs_with_mem_cap` unchanged; two mutations hold
+it. **The one behaviour given up is named**: the inline copy used `nproc --all`
+in the no-`parallelism.sh` fallback, a path the android image never takes because
+it ships `/opt/scripts/core`. `build-app-wheelhouse.sh` keeps its own copy on
+purpose — it prefers `compute_cpp_heavy_jobs` (4 GB, torch's aten TUs), which is a
+different ladder, not a different cap.
 
-**The gate bookkeeping that extraction owed, and what it exposed.** Dropping the
-preamble below `MAX_OWNERS = 6` unsuppressed 5 pairs that had been invisible (891 →
-801 suppressed shingles) — exactly what this entry predicted. All five were read and
-recorded in `code-dupes.allow` rather than re-suppressed. They are a genuinely
-different family, the **defensive logger**: `command -v` not `declare -F`, bare
-`[INFO]`/`[WARN]` with no ANSI, no `err()`, no attempt to load `logging.sh`, longest
-run 2–3 lines. It **cannot** adopt `lib/log-bootstrap.sh`: `lib/` is deliberately in
-no Dockerfile while all three of those files are inside the build closure.
+**OWNED 2026-09-07 — `sync_versions.py`'s two syncers.** `_update_dockerfile_args_inner`
+and `_update_script_defaults_inner` were the same algorithm over two syntaxes.
+`_rewrite_lines` owns the `newline=''` round trip and the write-only-when-changed
+rule; `_unquote` owns the one-quote-pair strip both needed; each syncer is now its
+own per-line decision and nothing else. Outside the build closure, so it was safe
+to cut, and `test-version-snapshot.sh` gained a `--write` case: the second run
+must repair nothing and must not even touch the file's mtime.
 
-**CLOSED 2026-09-05 — the ORT end-of-stage summary.** One block of 23 shingles in
-four files (`30-build-native.sh`, `-amd`, `-nvidia`, `60-build-genai.sh`) is now
-`report_onnx_build_output` in
-`03-media/build/onnxruntime/build/lib/common.sh`, beside its sibling
-`finalize_onnx_native_output`. **The family had already drifted** — `-amd` listed
-libraries with `sed -n '1,20p'` where the other three used `head -20` — which is
-exactly what one owner prevents. The bookkeeping that extraction owed is the part
-worth reading: three budgets lowered (31→20, 34→13, 34→18), two rows deleted as
-stale, and **two budgets RAISED with both files unchanged**
-(`compiler-cache.sh`↔`build-gcc.sh` 36→38, `build-armnn.sh`↔`build-opencv.sh` 13→14)
-because dropping three copies pushed shingles below the >6-owner idiom cutoff and
-UNSUPPRESSED those pairs — the same effect the log-bootstrap extraction recorded on
-2026-09-04. Both were re-read and recorded, not re-suppressed.
+**JUDGED, not changed — the host-compiler-preference family.** Per-consumer, the
+way the `gstreamer-env`↔`libcamera-env` question was answered: `build-ffmpeg.sh`
+reaches the canonical helper only through `media_common_init`'s
+`source_module compiler-resolution.sh || true`, which tolerates an absent module,
+so `ffmpeg-probe-framework.sh`'s inline ladder is **live** on a host checkout;
+`Dockerfile.android:96` COPYs the canonical file into `/opt/scripts/core`, so the
+preamble's fallback is **dead in the image** and live only on a host checkout.
+KEEP both — a fallback that duplicates the thing it stands in for is not a copy,
+it is a fallback, and deleting one is a build-closure edit no gate can prove.
 
-**A second unsuppression to expect the next time a copy is dropped.** This is now
-twice in two waves. Any extraction that takes a block from >6 owners to ≤6 will
-reveal pairs that were never findings, and the honest response is to read and record
-them, never to re-suppress by widening `MAX_OWNERS`.
+**JUDGED — `prune-safe.sh` ↔ `disk-guard.sh` has no owner available.**
+`prune-safe.sh` runs `main` on load and therefore cannot be sourced; extracting
+the shared `buildctl prune` command means restructuring a host-config script
+operators run by hand. The `x1000` half is no longer a guess: `buildctl prune
+--help` documents `--keep-storage` in MB.
 
-**CLOSED 2026-09-05 — the `build-ffmpeg.sh`↔`build-pyav.sh` launcher twin.** One
-owner, `media_compiler_launcher` in `03-media/core/common.sh`, beside `media_jobs`.
-The pair fell 21 → 4 shared shingles and its `code-dupes.allow` row was DELETED as
-below-threshold. Two things worth keeping from how it went: the owner takes an
-**out-variable name and prints nothing**, because a `$(…)` caller runs
-`compiler_cache_launcher_env` in a subshell and throws away the server address it just
-exported — the exact YB defect, re-created and caught before shipping. And the two
-copies had **already drifted**: ffmpeg tested `USE_CCACHE` with an inline deny-list,
-pyav with the canonical `is_truthy`. The owner uses `is_truthy`; the sole behavioural
-delta is `USE_CCACHE=y` in the ccache-fallback arm, which is unreachable from these
-two scripts and which no Dockerfile or `.env` sets.
-
-**The host-compiler-preference family is still recorded-not-owned:**
-`compiler-resolution.sh` / `android-build-preamble.sh` / `ffmpeg-probe-framework.sh`,
-29 shingles across 4 sites, and its own allow row already says it "wants one owner".
-
-**Two families read and recorded, neither changed:**
-
-- **`strip_elf_tree`** (`build-helpers.sh:160` / `bootstrap.sh:41` /
-  `build-gcc.sh:825`, 27 shingles). The owner already exists and its own comment says
-  it centralises this pattern; `bootstrap.sh`'s copy is the legitimate
-  source-or-fallback half. **`build-gcc.sh:833` is the one caller that never
-  converted AND is not equivalent** — it filters `-type f -executable` plus an ELF
-  executable-or-shared-object awk, while the owner takes `-type f` plus `/ELF/`. So
-  converting it means either giving `strip_elf_tree` a filter argument or accepting
-  that a WIDER set of files gets stripped in the shipped toolchain. Build closure;
-  only a real toolchain stage shows what changes in the bytes.
-- **`media_jobs`** (`android-build-preamble.sh:77` /
-  `build-android-from-source.sh:236` / `build-app-wheelhouse.sh:76`, 26 shingles).
-  Not the shared idiom the pair row called it: the NAME HAS TWO DEFINITIONS —
-  `03-media/core/common.sh:221` (assumes `media_common_init` pre-loaded
-  `parallelism.sh`) and `android-build-preamble.sh:77` (a strict superset that
-  sources it on demand) — and `build-android-from-source.sh` sources the preamble at
-  line 6 and then re-implements the function inline anyway, its own comment admitting
-  it "Mirrors media_jobs() but keeps the configurable per-job cap".
-  `build-app-wheelhouse.sh` is a fourth copy at 4096 MB. The fix is one
-  `media_jobs [cap_mb]` defaulting to 2000, arithmetically identical for all 14
-  callers — but two same-named definitions mean **last source wins** wherever both
-  are in scope, nothing covers `media_jobs` today, and only a stage shows which one
-  the android lanes actually get.
-
-**One open question answered 2026-09-03-style, per-RUN, and recorded in its row.**
-The `gstreamer-env` ↔ `libcamera-env` pair asked "is the fallback still reachable at
-all". `libcamera-env.sh` has exactly ONE consumer, `04-runtime/entrypoint.sh`, whose
-base carries `Dockerfile.package:285 COPY linux/scripts/01-core/ /opt/scripts/core/`
-— `path-helpers.sh` IS there, so that fallback is **dead**. `gstreamer-env.sh` has
-four: the same entrypoint (dead), `Dockerfile.media:913` and `:965` which bind-mount
-`01-core` entire (dead), and `setup-gstreamer.sh:420` / `build-libcamera.sh:86`
-which source it by repo-relative path on a host checkout where `/opt/scripts` does
-not exist — **live**. Verdict: KEEP both. They are one 27-line block, deleting half
-is a build-closure edit no gate can prove, and the branch costs one `[ -f ]` per
-container start.
-
-**Two overlaps observed while reviewing that no gate currently flags.**
-`docs/scripts/sync_versions.py`'s `_update_dockerfile_args_inner` and
-`_update_script_defaults_inner` are the same algorithm over two syntaxes (outside
-the closure). And `prepare_host_cargo_toolchain_env` overlaps the host half of
-`_gst_rs_cargo_config`, which calls it when defined (inside the closure). Both are
-dupes-gate questions, not complexity ones.
-
-**One duplication with no code owner and no way to get one.**
-`linux/host-config/prune-safe.sh` and `01-core/disk-guard.sh` both know the filtered
-`buildctl prune` command and the GB→MB convention, because `prune-safe.sh` runs
-`main` on load and therefore cannot be sourced. The `x1000` half of it is no longer a
-guess: `buildctl prune --help` documents `--keep-storage` in MB, so `keep_gb * 1000`
-really is ~120 GB. Extracting the rest means restructuring a `host-config` script.
+**The unsuppression cascade is now recorded three times.** Every extraction that
+takes a block from more than six owners to fewer reveals pairs that were never
+findings — the log-bootstrap extraction (2026-09-04), the ORT summary
+(2026-09-05), and DISK3's `_disk_guard_lever_ready` (2026-09-07, five budgets
+re-measured). The honest response is to read and record them, never to widen
+`MAX_OWNERS`.

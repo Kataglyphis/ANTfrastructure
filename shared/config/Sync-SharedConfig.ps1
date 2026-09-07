@@ -9,10 +9,10 @@
 
 .DESCRIPTION
   See README.md next to this script for WHY these configs are copied into
-  consumers rather than referenced: clang-format, clang-tidy and pre-commit
-  discover their config by walking UP from the file being processed, so a config
-  inside a submodule is never found - and dropping the local copy would silently
-  disable format-on-save in every editor while CI kept passing.
+  consumers rather than referenced: clang-format, clang-tidy, cmake-format and
+  pre-commit discover their config by walking UP from the file being processed,
+  so a config inside a submodule is never found - and dropping the local copy
+  would silently disable format-on-save in every editor while CI kept passing.
 
   The copy therefore stays and this script makes drift impossible instead of
   unnoticed.
@@ -61,14 +61,16 @@ $Ignore = @($Ignore | Where-Object { $_ } | ForEach-Object { $_ -split ',' } |
 # Typo guard: an -Ignore entry that is not one of the canonical names is almost
 # certainly a mistake ('.clang_tidy', 'gcovr.conf'), and silently ignoring it
 # would leave the caller believing an exception is recorded when it is not.
-$unknownIgnore = @($Ignore | Where-Object { $_ -notin @('.clang-format', '.clang-tidy', 'gcovr.cfg', '.pre-commit-config.yaml') })
+$unknownIgnore = @($Ignore | Where-Object { $_ -notin @('.clang-format', '.clang-tidy', '.cmake-format.yaml', 'gcovr.cfg', '.pre-commit-config.yaml') })
 if ($unknownIgnore.Count -gt 0) {
   throw ("-Ignore names nothing this script manages: $($unknownIgnore -join ', '). " +
-    'Valid names: .clang-format, .clang-tidy, gcovr.cfg, .pre-commit-config.yaml')
+    'Valid names: .clang-format, .clang-tidy, .cmake-format.yaml, gcovr.cfg, .pre-commit-config.yaml')
 }
 
 $canonicalDir = $PSScriptRoot
-$names = @('.clang-format', '.clang-tidy', 'gcovr.cfg', '.pre-commit-config.yaml')
+# .cmake-format.yaml joined 2026-09-05: both runners hard-code the consumer-root
+# name, so nothing could check it. See README.md next to this script.
+$names = @('.clang-format', '.clang-tidy', '.cmake-format.yaml', 'gcovr.cfg', '.pre-commit-config.yaml')
 
 $resolvedRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $drifted = @()
@@ -83,8 +85,8 @@ foreach ($name in $names) {
   $local = Join-Path $resolvedRoot $name
 
   # A missing CANONICAL file is a defect in THIS repo, and it has to say so
-  # loudly. Until 2026-08-11 three of the four names above had no file next to
-  # this script at all, and neither branch below coped: -Write died inside
+  # loudly. Until 2026-08-11 three of the four names then listed had no file next
+  # to this script at all, and neither branch below coped: -Write died inside
   # Copy-Item with a bare "path not found", and -Check blamed the CONSUMER for a
   # file that was missing HERE. Both readings sent you looking in the wrong repo.
   if (-not (Test-Path -LiteralPath $canonical)) {

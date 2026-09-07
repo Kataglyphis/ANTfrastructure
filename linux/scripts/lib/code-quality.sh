@@ -63,16 +63,34 @@ code_quality_ensure_cmake_format() {
 
   info "cmake-format not found. Preparing Python environment..."
 
+  # A venv from the OTHER platform (Scripts/python.exe in a tree mounted into
+  # a Linux container, or bin/python on a Windows host) dies in uv with
+  # "Exec format error" - probe the interpreter and recreate instead of dying.
   if [[ -d "${venv_dir}" ]]; then
-    info "Found .venv - installing requirements..."
+    local venv_python="${venv_dir}/bin/python"
+    [[ -x "${venv_python}" ]] || venv_python="${venv_dir}/Scripts/python.exe"
+    if [[ -x "${venv_python}" ]] && "${venv_python}" -c 'pass' >/dev/null 2>&1; then
+      info "Found .venv - installing requirements..."
+    else
+      info "Found .venv but its interpreter does not run here (foreign platform or broken) - recreating..."
+      rm -rf "${venv_dir}"
+      (cd "${root}" && "${create_script}")
+    fi
   else
     info "No .venv found - creating one with uv..."
     (cd "${root}" && "${create_script}")
   fi
   (cd "${root}" && "${install_script}")
 
-  # shellcheck disable=SC1091
-  source "${venv_dir}/bin/activate"
+  # bin/ is the POSIX venv layout; a venv created on Windows (Git Bash) has
+  # Scripts/ instead. Neither existing is a broken venv and must fail by name.
+  local activate="${venv_dir}/bin/activate"
+  [[ -f "${activate}" ]] || activate="${venv_dir}/Scripts/activate"
+  if [[ ! -f "${activate}" ]]; then
+    err "No activate script in ${venv_dir} (neither bin/activate nor Scripts/activate exists)."
+  fi
+  # shellcheck disable=SC1090
+  source "${activate}"
 
   if ! has_tool cmake-format; then
     err "cmake-format is still not available after installing requirements."
@@ -167,8 +185,14 @@ code_quality_find_dart_files() {
 # ---------------------------------------------------------------------------
 # Formatting steps
 # ---------------------------------------------------------------------------
-# Rewrites the given CMake files in place.
+# Rewrites the given CMake files in place. A leading `--check` argument instead
+# reports drift without writing: non-zero exit, each offender named on stderr.
 code_quality_run_cmake_format() {
+  local mode=(-i)
+  if [[ "${1:-}" == "--check" ]]; then
+    mode=(--check)
+    shift
+  fi
   [[ $# -gt 0 ]] || return 0
 
   local config="${CODE_QUALITY_CMAKE_FORMAT_CONFIG-.cmake-format.yaml}"
@@ -176,7 +200,7 @@ code_quality_run_cmake_format() {
   if [[ -n "${config}" && -f "${config}" ]]; then
     args+=(-c "${config}")
   fi
-  args+=(-i)
+  args+=("${mode[@]}")
 
   cmake-format "${args[@]}" "$@"
 }

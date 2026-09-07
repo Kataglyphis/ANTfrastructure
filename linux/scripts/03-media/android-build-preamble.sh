@@ -67,12 +67,11 @@ else
   }
 fi
 
-# Parallel job-count helper for the Android build scripts.
-# Mirrors media_jobs() in 03-media/core/common.sh, but the Android scripts do
-# NOT call media_common_init, so parallelism.sh is not pre-loaded — source it
-# on demand (container path) before using compute_jobs_with_mem_cap, and fall
-# back to plain nproc when it is unavailable. Keeps the exact 2000-MB per-job
-# memory-cap behavior of the blocks it replaces.
+# media_jobs [cap_mb] for the Android build scripts: same signature and same
+# default as 03-media/core/common.sh, but the Android scripts do NOT call
+# media_common_init, so parallelism.sh is sourced on demand (container path) and
+# plain nproc is the fallback. Both definitions taking the cap is what lets the
+# gstreamer lane's 1500 MB stop being a fourth copy of this block.
 
 media_jobs() {
   local jobs
@@ -81,7 +80,7 @@ media_jobs() {
     # shellcheck disable=SC1091
     source /opt/scripts/core/parallelism.sh 2>/dev/null || true
     if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-      jobs="$(compute_jobs_with_mem_cap "" 2000)"
+      jobs="$(compute_jobs_with_mem_cap "" "${1:-2000}")"
     fi
   fi
   printf '%s\n' "${jobs}"

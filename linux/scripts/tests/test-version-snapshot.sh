@@ -105,7 +105,8 @@ _red "Dockerfile ARG defaults are stale:" \
 
 t_case "6/7 check_script_defaults is KNOWN-GAP: its glob matches nothing"
 # script_default_target_files() globs windows/scripts/build-*-from-source.ps1.
-# Those scripts live one directory deeper, in windows/scripts/build/, so the
+# Those scripts live one directory deeper, in windows/scripts/build/, and are
+# named Build-*FromSource.ps1 since the Verb-Noun rename (19982134), so the
 # glob returns an EMPTY list and the sub-check prints its green line having
 # scanned zero files. It cannot be reddened by any fixture, which is why this
 # case pins the emptiness instead of faking a pass. Widening the glob turns ~10
@@ -114,7 +115,7 @@ t_case "6/7 check_script_defaults is KNOWN-GAP: its glob matches nothing"
 # goes red, which is the point of pinning it.
 t_assert_eq "0" "$(find "${REPO}/windows/scripts" -maxdepth 1 -name 'build-*-from-source.ps1' | wc -l)" \
   "the glob's own directory"
-t_assert_eq "10" "$(find "${REPO}/windows/scripts/build" -maxdepth 1 -name 'build-*-from-source.ps1' | wc -l)" \
+t_assert_eq "10" "$(find "${REPO}/windows/scripts/build" -maxdepth 1 -name 'Build-*FromSource.ps1' | wc -l)" \
   "and where the scripts actually are"
 t_assert_contains "${_ok_out}" "Windows build-script -DefaultValue pins match versions.env." \
   "a green line over an empty file list is the whole finding"
@@ -122,6 +123,23 @@ t_assert_contains "${_ok_out}" "Windows build-script -DefaultValue pins match ve
 t_case "7/7 check_doc_literals — a /opt/gcc-<version> literal in prose"
 _red "stale gcc literal /opt/gcc-0.0.0" \
   AGENTS.md '1i See /opt/gcc-0.0.0 for the toolchain.'
+
+t_case "--write repairs the drift, and repairs NOTHING on the second run"
+# The --check half above never reaches the write path; both syncers share one
+# _rewrite_lines owner, and "write only when something changed" is the property
+# that keeps --write from churning every file it scans. F3 2026-09-07.
+_w="$(_farm linux/Dockerfile.base)"
+sed -i -e 's|^ARG CMAKE_VERSION=.*|ARG CMAKE_VERSION=0.0.0|' "${_w}/linux/Dockerfile.base"
+_w_out="$(python3 "${_w}/docs/scripts/sync_versions.py" --write 2>&1)"
+t_assert_contains "${_w_out}" "Synced Dockerfile ARG defaults in:" "the stale ARG must be repaired"
+t_assert_eq "0" "$(grep -c -e '^ARG CMAKE_VERSION=0.0.0' "${_w}/linux/Dockerfile.base" || true)" \
+  "the value itself, not just the report"
+_w_mtime="$(stat -c %.Y "${_w}/linux/Dockerfile.base")"
+_w_again="$(python3 "${_w}/docs/scripts/sync_versions.py" --write 2>&1)"
+t_assert_contains "${_w_again}" "Dockerfile ARG defaults already match versions.env." \
+  "a second --write must find nothing to do"
+t_assert_eq "${_w_mtime}" "$(stat -c %.Y "${_w}/linux/Dockerfile.base")" \
+  "a file nothing changed in must not be rewritten -- nanosecond mtime, because two runs land in the same second"
 
 t_case "8/8 the licence subprocess is ORed in, not merely run"
 # The generator is a separate program; its verdict decides the slug too.

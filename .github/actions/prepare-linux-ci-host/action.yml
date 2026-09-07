@@ -8,8 +8,13 @@ description: >-
   pays this prologue once per job, so it stops being boilerplate in one place
   and becomes boilerplate in ten - and any drift between those copies (a
   different retry count, a missing submodule flag) turns into a failure that
-  only reproduces in one lane. Consumers: BeschleunigerBallett
-  Linux.yml.
+  only reproduces in one lane. Consumers (re-censused 2026-09-07, when the
+  registry here had drifted to naming ONE of what were nine): every
+  containerised Linux lane in the family - BeschleunigerBallett,
+  OmniAccelerANT (three dart lanes), AccelerANTgine, OxidANT,
+  jotrockenmitlocken, ANThology, and this repo's python-ci-linux.yml. The
+  authoritative list is a grep for this action's name across the repos, not
+  this sentence.
 
 inputs:
   image:

@@ -572,9 +572,9 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Linux-Images-OrchestrANT-72de4079",
+      "SPDXID": "SPDXRef-Package-Linux-Images-OrchestrANT-945e3a1a",
       "name": "OrchestrANT",
-      "versionInfo": "v0.0.27",
+      "versionInfo": "v0.0.28",
       "downloadLocation": "https://github.com/Kataglyphis/OrchestrANT",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1540,7 +1540,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OrchestrANT-72de4079"
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OrchestrANT-945e3a1a"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

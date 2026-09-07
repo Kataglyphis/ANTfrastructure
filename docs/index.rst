@@ -170,6 +170,7 @@ Common development targets:
    windows-build-lanes
    windows-build-invariants
    windows-build-resources
+   windows-clang-cl-sanitizers
    windows-cross-builds
    windows-host-setup
    windows-stevedore-and-docker

@@ -43,6 +43,13 @@ jobs:
       # version itself (RUFF_PIN) and uvx honours it.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      # The mutation gate's 164 pytest baselines ran `python3 -m pytest` on a
+      # runner image that ships pip but no pytest, so every one exited 1 before
+      # collecting a test and 206 manifest entries sat permanently "vacuous"
+      # (2026-09-07 audit). Same install llm-stack-tests.yml uses, minus
+      # requests, which no manifest baseline imports at top level.
+      - name: Install pytest (mutation-gate baselines)
+        run: pip install --quiet pytest
       - name: Run preflight checks
         run: bash linux/scripts/preflight.sh
 

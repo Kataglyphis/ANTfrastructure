@@ -89,6 +89,120 @@ down in `src/`, which is why `glslc` looked unbuildable at first — so a row ma
 name several candidates. `_vulkan_fetch_source_only` is the safety net for a
 component whose checkout is absent but whose target build is still wanted.
 
+## The target needs its own dev packages
+
+`install_vulkan_prereqs` installs two package sets: the host set that
+`./vulkansdk` builds against, and `target_pkgconfig_packages` as `:${arch}` for
+the cross builds — WSI, compression and XML. A third set,
+`target_optional_packages` (`libgl-dev`, `libglx-dev`, `libopengl-dev`,
+`libegl-dev`, `qt6-base-dev`), goes through `install_optional_target_packages`,
+so a ports arch that lacks one degrades a component instead of sinking the stage.
+
+Installing them is not enough on its own, and this is the part that reads like a
+missing package but is not one. The 2026-09-05 arm64 lane had
+`libx11-dev:arm64`, `libzstd-dev:arm64` and the whole XCB set unpacked, and
+gfxreconstruct still configured with:
+
+```
+-- Could NOT find ZSTD (missing: ZSTD_LIBRARY)
+-- Could NOT find X11 (missing: X11_X11_LIB)
+-- Could NOT find OpenGL (missing: OPENGL_opengl_LIBRARY OPENGL_glx_LIBRARY)
+-- Could NOT find JsonCpp (missing: JsonCpp_INCLUDE_DIR JsonCpp_LIBRARY)
+```
+
+Multiarch puts those libraries in `/usr/lib/<triplet>`, and CMake only looks
+there when `CMAKE_LIBRARY_ARCHITECTURE` says so — `find_library` appends it to
+every search directory. `_cross_build_sdk_component` passes it for every row, so
+the target's own libraries are findable the way the host's are. It cannot make a
+host library reachable by accident: `/usr/lib/aarch64-linux-gnu` holds nothing
+else. `CMAKE_INSTALL_LIBDIR=lib` is passed explicitly, which is what keeps
+`GNUInstallDirs` from relocating the install into `lib/<triplet>` in reply.
+
+## Components that need a host tool
+
+Two rows are Canadian crosses, the shape `02-toolchain/llvm-cross.sh` already
+uses for `clang-tblgen`: something has to EXECUTE on the build host while the
+rest compiles for the target. `_vulkan_target_dynamic_args` carries the flags a
+static table cannot, because they are paths.
+
+**slang.** Its build runs its own generators (`slang-embed`, `slang-generate`,
+`slang-fiddle`, …). Cross-built, they are target binaries the build host cannot
+run, and the lane died on exactly that:
+
+```
+FAILED: [code=127] prelude/slang-cpp-host-prelude.h.cpp
+```
+
+The host `./vulkansdk` run has already built them into
+`source/slang/build/generators/Release/bin`, so the cross configure is pointed
+there with `SLANG_GENERATORS_PATH`. `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
+`SLANG_ENABLE_DXIL=OFF` keep the same build from fetching x86_64 prebuilts.
+
+**vulkanCapsViewer.** Needs Qt6 for the target (`qt6-base-dev:${arch}` above) and
+Qt's own host tools — `moc`, `rcc`, `uic` — from the build host, which is what
+`QT_HOST_PATH=/usr` names.
+
+**dxc is NOT a row, and the reason is not "host-only".** slang does not build
+DXC here; it fetches a prebuilt x86_64 binary
+(`_dxc_probe/dxc_v1.9.2602.tar.gz`) and `libdxcompiler.so` comes from that
+tarball. The Canadian-cross pattern needs a host-built `clang-tblgen` from DXC's
+own LLVM fork to point at, and no such binary exists on disk here. Cross-building
+DXC means building it from source on the host first
+(`SLANG_DXC_BUILD_FROM_SOURCE=ON`), which is an LLVM-sized build, not a table
+row.
+
+## VK_LAYER_PATH pointed at a directory that has never existed
+
+`Dockerfile.package` and `04-runtime/runtime-paths.env` both set
+
+```
+VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d
+```
+
+and SDK 1.4.357 has no `etc/` under any arch prefix at all: the explicit layers
+install to `<arch>/share/vulkan/explicit_layer.d`. Both now name that path.
+
+Two things about it are worth knowing before treating the variable as live. The
+entrypoint sources LunarG's `setup-env.sh`, which UNSETS `VK_LAYER_PATH` and
+exports `VK_ADD_LAYER_PATH` instead — measured: the variable is **empty in every
+running image**, so this is the value a consumer that does NOT source that script
+gets. And a foreign arch only has layers to point at because the cross build
+installs them; before VK1 there were none, which is why nobody noticed the path
+was wrong.
+
+## The toolset floor only ratchets up
+
+The prefix shipped **2 of 52** tools for months. Nothing caught it because
+`check_vulkan_toolset` required six names and *warned* about the rest, and a WARN
+in a green run is invisible. `smoke-runtime-image.sh` now asserts three things
+about `${VULKAN_SDK}` in the running image:
+
+* `_VK_REQUIRED_TOOLS` — the twenty names both foreign lanes shipped on
+  2026-09-05/07 (nineteen installs plus the `glslangValidator` alias). A missing
+  one fails the lane.
+* `_VK_TOOLSET_FROZEN` — `<arch>:<tools>:<layer manifests>`, floors measured on
+  shipped bytes: `amd64:>=52:>=1`, `arm64:>=20:>=4`, `riscv64:>=20:>=4`. Below a
+  floor fails; above it the gate prints `RATCHET: floor 20 -> N, record it`, so a
+  gain is written down instead of drifting. An arch with no row fails rather than
+  inheriting silence.
+* the validation layer manifest, by name. That one moved from WARN to FAIL:
+  developing a Vulkan application without the layers is the thing this whole
+  exercise was for.
+
+`_VK_REPORTED_TOOLS` keeps its job as the bucket one step behind the floor: it
+now holds what VK2's four components add (`gfxrecon-*`, `slangc`,
+`vulkanCapsViewer`). They warn until a lane proves them, and then they are
+promoted into the required set and the floors are re-recorded — once, after the
+chain that lands them, not twice.
+
+The same idea runs one stage earlier, where it costs minutes instead of hours.
+`_VK_REQUIRED_COMPONENTS` names the six whose loss is not optionality —
+`vulkan-loader`, `spirv-tools`, `glslang`, `shaderc`, `vulkan-tools`,
+`vulkan-validationlayers` — and `_vulkan_target_verdict` fails the SDK stage when
+one of them was attempted and failed, rather than letting the runtime smoke find
+it much later. `VULKAN_CROSS_REQUIRED=''` hands that decision back to the
+operator. Every other row stays non-fatal exactly as before.
+
 ## The source tree does not ship
 
 `source/` is 3.9 GB of checkouts and builder-arch objects. It is read by the

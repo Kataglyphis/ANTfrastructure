@@ -461,6 +461,8 @@ TASKS = [
         },
         # The agent never sees this. `ctest` exits 0 when it finds NO tests, so the
         # count is asserted too: deleting add_test() must not read as a pass.
+        # Both summary spellings accepted: newer ctest (26.04 image) drops the
+        # ", 0 tests failed" clause; a zero-test run prints no "out of 1" at all.
         "verify": ["bash", "-c", (
             "set -euo pipefail\n"
             "cmake -S . -B build > cmake-configure.log 2>&1\n"
@@ -468,7 +470,7 @@ TASKS = [
             "cd build\n"
             "out=$(ctest --output-on-failure 2>&1)\n"
             "printf '%s\\n' \"$out\"\n"
-            "printf '%s\\n' \"$out\" | grep -q -e '0 tests failed out of 1'\n")],
+            "printf '%s\\n' \"$out\" | grep -q -E '100% tests passed(, 0 tests failed)? out of 1'\n")],
         "protect_tests": True,
         "requires": ["cmake", "ctest", "cc", ("make", "ninja")],
     },

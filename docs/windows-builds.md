@@ -984,6 +984,26 @@ container-reuse pattern so consumers do not each reinvent it:
 - `Resolve-DockerExe`, `Get-ContainerIsolationArgs`, `Test-ContainerBindMount`,
   `Remove-BuildContainerSafe` - docker discovery, isolation args, bind-mount
   probing, wcifs-tolerant removal.
+- `Wait-ContainerExit` - wait on the CONTAINER's state and return the exit code
+  it really had, instead of trusting the docker client. The CLI intermittently
+  drops its pipe mid-run while the container keeps building, and the client then
+  reports a failure that did not happen; this is the same lost-exit-notification
+  family as the 2026-09-01 `tearDownTimeout` finding, one layer up. Upstreamed
+  from OxidANT's Stevedore lane, which had hand-rolled it.
+
+`Wait-ContainerExit` only applies to a container whose MAIN process is the
+workload - `docker run --name`, and never `--rm`, because `--rm` has the daemon
+delete the container (and its exit code) the instant it exits. That is why
+`Invoke-ContainerBuild`'s **bind-mount** transport now names its run and removes
+it itself - on success only: a failed or timed-out run keeps the container so
+the `docker logs` advice in its error stays runnable, and a leftover name that
+cannot be freed gets a unique fallback instead of a false green (see
+`windows-container-build-performance.md` § Reusable implementation). The
+**tar-pipe** transport cannot use it: its reusable container's
+main process is a 7-day `ping`, so `State.Status` reads `running` whatever an
+exec'd build did. There, a non-zero `docker exec` is instead classified against
+the container's state, so "the container died under the build" stops being
+reported as a build error to hunt in the log.
 
 Consumers resolve it ContainerHub-first with a vendored fallback (see
 BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).

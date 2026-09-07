@@ -170,15 +170,19 @@ uv_pip_install_requirements() {
   local venv_path="${1:-.venv}"
   local requirements_file="${2:-requirements.txt}"
 
-  if [ ! -x "$venv_path/bin/python" ]; then
-    die "No usable venv at $venv_path (missing bin/python) - create it first with uv_venv_create"
+  # bin/python is the POSIX venv layout; Windows (Git Bash) venvs carry
+  # Scripts/python.exe instead. Missing both is a broken venv and dies by name.
+  local venv_python="$venv_path/bin/python"
+  [ -x "$venv_python" ] || venv_python="$venv_path/Scripts/python.exe"
+  if [ ! -x "$venv_python" ]; then
+    die "No usable venv at $venv_path (neither bin/python nor Scripts/python.exe) - create it first with uv_venv_create"
   fi
   if [ ! -f "$requirements_file" ]; then
     die "Requirements file not found: $requirements_file"
   fi
 
   info "Installing $requirements_file into $venv_path"
-  uv pip install --python "$venv_path/bin/python" -r "$requirements_file"
+  uv pip install --python "$venv_python" -r "$requirements_file"
 }
 
 uv_venv_activate() {

@@ -266,10 +266,14 @@ t_assert_eq "slug-new" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old,slug
 # The structural half: the caller has to build the comma form. A behavioural test
 # alone cannot catch the chain switching back, because it re-creates the string.
 _chain="${TESTS_DIR}/../build-cross-chain.sh"
-t_assert_eq "0" "$(grep -c -e 'protected="${protected} ${victim}"' "${_chain}" || true)" \
+t_assert_eq "0" "$(grep -c -e '_prot_ref="${_prot_ref} ${victim}"' "${_chain}" || true)" \
   "build-cross-chain.sh must not append a protected slug with a space"
-t_assert_eq "2" "$(grep -c -e 'protected="${protected},${victim}"' "${_chain}" || true)" \
-  "both anti-spin sites must append with a comma"
+# ONE site since 2026-09-07: the two eviction loops share _chain_evict_slugs, and
+# the nameref is what lets the owner append into the caller's list at all.
+t_assert_eq "1" "$(grep -c -e '_prot_ref="${_prot_ref},${victim}"' "${_chain}" || true)" \
+  "the one anti-spin site must append with a comma"
+t_assert_eq "1" "$(grep -c -e 'local -n _prot_ref=' "${_chain}" || true)" \
+  "a by-value copy would protect nothing outside the loop, which is the same spin"
 
 # ---------------------------------------------------------------------------
 # DISK1: the filtered buildkit-store fallback. On 2026-09-03 the riscv64 torch
@@ -333,13 +337,19 @@ t_case "the prune is FILTERED and carries a keep-storage value"
 t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 120000" \
   "an unfiltered prune eats the exec.cachemount records — 1.5-2h of cold LLVM"
 
+# The prohibition is on the two forms that delete the exec.cachemount records,
+# not on the word: DISK3 added an image-store lever that uses `nerdctl image
+# prune` and `nerdctl rmi`, both of which leave the cache mounts alone.
 t_case "the destructive command is never reachable from the guard"
-t_assert_eq "0" "$(grep -c -e 'nerdctl' "${BUILDCTL_LOG}" || true)"
+t_assert_eq "0" "$(grep -c -e 'nerdctl' "${BUILDCTL_LOG}" || true)" \
+  "the BUILDKIT fallback must reach buildctl and nothing else"
 _dg="${TESTS_DIR}/../01-core/disk-guard.sh"
-t_assert_eq "0" "$(grep -c -e 'nerdctl' "${_dg}" || true)" \
-  "disk-guard.sh must not name nerdctl at all"
 t_assert_eq "0" "$(grep -c -e 'builder prune' "${_dg}" || true)" \
   "'nerdctl builder prune -f' deletes the cache mounts; only the filtered buildctl form is allowed"
+t_assert_eq "0" "$(grep -c -e 'system prune' "${_dg}" || true)" \
+  "'nerdctl system prune' takes T0+T1 with it -- 35 cache-mount records went to 1 on 2026-08-21"
+t_assert_eq "0" "$(grep -c -e 'image prune -a' "${_dg}" || true)" \
+  "-a removes every unreferenced image, including the parents this run pinned"
 
 t_case "a human reading the log sees HOW MUCH was reclaimed, and from where"
 t_assert_contains "$(cat "${_bk}/o.txt")" "[disk-buildkit] 4G free < 40G after the cache-export trim"
@@ -442,5 +452,144 @@ t_assert_ok bash -c 'set -euo pipefail
   _disk_guard_buildkit_fallback "/" 999999 >/dev/null 2>&1
   exit 0'
 rm -rf "${_bk}"
+
+# ---------------------------------------------------------------------------
+# DISK3: the image store. On 2026-09-05 the guard said "NOTHING was reclaimable"
+# at 28G free while ~/.local/share/containerd held 295 GB, three cross-android-*
+# images from a PREVIOUS run among them. nerdctl is stubbed here -- a real image
+# removal must never be a side effect of a unit test.
+# docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+_im="$(mktemp -d)"
+mkdir -p "${_im}/bin" "${_im}/bc"
+NERDCTL_LOG="${_im}/nerdctl.log"
+export NERDCTL_LOG
+cat > "${_im}/bin/nerdctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${NERDCTL_LOG}"
+if [ "$1" = "images" ]; then
+  printf '2026-09-05 12:05:54\tghcr.io/x/y:cross-android-arm64\n'
+  printf '2026-09-06 09:00:00\tghcr.io/x/y:cross-media-arm64\n'
+  printf '2026-09-07 09:00:00\tghcr.io/x/y:cross-runtime-arm64\n'
+  printf '2026-09-07 09:00:00\tghcr.io/x/y:<none>\n'
+  printf '2026-09-07 09:00:00\tubuntu:24.04\n'
+fi
+exit 0
+STUB
+chmod +x "${_im}/bin/nerdctl"
+PATH="${_im}/bin:${PATH}"
+
+# Free space walks up as images are removed: 28G is the number from the incident.
+_IM_FREE=28
+_disk_guard_free_gb() { printf '%s' "${_IM_FREE}"; }
+_im_reset() {
+  : > "${NERDCTL_LOG}"; _IM_FREE=28
+  _DISK_GUARD_IMAGE_PRUNES=0; _DISK_GUARD_IMAGE_FREED_GB=0; _DISK_GUARD_IMAGE_REMOVED=0
+  _DISK_GUARD_TRIM_REMOVED=0; _DISK_GUARD_TRIM_FREED_BYTES=0; _DISK_GUARD_BUILDKIT_FREED_GB=0
+}
+_im_rmi() { grep -c -e '^rmi ' "${NERDCTL_LOG}" 2>/dev/null || true; }
+
+t_case "a stage IN FLIGHT is refused BY NAME -- the ordering rule, not a preference"
+_im_reset
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 1 > "${_im}/o.txt" 2>&1
+t_assert_eq "0" "$(_im_rmi)" "removing an image mid-unpack killed the arm64 runtime lane on 2026-09-06"
+t_assert_contains "$(cat "${_im}/o.txt")" "a stage is IN FLIGHT"
+t_assert_contains "$(cat "${_im}/o.txt")" "Stop the lane, then reclaim."
+
+t_case "the in-stage sampler can never pull this lever"
+_im_reset
+_disk_guard_watch_once "${_im}/bc" 40 "" 3 > "${_im}/o.txt" 2>&1
+t_assert_eq "0" "$(_im_rmi)" "the sampler runs DURING a stage by definition"
+t_assert_contains "$(cat "${_im}/o.txt")" "a stage is IN FLIGHT"
+
+t_case "dangling images go first: zero risk, and 20G in the run that found this"
+_im_reset
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
+t_assert_contains "$(cat "${NERDCTL_LOG}")" "image prune -f"
+t_assert_eq "0" "$(grep -c -e 'image prune -a' "${NERDCTL_LOG}" || true)" \
+  "-a would take the parents this run pinned"
+
+t_case "protected tags are never candidates, unprotected stage tags are"
+_im_reset
+_disk_guard_image_store_fallback "${_im}/bc" 120 \
+  'ghcr.io/x/y:cross-runtime-arm64
+ghcr.io/x/y:cross-media-arm64' 0 > "${_im}/o.txt" 2>&1
+t_assert_contains "$(cat "${NERDCTL_LOG}")" "rmi ghcr.io/x/y:cross-android-arm64"
+t_assert_eq "0" "$(grep -c -e 'rmi ghcr.io/x/y:cross-runtime-arm64' "${NERDCTL_LOG}" || true)" \
+  "the stages still to build, and the one just completed, are the next parents"
+t_assert_eq "0" "$(grep -c -e 'rmi ubuntu:24.04' "${NERDCTL_LOG}" || true)" \
+  "only this chain's own cross-<stage>-<arch> shape is a candidate"
+t_assert_eq "0" "$(grep -c -e 'rmi ghcr.io/x/y:<none>' "${NERDCTL_LOG}" || true)" \
+  "an untagged image is the dangling prune's business, not rmi's"
+
+# BOUNDED ON PURPOSE: without the try-each-tag-once guard this loop never ends,
+# and an unbounded suite HANGS the mutation gate instead of reporting a bite.
+t_case "a tag that survives its own rmi is tried once, not forever"
+_im_reset
+timeout 15 bash -c '
+  set -u
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  PATH="'"${_im}"'/bin:${PATH}"
+  export NERDCTL_LOG="'"${NERDCTL_LOG}"'"
+  _disk_guard_free_gb() { printf "28"; }
+  _disk_guard_image_store_fallback /tmp 120 "" 0 >/dev/null 2>&1'
+t_assert_eq "0" "$?" "the candidate loop must terminate even when rmi changes nothing"
+t_assert_eq "3" "$(_im_rmi)" "each of the three cross-* tags is attempted exactly once"
+
+t_case "it stops as soon as the target is reached -- unique layers, not nominal size"
+_im_reset
+_disk_guard_nerdctl() { _IM_FREE=$(( _IM_FREE + 50 )); command nerdctl "$@"; }
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
+t_assert_eq "1" "$(_im_rmi)" "the dangling prune plus ONE removal already cleared 120G"
+t_assert_contains "$(cat "${_im}/o.txt")" "freed 50G of unique layers"
+_disk_guard_nerdctl() { command nerdctl "$@"; }
+
+t_case "ample free space never reaches nerdctl at all"
+_im_reset
+_IM_FREE=200
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
+t_assert_eq "" "$(cat "${NERDCTL_LOG}")" "a lever that fires above its target is a bug"
+
+t_case "CROSS_IMAGE_PRUNE=0 keeps the pre-DISK3 behaviour, and says so"
+_im_reset
+CROSS_IMAGE_PRUNE=0 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
+t_assert_eq "" "$(cat "${NERDCTL_LOG}")"
+t_assert_contains "$(cat "${_im}/o.txt")" "disabled (CROSS_IMAGE_PRUNE=0)"
+
+t_case "the give-up warning names the store it did not look in"
+_im_reset
+_disk_guard_reclaim_record "in-stage" 28 "${_im}/bc" > "${_im}/o.txt" 2>&1
+t_assert_contains "$(cat "${_im}/o.txt")" "NOTHING was reclaimable"
+t_assert_contains "$(cat "${_im}/o.txt")" "The IMAGE STORE still holds 5 tagged image(s)" \
+  "a guard that gives up loudly reads like an environment limit; this one was a coverage gap"
+t_assert_contains "$(cat "${_im}/o.txt")" "stop the lane, then reclaim"
+
+t_case "a reclaim that DID free image bytes credits them instead of crying defeat"
+_im_reset
+_DISK_GUARD_IMAGE_FREED_GB=113
+_DISK_GUARD_IMAGE_REMOVED=3
+_disk_guard_reclaim_record "between-stages" 28 "${_im}/bc" > "${_im}/o.txt" 2>&1
+t_assert_contains "$(cat "${_im}/o.txt")" "+ 113G of image store (3 stage image(s))"
+t_assert_eq "0" "$(grep -c -e 'NOTHING was reclaimable' "${_im}/o.txt" || true)"
+
+t_case "the lever runs once per episode, and a new episode re-opens it"
+_im_reset
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 >/dev/null 2>&1
+: > "${NERDCTL_LOG}"
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
+t_assert_eq "" "$(cat "${NERDCTL_LOG}")" "nothing new has been unreferenced since"
+t_assert_contains "$(cat "${_im}/o.txt")" "already reclaimed once in this episode"
+_disk_guard_reclaim_begin
+_disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 >/dev/null 2>&1
+t_assert_contains "$(cat "${NERDCTL_LOG}")" "image prune -f" "a fresh episode must be able to reclaim again"
+
+t_case "the lever never aborts the stage it is called from"
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  export CROSS_IMAGE_PRUNE=0
+  _disk_guard_image_store_fallback "" "" "" 0 >/dev/null 2>&1
+  _disk_guard_image_store_fallback "/definitely/not/here" "lots" "" 0 >/dev/null 2>&1
+  _disk_guard_image_store_fallback "/" 999999 "" 1 >/dev/null 2>&1
+  exit 0'
+rm -rf "${_im}"
 
 t_summary

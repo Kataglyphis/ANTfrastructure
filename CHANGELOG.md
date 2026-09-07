@@ -57,6 +57,643 @@ pin every classification gate on both sides of its threshold, and three new
 `census.*` entries in [`docs/scripts/mutations.json`](docs/scripts/mutations.json)
 prove the text gate, the degenerate check and the 10 % gate can each fail.
 
+## 2026-09-07 — YB answered from the log that already had the numbers, and the backlog re-groomed
+
+**The sccache cache IS being hit, and `--show-stats` was never missing.** The YB
+entry said the counters were not in the chain's output. They are:
+`dump_compiler_cache_stats` has been wired as an EXIT trap in `media_common_init`
+all along, and the 2026-09-05 arm64 media log carries **88** dumps. What made it
+look absent is that **79 of them report zero requests** — they are the t≈0
+snapshot `setup_ccache` prints before the first object, and a reader scrolling
+past a wall of zeros concludes there is nothing to read. The nine that ran after
+real compiles, paired requests→hits: **3104→2732 (88.0 %)**, 1335→763 (57.2 %),
+500→499 (99.8 %), 402→365 (90.8 %), 201→201 (100 %), with **zero errors**
+anywhere — the counter `build-cache-tiers.md` calls impossible on a broken cache.
+One honest gap remains and needs no entry: that reading is from 2026-09-05 and
+the socket-address line is from the 2026-09-07 `--only runtime` run, which
+compiles almost nothing, so no single lane has printed both yet. The next
+compile-heavy chain does, with nobody doing anything.
+
+**`docs/refactoring-backlog.md` re-groomed.** Its header still said "THIS FILE IS
+A BUILD-WATCH LIST, AND THE BUILD IS RUNNING" for a build that finished two days
+ago, and APP1 was still titled as open although its own last line says CLOSED.
+Every entry now carries its verdict, and *Next up* is one item long: **run a
+compile-heavy chain**, because everything this wave landed — VK2's four
+components, VK3's floors, DISK3's image lever, CS3's prebuilt download, R1.1's
+llvm-target walk — is proven by gates and unit suites on an idle tree and by
+nothing that compiled a target. The entries name exactly which log line settles
+each one.
+
+## 2026-09-07 — F3: two clone families get an owner, two get a verdict
+
+**`media_jobs` takes its cap as an argument.** The name has two definitions on
+purpose — one assumes `media_common_init` pre-loaded `parallelism.sh`, the other
+sources it on demand — and both hardcoded 2000 MB, which is exactly why the
+android gstreamer lane kept a third copy of the whole block for its own
+`ANDROID_GSTREAMER_PER_JOB_MB` of 1500. Both take `[cap_mb]` now, defaulting to
+2000, and the lane calls `media_jobs "${PER_JOB_MB}"`. `test-media-jobs.sh` pins
+that the two defaults agree and that the cap reaches `compute_jobs_with_mem_cap`
+unchanged. The one behaviour given up is named rather than glossed: the inline
+copy used `nproc --all` in the no-`parallelism.sh` fallback, a path the android
+image never takes because it ships `/opt/scripts/core`.
+`build-app-wheelhouse.sh` keeps its own copy on purpose — it prefers
+`compute_cpp_heavy_jobs` (4 GB for torch's aten TUs), a different ladder rather
+than a different cap.
+
+**`sync_versions.py`'s two syncers share one owner.**
+`_update_dockerfile_args_inner` and `_update_script_defaults_inner` were the same
+algorithm over two syntaxes. `_rewrite_lines` owns the `newline=''` round trip
+(the repo freezes per-file EOLs, so universal-newline translation would rewrite
+whole files to the host's) and the write-only-when-changed rule; `_unquote` owns
+the single-quote-pair strip both needed. `test-version-snapshot.sh` gained the
+`--write` case its `--check` characterisation never had: the second run must
+repair nothing and must not touch the file's mtime — asserted at nanosecond
+resolution, because both runs land in the same second.
+
+**Two families were judged instead of changed, per consumer.** The
+host-compiler-preference fallback in `ffmpeg-probe-framework.sh` is LIVE (its only
+route to the canonical helper is `media_common_init`'s
+`source_module … || true`, which tolerates an absent module), while
+`android-build-preamble.sh`'s is DEAD in the image (`Dockerfile.android:96` COPYs
+the canonical file in) and live only on a host checkout — the same shape the
+`gstreamer-env`/`libcamera-env` pair was kept for. And `prune-safe.sh` ↔
+`disk-guard.sh` has no owner available at all: `prune-safe.sh` runs `main` on
+load and cannot be sourced.
+
+**The unsuppression cascade is now recorded three times** — the log-bootstrap
+extraction, the ORT summary, and DISK3's `_disk_guard_lever_ready`, which sent
+five budgets down and then back up as the corpus shifted. Every one was re-read
+and recorded; `MAX_OWNERS` was not widened.
+
+## 2026-09-07 — F1: the harness stops passing vacuously, and the registry-cache drop gets its characterisation
+
+**The harness caught the trap that four assertions fell into.** `t_assert_ok`
+and `t_assert_fails` take a COMMAND and no message, so
+`t_assert_fails test -f X "why"` ran `test -f X why` — which exits **2**, i.e.
+"not zero", i.e. exactly the failure the case was asking for, for entirely the
+wrong reason. Four of those were written and caught by review in one wave and
+nothing in the harness could see them. Both assertions now share
+`_t_assert_run`, which fails the case BY NAME when the command is `test`/`[`
+and the rc is 2. The guard is deliberately narrow — a real command that exits 2
+is still judged on its exit code — and a mutation widening it to every rc 2 is
+caught. `test-harness-guards.sh` holds it in 12 assertions; the whole suite
+corpus was re-run against the stricter harness and nothing relied on the old
+behaviour.
+
+**The registry-cache drop is covered.** `_cross_stage_build_impl`'s ghcr
+cache-import drop (2026-08-18: the IMPORT is itself the failing read, so a retry
+that keeps `type=registry` re-reads the same broken blob) had no test at all —
+`grep -rn DeadlineExceeded linux/scripts/tests/` returned nothing. Five cases
+now drive the real loop with a log file whose tail carries the flake text and
+assert the argv of EACH attempt: the registry pair survives the first hit, is
+gone from the third on, stays gone, and the LOCAL export plus the caller's own
+args survive with it; a transient push error that is not a cache-import read
+costs nothing. Two things the characterisation had to learn are worth keeping:
+with a log file set, the impl pipes `run` into `tee` and the left side of a pipe
+is a SUBSHELL, so an in-process attempt counter never leaves it — the argv log
+is the only honest record; and `cross_stage_log_redirect` is defined by the
+subject, so a stub for it must be applied AFTER the source, which is what the
+shared `restubs.sh` is for. The extraction F1 wanted next is now unblocked.
+
+## 2026-09-07 — R1: the residue four closed entries left, three fixed and one re-measured
+
+**A runtime-side `ldd` walk over the shipped LLVM prefix.** The sdk stage's
+self-containment walk resolves non-LLVM `NEEDED` sonames against the BUILDER's
+ldconfig cache, so a soname present there and absent in the runtime ships a
+binary that cannot start — `liblldb` was the instance, taking `lldb`,
+`lldb-dap` and `lldb-mcp`, 3 of amd64's 142, past every green run.
+`check_llvm_target_startable` walks `/usr/local/llvm-target/bin` INSIDE the
+image and fails on any unresolved `NEEDED`, naming the binaries. A probe that
+did not run is not a clean prefix: no `COUNT` line fails rather than reading as
+zero broken, which is the difference between this gate and the one it backs up.
+
+**`VK_LAYER_PATH` named a directory that has never existed.**
+`Dockerfile.package` and `04-runtime/runtime-paths.env` both pointed at
+`/opt/vulkan/active/etc/vulkan/explicit_layer.d`; SDK 1.4.357 puts explicit
+layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an
+`etc/` at all. Both now name the real path. The reason it looked harmless is
+measured and written down: the entrypoint sources LunarG's `setup-env.sh`,
+which unsets `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH`, so the variable
+is empty in every running image — this is the value a consumer that does not
+source that script gets.
+
+**LOG14's ~390 s/lane re-measured against a real log.** From the 2026-09-05
+arm64 SDK lane's own `~~~Building X~~~` timestamps, the five components the old
+cross-lane skip list named cost the host build **381 s** (ValidationLayers
+195.8, shaderc 119.5, SPIRV-Cross 61.7, Vulkan-Tools 34.5, volk 1.8, VMA 2.5).
+The arithmetic was right; the claim around it was not, because `./vulkansdk`
+fetched and partly built them anyway and the images carried the source trees
+regardless. VK1 deleted the skip list, and the lane now pays those 381 s for
+components it actually ships.
+
+**A disarmed dead-function row no longer reads as a revived function.** The
+unlinked-definer arm goes STALE whenever any corpus file starts naming BOTH
+definers' basenames, under a heading that says "the function is called again or
+gone" — and neither half is true. `quality_allow.check_keys` grew a
+`describe_stale` hook (every other gate unchanged), and the dead-function gate
+now names the file that disarmed the arm, the two basenames, and states that
+the function is not called again. Rows that went stale for a real reason stay
+plain: the explanation fires only where ONE file could load BOTH definitions,
+and a mutation flipping that `and` to an `or` is caught.
+
+## 2026-09-07 — The disk guard learns about the third store, and its two eviction loops become one
+
+**DISK3.** On 2026-09-05 the chain reported `NOTHING was reclaimable` at 28G
+free while `~/.local/share/containerd` held **295 GB**, three `cross-android-*`
+images from a PREVIOUS run among them at 41.5 / 41.8 / 38.0 GB. It was right
+that it could not free anything and wrong that nothing was reclaimable:
+`disk-guard.sh` had no image listing at all, so its two levers were spent while
+its third, larger one was invisible. That run needed four manual rescues.
+
+`_disk_guard_image_store_fallback` is that lever, and the **ordering constraint
+is enforced rather than documented**: it takes a `stage_in_flight` argument and
+refuses BY NAME when it is set, because `nerdctl image prune -f` killed the
+arm64 runtime lane on 2026-09-06 by removing a blob mid-`unpacking overlayfs`.
+The in-stage sampler passes 1 and can therefore never pull it; the two gates
+that run between runs pass 0. Two steps in risk order — dangling images first
+(no `-a`, 20 GB on its own in that run), then this chain's own
+`cross-<stage>-<arch>` tags minus the stages still to build AND the one just
+completed, which is the next stage's parent under the local OCI handoff. Size is
+not the metric: deleting the three `cross-sdk-*` images (80 GB nominal) freed
+zero bytes because their layers are held by the android images on top, so the
+lever measures free space after EACH removal and logs what each one actually
+freed. `CROSS_IMAGE_PRUNE=0` disables it. The give-up warning now names the
+store it did not look in and says *stop the lane, then reclaim*.
+
+Two loop-safety properties are proven, not assumed: an attempted tag joins the
+protected set (a tag still listed after its own `rmi` would be the head of the
+candidate list forever), and the loop is bounded by construction as well —
+`_DISK_GUARD_IMAGE_MAX_REMOVALS`, because a loop whose only stop condition is
+bookkeeping hangs when the bookkeeping is wrong, and a hung guard inside a chain
+is worse than one that gives up early.
+
+**F1's named eviction-loop debt closed with it.** `_chain_stage_disk_guard` held
+two near-identical loops — free-space-driven and cap-driven — that the backlog
+had named as debt "wanting one `_evict_until <predicate>`". They now share
+`_chain_evict_slugs`, taking a measure function, a keep-going predicate and two
+variable NAMES: the protected list has to be a nameref because an undeletable
+slug must JOIN it, and the number is an out-variable because the function logs on
+stdout. cc 30 → 21 in that guard, and the anti-spin protection lives in one place
+instead of two. Eight mutations hold the new arms, including both spin defects
+and the by-value copy that would silently re-introduce one.
+
+## 2026-09-07 — The foreign Vulkan SDK gets its last four components, and a floor it cannot fall through
+
+**VK2 — the four that did not cross-build all had a route, and one of them was
+not the route the entry named.** `vulkan-profiles` failed on
+`find_package(valijson)` because `jsoncpp` and `valijson` are built by
+`./vulkansdk` into `source/<comp>/build/install` and had no row of their own;
+both are rows in `_VK_TARGET_COMPONENTS` now, ahead of the components that
+resolve them. `gfxreconstruct` reported `Could NOT find ZSTD / X11 / OpenGL /
+JsonCpp` **with those dev packages already unpacked for the target** — multiarch
+puts them in `/usr/lib/<triplet>`, and `find_library` only looks there when
+`CMAKE_LIBRARY_ARCHITECTURE` says so, which `_cross_build_sdk_component` now
+passes for every row. The genuinely missing half was GL, added to a new
+`target_optional_packages` set that goes in through
+`install_optional_target_packages`, so a ports arch that lacks one degrades a
+component rather than sinking the stage. `slang` died at `FAILED: [code=127]
+prelude/slang-cpp-host-prelude.h.cpp` — it cross-compiled its own generators and
+then tried to run them; the host `./vulkansdk` build already leaves them in
+`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
+points `SLANG_GENERATORS_PATH` there, the Canadian cross `llvm-cross.sh` has
+done for tblgen all along. `vulkanCapsViewer` gets `qt6-base-dev:${arch}` and
+`QT_HOST_PATH=/usr`. **`dxc` is deliberately not a row**: slang does not build
+DXC here, it fetches a prebuilt x86_64 binary, so there is no host tablegen to
+point at — cross-building it is an LLVM-sized job, recorded rather than faked.
+
+**VK3 — the target SDK can no longer shrink in silence.** The prefix shipped 2
+of 52 tools for months because `check_vulkan_toolset` required six names and
+*warned* about the rest, and a WARN in a green run is invisible.
+`_VK_REQUIRED_TOOLS` is now the twenty both foreign lanes shipped (nineteen
+installs plus the `glslangValidator` alias); `_VK_TOOLSET_FROZEN` freezes tool
+and layer-manifest counts PER ARCH (`amd64:>=52:>=1`, `arm64:>=20:>=4`,
+`riscv64:>=20:>=4`) so below fails, above prints the new floor to record, and an
+arch with no row fails instead of inheriting silence; the validation layer
+manifest moved from WARN to FAIL. One stage earlier, `_VK_REQUIRED_COMPONENTS`
+names the six whose loss is not optionality and `_vulkan_target_verdict` fails
+the SDK stage when one of them was attempted and failed — minutes in, not hours.
+The two `>=` rows are deliberate: VK2 raises the floor and inventing the
+post-VK2 number would be fabricating a measurement.
+
+**CS1 — owner decision: the Vulkan host prefix stays pruned.**
+`prune-vulkan-host-sdk.sh` keeps removing `/opt/vulkan/<ver>/x86_64` from the
+foreign images (a no-op on amd64, where that prefix is the downloaded SDK). No
+code changed; the decision makes the shipped state the intended one, and the
+tree-arch gate stays un-narrowed because the prune it depends on keeps running.
+
+**CS2 — the openh264 pin was right; the diagnosis was missing.** `2.5.1` is a
+published branch for both arches flathub builds (`dl.flathub.org` answers 200;
+`2.6.0` answers 404). openh264 is an extra-data ref, so a branch that does not
+exist and a payload that would not download read identically as "did not
+install". On a failure the installer now asks the remote which branches it
+publishes and prints them, in the run that hit it. The `(N/7)` count is derived
+from the ref list rather than a literal.
+
+**CS3 — a verified download instead of an hour of QEMU.** `wasm-pack` and
+`flutter_rust_bridge_codegen` cost 87 s / 113 s on amd64 but 768 s / ~1170 s on
+arm64 and 1813 s / 3500 s on riscv64. Where upstream publishes a `linux-musl`
+release binary (x86_64 and aarch64), the package stage downloads it and verifies
+it against a per-arch `*_SHA256` pin in `versions.env` — the shape sccache and
+binaryen already use. riscv64, a missing pin, a failed download or a tarball
+without the binary in it all fall back to `cargo install --locked`; nothing
+unverified is ever installed.
+
+## 2026-09-07 — Cache.cmake and Tests.cmake stop warning past a requested-but-unsatisfiable tool
+
+Two warn-and-continue branches had survived the 2026-09-06 decision that a
+coverage build which cannot instrument fails at configure; both now fail the
+same way.
+
+`Cache.cmake`: "requested but not found → WARNING + skip" becomes
+`FATAL_ERROR` naming the tool and the escape (`-DCOMPILER_CACHE=""`); the two
+`unset(... CACHE)` calls in that branch go with it, unreachable after
+`FATAL_ERROR`. The found-branch sheds a dead guard on the way: its extra
+`STREQUAL "${PATH}-NOTFOUND"` compared against an undefined `PATH` (never
+true), and `find_program`'s `<VAR>-NOTFOUND` is already falsey on its own.
+Precondition verified before arming the fatal: every cache-enabling preset in
+both consumers configures where the binary is pinned — the Linux presets
+inside the Linux images (apt installs `sccache ccache`, then
+`install_sccache_pinned` overlays the pinned build), the Windows presets
+inside the winamd64 image (sccache built from a pinned rev), and
+AccelerANTgine's bare-host lanes (`windows-clang`, `linux-clang`) already
+carry `COMPILER_CACHE: ""`. So no preset gains an off-knob; a bare host
+without the tool now gets the named escape instead of a silent uncached
+build. Known edge, unchanged in substance: BeschleunigerBallett's
+`-DisableSccache` switch only clears launcher env vars, which the module's
+FORCEd cache writes always beat — real disabling was and remains
+`-DCOMPILER_CACHE=""`, and on a tool-less host the switch alone now fails at
+configure instead of pretending.
+
+`Tests.cmake`: the `else()` "Coverage reporting not supported for this
+compiler/platform" message-and-continue becomes `FATAL_ERROR` naming
+`-Dmyproject_ENABLE_COVERAGE=OFF` — coverage was requested. Census of every
+preset across both consumers that reaches `myproject_enable_coverage` with an
+unsupported compiler: exactly one, BeschleunigerBallett's
+`x64-MSVC-Windows-Debug` (MSVC `cl`, Debug, coverage defaults ON there). It
+is pinned `myproject_ENABLE_COVERAGE: OFF` in its own preset, and
+`x64-MSVC-Windows-Release` alongside it — that one never reaches the call
+(ProjectOptions' NOT-Release gate) but records the same unsatisfiability —
+extending the 2026-09-07 clang-cl non-Debug pair decision. AccelerANTgine
+needs no guard anywhere: its coverage option defaults OFF and no preset,
+script, or workflow turns it on, so its windows-msvc presets never reach the
+branch. Every other preset lands in the supported GNU/Clang/clang-cl branches
+or the Release skip.
+
+Proven by scratch include()-probes on cmake 3.29 (Windows host): the
+Cache.cmake fatal (sccache requested under a PATH-isolated env) plus the
+found/skip/invalid-value survivors, and the Tests.cmake fatal (compiler id
+`MSVC` and empty) plus the GNU, Clang and Release survivors; both modules
+re-pass `cmake-format --check` (0.6.13).
+
+## 2026-09-07 — four red suites, four root causes: a missing bootstrap, one SC2319, a renamed pin, a stale SBOM
+
+`lib/app-packaging.sh` landed in the absorb merge without the one line every
+lib module owes: sourcing `log-bootstrap.sh`. It worked anyway — info/warn/err
+arrived transitively through `01-core/common.sh` — which is exactly the drift
+`test-lib-modules.sh` exists to catch; the module now sources the bootstrap
+first, in the sibling shape (54 assertions green). The tree's one SC2319 sat
+in `test-mutation-gate.sh`, deriving a boolean with `[ ... ]; echo $?`; the
+assertion now pins the exit code the gate actually produces — `mirror_tree`'s
+copy failure is `raise SystemExit(str)`, always 1 — so the shellcheck
+ratchet's zero-new-findings contract stands with no allow row.
+`test-version-snapshot.sh`'s 6/7 KNOWN-GAP case pins where the Windows build
+scripts actually are, and the Verb-Noun rename moved them out from under the
+pin's `-name` pattern: `build-*-from-source.ps1` counted 0 where 10 was
+asserted. The pin now counts `Build-*FromSource.ps1` (still 10, still in
+`windows/scripts/build/`); the generator's dead glob is untouched — widening
+it stays the owner's call, and the case still goes red the day that happens
+(26 assertions green). And `docs/deps/sbom-curated.spdx.json` is regenerated
+for the APP_REF v0.0.27 → v0.0.28 bump it had missed: three lines —
+OrchestrANT's `versionInfo`, its hash-suffixed SPDXID, and the DESCRIBES
+relationship — with the frozen 1970 creation stamp intact (14 assertions
+green).
+
+## 2026-09-07 — workflow lint learns the 26.04 preview labels: a config, because no pin bump exists
+
+`ubuntu-26.04` / `ubuntu-26.04-arm` went family-wide on 2026-09-06, and the
+pinned actionlint 1.7.12 — checked against upstream: still the NEWEST release
+(2026-03-30) — predates the preview labels, so `workflow-lint` went red on
+every `runs-on` that names them (eight findings across six workflows). A
+version bump therefore cannot fix it; actionlint's own suggestion can:
+`.github/actionlint.yaml` now declares exactly the two labels a grep of the
+family's workflows turns up. The config only ADDS to the known-label set — a
+fixture carrying this config plus `runs-on: ubuntu-99.99` still fails, so the
+`runner-label` check stays live — and `test-workflow-lint.sh` stays green (15
+assertions). Scope, as the gate's header warns: actionlint reads the config
+from the project it lints, so a consumer calling `lint-workflows.sh <root>`
+(BeschleunigerBallett does, with `github.workspace`) needs its own copy once
+it adopts the labels; this file covers ContainerHub alone. Registered in
+`docs/code-quality-tooling.md#workflow-lint-workflow-lint`.
+
+## 2026-09-07 — housekeeping after the round: dupes scanner learns third_party/, two registries stop lying
+
+Three small truths restored in one sweep. `docs/scripts/verify_code_dupes.py`
+excluded `external` but never learned `third_party` when the vendored tree
+moved (2026-09-05) — a checkout with initialized submodules scanned
+DocumANTation's own prose for ContainerHub duplication; `third_party` joins
+`SKIP_DIRS`. `prepare-linux-ci-host`'s consumer registry named one consumer of
+what were nine — re-censused, and it now points at grep as the authority.
+`code-dupes.allow` gains the seven suite-preamble rows the two new preflight
+suites (`test-shared-config.sh`, `test-cmake-format.sh`) owed, and the actions
+README self-pair budget moves 13 → 16 (twin actions documented in twin words;
+longest identical run still 0 lines). Gate re-run green: 3772 units, 384 files.
+
+## 2026-09-06 — preflight slug `cmake-format`: the repo's own CMake files are format-gated, and consumers get the hook
+
+Nothing format-checked the ~15 shared modules under `cmake/` while consumers
+kept adopting them, so `linux/scripts/preflight.sh` gains an inline
+`check_cmake_format` gate: `lib/code-quality.sh`'s
+`code_quality_ensure_cmake_format` bootstraps the tool via uv into
+`.venv-cmake-format` when absent (pins in
+`linux/scripts/cmake-format.requirements.txt`; `pyyaml` rides along because
+`cmake-format==0.6.13` cannot read `.cmake-format.yaml` without it),
+`code_quality_find_cmake_files` walks every repo-owned
+`CMakeLists.txt`/`*.cmake`, and `code_quality_run_cmake_format --check` — a
+new mode; a bare leading `--check` argument, `-i` behaviour otherwise
+unchanged for the BeschleunigerBallett/AccelerANTgine callers — delivers the
+verdict. Excluded by name: `third_party/`, `external/`, venvs, `out/`, and
+`windows/scripts/patches/` (shim bytes are Windows layer-cache keys). An
+empty walk fails rather than passing vacuously. Proven red-able by
+`linux/scripts/tests/test-cmake-format.sh` plus a live perturb/restore run;
+registered in `docs/code-quality-gates.md` (36 of 36 proven).
+
+The corpus now actually passes: four files took formatting-only argument
+rewraps (`CompilerBuildFlags`, `KataglyphisCMakeHelpers`, `Sanitizers`,
+`Tests`), and ten `cmake/` files lost CRLF working-tree endings that were
+autocrlf leftovers — `*.cmake` is `-text` with LF in the index, so the
+normalisation left `git diff` empty (a `unix2dos` "repair" would have kept
+the gate permanently red).
+
+Two cross-platform fixes surfaced on the way, both in shared code:
+`code_quality_ensure_cmake_format` now finds `Scripts/activate` on a Windows
+(Git Bash) venv where only `bin/activate` was probed, and
+`uv_pip_install_requirements` (`01-core/python_uv.sh`) likewise resolves
+`Scripts/python.exe`; both still fail loud, naming the two paths, when
+neither layout exists.
+
+Consumers: `shared/config/.pre-commit-config.yaml` (canonical, synced by
+`Sync-SharedConfig.ps1`) gains the `cmake-format -i` hook, modelled on
+AccelerANTgine's but with `files:` covering `CMakeLists.txt` too, not just
+`\.cmake$` — the same regex-misses-half-the-corpus class as the 2026-08-11
+`.ixx` gap. BeschleunigerBallett's root copy was refreshed with `-Write`
+(`-Check` exits 0); AccelerANTgine `-Ignore`s the name and already runs its
+own cmake-format hook; OrchestrANT is not a consumer of the mechanism at all
+(see `shared/config/README.md`).
+
+
+## 2026-09-06 — StaticAnalyzers.cmake: clang-tidy takes an optional header filter; AccelerANTgine's local copy retired
+
+`myproject_enable_clang_tidy` gains an optional third argument, a
+`--header-filter` regex appended to the clang-tidy command line. Absent or
+empty, nothing is appended and the consumer's `.clang-tidy`
+`HeaderFilterRegex` decides — existing two-argument callers
+(BeschleunigerBallett included) are byte-for-byte unaffected. AccelerANTgine
+passes `Src/.*` from its `ProjectOptions.cmake` and has deleted its local
+`cmake/StaticAnalyzers.cmake` override, so `include(StaticAnalyzers)` there
+resolves upstream once its ContainerHub pin is bumped. What the override had
+that upstream deliberately does NOT adopt:
+
+* clang-tidy `--fix` — it rewrote sources mid-build; a build gate reports, it
+  does not rewrite. AccelerANTgine's autofix lanes
+  (`scripts/linux/run-static-analysis-format.sh`,
+  `scripts/windows/Build-Windows.ps1`) keep `--fix` where a rewrite is the
+  point. A comment now guards against reintroduction.
+* a `-checks=` list disabling readability-convert-member-functions-to-static,
+  readability-redundant-declaration and misc-const-correctness, which
+  *replaced* upstream's `-checks=-misc-include-cleaner`. All three disables
+  landed in the same consumer commit as `--fix` (they tame its mechanical
+  rewrites, and still do in the autofix scripts above); no report-lane
+  rationale exists for any of them, so upstream's list stands unextended.
+  Consumer clang-tidy Debug builds may newly report findings from those three
+  checks — that is the gate doing its job.
+
+Two more hardenings while merging: the "requested but executable not found"
+paths for cppcheck and clang-tidy now `message(WARNING ...)` naming the
+consequence (tool disabled for this build) instead of expanding the
+never-defined `${WARNING_MESSAGE}` into a plain notice, and the cppcheck
+default-options block carries a guard comment that the list stays
+analysis-only (`--check-config` turned the consumer's whole gate into a no-op
+until 2026-09).
+
+
+## 2026-09-06 — Sanitizers.cmake absorbs AccelerANTgine's clang-cl ASan/UBSan hand-work, Debug gating kept
+
+The two-way divergence is merged: this copy (adopted 2026-08-07) had the
+`$<$<CONFIG:Debug>:...>` gating on every sanitizer flag, define and runtime
+link, but was stale against AccelerANTgine's later clang-cl work (2026-07-16,
+proven on a full /MD Flutter app). Merged in from the consumer, all still
+Debug-gated:
+
+* `/clang:-shared-libsan` next to `/fsanitize=address` — clang-cl's default
+  static ASan runtime stamps `MT_StaticRelease` failifmismatch records that
+  collide with /MD builds.
+* `-fsanitize-trap=undefined` when UBSan runs without ASan — there is no /MD
+  UBSan runtime (`ubsan_standalone` is /MT); with ASan on, its runtime provides
+  the handlers.
+* Microsoft ASan runtime selection (`VCToolsInstallDir` → VS BuildTools glob →
+  LLVM `clang_rt` fallback with a warning) — LLVM's `asan_dynamic` loads after
+  `ucrtbase`, so CRT/COM startup allocations are unhooked and a full app aborts
+  on its first foreign free.
+* The `--print-resource-dir` probe hoisted above both branches, and the
+  link-side `-fsanitize=undefined` dropped (lld-link ignores it; trap mode and
+  the explicitly linked ASan runtime cover both cases).
+
+Kept from this copy over the consumer's: the Debug gating on everything (the
+consumer applied flags unconditionally, which would instrument Release configs
+under multi-config generators) and `/INCREMENTAL:NO` on the link line only.
+Consumer-visible: BeschleunigerBallett's Debug sanitizer presets pick up the
+dynamic ASan runtime and its selection logic on the next submodule bump; its
+non-Debug presets see zero change — every flag is Debug-gated and its
+sanitizer defaults are Debug-only. AccelerANTgine's local `Sanitizers.cmake`
+is deleted; the upstream module takes over by name. Long-form reasoning:
+[`docs/windows-clang-cl-sanitizers.md`](docs/windows-clang-cl-sanitizers.md).
+
+
+## 2026-09-06 — Tests.cmake learns the clang-cl coverage path; Cache.cmake sheds its last consumer fork
+
+`myproject_enable_coverage` now instruments clang-cl builds, merged up from
+AccelerANTgine's local `Tests.cmake` — the module's last drifted consumer
+override; both it and the local `Cache.cmake` are deleted there, so the
+upstream modules take over through its local-first `CMAKE_MODULE_PATH`.
+lld-link rejects `-fprofile-instr-generate`/`-fcoverage-mapping`, so on
+clang-cl the compile flags go through `/clang:` and
+`clang_rt.profile-x86_64` is linked explicitly out of the resource dir
+reported by `--print-resource-dir`. Plain clang keeps the driver flags but
+moves them from `target_link_libraries` to `target_link_options`.
+
+Two deliberate behaviour changes in the merge:
+
+* **The NOT-Release gate stays** (upstream's), not the consumer's Debug-only
+  gate, which silently disabled coverage for RelWithDebInfo. Consequence for
+  BeschleunigerBallett, where `myproject_ENABLE_COVERAGE` defaults ON: the
+  `x64-ClangCL-Windows-Debug` and `-Debug-ASan` presets (every non-Release
+  clang-cl Debug lane) now instrument for coverage where they previously fell
+  into the "not supported" branch and built uninstrumented. The non-Debug pair
+  (`-RelWithDebInfo`/`-Profile`) does NOT: decided 2026-09-07 and pinned in
+  BB's own `x64-ClangCL-Windows-RelWithDebInfo-Base` preset
+  (`myproject_ENABLE_COVERAGE: OFF`, inherited by both) — the Profile preset is
+  the perf lane and instrumentation would skew exactly what it measures.
+  Release presets, MSVC-`cl` presets, and everything non-clang-cl are
+  byte-identical to before.
+* **A coverage build that cannot instrument now fails at configure.** The
+  consumer copy answered a missing profile runtime or an undetectable
+  resource dir with `message(WARNING)` and built uninstrumented anyway; both
+  paths are now `FATAL_ERROR` naming the exact file it looked for, the
+  `--print-resource-dir` exit code is checked, and its stderr is no longer
+  swallowed (`ERROR_QUIET` dropped). The runtime name stays `x86_64` — the
+  consumer-proven spelling; a non-x64 host fails loud with that path.
+
+`Cache.cmake` needed no merge — upstream already superseded the consumer copy
+(per-tool `CACHE_BINARY_<tool>` slots, `FORCE`d launcher cache writes,
+`unset(... CACHE)` on both disable paths) — but it sheds a pasted
+`:contentReference[oaicite:…]` citation artefact from a comment; the consumer
+copy's only other delta was a second such artefact. Function signatures are
+unchanged; the only call sites (BeschleunigerBallett and AccelerANTgine
+`ProjectOptions.cmake`) pass the same single argument.
+
+
+## 2026-09-06 — .cmake-format.yaml is the fifth shared config, and the owner repo now checks its own copy
+
+`shared/config/Sync-SharedConfig.ps1` now manages `.cmake-format.yaml` — a
+canonical copy sits beside the script and the name is in `$names` — because it
+was the one config the drift mechanism could not see: both runners hard-code
+the consumer-root name (`code-quality.sh` defaults
+`CODE_QUALITY_CMAKE_FORMAT_CONFIG` to a bare `.cmake-format.yaml`,
+`WindowsFormatting.Common.psm1` joins it onto the workspace root), so the
+three copies were byte-identical by luck, not by the check. Consumer-visible:
+a consumer running `-Check` without a root `.cmake-format.yaml` now exits 1
+where it exited 0. BeschleunigerBallett and AccelerANTgine already carry the
+identical file (blob `81211b60`) and need no action; OrchestrANT is not a
+consumer of this mechanism at all — Python-only, no `CMakeLists.txt`, none of
+the five files carried as copies (its `.pre-commit-config.yaml` is its own
+ruff config) — so it has nothing to sync and nothing to ignore.
+
+**New preflight slug `shared-config`.** ContainerHub's own root
+`.cmake-format.yaml` is itself a consumer copy — the runners resolve it at
+the repo root here like everywhere else — and nothing compared it to the
+canonical file, so "edit it in `shared/config/`, run `-Write` in each
+consumer" would have gone silently stale for the repo it lives in.
+`linux/scripts/preflight.sh` now runs `Sync-SharedConfig.ps1 -RepoRoot .
+-Check` with the other four names `-Ignore`d (they have no root copy here by
+design): red on drift or deletion, proven red-able by
+`linux/scripts/tests/test-shared-config.sh` and a live perturb/restore run.
+Docs: `shared/config/README.md`.
+
+
+## 2026-09-06 — python-ci-windows.yml calls prepare-windows-container-host instead of re-spelling it
+
+The reusable Windows Python lane carried seven prologue steps that were a
+step-for-step copy of that composite action — same steps, same order, same
+pinned `actions/checkout` SHA — while `python-ci-linux.yml` had used
+`prepare-linux-ci-host` since the day it was written. 75 lines of workflow
+become 20. Two inputs were added to the action to make it a drop-in, both
+optional and both defaulting to today's behaviour, so the four existing
+consumers (BeschleunigerBallett, OxidANT, AccelerANTgine, OmniAccelerANT — all
+of which pass `short-path-target: /d/ws`) are unaffected:
+
+* **`submodules`** (default `'true'`) — the checkout used to spell
+  `submodules: short-path-target == ''`, an expression whose only outputs are
+  `'true'` — first level only, what a lane with no short-path clone got — and
+  `'false'`, what all four `/d/ws` consumers get; `'recursive'` was
+  inexpressible either way. A lane with no short-path clone gets its submodules
+  from that checkout and nothing else, so it had to become expressible; the
+  Windows lane passes it with `short-path-target: ''`, because it mounts
+  `GITHUB_WORKSPACE` and uploads `./dist/` relative to it — a `/d/ws` clone
+  would point the mount and every artifact glob at a tree the build never
+  touched. It is also forwarded to `clone-into-short-path`, where anything but
+  `'false'` means the recursive update it already did.
+* **`measure-data-root`** (default `'false'`) — the third disk signal the
+  workflow had and the action did not: the data-root's own size on disk after
+  the pull. Free space and `docker system df` cannot say *where* the image
+  landed, because `cleanup-disk-space` frees C: in the same job. Off by default
+  because it walks every layer file the ~54 GB import wrote, which costs about a
+  minute; the Python lane turns it on. Unreadable paths are collected in an
+  `-ErrorVariable`, printed, and warned about with the measured size marked as a
+  floor — a report step running under `always()` must not terminate on them
+  while the failure it exists to explain is somewhere else.
+
+
+## 2026-09-06 — A red docker client is not a failed build: the consumer's wait comes upstream
+
+`WindowsContainerBuild.Reuse` trusted `$LASTEXITCODE` from `docker run`. OxidANT's
+Stevedore lane stopped doing that (its host-quirks block is dated 2026-07-17) and
+says why in its own header: *"The docker CLI intermittently drops its pipe mid-run
+while the container keeps working, so the container is named (not `--rm`) and this
+script waits on the actual container state, not the client exit code"*
+(`scripts/windows/container/Invoke-StevedoreBuild.ps1`). That lane imports this
+module for `Resolve-DockerExe`, `Get-ContainerIsolationArgs` and
+`Remove-BuildContainerSafe`, then hand-rolls the wait — because the module had
+nothing to hand it. It does now. Same fault family as the 2026-09-01 finding that
+what goes missing is the container's *exit notification* while the work itself
+completes, one layer up the stack.
+
+**New — `Wait-ContainerExit`** (exported). Polls
+`docker inspect -f '{{.State.Status}}'` until the container is no longer
+`running`/`paused`/`restarting`, then returns `{{.State.ExitCode}}` — the
+container's verdict, not the client's. Four things the consumer's version could
+not afford to skip once it is shared:
+
+- **A bounded wait.** `-TimeoutMinutes` (default 240, ~30× the slowest cold build
+  measured here) instead of `while ($true)`. A lane must not be hangable by a
+  container that never stops.
+- **A vanished container throws.** The original broke out of its loop on *any*
+  failing inspect and then read the exit code from the same dead container,
+  getting an empty string that its caller reported as `container run failed
+  (exit )` — a failure that never happened, spelled like one that did.
+- **An unreachable daemon is retried, then reported.** A client that cannot reach
+  the daemon has said nothing about the container, so that case is polled until
+  the timeout and the timeout message carries the consecutive count. Every other
+  inspect failure throws immediately, saying it is neither of the two known ones.
+- **`created` is not a success.** A container that never started has `ExitCode` 0
+  without a single instruction having run.
+
+**Wired into `Invoke-ContainerBuild`'s bind-mount transport**, which now names its
+run (`<container>-bindmount`) and drops `--rm`: with `--rm` the daemon deletes the
+container the instant it exits and the exit code goes with it, so the name and the
+missing `--rm` are load-bearing, not style. It is removed on SUCCESS only: every
+failure out of the run/wait block points the operator at `docker logs`, so a
+failed or timed-out run keeps its container, with a warning naming the removal
+command. The pre-removal refuses to kill a leftover that is still *running*
+(another build of the tree, or kept evidence) and falls back to a unique name
+when the wcifs teardown lock keeps the old container alive — running against a
+held name would fail with a name conflict and the wait would then read the
+STALE container's exit code: a build that never ran, reported green. The
+inspect helper under the wait takes its value only from stdout (docker prints
+client notices on stderr before the value), and an unknown or empty state fails
+CLOSED instead of being read as finished. The name is deliberately *not* the
+reusable container's: removing that one would throw away the build tree that
+makes reuse worth doing.
+
+**Deliberately NOT wired into the tar-pipe transport.** That container's main
+process is a 7-day `ping`, so `State.Status` says `running` whatever an exec'd
+build did, and an exec's exit code is not recoverable from the container
+afterwards — a wait there would hang for the whole timeout on every failed build.
+What the state *can* still settle is whether the container died under the exec, so
+a non-zero `docker exec` is now classified against it: "the container disappeared /
+stopped while the build was running" instead of a build error to hunt in the log.
+The remaining gap is honest and recorded here: a dropped `docker exec` pipe is not
+arbitrable from container state.
+
+**Nothing changes on a green build.** With a client exit of 0 the container has
+exited 0, `Wait-ContainerExit` reads that same 0, and `Invoke-ContainerBuild`
+returns the object it always did; a genuinely failed container still throws
+`Container build failed (exit N)`, unchanged, and so does a `docker run` that
+failed before any container existed (bad image, unmountable source) — that case
+is checked for explicitly, so it reports the client's code instead of being
+mistaken for a container that vanished. The only new outcome is the one that was
+previously wrong: client non-zero, container zero — now a warning naming both
+numbers, and a build that is not failed. The three callers
+(`BeschleunigerBallett/scripts/windows/Build-Windows-Container.ps1` and the two
+vendored copies) need no edit; `-WaitTimeoutMinutes` is additive.
+
+Tests: +27 (13 `Wait-ContainerExit` branches and 9 bind-mount wiring cases in
+`Modules.Orchestrators.Tests.ps1` against a function-fake docker, 5 surface
+contracts in `WindowsContainerBuild.Reuse.Tests.ps1`) — the suite ran 806/806
+green with them, against 779 before. The `Invoke-Tests.ps1` floor moved 762 →
+791 → 797 in the same window (both steps dated in its own comment). Docs:
+`docs/windows-builds.md`, `docs/adopting-in-a-new-project.md`,
+`docs/windows-container-build-performance.md`.
+
 ## 2026-09-06 — The NAS document-AI question answered: a new page, and the benchmark's multimodal gap named precisely
 
 New page [`docs/nas-document-ai.md`](docs/nas-document-ai.md) (wired into
@@ -90,6 +727,7 @@ Nothing outside `docs/` changed; the three config blockers the page names
 (`OLLAMA_FLASH_ATTENTION`, the missing `--mmproj` in
 `Start-GeniexServers.ps1`, the 6.09 GiB WSL2 cap) are recorded there as
 backlog, not fixed here.
+
 
 ## 2026-09-06 — Every PowerShell file renamed and version-pinned, the Linux lanes on 26.04, and the host stops receiving CMake state
 
@@ -2054,5 +2692,4 @@ Three bugs surfaced during the build, all fixed:
 
 4. **Smoke section 10 CPU floor** — floor was 5 but the CPU lane produces
    exactly 4 assertions (the 5th is a GPU-only CUDA check). Corrected to 4.
-
 

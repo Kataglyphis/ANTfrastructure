@@ -167,7 +167,9 @@ Describe 'BuildKit module closure' {
         # buildmods -- at which point this stage is pure indirection and the
         # comment above it is telling a story that is no longer true.
         $consumers.Count | Should -Be 1 -Because 'a second tvmmods consumer means the code is shared and belongs in buildmods; widening this stage spends the cache win silently'
-        $consumers[0].Scripts | Should -Contain 'build-media-tvm-all' -Because 'tvmmods exists for the media-tvm branch'
+        # 'Build-MediaTvmAll', not 'build-media-tvm-all': renamed in the
+        # approved-verb sweep; the expectation was left on the old name.
+        $consumers[0].Scripts | Should -Contain 'Build-MediaTvmAll' -Because 'tvmmods exists for the media-tvm branch'
     }
 
     It 'keeps the merge-only leaf modules OUT of the media lane entirely' {

@@ -31,7 +31,12 @@ Describe 'chain-invoked build scripts: no -Force module imports' {
         # The leaf builders + their chain entrypoints: everything reachable
         # from a $stages table, i.e. everything that can be running while a
         # module function is on the stack.
-        $entrypoints = @(Get-ChildItem -Path $buildDir -Filter 'build-*-all.ps1' -File)
+        # 'Build-*All.ps1', not 'build-*-all.ps1': the build scripts were
+        # renamed to Verb-Noun in the approved-verb sweep and this glob was left
+        # on the old kebab-case shape, so it matched nothing. The Assert-True
+        # below is exactly the rot guard for that and did its job -- it went red
+        # instead of passing vacuously. Same story for the sibling glob below.
+        $entrypoints = @(Get-ChildItem -Path $buildDir -Filter 'Build-*All.ps1' -File)
         $stageScripts = @()
         foreach ($e in $entrypoints) {
             $raw = Get-Content -Raw $e.FullName
@@ -61,7 +66,7 @@ Describe 'chain-invoked build scripts: no -Force module imports' {
         # Rot guard: if the leaves stopped importing modules altogether the
         # test above would pass while proving nothing.
         $buildDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'build'
-        $guarded = @(Select-String -Path (Join-Path $buildDir 'build-*-from-source.ps1') `
+        $guarded = @(Select-String -Path (Join-Path $buildDir 'Build-*FromSource.ps1') `
                 -Pattern 'if \(-not \(Get-Module -Name .*\)\) \{ Import-Module')
         Assert-True ($guarded.Count -ge 5) "expected the guarded import in the leaf builders, found $($guarded.Count)"
     }

@@ -142,22 +142,40 @@ install_apt_deps() {
 
 # The runtime appimagetool embeds into every AppImage it builds. Without it on
 # disk each consumer run fetches it from GitHub, so a build hangs on GitHub being
-# up. It is NOT downloaded here: upstream publishes it only under the moving
-# `continuous` tag, the exact mutable-asset trap TS1 below documents. Every
-# AppImage BEGINS with that runtime, and appimagetool is already SHA-pinned, so
-# the bytes are taken from the tool itself -- pinned transitively, arch-correct
-# by construction. /etc/skel so the runtime user created later inherits it.
+# up. It is NOT downloaded: upstream publishes it only under the moving
+# `continuous` tag, the mutable-asset trap TS1 below documents. Every AppImage
+# BEGINS with that runtime and appimagetool is already SHA-pinned, so the bytes
+# come from the tool itself -- read, never executed, because an AppImage
+# self-mounts and QEMU user-mode cannot do that on a foreign arch (measured
+# 2026-09-06: `--appimage-offset` gives "Exec format error" on aarch64).
 # docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
+_APPIMAGE_SQUASHFS_OFFSET_PY='
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+i = -1
+while True:
+    i = d.find(b"hsqs", i + 1)
+    if i < 0 or i + 96 > len(d):
+        sys.exit(1)
+    bs, = struct.unpack_from("<I", d, i + 12)
+    maj, = struct.unpack_from("<H", d, i + 28)
+    if maj == 4 and 4096 <= bs <= 1048576 and (bs & (bs - 1)) == 0:
+        print(i)
+        break
+'
+
 ensure_appimagetool_runtime() {
     local tool offset arch_name dir
     tool="$(command -v appimagetool 2>/dev/null)" || return 0
     [ -n "${tool}" ] || return 0
     arch_name="$(uname -m)"
 
-    offset="$("${tool}" --appimage-offset 2>/dev/null)" || offset=""
+    # The magic alone is not enough: "hsqs" occurs once in the ELF before the real
+    # filesystem (194183 vs 944632 on x86_64), so the superblock is validated.
+    offset="$(python3 -c "${_APPIMAGE_SQUASHFS_OFFSET_PY}" "${tool}" 2>/dev/null)" || offset=""
     case "${offset}" in
         ''|*[!0-9]*)
-            warn "appimagetool did not report --appimage-offset; runtime-${arch_name} not staged"
+            warn "no squashfs superblock in ${tool}; runtime-${arch_name} not staged"
             return 0
             ;;
     esac
@@ -285,6 +303,24 @@ _flatpak_refs() {
         "org.freedesktop.Platform.openh264//${openh264}"
 }
 
+# A ref that does not install has two very different causes that read the same in
+# "did not install": a branch flathub does not publish, or a published branch whose
+# payload the run could not fetch (openh264 is extra-data -- flatpak downloads the
+# binary from Cisco at install time). Ask the remote which one it was, in the run
+# that hit it, instead of leaving it to log archaeology.
+# docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+_flatpak_diagnose_ref() {
+    local ref="$1" name branches
+    name="${ref%%//*}"
+    branches="$(flatpak remote-ls flathub --arch="$(uname -m)" --columns=ref 2>/dev/null \
+        | grep -e "/${name}/" | sed 's#.*/##' | sort -u | tr '\n' ' ')"
+    if [ -n "${branches}" ]; then
+        warn "${ref}: flathub publishes ${name} for $(uname -m) at branch(es): ${branches}"
+    else
+        warn "${ref}: flathub lists no ${name} for $(uname -m) at all -- the ref NAME is wrong, not its branch"
+    fi
+}
+
 install_flatpak_runtime() {
     if ! command -v flatpak >/dev/null 2>&1; then
         warn "flatpak not found; skipping runtime/SDK installation"
@@ -312,17 +348,20 @@ install_flatpak_runtime() {
             https://dl.flathub.org/repo/flathub.flatpakrepo
     fi
 
-    local ref failed=0
+    local ref failed=0 total=0
     while IFS= read -r ref; do
         [ -n "${ref}" ] || continue
+        total=$((total + 1))
         info "Installing ${ref}"
         try_or_sudo flatpak install -y --noninteractive flathub "${ref}" \
-            || { warn "${ref} did not install; consumers will fetch it per run"; failed=$((failed + 1)); }
+            || { _flatpak_diagnose_ref "${ref}"
+                 warn "${ref} did not install; consumers will fetch it per run"
+                 failed=$((failed + 1)); }
     done <<EOF
 $(_flatpak_refs "${runtime_version}" "${openh264_version}")
 EOF
 
-    info "Flatpak runtime installation complete ($((7 - failed))/7 refs)"
+    info "Flatpak runtime installation complete ($((total - failed))/${total} refs)"
 }
 
 usage() {

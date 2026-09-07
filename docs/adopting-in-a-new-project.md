@@ -188,13 +188,14 @@ functions rather than re-implementing the pattern:
 | `Remove-StaleContainerSources` | Prune deleted sources on reuse (tar never deletes) |
 | `Test-BuildArtifactsDelivered` | Fail when a "green" build produced or delivered nothing |
 | `Test-ContainerBindMount` / `Remove-BuildContainerSafe` | Bind-mount probe; wcifs-tolerant removal |
+| `Wait-ContainerExit` | Trust the container's state, not the docker client's exit code, when the CLI drops its pipe mid-run (needs a named run, never `--rm`) |
 
 Read [`windows-container-build-performance.md`](windows-container-build-performance.md)
 before designing your flow — it documents both transports and their setup, why
 the build tree must not live on a named volume, the Windows path limit that
 silently truncates tar transfers, and the container-reuse measurements.
 
-Two rules that cost real debugging time to learn:
+Three rules that cost real debugging time to learn:
 
 - **Mount/stream to the same in-container path under every transport.** CMake
   bakes absolute paths into `CMakeCache.txt` and rejects a cache generated
@@ -202,6 +203,9 @@ Two rules that cost real debugging time to learn:
 - **A green build is not proof of delivery.** Always end with
   `Test-BuildArtifactsDelivered`; both "built nothing" and "delivered nothing"
   have happened silently.
+- **A red docker client is not proof of failure.** The CLI drops its pipe
+  mid-run on this host while the container keeps building. Name the run, leave
+  `--rm` off, and take the verdict from `Wait-ContainerExit`.
 
 ## 3. Linux container builds (Rancher Desktop / CI)
 

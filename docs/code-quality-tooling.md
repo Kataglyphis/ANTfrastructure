@@ -23,8 +23,9 @@ Kataglyphis C++ project. Adopted here 2026-08-07 from a consumer that had it all
 in its own `docs/code-quality.md`; what stayed behind there is that project's
 measured drift figures and its own build-script wiring.
 
-The configs these tools read (`.clang-format`, `.clang-tidy`, `gcovr.cfg`) are
-owned by this repo too — see [`shared/config/README.md`](../shared/config/README.md)
+The configs these tools read (`.clang-format`, `.clang-tidy`,
+`.cmake-format.yaml`, `gcovr.cfg`) are owned by this repo too — see
+[`shared/config/README.md`](../shared/config/README.md)
 for why they are copied into consumers rather than referenced.
 
 ### Where the tools are
@@ -471,7 +472,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **839 entries** over **235 distinct test commands**; both digits are
+manifest holds **871 entries** over **237 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1455,7 +1456,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 428 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 430 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1466,7 +1467,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "Known limits" — and it reports **94** rows today where the reachability
+under "Known limits" — and it reports **98** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -1518,7 +1519,7 @@ those three rows STALE; that is the deliberate trade, not an oversight.
 
 `linux/scripts/tests/test-dead-functions.sh`, over throwaway trees —
 each case copies the gate plus the two modules it imports and plants a subject,
-callers and an allow file. 31 mutations (`dead-functions.*`), every one proven
+callers and an allow file. 33 mutations (`dead-functions.*`), every one proven
 to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 `patches/`, `linux/webserver/dist`, `.pytest_cache`, `.dart_tool` and
@@ -2303,6 +2304,14 @@ refused rather than fall back. Running an UNPINNED binary: with no `actionlint` 
 `ACTIONLINT_*_SHA256` each have to refuse, driven offline through a fixture tree
 that carries its own `versions.env`.
 
+`.github/actionlint.yaml` extends the known-runner-label set with the family's
+`ubuntu-26.04` / `ubuntu-26.04-arm` preview labels, which the pinned actionlint
+(still the newest release) predates. The config only ADDS labels — a genuinely
+unknown label still fails, so the `runner-label` check stays live. actionlint
+resolves that config from the project it LINTS, not from this repo: a consumer
+calling `lint-workflows.sh <root>` lints its own tree with its own
+`.github/actionlint.yaml`, so this file covers ContainerHub alone.
+
 ### Secret scan (`secret-scan`)
 
 `lint-secrets.sh` over the working tree with the pinned `gitleaks`. The suite
@@ -2327,10 +2336,34 @@ missing file is not an up-to-date file, comparison is byte equality rather than
 existence, `--stdout` writes nothing, and a `versions.env` bump really does move
 the document.
 
+### The repo's own cmake-format gate (`cmake-format`)
+
+An inline preflight function that drives `lib/code-quality.sh` end to end:
+`code_quality_ensure_cmake_format` provisions the tool through uv into
+`.venv-cmake-format` when it is not on `PATH` (pins in
+`linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
+`cmake-format==0.6.13` does not depend on it and dies with
+`ModuleNotFoundError` the moment it reads a YAML config),
+`code_quality_find_cmake_files` walks the tree, and
+`code_quality_run_cmake_format --check` is the verdict. In scope is every
+repo-owned `CMakeLists.txt`/`*.cmake`; excluded are `third_party/`,
+`external/`, venvs, `out/` — and `windows/scripts/patches/`, whose shim bytes
+are Windows layer-cache keys a reformat would invalidate. A walk that returns
+zero files is a refusal, not a green: an exclude glob that eats the corpus
+must not pass vacuously.
+
+`--check` is newline-strict, and with `line_ending: unix` that is the right
+strictness for this tree: `*.cmake` is `-text` with LF in the index, so the
+ten `cmake/` files that carried CRLF working trees were autocrlf leftovers
+from before the 2026-08-14 attributes rules, and normalising them left
+`git diff` EMPTY. Re-CRLFing them instead would have kept the gate
+permanently red.
+
 ### The two that stay frozen, with better reasons
 
 Both of them took their route out on 2026-09-05, and `gate-proofs.allow`'s bare-slug
-namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen.** The
+namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen** (36 of 36
+since `shared-config` and `cmake-format` arrived proven on 2026-09-06). The
 heading keeps its name because several files point at this anchor, and because the
 two stories are the reason the freeze list was worth keeping honest rather than
 deleting.

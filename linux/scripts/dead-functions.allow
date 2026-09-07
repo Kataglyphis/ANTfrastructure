@@ -16,14 +16,11 @@ linux/scripts/lib/app-runner.sh	app_runner_main
 linux/scripts/lib/cmake-build.sh	cmake_build_main
 linux/scripts/lib/code-quality.sh	code_quality_check_clang_format
 linux/scripts/lib/code-quality.sh	code_quality_cleanup_compile_db
-linux/scripts/lib/code-quality.sh	code_quality_ensure_cmake_format
 linux/scripts/lib/code-quality.sh	code_quality_find_clang_tidy_files
-linux/scripts/lib/code-quality.sh	code_quality_find_cmake_files
 linux/scripts/lib/code-quality.sh	code_quality_find_cpp_files
 linux/scripts/lib/code-quality.sh	code_quality_prepare_compile_db
 linux/scripts/lib/code-quality.sh	code_quality_run_clang_format
 linux/scripts/lib/code-quality.sh	code_quality_run_clang_tidy
-linux/scripts/lib/code-quality.sh	code_quality_run_cmake_format
 linux/scripts/lib/coverage.sh	coverage_llvm_generate_profile
 linux/scripts/lib/coverage.sh	coverage_llvm_report
 linux/scripts/lib/coverage.sh	coverage_run_gcovr
@@ -31,10 +28,6 @@ linux/scripts/lib/ctest-run.sh	ctest_run_main
 linux/scripts/lib/docs-build.sh	docs_build_main
 linux/scripts/lib/rust-toolchain.sh	ensure_wasm32_target
 linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize
-
-# uv primitive for the downstream Python CI drivers (docs/python-ci.md, Trap 2
-# names it as an entry point next to uv_sync_project); callers are consumer repos.
-linux/scripts/01-core/python_uv.sh	uv_pip_install_requirements
 
 # Dynamic dispatch: verify-parity.sh runs "check_${check_name}" over CHECK_LIST.
 # check_python joined its five siblings on 2026-09-05: smoke-toolchain.sh defines a
