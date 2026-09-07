@@ -6749,5 +6749,85 @@
     "replace": "",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k a_file_outside_the_source_is_a_loud_failure",
     "why": "a path the strip could not shorten was copied to $dst/$file — outside $dst for a relative source — and reported success"
+  },
+  {
+    "id": "vulkan.cross-library-architecture",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      -DCMAKE_LIBRARY_ARCHITECTURE=\"${_xbuild_triplet}\" \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "without it find_library never looks in /usr/lib/<triplet>, so the TARGET's X11, XCB, ZSTD and OpenGL read as 'NOT found' with the dev packages installed -- the 2026-09-05 gfxreconstruct failure"
+  },
+  {
+    "id": "vulkan.required-component-is-fatal",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    die \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "replace": "    log \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "a lost loader/SPIRV-Tools/glslang/shaderc/Vulkan-Tools/ValidationLayers is a regression, not optionality; downgrading it to a log is how the prefix shipped 2 tools of 52 for months"
+  },
+  {
+    "id": "vulkan.dynamic-args-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    _vulkan_target_dynamic_args \"${label}\" \"${target_dir}\" \"${archdir}\" \"${triplet}\" dyn\n",
+    "replace": "    dyn=()\n",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the path-shaped flags a static table cannot carry: without the call slang cross-builds its own generators and runs them (exit 127) and the caps viewer never finds the target Qt6"
+  },
+  {
+    "id": "vulkan.slang-generators-must-exist",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      if [ -x \"${gen}/slang-embed\" ]; then",
+    "replace": "      if true; then",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "pointing SLANG_GENERATORS_PATH at a directory the host build never produced hands the cross configure a path with no generators in it, which fails later and further from the cause"
+  },
+  {
+    "id": "probe.vk-toolset-floor-below-fails",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${have}\" -lt \"${floor}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a prefix can keep every REQUIRED name and still lose tools; the frozen floor is the only thing that notices, and 2-of-52 is what that looks like"
+  },
+  {
+    "id": "probe.vk-toolset-frozen-row-required",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fail \"no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "replace": "      echo \"  WARN no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an arch with no frozen row would inherit silence -- exactly the shape that let the foreign prefixes ship unasserted"
+  },
+  {
+    "id": "probe.vk-layer-manifest-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      || fail \"no validation layer manifest in the ${target_arch} SDK prefix",
+    "replace": "      || echo \"  WARN no validation layer manifest in the ${target_arch} SDK prefix",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the layers are what the foreign-arch SDK exercise was for; as a WARN their loss is invisible in a green run"
+  },
+  {
+    "id": "package.webtools-prebuilt-needs-a-pin",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ -z \"${sha}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "without the pin check an unpinned arch downloads and installs release bytes nothing verified, which is strictly worse than the cargo build it replaces"
+  },
+  {
+    "id": "package.webtools-prebuilt-arch-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        *) echo \"NOTE: no ${name} release binary for ${machine}; building it from source\"; return 1 ;;",
+    "replace": "        *) target=\"${machine}-unknown-linux-musl\" ;;",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "upstream publishes no riscv64 asset; inventing the target name turns a from-source build into a 404 the lane discovers instead of a documented fallback"
+  },
+  {
+    "id": "packaging.flatpak-failed-ref-is-diagnosed",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "            || { _flatpak_diagnose_ref \"${ref}\"",
+    "replace": "            || { :",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "a published branch whose extra-data payload would not download and a branch that does not exist read identically as 'did not install'; the remote is the only thing that tells them apart"
   }
 ]

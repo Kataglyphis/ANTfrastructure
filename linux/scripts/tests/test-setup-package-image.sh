@@ -264,6 +264,33 @@ rm -rf "${_tmp}"
 # consumer run. docs/consumer-image-contract.md#the-web-lane-toolchain
 
 _web="$(t_fn_src "${SUBJECT}" install_web_lane_toolchain)" || exit 1
+_web="${_web}
+$(t_fn_src "${SUBJECT}" install_web_lane_prebuilt)" || exit 1
+_web="${_web}
+$(t_fn_src "${SUBJECT}" _web_lane_asset_url)" || exit 1
+_web="${_web}
+$(t_fn_src "${SUBJECT}" _web_lane_asset_sha)" || exit 1
+
+# uname and the verified download are the only two things standing between this
+# function and the network; both are stubbed, nothing here fetches anything.
+# ${_WEB_STUBS} is prepended to every fixture below.
+_WEB_STUBS='
+uname() { printf "%s\n" "${FAKE_MACHINE:-x86_64}"; }
+download_verified_file() {
+  printf "DL %s %s\n" "$1" "$2"
+  [ "${FAKE_DL_RC:-0}" = "0" ] || return "${FAKE_DL_RC}"
+  _d="$(mktemp -d)"
+  case "$1" in
+    *wasm-pack*) _b=wasm-pack; mkdir -p "${_d}/pkg/inner" ;;
+    *)           _b=flutter_rust_bridge_codegen; mkdir -p "${_d}/pkg" ;;
+  esac
+  _p="$(find "${_d}/pkg" -type d | tail -1)"
+  printf "#!/bin/sh\n" > "${_p}/${_b}"
+  chmod +x "${_p}/${_b}"
+  tar -czf "$3" -C "${_d}/pkg" .
+  rm -rf "${_d}"
+}
+'
 
 # Drive the real function with rustup/cargo as recorders under a fake CARGO_HOME.
 _web_run() {
@@ -281,10 +308,40 @@ CG
   # shellcheck disable=SC2034  # all three are read by the eval'd function body
   (
     set -uo pipefail
+    eval "${_WEB_STUBS}"
     eval "${_web}"
     CARGO_HOME="${home}"
     WASM_PACK_VERSION="0.15.0"
     FLUTTER_RUST_BRIDGE_VERSION="2.13.0"
+    install_web_lane_toolchain
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1
+  rm -rf "${home}"
+}
+
+# --- the prebuilt route: a verified download instead of ~200 crates under QEMU
+# One fixture for every case that differs only in what the environment says:
+# "$@" is VAR=VALUE overrides applied after the healthy defaults.
+_web_env_run() {
+  local home ve kv
+  home="$(mktemp -d)"; mkdir -p "${home}/bin"
+  printf '#!/usr/bin/env bash\nprintf "RUSTUP %%s\\n" "$*"\n' > "${home}/bin/rustup"
+  printf '#!/usr/bin/env bash\nprintf "CARGO %%s\\n" "$*"\n' > "${home}/bin/cargo"
+  chmod +x "${home}/bin/rustup" "${home}/bin/cargo"
+  ve="${home}/versions.env"
+  cat > "${ve}" <<'VE'
+WASM_PACK_LINUX_X86_64_SHA256=aaaa
+WASM_PACK_LINUX_AARCH64_SHA256=bbbb
+FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256=cccc
+FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256=dddd
+VE
+  (
+    set -uo pipefail
+    eval "${_WEB_STUBS}"
+    eval "${_web}"
+    export CARGO_HOME="${home}" VERSIONS_ENV="${ve}"
+    export WASM_PACK_VERSION="0.15.0" FLUTTER_RUST_BRIDGE_VERSION="2.13.0"
+    for kv in "$@"; do export "${kv?}"; done
     install_web_lane_toolchain
     printf 'EXIT %s\n' "$?"
   ) 2>&1
@@ -305,15 +362,7 @@ t_assert_contains "${_out}" "CARGO install --locked flutter_rust_bridge_codegen 
 t_assert_contains "${_out}" "EXIT 0"
 
 t_case "an unpinned version is skipped loudly, never installed as 'latest'"
-_out="$( WASM_PACK_VERSION="" bash -c '
-  set -uo pipefail
-  '"${_web}"'
-  CARGO_HOME="$(mktemp -d)"; mkdir -p "${CARGO_HOME}/bin"
-  printf "#!/usr/bin/env bash\nprintf \"RUSTUP %%s\\n\" \"\$*\"\n" > "${CARGO_HOME}/bin/rustup"
-  printf "#!/usr/bin/env bash\nprintf \"CARGO %%s\\n\" \"\$*\"\n" > "${CARGO_HOME}/bin/cargo"
-  chmod +x "${CARGO_HOME}/bin/rustup" "${CARGO_HOME}/bin/cargo"
-  WASM_PACK_VERSION="" FLUTTER_RUST_BRIDGE_VERSION="2.13.0" install_web_lane_toolchain
-  echo "EXIT $?"' 2>&1)"
+_out="$( _web_env_run WASM_PACK_VERSION= VERSIONS_ENV=/nonexistent )"
 t_assert_contains "${_out}" "WARN: no version pinned for wasm-pack"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'install --locked wasm-pack')" \
   "an unpinned crate must not be installed at whatever the index resolves to today"
@@ -325,6 +374,43 @@ _out="$(_web_run 1 1)"
 t_assert_contains "${_out}" "WARN: the nightly channel is unavailable"
 t_assert_contains "${_out}" "WARN: cargo install wasm-pack 0.15.0 failed"
 t_assert_contains "${_out}" "EXIT 0" "a failed cargo install must not stop the package stage"
+
+t_case "an arch upstream publishes for downloads the binary instead of building it"
+_out="$(_web_env_run)"
+t_assert_contains "${_out}" "DL https://github.com/rustwasm/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz aaaa" \
+  "the URL and the versions.env pin for THIS machine, not a generic one"
+t_assert_contains "${_out}" "DL https://github.com/fzyzcjy/flutter_rust_bridge/releases/download/v2.13.0/flutter_rust_bridge_codegen-x86_64-unknown-linux-musl-v2.13.0.tgz cccc"
+t_assert_contains "${_out}" "OK: wasm-pack 0.15.0 installed from the upstream x86_64-unknown-linux-musl release binary"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'CARGO install')" \
+  "768 s and ~1170 s of QEMU on arm64 is what the download replaces"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "the tarball layout is taken as it arrives, not assumed"
+# wasm-pack nests the binary under a version-named directory, frb puts it at the
+# top level; both must land in CARGO_HOME/bin.
+t_assert_contains "${_out}" "OK: flutter_rust_bridge_codegen 2.13.0 installed from the upstream"
+
+t_case "aarch64 reads its OWN pin, not the x86_64 one"
+t_assert_contains "$( FAKE_MACHINE=aarch64 _web_env_run )" \
+  "wasm-pack-v0.15.0-aarch64-unknown-linux-musl.tar.gz bbbb"
+
+t_case "riscv64 has no published asset and says so before building from source"
+_out="$( FAKE_MACHINE=riscv64 _web_env_run )"
+t_assert_contains "${_out}" "NOTE: no wasm-pack release binary for riscv64; building it from source"
+t_assert_contains "${_out}" "CARGO install --locked wasm-pack --version 0.15.0" \
+  "the one arch with no prebuilt must keep the route it had"
+
+t_case "a download that fails or mismatches falls back, it does not fail the stage"
+_out="$( FAKE_DL_RC=1 _web_env_run )"
+t_assert_contains "${_out}" "WARN: wasm-pack 0.15.0 prebuilt did not download/verify; building from source"
+t_assert_contains "${_out}" "CARGO install --locked wasm-pack --version 0.15.0"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "no pinned hash means the from-source build, never an unverified download"
+_out="$( _web_env_run VERSIONS_ENV=/nonexistent )"
+t_assert_contains "${_out}" "WARN: no SHA256 pinned for wasm-pack/x86_64-unknown-linux-musl"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '^DL ')" "nothing may be fetched without a pin"
+t_assert_contains "${_out}" "CARGO install --locked wasm-pack"
 
 t_case "no rustup or cargo under CARGO_HOME skips the whole step"
 _out="$( bash -c '

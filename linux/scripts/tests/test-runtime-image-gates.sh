@@ -871,49 +871,92 @@ _t_all_present " ${_CONSUMER_CONTRACT_ROWS} " "${_CC_EX}" "-" \
   "every per-arch exemption must name a row the gate still asserts"
 
 # ── the Vulkan SDK toolset gate ─────────────────────────────────────────────
-# VK_OUT is the inventory the probe prints for ${VULKAN_SDK}. The two lists come
-# from the source, so the suite cannot drift from what the gate requires.
-_VK_TOOL_VARS="$(grep -E '^_VK_(REQUIRED|REPORTED)_TOOLS=' "${SMOKE}")"
+# VK_OUT is the inventory the probe prints for ${VULKAN_SDK}: one TOOL line per
+# tool found, then the two counts and the validation-manifest flag. The lists and
+# the frozen floors come from the source, so the suite cannot drift from what the
+# gate requires.
+_VK_TOOL_VARS="$(grep -E '^_VK_(REQUIRED|REPORTED)_TOOLS=|^_VK_TOOLSET_FROZEN=' "${SMOKE}")"
 eval "${_VK_TOOL_VARS}"
 _vk_inventory() { for _t in $1; do printf 'TOOL %s\n' "${_t}"; done; }
+# The counts a healthy arm64 prefix prints, so a case that is about TOOLS says so.
+_vk_counts() { printf 'TOOLS %s\nLAYERS %s\nLAYER yes\n' "${1:-20}" "${2:-4}"; }
 _vk_toolset() {
   VK_OUT="$1" bash -c '
     '"${_STUBS}"'
     '"${_VK_TOOL_VARS}"'
     _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(_extract _vk_toolset_floor)"'
+    '"$(_extract _vk_floor_verdict)"'
     '"$(_extract check_vulkan_toolset)"'
-    check_vulkan_toolset img arm64' 2>&1
+    check_vulkan_toolset img '"${2:-arm64}"'' 2>&1
 }
 
 t_case "the shipped shape -- full libraries, two binaries -- fails"
-t_assert_contains "$(_vk_toolset "TOOL glslangValidator")" \
-  "missing required tools: spirv-opt" \
+t_assert_contains "$(_vk_toolset "TOOL glslangValidator
+$(_vk_counts 2)")" \
+  "missing required tools:" \
   "a prefix you can link against but cannot compile a shader with is the defect"
 
 t_case "one absent required tool fails and names it"
-t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS/spirv-val/}")")" \
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS/spirv-val/}")
+$(_vk_counts)")" \
   "spirv-val" "the gate must name what is missing, not just that something is"
 
 t_case "the complete required set passes"
-t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts)")" \
   "SDK tools present" "what a correctly cross-built prefix prints"
 
 t_case "an absent REPORTED tool warns and does not fail"
 t_assert_eq "0" \
-  "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")" | grep -c '^FAIL')" \
-  "spirv-cross and friends are new cross-builds; losing one is not a lane failure"
+  "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts)" | grep -c '^FAIL')" \
+  "gfxrecon and friends are VK2 components; losing one is not a lane failure"
 
 t_case "an absent reported tool is still visible as a WARN"
-t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
-  "WARN spirv-cross absent" "non-fatal must not mean invisible"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts)")" \
+  "WARN gfxrecon-info absent" "non-fatal must not mean invisible"
 
-t_case "a missing validation layer manifest warns"
-t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")")" \
-  "no validation layer manifest" "you cannot develop a Vulkan app without the layers"
+t_case "a missing validation layer manifest FAILS"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+TOOLS 20
+LAYERS 4")" \
+  "FAIL no validation layer manifest" "you cannot develop a Vulkan app without the layers"
 
 t_case "the layer manifest is reported when the prefix carries it"
 t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
-LAYER yes")" "validation layer manifest present" "the good shape is stated too"
+$(_vk_counts)")" "validation layer manifest present" "the good shape is stated too"
+
+# ── the frozen floors: 2 of 52 shipped for months because nothing said 52 ────
+t_case "a prefix below its frozen tool count fails, and says what it is below"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts 19)")" \
+  "carries 19 tools, below its frozen floor of 20" \
+  "a lane that LOSES tools while keeping the required names is the regression this catches"
+
+t_case "fewer layer manifests than frozen fails too"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts 20 3)")" \
+  "carries 3 layer manifests, below its frozen floor of 4"
+
+t_case "a prefix that GAINS tools passes and prints the floor to record"
+_vk_out="$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts 24)")"
+t_assert_contains "${_vk_out}" "RATCHET: floor 20 -> 24" "a gain has to be recorded, not drift"
+t_assert_eq "0" "$(printf '%s\n' "${_vk_out}" | grep -c '^FAIL')" "growing is not a failure"
+
+t_case "amd64 carries the downloaded SDK and has its own, higher floor"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts 40 6)" amd64)" \
+  "carries 40 tools, below its frozen floor of 52" \
+  "one floor for all three arches would have to be the smallest, which asserts nothing about amd64"
+
+t_case "an arch with no frozen row fails instead of inheriting silence"
+t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
+$(_vk_counts)" ppc64le)" \
+  "FAIL no _VK_TOOLSET_FROZEN row for ppc64le" \
+  "a WARN here is the same silence the floors exist to end"
 
 # ── the Android SDK ABI gate ────────────────────────────────────────────────
 # ABI_OUT is what the probe prints: the image's advertised ABI, then one MACH row

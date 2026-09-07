@@ -15,8 +15,10 @@ for _fn in _cross_build_sdk_component \
            _vulkan_target_copy_headers \
            _vulkan_target_build_loader \
            _vulkan_target_build_spirv_tools \
+           _vk_note_failure \
            _vulkan_target_install_component \
            _vulkan_target_src \
+           _vulkan_target_dynamic_args \
            _vulkan_target_build_sdk_rest \
            _vulkan_target_link_glslang_aliases \
            _vulkan_target_build_glslang \
@@ -38,6 +40,12 @@ _VK_TABLE_SRC="$(awk '/^_VK_TARGET_COMPONENTS="/,/^"$/' "${VULKAN_SH}")"
 t_assert_contains "${_VK_TABLE_SRC}" 'shaderc|shaderc/src,shaderc|' "table renamed or removed?"
 _FNS="${_FNS}
 ${_VK_TABLE_SRC}"
+
+t_case "vulkan.sh still names the components whose loss is fatal"
+_VK_REQ_SRC="$(sed -n '/^_VK_REQUIRED_COMPONENTS=/p' "${VULKAN_SH}")"
+t_assert_contains "${_VK_REQ_SRC}" "vulkan-loader spirv-tools glslang" "required set renamed or removed?"
+_FNS="${_FNS}
+${_VK_REQ_SRC}"
 
 SDK="$(mktemp -d)"
 trap 'rm -rf "${SDK}"' EXIT
@@ -95,7 +103,10 @@ _trace() {
   ) 2>&1 | sed -E "s#-B ${_TMP_RE}/[A-Za-z0-9._]+/#-B TMP/#; s#(--build|--install) ${_TMP_RE}/[A-Za-z0-9._]+/#\1 TMP/#; s#${SDK}#SDK#g"
 }
 
-_XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_INSTALL_LIBDIR=lib'
+# CMAKE_LIBRARY_ARCHITECTURE is part of the contract: it is what makes
+# find_library look in /usr/lib/<triplet> instead of reporting the target's X11,
+# XCB, ZSTD and OpenGL as "NOT found". docs/vulkan-foreign-arch-sdk.md
+_XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu -DCMAKE_INSTALL_LIBDIR=lib'
 
 # ---------------------------------------------------------------------------
 _fixture full
@@ -124,17 +135,24 @@ t_assert_ok test -d "${SDK}/aarch64/include/vk_video"
 t_assert_ok test -d "${SDK}/aarch64/lib"
 
 # ---------------------------------------------------------------------------
-t_case "every component failing is an env-shaped verdict, not silent success"
+t_case "a REQUIRED component that fails is fatal HERE, not a mystery hours later"
 _fixture full
 _out="$(_trace 1 0)"
 t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 0/4 component(s) built"
+t_assert_contains "${_out}" "DIE REQUIRED Vulkan cross-component(s) failed for aarch64: vulkan-loader spirv-tools glslang" \
+  "the loader/SPIRV/glslang trio built on both foreign lanes; losing one is a regression"
+
+
+t_case "VULKAN_CROSS_REQUIRED='' hands the decision back to the operator"
+_fixture full
+_out="$( VULKAN_CROSS_REQUIRED='' _trace 1 0 )"
 t_assert_contains "${_out}" "WARN ALL 4 Vulkan cross-component(s) FAILED for aarch64"
 t_assert_contains "${_out}" "broken aarch64-linux-gnu toolchain?"
-t_assert_contains "${_out}" "EXIT 0" "per-component failure stays non-fatal by default"
+t_assert_contains "${_out}" "EXIT 0" "with no required set, per-component failure stays non-fatal"
 
 t_case "VULKAN_CROSS_STRICT=1 promotes the all-failed verdict to fatal"
 _fixture full
-_out="$( VULKAN_CROSS_STRICT=1 _trace 1 0 )"
+_out="$( VULKAN_CROSS_REQUIRED='' VULKAN_CROSS_STRICT=1 _trace 1 0 )"
 t_assert_contains "${_out}" "DIE VULKAN_CROSS_STRICT=1 and all 4 Vulkan cross-components failed for aarch64"
 
 # ---------------------------------------------------------------------------
@@ -209,11 +227,60 @@ t_assert_contains "${_out}" "LOG vulkan-validationlayers: source missing at SDK/
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-B TMP/vulkan-validationlayers-aarch64' || true)" \
   "a skipped row must not configure"
 
+# volk alone: an OPTIONAL row. The `rest` fixture cannot serve here any more —
+# it also carries shaderc, whose loss is fatal by _VK_REQUIRED_COMPONENTS.
 t_case "a row that FAILS to build degrades the prefix, it does not fail the lane"
-_fixture rest
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/volk"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
 _out="$(_trace 1 0)"
 t_assert_contains "${_out}" "LOG volk unavailable on aarch64; the target SDK ships without it"
-t_assert_contains "${_out}" "EXIT 0" "a component that will not cross-build is non-fatal by contract"
+t_assert_contains "${_out}" "EXIT 0" "an OPTIONAL component that will not cross-build is non-fatal by contract"
+
+# ---------------------------------------------------------------------------
+# The two config packages vulkan-profiles resolves through find_package: they are
+# in the SDK's own source/ tree and had no row, which is the whole reason
+# vulkan-profiles reported "Could not find ... valijson".
+t_case "jsoncpp and valijson are cross-built BEFORE vulkan-profiles"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/jsoncpp" \
+         "${SDK}/source/valijson" "${SDK}/source/Vulkan-Profiles"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_out="$(_trace 0 0)"
+t_assert_eq "jsoncpp-aarch64 valijson-aarch64 vulkan-profiles-aarch64" \
+  "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')" \
+  "a config package that lands AFTER its consumer is the same failure as no row at all"
+t_assert_contains "${_out}" "-DBUILD_STATIC_LIBS=ON" "jsoncpp must ship a linkable library"
+t_assert_contains "${_out}" "-Dvalijson_INSTALL_HEADERS=ON" "valijson is header-only; the headers ARE the install"
+
+# ---------------------------------------------------------------------------
+# The Canadian-cross rows: a generator or a moc that must run on the BUILD HOST.
+t_case "slang takes the host generators when ./vulkansdk left them behind"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang" \
+         "${SDK}/source/slang/build/generators/Release/bin"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "-DSLANG_GENERATORS_PATH=SDK/source/slang/build/generators/Release/bin" \
+  "without this the cross build links slang-embed for the TARGET and runs it: exit 127"
+t_assert_contains "${_out}" "-DSLANG_ENABLE_DXIL=OFF" "the DXC slang fetches is an x86_64 prebuilt"
+
+t_case "slang without host generators says so instead of passing an empty path"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "LOG slang: no host generators at SDK/source/slang/build/generators/Release/bin"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DSLANG_GENERATORS_PATH' || true)"
+
+t_case "the caps viewer gets target Qt6 from the sysroot and host moc from /usr"
+_fixture rest
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "-DQT_HOST_PATH=/usr"
+t_assert_contains "${_out}" "-DCMAKE_PREFIX_PATH=SDK/aarch64;/usr/lib/aarch64-linux-gnu" \
+  "the dynamic prefix path must come AFTER the shared one so it wins"
 
 # ---------------------------------------------------------------------------
 # The ./vulkansdk build tree is dropped in the RUN that produced it, so no layer

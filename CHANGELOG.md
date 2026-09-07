@@ -6,6 +6,67 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — The foreign Vulkan SDK gets its last four components, and a floor it cannot fall through
+
+**VK2 — the four that did not cross-build all had a route, and one of them was
+not the route the entry named.** `vulkan-profiles` failed on
+`find_package(valijson)` because `jsoncpp` and `valijson` are built by
+`./vulkansdk` into `source/<comp>/build/install` and had no row of their own;
+both are rows in `_VK_TARGET_COMPONENTS` now, ahead of the components that
+resolve them. `gfxreconstruct` reported `Could NOT find ZSTD / X11 / OpenGL /
+JsonCpp` **with those dev packages already unpacked for the target** — multiarch
+puts them in `/usr/lib/<triplet>`, and `find_library` only looks there when
+`CMAKE_LIBRARY_ARCHITECTURE` says so, which `_cross_build_sdk_component` now
+passes for every row. The genuinely missing half was GL, added to a new
+`target_optional_packages` set that goes in through
+`install_optional_target_packages`, so a ports arch that lacks one degrades a
+component rather than sinking the stage. `slang` died at `FAILED: [code=127]
+prelude/slang-cpp-host-prelude.h.cpp` — it cross-compiled its own generators and
+then tried to run them; the host `./vulkansdk` build already leaves them in
+`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
+points `SLANG_GENERATORS_PATH` there, the Canadian cross `llvm-cross.sh` has
+done for tblgen all along. `vulkanCapsViewer` gets `qt6-base-dev:${arch}` and
+`QT_HOST_PATH=/usr`. **`dxc` is deliberately not a row**: slang does not build
+DXC here, it fetches a prebuilt x86_64 binary, so there is no host tablegen to
+point at — cross-building it is an LLVM-sized job, recorded rather than faked.
+
+**VK3 — the target SDK can no longer shrink in silence.** The prefix shipped 2
+of 52 tools for months because `check_vulkan_toolset` required six names and
+*warned* about the rest, and a WARN in a green run is invisible.
+`_VK_REQUIRED_TOOLS` is now the twenty both foreign lanes shipped (nineteen
+installs plus the `glslangValidator` alias); `_VK_TOOLSET_FROZEN` freezes tool
+and layer-manifest counts PER ARCH (`amd64:>=52:>=1`, `arm64:>=20:>=4`,
+`riscv64:>=20:>=4`) so below fails, above prints the new floor to record, and an
+arch with no row fails instead of inheriting silence; the validation layer
+manifest moved from WARN to FAIL. One stage earlier, `_VK_REQUIRED_COMPONENTS`
+names the six whose loss is not optionality and `_vulkan_target_verdict` fails
+the SDK stage when one of them was attempted and failed — minutes in, not hours.
+The two `>=` rows are deliberate: VK2 raises the floor and inventing the
+post-VK2 number would be fabricating a measurement.
+
+**CS1 — owner decision: the Vulkan host prefix stays pruned.**
+`prune-vulkan-host-sdk.sh` keeps removing `/opt/vulkan/<ver>/x86_64` from the
+foreign images (a no-op on amd64, where that prefix is the downloaded SDK). No
+code changed; the decision makes the shipped state the intended one, and the
+tree-arch gate stays un-narrowed because the prune it depends on keeps running.
+
+**CS2 — the openh264 pin was right; the diagnosis was missing.** `2.5.1` is a
+published branch for both arches flathub builds (`dl.flathub.org` answers 200;
+`2.6.0` answers 404). openh264 is an extra-data ref, so a branch that does not
+exist and a payload that would not download read identically as "did not
+install". On a failure the installer now asks the remote which branches it
+publishes and prints them, in the run that hit it. The `(N/7)` count is derived
+from the ref list rather than a literal.
+
+**CS3 — a verified download instead of an hour of QEMU.** `wasm-pack` and
+`flutter_rust_bridge_codegen` cost 87 s / 113 s on amd64 but 768 s / ~1170 s on
+arm64 and 1813 s / 3500 s on riscv64. Where upstream publishes a `linux-musl`
+release binary (x86_64 and aarch64), the package stage downloads it and verifies
+it against a per-arch `*_SHA256` pin in `versions.env` — the shape sccache and
+binaryen already use. riscv64, a missing pin, a failed download or a tarball
+without the binary in it all fall back to `cargo install --locked`; nothing
+unverified is ever installed.
+
 ## 2026-09-07 — Cache.cmake and Tests.cmake stop warning past a requested-but-unsatisfiable tool
 
 Two warn-and-continue branches had survived the 2026-09-06 decision that a

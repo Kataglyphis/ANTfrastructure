@@ -478,94 +478,66 @@ Android SDK and the ONNX Runtime AAR likewise) rather than N source builds. Unti
 then `ANDROID_TARGET_ABI=x86_64 ... --only android` rebuilds the layer for the
 emulator. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 
-### VK2. Close the last four — none of them is actually a wall [M, ★★★]
+### VK2. WIRED — all four have a route now, and one of them is not a route [M, ★★★]
 
-Measured on the arm64 lane of the 2026-09-05 rebuild: **20 native tools in
-`aarch64/bin`, up from 2**, including `glslc`, `vulkaninfo`, `vkcube`, the whole
-`spirv-*` family and four validation-layer manifests. Four components did not
-cross-build. Each has a route, and two of them are trivial. **This entry is closed
-only when `<arch>/bin` carries everything `x86_64/bin` does that is not
-structurally host-only.**
+The four components that did not cross-build on 2026-09-05 are addressed in the
+tree; **no chain has run since**, so this stays OPEN until one does. The routes,
+and what the arm64 log actually said:
 
-**1. `vulkan-profiles` — two table rows. [S]**
-`find_package(valijson)` found nothing. `valijson` and `jsoncpp` are ALREADY in
-the SDK's own `source/` tree; they simply have no row of their own in
-`_VK_TARGET_COMPONENTS` ahead of the components that need them. valijson is
-header-only. Add both rows before `vulkan-profiles` and `gfxreconstruct`.
+**1. `vulkan-profiles` — DONE, two table rows.** `find_package(valijson)` found
+nothing because `jsoncpp` and `valijson` are built by `./vulkansdk` into
+`source/<comp>/build/install` and had no row of their own. Both are rows in
+`_VK_TARGET_COMPONENTS` now, ahead of `vulkan-profiles`.
 
-**2. `gfxreconstruct` — the dev packages are the host's, not the target's. [S/M]**
-`Could NOT find OpenGL / JsonCpp / X11`, aborting in OpenXR-SDK's
-`presentation.cmake`. `vulkan.sh` installs `libx11-dev`, `libxcb*-dev`,
-`libwayland-dev` and friends for the BUILD HOST only. The cross build needs the
-same set as `:${arch}` in the sysroot. The same packages would also let `vkcube`'s
-WSI backends link everywhere, so this one fix pays twice.
+**2. `gfxreconstruct` — DONE, and the cause was NOT the missing packages.** The
+lane already had `libx11-dev:arm64`, `libzstd-dev:arm64` and the whole XCB set
+unpacked, and CMake still reported `Could NOT find ZSTD / X11 / OpenGL / JsonCpp`:
+multiarch puts them in `/usr/lib/<triplet>`, which `find_library` only searches
+when `CMAKE_LIBRARY_ARCHITECTURE` says so. `_cross_build_sdk_component` passes it
+for every row now. The genuinely missing half was GL — `libgl-dev`, `libglx-dev`,
+`libopengl-dev`, `libegl-dev` — which goes in through
+`install_optional_target_packages` so a ports arch that lacks one degrades a
+component instead of the stage.
 
-**3. `slang` and the `dx*` family — this repo already solves this exact problem. [M]**
-Both are LLVM-shaped: their build runs generators (tablegen and slang's own
-`slang-generate`/`slang-cpp-extractor`) that must EXECUTE on the build host while
-the rest cross-compiles. That is a Canadian cross, and
-`linux/scripts/02-toolchain/llvm-cross.sh` has been doing it for the target-clang
-build all along:
+**3. `slang` — DONE, the Canadian cross this repo already does.** The build cross-
+compiled its own generators and then ran them: `FAILED: [code=127]
+prelude/slang-cpp-host-prelude.h.cpp`. The host `./vulkansdk` run leaves them in
+`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
+points `SLANG_GENERATORS_PATH` there, with `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
+`SLANG_ENABLE_DXIL=OFF` to stop the same build fetching x86_64 prebuilts.
 
-```
--DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"   # llvm-cross.sh:202
--DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"     # llvm-cross.sh:264
-```
+**4. `vulkanCapsViewer` — DONE, target Qt6 + host moc.** `qt6-base-dev:${arch}`
+in the optional set, `QT_HOST_PATH=/usr` and a `CMAKE_PREFIX_PATH` that carries
+the sysroot's Qt.
 
-with `llvm_host_native_tool_dir()` (llvm.sh:370) resolving the host tools. The
-host `./vulkansdk` build ALREADY produces host `slang`, `slangc` and the `dx*`
-binaries in `x86_64/bin` — so the generators exist on disk before the cross build
-starts. Point slang's cross configure at them the way llvm-cross.sh points at
-tblgen, and add `dxc` as its own row using the same `native_tool_dir`. "Host-only
-component" was a description of the failure, not a property of the software.
+**The `dx*` family is NOT a row, and the earlier entry was wrong about why.** It
+is not "host-only", and it is not a tblgen-shaped Canadian cross either; the
+measured reason and what cross-building it would actually cost are in
+[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool).
 
-**4. `vulkanCapsViewer` — Qt, or its CLI. [M]**
-Needs Qt for the target. Two routes: install `qt6-base-dev:${arch}` into the
-sysroot alongside (2), or build the command-line variant, which is the useful half
-in a container anyway — a GUI caps viewer has no display to open there.
+**What closes this entry:** one chain. `<arch>/bin` must carry everything
+`x86_64/bin` does that is not structurally host-only, and the four names above
+are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
+arrive. docs/vulkan-foreign-arch-sdk.md
 
-Order by value per hour: (1), then (2) because it also fixes `vkcube`'s WSI, then
-(3) because it is a known pattern rather than new work, then (4).
+### VK3. LANDED — the SDK can no longer shrink in silence [done 2026-09-07]
 
-Not fixed during the run that found them, on purpose: arm64 was built and riscv64
-had not started, and editing `vulkan.sh` there would have shipped two arches from
-different sources. docs/vulkan-foreign-arch-sdk.md
+The owner's 2026-09-05 request, all four parts, and the **mechanism is owned by
+[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up)
+— read it there, do not restate it here.** In one line each: the twenty measured
+tools are required rather than reported; the tool and layer-manifest counts are
+frozen per arch; the validation manifest fails instead of warning; and
+`_vulkan_target_verdict` fails the SDK stage on a lost REQUIRED component
+instead of counting one survivor as success.
 
-### VK3. Ratchet the target Vulkan SDK so it can never shrink again [S, ★★★]
+**What is left is one promotion, and it is deliberate.** Two rows of the frozen
+table carry `>=` floors rather than exact counts, because VK2 raises them and
+inventing the post-VK2 number would be fabricating a measurement. The next chain
+prints them (`RATCHET: floor 20 -> N`). Record those as exact numbers then, and
+move the four `_VK_REPORTED_TOOLS` names into the required set in the same edit —
+once, not twice.
 
-Owner's request, 2026-09-05: the foreign-arch SDK must keep being built for every
-arch the way it is now. It shipped 2 tools for months precisely because nothing
-asserted a NUMBER — `check_vulkan_toolset` requires six
-(`glslangValidator` + five `spirv-*`) and merely WARNs about the rest, which was
-the right conservatism while the fifteen cross-builds were unproven. They are
-proven now, on the shipped bytes of both foreign lanes:
-
-```
-aarch64/bin  20 tools, 4 layer manifests   (glslc, vulkaninfo, vkcube b7)
-riscv64/bin  20 tools, 4 layer manifests   (glslc f3)
-x86_64/bin   52 tools                       (downloaded LunarG SDK)
-```
-
-The ratchet, in the shape this repo already uses for the shellcheck and app-wheel
-counts:
-
-1. Promote the measured 20 from `_VK_REPORTED_TOOLS` to `_VK_REQUIRED_TOOLS`. A
-   WARN is invisible in a green run; that is how two-of-fifty-two survived.
-2. Freeze the count PER ARCH, since amd64 legitimately carries 52 and the foreign
-   pair 20 — one frozen table, the way `_RT_TREE_ARCH_FROZEN` holds its counts,
-   so a lane that gains tools has to record the new floor rather than drift.
-3. Require the four validation-layer manifests. Developing a Vulkan application
-   without them is the thing the whole exercise was for.
-4. Make `_vulkan_target_verdict` demand a minimum of the component table rather
-   than only failing when EVERY component failed. Today one surviving component
-   reads as success; that is an env-shaped check, not a completeness one.
-
-Do it as its own change, after a rebuild has landed — editing the runtime smoke
-while a chain is running is the mid-run drift this file keeps warning about.
-Closing VK2 raises the floor again, so land VK2 first and record the new numbers
-once. docs/vulkan-foreign-arch-sdk.md
-
-### CS3. The web-lane tools cost riscv64 an hour of QEMU per rebuild [S, ★]
+### CS3. LANDED — a verified download where upstream publishes one [done 2026-09-07]
 
 Measured in the 2026-09-05 runtime lane, same two `cargo install`s on each arch:
 
@@ -575,19 +547,21 @@ Measured in the 2026-09-05 runtime lane, same two `cargo install`s on each arch:
 | arm64 | 768 s | ~1170 s |
 | riscv64 | 1813 s | 3500 s |
 
-Roughly 9x on arm64 and 20x on riscv64 — the shape of QEMU user-mode emulation,
-not a defect. They all succeed, and the point stands: a consumer that would
-otherwise pay 432 crates PER RUN now pays nothing.
+Roughly 9x on arm64 and 20x on riscv64 — QEMU user-mode emulation, not a defect.
+`install_web_lane_prebuilt` now takes upstream's own `linux-musl` release binary
+for x86_64 and aarch64, verified against a per-arch `*_SHA256` pin in
+`versions.env` (the same shape sccache and binaryen already use; the four hashes
+were fetched and, where upstream publishes a `.sha256` sidecar, cross-checked
+against it). Everything else falls back to `cargo install --locked`: riscv64,
+which upstream publishes no asset for, a missing pin, a failed or mismatching
+download, or a tarball without the binary in it. Nothing unverified is ever
+installed, and the four hashes bump WITH the two versions.
 
-Worth deciding, not worth guessing: is there a riscv64 web lane? The tools are
-installed uniformly because an arch-conditional image is harder to reason about
-than a slower one, and because "we assumed nobody uses it" is how the Android
-layer ended up x86_64-only (AB1). If a riscv64 web build is genuinely impossible
-rather than merely unused, gate it on that fact and say so. Otherwise leave it.
-
-A cheaper route for both foreign arches: install from the projects' prebuilt
-release binaries where they publish aarch64/riscv64 ones, and keep `cargo install`
-as the fallback. That trades an hour of emulation for a download.
+**The open half is a question, not work**: whether a riscv64 web lane exists at
+all. It is recorded at
+[`consumer-image-contract.md`](consumer-image-contract.md#the-web-lane-toolchain)
+rather than assumed away — "we assumed nobody uses it" is how the Android layer
+ended up built for the wrong ABI (AB1).
 
 ### APP1. The app rename crossed two repos, and one of them was half done [M, ★★★]
 
@@ -623,9 +597,9 @@ Worth keeping as a pattern rather than an anecdote: a cached layer replays its
 ORIGINAL output into the log, so the log can describe work that this run did not
 do. Two clone lines for one clone is what that looks like from outside.
 
-### CS2. One Flatpak ref of seven has the wrong branch [S, ★]
+### CS2. CLOSED — the pin was right; the diagnosis was missing [done 2026-09-07]
 
-Measured in the runtime stage of the 2026-09-05 rebuild: six of the seven refs
+Measured in the runtime stage of the 2026-09-05 rebuild: six of seven refs
 install, the seventh does not.
 
 ```
@@ -634,14 +608,20 @@ install, the seventh does not.
 [INFO] Flatpak runtime installation complete (6/7 refs)
 ```
 
-`2.5.1` is the version the consumer's report printed, but that is what flatpak
-DISPLAYS, not necessarily the branch it resolves. Ask flathub what exists —
-`flatpak remote-ls flathub --arch=<arch> | grep openh264` — and pin
-`FLATPAK_OPENH264_VERSION` to the branch it names. It is 0.9 MB of the 1.9 GB, so
-the value is closing the gap rather than the bytes.
+**This entry's premise was wrong.** `2.5.1` IS a published branch, for both
+arches flathub builds — `dl.flathub.org/repo/refs/heads/runtime/org.freedesktop.Platform.openh264/<arch>/2.5.1`
+answers 200 for `x86_64` and `aarch64` (`2.6.0` answers 404, so the endpoint
+discriminates), and flathub's own API lists 2.5.1 as the current release. So
+`FLATPAK_OPENH264_VERSION` needed no change.
 
-The per-ref non-fatal handling did exactly its job: one bad ref cost one ref, not
-the other six and not the build. Do not change that.
+What was missing is the reason. openh264 is an **extra-data** ref: flatpak
+downloads the binary from Cisco at install time, so a published branch and an
+unreachable payload produce exactly the same "did not install" line. On a
+failure the installer now asks the remote what it publishes for that name and
+prints the branches, or says the ref NAME is wrong when the remote lists none —
+in the run that hit it, instead of leaving it to log archaeology. The per-ref
+non-fatal handling is unchanged: one bad ref costs one ref. The `(N/7)` count is
+derived from the ref list now rather than a literal 7.
 
 ### DISK3. The chain's disk guard cannot see where the disk actually went [M, ★★★]
 
@@ -709,23 +689,23 @@ The guard should also stop reporting `NOTHING was reclaimable` when it has not
 looked at the largest store. A guard that gives up loudly reads like an
 environment limit; this one was a coverage gap.
 
-### CS1. Consumer staging: done, with one item declined and one decision open [S, ★]
+### CS1. CLOSED — the owner decided, and the prune stays scharf [done 2026-09-07]
 
-The 2026-09-05 report's remaining items, all landed except two.
+**Owner decision 2026-09-07: keep pruning.** `prune-vulkan-host-sdk.sh` removes
+`/opt/vulkan/<ver>/x86_64` from the FOREIGN images and is a no-op on amd64, where
+that prefix IS the downloaded SDK. Nothing changed in the code to close this: the
+prune has been wired in `Dockerfile.package`'s `artifact-source` stage since
+`e6287256` and the 2026-09-07 chain already shipped with it — which is where the
+foreign arches' −2.11 GB / −4.65 GB came from. The decision makes that the
+intended state rather than an unreviewed one, and the coupling resolves the same
+way: the tree-arch gate stays UN-narrowed, asserting the whole `/opt/vulkan` tree,
+because the prune it depends on keeps running.
 
 **Declined, with a reason:** a warm `~/.pub-cache`. The reporter marked it optional
 themselves, and its contents follow `pubspec.lock` — an image-baked cache is stale
 for any consumer whose lock differs, which is every consumer that is not this one.
 Staging it would trade a real download for a silent wrong-version risk. `flutter
 pub get` stays a per-run cost.
-
-**Open, and it is the owner's call:** `prune-vulkan-host-sdk.sh` drops `x86_64/`
-from the FOREIGN images only (on amd64 it is a no-op — there `x86_64` IS the
-downloaded SDK). The evidence is one-sided: those 52 binaries are x86-64 ELF in the
-arm64 image and exit 127. But the owner has twice said not to remove Vulkan payload,
-so it ships wired and unshipped until they say otherwise. Note the coupling: the
-tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree, which only
-holds while the prune runs. Keeping `x86_64/` means re-narrowing that gate.
 
 ### YB. sccache: the address now reaches the compiles; hit counts still unread [S to watch, ★★]
 
