@@ -173,8 +173,8 @@ def _run_test(cmd, root, timeout):
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
-        proc.communicate(timeout=timeout)
-        return proc.returncode, False
+        out, err = proc.communicate(timeout=timeout)
+        return proc.returncode, False, (err or "") + (out or "")
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
@@ -182,13 +182,24 @@ def _run_test(cmd, root, timeout):
             pass
         proc.kill()
         proc.communicate()
-        return None, True
+        return None, True, ""
 
 
 def passes(cmd, root, timeout):
-    """Run one test command unmutated; a timeout is not a pass."""
-    rc, timed_out = _run_test(cmd, root, timeout)
-    return (not timed_out) and rc == 0
+    """Run one test command unmutated; a timeout is not a pass.
+
+    Returns (ok, why). The why names the failure SHAPE: "vacuous bite" spent
+    2026-09-07 meaning three different root causes (pytest missing on the
+    runner, a stale assert, shard-contention timeout) that all printed the same
+    line, and each cost a full CI round to tell apart.
+    """
+    rc, timed_out, output = _run_test(cmd, root, timeout)
+    if timed_out:
+        return False, "timed out after %ss (a timeout is not a pass)" % timeout
+    if rc != 0:
+        tail = [l for l in output.strip().splitlines() if l.strip()][-3:]
+        return False, "exited rc=%s; output tail: %s" % (rc, " | ".join(tail) or "<empty>")
+    return True, None
 
 
 class Baselines:
@@ -277,7 +288,7 @@ def apply_and_run(entry, root):
     try:
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(mutated)
-        rc, timed_out = _run_test(entry["test"], root, entry.get("timeout", 300))
+        rc, timed_out, _ = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)"
         return True, rc != 0, "exit %d" % rc
@@ -296,11 +307,13 @@ def run_entries(args, entries, report, baselines=None):
     baselines = Baselines() if baselines is None else baselines
     for e in entries:
         report.entry(e["id"])
-        if not baseline_ok(e, args.root, baselines):
+        base_ok, base_why = baseline_ok(e, args.root, baselines)
+        if not base_ok:
             rc = 1
             report.err(
                 "FAIL: %s -- baseline test already fails unmutated (vacuous bite)\n"
-                "      test:   %s\n" % (e["id"], e["test"]))
+                "      test:   %s\n"
+                "      why:    %s\n" % (e["id"], e["test"], base_why))
             continue
         applied, failed, detail = apply_and_run(e, args.root)
         if not applied:

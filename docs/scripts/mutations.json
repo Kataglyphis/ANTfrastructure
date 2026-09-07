@@ -5093,7 +5093,8 @@
     "find": "CODE_FENCE = re.compile(r\"```[ \\t]*(?:python3?|py3?)?[^\\n]*\\n(.*?)```\", re.S | re.I)",
     "replace": "CODE_FENCE = re.compile(r\"```(?:python|py)?\\s*\\n(.*?)```\", re.S | re.I)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a correct answer in a ```python3 fence was graded SyntaxError"
+    "why": "a correct answer in a ```python3 fence was graded SyntaxError",
+    "timeout": 900
   },
   {
     "id": "coding.unclosed-think",
@@ -5101,7 +5102,8 @@
     "find": "    elif \"<think>\" in text:\n        # Unclosed",
     "replace": "    elif False:\n        # Unclosed",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a draft inside an unclosed <think> was graded PASS at the cap"
+    "why": "a draft inside an unclosed <think> was graded PASS at the cap",
+    "timeout": 900
   },
   {
     "id": "coding.marker-last-occurrence",
@@ -5109,7 +5111,8 @@
     "find": "payload = json.loads(out.rsplit(marker, 1)[1].splitlines()[0])",
     "replace": "payload = json.loads(out.split(marker, 1)[1].splitlines()[0])",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the first marker occurrence is the one a candidate can print"
+    "why": "the first marker occurrence is the one a candidate can print",
+    "timeout": 900
   },
   {
     "id": "coding.row-count-checked",
@@ -5117,7 +5120,8 @@
     "find": "        if len(rows) != expected:",
     "replace": "        if False:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "zero rows scored as all assertions passed"
+    "why": "zero rows scored as all assertions passed",
+    "timeout": 900
   },
   {
     "id": "coding.setup-denies-pass",
@@ -5125,7 +5129,8 @@
     "find": "        if setup:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
     "replace": "        if False:\n            return False, f\"test setup raised: {setup[0][:80]}\", credit",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a raising setup line must deny PASS, not let a trivial check pass"
+    "why": "a raising setup line must deny PASS, not let a trivial check pass",
+    "timeout": 900
   },
   {
     "id": "coding.setup-not-counted",
@@ -5133,7 +5138,8 @@
     "find": "        counted = isinstance(node, ast.Assert) or (",
     "replace": "        counted = True or (",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "setup lines and helper defs padded the partial-credit denominator"
+    "why": "setup lines and helper defs padded the partial-credit denominator",
+    "timeout": 900
   },
   {
     "id": "coding.own-session-killpg",
@@ -5141,7 +5147,8 @@
     "find": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=True)",
     "replace": "                            preexec_fn=_candidate_rlimits,\n                            start_new_session=False)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a grandchild outlived the timeout in the bench's process group"
+    "why": "a grandchild outlived the timeout in the bench's process group",
+    "timeout": 900
   },
   {
     "id": "coding.not-main",
@@ -5149,7 +5156,8 @@
     "find": "    program = (f\"_MARKER = {marker!r}\\n__name__ = 'candidate'\\n\"\n               + code + \"\\n\\n\" + harness)",
     "replace": "    program = (f\"_MARKER = {marker!r}\\n\"\n               + code + \"\\n\\n\" + harness)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a demo under if __name__ == '__main__' failed a correct function"
+    "why": "a demo under if __name__ == '__main__' failed a correct function",
+    "timeout": 900
   },
   {
     "id": "coding.finish-length-is-cut",
@@ -5157,7 +5165,8 @@
     "find": "    if finish == \"length\":\n        return True          # the server said so; nothing to infer",
     "replace": "    if False:\n        return True          # the server said so; nothing to infer",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas"
+    "why": "a server-reported cut must be believed without counting tokens -- it is the only signal that survives a server which batches deltas",
+    "timeout": 900
   },
   {
     "id": "coding.reasoning-deltas",
@@ -5165,7 +5174,8 @@
     "find": "                thought = delta.get(\"reasoning_content\") or delta.get(\"reasoning\")",
     "replace": "                thought = None",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "reasoning served as a separate delta was dropped, hiding a cut as wrong"
+    "why": "reasoning served as a separate delta was dropped, hiding a cut as wrong",
+    "timeout": 900
   },
   {
     "id": "coding.deterministic-by-output",
@@ -5173,7 +5183,8 @@
     "find": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"output_sha256\"])",
     "replace": "        per_task_hash.setdefault(r[\"task\"], set()).add(r[\"passed\"])",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "pass/fail agreement is not determinism; a sampling lane was labelled deterministic"
+    "why": "pass/fail agreement is not determinism; a sampling lane was labelled deterministic",
+    "timeout": 900
   },
   {
     "id": "coding.errored-do-not-vote",
@@ -5181,7 +5192,8 @@
     "find": "    measured = [r for r in results if _measured(r)]",
     "replace": "    measured = list(results)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "one dropped connection flipped a deterministic lane and narrowed the interval"
+    "why": "one dropped connection flipped a deterministic lane and narrowed the interval",
+    "timeout": 900
   },
   {
     "id": "coding.cut-excluded",
@@ -5189,7 +5201,8 @@
     "find": "    attempts = len(TASKS) * repeats - errored - cut",
     "replace": "    attempts = len(TASKS) * repeats - errored",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "CUT was printed as unmeasured and then counted as a miss"
+    "why": "CUT was printed as unmeasured and then counted as a miss",
+    "timeout": 900
   },
   {
     "id": "coding.count-not-ratio",
@@ -5197,7 +5210,8 @@
     "find": "        effective_k = sum(1 for v in per_task_outcome.values() if v == {True})",
     "replace": "        effective_k = round(passed * effective_n / max(attempts, 1))",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "rounding a ratio printed 8/9 for seven passing tasks"
+    "why": "rounding a ratio printed 8/9 for seven passing tasks",
+    "timeout": 900
   },
   {
     "id": "coding.extended-is-21",
@@ -5205,7 +5219,8 @@
     "find": "    elif args.task_set == \"extended\":\n        TASKS = EXTENDED_TASKS",
     "replace": "    elif args.task_set == \"extended\":\n        TASKS = NOVEL_TASKS + EXTENDED_TASKS",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "'extended' meant 21, 24 and 27 in three places"
+    "why": "'extended' meant 21, 24 and 27 in three places",
+    "timeout": 900
   },
   {
     "id": "coding.think-test-not-vacuous",
@@ -5213,7 +5228,8 @@
     "find": "    if \"</think>\" in text:\n        text = text.split(\"</think>\")[-1]\n    elif",
     "replace": "    if False:\n        text = text.split(\"</think>\")[-1]\n    elif",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the think-stripping test passed with stripping disabled"
+    "why": "the think-stripping test passed with stripping disabled",
+    "timeout": 900
   },
   {
     "id": "coding.prefer-defining-block",
@@ -5221,7 +5237,8 @@
     "find": "        if want:\n            defining = [i for i, b in enumerate(blocks)",
     "replace": "        if False:\n            defining = [i for i, b in enumerate(blocks)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the want branch was never exercised by its test"
+    "why": "the want branch was never exercised by its test",
+    "timeout": 900
   },
   {
     "id": "coding.kv-pairs-whitespace",
@@ -5229,7 +5246,8 @@
     "find": "assert _bad(\" \")\nassert _bad(\"   \")\nassert _bad(\"\\t\")",
     "replace": "",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "whitespace-only input returned {} and passed 21/21"
+    "why": "whitespace-only input returned {} and passed 21/21",
+    "timeout": 900
   },
   {
     "id": "compare.effective-k",
@@ -5237,7 +5255,8 @@
     "find": "            a_k = a.get(\"effective_k\")\n            if a_k is None:\n                a_k = min(a_n, round(a_rate * a_n))\n            b_k = b.get(\"effective_k\")\n            if b_k is None:\n                b_k = min(b_n, round(b_rate * b_n))",
     "replace": "            a_k, b_k = round(a_rate * a_n), round(b_rate * b_n)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the tripwire rounded a ratio into a fabricated pass"
+    "why": "the tripwire rounded a ratio into a fabricated pass",
+    "timeout": 900
   },
   {
     "id": "mutations.copy-failure-loud",
@@ -5261,7 +5280,8 @@
     "find": "            body.append(f\"except BaseException as _e:\\n    _RESULTS.append(({i}, False, \"",
     "replace": "            body.append(f\"except Exception as _e:\\n    _RESULTS.append(({i}, False, \"",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "sys.exit() inside the tested function discarded every assertion already passed"
+    "why": "sys.exit() inside the tested function discarded every assertion already passed",
+    "timeout": 900
   },
   {
     "id": "coding.forbidden-ignores-docstrings",
@@ -5285,7 +5305,8 @@
     "find": "        if isinstance(node, ast.Name) and node.id in wanted and node in unbound:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "replace": "        if False:\n            return f\"used {node.id}(), which the prompt forbids\"",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "an aliased sorted() evaded the text scan"
+    "why": "an aliased sorted() evaded the text scan",
+    "timeout": 900
   },
   {
     "id": "coding.forbidden-attribute",
@@ -5293,7 +5314,8 @@
     "find": "        if isinstance(node, ast.Attribute) and node.attr in wanted:",
     "replace": "        if False:",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "builtins.sorted and .sort() must count as use"
+    "why": "builtins.sorted and .sort() must count as use",
+    "timeout": 900
   },
   {
     "id": "coding.unclosed-last-fence",
@@ -5301,7 +5323,8 @@
     "find": "    if not _unclosed_fence(text):\n        return False",
     "replace": "    if False:\n        return False",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a ``` in prose turned a plain typo into CUT"
+    "why": "a ``` in prose turned a plain typo into CUT",
+    "timeout": 900
   },
   {
     "id": "coding.real-token-count",
@@ -5309,7 +5332,8 @@
     "find": "        count = ctok if ctok is not None else chunks",
     "replace": "        count = chunks",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a server that batches deltas reported a complete answer as CUT"
+    "why": "a server that batches deltas reported a complete answer as CUT",
+    "timeout": 900
   },
   {
     "id": "coding.stdlib-only",
@@ -5317,7 +5341,8 @@
     "find": "    if stdlib_only:\n        extra = _nonstd_imports(code)",
     "replace": "    if False:\n        extra = _nonstd_imports(code)",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "three prompts said standard library only and nothing enforced it"
+    "why": "three prompts said standard library only and nothing enforced it",
+    "timeout": 900
   },
   {
     "id": "coding.env-scrubbed",
@@ -5325,7 +5350,8 @@
     "find": "    proc = subprocess.Popen(cmd, cwd=tmp, env=env,",
     "replace": "    proc = subprocess.Popen(cmd, cwd=tmp,",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the candidate inherited HOME, tokens and agent sockets"
+    "why": "the candidate inherited HOME, tokens and agent sockets",
+    "timeout": 900
   },
   {
     "id": "coding.netns",
@@ -5333,7 +5359,8 @@
     "find": "    if _netns_available():\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
     "replace": "    if False:\n        cmd = [\"unshare\", \"-rn\", \"prlimit\", f\"--nproc={RLIMIT_NPROC}\"] + cmd",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the candidate could open sockets"
+    "why": "the candidate could open sockets",
+    "timeout": 900
   },
   {
     "id": "coding.ascii-digits",
@@ -5341,7 +5368,8 @@
     "find": "assert _bad(\"1.5A\")\nassert _bad(\"١A\")",
     "replace": "assert _bad(\"1.5A\")",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "the prompt says ASCII digits and every tested input was ASCII"
+    "why": "the prompt says ASCII digits and every tested input was ASCII",
+    "timeout": 900
   },
   {
     "id": "mutations.changed-by-test-path",
@@ -5357,7 +5385,8 @@
     "find": "    return GENERATION_CAP or max_tokens or 2048",
     "replace": "    return GENERATION_CAP or 2048",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling"
+    "why": "a fixed 2048 reports a long legitimate answer as CUT on GenieX v0.6+, which has no ceiling",
+    "timeout": 900
   },
   {
     "id": "coding.wall-clock-deadline",
@@ -5365,7 +5394,8 @@
     "find": "            if self._deadline and time.monotonic() - self.started > self._deadline:\n                self.gave_up = True\n                return",
     "replace": "            if False:\n                self.gave_up = True\n                return",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour. ask() now inherits the cap from bench_cli.post_json, so the coding suite must still see it bite there."
+    "why": "urlopen's timeout is per socket read; a model that keeps emitting tokens blocked a sweep for over an hour. ask() now inherits the cap from bench_cli.post_json, so the coding suite must still see it bite there.",
+    "timeout": 900
   },
   {
     "id": "coding.gave-up-is-unmeasured",
@@ -5373,7 +5403,8 @@
     "find": "        truncated = (not ok) and (not skipped) and (gave_up or looks_truncated(",
     "replace": "        truncated = (not ok) and (not skipped) and (False or looks_truncated(",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_coding.py linux/llm-stack/tests/test_partial_credit.py linux/llm-stack/tests/test_bench_coding_tasks.py linux/llm-stack/tests/test_bench_coding_audit.py -q",
-    "why": "an abandoned attempt is unmeasured, not a wrong answer"
+    "why": "an abandoned attempt is unmeasured, not a wrong answer",
+    "timeout": 900
   },
   {
     "id": "bench-agent.tests-may-be-modified",
