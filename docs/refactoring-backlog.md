@@ -113,62 +113,75 @@ already named. A lane that ships a function without a caller ships nothing; the
 `dead-functions` gate is what caught it, and it caught it only because the wave ran
 the full battery after the merge rather than trusting each lane's own green.
 
-### Next up — the running chain decides most of this
+### Next up — what the 2026-09-07 chain settled, and what it did not
 
-1. **Read the chain against [`build-watch-list.md`](build-watch-list.md)** [S, ★★★].
-   Not a code change, and it is the only thing that can move this file. Five of the
-   eight remaining entries (CC1, CL1, VK1, AB1, YB) are watch lists that close or
-   re-open on this one run. The watch list is grouped by stage with the exact lines
-   that mean PASS and the exact lines that mean FAIL, so it can be followed live.
-   YB and VK1 are answered in the **sdk and media** stages, CC1 and AB1 only in the
-   **package/runtime** stage and then on the shipped bytes.
-2. **Record the three per-arch image sizes from this run** [S, ★★]. CC1 has asked
-   for this at two consecutive groomings and there is still no in-tree baseline. The
-   expected reading, after HT5, is roughly **24.9 / 23.7 GB** on arm64/riscv64 against
-   an unchanged **30.37 GB** on amd64 — but VK1's fifteen new cross-built components
-   push the target prefix back up by an unknown amount, so the two changes have to be
-   read together or neither number means anything.
-3. **CS1's one open owner decision** [S, ★★]. `prune-vulkan-host-sdk.sh` ships wired
-   but the owner has twice said not to remove Vulkan payload. Note the coupling before
-   deciding: the tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree,
-   and that only holds while the prune runs. Keeping `x86_64/` means re-narrowing the
-   gate and giving back the 1.86 GB.
-4. **VK2's two cheap rows** [S, ★★]. `valijson` and `jsoncpp` are header-only, are
-   ALREADY in the SDK's own `source/` tree, and simply have no row of their own before
-   `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Two table rows. The other two items
-   (`gfxreconstruct` needs the `:${arch}` X11/GL dev set in the sysroot; `slang` and
-   `vulkanCapsViewer` are Canadian-cross and Qt-for-target respectively) are real work
-   or deliberate declines. **Do not touch `vulkan.sh` while the chain is running** —
-   the arm64 lane is already built and riscv64 has not started, and two arches built
-   from different sources is the mid-run drift this repo has been bitten by before.
-5. **The residue the closed entries left, all small and all named** [S each, ★]:
-   the runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*` (HT4's structural
-   half — the builder's ldconfig cache is what let `liblldb` through, and only an
-   in-image check catches the next one); `VK_LAYER_PATH` dangling on all three shipped
-   images and always having done so; LOG14's cross-lane skip list claiming a ~390 s/lane
-   saving the shipped bytes contradict; and GH6's 93 remaining masked rows, which are a
-   watch list and not a fix.
+The chain ran green end to end and published a 3-arch `:latest-cross`
+(`manifest-freshness PASS`). Five watch entries are answered and marked CLOSED
+above; what follows is only what is still open.
+
+1. **CS1's one owner decision** [S, ★★] — the only item that is not the agent's to
+   take. `prune-vulkan-host-sdk.sh` ships wired and removes `x86_64/` from the
+   FOREIGN images only (a no-op on amd64, where it IS the downloaded SDK). The
+   evidence is one-sided — those 52 binaries are x86-64 ELF in the arm64 image and
+   exit 127 — but the owner has twice said not to remove Vulkan payload. Note the
+   coupling before deciding: the tree-arch gate was un-narrowed to assert the WHOLE
+   `/opt/vulkan` tree, and that only holds while the prune runs. Keeping `x86_64/`
+   means re-narrowing the gate and giving back 1.86 GB.
+2. **VK2's two cheap rows** [S, ★★] — `valijson` and `jsoncpp` are header-only, are
+   already in the SDK's own `source/` tree, and simply have no row of their own
+   before `vulkan-profiles` in `_VK_TARGET_COMPONENTS`. Two table rows, and
+   `vulkan-profiles` cross-builds. The chain is idle, so `vulkan.sh` is safe to edit.
+3. **VK3 — the ratchet the owner asked for** [S, ★★★]. The floor is now measured and
+   stable: **20 tools and 4 layer manifests on both foreign arches, 52 on amd64.**
+   Promote the measured set from `_VK_REPORTED_TOOLS` to `_VK_REQUIRED_TOOLS`, freeze
+   the count PER ARCH, and require the layer manifests. Land VK2 first if it is going
+   to happen soon, so the floor is recorded once rather than twice.
+4. **DISK3 — the disk guard is blind to the store the disk is in** [M, ★★★]. This
+   cost six manual rescues in one session and one killed lane. The guard knows its
+   own log slugs and BuildKit; the space was in containerd. Read the ORDERING
+   constraint in that entry before implementing: BuildKit pruning is safe mid-run,
+   anything that removes IMAGES is safe only between runs.
+5. **The small named ones** — CS2 (one Flatpak ref resolves to no branch; ask
+   flathub with `remote-ls` and pin `FLATPAK_OPENH264_VERSION`), CS3 (the web-lane
+   tools cost riscv64 an hour of QEMU; prebuilt release binaries are the cheaper
+   route), and R1's residue.
 6. **F1 / F2 / F3 — the size and duplication tracks** [M–L each]. None is a defect.
-   With `smoke-cross-all-arches.sh main`, the `agentic-loop.sh` split and the
-   ffmpeg↔pyav twin all closed, what is left inside the build closure is the
-   `_cross_stage_build_impl` registry-cache drop (still uncovered — `grep -rn
-   DeadlineExceeded linux/scripts/tests/` returns nothing), five cc rows, and three
-   clone families.
 
-**Honesty about the rest:** after this wave there is no OPEN entry naming a defect
-with a known failure mode. Everything here is a watch, an owner decision, or a track.
-That is a good state to be in only if the chain is actually read.
+**Image sizes from this run**, which CC1 asked for at three groomings and never got:
+
+| arch | before | after | delta |
+| --- | --- | --- | --- |
+| amd64 | 30.37 GB | **34.35 GB** | +3.98 |
+| arm64 | 30.84 GB | **28.73 GB** | −2.11 |
+| riscv64 | 29.69 GB | **25.04 GB** | −4.65 |
+
+Read them together, as that entry asked. The foreign arches shrank because HT5's
+prune drops the builder-arch prefix there; amd64 grew because nothing is pruned on
+its own arch and it gained the Flatpak runtimes (~1.9 GB), the web-lane toolchain
+and the nightly channel. VK1's fifteen cross-built components push the target prefix
+back up, which is why arm64 landed at 28.73 rather than the ~24.9 the pre-VK1
+estimate predicted. The estimate was not wrong; it was made before those components
+existed.
+
+**Honesty about the rest:** no OPEN entry names a defect with a known failure mode.
+What is left is one owner decision, two cheap wins, a ratchet, a guard that needs a
+lever it does not have, and three tracks.
 
 ### What needs the OWNER, not the agent
 
-Nothing in the entries below is blocked on you. These are:
+**One real decision, and it is CS1** (see Next up 1): whether the foreign images
+keep `/opt/vulkan/<ver>/x86_64`. The bytes are unrunnable there and the prune ships
+wired, but the owner has twice said not to remove Vulkan payload, so it stays until
+they say otherwise. Everything else below is context, not a block:
 
-1. **`git push`** — re-derive the count with
-   `git rev-list --count origin/main..HEAD` rather than retyping a number; it was
-   wrong at three consecutive groomings before that command was written down. The
-   pre-push hook is NEW this wave and has never been invoked by a real `git push`;
-   it runs a whole-manifest `--stale-check` (0.06 s) and then the mutation gate over
-   `--changed`. `--no-verify` is the documented bypass if it surprises you.
+1. **`git push` is no longer yours** (2026-09-06). The agent pushes and pulls now.
+   The `~/.ssh/id_ed25519` key is NOT registered with GitHub — it fails with
+   `Permission denied (publickey)` — so the path is `gh auth setup-git` plus HTTPS
+   remotes, which is local config and touches no account setting. Pull with
+   `--rebase`, stash `chain-status.json` first (always dirty, never staged), and a
+   rebase needs `-c core.hooksPath=/dev/null` because the hooks run on commit.
+   The pre-push hook is no longer theoretical: it fired on real pushes and caught
+   two mutations left stale by upstream refactors, which is exactly its job.
 2. **Downstream consumers of `linux/scripts/lib/`.** The nine libraries source a
    sibling, `lib/log-bootstrap.sh`. Any full ContainerHub checkout satisfies that —
    which is how [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) says
@@ -199,7 +212,14 @@ Nothing in the entries below is blocked on you. These are:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### CC1. The consumer-contract fixes are static until the next runtime build [S to watch, ★★★]
+### CC1. CLOSED — the consumer contract holds on the shipped bytes [done 2026-09-07]
+
+**Answered by the 2026-09-07 `:latest-cross`.** The gate ran against the shipped
+images on all three arches: **12/12 rows on amd64, 12/12 on arm64, 8/8 on riscv64**
+(riscv64 carries four documented exemptions — no appimagetool, no Flutter, no
+Flathub build). Nothing below is a pending question any more; it is kept as the
+record of what the rows are for.
+
 
 **Evidence: a consuming repo's CI lane, not a gate.** The
 OmniAccelerANT lane ran against `:latest-cross-amd64` as uid 1001 on
@@ -282,7 +302,20 @@ of all three shipped children). The multi-arch index fixing their arm64 lane is 
 payoff line for the manifest work; do not forget it when the index shape is next
 touched.
 
-### CL1. Closure files that changed SHAPE with static proof only [S to watch, ★★★]
+### CL1. CLOSED for everything a chain touches — with one honest gap [done 2026-09-07]
+
+**A green chain reported.** `--from-stage sdk` built sdk, media and android on all
+three arches, and the runtime lane then built base, package, torch and wrapper per
+arch and published a 3-arch manifest with `manifest-freshness PASS`. So the
+`01-core`, `02-toolchain`, `03-media`, `04-runtime`, `05-frameworks` and
+`06-packaging` edits this file was worried about have now executed.
+
+**The gap, stated rather than glossed:** `base` and `compiler` were NOT rebuilt from
+source in that chain — the runtime lane builds its own per-arch base image, which is
+what exercised `packaging-deps.sh`, but the SHARED base/compiler stages were
+inherited by digest. Nothing in this wave changed them, so that is a correct
+shortcut and not a hole; it stops being true the moment someone edits them.
+
 
 **Nothing the 2026-09-04 or 2026-09-05 waves changed under `01-core`,
 `02-toolchain`, `03-media`, `04-runtime`, `05-frameworks` or `06-packaging` has been
@@ -356,7 +389,14 @@ checked against this: `cpython_ext_modules` sits inside a sourced module, and
 `pre-setup.sh` is executed WHOLE (`build-gstreamer-stage.sh:107`), so neither adds a
 slicing hazard.
 
-### VK1. Every SDK component is now cross-built, and none of it is proven [M, ★★★]
+### VK1. CLOSED — the foreign-arch SDK is built and measured [done 2026-09-07]
+
+**Answered on the shipped images, not the log.** `${VULKAN_SDK}/bin` holds **20
+tools on arm64 and 20 on riscv64**, each with **4 validation-layer manifests** —
+up from 2 and 0 respectively. `glslc`, `vulkaninfo`, `vkcube` and the whole
+`spirv-*` family are among them. Four components still do not cross-build; they
+are VK2, with a route each.
+
 
 Superseded the "known gaps" list on the same day it was written. Two of its three
 gaps were not gaps:
@@ -381,7 +421,15 @@ and `<label> unavailable` lines in the lane logs, and the
 `check_vulkan_toolset` verdict on each shipped image, then record here which
 components genuinely cross-build and drop the ones that never will.
 
-### AB1. The Android layer was built for the build host, not for a phone [M, ★★★]
+### AB1. CLOSED — the Android payload is the target's ABI [done 2026-09-07]
+
+**Answered on the shipped bytes.** `check_android_abi` reports **413 Android
+objects, all `arm64-v8a`**, in the amd64 image — the exact case the consumer hit,
+since they run the amd64 container to build an arm64-v8a app. Their own probes
+agree: `libonnxruntime.so` is AArch64, `sdk/native/libs` is `arm64-v8a`, and
+`libgstreamer-1.0.a(gst.c.o)` — the object named in their linker error — is
+AArch64.
+
 
 Reported by the OmniAccelerANT android lane 2026-09-05, as a link
 error rather than a missing file — every SDK was present and every one was wrong:
@@ -679,7 +727,20 @@ so it ships wired and unshipped until they say otherwise. Note the coupling: the
 tree-arch gate was un-narrowed to assert the WHOLE `/opt/vulkan` tree, which only
 holds while the prune runs. Keeping `x86_64/` means re-narrowing that gate.
 
-### YB. sccache: root cause FOUND and fixed, unproven by any build [S to watch, ★★★]
+### YB. sccache: the address now reaches the compiles; hit counts still unread [S to watch, ★★]
+
+**Half answered by the 2026-09-07 chain.** The media stage logs
+`[CACHE] sccache enabled: SCCACHE_DIR=/var/cache/sccache, CACHE_SIZE=30G
+[server=/tmp/sccache-...]` — a Unix socket path, which is exactly what the fix was
+for: the defect was every client falling back to the DEFAULT TCP port 4226 because
+the address never reached them. So the address arrives.
+
+**What is still unproven:** that the cache is actually being hit. `--show-stats` is
+not in the chain's output, so nothing here says whether requests turn into hits.
+Closing this needs one `sccache --show-stats` line captured from a lane that
+compiles, and the four-row counter table in
+`build-cache-tiers.md` names what a healthy reading looks like.
+
 
 **This entry is no longer an investigation.** The 2026-09-05 wave found the mechanism
 exactly, and every hypothesis the old entry carried (argv shape, cwd, spawn
