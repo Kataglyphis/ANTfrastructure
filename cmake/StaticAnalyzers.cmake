@@ -68,6 +68,8 @@ macro(myproject_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
         # style should enable the other 3, but we'll be explicit just in case
         set(SUPPRESS_DIR "*:${CMAKE_CURRENT_BINARY_DIR}/_deps/*.h")
         message(STATUS "CPPCHECK_OPTIONS suppress: ${SUPPRESS_DIR}")
+        # Keep this list analysis-only: --check-config validates the config and analyses nothing,
+        # so adding it here turns the whole gate into a no-op (AccelerANTgine, 2026-09).
         set(CMAKE_CXX_CPPCHECK
             ${CPPCHECK}
             --template=${CPPCHECK_TEMPLATE}
@@ -102,12 +104,18 @@ macro(myproject_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
     endif()
   else()
     if(_MYPROJECT_ENABLE_CPPCHECK)
-      message(${WARNING_MESSAGE} "cppcheck requested but executable not found")
+      message(WARNING "cppcheck requested but executable not found - cppcheck is disabled for this build")
     endif()
   endif()
 endmacro()
 
 macro(myproject_enable_clang_tidy target WARNINGS_AS_ERRORS)
+  # Optional 3rd argument: a --header-filter regex (AccelerANTgine passes "Src/.*").
+  # Absent or empty appends nothing, so the consumer's .clang-tidy HeaderFilterRegex decides.
+  set(CLANG_TIDY_HEADER_FILTER "")
+  if(${ARGC} GREATER 2)
+    set(CLANG_TIDY_HEADER_FILTER "${ARGV2}")
+  endif()
 
   find_program(CLANGTIDY clang-tidy)
   if(CLANGTIDY)
@@ -130,13 +138,20 @@ macro(myproject_enable_clang_tidy target WARNINGS_AS_ERRORS)
     endif()
 
     # construct the clang-tidy command line
+    # Report-only gate: never add --fix here - it rewrites sources mid-build (autofix belongs in scripts).
     set(CLANG_TIDY_OPTIONS
         ${CLANGTIDY}
         -extra-arg=-Wno-unknown-warning-option
         -extra-arg=-Wno-ignored-optimization-argument
         -extra-arg=-Wno-unused-command-line-argument
-        -checks=-misc-include-cleaner
-        -p)
+        -checks=-misc-include-cleaner)
+    if(NOT
+       "${CLANG_TIDY_HEADER_FILTER}"
+       STREQUAL
+       "")
+      list(APPEND CLANG_TIDY_OPTIONS --header-filter=${CLANG_TIDY_HEADER_FILTER})
+    endif()
+    list(APPEND CLANG_TIDY_OPTIONS -p)
     # set standard
     if(NOT
        "${CMAKE_CXX_STANDARD}"
@@ -157,6 +172,6 @@ macro(myproject_enable_clang_tidy target WARNINGS_AS_ERRORS)
     message("Also setting clang-tidy globally")
     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_OPTIONS})
   else()
-    message(${WARNING_MESSAGE} "clang-tidy requested but executable not found")
+    message(WARNING "clang-tidy requested but executable not found - clang-tidy is disabled for this build")
   endif()
 endmacro()

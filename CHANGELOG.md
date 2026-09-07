@@ -6,6 +6,315 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — housekeeping after the round: dupes scanner learns third_party/, two registries stop lying
+
+Three small truths restored in one sweep. `docs/scripts/verify_code_dupes.py`
+excluded `external` but never learned `third_party` when the vendored tree
+moved (2026-09-05) — a checkout with initialized submodules scanned
+DocumANTation's own prose for ContainerHub duplication; `third_party` joins
+`SKIP_DIRS`. `prepare-linux-ci-host`'s consumer registry named one consumer of
+what were nine — re-censused, and it now points at grep as the authority.
+`code-dupes.allow` gains the seven suite-preamble rows the two new preflight
+suites (`test-shared-config.sh`, `test-cmake-format.sh`) owed, and the actions
+README self-pair budget moves 13 → 16 (twin actions documented in twin words;
+longest identical run still 0 lines). Gate re-run green: 3772 units, 384 files.
+
+## 2026-09-06 — preflight slug `cmake-format`: the repo's own CMake files are format-gated, and consumers get the hook
+
+Nothing format-checked the ~15 shared modules under `cmake/` while consumers
+kept adopting them, so `linux/scripts/preflight.sh` gains an inline
+`check_cmake_format` gate: `lib/code-quality.sh`'s
+`code_quality_ensure_cmake_format` bootstraps the tool via uv into
+`.venv-cmake-format` when absent (pins in
+`linux/scripts/cmake-format.requirements.txt`; `pyyaml` rides along because
+`cmake-format==0.6.13` cannot read `.cmake-format.yaml` without it),
+`code_quality_find_cmake_files` walks every repo-owned
+`CMakeLists.txt`/`*.cmake`, and `code_quality_run_cmake_format --check` — a
+new mode; a bare leading `--check` argument, `-i` behaviour otherwise
+unchanged for the BeschleunigerBallett/AccelerANTgine callers — delivers the
+verdict. Excluded by name: `third_party/`, `external/`, venvs, `out/`, and
+`windows/scripts/patches/` (shim bytes are Windows layer-cache keys). An
+empty walk fails rather than passing vacuously. Proven red-able by
+`linux/scripts/tests/test-cmake-format.sh` plus a live perturb/restore run;
+registered in `docs/code-quality-gates.md` (36 of 36 proven).
+
+The corpus now actually passes: four files took formatting-only argument
+rewraps (`CompilerBuildFlags`, `KataglyphisCMakeHelpers`, `Sanitizers`,
+`Tests`), and ten `cmake/` files lost CRLF working-tree endings that were
+autocrlf leftovers — `*.cmake` is `-text` with LF in the index, so the
+normalisation left `git diff` empty (a `unix2dos` "repair" would have kept
+the gate permanently red).
+
+Two cross-platform fixes surfaced on the way, both in shared code:
+`code_quality_ensure_cmake_format` now finds `Scripts/activate` on a Windows
+(Git Bash) venv where only `bin/activate` was probed, and
+`uv_pip_install_requirements` (`01-core/python_uv.sh`) likewise resolves
+`Scripts/python.exe`; both still fail loud, naming the two paths, when
+neither layout exists.
+
+Consumers: `shared/config/.pre-commit-config.yaml` (canonical, synced by
+`Sync-SharedConfig.ps1`) gains the `cmake-format -i` hook, modelled on
+AccelerANTgine's but with `files:` covering `CMakeLists.txt` too, not just
+`\.cmake$` — the same regex-misses-half-the-corpus class as the 2026-08-11
+`.ixx` gap. BeschleunigerBallett's root copy was refreshed with `-Write`
+(`-Check` exits 0); AccelerANTgine `-Ignore`s the name and already runs its
+own cmake-format hook; OrchestrANT is not a consumer of the mechanism at all
+(see `shared/config/README.md`).
+
+
+## 2026-09-06 — StaticAnalyzers.cmake: clang-tidy takes an optional header filter; AccelerANTgine's local copy retired
+
+`myproject_enable_clang_tidy` gains an optional third argument, a
+`--header-filter` regex appended to the clang-tidy command line. Absent or
+empty, nothing is appended and the consumer's `.clang-tidy`
+`HeaderFilterRegex` decides — existing two-argument callers
+(BeschleunigerBallett included) are byte-for-byte unaffected. AccelerANTgine
+passes `Src/.*` from its `ProjectOptions.cmake` and has deleted its local
+`cmake/StaticAnalyzers.cmake` override, so `include(StaticAnalyzers)` there
+resolves upstream once its ContainerHub pin is bumped. What the override had
+that upstream deliberately does NOT adopt:
+
+* clang-tidy `--fix` — it rewrote sources mid-build; a build gate reports, it
+  does not rewrite. AccelerANTgine's autofix lanes
+  (`scripts/linux/run-static-analysis-format.sh`,
+  `scripts/windows/Build-Windows.ps1`) keep `--fix` where a rewrite is the
+  point. A comment now guards against reintroduction.
+* a `-checks=` list disabling readability-convert-member-functions-to-static,
+  readability-redundant-declaration and misc-const-correctness, which
+  *replaced* upstream's `-checks=-misc-include-cleaner`. All three disables
+  landed in the same consumer commit as `--fix` (they tame its mechanical
+  rewrites, and still do in the autofix scripts above); no report-lane
+  rationale exists for any of them, so upstream's list stands unextended.
+  Consumer clang-tidy Debug builds may newly report findings from those three
+  checks — that is the gate doing its job.
+
+Two more hardenings while merging: the "requested but executable not found"
+paths for cppcheck and clang-tidy now `message(WARNING ...)` naming the
+consequence (tool disabled for this build) instead of expanding the
+never-defined `${WARNING_MESSAGE}` into a plain notice, and the cppcheck
+default-options block carries a guard comment that the list stays
+analysis-only (`--check-config` turned the consumer's whole gate into a no-op
+until 2026-09).
+
+
+## 2026-09-06 — Sanitizers.cmake absorbs AccelerANTgine's clang-cl ASan/UBSan hand-work, Debug gating kept
+
+The two-way divergence is merged: this copy (adopted 2026-08-07) had the
+`$<$<CONFIG:Debug>:...>` gating on every sanitizer flag, define and runtime
+link, but was stale against AccelerANTgine's later clang-cl work (2026-07-16,
+proven on a full /MD Flutter app). Merged in from the consumer, all still
+Debug-gated:
+
+* `/clang:-shared-libsan` next to `/fsanitize=address` — clang-cl's default
+  static ASan runtime stamps `MT_StaticRelease` failifmismatch records that
+  collide with /MD builds.
+* `-fsanitize-trap=undefined` when UBSan runs without ASan — there is no /MD
+  UBSan runtime (`ubsan_standalone` is /MT); with ASan on, its runtime provides
+  the handlers.
+* Microsoft ASan runtime selection (`VCToolsInstallDir` → VS BuildTools glob →
+  LLVM `clang_rt` fallback with a warning) — LLVM's `asan_dynamic` loads after
+  `ucrtbase`, so CRT/COM startup allocations are unhooked and a full app aborts
+  on its first foreign free.
+* The `--print-resource-dir` probe hoisted above both branches, and the
+  link-side `-fsanitize=undefined` dropped (lld-link ignores it; trap mode and
+  the explicitly linked ASan runtime cover both cases).
+
+Kept from this copy over the consumer's: the Debug gating on everything (the
+consumer applied flags unconditionally, which would instrument Release configs
+under multi-config generators) and `/INCREMENTAL:NO` on the link line only.
+Consumer-visible: BeschleunigerBallett's Debug sanitizer presets pick up the
+dynamic ASan runtime and its selection logic on the next submodule bump; its
+non-Debug presets see zero change — every flag is Debug-gated and its
+sanitizer defaults are Debug-only. AccelerANTgine's local `Sanitizers.cmake`
+is deleted; the upstream module takes over by name. Long-form reasoning:
+[`docs/windows-clang-cl-sanitizers.md`](docs/windows-clang-cl-sanitizers.md).
+
+
+## 2026-09-06 — Tests.cmake learns the clang-cl coverage path; Cache.cmake sheds its last consumer fork
+
+`myproject_enable_coverage` now instruments clang-cl builds, merged up from
+AccelerANTgine's local `Tests.cmake` — the module's last drifted consumer
+override; both it and the local `Cache.cmake` are deleted there, so the
+upstream modules take over through its local-first `CMAKE_MODULE_PATH`.
+lld-link rejects `-fprofile-instr-generate`/`-fcoverage-mapping`, so on
+clang-cl the compile flags go through `/clang:` and
+`clang_rt.profile-x86_64` is linked explicitly out of the resource dir
+reported by `--print-resource-dir`. Plain clang keeps the driver flags but
+moves them from `target_link_libraries` to `target_link_options`.
+
+Two deliberate behaviour changes in the merge:
+
+* **The NOT-Release gate stays** (upstream's), not the consumer's Debug-only
+  gate, which silently disabled coverage for RelWithDebInfo. Consequence for
+  BeschleunigerBallett, where `myproject_ENABLE_COVERAGE` defaults ON: the
+  `x64-ClangCL-Windows-Debug` and `-Debug-ASan` presets (every non-Release
+  clang-cl Debug lane) now instrument for coverage where they previously fell
+  into the "not supported" branch and built uninstrumented. The non-Debug pair
+  (`-RelWithDebInfo`/`-Profile`) does NOT: decided 2026-09-07 and pinned in
+  BB's own `x64-ClangCL-Windows-RelWithDebInfo-Base` preset
+  (`myproject_ENABLE_COVERAGE: OFF`, inherited by both) — the Profile preset is
+  the perf lane and instrumentation would skew exactly what it measures.
+  Release presets, MSVC-`cl` presets, and everything non-clang-cl are
+  byte-identical to before.
+* **A coverage build that cannot instrument now fails at configure.** The
+  consumer copy answered a missing profile runtime or an undetectable
+  resource dir with `message(WARNING)` and built uninstrumented anyway; both
+  paths are now `FATAL_ERROR` naming the exact file it looked for, the
+  `--print-resource-dir` exit code is checked, and its stderr is no longer
+  swallowed (`ERROR_QUIET` dropped). The runtime name stays `x86_64` — the
+  consumer-proven spelling; a non-x64 host fails loud with that path.
+
+`Cache.cmake` needed no merge — upstream already superseded the consumer copy
+(per-tool `CACHE_BINARY_<tool>` slots, `FORCE`d launcher cache writes,
+`unset(... CACHE)` on both disable paths) — but it sheds a pasted
+`:contentReference[oaicite:…]` citation artefact from a comment; the consumer
+copy's only other delta was a second such artefact. Function signatures are
+unchanged; the only call sites (BeschleunigerBallett and AccelerANTgine
+`ProjectOptions.cmake`) pass the same single argument.
+
+
+## 2026-09-06 — .cmake-format.yaml is the fifth shared config, and the owner repo now checks its own copy
+
+`shared/config/Sync-SharedConfig.ps1` now manages `.cmake-format.yaml` — a
+canonical copy sits beside the script and the name is in `$names` — because it
+was the one config the drift mechanism could not see: both runners hard-code
+the consumer-root name (`code-quality.sh` defaults
+`CODE_QUALITY_CMAKE_FORMAT_CONFIG` to a bare `.cmake-format.yaml`,
+`WindowsFormatting.Common.psm1` joins it onto the workspace root), so the
+three copies were byte-identical by luck, not by the check. Consumer-visible:
+a consumer running `-Check` without a root `.cmake-format.yaml` now exits 1
+where it exited 0. BeschleunigerBallett and AccelerANTgine already carry the
+identical file (blob `81211b60`) and need no action; OrchestrANT is not a
+consumer of this mechanism at all — Python-only, no `CMakeLists.txt`, none of
+the five files carried as copies (its `.pre-commit-config.yaml` is its own
+ruff config) — so it has nothing to sync and nothing to ignore.
+
+**New preflight slug `shared-config`.** ContainerHub's own root
+`.cmake-format.yaml` is itself a consumer copy — the runners resolve it at
+the repo root here like everywhere else — and nothing compared it to the
+canonical file, so "edit it in `shared/config/`, run `-Write` in each
+consumer" would have gone silently stale for the repo it lives in.
+`linux/scripts/preflight.sh` now runs `Sync-SharedConfig.ps1 -RepoRoot .
+-Check` with the other four names `-Ignore`d (they have no root copy here by
+design): red on drift or deletion, proven red-able by
+`linux/scripts/tests/test-shared-config.sh` and a live perturb/restore run.
+Docs: `shared/config/README.md`.
+
+
+## 2026-09-06 — python-ci-windows.yml calls prepare-windows-container-host instead of re-spelling it
+
+The reusable Windows Python lane carried seven prologue steps that were a
+step-for-step copy of that composite action — same steps, same order, same
+pinned `actions/checkout` SHA — while `python-ci-linux.yml` had used
+`prepare-linux-ci-host` since the day it was written. 75 lines of workflow
+become 20. Two inputs were added to the action to make it a drop-in, both
+optional and both defaulting to today's behaviour, so the four existing
+consumers (BeschleunigerBallett, OxidANT, AccelerANTgine, OmniAccelerANT — all
+of which pass `short-path-target: /d/ws`) are unaffected:
+
+* **`submodules`** (default `'true'`) — the checkout used to spell
+  `submodules: short-path-target == ''`, an expression whose only outputs are
+  `'true'` — first level only, what a lane with no short-path clone got — and
+  `'false'`, what all four `/d/ws` consumers get; `'recursive'` was
+  inexpressible either way. A lane with no short-path clone gets its submodules
+  from that checkout and nothing else, so it had to become expressible; the
+  Windows lane passes it with `short-path-target: ''`, because it mounts
+  `GITHUB_WORKSPACE` and uploads `./dist/` relative to it — a `/d/ws` clone
+  would point the mount and every artifact glob at a tree the build never
+  touched. It is also forwarded to `clone-into-short-path`, where anything but
+  `'false'` means the recursive update it already did.
+* **`measure-data-root`** (default `'false'`) — the third disk signal the
+  workflow had and the action did not: the data-root's own size on disk after
+  the pull. Free space and `docker system df` cannot say *where* the image
+  landed, because `cleanup-disk-space` frees C: in the same job. Off by default
+  because it walks every layer file the ~54 GB import wrote, which costs about a
+  minute; the Python lane turns it on. Unreadable paths are collected in an
+  `-ErrorVariable`, printed, and warned about with the measured size marked as a
+  floor — a report step running under `always()` must not terminate on them
+  while the failure it exists to explain is somewhere else.
+
+
+## 2026-09-06 — A red docker client is not a failed build: the consumer's wait comes upstream
+
+`WindowsContainerBuild.Reuse` trusted `$LASTEXITCODE` from `docker run`. OxidANT's
+Stevedore lane stopped doing that (its host-quirks block is dated 2026-07-17) and
+says why in its own header: *"The docker CLI intermittently drops its pipe mid-run
+while the container keeps working, so the container is named (not `--rm`) and this
+script waits on the actual container state, not the client exit code"*
+(`scripts/windows/container/Invoke-StevedoreBuild.ps1`). That lane imports this
+module for `Resolve-DockerExe`, `Get-ContainerIsolationArgs` and
+`Remove-BuildContainerSafe`, then hand-rolls the wait — because the module had
+nothing to hand it. It does now. Same fault family as the 2026-09-01 finding that
+what goes missing is the container's *exit notification* while the work itself
+completes, one layer up the stack.
+
+**New — `Wait-ContainerExit`** (exported). Polls
+`docker inspect -f '{{.State.Status}}'` until the container is no longer
+`running`/`paused`/`restarting`, then returns `{{.State.ExitCode}}` — the
+container's verdict, not the client's. Four things the consumer's version could
+not afford to skip once it is shared:
+
+- **A bounded wait.** `-TimeoutMinutes` (default 240, ~30× the slowest cold build
+  measured here) instead of `while ($true)`. A lane must not be hangable by a
+  container that never stops.
+- **A vanished container throws.** The original broke out of its loop on *any*
+  failing inspect and then read the exit code from the same dead container,
+  getting an empty string that its caller reported as `container run failed
+  (exit )` — a failure that never happened, spelled like one that did.
+- **An unreachable daemon is retried, then reported.** A client that cannot reach
+  the daemon has said nothing about the container, so that case is polled until
+  the timeout and the timeout message carries the consecutive count. Every other
+  inspect failure throws immediately, saying it is neither of the two known ones.
+- **`created` is not a success.** A container that never started has `ExitCode` 0
+  without a single instruction having run.
+
+**Wired into `Invoke-ContainerBuild`'s bind-mount transport**, which now names its
+run (`<container>-bindmount`) and drops `--rm`: with `--rm` the daemon deletes the
+container the instant it exits and the exit code goes with it, so the name and the
+missing `--rm` are load-bearing, not style. It is removed on SUCCESS only: every
+failure out of the run/wait block points the operator at `docker logs`, so a
+failed or timed-out run keeps its container, with a warning naming the removal
+command. The pre-removal refuses to kill a leftover that is still *running*
+(another build of the tree, or kept evidence) and falls back to a unique name
+when the wcifs teardown lock keeps the old container alive — running against a
+held name would fail with a name conflict and the wait would then read the
+STALE container's exit code: a build that never ran, reported green. The
+inspect helper under the wait takes its value only from stdout (docker prints
+client notices on stderr before the value), and an unknown or empty state fails
+CLOSED instead of being read as finished. The name is deliberately *not* the
+reusable container's: removing that one would throw away the build tree that
+makes reuse worth doing.
+
+**Deliberately NOT wired into the tar-pipe transport.** That container's main
+process is a 7-day `ping`, so `State.Status` says `running` whatever an exec'd
+build did, and an exec's exit code is not recoverable from the container
+afterwards — a wait there would hang for the whole timeout on every failed build.
+What the state *can* still settle is whether the container died under the exec, so
+a non-zero `docker exec` is now classified against it: "the container disappeared /
+stopped while the build was running" instead of a build error to hunt in the log.
+The remaining gap is honest and recorded here: a dropped `docker exec` pipe is not
+arbitrable from container state.
+
+**Nothing changes on a green build.** With a client exit of 0 the container has
+exited 0, `Wait-ContainerExit` reads that same 0, and `Invoke-ContainerBuild`
+returns the object it always did; a genuinely failed container still throws
+`Container build failed (exit N)`, unchanged, and so does a `docker run` that
+failed before any container existed (bad image, unmountable source) — that case
+is checked for explicitly, so it reports the client's code instead of being
+mistaken for a container that vanished. The only new outcome is the one that was
+previously wrong: client non-zero, container zero — now a warning naming both
+numbers, and a build that is not failed. The three callers
+(`BeschleunigerBallett/scripts/windows/Build-Windows-Container.ps1` and the two
+vendored copies) need no edit; `-WaitTimeoutMinutes` is additive.
+
+Tests: +27 (13 `Wait-ContainerExit` branches and 9 bind-mount wiring cases in
+`Modules.Orchestrators.Tests.ps1` against a function-fake docker, 5 surface
+contracts in `WindowsContainerBuild.Reuse.Tests.ps1`) — the suite ran 806/806
+green with them, against 779 before. The `Invoke-Tests.ps1` floor moved 762 →
+791 → 797 in the same window (both steps dated in its own comment). Docs:
+`docs/windows-builds.md`, `docs/adopting-in-a-new-project.md`,
+`docs/windows-container-build-performance.md`.
+
 ## 2026-09-06 — Every PowerShell file renamed and version-pinned, the Linux lanes on 26.04, and the host stops receiving CMake state
 
 Four repo-wide sweeps and one behaviour fix, all consumer-visible. If you pin

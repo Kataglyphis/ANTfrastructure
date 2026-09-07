@@ -158,7 +158,16 @@ if ($skippedSuites.Count -gt 0) {
 # Invoke-DockerWithRetry/Get-DockerBuildArgList, -1 ClosureScope, PreflightParity
 # 4 -> PreflightContract 3) and +1 came from the whole-dir-mount gate. Suite is
 # 770, so the floor DROPS for the first time -- measured, not to hide a red run.
-$minTests = 762
+# 762 -> 791 (2026-09-06): Wait-ContainerExit's detach-tolerant wait added 20
+# tests (WindowsContainerBuild.Reuse + Orchestrators), taking the suite to 799.
+# Same run took the suite from 6 red to 0: five of those failures were stale
+# names left by the approved-verb rename (build-*-all.ps1 globs, the
+# toggle-rdna4-gpu and build-resource-sampler patterns, build-media-tvm-all) and
+# one was a real APP_REF pin drift. Floor back to the standing ~1% headroom.
+# 791 -> 797 (2026-09-06): the bind-mount false-green/evidence fixes added 6
+# tests (name-held fallback, live-leftover refusal, keep-on-failure,
+# stderr-notice and unknown/empty-state waits); the suite measured 806.
+$minTests = 797
 if ($total -lt $minTests) {
     Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
     exit 1

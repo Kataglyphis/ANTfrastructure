@@ -328,7 +328,12 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
     }
 
     It 'names the toggle recipe in the refusal' {
-        Assert-Throws -MessagePattern 'toggle-rdna4-gpu' -Body {
+        # Set-Rdna4Gpu, not toggle-rdna4-gpu: the script was renamed in the
+        # approved-verb sweep (Toggle is not an approved PowerShell verb) and
+        # this pattern was left behind, so the test has been red ever since
+        # while the gate itself was fine. The assertion's intent is unchanged --
+        # the refusal must still name the script that gets you out of it.
+        Assert-Throws -MessagePattern 'Set-Rdna4Gpu' -Body {
             Assert-NoActiveRdna4Gpu -Devices @($rdna4On)
         }
     }

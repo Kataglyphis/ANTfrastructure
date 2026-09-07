@@ -84,81 +84,31 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
 
     steps:
-      # Windows path limit: without this, a deep node_modules/venv path in a
-      # submodule fails the checkout itself.
-      - name: Enable Git long paths
-        run: git config --global core.longpaths true
-
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # ContainerHub's shared Windows prologue: long paths, checkout, the
+      # data-root move onto D:, disk cleanup, ghcr login, pull, disk report.
+      # What stood here was a step-for-step copy of that action - same seven
+      # steps in the same order, down to the same pinned checkout SHA - while
+      # the Linux twin has called prepare-linux-ci-host since it was written.
+      #
+      # short-path-target is EMPTY on purpose, not by preference: this lane
+      # mounts github.workspace into the container and uploads ./dist/, ./logs/
+      # and ./docs/test_results/ relative to it, so the action's default /d/ws
+      # clone would leave the mount below and every artifact glob pointing at a
+      # tree the build never touched. The checkout therefore takes the
+      # submodules itself, recursively - the input the action was missing.
+      - name: Prepare Windows container host
+        uses: Kataglyphis/ContainerHub/.github/actions/prepare-windows-container-host@main
         with:
+          image: ${{ inputs.image }}
+          registry-username: Kataglyphis
+          registry-password: ${{ secrets.GHCR_PAT }}
           fetch-depth: ${{ inputs.fetch-depth }}
           submodules: recursive
-
-      # The winamd64 image needs ~54 GB to import and Docker keeps its data-root
-      # on the SYSTEM drive. Measured on a windows-2025 runner 2026-08-11:
-      # C: 29.9 GB free of 149.4, D: 219.5 GB free of 220. Pointing the data-root
-      # at D: puts the image where the space actually is.
-      #
-      # MUST come before the pull: moving the data-root hides anything under the
-      # old one.
-      - name: 'Put the Docker data-root on D:'
-        id: datar
-        uses: Kataglyphis/ContainerHub/.github/actions/set-docker-data-root@main
-        with:
-          data-root: 'D:\docker'
-
-      # Still worth running: the build itself, the checkout and the toolchain all
-      # live on C:. It just no longer has to claw back room for the image, so
-      # deleting Visual Studio is no longer load-bearing.
-      - name: Cleanup disk space
-        uses: Kataglyphis/ContainerHub/.github/actions/cleanup-disk-space@main
-
-      - name: Login to GitHub
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
-        with:
-          registry: ghcr.io
-          username: Kataglyphis
-          password: ${{ secrets.GHCR_PAT }}
-
-      - name: Pull image
-        run: docker pull "${{ inputs.image }}"
-
-      # Proves WHERE the image actually landed. Without this the only evidence
-      # that the data-root move did anything is that the pull stopped failing -
-      # which is suggestive, not conclusive, because cleanup-disk-space frees C:
-      # in the same job. Three independent signals, so a wrong answer cannot hide:
-      #   1. free space per drive - the ~54 GB drop must be on the data-root drive
-      #   2. `docker system df`   - how much the daemon thinks it is storing
-      #   3. the data-root's own size on disk
-      - name: Disk report after pull
-        if: ${{ always() }}
-        run: |
-          $root = '${{ steps.datar.outputs.data-root }}'
-          if (-not $root) { $root = 'D:\docker' }
-
-          Write-Host '=== Free space per drive ==='
-          Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
-            Format-Table DriveLetter,
-              @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
-              @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
-              FileSystemLabel -AutoSize | Out-String | Write-Host
-
-          Write-Host '=== docker system df ==='
-          docker system df 2>&1 | ForEach-Object { Write-Host ("  " + $_) }
-
-          Write-Host "=== size of $root on disk ==="
-          if (Test-Path $root) {
-            $bytes = (Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue |
-                      Measure-Object -Property Length -Sum).Sum
-            $gb = [math]::Round(($bytes / 1GB), 1)
-            Write-Host "  $root holds $gb GB"
-            if ($gb -lt 1) {
-              Write-Host "::warning::$root holds only $gb GB after pulling a multi-GB image - the daemon may be storing elsewhere."
-            }
-          } else {
-            Write-Host "::warning::$root does not exist."
-          }
+          short-path-target: ''
+          # Keeps this lane's third disk signal: free space alone cannot say
+          # WHERE the image landed, because cleanup-disk-space frees C: in the
+          # same job. Measured 2026-08-11: C: 29.9 GB free of 149.4, D: 219.5/220.
+          measure-data-root: 'true'
 
       # ContainerHub's action instead of a hand-rolled `docker run`: it gives the
       # container every logical processor the runner has, delivers the payload

@@ -355,7 +355,8 @@ The pattern is implemented here so consumers do not copy it:
 (`Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
 `Copy-FromBuildContainer`, `Initialize-ContainerPwsh`,
 `Remove-StaleContainerSources`, `Test-BuildArtifactsDelivered`,
-`Remove-BuildContainerSafe`). Import it via the consumer's module
+`Remove-BuildContainerSafe`, `Wait-ContainerExit`). Import it via the
+consumer's module
 resolver. `Initialize-ContainerPwsh`, `Remove-StaleContainerSources` and
 `Test-BuildArtifactsDelivered` are the safety rails of the
 reusable-container pattern as functions: ensure pwsh exists in the image,
@@ -363,6 +364,51 @@ prune stale sources on reuse (tar never deletes), and verify every built
 executable actually reached the host before trusting a green build.
 `Remove-BuildContainerSafe` removes a container while tolerating the wcifs
 teardown lock.
+
+`Wait-ContainerExit` is the fourth rail, and it points the other way: the
+docker CLI intermittently drops its pipe mid-run on this host while the
+container keeps building, so a non-zero *client* exit can be a failure that
+did not happen. It polls `{{.State.Status}}` until the container is no longer
+running and returns `{{.State.ExitCode}}` — the container's verdict, not the
+client's — with a bounded timeout and a named error for every way the wait can
+go wrong (vanished container, unreachable daemon, a container that never
+started, a state it does not recognise — unknown or empty states fail CLOSED
+rather than being read as "finished"). It requires a run that is **named and
+not `--rm`**: with `--rm` the daemon removes the container the instant it
+exits, taking the exit code with it. That is why the bind-mount transport
+names its run and removes it itself — but only on success. Every failure
+thrown out of the run/wait block points the operator at
+`docker logs <name>-bindmount`, so a failed or timed-out run KEEPS its
+container (a warning says so, with the removal command); deleting it in a
+`finally` would destroy the evidence the error message just promised.
+
+The pre-removal before the run has two refusals, both there to stop a false
+green. A leftover under the name that is still *running* (a concurrent build
+of the same tree, or a runaway a timed-out wait kept) is never force-removed —
+the build throws instead. And when `docker rm -f` is blocked by the wcifs
+teardown lock (the removal returns but the container survives), the run falls
+back to a unique `<name>-bindmount-<6 hex>` name, exactly like
+`Get-ReusableBuildContainer -Fresh` does: running against the held name would
+make `docker run` fail 125 with a name conflict, and the wait would then read
+the STALE container's exit code — a build that never ran, reported green.
+
+One layer down, `Wait-ContainerExit`'s inspect helper takes its value ONLY
+from stdout: docker prints client notices (deprecations, context warnings) on
+stderr *before* the field value, so a first-line pick over a merged stream
+returns the notice as the "value" — a clean container read as a non-numeric
+exit code, or a still-running one as finished. stderr is kept separately for
+classifying failures (missing container vs unreachable daemon).
+
+A red client exit gets one extra `docker inspect` to distinguish "docker run
+failed before any container existed" (unresolvable image, refused mount — the
+client's code is the whole story, nothing to wait on) from a dropped pipe. That
+probe runs ONLY on the failure path: after a clean run the container exists by
+definition, and the happy path must not grow a docker call — the no-change
+build is 44 s wall, and every client round-trip on this host costs seconds.
+
+`Wait-ContainerExit` does **not** apply to the reusable container's `docker
+exec` builds — that container's main process is a 7-day `ping`, so its state
+is `running` no matter what the build did.
 
 ## Applying this elsewhere
 

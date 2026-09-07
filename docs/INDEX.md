@@ -63,6 +63,7 @@ The two halves of one topic often split:
 | **Rules you must not regress** when editing the Windows chain (47, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
+| **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
@@ -146,7 +147,7 @@ The two halves of one topic often split:
 | Reusable bash libraries | `linux/scripts/lib/` and `linux/scripts/01-core/` |
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |
-| Canonical `.clang-format`, `.clang-tidy`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
+| Canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
 | Copy-and-edit templates (`Resolve-BuildModule.ps1`, `containerhub.sh`, `AGENTS.md` skeleton, agentic-loop config) | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
 | Reusable CI workflows (`workflow_call`) — the Python Linux lane, docs build | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), `../.github/workflows/build-docs.yml` |
 

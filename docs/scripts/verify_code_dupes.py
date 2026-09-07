@@ -80,7 +80,11 @@ from quality_allow import iter_rows  # noqa: E402
 
 # Never scanned: vendored trees, generated output, the Windows lane (own
 # backlog), and the records that narrate the same work on purpose.
-SKIP_DIRS = {".git", "external", "node_modules", "windows", "out", "archive",
+# "third_party" joined 2026-09-07: the external/ -> third_party/ submodule move
+# (2026-09-05) renamed the vendored tree but not this exclusion, so a checkout
+# with initialized submodules scanned DocumANTation's own prose for
+# ContainerHub duplication. "external" stays for the leftover husk.
+SKIP_DIRS = {".git", "external", "third_party", "node_modules", "windows", "out", "archive",
              "_build", "dist", "sphinx-kataglyphis-theme", "logs",
              # Third-party and generated: nothing here is ours to de-duplicate.
              ".venv", "venv", "site-packages", ".tox", "license-assets",

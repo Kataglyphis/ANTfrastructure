@@ -23,8 +23,9 @@ Kataglyphis C++ project. Adopted here 2026-08-07 from a consumer that had it all
 in its own `docs/code-quality.md`; what stayed behind there is that project's
 measured drift figures and its own build-script wiring.
 
-The configs these tools read (`.clang-format`, `.clang-tidy`, `gcovr.cfg`) are
-owned by this repo too — see [`shared/config/README.md`](../shared/config/README.md)
+The configs these tools read (`.clang-format`, `.clang-tidy`,
+`.cmake-format.yaml`, `gcovr.cfg`) are owned by this repo too — see
+[`shared/config/README.md`](../shared/config/README.md)
 for why they are copied into consumers rather than referenced.
 
 ### Where the tools are
@@ -2327,10 +2328,34 @@ missing file is not an up-to-date file, comparison is byte equality rather than
 existence, `--stdout` writes nothing, and a `versions.env` bump really does move
 the document.
 
+### The repo's own cmake-format gate (`cmake-format`)
+
+An inline preflight function that drives `lib/code-quality.sh` end to end:
+`code_quality_ensure_cmake_format` provisions the tool through uv into
+`.venv-cmake-format` when it is not on `PATH` (pins in
+`linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
+`cmake-format==0.6.13` does not depend on it and dies with
+`ModuleNotFoundError` the moment it reads a YAML config),
+`code_quality_find_cmake_files` walks the tree, and
+`code_quality_run_cmake_format --check` is the verdict. In scope is every
+repo-owned `CMakeLists.txt`/`*.cmake`; excluded are `third_party/`,
+`external/`, venvs, `out/` — and `windows/scripts/patches/`, whose shim bytes
+are Windows layer-cache keys a reformat would invalidate. A walk that returns
+zero files is a refusal, not a green: an exclude glob that eats the corpus
+must not pass vacuously.
+
+`--check` is newline-strict, and with `line_ending: unix` that is the right
+strictness for this tree: `*.cmake` is `-text` with LF in the index, so the
+ten `cmake/` files that carried CRLF working trees were autocrlf leftovers
+from before the 2026-08-14 attributes rules, and normalising them left
+`git diff` EMPTY. Re-CRLFing them instead would have kept the gate
+permanently red.
+
 ### The two that stay frozen, with better reasons
 
 Both of them took their route out on 2026-09-05, and `gate-proofs.allow`'s bare-slug
-namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen.** The
+namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen** (36 of 36
+since `shared-config` and `cmake-format` arrived proven on 2026-09-06). The
 heading keeps its name because several files point at this anchor, and because the
 two stories are the reason the freeze list was worth keeping honest rather than
 deleting.

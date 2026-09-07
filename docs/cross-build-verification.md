@@ -254,7 +254,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:42-56`, 34 slugs), which is also the vocabulary
+(`preflight.sh:42-58`, 36 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -294,6 +294,8 @@ drift if a slug is added without touching it.
 | `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
 | `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
+| `shared-config` | inline (`pwsh shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check`) | ContainerHub's own root `.cmake-format.yaml` — a consumer copy of the canonical file beside the sync script — drifting from it or deleted; the other four canonical names have no root copy here and are `-Ignore`d by name |
+| `cmake-format` | inline (`lib/code-quality.sh` + `cmake-format --check`) | a repo-owned CMake file (`cmake/`, any `CMakeLists.txt`) deviating from the root `.cmake-format.yaml` — including CRLF endings, which `line_ending: unix` treats as drift; the `windows/scripts/patches/` shims are excluded because their bytes are Windows layer-cache keys |
 | `gate-registry` | `verify_gate_registry.py` | the meta-gate — a slug with no proof (no suite naming its script, no mutation) and `docs/code-quality-gates.md` drifting from what it derives; unproven slugs are frozen in `gate-proofs.allow` and may only leave it |
 
 Every check with a script is runnable standalone (same command); `crlf-guard`

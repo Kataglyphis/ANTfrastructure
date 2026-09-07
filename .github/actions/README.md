@@ -37,9 +37,20 @@ absent); `install-uv: true` installs the Astral uv package manager.
 The prologue every containerised Windows job repeats: long paths, checkout,
 short-path clone, data-root move, disk cleanup, registry login, image pull, disk
 report. Inputs: `image` (required), `registry`, `registry-username`,
-`registry-password`, `checkout`, `fetch-depth`, `short-path-target`, `token`,
-`data-root`, `required-free-gb`, `free-disk-space`. Outputs: `data-root`,
-`workspace`.
+`registry-password`, `checkout`, `fetch-depth`, `submodules`,
+`short-path-target`, `exclude-submodules`, `token`, `data-root`,
+`required-free-gb`, `free-disk-space`, `measure-data-root`. Outputs:
+`data-root`, `workspace`.
+
+`submodules` reaches the checkout only when `short-path-target` is empty — with
+a short-path clone the checkout takes none and the clone brings the tree in, so
+it then only decides whether that clone recurses. A lane that mounts
+`GITHUB_WORKSPACE` instead of a short path wants `submodules: recursive` with
+`short-path-target: ''`; that pair is what this repo's own
+`python-ci-windows.yml` passes. `measure-data-root: 'true'` adds the data-root's
+size on disk to the report after the pull — off by default because it walks
+every layer file the import wrote, on when proving *where* the image landed is
+worth the minute.
 
 Windows twin of `prepare-linux-ci-host`. Measured 2026-08-11: four inline lanes
 repeated the same six-to-seven steps, and each of the three traps in them had

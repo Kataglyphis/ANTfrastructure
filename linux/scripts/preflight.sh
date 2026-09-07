@@ -53,6 +53,8 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes p
              shellcheck-warnings \
              mutations \
              gate-registry \
+             shared-config \
+             cmake-format \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -212,6 +214,53 @@ run_check dead-functions "dead shell functions" ${PREFLIGHT_PYTHON} linux/script
 run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
 run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py
 run_check gate-registry "gate proof registry" ${PREFLIGHT_PYTHON} linux/scripts/verify_gate_registry.py
+
+# The root .cmake-format.yaml is a CONSUMER copy of shared/config's canonical
+# one; the other four have no root copy here. See shared/config/README.md.
+check_shared_config() {
+  pwsh -NoProfile -File shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check \
+    -Ignore .clang-format,.clang-tidy,gcovr.cfg,.pre-commit-config.yaml
+}
+run_check shared-config "shared config owner-root sync" check_shared_config
+
+# cmake-format --check over the repo's own CMake files, via lib/code-quality.sh.
+# Subshell: the venv activate inside the bootstrap must not leak onto our PATH.
+check_cmake_format() {
+  (
+    set -euo pipefail
+    # Bootstrap knobs are function names, not script files: same uv/venv path
+    # every consumer wrapper takes, without an exec-bit in the contract.
+    _cmf_venv_create() {
+      source linux/scripts/01-core/python_uv.sh
+      uv_venv_create .venv-cmake-format ""
+    }
+    _cmf_install_requirements() {
+      source linux/scripts/01-core/python_uv.sh
+      uv_pip_install_requirements .venv-cmake-format linux/scripts/cmake-format.requirements.txt
+    }
+    source linux/scripts/lib/code-quality.sh
+    CODE_QUALITY_VENV_DIR="${PWD}/.venv-cmake-format"
+    CODE_QUALITY_UV_VENV_CREATE_SCRIPT=_cmf_venv_create
+    CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT=_cmf_install_requirements
+    CODE_QUALITY_CMAKE_SEARCH_ROOT=.
+    # third_party/external are not ours; the windows patch shims' bytes are
+    # Windows layer-cache keys (.gitattributes); venvs/out can carry pip .cmake.
+    CODE_QUALITY_CMAKE_EXCLUDE_PATHS=(
+      './.git/*' './third_party/*' './external/*'
+      './windows/scripts/patches/*' './.venv*' './out/*'
+    )
+    code_quality_ensure_cmake_format
+    local files=()
+    mapfile -t files < <(code_quality_find_cmake_files)
+    if [[ ${#files[@]} -eq 0 ]]; then
+      echo "cmake-format gate: the CMake file walk returned nothing - a broken scope/exclude list must not pass vacuously" >&2
+      exit 1
+    fi
+    echo "checking ${#files[@]} CMake file(s) against .cmake-format.yaml"
+    code_quality_run_cmake_format --check "${files[@]}"
+  )
+}
+run_check cmake-format "cmake-format check" check_cmake_format
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then

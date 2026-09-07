@@ -101,7 +101,7 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
         foreach ($name in @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand',
                 'WorkspacePath', 'IncrementalDirs', 'IncrementalExclude', 'OutputDirs', 'VerifyDirs',
                 'InboundExclude', 'OutboundExclude', 'KeepDirs', 'CacheEnv', 'IsolationArgs',
-                'EntrypointPath', 'ProbeFile', 'UseBindMount', 'FreshContainer')) {
+                'EntrypointPath', 'ProbeFile', 'WaitTimeoutMinutes', 'UseBindMount', 'FreshContainer')) {
             Assert-True $p.ContainsKey($name) "missing parameter -$name"
         }
     }
@@ -120,5 +120,44 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
                 Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory })
             Assert-True ($mandatory.Count -gt 0) "-$name should be mandatory"
         }
+    }
+}
+
+Describe 'WindowsContainerBuild.Reuse: Wait-ContainerExit contract' {
+
+    # Behaviour lives in Modules.Orchestrators.Tests.ps1 (it needs a docker
+    # fake); this is the exported SURFACE, which is what a consumer breaks on.
+    It 'is exported (OxidANT hand-rolled this loop for want of it)' {
+        Assert-NotNull (Get-Command Wait-ContainerExit -ErrorAction SilentlyContinue)
+    }
+
+    It 'exposes the parameters a caller waits on a container with' {
+        $p = (Get-Command Wait-ContainerExit).Parameters
+        foreach ($name in @('DockerExe', 'Name', 'PollSeconds', 'TimeoutMinutes', 'Label')) {
+            Assert-True $p.ContainsKey($name) "missing parameter -$name"
+        }
+    }
+
+    It 'requires the container it is asked to wait for' {
+        $p = (Get-Command Wait-ContainerExit).Parameters
+        foreach ($name in @('DockerExe', 'Name')) {
+            $mandatory = @($p[$name].Attributes |
+                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory })
+            Assert-True ($mandatory.Count -gt 0) "-$name should be mandatory"
+        }
+    }
+
+    It 'bounds the wait - a lane must not be hangable by a container that never stops' {
+        $range = @((Get-Command Wait-ContainerExit).Parameters['TimeoutMinutes'].Attributes |
+            Where-Object { $_ -is [System.Management.Automation.ValidateRangeAttribute] })
+        Assert-Equal 1 $range.Count '-TimeoutMinutes must carry a ValidateRange'
+        Assert-True ($range[0].MaxRange -le 10080) 'an unbounded timeout is the bug this replaced'
+    }
+
+    It 'keeps the inspect-classifying helper internal' {
+        # Exporting it would make the three-way classification (read / gone /
+        # daemon unreachable) a consumer contract; it is an implementation
+        # detail of the wait.
+        Assert-Null (Get-Command Get-ContainerInspectField -ErrorAction SilentlyContinue)
     }
 }

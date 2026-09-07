@@ -29,7 +29,11 @@ set(MYPROJECT_CLANG_CL_MS_COMPATIBILITY_VERSION
     CACHE STRING "MSVC compatibility version clang-cl is pinned to (-fms-compatibility-version)")
 
 macro(myproject_strip_flag_from_var variable_name flag)
-  string(REPLACE "${flag}" "" _myproject_updated_value "${${variable_name}}")
+  string(
+    REPLACE "${flag}"
+            ""
+            _myproject_updated_value
+            "${${variable_name}}")
   set(${variable_name} "${_myproject_updated_value}")
 endmacro()
 

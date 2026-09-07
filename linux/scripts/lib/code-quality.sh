@@ -71,8 +71,15 @@ code_quality_ensure_cmake_format() {
   fi
   (cd "${root}" && "${install_script}")
 
+  # bin/ is the POSIX venv layout; a venv created on Windows (Git Bash) has
+  # Scripts/ instead. Neither existing is a broken venv and must fail by name.
+  local activate="${venv_dir}/bin/activate"
+  [[ -f "${activate}" ]] || activate="${venv_dir}/Scripts/activate"
+  if [[ ! -f "${activate}" ]]; then
+    err "No activate script in ${venv_dir} (neither bin/activate nor Scripts/activate exists)."
+  fi
   # shellcheck disable=SC1091
-  source "${venv_dir}/bin/activate"
+  source "${activate}"
 
   if ! has_tool cmake-format; then
     err "cmake-format is still not available after installing requirements."
@@ -167,8 +174,14 @@ code_quality_find_dart_files() {
 # ---------------------------------------------------------------------------
 # Formatting steps
 # ---------------------------------------------------------------------------
-# Rewrites the given CMake files in place.
+# Rewrites the given CMake files in place. A leading `--check` argument instead
+# reports drift without writing: non-zero exit, each offender named on stderr.
 code_quality_run_cmake_format() {
+  local mode=(-i)
+  if [[ "${1:-}" == "--check" ]]; then
+    mode=(--check)
+    shift
+  fi
   [[ $# -gt 0 ]] || return 0
 
   local config="${CODE_QUALITY_CMAKE_FORMAT_CONFIG-.cmake-format.yaml}"
@@ -176,7 +189,7 @@ code_quality_run_cmake_format() {
   if [[ -n "${config}" && -f "${config}" ]]; then
     args+=(-c "${config}")
   fi
-  args+=(-i)
+  args+=("${mode[@]}")
 
   cmake-format "${args[@]}" "$@"
 }

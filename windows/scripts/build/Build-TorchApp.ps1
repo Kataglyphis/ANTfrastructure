@@ -39,7 +39,10 @@ $nativeModulePath = Join-Path $scriptAssetRoot 'modules\WindowsNative.Common.psm
 if (-not (Test-Path $nativeModulePath)) { throw "Required module not found: $nativeModulePath" }
 Import-Module $nativeModulePath -Force
 
-if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'v0.0.27' } }
+# The else-literal must equal versions.env APP_REF; SourceBuild.PinParity gates
+# exactly that, and it had drifted a patch behind (v0.0.27 vs v0.0.28), which
+# means an unattended run with no APP_REF in the environment built the wrong tag.
+if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'v0.0.28' } }
 if ([string]::IsNullOrWhiteSpace($PytorchExtra)) { $PytorchExtra = if ($env:PYTORCH_EXTRA) { $env:PYTORCH_EXTRA } else { 'pytorch-cpu' } }
 
 $cpythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'

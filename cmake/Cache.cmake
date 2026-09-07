@@ -34,7 +34,7 @@ function(myproject_enable_cache)
       FIND
       _allowed_values
       "${COMPILER_CACHE}"
-      _idx) # returns -1 if not found :contentReference[oaicite:4]{index=4}
+      _idx) # returns -1 if not found
     if(_idx EQUAL -1)
       message(FATAL_ERROR "Invalid value for compiler_cache: '${COMPILER_CACHE}'.\n"
                           "Supported values are: ${_allowed_values}")

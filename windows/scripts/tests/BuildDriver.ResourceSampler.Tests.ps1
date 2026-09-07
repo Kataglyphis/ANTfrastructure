@@ -24,7 +24,9 @@ Describe 'BK driver resource sampler wiring (#134)' {
     }
 
     It 'starts the sampler after preflight gates pass' {
-        Assert-Match 'build-resource-sampler\.ps1' $script:drv
+        # Build-ResourceSampler.ps1: renamed in the approved-verb sweep, this
+        # pattern was left on the old name. The driver wiring never changed.
+        Assert-Match 'Build-ResourceSampler\.ps1' $script:drv
         Assert-Match '\$script:SamplerProc = Start-Process' $script:drv
     }
 

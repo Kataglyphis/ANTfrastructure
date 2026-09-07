@@ -616,10 +616,30 @@ function Add-DirectoriesToPath {
 }
 
 function Get-PreferredToolPath {
+    <#
+    .SYNOPSIS
+        Candidate paths first, then PATH. Returns $null when nothing matches,
+        unless -Required is given.
+
+    .DESCRIPTION
+        -Required restores the throwing behaviour that Resolve-PreferredTool
+        used to provide. That function was deleted on 2026-08-21 as "fully dead
+        (zero callers anywhere)" — the audit only looked inside THIS repo, and
+        BeschleunigerBallett's scripts/windows/Invoke-ClangClDebug.ps1 was
+        calling it three times. It has been broken since. The lesson is in the
+        switch rather than in a restored duplicate: one resolver, two
+        behaviours, so a consumer never has to hand-roll the throwing half.
+
+        Without -Required a caller that ignores the $null gets a confusing
+        downstream failure instead of the name of the tool it is missing —
+        which is what happened here — so prefer -Required whenever the tool is
+        not genuinely optional.
+    #>
     param(
         [Parameter(Mandatory)]
         [string]$CommandName,
-        [string[]]$CandidatePaths = @()
+        [string[]]$CandidatePaths = @(),
+        [switch]$Required
     )
 
     foreach ($candidate in $CandidatePaths) {
@@ -631,6 +651,16 @@ function Get-PreferredToolPath {
     $command = Get-Command $CommandName -ErrorAction SilentlyContinue
     if ($command) {
         return $command.Source
+    }
+
+    if ($Required) {
+        $searched = if ($CandidatePaths.Count -gt 0) {
+            "Looked at: $($CandidatePaths -join ', '), then PATH."
+        }
+        else {
+            'Looked at PATH only (no candidate paths were supplied).'
+        }
+        throw "Required tool '$CommandName' not found. $searched"
     }
 
     return $null
@@ -710,8 +740,12 @@ Export-ModuleMember -Function @(
     'Assert-Elevated',
     'ConvertTo-NormalizedVersion',
     # Add-DirectoryToPath: internal helper of Add-DirectoriesToPath (unexported
-    # 2026-08-21, zero external callers). Resolve-PreferredTool deleted same
-    # day: fully dead (zero callers anywhere).
+    # 2026-08-21, zero external callers). Resolve-PreferredTool was deleted the
+    # same day as "fully dead (zero callers anywhere)" — WRONG, and left
+    # BeschleunigerBallett's Invoke-ClangClDebug.ps1 broken at three call sites
+    # until 2026-09-06. That audit grepped this repo only. Grep every consumer
+    # under D:\GitHub before deleting anything from an exported surface; the
+    # throwing behaviour now lives on as Get-PreferredToolPath -Required.
     'Add-DirectoriesToPath',
     'Get-PreferredToolPath',
     'Resolve-DirectoryPath',

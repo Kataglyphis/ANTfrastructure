@@ -26,8 +26,14 @@ function(kataglyphis_set_module_scan target)
 endfunction()
 
 function(kataglyphis_join_list out_var glue)
-  string(REPLACE ";" "${glue}" _joined_value "${ARGN}")
-  set(${out_var} "${_joined_value}" PARENT_SCOPE)
+  string(
+    REPLACE ";"
+            "${glue}"
+            _joined_value
+            "${ARGN}")
+  set(${out_var}
+      "${_joined_value}"
+      PARENT_SCOPE)
 endfunction()
 
 macro(kataglyphis_append_prefixed_files list_var prefix)

@@ -46,11 +46,11 @@ rather than an uninitialised checkout.
 | `KataglyphisCMakeHelpers.cmake` | `kataglyphis_collect_module_interfaces` — globs C++20 module interface units |
 | `PreventInSourceBuilds.cmake` | in-source build guard |
 | `SanitizerSupport.cmake` | `myproject_supports_sanitizers`, `myproject_default_debug_sanitizers` — what this toolchain can run, and Debug defaults |
-| `Sanitizers.cmake` | `myproject_enable_sanitizers` — applies the selected set to a target |
+| `Sanitizers.cmake` | `myproject_enable_sanitizers` — applies the selected set to a target, Debug-gated; clang-cl runtime story: [`../docs/windows-clang-cl-sanitizers.md`](../docs/windows-clang-cl-sanitizers.md) |
 | `Speedup.cmake` | parallel build level from the detected core count |
 | `StandardProjectSettings.cmake` | build-type default, colour diagnostics, IPO probe |
-| `StaticAnalyzers.cmake` | `myproject_enable_clang_tidy`, `myproject_enable_cppcheck` |
-| `Tests.cmake` | `myproject_enable_coverage` |
+| `StaticAnalyzers.cmake` | `myproject_enable_clang_tidy` (optional 3rd arg: `--header-filter` regex; report-only, never `--fix`), `myproject_enable_cppcheck` (probes the binary, disables with a warning if unusable) |
+| `Tests.cmake` | `myproject_enable_coverage` — per-compiler coverage flags (GNU, clang, clang-cl incl. explicit `clang_rt.profile` linkage); every build type except Release |
 
 The `myproject_` prefix is the upstream cpp-best-practices convention these
 modules came from. It is kept deliberately: renaming would touch every call site
