@@ -78,7 +78,7 @@ code_quality_ensure_cmake_format() {
   if [[ ! -f "${activate}" ]]; then
     err "No activate script in ${venv_dir} (neither bin/activate nor Scripts/activate exists)."
   fi
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090
   source "${activate}"
 
   if ! has_tool cmake-format; then
