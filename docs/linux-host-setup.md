@@ -588,6 +588,38 @@ update-shell`) before deciding an install failed.
 
 ---
 
+### D5. `pwsh` and `pytest` — the two host tools preflight needs and never asked for
+
+`preflight.sh` fails on a correctly-set-up Linux host without these, and neither
+was declared here until 2026-09-07. Both are user-scope; neither needs sudo.
+
+**PowerShell**, for the `shared-config` slug. The gate shells out to
+`shared/config/Sync-SharedConfig.ps1`, which is the *same* script the Windows
+and CMake consumers run — one owner for the sync rule rather than a second
+implementation that can drift from it. Without `pwsh` the slug fails with
+`pwsh: command not found`, which reads exactly like config drift and is not:
+
+```bash
+curl -fsSL -o /tmp/ps.tar.gz \
+  https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-x64.tar.gz
+mkdir -p ~/.local/powershell && tar -xzf /tmp/ps.tar.gz -C ~/.local/powershell
+chmod +x ~/.local/powershell/pwsh && ln -sfn ~/.local/powershell/pwsh ~/.local/bin/pwsh
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
+```
+
+**pytest**, for the `mutations` slug. 209 of the manifest's 882 entries drive
+`python3 -m pytest` over the `linux/llm-stack/` suites. Without it every one of
+them reports `baseline test already fails unmutated (vacuous bite)` — the gate
+is honest about it, but a quarter of the mutation corpus is dark. This host's
+python is PEP 668 externally-managed, so the flag is not optional:
+
+```bash
+pip3 install --user --break-system-packages pytest
+```
+
+`--user` writes to `~/.local/lib/python3.*/site-packages` and touches no system
+package; `--break-system-packages` only waives the PEP 668 guard.
+
 ## Phase E — Package sources and automatic updates
 
 ### E1. A slow `apt update` is usually the mirror, not the link

@@ -159,7 +159,7 @@ Only `smoke-runtime-image.sh`'s tree-arch and advert arms really ran, amd64 only
 
 | file | change | what the log should show |
 |---|---|---|
-| `01-core/common.sh` | NEW `compiler_cache_launcher_env`, and 13 call sites in 11 files call it before resolving the launcher | see YB. Every `sccache-launcher` line must print `[server=/tmp/sccache-<uid>.sock]` and never `[server=tcp:4226]` |
+| `01-core/common.sh` | NEW `compiler_cache_launcher_env`, and 12 call sites in 11 files call it before resolving the launcher | see YB. Every `sccache-launcher` line must print `[server=/tmp/sccache-<uid>.sock]` and never `[server=tcp:4226]` |
 | `linux/Dockerfile.toolchain` | both per-file `01-core` mount blocks now mount `sccache-launcher.sh` | the GCC/LLVM stages stop running BARE sccache, where an sccache fault ABORTS the build instead of costing a cache entry |
 | `01-core/compiler-cache.sh` | `sccache_export_server_address` hoisted out of the `$( )` resolver in `setup_ccache` and `setup_sccache` | the same `[server=…]` field, from the media lane this time |
 | `02-toolchain/materialize-llvm-target.sh` | the multiarch glob became a demand-driven `_llvm_target_fill_needed` walk | the amd64 sdk stage must print `amd64 /opt/llvm-target NEEDED walk clean` and must NOT print `is NOT self-contained` — this is the one place the change can break a build, and it fails at the sdk stage rather than shipping |

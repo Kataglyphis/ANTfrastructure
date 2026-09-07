@@ -2,17 +2,18 @@
 """sync_versions.py — propagate linux/scripts/01-core/versions.env everywhere.
 
 `versions.env` is the single authority for every pinned version in the tree.
-This walks the six places that repeat one of those numbers and either checks
+This walks the seven places that repeat one of those numbers and either checks
 them or rewrites them:
 
   --check   (default) fail if any generated section, marker, table, ARG default
             or documented literal disagrees with versions.env
   --write   rewrite them all in place
 
-The six consumers are the README version snapshot, the paired inline
+The seven consumers are the README version snapshot, the paired inline
 `generated:<key>` markers in the docs, the dependency table, Dockerfile `ARG`
-defaults, shell-script defaults, and the website license pages (delegated to
-generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
+defaults, Windows PowerShell build-script `-DefaultValue` pins, documented version
+literals in the docs (check-only — there is no write pass for these), and the
+website license pages (delegated to generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
 snapshot reads its numbers back out of them, so the other order needs two
 passes to converge.
 

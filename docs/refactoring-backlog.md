@@ -14,17 +14,35 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **VK**=the
-foreign-arch Vulkan SDK · **F#**=the size and duplication tracks. Everything else
+foreign-arch Vulkan SDK · **EX**=the extent gates' scope · **F#**=the size and
+duplication tracks. Everything else
 is archive-only: **CC/CL/CS/AB/R#/YB/DISK/APP** closed on 2026-09-07,
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and
 **AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#** long before that.
 
-Last groomed: **2026-09-07, after the wave that answered the chain landed and the
-thirteen entries it closed were moved to the archive.** Every number below was
-re-derived from the gate or the log that produces it, never carried forward from
-a lane's own report.
+Last groomed: **2026-09-07 (second pass), after an audit re-derived every number
+in this file from the gate that produces it.** The first pass that day claimed the
+same thing and had not done it: `29` function rows and `66` cc rows were the
+2026-09-05 figures carried through a wave that deleted rows underneath both (real:
+**28** and **61**), `media_common_init` was quoted at cc 35 after CL7 took it to 29,
+`verify_package_names main` at 34 lines when it is 30, "the nine libraries" when ten
+source `log-bootstrap.sh`, and `smoke-runtime-image.sh` at "63 functions, all
+`check_*`/`_probe_*`" — 91 and 45, a number true of no revision. Two entries had
+outlived their evidence by a single commit: the registry-cache drop was called
+uncovered after `d7fbfd39` characterised it, and CS1 was listed as the open owner
+decision in the same file that links its closure. **Re-derive; do not trust a number
+here, including these.**
 
-## ONE ENTRY IS OPEN, AND A BUILD DECIDES IT
+**This file is not a record of the whole repo.** `main` moved past the first pass
+23 minutes after it landed: a merge (`d6fa512f`) brought in the NAS document-AI
+stream — `nas_census.py`, its suite, `nas-document-ai.md` and a 77-file document-VLM
+benchmark run — and nothing in this file knew. That merge also arrived red: three
+`census.*` mutations with no declared family, mutation totals left stale in
+`code-quality-tooling.md`, two broken `§` links, and 68 committed benchmark files
+that put 66 model-output JSONs back inside the doc-links scan. All four are fixed;
+the lesson is that a grooming is only true of the commit it was written at.
+
+## TWO ENTRIES ARE OPEN: ONE NEEDS A BUILD, ONE NEEDS A SCOPE DECISION
 
 Read this before anything else. The validating chain
 (`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
@@ -34,10 +52,13 @@ VK3, CS2, CS3, DISK3, R1, YB and F3 — and they now live in
 [`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md) with the
 evidence that closed each one.
 
-**What is left in this file is one open entry and two standing tracks.** VK2 is
-open because only a build can close it. F1 and F2 are registers of reviewed
-verdicts, not queues: nothing in them is a defect, and their job is to catch the
-next growth rather than to be worked off.
+**What is left in this file is two open entries and two standing tracks.** VK2 is
+open because only a build can close it. **EX1 is new on 2026-09-07**: the extent
+gates do not scan `linux/llm-stack` at all, so F1's and F2's registers have never
+been able to see a fifth of the repo's Python. F1 and F2 themselves are registers of
+reviewed verdicts, not queues: nothing in them is a defect, and their job is to catch
+the next growth rather than to be worked off — within the scope they are given, which
+is the part EX1 is about.
 
 **Everything that wave landed is unproven by any build.** It is proven by gates
 and unit suites on an idle tree, which is worth exactly what the 2026-09-05
@@ -45,7 +66,7 @@ experience says: a first rebuild attempt found two build-killing bugs (HEAD
 `e109f5ad`) in minutes after a full green battery. Assume the next chain finds
 more, and read **[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
-### Next up — everything above is landed; what is left is ONE build
+### Next up — one build, and one scope decision that needs no build at all
 
 The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
 (`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
@@ -91,16 +112,22 @@ back up, which is why arm64 landed at 28.73 rather than the ~24.9 the pre-VK1
 estimate predicted. The estimate was not wrong; it was made before those components
 existed.
 
-**Honesty about the rest:** no OPEN entry names a defect with a known failure mode.
-What is left is one owner decision, two cheap wins, a ratchet, a guard that needs a
-lever it does not have, and three tracks.
+**Honesty about the rest:** neither open entry names a defect with a known failure
+mode — EX1 names a blind spot, not a bug.
+What is left is **one open entry (VK2) and two registers (F1, F2)** — the same
+inventory the section above gives. Earlier groomings carried a second, longer count
+here ("one owner decision, two cheap wins, a ratchet, a guard that needs a lever it
+does not have, and three tracks") that matched nothing in the file.
 
 ### What needs the OWNER, not the agent
 
-**One real decision, and it is CS1** (see Next up 1): whether the foreign images
-keep `/opt/vulkan/<ver>/x86_64`. The bytes are unrunnable there and the prune ships
-wired, but the owner has twice said not to remove Vulkan payload, so it stays until
-they say otherwise. Everything else below is context, not a block:
+**No decision is outstanding.** CS1 — whether the foreign images keep
+`/opt/vulkan/<ver>/x86_64` — was the last one, and the owner decided it on
+2026-09-07: keep pruning. It is closed in
+[`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md#cs1-closed--the-owner-decided-and-the-prune-stays-scharf-done-2026-09-07),
+and the −2.11 GB on arm64 and −4.65 GB on riscv64 in the table above IS that prune.
+This section carried it as open until 2026-09-07, in the same file that already
+linked its closure. Everything below is context, not a block:
 
 1. **`git push` is no longer yours** (2026-09-06). The agent pushes and pulls now.
    The `~/.ssh/id_ed25519` key is NOT registered with GitHub — it fails with
@@ -110,8 +137,9 @@ they say otherwise. Everything else below is context, not a block:
    rebase needs `-c core.hooksPath=/dev/null` because the hooks run on commit.
    The pre-push hook is no longer theoretical: it fired on real pushes and caught
    two mutations left stale by upstream refactors, which is exactly its job.
-2. **Downstream consumers of `linux/scripts/lib/`.** The nine libraries source a
-   sibling, `lib/log-bootstrap.sh`. Any full ContainerHub checkout satisfies that —
+2. **Downstream consumers of `linux/scripts/lib/`.** Ten of the thirteen files in
+   `lib/` source a sibling, `lib/log-bootstrap.sh` — every one but that file itself
+   and the two `agentic-*` halves. Any full ContainerHub checkout satisfies that —
    which is how [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) says
    to consume them — but a consumer that copied ONE `lib/*.sh` file out on its own
    breaks on its next CI run, not here.
@@ -136,7 +164,15 @@ they say otherwise. Everything else below is context, not a block:
    `source`). `load_versions_env`, `sync_versions.py` and `bump_versions.py` all strip
    one surrounding pair and were proven byte-identical; whether `Get-Pin` does was not
    testable from this host. One PowerShell run answers it.
-5. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
+5. **The `version-snapshot` sub-check that has never checked anything.** The
+   audit found `sync_versions.py`'s `check_script_defaults` glob matching no file:
+   the PowerShell build scripts have been `windows/scripts/**/Build-*FromSource.ps1`
+   since the Verb-Noun rename, so ten scripts are silently not gate subjects. It is
+   recorded here and **deliberately not fixed** — the subjects are Windows-lane
+   files, and the standing rule for a repo-wide gate tripping over
+   `windows/` is to note it and leave it to
+   [`windows-refactor-backlog.md`](windows-refactor-backlog.md).
+6. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
@@ -182,12 +218,61 @@ measured reason and what cross-building it would actually cost are in
 are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
 arrive. docs/vulkan-foreign-arch-sdk.md
 
+### EX1. The extent gates cannot see `linux/llm-stack` [M, ★★★]
+
+**`verify_code_size.py:38` reads `SCAN = ("linux/scripts", "linux/host-config",
+"docs/scripts")`**, and `verify_code_complexity.py`, `verify_dead_functions.py` and
+`verify_trailing_conditional.py` all take their scope from it. `linux/llm-stack` is
+not in that tuple and never has been. It holds **43 Python files, 19,874 lines**, it
+is under active development, and a 569-line file (`nas_census.py`) landed there on
+2026-09-07 without any extent gate seeing it.
+
+What is actually over the limits there, measured 2026-09-07 and frozen nowhere:
+
+| | count | worst |
+| --- | --- | --- |
+| files > 800 lines | 7 | `bench_coding.py` **2022** — second-largest .py/.sh in the repo |
+| functions > 80 lines | 13 | — |
+| `cc` > 15 | 25 | — |
+| nesting > 5 | 1 | depth **8** |
+
+`bench_coding.py` at 2022 lines is longer than every file in `file-size.allow` except
+`smoke-runtime-image.sh`, and unlike that one it has never been reviewed for a
+split-or-not verdict. **This is why F1's "no outside-the-closure candidate left" was
+wrong in a second way**: the sweep was true of the scan set, and the scan set is not
+the repo.
+
+**What closes it is a decision, not a patch.** Adding one directory to `SCAN` makes
+~46 rows appear at once, and this repo's convention — set on 2026-09-03, when wave 2
+replaced every bare baseline with a verdict — is that an allow row states *what its
+number IS*, not merely that it was there when the gate was switched on. Writing 46
+honest verdicts over a benchmark harness nobody has reviewed for shape is its own
+wave. The options, in the order I would take them:
+
+1. **Widen `SCAN` and do the verdict pass.** Correct, and the only option that makes
+   the register mean what it says. Costs one wave.
+2. **Widen `SCAN` for files only** (the 7-row table above), leaving functions and cc
+   for later. Cheap, and it catches the growth that matters most.
+3. **Declare `linux/llm-stack` deliberately out of scope** and say so in
+   `verify_code_size.py`'s header and in F2 — defensible if the benchmark harness is
+   held to a different standard than the build closure, but it must be *written down*,
+   because right now the exclusion is silent and reads as an oversight.
+
+Not option 4: leaving it. A gate whose scope nobody stated is the shape this repo
+has been bitten by twice — the `file-size.allow` header that said "Shell files" while
+scanning Python, and the doc-links floor that only applied when git was absent.
+[`code-quality-tooling.md`](code-quality-tooling.md#code-size--functions-and-files-code-size)
+
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **29** function rows over 80 lines
-and **66** `cc` rows over 15 on the 2026-09-05 integrated tree, every one carrying a
-verdict that says what its number IS. Read the reasons, not the numbers.
+transcribe them here.** Both are fully reviewed: **28** function rows over 80 lines
+and **61** `cc` rows over 15, every one carrying a verdict that says what its
+number IS. Read the reasons, not the numbers — and re-derive the counts from
+`verify_code_size.py` / `verify_code_complexity.py`, never from this line. It
+said 29 and 66 until 2026-09-07 because the 2026-09-05 figures were carried
+forward through the very grooming that claimed to have re-derived them, while
+the wave in between deleted rows underneath both.
 
 **Closed 2026-09-05, and both allow rows DELETED rather than re-baselined:**
 `verify_doc_dupes.py main` 81 → 47 lines, cc 23 → under the limit, decomposed into
@@ -207,8 +292,8 @@ characterisation: it passes UNCHANGED against `git show HEAD:…/slang-compile.s
 Vulkan flag > env > caller-default chain is now `_cmake_build_resolve_vulkan`, with
 its precedence written up in
 [`shared-script-libraries.md`](shared-script-libraries.md) and three mutations
-holding it); `verify_package_names.py` `main` 140 → 34 and `scan_file` 93 → 7, both
-from **cc 42** to 7-and-gone, with `--list` output over the whole tree proven
+holding it); `verify_package_names.py` `main` 140 → 30 and `scan_file` 93 → 7, both
+from **cc 42** to gone, with `--list` output over the whole tree proven
 byte-identical before and after.
 
 **Four measurement facts that decided most of the remaining verdicts**, and that a
@@ -264,7 +349,8 @@ reason.** Each had named its own seam, and each seam held:
   same test in front of three. Under both limits, both rows deleted, and the
   suite now asserts that no build-only phase has drifted back into `main()` —
   which is the thing `--manifest-only` and `--repair` exist to avoid.
-* **KEPT: `media_common_init` (35)** — a module loader whose load ORDER is
+* **KEPT: `media_common_init` (29, was 35 until CL7 deleted the unreachable
+  `cross_build_is_active` clone)** — a module loader whose load ORDER is
   load-bearing. A table plus a loop would read shorter and say less; the
   ordering is the knowledge. Not a free win, and recorded as such.
 
@@ -281,8 +367,14 @@ first. `SMOKE_TARGET_CLANG` exists so a host suite can drive the real probe inst
 a rewritten copy; it self-defaults in the script, so nothing in the image sets it and
 the env-knob registry needs no row.
 
-**With that closed there is no outside-the-closure candidate left on the size queue.**
-Every remaining named row is inside the build closure.
+**Two outside-the-closure rows survive that sweep**, and the earlier flat "none
+left" was wrong. `run_agentic_loop` (95 lines) — seam named, and the coverage that
+blocked it landed with F2's split, so this one is takeable today.
+`bump_versions.py main` (159) — still blocked on coverage, because it WRITES
+`versions.env` and checksums and nothing drives it. Every other named row is inside
+the build closure — **within the scan set**, which is the qualifier the sentence
+always needed: see **EX1** for the fifth of the repo's Python these gates cannot see
+at all.
 
 **Two rows carry a "do not do the obvious thing" verdict.** `verify_comment_size.blocks`
 (nesting 6): the honest fix is importing `verify_code_size.scan` like every other
@@ -292,15 +384,17 @@ extent gate, but that WIDENS the scan to `docs/scripts` and NARROWS it by
 `verify_package_names.load_arch` (17): every branch is a way the gate must not
 produce a FALSE verdict, the all-or-nothing partial-fetch refusal above all.
 
-**The one uncovered path left inside `_cross_stage_build_impl` is the
-registry-cache drop** — lines 295–317, **23** lines. It needs a non-empty
-`log_file` whose tail matches `DeadlineExceeded|httpReadSeeker`, and it mutates
-both `build_cmd` and `_regcache_fails` across retry iterations. Nothing covers it:
-`grep -rn DeadlineExceeded linux/scripts/tests/` returns nothing, and
-`test-cross-stage-build-cmd.sh` only counts `cache-from`/`cache-to` on the
-non-failing path. Write the characterisation first — fake `log_file`, assert the
-counter reaches 2 and that the registry cache pairs vanish from `build_cmd` while
-local cache args survive — then extract. Re-checked 2026-09-05: still uncovered.
+**CLOSED 2026-09-07 — the registry-cache drop is characterised.** Every earlier
+version of this paragraph said "Nothing covers it" and offered
+`grep -rn DeadlineExceeded linux/scripts/tests/` returning nothing as the proof.
+That grep returns **three** hits today and has since `d7fbfd39`, which landed in the
+same wave as the grooming that re-asserted the claim — the entry outlived its own
+evidence by one commit. `test-cross-stage-build-cmd.sh` now drives the path with a
+real `_FLAKE` tail and pins the four decisions that matter: one hiccup does NOT drop
+the tier, the SECOND drops it from every later attempt, the LOCAL tier survives the
+drop, and a flake-free failure keeps the registry cache throughout. What is left is
+only the optional extraction of that block into a named helper — with the suite as
+the safety net, which is the order this entry always asked for.
 
 **CLOSED 2026-09-07 — the harness now catches that trap.** `t_assert_ok` and
 `t_assert_fails` take a COMMAND and no message, so `t_assert_fails test -f X "msg"`
@@ -360,10 +454,13 @@ because bash exempts every command of an AND-OR list but the last.
 **Two verdicts worth not re-litigating.** `build-app-wheelhouse.sh` is the
 near-miss: the stage suites extract blocks from it **by line range**, so a file
 split silently re-aims them. And `smoke-runtime-image.sh` — which every earlier
-version of this entry nominated as THE one to split — is an explicit **NO**: 63
-functions, all `check_*` / `_probe_*` over one image through one `_rt_run` under one
-`main()`. Its length is the number of assertions it makes about the shipped bytes,
-and that number growing is the gate succeeding.
+version of this entry nominated as THE one to split — is an explicit **NO**: 91
+functions, of which 45 are the `check_*` / `_probe_*` assertions and the rest is the
+probe-and-verdict layer they share, all over one image through one `_rt_run` under
+one `main()`. Its length is the number of assertions it makes about the shipped
+bytes, and that number growing is the gate succeeding. ("63 functions, all of them
+`check_*`/`_probe_*`" stood here and in `file-size.allow` until 2026-09-07 and was
+never true of any revision.)
 
 **Closed 2026-09-05:** `docs/scripts/sync_versions.py` had NO module docstring at all
 — shebang straight into `from __future__` — despite being the authority for the

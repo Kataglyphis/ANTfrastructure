@@ -83,5 +83,12 @@ linux/qnn-sdk/*
 # external. It was committed by accident once (51b0768b); this stops the repeat.
 /%SystemDrive%/
 
+# Superseded working clones. DocumANTation is a submodule at third_party/ since
+# 2026-09-07; the hand-clone that survived that move was removed the same day.
+# The rule stays because the next one would be one `git add -A` from becoming a
+# gitlink nobody meant to commit. preflight.sh excludes both paths from the
+# secret scan.
+/external/
+
 # pytest leaves this behind when a suite is run by hand; the doc/code gates scan the tree.
 .pytest_cache/

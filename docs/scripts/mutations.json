@@ -354,10 +354,18 @@
   {
     "id": "doc-links.git-free-floor",
     "target": "docs/scripts/verify_doc_links.py",
-    "find": "        return _static_ignores(paths)\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
-    "replace": "        return set()\n    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "find": "        return _static_ignores(paths)\n    asked = {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
+    "replace": "        return set()\n    asked = {line.strip() for line in proc.stdout.splitlines() if line.strip()}",
     "test": "bash linux/scripts/tests/test-doc-links.sh",
     "why": "without git the gate must skip the same paths, or it lints model output and kills its own mutation entries"
+  },
+  {
+    "id": "doc-links.tracked-output-floor",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "    return asked | _static_ignores(paths)",
+    "replace": "    return asked",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "git check-ignore never reports a TRACKED file and .gitignore re-admits dated run dirs, so trusting git alone puts 66 model-output files back in the scan -- which is how 542b87f6 turned the gate red"
   },
   {
     "id": "gate-registry.new-unproven",

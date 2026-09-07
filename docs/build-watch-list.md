@@ -12,6 +12,12 @@ hypothesis the chain is testing, not a fact.
 Chain in flight when this page was written: `chain-status.json` run
 `20260905-120554-7b7a0d4e`, `sdk..runtime`, `amd64,arm64,riscv64`.
 
+**Re-groomed 2026-09-07 for the Vulkan rows only.** That chain finished; the wave
+after it wired all four components this page had listed as known or expected
+failures. Those rows now say the opposite of what they said, because an
+`unavailable` line for any of the four is the finding VK2 stays open to catch. The
+rest of the page is still the 2026-09-05 text.
+
 ## Read this first: the three that abort a run
 
 If the chain dies early, it is almost certainly one of these. Each fails **fast**, at
@@ -44,15 +50,18 @@ baseline for the riscv64 lane rather than the pre-run guesses.
 | verdict | line |
 |---|---|
 | PASS (measured on arm64) | `Cross-building <label> for <arch>` with no following `unavailable` line, for eleven of: `vulkan-headers`, `spirv-headers`, `vulkan-utility-libraries`, `volk`, `vma`, `spirv-cross`, `spirv-reflect`, `shaderc`, `vulkan-tools`, `vulkan-extensionlayer`, `vulkan-validationlayers` |
-| KNOWN FAIL, two-row fix | `vulkan-profiles unavailable` — `find_package(valijson)` finds nothing. valijson and jsoncpp are header-only and ALREADY in the SDK's `source/` tree; they just have no row before `vulkan-profiles` in `_VK_TARGET_COMPONENTS` |
-| KNOWN FAIL, real work | `gfxreconstruct unavailable` — `Could NOT find OpenGL / JsonCpp / X11` in OpenXR-SDK's `presentation.cmake`. The X11/GL dev packages `vulkan.sh` installs are HOST packages; the cross build wants the `:${arch}` set in the sysroot. Fixing it would also let `vkcube` link for the target |
-| EXPECTED FAIL | `slang unavailable` (host LLVM `tblgen`, i.e. Canadian-cross) and `vulkancapsviewer unavailable` (Qt for the target). Attempted on purpose so the log reports what is true instead of a comment asserting it |
+| FAIL (was KNOWN FAIL before VK2) | `vulkan-profiles unavailable` — `jsoncpp` and `valijson` are rows of their own in `_VK_TARGET_COMPONENTS` since `c59799b4`, ordered ahead of it, so `find_package(valijson)` has somewhere to look |
+| FAIL (was KNOWN FAIL before VK2) | `gfxreconstruct unavailable` — and the old diagnosis on this row was wrong. The `:${arch}` packages were already unpacked; `find_library` could not see them because nothing passed `CMAKE_LIBRARY_ARCHITECTURE`, which `_cross_build_sdk_component` now does for every row. The genuinely missing half was GL, added to `install_optional_target_packages` |
+| FAIL (was EXPECTED FAIL before VK2) | `slang unavailable` — and NOT for the reason this row gave. It is not host LLVM `tblgen`; slang cross-compiles its own generators and then cannot run them, so `SLANG_GENERATORS_PATH` points at the host `./vulkansdk` run's copies. `tblgen` is the `dx*` family's problem, and that family is deliberately not a row |
+| FAIL (was EXPECTED FAIL before VK2) | `vulkancapsviewer unavailable` — `qt6-base-dev:${arch}` is in the optional set with `QT_HOST_PATH=/usr` and a sysroot `CMAKE_PREFIX_PATH` |
 | FAIL | `shaderc: source missing at …/shaderc/src; skipping` — the checkout IS one level down and `_vulkan_target_src` is supposed to find it. It built on arm64, so this would be a regression |
 | FAIL | any `Cross-building` line naming a `-B TMP/<label>` path for a component whose source is absent — the missing-source guard has stopped skipping |
 
-**Do not "fix" the two cheap rows while the chain is running.** arm64 is already built
-and riscv64 has not started; editing `vulkan.sh` now ships two arches from different
-sources, which is the mid-run drift this repo has been bitten by before.
+**Do not "fix" a Vulkan row while the chain is running.** That was the 2026-09-05
+instruction and it still holds: editing `vulkan.sh` mid-run ships two arches from
+different sources, which is the drift this repo has been bitten by before. The four
+routes above are already in the tree; what the chain owes is a verdict on them, and
+`<arch>/bin` carrying what `x86_64/bin` does is what closes VK2.
 
 ### LLVM target prefix (HT4)
 
@@ -184,5 +193,6 @@ nerdctl run --rm --platform linux/<arch> -v <repo>:/repo:ro --entrypoint bash \
 * The lib-dynload audit WARNs for five optional modules (`_zstd`, `readline`,
   `_curses`, `_uuid`, `_decimal`). Information on `optional` rows — but any of them on
   **amd64** is a genuine finding.
-* `slang` and `vulkancapsviewer` failing to cross-configure is expected, and is logged
-  rather than asserted on purpose.
+* `slang` and `vulkancapsviewer` failing to cross-configure was expected until
+  2026-09-07 and is **not** any more — both have a route now, so either one failing
+  is a finding, not noise.

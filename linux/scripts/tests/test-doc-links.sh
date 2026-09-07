@@ -208,6 +208,21 @@ if without_git != floor:
     problems.append("no-git path returned %d, not the floor" % len(without_git))
 if without_git_probe != floor_probe:
     problems.append("no-git path ignored the floor on the probe list")
+# A HAPPY git that reports nothing. check-ignore never names a TRACKED file, and
+# .gitignore re-admits dated run dirs, so a committed benchmark run answers "not
+# ignored" for all 66 of them -- how 542b87f6 put model output back in the scan.
+# The mutation mirror has no .git, so only a stub can reach the union line.
+class _Proc:
+    returncode, stdout = 1, ""
+_real = g.subprocess.run
+g.subprocess.run = lambda *a, **k: _Proc()
+try:
+    tracked = g._ignored_paths(rel)
+finally:
+    g.subprocess.run = _real
+if tracked != floor:
+    problems.append("git answering NOTHING returned %d, not the floor %d"
+                    % (len(tracked), len(floor)))
 print("wired" if not problems else "BROKEN: " + "; ".join(problems))
 PYCHK
 )"

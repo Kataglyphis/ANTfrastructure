@@ -88,6 +88,12 @@ SKIP_DIRS = {".git", "external", "third_party", "node_modules", "windows", "out"
              "_build", "dist", "sphinx-kataglyphis-theme", "logs",
              # Third-party and generated: nothing here is ours to de-duplicate.
              ".venv", "venv", "site-packages", ".tox", "license-assets",
+             # The tool caches. code-quality-tooling.md has listed these as
+             # excluded since the table was written; the set never had them, so
+             # one hand-run of pytest planted two identical README.md files and
+             # failed the gate on them. Declaring pytest a host tool made that
+             # everyone's problem, not just one lane's.
+             ".pytest_cache", "__pycache__", ".dart_tool",
              "source_templates", "deps"}
 SKIP_NAME_MARKERS = ("archive", "backlog", "CHANGELOG")
 
