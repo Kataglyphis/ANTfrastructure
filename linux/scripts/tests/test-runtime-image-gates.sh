@@ -958,6 +958,44 @@ $(_vk_counts)" ppc64le)" \
   "FAIL no _VK_TOOLSET_FROZEN row for ppc64le" \
   "a WARN here is the same silence the floors exist to end"
 
+# ── the llvm-target startability gate (R1.1) ────────────────────────────────
+# The sdk stage's self-containment walk resolves NEEDED sonames against the
+# BUILDER's ldconfig cache, so a soname present there and absent in the runtime
+# ships a binary that cannot start. liblldb was the instance -- lldb, lldb-dap
+# and lldb-mcp, 3 of amd64's 142 -- and only a RUNTIME-side walk catches the next.
+_llvm_startable() {
+  LT_OUT="$1" bash -c '
+    '"${_STUBS}"'
+    _rt_run() { printf "%s\n" "${LT_OUT}"; }
+    '"$(_extract check_llvm_target_startable)"'
+    check_llvm_target_startable img amd64' 2>&1
+}
+
+t_case "main() actually calls it -- a gate nothing invokes is not a gate"
+t_assert_contains "$(grep -e '^    check_' "${SMOKE}")" "check_llvm_target_startable" \
+  "the functional battery is the only place this runs; unwired it is 40 lines of dead text"
+
+t_case "a clean prefix passes and says how many it walked"
+t_assert_contains "$(_llvm_startable "COUNT 0 142")" "OK  0 of 142 llvm-target binaries"
+
+t_case "the liblldb shape FAILS and names the binaries"
+_lt_out="$(_llvm_startable "  BROKEN /usr/local/llvm-target/bin/lldb -> liblldb.so.22
+  BROKEN /usr/local/llvm-target/bin/lldb-dap -> liblldb.so.22
+  BROKEN /usr/local/llvm-target/bin/lldb-mcp -> liblldb.so.22
+COUNT 3 142")"
+t_assert_contains "${_lt_out}" "FAIL 3 of 142"
+t_assert_contains "${_lt_out}" "BROKEN /usr/local/llvm-target/bin/lldb-dap -> liblldb.so.22" \
+  "the operator needs the NAMES, not just the count"
+
+t_case "a probe that did not run is not a clean prefix"
+t_assert_contains "$(_llvm_startable "docker: no such container")" \
+  "printed no COUNT" "an empty walk reads exactly like a healthy one unless the gate says otherwise"
+
+t_case "an image without the prefix says so instead of failing"
+_lt_out="$(_llvm_startable "ABSENT")"
+t_assert_contains "${_lt_out}" "WARN /usr/local/llvm-target/bin absent"
+t_assert_eq "0" "$(printf '%s\n' "${_lt_out}" | grep -c '^FAIL')"
+
 # ── the Android SDK ABI gate ────────────────────────────────────────────────
 # ABI_OUT is what the probe prints: the image's advertised ABI, then one MACH row
 # per ELF machine found under /opt/android. The ABI->machine table is read out of

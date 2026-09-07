@@ -4514,8 +4514,8 @@
   {
     "id": "dead-functions.unlinked-tag",
     "target": "linux/scripts/verify_dead_functions.py",
-    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"))",
-    "replace": "+ \"\")",
+    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"),",
+    "replace": "+ \"\",",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "the two arms ask for different fixes; an untagged row leaves the author guessing which one fired"
   },
@@ -6893,5 +6893,45 @@
     "replace": "  local _prot_ref=\"$2\"",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
     "why": "a by-value copy makes the anti-spin append invisible to the next pick_victim call -- the same spin, one level further from the symptom"
+  },
+  {
+    "id": "probe.llvm-target-startable-wired",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_llvm_target_startable \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a gate main() never calls is the shape this repo keeps finding: liblldb shipped 3 unstartable binaries past every green run"
+  },
+  {
+    "id": "probe.llvm-target-broken-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif [ \"${broken:-1}\" -gt 0 ]; then",
+    "replace": "    elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the sdk stage resolved these sonames against the BUILDER's ldconfig cache; a binary that cannot start in the shipped image is a defect, not a warning"
+  },
+  {
+    "id": "probe.llvm-target-empty-walk-is-not-clean",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if [ -z \"${total}\" ]; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "replace": "    if false; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a probe that never ran prints no COUNT, and without this arm that reads exactly like a prefix with zero broken binaries"
+  },
+  {
+    "id": "dead-functions.stale-row-names-its-disarmer",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "                    describe_stale=lambda k: k.replace(\"\\t\", \"  \") + _stale_note(k, corpus_texts))",
+    "replace": "                    )",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the stale heading says 'the function is called again or gone'; for a disarmed unlinked row both halves are false, and the reader deletes a freeze that still holds"
+  },
+  {
+    "id": "dead-functions.disarmer-needs-both-basenames",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "            if base in text and pbase in text:",
+    "replace": "            if base in text or pbase in text:",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the arm is disarmed only when ONE file could load BOTH definitions; either basename alone names a file that cannot mask anything, so 'or' explains rows that were never disarmed"
   }
 ]

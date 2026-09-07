@@ -91,9 +91,15 @@ def load_keys(path):
     return keep
 
 
-def check_keys(keys, frozen, new_head, stale_head, describe=lambda k: k.replace("\t", "  ")):
+def check_keys(keys, frozen, new_head, stale_head, describe=lambda k: k.replace("\t", "  "),
+               describe_stale=None):
     """The two-way contract: a key not frozen is NEW, a frozen key not found is STALE.
-    Prints each set under its heading via `describe`; returns 1 if either is non-empty."""
+    Prints each set under its heading; returns 1 if either is non-empty.
+
+    `describe_stale` exists because a stale row does not always mean what its heading
+    says: the dead-function gate's unlinked arm can be DISARMED by an unrelated file,
+    and "the function is called again" then reads as if the code came back to life.
+    A gate that can tell WHY a row went stale says so at the row."""
     rc = 0
     new = sorted(k for k in keys if k not in frozen)
     if new:
@@ -105,6 +111,7 @@ def check_keys(keys, frozen, new_head, stale_head, describe=lambda k: k.replace(
     if stale:
         rc = 1
         print("\n" + stale_head + "\n", file=sys.stderr)
+        _fmt = describe_stale or (lambda k: k.replace("\t", "  "))
         for k in stale:
-            print("  " + k.replace("\t", "  "), file=sys.stderr)
+            print("  " + _fmt(k), file=sys.stderr)
     return rc

@@ -6,6 +6,47 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — R1: the residue four closed entries left, three fixed and one re-measured
+
+**A runtime-side `ldd` walk over the shipped LLVM prefix.** The sdk stage's
+self-containment walk resolves non-LLVM `NEEDED` sonames against the BUILDER's
+ldconfig cache, so a soname present there and absent in the runtime ships a
+binary that cannot start — `liblldb` was the instance, taking `lldb`,
+`lldb-dap` and `lldb-mcp`, 3 of amd64's 142, past every green run.
+`check_llvm_target_startable` walks `/usr/local/llvm-target/bin` INSIDE the
+image and fails on any unresolved `NEEDED`, naming the binaries. A probe that
+did not run is not a clean prefix: no `COUNT` line fails rather than reading as
+zero broken, which is the difference between this gate and the one it backs up.
+
+**`VK_LAYER_PATH` named a directory that has never existed.**
+`Dockerfile.package` and `04-runtime/runtime-paths.env` both pointed at
+`/opt/vulkan/active/etc/vulkan/explicit_layer.d`; SDK 1.4.357 puts explicit
+layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an
+`etc/` at all. Both now name the real path. The reason it looked harmless is
+measured and written down: the entrypoint sources LunarG's `setup-env.sh`,
+which unsets `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH`, so the variable
+is empty in every running image — this is the value a consumer that does not
+source that script gets.
+
+**LOG14's ~390 s/lane re-measured against a real log.** From the 2026-09-05
+arm64 SDK lane's own `~~~Building X~~~` timestamps, the five components the old
+cross-lane skip list named cost the host build **381 s** (ValidationLayers
+195.8, shaderc 119.5, SPIRV-Cross 61.7, Vulkan-Tools 34.5, volk 1.8, VMA 2.5).
+The arithmetic was right; the claim around it was not, because `./vulkansdk`
+fetched and partly built them anyway and the images carried the source trees
+regardless. VK1 deleted the skip list, and the lane now pays those 381 s for
+components it actually ships.
+
+**A disarmed dead-function row no longer reads as a revived function.** The
+unlinked-definer arm goes STALE whenever any corpus file starts naming BOTH
+definers' basenames, under a heading that says "the function is called again or
+gone" — and neither half is true. `quality_allow.check_keys` grew a
+`describe_stale` hook (every other gate unchanged), and the dead-function gate
+now names the file that disarmed the arm, the two basenames, and states that
+the function is not called again. Rows that went stale for a real reason stay
+plain: the explanation fires only where ONE file could load BOTH definitions,
+and a mutation flipping that `and` to an `or` is caught.
+
 ## 2026-09-07 — The disk guard learns about the third store, and its two eviction loops become one
 
 **DISK3.** On 2026-09-05 the chain reported `NOTHING was reclaimable` at 28G

@@ -151,6 +151,25 @@ DXC means building it from source on the host first
 (`SLANG_DXC_BUILD_FROM_SOURCE=ON`), which is an LLVM-sized build, not a table
 row.
 
+## VK_LAYER_PATH pointed at a directory that has never existed
+
+`Dockerfile.package` and `04-runtime/runtime-paths.env` both set
+
+```
+VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d
+```
+
+and SDK 1.4.357 has no `etc/` under any arch prefix at all: the explicit layers
+install to `<arch>/share/vulkan/explicit_layer.d`. Both now name that path.
+
+Two things about it are worth knowing before treating the variable as live. The
+entrypoint sources LunarG's `setup-env.sh`, which UNSETS `VK_LAYER_PATH` and
+exports `VK_ADD_LAYER_PATH` instead — measured: the variable is **empty in every
+running image**, so this is the value a consumer that does NOT source that script
+gets. And a foreign arch only has layers to point at because the cross build
+installs them; before VK1 there were none, which is why nobody noticed the path
+was wrong.
+
 ## The toolset floor only ratchets up
 
 The prefix shipped **2 of 52** tools for months. Nothing caught it because

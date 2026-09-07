@@ -746,57 +746,52 @@ path. A server auto-started from a stage that never ran `setup_ccache` would inh
 `/etc/sccache/config.toml`'s `use_preprocessor_cache_mode = true` and bring back the
 `while hashing the input file` TryCompile class. Not observed in any log read so far.
 
-### R1. The residue the eleven closed entries left [S each, ★]
+### R1. CLOSED — all four, three fixed and one re-measured [done 2026-09-07]
 
-Small, named, and each one is the honest leftover of something that closed. None is a
-defect with a live failure mode; all four were measured, not guessed.
-
-1. **A runtime-side `ldd` gate over `/usr/local/llvm-target/bin/*`** — HT4's
-   structural half. The sdk stage's self-containment walk checks non-LLVM `NEEDED`
-   sonames against the **BUILDER's** ldconfig cache, so any soname present in the
-   builder and absent in the runtime ships a binary that cannot start. `liblldb` was
-   the instance (3 of amd64's 142 binaries: `lldb`, `lldb-dap`, `lldb-mcp`), and
-   nothing but a runtime-side check catches the next one. The gate is ~10 lines in
-   `smoke-runtime-image.sh` plus one suite case, and would read 0/142, 0/127, 0/127
-   today. It was not added this wave because that file was being rewritten by two
-   lanes at once.
-2. **`VK_LAYER_PATH` is dangling on all three shipped images, and always was.**
-   `Dockerfile.package:240` and `04-runtime/runtime-paths.env` point it at
-   `/opt/vulkan/active/etc/vulkan/explicit_layer.d`, but SDK 1.4.357 puts explicit
-   layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an `etc/`
-   at all. The entrypoint then sources LunarG's `setup-env.sh`, which UNSETS
-   `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH` instead — measured: the variable is
-   **empty in every running image**. Not a size defect and not touched here: it is a
-   behaviour change to a shared env file with its own gates. Note the foreign arches
-   have no layers to point at either, so on arm64/riscv64 the only honest value is
-   "no explicit layers".
-3. **LOG14's cross-lane skip list does not do what its comment claims.**
-   `vulkan.sh` skipped `vulkan-validationlayers`, `shaderc`, `spirv-cross`, `volk`,
-   `vma` and friends "for foreign-arch cross builds (host-only component)" to save
-   ~390 s/lane — yet the shipped foreign images carried `source/Vulkan-ValidationLayers`
-   (2.0 GB), `source/shaderc` (557 MB), `source/valijson` (492 MB) and a BUILT
-   `libspirv-cross-c-shared.so.0.68.0`. `./vulkansdk` fetches, and at least partly
-   builds, components the skip list removed from its argv. **VK1 has since removed the
-   skip list entirely**, so this is now only a question about the claimed saving —
-   re-measure it against a real lane log rather than carrying the number forward.
-4. **GH6's 93 undecided masked rows are a watch list, not a fix.** The `unlinked()`
-   arm decides only the corner where two same-named definitions can never share a
-   shell; the other 93 are almost all `tests/` stubs for a sourced unit under test,
-   which is correct code no static rule should fail. One live hazard is named at the
-   point of failure: any corpus file that starts naming BOTH definers' basenames
-   disarms the arm and turns its frozen row STALE with a message that reads like the
-   function came back to life. `tests/test-dead-functions.sh` is itself that instance
-   and assembles the name and both basenames from `printf` arguments.
+1. **The runtime-side `ldd` gate exists now.** `check_llvm_target_startable`
+   walks `/usr/local/llvm-target/bin` INSIDE the shipped image and fails on any
+   binary with an unresolved `NEEDED`. The sdk stage's self-containment walk
+   resolves those sonames against the BUILDER's ldconfig cache, which is how
+   `liblldb` shipped three unstartable binaries — `lldb`, `lldb-dap`,
+   `lldb-mcp` — past every green run. It reads `0 of N` today and, unlike the
+   sdk-side walk, a probe that did not run fails instead of reading clean. Four
+   suite cases and three mutations, including the wiring one.
+2. **`VK_LAYER_PATH` points at a directory that exists.** Both
+   `Dockerfile.package` and `runtime-paths.env` named
+   `/opt/vulkan/active/etc/vulkan/explicit_layer.d`, and SDK 1.4.357 has no
+   `etc/` under any arch prefix — the layers are in
+   `<arch>/share/vulkan/explicit_layer.d`. The measured caveat that made this
+   look harmless is written up at
+   [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#vk_layer_path-pointed-at-a-directory-that-has-never-existed):
+   the entrypoint's `setup-env.sh` unsets the variable anyway, so this is the
+   value a consumer that does not source it gets.
+3. **LOG14's ~390 s/lane: the NUMBER survives re-measurement, the claim around it
+   does not.** Measured from the 2026-09-05 arm64 SDK log's own `~~~Building X~~~`
+   timestamps, the five components the skip list named cost the HOST build
+   **381 s**: ValidationLayers 195.8 s, shaderc 119.5 s, SPIRV-Cross 61.7 s,
+   Vulkan-Tools 34.5 s, volk 1.8 s, VMA 2.5 s. So the saving was real arithmetic —
+   but the shipped foreign images carried those source trees and a BUILT
+   `libspirv-cross-c-shared.so` regardless, because `./vulkansdk` fetches and
+   partly builds what the argv removed. VK1 deleted the skip list; the lane pays
+   those 381 s deliberately now, for components it actually ships.
+4. **A disarmed row no longer reads as a revived function.** GH6's arm goes STALE
+   when any corpus file starts naming BOTH definers' basenames, under a heading
+   that says "the function is called again or gone" — and neither half is true.
+   `check_keys` grew a `describe_stale` hook (default unchanged for every other
+   gate) and the dead-function gate names the file that disarmed it and the two
+   basenames, plus "the function is not called again". A stale row with a real
+   cause stays plain: the explanation only fires where ONE file could load BOTH
+   definitions. The other 93 masked rows remain a watch list, unchanged.
 
 **Two things recorded so a future reader does not "simplify" them.** The foreign
-`x86_64/` Vulkan prefix is 4.14 MB LARGER than amd64's over the same 4 399 files, so
-`./vulkansdk`'s host build does overwrite part of the tarball on a cross lane — and
-those host tools have a real build-time consumer (`build-opencv.sh` reads
+`x86_64/` Vulkan prefix is 4.14 MB LARGER than amd64's over the same 4 399 files,
+so `./vulkansdk`'s host build does overwrite part of the tarball on a cross lane —
+and those host tools have a real build-time consumer (`build-opencv.sh` reads
 `/opt/vulkan/<ver>/x86_64` for headers), which is exactly why HT5 prunes at the
-packaging boundary and not in the SDK stage. And CL6's three TFLite helpers still leak
-`dep`, `_gcc_arch` and `_gcc_dir` into the caller's scope: pre-existing, deliberately
-not changed in a build window, because localising them is a real state change and the
-split's whole claim is that the bodies moved verbatim.
+packaging boundary and not in the SDK stage. And CL6's three TFLite helpers still
+leak `dep`, `_gcc_arch` and `_gcc_dir` into the caller's scope: pre-existing,
+deliberately not changed in a build window, because localising them is a real
+state change and the split's whole claim is that the bodies moved verbatim.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 

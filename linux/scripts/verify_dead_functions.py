@@ -177,6 +177,31 @@ def report_census(rows, shared, considered, unlinked_count):
     return 0
 
 
+def _stale_note(key, corpus_texts):
+    hit = disarmer(key, corpus_texts)
+    if not hit:
+        return ""
+    return ("  [unlinked arm DISARMED by %s, which now names both %s and %s -- the "
+            "function is not called again]" % (hit[0], os.path.basename(key.split("\t")[0]),
+                                               os.path.basename(hit[1])))
+
+
+def disarmer(key, corpus_texts):
+    """Which corpus file disarmed this unlinked-definer row, or None. The arm only
+    holds while NO file names two definers' basenames; when one starts to, the row
+    goes stale for a reason that has nothing to do with the function being called."""
+    rel, _, name = key.partition("\t")
+    peers = _definers().get(name, set()) - {rel}
+    base = os.path.basename(rel)
+    for peer in sorted(peers):
+        pbase = os.path.basename(peer)
+        for other in sorted(corpus_texts):
+            text = corpus_texts[other]
+            if base in text and pbase in text:
+                return other, peer
+    return None
+
+
 def main(argv):
     corpus_texts = texts()
     if "--census" in argv:
@@ -196,7 +221,8 @@ def main(argv):
                     "An unlinked-definer row also goes STALE when a corpus file starts naming\n"
                     "both definers' basenames; that disarms the arm, it does not revive the code:",
                     describe=lambda k: k.replace("\t", "  ")
-                    + ("  [unlinked definer]" if k in scoped else ""))
+                    + ("  [unlinked definer]" if k in scoped else ""),
+                    describe_stale=lambda k: k.replace("\t", "  ") + _stale_note(k, corpus_texts))
     if rc == 0:
         print("OK: no new dead functions")
     return rc

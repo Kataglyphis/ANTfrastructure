@@ -908,6 +908,51 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
+# HT4's structural half. The sdk stage's self-containment walk checks non-LLVM
+# NEEDED sonames against the BUILDER's ldconfig cache, so a soname present there
+# and absent here ships a binary that cannot start: liblldb was the instance,
+# taking lldb, lldb-dap and lldb-mcp -- 3 of amd64's 142 -- and only a
+# RUNTIME-side check catches the next one.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+check_llvm_target_startable() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out
+
+    echo "--- Functional: /usr/local/llvm-target/bin starts ---"
+    out="$(_rt_run bash -lc 'set -uo pipefail
+d=/usr/local/llvm-target/bin
+[ -d "$d" ] || { echo "ABSENT"; exit 0; }
+n=0; b=0
+for f in "$d"/*; do
+  [ -f "$f" ] && [ -x "$f" ] || continue
+  n=$((n+1))
+  nf="$(ldd "$f" 2>/dev/null | awk "/=> not found/{print \$1}" | sort -u | tr "\n" " ")"
+  [ -n "$nf" ] && { printf "  BROKEN %s -> %s\n" "$f" "$nf"; b=$((b+1)); }
+done
+printf "COUNT %s %s\n" "$b" "$n"' 2>&1)" || true
+
+    printf '%s\n' "${out}" | grep -e '^  BROKEN ' || true
+    case "${out}" in
+      *ABSENT*)
+        echo "  WARN /usr/local/llvm-target/bin absent in the ${target_arch} image -- nothing to check"
+        echo ""
+        return 0 ;;
+    esac
+    local broken total
+    broken="$(printf '%s\n' "${out}" | sed -n 's/^COUNT \([0-9]*\) [0-9]*$/\1/p' | tail -1)"
+    total="$(printf '%s\n' "${out}" | sed -n 's/^COUNT [0-9]* \([0-9]*\)$/\1/p' | tail -1)"
+    if [ -z "${total}" ]; then
+      fail "the ${target_arch} llvm-target walk printed no COUNT -- the probe did not run, which is not the same as a clean prefix"
+    elif [ "${broken:-1}" -gt 0 ]; then
+      fail "${broken} of ${total} /usr/local/llvm-target/bin binaries have an unresolved NEEDED in the ${target_arch} image -- \
+the sdk stage resolved them against the BUILDER's ldconfig cache (see BROKEN lines above)"
+    else
+      echo "  OK  0 of ${total} llvm-target binaries have an unresolved NEEDED (${target_arch})"
+    fi
+    echo ""
+}
+
 # ── HT1: the shipped artifact trees must carry THIS image's arch ─────────────
 # artifact-source is the BUILDER's image, so a tree INSTALLED on the host instead of
 # cross-built ships x86_64 into the arm64/riscv64 runtime image -- rustup (2 GB, exit
@@ -2355,6 +2400,7 @@ main() {
     check_rust_toolchain "${image_tag}" "${target_arch}"
     check_consumer_contract "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
+    check_llvm_target_startable "${image_tag}" "${target_arch}"
     check_manifest_tree_arch "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
