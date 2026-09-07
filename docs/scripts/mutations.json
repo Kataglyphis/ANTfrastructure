@@ -154,7 +154,7 @@
   {
     "id": "mutations.vacuous-bite",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "        if not baseline_ok(e, args.root, baselines):",
+    "find": "        if not base_ok:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
