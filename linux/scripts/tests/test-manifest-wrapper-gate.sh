@@ -78,4 +78,28 @@ t_assert_contains "${out}" "--force set"
 t_case "a repo with no wrapper tag scheme opts out instead of refusing"
 t_assert_contains "$(TAG_FAILS=1 _gate)" "RC=0"
 
+# ── F1: the build-only region sits behind ONE --manifest-only test ───────────
+# main() used to ask `[ "${BUILD_IMAGES}" -eq 1 ]` in front of three phases.
+# --manifest-only and --repair exist to publish an index over wrappers that are
+# ALREADY built; a phase that leaks out of that region rebuilds them.
+_MANIFEST_SH="${TESTS_DIR}/../build-runtime-manifest.sh"
+_main_src="$(t_fn_src "${_MANIFEST_SH}" main)" || exit 1
+_build_src="$(t_fn_src "${_MANIFEST_SH}" _manifest_build_and_smoke)" || exit 1
+
+t_case "main() asks the build-only question exactly ONCE"
+t_assert_eq "1" "$(printf '%s\n' "${_main_src}" | grep -c -e 'BUILD_IMAGES.*-eq 1' || true)" \
+  "three copies of one test is how a phase ends up on the wrong side of it"
+t_assert_contains "${_main_src}" "_manifest_build_and_smoke" "and it guards the extracted region"
+
+t_case "every build-only phase is INSIDE that region, not in main()"
+for _phase in ensure_foreign_binfmt run_parallel_arch_loop smoke-runtime-image.sh; do
+  t_assert_contains "${_build_src}" "${_phase}" "${_phase} belongs to the build-only half"
+  t_assert_eq "0" "$(printf '%s\n' "${_main_src}" | grep -c -e "${_phase}" || true)" \
+    "${_phase} in main() would run on --manifest-only, which exists NOT to build"
+done
+
+t_case "publishing stays outside it: --manifest-only must still create the index"
+t_assert_contains "${_main_src}" "create_manifest" "the whole point of --manifest-only"
+t_assert_eq "0" "$(printf '%s\n' "${_build_src}" | grep -c -e 'create_manifest' || true)"
+
 t_summary

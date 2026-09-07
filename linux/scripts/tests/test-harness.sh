@@ -105,17 +105,38 @@ t_assert_contains() {
   case "$1" in *"$2"*) _t_pass ;; *) _t_fail "${3:-missing substring}: '$2' not in '$1'" ;; esac
 }
 
-# t_assert_ok <command...>  — command must succeed
-t_assert_ok() {
-  _T_RUN=$((_T_RUN + 1))
-  if "$@" >/dev/null 2>&1; then _t_pass; else _t_fail "expected success: $*"; fi
+# Both take a COMMAND and no message, so `t_assert_fails test -f X "why"` runs
+# `test -f X why` -- which fails for the WRONG reason (bash: "too many arguments",
+# rc 2) and passes vacuously. Four of those were written and caught by review in
+# one wave; this is the harness catching the next one. Only `test`/`[` report a
+# usage error as rc 2, which is exactly the shape being caught.
+_t_usage_error() {
+  [ "$2" = "2" ] || return 1
+  case "$1" in test|'[') return 0 ;; *) return 1 ;; esac
 }
 
-# t_assert_fails <command...>  — command must fail
-t_assert_fails() {
+# Both assertions run the command the same way; only the verdict differs.
+# $1 = the rc that means PASS ("0" for t_assert_ok, anything else for t_assert_fails).
+_t_assert_run() {
+  local name="$1" want="$2" verdict="$3"; shift 3
+  local _rc=0
   _T_RUN=$((_T_RUN + 1))
-  if "$@" >/dev/null 2>&1; then _t_fail "expected failure: $*"; else _t_pass; fi
+  "$@" >/dev/null 2>&1 || _rc=$?
+  if _t_usage_error "$1" "${_rc}"; then
+    _t_fail "malformed test expression: $* -- ${name} takes a COMMAND and no message, so the message became an ARGUMENT and this verdict is about the wrong thing"
+  elif { [ "${want}" = "0" ] && [ "${_rc}" -eq 0 ]; } \
+    || { [ "${want}" != "0" ] && [ "${_rc}" -ne 0 ]; }; then
+    _t_pass
+  else
+    _t_fail "expected ${verdict}: $*"
+  fi
 }
+
+# t_assert_ok <command...>  — command must succeed
+t_assert_ok()    { _t_assert_run t_assert_ok 0 success "$@"; }
+
+# t_assert_fails <command...>  — command must fail
+t_assert_fails() { _t_assert_run t_assert_fails 1 failure "$@"; }
 
 t_summary() {
   local _unknown=0

@@ -198,6 +198,7 @@ Common development targets:
    geniex-local-ai-setup
    llm-benchmark-roadmap
    llm-benchmark-review-2026-09-05
+   nas-document-ai
    agentic-loop-build-matrix
    windows-agentic-loop
 
@@ -228,6 +229,7 @@ Common development targets:
    refactoring-backlog-archive-2026-08-31
    refactoring-backlog-archive-2026-09-02
    refactoring-backlog-archive-2026-09-03
+   refactoring-backlog-archive-2026-09-07
    windows-backlog-archive-2026-08-11
    windows-backlog-archive-2026-08-17
    windows-backlog-archive-2026-08-21

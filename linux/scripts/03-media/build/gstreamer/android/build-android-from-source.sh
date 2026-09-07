@@ -229,18 +229,11 @@ override_glib_libiconv_dep() {
 # Concurrency: override with JOBS, or tune ANDROID_GSTREAMER_PER_JOB_MB.
 PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
 
-if [ -z "${JOBS:-}" ]; then
-    JOBS="$(nproc --all)"
-    # Nothing pre-loads parallelism.sh here. Mirrors media_jobs() but keeps the
-    # configurable per-job cap instead of its fixed 2000 MB.
-    if [ -f /opt/scripts/core/parallelism.sh ]; then
-        # shellcheck disable=SC1091
-        source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-        if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-            JOBS="$(compute_jobs_with_mem_cap "" "${PER_JOB_MB}")"
-        fi
-    fi
-fi
+# The preamble sourced at the top of this file owns the on-demand load and the
+# fallback; ANDROID_GSTREAMER_PER_JOB_MB is why media_jobs takes a cap at all.
+# The only behaviour this gave up is `nproc --all` in the no-parallelism.sh
+# fallback, which the android image never takes (it ships /opt/scripts/core).
+[ -n "${JOBS:-}" ] || JOBS="$(media_jobs "${PER_JOB_MB}")"
 
 export JOBS
 export CMAKE_BUILD_PARALLEL_LEVEL="${JOBS}"

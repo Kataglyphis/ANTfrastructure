@@ -253,7 +253,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
     VULKAN_SDK=/opt/vulkan/active \
-    VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
+    VK_LAYER_PATH=/opt/vulkan/active/share/vulkan/explicit_layer.d \
     # Cache dirs are 01-core/compiler-cache.sh's defaults, re-declared because
     # the parent's image config does not survive the rootfs-export context this
     # stage is built on. /workspace is the CONSUMER's bind mount, never ours.

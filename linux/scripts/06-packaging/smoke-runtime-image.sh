@@ -908,6 +908,51 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
+# HT4's structural half. The sdk stage's self-containment walk checks non-LLVM
+# NEEDED sonames against the BUILDER's ldconfig cache, so a soname present there
+# and absent here ships a binary that cannot start: liblldb was the instance,
+# taking lldb, lldb-dap and lldb-mcp -- 3 of amd64's 142 -- and only a
+# RUNTIME-side check catches the next one.
+# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+check_llvm_target_startable() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local out
+
+    echo "--- Functional: /usr/local/llvm-target/bin starts ---"
+    out="$(_rt_run bash -lc 'set -uo pipefail
+d=/usr/local/llvm-target/bin
+[ -d "$d" ] || { echo "ABSENT"; exit 0; }
+n=0; b=0
+for f in "$d"/*; do
+  [ -f "$f" ] && [ -x "$f" ] || continue
+  n=$((n+1))
+  nf="$(ldd "$f" 2>/dev/null | awk "/=> not found/{print \$1}" | sort -u | tr "\n" " ")"
+  [ -n "$nf" ] && { printf "  BROKEN %s -> %s\n" "$f" "$nf"; b=$((b+1)); }
+done
+printf "COUNT %s %s\n" "$b" "$n"' 2>&1)" || true
+
+    printf '%s\n' "${out}" | grep -e '^  BROKEN ' || true
+    case "${out}" in
+      *ABSENT*)
+        echo "  WARN /usr/local/llvm-target/bin absent in the ${target_arch} image -- nothing to check"
+        echo ""
+        return 0 ;;
+    esac
+    local broken total
+    broken="$(printf '%s\n' "${out}" | sed -n 's/^COUNT \([0-9]*\) [0-9]*$/\1/p' | tail -1)"
+    total="$(printf '%s\n' "${out}" | sed -n 's/^COUNT [0-9]* \([0-9]*\)$/\1/p' | tail -1)"
+    if [ -z "${total}" ]; then
+      fail "the ${target_arch} llvm-target walk printed no COUNT -- the probe did not run, which is not the same as a clean prefix"
+    elif [ "${broken:-1}" -gt 0 ]; then
+      fail "${broken} of ${total} /usr/local/llvm-target/bin binaries have an unresolved NEEDED in the ${target_arch} image -- \
+the sdk stage resolved them against the BUILDER's ldconfig cache (see BROKEN lines above)"
+    else
+      echo "  OK  0 of ${total} llvm-target binaries have an unresolved NEEDED (${target_arch})"
+    fi
+    echo ""
+}
+
 # ── HT1: the shipped artifact trees must carry THIS image's arch ─────────────
 # artifact-source is the BUILDER's image, so a tree INSTALLED on the host instead of
 # cross-built ships x86_64 into the arm64/riscv64 runtime image -- rustup (2 GB, exit
@@ -2011,22 +2056,46 @@ except AttributeError:
 
 # A cross-built SDK prefix that carries libraries but no tools links fine and is
 # useless to build an application with -- that shipped for months unnoticed because
-# every Vulkan check here asked about the loader. REQUIRED is the set proven to
-# cross-build; the rest is reported so a silent loss is still visible.
-# docs/vulkan-foreign-arch-sdk.md
-_VK_REQUIRED_TOOLS="glslangValidator spirv-opt spirv-val spirv-dis spirv-as spirv-link"
-_VK_REPORTED_TOOLS="glslc vulkaninfo spirv-cross spirv-reflect spirv-lint spirv-reduce"
+# every Vulkan check here asked about the loader, and then for months more because
+# the tools it did ask about were a WARN. REQUIRED is the set both foreign lanes
+# SHIPPED (measured 2026-09-05/07, 19 installs plus the glslangValidator alias);
+# REPORTED is what VK2's four remaining components will add, warned about until a
+# lane proves them and then promoted here.
+# docs/vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up
+_VK_REQUIRED_TOOLS="glslang glslangValidator glslc spirv-as spirv-cfg spirv-cross spirv-diff spirv-dis spirv-lesspipe.sh spirv-link spirv-lint spirv-objdump spirv-opt spirv-reduce spirv-reflect spirv-reflect-pp spirv-val vkcube vkcubepp vulkaninfo"
+_VK_REPORTED_TOOLS="gfxrecon-info gfxrecon-replay slangc vulkanCapsViewer"
+
+# <arch>:<tools in bin>:<layer manifests>, both as ">=N" floors measured on shipped
+# bytes. amd64 carries the downloaded LunarG SDK (52 tools) and the foreign arches
+# the cross build (20). A count BELOW its floor fails; a count above it prints the
+# new floor to record, because "it shipped 2 of 52 for months" is exactly what a
+# number nobody asserted looks like.
+_VK_TOOLSET_FROZEN="amd64:>=52:>=1 arm64:>=20:>=4 riscv64:>=20:>=4"
+
+# Prints "<tools> <layers>" for this arch, empty when the arch has no row.
+_vk_toolset_floor() {
+  local entry
+  for entry in ${_VK_TOOLSET_FROZEN}; do
+    case "${entry}" in
+      "$1:"*) printf '%s %s' "$(echo "${entry}" | cut -d: -f2 | tr -d '>=')" \
+                             "$(echo "${entry}" | cut -d: -f3 | tr -d '>=')"; return 0 ;;
+    esac
+  done
+  return 1
+}
 
 check_vulkan_toolset() {
   local image_tag="$1"
   local target_arch="$2"
-  local out missing found layer
+  local out missing found layer tools layers floor floor_tools floor_layers
 
     echo "--- Functional: Vulkan SDK toolset ---"
     out="$(_rt_run /bin/sh -c '
       for t in '"${_VK_REQUIRED_TOOLS} ${_VK_REPORTED_TOOLS}"'; do
         [ -x "${VULKAN_SDK}/bin/${t}" ] && echo "TOOL ${t}"
       done
+      echo "TOOLS $(ls "${VULKAN_SDK}"/bin 2>/dev/null | wc -l)"
+      echo "LAYERS $(ls "${VULKAN_SDK}"/share/vulkan/explicit_layer.d/*.json 2>/dev/null | wc -l)"
       ls "${VULKAN_SDK}"/share/vulkan/explicit_layer.d/*validation*.json >/dev/null 2>&1 \
         && echo LAYER yes' 2>&1)" || true
 
@@ -2048,11 +2117,38 @@ the prefix carries libraries the linker is happy with but nothing you can build 
       printf '%s' "${out}" | grep -qx "TOOL ${t}" \
         || echo "  WARN ${t} absent from the ${target_arch} SDK prefix -- non-fatal"
     done
+
+    tools="$(printf '%s\n' "${out}" | sed -n 's/^TOOLS \([0-9]*\)$/\1/p' | tail -1)"
+    layers="$(printf '%s\n' "${out}" | sed -n 's/^LAYERS \([0-9]*\)$/\1/p' | tail -1)"
     layer="$(printf '%s' "${out}" | grep -c '^LAYER yes' || true)"
+    # `read < <(fn)` would report failure on the last line with no newline, which
+    # reads exactly like "no row" -- take the value first, then split it.
+    if floor="$(_vk_toolset_floor "${target_arch}")"; then
+      read -r floor_tools floor_layers <<< "${floor}"
+      _vk_floor_verdict "${target_arch}" tools "${tools:-0}" "${floor_tools}"
+      _vk_floor_verdict "${target_arch}" "layer manifests" "${layers:-0}" "${floor_layers}"
+    else
+      fail "no _VK_TOOLSET_FROZEN row for ${target_arch} -- a new arch has to record its floor, not inherit silence"
+    fi
     [ "${layer}" -gt 0 ] \
       && echo "  OK  validation layer manifest present (${target_arch})" \
-      || echo "  WARN no validation layer manifest in the ${target_arch} SDK -- non-fatal"
+      || fail "no validation layer manifest in the ${target_arch} SDK prefix -- \
+the layers are what the whole foreign-arch SDK exercise was for (docs/vulkan-foreign-arch-sdk.md)"
     echo ""
+}
+
+# One frozen floor, judged: below fails, above says what to record.
+_vk_floor_verdict() {
+  local target_arch="$1" what="$2" have="$3" floor="$4"
+
+  if [ "${have}" -lt "${floor}" ]; then
+    fail "the ${target_arch} Vulkan SDK prefix carries ${have} ${what}, below its frozen floor of ${floor} -- \
+the target SDK only ratchets up (docs/vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up)"
+  elif [ "${have}" -gt "${floor}" ]; then
+    echo "  OK  ${have} ${what} (${target_arch}) -- RATCHET: floor ${floor} -> ${have}, record it in _VK_TOOLSET_FROZEN"
+  else
+    echo "  OK  ${have} ${what} (${target_arch}), at the frozen floor"
+  fi
 }
 
 # The ABI /opt/android is compiled for, asserted against the ABI the image says it
@@ -2304,6 +2400,7 @@ main() {
     check_rust_toolchain "${image_tag}" "${target_arch}"
     check_consumer_contract "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
+    check_llvm_target_startable "${image_tag}" "${target_arch}"
     check_manifest_tree_arch "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"

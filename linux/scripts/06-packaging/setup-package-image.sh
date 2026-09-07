@@ -594,12 +594,100 @@ install_web_lane_toolchain() {
         version="${name#*:}"
         name="${name%%:*}"
         [ -n "${version}" ] || { echo "WARN: no version pinned for ${name}; skipping"; continue; }
+        if install_web_lane_prebuilt "${name}" "${version}"; then
+            continue
+        fi
         if "${cargo}" install --locked "${name}" --version "${version}"; then
             echo "OK: ${name} ${version} installed"
         else
             echo "WARN: cargo install ${name} ${version} failed; the web lane will build it per run"
         fi
     done
+}
+
+# Upstream's own release asset for this machine, or empty when there is none.
+# Both projects publish linux-musl for x86_64 and aarch64 and nothing for
+# riscv64. docs/consumer-image-contract.md#the-web-lane-toolchain
+_web_lane_asset_url() {
+    local name="$1" version="$2" target="$3"
+
+    case "${name}" in
+        wasm-pack)
+            printf 'https://github.com/rustwasm/wasm-pack/releases/download/v%s/wasm-pack-v%s-%s.tar.gz' \
+                "${version}" "${version}" "${target}" ;;
+        flutter_rust_bridge_codegen)
+            printf 'https://github.com/fzyzcjy/flutter_rust_bridge/releases/download/v%s/flutter_rust_bridge_codegen-%s-v%s.tgz' \
+                "${version}" "${target}" "${version}" ;;
+    esac
+}
+
+# The versions.env pin matching that asset. An arch with no pin installs nothing
+# unverified -- it falls back to the from-source build, which crates.io checksums.
+# The package stage does not load versions.env wholesale, but 01-core is COPYd
+# into the image, so the authority for the pins travels with the scripts.
+_web_lane_asset_sha() {
+    local key=""
+
+    case "$1:$2" in
+        wasm-pack:x86_64)                    key=WASM_PACK_LINUX_X86_64_SHA256 ;;
+        wasm-pack:aarch64)                   key=WASM_PACK_LINUX_AARCH64_SHA256 ;;
+        flutter_rust_bridge_codegen:x86_64)  key=FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 ;;
+        flutter_rust_bridge_codegen:aarch64) key=FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256 ;;
+        *) return 0 ;;
+    esac
+    if [ -n "${!key:-}" ]; then
+        printf '%s' "${!key}"
+        return 0
+    fi
+    sed -n "s/^${key}=//p" "${VERSIONS_ENV:-/opt/scripts/core/versions.env}" 2>/dev/null | head -1
+}
+
+# A verified download instead of ~200 crates compiled under QEMU. Returns
+# non-zero for anything the caller should build from source instead: no asset
+# for this machine, no pinned hash, a failed download or a tarball without the
+# binary in it. docs/consumer-image-contract.md#the-web-lane-toolchain
+install_web_lane_prebuilt() {
+    local name="$1" version="$2"
+    local machine target url sha tmp dir found
+
+    machine="$(uname -m)"
+    case "${machine}" in
+        x86_64)  target="x86_64-unknown-linux-musl" ;;
+        aarch64) target="aarch64-unknown-linux-musl" ;;
+        *) echo "NOTE: no ${name} release binary for ${machine}; building it from source"; return 1 ;;
+    esac
+
+    url="$(_web_lane_asset_url "${name}" "${version}" "${target}")"
+    sha="$(_web_lane_asset_sha "${name}" "${machine}")"
+    [ -n "${url}" ] || return 1
+    if [ -z "${sha}" ]; then
+        echo "WARN: no SHA256 pinned for ${name}/${target}; refusing unverified bytes, building from source"
+        return 1
+    fi
+    if ! declare -F download_verified_file >/dev/null 2>&1; then
+        # shellcheck disable=SC1091
+        source /opt/scripts/core/downloads.sh 2>/dev/null || return 1
+    fi
+
+    dir="$(mktemp -d)" || return 1
+    tmp="${dir}/asset"
+    if ! download_verified_file "${url}" "${sha}" "${tmp}"; then
+        echo "WARN: ${name} ${version} prebuilt did not download/verify; building from source"
+        rm -rf "${dir}"; return 1
+    fi
+    # wasm-pack ships the binary under a version-named directory, frb at the top
+    # level -- take whichever layout arrived rather than assuming one.
+    if ! tar -xzf "${tmp}" -C "${dir}"; then
+        echo "WARN: ${name} ${version} prebuilt would not unpack; building from source"
+        rm -rf "${dir}"; return 1
+    fi
+    found="$(find "${dir}" -type f -name "${name}" -perm -u+x -print -quit)"
+    if [ -z "${found}" ] || ! install -m 0755 "${found}" "${CARGO_HOME:?}/bin/${name}"; then
+        echo "WARN: ${name} ${version} prebuilt carried no ${name} binary; building from source"
+        rm -rf "${dir}"; return 1
+    fi
+    rm -rf "${dir}"
+    echo "OK: ${name} ${version} installed from the upstream ${target} release binary"
 }
 
 main() {
