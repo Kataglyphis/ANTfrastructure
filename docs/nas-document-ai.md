@@ -337,3 +337,69 @@ cited above came from business or engineering corpora; a German household NAS
 may be 60-70 % scans. That would not change the architecture, but it would
 invert the emphasis: the OCR bake-off would belong on days 1-2 and everything
 else behind it. The census settles this too, which is why it is day 1.
+
+## 9. First measurements (2026-09-07) — the shortlist meets the hardware
+
+The first live document-VLM measurements ever taken on this host. Harness:
+a scratchpad probe in the `bench_docs.py` mould (synthetic German corpus,
+exact ground truth, self-tested graders with negative tests — 29 checks —
+adversarially hardened before any model ran). Corpus: 4 families
+(`kie_invoice_de`, `table_csv`, `transcribe_de`, `absent_field`) × 3 seeds,
+rot-1.2°/JPEG-45 degradations on seed 1, a text twin per seed — 32 cases per
+model, A4 @ 200 dpi, temperature 0, one repeat. Raw replies, summary,
+grader snapshot and regrade notes:
+[`../linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/`](../linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/).
+Serving: **the running GenieX v0.6.1 CPU lane (18184), per-request model
+swap** — `geniex pull --model-type vlm` wires the mmproj itself, closing § 7's
+blocking unknown. No new lane was needed.
+
+### Quality (image cases, CPU lane)
+
+| family | GLM-OCR 0.9B Q8_0 | Qwen3-VL-4B Q4_K_M |
+|---|---|---|
+| invoice KIE (field-F1) | **5/5, 1.000** | **5/5, 1.000** |
+| table (see regrade notes) | recognition 0.962–1.000, but single-space columns — needs a structuring stage | **5/5 CSV, 1.000 — own extraction** |
+| transcribe (CER) | **5/5, 0.010** | **5/5, 0.009** |
+| absent-IBAN fabrication trap | **5/5 — nothing invented** | **5/5 — nothing invented** |
+| text twins (task without image) | fails — recogniser only | passes (invoice/table 1.000; transcribe artifact-free after regrade) |
+| mean s/page (total · TTFT) | **332 · 293** | 460–500 · 399 |
+
+Both models read rotated and JPEG-degraded pages without a single dropped
+field, and neither fabricated an IBAN — on this (clean, rendered) corpus the
+fabrication trap never fired.
+
+### The compute matrix, measured
+
+| lane | verdict |
+|---|---|
+| CPU (18184) | the only lane that reads correctly — all numbers above |
+| GPU (18182) | **13× faster garbage**: multilingual token salad to the length cap, both models — the documented Adreno "fast garbage" pattern; a throughput-only benchmark would have ranked it best |
+| NPU, GGUF VLM (18181) | HTTP 500 in 0.2 s, both models; **the lane survives** (graceful refusal, not the QAIRT/GGUF crash). Encoder-on-HTP remains unmeasured — it needs a lane freshly started on a VLM |
+| NPU, QAIRT VLM | not re-tested; structurally blind for pages (§ 3) |
+| hybrid (18183) | untested — lane not running |
+
+### GenieX v0.6.1 defect found: byte-identical VLM repeat → empty stream
+
+A repeated, byte-identical VLM request returns an **instant empty SSE stream**
+(no delta, no `finish_reason`, ~0.1 s) — the v0.6.0 "reuse VLM KV via
+char-level prefix match" path. Reproduced across cases; a fresh image on the
+same lane answers normally. Worth filing upstream with this repro. Harness
+mitigations, kept: empty-stream-no-finish is graded **ERR** (transport, not
+model), and repeats flip one white-adjacent corner pixel so the prefix match
+cannot fire.
+
+### What this does and does not change
+
+The § 4 recommendation survives contact with the hardware, with one upgrade in
+confidence: **as the single outward GenieX endpoint, Qwen3-VL-4B is now
+measured, not argued** — 20/20 image cases including its own extraction, zero
+fabrication. GLM-OCR reads as well and ~30 % faster, but is a recogniser: its
+output needs the deterministic extraction stage, exactly as § 4 routes it.
+
+Honest limits: n = 5 per family separates nothing subtle (the suite's own
+`smallest_separable_rate` lesson); the corpus is rendered DejaVu, not real
+scans — real Behörden paper will be harder; one repeat (the lanes sample even
+at temperature 0); Qwen3-VL-**8B** and tesseract were not in this round; and
+~330–500 s/page on the CPU lane prices bulk OCR at roughly **150–250
+pages/day/lane** — reinforcing § 4: born-digital extraction first, VLM only
+for the residue.

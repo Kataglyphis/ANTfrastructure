@@ -6,6 +6,36 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — First document-VLM measurements: the shortlist meets the Snapdragon, and GenieX gives up a bug
+
+The first multimodal numbers this repo has ever produced, taken live over the
+running GenieX v0.6.1 CPU lane with per-request model swap — `geniex pull
+--model-type vlm` wires the mmproj itself, so no launcher change was needed.
+Corpus: 32 synthetic German cases (invoice KIE, table→CSV, transcription,
+absent-IBAN fabrication trap; rotation/JPEG degradations; text twins), exact
+ground truth, graders self-tested with negative checks before any model ran.
+Raw replies, summary, grader snapshot and regrade notes are committed under
+`linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/`; the findings
+are § 9 of [`docs/nas-document-ai.md`](docs/nas-document-ai.md).
+
+Headlines: **Qwen3-VL-4B Q4_K_M passed all 20 image cases at full score**
+(field-F1 1.0, table CSV 1.0 by its own extraction, CER 0.009, zero fabricated
+IBANs) at 460–500 s/page; **GLM-OCR 0.9B Q8_0 read equally well ~30 % faster**
+(332 s/page) but is a recogniser only — its single-space table output needs a
+structuring stage, and it fails every text twin. The compute matrix: CPU is
+the only correct VLM lane; the **GPU lane produced 13× faster garbage** (the
+documented Adreno pattern — a throughput-only benchmark would have ranked it
+best); the NPU lane refuses GGUF VLMs with a clean HTTP 500 (no crash);
+hybrid untested. Two pipeline artifacts were caught by the suite's own
+same-failure-everywhere rule and re-graded from the archived raw replies, not
+by editing live graders — see `regrade-notes.md`.
+
+**GenieX v0.6.1 defect, repro in hand:** a byte-identical VLM repeat returns
+an instant empty SSE stream (no delta, no finish_reason) via the v0.6.0
+"reuse VLM KV via char-level prefix match" path; a fresh image answers
+normally. Report upstream; until then the harness grades empty-stream-no-finish
+as transport ERR and busts the prefix cache with a one-pixel change per repeat.
+
 ## 2026-09-07 — The NAS census tool
 
 [`docs/nas-document-ai.md`](docs/nas-document-ai.md) § 6 called the corpus
