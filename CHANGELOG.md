@@ -6,6 +6,298 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — First document-VLM measurements: the shortlist meets the Snapdragon, and GenieX gives up a bug
+
+The first multimodal numbers this repo has ever produced, taken live over the
+running GenieX v0.6.1 CPU lane with per-request model swap — `geniex pull
+--model-type vlm` wires the mmproj itself, so no launcher change was needed.
+Corpus: 32 synthetic German cases (invoice KIE, table→CSV, transcription,
+absent-IBAN fabrication trap; rotation/JPEG degradations; text twins), exact
+ground truth, graders self-tested with negative checks before any model ran.
+Raw replies, summary, grader snapshot and regrade notes are committed under
+`linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/`; the findings
+are § 9 of [`docs/nas-document-ai.md`](docs/nas-document-ai.md).
+
+Headlines: **Qwen3-VL-4B Q4_K_M passed all 20 image cases at full score**
+(field-F1 1.0, table CSV 1.0 by its own extraction, CER 0.009, zero fabricated
+IBANs) at 460–500 s/page; **GLM-OCR 0.9B Q8_0 read equally well ~30 % faster**
+(332 s/page) but is a recogniser only — its single-space table output needs a
+structuring stage, and it fails every text twin. The compute matrix: CPU is
+the only correct VLM lane; the **GPU lane produced 13× faster garbage** (the
+documented Adreno pattern — a throughput-only benchmark would have ranked it
+best); the NPU lane refuses GGUF VLMs with a clean HTTP 500 (no crash);
+hybrid untested. Two pipeline artifacts were caught by the suite's own
+same-failure-everywhere rule and re-graded from the archived raw replies, not
+by editing live graders — see `regrade-notes.md`.
+
+**GenieX v0.6.1 defect, repro in hand:** a byte-identical VLM repeat returns
+an instant empty SSE stream (no delta, no finish_reason) via the v0.6.0
+"reuse VLM KV via char-level prefix match" path; a fresh image answers
+normally. Report upstream; until then the harness grades empty-stream-no-finish
+as transport ERR and busts the prefix cache with a one-pixel change per repeat.
+
+## 2026-09-07 — The NAS census tool
+
+[`docs/nas-document-ai.md`](docs/nas-document-ai.md) § 6 called the corpus
+"the largest unknown and the cheapest to close"; now the closer exists.
+[`linux/llm-stack/nas_census.py`](linux/llm-stack/nas_census.py) walks a tree
+and answers day 1's question: **the four numbers** (total PDF pages, scanned
+fraction, German fraction, table density) and the gate — scanned+image-only
+under ~10 % of classified pages makes the VLM a footnote. Per-extension and
+per-category counts are stdlib-only; PDF pages classify born-digital /
+degenerate-layer / image-only / sparse via PyMuPDF, which is optional and
+**skips visibly** when absent — the summary and JSON say SKIPPED rather than
+reporting a fabricated zero scanned pages. In the same spirit: table density
+prints `not measured` until `--tables`, page sampling (`--page-sample`, 40)
+announces how many PDFs it extrapolated, and `--max-files` truncation is
+loud in both outputs. Language is a documented de/en stopword heuristic
+that admits "undecided" instead of guessing. 44 offline tests in
+[`linux/llm-stack/tests/test_nas_census.py`](linux/llm-stack/tests/test_nas_census.py)
+pin every classification gate on both sides of its threshold, and three new
+`census.*` entries in [`docs/scripts/mutations.json`](docs/scripts/mutations.json)
+prove the text gate, the degenerate check and the 10 % gate can each fail.
+
+## 2026-09-07 — YB answered from the log that already had the numbers, and the backlog re-groomed
+
+**The sccache cache IS being hit, and `--show-stats` was never missing.** The YB
+entry said the counters were not in the chain's output. They are:
+`dump_compiler_cache_stats` has been wired as an EXIT trap in `media_common_init`
+all along, and the 2026-09-05 arm64 media log carries **88** dumps. What made it
+look absent is that **79 of them report zero requests** — they are the t≈0
+snapshot `setup_ccache` prints before the first object, and a reader scrolling
+past a wall of zeros concludes there is nothing to read. The nine that ran after
+real compiles, paired requests→hits: **3104→2732 (88.0 %)**, 1335→763 (57.2 %),
+500→499 (99.8 %), 402→365 (90.8 %), 201→201 (100 %), with **zero errors**
+anywhere — the counter `build-cache-tiers.md` calls impossible on a broken cache.
+One honest gap remains and needs no entry: that reading is from 2026-09-05 and
+the socket-address line is from the 2026-09-07 `--only runtime` run, which
+compiles almost nothing, so no single lane has printed both yet. The next
+compile-heavy chain does, with nobody doing anything.
+
+**`docs/refactoring-backlog.md` re-groomed.** Its header still said "THIS FILE IS
+A BUILD-WATCH LIST, AND THE BUILD IS RUNNING" for a build that finished two days
+ago, and APP1 was still titled as open although its own last line says CLOSED.
+Every entry now carries its verdict, and *Next up* is one item long: **run a
+compile-heavy chain**, because everything this wave landed — VK2's four
+components, VK3's floors, DISK3's image lever, CS3's prebuilt download, R1.1's
+llvm-target walk — is proven by gates and unit suites on an idle tree and by
+nothing that compiled a target. The entries name exactly which log line settles
+each one.
+
+## 2026-09-07 — F3: two clone families get an owner, two get a verdict
+
+**`media_jobs` takes its cap as an argument.** The name has two definitions on
+purpose — one assumes `media_common_init` pre-loaded `parallelism.sh`, the other
+sources it on demand — and both hardcoded 2000 MB, which is exactly why the
+android gstreamer lane kept a third copy of the whole block for its own
+`ANDROID_GSTREAMER_PER_JOB_MB` of 1500. Both take `[cap_mb]` now, defaulting to
+2000, and the lane calls `media_jobs "${PER_JOB_MB}"`. `test-media-jobs.sh` pins
+that the two defaults agree and that the cap reaches `compute_jobs_with_mem_cap`
+unchanged. The one behaviour given up is named rather than glossed: the inline
+copy used `nproc --all` in the no-`parallelism.sh` fallback, a path the android
+image never takes because it ships `/opt/scripts/core`.
+`build-app-wheelhouse.sh` keeps its own copy on purpose — it prefers
+`compute_cpp_heavy_jobs` (4 GB for torch's aten TUs), a different ladder rather
+than a different cap.
+
+**`sync_versions.py`'s two syncers share one owner.**
+`_update_dockerfile_args_inner` and `_update_script_defaults_inner` were the same
+algorithm over two syntaxes. `_rewrite_lines` owns the `newline=''` round trip
+(the repo freezes per-file EOLs, so universal-newline translation would rewrite
+whole files to the host's) and the write-only-when-changed rule; `_unquote` owns
+the single-quote-pair strip both needed. `test-version-snapshot.sh` gained the
+`--write` case its `--check` characterisation never had: the second run must
+repair nothing and must not touch the file's mtime — asserted at nanosecond
+resolution, because both runs land in the same second.
+
+**Two families were judged instead of changed, per consumer.** The
+host-compiler-preference fallback in `ffmpeg-probe-framework.sh` is LIVE (its only
+route to the canonical helper is `media_common_init`'s
+`source_module … || true`, which tolerates an absent module), while
+`android-build-preamble.sh`'s is DEAD in the image (`Dockerfile.android:96` COPYs
+the canonical file in) and live only on a host checkout — the same shape the
+`gstreamer-env`/`libcamera-env` pair was kept for. And `prune-safe.sh` ↔
+`disk-guard.sh` has no owner available at all: `prune-safe.sh` runs `main` on
+load and cannot be sourced.
+
+**The unsuppression cascade is now recorded three times** — the log-bootstrap
+extraction, the ORT summary, and DISK3's `_disk_guard_lever_ready`, which sent
+five budgets down and then back up as the corpus shifted. Every one was re-read
+and recorded; `MAX_OWNERS` was not widened.
+
+## 2026-09-07 — F1: the harness stops passing vacuously, and the registry-cache drop gets its characterisation
+
+**The harness caught the trap that four assertions fell into.** `t_assert_ok`
+and `t_assert_fails` take a COMMAND and no message, so
+`t_assert_fails test -f X "why"` ran `test -f X why` — which exits **2**, i.e.
+"not zero", i.e. exactly the failure the case was asking for, for entirely the
+wrong reason. Four of those were written and caught by review in one wave and
+nothing in the harness could see them. Both assertions now share
+`_t_assert_run`, which fails the case BY NAME when the command is `test`/`[`
+and the rc is 2. The guard is deliberately narrow — a real command that exits 2
+is still judged on its exit code — and a mutation widening it to every rc 2 is
+caught. `test-harness-guards.sh` holds it in 12 assertions; the whole suite
+corpus was re-run against the stricter harness and nothing relied on the old
+behaviour.
+
+**The registry-cache drop is covered.** `_cross_stage_build_impl`'s ghcr
+cache-import drop (2026-08-18: the IMPORT is itself the failing read, so a retry
+that keeps `type=registry` re-reads the same broken blob) had no test at all —
+`grep -rn DeadlineExceeded linux/scripts/tests/` returned nothing. Five cases
+now drive the real loop with a log file whose tail carries the flake text and
+assert the argv of EACH attempt: the registry pair survives the first hit, is
+gone from the third on, stays gone, and the LOCAL export plus the caller's own
+args survive with it; a transient push error that is not a cache-import read
+costs nothing. Two things the characterisation had to learn are worth keeping:
+with a log file set, the impl pipes `run` into `tee` and the left side of a pipe
+is a SUBSHELL, so an in-process attempt counter never leaves it — the argv log
+is the only honest record; and `cross_stage_log_redirect` is defined by the
+subject, so a stub for it must be applied AFTER the source, which is what the
+shared `restubs.sh` is for. The extraction F1 wanted next is now unblocked.
+
+## 2026-09-07 — R1: the residue four closed entries left, three fixed and one re-measured
+
+**A runtime-side `ldd` walk over the shipped LLVM prefix.** The sdk stage's
+self-containment walk resolves non-LLVM `NEEDED` sonames against the BUILDER's
+ldconfig cache, so a soname present there and absent in the runtime ships a
+binary that cannot start — `liblldb` was the instance, taking `lldb`,
+`lldb-dap` and `lldb-mcp`, 3 of amd64's 142, past every green run.
+`check_llvm_target_startable` walks `/usr/local/llvm-target/bin` INSIDE the
+image and fails on any unresolved `NEEDED`, naming the binaries. A probe that
+did not run is not a clean prefix: no `COUNT` line fails rather than reading as
+zero broken, which is the difference between this gate and the one it backs up.
+
+**`VK_LAYER_PATH` named a directory that has never existed.**
+`Dockerfile.package` and `04-runtime/runtime-paths.env` both pointed at
+`/opt/vulkan/active/etc/vulkan/explicit_layer.d`; SDK 1.4.357 puts explicit
+layers in `<arch>/share/vulkan/explicit_layer.d` and no arch prefix has an
+`etc/` at all. Both now name the real path. The reason it looked harmless is
+measured and written down: the entrypoint sources LunarG's `setup-env.sh`,
+which unsets `VK_LAYER_PATH` and exports `VK_ADD_LAYER_PATH`, so the variable
+is empty in every running image — this is the value a consumer that does not
+source that script gets.
+
+**LOG14's ~390 s/lane re-measured against a real log.** From the 2026-09-05
+arm64 SDK lane's own `~~~Building X~~~` timestamps, the five components the old
+cross-lane skip list named cost the host build **381 s** (ValidationLayers
+195.8, shaderc 119.5, SPIRV-Cross 61.7, Vulkan-Tools 34.5, volk 1.8, VMA 2.5).
+The arithmetic was right; the claim around it was not, because `./vulkansdk`
+fetched and partly built them anyway and the images carried the source trees
+regardless. VK1 deleted the skip list, and the lane now pays those 381 s for
+components it actually ships.
+
+**A disarmed dead-function row no longer reads as a revived function.** The
+unlinked-definer arm goes STALE whenever any corpus file starts naming BOTH
+definers' basenames, under a heading that says "the function is called again or
+gone" — and neither half is true. `quality_allow.check_keys` grew a
+`describe_stale` hook (every other gate unchanged), and the dead-function gate
+now names the file that disarmed the arm, the two basenames, and states that
+the function is not called again. Rows that went stale for a real reason stay
+plain: the explanation fires only where ONE file could load BOTH definitions,
+and a mutation flipping that `and` to an `or` is caught.
+
+## 2026-09-07 — The disk guard learns about the third store, and its two eviction loops become one
+
+**DISK3.** On 2026-09-05 the chain reported `NOTHING was reclaimable` at 28G
+free while `~/.local/share/containerd` held **295 GB**, three `cross-android-*`
+images from a PREVIOUS run among them at 41.5 / 41.8 / 38.0 GB. It was right
+that it could not free anything and wrong that nothing was reclaimable:
+`disk-guard.sh` had no image listing at all, so its two levers were spent while
+its third, larger one was invisible. That run needed four manual rescues.
+
+`_disk_guard_image_store_fallback` is that lever, and the **ordering constraint
+is enforced rather than documented**: it takes a `stage_in_flight` argument and
+refuses BY NAME when it is set, because `nerdctl image prune -f` killed the
+arm64 runtime lane on 2026-09-06 by removing a blob mid-`unpacking overlayfs`.
+The in-stage sampler passes 1 and can therefore never pull it; the two gates
+that run between runs pass 0. Two steps in risk order — dangling images first
+(no `-a`, 20 GB on its own in that run), then this chain's own
+`cross-<stage>-<arch>` tags minus the stages still to build AND the one just
+completed, which is the next stage's parent under the local OCI handoff. Size is
+not the metric: deleting the three `cross-sdk-*` images (80 GB nominal) freed
+zero bytes because their layers are held by the android images on top, so the
+lever measures free space after EACH removal and logs what each one actually
+freed. `CROSS_IMAGE_PRUNE=0` disables it. The give-up warning now names the
+store it did not look in and says *stop the lane, then reclaim*.
+
+Two loop-safety properties are proven, not assumed: an attempted tag joins the
+protected set (a tag still listed after its own `rmi` would be the head of the
+candidate list forever), and the loop is bounded by construction as well —
+`_DISK_GUARD_IMAGE_MAX_REMOVALS`, because a loop whose only stop condition is
+bookkeeping hangs when the bookkeeping is wrong, and a hung guard inside a chain
+is worse than one that gives up early.
+
+**F1's named eviction-loop debt closed with it.** `_chain_stage_disk_guard` held
+two near-identical loops — free-space-driven and cap-driven — that the backlog
+had named as debt "wanting one `_evict_until <predicate>`". They now share
+`_chain_evict_slugs`, taking a measure function, a keep-going predicate and two
+variable NAMES: the protected list has to be a nameref because an undeletable
+slug must JOIN it, and the number is an out-variable because the function logs on
+stdout. cc 30 → 21 in that guard, and the anti-spin protection lives in one place
+instead of two. Eight mutations hold the new arms, including both spin defects
+and the by-value copy that would silently re-introduce one.
+
+## 2026-09-07 — The foreign Vulkan SDK gets its last four components, and a floor it cannot fall through
+
+**VK2 — the four that did not cross-build all had a route, and one of them was
+not the route the entry named.** `vulkan-profiles` failed on
+`find_package(valijson)` because `jsoncpp` and `valijson` are built by
+`./vulkansdk` into `source/<comp>/build/install` and had no row of their own;
+both are rows in `_VK_TARGET_COMPONENTS` now, ahead of the components that
+resolve them. `gfxreconstruct` reported `Could NOT find ZSTD / X11 / OpenGL /
+JsonCpp` **with those dev packages already unpacked for the target** — multiarch
+puts them in `/usr/lib/<triplet>`, and `find_library` only looks there when
+`CMAKE_LIBRARY_ARCHITECTURE` says so, which `_cross_build_sdk_component` now
+passes for every row. The genuinely missing half was GL, added to a new
+`target_optional_packages` set that goes in through
+`install_optional_target_packages`, so a ports arch that lacks one degrades a
+component rather than sinking the stage. `slang` died at `FAILED: [code=127]
+prelude/slang-cpp-host-prelude.h.cpp` — it cross-compiled its own generators and
+then tried to run them; the host `./vulkansdk` build already leaves them in
+`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
+points `SLANG_GENERATORS_PATH` there, the Canadian cross `llvm-cross.sh` has
+done for tblgen all along. `vulkanCapsViewer` gets `qt6-base-dev:${arch}` and
+`QT_HOST_PATH=/usr`. **`dxc` is deliberately not a row**: slang does not build
+DXC here, it fetches a prebuilt x86_64 binary, so there is no host tablegen to
+point at — cross-building it is an LLVM-sized job, recorded rather than faked.
+
+**VK3 — the target SDK can no longer shrink in silence.** The prefix shipped 2
+of 52 tools for months because `check_vulkan_toolset` required six names and
+*warned* about the rest, and a WARN in a green run is invisible.
+`_VK_REQUIRED_TOOLS` is now the twenty both foreign lanes shipped (nineteen
+installs plus the `glslangValidator` alias); `_VK_TOOLSET_FROZEN` freezes tool
+and layer-manifest counts PER ARCH (`amd64:>=52:>=1`, `arm64:>=20:>=4`,
+`riscv64:>=20:>=4`) so below fails, above prints the new floor to record, and an
+arch with no row fails instead of inheriting silence; the validation layer
+manifest moved from WARN to FAIL. One stage earlier, `_VK_REQUIRED_COMPONENTS`
+names the six whose loss is not optionality and `_vulkan_target_verdict` fails
+the SDK stage when one of them was attempted and failed — minutes in, not hours.
+The two `>=` rows are deliberate: VK2 raises the floor and inventing the
+post-VK2 number would be fabricating a measurement.
+
+**CS1 — owner decision: the Vulkan host prefix stays pruned.**
+`prune-vulkan-host-sdk.sh` keeps removing `/opt/vulkan/<ver>/x86_64` from the
+foreign images (a no-op on amd64, where that prefix is the downloaded SDK). No
+code changed; the decision makes the shipped state the intended one, and the
+tree-arch gate stays un-narrowed because the prune it depends on keeps running.
+
+**CS2 — the openh264 pin was right; the diagnosis was missing.** `2.5.1` is a
+published branch for both arches flathub builds (`dl.flathub.org` answers 200;
+`2.6.0` answers 404). openh264 is an extra-data ref, so a branch that does not
+exist and a payload that would not download read identically as "did not
+install". On a failure the installer now asks the remote which branches it
+publishes and prints them, in the run that hit it. The `(N/7)` count is derived
+from the ref list rather than a literal.
+
+**CS3 — a verified download instead of an hour of QEMU.** `wasm-pack` and
+`flutter_rust_bridge_codegen` cost 87 s / 113 s on amd64 but 768 s / ~1170 s on
+arm64 and 1813 s / 3500 s on riscv64. Where upstream publishes a `linux-musl`
+release binary (x86_64 and aarch64), the package stage downloads it and verifies
+it against a per-arch `*_SHA256` pin in `versions.env` — the shape sccache and
+binaryen already use. riscv64, a missing pin, a failed download or a tarball
+without the binary in it all fall back to `cargo install --locked`; nothing
+unverified is ever installed.
+
 ## 2026-09-07 — Cache.cmake and Tests.cmake stop warning past a requested-but-unsatisfiable tool
 
 Two warn-and-continue branches had survived the 2026-09-06 decision that a
@@ -401,6 +693,41 @@ green with them, against 779 before. The `Invoke-Tests.ps1` floor moved 762 →
 791 → 797 in the same window (both steps dated in its own comment). Docs:
 `docs/windows-builds.md`, `docs/adopting-in-a-new-project.md`,
 `docs/windows-container-build-performance.md`.
+
+## 2026-09-06 — The NAS document-AI question answered: a new page, and the benchmark's multimodal gap named precisely
+
+New page [`docs/nas-document-ai.md`](docs/nas-document-ai.md) (wired into
+`docs/index.rst` and `docs/INDEX.md`), produced by a 36-agent review
+(adversarially verified web research + live probes on this host). It answers
+"which multimodal model for the NAS" — GLM-OCR 0.9B shortlisted against
+PaddleOCR-VL-1.6 / LightOnOCR-2-1B / tesseract, Word/Excel routed to OOXML
+parsing with **no model**, and the decisive `bench_docs.py` bake-off specified
+in the suite's own idioms. Four findings recorded there correct existing
+pages rather than merely adding to them:
+
+- **The suite has zero multimodal capability** — all six request-building
+  sites hardcode `"content": <str>`; the review page's line-480 claim that
+  bench_vision "is an addition, not a new harness" is true of the HTTP
+  plumbing only.
+- **The Hexagon NPU cannot read a document page, structurally**: every QAIRT
+  VLM bundle for this chipset has a fixed 512x512 (or smaller) vision
+  encoder, and GenieX squashes A4 non-aspect-preserving to a square — the
+  4096 context was never the binding constraint. The `W*H/1024` token
+  formulas apply to the PyTorch models only. Also: the 2.93 GiB HTP budget is
+  per **context binary**, not per model, and a Qwen3-VL-8B w4a16 bundle for
+  X Elite exists — the QAIRT VLM catalogue is four models, not two.
+- **`summy-server` is this laptop itself** (mirrored networking); there is no
+  LAN box, and `backends.json`'s `ollama-lan` **and `control`** both point
+  back here at a port where nothing listens — the calibration backend is
+  dead. The host has **31.6 GiB** RAM, not ~16.
+- "CPU beats NPU ~2x" is decode-only and **inverts for document workloads**
+  (3.2 s vs 34 s prefill on a 3k-token prompt, § 1e of the GenieX page).
+
+Nothing outside `docs/` changed; the three config blockers the page names
+(`OLLAMA_FLASH_ATTENTION`, the missing `--mmproj` in
+`Start-GeniexServers.ps1`, the 6.09 GiB WSL2 cap) are recorded there as
+backlog, not fixed here.
+
 
 ## 2026-09-06 — Every PowerShell file renamed and version-pinned, the Linux lanes on 26.04, and the host stops receiving CMake state
 
@@ -2365,5 +2692,4 @@ Three bugs surfaced during the build, all fixed:
 
 4. **Smoke section 10 CPU floor** — floor was 5 but the CPU lane produces
    exactly 4 assertions (the 5th is a GPU-only CUDA check). Corrected to 4.
-
 

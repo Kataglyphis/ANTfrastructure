@@ -154,7 +154,7 @@
   {
     "id": "mutations.vacuous-bite",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "        if not baseline_ok(e, args.root, baselines):",
+    "find": "        if not base_ok:",
     "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
@@ -1970,8 +1970,8 @@
   {
     "id": "disk-guard.buildkit-trim-first",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  [ \"${before}\" -lt \"${target_gb}\" ] || return 0\n  _disk_guard_buildkit_ready",
-    "replace": "  _disk_guard_buildkit_ready",
+    "find": "  before=\"$(_disk_guard_lever_needed \"${path}\" \"${target_gb}\")\" || return 0\n  _disk_guard_buildkit_ready",
+    "replace": "  before=\"$(_disk_guard_free_gb \"${path}\")\"\n  _disk_guard_buildkit_ready",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
     "why": "the cheap trim runs first; the store is pruned only when it came up short"
   },
@@ -1994,18 +1994,18 @@
   {
     "id": "disk-guard.buildkit-prune-once",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "one prune per caller: a repeat walks the whole store and frees nothing"
+    "why": "one prune per caller: a repeat walks the whole store and frees nothing (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-missing-tool",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if ! command -v buildctl >/dev/null 2>&1; then",
+    "find": "  if ! command -v \"${tool}\" >/dev/null 2>&1; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "a host without buildctl must get the named SKIP, not a mystery"
+    "why": "a host without buildctl must get the named SKIP, not a mystery (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-unreachable-store",
@@ -2498,10 +2498,10 @@
   {
     "id": "disk-guard.prune-credit-per-caller",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
-    "replace": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt -1 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
+    "replace": "  if [ \"${prunes:-0}\" -gt -1 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space"
+    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "probe.advert-empty-table-is-vacuous",
@@ -3146,8 +3146,8 @@
   {
     "id": "disk-guard.stage-guard-episode",
     "target": "linux/scripts/build-cross-chain.sh",
-    "find": "      _disk_guard_reclaim_begin\n      while [",
-    "replace": "      while [",
+    "find": "      _disk_guard_reclaim_begin\n      _chain_evict_slugs",
+    "replace": "      _chain_evict_slugs",
     "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
     "why": "same latch, other gate: after the first between-stage prune every later stage would log `already pruned once here` and reclaim nothing"
   },
@@ -4538,8 +4538,8 @@
   {
     "id": "dead-functions.unlinked-tag",
     "target": "linux/scripts/verify_dead_functions.py",
-    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"))",
-    "replace": "+ \"\")",
+    "find": "+ (\"  [unlinked definer]\" if k in scoped else \"\"),",
+    "replace": "+ \"\",",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "the two arms ask for different fixes; an untagged row leaves the author guessing which one fired"
   },
@@ -6773,5 +6773,341 @@
     "replace": "",
     "test": "python3 -m pytest linux/llm-stack/tests/test_bench_review_fixes.py -q -k a_file_outside_the_source_is_a_loud_failure",
     "why": "a path the strip could not shorten was copied to $dst/$file — outside $dst for a relative source — and reported success"
+  },
+  {
+    "id": "census.text-gate-weakened",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "TEXT_CHARS_MIN = 50",
+    "replace": "TEXT_CHARS_MIN = 0",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_a_page_just_under_the_text_gate_is_not_born_digital",
+    "why": "with the text gate at zero every blank scan classifies born-digital and the scanned fraction the page's whole budget hangs on reads near zero"
+  },
+  {
+    "id": "census.degenerate-check-disabled",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "        if is_degenerate_text(text):",
+    "replace": "        if False:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_a_long_nul_ridden_text_layer_is_degenerate_not_born_digital",
+    "why": "a NUL-soup text layer counted as born-digital hides the documented paperless failure mode from the very census meant to surface it"
+  },
+  {
+    "id": "census.gate-threshold-inverted",
+    "target": "linux/llm-stack/nas_census.py",
+    "find": "    if fraction < GATE_SCANNED_MIN:",
+    "replace": "    if fraction >= GATE_SCANNED_MIN:",
+    "test": "python3 -m pytest linux/llm-stack/tests/test_nas_census.py -q -k test_the_gate_flips_exactly_at_ten_percent",
+    "why": "an inverted gate calls the VLM a footnote on exactly the corpora that need OCR measured first"
+  },
+  {
+    "id": "vulkan.cross-library-architecture",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      -DCMAKE_LIBRARY_ARCHITECTURE=\"${_xbuild_triplet}\" \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "without it find_library never looks in /usr/lib/<triplet>, so the TARGET's X11, XCB, ZSTD and OpenGL read as 'NOT found' with the dev packages installed -- the 2026-09-05 gfxreconstruct failure"
+  },
+  {
+    "id": "vulkan.required-component-is-fatal",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    die \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "replace": "    log \"REQUIRED Vulkan cross-component(s) failed for ${arch_suffix}",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "a lost loader/SPIRV-Tools/glslang/shaderc/Vulkan-Tools/ValidationLayers is a regression, not optionality; downgrading it to a log is how the prefix shipped 2 tools of 52 for months"
+  },
+  {
+    "id": "vulkan.dynamic-args-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    _vulkan_target_dynamic_args \"${label}\" \"${target_dir}\" \"${archdir}\" \"${triplet}\" dyn\n",
+    "replace": "    dyn=()\n",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the path-shaped flags a static table cannot carry: without the call slang cross-builds its own generators and runs them (exit 127) and the caps viewer never finds the target Qt6"
+  },
+  {
+    "id": "vulkan.slang-generators-must-exist",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      if [ -x \"${gen}/slang-embed\" ]; then",
+    "replace": "      if true; then",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "pointing SLANG_GENERATORS_PATH at a directory the host build never produced hands the cross configure a path with no generators in it, which fails later and further from the cause"
+  },
+  {
+    "id": "probe.vk-toolset-floor-below-fails",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${have}\" -lt \"${floor}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a prefix can keep every REQUIRED name and still lose tools; the frozen floor is the only thing that notices, and 2-of-52 is what that looks like"
+  },
+  {
+    "id": "probe.vk-toolset-frozen-row-required",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fail \"no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "replace": "      echo \"  WARN no _VK_TOOLSET_FROZEN row for ${target_arch}",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an arch with no frozen row would inherit silence -- exactly the shape that let the foreign prefixes ship unasserted"
+  },
+  {
+    "id": "probe.vk-layer-manifest-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      || fail \"no validation layer manifest in the ${target_arch} SDK prefix",
+    "replace": "      || echo \"  WARN no validation layer manifest in the ${target_arch} SDK prefix",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the layers are what the foreign-arch SDK exercise was for; as a WARN their loss is invisible in a green run"
+  },
+  {
+    "id": "package.webtools-prebuilt-needs-a-pin",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ -z \"${sha}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "without the pin check an unpinned arch downloads and installs release bytes nothing verified, which is strictly worse than the cargo build it replaces"
+  },
+  {
+    "id": "package.webtools-prebuilt-arch-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        *) echo \"NOTE: no ${name} release binary for ${machine}; building it from source\"; return 1 ;;",
+    "replace": "        *) target=\"${machine}-unknown-linux-musl\" ;;",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "upstream publishes no riscv64 asset; inventing the target name turns a from-source build into a 404 the lane discovers instead of a documented fallback"
+  },
+  {
+    "id": "packaging.flatpak-failed-ref-is-diagnosed",
+    "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+    "find": "            || { _flatpak_diagnose_ref \"${ref}\"",
+    "replace": "            || { :",
+    "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+    "why": "a published branch whose extra-data payload would not download and a branch that does not exist read identically as 'did not install'; the remote is the only thing that tells them apart"
+  },
+  {
+    "id": "disk-guard.image-lever-refuses-in-flight",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "  if [ \"${in_flight}\" = \"1\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "removing an image while a stage is unpacking pulls a blob out from under it -- that killed the arm64 runtime lane on 2026-09-06, and the sampler calls this lever on every sample"
+  },
+  {
+    "id": "disk-guard.image-lever-spares-protected-tags",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "        printf '%s\\n' \"${protected_nl}\" | grep -qxF -- \"${tag}\" && continue",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "without the filter the lever removes the stage image the NEXT stage builds FROM, which under the local OCI handoff is not re-pullable at all"
+  },
+  {
+    "id": "disk-guard.image-lever-tries-each-tag-once",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "    protected=\"${protected}\n${tag}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a tag still listed after its own rmi stays the head of the candidate list forever -- the loop spins for the rest of the run, which is the exact defect the cache-export victim loop already guards"
+  },
+  {
+    "id": "disk-guard.give-up-names-the-image-store",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "by itself. $(_disk_guard_image_store_hint)\"",
+    "replace": "by itself.\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "'NOTHING was reclaimable' reads like an environment limit; on 2026-09-05 it was a coverage gap with 295 GB in the store the guard never looked at"
+  },
+  {
+    "id": "chain-status.image-lever-wired-between-stages",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "        _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \\\n          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the between-stage guard is one of the two places nothing is in flight; unwired, the chain gives up on cache exports with the image store untouched"
+  },
+  {
+    "id": "chain-status.image-lever-protects-the-completed-stage",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0",
+    "replace": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the stage just completed is the NEXT stage's parent; dropping it from the protected set is how a local OCI handoff loses the image it is about to read"
+  },
+  {
+    "id": "chain-status.evict-protects-the-undeletable",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "      _prot_ref=\"${_prot_ref},${victim}\"",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "an undeletable slug that does not join the protected list stays the LRU pick forever and the eviction loop spins for the rest of the run"
+  },
+  {
+    "id": "chain-status.evict-protected-is-a-nameref",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  local -n _prot_ref=\"$2\"",
+    "replace": "  local _prot_ref=\"$2\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a by-value copy makes the anti-spin append invisible to the next pick_victim call -- the same spin, one level further from the symptom"
+  },
+  {
+    "id": "probe.llvm-target-startable-wired",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_llvm_target_startable \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a gate main() never calls is the shape this repo keeps finding: liblldb shipped 3 unstartable binaries past every green run"
+  },
+  {
+    "id": "probe.llvm-target-broken-is-fatal",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif [ \"${broken:-1}\" -gt 0 ]; then",
+    "replace": "    elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the sdk stage resolved these sonames against the BUILDER's ldconfig cache; a binary that cannot start in the shipped image is a defect, not a warning"
+  },
+  {
+    "id": "probe.llvm-target-empty-walk-is-not-clean",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if [ -z \"${total}\" ]; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "replace": "    if false; then\n      fail \"the ${target_arch} llvm-target walk printed no COUNT",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a probe that never ran prints no COUNT, and without this arm that reads exactly like a prefix with zero broken binaries"
+  },
+  {
+    "id": "dead-functions.stale-row-names-its-disarmer",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "                    describe_stale=lambda k: k.replace(\"\\t\", \"  \") + _stale_note(k, corpus_texts))",
+    "replace": "                    )",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the stale heading says 'the function is called again or gone'; for a disarmed unlinked row both halves are false, and the reader deletes a freeze that still holds"
+  },
+  {
+    "id": "dead-functions.disarmer-needs-both-basenames",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "            if base in text and pbase in text:",
+    "replace": "            if base in text or pbase in text:",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the arm is disarmed only when ONE file could load BOTH definitions; either basename alone names a file that cannot mask anything, so 'or' explains rows that were never disarmed"
+  },
+  {
+    "id": "gate-fixture.harness-catches-a-misused-assertion",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  [ \"$2\" = \"2\" ] || return 1",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "`t_assert_fails test -f X \"why\"` runs `test -f X why`, which exits 2 -- 'not zero', so the case passes for the wrong reason; four of those were written in one wave and nothing in the harness caught them"
+  },
+  {
+    "id": "gate-fixture.harness-guard-is-narrow",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "  case \"$1\" in test|'[') return 0 ;; *) return 1 ;; esac",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-harness-guards.sh",
+    "why": "only test/[ report a usage error as rc 2; treating every rc 2 as a misuse rewrites a real failure into a harness complaint"
+  },
+  {
+    "id": "cross-build.regcache-drop-after-two",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "      if [ \"${_regcache_fails}\" -ge 2 ]; then",
+    "replace": "      if [ \"${_regcache_fails}\" -ge 99 ]; then",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "the ghcr cache IMPORT is itself the failing read (2026-08-18), so a retry that keeps type=registry re-reads the same broken blob for the rest of the ladder"
+  },
+  {
+    "id": "cross-build.regcache-drop-keeps-local",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "            --cache-from:type=registry*|--cache-to:type=inline*)",
+    "replace": "            --cache-from:*|--cache-to:*)",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "widening the drop to every cache tier takes the LOCAL export with it, and the local cache is exactly what still fast-forwards the retry"
+  },
+  {
+    "id": "gst.media-jobs-default-cap",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    compute_jobs_with_mem_cap \"\" \"${1:-2000}\"",
+    "replace": "    compute_jobs_with_mem_cap \"\" 2000",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "a fixed 2000 is what forced the android gstreamer lane to keep its own copy of the whole block for one number"
+  },
+  {
+    "id": "gst.media-jobs-android-caller",
+    "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+    "find": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs \"${PER_JOB_MB}\")\"",
+    "replace": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs)\"",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "ANDROID_GSTREAMER_PER_JOB_MB exists because that lane OOMs at the generic budget; dropping it at the call site silently restores the 2000 MB it was tuned away from"
+  },
+  {
+    "id": "version-snapshot.sync-unquotes-once",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        return value[1:-1]",
+    "replace": "        return value",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "a quoted versions.env value (CUDA_ARCHITECTURES has to be quoted) re-quotes its target on every run, so --write is never idempotent and --check never goes green"
+  },
+  {
+    "id": "version-snapshot.sync-writes-only-on-change",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "    if not dry_run and changed:",
+    "replace": "    if not dry_run:",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "rewriting every scanned file on every --write churns files nothing changed in, and the shared owner is now the only place that decision lives"
+  },
+  {
+    "id": "lib.cgroup-remaining-clamps-at-zero",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "    [ \"${remaining}\" -lt 0 ] 2>/dev/null && remaining=0",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "usage above the limit makes remaining NEGATIVE, and a negative reads as the smallest cap in _mem_available_mb's min -- every job throttled by a number that is not memory"
+  },
+  {
+    "id": "lib.cgroup-unlimited-is-unknown",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "  { [ \"${max}\" -gt 0 ] && [ \"${max}\" -lt 9223372036854771712 ]; } 2>/dev/null || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "cgroup v1 spells 'no limit' as 0 or a kernel-huge number; taking either as a real limit caps the build at 0 MB or hands the caller a nonsense ceiling"
+  },
+  {
+    "id": "lib.cgroup-v1-is-reached",
+    "target": "linux/scripts/01-core/parallelism.sh",
+    "find": "  _cgroup_remaining_mb_from \"${root}/memory/memory.limit_in_bytes\" \\\n                            \"${root}/memory/memory.usage_in_bytes\" && return 0\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-parallelism.sh",
+    "why": "a cgroup v1 host would silently report no limit at all, which is how a memory-capped builder ends up choosing jobs for a machine it is not on"
+  },
+  {
+    "id": "handoff.manifest-build-region-is-guarded",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "    _manifest_build_and_smoke\n  else",
+    "replace": "    :\n  else",
+    "test": "bash linux/scripts/tests/test-manifest-wrapper-gate.sh",
+    "why": "unguarded there is nothing left to build the wrappers or smoke them, and the index would go live over whatever happened to be tagged"
+  },
+  {
+    "id": "handoff.manifest-build-phases-stay-inside",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  if [ \"${BUILD_IMAGES}\" -eq 1 ]; then\n    log \"Building ${ARTIFACT_BUILD_MODE}",
+    "replace": "  ensure_foreign_binfmt \"${TARGET_ARCHES}\"\n  if [ \"${BUILD_IMAGES}\" -eq 1 ]; then\n    log \"Building ${ARTIFACT_BUILD_MODE}",
+    "test": "bash linux/scripts/tests/test-manifest-wrapper-gate.sh",
+    "why": "a build-only phase that drifts back into main() runs on --manifest-only and --repair, which exist precisely NOT to build"
+  },
+  {
+    "id": "probe.opencv-riscv64-png-fails-early",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "genuinely acceptable.\" >&2\n        exit 1",
+    "replace": "genuinely acceptable.\" >&2\n        _otarp_opts+=(\"-DWITH_PNG=OFF\")",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "a PNG-less riscv64 OpenCV builds green and only surfaces as a red runtime smoke a stage later -- that fail-late footgun cost iree-0714a..e, which is why this exits instead of degrading"
+  },
+  {
+    "id": "probe.opencv-riscv64-freetype-says-what-is-missing",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "        echo \"[WARN] riscv64 OpenCV: static target harfbuzz not staged",
+    "replace": "        echo \"[WARN] riscv64 OpenCV: freetype off (",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "the WARN names each of the four files and whether it is there; without that the operator cannot tell a missing .a from a missing .pc, and the freetype module just silently is not there"
+  },
+  {
+    "id": "probe.opencv-riscv64-seams-are-wired",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "            _ota_riscv64_freetype _ota_cmake_opts\n            _ota_riscv64_png _ota_cmake_opts\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
+    "why": "two extracted helpers nothing calls are two functions' worth of riscv64 knowledge that stops reaching the cmake line -- the dead-function gate is what catches an extraction that forgot its call site"
   }
 ]

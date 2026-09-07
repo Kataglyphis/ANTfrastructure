@@ -25,7 +25,10 @@ STUBS
 cat > "${_work}/restubs.sh" <<'RESTUBS'
 _cross_stage_push_error_is_transient() { [ "${TRANSIENT:-0}" = "1" ]; }
 _cross_salvage_disk_ok() { [ "${DISK_OK:-1}" = "1" ]; }
-cross_stage_log_redirect() { printf ""; }
+# Empty by default -- most cases want no log file at all. FAKE_LOG_FILE gives the
+# retry loop a real one to tail, which is the only way to reach the registry-cache
+# drop below. It is re-stubbed AFTER the source because the subject defines it.
+cross_stage_log_redirect() { printf '%s' "${FAKE_LOG_FILE:-}"; }
 RESTUBS
 
 # One run of the function under stubs. $1 is shell to run instead of the default
@@ -117,6 +120,63 @@ t_assert_contains "$(_attempts PUSH=1 TRANSIENT=0 PUSH_MAX_ATTEMPTS=4)" "attempt
 t_case "a successful build runs once"
 t_assert_contains "$(_attempts PUSH=1 TRANSIENT=1 BUILD_RC=0)" "attempts=1" \
   "success returns immediately"
+
+# ── the registry-cache drop (F1) ─────────────────────────────────────────────
+# 2026-08-18: the ghcr cache IMPORT is itself the failing read, so a retry that
+# keeps `--cache-from type=registry` re-reads the same broken blob. After TWO
+# DeadlineExceeded/httpReadSeeker hits the loop drops the registry pair and keeps
+# the LOCAL cache. Nothing covered this path before: it needs a non-empty
+# log_file whose tail matches, and it mutates build_cmd and _regcache_fails
+# ACROSS retry iterations, which no single-shot argv assertion can see.
+RUNLINE='_cross_stage_build_impl 1 label repo/img:tag Dockerfile.x --extra >/dev/null 2>&1'
+# Every attempt appends its own argv to ARGV_LOG; the log_file the impl tails is
+# seeded with the flake text so `tail | grep` matches from the first failure.
+# $1 is the last line the build log ends on -- the retry loop tails it and only
+# the cache-import flake text arms the drop.
+_regcache() {
+  local tail_line="$1"; shift
+  : > "${_work}/argv.log"
+  printf '%s\n' "${tail_line}" > "${_work}/flake.log"
+  ARGV_LOG="${_work}/argv.log" FAKE_LOG_FILE="${_work}/flake.log" _impl '
+    is_dry_run() { return 1; }
+    tee() { cat >/dev/null; }
+    run() { printf "%s\n" "$*" >> "${ARGV_LOG}"; return 1; }' "$@"
+}
+_FLAKE='ERROR: failed to copy: httpReadSeeker: failed open: DeadlineExceeded'
+_NOT_FLAKE='ERROR: unexpected status: 502 Bad Gateway' 
+# $1 = 1-based attempt number -> that attempt's argv
+_argv_of() { sed -n "$1p" "${_work}/argv.log"; }
+
+# The count comes from the argv log, not from _N: with a log_file set, the impl
+# pipes `run` into tee, and the left side of a pipe is a SUBSHELL -- an in-process
+# counter never leaves it. That is also why the log file is the only honest record
+# of what each attempt was handed.
+_attempt_count() { grep -c . "${_work}/argv.log" 2>/dev/null || true; }
+
+t_case "the registry cache survives the FIRST flake -- one hiccup is not a verdict"
+_regcache "${_FLAKE}" PUSH=1 TRANSIENT=1 PUSH_MAX_ATTEMPTS=4 >/dev/null
+t_assert_eq "4" "$(_attempt_count)" "the retry ladder itself must be unaffected"
+t_assert_contains "$(_argv_of 1)" "cache-from type=registry" "attempt 1 reads the registry cache"
+t_assert_contains "$(_argv_of 2)" "cache-from type=registry" \
+  "one DeadlineExceeded can be a network blip; dropping the tier on it loses reuse for nothing"
+
+t_case "after the SECOND flake the registry pair is gone from every later attempt"
+t_assert_eq "0" "$(_argv_of 3 | grep -c 'cache-from type=registry' || true)" \
+  "the import is the failing read; retrying it re-reads the same broken blob"
+t_assert_eq "0" "$(_argv_of 3 | grep -c 'cache-to type=inline' || true)" \
+  "the inline export rides on the same registry ref"
+t_assert_eq "0" "$(_argv_of 4 | grep -c 'type=registry\|type=inline' || true)" \
+  "and it stays gone -- the counter does not reset per attempt"
+
+t_case "the LOCAL cache tier survives the drop"
+t_assert_contains "$(_argv_of 3)" "--cache-to type=local" \
+  "the local export is what still fast-forwards the retry; dropping it too would rebuild from scratch"
+t_assert_contains "$(_argv_of 3)" "--extra" "the caller's own args are not collateral"
+
+t_case "a flake-free failure keeps the registry cache for every attempt"
+_regcache "${_NOT_FLAKE}" PUSH=1 TRANSIENT=1 PUSH_MAX_ATTEMPTS=4 >/dev/null
+t_assert_contains "$(_argv_of 4)" "cache-from type=registry" \
+  "a transient push error that is NOT a cache-import read must not cost the tier"
 
 # ── the salvage pass ─────────────────────────────────────────────────────────
 printf 'FROM base AS alpha\nFROM alpha AS beta\nRUN :\n' > "${_work}/Dockerfile.salv"

@@ -114,48 +114,41 @@ _mem_available_mb() {
   fi
 }
 
+# Remaining memory under ONE cgroup generation's limit, in MB; returns non-zero
+# when that generation says "no limit" or is not mounted. The two generations
+# differ only in their file names and in how they spell unlimited -- v2 writes the
+# literal `max`, v1 a number at or above the kernel's effectively-infinite value --
+# so everything after that is the same arithmetic, written once.
+# docs/build-parallelism-memory-tuning.md
+_cgroup_remaining_mb_from() {
+  local max_file="$1" current_file="$2" max current="" remaining
+  [ -r "${max_file}" ] || return 1
+  max="$(cat "${max_file}" 2>/dev/null || printf '')"
+  # `max`, empty, or anything non-numeric is "this generation sets no usable
+  # limit". The digit test also keeps garbage out of the arithmetic below, which
+  # under errexit would kill the caller rather than fall through.
+  case "${max}" in ''|*[!0-9]*) return 1 ;; esac
+  { [ "${max}" -gt 0 ] && [ "${max}" -lt 9223372036854771712 ]; } 2>/dev/null || return 1
+
+  [ -r "${current_file}" ] && current="$(cat "${current_file}" 2>/dev/null || printf '')"
+  if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
+    remaining=$(( max - current ))
+    [ "${remaining}" -lt 0 ] 2>/dev/null && remaining=0
+    printf '%s\n' $(( remaining / 1024 / 1024 ))
+    return 0
+  fi
+  printf '%s\n' $(( max / 1024 / 1024 ))
+}
+
+# Approximate remaining memory under cgroup limits (MB), v2 first then v1.
+# Empty when neither is limited -- callers treat empty as "unknown, ignore".
+# CGROUP_ROOT exists for the unit suite: these are absolute kernel paths, and a
+# test that cannot point them somewhere else can only assert on this host's.
 _cgroup_mem_remaining_mb() {
-  # Returns approximate remaining memory under cgroup limits (in MB), if set.
-  # Works for cgroup v2 and v1. Returns empty if unlimited/unknown.
-  local max="" current="" remaining_bytes=""
-
-  # cgroup v2
-  if [ -r /sys/fs/cgroup/memory.max ]; then
-    max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || printf '')"
-    if [ -n "${max}" ] && [ "${max}" != "max" ] 2>/dev/null; then
-      if [ -r /sys/fs/cgroup/memory.current ]; then
-        current="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || printf '')"
-      fi
-      if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
-        remaining_bytes=$(( max - current ))
-        [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
-        printf '%s\n' $(( remaining_bytes / 1024 / 1024 ))
-        return 0
-      fi
-      printf '%s\n' $(( max / 1024 / 1024 ))
-      return 0
-    fi
-  fi
-
-  # cgroup v1
-  if [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
-    max="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || printf '')"
-    # Some kernels report a huge number when effectively unlimited.
-    if [ -n "${max}" ] && [ "${max}" -gt 0 ] 2>/dev/null && [ "${max}" -lt 9223372036854771712 ] 2>/dev/null; then
-      if [ -r /sys/fs/cgroup/memory/memory.usage_in_bytes ]; then
-        current="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || printf '')"
-      fi
-      if [ -n "${current}" ] && [ "${current}" -ge 0 ] 2>/dev/null; then
-        remaining_bytes=$(( max - current ))
-        [ "${remaining_bytes}" -lt 0 ] 2>/dev/null && remaining_bytes=0
-        printf '%s\n' $(( remaining_bytes / 1024 / 1024 ))
-        return 0
-      fi
-      printf '%s\n' $(( max / 1024 / 1024 ))
-      return 0
-    fi
-  fi
-
+  local root="${CGROUP_ROOT:-/sys/fs/cgroup}"
+  _cgroup_remaining_mb_from "${root}/memory.max" "${root}/memory.current" && return 0
+  _cgroup_remaining_mb_from "${root}/memory/memory.limit_in_bytes" \
+                            "${root}/memory/memory.usage_in_bytes" && return 0
   printf '%s\n' ""
 }
 

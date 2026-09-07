@@ -124,6 +124,23 @@ t_case "7/7 check_doc_literals — a /opt/gcc-<version> literal in prose"
 _red "stale gcc literal /opt/gcc-0.0.0" \
   AGENTS.md '1i See /opt/gcc-0.0.0 for the toolchain.'
 
+t_case "--write repairs the drift, and repairs NOTHING on the second run"
+# The --check half above never reaches the write path; both syncers share one
+# _rewrite_lines owner, and "write only when something changed" is the property
+# that keeps --write from churning every file it scans. F3 2026-09-07.
+_w="$(_farm linux/Dockerfile.base)"
+sed -i -e 's|^ARG CMAKE_VERSION=.*|ARG CMAKE_VERSION=0.0.0|' "${_w}/linux/Dockerfile.base"
+_w_out="$(python3 "${_w}/docs/scripts/sync_versions.py" --write 2>&1)"
+t_assert_contains "${_w_out}" "Synced Dockerfile ARG defaults in:" "the stale ARG must be repaired"
+t_assert_eq "0" "$(grep -c -e '^ARG CMAKE_VERSION=0.0.0' "${_w}/linux/Dockerfile.base" || true)" \
+  "the value itself, not just the report"
+_w_mtime="$(stat -c %.Y "${_w}/linux/Dockerfile.base")"
+_w_again="$(python3 "${_w}/docs/scripts/sync_versions.py" --write 2>&1)"
+t_assert_contains "${_w_again}" "Dockerfile ARG defaults already match versions.env." \
+  "a second --write must find nothing to do"
+t_assert_eq "${_w_mtime}" "$(stat -c %.Y "${_w}/linux/Dockerfile.base")" \
+  "a file nothing changed in must not be rewritten -- nanosecond mtime, because two runs land in the same second"
+
 t_case "8/8 the licence subprocess is ORed in, not merely run"
 # The generator is a separate program; its verdict decides the slug too.
 _lic="$(_farm docs/scripts/generate-website-licenses.py)"

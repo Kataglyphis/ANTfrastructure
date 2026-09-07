@@ -759,6 +759,30 @@ width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
 | `LIKELY OK` | under 5 % of them (a known-good file had 4 tensors) |
 | `RISKY` | i-quant-dominated — exit code 1 |
 
+### The NAS census (`nas_census.py`)
+
+Day 1 of [`docs/nas-document-ai.md`](../../docs/nas-document-ai.md) § 6:
+before any model is chosen, what is actually on the NAS? It walks a tree and
+publishes **the four numbers** — total PDF pages, scanned fraction, German
+fraction, table density — plus the gate: scanned+image-only under ~10 % of
+classified pages means the VLM is a footnote and the budget belongs to
+extraction + embeddings + retrieval.
+
+```bash
+python3 nas_census.py /mnt/nas                                   # summary only
+python3 nas_census.py /mnt/nas --output census.json --tables     # JSON archive + table density
+```
+
+Stdlib-only, with one optional dependency: `pip install pymupdf` enables PDF
+page classification (born-digital / degenerate-layer / image-only / sparse).
+Without it the extension census still runs and page classification is
+reported as **SKIPPED** — visibly, in the summary and the JSON, never as a
+fabricated zero scanned pages. Likewise table density says `not measured`
+until `--tables` asks for it, PDFs over `--page-sample` pages (default 40)
+are sampled evenly with the extrapolation announced, and `--max-files`
+truncation is loud. Walks are sorted, so two runs over the same tree diff
+cleanly.
+
 ### Backends
 
 Endpoints are named in `backends.json`, so neither the Ollama service nor a

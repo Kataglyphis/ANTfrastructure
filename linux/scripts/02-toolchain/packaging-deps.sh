@@ -303,6 +303,24 @@ _flatpak_refs() {
         "org.freedesktop.Platform.openh264//${openh264}"
 }
 
+# A ref that does not install has two very different causes that read the same in
+# "did not install": a branch flathub does not publish, or a published branch whose
+# payload the run could not fetch (openh264 is extra-data -- flatpak downloads the
+# binary from Cisco at install time). Ask the remote which one it was, in the run
+# that hit it, instead of leaving it to log archaeology.
+# docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+_flatpak_diagnose_ref() {
+    local ref="$1" name branches
+    name="${ref%%//*}"
+    branches="$(flatpak remote-ls flathub --arch="$(uname -m)" --columns=ref 2>/dev/null \
+        | grep -e "/${name}/" | sed 's#.*/##' | sort -u | tr '\n' ' ')"
+    if [ -n "${branches}" ]; then
+        warn "${ref}: flathub publishes ${name} for $(uname -m) at branch(es): ${branches}"
+    else
+        warn "${ref}: flathub lists no ${name} for $(uname -m) at all -- the ref NAME is wrong, not its branch"
+    fi
+}
+
 install_flatpak_runtime() {
     if ! command -v flatpak >/dev/null 2>&1; then
         warn "flatpak not found; skipping runtime/SDK installation"
@@ -330,17 +348,20 @@ install_flatpak_runtime() {
             https://dl.flathub.org/repo/flathub.flatpakrepo
     fi
 
-    local ref failed=0
+    local ref failed=0 total=0
     while IFS= read -r ref; do
         [ -n "${ref}" ] || continue
+        total=$((total + 1))
         info "Installing ${ref}"
         try_or_sudo flatpak install -y --noninteractive flathub "${ref}" \
-            || { warn "${ref} did not install; consumers will fetch it per run"; failed=$((failed + 1)); }
+            || { _flatpak_diagnose_ref "${ref}"
+                 warn "${ref} did not install; consumers will fetch it per run"
+                 failed=$((failed + 1)); }
     done <<EOF
 $(_flatpak_refs "${runtime_version}" "${openh264_version}")
 EOF
 
-    info "Flatpak runtime installation complete ($((7 - failed))/7 refs)"
+    info "Flatpak runtime installation complete ($((total - failed))/${total} refs)"
 }
 
 usage() {

@@ -116,6 +116,32 @@ t_case "the runtimes are ON by default: the shipped image had zero refs"
 t_assert_contains "$(grep -e 'INSTALL_FLATPAK_RUNTIMES=' "${SUBJECT}")" 'INSTALL_FLATPAK_RUNTIMES:-true' \
   "flatpak list --runtime returned ZERO in the shipped image; off by default is what put it there"
 
+t_case "a ref that fails to install asks the remote WHY, in the run that hit it"
+_diag="$(t_fn_src "${SUBJECT}" _flatpak_diagnose_ref)"
+_flatpak_remote_ls_stub() {
+  printf '%s\n' \
+    'runtime/org.freedesktop.Platform.openh264/x86_64/2.4.1' \
+    'runtime/org.freedesktop.Platform.openh264/x86_64/2.5.1' \
+    'runtime/org.freedesktop.Platform/x86_64/24.08'
+}
+_diag_run() {
+  bash -c '
+    warn() { printf "WARN %s\n" "$*"; }
+    uname() { printf "x86_64\n"; }
+    flatpak() { '"$1"'; }
+    '"${_diag}"'
+    _flatpak_diagnose_ref "$0"' "$2" 2>&1
+}
+t_assert_contains "$(_diag_run "$(declare -f _flatpak_remote_ls_stub | sed '1,2d;$d')" \
+  "org.freedesktop.Platform.openh264//9.9.9")" \
+  "branch(es): 2.4.1 2.5.1" \
+  "a branch that does not exist must be told apart from a payload that would not download"
+t_assert_contains "$(_diag_run "printf ''" "org.freedesktop.Platform.nosuch//1.0")" \
+  "the ref NAME is wrong, not its branch"
+# The helper is only worth having if the install loop actually calls it.
+t_assert_contains "$(t_fn_src "${SUBJECT}" install_flatpak_runtime)" '_flatpak_diagnose_ref "${ref}"' \
+  "a diagnosis nothing invokes leaves the next run with the same one-line WARN"
+
 t_case "an arch Flathub does not build for is skipped, not retried"
 _ifr="$(t_fn_src "${SUBJECT}" install_flatpak_runtime)"
 t_assert_contains "${_ifr}" "x86_64|aarch64" \
