@@ -969,117 +969,56 @@ is actually documented — the honest anchor the row said did not exist. Its
 call at the launcher-resolution site. `smoke-runtime-image.sh` also moved; its own row
 carries both lanes' reasons.
 
-### F3. Clone families worth one owner [S-M each]
+### F3. CLOSED — the four named families, two owned and two judged [done 2026-09-07]
 
-The gate reads `3544 units in 373 files, no block over 10 shared 12-token shingles
-(248 allowlisted pair(s); 845 shingle(s) suppressed as idiom at >6 owners)` on the
-2026-09-05 integrated tree. The decided/reviewed items (the source-or-fallback KEEP decision,
-the lint-tool and `lib/*` pairs reviewed-and-kept by measurement, the not-actionable
-Dockerfile mount preambles, and the `install-deps.sh` family) are in the 2026-09-03
-archive and in `docs/scripts/code-dupes.allow`.
+The decided/reviewed history (the source-or-fallback KEEP decision, the lint-tool
+and `lib/*` pairs, the Dockerfile mount preambles, the `install-deps.sh` family,
+and the three extractions of 2026-09-04/05: the `lib/*` logging preamble, the ORT
+end-of-stage summary, the ffmpeg↔pyav launcher twin) is in the 2026-09-03 archive
+and in [`code-dupes.allow`](scripts/code-dupes.allow). **That file is the
+authority for every verdict below — read the row, not this summary.**
 
-**CLOSED 2026-09-04 — the `lib/*.sh` 14-line logging preamble.** One owner now,
-`lib/log-bootstrap.sh`, sourced by all nine libraries; net −132 lines, three
-mutations (`lib.log-bootstrap-*`) holding it. **The mechanism, the two libraries
-that keep a `_*_CORE_DIR` anyway, the two historical drifts and the answer to this
-entry's own "bootstrap paradox" objection are owned by
-[`shared-script-libraries.md`](shared-script-libraries.md#the-logging-bootstrap) —
-read it there, do not restate it here.** The one thing worth repeating in a
-duplication entry: no duplication gate could ever have found this, because at nine
-owners every shingle of the block landed in the `suppressed as idiom at >6 owners`
-bucket. That is what made a backlog row necessary instead of a gate finding.
+**OWNED 2026-09-07 — `media_jobs` takes its cap as an argument.** The name has two
+definitions on purpose (`03-media/core/common.sh` assumes `media_common_init`
+pre-loaded `parallelism.sh`; `android-build-preamble.sh` sources it on demand),
+and BOTH hardcoded 2000 MB — which is why the android gstreamer lane kept a third
+copy of the whole block for its own `ANDROID_GSTREAMER_PER_JOB_MB` of 1500. Both
+now take `[cap_mb]` defaulting to 2000, and `build-android-from-source.sh` calls
+`media_jobs "${PER_JOB_MB}"`. `test-media-jobs.sh` pins that both defaults agree
+and that the cap reaches `compute_jobs_with_mem_cap` unchanged; two mutations hold
+it. **The one behaviour given up is named**: the inline copy used `nproc --all`
+in the no-`parallelism.sh` fallback, a path the android image never takes because
+it ships `/opt/scripts/core`. `build-app-wheelhouse.sh` keeps its own copy on
+purpose — it prefers `compute_cpp_heavy_jobs` (4 GB, torch's aten TUs), which is a
+different ladder, not a different cap.
 
-**The gate bookkeeping that extraction owed, and what it exposed.** Dropping the
-preamble below `MAX_OWNERS = 6` unsuppressed 5 pairs that had been invisible (891 →
-801 suppressed shingles) — exactly what this entry predicted. All five were read and
-recorded in `code-dupes.allow` rather than re-suppressed. They are a genuinely
-different family, the **defensive logger**: `command -v` not `declare -F`, bare
-`[INFO]`/`[WARN]` with no ANSI, no `err()`, no attempt to load `logging.sh`, longest
-run 2–3 lines. It **cannot** adopt `lib/log-bootstrap.sh`: `lib/` is deliberately in
-no Dockerfile while all three of those files are inside the build closure.
+**OWNED 2026-09-07 — `sync_versions.py`'s two syncers.** `_update_dockerfile_args_inner`
+and `_update_script_defaults_inner` were the same algorithm over two syntaxes.
+`_rewrite_lines` owns the `newline=''` round trip and the write-only-when-changed
+rule; `_unquote` owns the one-quote-pair strip both needed; each syncer is now its
+own per-line decision and nothing else. Outside the build closure, so it was safe
+to cut, and `test-version-snapshot.sh` gained a `--write` case: the second run
+must repair nothing and must not even touch the file's mtime.
 
-**CLOSED 2026-09-05 — the ORT end-of-stage summary.** One block of 23 shingles in
-four files (`30-build-native.sh`, `-amd`, `-nvidia`, `60-build-genai.sh`) is now
-`report_onnx_build_output` in
-`03-media/build/onnxruntime/build/lib/common.sh`, beside its sibling
-`finalize_onnx_native_output`. **The family had already drifted** — `-amd` listed
-libraries with `sed -n '1,20p'` where the other three used `head -20` — which is
-exactly what one owner prevents. The bookkeeping that extraction owed is the part
-worth reading: three budgets lowered (31→20, 34→13, 34→18), two rows deleted as
-stale, and **two budgets RAISED with both files unchanged**
-(`compiler-cache.sh`↔`build-gcc.sh` 36→38, `build-armnn.sh`↔`build-opencv.sh` 13→14)
-because dropping three copies pushed shingles below the >6-owner idiom cutoff and
-UNSUPPRESSED those pairs — the same effect the log-bootstrap extraction recorded on
-2026-09-04. Both were re-read and recorded, not re-suppressed.
+**JUDGED, not changed — the host-compiler-preference family.** Per-consumer, the
+way the `gstreamer-env`↔`libcamera-env` question was answered: `build-ffmpeg.sh`
+reaches the canonical helper only through `media_common_init`'s
+`source_module compiler-resolution.sh || true`, which tolerates an absent module,
+so `ffmpeg-probe-framework.sh`'s inline ladder is **live** on a host checkout;
+`Dockerfile.android:96` COPYs the canonical file into `/opt/scripts/core`, so the
+preamble's fallback is **dead in the image** and live only on a host checkout.
+KEEP both — a fallback that duplicates the thing it stands in for is not a copy,
+it is a fallback, and deleting one is a build-closure edit no gate can prove.
 
-**A second unsuppression to expect the next time a copy is dropped.** This is now
-twice in two waves. Any extraction that takes a block from >6 owners to ≤6 will
-reveal pairs that were never findings, and the honest response is to read and record
-them, never to re-suppress by widening `MAX_OWNERS`.
+**JUDGED — `prune-safe.sh` ↔ `disk-guard.sh` has no owner available.**
+`prune-safe.sh` runs `main` on load and therefore cannot be sourced; extracting
+the shared `buildctl prune` command means restructuring a host-config script
+operators run by hand. The `x1000` half is no longer a guess: `buildctl prune
+--help` documents `--keep-storage` in MB.
 
-**CLOSED 2026-09-05 — the `build-ffmpeg.sh`↔`build-pyav.sh` launcher twin.** One
-owner, `media_compiler_launcher` in `03-media/core/common.sh`, beside `media_jobs`.
-The pair fell 21 → 4 shared shingles and its `code-dupes.allow` row was DELETED as
-below-threshold. Two things worth keeping from how it went: the owner takes an
-**out-variable name and prints nothing**, because a `$(…)` caller runs
-`compiler_cache_launcher_env` in a subshell and throws away the server address it just
-exported — the exact YB defect, re-created and caught before shipping. And the two
-copies had **already drifted**: ffmpeg tested `USE_CCACHE` with an inline deny-list,
-pyav with the canonical `is_truthy`. The owner uses `is_truthy`; the sole behavioural
-delta is `USE_CCACHE=y` in the ccache-fallback arm, which is unreachable from these
-two scripts and which no Dockerfile or `.env` sets.
-
-**The host-compiler-preference family is still recorded-not-owned:**
-`compiler-resolution.sh` / `android-build-preamble.sh` / `ffmpeg-probe-framework.sh`,
-29 shingles across 4 sites, and its own allow row already says it "wants one owner".
-
-**Two families read and recorded, neither changed:**
-
-- **`strip_elf_tree`** (`build-helpers.sh:160` / `bootstrap.sh:41` /
-  `build-gcc.sh:825`, 27 shingles). The owner already exists and its own comment says
-  it centralises this pattern; `bootstrap.sh`'s copy is the legitimate
-  source-or-fallback half. **`build-gcc.sh:833` is the one caller that never
-  converted AND is not equivalent** — it filters `-type f -executable` plus an ELF
-  executable-or-shared-object awk, while the owner takes `-type f` plus `/ELF/`. So
-  converting it means either giving `strip_elf_tree` a filter argument or accepting
-  that a WIDER set of files gets stripped in the shipped toolchain. Build closure;
-  only a real toolchain stage shows what changes in the bytes.
-- **`media_jobs`** (`android-build-preamble.sh:77` /
-  `build-android-from-source.sh:236` / `build-app-wheelhouse.sh:76`, 26 shingles).
-  Not the shared idiom the pair row called it: the NAME HAS TWO DEFINITIONS —
-  `03-media/core/common.sh:221` (assumes `media_common_init` pre-loaded
-  `parallelism.sh`) and `android-build-preamble.sh:77` (a strict superset that
-  sources it on demand) — and `build-android-from-source.sh` sources the preamble at
-  line 6 and then re-implements the function inline anyway, its own comment admitting
-  it "Mirrors media_jobs() but keeps the configurable per-job cap".
-  `build-app-wheelhouse.sh` is a fourth copy at 4096 MB. The fix is one
-  `media_jobs [cap_mb]` defaulting to 2000, arithmetically identical for all 14
-  callers — but two same-named definitions mean **last source wins** wherever both
-  are in scope, nothing covers `media_jobs` today, and only a stage shows which one
-  the android lanes actually get.
-
-**One open question answered 2026-09-03-style, per-RUN, and recorded in its row.**
-The `gstreamer-env` ↔ `libcamera-env` pair asked "is the fallback still reachable at
-all". `libcamera-env.sh` has exactly ONE consumer, `04-runtime/entrypoint.sh`, whose
-base carries `Dockerfile.package:285 COPY linux/scripts/01-core/ /opt/scripts/core/`
-— `path-helpers.sh` IS there, so that fallback is **dead**. `gstreamer-env.sh` has
-four: the same entrypoint (dead), `Dockerfile.media:913` and `:965` which bind-mount
-`01-core` entire (dead), and `setup-gstreamer.sh:420` / `build-libcamera.sh:86`
-which source it by repo-relative path on a host checkout where `/opt/scripts` does
-not exist — **live**. Verdict: KEEP both. They are one 27-line block, deleting half
-is a build-closure edit no gate can prove, and the branch costs one `[ -f ]` per
-container start.
-
-**Two overlaps observed while reviewing that no gate currently flags.**
-`docs/scripts/sync_versions.py`'s `_update_dockerfile_args_inner` and
-`_update_script_defaults_inner` are the same algorithm over two syntaxes (outside
-the closure). And `prepare_host_cargo_toolchain_env` overlaps the host half of
-`_gst_rs_cargo_config`, which calls it when defined (inside the closure). Both are
-dupes-gate questions, not complexity ones.
-
-**One duplication with no code owner and no way to get one.**
-`linux/host-config/prune-safe.sh` and `01-core/disk-guard.sh` both know the filtered
-`buildctl prune` command and the GB→MB convention, because `prune-safe.sh` runs
-`main` on load and therefore cannot be sourced. The `x1000` half of it is no longer a
-guess: `buildctl prune --help` documents `--keep-storage` in MB, so `keep_gb * 1000`
-really is ~120 GB. Extracting the rest means restructuring a `host-config` script.
+**The unsuppression cascade is now recorded three times.** Every extraction that
+takes a block from more than six owners to fewer reveals pairs that were never
+findings — the log-bootstrap extraction (2026-09-04), the ORT summary
+(2026-09-05), and DISK3's `_disk_guard_lever_ready` (2026-09-07, five budgets
+re-measured). The honest response is to read and record them, never to widen
+`MAX_OWNERS`.

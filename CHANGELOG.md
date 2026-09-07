@@ -6,6 +6,47 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — F3: two clone families get an owner, two get a verdict
+
+**`media_jobs` takes its cap as an argument.** The name has two definitions on
+purpose — one assumes `media_common_init` pre-loaded `parallelism.sh`, the other
+sources it on demand — and both hardcoded 2000 MB, which is exactly why the
+android gstreamer lane kept a third copy of the whole block for its own
+`ANDROID_GSTREAMER_PER_JOB_MB` of 1500. Both take `[cap_mb]` now, defaulting to
+2000, and the lane calls `media_jobs "${PER_JOB_MB}"`. `test-media-jobs.sh` pins
+that the two defaults agree and that the cap reaches `compute_jobs_with_mem_cap`
+unchanged. The one behaviour given up is named rather than glossed: the inline
+copy used `nproc --all` in the no-`parallelism.sh` fallback, a path the android
+image never takes because it ships `/opt/scripts/core`.
+`build-app-wheelhouse.sh` keeps its own copy on purpose — it prefers
+`compute_cpp_heavy_jobs` (4 GB for torch's aten TUs), a different ladder rather
+than a different cap.
+
+**`sync_versions.py`'s two syncers share one owner.**
+`_update_dockerfile_args_inner` and `_update_script_defaults_inner` were the same
+algorithm over two syntaxes. `_rewrite_lines` owns the `newline=''` round trip
+(the repo freezes per-file EOLs, so universal-newline translation would rewrite
+whole files to the host's) and the write-only-when-changed rule; `_unquote` owns
+the single-quote-pair strip both needed. `test-version-snapshot.sh` gained the
+`--write` case its `--check` characterisation never had: the second run must
+repair nothing and must not touch the file's mtime — asserted at nanosecond
+resolution, because both runs land in the same second.
+
+**Two families were judged instead of changed, per consumer.** The
+host-compiler-preference fallback in `ffmpeg-probe-framework.sh` is LIVE (its only
+route to the canonical helper is `media_common_init`'s
+`source_module … || true`, which tolerates an absent module), while
+`android-build-preamble.sh`'s is DEAD in the image (`Dockerfile.android:96` COPYs
+the canonical file in) and live only on a host checkout — the same shape the
+`gstreamer-env`/`libcamera-env` pair was kept for. And `prune-safe.sh` ↔
+`disk-guard.sh` has no owner available at all: `prune-safe.sh` runs `main` on
+load and cannot be sourced.
+
+**The unsuppression cascade is now recorded three times** — the log-bootstrap
+extraction, the ORT summary, and DISK3's `_disk_guard_lever_ready`, which sent
+five budgets down and then back up as the corpus shifted. Every one was re-read
+and recorded; `MAX_OWNERS` was not widened.
+
 ## 2026-09-07 — F1: the harness stops passing vacuously, and the registry-cache drop gets its characterisation
 
 **The harness caught the trap that four assertions fell into.** `t_assert_ok`

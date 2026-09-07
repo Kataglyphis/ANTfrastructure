@@ -523,6 +523,41 @@ _ARG_NAME_ALIASES_WINDOWS: dict[str, tuple[str, str]] = {
 }
 
 
+def _unquote(value: str) -> str:
+    """Strip ONE surrounding quote pair. versions.env values may carry them (e.g.
+    CUDA_ARCHITECTURES, which has to be quoted because an unquoted `;` runs its own
+    tail on a plain `source`); leaving them in re-quotes the target on every run,
+    so nothing is ever idempotent."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def _rewrite_lines(file_path: Path, dry_run: bool, rewrite) -> bool:
+    """Round-trip a file line by line, replacing the ones `rewrite(line)` answers
+    with a new line (None = leave it alone). Returns True when anything changed;
+    writes only when it did and dry_run is False.
+
+    newline='' preserves each line's own terminator through the round trip: the
+    repo freezes per-file line endings (-text; windows files are CRLF, linux LF),
+    and universal-newline translation here would rewrite whole files to the host's
+    EOL. Both syncers below are this walk plus one per-line decision."""
+    with open(file_path, encoding="utf-8", newline="") as fh:
+        lines = fh.read().splitlines(keepends=True)
+    changed = False
+    for i, line in enumerate(lines):
+        new_line = rewrite(line)
+        if new_line is None:
+            continue
+        changed = True
+        if not dry_run:
+            lines[i] = new_line
+    if not dry_run and changed:
+        with open(file_path, "w", encoding="utf-8", newline="") as fh:
+            fh.write("".join(lines))
+    return changed
+
+
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
     aliases = dict(_ARG_NAME_ALIASES)
@@ -538,33 +573,22 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         if key in versions
     }}
     version_vars = set(versions.keys())
-    # newline='' preserves each line's own terminator through the round-trip: the repo
-    # freezes per-file line endings (-text; windows Dockerfiles are CRLF, linux LF), so
-    # universal-newline translation here would rewrite whole files to the host's EOL.
-    with open(file_path, encoding="utf-8", newline="") as fh:
-        original = fh.read()
-    lines = original.splitlines(keepends=True)
-    changed = False
-    for i, line in enumerate(lines):
+
+    def rewrite(line: str) -> str | None:
         m = _ARG_LINE_RE.match(line)
         if not m:
-            continue
+            return None
         var_name = m.group(2)
         if var_name not in version_vars:
-            continue
+            return None
         # Never rewrite substitution defaults (ARG X=${Y%...}): those are
         # computed in-Dockerfile from another ARG, and a literal would clobber
         # the derivation. Belt+braces against a future versions.env key
         # colliding with such an ARG name (mirrors verify-arg-consistency.sh's
         # '${'* skip).
         if m.group(3).startswith("${"):
-            continue
-        env_val = versions[var_name]
-        # versions.env values may carry surrounding quotes (e.g. CUDA_ARCHITECTURES);
-        # strip them so the quote style below comes from the ARG line alone --
-        # otherwise a quoted env value re-quotes on every run (never idempotent).
-        if len(env_val) >= 2 and env_val[0] == env_val[-1] and env_val[0] in "\"'":
-            env_val = env_val[1:-1]
+            return None
+        env_val = _unquote(versions[var_name])
         old_raw = m.group(3)
         if old_raw.startswith('"') and old_raw.endswith('"'):
             formatted = f'"{env_val}"'
@@ -573,17 +597,13 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         else:
             formatted = env_val
         if old_raw == formatted:
-            continue
-        if not dry_run:
-            # Splice only the value; line[m.end(3):] preserves everything after
-            # it — a trailing `# comment`, trailing whitespace, and the line's
-            # own EOL (CRLF or LF) — instead of dropping the tail.
-            lines[i] = f"{m.group(1)}{var_name}={formatted}{line[m.end(3):]}"
-        changed = True
-    if not dry_run and changed:
-        with open(file_path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(''.join(lines))
-    return changed
+            return None
+        # Splice only the value; line[m.end(3):] preserves everything after it —
+        # a trailing `# comment`, trailing whitespace, and the line's own EOL
+        # (CRLF or LF) — instead of dropping the tail.
+        return f"{m.group(1)}{var_name}={formatted}{line[m.end(3):]}"
+
+    return _rewrite_lines(file_path, dry_run, rewrite)
 
 
 def check_dockerfile_args(versions: dict[str, str]) -> int:
@@ -632,40 +652,29 @@ def script_default_target_files() -> list[Path]:
 
 def _update_script_defaults_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
-    # newline='' round-trips each line's own terminator (frozen per-file EOLs).
-    with open(file_path, encoding="utf-8", newline="") as fh:
-        original = fh.read()
-    lines = original.splitlines(keepends=True)
-    changed = False
-    for i, line in enumerate(lines):
+    def rewrite(line: str) -> str | None:
         if "Get-SourceBuildVersion" not in line:
-            continue
+            return None
         m_def = _SCRIPT_DEFAULT_RE.search(line)
         m_env = _SCRIPT_ENVVARS_RE.search(line)
         if not m_def or not m_env:
-            continue
+            return None
         env_names = re.findall(r"'([^']+)'", m_env.group(1))
         # The first listed env var that versions.env defines is the canonical pin
         # (e.g. OpenCV lists OPENCV_SOURCE_VERSION first but versions.env's key is
         # OPENCV_VERSION).
         key = next((n for n in env_names if n in versions), None)
         if key is None:
-            continue
-        expected = versions[key]
-        if len(expected) >= 2 and expected[0] == expected[-1] and expected[0] in "\"'":
-            expected = expected[1:-1]
+            return None
+        expected = _unquote(versions[key])
         # Mirror Get-SourceBuildVersion's -StripVPrefix (-replace '^v', '').
         if "-StripVPrefix" in line and expected.startswith("v"):
             expected = expected[1:]
         if m_def.group(1) == expected:
-            continue
-        if not dry_run:
-            lines[i] = line[: m_def.start(1)] + expected + line[m_def.end(1):]
-        changed = True
-    if not dry_run and changed:
-        with open(file_path, "w", encoding="utf-8", newline="") as fh:
-            fh.write("".join(lines))
-    return changed
+            return None
+        return line[: m_def.start(1)] + expected + line[m_def.end(1):]
+
+    return _rewrite_lines(file_path, dry_run, rewrite)
 
 
 def check_script_defaults(versions: dict[str, str]) -> int:

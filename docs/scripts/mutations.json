@@ -6965,5 +6965,37 @@
     "replace": "            --cache-from:*|--cache-to:*)",
     "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
     "why": "widening the drop to every cache tier takes the LOCAL export with it, and the local cache is exactly what still fast-forwards the retry"
+  },
+  {
+    "id": "gst.media-jobs-default-cap",
+    "target": "linux/scripts/03-media/core/common.sh",
+    "find": "    compute_jobs_with_mem_cap \"\" \"${1:-2000}\"",
+    "replace": "    compute_jobs_with_mem_cap \"\" 2000",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "a fixed 2000 is what forced the android gstreamer lane to keep its own copy of the whole block for one number"
+  },
+  {
+    "id": "gst.media-jobs-android-caller",
+    "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+    "find": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs \"${PER_JOB_MB}\")\"",
+    "replace": "[ -n \"${JOBS:-}\" ] || JOBS=\"$(media_jobs)\"",
+    "test": "bash linux/scripts/tests/test-media-jobs.sh",
+    "why": "ANDROID_GSTREAMER_PER_JOB_MB exists because that lane OOMs at the generic budget; dropping it at the call site silently restores the 2000 MB it was tuned away from"
+  },
+  {
+    "id": "version-snapshot.sync-unquotes-once",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "        return value[1:-1]",
+    "replace": "        return value",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "a quoted versions.env value (CUDA_ARCHITECTURES has to be quoted) re-quotes its target on every run, so --write is never idempotent and --check never goes green"
+  },
+  {
+    "id": "version-snapshot.sync-writes-only-on-change",
+    "target": "docs/scripts/sync_versions.py",
+    "find": "    if not dry_run and changed:",
+    "replace": "    if not dry_run:",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "rewriting every scanned file on every --write churns files nothing changed in, and the shared owner is now the only place that decision lives"
   }
 ]

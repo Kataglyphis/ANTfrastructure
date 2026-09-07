@@ -198,9 +198,12 @@ media_install_deps_init() {
 # (2000-MB per-job memory cap) used across the media build scripts. The
 # canonical compute_jobs_with_mem_cap lives in 01-core/parallelism.sh and is
 # loaded by media_common_init; fall back to plain nproc if it is unavailable.
+# media_jobs [cap_mb] -- job count under a per-job memory cap (default 2000 MB).
+# The cap is an argument because the android gstreamer lane budgets 1500 and had
+# its own copy of this for that one number. docs/refactoring-backlog.md F3
 media_jobs() {
   if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    compute_jobs_with_mem_cap "" 2000
+    compute_jobs_with_mem_cap "" "${1:-2000}"
   else
     nproc
   fi
