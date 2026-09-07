@@ -135,6 +135,7 @@ The two halves of one topic often split:
 | **Benchmarking an LLM endpoint** — speed *and* correctness, TTFT vs decode, concurrent lanes, named backends (`ollama`, `geniex-*`), and the capability benchmarks: does the code RUN (`bench_coding`), tool calling (`bench_tools`), the whole agent loop (`bench_agent`), embeddings (`bench_embeddings`), a whole sweep in one command (`bench_sweep`) | [`../linux/llm-stack/README.md`](../linux/llm-stack/README.md) |
 | **What to build next in the LLM benchmark** — what it can and cannot claim today, and the order the gaps are worth closing | [`llm-benchmark-roadmap.md`](llm-benchmark-roadmap.md) |
 | **The 2026-09-05 panel review of the LLM benchmark** — 32 confirmed defects with a location each, the ranked backlog, the model shortlist and the multimodal-bench design | [`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md) |
+| **Connecting a model to the NAS** (Word/Excel/PDF/images) — why the Hexagon NPU cannot read a page, the OCR-model shortlist and file-type routing, the `bench_docs.py` bake-off design, and the machine-topology corrections (summy-server, host RAM) | [`nas-document-ai.md`](nas-document-ai.md) |
 | **A model answers fast but wrong** (whitespace, random multilingual tokens) — GGUF tensor types, the sub-4-bit i-quant bug | [`geniex-local-ai-setup.md` § Debugged: i-quants](geniex-local-ai-setup.md), tool: [`../linux/llm-stack/inspect_gguf.py`](../linux/llm-stack/inspect_gguf.py) |
 
 ### Also owned here, not under `docs/`

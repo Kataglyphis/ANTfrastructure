@@ -6,6 +6,40 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-06 — The NAS document-AI question answered: a new page, and the benchmark's multimodal gap named precisely
+
+New page [`docs/nas-document-ai.md`](docs/nas-document-ai.md) (wired into
+`docs/index.rst` and `docs/INDEX.md`), produced by a 36-agent review
+(adversarially verified web research + live probes on this host). It answers
+"which multimodal model for the NAS" — GLM-OCR 0.9B shortlisted against
+PaddleOCR-VL-1.6 / LightOnOCR-2-1B / tesseract, Word/Excel routed to OOXML
+parsing with **no model**, and the decisive `bench_docs.py` bake-off specified
+in the suite's own idioms. Four findings recorded there correct existing
+pages rather than merely adding to them:
+
+- **The suite has zero multimodal capability** — all six request-building
+  sites hardcode `"content": <str>`; the review page's line-480 claim that
+  bench_vision "is an addition, not a new harness" is true of the HTTP
+  plumbing only.
+- **The Hexagon NPU cannot read a document page, structurally**: every QAIRT
+  VLM bundle for this chipset has a fixed 512x512 (or smaller) vision
+  encoder, and GenieX squashes A4 non-aspect-preserving to a square — the
+  4096 context was never the binding constraint. The `W*H/1024` token
+  formulas apply to the PyTorch models only. Also: the 2.93 GiB HTP budget is
+  per **context binary**, not per model, and a Qwen3-VL-8B w4a16 bundle for
+  X Elite exists — the QAIRT VLM catalogue is four models, not two.
+- **`summy-server` is this laptop itself** (mirrored networking); there is no
+  LAN box, and `backends.json`'s `ollama-lan` **and `control`** both point
+  back here at a port where nothing listens — the calibration backend is
+  dead. The host has **31.6 GiB** RAM, not ~16.
+- "CPU beats NPU ~2x" is decode-only and **inverts for document workloads**
+  (3.2 s vs 34 s prefill on a 3k-token prompt, § 1e of the GenieX page).
+
+Nothing outside `docs/` changed; the three config blockers the page names
+(`OLLAMA_FLASH_ATTENTION`, the missing `--mmproj` in
+`Start-GeniexServers.ps1`, the 6.09 GiB WSL2 cap) are recorded there as
+backlog, not fixed here.
+
 ## 2026-09-06 — Every PowerShell file renamed and version-pinned, the Linux lanes on 26.04, and the host stops receiving CMake state
 
 Four repo-wide sweeps and one behaviour fix, all consumer-visible. If you pin
