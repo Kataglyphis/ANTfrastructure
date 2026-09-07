@@ -471,6 +471,9 @@ _disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
 # store held 415G. Behaviour of the fallback itself is proven in
 # test-disk-guard.sh; what is proven here is the WIRING and the episode latch.
 # docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
+# The guard's two eviction passes share one owner; drive the real ones.
+eval "$(sed -n '/^_chain_evict_slugs() {$/,/^}$/p' "${CHAIN_SH}")"
+eval "$(sed -n '/^_chain_bc_free_gb()/p;/^_chain_bc_total_gb()/p;/^_chain_num_below()/p;/^_chain_num_above()/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")"
 # Both gates run in a subshell, so the record has to be a file, not a variable.
 _BK_LOG="${workdir}/bk.txt"
@@ -535,6 +538,65 @@ t_case "an ample-disk stage never reaches the store at all"
 _bk_reset_calls 500
 ( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
 t_assert_eq "" "$(_bk_calls)" "40G threshold with 500G free must never touch buildkit"
+unset CROSS_NO_LOCAL_CACHE_EXPORT
+_lane_free=999
+
+# ---------------------------------------------------------------------------
+# DISK3: the image store is the third lever and the ONLY one whose safety depends
+# on nothing being in flight. Behaviour is proven in test-disk-guard.sh; what is
+# proven here is that both between-runs gates reach it, that neither hands it a
+# stage-in-flight of 1, and WHICH tags they protect.
+# docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+_IM_LOG="${workdir}/im.txt"
+_disk_guard_image_store_fallback() {
+  printf 'CALL %s %s in_flight=%s\n' "$1" "$2" "${4:-}" >> "${_IM_LOG}"
+  printf 'PROTECTED %s\n' "$(printf '%s' "$3" | tr '\n' ' ')" >> "${_IM_LOG}"
+  [ -z "${_IM_RESCUE_TO:-}" ] || _lane_free="${_IM_RESCUE_TO}"
+}
+CROSS_STAGE_ORDER=(base compiler sdk media android runtime)
+stage_enabled() { return 0; }
+cross_stage_is_per_arch() { [ "$1" != "base" ] && return 0; return 1; }
+cross_stage_tag() { printf 'ghcr.io/x/y:cross-%s%s' "$1" "${2:+-$2}"; }
+TARGET_ARCHES="arm64"
+_im_reset() { : > "${_IM_LOG}"; _lane_free="$1"; }
+_im_calls() { cat "${_IM_LOG}"; }
+
+t_case "the between-stage guard reaches the image store, and only after buildkit"
+_im_reset 10
+_bk_reset_calls 10
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+t_assert_contains "$(_im_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 in_flight=0" \
+  "between stages nothing is unpacking, which is the only time images may go"
+
+t_case "the completed stage keeps its tag: it is the next stage's parent"
+t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-media-arm64" \
+  "the local OCI handoff reads the just-built image out of the store"
+t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-runtime-arm64" "the stages still to build stay"
+t_assert_eq "0" "$(grep -c -e 'PROTECTED.*cross-compiler-arm64' "${_IM_LOG}" || true)" \
+  "a stage this run finished with is re-pullable by the digest it pinned"
+
+t_case "an image-store rescue keeps the cache exports ON for the remaining stages"
+_im_reset 10
+_bk_reset_calls 10
+_IM_RESCUE_TO=200
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
+t_assert_contains "$(cat "${workdir}/sg.txt")" "after pruning: 200G free"
+t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" || true)"
+_IM_RESCUE_TO=""
+
+t_case "the lane-entry gate reaches it too, protecting every stage it can name"
+_im_reset 88
+_bk_reset_calls 88
+_lane_run
+t_assert_contains "$(_im_calls)" "CALL ${BUILDKIT_CACHE_DIR} 120 in_flight=0"
+t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-base"
+t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-runtime-arm64"
+
+t_case "an ample-disk stage never reaches the image store either"
+_im_reset 500
+_bk_reset_calls 500
+( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+t_assert_eq "" "$(_im_calls)"
 unset CROSS_NO_LOCAL_CACHE_EXPORT
 _lane_free=999
 

@@ -6,6 +6,47 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-07 — The disk guard learns about the third store, and its two eviction loops become one
+
+**DISK3.** On 2026-09-05 the chain reported `NOTHING was reclaimable` at 28G
+free while `~/.local/share/containerd` held **295 GB**, three `cross-android-*`
+images from a PREVIOUS run among them at 41.5 / 41.8 / 38.0 GB. It was right
+that it could not free anything and wrong that nothing was reclaimable:
+`disk-guard.sh` had no image listing at all, so its two levers were spent while
+its third, larger one was invisible. That run needed four manual rescues.
+
+`_disk_guard_image_store_fallback` is that lever, and the **ordering constraint
+is enforced rather than documented**: it takes a `stage_in_flight` argument and
+refuses BY NAME when it is set, because `nerdctl image prune -f` killed the
+arm64 runtime lane on 2026-09-06 by removing a blob mid-`unpacking overlayfs`.
+The in-stage sampler passes 1 and can therefore never pull it; the two gates
+that run between runs pass 0. Two steps in risk order — dangling images first
+(no `-a`, 20 GB on its own in that run), then this chain's own
+`cross-<stage>-<arch>` tags minus the stages still to build AND the one just
+completed, which is the next stage's parent under the local OCI handoff. Size is
+not the metric: deleting the three `cross-sdk-*` images (80 GB nominal) freed
+zero bytes because their layers are held by the android images on top, so the
+lever measures free space after EACH removal and logs what each one actually
+freed. `CROSS_IMAGE_PRUNE=0` disables it. The give-up warning now names the
+store it did not look in and says *stop the lane, then reclaim*.
+
+Two loop-safety properties are proven, not assumed: an attempted tag joins the
+protected set (a tag still listed after its own `rmi` would be the head of the
+candidate list forever), and the loop is bounded by construction as well —
+`_DISK_GUARD_IMAGE_MAX_REMOVALS`, because a loop whose only stop condition is
+bookkeeping hangs when the bookkeeping is wrong, and a hung guard inside a chain
+is worse than one that gives up early.
+
+**F1's named eviction-loop debt closed with it.** `_chain_stage_disk_guard` held
+two near-identical loops — free-space-driven and cap-driven — that the backlog
+had named as debt "wanting one `_evict_until <predicate>`". They now share
+`_chain_evict_slugs`, taking a measure function, a keep-going predicate and two
+variable NAMES: the protected list has to be a nameref because an undeletable
+slug must JOIN it, and the number is an out-variable because the function logs on
+stdout. cc 30 → 21 in that guard, and the anti-spin protection lives in one place
+instead of two. Eight mutations hold the new arms, including both spin defects
+and the by-value copy that would silently re-introduce one.
+
 ## 2026-09-07 — The foreign Vulkan SDK gets its last four components, and a floor it cannot fall through
 
 **VK2 — the four that did not cross-build all had a route, and one of them was

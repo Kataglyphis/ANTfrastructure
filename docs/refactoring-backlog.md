@@ -623,71 +623,31 @@ in the run that hit it, instead of leaving it to log archaeology. The per-ref
 non-fatal handling is unchanged: one bad ref costs one ref. The `(N/7)` count is
 derived from the ref list now rather than a literal 7.
 
-### DISK3. The chain's disk guard cannot see where the disk actually went [M, ★★★]
+### DISK3. LANDED — the guard can see the third store now [done 2026-09-07]
 
-Observed live during the 2026-09-05 rebuild, in the chain's own words:
+The 2026-09-05 run said `NOTHING was reclaimable` at 28G free while
+`~/.local/share/containerd` held **295 GB**, three `cross-android-*` images from
+a PREVIOUS run among them; it needed four manual rescues. `disk-guard.sh` had no
+image listing at all.
 
-```
-[INFO] [disk-trim]     removed 0 slug(s), freed 0.0 GiB; 28G free now
-[INFO] [disk-buildkit] already pruned once here -- the store is at keep-storage
-[WARN] [disk-reclaim]  in-stage: NOTHING was reclaimable (28G -> 28G free)
-                       -- the chain cannot free
-```
+`_disk_guard_image_store_fallback` is the third lever, and its
+**mechanism, ordering rule and protected set are owned by
+[`build-cache-tiers.md`](build-cache-tiers.md#322-the-image-store-lever-disk3) —
+read it there, do not restate it here.** The three things this file exists to
+record:
 
-It was right that it could not, and wrong that nothing was reclaimable. At that
-moment `~/.local/share/containerd` held **295 GB**, including three
-`cross-android-*` stage images from a PREVIOUS run at 41.5 / 41.8 / 38.0 GB. The
-run had no use for them: every stage builds FROM a digest it pins and pulls, and
-on rootless nerdctl a stage build does not even create a local tag (the RTCACHE3
-finding). Deleting those three took 51G free to 120G in about a minute.
-
-`disk-guard.sh` contains no `nerdctl rmi`, no `image prune`, and no image listing
-at all. It knows its own log slugs and BuildKit, and BuildKit was already at
-`keep-storage` — so its two levers were spent while its third, larger one was
-invisible to it. The 2026-09-05 run needed FOUR manual rescues; the 2026-08-27
-ENOSPC in [[rebuild-disk-management]] is the same gap, hit harder.
-
-What to add, in this order because it is also the risk order:
-
-1. **Dangling images.** `nerdctl image prune` (no `-a`). Zero risk, and it
-   returned 20 GB on its own in this run.
-   **Size is not the metric — unique layers are.** Deleting the three
-   `cross-sdk-*` images (80 GB by `nerdctl images`) freed *zero* bytes, because
-   every layer they hold is also held by the `cross-android-*` images built on top
-   of them. The previous release's `latest-cross*` freed 113 GB from a similar
-   nominal size, because its layers are nobody else's. A guard that picks the
-   biggest tags will do nothing; it has to pick tags whose layers nothing else
-   references.
-2. **Stage images this run did not produce.** `cross-<stage>-<arch>` whose digest
-   is not among the parents this run pinned. They are all on ghcr and every one is
-   re-pullable; the chain already records the digests it pinned, so the comparison
-   is available rather than guessed.
-3. **NEVER the current run's parents**, and never `nerdctl system prune` — see
-   [[rebuild-disk-management]] for why the cachemounts must survive.
-
-There is a second, milder instance of the same blindness: the runtime lane's own
-pre-flight (`runtime lane refused: 74G free, ~120G needed`) correctly refuses to
-start rather than dying on ENOSPC mid-build — good — but the reclaim it runs first
-reports `NOTHING was reclaimable` for the same reason. The refusal is right; the
-reclaim under it is looking in one store while the space is in another.
-
-**One prune is NOT safe mid-run, and the guard should say so.** `nerdctl image
-prune -f` killed the arm64 runtime lane on 2026-09-06: the chain was
-`unpacking overlayfs@sha256:...` — the OCI stage handoff — and the prune removed a
-blob it was mid-read on (`content digest sha256:d694...: not found`). The same
-command had worked several times earlier that day, which is luck, not safety: it
-only bites while content is being read.
-
-So the reclaim ladder above has an ordering constraint, not just a risk order:
-BuildKit pruning (`buildctl prune`) never touches the containerd image store and
-is safe while a chain runs; anything that removes IMAGES is safe only between
-runs. If the guard grows the image-store lever, it must refuse to pull it while a
-stage is in flight — and the operator-facing message at 28G should say "stop the
-lane, then reclaim", not just "the chain cannot free".
-
-The guard should also stop reporting `NOTHING was reclaimable` when it has not
-looked at the largest store. A guard that gives up loudly reads like an
-environment limit; this one was a coverage gap.
+1. **The ordering constraint is enforced, not documented.** The lever takes a
+   `stage_in_flight` flag and refuses by name when it is set; the in-stage
+   sampler passes 1 and can therefore never pull it, which is what killed the
+   arm64 lane on 2026-09-06.
+2. **The give-up message changed.** `[disk-reclaim]` now names the image store
+   and says "stop the lane, then reclaim" instead of implying an environment
+   limit.
+3. **What is still NOT automated, on purpose.** Nothing compares live images
+   against the digests this run pinned, so the protected set is "the stages after
+   the completed one, plus the completed one" rather than "the parents in
+   `chain-status.json`". That is the conservative reading — it can leave bytes on
+   disk, never remove a parent — and tightening it needs a real chain to prove.
 
 ### CS1. CLOSED — the owner decided, and the prune stays scharf [done 2026-09-07]
 

@@ -382,6 +382,66 @@ build holds records open* reclaims anything like the idle number, and whether
 `--only runtime` run entered with 275 G free and never crossed 40 G, so it
 sampled (`[disk-watch]` down to 106 G) and reclaimed nothing.
 
+### 3.2.2 The image-store lever (DISK3)
+
+Landed 2026-09-07, after the 2026-09-05 rebuild reported this at 28 G free:
+
+```
+[INFO] [disk-trim]     removed 0 slug(s), freed 0.0 GiB; 28G free now
+[INFO] [disk-buildkit] already pruned once here -- the store is at keep-storage
+[WARN] [disk-reclaim]  in-stage: NOTHING was reclaimable (28G -> 28G free)
+```
+
+It was right that it could not free anything and wrong that nothing was
+reclaimable. At that moment `~/.local/share/containerd` held **295 GB**,
+including three `cross-android-*` stage images from a PREVIOUS run at 41.5 /
+41.8 / 38.0 GB. `disk-guard.sh` contained no image listing at all: it knew its
+own cache-export slugs and BuildKit, and BuildKit was already at
+`--keep-storage`, so its two levers were spent while its third, larger one was
+invisible to it. That run needed four manual rescues.
+
+**The ordering constraint is the whole design, and it is not a preference.**
+`buildctl prune` never touches the containerd image store and is safe while a
+stage runs — that is why the in-stage sampler may pull it. Removing IMAGES is
+safe only when nothing is in flight: `nerdctl image prune -f` killed the arm64
+runtime lane on 2026-09-06 while the chain was `unpacking overlayfs@sha256:…`,
+the OCI stage handoff, and the prune took a blob out from under it
+(`content digest sha256:d694…: not found`). The same command had worked several
+times earlier that day, which is luck, not safety.
+
+So `_disk_guard_image_store_fallback` takes a `stage_in_flight` argument and
+refuses BY NAME when it is 1. `_disk_guard_watch_once` — the sampler, which runs
+DURING a stage by definition — passes 1 and therefore never removes anything;
+the two gates that run between runs (`_chain_stage_disk_guard` after the arch
+loop has joined, and `_chain_runtime_lane_disk_gate` before any wrapper build
+starts) pass 0. `CROSS_IMAGE_PRUNE=0` disables the lever entirely.
+
+**Two steps, in risk order.** First `nerdctl image prune` with no `-a`: dangling
+images only, zero risk, and 20 GB on its own in the run that found this. Then
+this chain's own `cross-<stage>-<arch>` tags that the rest of the run does not
+need. Protected are the stages still to build AND the one just completed, whose
+image is the next stage's parent under the local OCI handoff; everything else in
+that shape is re-pullable from ghcr by the digest each stage pins. Nothing else
+is a candidate — not `ubuntu:24.04`, not an untagged image (that is the dangling
+prune's business), and never `-a`, which would take the parents this run pinned.
+
+**Size is not the metric — unique layers are.** Deleting the three `cross-sdk-*`
+images (80 GB by `nerdctl images`) freed *zero* bytes in that run, because every
+layer they hold is also held by the `cross-android-*` images built on top of
+them; the previous release's `latest-cross*` freed 113 GB from a similar nominal
+size, because its layers were nobody else's. A guard that picks the biggest tags
+does nothing, so this one measures free space after EACH removal and stops the
+moment the target is reached. Each removal logs what it actually freed. A tag
+still listed after its own `rmi` joins the protected set rather than staying the
+head of the list forever — the same spin the cache-export victim loop guards
+against.
+
+**The give-up warning names the store it did not look in.** When nothing was
+reclaimable, `[disk-reclaim]` now adds how many tagged images the store holds and
+says *stop the lane, then reclaim* — because "NOTHING was reclaimable" read like
+an environment limit when it was a coverage gap. `linux/host-config/prune-safe.sh`
+remains the operator-facing tool for the BuildKit half.
+
 ### 3.3 Runtime-failure summary (B3)
 
 When one arch fails, `set -e` aborts `build-runtime-manifest.sh` inside

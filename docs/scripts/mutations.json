@@ -1970,8 +1970,8 @@
   {
     "id": "disk-guard.buildkit-trim-first",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  [ \"${before}\" -lt \"${target_gb}\" ] || return 0\n  _disk_guard_buildkit_ready",
-    "replace": "  _disk_guard_buildkit_ready",
+    "find": "  before=\"$(_disk_guard_lever_needed \"${path}\" \"${target_gb}\")\" || return 0\n  _disk_guard_buildkit_ready",
+    "replace": "  before=\"$(_disk_guard_free_gb \"${path}\")\"\n  _disk_guard_buildkit_ready",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
     "why": "the cheap trim runs first; the store is pruned only when it came up short"
   },
@@ -1994,18 +1994,18 @@
   {
     "id": "disk-guard.buildkit-prune-once",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "one prune per caller: a repeat walks the whole store and frees nothing"
+    "why": "one prune per caller: a repeat walks the whole store and frees nothing (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-missing-tool",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if ! command -v buildctl >/dev/null 2>&1; then",
+    "find": "  if ! command -v \"${tool}\" >/dev/null 2>&1; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "a host without buildctl must get the named SKIP, not a mystery"
+    "why": "a host without buildctl must get the named SKIP, not a mystery (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "disk-guard.buildkit-unreachable-store",
@@ -2498,10 +2498,10 @@
   {
     "id": "disk-guard.prune-credit-per-caller",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt 0 ]; then",
-    "replace": "  if [ \"${_DISK_GUARD_BUILDKIT_PRUNES:-0}\" -gt -1 ]; then",
+    "find": "  if [ \"${prunes:-0}\" -gt 0 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
+    "replace": "  if [ \"${prunes:-0}\" -gt -1 ]; then\n    _disk_guard_log \"[${tag}] ${latch_why}\"",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
-    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space"
+    "why": "the once-per-caller rule must still let the NEXT stage reclaim, or only the first stage of a chain ever frees space (2026-09-07: this arm moved into _disk_guard_lever_ready, the owner BOTH levers share, so neutering it now costs the image store too.)"
   },
   {
     "id": "probe.advert-empty-table-is-vacuous",
@@ -3146,8 +3146,8 @@
   {
     "id": "disk-guard.stage-guard-episode",
     "target": "linux/scripts/build-cross-chain.sh",
-    "find": "      _disk_guard_reclaim_begin\n      while [",
-    "replace": "      while [",
+    "find": "      _disk_guard_reclaim_begin\n      _chain_evict_slugs",
+    "replace": "      _chain_evict_slugs",
     "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
     "why": "same latch, other gate: after the first between-stage prune every later stage would log `already pruned once here` and reclaim nothing"
   },
@@ -6829,5 +6829,69 @@
     "replace": "            || { :",
     "test": "bash linux/scripts/tests/test-packaging-deps.sh",
     "why": "a published branch whose extra-data payload would not download and a branch that does not exist read identically as 'did not install'; the remote is the only thing that tells them apart"
+  },
+  {
+    "id": "disk-guard.image-lever-refuses-in-flight",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "  if [ \"${in_flight}\" = \"1\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "removing an image while a stage is unpacking pulls a blob out from under it -- that killed the arm64 runtime lane on 2026-09-06, and the sampler calls this lever on every sample"
+  },
+  {
+    "id": "disk-guard.image-lever-spares-protected-tags",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "        printf '%s\\n' \"${protected_nl}\" | grep -qxF -- \"${tag}\" && continue",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "without the filter the lever removes the stage image the NEXT stage builds FROM, which under the local OCI handoff is not re-pullable at all"
+  },
+  {
+    "id": "disk-guard.image-lever-tries-each-tag-once",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "    protected=\"${protected}\n${tag}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a tag still listed after its own rmi stays the head of the candidate list forever -- the loop spins for the rest of the run, which is the exact defect the cache-export victim loop already guards"
+  },
+  {
+    "id": "disk-guard.give-up-names-the-image-store",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "by itself. $(_disk_guard_image_store_hint)\"",
+    "replace": "by itself.\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "'NOTHING was reclaimable' reads like an environment limit; on 2026-09-05 it was a coverage gap with 295 GB in the store the guard never looked at"
+  },
+  {
+    "id": "chain-status.image-lever-wired-between-stages",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "        _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \\\n          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the between-stage guard is one of the two places nothing is in flight; unwired, the chain gives up on cache exports with the image store untouched"
+  },
+  {
+    "id": "chain-status.image-lever-protects-the-completed-stage",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0",
+    "replace": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0",
+    "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+    "why": "the stage just completed is the NEXT stage's parent; dropping it from the protected set is how a local OCI handoff loses the image it is about to read"
+  },
+  {
+    "id": "chain-status.evict-protects-the-undeletable",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "      _prot_ref=\"${_prot_ref},${victim}\"",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "an undeletable slug that does not join the protected list stays the LRU pick forever and the eviction loop spins for the rest of the run"
+  },
+  {
+    "id": "chain-status.evict-protected-is-a-nameref",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  local -n _prot_ref=\"$2\"",
+    "replace": "  local _prot_ref=\"$2\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "a by-value copy makes the anti-spin append invisible to the next pick_victim call -- the same spin, one level further from the symptom"
   }
 ]

@@ -752,6 +752,7 @@ destroys it, and what replacing it costs is in
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 | `VULKAN_CROSS_STRICT=1` | Promote the Vulkan cross-components gate (`vulkan.sh`) from advisory WARN to fatal. It fires when all three cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause. |
+| `CROSS_IMAGE_PRUNE=0` | Leave the containerd IMAGE store alone (`01-core/disk-guard.sh`). The lever runs only where nothing is in flight — between stages and at runtime-lane entry — and removes dangling images plus this chain's own stage tags the run no longer needs. |
 | `VULKAN_CROSS_REQUIRED=''` | Empty the list of Vulkan components whose cross-build failure is fatal (`vulkan.sh`, default: loader, SPIRV-Tools, glslang, shaderc, Vulkan-Tools, ValidationLayers). Everything else in `_VK_TARGET_COMPONENTS` is non-fatal either way. |
 | `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
 

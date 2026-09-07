@@ -483,6 +483,39 @@ _chain_runtime_lane_is_next() {
   return 1
 }
 
+# ONE eviction pass over the cache-export slugs, for both halves of the guard:
+# free-space-driven and total-cap-driven. $2 and $6 are variable NAMES the pass
+# updates in place -- an undeletable slug has to JOIN the protected list or it
+# stays the LRU pick and the loop spins for the rest of the run, and the number
+# is an out-variable because this function logs on stdout.
+# _chain_evict_slugs <bc_dir> <protected_var> <measure_fn> <keep_going_fn> <limit> <number_var>
+_chain_evict_slugs() {
+  local bc_dir="$1" measure="$3" keep_going="$4" limit="$5"
+  local -n _prot_ref="$2"
+  local -n _num_ref="$6"
+  local victim
+
+  _num_ref="$("${measure}" "${bc_dir}")"
+  while [ -n "${_num_ref}" ] && "${keep_going}" "${_num_ref}" "${limit}"; do
+    victim="$(_disk_guard_pick_victim "${bc_dir}" "${_prot_ref}")"
+    [ -n "${victim}" ] || break
+    log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
+    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+    if [ -e "${bc_dir}/${victim}" ]; then
+      warn "[disk-guard]   could not remove ${victim}; skipping it"
+      _prot_ref="${_prot_ref},${victim}"
+    fi
+    _num_ref="$("${measure}" "${bc_dir}")"
+  done
+}
+
+# The numbers and the two "keep going" tests. `|| true`: du on a missing cache
+# dir exits non-zero under pipefail + set -e, and the dir can be absent.
+_chain_bc_free_gb()  { _disk_guard_free_gb "$1"; }
+_chain_bc_total_gb() { du -s --block-size=1G "$1" 2>/dev/null | cut -f1 || true; }
+_chain_num_below() { [ "$1" -lt "$2" ] && return 0; return 1; }
+_chain_num_above() { [ "$1" -gt "$2" ] && return 0; return 1; }
+
 _chain_stage_disk_guard() {
   local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
@@ -507,22 +540,20 @@ _chain_stage_disk_guard() {
       protected="$(_disk_guard_protected_slugs "${completed_stage}")"
       log "[disk-guard] ${free_gb}G free < ${threshold}G after stage ${completed_stage:-?} — LRU-pruning cache exports in ${bc_dir} (protected: ${protected:-none})"
       _disk_guard_reclaim_begin
-      while [ "${free_gb}" -lt "${threshold}" ]; do
-        victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
-        [ -n "${victim}" ] || break
-        log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
-        rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-        # An undeletable slug stays the LRU pick forever: without this the loop
-        # spins for the rest of the run. Protect it and move on.
-        if [ -e "${bc_dir}/${victim}" ]; then
-          warn "[disk-guard]   could not remove ${victim}; skipping it"
-          protected="${protected},${victim}"
-        fi
-        free_gb="$(_disk_guard_free_gb "${bc_dir}")"
-        [ -n "${free_gb}" ] || return 0
-      done
+      _chain_evict_slugs "${bc_dir}" protected _chain_bc_free_gb _chain_num_below "${threshold}" free_gb
+      [ -n "${free_gb}" ] || return 0
       if [ "${free_gb}" -lt "${threshold}" ]; then
         _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
+        free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+      fi
+      # DISK3: the image store, which is only safe BETWEEN stages -- here, where
+      # the arch loop for ${completed_stage} has already joined. The stages still
+      # to build keep their tags, and so does the one just completed: it is the
+      # next stage's parent under the local OCI handoff.
+      # docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+      if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
+        _disk_guard_image_store_fallback "${bc_dir}" "${threshold}" \
+          "$(_disk_guard_stage_tags "${completed_stage}" 1)" 0
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
       fi
       if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
@@ -545,20 +576,8 @@ _chain_stage_disk_guard() {
   [ -n "${total_gb}" ] && [ "${total_gb}" -gt "${cap_gb}" ] || return 0
   [ -n "${protected}" ] || protected="$(_disk_guard_protected_slugs "${completed_stage}")"
   log "[disk-guard] cache exports total ${total_gb}G > cap ${cap_gb}G — LRU-pruning ${bc_dir} down to the cap (protected: ${protected:-none})"
-  while [ "${total_gb}" -gt "${cap_gb}" ]; do
-    victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
-    [ -n "${victim}" ] || break
-    log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
-    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    # An undeletable slug stays the LRU pick forever: without this the loop
-    # spins for the rest of the run. Protect it and move on.
-    if [ -e "${bc_dir}/${victim}" ]; then
-      warn "[disk-guard]   could not remove ${victim}; skipping it"
-      protected="${protected},${victim}"
-    fi
-    total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
-    [ -n "${total_gb}" ] || return 0
-  done
+  _chain_evict_slugs "${bc_dir}" protected _chain_bc_total_gb _chain_num_above "${cap_gb}" total_gb
+  [ -n "${total_gb}" ] || return 0
   log "[disk-guard] cache exports now ${total_gb}G (cap ${cap_gb}G)"
 }
 
@@ -605,6 +624,9 @@ _chain_runtime_lane_disk_gate() {
   _disk_guard_reclaim_begin
   _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
   _disk_guard_buildkit_fallback "${bc_dir}" "${need}"
+  # Lane ENTRY: no wrapper build has started, so the image store is reachable
+  # here and nowhere inside the lane. Every stage this run can name is protected.
+  _disk_guard_image_store_fallback "${bc_dir}" "${need}" "$(_disk_guard_stage_tags '' 1)" 0
   _disk_guard_reclaim_record "runtime-lane-entry" "${free_gb}" "${bc_dir}"
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || return 0
