@@ -80,7 +80,15 @@ param(
     # Passed to geniex as --log when that build has it. The CLI defaults to
     # 'none', which makes the lane log an empty file on a silent failure.
     [ValidateSet('none', 'error', 'warn', 'info', 'debug', 'trace')]
-    [string]$LogLevel = 'info'
+    [string]$LogLevel = 'info',
+    # Layers to offload to the accelerator, -1 = all (llama.cpp lanes only).
+    # Passed only when non-null, so the CLI default stays the default.
+    [Nullable[int]]$Ngl = $null,
+    # Environment variables set for the SERVER PROCESS ONLY, e.g.
+    # @{ LLAMA_ARG_NO_MMPROJ_OFFLOAD = '1' }. GenieX exposes no llama.cpp flags
+    # beyond --ngl, so env is the only way to reach the embedded plugin; whether
+    # it honours a given variable is an experiment, not a promise.
+    [hashtable]$ServerEnv = @{}
 )
 
 Set-StrictMode -Version Latest
@@ -285,6 +293,16 @@ function Start-Lane {
         Write-Warning ("  this geniex has no `serve --max-tokens`; every caller must send max_tokens itself (-MaxTokens {0} ignored)." -f $MaxTokens)
     }
     if ($LogLevel -and (Test-ServeFlag '--log')) { $argList += @('--log', $LogLevel) }
+    if ($null -ne $Ngl -and (Test-ServeFlag '--ngl')) { $argList += @('--ngl', $Ngl) }
+
+    # Env for the child only. Set before Start-Process, restored after, so one
+    # experimental lane cannot leak a variable into the next lane or the shell.
+    $savedEnv = @{}
+    foreach ($k in $ServerEnv.Keys) {
+        $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k)
+        [Environment]::SetEnvironmentVariable($k, [string]$ServerEnv[$k])
+        Write-Host ("  {0,-6} :{1}  env {2}={3}" -f $Compute, $Port, $k, $ServerEnv[$k]) -ForegroundColor DarkGray
+    }
 
     # A hidden Start-Process with no redirect throws its output away, so a lane
     # that dies on startup leaves NOTHING to read -- "did not answer within 20s"
@@ -299,6 +317,7 @@ function Start-Lane {
     $errLog  = Join-Path $LaneLogDir "$Compute-$Port-$stamp.err.log"
     Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $argList `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog | Out-Null
+    foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k]) }
 
     foreach ($i in 1..20) {
         Start-Sleep -Seconds 1
