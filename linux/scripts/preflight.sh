@@ -221,9 +221,13 @@ run_check gate-registry "gate proof registry" ${PREFLIGHT_PYTHON} linux/scripts/
 
 # The root .cmake-format.yaml is a CONSUMER copy of shared/config's canonical
 # one; the other four have no root copy here. See shared/config/README.md.
+# The bash twin, not the PowerShell one: no hub Linux image ships pwsh, so the
+# PowerShell form failed this slug with "pwsh: command not found" on every Linux
+# run - a gate that could not report on the platform it gates. The two are held
+# to the same verdict by linux/scripts/tests/test-shared-config-sync.sh.
 check_shared_config() {
-  pwsh -NoProfile -File shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check \
-    -Ignore .clang-format,.clang-tidy,gcovr.cfg,.pre-commit-config.yaml
+  bash shared/config/sync-shared-config.sh --repo-root . --check \
+    --ignore .clang-format,.clang-tidy,gcovr.cfg,.pre-commit-config.yaml
 }
 run_check shared-config "shared config owner-root sync" check_shared_config
 
