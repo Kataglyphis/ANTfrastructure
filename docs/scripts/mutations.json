@@ -840,6 +840,22 @@
     "why": "EX1: linux/llm-stack was outside the scan set until 2026-09-07 -- 43 files and 19,874 lines invisible to every extent gate; dropping it again silently un-freezes 47 reviewed rows"
   },
   {
+    "id": "cross-build.429-must-be-anchored",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "|(status|code):? ?429([^0-9]|$)'",
+    "replace": "|[^0-9]429[^0-9]'",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a bare 429 matches BuildKit's own elapsed-time prefix (#15 429.0), so any step running 429.x seconds makes the NEXT deterministic failure look rate-limited and buys three full stage rebuilds"
+  },
+  {
+    "id": "cross-build.smoke-failure-is-hard",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "  [ -n \"${log_file}\" ] && [ -r \"${log_file}\" ] || return 0\n  tail -n 300",
+    "replace": "  [ -n \"${log_file}\" ] && [ -r \"${log_file}\" ] || return 0\n  return 0\n  tail -n 300",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "classifying every failure as transient retries a dead build to the cap; the log tail has to be read, not assumed"
+  },
+  {
     "id": "dead-functions.stale-freeze",
     "target": "linux/scripts/quality_allow.py",
     "find": "    stale = sorted(frozen - set(keys))",
