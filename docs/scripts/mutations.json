@@ -3482,26 +3482,34 @@
   {
     "id": "secret-scan.scope-is-the-argument",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--source \"${SCAN_ROOT}\"",
-    "replace": "--source \".\"",
+    "find": "cd \"${SCAN_ROOT}\" && \"${GITLEAKS}\" detect",
+    "replace": "cd \"${REPO_ROOT}\" && \"${GITLEAKS}\" detect",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "the path argument is what lets a consumer checkout be scanned; ignoring it grades the wrong tree, green or red for the wrong reason"
   },
   {
     "id": "secret-scan.values-are-redacted",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--no-banner --redact --verbose; then",
-    "replace": "--no-banner --verbose; then",
+    "find": "--no-banner --redact --verbose );",
+    "replace": "--no-banner --verbose );",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "without --redact every CI log that ran the gate becomes a copy of the credential it found"
   },
   {
     "id": "secret-scan.findings-are-printed",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--no-banner --redact --verbose; then",
-    "replace": "--no-banner --redact; then",
+    "find": "--no-banner --redact --verbose );",
+    "replace": "--no-banner --redact );",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "this gate once failed on main saying 'leaks found: 2' and naming neither; a finding nobody can locate is not actionable"
+  },
+  {
+    "id": "secret-scan.config-is-relative-in-tree",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "[ \"${CONFIG}\" = \"${SCAN_ROOT}/.gitleaks.toml\" ] && _CONFIG_ARG=\".gitleaks.toml\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "gitleaks skips its OWN config only when the config and source paths are spelled the same way; an absolute config against a relative source makes the gate scan .gitleaks.toml and report the rule regexes inside it as findings"
   },
   {
     "id": "secret-scan.relative-root-is-the-callers",

@@ -314,6 +314,25 @@ t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_
   '--target "${_t}"' \
   "and the helper has to actually drive them, between build and install"
 
+t_case "slang keeps WebGPU where Dawn has a prebuilt, and drops it where it does not"
+# slang-rhi picks a PREBUILT Dawn zip; upstream ships x86_64 and aarch64 only and
+# its arch cascade FATAL_ERRORs on anything else -- UNCONDITIONALLY, so the option
+# alone is not enough and the URL has to be defined too. This is the one place an
+# arch may differ, and only because no riscv64 Dawn binary exists upstream.
+_slangargs() {
+  ( eval "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")"
+    log() { :; }
+    local -a _o=(); local -a _xbuild_extra_targets=()
+    _vulkan_target_dynamic_args slang SDK SDK/"$2" "$1" _o
+    printf '%s ' "${_o[@]}" )
+}
+t_assert_eq "" "$(_slangargs aarch64-linux-gnu aarch64 | grep -oe 'SLANG_RHI_ENABLE_WGPU=OFF' || true)" \
+  "aarch64 HAS a Dawn prebuilt -- turning WebGPU off there would be a regression"
+t_assert_contains "$(_slangargs riscv64-linux-gnu riscv64)" "-DSLANG_RHI_ENABLE_WGPU=OFF" \
+  "no riscv64 Dawn binary exists upstream"
+t_assert_contains "$(_slangargs riscv64-linux-gnu riscv64)" "-DSLANG_RHI_DAWN_URL=" \
+  "the URL-default block runs even with the backend off; defining it is what skips the FATAL_ERROR"
+
 t_case "no SDK component is skipped for the target arch -- amd64 is the reference"
 # slang was skipped on riscv64 as "not yet ported upstream". That gated the HOST
 # x86_64 ./vulkansdk build on the TARGET arch, which cannot be a reason, and the

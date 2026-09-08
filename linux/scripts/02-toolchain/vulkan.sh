@@ -656,6 +656,14 @@ _vulkan_target_dynamic_args() {
       # ./vulkansdk's build_slang() copies gfx.slang and slang.slang into the
       # build tree between --build and --install; the generic helper does not.
       _xbuild_extra_targets+=(copy-gfx-slang-modules)
+      # slang-rhi picks a PREBUILT Dawn WebGPU zip and upstream ships one for
+      # x86_64 and aarch64 only; its arch cascade FATAL_ERRORs on anything else,
+      # unconditionally, even with the backend off. Both flags are needed: the
+      # option stops the fetch, the defined URL stops the cascade being entered.
+      case "${triplet}" in
+        x86_64-*|aarch64-*) ;;
+        *) _vk_dyn_ref+=(-DSLANG_RHI_ENABLE_WGPU=OFF -DSLANG_RHI_DAWN_URL=) ;;
+      esac
       ;;
     vulkancapsviewer)
       # Target Qt6 from the sysroot, host moc/rcc/uic from the build host's own.

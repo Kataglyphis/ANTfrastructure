@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **890 entries** over **242 distinct test commands**; both digits are
+manifest holds **891 entries** over **242 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -862,6 +862,24 @@ instead of the slug. `windows/` is not scanned: it is its own lane.
 Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
+
+### The secret scan scans from inside the tree
+
+`lint-secrets.sh` runs `gitleaks detect --no-git` with a **relative** `--source .`
+after `cd`-ing into the scan root, and that is load-bearing rather than stylistic:
+gitleaks matches an allowlist's `paths` regex against the path it *reports*, so an
+absolute `--source` makes every path-anchored rule stop matching, silently.
+
+`.gitleaks.toml` allowlists `^out/` — build logs and artefacts, which `.gitignore:4`
+already keeps out of every commit, so nothing there can reach the thing this gate
+grades ("what the NEXT commit would ship"). When the consumer-repo refactor swapped
+the relative source for `--source "${SCAN_ROOT}"`, that anchor stopped matching and
+the gate went from **2.42 GB in 3m37s, clean** to **8.22 GB in 12m48s with 10801
+findings** — every one of them `ROCM_GPG_KEY_SHA256` in a gitignored build log, i.e.
+the checksum of a *public* GPG key.
+
+Consumer support is unaffected: a consumer's own `.gitleaks.toml` anchors its paths
+relative to its own tree too, which is exactly what scanning from inside gives it.
 
 ### The retry classifier: anchor every status, and DNS is transient
 
@@ -1515,7 +1533,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 433 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 434 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

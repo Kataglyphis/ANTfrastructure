@@ -117,12 +117,15 @@ fi
 echo "== secret scan: gitleaks ${GITLEAKS_PIN} (working tree) =="
 echo "   scan root: ${SCAN_ROOT}"
 echo "   config:    ${CONFIG}"
-# --verbose is what actually PRINTS the findings: without it gitleaks logs only
-# "leaks found: N" and the failure is undiagnosable from a CI log (exactly how
-# this gate failed on main — the summary said 2 leaks and named neither).
-# --redact keeps the values themselves out of the log.
-if "${GITLEAKS}" detect --no-git --source "${SCAN_ROOT}" \
-     --config "${CONFIG}" --no-banner --redact --verbose; then
+# --verbose PRINTS the findings; without it "leaks found: N" names none.
+# --redact keeps the values out of the log. Source AND config are spelled the
+# same way on purpose: gitleaks matches allowlist paths, and skips its own
+# config, only when they are.
+# docs/code-quality-tooling.md#the-secret-scan-scans-from-inside-the-tree
+_CONFIG_ARG="${CONFIG}"
+[ "${CONFIG}" = "${SCAN_ROOT}/.gitleaks.toml" ] && _CONFIG_ARG=".gitleaks.toml"
+if ( cd "${SCAN_ROOT}" && "${GITLEAKS}" detect --no-git --source . \
+     --config "${_CONFIG_ARG}" --no-banner --redact --verbose ); then
   echo "secret scan: clean"
   exit 0
 fi
