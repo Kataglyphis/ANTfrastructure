@@ -266,9 +266,18 @@ wrappers). A consumer supplies four things:
    config, resolve the module/library, and call `Invoke-AgenticLoop` /
    `run_agentic_loop`. Build configs and prompts both default from the config
    and the shared prompt files, so the wrappers stay tiny.
-4. **Optional project system prompts** passed per engine
-   (`--append-system-prompt-file` for the claude engine) describing that
-   project's conventions.
+4. **Project role-prompt overlays** — `scripts/agentic-loop/prompts/planner-overlay.md`
+   and `executor-overlay.md`, wired via the config's top-level `promptOverlays`
+   block. Write only your project's delta. The loop composes
+   `shared/agentic-loop/system-prompts/<role>.md` + your overlay once and
+   delivers that one text to both engines: to `claude` via
+   `--append-system-prompt-file`, and to `opencode` by GENERATING
+   `.opencode/agents/<role>.md`, which is its only role-prompt channel. Add
+   `.opencode/agents/` to `.gitignore` — the loop warns if you have not. A
+   tracked, hand-edited copy of that file is how one consumer ended up with two
+   full copies of the role prompt that had drifted 271 lines apart, the stale
+   one having lost the executor's incident narrative, its `timeout: 600000`
+   guidance and the `- [b]` commit step.
 
 API reference: [`windows-agentic-loop.md`](windows-agentic-loop.md).
 Build-matrix semantics and sanitizer env handling:
@@ -381,6 +390,7 @@ in BeschleunigerBallett says so in its own header.
 - [ ] Linux build uses a container-native build dir and a cargo cache volume
 - [ ] No consumer copy of anything that exists upstream (check before writing)
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
+- [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
 - [ ] Workflows call the composite actions
 - [ ] Consumer AGENTS.md links to these docs instead of restating them
 

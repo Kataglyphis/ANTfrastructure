@@ -184,10 +184,20 @@ fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
 #### Dart file enumeration
 
 `code_quality_find_dart_files [root]` prints every tracked `*.dart` path
-(default root `.`), excluding `build/`, `third_party/`, `flutter/` and
-`rust_builder/`. It is the twin of `Get-ProjectDartFiles`
+(default root `.`), excluding `build/`, `ExternalLib/`, `third_party/`,
+`flutter/` and `rust_builder/`. It is the twin of `Get-ProjectDartFiles`
 (`windows/scripts/modules/WindowsFormatting.Common.psm1`) and both return the
 same set for a given repo.
+
+That exclusion set has ONE owner: `code_quality_find_tracked_files <root>
+<pathspec>...`, which lists tracked files matching any git pathspec and drops
+the build output and the vendored trees. `code_quality_find_dart_files` is a
+one-line call into it, and so is `_find_pubspecs` in
+`05-frameworks/flutter/flutter_checks.sh`. The pubspec gate used to restate the
+list and omitted `rust_builder/` — Cargokit's generated `flutter_rust_bridge`
+package, which every other gate in this family exempts — so it graded a package
+nobody in this fleet writes. A caller that copies the `case` arms instead of
+calling this helper drifts the same way.
 
 **Never `dart format .` in a CI lane.** The Linux lanes install the Flutter SDK
 inside the mounted workspace (`flutter_dir: /workspace/flutter`), so the
@@ -472,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **887 entries** over **242 distinct test commands**; both digits are
+manifest holds **890 entries** over **242 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1505,7 +1515,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 432 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 433 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

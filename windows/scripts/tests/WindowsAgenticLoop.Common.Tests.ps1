@@ -555,6 +555,130 @@ Plain text after the block.
         }
     }
 
+    # -- Generated .opencode/agents/<role>.md -------------------------------
+    #
+    # The regression these cover: the composer fed --append-system-prompt-file
+    # only, so the opencode engine -- which reads .opencode/agents/<role>.md and
+    # takes no prompt file on its command line -- got nothing, and consumers
+    # hand-copied the role prompt instead. One such copy had gone stale enough
+    # to lose the executor incident narrative, the foreground-build timeout and
+    # the '- [b]' commit step. Assert the FILE EXISTS, that it carries the
+    # shared prompt AND the overlay, and that it is produced for every engine:
+    # a generation gate that only fires for claude covers nothing.
+
+    Context 'Write-AgenticOpenCodeAgentFile / opencode agent generation' {
+        BeforeAll {
+            $script:ocRoot = Join-Path $script:testDir 'oc-consumer'
+            New-Item -ItemType Directory -Force (Join-Path $script:ocRoot 'prompts') | Out-Null
+            Set-Content -LiteralPath (Join-Path $script:ocRoot 'prompts\planner-overlay.md') `
+                -Value "# Project overlay`n`nPLANNER-OVERLAY-MARKER" -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $script:ocRoot 'prompts\executor-overlay.md') `
+                -Value "# Project overlay`n`nEXECUTOR-OVERLAY-MARKER" -Encoding utf8
+
+            $script:ocConfig = @{
+                engine = 'claude'
+                promptOverlays = @{
+                    plannerPromptOverlayFile  = 'prompts/planner-overlay.md'
+                    executorPromptOverlayFile = 'prompts/executor-overlay.md'
+                }
+                engines = @{
+                    claude   = @{ plannerModel = 'c-p'; executorModel = 'c-e' }
+                    opencode = @{ plannerModel = 'o-p'; executorModel = 'o-e' }
+                }
+            }
+        }
+
+        It 'writes the .opencode/agents role file for both roles' {
+            $null = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot
+            foreach ($role in @('planner', 'executor')) {
+                (Get-AgenticOpenCodeAgentPath -Role $role -RepoRoot $script:ocRoot) | Should -Exist
+            }
+        }
+
+        It 'composes the shared role prompt AND the project overlay into it' {
+            $null = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot
+            $generated = Get-Content (Get-AgenticOpenCodeAgentPath -Role 'executor' -RepoRoot $script:ocRoot) -Raw
+            $shared = Get-Content (Get-AgenticSystemPromptPath -Role 'executor') -Raw
+            $generated | Should -Match 'EXECUTOR-OVERLAY-MARKER'
+            # The specific paragraphs the drifted consumer copy had lost.
+            $generated | Should -Match 'On 2026-07-31'
+            $generated | Should -Match 'timeout: 600000'
+            $generated | Should -Match 'until <done-check>'
+            $generated | Should -Match '\- \[b\]'
+            # Every line of the shared prompt survives the composition.
+            foreach ($line in ($shared -split "`r?`n" | Where-Object { $_.Trim() })) {
+                $generated.Contains($line) | Should -Be $true
+            }
+        }
+
+        It 'matches the file handed to claude via --append-system-prompt-file' {
+            $ec = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot
+            $claudeBody = (Get-Content $ec.ExecutorPromptFile -Raw).TrimEnd()
+            $generated = (Get-Content (Get-AgenticOpenCodeAgentPath -Role 'executor' -RepoRoot $script:ocRoot) -Raw)
+            # Same body, only the generated-file banner differs.
+            $generated.EndsWith($claudeBody + "`n") | Should -Be $true
+        }
+
+        It 'generates for the opencode engine too, not just claude' {
+            $agentFile = Get-AgenticOpenCodeAgentPath -Role 'planner' -RepoRoot $script:ocRoot
+            Remove-Item -LiteralPath $agentFile -Force -ErrorAction SilentlyContinue
+            $null = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot -EngineOverride 'opencode'
+            $agentFile | Should -Exist
+            (Get-Content $agentFile -Raw) | Should -Match 'PLANNER-OVERLAY-MARKER'
+        }
+
+        It 'finds an overlay declared under another engine block (legacy configs)' {
+            $legacy = @{
+                engine = 'opencode'
+                engines = @{
+                    claude = @{
+                        plannerModel = 'c-p'; executorModel = 'c-e'
+                        plannerPromptOverlayFile = 'prompts/planner-overlay.md'
+                    }
+                    opencode = @{ plannerModel = 'o-p'; executorModel = 'o-e' }
+                }
+            }
+            $agentFile = Get-AgenticOpenCodeAgentPath -Role 'planner' -RepoRoot $script:ocRoot
+            Remove-Item -LiteralPath $agentFile -Force -ErrorAction SilentlyContinue
+            $null = Resolve-AgenticEngine -Config $legacy -RepoRoot $script:ocRoot
+            (Get-Content $agentFile -Raw) | Should -Match 'PLANNER-OVERLAY-MARKER'
+        }
+
+        It 'generates the shared role prompt when no overlay is configured at all' {
+            $bare = @{ engine = 'opencode'; models = @{ planner = 'p'; executor = 'e' } }
+            $agentFile = Get-AgenticOpenCodeAgentPath -Role 'executor' -RepoRoot $script:ocRoot
+            Remove-Item -LiteralPath $agentFile -Force -ErrorAction SilentlyContinue
+            $ec = Resolve-AgenticEngine -Config $bare -RepoRoot $script:ocRoot
+            $ec.ExecutorPromptFile | Should -Be $null
+            (Get-Content $agentFile -Raw) | Should -Match 'On 2026-07-31'
+        }
+
+        It 'is idempotent: an unchanged prompt is not rewritten' {
+            $null = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot
+            $agentFile = Get-AgenticOpenCodeAgentPath -Role 'executor' -RepoRoot $script:ocRoot
+            $before = (Get-Item $agentFile).LastWriteTimeUtc
+            Start-Sleep -Milliseconds 20
+            $null = Resolve-AgenticEngine -Config $script:ocConfig -RepoRoot $script:ocRoot
+            (Get-Item $agentFile).LastWriteTimeUtc | Should -Be $before
+        }
+
+        It 'Get-AgenticPromptOverlayPath prefers the top-level promptOverlays block' {
+            $both = @{
+                promptOverlays = @{ plannerPromptOverlayFile = 'top-level.md' }
+                engines = @{ claude = @{ plannerPromptOverlayFile = 'engine-scoped.md' } }
+            }
+            $engineCfg = Get-AgenticConfigValue (Get-AgenticConfigValue $both 'engines' $null) 'claude' $null
+            Get-AgenticPromptOverlayPath -Config $both -EngineConfig $engineCfg -Key 'plannerPromptOverlayFile' |
+                Should -Be 'top-level.md'
+        }
+
+        It 'Get-AgenticConfigKey enumerates hashtables and PSCustomObjects alike' {
+            (Get-AgenticConfigKey @{ a = 1; b = 2 }) | Sort-Object | Should -Be @('a', 'b')
+            (Get-AgenticConfigKey ([pscustomobject]@{ a = 1; b = 2 })) | Sort-Object | Should -Be @('a', 'b')
+            (Get-AgenticConfigKey $null).Count | Should -Be 0
+        }
+    }
+
     # -- Get-AgenticBuildConfigs --------------------------------------------
 
     Context 'Get-AgenticBuildConfigs' {

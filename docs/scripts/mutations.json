@@ -3482,7 +3482,7 @@
   {
     "id": "secret-scan.scope-is-the-argument",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--source \"${1:-.}\"",
+    "find": "--source \"${SCAN_ROOT}\"",
     "replace": "--source \".\"",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "the path argument is what lets a consumer checkout be scanned; ignoring it grades the wrong tree, green or red for the wrong reason"
@@ -3502,6 +3502,30 @@
     "replace": "--no-banner --redact; then",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "this gate once failed on main saying 'leaks found: 2' and naming neither; a finding nobody can locate is not actionable"
+  },
+  {
+    "id": "secret-scan.relative-root-is-the-callers",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "SCAN_ROOT=\"$(cd \"${1:-${REPO_ROOT}}\" 2>/dev/null && pwd)\" || err \"scan root not found: ${1:-.}\"",
+    "replace": "SCAN_ROOT=\"${1:-.}\"",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "resolving the argument AFTER the cd into the hub checkout is the shipped bug: the consumer's own `... lint-secrets.sh .` then scanned the hub, which is clean, and the consumer's leak passed the gate meant to catch it"
+  },
+  {
+    "id": "secret-scan.consumer-config-wins",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "if [ -f \"${SCAN_ROOT}/.gitleaks.toml\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "a consumer's allowlist entries are written about ITS false positives and the hub's say nothing about them; grading a consumer tree by the hub config is the same category of error as scanning the wrong tree"
+  },
+  {
+    "id": "secret-scan.hub-config-is-the-fallback",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "  CONFIG=\"${REPO_ROOT}/.gitleaks.toml\"",
+    "replace": "  CONFIG=\"${SCAN_ROOT}/.gitleaks.toml\"",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "the hub config is what grades every consumer that ships none of its own; point the fallback at the scanned tree and those trees are handed a config that is not there"
   },
   {
     "id": "copy-coverage.missing-fails",

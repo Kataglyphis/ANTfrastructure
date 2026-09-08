@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Kataglyphis shared Renovate preset. Adopt with: { \"extends\": [\"github>Kataglyphis/ContainerHub\"] }",
+    "It lives at the repository ROOT as default.json because that is the only filename `github>Kataglyphis/ContainerHub` resolves to (a preset under .github/ would need the explicit `github>Kataglyphis/ContainerHub:<name>` form).",
+    "Renovate reads it from ContainerHub's DEFAULT BRANCH, including for ContainerHub itself, so a change here only reaches any consumer - or the hub - once it is merged.",
+    "The consumers currently carry Dependabot configs that have never opened a PR; this preset is what replaces them, and the reason it exists as a preset rather than four copies is that the git-submodules line below is the part everyone forgets."
+  ],
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "git-submodules": {
+    "description": [
+      "Renovate DISABLES the git-submodules manager by default, which is why every Kataglyphis submodule gitlink - ContainerHub's own third_party/DocumANTation pin included - has been unwatched since the day it was added. Nothing else in this preset matters as much as this one line.",
+      "The manager bumps a gitlink to the tip of the branch named in .gitmodules (falling back to the remote's default branch), so a submodule that wants to be watched needs a `branch = <name>` entry there."
+    ],
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "GitHub Actions pin bumps are low-risk; group them into one PR instead of one per action.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": [
+        "Composite actions resolved at @main are a deliberate exception to digest pinning: a consumer workflow that pinned ContainerHub's own actions to a SHA would stop picking up the upstream-first change flow the repos are built around (upstream is pushed BEFORE the consumer change that needs it).",
+        "This rule only stops Renovate from proposing those pins; workflows keep pinning every THIRD-PARTY action by digest."
+      ],
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["Kataglyphis/ContainerHub", "/^Kataglyphis/ContainerHub/.+/"],
+      "enabled": false
+    },
+    {
+      "description": "A submodule bump moves a whole dependent repository, so it gets its own PR and its own label rather than being folded into a group.",
+      "matchManagers": ["git-submodules"],
+      "addLabels": ["submodules"],
+      "commitMessageTopic": "submodule {{depName}}"
+    }
+  ]
+}

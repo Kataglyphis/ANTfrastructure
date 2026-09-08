@@ -14,26 +14,65 @@
 param(
     # Also fail the run on PSScriptAnalyzer findings of Warning or Error severity
     # (default: analyzer is advisory).
-    [switch]$FailOnAnalyzer
+    [switch]$FailOnAnalyzer,
+    # Directories and/or single .ps1/.psm1 files to lint. Omitted = the hub's own
+    # scope (windows\ + shared\windows), so ContainerHub's own invocation is
+    # unchanged. A consumer that submodules this repo points -Path at ITS tree;
+    # the PSScriptAnalyzer settings file stays resolved against $PSScriptRoot
+    # below, so the hub's ruleset is consumed BY REFERENCE - nothing is copied.
+    [string[]]$Path
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$scriptsDir = Split-Path -Parent $MyInvocation.MyCommand.Path      # windows/scripts
+# $PSScriptRoot, not $MyInvocation.MyCommand.Path: identical for the hub's own
+# run, but it anchors $settings to THIS script's location rather than to
+# whatever -Path a consumer passes, which is what lets a submoduled ContainerHub
+# hand out its ruleset without anyone copying the .psd1.
+$scriptsDir = $PSScriptRoot                                         # windows/scripts
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
 
-# Collect every script/module except the archived (dead) tree. One recursive
-# walk over windows\ (2026-08-10, backlog #21): the former three-list form
-# missed trees like windows\upstream, and windows\diagnostics had silently
-# never been linted before joining the scope the same day.
-$targets = @(
-    Get-ChildItem -Path $windowsDir -Recurse -Include '*.ps1', '*.psm1' -File
-    # shared/windows: templates consumed by 4 external repos — an edit there
-    # was gated by NOTHING until 2026-08-21 (no lint, no tests, no workflow
-    # trigger); exactly the class of miss #108 cleaned up in-repo.
-    Get-ChildItem -Path (Join-Path (Split-Path -Parent $windowsDir) 'shared\windows') -Recurse -Include '*.ps1', '*.psm1' -File -ErrorAction SilentlyContinue
-) | Where-Object { $_.FullName -notmatch '\\archive\\' } | Sort-Object FullName -Unique
+# Default scope = the hub's own trees, unchanged. One recursive walk over
+# windows\ (2026-08-10, backlog #21): the former three-list form missed trees
+# like windows\upstream, and windows\diagnostics had silently never been linted
+# before joining the scope the same day. Plus shared/windows: templates
+# consumed by 4 external repos - an edit there was gated by NOTHING until
+# 2026-08-21 (no lint, no tests, no workflow trigger); exactly the class of
+# miss #108 cleaned up in-repo.
+$roots = if ($Path) {
+    $Path
+} else {
+    @(
+        $windowsDir
+        Join-Path (Split-Path -Parent $windowsDir) 'shared\windows'
+    )
+}
+
+# Collect every script/module except the archived (dead) tree.
+# A root that does not exist THROWS. The old shared\windows walk carried
+# -ErrorAction SilentlyContinue; carried over to a consumer-supplied -Path it
+# would turn one typo into "PARSE: all 0 files parse clean" - a green gate over
+# nothing.
+$found = foreach ($root in $roots) {
+    if (-not (Test-Path -LiteralPath $root)) { throw "Lint path does not exist: $root" }
+    if (Test-Path -LiteralPath $root -PathType Container) {
+        Get-ChildItem -LiteralPath $root -Recurse -Include '*.ps1', '*.psm1' -File
+    } else {
+        Get-Item -LiteralPath $root
+    }
+}
+# @() around the WHOLE pipeline, not just the walk: Where-Object/Sort-Object
+# unwrap a one-element result back to a scalar, and $targets.Count then dies
+# under Set-StrictMode -- which is exactly what -Path <single file> hands it.
+$targets = @($found |
+        Where-Object { $_.FullName -notmatch '\\archive\\' } |
+        Sort-Object FullName -Unique)
+
+# Same reason: a scope that resolves to nothing must not report success.
+if ($targets.Count -eq 0) {
+    throw "No .ps1/.psm1 files found under: $($roots -join ', ')"
+}
 
 Write-Host "== Lint gate: $($targets.Count) files ==" -ForegroundColor Cyan
 
@@ -56,7 +95,12 @@ foreach ($file in $targets) {
         }
         continue
     }
-    $rel = $file.FullName.Substring($windowsDir.Length).TrimStart('\', '/')
+    # GetRelativePath, not Substring($windowsDir.Length): Substring THROWS the
+    # moment a file lives outside windows\ - i.e. for every consumer -Path - and
+    # it already produced a sliced-mid-string label for the shared\windows
+    # templates in the default scope. GetRelativePath yields ..\shared\... for a
+    # sibling, and the plain absolute path when there is no common root at all.
+    $rel = [IO.Path]::GetRelativePath($windowsDir, $file.FullName)
     foreach ($v in @(Get-BarewordCommaAttrViolation -Ast $ast -Label $rel)) {
         [void]$astViolations.Add("bareword comma-attribute native arg (quote the whole string): $v")
     }

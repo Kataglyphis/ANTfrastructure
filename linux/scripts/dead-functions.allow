@@ -25,6 +25,7 @@ linux/scripts/lib/coverage.sh	coverage_llvm_generate_profile
 linux/scripts/lib/coverage.sh	coverage_llvm_report
 linux/scripts/lib/coverage.sh	coverage_run_gcovr
 linux/scripts/lib/ctest-run.sh	ctest_run_main
+linux/scripts/lib/dartdoc-build.sh	dartdoc_build_main
 linux/scripts/lib/docs-build.sh	docs_build_main
 linux/scripts/lib/rust-toolchain.sh	ensure_wasm32_target
 linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize

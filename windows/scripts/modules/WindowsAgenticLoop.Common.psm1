@@ -130,6 +130,66 @@ function Get-AgenticConfigValue {
     return $Default
 }
 
+function Get-AgenticConfigKey {
+    <#
+    .SYNOPSIS
+      The key names of a config node, for both hashtables (tests) and
+      PSCustomObjects (ConvertFrom-Json). Empty array for $null.
+
+      The leading ',' on every return is load-bearing, same as in
+      Get-AgenticBuildConfigs: without it PowerShell unrolls a 0- or 1-element
+      array on return, so a caller's `(Get-AgenticConfigKey $x).Count` fails
+      with "the property 'Count' cannot be found" under StrictMode.
+    #>
+    param($Object)
+    if ($null -eq $Object) { return ,@() }
+    if ($Object -is [hashtable]) { return ,@($Object.Keys) }
+    return ,@($Object.PSObject.Properties.Name)
+}
+
+function Get-AgenticPromptOverlayPath {
+    <#
+    .SYNOPSIS
+      Resolve a prompt-overlay path (repo-relative, as stored) from the loop
+      config, preferring the selected engine's block but falling back to any
+      other engine block that declares it.
+    .DESCRIPTION
+      The shared ROLE prompt and a consumer's overlay are both engine-agnostic
+      by construction — the overlay keys live under .engines.<engine>.* only
+      because that is where the claude adapter first needed them. Reading them
+      back engine-scoped meant a consumer that had migrated to the overlay
+      shape under .engines.claude got NO composed prompt when it ran with
+      .engine = "opencode", so opencode consumers kept a hand-written role
+      prompt in .opencode/agents/ instead — the drift this module's
+      New-AgenticComposedPrompt docstring describes ("which is how one
+      consumer ended up with two full copies that had drifted 271 lines
+      apart").
+
+      A top-level .promptOverlays.<planner|executor>PromptOverlayFile is
+      honoured first and is the shape to prefer in new configs; the
+      engine-scoped keys stay supported so existing consumers keep working
+      without a config edit.
+    #>
+    param($Config, $EngineConfig, [Parameter(Mandatory)][string]$Key)
+
+    $topLevel = Get-AgenticConfigValue (Get-AgenticConfigValue $Config 'promptOverlays' $null) $Key $null
+    if ($topLevel) { return $topLevel }
+
+    $scoped = Get-AgenticConfigValue $EngineConfig $Key $null
+    if ($scoped) { return $scoped }
+
+    $engines = Get-AgenticConfigValue $Config 'engines' $null
+    foreach ($name in (Get-AgenticConfigKey $engines)) {
+        if ($name -eq '_comment') { continue }
+        $other = Get-AgenticConfigValue (Get-AgenticConfigValue $engines $name $null) $Key $null
+        if ($other) {
+            Write-AgenticLog "Using $Key from the '$name' engine block (the overlay is engine-agnostic; move it to .promptOverlays)." 'WARN'
+            return $other
+        }
+    }
+    return $null
+}
+
 function Get-AgenticBuildConfigs {
     <#
     .SYNOPSIS
@@ -201,10 +261,16 @@ function Resolve-AgenticEngine {
     # An overlay wins over a full override when both are set, and that is
     # logged - a config carrying both is almost always a half-finished
     # migration from the old shape.
+    #
+    # The overlay lookup is deliberately NOT limited to the selected engine's
+    # block (see Get-AgenticPromptOverlayPath): the role prompt and the project
+    # overlay are both engine-agnostic, and pinning the lookup to
+    # .engines.claude.* is what left the opencode engine with no composed prompt
+    # at all - the gap the .opencode/agents/ generation below closes.
     $plannerPromptFile = Get-AgenticConfigValue $engineCfg 'plannerPromptFile' $null
     $executorPromptFile = Get-AgenticConfigValue $engineCfg 'executorPromptFile' $null
-    $plannerOverlay = Get-AgenticConfigValue $engineCfg 'plannerPromptOverlayFile' $null
-    $executorOverlay = Get-AgenticConfigValue $engineCfg 'executorPromptOverlayFile' $null
+    $plannerOverlay = Get-AgenticPromptOverlayPath -Config $Config -EngineConfig $engineCfg -Key 'plannerPromptOverlayFile'
+    $executorOverlay = Get-AgenticPromptOverlayPath -Config $Config -EngineConfig $engineCfg -Key 'executorPromptOverlayFile'
 
     if ($plannerPromptFile -and -not [System.IO.Path]::IsPathRooted($plannerPromptFile)) {
         $plannerPromptFile = Join-Path $RepoRoot $plannerPromptFile
@@ -219,14 +285,13 @@ function Resolve-AgenticEngine {
         $executorOverlay = Join-Path $RepoRoot $executorOverlay
     }
 
-    if ($plannerOverlay) {
-        if ($plannerPromptFile) { Write-AgenticLog 'Both plannerPromptFile and plannerPromptOverlayFile set; the overlay wins.' 'WARN' }
-        $plannerPromptFile = New-AgenticComposedPrompt -Role 'planner' -OverlayPath $plannerOverlay
-    }
-    if ($executorOverlay) {
-        if ($executorPromptFile) { Write-AgenticLog 'Both executorPromptFile and executorPromptOverlayFile set; the overlay wins.' 'WARN' }
-        $executorPromptFile = New-AgenticComposedPrompt -Role 'executor' -OverlayPath $executorOverlay
-    }
+    # Runs for EVERY engine, not just claude: the second output of the composer
+    # is $RepoRoot/.opencode/agents/<role>.md, which is the only way opencode
+    # can be handed a role prompt at all.
+    $plannerPromptFile = Resolve-AgenticRolePromptFile -Role 'planner' `
+        -PromptFile $plannerPromptFile -OverlayPath $plannerOverlay -RepoRoot $RepoRoot
+    $executorPromptFile = Resolve-AgenticRolePromptFile -Role 'executor' `
+        -PromptFile $executorPromptFile -OverlayPath $executorOverlay -RepoRoot $RepoRoot
 
     $intervals = Get-AgenticConfigValue $Config 'intervals' $null
     return @{
@@ -606,13 +671,104 @@ function Get-AgenticSystemPromptPath {
         Composing one into the other produces an agent told to do its job twice
         in two different voices, so they get separate resolvers.
     #>
-    param([Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role)
+    param(
+        [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
+        # Callers that only OPPORTUNISTICALLY want the shared prompt (the
+        # no-prompt-configured branch of Resolve-AgenticRolePromptFile, which
+        # may be running against a vendored copy of this module that has no
+        # shared/ tree above it) pass this and get $null instead of a FATAL
+        # that would fail a loop which used to start fine.
+        [switch]$AllowMissing
+    )
     $path = Join-Path $PSScriptRoot "..\..\..\shared\agentic-loop\system-prompts\$Role.md"
     if (-not (Test-Path $path)) {
+        if ($AllowMissing) { return $null }
         Write-AgenticLog "Shared system prompt missing: $path" 'FATAL'
         throw "Shared system prompt missing: $path"
     }
     (Resolve-Path $path).Path
+}
+
+function Get-AgenticOpenCodeAgentPath {
+    <#
+      .SYNOPSIS
+        Where opencode reads the role prompt for $Role:
+        <RepoRoot>/.opencode/agents/<role>.md.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
+        [Parameter(Mandatory)][string]$RepoRoot
+    )
+    Join-Path (Join-Path (Join-Path $RepoRoot '.opencode') 'agents') "$Role.md"
+}
+
+function Write-AgenticOpenCodeAgentFile {
+    <#
+      .SYNOPSIS
+        Generate <RepoRoot>/.opencode/agents/<role>.md from an already composed
+        role prompt body. Returns the path it wrote (or would have written).
+      .DESCRIPTION
+        The claude adapter can be handed a prompt file on the command line
+        (--append-system-prompt-file); opencode cannot. `opencode run --agent
+        <role>` resolves the role prompt from .opencode/agents/<role>.md in the
+        repo, and nothing in this module used to write that file. So the
+        composition below only ever reached the claude engine, and every
+        opencode consumer hand-maintained a full copy of the role prompt -
+        exactly the failure New-AgenticComposedPrompt's docstring names, "which
+        is how one consumer ended up with two full copies that had drifted 271
+        lines apart". Generating the file from the same two inputs is what stops
+        the fork recurring.
+
+        The write is idempotent (unchanged content is not rewritten, so mtimes
+        and file watchers stay quiet) and happens even under -DryRun: the file
+        is a derived artefact, not repo content, and a dry run whose whole point
+        is checking the prompt wiring has to produce it. A repo whose .gitignore
+        does not cover the path gets a WARN - a committed generated prompt is a
+        fork waiting to happen.
+      .PARAMETER Body
+        The composed prompt text (shared role prompt + overlay).
+      .PARAMETER SourceLabel
+        What was composed onto the shared prompt, recorded in the file header.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$Body,
+        [string]$SourceLabel = 'shared role prompt only'
+    )
+
+    $path = Get-AgenticOpenCodeAgentPath -Role $Role -RepoRoot $RepoRoot
+    $header = @(
+        '<!--'
+        'GENERATED FILE - DO NOT EDIT.'
+        ''
+        'Written on every agentic-loop start by Write-AgenticOpenCodeAgentFile'
+        '(ContainerHub windows/scripts/modules/WindowsAgenticLoop.Common.psm1).'
+        'opencode takes no system-prompt file on its command line, so this is the'
+        'only way `opencode run --agent <role>` can be given the shared role prompt.'
+        ''
+        "Composed from: shared/agentic-loop/system-prompts/$Role.md + $SourceLabel"
+        'Change the shared prompt or the project overlay - edits here are lost on'
+        'the next run, and a committed copy is how the prompts forked before.'
+        '-->'
+    ) -join "`n"
+    $content = "$header`n`n$($Body.TrimEnd())`n"
+
+    $dir = Split-Path $path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+    if ((Test-Path $path) -and ((Get-Content -LiteralPath $path -Raw) -eq $content)) {
+        Write-AgenticLog "opencode agent prompt up to date: $path"
+        return $path
+    }
+    Set-Content -LiteralPath $path -Value $content -Encoding utf8 -NoNewline
+    Write-AgenticLog "Generated opencode agent prompt: $path ($SourceLabel)"
+
+    $gitignore = Join-Path $RepoRoot '.gitignore'
+    if ((Test-Path $gitignore) -and -not ((Get-Content -LiteralPath $gitignore -Raw) -match '(?m)^\s*\.opencode/agents/')) {
+        Write-AgenticLog "$path is generated but .gitignore does not exclude '.opencode/agents/' — add it, or the copy will be committed and fork again." 'WARN'
+    }
+    return $path
 }
 
 function New-AgenticComposedPrompt {
@@ -630,19 +786,31 @@ function New-AgenticComposedPrompt {
         A missing overlay is a WARN and falls back to the shared prompt alone: an
         agentic run losing its project context is bad, but not as bad as the loop
         refusing to start at all.
+        The SAME composition is written a second time, to
+        <RepoRoot>/.opencode/agents/<role>.md, whenever -RepoRoot is given —
+        that is the only channel opencode has for a role prompt. One
+        composition, two engines, no hand-copied third version.
       .PARAMETER Role
         planner | executor
       .PARAMETER OverlayPath
         Project-specific delta appended below the shared role prompt.
+      .PARAMETER RepoRoot
+        Consumer repo root. When set, the composition is also emitted as
+        <RepoRoot>/.opencode/agents/<role>.md for the opencode engine.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
-        [Parameter(Mandatory)][string]$OverlayPath
+        [Parameter(Mandatory)][string]$OverlayPath,
+        [string]$RepoRoot
     )
 
     $defaultPath = Get-AgenticSystemPromptPath -Role $Role
     if (-not (Test-Path $OverlayPath)) {
         Write-AgenticLog "Prompt overlay not found: $OverlayPath (using the shared role prompt alone)" 'WARN'
+        if ($RepoRoot) {
+            Write-AgenticOpenCodeAgentFile -Role $Role -RepoRoot $RepoRoot `
+                -Body (Get-Content $defaultPath -Raw) -SourceLabel 'no overlay (overlay file missing)' | Out-Null
+        }
         return $defaultPath
     }
 
@@ -659,7 +827,69 @@ function New-AgenticComposedPrompt {
 
     Set-Content -LiteralPath $composed -Value $body -Encoding utf8
     Write-AgenticLog "Composed $Role prompt: shared default + $(Split-Path $OverlayPath -Leaf)"
+    if ($RepoRoot) {
+        Write-AgenticOpenCodeAgentFile -Role $Role -RepoRoot $RepoRoot `
+            -Body $body -SourceLabel (Split-Path $OverlayPath -Leaf) | Out-Null
+    }
     return $composed
+}
+
+function Resolve-AgenticRolePromptFile {
+    <#
+      .SYNOPSIS
+        Resolve the claude prompt file for one role AND emit the matching
+        .opencode/agents/<role>.md, for whichever of the two config shapes the
+        consumer uses. Returns the claude prompt-file path, or $null when the
+        config declares neither shape (unchanged from before).
+      .DESCRIPTION
+        Three branches, one invariant: the opencode agent file is always
+        written, so the two engines can never be told different things.
+
+          overlay set   -> shared role prompt + overlay (the preferred shape)
+          override set  -> the override file verbatim (legacy full-copy shape)
+          neither       -> the shared role prompt alone
+
+        The last branch is why this runs unconditionally: a consumer with no
+        prompt config at all previously gave opencode nothing, which is the
+        vacuum a hand-written .opencode/agents/<role>.md was invented to fill.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
+        [string]$PromptFile,
+        [string]$OverlayPath,
+        [string]$RepoRoot
+    )
+
+    if ($OverlayPath) {
+        if ($PromptFile) {
+            Write-AgenticLog "Both ${Role}PromptFile and ${Role}PromptOverlayFile set; the overlay wins." 'WARN'
+        }
+        return New-AgenticComposedPrompt -Role $Role -OverlayPath $OverlayPath -RepoRoot $RepoRoot
+    }
+
+    if ($PromptFile) {
+        if ($RepoRoot) {
+            if (Test-Path $PromptFile) {
+                Write-AgenticOpenCodeAgentFile -Role $Role -RepoRoot $RepoRoot `
+                    -Body (Get-Content -LiteralPath $PromptFile -Raw) `
+                    -SourceLabel "full override $(Split-Path $PromptFile -Leaf) (migrate it to an overlay)" | Out-Null
+            } else {
+                Write-AgenticLog "Prompt file not found: $PromptFile (no opencode agent prompt generated for $Role)" 'WARN'
+            }
+        }
+        return $PromptFile
+    }
+
+    if ($RepoRoot) {
+        $shared = Get-AgenticSystemPromptPath -Role $Role -AllowMissing
+        if ($shared) {
+            Write-AgenticOpenCodeAgentFile -Role $Role -RepoRoot $RepoRoot `
+                -Body (Get-Content -LiteralPath $shared -Raw) -SourceLabel 'no project overlay configured' | Out-Null
+        } else {
+            Write-AgenticLog "No prompt configured for $Role and the shared role prompt is unavailable; opencode will run without a role prompt." 'WARN'
+        }
+    }
+    return $null
 }
 
 # -- BACKLOG helpers ------------------------------------------------------
@@ -1127,11 +1357,16 @@ Export-ModuleMember -Function @(
     'Get-AgenticPlatform',
     'Test-IsWindows',
     'Get-AgenticConfigValue',
+    'Get-AgenticConfigKey',
+    'Get-AgenticPromptOverlayPath',
     'Get-AgenticBuildConfigs',
     'Get-AgenticDefaultPrompt',
     'Get-AgenticDefaultPromptPath',
     'Get-AgenticSystemPromptPath',
     'New-AgenticComposedPrompt',
+    'Resolve-AgenticRolePromptFile',
+    'Get-AgenticOpenCodeAgentPath',
+    'Write-AgenticOpenCodeAgentFile',
     'Resolve-AgenticEngine',
     'Get-AgentTimeoutForRole',
     'Invoke-AgentProcess',

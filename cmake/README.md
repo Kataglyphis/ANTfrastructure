@@ -38,11 +38,14 @@ rather than an uninitialised checkout.
 | Module | Provides |
 | --- | --- |
 | `Cache.cmake` | `myproject_enable_cache` — ccache/sccache launcher wiring |
-| `CompilerBuildFlags.cmake` | `myproject_apply_compiler_build_flags` + flag-strip helpers; owns the clang-cl `-fms-compatibility-version` pin |
+| `CompilerBuildFlags.cmake` | `myproject_apply_compiler_build_flags` + flag-strip helpers; owns the clang-cl `-fms-compatibility-version` pin and applies it to Debug, Release **and RelWithDebInfo** (which is what every `*-Profile` preset actually resolves to) |
 | `CompilerWarnings.cmake` | `myproject_set_project_warnings` — the per-compiler warning set |
+| `CPackCommon.cmake` | `kataglyphis_cpack_common` — the CPack *wiring*: generator selection per platform, the architecture-normalised package name, and the NSIS, WiX, DEB and AppImage blocks. A **macro**, because CPack reads `CPACK_*` out of the scope that runs `include(CPack)`. Every per-product value is an argument; `VENDOR` and `WIX_UPGRADE_GUID` are mandatory, the latter because the two consumers it was hoisted from were carrying the *same* MSI upgrade code |
 | `Doxygen.cmake` | `enable_doxygen` — configures `Doxyfile.in` from the caller's source dir |
+| `GTestDiscovery.cmake` | `kataglyphis_register_gtest_target` — the one way to register a GoogleTest binary with CTest: `gtest_discover_tests` normally, an `add_test` + explicit-`PATH` fallback where clang-cl discovery dies with `0xc0000135`, and opt-in `WORKING_DIRECTORY`. Includes `GoogleTest` itself |
 | `Hardening.cmake` | `myproject_enable_hardening` |
 | `InterproceduralOptimization.cmake` | `myproject_enable_ipo` |
+| `KataglyphisAppImage.cmake` | `kataglyphis_provision_appimagetool`, `kataglyphis_appimagetool_pin` — appimagetool from the immutable release tag pinned in `linux/scripts/01-core/versions.env`, checksum-verified, **fatal** on mismatch or download failure |
 | `KataglyphisCMakeHelpers.cmake` | `kataglyphis_collect_module_interfaces` — globs C++20 module interface units |
 | `PreventInSourceBuilds.cmake` | in-source build guard |
 | `SanitizerSupport.cmake` | `myproject_supports_sanitizers`, `myproject_default_debug_sanitizers` — what this toolchain can run, and Debug defaults |
@@ -60,7 +63,11 @@ in every consumer for no behavioural gain.
 
 Anything encoding one project's *policy* rather than a reusable *mechanism*:
 the option list and its defaults, the language standard, whether exceptions are
-on, whether C++ modules are mandatory, packaging metadata, dependency lists.
+on, whether C++ modules are mandatory, packaging *values*, dependency lists.
+`CPackCommon.cmake` is the worked example of that line rather than an exception
+to it: the branch structure is here, while the icons, the installer copy, the
+MSI upgrade code and the `.desktop` name stay in the consumer and arrive as
+arguments.
 Those stay in the consumer's own `cmake/` — typically a `ProjectOptions.cmake`
 that includes the modules above and composes them.
 

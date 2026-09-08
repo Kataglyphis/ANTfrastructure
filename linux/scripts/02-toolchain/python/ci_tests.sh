@@ -7,7 +7,8 @@
 # Environment variables:
 #   PACKAGE_NAME - Package name (default: derived from pyproject.toml or current dir)
 #   PY_VERSIONS - Space-separated Python versions (default: "3.13 3.14")
-#   EXPERIMENTAL_VERSIONS - Experimental versions that don't block (default: "3.14t")
+#   EXPERIMENTAL_PYTHON_VERSIONS - Experimental versions that don't block
+#                          (default: "3.14t"; declared by 01-core/python_uv.sh)
 #   CI_TESTS_LOG_FILE - Log file path (default: docs/test_results/ci_tests-<timestamp>.log)
 #   WORKSPACE_ROOT - Workspace root directory
 
@@ -29,7 +30,12 @@ fi
 PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
 PY_VERSIONS="${2:-${PY_VERSIONS:-3.13 3.14}}"
-EXPERIMENTAL_VERSIONS="${EXPERIMENTAL_VERSIONS:-3.14t}"
+# EXPERIMENTAL_PYTHON_VERSIONS is declared, defaulted and READ by
+# 01-core/python_uv.sh (is_experimental_python loops over it), sourced above via
+# ci-common.sh — so there is nothing to set here. This script used to assign
+# EXPERIMENTAL_VERSIONS, a name no consumer ever read: exporting the documented
+# knob changed nothing, and the dead assignment only looked live because the two
+# defaults happened to be the same string.
 
 LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -39,7 +45,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 info "Logging to: $LOG_FILE"
 info "PACKAGE_NAME=$PACKAGE_NAME"
 info "PY_VERSIONS=$PY_VERSIONS"
-info "EXPERIMENTAL_VERSIONS=$EXPERIMENTAL_VERSIONS"
+info "EXPERIMENTAL_PYTHON_VERSIONS=$EXPERIMENTAL_PYTHON_VERSIONS"
 
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 

@@ -56,7 +56,20 @@ macro(myproject_strip_clang_cl_asan_debug_runtime_flags)
   endforeach()
 endmacro()
 
-# Applies Debug/Release/Profile flags for the detected compiler.
+# Applies Debug/Release/RelWithDebInfo flags for the detected compiler.
+#
+# RELWITHDEBINFO is covered because that is what the *-Profile presets actually
+# resolve to. This module used to set CMAKE_CXX_FLAGS_PROFILE instead, which
+# CMake only ever reads when CMAKE_BUILD_TYPE is literally `Profile` - and no
+# consumer configures that build type, so those four lines were dead. The
+# consequence was not cosmetic: a clang-cl RelWithDebInfo build got NO
+# -fms-compatibility-version pin, which is exactly the .pcm version mismatch the
+# pin above exists to prevent. The PROFILE variant is REMOVED rather than kept
+# alongside: a dead flag variable sitting next to the live one is what hid the
+# gap for months, and a build type nobody configures cannot be regression-tested.
+# A consumer that genuinely wants a `Profile` build type declares it
+# (CMAKE_BUILD_TYPE / CMAKE_CONFIGURATION_TYPES) and maps it here in the same
+# change, so the flags and the build type that uses them arrive together.
 #
 # Call with the consuming project's ASan option so the clang-cl branch knows
 # whether it must strip /MDd, e.g.
@@ -66,11 +79,11 @@ macro(myproject_apply_compiler_build_flags enable_sanitizer_address)
     myproject_strip_msvc_debug_runtime_flags()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /DEBUG /Od /std:c++23preview")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /std:c++23preview")
-    set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} /O2 /std:c++23preview")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /O2 /std:c++23preview")
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -std=c++23 -ggdb")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -std=c++23 -DNDEBUG")
-    set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} -O3 -std=c++23 -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -std=c++23 -DNDEBUG")
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND MSVC)
     set(_MYPROJECT_CLANG_CL_SAFE_WARNINGS
         "-fms-compatibility-version=${MYPROJECT_CLANG_CL_MS_COMPATIBILITY_VERSION} -fcolor-diagnostics -Wno-error=unused-command-line-argument -Wno-error=character-conversion -Wno-unknown-warning-option -Wno-error=unknown-warning-option"
@@ -81,10 +94,11 @@ macro(myproject_apply_compiler_build_flags enable_sanitizer_address)
     endif()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od ${_MYPROJECT_CLANG_CL_SAFE_WARNINGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 -DNDEBUG ${_MYPROJECT_CLANG_CL_SAFE_WARNINGS}")
-    set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} /O2 -DNDEBUG ${_MYPROJECT_CLANG_CL_SAFE_WARNINGS}")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /O2 -DNDEBUG ${_MYPROJECT_CLANG_CL_SAFE_WARNINGS}")
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -ggdb -std=c++23 -fcolor-diagnostics")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG -std=c++23 -fcolor-diagnostics")
-    set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} -O3 -DNDEBUG -std=c++23 -fcolor-diagnostics")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -DNDEBUG -std=c++23 -fcolor-diagnostics")
   endif()
 endmacro()

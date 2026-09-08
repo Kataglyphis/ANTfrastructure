@@ -126,7 +126,10 @@ Installs a PINNED Pester and runs a suite, printing Describe/Name plus the
 assertion's `FailureMessage` and `StackTrace` for every failure - the test name
 alone costs a round trip to learn what was compared. Pinning matters because
 Pester 3.x and 5.x are different dialects: a 3.4 suite (`Should Be 0`) does not
-parse under the Pester 5 on the runner. Inputs: `path` (required), `version`.
+parse under the Pester 5 on the runner. A run whose `TotalCount` is 0 FAILS:
+a path that matches no suite (missing, renamed, or never checked out) would
+otherwise exit 0 with `FailedCount` 0 - green having run nothing. Inputs:
+`path` (required), `version`.
 
 ### `prepare-linux-ci-host`
 The prologue every containerised Linux job repeats: free runner disk, check

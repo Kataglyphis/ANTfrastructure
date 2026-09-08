@@ -1,0 +1,5 @@
+# Bootstrap set for lib/dartdoc-build.sh's guide renderer (dartdoc-guides.py),
+# installed into the container-native venv by dartdoc_build_prepare_python_env.
+# markdown-it-py is the CommonMark parser the renderer walks for headings and
+# links; it is the same parser the Sphinx side already resolves through myst.
+markdown-it-py==4.2.0
