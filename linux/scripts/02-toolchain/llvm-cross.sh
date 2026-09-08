@@ -10,7 +10,10 @@ export CCACHE_COMPILERCHECK=content
 install_cross_llvm_target_packages() {
   local target_label="$1"
 
-  [ "${target_label}" = "amd64" ] && return 0
+  # The build host's own arch needs no target packages — its native ones serve.
+  # Keyed on build_arch_oci(), not "amd64" (2026-09-08): on an arm64 host the
+  # roles swap and the literal made arm64 take the foreign-target path.
+  [ "${target_label}" = "$(build_arch_oci)" ] && return 0
   command -v install_target_packages >/dev/null 2>&1 || die "install_target_packages is unavailable; cross-env.sh must be sourced before llvm.sh"
 
   (
@@ -30,7 +33,8 @@ _llvm_cross_resolve_dirs() {
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
   target_label="$(arch_normalize "${target_label}")"
-  [ "${target_label}" = "amd64" ] && { log "Skipping cross LLVM build for amd64 (host already serves)"; return 1; }
+  [ "${target_label}" = "$(build_arch_oci)" ] \
+    && { log "Skipping cross LLVM build for ${target_label} (build host already serves it)"; return 1; }
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 

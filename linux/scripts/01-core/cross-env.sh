@@ -170,19 +170,27 @@ for_each_cross_target() {
   # would run once with the whole list as a single bogus target.
   local -a _fect_targets=()
   IFS=',' read -r -a _fect_targets <<< "${normalized}"
+  # The BUILD HOST's own arch is not a cross target — it is served natively, so
+  # it is skipped unless --include-amd64 asks for it (the flag name predates
+  # this and now means "include the host's arch"; kept for its 7 callers).
+  # Keyed on build_arch_oci(), NOT the literal "amd64" (2026-09-08): with the
+  # literal, an arm64 host skipped amd64 — which it must cross-build — and
+  # iterated arm64 — which it must not — so the LLVM verify demanded a cross
+  # install for the NATIVE arch and killed the compiler stage at `verify`.
+  local host_arch
+  host_arch="$(build_arch_oci 2>/dev/null || echo amd64)"
   for target in "${_fect_targets[@]}"; do
     case "${target}" in
-      amd64)
-        [ "${include_amd64}" -eq 1 ] || continue
-        "${callback}" "${target}" || rc=$?
-        ;;
-      arm64|riscv64)
-        "${callback}" "${target}" || rc=$?
-        ;;
+      amd64|arm64|riscv64) ;;
       *)
         printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
+        continue
         ;;
     esac
+    if [ "${target}" = "${host_arch}" ] && [ "${include_amd64}" -ne 1 ]; then
+      continue
+    fi
+    "${callback}" "${target}" || rc=$?
   done
   return "${rc}"
 }

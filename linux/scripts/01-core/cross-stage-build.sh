@@ -5,6 +5,11 @@
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
 
+# The platform every cross stage is built on. Default linux/amd64 keeps the
+# amd64 dev host byte-identical; linux/arm64 makes a native ARM build possible
+# on an arm64 host, where the old hardcoded literal produced x86_64-under-QEMU.
+CROSS_BUILD_PLATFORM="${CROSS_BUILD_PLATFORM:-linux/amd64}"
+
 # _disk_guard_free_gb for the salvage free-space check below (idempotent load).
 _CROSS_STAGE_BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -218,7 +223,7 @@ _cross_build_salvage_exports() {
       for _tgt in "${_salvage_targets[@]}"; do
         [ "${_salvage_fails}" -ge 2 ] && break
         if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
-             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform "${CROSS_BUILD_PLATFORM}" \
              --target "${_tgt}" -f "${dockerfile}" \
              --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
              --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
@@ -250,7 +255,7 @@ _cross_stage_build_impl() {
     "${NERDCTL_BIN:-nerdctl}" build
     "${pull_flag}"
     ${NO_CACHE:+--no-cache}
-    --platform linux/amd64
+    --platform "${CROSS_BUILD_PLATFORM}"
     -t "${tag}"
     -f "${dockerfile}"
   )

@@ -7,6 +7,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
+
 SUBJECT="${SCRIPTS_DIR}/02-toolchain/llvm.sh"
 
 _src="$(t_fn_src "${SUBJECT}" _llvm_install_cross_clang_wrapper)" || exit 1
@@ -18,6 +19,11 @@ trap 'rm -rf "${_bin}"' EXIT
 _install() {
   bash -c "set -eu
 arch_deb_multiarch_triplet_for() { printf 'x86_64-linux-gnu'; }
+# This suite asserts the AMD64-HOST contract (sysroot \"/\" for amd64). The
+# wrapper became host-relative on 2026-09-08, so the scenario has to be stated
+# explicitly — otherwise the suite fails on an arm64 runner, where amd64 is a
+# FOREIGN target. Stubbed like the other enclosing-scope helpers.
+build_arch_oci() { printf 'amd64'; }
 die() { printf '%s\n' \"\$*\" >&2; exit 1; }
 log() { :; }
 host_clang=/usr/bin/clang-20
@@ -38,7 +44,7 @@ t_case "the wrapper also fixes the target triple and the sysroot"
 t_assert_contains "$(cat "${_bin}/clang-amd64")" "--target=x86_64-linux-gnu" \
   "a wrapper without the triple is the host compiler under a cross name"
 t_assert_contains "$(cat "${_bin}/clang-amd64")" "--sysroot=/" \
-  "amd64 is the one target whose sysroot is the image root"
+  "the build host's own arch is the one target whose sysroot is the image root"
 
 t_case "both wrappers are executable and exec the selected host clang"
 t_assert_ok test -x "${_bin}/clang-amd64"

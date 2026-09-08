@@ -24,29 +24,27 @@ install_cross_gcc_sysroot_packages() {
   normalized_target="$(arch_normalize "${normalized_target}")"
   triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
 
+  local -a pkgs=()
   case "${normalized_target}" in
-    amd64)
-      apt_install_available \
-        binutils-x86-64-linux-gnu
-      ;;
-    arm64)
-      apt_install_available \
-        binutils-aarch64-linux-gnu \
-        libc6-dev-arm64-cross \
-        linux-libc-dev-arm64-cross
-      ;;
-    riscv64)
-      apt_install_available \
-        binutils-riscv64-linux-gnu \
-        libc6-dev-riscv64-cross \
-        linux-libc-dev-riscv64-cross
-      ;;
-    *)
-      die "Unsupported cross target: ${normalized_target}"
-      ;;
+    amd64)   pkgs=(binutils-x86-64-linux-gnu) ;;
+    arm64)   pkgs=(binutils-aarch64-linux-gnu) ;;
+    riscv64) pkgs=(binutils-riscv64-linux-gnu) ;;
+    *)       die "Unsupported cross target: ${normalized_target}" ;;
   esac
 
-  if [ "${normalized_target}" != "amd64" ]; then
+  # Only FOREIGN targets need a cross sysroot; the build host's own arch does
+  # not, because its native libc already is one. Keyed on build_arch_oci() and
+  # NOT on the literal "amd64" (2026-09-08): the old test made an arm64 host
+  # ask for libc6-dev-arm64-cross, which Ubuntu does not ship for an arm64
+  # host, so the aarch64 cross-GCC then linked against a sysroot that was never
+  # installed and died with `cannot find crti.o` 27 min into the stage. On an
+  # amd64 host this is byte-for-byte the previous behaviour.
+  if [ "${normalized_target}" != "$(build_arch_oci)" ]; then
+    pkgs+=("libc6-dev-${normalized_target}-cross" "linux-libc-dev-${normalized_target}-cross")
+  fi
+  apt_install_available "${pkgs[@]}"
+
+  if [ "${normalized_target}" != "$(build_arch_oci)" ]; then
     [ -d "/usr/${triplet}/include" ] || die "Expected cross headers not found: /usr/${triplet}/include"
     [ -d "/usr/${triplet}/lib" ] || die "Expected cross libs not found: /usr/${triplet}/lib"
     bridge_cross_lib_sysroot "${triplet}"
@@ -375,7 +373,7 @@ _gcc_build_cross_target() {
   fi
   triplet="$(arch_deb_multiarch_triplet_for "${normalized_target}")" || die "Unsupported cross target: ${normalized_target}"
 
-  if [ "${normalized_target}" = "amd64" ]; then
+  if [ "${normalized_target}" = "$(build_arch_oci)" ]; then
     link_amd64_host_as_cross "${prefix}" "${triplet}"
   else
     stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
