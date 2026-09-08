@@ -14,19 +14,36 @@
 .PARAMETER PythonVersion
     Python version to use (default: "3.14")
 
+.PARAMETER RepoRoot
+    Root of the repo being built. Default (empty) keeps today's behaviour:
+    Initialize-CiEnvironment resolves three levels above this script, i.e. the
+    ContainerHub checkout itself. A consumer that vendors or submodules
+    ContainerHub passes ITS OWN root here.
+
 .EXAMPLE
     Invoke-CiPackaging.ps1 -PythonVersion "3.13"
 #>
 
 [CmdletBinding()]
 Param(
-    [string]$PythonVersion = "3.14"
+    [string]$PythonVersion = "3.14",
+    # Root of the repo being built. Empty = today's behaviour, where
+    # Initialize-CiEnvironment resolves three levels above this script and lands
+    # in the ContainerHub checkout. A consumer that vendors or submodules
+    # ContainerHub (<consumer>/third_party/ContainerHub/windows/scripts/python)
+    # MUST pass its own root, or every path derived below -- pyproject.toml, the
+    # venvs, the log dir -- is read from and written into the hub checkout
+    # instead of the repo under test.
+    [string]$RepoRoot = ''
 )
 
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
+# $RepoRoot and $repoRoot are ONE variable (PowerShell identifiers are
+# case-insensitive): the assignment deliberately replaces the caller's raw value
+# with the RESOLVED absolute path Initialize-CiEnvironment returns.
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 
 # #141: shared preamble — context/log/wrappers/uv delegates come from
 # New-CiSession (Initialize-CiEnvironment.ps1).

@@ -14,11 +14,11 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **VK**=the
-foreign-arch Vulkan SDK · **EX**=the extent gates' scope · **F#**=the size and
+foreign-arch Vulkan SDK · **F#**=the size and
 duplication tracks. Everything else
 is archive-only: **CC/CL/CS/AB/R#/YB/DISK/APP** closed on 2026-09-07,
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and
-**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#** long before that.
+**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#/EX** long before that.
 
 Last groomed: **2026-09-07 (second pass), after an audit re-derived every number
 in this file from the gate that produces it.** The first pass that day claimed the
@@ -42,7 +42,7 @@ benchmark run — and nothing in this file knew. That merge also arrived red: th
 that put 66 model-output JSONs back inside the doc-links scan. All four are fixed;
 the lesson is that a grooming is only true of the commit it was written at.
 
-## TWO ENTRIES ARE OPEN: ONE NEEDS A BUILD, ONE NEEDS A SCOPE DECISION
+## ONE ENTRY IS OPEN, AND A BUILD DECIDES IT
 
 Read this before anything else. The validating chain
 (`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
@@ -66,7 +66,7 @@ experience says: a first rebuild attempt found two build-killing bugs (HEAD
 `e109f5ad`) in minutes after a full green battery. Assume the next chain finds
 more, and read **[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
-### Next up — one build, and one scope decision that needs no build at all
+### Next up — everything above is landed; what is left is ONE build
 
 The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
 (`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
@@ -112,8 +112,9 @@ back up, which is why arm64 landed at 28.73 rather than the ~24.9 the pre-VK1
 estimate predicted. The estimate was not wrong; it was made before those components
 existed.
 
-**Honesty about the rest:** neither open entry names a defect with a known failure
-mode — EX1 names a blind spot, not a bug.
+**Honesty about the rest:** the one open entry names no defect with a known failure
+mode. What F1 and F2 now carry from `linux/llm-stack` is real, named, seam-bearing
+debt — but it is a register, not a queue, and none of it blocks a build.
 What is left is **one open entry (VK2) and two registers (F1, F2)** — the same
 inventory the section above gives. Earlier groomings carried a second, longer count
 here ("one owner decision, two cheap wins, a ratchet, a guard that needs a lever it
@@ -176,98 +177,92 @@ linked its closure. Everything below is context, not a block:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### VK2. WIRED — all four have a route now, and one of them is not a route [M, ★★★]
+### VK2. MEASURED — the routes work; four NEW, named defects behind them [M, ★★★]
 
-The four components that did not cross-build on 2026-09-05 are addressed in the
-tree; **no chain has run since**, so this stays OPEN until one does. The routes,
-and what the arm64 log actually said:
+**The 2026-09-08 chain (`20260908-040111`) built the aarch64 SDK and the answer is
+not the one the wiring predicted.** All four components are still
+`<component> unavailable on aarch64` — **but not for any of the reasons VK2 named,
+and none of them fails where it used to.** The stage now attempts **18** components
+and ships **14**; on 2026-09-05 it attempted 15 and shipped 11. Every VK2 route did
+what it was built to do; each component now dies one phase later, at something new.
 
-**1. `vulkan-profiles` — DONE, two table rows.** `find_package(valijson)` found
-nothing because `jsoncpp` and `valijson` are built by `./vulkansdk` into
-`source/<comp>/build/install` and had no row of their own. Both are rows in
-`_VK_TARGET_COMPONENTS` now, ahead of `vulkan-profiles`.
+Diagnosed from `out/build-logs/20260908-040111/sdk-arm64.log`, each by a reader and
+an independent skeptic that re-checked the quoted line really is the FIRST fatal one.
 
-**2. `gfxreconstruct` — DONE, and the cause was NOT the missing packages.** The
-lane already had `libx11-dev:arm64`, `libzstd-dev:arm64` and the whole XCB set
-unpacked, and CMake still reported `Could NOT find ZSTD / X11 / OpenGL / JsonCpp`:
-multiarch puts them in `/usr/lib/<triplet>`, which `find_library` only searches
-when `CMAKE_LIBRARY_ARCHITECTURE` says so. `_cross_build_sdk_component` passes it
-for every row now. The genuinely missing half was GL — `libgl-dev`, `libglx-dev`,
-`libopengl-dev`, `libegl-dev` — which goes in through
-`install_optional_target_packages` so a ports arch that lacks one degrades a
-component instead of the stage.
+**1. `vulkan-profiles` — the route worked; `jsoncpp` is not PIC.** The two new rows
+install first, `find_package(valijson)` and `find_package(jsoncpp)` both succeed
+silently, configure completes in 0.8 s and 16 of 17 ninja edges build. It dies at the
+link of `libVkLayer_khronos_profiles.so`:
 
-**3. `slang` — DONE, the Canadian cross this repo already does.** The build cross-
-compiled its own generators and then ran them: `FAILED: [code=127]
-prelude/slang-cpp-host-prelude.h.cpp`. The host `./vulkansdk` run leaves them in
-`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
-points `SLANG_GENERATORS_PATH` there, with `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
-`SLANG_ENABLE_DXIL=OFF` to stop the same build fetching x86_64 prebuilts.
+    ld.bfd: /opt/vulkan/1.4.357.0/aarch64/lib/libjsoncpp.a(json_value.cpp.o):
+    relocation R_AARCH64_ADR_PREL_PG_HI21 ... can not be used when making a shared
+    object; recompile with -fPIC
 
-**4. `vulkanCapsViewer` — DONE, target Qt6 + host moc.** `qt6-base-dev:${arch}`
-in the optional set, `QT_HOST_PATH=/usr` and a `CMAKE_PREFIX_PATH` that carries
-the sysroot's Qt.
+jsoncpp 1.9.6 sets `POSITION_INDEPENDENT_CODE` only on its `jsoncpp_object` target;
+`jsoncpp_static`, which produces the archive, inherits nothing, and nothing in
+`vulkan.sh` passes a PIC flag. The counter-check that isolates it: the *other* archive
+on the same link line, `libVulkanLayerSettings.a`, goes into
+`libVkLayer_khronos_validation.so` 160 s later without complaint.
+**Fix:** `-DCMAKE_POSITION_INDEPENDENT_CODE=ON` — better in
+`_cross_build_sdk_component` than in the one row, since any archive we hand the SDK
+can end up inside a layer `.so`. Do NOT switch jsoncpp to a shared lib; that adds a
+runtime dependency to every shipped image.
 
-**The `dx*` family is NOT a row, and the earlier entry was wrong about why.** It
-is not "host-only", and it is not a tblgen-shaped Canadian cross either; the
-measured reason and what cross-building it would actually cost are in
-[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool).
+**2. `gfxreconstruct` — VK2's diagnosis is CONFIRMED and is no longer the cause.**
+The configure is now completely clean: zero `Could NOT find`, and every dependency
+resolves against the target triplet (`Found ZSTD: /usr/lib/aarch64-linux-gnu/…`,
+`Found OpenGL: …/libOpenGL.so`, `Found JsonCpp: /opt/vulkan/…/aarch64/include`). So
+`CMAKE_LIBRARY_ARCHITECTURE` was the right call and the GL packages did install. What
+is left is a *header* gap, not a library one: `_vulkan_setup_sdk_includes`
+(`vulkan.sh:220`) bridges only `X11` and `xcb` into the cross compiler's
+native-system-header dir. **Fix:** `for entry in X11 xcb GL KHR EGL GLES2 GLES3; do`.
+`KHR` is not optional — `GL/gl.h` and `glcorearb.h` include `<KHR/khrplatform.h>`. The
+existing `[[ -e /usr/include/${entry} ]]` guard makes each entry a no-op where the
+package is absent, so this cannot regress a thinner lane.
 
-**What closes this entry:** one chain. `<arch>/bin` must carry everything
-`x86_64/bin` does that is not structurally host-only, and the four names above
-are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
-arrive. docs/vulkan-foreign-arch-sdk.md
+**3. `vulkancapsviewer` — target Qt6 works; upstream hardcodes a raw path.** The
+REQUIRED `find_package` for Qt6 succeeds from the sysroot ("Configuring done (0.8s)"),
+so `QT_HOST_PATH` + the sysroot `CMAKE_PREFIX_PATH` did their job. It then dies at
+ninja *graph-load* time, before any rule runs:
 
-### EX1. The extent gates cannot see `linux/llm-stack` [M, ★★★]
+    ninja: error: '/lib/libvulkan.so', needed by 'vulkanCapsViewer', missing
 
-**`verify_code_size.py:38` reads `SCAN = ("linux/scripts", "linux/host-config",
-"docs/scripts")`**, and `verify_code_complexity.py`, `verify_dead_functions.py` and
-`verify_trailing_conditional.py` all take their scope from it. `linux/llm-stack` is
-not in that tuple and never has been. It holds **43 Python files, 19,874 lines**, it
-is under active development, and a 569-line file (`nas_census.py`) landed there on
-2026-09-07 without any extent gate seeing it.
+Upstream never calls `find_package(Vulkan)` at all; its `CMakeLists.txt:92`
+interpolates `"${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so"` raw, and LunarG's own
+`./vulkansdk` passes that variable for the host build. Unset, it degrades to the host
+path. **Fix:** one line in the `vulkancapsviewer)` arm of
+`_vulkan_target_dynamic_args` — `-DVULKAN_LOADER_INSTALL_DIR="${archdir}"`, which is
+where `_vulkan_target_build_loader` already put the loader in the same stage. It
+belongs in that function and not in the table precisely because it is a PATH.
+**Still unproven after the fix:** no rule in this target has ever run on aarch64, so
+AUTOMOC/AUTORCC under `QT_HOST_PATH=/usr` remains untested. The line to look for next
+run is an aarch64 counterpart to the host's
+`[  5%] Automatic MOC and UIC for target vulkanCapsViewer`.
 
-What is actually over the limits there, measured 2026-09-07 and frozen nowhere:
+**4. `slang` — the Canadian-cross fix WORKED, and the entry's own account was wrong
+about what remained.** `FAILED: [code=127] prelude/slang-cpp-host-prelude.h.cpp` is
+gone; `SLANG_GENERATORS_PATH` removed all 24 generator edges plus the 3 DXC ones. The
+new failure is an asymmetry with the vendor script, not a cross problem at all:
+LunarG's `build_slang()` copies `gfx.slang` and `slang.slang` into the build's
+`Release/bin` **between build and install**, and our generic
+`_cross_build_sdk_component` has no such step. **Fix:** replicate the vendor step —
+`cmake --build "${build_dir}" --target copy-gfx-slang-modules`, which is exactly those
+two `cp` lines and needs neither `slang-test` nor tests enabled. That needs a small
+extension to the helper (an `_xbuild_extra_targets` array threaded the way
+`_xbuild_cc`/`_xbuild_triplet` already are), so it is the largest of the four.
 
-| | count | worst |
-| --- | --- | --- |
-| files > 800 lines | 7 | `bench_coding.py` **2022** — second-largest .py/.sh in the repo |
-| functions > 80 lines | 13 | — |
-| `cc` > 15 | 25 | — |
-| nesting > 5 | 1 | depth **8** |
-
-`bench_coding.py` at 2022 lines is longer than every file in `file-size.allow` except
-`smoke-runtime-image.sh`, and unlike that one it has never been reviewed for a
-split-or-not verdict. **This is why F1's "no outside-the-closure candidate left" was
-wrong in a second way**: the sweep was true of the scan set, and the scan set is not
-the repo.
-
-**What closes it is a decision, not a patch.** Adding one directory to `SCAN` makes
-~46 rows appear at once, and this repo's convention — set on 2026-09-03, when wave 2
-replaced every bare baseline with a verdict — is that an allow row states *what its
-number IS*, not merely that it was there when the gate was switched on. Writing 46
-honest verdicts over a benchmark harness nobody has reviewed for shape is its own
-wave. The options, in the order I would take them:
-
-1. **Widen `SCAN` and do the verdict pass.** Correct, and the only option that makes
-   the register mean what it says. Costs one wave.
-2. **Widen `SCAN` for files only** (the 7-row table above), leaving functions and cc
-   for later. Cheap, and it catches the growth that matters most.
-3. **Declare `linux/llm-stack` deliberately out of scope** and say so in
-   `verify_code_size.py`'s header and in F2 — defensible if the benchmark harness is
-   held to a different standard than the build closure, but it must be *written down*,
-   because right now the exclusion is silent and reads as an oversight.
-
-Not option 4: leaving it. A gate whose scope nobody stated is the shape this repo
-has been bitten by twice — the `file-size.allow` header that said "Shell files" while
-scanning Python, and the doc-links floor that only applied when git was absent.
-[`code-quality-tooling.md`](code-quality-tooling.md#code-size--functions-and-files-code-size)
+**What closes this entry** is unchanged: `<arch>/bin` carrying everything
+`x86_64/bin` does that is not structurally host-only. Three of the four fixes are one
+line; the fourth is a helper extension. **They were NOT applied during the run** —
+`vulkan.sh` is in the build context and this repo has been bitten by mid-chain edits
+before. `docs/` is `.dockerignore`d, which is why this entry could be written while
+the chain was still in `sdk-riscv64`.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **28** function rows over 80 lines
-and **61** `cc` rows over 15, every one carrying a verdict that says what its
+transcribe them here.** Both are fully reviewed: **41** function rows over 80 lines
+and **86** `cc` rows over 15 (plus 4 nesting), every one carrying a verdict that says what its
 number IS. Read the reasons, not the numbers — and re-derive the counts from
 `verify_code_size.py` / `verify_code_complexity.py`, never from this line. It
 said 29 and 66 until 2026-09-07 because the 2026-09-05 figures were carried
@@ -370,11 +365,11 @@ share `_t_assert_run` now. Evidence in the archive.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
-**`file-size.allow` is the authority — do not transcribe it here.** The eleven-row
+**`file-size.allow` is the authority — do not transcribe it here.** The table
 table that used to sit in this entry was wrong within a day of being written, twice.
 This entry's prose then broke its own rule again on 2026-09-04 by quoting
 `smoke-runtime-image.sh` at 1739 when the allow file had carried the correct number
-and the reason all along. The gate prints `files: 11 over 800 lines; 11 frozen`;
+and the reason all along. The gate prints `files: 18 over 800 lines; 18 frozen`;
 read it there.
 
 **All rows were reviewed 2026-09-04 and all but one are NOT split targets**, each with

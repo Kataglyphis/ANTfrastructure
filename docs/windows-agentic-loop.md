@@ -20,8 +20,52 @@ Two agent CLI backends are supported; select via config `engine`,
 
 | Engine | Invocation | Role prompts | Permissions |
 |--------|-----------|--------------|-------------|
-| `opencode` | `opencode run --agent <role> --model <model>` | `.opencode/agents/<role>.md` (resolved by opencode) | Configured in `opencode.json` |
-| `claude` | `claude -p --model <model>` (Claude Code CLI) | `--append-system-prompt-file` from config `engines.claude.<role>PromptFile` | Planner sandboxed via `--allowed-tools` (e.g. `Read Glob Grep Edit(BACKLOG.md)`); executor uses `permissionMode` (default `bypassPermissions` — intended for trusted repos/sandboxes) |
+| `opencode` | `opencode run --agent <role> --model <model>` | `.opencode/agents/<role>.md`, **generated** by the loop (resolved by opencode) | Configured in `opencode.json` |
+| `claude` | `claude -p --model <model>` (Claude Code CLI) | `--append-system-prompt-file` from the composed prompt | Planner sandboxed via `--allowed-tools` (e.g. `Read Glob Grep Edit(BACKLOG.md)`); executor uses `permissionMode` (default `bypassPermissions` — intended for trusted repos/sandboxes) |
+
+### Role prompts: one composition, both engines
+
+Both "Role prompts" cells above hold the *same text*. On every start the loop
+composes
+
+```
+shared/agentic-loop/system-prompts/<role>.md   the shared, engine-agnostic role prompt
+      +  <your overlay>.md                     your project delta
+```
+
+and delivers it twice: to `claude` as a temp file behind
+`--append-system-prompt-file`, and to `opencode` by **writing**
+`<repo>/.opencode/agents/<role>.md` — opencode takes no prompt file on its
+command line, so that file is its only channel.
+
+`.opencode/agents/*.md` is therefore a **build artefact**. Add it to
+`.gitignore`; the loop warns when you have not. It used to be hand-maintained
+per consumer, which is precisely the failure `New-AgenticComposedPrompt`'s
+docstring names — "which is how one consumer ended up with two full copies that
+had drifted 271 lines apart". One such copy had silently lost the executor's
+incident narrative, its `timeout: 600000` guidance and the `- [b]` commit step.
+
+Point at your overlay with a top-level block — engine-agnostic, because the
+prompt is:
+
+```json
+"promptOverlays": {
+  "plannerPromptOverlayFile":  "scripts/agentic-loop/prompts/planner-overlay.md",
+  "executorPromptOverlayFile": "scripts/agentic-loop/prompts/executor-overlay.md"
+}
+```
+
+The older `engines.<engine>.<role>PromptOverlayFile` still works and is now
+found whichever engine you run — it is read out of any engine block, not only
+the selected one. Pinning that lookup to `engines.claude` is what left the
+opencode side with no composed prompt at all and made the hand copy look
+necessary. The legacy full-override `engines.claude.<role>PromptFile` also
+still works: it replaces the shared prompt entirely and is mirrored into
+`.opencode/agents/` verbatim. Migrate it to an overlay — the override shape is
+what makes a consumer copy the whole role prompt in the first place.
+
+With no prompt configuration at all, the shared role prompt alone is generated.
+There is no configuration under which opencode is left with nothing.
 
 For `claude`, `engines.claude.plannerFallbackModel` maps to
 `--fallback-model` so an overloaded planner model (e.g. `claude-fable-5`)

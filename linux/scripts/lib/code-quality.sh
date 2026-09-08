@@ -169,11 +169,22 @@ code_quality_find_clang_tidy_files() {
 # enough to fail --set-exit-if-changed on its own. Listing tracked files instead
 # also skips vendored submodules and build trees. Docs: docs/code-quality-tooling.md.
 code_quality_find_dart_files() {
+  code_quality_find_tracked_files "${1:-.}" '*.dart'
+}
+
+# Prints, one per line, every tracked file under `root` matching the given git
+# pathspecs, with the trees this family never grades removed: build outputs, the
+# vendored roots ExternalLib/, third_party/ and flutter/, and rust_builder/ --
+# Cargokit's GENERATED flutter_rust_bridge package. Paths are prefixed with
+# `root` unless it is ".". This is the ONE owner of that exclusion set; a caller
+# that restates it drifts away from the rest of the gates instead.
+code_quality_find_tracked_files() {
   local root="${1:-.}"
+  shift
   command -v git >/dev/null 2>&1 || return 0
 
   local f
-  git -C "$root" ls-files -- '*.dart' 2>/dev/null | while IFS= read -r f; do
+  git -C "$root" ls-files -- "$@" 2>/dev/null | while IFS= read -r f; do
     case "$f" in
       build/*|*/build/*|ExternalLib/*|*/ExternalLib/*|third_party/*|*/third_party/*) continue ;;
       flutter/*|*/flutter/*|rust_builder/*|*/rust_builder/*) continue ;;

@@ -665,3 +665,71 @@ order needs two passes), and that a malformed marker fails BOTH modes; it ends a
 `cross-build-verification.md#pre-flight`, which is where the `version-snapshot` slug
 is actually documented — the honest anchor the row said did not exist. Its
 `file-size.allow` row moved 849 → 873. The not-a-split verdict above it is unchanged.
+
+### EX1. CLOSED — the extent gates can see `linux/llm-stack` now [done 2026-09-07]
+
+**`verify_code_size.py:38` reads `SCAN = ("linux/scripts", "linux/host-config",
+"docs/scripts")`**, and `verify_code_complexity.py`, `verify_dead_functions.py` and
+`verify_trailing_conditional.py` all take their scope from it. `linux/llm-stack` is
+not in that tuple and never has been. It holds **43 Python files, 19,874 lines**, it
+is under active development, and a 569-line file (`nas_census.py`) landed there on
+2026-09-07 without any extent gate seeing it.
+
+What is actually over the limits there, measured 2026-09-07 and frozen nowhere:
+
+| | count | worst |
+| --- | --- | --- |
+| files > 800 lines | 7 | `bench_coding.py` **2022** — second-largest .py/.sh in the repo |
+| functions > 80 lines | 13 | — |
+| `cc` > 15 | 25 | — |
+| nesting > 5 | 1 | depth **8** |
+
+`bench_coding.py` at 2022 lines is longer than every file in `file-size.allow` except
+`smoke-runtime-image.sh`, and unlike that one it has never been reviewed for a
+split-or-not verdict. **This is why F1's "no outside-the-closure candidate left" was
+wrong in a second way**: the sweep was true of the scan set, and the scan set is not
+the repo.
+
+**What closes it is a decision, not a patch.** Adding one directory to `SCAN` makes
+~46 rows appear at once, and this repo's convention — set on 2026-09-03, when wave 2
+replaced every bare baseline with a verdict — is that an allow row states *what its
+number IS*, not merely that it was there when the gate was switched on. Writing 46
+honest verdicts over a benchmark harness nobody has reviewed for shape is its own
+wave. The options, in the order I would take them:
+
+1. **Widen `SCAN` and do the verdict pass.** Correct, and the only option that makes
+   the register mean what it says. Costs one wave.
+2. **Widen `SCAN` for files only** (the 7-row table above), leaving functions and cc
+   for later. Cheap, and it catches the growth that matters most.
+3. **Declare `linux/llm-stack` deliberately out of scope** and say so in
+   `verify_code_size.py`'s header and in F2 — defensible if the benchmark harness is
+   held to a different standard than the build closure, but it must be *written down*,
+   because right now the exclusion is silent and reads as an oversight.
+
+Not option 4: leaving it. A gate whose scope nobody stated is the shape this repo
+has been bitten by twice — the `file-size.allow` header that said "Shell files" while
+scanning Python, and the doc-links floor that only applied when git was absent.
+[`code-quality-tooling.md`](code-quality-tooling.md#code-size--functions-and-files-code-size)
+
+**CLOSED the same day it was opened, with option 1.** `SCAN` in
+`verify_code_size.py:38` now carries `linux/llm-stack`, and `verify_code_complexity.py`
+inherits it. (`verify_dead_functions.py` and `verify_trailing_conditional.py` also
+import from that module but only walk SHELL functions, so they gained nothing;
+`verify_comment_size.py` has its own scan and is untouched — that widening is still
+the separate job F1 describes.)
+
+**All 47 rows were read and given a verdict in the same wave**, which is the rule this
+repo set on 2026-09-03: a row states what its number IS. **34 of them say DEBT and name
+their seam** — that is the honest state of a benchmark harness nobody had reviewed for
+shape, and it is now written down instead of invisible. The gates moved
+28 → **41** functions, 11 → **18** files, 61 → **86** cc and 2 → **4** nesting, every
+one frozen, and both gates pass.
+
+The biggest finds, each with a seam a stranger could act on: `bench_coding.py` (2053
+lines, ~976 of them executable after blanks, comments, docstrings and 409 lines of
+top-level literal come out) splits at `run_candidate` into a grader half and a driver
+half that touch at exactly four names; `evaluate` (227 lines, cc 69) is one-attempt +
+aggregation + report dict in one body, and the two-space indent on its inner `for`
+shows the author had already made the cut mentally; `benchmark_chat` carries the
+repo's only nesting-8 path. Those are F1/F2 entries now, not unknowns.
+

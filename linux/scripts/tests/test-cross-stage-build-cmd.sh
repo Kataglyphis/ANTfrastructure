@@ -204,4 +204,49 @@ t_assert_eq "" "$(_salvaged SALVAGE_CACHE_EXPORT=0)"        "its own knob"
 t_assert_eq "" "$(_salvaged CROSS_NO_LOCAL_CACHE_EXPORT=1)" "no local export, nothing to salvage"
 t_assert_eq "" "$(_salvaged DISK_OK=0)"                     "a short disk must not be filled further"
 
+# ── the REAL classifier ────────────────────────────────────────────────────
+# Everything above stubs _cross_stage_push_error_is_transient to a boolean, so
+# its regex had no coverage at all -- which is how a bare 429 arm shipped that
+# matched BuildKit's `#15 429.0` elapsed-time prefix and bought three full
+# rebuilds of a stage whose smoke had failed deterministically. Drive the
+# shipped function against log tails instead.
+_classify() {
+  local out
+  out="$(mktemp)"; printf '%s\n' "$1" > "${out}"
+  ( eval "$(sed -n '/^_cross_stage_push_error_is_transient()/,/^}/p' "${CORE}/cross-stage-build.sh")"
+    if _cross_stage_push_error_is_transient "${out}"; then printf 'retry'; else printf 'hard'; fi )
+  rm -f "${out}"
+}
+
+t_case "BuildKit's elapsed-time prefix is not an HTTP status"
+t_assert_eq "hard" "$(_classify '#15 429.0 /opt/gcc/bin/gcc -shared foo.o')" \
+  "a step running 429.x seconds must not make the next hard failure look rate-limited"
+t_assert_eq "hard" "$(_classify '#15 4291.7 /opt/gcc/bin/gcc -c bar.c')" \
+  "and the same at 4290-4299s, which is where a long LLVM step actually sits"
+t_assert_eq "hard" "$(_classify '#15 503.2 cc -c x.c')" \
+  "the 5xx arm was always anchored to its status text; keep it that way"
+
+t_case "a real rate limit still retries, in every spelling a registry uses"
+t_assert_eq "retry" "$(_classify 'failed to push: 429 Too Many Requests')" "the HTTP status line"
+t_assert_eq "retry" "$(_classify 'unexpected status: toomanyrequests')"    "the registry error code"
+t_assert_eq "retry" "$(_classify 'unexpected status: 429')"                "a bare status: label"
+
+t_case "a DNS blip is transient -- it killed a whole 3-arch chain once"
+for _d in 'fatal: unable to access: Could not resolve host: github.com' \
+          'curl: (6) Temporary failure in name resolution' \
+          'ssh: Name or service not known' \
+          'connect: Network is unreachable'; do
+  t_assert_eq "retry" "$(_classify "${_d}")" \
+    "a source stage clones from github; the STAGE BARRIER turns one failed lookup into a dead run"
+done
+
+t_case "a deterministic build failure is never retried"
+t_assert_eq "hard" "$(_classify 'error: failed to solve: process \"bash -lc smoke.sh\" did not complete successfully: exit code: 1')" \
+  "retrying a failed smoke costs a full stage rebuild per attempt and can never pass"
+
+t_case "an unreadable log stays retryable -- we cannot classify what we cannot read"
+t_assert_eq "retry" "$( ( eval "$(sed -n '/^_cross_stage_push_error_is_transient()/,/^}/p' "${CORE}/cross-stage-build.sh")"
+  if _cross_stage_push_error_is_transient ""; then printf 'retry'; else printf 'hard'; fi ) )" \
+  "the no-log fallback is deliberate; only the regex was wrong"
+
 t_summary

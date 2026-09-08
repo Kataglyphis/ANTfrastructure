@@ -168,10 +168,7 @@ t_case "the scanned set does not depend on .git being present"
 # Comparing the two lists is NOT enough -- with git present the fallback branch
 # never runs, and that version of this test let the mutation survive. So point
 # the gate at a directory that is not a repository and prove the wiring.
-t_assert_eq "wired" "$( "${PY}" - <<'PYCHK'
-import importlib.util, pathlib, tempfile
-spec = importlib.util.spec_from_file_location("g", "docs/scripts/verify_doc_links.py")
-g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+t_assert_eq "wired" "$(t_gate_probe docs/scripts/verify_doc_links.py <<'PYCHK'
 cand = []
 for name in g.CODE_SCAN:
     root = g.REPO_ROOT / name

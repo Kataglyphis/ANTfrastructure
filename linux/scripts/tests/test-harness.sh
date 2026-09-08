@@ -160,3 +160,18 @@ t_summary() {
   printf '  %d assertion(s) passed\n' "${_T_RUN}"
   exit 0
 }
+
+# t_gate_probe <module.py> <<'PY' … PY -> the snippet's stdout, with the REAL shipped
+# gate bound to `g`. Every other case builds a throwaway tree, so this is the only way
+# to assert against the scan set that actually ships. Two suites grew the same importlib
+# preamble independently and the dupes gate caught the second copy.
+# docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
+t_gate_probe() {
+  local _mod="$1"
+  {
+    printf 'import importlib.util, pathlib, tempfile\n'
+    printf 'spec = importlib.util.spec_from_file_location("g", "%s")\n' "${_mod}"
+    printf 'g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)\n'
+    cat
+  } | "${PREFLIGHT_PYTHON:-python3}" -
+}

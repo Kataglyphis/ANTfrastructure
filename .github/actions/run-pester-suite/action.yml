@@ -4,6 +4,10 @@ description: >-
   failed test and printing enough to act on: the Describe/Name, the assertion's
   FailureMessage and its StackTrace.
 
+  It also fails when the suite ran NOTHING (TotalCount 0): a path that matches
+  no test file reports zero failures, and a gate that is green because it never
+  ran is worse than one that is red.
+
   The version is pinned because Pester 3.x and 5.x are not compatible dialects:
   a suite written in 3.4's dash-less assertion syntax (`Should Be 0`) does not
   parse under the Pester 5 that ships with the runner.
@@ -26,6 +30,16 @@ runs:
         Import-Module Pester -RequiredVersion '${{ inputs.version }}'
         $r = Invoke-Pester -Path '${{ inputs.path }}' -PassThru -Quiet
         Write-Host "TOTAL=$($r.TotalCount) PASSED=$($r.PassedCount) FAILED=$($r.FailedCount)"
+        # A path that matches no suite is NOT a pass. Invoke-Pester over a
+        # missing, renamed or mis-globbed path returns TotalCount=0 with
+        # FailedCount=0, and the FailedCount check below waves that straight
+        # through - the step goes green having run nothing, which is the one
+        # outcome a gate must never produce. Consumer workflows gate their
+        # submodule pins on this action, so the vacuous pass would be silent.
+        if ($null -eq $r -or $r.TotalCount -eq 0) {
+          Write-Host "::error::run-pester-suite: '${{ inputs.path }}' matched no Pester test (TotalCount=0). A suite that runs nothing must not report success: check that the path exists in the checkout, that the file is named *.Tests.ps1, and that the checkout step actually fetched it."
+          exit 1
+        }
         if ($r.FailedCount -gt 0) {
           # The test name alone is not enough to act on - which assertion, with
           # which values? Without FailureMessage/StackTrace every failure costs

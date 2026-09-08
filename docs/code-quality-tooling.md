@@ -184,10 +184,20 @@ fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
 #### Dart file enumeration
 
 `code_quality_find_dart_files [root]` prints every tracked `*.dart` path
-(default root `.`), excluding `build/`, `third_party/`, `flutter/` and
-`rust_builder/`. It is the twin of `Get-ProjectDartFiles`
+(default root `.`), excluding `build/`, `ExternalLib/`, `third_party/`,
+`flutter/` and `rust_builder/`. It is the twin of `Get-ProjectDartFiles`
 (`windows/scripts/modules/WindowsFormatting.Common.psm1`) and both return the
 same set for a given repo.
+
+That exclusion set has ONE owner: `code_quality_find_tracked_files <root>
+<pathspec>...`, which lists tracked files matching any git pathspec and drops
+the build output and the vendored trees. `code_quality_find_dart_files` is a
+one-line call into it, and so is `_find_pubspecs` in
+`05-frameworks/flutter/flutter_checks.sh`. The pubspec gate used to restate the
+list and omitted `rust_builder/` — Cargokit's generated `flutter_rust_bridge`
+package, which every other gate in this family exempts — so it graded a package
+nobody in this fleet writes. A caller that copies the `case` arms instead of
+calling this helper drifts the same way.
 
 **Never `dart format .` in a CI lane.** The Linux lanes install the Flutter SDK
 inside the mounted workspace (`flutter_dir: /workspace/flutter`), so the
@@ -472,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **883 entries** over **242 distinct test commands**; both digits are
+manifest holds **890 entries** over **242 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -853,6 +863,31 @@ Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
 
+### The retry classifier: anchor every status, and DNS is transient
+
+`_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`) decides
+whether a failed stage is worth retrying, by grepping the log tail. Two defects
+found by real chains on 2026-09-08, both now pinned by mutations:
+
+* **Anchor every HTTP status to its status TEXT or to a `status:` label.** A bare
+  `[^0-9]429[^0-9]` matched BuildKit's own elapsed-time prefix — `#15 429.0 <cmd>`
+  — so any step that had been running 429.x seconds made the NEXT deterministic
+  failure look rate-limited. A smoke that could never pass was rebuilt three times
+  before the cap. The `(500|502|503|504)` arm beside it always required the status
+  text and so never had the bug; that asymmetry is the tell. The same trap waits
+  at 4290–4299 s, which is where a long LLVM step sits.
+* **DNS belongs in the list.** A source stage clones from github, and a blip
+  reading `Could not resolve host` killed a whole chain at `sdk-riscv64` — the
+  STAGE BARRIER takes every arch down with it, so one failed lookup cost the run.
+  `could not resolve host`, `temporary failure in name resolution`, `name or
+  service not known` and `network is unreachable` are all retryable now.
+
+Both survived because `test-cross-stage-build-cmd.sh` STUBBED the classifier to
+`[ "${TRANSIENT:-0}" = "1" ]`, so its regex had zero coverage while the file
+looked well tested. Ten assertions now drive the SHIPPED function. **A stub of the
+unit under test is not coverage of it** — the same shape as the `code-size.*`
+mutations, which all drive fixture trees and so could never see the real `SCAN`.
+
 ### Generated data is not source, and git alone cannot say so
 
 A benchmark result under `linux/llm-stack/benchmark_results/` holds MODEL
@@ -1192,7 +1227,8 @@ and 28 entries (`gate-registry.*`).
 (`NESTING_LIMIT`, default 5, block levels below the function body) — over the
 same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
 `docs/scripts`), frozen in `code-complexity.allow` under the four-way contract.
-Today: `cc: 61 over 15 paths; 61 frozen` and `nesting: 2 over 5 levels; 2 frozen`.
+Today: `cc: 86 over 15 paths; 86 frozen` and `nesting: 4 over 5 levels; 4 frozen`
+(EX1 widened the scan to `linux/llm-stack` on 2026-09-07: +25 cc and +2 nesting).
 (Re-derived 2026-09-07; it read 67 and 3 for a while, which is the failure this very
 page's rule about census figures exists to prevent.)
 
@@ -1479,7 +1515,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 430 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 433 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

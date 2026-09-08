@@ -826,10 +826,42 @@
   {
     "id": "dead-functions.host-config-is-a-subject",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
-    "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\")",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
+    "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\", \"linux/llm-stack\")",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "operator tools under linux/host-config are scanned for definitions, not only for calls"
+  },
+  {
+    "id": "code-size.llm-stack-is-a-subject",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
+    "replace": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "EX1: linux/llm-stack was outside the scan set until 2026-09-07 -- 43 files and 19,874 lines invisible to every extent gate; dropping it again silently un-freezes 47 reviewed rows"
+  },
+  {
+    "id": "cross-build.429-must-be-anchored",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "|(status|code):? ?429([^0-9]|$)",
+    "replace": "|[^0-9]429[^0-9]",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a bare 429 matches BuildKit's own elapsed-time prefix (#15 429.0), so any step running 429.x seconds makes the NEXT deterministic failure look rate-limited and buys three full stage rebuilds"
+  },
+  {
+    "id": "cross-build.dns-is-transient",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "|could not resolve host|temporary failure in name resolution",
+    "replace": "|__never_matches_dns__|temporary failure in name resolution",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a DNS blip cloning from github killed a whole 3-arch chain at sdk-riscv64 -- the STAGE BARRIER takes every arch down, so one failed lookup costs the run"
+  },
+  {
+    "id": "cross-build.smoke-failure-is-hard",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "  [ -n \"${log_file}\" ] && [ -r \"${log_file}\" ] || return 0\n  tail -n 300",
+    "replace": "  [ -n \"${log_file}\" ] && [ -r \"${log_file}\" ] || return 0\n  return 0\n  tail -n 300",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "classifying every failure as transient retries a dead build to the cap; the log tail has to be read, not assumed"
   },
   {
     "id": "dead-functions.stale-freeze",
@@ -3450,7 +3482,7 @@
   {
     "id": "secret-scan.scope-is-the-argument",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--source \"${1:-.}\"",
+    "find": "--source \"${SCAN_ROOT}\"",
     "replace": "--source \".\"",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "the path argument is what lets a consumer checkout be scanned; ignoring it grades the wrong tree, green or red for the wrong reason"
@@ -3470,6 +3502,30 @@
     "replace": "--no-banner --redact; then",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "this gate once failed on main saying 'leaks found: 2' and naming neither; a finding nobody can locate is not actionable"
+  },
+  {
+    "id": "secret-scan.relative-root-is-the-callers",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "SCAN_ROOT=\"$(cd \"${1:-${REPO_ROOT}}\" 2>/dev/null && pwd)\" || err \"scan root not found: ${1:-.}\"",
+    "replace": "SCAN_ROOT=\"${1:-.}\"",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "resolving the argument AFTER the cd into the hub checkout is the shipped bug: the consumer's own `... lint-secrets.sh .` then scanned the hub, which is clean, and the consumer's leak passed the gate meant to catch it"
+  },
+  {
+    "id": "secret-scan.consumer-config-wins",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "if [ -f \"${SCAN_ROOT}/.gitleaks.toml\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "a consumer's allowlist entries are written about ITS false positives and the hub's say nothing about them; grading a consumer tree by the hub config is the same category of error as scanning the wrong tree"
+  },
+  {
+    "id": "secret-scan.hub-config-is-the-fallback",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "  CONFIG=\"${REPO_ROOT}/.gitleaks.toml\"",
+    "replace": "  CONFIG=\"${SCAN_ROOT}/.gitleaks.toml\"",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "the hub config is what grades every consumer that ships none of its own; point the fallback at the scanned tree and those trees are handed a config that is not there"
   },
   {
     "id": "copy-coverage.missing-fails",

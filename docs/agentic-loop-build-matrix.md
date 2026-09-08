@@ -212,6 +212,44 @@ Two engines are supported: `opencode` invokes
 `claude -p --model <model>` with the role system prompt appended from the
 configured prompt file.
 
+### Role-prompt composition
+
+`resolve_role_prompt_file` in `lib/agentic-engines.sh` is the Bash twin of the
+PowerShell module's `New-AgenticComposedPrompt` / `Write-AgenticOpenCodeAgentFile`.
+`load_engine_config` calls it for both roles on **every** engine, which closes two
+gaps that shared one root cause — the composition only ever existed on the
+`claude` command line:
+
+1. The Bash half read `.engines.claude.<role>PromptFile` and nothing else, so a
+   consumer that had migrated to the preferred **overlay** shape got no role
+   prompt at all on Linux — and got it silently, because `invoke_claude` only
+   warns about a prompt file it was given and could not read.
+2. `opencode` takes no system-prompt file on its command line; it reads an
+   agent's role prompt from `.opencode/agents/<role>.md` in the repo. Nothing
+   wrote that file, so every `opencode` consumer hand-maintained its own copy of
+   the shared role prompt, and one of them ended up holding two full copies that
+   had drifted 271 lines apart (see `New-AgenticComposedPrompt` in
+   `WindowsAgenticLoop.Common.psm1`).
+
+Hence three branches, one invariant: `.opencode/agents/<role>.md` is written on
+every one of them, so the two engines can never be handed different instructions.
+
+| Config shape | `claude` is given | `.opencode/agents/<role>.md` is given |
+|--------------|-------------------|---------------------------------------|
+| `.promptOverlays.<role>PromptOverlayFile` (preferred) | shared role prompt + overlay, composed into `$TMPDIR` | the same composed text |
+| `.engines.claude.<role>PromptFile` (full override) | that file | that file, labelled "migrate it to an overlay" |
+| neither configured | nothing | `shared/agentic-loop/system-prompts/<role>.md` |
+
+The generated file carries a DO-NOT-EDIT header, is rewritten only when its
+content changed, and is written under `DRY_RUN` too — it is a derived artefact,
+and a dry run whose point is checking the prompt wiring has to produce it. If the
+consumer's `.gitignore` does not exclude `.opencode/agents/`, the run warns:
+a committed copy is how the prompts forked in the first place.
+
+Prompt and overlay paths are stored repo-relative in the config file;
+`_agentic_repo_path` anchors a relative one at `<repo_root>` before any of the
+above runs, and leaves an absolute one alone.
+
 ### Environment overrides
 
 All optional; each one beats the value in the config JSON.
