@@ -217,7 +217,7 @@ _vulkan_setup_sdk_includes() {
     export CMAKE_PREFIX_PATH="${SDK_ARCHDIR}:${SDK_ARCHDIR}/share/cmake:${SDK_ARCHDIR}/lib/cmake${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
     if [[ -d "${SDK_ARCHDIR}/include" ]]; then
       ${SUDO:-} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
-      for entry in X11 xcb; do
+      for entry in X11 xcb GL KHR EGL GLES2 GLES3; do
         if [[ -e "/usr/include/${entry}" && ! -e "${target_include_dir}/${entry}" ]]; then
           ${SUDO:-} ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
         fi
@@ -481,6 +481,7 @@ _cross_build_sdk_component() {
       -DCMAKE_CXX_COMPILER="${_xbuild_cxx}" \
       -DCMAKE_LIBRARY_ARCHITECTURE="${_xbuild_triplet}" \
       -DCMAKE_INSTALL_LIBDIR=lib \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       "$@"; then
     log "${label}: cross-configure failed (non-fatal)"
     return 1
@@ -489,6 +490,13 @@ _cross_build_sdk_component() {
     log "${label}: cross-build failed (non-fatal)"
     return 1
   fi
+  local _t
+  for _t in ${_xbuild_extra_targets[@]+"${_xbuild_extra_targets[@]}"}; do
+    if ! cmake --build "${build_dir}" --target "${_t}"; then
+      log "${label}: extra target ${_t} failed (non-fatal)"
+      return 1
+    fi
+  done
   if ! ${SUDO:-} cmake --install "${build_dir}"; then
     log "${label}: install failed (non-fatal)"
     return 1
@@ -647,6 +655,7 @@ _vulkan_target_dynamic_args() {
   local gen
 
   _vk_dyn_ref=()
+  _xbuild_extra_targets=()
   case "${label}" in
     slang)
       # ./vulkansdk's HOST slang build leaves its generators here; without them
@@ -657,11 +666,18 @@ _vulkan_target_dynamic_args() {
       else
         log "slang: no host generators at ${gen}; the cross build will try to run its own"
       fi
+      # ./vulkansdk's build_slang() copies gfx.slang and slang.slang into the
+      # build tree between --build and --install; the generic helper does not.
+      _xbuild_extra_targets+=(copy-gfx-slang-modules)
       ;;
     vulkancapsviewer)
       # Target Qt6 from the sysroot, host moc/rcc/uic from the build host's own.
       _vk_dyn_ref+=(-DQT_HOST_PATH=/usr)
       _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
+      # Upstream never find_package()s Vulkan: CMakeLists.txt interpolates
+      # "${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so" raw, so unset it
+      # degrades to the HOST /lib/libvulkan.so and ninja refuses the graph.
+      _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
       ;;
   esac
 }
@@ -671,7 +687,7 @@ _vulkan_target_dynamic_args() {
 _vulkan_target_build_sdk_rest() {
   local arch_suffix="$1" archdir="$2" target_dir="$3" triplet="${4:-${_xbuild_triplet:-}}"
   local label cands extra src
-  local -a dyn=()
+  local -a dyn=() _xbuild_extra_targets=()
 
   while IFS='|' read -r label cands extra; do
     [ -n "${label}" ] || continue

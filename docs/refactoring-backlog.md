@@ -177,47 +177,86 @@ linked its closure. Everything below is context, not a block:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### VK2. WIRED — all four have a route now, and one of them is not a route [M, ★★★]
+### VK2. MEASURED — the routes work; four NEW, named defects behind them [M, ★★★]
 
-The four components that did not cross-build on 2026-09-05 are addressed in the
-tree; **no chain has run since**, so this stays OPEN until one does. The routes,
-and what the arm64 log actually said:
+**The 2026-09-08 chain (`20260908-040111`) built the aarch64 SDK and the answer is
+not the one the wiring predicted.** All four components are still
+`<component> unavailable on aarch64` — **but not for any of the reasons VK2 named,
+and none of them fails where it used to.** The stage now attempts **18** components
+and ships **14**; on 2026-09-05 it attempted 15 and shipped 11. Every VK2 route did
+what it was built to do; each component now dies one phase later, at something new.
 
-**1. `vulkan-profiles` — DONE, two table rows.** `find_package(valijson)` found
-nothing because `jsoncpp` and `valijson` are built by `./vulkansdk` into
-`source/<comp>/build/install` and had no row of their own. Both are rows in
-`_VK_TARGET_COMPONENTS` now, ahead of `vulkan-profiles`.
+Diagnosed from `out/build-logs/20260908-040111/sdk-arm64.log`, each by a reader and
+an independent skeptic that re-checked the quoted line really is the FIRST fatal one.
 
-**2. `gfxreconstruct` — DONE, and the cause was NOT the missing packages.** The
-lane already had `libx11-dev:arm64`, `libzstd-dev:arm64` and the whole XCB set
-unpacked, and CMake still reported `Could NOT find ZSTD / X11 / OpenGL / JsonCpp`:
-multiarch puts them in `/usr/lib/<triplet>`, which `find_library` only searches
-when `CMAKE_LIBRARY_ARCHITECTURE` says so. `_cross_build_sdk_component` passes it
-for every row now. The genuinely missing half was GL — `libgl-dev`, `libglx-dev`,
-`libopengl-dev`, `libegl-dev` — which goes in through
-`install_optional_target_packages` so a ports arch that lacks one degrades a
-component instead of the stage.
+**1. `vulkan-profiles` — the route worked; `jsoncpp` is not PIC.** The two new rows
+install first, `find_package(valijson)` and `find_package(jsoncpp)` both succeed
+silently, configure completes in 0.8 s and 16 of 17 ninja edges build. It dies at the
+link of `libVkLayer_khronos_profiles.so`:
 
-**3. `slang` — DONE, the Canadian cross this repo already does.** The build cross-
-compiled its own generators and then ran them: `FAILED: [code=127]
-prelude/slang-cpp-host-prelude.h.cpp`. The host `./vulkansdk` run leaves them in
-`source/slang/build/generators/Release/bin`, so `_vulkan_target_dynamic_args`
-points `SLANG_GENERATORS_PATH` there, with `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
-`SLANG_ENABLE_DXIL=OFF` to stop the same build fetching x86_64 prebuilts.
+    ld.bfd: /opt/vulkan/1.4.357.0/aarch64/lib/libjsoncpp.a(json_value.cpp.o):
+    relocation R_AARCH64_ADR_PREL_PG_HI21 ... can not be used when making a shared
+    object; recompile with -fPIC
 
-**4. `vulkanCapsViewer` — DONE, target Qt6 + host moc.** `qt6-base-dev:${arch}`
-in the optional set, `QT_HOST_PATH=/usr` and a `CMAKE_PREFIX_PATH` that carries
-the sysroot's Qt.
+jsoncpp 1.9.6 sets `POSITION_INDEPENDENT_CODE` only on its `jsoncpp_object` target;
+`jsoncpp_static`, which produces the archive, inherits nothing, and nothing in
+`vulkan.sh` passes a PIC flag. The counter-check that isolates it: the *other* archive
+on the same link line, `libVulkanLayerSettings.a`, goes into
+`libVkLayer_khronos_validation.so` 160 s later without complaint.
+**Fix:** `-DCMAKE_POSITION_INDEPENDENT_CODE=ON` — better in
+`_cross_build_sdk_component` than in the one row, since any archive we hand the SDK
+can end up inside a layer `.so`. Do NOT switch jsoncpp to a shared lib; that adds a
+runtime dependency to every shipped image.
 
-**The `dx*` family is NOT a row, and the earlier entry was wrong about why.** It
-is not "host-only", and it is not a tblgen-shaped Canadian cross either; the
-measured reason and what cross-building it would actually cost are in
-[`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool).
+**2. `gfxreconstruct` — VK2's diagnosis is CONFIRMED and is no longer the cause.**
+The configure is now completely clean: zero `Could NOT find`, and every dependency
+resolves against the target triplet (`Found ZSTD: /usr/lib/aarch64-linux-gnu/…`,
+`Found OpenGL: …/libOpenGL.so`, `Found JsonCpp: /opt/vulkan/…/aarch64/include`). So
+`CMAKE_LIBRARY_ARCHITECTURE` was the right call and the GL packages did install. What
+is left is a *header* gap, not a library one: `_vulkan_setup_sdk_includes`
+(`vulkan.sh:220`) bridges only `X11` and `xcb` into the cross compiler's
+native-system-header dir. **Fix:** `for entry in X11 xcb GL KHR EGL GLES2 GLES3; do`.
+`KHR` is not optional — `GL/gl.h` and `glcorearb.h` include `<KHR/khrplatform.h>`. The
+existing `[[ -e /usr/include/${entry} ]]` guard makes each entry a no-op where the
+package is absent, so this cannot regress a thinner lane.
 
-**What closes this entry:** one chain. `<arch>/bin` must carry everything
-`x86_64/bin` does that is not structurally host-only, and the four names above
-are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
-arrive. docs/vulkan-foreign-arch-sdk.md
+**3. `vulkancapsviewer` — target Qt6 works; upstream hardcodes a raw path.** The
+REQUIRED `find_package` for Qt6 succeeds from the sysroot ("Configuring done (0.8s)"),
+so `QT_HOST_PATH` + the sysroot `CMAKE_PREFIX_PATH` did their job. It then dies at
+ninja *graph-load* time, before any rule runs:
+
+    ninja: error: '/lib/libvulkan.so', needed by 'vulkanCapsViewer', missing
+
+Upstream never calls `find_package(Vulkan)` at all; its `CMakeLists.txt:92`
+interpolates `"${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so"` raw, and LunarG's own
+`./vulkansdk` passes that variable for the host build. Unset, it degrades to the host
+path. **Fix:** one line in the `vulkancapsviewer)` arm of
+`_vulkan_target_dynamic_args` — `-DVULKAN_LOADER_INSTALL_DIR="${archdir}"`, which is
+where `_vulkan_target_build_loader` already put the loader in the same stage. It
+belongs in that function and not in the table precisely because it is a PATH.
+**Still unproven after the fix:** no rule in this target has ever run on aarch64, so
+AUTOMOC/AUTORCC under `QT_HOST_PATH=/usr` remains untested. The line to look for next
+run is an aarch64 counterpart to the host's
+`[  5%] Automatic MOC and UIC for target vulkanCapsViewer`.
+
+**4. `slang` — the Canadian-cross fix WORKED, and the entry's own account was wrong
+about what remained.** `FAILED: [code=127] prelude/slang-cpp-host-prelude.h.cpp` is
+gone; `SLANG_GENERATORS_PATH` removed all 24 generator edges plus the 3 DXC ones. The
+new failure is an asymmetry with the vendor script, not a cross problem at all:
+LunarG's `build_slang()` copies `gfx.slang` and `slang.slang` into the build's
+`Release/bin` **between build and install**, and our generic
+`_cross_build_sdk_component` has no such step. **Fix:** replicate the vendor step —
+`cmake --build "${build_dir}" --target copy-gfx-slang-modules`, which is exactly those
+two `cp` lines and needs neither `slang-test` nor tests enabled. That needs a small
+extension to the helper (an `_xbuild_extra_targets` array threaded the way
+`_xbuild_cc`/`_xbuild_triplet` already are), so it is the largest of the four.
+
+**What closes this entry** is unchanged: `<arch>/bin` carrying everything
+`x86_64/bin` does that is not structurally host-only. Three of the four fixes are one
+line; the fourth is a helper extension. **They were NOT applied during the run** —
+`vulkan.sh` is in the build context and this repo has been bitten by mid-chain edits
+before. `docs/` is `.dockerignore`d, which is why this entry could be written while
+the chain was still in `sdk-riscv64`.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 

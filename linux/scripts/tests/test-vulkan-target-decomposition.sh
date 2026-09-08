@@ -106,7 +106,7 @@ _trace() {
 # CMAKE_LIBRARY_ARCHITECTURE is part of the contract: it is what makes
 # find_library look in /usr/lib/<triplet> instead of reporting the target's X11,
 # XCB, ZSTD and OpenGL as "NOT found". docs/vulkan-foreign-arch-sdk.md
-_XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu -DCMAKE_INSTALL_LIBDIR=lib'
+_XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON'
 
 # ---------------------------------------------------------------------------
 _fixture full
@@ -281,6 +281,42 @@ _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "-DQT_HOST_PATH=/usr"
 t_assert_contains "${_out}" "-DCMAKE_PREFIX_PATH=SDK/aarch64;/usr/lib/aarch64-linux-gnu" \
   "the dynamic prefix path must come AFTER the shared one so it wins"
+t_assert_contains "${_out}" "-DVULKAN_LOADER_INSTALL_DIR=SDK/aarch64" \
+  "upstream interpolates \${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so RAW -- unset it resolves to the HOST /lib/libvulkan.so and ninja refuses the graph before any rule runs"
+
+# ── the four defects the 2026-09-08 chain measured behind the VK2 routes ────
+# Each route worked; each component then died at something new. These pin the
+# answers. docs/vulkan-foreign-arch-sdk.md
+t_case "every target-side SDK component is built PIC"
+t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_SH}")" \
+  "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
+  "jsoncpp_static inherits no PIC from jsoncpp_object, so libjsoncpp.a could not go into libVkLayer_khronos_profiles.so: R_AARCH64_ADR_PREL_PG_HI21"
+
+t_case "the GL header family is bridged into the cross include dir, not just X11/xcb"
+_bridge="$(grep -e 'for entry in X11 xcb' "${VULKAN_SH}")"
+for _h in GL KHR EGL; do
+  t_assert_contains "${_bridge}" "${_h}" \
+    "gfxreconstruct finds the target LIBS but not the headers; GL/gl.h includes <KHR/khrplatform.h>, so KHR is not optional"
+done
+
+t_case "slang gets the vendor's between-build-and-install copy step"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang" \
+         "${SDK}/source/slang/build/generators/Release/bin"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")" \
+  "copy-gfx-slang-modules" \
+  "./vulkansdk build_slang() copies gfx.slang and slang.slang between --build and --install; the generic helper had no such step"
+t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_SH}")" \
+  '--target "${_t}"' \
+  "and the helper has to actually drive them, between build and install"
+
+t_case "the extra-target list is RESET per component, or it leaks across rows"
+t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")" \
+  "_xbuild_extra_targets=()" \
+  "the table is walked in one loop; without a reset slang's target would be driven for every component after it"
 
 # ---------------------------------------------------------------------------
 # The ./vulkansdk build tree is dropped in the RUN that produced it, so no layer
