@@ -7618,7 +7618,7 @@
     "why": "same guard for the other half of the pair: a caller's has_tool (which may know about a vendored toolchain that is not on PATH) must survive the source"
   },
   {
-    "id": "shared-config-sync.verdict-reaches-the-exit-code",
+    "id": "shared-config.verdict-reaches-the-exit-code",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ ${#SSC_MISSING[@]} -gt 0 ] || [ ${#SSC_DRIFTED[@]} -gt 0 ]; then return 1; fi",
     "replace": "    if false; then return 1; fi",
@@ -7626,7 +7626,7 @@
     "why": "the MISSING/DRIFTED lists must decide the exit code; printing them and returning 0 is a gate that reports every drift and blocks none of it"
   },
   {
-    "id": "shared-config-sync.missing-copy-is-a-verdict",
+    "id": "shared-config.missing-copy-is-a-verdict",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ ! -e \"$target\" ]; then",
     "replace": "    if false; then",
@@ -7634,7 +7634,7 @@
     "why": "a declared asset whose copy is not there is MISSING; without this arm the file is compared as if it existed and the consumer is told something else entirely"
   },
   {
-    "id": "shared-config-sync.body-mode-drops-the-header",
+    "id": "shared-config.body-mode-drops-the-header",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ \"$mode\" = body ]; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
     "replace": "    if false; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
@@ -7642,7 +7642,7 @@
     "why": "body mode compares from the first CODE line down: the consumer's own header prose is the legitimate per-consumer delta, and grading it turns every template copy into permanent drift"
   },
   {
-    "id": "shared-config-sync.knob-values-are-masked",
+    "id": "shared-config.knob-values-are-masked",
     "target": "shared/config/sync-shared-config.sh",
     "find": "            SSC_MASKED=\"<knob> ${knob}\"",
     "replace": "            SSC_MASKED=\"$line\"",
@@ -7650,7 +7650,7 @@
     "why": "a declared knob line may carry any VALUE -- it is the one line the template tells the consumer to adjust; comparing its value makes a correctly adjusted copy read as drifted"
   },
   {
-    "id": "shared-config-sync.line-endings-normalised",
+    "id": "shared-config.line-endings-normalised",
     "target": "shared/config/sync-shared-config.sh",
     "find": "        SSC_LINES+=(\"${line%\"${_SSC_CR}\"}\")",
     "replace": "        SSC_LINES+=(\"$line\")",
@@ -7658,7 +7658,7 @@
     "why": "the CR is stripped on both sides before comparing; without it a Windows and a Linux checkout of the same bytes disagree, and the twin's verdict depends on which OS ran it"
   },
   {
-    "id": "shared-config-sync.write-refuses-body-assets",
+    "id": "shared-config.write-refuses-body-assets",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ \"${SSC_MODE[$id]}\" = body ]; then",
     "replace": "    if false; then",
@@ -7666,7 +7666,7 @@
     "why": "--write is a verbatim copy, so it must refuse a body-mode asset: copying over one would delete the consumer's header prose and its knob values, which is a merge, not a copy"
   },
   {
-    "id": "shared-config-sync.unknown-id-is-broken-input",
+    "id": "shared-config.unknown-id-is-broken-input",
     "target": "shared/config/sync-shared-config.sh",
     "find": "        if [ -z \"${SSC_MODE[$id]:-}\" ]; then",
     "replace": "        if false; then",
@@ -7674,12 +7674,12 @@
     "why": "an id ContainerHub does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
   },
   {
-    "id": "shared-config-sync.exact-mode-is-declared-in-the-manifest",
+    "id": "shared-config.exact-mode-is-declared-in-the-manifest",
     "target": "shared/config/shared-assets.manifest",
     "find": "clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |",
     "replace": "clang-format         | shared/config/.clang-format                      | .clang-format                           | body  |",
     "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
-    "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift, and this file is one the fleet must hold byte for byte"
+    "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift."
   },
   {
     "id": "consumer-inventory.external-is-not-self",

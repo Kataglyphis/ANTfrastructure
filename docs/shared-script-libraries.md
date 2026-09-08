@@ -202,24 +202,6 @@ worse than a build that stops and says so. The same rule governs the CI
 ownership fix — the container writes `doc/` as root over a bind mount, and a
 `chown` that fails leaves a tree the host user cannot rebuild.
 
-## The rustdoc theme sheet
-
-`02-toolchain/rust/cargo_build_doc.sh` styles `cargo doc` output with the same
-generated brand sheet the Sphinx and dartdoc builds use: DocumANTation's
-`style/generate_style.py` renders it from `style/brand.json` and ships it inside
-the `sphinx_kataglyphis` package.
-
-It did not always find it. Both probes that stood in that script named a hub path
-that resolves to nothing — the hub's own `docs/_static/css/custom.css` was dropped
-in `28425115` (2026-07-15) as a stale fork of that very sheet, and the fallback
-pointed one level short, at `linux/docs/_static/`, which has never existed in this
-repository. The block therefore produced an empty `EXT_CSS` on every run and
-rustdoc got no theme at all, silently.
-
-The path is now resolved from `SCRIPT_DIR` rather than the working directory, so
-it answers the same inside a consumer's `third_party/ContainerHub` checkout —
-which is the case the cwd-relative probe existed for in the first place.
-
 ## Consumer entry points that are not libraries
 
 Three things below are executables a consumer *runs*, not cores it sources. They
