@@ -168,10 +168,7 @@ t_case "the scanned set does not depend on .git being present"
 # Comparing the two lists is NOT enough -- with git present the fallback branch
 # never runs, and that version of this test let the mutation survive. So point
 # the gate at a directory that is not a repository and prove the wiring.
-t_assert_eq "wired" "$( "${PY}" - <<'PYCHK'
-import importlib.util, pathlib, tempfile
-spec = importlib.util.spec_from_file_location("g", "docs/scripts/verify_doc_links.py")
-g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+t_assert_eq "wired" "$(t_gate_probe docs/scripts/verify_doc_links.py <<'PYCHK'
 cand = []
 for name in g.CODE_SCAN:
     root = g.REPO_ROOT / name
@@ -208,6 +205,21 @@ if without_git != floor:
     problems.append("no-git path returned %d, not the floor" % len(without_git))
 if without_git_probe != floor_probe:
     problems.append("no-git path ignored the floor on the probe list")
+# A HAPPY git that reports nothing. check-ignore never names a TRACKED file, and
+# .gitignore re-admits dated run dirs, so a committed benchmark run answers "not
+# ignored" for all 66 of them -- how 542b87f6 put model output back in the scan.
+# The mutation mirror has no .git, so only a stub can reach the union line.
+class _Proc:
+    returncode, stdout = 1, ""
+_real = g.subprocess.run
+g.subprocess.run = lambda *a, **k: _Proc()
+try:
+    tracked = g._ignored_paths(rel)
+finally:
+    g.subprocess.run = _real
+if tracked != floor:
+    problems.append("git answering NOTHING returned %d, not the floor %d"
+                    % (len(tracked), len(floor)))
 print("wired" if not problems else "BROKEN: " + "; ".join(problems))
 PYCHK
 )"

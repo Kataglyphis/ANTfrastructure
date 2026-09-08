@@ -73,7 +73,14 @@ param(
     [switch]$Pull,
     [switch]$WithHybrid,
     [switch]$WithCpu,
-    [switch]$Restart
+    [switch]$Restart,
+    # Where each lane's stdout/stderr lands. Defaults under LOCALAPPDATA so WSL
+    # can read it back as /mnt/c/Users/<you>/AppData/Local/GenieX CLI/lane-logs.
+    [string]$LaneLogDir = (Join-Path $env:LOCALAPPDATA 'GenieX CLI\lane-logs'),
+    # Passed to geniex as --log when that build has it. The CLI defaults to
+    # 'none', which makes the lane log an empty file on a silent failure.
+    [ValidateSet('none', 'error', 'warn', 'info', 'debug', 'trace')]
+    [string]$LogLevel = 'info'
 )
 
 Set-StrictMode -Version Latest
@@ -114,6 +121,20 @@ function Get-BackendModels {
         if (-not [string]::IsNullOrWhiteSpace($model)) { $map[$compute] = [string]$model }
     }
     return $map
+}
+
+# Does THIS geniex build accept that serve flag? The CLI's surface moves between
+# releases (v0.6.1 dropped --max-tokens), and a flag it does not know is fatal at
+# startup, not ignored. Cached: one --help per run, not one per lane.
+$script:ServeHelp = $null
+$script:WarnedNoMaxTokens = $false
+function Test-ServeFlag {
+    param([Parameter(Mandatory)][string]$Flag)
+    if ($null -eq $script:ServeHelp) {
+        try { $script:ServeHelp = (& $exe serve --help 2>&1 | Out-String) }
+        catch { $script:ServeHelp = '' }
+    }
+    return ($script:ServeHelp -match [regex]::Escape($Flag))
 }
 
 # QAIRT bundle or GGUF? Loading a GGUF into a lane that already holds a QAIRT
@@ -248,23 +269,55 @@ function Start-Lane {
 
     Invoke-PullIfMissing -Model $model
 
-    # --nctx and --max-tokens passed EXPLICITLY: the CLI's own defaults (4096 /
-    # 2048) are invisible in a benchmark report, and the 2048 one silently
-    # truncated 26 of 27 coding tasks.
+    # --nctx passed EXPLICITLY: the CLI's own default (4096) is invisible in a
+    # benchmark report. --max-tokens was passed the same way and for the same
+    # reason -- until GenieX v0.6.1 dropped it from `serve`, and every lane died
+    # on "Error: unknown flag: --max-tokens" (2026-09-07, all four at once, with
+    # no log to say so). So ASK the binary instead of assuming: the flag list is
+    # one --help away. When it is gone, max_tokens is a per-request field and the
+    # client owns it -- which is what the benchmark tools already send.
     $argList = @('serve', '--compute', $Compute, '--host', "0.0.0.0:$Port",
-                 '--nctx', $Nctx, '--max-tokens', $MaxTokens, '--keepalive', $Keepalive)
-    Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $argList | Out-Null
+                 '--nctx', $Nctx, '--keepalive', $Keepalive)
+    if (Test-ServeFlag '--max-tokens') {
+        $argList += @('--max-tokens', $MaxTokens)
+    } elseif (-not $script:WarnedNoMaxTokens) {
+        $script:WarnedNoMaxTokens = $true
+        Write-Warning ("  this geniex has no `serve --max-tokens`; every caller must send max_tokens itself (-MaxTokens {0} ignored)." -f $MaxTokens)
+    }
+    if ($LogLevel -and (Test-ServeFlag '--log')) { $argList += @('--log', $LogLevel) }
+
+    # A hidden Start-Process with no redirect throws its output away, so a lane
+    # that dies on startup leaves NOTHING to read -- "did not answer within 20s"
+    # was the whole diagnosis on 2026-09-07, for four lanes at once. Both streams
+    # go to $LaneLogDir (WSL reads it as /mnt/c/...); stdout and stderr must be
+    # DIFFERENT files or Start-Process refuses to launch.
+    if (-not (Test-Path $LaneLogDir)) {
+        New-Item -ItemType Directory -Force -Path $LaneLogDir | Out-Null
+    }
+    $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $outLog  = Join-Path $LaneLogDir "$Compute-$Port-$stamp.out.log"
+    $errLog  = Join-Path $LaneLogDir "$Compute-$Port-$stamp.err.log"
+    Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $argList `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog | Out-Null
 
     foreach ($i in 1..20) {
         Start-Sleep -Seconds 1
         try {
             Invoke-RestMethod -Uri "http://127.0.0.1:$Port/v1/models" -TimeoutSec 2 | Out-Null
-            Write-Host ("  {0,-6} :{1}  up ({2}s)" -f $Compute, $Port, $i) -ForegroundColor Green
+            Write-Host ("  {0,-6} :{1}  up ({2}s)  log: {3}" -f $Compute, $Port, $i, $outLog) -ForegroundColor Green
             Invoke-Warmup -Compute $Compute -Port $Port -Model $model
             return
         } catch { }
     }
-    Write-Warning ("  {0,-6} :{1}  did not answer within 20s" -f $Compute, $Port)
+    # Name the log AND quote what it already says: a lane that exits immediately
+    # has written its reason before this loop ends.
+    Write-Warning ("  {0,-6} :{1}  did not answer within 20s -- log: {2}" -f $Compute, $Port, $errLog)
+    foreach ($log in @($errLog, $outLog)) {
+        if (Test-Path $log) {
+            $tail = Get-Content -Path $log -Tail 5 -ErrorAction SilentlyContinue
+            if ($tail) { $tail | ForEach-Object { Write-Warning ("      {0}" -f $_) } }
+        }
+    }
 }
 
 Write-Host "GenieX fleet  (nctx=$Nctx, max-tokens=$MaxTokens, keepalive=${Keepalive}s)" -ForegroundColor Cyan

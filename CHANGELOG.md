@@ -6,6 +6,194 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-03 — the day with no entry: 79 commits, reconstructed
+
+**This entry was written on 2026-09-07 from the commit subjects, not from the work.**
+Every other day from 2026-08-29 onward has an entry; 2026-09-03 had 79 commits
+(`7a84c43e`…`f1169ab3`, 75 distinct non-merge subjects) and none, which the
+2026-09-07 backlog audit found. It is filled in rather than left blank so the gap
+does not read as a quiet day, but read the commits for detail — the prose below
+claims only what a subject line supports.
+
+* **Quality gates.** Four new gates plus the meta-gate that makes gates prove
+  themselves (`gate-registry`, and `gate-proofs.allow` with it); mutation entries
+  pinned against rot; a heredoc declared data rather than shell; doc numbers stopped
+  being prose. The pre-commit hook's own refusals got proofs, and `doc-dupes` a real
+  one.
+* **The doc-links gate's two-sided bug.** One change made the gate ask git; another
+  took git away in the mutation mirror. Neither side could see the other, and the
+  scan silently grew from 566 files to 5,467. Fixed the same day, and the reason the
+  `UNTRACKED_OUTPUT` floor exists at all — see
+  [`code-quality-tooling.md`](docs/code-quality-tooling.md#generated-data-is-not-source-and-git-alone-cannot-say-so),
+  which records the second half of that story, found 2026-09-07.
+* **Backlog waves 1 and 2.** Every open defect closed while the closure was
+  editable, then every frozen allow row given a verdict instead of a bare baseline —
+  the shape the F1/F2 registers still have.
+* **Image contract.** `appimagetool` shipped readable and not merely executable; the
+  JDK the Android SDK arrives without; the consumer contract honoured as consumers
+  actually depend on it; a `set -e` death made readable and the runtime uid pinned.
+* **Per-arch version advertisement**, so an image can advertise the version it
+  actually contains.
+* **Benchmark lane.** P3.1 ran end to end; `bench_coding`'s grader had been
+  believing the graded, and seven set-aside findings were closed; a lane was found
+  to be dropping the tool call rather than the model failing it. Two published
+  claims were corrected by measurement, not argument.
+* **Dart/Flutter CI.** A Dart lane and SARIF upload added; `dart format .` stopped
+  reformatting the Flutter SDK; an empty Dart file list stopped retiring the format
+  gate.
+
+## 2026-09-07 — EX1 closed the day it opened: linux/llm-stack enters the extent gates, 47 rows, 34 of them debt
+
+`verify_code_size.py:38` read
+`SCAN = ("linux/scripts", "linux/host-config", "docs/scripts")`. `linux/llm-stack`
+had never been in it: 43 Python files, 19,874 lines, under active development, with
+a 569-line file landing there that same day. `verify_code_complexity.py` inherits
+that tuple, so it was blind too. (`verify_dead_functions.py` and
+`verify_trailing_conditional.py` import from the same module but walk only SHELL
+functions, so they gained nothing; `verify_comment_size.py` keeps its own scan.)
+
+Option 1 of the three the entry offered — widen and do the verdict pass — because
+the alternatives leave the register meaning something other than what it says.
+**All 47 rows were read and given a verdict in the same wave**, which is the rule set
+on 2026-09-03: a row states what its number IS, never that it merely existed when the
+gate was switched on. Written by 13 readers, then each set put past a rubber-stamp
+detector that rewrote 4 reasons that restated a metric instead of explaining it.
+
+Gates moved 28 → **41** functions, 11 → **18** files, 61 → **86** cc, 2 → **4**
+nesting. All frozen, both gates pass. **34 rows say DEBT and name their seam** — the
+honest state of a benchmark harness nobody had reviewed for shape, now written down
+instead of invisible:
+
+* `bench_coding.py` — 2053 lines, still ~976 executable after blanks, comments,
+  docstrings and 409 lines of top-level literal come out, so unlike `bench_tasks.py`
+  it is not a data file that happens to be long. Splits at `run_candidate`: everything
+  above is *turn an untrusted reply into a verdict*, everything below is *drive an
+  endpoint and rank the models*, and the halves touch at exactly four names. 75
+  mutation rows already pin the behaviour — more than any other file in the repo.
+* `evaluate` — 227 lines, cc 69. One attempt, then aggregation, then the report dict.
+  The tell is the indentation: the inner `for attempt in range(repeats)` is indented
+  two spaces so the body stays at column 8, i.e. written not to be re-indented. That
+  is an extraction the author had already made in their head.
+* `benchmark_chat` — the repo's only nesting-8 path, cc 42, 183 lines.
+* Not debt, with reasons: `ask` is 83 lines of which 32 are prose recording that
+  urlopen's `timeout` is PER SOCKET READ, measured when a 4B model blocked a whole
+  sweep for an hour; `bench_tasks.py` is 1889 lines with zero function or cc
+  offenders because it is a task table.
+
+The F1 sweep sentence needed its second correction of the day: "no outside-the-closure
+candidate left" was true of the scan set, and the scan set was not the repo.
+
+## 2026-09-07 — the backlog audited against the tree: two red gates behind a merge, and a grooming that had not re-derived its own numbers
+
+Asked whether the backlog was up to date and everything fixed. It was not, in two
+separate ways, and both are now closed.
+
+**`main` had moved past the grooming.** Merge `d6fa512f` landed the NAS
+document-AI stream 23 minutes after the backlog was groomed, and brought four
+defects with it — all from `542b87f6`/`3f300c32`, neither of which had a green
+preflight:
+
+* Three `census.*` mutations with no `mutation-family:` declaration →
+  `gate-registry` red. Declared.
+* `code-quality-tooling.md` still claiming **879 entries over 239 test commands**
+  when the manifest holds **882 over 242** → `doc-numbers` red. Corrected.
+* Two `§` references in `nas-document-ai.md` naming headings that do not exist
+  (`geniex-local-ai-setup.md § 1e records`, `linux-reference.md § CIFS`) →
+  `doc-links` red. Re-pointed.
+* **68 benchmark files committed into `linux/llm-stack/benchmark_results/`**, a
+  tree `verify_doc_links.py` assumes is untracked. `git check-ignore` never reports
+  a tracked file, and `.gitignore` deliberately re-admits dated run dirs
+  (`!benchmark_results/20*/`), so git reported **0** ignored against a static floor
+  of **66** — putting 66 model-output JSONs back inside the scan the floor exists to
+  keep them out of. `_ignored_paths()` now returns `git ∪ UNTRACKED_OUTPUT`; the
+  floor was never meant to be only the git-free fallback. The guard case in
+  `test-doc-links.sh` caught this, which is exactly what it was written for.
+
+**The grooming had not re-derived its numbers, though it said it had.** An
+11-dimension audit (126 agents, every finding put through two adversarial
+verifiers) re-derived every figure in the file from the gate that produces it.
+Wrong: `29`/`66` allow rows (real **28**/**61**), `media_common_init` cc 35 (**29**
+since CL7), `verify_package_names main` 34 lines (**30**), "the nine libraries"
+(**ten**), `smoke-runtime-image.sh` "63 functions, all `check_*`/`_probe_*`" (**91**,
+of which **45**), CL1's "13 call sites" (**12**), `gate-proofs.allow`'s own header
+"1 of 34" (**0 of 36**), `sync_versions.py`'s "six consumers" (`--check` runs
+**seven**). Two entries had outlived their evidence by one commit: the
+registry-cache drop was still called uncovered after `d7fbfd39` characterised it
+(`grep -rn DeadlineExceeded linux/scripts/tests/` returns three hits, and the
+entry offered that grep returning nothing as its proof), and CS1 was listed as the
+open owner decision in the same file that links its closure.
+
+**A new open entry, EX1 — the extent gates cannot see `linux/llm-stack`.**
+`verify_code_size.py:38` sets `SCAN = ("linux/scripts", "linux/host-config",
+"docs/scripts")`, and the complexity, dead-function and trailing-conditional gates
+all inherit it. `linux/llm-stack` — 43 Python files, 19,874 lines, under active
+development — has never been in it. Unfrozen and unnamed there: **7 files over 800
+lines** (`bench_coding.py` at **2022**, second-largest .py/.sh in the repo), 13
+functions over 80, 25 `cc` paths over 15, and one nesting-8 path. This is the second
+reason F1's "no outside-the-closure candidate left" was wrong: the sweep was true of
+the scan set, and the scan set is not the repo. Left as a decision rather than a
+patch — widening `SCAN` makes ~46 rows appear at once, and this repo's rule since
+2026-09-03 is that a row states what its number IS, so the verdict pass is its own
+wave.
+
+**Two stale pages that would have misled an operator.** `build-watch-list.md` —
+the page the backlog tells you to read while the closing chain runs — still labelled
+`slang unavailable` and `vulkancapsviewer unavailable` as EXPECTED, and carried two
+diagnoses VK2 had superseded. Those are the exact lines VK2 stays open to catch, so
+a regression would have read as green. `INDEX.md` still advertised `glslc` and
+`vulkaninfo` as the Vulkan doc's known gaps.
+
+**Two host tools preflight needs and never declared.** `pytest` (209 of 882
+mutation entries were reporting `vacuous bite` without it — a quarter of the corpus
+dark) and `pwsh` (the `shared-config` slug failed with `command not found`, which
+reads like config drift; the file it checks was verifiably in sync). Both installed
+user-scope and written up as
+[`linux-host-setup.md` § D5](docs/linux-host-setup.md#d5-pwsh-and-pytest--the-two-host-tools-preflight-needs-and-never-asked-for).
+
+**A benchmark-harness bug that corrupted measurements, found by making the
+mutation gate run at all.** With `pytest` installed, 16 of the `bench_coding`
+suites' tests failed — every bash and CMake row — each reporting
+`timed out after 15s (likely an infinite loop)`. Nothing was looping.
+`bench_coding.py` set `RLIMIT_NPROC = 64` for the candidate, and that limit is
+per-**UID**, counted live and host-wide, and counts **TASKS, not processes**. This
+host runs 102 processes but **591 tasks**, so the candidate's first `fork` returned
+`EAGAIN`, bash retried it until the timeout, and the harness published a confidently
+wrong cause. The sandbox comment already knew the limit was host-wide; it did not
+know it was threads. `_nproc_ceiling()` now counts tasks and allows `RLIMIT_NPROC`
+above them, and is probed once so it cannot drift between launch and assertion. The
+four-file suite went from **16 failed / 343 passed in 297 s** to **359 passed,
+2 skipped, in 14.5 s**.
+
+This one mattered beyond the gate: on any busy host the whole `languages` lane
+scored 0 and the report attributed it to the model. `unshare -rn` fails here
+(`uid_map: Operation not permitted`), so `_netns_available()` is false and this
+fallback path is the one that runs.
+
+**Two more the fixes themselves exposed.** `coding.netns` had been SURVIVING
+unnoticed behind the vacuous baseline: it removes the `unshare -rn` wrap, and on a
+host where `unshare` is denied that wrap is dead code, so removing it changes
+nothing. The audit test now drives the DECISION (`_netns_available` monkeypatched
+true, `Popen` intercepted) instead of the environment, so the mutation bites on
+every host. And `verify_code_dupes.py`'s `SKIP_DIRS` never contained
+`.pytest_cache`, `__pycache__` or `.dart_tool` although
+`code-quality-tooling.md` has listed all three as excluded for as long as that
+table has existed — one hand-run of pytest plants two identical `README.md` files
+and fails the gate on them. Declaring pytest a host tool turned that from one
+lane's nuisance into everyone's, so the set now matches its own documentation.
+
+**One vacuous suite.** `test-agentic-loop.sh` exited 0 on missing `jq` — the only
+suite of 106 that turned a missing tool into a silent pass. Now an assertion: 35
+pass with `jq`, 12 fail without.
+
+Also: the superseded `external/` hand-clone removed and the `third_party/DocumANTation`
+submodule initialised at its pin; `/external/` gitignored so the next one cannot be
+committed by accident; and the missing **2026-09-03** CHANGELOG entry (79 commits,
+the only dated gap since 2026-08-29) reconstructed from its commit subjects.
+
+Recorded and deliberately NOT fixed: `sync_versions.py`'s `check_script_defaults`
+glob matches no file since the Verb-Noun rename, so ten PowerShell build scripts are
+not gate subjects. Windows lane — noted in the backlog, left to that queue.
+
 ## 2026-09-07 — First document-VLM measurements: the shortlist meets the Snapdragon, and GenieX gives up a bug
 
 The first multimodal numbers this repo has ever produced, taken live over the

@@ -159,7 +159,7 @@ Only `smoke-runtime-image.sh`'s tree-arch and advert arms really ran, amd64 only
 
 | file | change | what the log should show |
 |---|---|---|
-| `01-core/common.sh` | NEW `compiler_cache_launcher_env`, and 13 call sites in 11 files call it before resolving the launcher | see YB. Every `sccache-launcher` line must print `[server=/tmp/sccache-<uid>.sock]` and never `[server=tcp:4226]` |
+| `01-core/common.sh` | NEW `compiler_cache_launcher_env`, and 12 call sites in 11 files call it before resolving the launcher | see YB. Every `sccache-launcher` line must print `[server=/tmp/sccache-<uid>.sock]` and never `[server=tcp:4226]` |
 | `linux/Dockerfile.toolchain` | both per-file `01-core` mount blocks now mount `sccache-launcher.sh` | the GCC/LLVM stages stop running BARE sccache, where an sccache fault ABORTS the build instead of costing a cache entry |
 | `01-core/compiler-cache.sh` | `sccache_export_server_address` hoisted out of the `$( )` resolver in `setup_ccache` and `setup_sccache` | the same `[server=…]` field, from the media lane this time |
 | `02-toolchain/materialize-llvm-target.sh` | the multiarch glob became a demand-driven `_llvm_target_fill_needed` walk | the amd64 sdk stage must print `amd64 /opt/llvm-target NEEDED walk clean` and must NOT print `is NOT self-contained` — this is the one place the change can break a build, and it fails at the sdk stage rather than shipping |
@@ -573,3 +573,163 @@ findings — the log-bootstrap extraction (2026-09-04), the ORT summary
 (2026-09-05), and DISK3's `_disk_guard_lever_ready` (2026-09-07, five budgets
 re-measured). The honest response is to read and record them, never to widen
 `MAX_OWNERS`.
+
+### F1/F2 sub-items. CLOSED — the closure history the OPEN file kept carrying [done 2026-09-07]
+
+Eight blocks, 78 of the OPEN file's 479 lines, all of them records of work that
+was already finished. The file's own first rule is *"Every item here is OPEN."*
+They are moved here verbatim; each left a one-line pointer behind.
+
+**Closed 2026-09-05, and both allow rows DELETED rather than re-baselined:**
+`verify_doc_dupes.py main` 81 → 47 lines, cc 23 → under the limit, decomposed into
+`_index_paragraphs` / `_collect_shared` / `_print_report` / `_print_findings` /
+`_print_bookkeeping` — mirroring `verify_code_dupes.py`'s helper names rather than
+inventing a second vocabulary, and proven BYTE-IDENTICAL over the whole docs tree in
+all four output shapes (`--report` at thresholds 8, 12 and 20 plus the plain run,
+i.e. the findings, clean and stale-allowlist exit paths). And
+`slang_compile_combined_wgsl` 87 → 45, with the `while read` body now
+`_slang_emit_one_wgsl` returning 0 copied / 1 emit failed / 2 rejected by the
+varying validator / **3 source absent** — a fourth outcome the entry had not counted.
+Its `dead-functions.allow` row for `slang_compile_main` went stale in the same change
+and is gone, because the new suite drives the real entry point. The suite is a true
+characterisation: it passes UNCHANGED against `git show HEAD:…/slang-compile.sh`.
+
+**Closed 2026-09-04:** `cmake_build_parse_args` 116 → 60 lines and cc 31 → 24 (the
+Vulkan flag > env > caller-default chain is now `_cmake_build_resolve_vulkan`, with
+its precedence written up in
+[`shared-script-libraries.md`](shared-script-libraries.md) and three mutations
+holding it); `verify_package_names.py` `main` 140 → 30 and `scan_file` 93 → 7, both
+from **cc 42** to gone, with `--list` output over the whole tree proven
+byte-identical before and after.
+
+**CLOSED 2026-09-05 — `smoke-cross-all-arches.sh main`**, which this entry had
+nominated as the best-shaped candidate left. 96 → 22 lines, cc 23 → under the limit,
+four `_smoke_probe_*` helpers plus `_smoke_clang_match_arch`, and **both** allow rows
+DELETED rather than re-baselined. Two things from how it went are worth keeping. The
+output was proven **byte-identical to HEAD, with equal exit codes, over 20 input
+shapes** — five arch-list forms and five clang triples × three arch lists — which is
+what a characterisation of a shipped probe should look like. And the clang section's
+"matches none of" branch, the one this entry asked for, **did not exist at all**: a
+target clang built for the wrong arch shipped green. Pinning it meant writing the arm
+first. `SMOKE_TARGET_CLANG` exists so a host suite can drive the real probe instead of
+a rewritten copy; it self-defaults in the script, so nothing in the image sets it and
+the env-knob registry needs no row.
+
+**CLOSED 2026-09-07 — the registry-cache drop is characterised.** Every earlier
+version of this paragraph said "Nothing covers it" and offered
+`grep -rn DeadlineExceeded linux/scripts/tests/` returning nothing as the proof.
+That grep returns **three** hits today and has since `d7fbfd39`, which landed in the
+same wave as the grooming that re-asserted the claim — the entry outlived its own
+evidence by one commit. `test-cross-stage-build-cmd.sh` now drives the path with a
+real `_FLAKE` tail and pins the four decisions that matter: one hiccup does NOT drop
+the tier, the SECOND drops it from every later attempt, the LOCAL tier survives the
+drop, and a flake-free failure keeps the registry cache throughout. What is left is
+only the optional extraction of that block into a named helper — with the suite as
+the safety net, which is the order this entry always asked for.
+
+**CLOSED 2026-09-07 — the harness now catches that trap.** `t_assert_ok` and
+`t_assert_fails` take a COMMAND and no message, so `t_assert_fails test -f X "msg"`
+ran `test -f X msg`, which exits **2** — "not zero", i.e. the failure the case
+asked for, for entirely the wrong reason. Four of those were written and caught by
+review in one wave. Both assertions now share `_t_assert_run`, which fails the case
+BY NAME when the command is `test`/`[` and the rc is 2. The guard is deliberately
+narrow: a real command that exits 2 is still judged on its exit code, and a
+mutation widening it to every rc 2 is caught. `test-harness-guards.sh` is the suite
+(12 assertions), and the whole corpus was re-run against the stricter harness —
+no existing case relied on the old behaviour.
+
+**`_chain_stage_disk_guard`'s two eviction loops CLOSED 2026-09-07** with DISK3:
+one `_chain_evict_slugs` owner, cc 30 → 21.
+
+The split itself was deliberately NOT made in the same wave: a second lane held the
+file that session (a `trailing-conditional` fix inside `invoke_agent`'s retry loop),
+and a two-file split would have destroyed their edit on merge. The seam is clean and
+the next pass is a straight move — adapters (`load_engine_config`,
+`agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`,
+`invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent`;
+roughly lines 89–420) into `lib/agentic-engines.sh`, sourced the way
+`lib/log-bootstrap.sh` already is, leaving the loop driver from line 423 on. The new
+suite covers both halves across the seam. **DONE 2026-09-05** — the split landed
+exactly as described (874 → 512 plus a 355-line `lib/agentic-engines.sh`), the
+`file-size.allow` row was DELETED rather than re-baselined, and the 24 pre-existing
+assertions passed unchanged across the seam, which is what makes it a true
+characterisation. The `&&`-shape defect found in this file while writing that suite
+closed with CL7; note its correction, though — the failure mode did NOT reproduce,
+because bash exempts every command of an AND-OR list but the last.
+
+**Closed 2026-09-05:** `docs/scripts/sync_versions.py` had NO module docstring at all
+— shebang straight into `from __future__` — despite being the authority for the
+version-propagation ritual. It now states its six consumers, why `--write` does the
+Dockerfiles FIRST (the snapshot reads its numbers back out of them, so the other
+order needs two passes), and that a malformed marker fails BOTH modes; it ends at
+`cross-build-verification.md#pre-flight`, which is where the `version-snapshot` slug
+is actually documented — the honest anchor the row said did not exist. Its
+`file-size.allow` row moved 849 → 873. The not-a-split verdict above it is unchanged.
+
+### EX1. CLOSED — the extent gates can see `linux/llm-stack` now [done 2026-09-07]
+
+**`verify_code_size.py:38` reads `SCAN = ("linux/scripts", "linux/host-config",
+"docs/scripts")`**, and `verify_code_complexity.py`, `verify_dead_functions.py` and
+`verify_trailing_conditional.py` all take their scope from it. `linux/llm-stack` is
+not in that tuple and never has been. It holds **43 Python files, 19,874 lines**, it
+is under active development, and a 569-line file (`nas_census.py`) landed there on
+2026-09-07 without any extent gate seeing it.
+
+What is actually over the limits there, measured 2026-09-07 and frozen nowhere:
+
+| | count | worst |
+| --- | --- | --- |
+| files > 800 lines | 7 | `bench_coding.py` **2022** — second-largest .py/.sh in the repo |
+| functions > 80 lines | 13 | — |
+| `cc` > 15 | 25 | — |
+| nesting > 5 | 1 | depth **8** |
+
+`bench_coding.py` at 2022 lines is longer than every file in `file-size.allow` except
+`smoke-runtime-image.sh`, and unlike that one it has never been reviewed for a
+split-or-not verdict. **This is why F1's "no outside-the-closure candidate left" was
+wrong in a second way**: the sweep was true of the scan set, and the scan set is not
+the repo.
+
+**What closes it is a decision, not a patch.** Adding one directory to `SCAN` makes
+~46 rows appear at once, and this repo's convention — set on 2026-09-03, when wave 2
+replaced every bare baseline with a verdict — is that an allow row states *what its
+number IS*, not merely that it was there when the gate was switched on. Writing 46
+honest verdicts over a benchmark harness nobody has reviewed for shape is its own
+wave. The options, in the order I would take them:
+
+1. **Widen `SCAN` and do the verdict pass.** Correct, and the only option that makes
+   the register mean what it says. Costs one wave.
+2. **Widen `SCAN` for files only** (the 7-row table above), leaving functions and cc
+   for later. Cheap, and it catches the growth that matters most.
+3. **Declare `linux/llm-stack` deliberately out of scope** and say so in
+   `verify_code_size.py`'s header and in F2 — defensible if the benchmark harness is
+   held to a different standard than the build closure, but it must be *written down*,
+   because right now the exclusion is silent and reads as an oversight.
+
+Not option 4: leaving it. A gate whose scope nobody stated is the shape this repo
+has been bitten by twice — the `file-size.allow` header that said "Shell files" while
+scanning Python, and the doc-links floor that only applied when git was absent.
+[`code-quality-tooling.md`](code-quality-tooling.md#code-size--functions-and-files-code-size)
+
+**CLOSED the same day it was opened, with option 1.** `SCAN` in
+`verify_code_size.py:38` now carries `linux/llm-stack`, and `verify_code_complexity.py`
+inherits it. (`verify_dead_functions.py` and `verify_trailing_conditional.py` also
+import from that module but only walk SHELL functions, so they gained nothing;
+`verify_comment_size.py` has its own scan and is untouched — that widening is still
+the separate job F1 describes.)
+
+**All 47 rows were read and given a verdict in the same wave**, which is the rule this
+repo set on 2026-09-03: a row states what its number IS. **34 of them say DEBT and name
+their seam** — that is the honest state of a benchmark harness nobody had reviewed for
+shape, and it is now written down instead of invisible. The gates moved
+28 → **41** functions, 11 → **18** files, 61 → **86** cc and 2 → **4** nesting, every
+one frozen, and both gates pass.
+
+The biggest finds, each with a seam a stranger could act on: `bench_coding.py` (2053
+lines, ~976 of them executable after blanks, comments, docstrings and 409 lines of
+top-level literal come out) splits at `run_candidate` into a grader half and a driver
+half that touch at exactly four names; `evaluate` (227 lines, cc 69) is one-attempt +
+aggregation + report dict in one body, and the two-space indent on its inner `for`
+shows the author had already made the cut mentally; `benchmark_chat` carries the
+repo's only nesting-8 path. Those are F1/F2 entries now, not unknowns.
+

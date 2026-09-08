@@ -44,9 +44,10 @@ text-only models. **Zero multimodal measurements exist.**
 
 Worse, the suite's most-quoted headline points the wrong way for this
 workload. "The CPU beats the NPU ~2x" is a **decode** measurement on short
-prompts. [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) § 1e records
-the reverse for long inputs — a 3,000-token prompt costs **3.2 s on the NPU
-against 34 s on the CPU** — and a document page is ~100 % input tokens.
+prompts. For long inputs the reverse holds — a 3,000-token prompt costs
+**3.2 s on the NPU against 34 s on the CPU**
+(see [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) § 1e) — and a
+document page is ~100 % input tokens.
 
 What does transfer, and it is a lot: `bench_cli.post_json` serialises whatever
 dict it is handed, so an OpenAI multimodal content list passes through
@@ -168,7 +169,8 @@ Routing:
 | Cross-page tables | No open model stitches across a page break; post-process by column count + header signature. | – |
 
 Placement: NAS via the existing CIFS mount recipe
-([`linux-reference.md`](linux-reference.md) § CIFS) — `NEXTCLOUD_MOUNT=/mnt/`
+([`linux-reference.md`](linux-reference.md) § Mounting an SMB/CIFS network share)
+— `NEXTCLOUD_MOUNT=/mnt/`
 in [`../linux/nextcloud-aio/.env.example`](../linux/nextcloud-aio/.env.example)
 already bind-mounts it into Nextcloud. Census/Docling/ocrmypdf/crawler on the
 8 Oryon cores in WSL2 (the dominant cost is CPU PDF rendering, not OCR — NVIDIA

@@ -895,8 +895,37 @@ def _assertion_harness(tests):
 # candidate took WSL2 down with it; these are generous for a real solution.
 RLIMIT_AS_BYTES = 1 << 30
 RLIMIT_FSIZE_BYTES = 8 << 20
-RLIMIT_NPROC = 64
+RLIMIT_NPROC = 64          # forks allowed ABOVE what the user already runs
+_NPROC_CEILING = None
 OUTPUT_LIMIT_BYTES = 1 << 20
+
+
+def _nproc_ceiling():
+    """RLIMIT_NPROC is per-UID, counted live and host-wide, and counts TASKS, not
+    processes. A bare 64 therefore limits the DESKTOP, not the candidate: this host
+    runs 102 processes but 591 tasks, so the fork fails, bash retries it forever,
+    and every bash/CMake row dies at the timeout blaming "likely an infinite loop".
+    Count tasks and allow RLIMIT_NPROC above them. Probed once, like _NETNS, so the
+    ceiling cannot drift between launch and assertion.
+    """
+    global _NPROC_CEILING
+    if _NPROC_CEILING is None:
+        uid, mine = os.getuid(), 0
+        try:
+            entries = list(os.scandir("/proc"))
+        except OSError:
+            entries = []
+        for e in entries:
+            # A pid that exits mid-census raises; skip that entry. Catching it
+            # around the whole loop zeroed the count and restored the broken 64.
+            try:
+                if not (e.name.isdigit() and e.stat().st_uid == uid):
+                    continue
+                mine += len(os.listdir(f"/proc/{e.name}/task"))
+            except OSError:
+                continue
+        _NPROC_CEILING = mine + RLIMIT_NPROC
+    return _NPROC_CEILING
 
 
 def _candidate_rlimits():
@@ -905,7 +934,8 @@ def _candidate_rlimits():
     # NPROC set here is checked against the HOST-wide count of the user's
     # processes even inside `unshare -r`; there, prlimit sets it in the namespace.
     if not _netns_available():
-        resource.setrlimit(resource.RLIMIT_NPROC, (RLIMIT_NPROC, RLIMIT_NPROC))
+        ceiling = _nproc_ceiling()
+        resource.setrlimit(resource.RLIMIT_NPROC, (ceiling, ceiling))
 
 
 def _communicate_bounded(proc, timeout, limit=OUTPUT_LIMIT_BYTES):
@@ -1832,7 +1862,8 @@ def grader_selfcheck(tasks):
                       for name in ("bash", "shellcheck", "cmake", "hadolint")},
             "seconds": round(time.monotonic() - started, 2),
             "rlimits": {"as_bytes": RLIMIT_AS_BYTES, "fsize_bytes": RLIMIT_FSIZE_BYTES,
-                        "nproc": RLIMIT_NPROC}}
+                        "nproc": RLIMIT_NPROC,
+                        "nproc_ceiling": _nproc_ceiling()}}
 
 
 def main():

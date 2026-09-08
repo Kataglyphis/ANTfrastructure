@@ -139,6 +139,30 @@ class TestAstGrouping:
 
 
 class TestSubprocessHardening:
+    def test_the_netns_wrapper_is_applied_when_the_namespace_is_available(self,
+                                                                          monkeypatch):
+        # Asserting the EFFECT needs a host where `unshare -rn` works. Where it
+        # does not (uid_map: Operation not permitted) _netns_available() is False,
+        # the wrap is dead code, and coding.netns SURVIVED because removing dead
+        # code changes nothing. Drive the decision instead of the environment, so
+        # the mutation bites on every host.
+        seen = {}
+
+        class _Stop(RuntimeError):
+            pass
+
+        def _popen(cmd, **kw):
+            seen["cmd"] = cmd
+            raise _Stop
+
+        monkeypatch.setattr(bc, "_netns_available", lambda: True)
+        monkeypatch.setattr(bc.subprocess, "Popen", _popen)
+        with pytest.raises(_Stop):
+            bc._launch(["bash", "-c", "true"], "/tmp", 5)
+        assert seen["cmd"][:4] == ["unshare", "-rn", "prlimit",
+                                   f"--nproc={bc.RLIMIT_NPROC}"], seen["cmd"]
+        assert seen["cmd"][4:] == ["bash", "-c", "true"], seen["cmd"]
+
     def test_main_guard_demo_does_not_run(self):
         code = GOOD + '\nif __name__ == "__main__":\n    import sys\n    print(sys.argv[1])\n'
         ok, detail, _ = run_candidate(code, MERGE["tests"], forbidden=MERGE["forbidden"])
@@ -761,7 +785,7 @@ class TestCandidateRlimits:
                 "            resource.RLIMIT_FSIZE, resource.RLIMIT_NPROC)]\n")
         tests = (f"assert limits()[0] == {bc.RLIMIT_AS_BYTES}, limits()\n"
                  f"assert limits()[1] == {bc.RLIMIT_FSIZE_BYTES}, limits()\n"
-                 f"assert limits()[2] == {bc.RLIMIT_NPROC}, limits()\n")
+                 f"assert limits()[2] == {bc._nproc_ceiling()}, limits()\n")
         ok, detail, _ = run_candidate(code, tests)
         assert ok, detail
 
@@ -794,7 +818,8 @@ class TestGraderSelfCheck:
         assert rec["passed"] and rec["tasks"] == 1
         assert rec["rlimits"] == {"as_bytes": bc.RLIMIT_AS_BYTES,
                                   "fsize_bytes": bc.RLIMIT_FSIZE_BYTES,
-                                  "nproc": bc.RLIMIT_NPROC}
+                                  "nproc": bc.RLIMIT_NPROC,
+                                  "nproc_ceiling": bc._nproc_ceiling()}
         assert rec["netns"] is bc._netns_available()
 
     def test_main_stops_before_benchmarking_anything(self, monkeypatch):

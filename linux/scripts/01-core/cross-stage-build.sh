@@ -31,11 +31,17 @@ cross_stage_log_redirect() {
 
 # True when the log tail shows a transient registry/network PUSH failure worth
 # retrying. No log file means we cannot classify, so assume transient.
+#
+# Every HTTP status here must be anchored to its status TEXT or to a status:
+# label. A bare `[^0-9]429[^0-9]` matched BuildKit's own elapsed-time prefix --
+# `#15 429.0 <cmd>` -- so any step running 429.x seconds made the NEXT hard
+# failure look rate-limited and cost three full stage rebuilds (2026-09-08, the
+# compiler stage). The 5xx arm was always anchored; the 429 arm was not.
 _cross_stage_push_error_is_transient() {
   local log_file="${1:-}"
   [ -n "${log_file}" ] && [ -r "${log_file}" ] || return 0
   tail -n 300 "${log_file}" 2>/dev/null | grep -qiE \
-    'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|[^0-9]429[^0-9]'
+    'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|toomanyrequests|(status|code):? ?429([^0-9]|$)'
 }
 
 # D5: the post-failure cache salvage writes GBs for stages that rebuild anyway.

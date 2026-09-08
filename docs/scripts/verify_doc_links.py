@@ -81,9 +81,10 @@ CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__", ".pytest_cache", "node_modu
 # runs inside a mirrored tree with no .git (verify_mutations.py copies the repo
 # minus .git before mutating), and there `git check-ignore` answers nothing --
 # which silently turned 566 scanned files into 5,467 and failed the gate on
-# model output. Git stays the source of truth when it is available; this is the
-# floor that keeps both answers identical. test-doc-links.sh pins that equality,
-# so a new output directory fails loudly here instead of rotting the gate.
+# model output. Git adds to this when it is available; this is the floor UNDER
+# both answers, because check-ignore stays silent on a TRACKED output file.
+# test-doc-links.sh pins that equality, so a new output directory fails loudly
+# here instead of rotting the gate.
 UNTRACKED_OUTPUT = (
     "linux/llm-stack/benchmark-viewer/dist",
     "linux/llm-stack/benchmark-viewer/ssr-smoke/out.cjs",
@@ -114,6 +115,12 @@ def _ignored_paths(paths: list) -> set:
     findings this function exists to suppress, and killed two mutation entries
     by making their test fail before it was ever mutated. So a missing or
     unhappy git falls back to UNTRACKED_OUTPUT rather than to silence.
+
+    A HAPPY git is not enough either: `check-ignore` never reports a TRACKED
+    file, and .gitignore deliberately re-admits dated run directories
+    (`!benchmark_results/20*/`), so a committed run would be scanned as source.
+    UNTRACKED_OUTPUT is a floor under both answers, not just the git-free one.
+    docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
     """
     if not paths:
         return set()
@@ -130,7 +137,8 @@ def _ignored_paths(paths: list) -> set:
         # means git could not answer, and scanning everything would report
         # findings in generated data that nobody can act on.
         return _static_ignores(paths)
-    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    asked = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    return asked | _static_ignores(paths)
 
 
 def _static_ignores(paths: list) -> set:

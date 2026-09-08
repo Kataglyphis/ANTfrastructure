@@ -9,10 +9,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="${TESTS_DIR}/../lib/agentic-loop.sh"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "SKIP: jq not installed — agentic-loop's config readers are one jq pass" >&2
-  exit 0
-fi
+t_case "jq is on PATH — agentic-loop's config readers are one jq pass"
+t_assert_ok command -v jq
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT

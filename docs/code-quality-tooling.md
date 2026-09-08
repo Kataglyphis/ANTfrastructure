@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **885 entries** over **242 distinct test commands**; both digits are
+manifest holds **889 entries** over **242 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -751,8 +751,9 @@ Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
 cannot fool it. Dockerfiles have no function structure, so they are size-checked
 as files only — `Dockerfile.media` at 1162 lines is the largest **Dockerfile**
-in the tree (three shell/Python files are bigger) and was invisible to every
-gate until 2026-09-03.
+in the tree (two files in the gate's scan set are bigger:
+`smoke-runtime-image.sh` at 2433 and `build-app-wheelhouse.sh` at 1248) and was
+invisible to every gate until 2026-09-03.
 
 One script rather than two: the four-way contract and the allow-file handling are
 shared, and a second copy would have tripped the duplication gate — correctly.
@@ -861,6 +862,26 @@ instead of the slug. `windows/` is not scanned: it is its own lane.
 Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
+
+### Generated data is not source, and git alone cannot say so
+
+A benchmark result under `linux/llm-stack/benchmark_results/` holds MODEL
+OUTPUT. A model that writes a plausible `docs/<page>.md` link into its answer is
+not making a repo reference, and two such lines once failed the gate with
+findings nobody could act on. `_ignored_paths()` therefore drops the output
+trees before scanning, and `UNTRACKED_OUTPUT` names them.
+
+It is a **floor under both answers**, not a git-free fallback, because git is
+wrong here in two separate ways. Without `.git` — the mutation gate mirrors the
+repo minus `.git` before mutating — `check-ignore` exits 128 and answers
+nothing, which once turned 566 scanned files into 5,467. And WITH `.git`,
+`check-ignore` never reports a **tracked** file, while `.gitignore` deliberately
+re-admits dated run directories (`benchmark_results/*` then
+`!benchmark_results/20*/`) so a run can be committed as a record. The first
+commit to use that (`542b87f6`, 68 files) put 66 model-output files back into
+the scan while git reported nothing ignored at all. The answer is
+`git ∪ UNTRACKED_OUTPUT`; `test-doc-links.sh` pins the two to be equal on the
+real tree, which is what caught it.
 
 ### Header pointers must name a section
 
@@ -1181,7 +1202,10 @@ and 28 entries (`gate-registry.*`).
 (`NESTING_LIMIT`, default 5, block levels below the function body) — over the
 same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
 `docs/scripts`), frozen in `code-complexity.allow` under the four-way contract.
-Today: `cc: 67 over 15 paths; 67 frozen` and `nesting: 3 over 5 levels; 3 frozen`.
+Today: `cc: 86 over 15 paths; 86 frozen` and `nesting: 4 over 5 levels; 4 frozen`
+(EX1 widened the scan to `linux/llm-stack` on 2026-09-07: +25 cc and +2 nesting).
+(Re-derived 2026-09-07; it read 67 and 3 for a while, which is the failure this very
+page's rule about census figures exists to prevent.)
 
 **Why, next to `code-size`.** Length is the cheap proxy. A 60-line function with
 a `case` inside a `while` inside two `if`s is the one that actually resists
@@ -1466,7 +1490,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 431 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 433 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
