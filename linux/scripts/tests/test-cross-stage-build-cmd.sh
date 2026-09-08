@@ -231,6 +231,15 @@ t_assert_eq "retry" "$(_classify 'failed to push: 429 Too Many Requests')" "the 
 t_assert_eq "retry" "$(_classify 'unexpected status: toomanyrequests')"    "the registry error code"
 t_assert_eq "retry" "$(_classify 'unexpected status: 429')"                "a bare status: label"
 
+t_case "a DNS blip is transient -- it killed a whole 3-arch chain once"
+for _d in 'fatal: unable to access: Could not resolve host: github.com' \
+          'curl: (6) Temporary failure in name resolution' \
+          'ssh: Name or service not known' \
+          'connect: Network is unreachable'; do
+  t_assert_eq "retry" "$(_classify "${_d}")" \
+    "a source stage clones from github; the STAGE BARRIER turns one failed lookup into a dead run"
+done
+
 t_case "a deterministic build failure is never retried"
 t_assert_eq "hard" "$(_classify 'error: failed to solve: process \"bash -lc smoke.sh\" did not complete successfully: exit code: 1')" \
   "retrying a failed smoke costs a full stage rebuild per attempt and can never pass"

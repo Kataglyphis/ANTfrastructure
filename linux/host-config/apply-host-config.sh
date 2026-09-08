@@ -16,13 +16,22 @@ LIVE_DROPIN="${HOME}/.config/systemd/user/buildkit.service.d/override.conf"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# shellcheck source=prefix-common.sh
+source "${HERE}/prefix-common.sh"
+
+
 if pgrep -f "build-cross-chain.sh|buildctl.*build" >/dev/null 2>&1; then
   err "a build chain / buildctl is RUNNING — applying restarts buildkitd and kills it. Retry when idle."
 fi
 
+_render_dir="$(mktemp -d)"
+trap 'rm -rf "${_render_dir}"' EXIT
+
 _changed=0
 for pair in "buildkitd.toml:${LIVE_TOML}" "buildkit.service-override.conf:${LIVE_DROPIN}"; do
   src="${HERE}/${pair%%:*}"; dst="${pair#*:}"
+  render_host_config "${src}" "${_render_dir}/${pair%%:*}"
+  src="${_render_dir}/${pair%%:*}"
   if [ -f "${dst}" ] && diff -u "${dst}" "${src}"; then
     echo "in sync: ${dst}"
     continue

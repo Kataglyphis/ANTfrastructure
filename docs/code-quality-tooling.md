@@ -863,6 +863,49 @@ Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
 
+### The secret scan scans from inside the tree
+
+`lint-secrets.sh` runs `gitleaks detect --no-git` with a **relative** `--source .`
+after `cd`-ing into the scan root, and that is load-bearing rather than stylistic:
+gitleaks matches an allowlist's `paths` regex against the path it *reports*, so an
+absolute `--source` makes every path-anchored rule stop matching, silently.
+
+`.gitleaks.toml` allowlists `^out/` — build logs and artefacts, which `.gitignore:4`
+already keeps out of every commit, so nothing there can reach the thing this gate
+grades ("what the NEXT commit would ship"). When the consumer-repo refactor swapped
+the relative source for `--source "${SCAN_ROOT}"`, that anchor stopped matching and
+the gate went from **2.42 GB in 3m37s, clean** to **8.22 GB in 12m48s with 10801
+findings** — every one of them `ROCM_GPG_KEY_SHA256` in a gitignored build log, i.e.
+the checksum of a *public* GPG key.
+
+Consumer support is unaffected: a consumer's own `.gitleaks.toml` anchors its paths
+relative to its own tree too, which is exactly what scanning from inside gives it.
+
+### The retry classifier: anchor every status, and DNS is transient
+
+`_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`) decides
+whether a failed stage is worth retrying, by grepping the log tail. Two defects
+found by real chains on 2026-09-08, both now pinned by mutations:
+
+* **Anchor every HTTP status to its status TEXT or to a `status:` label.** A bare
+  `[^0-9]429[^0-9]` matched BuildKit's own elapsed-time prefix — `#15 429.0 <cmd>`
+  — so any step that had been running 429.x seconds made the NEXT deterministic
+  failure look rate-limited. A smoke that could never pass was rebuilt three times
+  before the cap. The `(500|502|503|504)` arm beside it always required the status
+  text and so never had the bug; that asymmetry is the tell. The same trap waits
+  at 4290–4299 s, which is where a long LLVM step sits.
+* **DNS belongs in the list.** A source stage clones from github, and a blip
+  reading `Could not resolve host` killed a whole chain at `sdk-riscv64` — the
+  STAGE BARRIER takes every arch down with it, so one failed lookup cost the run.
+  `could not resolve host`, `temporary failure in name resolution`, `name or
+  service not known` and `network is unreachable` are all retryable now.
+
+Both survived because `test-cross-stage-build-cmd.sh` STUBBED the classifier to
+`[ "${TRANSIENT:-0}" = "1" ]`, so its regex had zero coverage while the file
+looked well tested. Ten assertions now drive the SHIPPED function. **A stub of the
+unit under test is not coverage of it** — the same shape as the `code-size.*`
+mutations, which all drive fixture trees and so could never see the real `SCAN`.
+
 ### Generated data is not source, and git alone cannot say so
 
 A benchmark result under `linux/llm-stack/benchmark_results/` holds MODEL

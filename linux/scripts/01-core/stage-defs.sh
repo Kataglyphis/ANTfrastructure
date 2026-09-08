@@ -415,6 +415,6 @@ cross_stage_ensure_parent_available() {
     fi
 
     log "[stage ${stage}] pulling ${parent_tag}"
-    run "${NERDCTL_BIN:-nerdctl}" pull --platform linux/amd64 "${parent_tag}"
+    run "${NERDCTL_BIN:-nerdctl}" pull --platform "${CROSS_BUILD_PLATFORM:-linux/amd64}" "${parent_tag}"
   done
 }

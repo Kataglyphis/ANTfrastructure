@@ -118,6 +118,84 @@ host library reachable by accident: `/usr/lib/aarch64-linux-gnu` holds nothing
 else. `CMAKE_INSTALL_LIBDIR=lib` is passed explicitly, which is what keeps
 `GNUInstallDirs` from relocating the install into `lib/<triplet>` in reply.
 
+## amd64 is the reference: all three arches build the same set
+
+`./vulkansdk` is NOT invoked with `all` here — it is handed an explicit component
+list, and what it really builds is **20**: SPIRV-Headers, SPIRV-Tools, glslang,
+Vulkan-Headers, Vulkan-Utility-Libraries, Vulkan-Loader, Vulkan-ValidationLayers,
+Vulkan-ExtensionLayer, volk, Vulkan-Tools, jsoncpp, valijson, shaderc, SPIRV-Cross,
+GFXreconstruct, SPIRV-Reflect, Vulkan-Profiles, VulkanMemoryAllocator,
+VulkanCapsViewer, slang. `VulkanTools`, `yaml-cpp`, `CrashDiagnosticLayer` and
+`DirectXShaderCompiler` are in the vendor script's `build_all()` but are never
+cloned here, so reading that function is misleading — read the log.
+
+The cross path matches it exactly: three hardwired (`loader`, `SPIRV-Tools`,
+`glslang`) plus the seventeen `_VK_TARGET_COMPONENTS` rows is the same 20 names.
+
+**No component is skipped for the target arch, and one used to be.** `slang` was
+skipped on riscv64 as *"not yet ported upstream"* — never measured, and gating the
+wrong thing: that list drives the HOST x86_64 build, which is byte-identical in
+every lane. Skipping it took the CHECKOUT with it, and `source/` is what every
+target build reads, so riscv64 could not even attempt the cross build: 19 host
+components against arm64's 20, 15 cross attempts against 16.
+
+Upstream does document x86_64 and aarch64 only, so the guess may yet prove right —
+but a component that cannot cross-build now says so as
+`slang unavailable on riscv64` with a reason from the log, and the failure is
+non-fatal. A measured verdict beats an assumption in a comment.
+
+The optional target packages were the other parity worry and they are NOT a gap:
+`libgl-dev`, `libglx-dev`, `libopengl-dev` and `libegl-dev` are in ports `main` for
+riscv64 and `qt6-base-dev` is in `universe`, which `ubuntu-mirror.sh` enables for
+the foreign arch (`Components: main universe restricted multiverse`).
+
+## Upstream patches: recheck on every SDK bump
+
+`_vulkan_patch_component` applies these to the pinned SDK source before the cross
+build. Each one exists because the pinned revision predates an upstream fix, so
+**each becomes droppable the moment the SDK ships a revision that carries it.**
+Check this table whenever `VULKAN_VERSION` moves in `versions.env`.
+
+| patch | upstream | droppable when |
+| --- | --- | --- |
+| `slang/001-riscv64-arch-detection.patch` | [shader-slang/slang#12305](https://github.com/shader-slang/slang/pull/12305), merged 2026-08-01 | the SDK's slang ref is ≥ `v2026.16` (2026-08-20 is the first release carrying it) |
+
+**How to check it in one command**, once the new source is on disk:
+
+```bash
+grep -e '__BYTE_ORDER__' <sdk>/source/slang/include/slang.h && echo "PR #12305 is in -- drop the patch"
+```
+
+`apply-patch.sh` fails loudly rather than silently skipping if a patch stops
+applying, so a bump that makes one obsolete announces itself. Delete the patch
+file, its `case` arm in `_vulkan_patch_component`, and this row together.
+
+### Why the slang one exists
+
+SDK 1.4.357.0 pins slang to `vulkan-sdk-1.4.357` = commit `84792eb15`
+(2026-07-11), three weeks before the fix merged. At that revision `include/slang.h`
+derives pointer size and byte order from a hand-maintained architecture whitelist
+with no `__riscv` arm, and riscv64 therefore hits **two** defects at once —
+verified by running the pinned header's macro block through the preprocessor with
+the x86 macros off and `__riscv` on:
+
+```
+VORHER   #error "Couldn't determine endianness"
+         PTR64=(0 | 0 | 0)  PTR32=1  LE=0  BE=0
+NACHHER  PTR64=1            PTR32=0  LE=1  BE=0
+```
+
+The `#error` is the loud half. The silent half is worse: `SLANG_PTR_IS_64` was an
+**unconditional** `#define` over that whitelist, so it reads 0 on a 64-bit target
+and `SlangInt` narrows to `int32_t` — and being unconditional, `-DSLANG_PTR_IS_64=1`
+on the command line cannot override it. Patching only the endianness would produce
+a slangc that links and then misbehaves. The backport also adds a
+`sizeof(void*)` static_assert so that half can never be silent again.
+
+Gentoo's `dev-util/shader-slang-2026.16.ebuild` carries `KEYWORDS="~amd64 ~arm64
+~riscv"` — the first version with the fix is also the first anyone keyworded for
+riscv, which is the independent confirmation that nothing else blocks the arch.
+
 ## Components that need a host tool
 
 Two rows are Canadian crosses, the shape `02-toolchain/llvm-cross.sh` already

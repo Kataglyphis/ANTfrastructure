@@ -262,7 +262,7 @@ bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,ri
 linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 ```
 
-**Fresh Linux host?** GPU driver + CUDA install, the NVIDIA default-runtime `daemon.json`, CPU/GPU performance mode, and GRUB recovery are `docs/linux-host-setup.md` — the Linux counterpart to `docs/windows-host-setup.md`.
+**Fresh Linux host?** GPU driver + CUDA install, the NVIDIA default-runtime `daemon.json`, the rootless container-stack install, CPU/GPU performance mode, and GRUB recovery are `docs/linux-host-setup.md` — the Linux counterpart to `docs/windows-host-setup.md`.
 
 > **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
 
@@ -1481,7 +1481,8 @@ base ─┬─ onnxruntime ───────┐
   "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
-- **Host toolchain: `linux/host-config/install-nerdctl-full.sh`** (2026-08-26).
+- **Host toolchain: `linux/host-config/install-nerdctl-full.sh`** (2026-08-26,
+  rootless mode 2026-09-08).
   There is NO separate buildkit package on this host — nerdctl-full bundles
   nerdctl + containerd + buildkitd/buildctl + runc + CNI + rootless helpers,
   version-matched, so bumping buildkitd means installing a newer bundle from
@@ -1490,15 +1491,31 @@ base ─┬─ onnxruntime ───────┐
   the exact binaries the bundle ships (`--rollback`), REFUSES while a build is
   running, and counts BuildKit cache-mount records before/after — the compile
   caches live in `~/.local/share/buildkit`, not `/usr/local`, so that number
-  must not move. It also REFUSES until you choose how to treat the ROOTFUL
-  containerd+buildkitd that run from the same `/usr/local` on this host
+  must not move. ALWAYS install from the bundle, and on a rootless-only host
+  ALWAYS into `$HOME/.local` — that prefix is user-owned, so NO sudo is needed
+  anywhere and the update runs unattended on a box whose sudo prompts. The mode
+  is AUTO-DETECTED from the live `systemd --user` units' `ExecStart`, which is
+  the only authority on what a host actually runs; `NERDCTL_ROOTLESS=1|0`
+  forces it. Extracting is only HALF a prefix change — the units keep their
+  absolute `ExecStart`, so the script repoints them (pre-image into
+  `${NERDCTL_BACKUP_DIR}/systemd-user`, restored by `--rollback`). Note
+  `buildkit.service-override.conf` now carries `@NERDCTL_PREFIX@`, substituted
+  by apply/verify-host-config: a drop-in `ExecStart` OVERRIDES the unit file's,
+  so the old hardcoded `/usr/local` silently reverted a rootless install.
+  On the amd64 dev host it also REFUSES until you choose how to treat the
+  ROOTFUL containerd+buildkitd that run from the same `/usr/local`
   (`NERDCTL_INCLUDE_ROOTFUL=1` upgrades them too, `NERDCTL_IGNORE_ROOTFUL=1`
   accepts the skew): tar and `cp -a` both unlink-and-recreate, measured here,
   so replacing a live root daemon's binary raises NO error — it keeps executing
   the deleted inode until `Restart=always` swaps it unattended. Motivation,
   DONE 2026-08-26 — the host was on buildctl
   v0.31.1 and is now on v0.31.2 (nerdctl 2.3.5, containerd 2.3.3), daemons
-  confirmed reporting the new versions, 51 cache-mount records unchanged. The
+  confirmed reporting the new versions, 51 cache-mount records unchanged. Then
+  2026-09-08 on summy-server (aarch64): relocated to `$HOME/.local` at the SAME
+  version — sha256-identical binaries, so the proof is that the daemons now
+  EXECUTE from the new prefix, not that a version moved; CNI plugins went 0 →
+  18, because rootless nerdctl looks under its own
+  `$HOME/.local/libexec/cni` and a `/usr/local` install leaves it empty. The
   driver was moby/buildkit#6915 — a "concurrent map iteration and map write"
   daemon CRASH that reproduces under concurrent builds, introduced in v0.31.0,
   fixed in v0.31.2. Three parallel
@@ -1509,6 +1526,7 @@ base ─┬─ onnxruntime ───────┐
   NO nerdctl-full ships yet, so this upgrade does not deliver it. A daemon
   restart is also when the staged `buildkitd.toml` gcpolicy takes effect — do
   both in the same no-build window.
+  [`docs/linux-host-setup.md` § B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo)
 - **riscv64 host tooling: `linux/host-config/install-mistral-vibe-riscv64.sh`**
   (2026-08-28). Installing a Python CLI on a NATIVE riscv64 box is not the
   amd64 one-liner: PyPI ships no riscv64 wheels for this dependency set, so uv

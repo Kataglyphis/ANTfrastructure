@@ -217,7 +217,7 @@ _vulkan_setup_sdk_includes() {
     export CMAKE_PREFIX_PATH="${SDK_ARCHDIR}:${SDK_ARCHDIR}/share/cmake:${SDK_ARCHDIR}/lib/cmake${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
     if [[ -d "${SDK_ARCHDIR}/include" ]]; then
       ${SUDO:-} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
-      for entry in X11 xcb; do
+      for entry in X11 xcb GL KHR EGL GLES2 GLES3; do
         if [[ -e "/usr/include/${entry}" && ! -e "${target_include_dir}/${entry}" ]]; then
           ${SUDO:-} ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
         fi
@@ -300,24 +300,11 @@ _vulkan_build_components() {
     spirv-cross spirv-reflect vulkan-profiles
   )
 
-  # Nothing is skipped for being a cross lane any more. These four used to be,
-  # because the host link died on the TARGET arch's libxcb -- the cause was the
-  # host build inheriting the cross pkg-config search path, fixed in
-  # _vulkan_run_vulkansdk. Skipping also skips the CHECKOUT, and source/ is what
-  # every target-arch build reads. docs/vulkan-foreign-arch-sdk.md
-  local -A _vulkan_skip=()
-  if [ "${arch_suffix}" = "riscv64" ]; then
-    _vulkan_skip[slang]="riscv64 (not yet ported upstream)"
-  fi
-
-  local comp
-  for comp in vulkan-tools gfxreconstruct vcv slang; do
-    if [ -n "${_vulkan_skip[${comp}]:-}" ]; then
-      log "Skipping ${comp} for ${_vulkan_skip[${comp}]}"
-    else
-      _vulkan_sdk_components_ref+=("${comp}")
-    fi
-  done
+  # NOTHING is arch-skipped: amd64 is the reference and all three build this set.
+  # This list drives the HOST x86_64 build, so the target arch cannot be a reason,
+  # and a skip takes the CHECKOUT with it -- which is what cost riscv64 slang.
+  # docs/vulkan-foreign-arch-sdk.md#amd64-is-the-reference-all-three-arches-build-the-same-set
+  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang)
 }
 
 # What ./vulkansdk skipped above but the TARGET build still wants. Source only:
@@ -481,6 +468,7 @@ _cross_build_sdk_component() {
       -DCMAKE_CXX_COMPILER="${_xbuild_cxx}" \
       -DCMAKE_LIBRARY_ARCHITECTURE="${_xbuild_triplet}" \
       -DCMAKE_INSTALL_LIBDIR=lib \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
       "$@"; then
     log "${label}: cross-configure failed (non-fatal)"
     return 1
@@ -489,6 +477,13 @@ _cross_build_sdk_component() {
     log "${label}: cross-build failed (non-fatal)"
     return 1
   fi
+  local _t
+  for _t in ${_xbuild_extra_targets[@]+"${_xbuild_extra_targets[@]}"}; do
+    if ! cmake --build "${build_dir}" --target "${_t}"; then
+      log "${label}: extra target ${_t} failed (non-fatal)"
+      return 1
+    fi
+  done
   if ! ${SUDO:-} cmake --install "${build_dir}"; then
     log "${label}: install failed (non-fatal)"
     return 1
@@ -632,7 +627,7 @@ jsoncpp|jsoncpp|-DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF 
 valijson|valijson|-Dvalijson_BUILD_TESTS=OFF -Dvalijson_BUILD_EXAMPLES=OFF -Dvalijson_INSTALL_HEADERS=ON
 vulkan-profiles|Vulkan-Profiles|-DPROFILES_BUILD_TESTS=OFF
 vulkan-validationlayers|Vulkan-ValidationLayers|-DUPDATE_DEPS=OFF -DBUILD_WERROR=OFF
-gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF
+gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF -DD3D12_SUPPORT=OFF -DGFXRECON_TOCPP_SUPPORT=OFF -DGFXRECON_INCLUDE_TEST_APPS=OFF -DGFXRECON_ENABLE_OPENXR=OFF
 slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF -DSLANG_SLANG_LLVM_FLAVOR=DISABLE -DSLANG_ENABLE_DXIL=OFF
 vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
 "
@@ -647,6 +642,7 @@ _vulkan_target_dynamic_args() {
   local gen
 
   _vk_dyn_ref=()
+  _xbuild_extra_targets=()
   case "${label}" in
     slang)
       # ./vulkansdk's HOST slang build leaves its generators here; without them
@@ -657,13 +653,45 @@ _vulkan_target_dynamic_args() {
       else
         log "slang: no host generators at ${gen}; the cross build will try to run its own"
       fi
+      # ./vulkansdk's build_slang() copies gfx.slang and slang.slang into the
+      # build tree between --build and --install; the generic helper does not.
+      _xbuild_extra_targets+=(copy-gfx-slang-modules)
+      # slang-rhi picks a PREBUILT Dawn WebGPU zip and upstream ships one for
+      # x86_64 and aarch64 only; its arch cascade FATAL_ERRORs on anything else,
+      # unconditionally, even with the backend off. Both flags are needed: the
+      # option stops the fetch, the defined URL stops the cascade being entered.
+      case "${triplet}" in
+        x86_64-*|aarch64-*) ;;
+        *) _vk_dyn_ref+=(-DSLANG_RHI_ENABLE_WGPU=OFF -DSLANG_RHI_DAWN_URL=) ;;
+      esac
       ;;
     vulkancapsviewer)
       # Target Qt6 from the sysroot, host moc/rcc/uic from the build host's own.
       _vk_dyn_ref+=(-DQT_HOST_PATH=/usr)
       _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
+      # Upstream never find_package()s Vulkan: CMakeLists.txt interpolates
+      # "${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so" raw, so unset it
+      # degrades to the HOST /lib/libvulkan.so and ninja refuses the graph.
+      _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
       ;;
   esac
+}
+
+# Upstream defects the pinned SDK source still carries. Idempotent, and a no-op
+# when the source is absent. RE-CHECK EVERY VULKAN SDK BUMP -- see the patch
+# header for the upstream ref that makes each one droppable.
+# docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
+_vulkan_patch_component() {
+  local label="$1" src="$2" patch
+  [ -n "${src}" ] && [ -d "${src}" ] || return 0
+  case "${label}" in
+    slang) patch="slang/001-riscv64-arch-detection.patch" ;;
+    *) return 0 ;;
+  esac
+  local dir="/opt/scripts/patches"
+  [ -f "${dir}/${patch}" ] || { log "${label}: no ${patch} at ${dir}; skipping"; return 0; }
+  bash "/opt/scripts/core/apply-patch.sh" "${dir}/${patch}" "${src}" \
+    "${label}: derive pointer size and endianness from the compiler (upstream PR #12305)"
 }
 
 # Everything the LunarG SDK ships beyond the four TVM needed, cross-built for the
@@ -671,12 +699,13 @@ _vulkan_target_dynamic_args() {
 _vulkan_target_build_sdk_rest() {
   local arch_suffix="$1" archdir="$2" target_dir="$3" triplet="${4:-${_xbuild_triplet:-}}"
   local label cands extra src
-  local -a dyn=()
+  local -a dyn=() _xbuild_extra_targets=()
 
   while IFS='|' read -r label cands extra; do
     [ -n "${label}" ] || continue
     # shellcheck disable=SC2086  # both are deliberately word-split
     src="$(_vulkan_target_src "${target_dir}/source" ${cands//,/ })"
+    _vulkan_patch_component "${label}" "${src}"
     _vulkan_target_dynamic_args "${label}" "${target_dir}" "${archdir}" "${triplet}" dyn
     # shellcheck disable=SC2086
     _vulkan_target_install_component "${arch_suffix}" "${archdir}" "${src}" "${label}" \

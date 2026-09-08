@@ -76,7 +76,11 @@ _llvm_install_cross_clang_wrapper() {
   local triplet sysroot wrapper _pair _name _bin
 
   triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
-  if [ "${target_label}" = "amd64" ]; then
+  # The BUILD HOST's own arch is served by "/" — its native libc IS the sysroot.
+  # Keyed on build_arch_oci(), not the literal "amd64" (2026-09-08): on an arm64
+  # host the literal made the NATIVE arch demand /usr/aarch64-linux-gnu, which
+  # only ever exists for a foreign target, and the stage died there.
+  if [ "${target_label}" = "$(build_arch_oci)" ]; then
     sysroot="/"
   else
     sysroot="/usr/${triplet}"
@@ -253,7 +257,7 @@ llvm_cross_qemu_sysroot() {
   local triplet candidate loader
   local -a loaders=()
 
-  [ "${target_label}" = "amd64" ] && {
+  [ "${target_label}" = "$(build_arch_oci)" ] && {
     printf '%s' "/"
     return 0
   }
@@ -330,7 +334,11 @@ llvm_cross_run_binary() {
   shift
 
   [ "$#" -gt 0 ] || return 1
-  if [ "${target_label}" = "amd64" ]; then
+  # Binaries for the BUILD HOST's arch run directly; only foreign ones need an
+  # emulator. Keyed on build_arch_oci() (2026-09-08) — with the literal, an
+  # arm64 host would have run amd64 binaries bare and put arm64 ones under
+  # qemu-aarch64, i.e. exactly backwards.
+  if [ "${target_label}" = "$(build_arch_oci)" ]; then
     "$@"
     return 0
   fi

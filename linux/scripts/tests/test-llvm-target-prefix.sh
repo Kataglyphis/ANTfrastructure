@@ -277,8 +277,8 @@ t_assert_eq "" "$(printf '%s\n' "${_MAT_SRC_EARLY}" | grep -e 'libLLVM\*|libclan
 # ── one owner: the walk below the fill reads the same DT_NEEDED ─────────────
 t_case "the sdk stage calls the fill and the walk shares its NEEDED reader"
 _MAT_SRC="$(cat "${MAT}")"
-t_assert_contains "${_MAT_SRC}" "_llvm_target_fill_needed /opt/llvm-target /usr/lib/x86_64-linux-gnu" \
-  "the amd64 branch must actually call it"
+t_assert_contains "${_MAT_SRC}" '_llvm_target_fill_needed /opt/llvm-target "/usr/lib/${_host_multiarch}"' \
+  "the build-host branch must actually call it, with the host multiarch dir"
 t_assert_eq 2 "$(printf '%s\n' "${_MAT_SRC}" | grep -c -e '_elf_needed "')" \
   "the fill and the self-containment walk are the two callers of one reader"
 t_assert_eq "" "$(printf '%s\n' "${_MAT_SRC}" | grep -e 'x86_64-linux-gnu/libLLVM\*' -e 'x86_64-linux-gnu/libclang\*')" \

@@ -5,6 +5,11 @@
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
 
+# The platform every cross stage is built on. Default linux/amd64 keeps the
+# amd64 dev host byte-identical; linux/arm64 makes a native ARM build possible
+# on an arm64 host, where the old hardcoded literal produced x86_64-under-QEMU.
+CROSS_BUILD_PLATFORM="${CROSS_BUILD_PLATFORM:-linux/amd64}"
+
 # _disk_guard_free_gb for the salvage free-space check below (idempotent load).
 _CROSS_STAGE_BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -31,17 +36,14 @@ cross_stage_log_redirect() {
 
 # True when the log tail shows a transient registry/network PUSH failure worth
 # retrying. No log file means we cannot classify, so assume transient.
-#
-# Every HTTP status here must be anchored to its status TEXT or to a status:
-# label. A bare `[^0-9]429[^0-9]` matched BuildKit's own elapsed-time prefix --
-# `#15 429.0 <cmd>` -- so any step running 429.x seconds made the NEXT hard
-# failure look rate-limited and cost three full stage rebuilds (2026-09-08, the
-# compiler stage). The 5xx arm was always anchored; the 429 arm was not.
+# Every HTTP status must be anchored to its status TEXT or a `status:` label --
+# a bare 429 matched BuildKit's `#15 429.0` elapsed prefix and rebuilt a dead
+# stage three times. docs/code-quality-tooling.md#the-retry-classifier-anchor-every-status-and-dns-is-transient
 _cross_stage_push_error_is_transient() {
   local log_file="${1:-}"
   [ -n "${log_file}" ] && [ -r "${log_file}" ] || return 0
   tail -n 300 "${log_file}" 2>/dev/null | grep -qiE \
-    'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|toomanyrequests|(status|code):? ?429([^0-9]|$)'
+    'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|toomanyrequests|(status|code):? ?429([^0-9]|$)|could not resolve host|temporary failure in name resolution|name or service not known|network is unreachable'
 }
 
 # D5: the post-failure cache salvage writes GBs for stages that rebuild anyway.
@@ -221,7 +223,7 @@ _cross_build_salvage_exports() {
       for _tgt in "${_salvage_targets[@]}"; do
         [ "${_salvage_fails}" -ge 2 ] && break
         if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
-             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform "${CROSS_BUILD_PLATFORM}" \
              --target "${_tgt}" -f "${dockerfile}" \
              --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
              --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
@@ -253,7 +255,7 @@ _cross_stage_build_impl() {
     "${NERDCTL_BIN:-nerdctl}" build
     "${pull_flag}"
     ${NO_CACHE:+--no-cache}
-    --platform linux/amd64
+    --platform "${CROSS_BUILD_PLATFORM}"
     -t "${tag}"
     -f "${dockerfile}"
   )

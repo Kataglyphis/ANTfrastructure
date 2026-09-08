@@ -842,10 +842,18 @@
   {
     "id": "cross-build.429-must-be-anchored",
     "target": "linux/scripts/01-core/cross-stage-build.sh",
-    "find": "|(status|code):? ?429([^0-9]|$)'",
-    "replace": "|[^0-9]429[^0-9]'",
+    "find": "|(status|code):? ?429([^0-9]|$)",
+    "replace": "|[^0-9]429[^0-9]",
     "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
     "why": "a bare 429 matches BuildKit's own elapsed-time prefix (#15 429.0), so any step running 429.x seconds makes the NEXT deterministic failure look rate-limited and buys three full stage rebuilds"
+  },
+  {
+    "id": "cross-build.dns-is-transient",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "|could not resolve host|temporary failure in name resolution",
+    "replace": "|__never_matches_dns__|temporary failure in name resolution",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a DNS blip cloning from github killed a whole 3-arch chain at sdk-riscv64 -- the STAGE BARRIER takes every arch down, so one failed lookup costs the run"
   },
   {
     "id": "cross-build.smoke-failure-is-hard",
@@ -3578,26 +3586,34 @@
   {
     "id": "secret-scan.scope-is-the-argument",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--source \"${SCAN_ROOT}\"",
-    "replace": "--source \".\"",
+    "find": "cd \"${SCAN_ROOT}\" && \"${GITLEAKS}\" detect",
+    "replace": "cd \"${REPO_ROOT}\" && \"${GITLEAKS}\" detect",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "the path argument is what lets a consumer checkout be scanned; ignoring it grades the wrong tree, green or red for the wrong reason"
   },
   {
     "id": "secret-scan.values-are-redacted",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--no-banner --redact --verbose; then",
-    "replace": "--no-banner --verbose; then",
+    "find": "--no-banner --redact --verbose );",
+    "replace": "--no-banner --verbose );",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "without --redact every CI log that ran the gate becomes a copy of the credential it found"
   },
   {
     "id": "secret-scan.findings-are-printed",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "--no-banner --redact --verbose; then",
-    "replace": "--no-banner --redact; then",
+    "find": "--no-banner --redact --verbose );",
+    "replace": "--no-banner --redact );",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "this gate once failed on main saying 'leaks found: 2' and naming neither; a finding nobody can locate is not actionable"
+  },
+  {
+    "id": "secret-scan.config-is-relative-in-tree",
+    "target": "linux/scripts/lint-secrets.sh",
+    "find": "[ \"${CONFIG}\" = \"${SCAN_ROOT}/.gitleaks.toml\" ] && _CONFIG_ARG=\".gitleaks.toml\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-secret-scan.sh",
+    "why": "gitleaks skips its OWN config only when the config and source paths are spelled the same way; an absolute config against a relative source makes the gate scan .gitleaks.toml and report the rule regexes inside it as findings"
   },
   {
     "id": "secret-scan.relative-root-is-the-callers",

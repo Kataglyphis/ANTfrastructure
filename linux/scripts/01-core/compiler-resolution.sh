@@ -143,7 +143,7 @@ fix_libstdcxx_symlink() {
   local triplet gcc_lib sys_lib
 
   [ -n "${arch}" ] || return 0
-  [ "${arch}" = "amd64" ] && return 0
+  [ "${arch}" = "$(build_arch_oci 2>/dev/null || echo amd64)" ] && return 0
 
   triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
 
@@ -176,7 +176,7 @@ pin_target_libstdcxx() {
   local arch
   arch="$(default_target_arch "${1:-}")"
   [ -n "${arch}" ] || return 0
-  [ "${arch}" = "amd64" ] && return 0
+  [ "${arch}" = "$(build_arch_oci 2>/dev/null || echo amd64)" ] && return 0
 
   local triplet=""
   if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then

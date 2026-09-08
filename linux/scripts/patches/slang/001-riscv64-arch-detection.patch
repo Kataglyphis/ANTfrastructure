@@ -1,0 +1,58 @@
+--- a/include/slang.h
++++ b/include/slang.h
+@@ -464,8 +464,19 @@
+ #define SLANG_PROCESSOR_FAMILY_POWER_PC (SLANG_PROCESSOR_POWER_PC_64 | SLANG_PROCESSOR_POWER_PC)
+ 
+ // Pointer size
+-#define SLANG_PTR_IS_64 \
+-    (SLANG_PROCESSOR_ARM_64 | SLANG_PROCESSOR_X86_64 | SLANG_PROCESSOR_POWER_PC_64)
++// Prefer what the COMPILER states over the hand-maintained whitelist above: a
++// 64-bit target the list has never heard of (riscv64, loongarch64) otherwise
++// gets a silent 32-bit layout, because this was an unconditional #define over
++// three macros that are all 0 there. Backport of upstream PR #12305.
++#ifndef SLANG_PTR_IS_64
++    #if defined(__LP64__) || defined(_LP64) || defined(_WIN64) || \
++        (defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8))
++        #define SLANG_PTR_IS_64 1
++    #else
++        #define SLANG_PTR_IS_64 \
++            (SLANG_PROCESSOR_ARM_64 | SLANG_PROCESSOR_X86_64 | SLANG_PROCESSOR_POWER_PC_64)
++    #endif
++#endif
+ #define SLANG_PTR_IS_32 (SLANG_PTR_IS_64 ^ 1)
+ 
+ // Processor features
+@@ -484,6 +495,18 @@
+     #define SLANG_LITTLE_ENDIAN 1
+ #endif
+ 
++// Same rule for byte order: ask the compiler before falling back to the list.
++// Without this riscv64 sets NEITHER macro, the defaults below make both 0, and
++// the "One endianness must be set" #error stops the first translation unit that
++// includes this header. Backport of upstream PR #12305.
++#if !defined(SLANG_LITTLE_ENDIAN) && !defined(SLANG_BIG_ENDIAN) && defined(__BYTE_ORDER__)
++    #if defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
++        #define SLANG_LITTLE_ENDIAN 1
++    #elif defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
++        #define SLANG_BIG_ENDIAN 1
++    #endif
++#endif
++
+ #ifndef SLANG_LITTLE_ENDIAN
+     #define SLANG_LITTLE_ENDIAN 0
+ #endif
+@@ -513,6 +536,14 @@
+     #error "Couldn't determine endianness"
+ #endif
+ 
++// The silent half of the bug was a WRONG pointer size, which no #error caught.
++// A build failure beats an ABI that only misbehaves at runtime.
++#ifdef __cplusplus
++static_assert(
++    (SLANG_PTR_IS_64 ? 8 : 4) == sizeof(void*),
++    "SLANG_PTR_IS_64 disagrees with sizeof(void*) -- unlisted architecture?");
++#endif
++
+ #ifndef SLANG_NO_INTTYPES
+     #include <inttypes.h>
+ #endif // ! SLANG_NO_INTTYPES

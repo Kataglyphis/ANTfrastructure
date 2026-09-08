@@ -89,7 +89,14 @@ _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
 _major="${LLVM_RELEASE%%.*}"
 rm -rf /opt/llvm-target
 
-if [ "${_arch}" = "amd64" ]; then
+# The BUILD HOST's arch ships the host LLVM as its target-native clang. Keyed
+# on dpkg --print-architecture, not the literal "amd64" (2026-09-08): this file
+# is standalone (no platform.sh), and on an arm64 host the literal sent the
+# native arch down the foreign-target path.
+_host_arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+_host_multiarch="$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)"
+
+if [ "${_arch}" = "${_host_arch}" ]; then
     # Ship the SOURCE-built host clang (LLVM_RELEASE) at /usr/local/llvm-<major>
     # as amd64's target-native clang. /usr/lib/llvm-<major> is the APT bootstrap
     # clang (apt.llvm.org LAGS point releases) and must NOT become the shipped
@@ -105,13 +112,13 @@ if [ "${_arch}" = "amd64" ]; then
         [ -n "${_cc}" ] && _hostllvm="$(dirname "$(dirname "$(readlink -f "${_cc}")")")"
     fi
     [ -n "${_hostllvm}" ] && [ -d "${_hostllvm}" ] || {
-        echo "ERROR: host LLVM dir not found for amd64 (tried /usr/local/llvm-${_major}, /usr/lib/llvm-${_major})"; exit 1; }
-    echo "amd64 target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"
+        echo "ERROR: host LLVM dir not found for ${_arch} (tried /usr/local/llvm-${_major}, /usr/lib/llvm-${_major})"; exit 1; }
+    echo "${_arch} target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"
     cp -a "${_hostllvm}" /opt/llvm-target
 
     mkdir -p /opt/llvm-target/lib
     _llvm_target_repair_links /opt/llvm-target "${_hostllvm}"
-    _llvm_target_fill_needed /opt/llvm-target /usr/lib/x86_64-linux-gnu
+    _llvm_target_fill_needed /opt/llvm-target "/usr/lib/${_host_multiarch}"
 
     # The cache is captured ONCE and matched with `case` -- `ldconfig -p | grep -q`
     # would die of SIGPIPE under pipefail.

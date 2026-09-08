@@ -14,8 +14,15 @@ LIVE_DROPIN="${HOME}/.config/systemd/user/buildkit.service.d/override.conf"
 STRICT=0; [ "${1:-}" = "--strict" ] && STRICT=1
 DRIFT=0
 
+# shellcheck source=prefix-common.sh
+source "${HERE}/prefix-common.sh"
+
+_render_dir="$(mktemp -d)"
+trap 'rm -rf "${_render_dir}"' EXIT
+
 check() { # check <repo-file> <live-file>
   local src="${HERE}/$1" dst="$2"
+  render_host_config "${src}" "${_render_dir}/$1"; src="${_render_dir}/$1"
   if [ ! -f "${dst}" ]; then
     echo "NOTE: ${dst} absent (fresh host / CI runner?) — apply-host-config.sh installs it."
     DRIFT=1

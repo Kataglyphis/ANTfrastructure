@@ -108,6 +108,7 @@ The two halves of one topic often split:
 | Slow `apt update`, unattended-upgrade policy, excluding Docker from auto-upgrades | [`linux-host-setup.md`](linux-host-setup.md#phase-e--package-sources-and-automatic-updates) |
 | What filled the disk, and `/tmp` exhaustion during a build | [`linux-host-setup.md`](linux-host-setup.md#finding-what-filled-the-disk) |
 | **UFW dropping container traffic**, host suspend during a build, APT pinning | [`linux-host-setup.md`](linux-host-setup.md#b6-ufw-silently-breaks-container-networking) |
+| **Installing the container stack rootless** — the nerdctl-full bundle into `$HOME/.local` with no sudo, repointing the systemd --user units, and the CNI plugins rootless nerdctl looks for under the prefix | [`linux-host-setup.md`](linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo) |
 | **Installing a Python CLI tool on a riscv64 host** (no wheels → source builds: Rust target, OpenSSL/libffi headers, dropping optional accelerators). Worked example: Mistral Vibe | [`linux-host-setup.md`](linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64) |
 
 ### Build, CI and tooling
