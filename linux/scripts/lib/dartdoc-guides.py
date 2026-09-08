@@ -233,14 +233,16 @@ def main(argv) -> int:
         text = page_path.read_text(encoding="utf-8", errors="ignore")
         nav_html = sidebar_nav(root, page_path, guides)
         after = inject_sidebar_nav(text, nav_html, rel)
-        navigated += after is not text
+        # Carrying the marker, not "was edited this run": a second pass over an
+        # already-navigated tree is a no-op, not a failure.
+        navigated += NAV_MARKER in after
         page_path.write_text(inject_footer(after, footer_html, rel), encoding="utf-8")
-    # Counted, not assumed: "Rendered N" over an untouched tree is the failure
-    # this whole file's landmark checks exist to make impossible.
+    # Counted, not assumed: "Rendered N" over an untouched tree is exactly the
+    # failure this file's landmark checks exist to make impossible.
     if guides and not navigated:
         raise SystemExit(
             f"{len(guides)} guide page(s) rendered but not one of the {pages} page(s) "
-            f"under {root} gained the guide navigation; the site would not link them."
+            f"under {root} carries the guide navigation; the site would not link them."
         )
     print(f"Rendered {len(guides)} guide page(s) and navigated {navigated}/{pages} under {root}")
     return 0

@@ -162,20 +162,33 @@ dartdoc_build_copy_images() {
   cp -a "${images}/." "${api_dir}/images/"
 }
 
+# The ONE owner of the `|` split both settings use. Prints a TAB-separated
+# `<a><TAB><b><TAB><c>` row per entry and refuses one that is missing a field;
+# the last field absorbs any further `|`, so a nav title may contain one.
+# $1 = required fields (2 or 3), $2 = the shape quoted in the error, $3 = the
+# setting's name, then the entries themselves.
+_dartdoc_build_split() {
+  local want="$1" shape="$2" name="$3" entry a b c
+  shift 3
+  for entry in "$@"; do
+    c=""
+    if [[ "${want}" -eq 3 ]]; then
+      IFS='|' read -r a b c <<<"${entry}"
+    else
+      IFS='|' read -r a b <<<"${entry}"
+    fi
+    if [[ -z "${a}" || -z "${b}" ]] || { [[ "${want}" -eq 3 ]] && [[ -z "${c}" ]]; }; then
+      err "${name} entry must be '${shape}', got: ${entry}"
+    fi
+    printf '%s\t%s\t%s\n' "${a}" "${b}" "${c}"
+  done
+}
+
 # Each DARTDOC_BUILD_GUIDES entry is `<source markdown>|<slug>|<nav title>`; the
 # slug names both the staged doc/api/md/<slug>.md and the guide-<slug>.html page.
-# Prints one validated, TAB-separated `<src><TAB><slug><TAB><title>` row per
-# entry. The one owner of that split: the stager and the render-config writer
-# both need it, and two copies of a field split drift into two shapes.
 _dartdoc_build_guide_rows() {
-  local entry src slug title
-  for entry in ${DARTDOC_BUILD_GUIDES[@]+"${DARTDOC_BUILD_GUIDES[@]}"}; do
-    IFS='|' read -r src slug title <<<"${entry}"
-    if [[ -z "${src}" || -z "${slug}" || -z "${title}" ]]; then
-      err "DARTDOC_BUILD_GUIDES entry must be '<path>|<slug>|<title>', got: ${entry}"
-    fi
-    printf '%s\t%s\t%s\n' "${src}" "${slug}" "${title}"
-  done
+  _dartdoc_build_split 3 '<path>|<slug>|<title>' DARTDOC_BUILD_GUIDES \
+    ${DARTDOC_BUILD_GUIDES[@]+"${DARTDOC_BUILD_GUIDES[@]}"}
 }
 
 dartdoc_build_stage_guides() {
@@ -198,25 +211,21 @@ dartdoc_build_stage_guides() {
 }
 
 # The renderer's config is tab separated, so a nav title or a footer label may
-# hold any character a shell would otherwise have to quote.
+# hold any character a shell would otherwise have to quote. Both row kinds come
+# out of _dartdoc_build_split relabelled; nothing here re-parses a `|`.
 _dartdoc_build_write_render_config() {
-  local out rows entry src slug title label url
+  local out rows
   out="$1"
   : >"${out}"
   printf 'title_suffix\t%s\n' "${DARTDOC_BUILD_TITLE_SUFFIX:-}" >>"${out}"
   printf 'footer_title\t%s\n' "${DARTDOC_BUILD_FOOTER_TITLE:-}" >>"${out}"
   rows="$(_dartdoc_build_guide_rows)" || exit 1
-  while IFS=$'\t' read -r src slug title; do
-    [[ -n "${slug}" ]] || continue
-    printf 'guide\t%s\t%s\n' "${slug}" "${title}" >>"${out}"
-  done <<<"${rows}"
-  for entry in ${DARTDOC_BUILD_FOOTER_LINKS[@]+"${DARTDOC_BUILD_FOOTER_LINKS[@]}"}; do
-    IFS='|' read -r label url <<<"${entry}"
-    if [[ -z "${label}" || -z "${url}" ]]; then
-      err "DARTDOC_BUILD_FOOTER_LINKS entry must be '<label>|<url>', got: ${entry}"
-    fi
-    printf 'footer\t%s\t%s\n' "${label}" "${url}" >>"${out}"
-  done
+  printf '%s\n' "${rows}" |
+    awk -F'\t' 'NF { printf "guide\t%s\t%s\n", $2, $3 }' >>"${out}"
+  rows="$(_dartdoc_build_split 2 '<label>|<url>' DARTDOC_BUILD_FOOTER_LINKS \
+    ${DARTDOC_BUILD_FOOTER_LINKS[@]+"${DARTDOC_BUILD_FOOTER_LINKS[@]}"})" || exit 1
+  printf '%s\n' "${rows}" |
+    awk -F'\t' 'NF { printf "footer\t%s\t%s\n", $1, $2 }' >>"${out}"
 }
 
 dartdoc_build_render_guides() {
