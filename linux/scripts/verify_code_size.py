@@ -35,7 +35,7 @@ FN_FMT = "<path> | <function> | <lines> | <reason>"
 FILE_FMT = "<path> | <lines> | <reason>"
 LIMIT = int(os.environ.get("FUNCTION_SIZE_LIMIT", "80"))
 FILE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", "800"))
-SCAN = ("linux/scripts", "linux/host-config", "docs/scripts")
+SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
 # Dockerfiles sit at the top of linux/ and have no function structure, so they
 # are size-checked as files only. windows/ is out of scope for this repo lane.
 FLAT_SCAN = ("linux",)

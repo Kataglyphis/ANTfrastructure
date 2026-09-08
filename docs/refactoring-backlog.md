@@ -14,11 +14,11 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **VK**=the
-foreign-arch Vulkan SDK · **EX**=the extent gates' scope · **F#**=the size and
+foreign-arch Vulkan SDK · **F#**=the size and
 duplication tracks. Everything else
 is archive-only: **CC/CL/CS/AB/R#/YB/DISK/APP** closed on 2026-09-07,
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and
-**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#** long before that.
+**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#/EX** long before that.
 
 Last groomed: **2026-09-07 (second pass), after an audit re-derived every number
 in this file from the gate that produces it.** The first pass that day claimed the
@@ -42,7 +42,7 @@ benchmark run — and nothing in this file knew. That merge also arrived red: th
 that put 66 model-output JSONs back inside the doc-links scan. All four are fixed;
 the lesson is that a grooming is only true of the commit it was written at.
 
-## TWO ENTRIES ARE OPEN: ONE NEEDS A BUILD, ONE NEEDS A SCOPE DECISION
+## ONE ENTRY IS OPEN, AND A BUILD DECIDES IT
 
 Read this before anything else. The validating chain
 (`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
@@ -66,7 +66,7 @@ experience says: a first rebuild attempt found two build-killing bugs (HEAD
 `e109f5ad`) in minutes after a full green battery. Assume the next chain finds
 more, and read **[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
-### Next up — one build, and one scope decision that needs no build at all
+### Next up — everything above is landed; what is left is ONE build
 
 The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
 (`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
@@ -112,8 +112,9 @@ back up, which is why arm64 landed at 28.73 rather than the ~24.9 the pre-VK1
 estimate predicted. The estimate was not wrong; it was made before those components
 existed.
 
-**Honesty about the rest:** neither open entry names a defect with a known failure
-mode — EX1 names a blind spot, not a bug.
+**Honesty about the rest:** the one open entry names no defect with a known failure
+mode. What F1 and F2 now carry from `linux/llm-stack` is real, named, seam-bearing
+debt — but it is a register, not a queue, and none of it blocks a build.
 What is left is **one open entry (VK2) and two registers (F1, F2)** — the same
 inventory the section above gives. Earlier groomings carried a second, longer count
 here ("one owner decision, two cheap wins, a ratchet, a guard that needs a lever it
@@ -218,56 +219,11 @@ measured reason and what cross-building it would actually cost are in
 are what the runtime smoke's `_VK_REPORTED_TOOLS` now warns about until they
 arrive. docs/vulkan-foreign-arch-sdk.md
 
-### EX1. The extent gates cannot see `linux/llm-stack` [M, ★★★]
-
-**`verify_code_size.py:38` reads `SCAN = ("linux/scripts", "linux/host-config",
-"docs/scripts")`**, and `verify_code_complexity.py`, `verify_dead_functions.py` and
-`verify_trailing_conditional.py` all take their scope from it. `linux/llm-stack` is
-not in that tuple and never has been. It holds **43 Python files, 19,874 lines**, it
-is under active development, and a 569-line file (`nas_census.py`) landed there on
-2026-09-07 without any extent gate seeing it.
-
-What is actually over the limits there, measured 2026-09-07 and frozen nowhere:
-
-| | count | worst |
-| --- | --- | --- |
-| files > 800 lines | 7 | `bench_coding.py` **2022** — second-largest .py/.sh in the repo |
-| functions > 80 lines | 13 | — |
-| `cc` > 15 | 25 | — |
-| nesting > 5 | 1 | depth **8** |
-
-`bench_coding.py` at 2022 lines is longer than every file in `file-size.allow` except
-`smoke-runtime-image.sh`, and unlike that one it has never been reviewed for a
-split-or-not verdict. **This is why F1's "no outside-the-closure candidate left" was
-wrong in a second way**: the sweep was true of the scan set, and the scan set is not
-the repo.
-
-**What closes it is a decision, not a patch.** Adding one directory to `SCAN` makes
-~46 rows appear at once, and this repo's convention — set on 2026-09-03, when wave 2
-replaced every bare baseline with a verdict — is that an allow row states *what its
-number IS*, not merely that it was there when the gate was switched on. Writing 46
-honest verdicts over a benchmark harness nobody has reviewed for shape is its own
-wave. The options, in the order I would take them:
-
-1. **Widen `SCAN` and do the verdict pass.** Correct, and the only option that makes
-   the register mean what it says. Costs one wave.
-2. **Widen `SCAN` for files only** (the 7-row table above), leaving functions and cc
-   for later. Cheap, and it catches the growth that matters most.
-3. **Declare `linux/llm-stack` deliberately out of scope** and say so in
-   `verify_code_size.py`'s header and in F2 — defensible if the benchmark harness is
-   held to a different standard than the build closure, but it must be *written down*,
-   because right now the exclusion is silent and reads as an oversight.
-
-Not option 4: leaving it. A gate whose scope nobody stated is the shape this repo
-has been bitten by twice — the `file-size.allow` header that said "Shell files" while
-scanning Python, and the doc-links floor that only applied when git was absent.
-[`code-quality-tooling.md`](code-quality-tooling.md#code-size--functions-and-files-code-size)
-
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **28** function rows over 80 lines
-and **61** `cc` rows over 15, every one carrying a verdict that says what its
+transcribe them here.** Both are fully reviewed: **41** function rows over 80 lines
+and **86** `cc` rows over 15 (plus 4 nesting), every one carrying a verdict that says what its
 number IS. Read the reasons, not the numbers — and re-derive the counts from
 `verify_code_size.py` / `verify_code_complexity.py`, never from this line. It
 said 29 and 66 until 2026-09-07 because the 2026-09-05 figures were carried
@@ -370,11 +326,11 @@ share `_t_assert_run` now. Evidence in the archive.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
-**`file-size.allow` is the authority — do not transcribe it here.** The eleven-row
+**`file-size.allow` is the authority — do not transcribe it here.** The table
 table that used to sit in this entry was wrong within a day of being written, twice.
 This entry's prose then broke its own rule again on 2026-09-04 by quoting
 `smoke-runtime-image.sh` at 1739 when the allow file had carried the correct number
-and the reason all along. The gate prints `files: 11 over 800 lines; 11 frozen`;
+and the reason all along. The gate prints `files: 18 over 800 lines; 18 frozen`;
 read it there.
 
 **All rows were reviewed 2026-09-04 and all but one are NOT split targets**, each with

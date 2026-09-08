@@ -826,10 +826,18 @@
   {
     "id": "dead-functions.host-config-is-a-subject",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
-    "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\")",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
+    "replace": "SCAN = (\"linux/scripts\", \"docs/scripts\", \"linux/llm-stack\")",
     "test": "bash linux/scripts/tests/test-dead-functions.sh",
     "why": "operator tools under linux/host-config are scanned for definitions, not only for calls"
+  },
+  {
+    "id": "code-size.llm-stack-is-a-subject",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
+    "replace": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "EX1: linux/llm-stack was outside the scan set until 2026-09-07 -- 43 files and 19,874 lines invisible to every extent gate; dropping it again silently un-freezes 47 reviewed rows"
   },
   {
     "id": "dead-functions.stale-freeze",

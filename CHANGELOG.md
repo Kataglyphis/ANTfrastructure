@@ -42,6 +42,47 @@ claims only what a subject line supports.
   reformatting the Flutter SDK; an empty Dart file list stopped retiring the format
   gate.
 
+## 2026-09-07 — EX1 closed the day it opened: linux/llm-stack enters the extent gates, 47 rows, 34 of them debt
+
+`verify_code_size.py:38` read
+`SCAN = ("linux/scripts", "linux/host-config", "docs/scripts")`. `linux/llm-stack`
+had never been in it: 43 Python files, 19,874 lines, under active development, with
+a 569-line file landing there that same day. `verify_code_complexity.py` inherits
+that tuple, so it was blind too. (`verify_dead_functions.py` and
+`verify_trailing_conditional.py` import from the same module but walk only SHELL
+functions, so they gained nothing; `verify_comment_size.py` keeps its own scan.)
+
+Option 1 of the three the entry offered — widen and do the verdict pass — because
+the alternatives leave the register meaning something other than what it says.
+**All 47 rows were read and given a verdict in the same wave**, which is the rule set
+on 2026-09-03: a row states what its number IS, never that it merely existed when the
+gate was switched on. Written by 13 readers, then each set put past a rubber-stamp
+detector that rewrote 4 reasons that restated a metric instead of explaining it.
+
+Gates moved 28 → **41** functions, 11 → **18** files, 61 → **86** cc, 2 → **4**
+nesting. All frozen, both gates pass. **34 rows say DEBT and name their seam** — the
+honest state of a benchmark harness nobody had reviewed for shape, now written down
+instead of invisible:
+
+* `bench_coding.py` — 2053 lines, still ~976 executable after blanks, comments,
+  docstrings and 409 lines of top-level literal come out, so unlike `bench_tasks.py`
+  it is not a data file that happens to be long. Splits at `run_candidate`: everything
+  above is *turn an untrusted reply into a verdict*, everything below is *drive an
+  endpoint and rank the models*, and the halves touch at exactly four names. 75
+  mutation rows already pin the behaviour — more than any other file in the repo.
+* `evaluate` — 227 lines, cc 69. One attempt, then aggregation, then the report dict.
+  The tell is the indentation: the inner `for attempt in range(repeats)` is indented
+  two spaces so the body stays at column 8, i.e. written not to be re-indented. That
+  is an extraction the author had already made in their head.
+* `benchmark_chat` — the repo's only nesting-8 path, cc 42, 183 lines.
+* Not debt, with reasons: `ask` is 83 lines of which 32 are prose recording that
+  urlopen's `timeout` is PER SOCKET READ, measured when a 4B model blocked a whole
+  sweep for an hour; `bench_tasks.py` is 1889 lines with zero function or cc
+  offenders because it is a task table.
+
+The F1 sweep sentence needed its second correction of the day: "no outside-the-closure
+candidate left" was true of the scan set, and the scan set was not the repo.
+
 ## 2026-09-07 — the backlog audited against the tree: two red gates behind a merge, and a grooming that had not re-derived its own numbers
 
 Asked whether the backlog was up to date and everything fixed. It was not, in two
