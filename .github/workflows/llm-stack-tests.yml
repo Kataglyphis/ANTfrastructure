@@ -1,11 +1,18 @@
 # llm-stack API contract tests (backlog 2026-08-10 C4 residual).
 #
-# The suite (linux/llm-stack/tests/test_v1_api.py) is a LIVE contract test
-# against an OpenAI-compatible endpoint — 19 of 22 tests need no real
-# inference, only a serving API with >=1 model present. CI shape: a real
-# ollama service + the smallest practical model, then `pytest -m "not
-# inference"`. The 3 inference-marked tests stay local-only (need a loaded
-# model with meaningful output).
+# LIVE contract tests against an OpenAI-compatible endpoint: an ollama service
+# plus the smallest practical model, then `pytest -m "not inference"`. The
+# inference-marked tests stay local-only - they need a loaded model producing
+# meaningful output.
+#
+# SCOPE, corrected 2026-09-08: this header used to call
+# linux/llm-stack/tests/test_v1_api.py "the suite" while the command ran the
+# whole linux/llm-stack/tests/ directory. The COMMAND was right - that scope is
+# green today, and narrowing it the prose's way would have dropped coverage - so
+# the prose moved to match it.
+#
+# The run itself now lives in linux/llm-stack/ci-contract-tests.sh, so the owner
+# reproduces this job with one command instead of by re-reading this file.
 #
 # ADVISORY RAMP — NOW A GATE (backlog Batch 6 C4 residual, flipped 2026-08-13):
 # the ramp condition ("first green run on a real runner proves the service/model
@@ -46,22 +53,19 @@ jobs:
           - 11434:11434
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Wait for ollama + pull micro model
-        run: |
-          set -euo pipefail
-          for _ in $(seq 1 30); do
-            curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1 && break
-            sleep 2
-          done
-          curl -fsS http://localhost:11434/api/tags >/dev/null
-          # Smallest practical tag; only needs to EXIST in /v1/models — the
-          # non-inference tests never require meaningful generations.
-          curl -fsS http://localhost:11434/api/pull \
-            -d '{"name":"qwen2.5:0.5b"}' | tail -c 200
+
+      # Provisioning stays in the workflow - the same split every other job in
+      # this repo uses (setup-uv, Install-Module PSScriptAnalyzer,
+      # setup-python). The RUN is the script's.
       - name: Install pytest
         run: pip install --quiet pytest requests
-      - name: Run non-inference contract tests
+
+      # OLLAMA_BASE_URL and TEST_TIMEOUT are read by tests/test_v1_api.py itself,
+      # so they stay job env. The endpoint is ALSO passed as an argument because
+      # the script's readiness probe has to be pointed at the same server the
+      # suite talks to - deriving it twice is exactly how those drift apart.
+      - name: Wait for ollama, pull the micro model, run the contract tests
         env:
           OLLAMA_BASE_URL: http://localhost:11434
           TEST_TIMEOUT: "60"
-        run: pytest linux/llm-stack/tests/ -v -m "not inference"
+        run: bash linux/llm-stack/ci-contract-tests.sh "${OLLAMA_BASE_URL}"

@@ -25,6 +25,7 @@ if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
   done
   unset _py
 fi
+export PREFLIGHT_PYTHON
 if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
   printf "${RED}✗${NC} no working Python found for the Python-based checks.\n" >&2
   printf "   Tried: python3, python3.14, python3.13, python3.12, python, ~/.local/bin/python3.14.exe\n" >&2

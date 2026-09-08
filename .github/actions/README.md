@@ -36,7 +36,8 @@ absent); `install-uv: true` installs the Astral uv package manager.
 ### `prepare-windows-container-host`
 The prologue every containerised Windows job repeats: long paths, checkout,
 short-path clone, data-root move, disk cleanup, registry login, image pull, disk
-report. Inputs: `image` (required), `registry`, `registry-username`,
+report. Inputs: `image` (optional — defaults to the family Windows image; see
+"The two images" below), `registry`, `registry-username`,
 `registry-password`, `checkout`, `fetch-depth`, `submodules`,
 `short-path-target`, `exclude-submodules`, `token`, `data-root`,
 `required-free-gb`, `free-disk-space`, `measure-data-root`. Outputs:
@@ -131,11 +132,43 @@ a path that matches no suite (missing, renamed, or never checked out) would
 otherwise exit 0 with `FailedCount` 0 - green having run nothing. Inputs:
 `path` (required), `version`.
 
+
+## The two images, and the one place they are named
+
+Every containerised lane in the family runs in exactly two images:
+`${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` for Linux and
+`${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_TAG}` for Windows, all three keys
+from `linux/scripts/01-core/versions.env`. That file is the owner of the
+convention.
+
+Workflow YAML cannot read it, so the four container actions below carry the
+composed reference as the **default** of their `image` input. **Omit `image:`**
+and your lane is on the family tag by construction; there is nothing to retype
+and nothing to keep in sync. Pass one only for a deliberate single-arch or
+experimental run.
+
+The defaults are copies, and copies are not trusted here:
+`linux/scripts/verify_ci_image_refs.py` (run by `lint-workflows.sh`, preflight
+slug `workflow-lint`) asserts each default equals what versions.env composes,
+rejects any `kataglyphis_beschleuniger` tag under `.github/` that is not
+canonical for its platform, and rejects a Linux action handed the Windows
+reference or the reverse. It takes a consumer repository root as its argument,
+so a consumer lints its own workflows against the same convention:
+
+```bash
+bash third_party/ContainerHub/linux/scripts/lint-workflows.sh .
+```
+
+Windows lanes additionally pin `runs-on: windows-2025` rather than
+`windows-latest`. The two resolve to the same runner image today; the alias is
+the one that can move under a green build with no commit to blame.
+
 ### `prepare-linux-ci-host`
 The prologue every containerised Linux job repeats: free runner disk, check
 out (submodules recursive, full history by default), log in to the registry
 and `docker pull` the image with retries and a per-attempt timeout.
-Inputs: `image` (required), `registry`, `registry-username`,
+Inputs: `image` (optional — defaults to the family Linux image; see above),
+`registry`, `registry-username`,
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
 `free-disk-space`, `pull-attempts`, `pull-timeout-seconds`.
@@ -148,7 +181,8 @@ failures that reproduce in only one lane.
 
 ### `run-in-linux-container`
 Runs a bash command inside a Linux container image (`docker run --rm`).
-Inputs: `image` (required), `script` (bash fragment, verbatim), `workdir`,
+Inputs: `image` (optional — defaults to the family Linux image; see above),
+`script` (bash fragment, verbatim), `workdir`,
 `log-file` (tee target), `extra-args` (verbatim extra `docker run` args).
 Used by consumer repos to run their build/test steps inside the published
 `:latest-cross` images.
@@ -167,6 +201,7 @@ per line) must be set; the payload travels via `env:` so secret values never
 pass through the PowerShell parser (an apostrophe in a secret used to be a
 `ParserError`). `extra-args` is also one-argv-per-line (unlike the Linux
 sibling's verbatim fragment — Windows argv must stay literal). Other inputs:
+`image` (optional — defaults to the family Windows image),
 `cpus` (default: all runner CPUs, min 2), `memory` (default `16g`),
 `mount-source`/`mount-target` (default `D:\ws` → `C:\ws`). Values containing
 newlines cannot be expressed in the per-line inputs.

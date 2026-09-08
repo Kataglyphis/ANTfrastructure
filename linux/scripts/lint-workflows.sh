@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # lint-workflows.sh — actionlint over .github/workflows/*.yml (composite
-# actions under .github/actions are pulled in automatically when referenced).
+# actions under .github/actions are pulled in automatically when referenced),
+# PLUS verify_ci_image_refs.py: a stale image tag is valid YAML, so actionlint
+# cannot see the drift the fleet actually suffers.
 #
 # actionlint is bootstrapped on demand: PATH copy preferred, otherwise the
 # pinned release (ACTIONLINT_VERSION / ACTIONLINT_*_SHA256 in versions.env) is
@@ -83,7 +85,26 @@ actionlint_ensure() {
 actionlint_ensure
 printf '== actionlint (%s) ==\n' "$("${ACTIONLINT_BIN}" --version | head -n1)"
 
-if "${ACTIONLINT_BIN}"; then
+FAILED=0
+"${ACTIONLINT_BIN}" || FAILED=1
+
+# Run from the SCRIPT's repo so the relative path resolves to this checkout's
+# copy, and hand it the tree actually being linted - the same split, and the
+# reason this script takes a root at all.
+# Interpreter: the same contract preflight.sh documents at its top — plain
+# python3 is NOT trusted, because on Windows Git Bash it is the Microsoft Store
+# stub, which prints an install hint and exits non-zero. preflight exports the
+# probed interpreter; a standalone run inherits nothing, so verify before use
+# rather than letting the gate die inside the Python step with a stub message.
+_PY="${PREFLIGHT_PYTHON:-python3}"
+if ! command -v "${_PY}" >/dev/null 2>&1 || ! "${_PY}" -c "pass" >/dev/null 2>&1; then
+  printf "lint-workflows.sh: no working Python (tried %s).\n" "${_PY}" >&2
+  printf "                   Set PREFLIGHT_PYTHON, e.g. PREFLIGHT_PYTHON=\"uv run --no-project python\"\n" >&2
+  exit 1
+fi
+( cd "${REPO_ROOT}" && "${_PY}" linux/scripts/verify_ci_image_refs.py "${LINT_ROOT}" ) || FAILED=1
+
+if [ "${FAILED}" -eq 0 ]; then
   printf 'WORKFLOW LINT OK\n'
 else
   printf 'WORKFLOW LINT FAILED\n' >&2

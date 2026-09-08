@@ -8,13 +8,19 @@
 # third_party/DocumANTation pin. A gate published for other repos and not run
 # here is a gate nobody has tested against a real bump.
 #
-# Runner is windows-latest, not one of the ubuntu-26.04 runners the rest of the
+# Runner is a WINDOWS one, not one of the ubuntu-26.04 runners the rest of the
 # Linux jobs use, because .github/actions/run-pester-suite installs Pester 3.4.0
 # by default - the dialect BeschleunigerBallett's Windows lane pins - and 3.4.0
 # is a Windows PowerShell-era module. The suite itself is version-agnostic (it
 # asserts with `throw`, not `Should`, and was verified under both 3.4.0 and
 # 6.1.0), so this can move to a cheaper runner the day the action can be told a
 # Core-compatible version.
+#
+# The LABEL is windows-2025, pinned, since 2026-09-08. It was windows-latest,
+# which is a moving alias: it resolves to windows-2025 today, so this is a no-op
+# now, but a future repoint would swap the OS image - and with it the Windows
+# PowerShell 5.1 that Pester 3.4.0 needs - under a green build with no commit to
+# blame. windows-2025 is what the rest of the family already uses.
 name: Submodule Pins
 
 on:
@@ -44,7 +50,7 @@ concurrency:
 
 jobs:
   pins:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 15
     env:
       # The suite takes the repo root as a parameter and the composite action can

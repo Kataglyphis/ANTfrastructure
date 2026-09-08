@@ -3,10 +3,17 @@
 # lint plus the windows/scripts/tests suites. Deliberately builds NO container
 # images (the image chain is built locally; see docs/windows-builds.md).
 #
-# Runner is windows-latest because several suites exercise Windows-shaped
+# Runner is windows-2025, PINNED, because several suites exercise Windows-shaped
 # fixtures (C:\ paths, vswhere output, cmd.exe guards); running everything on
 # one Windows runner avoids a per-suite OS matrix. pwsh 7 and Pester v5 are
 # preinstalled on the hosted image.
+#
+# The label was windows-latest until 2026-09-08. windows-latest is a MOVING
+# alias - it points at windows-2025 today, which is why the switch changes
+# nothing right now - and the day GitHub repoints it, these suites would move
+# runner image under a green build with no commit to blame. The rest of the
+# family (BeschleunigerBallett, OmniAccelerANT, OrchestrANT) and this repo's own
+# python-ci-windows.yml were already on windows-2025; this closes the split.
 name: Windows Scripts
 on:
   push:
@@ -35,7 +42,7 @@ concurrency:
 
 jobs:
   lint-and-test:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +80,7 @@ jobs:
   # versions.env bump still needs one local `[build-win]`-style full chain
   # before it can be trusted - CI has no GPU and builds no containers.
   patch-drift:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -32,6 +32,12 @@ jobs:
       # Subset of the canonical gate list in linux/scripts/preflight.sh —
       # version snapshot (also covers inline markers, deps table, Dockerfile
       # ARGs, website license files), ARG consistency, mirror consistency.
+      # continue-on-error is load-bearing for the issue-filing design below -
+      # the next step reads steps.check.outcome, which only exists because this
+      # step is allowed to conclude non-success. It is NOT a licence for the job
+      # to go green over stale docs: the explicit re-raise at the end of this
+      # job restores that signal. Removing the re-raise would leave a weekly
+      # gate that cannot fail.
       - name: Check version/docs consistency
         id: check
         continue-on-error: true
@@ -77,3 +83,13 @@ jobs:
               body: body,
               labels: ['documentation'],
             });
+
+      # The gate's verdict, restored. Without this the weekly run reports SUCCESS
+      # over provably stale docs and the only signal is an issue nobody is paged
+      # for - a gate that cannot fail. The issue is still filed first, so this
+      # costs the alerting design nothing.
+      - name: Fail the run when the docs are stale
+        if: steps.check.outcome != 'success'
+        run: |
+          echo "::error::version/docs consistency check failed - see the 'Check version/docs consistency' step"
+          exit 1

@@ -1,3 +1,41 @@
+# .github/workflows/ghcr-cleanup.yml
+# Weekly prune of stale ghcr package versions.
+#
+# Until 2026-09-08 this was 217 lines of inline actions/github-script
+# JavaScript, and linux/host-config/ghcr-prune-package.sh was the SAME safety
+# model written a second time in bash: keep every tagged version, keep every
+# digest referenced as a child of a kept manifest index (resolved live against
+# ghcr.io/v2, because the Packages REST API exposes version metadata but not
+# manifest CONTENTS, and the contents are what say which untagged children a tag
+# still needs), keep anything younger than an age guard, and abort the whole
+# delete loop if any manifest cannot be resolved. Both headers even cite the
+# same incident. One of the two was dead in CI and the other was untested
+# against a real prune; this collapses them onto the script.
+#
+# WHAT CHANGED BEHAVIOURALLY, deliberately, and in the safer direction each time:
+#
+#   * tag retention: the JS kept the newest THREE versions per tag; the script
+#     keeps EVERY tagged version.
+#   * failed deletes: the JS called core.warning() and the job stayed GREEN.
+#     The script exits 1 if any delete failed. That was a suppressed failure and
+#     it is gone.
+#   * before each delete the script re-reads the version and skips it if a tag
+#     has landed on that digest since the snapshot, or if it cannot re-read it
+#     at all (fail-closed). The JS had no such check.
+#   * the JS kept the 500 newest UNTAGGED versions as a blunt buffer for
+#     multi-arch children. The script does not, because it resolves those
+#     children exactly, per tag, and refuses to proceed if any tag's manifest is
+#     unreadable. It additionally refuses a run whose candidate set is the whole
+#     package or more than 95% of it - the keep-set-collapse guard.
+#   * KEEP_DAYS is set to 14 below rather than left at the script's default of
+#     7, so the push-in-flight guard stays exactly as wide as the JS's
+#     minAgeDays.
+#
+# CREDENTIAL: this needs a PAT with read:packages + delete:packages. The package
+# lives in a USER namespace, and the /user/packages endpoints the script uses
+# answer for the authenticated USER - the Actions GITHUB_TOKEN is not one, so
+# the old `secrets.GHCR_TOKEN || github.token` fallback could only ever have
+# produced a confusing 404. It is now GHCR_TOKEN or a loud failure.
 name: ghcr-cleanup
 
 on:
@@ -15,233 +53,22 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - name: Delete old GHCR versions
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          # Read by the referential-integrity pass to talk to the ghcr.io
-          # registry API, which the Packages REST API cannot substitute for:
-          # it exposes version metadata but not manifest CONTENTS, and the
-          # contents are what say which untagged children a tag still needs.
-          GITHUB_TOKEN_FOR_REGISTRY: ${{ secrets.GHCR_TOKEN || github.token }}
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Use a PAT if you need to manage org packages not granting Actions access to this repo.
-          # Otherwise the default GITHUB_TOKEN is enough.
-          github-token: ${{ secrets.GHCR_TOKEN || github.token }}
-          script: |
-            const owner = context.repo.owner;
-            const packageType = 'container';
-            const packageName = 'kataglyphis_beschleuniger';
-            
-            // --- CONFIGURATION ---
-            const keepPerTag = 3;      // Keep 3 versions for every unique tag
-            const keepUntagged = 500;   // Keep 500 newest untagged images (buffers multi-arch layers)
-            const minAgeDays = 14;     // SAFETY NET: Never delete anything younger than 14 days
-            // ---------------------
+          fetch-depth: 1
 
-            // --- Helper Functions ---
-            async function isOrganization(name) {
-              try {
-                await github.request('GET /orgs/{org}', { org: name });
-                return true;
-              } catch (e) {
-                if (e?.status === 404) return false;
-                throw e;
-              }
-            }
-            
-            const ownerIsOrg = await isOrganization(owner);
-            
-            function listVersionsRequestParams(page) {
-              const params = {
-                package_type: packageType,
-                package_name: packageName,
-                per_page: 100,
-                page
-              };
-              if (ownerIsOrg) {
-                return { ...params, method: 'GET', url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions', org: owner };
-              }
-              return { ...params, method: 'GET', url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions', username: owner };
-            }
-            
-            function deleteVersionRequestParams(versionId) {
-              const params = {
-                package_type: packageType,
-                package_name: packageName,
-                package_version_id: versionId
-              };
-              if (ownerIsOrg) {
-                return { ...params, method: 'DELETE', url: 'https://api.github.com/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}', org: owner };
-              }
-              return { ...params, method: 'DELETE', url: 'https://api.github.com/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}', username: owner };
-            }
-
-            // --- 1. Fetch all versions ---
-            core.info('Fetching versions...');
-            const versions = [];
-            for (let page = 1; ; page++) {
-              let data;
-              try {
-                ({ data } = await github.request(listVersionsRequestParams(page)));
-              } catch (e) {
-                if (e?.status === 404) {
-                   core.setFailed(`Package ${packageName} not found.`);
-                   return;
-                }
-                throw e;
-              }
-              if (!Array.isArray(data) || data.length === 0) break;
-              versions.push(...data);
-              if (data.length < 100) break;
-            }
-            core.info(`Found ${versions.length} total versions.`);
-
-            // --- 2. Determine which versions to KEEP ---
-            const versionsToKeep = new Set();
-            const mapTagToVersions = {}; 
-            const untaggedVersions = [];
-            const now = new Date();
-
-            // Sort by date desc (newest first)
-            versions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-            // Group versions
-            for (const v of versions) {
-              const createdDate = new Date(v.created_at);
-              const ageInDays = (now - createdDate) / (1000 * 60 * 60 * 24);
-
-              // Rule 1: Always keep very recent versions (Safety Net)
-              if (ageInDays < minAgeDays) {
-                versionsToKeep.add(v.id);
-                // We continue processing to populate maps, but this ID is now safe.
-              }
-
-              const tags = v.metadata?.container?.tags || [];
-              if (tags.length === 0) {
-                untaggedVersions.push(v);
-              } else {
-                for (const tag of tags) {
-                  if (!mapTagToVersions[tag]) mapTagToVersions[tag] = [];
-                  mapTagToVersions[tag].push(v);
-                }
-              }
-            }
-
-            // Rule 2: Keep top X for each Tag
-            for (const tag in mapTagToVersions) {
-              const tagVersions = mapTagToVersions[tag];
-              const keepers = tagVersions.slice(0, keepPerTag);
-              keepers.forEach(v => versionsToKeep.add(v.id));
-            }
-
-            // Rule 3: Keep top X for Untagged 
-            // (Only count those not already kept by the Age Rule)
-            let untaggedCount = 0;
-            for (const v of untaggedVersions) {
-                if (versionsToKeep.has(v.id)) continue; // Already kept by age rule
-                
-                if (untaggedCount < keepUntagged) {
-                    versionsToKeep.add(v.id);
-                    untaggedCount++;
-                }
-            }
-
-            core.info(`Keeping ${versionsToKeep.size} versions (Age < ${minAgeDays} days OR Top ${keepPerTag} per tag OR Top ${keepUntagged} untagged).`);
-
-            // --- 2b. REFERENTIAL INTEGRITY (added 2026-08-11) ---
-            //
-            // Rules 1-3 decide what to keep by DATE. That is not safe for
-            // multi-arch tags: the per-platform children of a manifest list are
-            // UNTAGGED versions. Once they aged past both the 14-day net and the
-            // 500-newest-untagged window they were deleted, while the tagged
-            // index that points at them survived Rule 2.
-            //
-            // The result is an index that resolves but whose children 404, and
-            // `docker pull` reports that as a bare "manifest unknown" - naming
-            // neither the cause nor this workflow.
-            //
-            // Measured 2026-08-11 across all 81 tags: 6 were in that state -
-            // latest, sdk, media, android, torch, compiler - every one of them
-            // multi-arch, each with 3/3 children gone. The 74 single-manifest
-            // tags were unaffected (nothing to orphan) and latest-cross was the
-            // one healthy multi-arch tag. Narrow, but `latest` is what the
-            // Python CI lanes and OmniAccelerANT pull, so those
-            // lanes had been red on every commit for at least a day.
-            //
-            // So: resolve every kept tagged version's manifest and keep whatever
-            // it references, regardless of age. `keepUntagged` is a garbage
-            // collector for genuinely unreferenced blobs, never a reason to break
-            // a live tag.
-            const registryHost = 'ghcr.io';
-            const repoPath = `${owner.toLowerCase()}/${packageName}`;
-            const ACCEPT = [
-              'application/vnd.oci.image.index.v1+json',
-              'application/vnd.docker.distribution.manifest.list.v2+json',
-              'application/vnd.oci.image.manifest.v1+json',
-              'application/vnd.docker.distribution.manifest.v2+json',
-            ].join(',');
-
-            // GHCR's registry endpoint takes a bearer token that is the
-            // base64 of any token with read access to the package.
-            const registryToken = Buffer.from(
-              process.env.GITHUB_TOKEN_FOR_REGISTRY || ''
-            ).toString('base64');
-
-            async function fetchManifest(ref) {
-              const res = await fetch(
-                `https://${registryHost}/v2/${repoPath}/manifests/${ref}`,
-                { headers: { Authorization: `Bearer ${registryToken}`, Accept: ACCEPT } }
-              );
-              if (!res.ok) return null;
-              try { return await res.json(); } catch { return null; }
-            }
-
-            // digest -> version id, so a referenced child can be marked kept.
-            const byDigest = new Map();
-            for (const v of versions) if (v.name) byDigest.set(v.name, v.id);
-
-            const taggedKept = versions.filter(
-              v => versionsToKeep.has(v.id) && (v.metadata?.container?.tags || []).length > 0
-            );
-
-            let rescued = 0;
-            let unresolvable = 0;
-            for (const v of taggedKept) {
-              const manifest = await fetchManifest(v.name);
-              if (!manifest) { unresolvable++; continue; }
-              for (const child of manifest.manifests || []) {
-                const id = byDigest.get(child.digest);
-                if (id !== undefined && !versionsToKeep.has(id)) {
-                  versionsToKeep.add(id);
-                  rescued++;
-                }
-              }
-            }
-            core.info(`Referential integrity: rescued ${rescued} referenced child manifest(s) from deletion.`);
-            if (unresolvable > 0) {
-              // Do not delete anything on a partial read: a manifest we could not
-              // fetch may reference children we would then orphan. Failing loudly
-              // beats another silent registry corruption.
-              core.setFailed(
-                `Could not resolve ${unresolvable} tagged manifest(s) from ${registryHost}. ` +
-                `Refusing to delete anything, because unread manifests may reference ` +
-                `children that would be orphaned. Check the token's read:packages scope.`
-              );
-              return;
-            }
-
-            // --- 3. Delete the rest ---
-            const toDelete = versions.filter(v => !versionsToKeep.has(v.id));
-            core.info(`Deleting ${toDelete.length} old versions...`);
-
-            let deletedCount = 0;
-            for (const v of toDelete) {
-              try {
-                await github.request(deleteVersionRequestParams(v.id));
-                deletedCount++;
-              } catch (e) {
-                if (e?.status === 404) continue; // Already gone
-                core.warning(`Failed to delete version ${v.id}: ${e.message}`);
-              }
-            }
-            core.info(`Successfully deleted ${deletedCount} versions.`);
+      # curl + python3 only; no jq, no daemon, no image. That is why this job
+      # stays on the hosted runner rather than in :latest-cross - see the
+      # workflow header in sbom.yml for the same reasoning about registry-only
+      # jobs.
+      - name: Prune stale package versions
+        env:
+          # GHCR_PRUNE_CONFIRM=1 is what turns the script's default DRY RUN into
+          # a real delete. Spelled here, in the only place that should ever do
+          # it, so a local run of the same script still prints a plan instead of
+          # deleting.
+          GHCR_PRUNE_CONFIRM: "1"
+          KEEP_DAYS: "14"
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: bash linux/host-config/ghcr-prune-package.sh

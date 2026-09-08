@@ -6,8 +6,23 @@ description: >-
 
 inputs:
   image:
-    description: 'Container image reference to run.'
-    required: true
+    description: >-
+      Windows container image reference to run.
+
+      SINGLE SOURCE OF TRUTH: omit this input and the lane gets the family
+      tag below, which is the value every Windows lane should be on. The default
+      is a copy of `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_TAG}` from
+      linux/scripts/01-core/versions.env, and it is a CHECKED copy -
+      linux/scripts/verify_ci_image_refs.py (preflight slug `workflow-lint`)
+      fails if the two disagree.
+
+      Passing a value is still allowed - a single-arch or an experimental image
+      is a real need - but it does not hide: the same gate rejects any
+      kataglyphis_beschleuniger tag under .github/ that is not the canonical one
+      for the platform, so an override has to be an excused entry in that gate
+      rather than a literal nobody reads.
+    required: false
+    default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64'
   command:
     description: >-
       PowerShell script text executed inside the container via

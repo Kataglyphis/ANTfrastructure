@@ -23,9 +23,14 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Image reference to scan"
+        description: >-
+          Image reference to scan. Leave EMPTY for the family image - the scan
+          driver then composes it from IMAGE_REGISTRY_PREFIX +
+          CI_IMAGE_LINUX_TAG in linux/scripts/01-core/versions.env, the single
+          place that tag is written. A default spelled out here would be a
+          second copy of it, and copies drift.
         required: false
-        default: "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
+        default: ""
 
 permissions:
   contents: read
@@ -48,46 +53,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install syft
-        env:
-          SYFT_VERSION: v1.20.0
-        run: |
-          set -euo pipefail
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b "${RUNNER_TEMP}/bin" "${SYFT_VERSION}"
-          "${RUNNER_TEMP}/bin/syft" version
-
       - name: Log in to ghcr
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | \
-          docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: >-
+          echo "${{ secrets.GITHUB_TOKEN }}"
+          | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # One script, and the SAME one docs/sbom.md tells a reader to run on a
+      # workstation: the syft bootstrap, the `registry:` scan (no pull into a
+      # daemon, no disk for the rootfs, and it works for arches this runner
+      # cannot execute), the >=50-package refusal, and docs/scripts/compare_sbom.py
+      # over the result. All four were inline here - and the last one was not
+      # here at all: this job wrote precisely the file compare_sbom.py exists to
+      # read, uploaded it, and never ran the comparison.
+      #
+      # The image argument is passed through verbatim; EMPTY means "the family
+      # image", which the driver composes from versions.env instead of from a
+      # literal repeated in this file.
       - name: Scan the published image
         id: scan
-        env:
-          IMAGE: ${{ inputs.image || 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross' }}
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          set -euo pipefail
-          arch="${PLATFORM##*/}"
-          mkdir -p out/sbom
-          # `registry:` reads the image directly from ghcr: no pull into a
-          # daemon, no disk for the full rootfs, and it works for arches this
-          # runner cannot execute.
-          "${RUNNER_TEMP}/bin/syft" "registry:${IMAGE}" \
-            --platform "${PLATFORM}" \
-            -o "spdx-json=out/sbom/scanned-${arch}.spdx.json" \
-            -o "cyclonedx-json=out/sbom/scanned-${arch}.cdx.json"
-          python3 - "$arch" <<'PY'
-          import json, sys
-          arch = sys.argv[1]
-          doc = json.load(open(f"out/sbom/scanned-{arch}.spdx.json", encoding="utf-8"))
-          n = len(doc.get("packages", []))
-          print(f"{arch}: {n} packages catalogued")
-          # A scan that finds almost nothing means a broken reference or a
-          # cataloguer regression, not a clean image. Fail rather than publish it.
-          if n < 50:
-              raise SystemExit(f"only {n} packages catalogued for {arch} -- refusing to publish")
-          PY
+        run: bash linux/scripts/scan-image-sbom.sh "${{ matrix.platform }}" "${{ inputs.image }}"
 
       - name: Upload SBOM
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

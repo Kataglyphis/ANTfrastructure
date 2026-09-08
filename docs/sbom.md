@@ -74,20 +74,25 @@ build flags that determine the licence, and the corresponding-source pointer.
 python3 docs/scripts/generate_sbom.py --write     # -> docs/deps/sbom-curated.spdx.json
 python3 docs/scripts/generate_sbom.py --check     # gated in preflight as slug `sbom`
 
-# Scanner half — reads straight from the registry, no daemon, no local build
-syft "registry:ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" \
-  --platform linux/amd64 \
-  -o spdx-json=out/sbom/scanned-linux-amd64.spdx.json \
-  -o cyclonedx-json=out/sbom/scanned-linux-amd64.cdx.json
+# Scanner half — reads straight from the registry, no daemon, no local
+# build. ONE driver: it bootstraps syft, scans, refuses a scan that catalogued
+# under 50 packages, then runs the comparison below. The image argument is
+# optional — omitted, it is composed from IMAGE_REGISTRY_PREFIX +
+# CI_IMAGE_LINUX_TAG in versions.env, so a local scan and every CI lane target
+# the same tag by construction.
+bash linux/scripts/scan-image-sbom.sh linux/amd64
+#   -> out/sbom/scanned-linux-amd64.{spdx,cdx}.json
 
-# What each half sees, and what only the curated one covers
+# What each half sees, and what only the curated one covers. The driver runs
+# this itself; this is the standalone form.
 python3 docs/scripts/compare_sbom.py out/sbom/scanned-linux-amd64.spdx.json
 ```
 
 `:latest-cross` is a **manifest list** — a scan without `--platform` silently
 picks one architecture. Scan each one you publish.
 
-CI runs the scan weekly in [`sbom.yml`](../.github/workflows/sbom.yml) and
+CI runs the scan weekly in [`sbom.yml`](../.github/workflows/sbom.yml) — the
+same `scan-image-sbom.sh` invocation, once per published platform — and
 verifies the curated document has not drifted from `deps.json`.
 
 ## What you can actually do with it

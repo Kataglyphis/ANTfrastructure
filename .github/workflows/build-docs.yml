@@ -22,7 +22,8 @@ jobs:
   build-docs:
     name: Build Documentation
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 30
+    # Raised from 30: the lane now pulls the family image before it builds.
+    timeout-minutes: 45
     # Serialize production deploys: two overlapping runs must not FTP-sync into
     # the same server directory at once. Job-level on purpose — a reusable
     # (workflow_call) workflow does not get its own workflow run, so a
@@ -34,46 +35,68 @@ jobs:
       group: docs-deploy-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # This was the ONE Linux lane in this repository doing repo work outside
+      # the family image: a bare checkout plus setup-uv on the hosted runner.
+      # The docs build now has the same shape as every other containerised lane
+      # — prologue on the host, work inside `:latest-cross`, deploy back on the
+      # host — and it is the shape the shared helpers were written for
+      # (01-core/python_uv.sh's `--python` pin exists precisely because uv
+      # honours THIS image's UV_PYTHON over an activated .venv).
+      #
+      # `image:` is deliberately NOT passed: omitting it takes the action's
+      # default, which is the single source of truth composed from
+      # IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG in versions.env and asserted
+      # by linux/scripts/verify_ci_image_refs.py. No registry credentials
+      # either — the package is public and prepare-linux-ci-host skips the login
+      # when the password is empty, which keeps this reusable workflow callable
+      # without secrets it does not need.
+      - name: Prepare CI host (checkout + pull the family Linux image)
+        uses: Kataglyphis/ContainerHub/.github/actions/prepare-linux-ci-host@main
         with:
-          fetch-depth: 0
+          fetch-depth: '0'
           # Non-recursive: we only need the flat docs tooling from the
           # DocumANTation submodule, not its own nested submodules.
           # (DocumANTation also references ContainerHub, so recursing would
           # re-clone this repo in a cycle.)
-          submodules: true
-
-      - name: Install uv (Astral)
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          python-version: 3.14
-          enable-cache: true
-
-      - name: Install project dependencies with uv
-        run: |
-          uv venv
-          source .venv/bin/activate
-          uv pip install -r requirements.txt
+          submodules: 'true'
 
       # The verification list lives in preflight.sh (single source of the gate
       # list — the same one ubuntu26.04.yml runs in full and the commit hook
-      # subsets). Deliberately narrowed to the docs-relevant slugs: this
-      # reusable workflow must stay self-sufficient for callers that have no
-      # preflight job of their own, but ubuntu26.04.yml's dedicated preflight
-      # job already carries the FULL gate, so re-running everything here just
-      # doubled the work on every PR/push.
+      # subsets). Deliberately narrowed to the docs-relevant slugs plus
+      # `shellcheck`: this reusable workflow must stay self-sufficient for
+      # callers that have no preflight job of their own, but ubuntu26.04.yml's
+      # dedicated preflight job already carries the FULL gate, so re-running
+      # everything here just doubled the work on every PR/push.
+      #
+      # `shellcheck` replaces a hand-rolled
+      # `find linux/scripts -name '*.sh' -exec bash -n {} +` step. That was not
+      # a cheaper version of this gate, it was a NARROWER one: lint-shell.sh
+      # owns the file scope (linux/scripts, linux/llm-stack, linux/webserver and
+      # the extension-less git hooks) and runs shellcheck -S error, which
+      # subsumes `bash -n` outright. The inline find reached none of
+      # linux/llm-stack, linux/webserver or linux/host-config/git-hooks.
       - name: Run preflight verification (docs-relevant subset)
-        run: PREFLIGHT_ONLY=version-snapshot,mirror-consistency,doc-links,doc-dupes bash linux/scripts/preflight.sh
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          script: >-
+            bash -lc "PREFLIGHT_ONLY=version-snapshot,mirror-consistency,doc-links,doc-dupes,shellcheck
+            bash linux/scripts/preflight.sh"
 
-      - name: Check shell script syntax
-        run: find linux/scripts -name '*.sh' -exec bash -n {} +
-
+      # One script, not five inline lines — the same command the owner runs on a
+      # workstation. It creates the venv through 01-core/python_uv.sh, installs
+      # requirements.txt and runs `make html`, then fails if index.html is
+      # absent so a green sphinx run cannot FTP an empty tree over the site.
       - name: Build web page
+        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          script: bash linux/scripts/build-docs.sh
+
+      # The tree is written by the container user; the FTP action reads it from
+      # the host. Same split (and same fixup) python-ci-linux.yml uses.
+      - name: Fix permissions for the built docs
         run: |
-          source .venv/bin/activate
-          cd docs
-          make html
+          chmod -R 755 ./docs/_build/html/
+          ls -la ./docs/_build/html/
 
       # Deploy gate: a reusable workflow sees the CALLER's event, and
       # ubuntu26.04.yml calls this on pull_request too — without the

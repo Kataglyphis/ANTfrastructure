@@ -98,36 +98,43 @@ jobs:
   build:
     name: ${{ matrix.arch }}
     env:
-      # The caller's override wins; otherwise each leg uses the image built for
-      # its own architecture.
-      CONTAINER_IMAGE: ${{ inputs.container-image != '' && inputs.container-image || matrix.image }}
+      # The caller's override wins; otherwise the family Linux image.
+      #
+      # ONE literal per file, and a CHECKED one: this string must equal
+      # ${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG} from
+      # linux/scripts/01-core/versions.env, which
+      # linux/scripts/verify_ci_image_refs.py asserts on every run (preflight
+      # slug `workflow-lint`). It is spelled out rather than left to the
+      # composite actions' own default because `container-image` is an OPTIONAL
+      # input: an omitted input takes an action default, but an input passed as
+      # the empty string does NOT - it arrives as an empty image reference.
+      #
+      # Both legs pull the SAME tag, so this used to be a per-arch matrix key
+      # and was simply the same string twice. `:latest-cross` is a multi-arch
+      # index (linux/amd64, linux/arm64, linux/riscv64, all children present as
+      # of 2026-08-12), so docker resolves the right platform per runner.
+      #
+      # It was briefly per-arch for real: while the index listed amd64 only, the
+      # arm64 leg had to name `:latest-cross-arm64`. That is no longer true, and
+      # the arch-suffixed tags are now an implementation detail of the image
+      # build rather than something a consumer should reference.
+      #
+      # Do NOT fall back to plain `:latest`. Its per-platform children were
+      # deleted by the ghcr-cleanup bug (fixed in b70d3f4) and are still gone -
+      # the index resolves, every child 404s, and `docker pull` reports only
+      # "manifest unknown".
+      CONTAINER_IMAGE: ${{ inputs.container-image || 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross' }}
     strategy:
       # One arch failing should not hide the other's result.
       fail-fast: false
       matrix:
-        # Both legs pull the SAME tag. `:latest-cross` is a multi-arch index
-        # (linux/amd64, linux/arm64, linux/riscv64, all children present as of
-        # 2026-08-12), so docker resolves the right platform per runner and the
-        # tag does not have to be spelled per architecture.
-        #
-        # It briefly did: while the index listed amd64 only, the arm64 leg had to
-        # name `:latest-cross-arm64` explicitly. That is no longer true, and the
-        # arch-suffixed tags are now an implementation detail of the image build
-        # rather than something a consumer should reference.
-        #
-        # Do NOT fall back to plain `:latest`. Its per-platform children were
-        # deleted by the ghcr-cleanup bug (fixed in b70d3f4) and are still gone -
-        # the index resolves, every child 404s, and `docker pull` reports only
-        # "manifest unknown".
         include:
           - runs_on: ubuntu-26.04
             arch: x64
             platform: linux/amd64
-            image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
           - runs_on: ubuntu-26.04-arm
             arch: arm64
             platform: linux/arm64
-            image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 60
