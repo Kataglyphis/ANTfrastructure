@@ -1,0 +1,598 @@
+# .github/workflows/actions-selftest.yml
+#
+# The eleven composite actions under .github/actions/ are the family's shared
+# CI surface: 61 call sites across BeschleunigerBallett, OmniAccelerANT,
+# OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology resolve them at
+# `@main`, which the submodule pin does NOT freeze. An edit here is live in
+# every consumer on the next push, and until this workflow existed exactly ONE
+# of the eleven (run-pester-suite, from submodule-pins.yml) was exercised by
+# anything in this repository. The other ten had no test between the edit and
+# the blast radius.
+#
+# WHAT THIS CAN AND CANNOT PROVE - read this before trusting a green run.
+#
+# Two layers, and they fail in different places:
+#
+#   1. STATIC (every trigger, and locally). actionlint reads the metadata of
+#      every locally-`uses:`d action and checks the call: an input name that
+#      does not exist, a required input that is missing, and a
+#      `steps.<id>.outputs.<name>` that the action does not declare are all
+#      errors. So this workflow deliberately passes EVERY declared input of
+#      every action and READS EVERY declared output. Renaming or deleting an
+#      input or an output that a consumer relies on then fails
+#      linux/scripts/lint-workflows.sh (preflight slug `workflow-lint`) here,
+#      on the developer's machine, before the consumers ever see it. That is
+#      the closest thing to "action.yml in actionlint's scope" that actionlint
+#      1.7.12 offers - it cannot lint an action.yml as a file (it parses every
+#      argument as a WORKFLOW and reports `"on" section is missing`), so the
+#      only way into its scope is to be called from a workflow. See
+#      .github/actions/README.md for the same statement in prose.
+#
+#   2. RUNTIME (only on GitHub). The jobs below actually run the actions.
+#      Every runtime assertion is written to BITE: it fails on a specific
+#      wrong value, never merely on "the step exited 0".
+#
+# What is deliberately NOT proven, so nobody reads more into a green tick:
+#
+#   * FAILURE paths. Asserting that an action correctly FAILS would need
+#      `continue-on-error`, which is a suppression mechanism this repository
+#      does not use anywhere. So: assert-docker-disk-space's shortfall exit,
+#      run-pester-suite's TotalCount==0 guard, run-in-windows-container's
+#      "exactly one of command/file" throws, and run-in-linux-container's
+#      pipefail-through-tee are ALL unexercised here. They are the actions'
+#      most valuable behaviour and they remain untested.
+#   * The `image` input of the four container actions is deliberately OMITTED,
+#      per the "omit image:" doctrine in .github/actions/README.md. It is not
+#      unguarded: linux/scripts/verify_ci_image_refs.py asserts each of the
+#      four defaults equals what versions.env composes, which is a stronger
+#      check than actionlint could make.
+#   * upload-codeql-sarif's UPLOAD branch runs only on workflow_dispatch (it
+#      needs `security-events: write`, which a fork PR's token does not have).
+#      push/pull_request runs exercise the probe's negative branch only.
+#   * The Windows CONTAINER lane pulls the ~54 GB `:winamd64` image and takes
+#      the better part of an hour, so it runs only on a dispatch with
+#      `deep: true`. Its steps are still linted on every run (actionlint does
+#      not care about `if:`), so the CONTRACT half of that lane is always live.
+#
+# The self-test is a peer of the actions, so it is also its own consumer: the
+# path filters fire on any edit under .github/actions/.
+
+name: Composite actions self-test
+
+# Least privilege. The one job that needs more says so itself.
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      deep:
+        description: >-
+          Also run the Windows CONTAINER lane (prepare-windows-container-host +
+          run-in-windows-container). It pulls the ~54 GB winamd64 image, so it
+          costs roughly an hour and is off by default.
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/**'
+      - '.github/workflows/actions-selftest.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/actions/**'
+      - '.github/workflows/actions-selftest.yml'
+
+concurrency:
+  group: actions-selftest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # install-deps
+  # ---------------------------------------------------------------------------
+  linux-toolchain:
+    name: install-deps
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      # Every input at once, and each one is checked by the step after it.
+      # vulkan-version is a DELIBERATELY impossible version: the action only
+      # appends the composed directory to GITHUB_PATH, so a value nothing else
+      # could have produced is what proves the input reached it rather than the
+      # action's own default.
+      # run-setup-script: 'true' exercises the "consumer script absent" branch -
+      # ContainerHub has no scripts/linux/setup-dependencies.sh, so the action
+      # must warn and continue instead of failing.
+      - name: install-deps (uv, no Rust)
+        uses: ./.github/actions/install-deps
+        with:
+          vulkan-version: '9.9.999.0'
+          require-rust: 'false'
+          run-setup-script: 'true'
+          install-uv: 'true'
+
+      - name: The inputs above reached PATH and the Rust block was skipped
+        run: |
+          set -euo pipefail
+          want='/opt/vulkan/9.9.999.0/x86_64/bin'
+          case ":${PATH}:" in
+            *":${want}:"*) echo "vulkan bin dir on PATH: ${want}" ;;
+            *) echo "::error::install-deps did not put ${want} on PATH; the vulkan-version input is not reaching GITHUB_PATH"; exit 1 ;;
+          esac
+          # install-uv: 'true' must leave a usable uv on PATH for later steps,
+          # which is the whole point of the $HOME/.local/bin GITHUB_PATH line.
+          uv --version
+          # require-rust: 'false' must SKIP the toolchain block, and the only
+          # observable difference is that it did not export Rust_COMPILER.
+          if [ -n "${Rust_COMPILER:-}" ]; then
+            echo "::error::require-rust=false still exported Rust_COMPILER=${Rust_COMPILER}; the skip branch is not skipping"
+            exit 1
+          fi
+
+      - name: install-deps (Rust required)
+        uses: ./.github/actions/install-deps
+        with:
+          require-rust: 'true'
+
+      - name: The Rust branch exported a real compiler
+        run: |
+          set -euo pipefail
+          if [ -z "${Rust_COMPILER:-}" ]; then
+            echo "::error::require-rust=true did not export Rust_COMPILER"
+            exit 1
+          fi
+          if [ ! -x "${Rust_COMPILER}" ]; then
+            echo "::error::Rust_COMPILER=${Rust_COMPILER} is not an executable"
+            exit 1
+          fi
+          "${Rust_COMPILER}" --version
+
+  # ---------------------------------------------------------------------------
+  # clone-into-short-path (Linux half: the submodule-exclusion logic)
+  # ---------------------------------------------------------------------------
+  linux-clone:
+    name: clone-into-short-path (exclusion logic)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # ORDER IS LOAD-BEARING. exclude-submodules writes `submodule.<name>.active
+      # false` into the GLOBAL git config - deliberately, because the nested
+      # `git submodule` processes spawned by --recursive share no other scope.
+      # Global config is per RUNNER, not per clone, so the un-excluded clone has
+      # to happen FIRST or it would be pruned by the second call's leftovers and
+      # the two assertions below would agree for the wrong reason.
+      - name: clone-into-short-path (full tree)
+        uses: ./.github/actions/clone-into-short-path
+        with:
+          target: ${{ runner.temp }}/clone-full
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          token: ${{ github.token }}
+          submodules: 'true'
+
+      - name: The full clone carries the submodule tree
+        run: |
+          set -euo pipefail
+          root='${{ runner.temp }}/clone-full'
+          test -d "${root}/.git" || { echo "::error::no clone at ${root}"; exit 1; }
+          test -f "${root}/.github/actions/README.md" || { echo "::error::${root} is not this repository"; exit 1; }
+          # The ref input must have been honoured, not just "some commit".
+          got="$(git -C "${root}" rev-parse HEAD)"
+          if [ "${got}" != "${{ github.sha }}" ]; then
+            echo "::error::clone is at ${got}, the ref input asked for ${{ github.sha }}"
+            exit 1
+          fi
+          if [ -z "$(ls -A "${root}/third_party/DocumANTation")" ]; then
+            echo "::error::submodules: 'true' left third_party/DocumANTation empty"
+            exit 1
+          fi
+
+      - name: clone-into-short-path (submodule excluded)
+        uses: ./.github/actions/clone-into-short-path
+        with:
+          target: ${{ runner.temp }}/clone-pruned
+          token: ${{ github.token }}
+          submodules: 'true'
+          exclude-submodules: |
+            third_party/DocumANTation
+
+      - name: The excluded submodule stayed empty
+        run: |
+          set -euo pipefail
+          root='${{ runner.temp }}/clone-pruned'
+          test -d "${root}/.git" || { echo "::error::no clone at ${root}"; exit 1; }
+          # repository/ref were omitted this time, so their defaults must have
+          # resolved to the current repo at the triggering SHA.
+          test -f "${root}/.github/actions/README.md" || { echo "::error::the repository default did not resolve to this repo"; exit 1; }
+          if [ -n "$(ls -A "${root}/third_party/DocumANTation")" ]; then
+            echo "::error::exclude-submodules did not prune third_party/DocumANTation; it was populated anyway"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # prepare-linux-ci-host + run-in-linux-container
+  # ---------------------------------------------------------------------------
+  linux-container:
+    name: prepare-linux-ci-host + run-in-linux-container
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # `image` omitted on purpose - see the header. registry-password is the
+      # repository secret when there is one and the empty string otherwise,
+      # which is exactly what a fork PR gets: the action must then SKIP the
+      # login and still pull the public image. Both branches are therefore
+      # reachable, though a single run only takes one of them.
+      - name: prepare-linux-ci-host
+        uses: ./.github/actions/prepare-linux-ci-host
+        with:
+          registry: ghcr.io
+          registry-username: Kataglyphis
+          registry-password: ${{ secrets.GHCR_PAT }}
+          fetch-depth: '1'
+          submodules: 'recursive'
+          checkout: 'true'
+          free-disk-space: 'true'
+          pull-attempts: '3'
+          pull-timeout-seconds: '900'
+
+      - name: The prologue checked out and the image is local
+        run: |
+          set -euo pipefail
+          test -f .github/actions/README.md || { echo "::error::checkout: 'true' produced no repository"; exit 1; }
+          # submodules: 'recursive' has to have brought the submodule in - a
+          # missing one surfaces in a consumer as a missing header, much later.
+          if [ -z "$(ls -A third_party/DocumANTation)" ]; then
+            echo "::error::submodules: 'recursive' left third_party/DocumANTation empty"
+            exit 1
+          fi
+          docker image inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross >/dev/null
+
+      # extra-args carries an env var, log-file tees, workdir is the mount
+      # target, and the script reads all three back. ACTION_DIRS is counted
+      # INSIDE the container from the bind-mounted workspace, so the number
+      # proves the mount, and the number 11 is this workflow's own premise.
+      - name: run-in-linux-container
+        uses: ./.github/actions/run-in-linux-container
+        with:
+          workdir: /selftest-workspace
+          log-file: selftest-container.log
+          extra-args: -e SELFTEST_MARKER=ok
+          script: >-
+            bash -lc 'echo "MARKER=${SELFTEST_MARKER:-unset}"; echo "CWD=$(pwd)";
+            echo "ACTION_DIRS=$(ls -1d .github/actions/*/ | wc -l)"'
+
+      - name: The container saw the env, the mount and the workdir
+        run: |
+          set -euo pipefail
+          log='selftest-container.log'
+          test -f "${log}" || { echo "::error::log-file produced no ${log}; the tee branch is broken"; exit 1; }
+          cat "${log}"
+          grep -qx 'MARKER=ok' "${log}" || { echo "::error::extra-args did not deliver SELFTEST_MARKER into the container"; exit 1; }
+          grep -qx 'CWD=/selftest-workspace' "${log}" || { echo "::error::the workdir input did not become the container working directory"; exit 1; }
+          grep -qx 'ACTION_DIRS=11' "${log}" || { echo "::error::the container did not see 11 action directories under the mounted workspace"; exit 1; }
+
+  # ---------------------------------------------------------------------------
+  # run-pester-suite + clone-into-short-path (Windows) + upload-codeql-sarif
+  # ---------------------------------------------------------------------------
+  windows-scripts:
+    name: run-pester-suite + upload-codeql-sarif
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Only the workflow_dispatch-gated SARIF upload below needs this.
+      security-events: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      # A suite written HERE rather than a repository one: this asserts the
+      # ACTION, so the payload must be trivially known-passing and in the 3.4
+      # dialect the action pins. A repository suite would make a failure
+      # ambiguous between "the action broke" and "that suite broke".
+      - name: Write a throwaway Pester 3.4 suite
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'selftest-pester'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          @'
+          Describe 'ContainerHub composite actions self-test' {
+              It 'runs a real assertion' {
+                  (1 + 1) | Should Be 2
+              }
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $dir 'Selftest.Tests.ps1') -Encoding utf8
+
+      - name: run-pester-suite
+        uses: ./.github/actions/run-pester-suite
+        with:
+          path: ${{ runner.temp }}/selftest-pester/Selftest.Tests.ps1
+          version: '3.4.0'
+
+      # The Windows platform this action was written for: a deep submodule
+      # chain into a SHORT root, with the SSH->HTTPS rewrite the hosted runner
+      # needs. D:\ws is also where the SARIF probe below looks, which is the
+      # point - it is outside GITHUB_WORKSPACE.
+      - name: clone-into-short-path
+        uses: ./.github/actions/clone-into-short-path
+        with:
+          target: /d/ws
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          token: ${{ github.token }}
+          submodules: 'true'
+          exclude-submodules: ''
+
+      - name: 'The short-path clone is a complete tree on D:'
+        run: |
+          if (-not (Test-Path 'D:\ws\.git')) { throw 'clone-into-short-path produced no clone at D:\ws' }
+          $sha = (git -C 'D:\ws' rev-parse HEAD).Trim()
+          if ($sha -ne '${{ github.sha }}') { throw "D:\ws is at $sha, the ref input asked for ${{ github.sha }}" }
+          if (-not (Get-ChildItem 'D:\ws\third_party\DocumANTation' -Force)) {
+              throw "submodules: 'true' left third_party\DocumANTation empty in the short-path clone"
+          }
+
+      # Negative branch: a directory with no .sarif must report found=false and
+      # must not crash. This is not a formality - the probe writes to
+      # GITHUB_OUTPUT and a BOM there (the bug the action's -Encoding utf8NoBOM
+      # comment records) silently breaks the output entirely, which this catches.
+      - name: upload-codeql-sarif (nothing to upload)
+        id: sarif_absent
+        uses: ./.github/actions/upload-codeql-sarif
+        with:
+          workspace: ${{ github.workspace }}
+          results-dir: selftest-no-such-directory
+          category: containerhub-actions-selftest-absent
+
+      - name: The probe reported no SARIF
+        run: |
+          $found = '${{ steps.sarif_absent.outputs.found }}'
+          if ($found -ne 'false') {
+              throw "upload-codeql-sarif reported found='$found' for a directory with no .sarif (expected 'false'; an EMPTY value means the GITHUB_OUTPUT write is broken)"
+          }
+
+      # Positive branch. This is the bug the action exists for: the results sit
+      # in D:\ws, OUTSIDE GITHUB_WORKSPACE, where hashFiles() reports nothing
+      # and a lane goes green having uploaded no alerts.
+      #
+      # It really uploads, so it is dispatch-only: `security-events: write` is
+      # not granted to a fork PR's token and the step would fail for a reason
+      # that has nothing to do with the action. The SARIF carries ZERO results,
+      # so the upload adds an empty analysis under its own category and no
+      # alerts. On push/pull_request this step is still LINTED (actionlint
+      # ignores `if:`), so its input/output contract is checked every run.
+      - name: Plant a zero-result SARIF outside the workspace
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          $dir = 'D:\ws\codeql-results'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $sarif = [ordered]@{
+              version = '2.1.0'
+              '$schema' = 'https://json.schemastore.org/sarif-2.1.0.json'
+              runs = @(
+                  @{
+                      tool = @{ driver = @{ name = 'containerhub-actions-selftest'; informationUri = 'https://github.com/Kataglyphis/ContainerHub'; rules = @() } }
+                      results = @()
+                  }
+              )
+          }
+          $sarif | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $dir 'selftest.sarif') -Encoding utf8NoBOM
+
+      - name: upload-codeql-sarif (results outside GITHUB_WORKSPACE)
+        id: sarif_present
+        if: github.event_name == 'workflow_dispatch'
+        uses: ./.github/actions/upload-codeql-sarif
+        with:
+          workspace: 'D:\ws'
+          results-dir: codeql-results
+          category: containerhub-actions-selftest
+
+      - name: The probe found the SARIF hashFiles() cannot see
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          $found = '${{ steps.sarif_present.outputs.found }}'
+          if ($found -ne 'true') {
+              throw "upload-codeql-sarif reported found='$found' for D:\ws\codeql-results, which contains a .sarif - the probe is blind outside GITHUB_WORKSPACE again"
+          }
+
+  # ---------------------------------------------------------------------------
+  # set-docker-data-root + assert-docker-disk-space + cleanup-disk-space
+  # ---------------------------------------------------------------------------
+  windows-docker-host:
+    name: Windows docker host actions
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # Real order for a consumer: move the data-root, then assert the drive it
+      # now lives on. cleanup-disk-space comes LAST here, unlike in a consumer
+      # lane, because it deletes Visual Studio and the whole hostedtoolcache -
+      # running it first would make every later step's failure ambiguous.
+      - name: set-docker-data-root
+        id: datar
+        uses: ./.github/actions/set-docker-data-root
+        with:
+          data-root: 'D:\docker'
+          service-name: docker
+          # The real default is 70. 20 is used here because the assertion this
+          # job wants is "the drive exists and is big", not "this runner can
+          # hold winamd64" - a runner resize must not red-light the self-test
+          # for a reason that has nothing to do with the action.
+          required-free-gb: '20'
+          ready-timeout-seconds: '180'
+
+      - name: The daemon reports the data-root it was moved to
+        run: |
+          $root = '${{ steps.datar.outputs.data-root }}'
+          $free = '${{ steps.datar.outputs.free-gb }}'
+          if ($root -ne 'D:\docker') { throw "set-docker-data-root output data-root='$root', expected 'D:\docker'" }
+          if ($free -notmatch '^[0-9]+(\.[0-9]+)?$') { throw "set-docker-data-root output free-gb='$free' is not a number" }
+          if ([double]$free -le 0) { throw "set-docker-data-root output free-gb='$free' claims no free space on the target drive" }
+          # The output is the action's claim; this is the daemon's.
+          $live = (docker info --format '{{.DockerRootDir}}').Trim()
+          if ($live -notlike 'D:\docker*') { throw "the daemon reports data-root '$live'; the move did not take effect" }
+
+      # required-free-gb: 1 always passes on a hosted runner. That is on
+      # purpose: the SHORTFALL exit cannot be asserted without
+      # continue-on-error. What this does exercise is the probe - the retry
+      # loop, the plain-`docker info` fallback and the output pair - which is
+      # the part that has actually broken twice (see the action's own comments).
+      - name: assert-docker-disk-space
+        id: assertdisk
+        uses: ./.github/actions/assert-docker-disk-space
+        with:
+          required-free-gb: '1'
+          fallback-data-root: 'D:\docker'
+          probe-attempts: '6'
+          probe-interval-seconds: '5'
+
+      - name: The probe resolved a data-root and a free-space figure
+        run: |
+          $root = '${{ steps.assertdisk.outputs.data-root }}'
+          $free = '${{ steps.assertdisk.outputs.free-gb }}'
+          if ([string]::IsNullOrWhiteSpace($root)) { throw 'assert-docker-disk-space resolved an EMPTY data-root; the probe fell through every branch' }
+          if ($root -notlike 'D:\docker*') { throw "assert-docker-disk-space resolved '$root' but set-docker-data-root moved the daemon to D:\docker" }
+          if ($free -notmatch '^[0-9]+(\.[0-9]+)?$') { throw "assert-docker-disk-space output free-gb='$free' is not a number" }
+
+      - name: 'Free space on C: before cleanup'
+        id: before
+        run: |
+          $free = [math]::Round((Get-Volume -DriveLetter C).SizeRemaining / 1GB, 2)
+          Write-Host "C: free before cleanup: $free GB"
+          "free-gb=$free" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+
+      - name: cleanup-disk-space
+        uses: ./.github/actions/cleanup-disk-space
+
+      # The action takes no inputs and produces no outputs, and it is
+      # best-effort by design (`exit 0`), so "the step was green" proves
+      # nothing at all. Requiring it to have actually RECLAIMED space is the
+      # only assertion available that can fail - and it is the one that catches
+      # the realistic regression: a PowerShell change breaking `Get-Item
+      # -Path <wildcard>` would make Fast-Remove delete nothing, silently.
+      - name: cleanup-disk-space actually reclaimed space
+        run: |
+          $before = [double]'${{ steps.before.outputs.free-gb }}'
+          $after = [math]::Round((Get-Volume -DriveLetter C).SizeRemaining / 1GB, 2)
+          Write-Host "C: free after cleanup: $after GB (before: $before GB)"
+          if (($after - $before) -lt 1.0) {
+              throw "cleanup-disk-space freed $([math]::Round($after - $before, 2)) GB on C: (before $before, after $after). It deletes Visual Studio and the whole hostedtoolcache, so anything under 1 GB means the removals are no longer removing anything."
+          }
+
+  # ---------------------------------------------------------------------------
+  # prepare-windows-container-host + run-in-windows-container
+  # ---------------------------------------------------------------------------
+  windows-container:
+    name: Windows container lane (deep)
+    # Pulling :winamd64 is ~54 GB and the better part of an hour, so this runs
+    # only when asked for. The steps are still linted on every trigger.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deep }}
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: prepare-windows-container-host
+        id: prep
+        uses: ./.github/actions/prepare-windows-container-host
+        with:
+          registry: ghcr.io
+          registry-username: Kataglyphis
+          registry-password: ${{ secrets.GHCR_PAT }}
+          checkout: 'true'
+          fetch-depth: '1'
+          submodules: 'true'
+          short-path-target: /d/ws
+          exclude-submodules: ''
+          token: ${{ github.token }}
+          data-root: 'D:\docker'
+          required-free-gb: '70'
+          free-disk-space: 'true'
+          # 'true' on purpose: the branch costs a minute and is otherwise dead
+          # code, and this is the one lane that can afford to pay for it.
+          measure-data-root: 'true'
+
+      - name: The prologue reports the tree and the drive it used
+        run: |
+          $root = '${{ steps.prep.outputs.data-root }}'
+          $ws = '${{ steps.prep.outputs.workspace }}'
+          if ($root -ne 'D:\docker') { throw "prepare-windows-container-host output data-root='$root', expected 'D:\docker'" }
+          if ($ws -ne 'D:\ws') { throw "prepare-windows-container-host output workspace='$ws'; with short-path-target it must be the short clone, not GITHUB_WORKSPACE" }
+          if (-not (Test-Path 'D:\ws\.github\actions\README.md')) { throw 'the short-path clone at D:\ws is not this repository' }
+
+      # -Command entrypoint. extra-args is ONE ARGV ELEMENT PER LINE here (the
+      # Linux sibling takes a verbatim shell fragment; Windows argv must stay
+      # literal), and the command reads the variable back out.
+      - name: run-in-windows-container (-Command)
+        uses: ./.github/actions/run-in-windows-container
+        with:
+          command: |
+            if ($env:SELFTEST_MARKER -ne 'ok') { throw "extra-args did not deliver SELFTEST_MARKER (got '$env:SELFTEST_MARKER')" }
+            if ((Get-Location).Path -ne 'C:\ws') { throw "mount-target did not become the working directory (got '$((Get-Location).Path)')" }
+            $n = @(Get-ChildItem 'C:\ws\.github\actions' -Directory).Count
+            if ($n -ne 11) { throw "the bind mount shows $n action directories, expected 11" }
+            Write-Host "container OK: marker, workdir and mount all check out"
+          extra-args: |
+            -e
+            SELFTEST_MARKER=ok
+          cpus: '2'
+          memory: 8g
+          mount-source: 'D:\ws'
+          mount-target: 'C:\ws'
+          isolation: process
+
+      # -File entrypoint with file-args. This is the branch that exists so a
+      # secret-bearing argument keeps LITERAL argv semantics, so the payload is
+      # chosen to be exactly what -Command would mangle: a space, a single
+      # quote, a dollar sign, a backtick and an EMPTY element.
+      - name: Plant the argv probe in the mounted tree
+        run: |
+          @'
+          param()
+          $expected = @("a b", '', "it's", '$notavar', 'back`tick')
+          if ($args.Count -ne $expected.Count) {
+              throw "argv count $($args.Count), expected $($expected.Count): [$($args -join '|')]"
+          }
+          for ($i = 0; $i -lt $expected.Count; $i++) {
+              if ($args[$i] -cne $expected[$i]) {
+                  throw "argv[$i] is '$($args[$i])', expected '$($expected[$i])'"
+              }
+          }
+          Write-Host 'argv OK: every element arrived literally'
+          '@ | Set-Content -LiteralPath 'D:\ws\selftest-argv.ps1' -Encoding utf8NoBOM
+
+      - name: run-in-windows-container (-File with literal argv)
+        uses: ./.github/actions/run-in-windows-container
+        with:
+          file: 'C:\ws\selftest-argv.ps1'
+          file-args: |
+            a b
+
+            it's
+            $notavar
+            back`tick
+          mount-source: 'D:\ws'
+          mount-target: 'C:\ws'

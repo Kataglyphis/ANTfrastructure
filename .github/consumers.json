@@ -1,0 +1,144 @@
+{
+  "_readme": [
+    "The declarative list of repositories that consume this hub, and the classes of",
+    "hub entry point the inventory grades. linux/scripts/verify_consumer_inventory.py",
+    "reads this file; .github/workflows/consumer-inventory.yml runs it on a schedule.",
+    "Rationale, the report format and the rules for editing this file:",
+    "docs/consumer-inventory.md#the-consumer-inventory"
+  ],
+  "hub": {
+    "owner": "Kataglyphis",
+    "repo": "ContainerHub",
+    "submodule_path": "third_party/ContainerHub"
+  },
+  "consumers": [
+    {
+      "name": "ContainerHub",
+      "clone_url": "https://github.com/Kataglyphis/ContainerHub.git",
+      "ref": "main",
+      "self": true,
+      "confirmed": true,
+      "note": "The hub itself. Present so an entry point reached ONLY from here is visible as such: hub-internal use is not a consumer, and that distinction is the whole point of the report."
+    },
+    {
+      "name": "BeschleunigerBallett",
+      "clone_url": "https://github.com/Kataglyphis/BeschleunigerBallett.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "C++/CMake. Submodule at third_party/ContainerHub; uses the four container composite actions and run-lint-gates.sh."
+    },
+    {
+      "name": "OmniAccelerANT",
+      "clone_url": "https://github.com/Kataglyphis/OmniAccelerANT.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Flutter/Dart. Submodule at third_party/ContainerHub."
+    },
+    {
+      "name": "OrchestrANT",
+      "clone_url": "https://github.com/Kataglyphis/OrchestrANT.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Python. Calls the python-ci-linux.yml / python-ci-windows.yml reusable workflows."
+    },
+    {
+      "name": "jotrockenmitlocken",
+      "clone_url": "https://github.com/Kataglyphis/jotrockenmitlocken.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Flutter/Dart. Submodule at third_party/ContainerHub."
+    }
+  ],
+  "unconfirmed": [
+    {
+      "name": "WebDavClient",
+      "why": "An earlier audit recorded it consuming the python-ci reusable workflows. Never verified against a clone.",
+      "action": "Owner: confirm the repository name and default branch, then move this row into `consumers` with confirmed:true. If it does not exist, delete the row."
+    },
+    {
+      "name": "AccelerANTgine",
+      "why": "Named in an earlier audit as consuming hub content.",
+      "action": "Owner: confirm, then promote or delete."
+    },
+    {
+      "name": "ANThology",
+      "why": "Named in an earlier audit as consuming hub content; the 2026-09-08 shared-half work took code from it.",
+      "action": "Owner: confirm, then promote or delete."
+    }
+  ],
+  "entry_point_classes": [
+    {
+      "kind": "action",
+      "glob": ".github/actions/*/action.yml",
+      "needle": "dir",
+      "why": "A composite action is reached as `<owner>/ContainerHub/.github/actions/<name>@<ref>`, so the DIRECTORY is the entry point."
+    },
+    {
+      "kind": "reusable-workflow",
+      "glob": ".github/workflows/*.yml",
+      "needle": "path",
+      "requires": "workflow_call",
+      "why": "Only a workflow that declares workflow_call is callable from another repository; the rest are this repo's own lanes."
+    },
+    {
+      "kind": "linux-gate",
+      "glob": "linux/scripts/*.py",
+      "needle": "path",
+      "why": "The Python gates. Several take a consumer root and are meant to be run from a consumer checkout."
+    },
+    {
+      "kind": "linux-script",
+      "glob": "linux/scripts/*.sh",
+      "needle": "path",
+      "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are reached THROUGH these and are deliberately out of scope."
+    },
+    {
+      "kind": "docs-gate",
+      "glob": "docs/scripts/*.py",
+      "needle": "path",
+      "why": "The documentation and SBOM gates."
+    },
+    {
+      "kind": "shared-asset",
+      "glob": "shared/config/*",
+      "needle": "path",
+      "why": "The files Sync-SharedConfig copies into every consumer, plus the syncers themselves."
+    },
+    {
+      "kind": "shared-template",
+      "glob": "shared/*/templates/*",
+      "needle": "path",
+      "why": "Templates a consumer copies or sources verbatim."
+    },
+    {
+      "kind": "shared-test",
+      "glob": "shared/windows/tests/*.ps1",
+      "needle": "path",
+      "why": "Pester suites the hub publishes for consumers to run against their own tree."
+    },
+    {
+      "kind": "windows-script",
+      "glob": "windows/scripts/*.ps1",
+      "needle": "path",
+      "why": "The top-level Windows entry points."
+    },
+    {
+      "kind": "windows-module",
+      "glob": "windows/scripts/modules/*.psm1",
+      "needle": "path",
+      "alias": "stem-word",
+      "why": "The PowerShell modules. A consumer asks for one by NAME (Resolve-BuildModulePath -Name 'WindowsBuild.Common'), never by hub path, so the path alone would report every module dead."
+    },
+    {
+      "kind": "cmake-module",
+      "glob": "cmake/*.cmake",
+      "needle": "path",
+      "alias": "cmake-include",
+      "why": "CMake modules. A consumer puts the hub's cmake/ on CMAKE_MODULE_PATH and then writes include(Sanitizers), so the path alone would report every one of them dead."
+    }
+  ]
+}

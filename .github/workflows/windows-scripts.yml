@@ -51,12 +51,13 @@ jobs:
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
 
-      # Parse gate is enforced; analyzer findings are advisory until the
-      # backlog of findings across the 24 modules is triaged — then add
-      # -FailOnAnalyzer to also fail on analyzer errors.
+      # -FailOnAnalyzer since 2026-09-08: the finding backlog it was waiting on
+      # is triaged to zero (the last three were empty catch blocks), so analyzer
+      # findings are fatal here instead of advisory. Without the switch this step
+      # printed findings and still exited 0 - a check that cannot fail.
       - name: Lint (parse gate + PSScriptAnalyzer)
         shell: pwsh
-        run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1
+        run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer
 
       # Hermetic Pester floor: the suites need Pester v5; the hosted image
       # currently ships 5.9.0 (so this is a fast no-op-ish install), but

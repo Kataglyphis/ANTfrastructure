@@ -163,11 +163,16 @@ this repo's cp314 pin).
   - 36 minors, dominated by fail-open error paths (nuget/scoop/git-lfs class) —
     sweep opportunistically, each with a mutate-the-guard test (standing rule).
 
-- **#159 — archive the eight settled sccache/CUDA probes (814 lines).** Three are
+- **#159 — DELETE the eight settled sccache/CUDA probes (814 lines).** Three are
   dead-by-construction (they mount the #137-deleted `sccache-nvcc-quote-fix`
-  tree); none is referenced by a live doc. Move to `diagnostics/archive/`
-  (pattern #127); re-point `Dockerfile.probe`'s default `PROBE_SCRIPT` and mind
-  `**/archive/` in .dockerignore. Keep live: `Test-OnnxTuReplay.ps1`,
+  tree); none is referenced by a live doc. **Was "move to `diagnostics/archive/`";
+  that destination is gone.** The archive facility was retired when its six
+  remaining probes were deleted and `Test-SccacheWrite.ps1` moved back out to
+  `diagnostics/` — it never worked as advertised, because `**/archive/` in
+  .dockerignore strips the directory from every build context, so the
+  `-ProbeScript archive/<name>.ps1` its README promised could not solve. So this
+  is a plain delete with git history as the record; re-point `Dockerfile.probe`'s
+  default `PROBE_SCRIPT` if it names one of the eight. Keep live: `Test-OnnxTuReplay.ps1`,
   `Invoke-SccacheCudaLlmDeadlock.ps1`, `Test-BuildCopy.ps1` (plus its
   `probe-build-copy/` asset dir, which keeps its name per 19982134), the
   write/video trios.

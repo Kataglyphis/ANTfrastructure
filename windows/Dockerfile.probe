@@ -4,16 +4,21 @@
 # script-based probe in windows/scripts/diagnostics/. Replaces 14 per-probe
 # skeleton files that differed only in one script name + 0-2 mounts. Run via:
 #   Invoke-DiagnosticProbe.ps1 -ProbeScript probe-<name>.ps1 [-BaseImage <tag>]
-# (archived probes stay runnable: -ProbeScript archive/probe-<name>.ps1)
 #
 # Mount contract (matches what the probe scripts hard-code):
 #   C:\bkmnt\diagnostics  - all probe scripts ($scriptAssetRoot resolves parent;
-#                           NB archive/ probes sit one level deeper — they must
-#                           hardcode C:\bkmnt\modules, and all current ones do)
+#                           the bind source is the CONTEXT copy, so a probe in a
+#                           .dockerignore'd subdir is NOT here — that is what sank
+#                           the retired archive/: `**/archive/` stripped it)
 #   C:\bkmnt\modules      - shared psm1 modules
 #   C:\bkmnt\patches      - windows/scripts/patches (ffmpeg/opencv/... trees)
-#   C:\bkmnt\patch        - the sccache upstream-fix worktree (2726/patch-verify)
 #   C:\bkmnt\versions.env - canonical pins
+# There is NO C:\bkmnt\patch. It mounted windows/upstream/sccache-nvcc-quote-fix,
+# which #137 DELETED when both PRs merged upstream; the series survives nowhere in
+# this tree, so the mount could only be removed, not repaired. While it stood EVERY
+# -ProbeScript solve died at checksum, live probes included. Its three readers
+# (Test-Sccache2726Repro / -SccachePatchVerify / -SccachePrHygiene) are dead by
+# construction — backlog #159's subject; they now fail alone, not the whole lane.
 # Whole-dir mounts are cache-irrelevant HERE ONLY: PROBE_NONCE busts the layer
 # by design. Never copy this idiom into a chain stage (see the per-file
 # buildmods rationale in Dockerfile.media-builder).
@@ -36,7 +41,6 @@ ARG ORT_REF=""
 RUN --mount=type=bind,source=windows/scripts/diagnostics,target=C:\bkmnt\diagnostics `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches,target=C:\bkmnt\patches `
-    --mount=type=bind,source=windows/upstream/sccache-nvcc-quote-fix,target=C:\bkmnt\patch `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
     & (Join-Path 'C:\bkmnt\diagnostics' $env:PROBE_SCRIPT) -Nonce $env:PROBE_NONCE; `
     if ($LASTEXITCODE) { exit $LASTEXITCODE }; `

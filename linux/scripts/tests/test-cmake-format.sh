@@ -15,8 +15,11 @@ printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 # the first run and reuses the fixture-local .venv-cmake-format afterwards.
 TREE="${WORK}/tree"
 mkdir -p "${TREE}/cmake"
+# 01-core/tool-checks.sh: code-quality.sh sources it for has_tool/require_tools
+# (it used to carry an inline copy). A fixture tree missing a real dependency
+# fails as a bash "No such file" and every assertion below reads that instead.
 for _m in lib/code-quality.sh lib/log-bootstrap.sh 01-core/python_uv.sh \
-          01-core/logging.sh cmake-format.requirements.txt; do
+          01-core/logging.sh 01-core/tool-checks.sh cmake-format.requirements.txt; do
   install -D -m 0644 "${REPO_ROOT}/linux/scripts/${_m}" "${TREE}/linux/scripts/${_m}"
 done
 cp "${REPO_ROOT}/.cmake-format.yaml" "${TREE}/.cmake-format.yaml"

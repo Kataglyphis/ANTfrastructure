@@ -1,12 +1,18 @@
-# Archived probes
+# Archived probes — RETIRED, do not refill
 
-One-shot probes whose question is settled (each header names the incident and
-the verdict's date). Kept for the record — the measurement methodology is
-often the reusable part. Still runnable without restoration:
+This directory is empty and should be deleted along with this file. It is kept
+here only because removing it needs the owner's sign-off (nothing in the tree
+references it).
 
-    Invoke-DiagnosticProbe.ps1 -ProbeScript archive/<name>.ps1 -BaseImage <tag>
+Its six remaining one-shot probes were deleted — git history is the record for a
+probe whose question is settled — and `Test-SccacheWrite.ps1`, which was never
+settled, moved back out to `../Test-SccacheWrite.ps1`, where
+`Dockerfile.sccache-write-probe` and `Dockerfile.media-builder` now name it.
 
-Policy: a probe moves here when (a) its question has a recorded answer AND
-(b) nothing lists it as a re-run trigger (upgrade re-tests like the
-`test-*.ps1` family stay live no matter how rarely they run). Move it back
-out if its subject reopens.
+**Do not re-create the facility.** Its central promise — "still runnable without
+restoration" via `Invoke-DiagnosticProbe.ps1 -ProbeScript archive/<name>.ps1` —
+was never true. `.dockerignore` carries `**/archive/`, and `Dockerfile.probe`
+bind-mounts `windows/scripts/diagnostics` FROM the build context, so an archived
+probe is stripped before the build starts. `Invoke-DiagnosticProbe.ps1` checks
+the path on the HOST (where it exists) and fails only later, inside the solve.
+Archiving a probe here silently made it unrunnable; deleting it says so honestly.

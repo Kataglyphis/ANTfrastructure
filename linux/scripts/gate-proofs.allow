@@ -87,3 +87,16 @@ mutation-family:build_viewer
 
 # Arrived by merge 2026-09-07 with the NAS document-AI census (3f300c32).
 mutation-family:census
+
+# Arrived 2026-09-08 with the mutation coverage for this batch's new hub entry
+# points. Each names the subject its ids describe, over files no preflight slug
+# owns: the consumer-facing lint aggregator (linux/scripts/run-lint-gates.sh and
+# 01-core/gates.sh, whose ids sit in the existing `lib` family), the CI image
+# reference pair (ci-image-ref.sh and verify_ci_image_refs.py -- lint-workflows.sh
+# runs the latter through "${_PY}", so the registry cannot credit it by name),
+# the bash twin of Sync-SharedConfig.ps1 together with shared-assets.manifest,
+# and the consumer inventory gate.
+mutation-family:lint-gates
+mutation-family:ci-image-ref
+mutation-family:shared-config-sync
+mutation-family:consumer-inventory

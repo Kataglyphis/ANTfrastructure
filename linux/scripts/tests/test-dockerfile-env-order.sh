@@ -116,4 +116,86 @@ t_assert_eq 'ENV PATH="${PATH}' "$(printf '%s' "${_p}" | cut -c1-17)"
 t_case "build-tools stays off PATH: it ships an lld that would front /usr/bin/lld"
 t_assert_fails grep -q 'ANDROID_HOME}/build-tools' "${PKG}"
 
+# --- lint-dockerfiles.sh over a CONSUMER tree (--root) ------------------------
+# Same contract as lint-workflows.sh / lint-shell.sh / lint-python.sh, and the
+# same reason: a submodule checkout puts the gate inside the consumer, where the
+# default root resolves to ContainerHub, all 24 of ITS Dockerfiles get graded
+# and the verdict is reported as the consumer's.
+_work="$(mktemp -d)"
+trap 'rm -rf "${_work}"' EXIT
+# `broken` and `vendored` both carry the live ENV-ordering defect this file is
+# otherwise about, so a green verdict over a tree holding the vendored one
+# proves the scope excluded it rather than that it was clean.
+_plant() {  # <dir> <shape>
+  case "$2" in
+    clean)           printf 'FROM scratch\nENV A=1\n' > "$1/Dockerfile"
+                     mkdir -p "$1/svc"
+                     printf 'FROM scratch\nENV B=1\n' > "$1/svc/Dockerfile.web" ;;
+    broken|vendored) printf '%s\n' "$(_two_keys '    ')" > "$1/Dockerfile" ;;
+    empty)           printf 'no dockerfiles here\n' > "$1/README.md" ;;
+  esac
+}
+# _consumer <clean|broken|empty> [vendored] -> a consumer checkout.
+_consumer() { t_consumer_fixture "${_work}" _plant "$@"; }
+# The advisory buildx pass needs a daemon and grades nothing; off for every case.
+_at_root() { LINT_DOCKERFILES_BUILD_CHECK=0 bash "${LINTER}" --root "$1" 2>&1; }
+_rc_at_root() {
+  LINT_DOCKERFILES_BUILD_CHECK=0 t_rc bash "${LINTER}" --root "$1"
+}
+
+t_case "--root decides WHICH tree is graded, and the verdicts follow the argument"
+_c_clean="$(_consumer clean)"
+_c_broken="$(_consumer broken)"
+t_assert_eq "0" "$(_rc_at_root "${_c_clean}")" \
+  "the gate must be able to be green over a consumer, or the red below proves only that it is broken"
+t_assert_eq "1" "$(_rc_at_root "${_c_broken}")" \
+  "a gate that ignored --root would grade this repo's 24 Dockerfiles -- which are clean -- and report OK"
+t_assert_contains "$(_at_root "${_c_broken}")" 'set in the SAME instruction'
+
+t_case "the banner names the tree that was graded, and how much of it"
+_out="$(_at_root "${_c_clean}")"
+t_assert_contains "${_out}" "dockerfile lint under ${_c_clean}"
+t_assert_contains "${_out}" "ENV instruction ordering on 2 Dockerfile(s)" \
+  "a count that included this repo's own Dockerfiles would be a verdict about the wrong tree"
+
+t_case "a vendored checkout inside the consumer is a gitlink, and is not graded"
+_c_vendored="$(_consumer clean vendored)"
+t_assert_eq "0" "$(_rc_at_root "${_c_vendored}")" \
+  "grading the vendored hub AS the consumer is the same wrong-tree bug from the other direction"
+t_assert_eq "1" "$(t_rc "${PY}" "${GATE}" "${_c_vendored}/${T_VENDORED}/Dockerfile")" \
+  "and the vendored Dockerfile really is broken, so the green above is about scope, not a clean file"
+
+t_case "a consumer with no Dockerfile is an ERROR, never a green verdict about nothing"
+_c_empty="$(_consumer empty)"
+t_assert_eq "1" "$(_rc_at_root "${_c_empty}")"
+t_assert_contains "$(_at_root "${_c_empty}")" "No Dockerfiles found to lint under ${_c_empty}"
+
+t_case "a consumer that ships .hadolint.yaml is graded by ITS waivers, not this repo's"
+# DL3006 (untagged FROM) is ignored HERE and by nothing in the consumer's own
+# config, so the verdict flipping to red is proof of which file was read.
+_c_cfg="$(mktemp -d "${_work}/cfg.XXXXXX")"
+git -C "${_c_cfg}" init -q
+printf 'FROM debian\nENV A=1\n' > "${_c_cfg}/Dockerfile"
+t_git_commit "${_c_cfg}"
+t_assert_eq "0" "$(_rc_at_root "${_c_cfg}")" \
+  "this repo's policy ignores DL3006, so without a consumer config the tree is green"
+printf 'failure-threshold: warning\nignored: []\n' > "${_c_cfg}/.hadolint.yaml"
+t_git_commit "${_c_cfg}"
+t_assert_eq "1" "$(_rc_at_root "${_c_cfg}")"
+t_assert_contains "$(_at_root "${_c_cfg}")" "DL3006"
+
+t_case "a root that is not a git checkout refuses instead of guessing a scope"
+_c_nogit="$(mktemp -d "${_work}/nogit.XXXXXX")"
+printf 'FROM scratch\nENV A=1\n' > "${_c_nogit}/Dockerfile"
+t_assert_eq "1" "$(_rc_at_root "${_c_nogit}")"
+t_assert_contains "$(_at_root "${_c_nogit}")" "is not a git checkout" \
+  "a scope guessed out of a non-checkout is a scope nobody chose"
+
+t_case "a root that does not exist refuses, it does not fall back to this repo"
+t_assert_eq "1" "$(_rc_at_root "${_work}/no-such-checkout")" \
+  "falling back would grade a clean tree and report OK for a checkout nobody looked at"
+
+t_case "--root with no value is a usage error, not a silent default"
+t_assert_eq "1" "$(LINT_DOCKERFILES_BUILD_CHECK=0 t_rc bash "${LINTER}" --root)"
+
 t_summary

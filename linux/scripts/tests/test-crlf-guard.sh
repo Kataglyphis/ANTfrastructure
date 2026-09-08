@@ -23,8 +23,11 @@ _repo() {
   git -C "${REPO}" config user.email tester@example.invalid
   git -C "${REPO}" config user.name tester
   git -C "${REPO}" config core.autocrlf false
-  mkdir -p "${REPO}/linux/scripts"
+  mkdir -p "${REPO}/linux/scripts/01-core"
   cp "${REPO_ROOT}/linux/scripts/lint-shell.sh" "${REPO}/linux/scripts/lint-shell.sh"
+  # lint-shell.sh sources 01-core/lint-root.sh; a fixture that copies only the
+  # entry point makes the source fail and the guard fall to its sentinel.
+  cp "${REPO_ROOT}/linux/scripts/01-core/lint-root.sh" "${REPO}/linux/scripts/01-core/lint-root.sh"
   printf 'echo hi\n' > "${REPO}/good.sh"
   printf 'echo bad\n' > "${REPO}/bad.sh"
   git -C "${REPO}" add good.sh bad.sh

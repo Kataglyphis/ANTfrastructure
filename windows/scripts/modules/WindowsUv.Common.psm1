@@ -259,9 +259,114 @@ function Sync-UvProjectDependencies {
     }
 }
 
-Export-ModuleMember -Function @(
-    'New-UvProjectEnvironment',
+<#
+.SYNOPSIS
+    Creates a uv environment AND remembers it, so a finally block can tear down
+    every environment the run made.
+.DESCRIPTION
+    New-UvProjectEnvironment creates one; nothing recorded WHICH ones a run created,
+    so three drivers (this repo's Invoke-CiTests.ps1, Invoke-CiStaticAnalysis.ps1 and
+    OrchestrANT's Build-Windows.ps1) each carried the same script-local
+    New-UvEnvironment/Remove-UvEnvironment pair bound to their own $CreatedUvEnvs
+    list. Script-local means no other driver could call them.
+
+    Tracker is an ordinary List[string] the caller owns and can inspect; passing it
+    explicitly, rather than hiding it in module state, is what lets two independent
+    batches run in one session without tearing down each other's environments.
+.PARAMETER Tracker
+    List the created path is appended to. Create it with
+    [System.Collections.Generic.List[string]]::new().
+.OUTPUTS
+    [string] The environment path, exactly as New-UvProjectEnvironment returned it.
+#>
+function New-TrackedUvEnvironment {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Workspace,
+        [Parameter(Mandatory)]
+        [string]$PythonVersion,
+        [Parameter(Mandatory)]
+        [string]$EnvName,
+        # AllowEmptyCollection: a tracker is EMPTY on the first create and on every
+        # teardown that runs after an early failure - the exact case the finally
+        # block exists for. Mandatory alone rejects an empty collection.
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$Tracker,
+        [scriptblock]$CommandRunner,
+        [scriptblock]$LogInfo,
+        [scriptblock]$LogWarning
+    )
+
+    $envPath = New-UvProjectEnvironment -Workspace $Workspace -PythonVersion $PythonVersion `
+        -EnvName $EnvName -CommandRunner $CommandRunner -LogInfo $LogInfo -LogWarning $LogWarning
+    $Tracker.Add($envPath) | Out-Null
+    return $envPath
+}
+
+<#
+.SYNOPSIS
+    Removes every environment in Tracker and empties it. Safe to call twice.
+.DESCRIPTION
+    The finally-block half of New-TrackedUvEnvironment. Removal is attempted for
+    every entry even when one fails, because leaving the rest behind on a Windows
+    runner is how a later run inherits a half-deleted venv.
+#>
+function Remove-TrackedUvEnvironment {
+    param(
+        # AllowEmptyCollection: a tracker is EMPTY on the first create and on every
+        # teardown that runs after an early failure - the exact case the finally
+        # block exists for. Mandatory alone rejects an empty collection.
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$Tracker,
+        [scriptblock]$LogInfo,
+        [scriptblock]$LogWarning
+    )
+
+    foreach ($envPath in @($Tracker)) {
+        try {
+            Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $LogInfo -LogWarning $LogWarning
+        } catch {
+            if ($LogWarning) { & $LogWarning "Could not remove uv environment ${envPath}: $($_.Exception.Message)" }
+        }
+    }
+    $Tracker.Clear()
+}
+
+<#
+.SYNOPSIS
+    Is this interpreter version one the fleet permits to fail without gating CI?
+.DESCRIPTION
+    One fleet answer to "which Python may fail". The bash half has been shared since
+    linux/scripts/01-core/python_uv.sh:31 (EXPERIMENTAL_PYTHON_VERSIONS, default
+    "3.14t"); the PowerShell half was a script-local list inside Invoke-CiTests.ps1,
+    so the two could drift silently and a consumer could not consult either.
+
+    Reads the SAME environment knob as the bash half and falls back to the same
+    default, so one export sets the policy for both halves of a matrix.
+.PARAMETER Version
+    Interpreter version as the matrix spells it, e.g. "3.14" or "3.14t".
+.OUTPUTS
+    [bool]
+#>
+function Test-ExperimentalPython {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Version
+    )
+
+    $configured = $env:EXPERIMENTAL_PYTHON_VERSIONS
+    if ([string]::IsNullOrWhiteSpace($configured)) { $configured = "3.14t" }
+    $permitted = $configured -split "[,\s]+" | Where-Object { $_ }
+    return ($permitted -contains $Version)
+}
+
+Export-ModuleMember -Function @(    'New-UvProjectEnvironment',
     'Remove-UvProjectEnvironment',
+    'New-TrackedUvEnvironment',
+    'Remove-TrackedUvEnvironment',
+    'Test-ExperimentalPython',
     'Sync-UvProjectDependencies',
     'Test-UvVenvHealthy',
     'Initialize-UvVenv',

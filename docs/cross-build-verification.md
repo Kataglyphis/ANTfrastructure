@@ -254,7 +254,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:42-58`, 36 slugs), which is also the vocabulary
+(`preflight.sh:43-59`, 37 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -264,6 +264,7 @@ drift if a slug is added without touching it.
 | `crlf-guard` | inline (`git ls-files --eol` over `lint-shell.sh --list-files`) | a tracked shell script — `*.sh` or an extension-less file on a shell shebang — whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
+| `context-paths` | `verify_dockerfile_context_paths.py` | class 1's other half — a COPY/`--mount=type=bind` source that no longer exists in that Dockerfile's build context, which BuildKit fails at context checksum before instruction one |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 — the host half (fix5-fix10); the /opt-probing half is [`smoke-critical-fixes.sh`](#the-in-image-half-of-critical-fixes), which no build stage runs |
 | `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |

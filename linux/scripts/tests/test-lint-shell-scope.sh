@@ -78,4 +78,83 @@ t_assert_fails grep -q -F -e "outside the lint-shell.sh scope" <<<"$(
 t_case "the deleted .githooks copy is really gone"
 t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"
 
+# --- the consumer root (--root) ----------------------------------------------
+# A submodule checkout puts this script INSIDE the consumer, where the default
+# root resolves to ContainerHub: without --root the gate grades the hub's own
+# files, reports green, and nobody has read a line of the consumer's shell.
+# These cases pin the three ways that goes wrong -- the wrong tree graded, the
+# vendored hub graded AS the consumer, and an empty scope reported as a pass.
+# An `if` with no `fi`: SC1046/SC1072 at ERROR level, the tier this gate fails
+# on. The vendored copy is broken too, so a green verdict over a tree carrying
+# one proves the scope excluded it rather than that it was clean.
+_broken_sh() { printf '#!/usr/bin/env bash\nif [ 1 = 1 ] ; then\n  echo hi\n' > "$1"; }
+_plant() {  # <dir> <shape>
+  case "$2" in
+    broken|vendored) _broken_sh "$1/${2}.sh" ;;
+    clean)           printf '#!/usr/bin/env bash\necho hi\n' > "$1/clean.sh" ;;
+    empty)           printf 'no shell here\n' > "$1/README.md" ;;
+  esac
+}
+# _consumer <clean|broken|empty> [vendored] -> a consumer checkout.
+_consumer() { t_consumer_fixture "${_work}" _plant "$@"; }
+
+t_case "--root decides WHICH tree is graded, and the verdicts follow the argument"
+_c_clean="$(_consumer clean)"
+_c_broken="$(_consumer broken)"
+t_assert_eq "0" "$(t_rc bash "${SUBJECT}" --root "${_c_clean}")" \
+  "the gate must be able to be green over a consumer, or the red below proves only that it is broken"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_c_broken}")" \
+  "a gate that ignored --root would grade ContainerHub and give both checkouts the same verdict"
+t_assert_contains "$(bash "${SUBJECT}" --root "${_c_broken}" 2>&1)" "broken.sh" \
+  "the finding has to name the consumer's file to be actionable"
+
+t_case "--root=<dir> is the same argument"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root="${_c_broken}")"
+
+t_case "the consumer's scope is the CONSUMER's files, not this repo's"
+_scope="$(bash "${SUBJECT}" --root "${_c_clean}" --list-files)"
+t_assert_eq "clean.sh" "${_scope}"
+t_assert_fails grep -q -F -e 'linux/scripts/lint-shell.sh' <<<"${_scope}"
+
+t_case "a vendored checkout inside the consumer is a gitlink, and is not graded"
+_c_vendored="$(_consumer clean vendored)"
+t_assert_fails grep -q -F -e 'vendored.sh' \
+  <<<"$(bash "${SUBJECT}" --root "${_c_vendored}" --list-files)"
+t_assert_eq "0" "$(t_rc bash "${SUBJECT}" --root "${_c_vendored}")" \
+  "grading the vendored hub AS the consumer is the same wrong-tree bug from the other direction"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" "${_c_vendored}/${T_VENDORED}/vendored.sh")" \
+  "and the vendored script really is broken, so the green above is about scope, not about a clean file"
+
+t_case "an empty file list under an explicit root is an ERROR, never 'no shell scripts to check'"
+_c_empty="$(_consumer empty)"
+_out="$(bash "${SUBJECT}" --root "${_c_empty}" 2>&1)"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_c_empty}")" \
+  "this gate skips paths it cannot find, so a scope built from a wrong prefix arrives here empty and used to pass"
+t_assert_contains "${_out}" "a root was given explicitly"
+t_assert_fails grep -q -F -e 'no shell scripts to check' <<<"${_out}"
+
+t_case "a named file that does not exist under the root is an ERROR, not a silent skip"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_c_clean}" no-such.sh)"
+
+t_case "a root that is not a git checkout refuses instead of guessing a scope"
+_c_nogit="$(mktemp -d "${_work}/nogit.XXXXXX")"
+printf '#!/usr/bin/env bash\necho hi\n' > "${_c_nogit}/app.sh"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_c_nogit}")"
+t_assert_contains "$(bash "${SUBJECT}" --root "${_c_nogit}" 2>&1)" "is not a git checkout" \
+  "a scope silently read out of a non-checkout is a scope nobody chose"
+
+t_case "a root that does not exist refuses, it does not fall back to this repo"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_work}/no-such-checkout")" \
+  "falling back would grade a clean tree and report OK for a checkout nobody looked at"
+# The MESSAGE, not just the status: a silent fallback that happens to fail later
+# for some other reason still hides which tree the caller actually asked about.
+t_assert_contains "$(bash "${SUBJECT}" --root "${_work}/no-such-checkout" 2>&1)" \
+  "lint root not found"
+
+t_case "--root with no value is a usage error, not a silent default"
+t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root)"
+
+t_case "the default scope is untouched by all of the above"
+t_assert_contains "$(bash "${SUBJECT}" --list-files)" "linux/host-config/git-hooks/pre-commit"
+
 t_summary

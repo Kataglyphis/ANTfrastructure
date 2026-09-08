@@ -40,7 +40,7 @@ export PYTHONUTF8=1
 : "${PREFLIGHT_ONLY:=}"
 : "${PREFLIGHT_SKIP:=}"
 
-KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity code-dupes artifact-parity \
+KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
              pkg-names \
@@ -132,6 +132,9 @@ run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.
 # lines to the value. This pins the class; a unit test pins one function.
 run_check stdout-returns "stdout-as-return-value" ${PREFLIGHT_PYTHON} linux/scripts/verify_stdout_returns.py
 run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify_script_copy_coverage.py
+# 2b. The other half of that question: every COPY/mount SOURCE still exists in
+# its Dockerfile's build context. A move or a delete breaks it at checksum.
+run_check context-paths "Dockerfile context paths" ${PREFLIGHT_PYTHON} linux/scripts/verify_dockerfile_context_paths.py
 
 # 3. Critical-fix source integrity (incl. fix6: native-GCC system paths, bugs D/E).
 run_check critical-fixes "critical fixes"         bash linux/scripts/verify-critical-fixes.sh

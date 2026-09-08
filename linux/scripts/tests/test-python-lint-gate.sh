@@ -27,7 +27,11 @@ _mkroot() {
   mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts" \
            "${d}/linux/host-config/git-hooks"
   cp "${S}/lint-python.sh" "${d}/linux/scripts/"
-  cp "${S}/01-core/load-versions-env.sh" "${d}/linux/scripts/01-core/"
+  # lint-python.sh sources the consumer-root contract from 01-core beside it, so
+  # the fixture has to carry it: without it the gate dies on line 1 and every
+  # assertion below would be about a broken copy rather than about the gate.
+  cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" \
+     "${d}/linux/scripts/01-core/"
   printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/versions.env"
   printf '%s\n' "${d}"
 }
@@ -153,5 +157,82 @@ t_assert_contains "${_out}" "linux/host-config/git-hooks/pre-commit:4:" \
 
 t_case "the gate is registered in preflight"
 t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is not a gate"
+
+# --- the consumer root (--root) ----------------------------------------------
+# Every case above builds a throwaway HUB. These build a throwaway CONSUMER and
+# run the SHIPPED gate against it, because that is the invocation that was
+# impossible: a submodule checkout puts this script inside the consumer, where
+# the default root resolves to ContainerHub and OrchestrANT's 65 Python files
+# were reachable by no lint gate in the fleet.
+_work="$(mktemp -d)"
+trap 'rm -rf "${_work}"' EXIT
+# Heredoc openers are printf ARGUMENTS so this suite is not itself a target.
+_plant() {  # <dir> <shape>
+  case "$2" in
+    broken)   printf 'print(nope_in_consumer)\n' > "$1/app.py" ;;
+    vendored) printf 'print(nope_in_vendored)\n' > "$1/vendored.py" ;;
+    clean)    printf 'print("ok")\n' > "$1/app.py" ;;
+    empty)    printf 'no python here\n' > "$1/README.md" ;;
+    heredoc)  printf 'print("ok")\n' > "$1/app.py"
+              { printf 'probe() {\n'
+                printf '  python3 - %s\n' "<<'PY'"
+                printf 'print(nope_in_consumer_heredoc)\nPY\n}\n'
+              } > "$1/probe.sh" ;;
+  esac
+}
+# _consumer <clean|broken|empty|heredoc> [vendored] -> a consumer checkout.
+_consumer() { t_consumer_fixture "${_work}" _plant "$@"; }
+_at_root() { bash "${S}/lint-python.sh" --root "$1" 2>&1; }
+
+t_case "--root decides WHICH tree is graded, and the verdicts follow the argument"
+_c_clean="$(_consumer clean)"
+_c_broken="$(_consumer broken)"
+t_assert_eq "0" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_clean}")" \
+  "the gate must be able to be green over a consumer, or the red below proves only that it is broken"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_broken}")" \
+  "a gate that ignored --root would grade ContainerHub -- which is clean -- and report OK"
+t_assert_contains "$(_at_root "${_c_broken}")" "nope_in_consumer" \
+  "the finding has to name the consumer's undefined name to be actionable"
+
+t_case "the banner names the tree that was graded, and how much of it"
+_out="$(_at_root "${_c_clean}")"
+t_assert_contains "${_out}" "python lint under ${_c_clean}"
+t_assert_contains "${_out}" ": 1 file(s)" \
+  "a count that included this repo's own Python would be a verdict about the wrong tree"
+
+t_case "a vendored checkout inside the consumer is a gitlink, and is not graded"
+_c_vendored="$(_consumer clean vendored)"
+t_assert_eq "0" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_vendored}")" \
+  "grading the vendored hub AS the consumer is the same wrong-tree bug from the other direction"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" \
+  "${_c_vendored}/${T_VENDORED}/vendored.py")" \
+  "and the vendored file really is broken, so the green above is about scope, not a clean file"
+
+t_case "heredoc Python in the CONSUMER's shell reaches ruff too"
+# Skipping the extraction step under a root would be the quiet half-gate this
+# file argues against: heredoc Python is no more visible to ruff in a consumer
+# than it is here.
+_c_heredoc="$(_consumer heredoc)"
+t_assert_contains "$(_at_root "${_c_heredoc}")" "nope_in_consumer_heredoc"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_heredoc}")"
+
+t_case "an empty file list under an explicit root is an ERROR, never a green pass"
+_c_empty="$(_consumer empty)"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_empty}")"
+t_assert_contains "$(_at_root "${_c_empty}")" "No Python files found to lint under ${_c_empty}"
+
+t_case "a root that is not a git checkout refuses instead of guessing a scope"
+_c_nogit="$(mktemp -d "${_work}/nogit.XXXXXX")"
+printf 'print("ok")\n' > "${_c_nogit}/app.py"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_nogit}")"
+t_assert_contains "$(_at_root "${_c_nogit}")" "is not a git checkout" \
+  "guessing a scope out of a non-checkout is a scope nobody chose"
+
+t_case "a root that does not exist refuses, it does not fall back to this repo"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_work}/no-such-checkout")" \
+  "falling back would grade a clean tree and report OK for a checkout nobody looked at"
+
+t_case "--root with no value is a usage error, not a silent default"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root)"
 
 t_summary

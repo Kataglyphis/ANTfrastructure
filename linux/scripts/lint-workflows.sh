@@ -9,6 +9,10 @@
 # downloaded once into a version-keyed cache dir and SHA256-verified — the same
 # pattern as lint-dockerfiles.sh / lib/wasm-opt.sh.
 #
+# actionlint's SHELL half is bootstrapped too, and is not optional here — see
+# the shellcheck_for_actionlint function below. Without it actionlint grades no
+# `run:` block and still exits 0, which is this file's own hazard from inside.
+#
 # Usage:
 #   linux/scripts/lint-workflows.sh          # lint THIS repo's workflows
 #   linux/scripts/lint-workflows.sh <root>   # lint a CONSUMER repo's workflows
@@ -82,8 +86,63 @@ actionlint_ensure() {
   fi
 }
 
+# --- actionlint's shell half -------------------------------------------------
+# actionlint embeds a shellcheck pass over every `run:` block, and it reaches
+# that tool by exec'ing the command NAME. When that name is not on PATH it
+# DISABLES the rule and says nothing at normal verbosity -- measured on this
+# host as
+#   verbose: Rule "shellcheck" was disabled: exec: "shellcheck": executable
+#            file not found in %PATH%
+# while the gate went on printing WORKFLOW LINT OK: half of what it advertises
+# was covering nothing, which is the failure its own header warns about.
+
+# lint-shell.sh is the ONE owner of that binary (a PATH copy only AT the pin,
+# otherwise the pinned SHA256-verified release), so resolve through its
+# --print-bin accessor and put its DIRECTORY in front of PATH -- a name lookup
+# is what actionlint does, so a name is what it has to find. A resolution that
+# fails FAILS the gate: running the workflow lint without its shell half is the
+# defect, not a degraded mode.
+shellcheck_for_actionlint() {
+  local bin dir named
+  bin="$(bash "${REPO_ROOT}/linux/scripts/lint-shell.sh" --print-bin)" || bin=""
+  [ -n "${bin}" ] && [ -x "${bin}" ] || err \
+    "shellcheck could not be resolved through lint-shell.sh --print-bin. actionlint would disable its shellcheck rule and grade no run: block at all, so this gate refuses to report a verdict."
+  dir="$(cd "$(dirname "${bin}")" && pwd)" \
+    || err "the resolved shellcheck (${bin}) is not in a readable directory."
+  PATH="${dir}:${PATH}"
+  export PATH
+  # A resolved PATH is not yet a usable rule: actionlint looks the command up by
+  # NAME. Prove the name resolves here, where the message can say what is wrong,
+  # rather than letting actionlint quietly turn the rule off.
+  named="$(command -v shellcheck)" || err \
+    "shellcheck resolved to ${bin} but the NAME does not resolve on PATH after adding ${dir}; actionlint looks it up by name and would disable the rule."
+  printf '== shellcheck for run: blocks (%s) ==\n' "$("${named}" --version | sed -n 's/^version: //p')"
+}
+
+# A resolved binary is a PRECONDITION; a rule that actually fired is the
+# guarantee, and only one of those is what the gate claims. So: lint one
+# workflow whose ONLY defect is a shell one (SC1010 -- `[ ... ] then` with no
+# separator, which actionlint's own YAML/expression rules cannot see) and
+# require it to be reported. Reading it off `--verbose` instead was tried and
+# discarded: actionlint lints files concurrently and its unsynchronised writes
+# mangle the "verbose: " prefix, so the trace cannot be filtered or matched
+# reliably. This costs one stdin-sized lint, needs no fixture on disk and no
+# enclosing checkout, and it fails for the one reason it is asked about.
+shellcheck_rule_selftest() {
+  local out
+  out="$(printf 'name: probe\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          if [ "x" = "y" ] then\n            echo hi\n          fi\n' \
+    | "${ACTIONLINT_BIN}" -stdin-filename shellcheck-selftest.yml - 2>&1)"
+  case "${out}" in
+    *"shellcheck reported issue"*) return 0 ;;
+  esac
+  printf '%s\n' "${out}" >&2
+  err "actionlint did not report the planted SC1010 in a run: block, so its shellcheck rule is off and every run: block would be graded for YAML only. The verdict would be void; not reporting one."
+}
+
 actionlint_ensure
 printf '== actionlint (%s) ==\n' "$("${ACTIONLINT_BIN}" --version | head -n1)"
+shellcheck_for_actionlint
+shellcheck_rule_selftest
 
 FAILED=0
 "${ACTIONLINT_BIN}" || FAILED=1

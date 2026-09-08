@@ -5,8 +5,9 @@
 # Fail-fast static gate for every Windows build script. Two passes:
 #   1. PARSE (mandatory, zero dependencies) — a syntax error in any build script is
 #      otherwise discovered only when Docker reaches that RUN, hours into a build.
-#   2. PSScriptAnalyzer (optional) — runs only if the module is installed; skipped with
-#      a note otherwise, so the gate is always usable on an offline/bare host.
+#   2. PSScriptAnalyzer (MANDATORY) — a missing module THROWS. Until 2026-09-08 this
+#      pass printed a note and carried on, so the gate could report "LINT OK" having
+#      analysed nothing. Install the module rather than run a lint that cannot fail.
 # Exit code is non-zero if any parse error (or, with -FailOnAnalyzer, any analyzer
 # finding of Warning or Error severity) is found. Run it before Build-Buildkit.ps1 and in CI.
 
@@ -128,11 +129,11 @@ if ($astViolations.Count -gt 0) {
     Write-Host 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens)' -ForegroundColor Green
 }
 
-# ---- Pass 2: PSScriptAnalyzer (optional) ----
+# ---- Pass 2: PSScriptAnalyzer (mandatory) ----
 $analyzerFindings = @()
-# Initialized HERE, not inside the PSSA branch: the verdict block reads it
-# unconditionally, and an undefined variable there would fail under StrictMode
-# on the "PSScriptAnalyzer not installed" path (backlog #82).
+# Initialized HERE, not inside the PSSA branch: the verdict block reads them
+# unconditionally and an undefined variable there would fail under StrictMode
+# (backlog #82).
 $analyzerCrashes = @()
 $errs = @()
 $warns = @()
@@ -185,7 +186,12 @@ if ($analyzerModule) {
         Write-Host 'These files were NOT linted - coverage is incomplete.' -ForegroundColor Red
     }
 } else {
-    Write-Host "PSSA: PSScriptAnalyzer not installed - skipping (install-time only; parse gate still enforced)" -ForegroundColor DarkYellow
+    # THROW, never skip. Skipping is the same fail-open hole the $analyzerCrashes
+    # branch above already refuses, only total: it drops EVERY file instead of a
+    # few, and the run still ended "LINT OK". A gate that cannot fail is not a gate.
+    throw ("PSScriptAnalyzer is not installed: the analyzer pass would cover 0 of " +
+        "$($targets.Count) file(s), so this gate refuses to report a verdict. Install it with " +
+        "'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser'.")
 }
 
 # ---- Verdict ----

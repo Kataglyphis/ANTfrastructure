@@ -1602,7 +1602,7 @@
   {
     "id": "python-lint.embedded-extraction-off",
     "target": "linux/scripts/lint-python.sh",
-    "find": "  if python3 linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) > \"${_EMB_MAP}\" 2>/dev/null; then",
+    "find": "  if python3 linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       ${_EMB_SH[@]+\"${_EMB_SH[@]}\"} > \"${_EMB_MAP}\" 2>/dev/null; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "the extraction call is the only thing putting heredoc Python in front of ruff; switching it off drops ~775 lines out of the gate while every suite stays green"
@@ -1610,7 +1610,7 @@
   {
     "id": "python-lint.embedded-file-discovery",
     "target": "linux/scripts/lint-python.sh",
-    "find": "$(find linux/scripts -name '*.sh' -type f;",
+    "find": "find linux/scripts -name '*.sh' -type f;",
     "replace": "$(find linux/scripts/01-core -name '*.sh' -type f;",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "the extractor is only as wide as the file list it is handed; narrowing the discovery scope silently un-lints whole directories of embedded Python and nothing said so"
@@ -1630,6 +1630,30 @@
     "replace": ")",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "a git hook carries no .sh suffix, so it is reachable only through the second half of the extractor's file list; dropping it takes the pre-commit hook's embedded Python out of the gate and every suite stays green"
+  },
+  {
+    "id": "python-lint.root-argument-is-the-tree",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
+    "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "the root is the only thing that puts a consumer's Python in front of ruff at all; ignoring it grades ContainerHub -- which is clean -- and reports OK for 65 files nobody linted"
+  },
+  {
+    "id": "python-lint.consumer-heredoc-extraction",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "      < <(lint_root_tracked \"${SCAN_ROOT}\" '*.sh')",
+    "replace": "      < <(true)",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "heredoc Python is no more visible to ruff in a consumer than it is here; handing the extractor an empty file list under a root is the quiet half-gate, and every suite stays green"
+  },
+  {
+    "id": "python-lint.empty-root-scope-is-an-error",
+    "target": "linux/scripts/lint-python.sh",
+    "find": "[ \"${#PY_FILES[@]}\" -gt 0 ] || err \"No Python files found to lint under ${SCAN_ROOT}.\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+    "why": "ruff with no file arguments lints the CWD, so an empty target set under a root turns into a green verdict about this repo instead of an error about the consumer"
   },
   {
     "id": "mutations.preflight-callsite-isolated",
@@ -2376,6 +2400,46 @@
     "why": "the hook must be in the DEFAULT scope, which is the set the shellcheck-warnings ratchet asks for"
   },
   {
+    "id": "shellcheck.root-argument-is-the-tree",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
+    "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades ContainerHub and reports OK for a tree nobody looked at"
+  },
+  {
+    "id": "shellcheck.non-git-root-refused",
+    "target": "linux/scripts/01-core/lint-root.sh",
+    "find": "  git -C \"${LINT_ROOT_PATH}\" rev-parse --git-dir >/dev/null 2>&1 \\\n    || _lint_root_die \"--root ${LINT_ROOT_PATH} is not a git checkout; a consumer's scope is read from git ls-files.\" \\\n    || return 1",
+    "replace": "  return 0",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "a consumer's scope is read from git ls-files, which answers NOTHING outside a checkout; accepting one silently turns every root-taking gate into a green verdict over an empty file list"
+  },
+  {
+    "id": "shellcheck.missing-root-refused",
+    "target": "linux/scripts/01-core/lint-root.sh",
+    "find": "  LINT_ROOT_PATH=\"$(cd \"${LINT_ROOT_RAW}\" 2>/dev/null && pwd)\" \\\n    || _lint_root_die \"lint root not found: ${LINT_ROOT_RAW}\" || return 1",
+    "replace": "  LINT_ROOT_PATH=\"$(cd \"${LINT_ROOT_RAW}\" 2>/dev/null && pwd)\" || LINT_ROOT_PATH=\"$1\"",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "a mistyped root that falls back to ContainerHub grades a clean tree and reports OK for the checkout the caller actually named -- the wrong-tree bug this whole contract exists to stop"
+  },
+  {
+    "id": "shellcheck.consumer-scope-is-tracked-files",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "< <(lint_root_tracked \"${SCAN_ROOT}\" '*.sh')",
+    "replace": "< <(cd \"${SCAN_ROOT}\" && find . -name '*.sh' -type f -print0)",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "git ls-files is what makes a vendored submodule a gitlink instead of a subtree; a find sweep grades the hub's own scripts AS the consumer's, which is the wrong-tree bug from the other direction"
+  },
+  {
+    "id": "shellcheck.empty-root-scope-is-an-error",
+    "target": "linux/scripts/lint-shell.sh",
+    "find": "  [ \"${LINT_ROOT_GIVEN}\" -eq 0 ] \\\n    || err \"no shell script to check under ${SCAN_ROOT}; a root was given explicitly, so reporting green over an empty file list would be a verdict about nothing.\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "this gate skips paths that do not exist, so a scope built from a wrong prefix arrives here empty; the 'no shell scripts to check' pass then reports green over a tree nobody read"
+  },
+  {
     "id": "pre-commit.doc-span-fast-slugs",
     "target": "docs/cross-build-verification.md",
     "find": "`_FAST_SLUGS` (`:64-67`)",
@@ -2822,6 +2886,30 @@
     "replace": ":",
     "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
     "why": "copy-media-payloads.sh was written and never invoked for months; a gate nothing calls is that defect again"
+  },
+  {
+    "id": "dockerfile-lint.root-argument-is-the-tree",
+    "target": "linux/scripts/lint-dockerfiles.sh",
+    "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
+    "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades this repo's own 24 Dockerfiles -- which are clean -- and reports their verdict as the consumer's"
+  },
+  {
+    "id": "dockerfile-lint.empty-root-scope-is-an-error",
+    "target": "linux/scripts/lint-dockerfiles.sh",
+    "find": "[ \"${#DOCKERFILES[@]}\" -gt 0 ] || err \"No Dockerfiles found to lint under ${SCAN_ROOT}.\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "a consumer with no Dockerfile must be told so; falling through leaves the reader a verdict that names no tree and covered no file"
+  },
+  {
+    "id": "dockerfile-lint.consumer-config-wins",
+    "target": "linux/scripts/lint-dockerfiles.sh",
+    "find": "[ -f \"${SCAN_ROOT}/.hadolint.yaml\" ] && HADOLINT_CONFIG=\"${SCAN_ROOT}/.hadolint.yaml\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+    "why": "this repo's waivers say nothing about a Dockerfile it never wrote; grading a consumer by them silently drops every rule the hub ignores for its own build-layer reasons"
   },
   {
     "id": "android-env.home-unset",
@@ -3426,10 +3514,26 @@
   {
     "id": "workflow-lint.findings-fail",
     "target": "linux/scripts/lint-workflows.sh",
-    "find": "if \"${ACTIONLINT_BIN}\"; then\n  printf 'WORKFLOW LINT OK\\n'\nelse\n  printf 'WORKFLOW LINT FAILED\\n' >&2\n  exit 1\nfi",
-    "replace": "\"${ACTIONLINT_BIN}\"\nprintf 'WORKFLOW LINT OK\\n'",
+    "find": "if [ \"${FAILED}\" -eq 0 ]; then\n  printf 'WORKFLOW LINT OK\\n'\nelse\n  printf 'WORKFLOW LINT FAILED\\n' >&2\n  exit 1\nfi",
+    "replace": "printf 'WORKFLOW LINT OK\\n'",
     "test": "bash linux/scripts/tests/test-workflow-lint.sh",
     "why": "a lint gate that prints findings and exits 0 still reports green, which is the hazard its own header names"
+  },
+  {
+    "id": "workflow-lint.shellcheck-half-resolved",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "shellcheck_for_actionlint\nshellcheck_rule_selftest\n",
+    "replace": "shellcheck_rule_selftest\n",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "actionlint reaches shellcheck by NAME and silently disables the rule when the name is absent; without this resolution every run: block is graded for YAML only and the gate still prints WORKFLOW LINT OK"
+  },
+  {
+    "id": "workflow-lint.shellcheck-rule-selftest",
+    "target": "linux/scripts/lint-workflows.sh",
+    "find": "shellcheck_rule_selftest\n\nFAILED=0",
+    "replace": "\nFAILED=0",
+    "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+    "why": "a resolved binary is a precondition, not the guarantee: a path that exists while actionlint still cannot exec it leaves the rule off, and only the planted-SC1010 self-test can tell that apart from a working gate"
   },
   {
     "id": "workflow-lint.root-argument-is-the-tree",
@@ -3506,8 +3610,8 @@
   {
     "id": "secret-scan.consumer-config-wins",
     "target": "linux/scripts/lint-secrets.sh",
-    "find": "if [ -f \"${SCAN_ROOT}/.gitleaks.toml\" ]; then",
-    "replace": "if false; then",
+    "find": "elif [ -f \"${SCAN_CONFIG_DIR}/.gitleaks.toml\" ]; then",
+    "replace": "elif false; then",
     "test": "bash linux/scripts/tests/test-secret-scan.sh",
     "why": "a consumer's allowlist entries are written about ITS false positives and the hub's say nothing about them; grading a consumer tree by the hub config is the same category of error as scanning the wrong tree"
   },
@@ -3582,6 +3686,102 @@
     "replace": "    if False:",
     "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
     "why": "the core-usage report is a lower bound by its own docstring; wiring a verdict to it would gate on a figure nobody should act on alone"
+  },
+  {
+    "id": "context-paths.missing-fails",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "    if broken:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "a source that is not in the context is a build that dies at checksum, before instruction one; counting it and returning 0 ships that build"
+  },
+  {
+    "id": "context-paths.copy-sources-checked",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "        for source in mount_sources(line) + copy_sources(line):",
+    "replace": "        for source in mount_sources(line):",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "COPY is how most of this tree reaches an image; skipping it leaves the majority of every Dockerfile ungraded"
+  },
+  {
+    "id": "context-paths.mount-sources-checked",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "        for source in mount_sources(line) + copy_sources(line):",
+    "replace": "        for source in copy_sources(line):",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "both live breakages were bind mounts, not COPYs -- a COPY-only gate would have caught neither"
+  },
+  {
+    "id": "context-paths.escape-directive-honoured",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "    joiner = escape_char(text)",
+    "replace": "    joiner = chr(92)",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "every Windows Dockerfile continues its lines with a backtick; reading them with the backslash default folds nothing and hides every source after line one"
+  },
+  {
+    "id": "context-paths.stage-copy-not-judged",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "    if any(t.lower().startswith(\"--from=\") for t in tokens):",
+    "replace": "    if any(t.lower().startswith(\"--never=\") for t in tokens):",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "a COPY --from= names a path in another stage; grading it against the host tree is a guaranteed false red, and a gate that is red on a healthy tree gets switched off"
+  },
+  {
+    "id": "context-paths.stage-mount-not-judged",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "        if \"from\" in fields:\n            continue",
+    "replace": "        if \"never\" in fields:\n            continue",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "the same for a bind mount that reads from a stage rather than from the context"
+  },
+  {
+    "id": "context-paths.vars-are-wildcards",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "VAR.sub(\"*\", source.replace(\"\\\\\", \"/\"))",
+    "replace": "source.replace(\"\\\\\", \"/\")",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "which value a build arg takes is not a static fact; treating ${VAR} literally makes every templated path a false red"
+  },
+  {
+    "id": "context-paths.context-is-per-dockerfile",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "    context = ROOT / CONTEXTS.get(rel, \".\")",
+    "replace": "    context = ROOT / next(iter(CONTEXTS.values()), \".\")",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "the context table is keyed by Dockerfile because Build-Buildkit passes a different -Context to one of them; an entry that leaked would grade every image against the wrong root"
+  },
+  {
+    "id": "context-paths.generated-is-per-dockerfile",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "    produced = GENERATED.get(rel, {})",
+    "replace": "    produced = {k: v for m in GENERATED.values() for k, v in m.items()}",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "a name a documented step produces for ONE image must not excuse the same name in another; that is how an allow row stops covering anything"
+  },
+  {
+    "id": "context-paths.untracked-not-graded",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "        if known is not None and rel not in known:\n            continue",
+    "replace": "        if False:\n            continue",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "a local external/ checkout has its own build contract; grading it buries the repo's own findings under ones nobody here can act on"
+  },
+  {
+    "id": "context-paths.no-dockerfiles-fails",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "        print(\"no Dockerfiles found\", file=sys.stderr)\n        return 1",
+    "replace": "        return 0",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "zero subjects is a broken checkout, and a gate that grades nothing must not report a clean sweep"
+  },
+  {
+    "id": "context-paths.external-floor-is-independent-of-git",
+    "target": "linux/scripts/verify_dockerfile_context_paths.py",
+    "find": "SKIP_DIRS = {\".git\", \"external\", \"out\", \"logs\", \"node_modules\", \"__pycache__\", \".venv\", \"third_party\"}",
+    "replace": "SKIP_DIRS = {\".git\", \"out\", \"logs\", \"node_modules\", \"__pycache__\", \".venv\", \"third_party\"}",
+    "test": "bash linux/scripts/tests/test-dockerfile-context-paths.sh",
+    "why": "git reports nothing in a checkout it refuses -- a mirror with no .git, a bind-mounted tree, dubious ownership -- and without the named floor the gate then grades somebody's external/ clone and buries this repo's own findings"
   },
   {
     "id": "mirror-consistency.missing-arg-fails",
@@ -7141,5 +7341,432 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-opencv-riscv64-seams.sh",
     "why": "two extracted helpers nothing calls are two functions' worth of riscv64 knowledge that stops reaching the cmake line -- the dead-function gate is what catches an extraction that forgot its call site"
+  },
+  {
+    "id": "code-dupes.ps-kind-recognised",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    if name.endswith((\".ps1\", \".psm1\")):\n        return \"ps\"",
+    "replace": "    if False:\n        return \"ps\"",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "50,862 lines of .ps1/.psm1 the gate cannot even name a kind for are 50,862 lines it cannot guard"
+  },
+  {
+    "id": "code-dupes.ps-before-dockerfile",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    if name.endswith((\".ps1\", \".psm1\")):\n        return \"ps\"\n    if name.startswith(\"Dockerfile\"):\n        return \"docker\"",
+    "replace": "    if name.startswith(\"Dockerfile\"):\n        return \"docker\"\n    if name.endswith((\".ps1\", \".psm1\")):\n        return \"ps\"",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "windows/scripts/tests/Dockerfile.EolAttributes.Tests.ps1 is a Pester suite; read as a Dockerfile it yields no instruction and is guarded by nothing"
+  },
+  {
+    "id": "code-dupes.ps-windows-in-scope",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "KIND_SKIP_DIRS = {\"shell\": {\"windows\"}, \"docker\": {\"windows\"}, \"md\": {\"windows\"}}",
+    "replace": "KIND_SKIP_DIRS = {\"shell\": {\"windows\"}, \"docker\": {\"windows\"}, \"md\": {\"windows\"}, \"ps\": {\"windows\"}}",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "the windows skip was blanket only while no kind could read PowerShell; keeping it for ps leaves the whole lane unscanned again"
+  },
+  {
+    "id": "code-dupes.ps-block-comment-blanked",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "    text = PS_BLOCK_COMMENT.sub(lambda m: \"\\n\" * m.group(0).count(\"\\n\"),\n                                path.read_text(encoding=\"utf-8\", errors=\"replace\"))",
+    "replace": "    text = path.read_text(encoding=\"utf-8\", errors=\"replace\")",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "an unbalanced brace inside a <# #> comment ends the function there, splitting one copied block into stubs no threshold reaches"
+  },
+  {
+    "id": "code-dupes.ps-brace-may-open-next-line",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "PS_FUNC = re.compile(r\"^\\s*(?:function|filter)\\s+([^\\s({]+)\\s*(?:\\([^)]*\\))?\\s*\\{?\\s*$\",",
+    "replace": "PS_FUNC = re.compile(r\"^\\s*(?:function|filter)\\s+([^\\s({]+)\\s*(?:\\([^)]*\\))?\\s*\\{\\s*$\",",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "PowerShell opens a body on the header line or the next one; demanding it on the header turns every other-styled function into loose chunks"
+  },
+  {
+    "id": "code-dupes.ps-scope-var-folded",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "KIND_FOLD = {\"ps\": lambda text: PS_SCOPE_VAR.sub(\"$\", text)}",
+    "replace": "KIND_FOLD = {}",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "$env:X is one variable; left as $V : X a copy that renamed it stops matching, which is exactly the type-2 clone this gate exists for"
+  },
+  {
+    "id": "lint-gates.shell-list-is-git-not-a-glob",
+    "target": "linux/scripts/run-lint-gates.sh",
+    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- '*.sh')",
+    "replace": "  done < <(cd \"${_LINT_GATES_ROOT}\" && printf '%s\\0' */*.sh)",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "the shellcheck scope is `git ls-files`, not a glob: `*/*.sh` does not recurse without globstar, so the gate reads the directories somebody remembered and reports green over the rest"
+  },
+  {
+    "id": "lint-gates.non-ascii-path-needs-nul",
+    "target": "linux/scripts/run-lint-gates.sh",
+    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- '*.sh')",
+    "replace": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -- '*.sh' | tr '\\n' '\\0')",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "without -z git QUOTES a non-ASCII path (\"a\\303\\237-dir/d.sh\") and the quoted string names no file, so that script is silently never linted"
+  },
+  {
+    "id": "lint-gates.empty-shell-list-refuses",
+    "target": "linux/scripts/run-lint-gates.sh",
+    "find": "    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\\n' >&2\n    return 1",
+    "replace": "    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\\n' >&2\n    return 0",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "an empty file list must FAIL, not merely print: lint-shell.sh with zero file arguments lints ContainerHub's own tree and exits 0, which is green over the consumer's nothing"
+  },
+  {
+    "id": "lint-gates.vendored-dir-default-exclusion",
+    "target": "linux/scripts/run-lint-gates.sh",
+    "find": "  [ \"${#_LINT_GATES_EXCLUDE[@]}\" -gt 0 ] || _LINT_GATES_EXCLUDE=(third_party)",
+    "replace": "  [ \"${#_LINT_GATES_EXCLUDE[@]}\" -gt 0 ] || _LINT_GATES_EXCLUDE=()",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "third_party is excluded by DEFAULT; without that default the vendored subtrees are graded here as well as in their own repos, which is the 82-false-positive run this scope was built to stop"
+  },
+  {
+    "id": "lint-gates.consumer-file-inside-vendored-kept",
+    "target": "linux/scripts/run-lint-gates.sh",
+    "find": "        case \"${entry}\" in */*/*) ;; */*) printf '%s\n' \"${entry}\" ;; esac",
+    "replace": "        case \"${entry}\" in *) ;; esac",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "the tracked plain files directly inside an excluded directory are the consumer's own (a third_party/CMakeLists.txt); dropping the whole prefix drops them from the secret scan with the vendored tree"
+  },
+  {
+    "id": "lib.gates-failure-is-recorded",
+    "target": "linux/scripts/01-core/gates.sh",
+    "find": "  _GATE_FAILURES+=(\"${name}\")",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "run_gate returns 0 for a FAILING gate on purpose; the failure survives only because it is recorded here, so an unrecorded one is suppression"
+  },
+  {
+    "id": "lib.gates-failures-are-re-raised",
+    "target": "linux/scripts/01-core/gates.sh",
+    "find": "  if [ \"${#_GATE_FAILURES[@]}\" -gt 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "assert_gates is the one place recorded failures become an exit status; without the re-raise `|| FAILED=1` is suppression wearing a costume"
+  },
+  {
+    "id": "lib.gates-nothing-ran-is-not-green",
+    "target": "linux/scripts/01-core/gates.sh",
+    "find": "  if [ \"${_GATE_RAN}\" -eq 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "a batch in which no gate ran at all must not report green -- an aggregator that graded nothing is the hazard this library exists for"
+  },
+  {
+    "id": "lib.gates-missing-command-is-a-caller-bug",
+    "target": "linux/scripts/01-core/gates.sh",
+    "find": "    printf 'run_gate: gate \"%s\" was given no command to run.\\n' \"${name}\" >&2\n    return 2",
+    "replace": "    printf 'run_gate: gate \"%s\" was given no command to run.\\n' \"${name}\" >&2\n    return 0",
+    "test": "bash linux/scripts/tests/test-lint-gates.sh",
+    "why": "run_gate with no command is a CALLER bug (2), not a finding; returning 0 counts a gate that never ran as one that passed"
+  },
+  {
+    "id": "ci-image-ref.missing-key-is-fatal",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "  if [ -z \"${value}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "a key missing from versions.env must be a hard failure; an empty value composes \":tag\" or \"prefix:\", and an empty image reference reaches docker run as \"run the next argument as an image\" and fails a long way from the cause"
+  },
+  {
+    "id": "ci-image-ref.missing-key-diagnostic-is-not-swallowed",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "    printf 'ci-image-ref.sh: %s is not set in %s\\n' \"${key}\" \"${file}\" >&2",
+    "replace": "    printf 'ci-image-ref.sh: %s is not set in %s\\n' \"${key}\" \"${file}\"",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "the key reader's stdout IS its return value, read inside a command substitution: a diagnostic printed without >&2 is captured into that value instead of reaching the user, so the gate fails in silence with no key named"
+  },
+  {
+    "id": "ci-image-ref.windows-tag-key",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "    windows) tag_key=CI_IMAGE_WINDOWS_TAG ;;",
+    "replace": "    windows) tag_key=CI_IMAGE_LINUX_TAG ;;",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "--windows must resolve the WINDOWS tag; a Linux tag handed to a Windows lane is a valid-looking reference for the wrong operating system, which is the failure verify_ci_image_refs.py's check C exists for"
+  },
+  {
+    "id": "ci-image-ref.quotes-unwrapped",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "  value=\"${value%\\\"}\"; value=\"${value#\\\"}\"\n  value=\"${value%\\'}\"; value=\"${value#\\'}\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "versions.env values may be quoted; a surviving quote reaches docker as data (the class that broke CUDA_ARCHITECTURES) instead of delimiting the value"
+  },
+  {
+    "id": "ci-image-ref.unknown-argument-is-a-usage-error",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux or --windows)\\n' \"$1\" >&2\n      return 2",
+    "replace": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux or --windows)\\n' \"$1\" >&2\n      return 0",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "a typo'd platform flag must be a usage error, not a silent success: returning 0 prints no reference at all and the caller runs docker with an empty image argument"
+  },
+  {
+    "id": "cmake-format.empty-walk-refused",
+    "target": "linux/scripts/preflight.sh",
+    "find": "    if [[ ${#files[@]} -eq 0 ]]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-cmake-format.sh",
+    "why": "a CMake walk that returned nothing is a broken scope/exclude list, not a pass: cmake-format with zero file arguments exits 0 and the gate reports green over nothing",
+    "timeout": 900
+  },
+  {
+    "id": "lib.cmake-format-check-does-not-rewrite",
+    "target": "linux/scripts/lib/code-quality.sh",
+    "find": "    mode=(--check)",
+    "replace": "    mode=(-i)",
+    "test": "bash linux/scripts/tests/test-cmake-format.sh",
+    "why": "--check must VERDICT on drift, not silently reformat it away: with -i the gate rewrites the offending file and exits 0, so formatting drift can never fail a build",
+    "timeout": 900
+  },
+  {
+    "id": "lib.cmake-walk-covers-dot-cmake",
+    "target": "linux/scripts/lib/code-quality.sh",
+    "find": "  local find_args=(\"${root}\" -type f '(' -name 'CMakeLists.txt' -o -name '*.cmake' ')')",
+    "replace": "  local find_args=(\"${root}\" -type f '(' -name 'CMakeLists.txt' ')')",
+    "test": "bash linux/scripts/tests/test-cmake-format.sh",
+    "why": "the walk covers *.cmake as well as CMakeLists.txt; dropping the module half hides every .cmake file in the tree from the format gate",
+    "timeout": 900
+  },
+  {
+    "id": "ci-image-ref.action-default-drifted",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "        elif value != refs[platform]:",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "check A: each of the four container actions' `image` default is COMPARED with the ref versions.env composes FOR THAT ACTION'S PLATFORM; without the comparison a canonical-but-wrong default (the Windows ref on a Linux action) passes every other check and four copies drift away from the one owner"
+  },
+  {
+    "id": "ci-image-ref.action-default-required",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "        if value is None:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "an `image` input with no default is not 'nothing to compare': every caller then re-types the tag, which is where the copies drift apart"
+  },
+  {
+    "id": "ci-image-ref.non-canonical-literal-fails",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "            if tag in canonical_tags:\n                continue",
+    "replace": "            if True:\n                continue",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "check B: every kataglyphis_beschleuniger:<tag> literal under .github/ must name one of the two canonical tags -- an arch-suffixed or stale ':latest' has to fail here rather than at docker pull in someone else's lane"
+  },
+  {
+    "id": "ci-image-ref.call-site-platform-checked",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "            if found and found.group(1) != refs[pending[0]].rsplit(\":\", 1)[1]:",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "check C is the half check B cannot do: both tags are canonical, so a Linux action handed ':winamd64' passes B and runs the wrong operating system"
+  },
+  {
+    "id": "ci-image-ref.no-yaml-is-a-refusal",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "    if not files:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "a root with no workflow or action YAML is the wrong root, not a clean repo; grading zero files and printing OK is the vacuous green this gate takes a root to avoid"
+  },
+  {
+    "id": "lib.tool-checks-names-every-missing",
+    "target": "linux/scripts/01-core/tool-checks.sh",
+    "find": "      command -v \"${tool}\" >/dev/null 2>&1 || missing+=(\"${tool}\")",
+    "replace": "      command -v \"${tool}\" >/dev/null 2>&1 || { missing=(\"${tool}\"); break; }",
+    "test": "bash linux/scripts/tests/test-tool-checks.sh",
+    "why": "require_tools names EVERY missing tool at once; stopping at the first turns 'install these four' into four failed runs, which is the whole reason the loop collects instead of dying inside it"
+  },
+  {
+    "id": "lib.tool-checks-missing-is-fatal",
+    "target": "linux/scripts/01-core/tool-checks.sh",
+    "find": "      err \"Required tools not found: ${missing[*]}\"",
+    "replace": "      warn \"Required tools not found: ${missing[*]}\"",
+    "test": "bash linux/scripts/tests/test-tool-checks.sh",
+    "why": "a missing tool must END the caller (err exits 1); warning and returning lets the build continue toolless and fail later somewhere unrelated"
+  },
+  {
+    "id": "lib.tool-checks-caller-require-tools-wins",
+    "target": "linux/scripts/01-core/tool-checks.sh",
+    "find": "if ! declare -F require_tools >/dev/null 2>&1; then",
+    "replace": "if true; then",
+    "test": "bash linux/scripts/tests/test-tool-checks.sh",
+    "why": "the per-definition `declare -F` guard is what the two inline copies had: a consumer whose own common.sh defines require_tools keeps ITS version, and sourcing this module must never clobber it"
+  },
+  {
+    "id": "lib.tool-checks-caller-has-tool-wins",
+    "target": "linux/scripts/01-core/tool-checks.sh",
+    "find": "if ! declare -F has_tool >/dev/null 2>&1; then",
+    "replace": "if true; then",
+    "test": "bash linux/scripts/tests/test-tool-checks.sh",
+    "why": "same guard for the other half of the pair: a caller's has_tool (which may know about a vendored toolchain that is not on PATH) must survive the source"
+  },
+  {
+    "id": "shared-config-sync.verdict-reaches-the-exit-code",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "    if [ ${#SSC_MISSING[@]} -gt 0 ] || [ ${#SSC_DRIFTED[@]} -gt 0 ]; then return 1; fi",
+    "replace": "    if false; then return 1; fi",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "the MISSING/DRIFTED lists must decide the exit code; printing them and returning 0 is a gate that reports every drift and blocks none of it"
+  },
+  {
+    "id": "shared-config-sync.missing-copy-is-a-verdict",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "    if [ ! -e \"$target\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "a declared asset whose copy is not there is MISSING; without this arm the file is compared as if it existed and the consumer is told something else entirely"
+  },
+  {
+    "id": "shared-config-sync.body-mode-drops-the-header",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "    if [ \"$mode\" = body ]; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
+    "replace": "    if false; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "body mode compares from the first CODE line down: the consumer's own header prose is the legitimate per-consumer delta, and grading it turns every template copy into permanent drift"
+  },
+  {
+    "id": "shared-config-sync.knob-values-are-masked",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "            SSC_MASKED=\"<knob> ${knob}\"",
+    "replace": "            SSC_MASKED=\"$line\"",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "a declared knob line may carry any VALUE -- it is the one line the template tells the consumer to adjust; comparing its value makes a correctly adjusted copy read as drifted"
+  },
+  {
+    "id": "shared-config-sync.line-endings-normalised",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "        SSC_LINES+=(\"${line%\"${_SSC_CR}\"}\")",
+    "replace": "        SSC_LINES+=(\"$line\")",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "the CR is stripped on both sides before comparing; without it a Windows and a Linux checkout of the same bytes disagree, and the twin's verdict depends on which OS ran it"
+  },
+  {
+    "id": "shared-config-sync.write-refuses-body-assets",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "    if [ \"${SSC_MODE[$id]}\" = body ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "--write is a verbatim copy, so it must refuse a body-mode asset: copying over one would delete the consumer's header prose and its knob values, which is a merge, not a copy"
+  },
+  {
+    "id": "shared-config-sync.unknown-id-is-broken-input",
+    "target": "shared/config/sync-shared-config.sh",
+    "find": "        if [ -z \"${SSC_MODE[$id]:-}\" ]; then",
+    "replace": "        if false; then",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "an id ContainerHub does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
+  },
+  {
+    "id": "shared-config-sync.exact-mode-is-declared-in-the-manifest",
+    "target": "shared/config/shared-assets.manifest",
+    "find": "clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |",
+    "replace": "clang-format         | shared/config/.clang-format                      | .clang-format                           | body  |",
+    "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+    "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift, and this file is one the fleet must hold byte for byte"
+  },
+  {
+    "id": "consumer-inventory.external-is-not-self",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    external = [r for r in reached_by if not r[1]]",
+    "replace": "    external = reached_by",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "hub-internal use is not a consumer: counting the hub's own repository as an external caller marks every internal helper 'load-bearing outside this repository' and the report stops answering the question it exists for"
+  },
+  {
+    "id": "consumer-inventory.mention-is-not-a-call",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    if Path(rel).suffix.lower() in DOC_SUFFIXES:\n        return MENTIONED",
+    "replace": "    if False:\n        return MENTIONED",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a hub script named in a consumer's README or CHANGELOG keeps nothing alive; graded as a call it makes a dead entry point look load-bearing, which is how a deletion gets refused forever"
+  },
+  {
+    "id": "consumer-inventory.self-mention-is-not-a-caller",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "        if rel == needle or rel.startswith(needle + \"/\"):\n            continue  # a file naming itself is not a caller",
+    "replace": "        if False:\n            continue  # a file naming itself is not a caller",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "an entry point that names its own path (a usage line, a self-referential log message) would otherwise be its own caller, and nothing in the hub could ever be reported as unreferenced"
+  },
+  {
+    "id": "consumer-inventory.dangling-fails-the-run",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    if print_dangling(dangling):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a consumer calling a hub path that no longer exists must FAIL the run; printed and exited 0 it is a broken build for someone else, filed as a paragraph in a report nobody reads"
+  },
+  {
+    "id": "consumer-inventory.dangling-only-counts-executable-positions",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "            if use_kind(rel, line) == REACHED:",
+    "replace": "            if True:",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a comment recording that a hub path was removed, or naming one as an example, is prose about a path -- failing the run on it makes every consumer's history a permanent red"
+  },
+  {
+    "id": "consumer-inventory.empty-class-is-refused",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "        if not hits:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "an entry point class whose glob expands to zero files narrows the report below what it claims to cover, and the shrunken report still reads as complete"
+  },
+  {
+    "id": "consumer-inventory.self-consumer-required",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    if not [c for c in data[\"consumers\"] if c[\"self\"]]:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "with no consumer marked self:true nothing can tell hub-internal use from an external caller, and every hub-internal helper is reported as a published entry point"
+  },
+  {
+    "id": "consumer-inventory.unobtainable-consumer-says-so",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    if offline:\n        raise Failure(\"%s: --offline was given and no --local path was supplied \"\n                      \"for it. Skipping it would make the inventory lie.\" % name)",
+    "replace": "    if offline:\n        return work / name",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a consumer that cannot be obtained must fail AS ITSELF: degraded into some later 'not a git checkout' error the operator reads it as a broken fixture, not as the missing evidence that makes 'no caller found' a lie"
+  },
+  {
+    "id": "python.static-analysis-verdict-is-raised",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "# The verdict, once, and after the teardown above so a failing gate still cleans up.\nassert_gates",
+    "replace": "# The verdict, once, and after the teardown above so a failing gate still cleans up.\ntrue",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "run_gate RECORDS a failing analyser and returns 0; assert_gates is the only place that becomes an exit code, so without it the lane is green whatever the six find -- the state this driver was in until 2026-09-08"
+  },
+  {
+    "id": "python.static-analysis-tool-failure-is-not-swallowed",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "run_gate \"bandit\" uv_run bandit -r \"$PACKAGE_NAME\" -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results",
+    "replace": "uv_run bandit -r \"$PACKAGE_NAME\" -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results 2>/dev/null || true",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "the old per-tool `2>/dev/null || true` is the exact suppression this batch removed: the findings reach no log and the verdict reaches no exit code, and the batch quietly grades five analysers while reporting six"
+  },
+  {
+    "id": "python.static-analysis-ruff-does-not-rewrite",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "run_gate \"ruff check\" uv_run ruff check --no-fix \"$PACKAGE_NAME\" tests docs/source/conf.py setup.py",
+    "replace": "run_gate \"ruff check\" uv_run ruff check --fix \"$PACKAGE_NAME\" tests docs/source/conf.py setup.py",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "a gate judges the tree as COMMITTED: --fix repairs the working tree and then reports on the repaired copy, so the step can only ever be green and the finding surfaces in the next git status instead"
+  },
+  {
+    "id": "python.static-analysis-format-is-a-check",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "run_gate \"ruff format\" uv_run ruff format --check --diff \"$PACKAGE_NAME\" tests docs/source/conf.py setup.py",
+    "replace": "run_gate \"ruff format\" uv_run ruff format \"$PACKAGE_NAME\" tests docs/source/conf.py setup.py",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "same argument for the formatter: a bare `ruff format` rewrites the files and exits 0, so formatting drift can never fail the lane -- --check --diff reports it instead"
+  },
+  {
+    "id": "gate-fixture.consumer-vendored-is-a-gitlink",
+    "target": "linux/scripts/tests/test-harness.sh",
+    "find": "    git -C \"${d}/${T_VENDORED}\" init -q",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
+    "why": "the vendored checkout must be a NESTED repository, which git records as a gitlink: without its own .git the fixture's files become the consumer's own tracked files, and the suites asserting that a vendored tree is out of scope would pass over a fixture that never had one"
   }
 ]

@@ -17,13 +17,31 @@
 # Usage:
 #   lint-shell.sh                 # check ALL bash under linux/{scripts,llm-stack,webserver} at -S error
 #   lint-shell.sh a.sh b.sh ...   # check only the given files (pre-commit staged mode)
+#   lint-shell.sh --root <dir>    # check a CONSUMER repo's shell scripts instead of this one
 #   lint-shell.sh --warning ...   # additionally print warning-level findings (non-fatal)
-#   lint-shell.sh --list-files    # print the repo-relative file set and exit (the scope's one owner;
+#   lint-shell.sh --list-files    # print the root-relative file set and exit (the scope's one owner;
 #                                 # verify_shellcheck_warnings.py ratchets warnings over exactly it)
 #   lint-shell.sh --print-bin     # print the resolved shellcheck path and exit (the binary's one owner)
 #
-# Exit status: non-zero iff any error-level finding exists (the gate) or
-# bootstrapping shellcheck fails.
+# --root is the same contract lint-workflows.sh documents, for the same reason:
+# a submodule checkout puts this script INSIDE the consumer, where the default
+# root resolves to ContainerHub and the gate grades the wrong tree while
+# reporting green over one nobody looked at. The shellcheck bootstrap, its cache
+# and versions.env always come from THIS repo regardless of the root.
+#
+# Under a root the file set is `git ls-files -- '*.sh'`, not a find: a vendored
+# submodule (this very repo, at third_party/ContainerHub) is a GITLINK there, so
+# the consumer's scope cannot quietly swallow the hub's own scripts — the same
+# failure from the other direction. That the root must be a git checkout is
+# therefore stated and checked, not assumed.
+#
+# And an EMPTY file list under an explicit root is an ERROR, never the
+# "no shell scripts to check" pass below: this script skips paths that do not
+# exist, so a scope built from a wrong prefix arrived here empty and reported
+# green over nothing. That is the defect every line of this header is about.
+#
+# Exit status: non-zero iff any error-level finding exists (the gate),
+# bootstrapping shellcheck fails, or an explicit root yields nothing to check.
 set -euo pipefail
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -35,6 +53,15 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
+
+# --root is parsed and resolved by the contract's one owner; the tree to grade
+# is what comes back. Everything below is scoped to it; the hub paths above
+# (CORE_DIR, the bootstrap cache) stay anchored to REPO_ROOT on purpose.
+# shellcheck source=01-core/lint-root.sh
+. "${CORE_DIR}/lint-root.sh"
+lint_root_begin "${REPO_ROOT}" "$@" || exit 1
+SCAN_ROOT="${LINT_ROOT_PATH}"
+set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
 
 SHOW_WARNINGS=0
 LIST_FILES=0
@@ -117,7 +144,15 @@ fi
 # were both added after the same finding: a scope that quietly excludes the
 # thing it was meant to protect. The ratchet asks THIS set.
 # docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
-if [ "${#FILES[@]}" -eq 0 ]; then
+
+# Under --root the hub's four directories mean nothing, so the scope is the
+# consumer's tracked *.sh instead — see lint_root_tracked for why that is
+# git ls-files and never a find.
+if [ "${#FILES[@]}" -eq 0 ] && [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
+  while IFS= read -r -d '' _tracked; do
+    FILES+=("${SCAN_ROOT}/${_tracked}")
+  done < <(lint_root_tracked "${SCAN_ROOT}" '*.sh')
+elif [ "${#FILES[@]}" -eq 0 ]; then
   mapfile -t FILES < <(find \
     "${REPO_ROOT}/linux/scripts" \
     "${REPO_ROOT}/linux/host-config" \
@@ -141,8 +176,22 @@ fi
 #
 # ${FILES[@]+...}: an empty find result leaves FILES unset, and expanding an
 # unset array trips `set -u` on bash < 4.4 (harmless on 5.x, cheap to guard).
+#
+# Under an explicit root a relative name is the CONSUMER's, so it is anchored
+# there rather than at the caller's cwd — and a name that then resolves to
+# nothing is an ERROR, not a skip. The lenient skip above exists for the staged
+# pre-commit list, which legitimately carries deletions; a caller that named a
+# root and a file meant both, and dropping the file quietly shrinks the graded
+# set while the banner still counts up to a pass.
 CHECK=()
 for f in ${FILES[@]+"${FILES[@]}"}; do
+  if [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
+    case "${f}" in
+      /*|[A-Za-z]:[/\\]*) ;;
+      *) f="${SCAN_ROOT}/${f}" ;;
+    esac
+    [ -e "${f}" ] || err "no such path under ${SCAN_ROOT}: ${f}"
+  fi
   [ -f "${f}" ] || continue
   # Test the BASENAME, not the path: a directory component may carry a dot
   # (a path like ".githooks/pre-commit" matched the "has an extension" arm).
@@ -160,11 +209,15 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
 done
 
 if [ "${LIST_FILES}" -eq 1 ]; then
-  for f in ${CHECK[@]+"${CHECK[@]}"}; do printf '%s\n' "${f#"${REPO_ROOT}"/}"; done
+  for f in ${CHECK[@]+"${CHECK[@]}"}; do printf '%s\n' "${f#"${SCAN_ROOT}"/}"; done
   exit 0
 fi
 
 if [ "${#CHECK[@]}" -eq 0 ]; then
+  # A root was NAMED and nothing came back: the caller handed this gate a tree
+  # and would read the pass below as a verdict about it. Refuse instead.
+  [ "${LINT_ROOT_GIVEN}" -eq 0 ] \
+    || err "no shell script to check under ${SCAN_ROOT}; a root was given explicitly, so reporting green over an empty file list would be a verdict about nothing."
   pass "no shell scripts to check"
   exit 0
 fi
@@ -181,7 +234,7 @@ done
 if [ "${#error_files[@]}" -gt 0 ]; then
   fail "shellcheck -S error found ${#error_files[@]} file(s) with error-level findings:"
   for f in "${error_files[@]}"; do
-    info "${f#"${REPO_ROOT}"/}"
+    info "${f#"${SCAN_ROOT}"/}"
     "${SHELLCHECK_BIN}" -S error "${f}" 2>&1 | sed 's/^/    /' || true
   done
   exit 1
@@ -204,7 +257,7 @@ done
 if [ "${#sc2215_files[@]}" -gt 0 ]; then
   fail "SC2215 (flag used as a command name -- bad line break) in ${#sc2215_files[@]} file(s):"
   for f in "${sc2215_files[@]}"; do
-    info "${f#"${REPO_ROOT}"/}"
+    info "${f#"${SCAN_ROOT}"/}"
     "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" 2>&1 | sed 's/^/    /' || true
   done
   exit 1
@@ -219,7 +272,7 @@ if [ "${SHOW_WARNINGS}" -eq 1 ]; then
   done
   if [ "${#warn_files[@]}" -gt 0 ]; then
     printf "${YELLOW}!${NC} %s file(s) carry warning-level findings (non-fatal):\n" "${#warn_files[@]}"
-    for f in "${warn_files[@]}"; do info "${f#"${REPO_ROOT}"/}"; done
+    for f in "${warn_files[@]}"; do info "${f#"${SCAN_ROOT}"/}"; done
   else
     pass "shellcheck -S warning also clean"
   fi

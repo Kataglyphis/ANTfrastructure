@@ -347,6 +347,98 @@ function Invoke-BuildOptional {
     $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
 }
 
+<#
+.SYNOPSIS
+    Runs one GATING step: a failure is recorded and the run continues; the verdict
+    is raised once, later, by Assert-BuildGates.
+.DESCRIPTION
+    The exact inverse of Invoke-BuildOptional, and the PowerShell twin of
+    linux/scripts/01-core/gates.sh. Invoke-BuildOptional records a failure as a
+    non-gating AllowedFailure; Invoke-BuildStep throws on the first one. Neither
+    covers the shape every multi-tool lint step actually wants: run codespell AND
+    bandit AND ruff AND ty, report every finding in one pass, then fail.
+
+    Recording a failure here is not suppression BECAUSE Assert-BuildGates re-raises
+    it. A run of Invoke-BuildGate with no closing Assert-BuildGates is advisory
+    lint wearing a gate's name -- which is what three drivers in this fleet were.
+.PARAMETER Context
+    Build context from New-BuildContext / New-CiSession.
+.PARAMETER Name
+    Gate name, as it will appear in the summary and in the final failure message.
+.PARAMETER Script
+    The gate. Any terminating error, or a non-zero exit propagated by
+    Invoke-BuildCommand, counts as a failure.
+#>
+function Invoke-BuildGate {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [Parameter(Mandatory)]
+        [scriptblock]$Script
+    )
+
+    if (-not $Context.Results.ContainsKey('Gates')) {
+        $Context.Results['Gates'] = New-Object System.Collections.Generic.List[string]
+        $Context.Results['GateFailures'] = New-Object System.Collections.Generic.List[string]
+    }
+    $Context.Results['Gates'].Add($Name) | Out-Null
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-BuildLog -Context $Context -Message "== $Name =="
+    try {
+        & $Script
+        $stopwatch.Stop()
+        $Context.Results.Succeeded.Add($Name) | Out-Null
+        Write-BuildLog -Context $Context -Message "== ${Name}: ok =="
+    } catch {
+        $stopwatch.Stop()
+        $Context.Results.Errors[$Name] = $_.Exception.Message
+        $Context.Results.Failed.Add($Name) | Out-Null
+        $Context.Results['GateFailures'].Add($Name) | Out-Null
+        Write-BuildLogError -Context $Context -Message "== ${Name}: FAILED == $($_.Exception.Message)"
+    }
+    $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
+}
+
+<#
+.SYNOPSIS
+    Raises the verdict for every Invoke-BuildGate in this context. Throws on any
+    failure, and throws when NO gate ran.
+.DESCRIPTION
+    The throw is what puts the step into Results.Failed for the caller's own
+    Invoke-BuildStep wrapper, so one failing gate fails the build exactly once
+    and the summary names all of them.
+
+    The no-gate-ran arm is not an edge case: an aggregator whose gate list came
+    out empty -- a bad filter, a skipped bootstrap -- reporting success is the
+    failure mode this whole mechanism exists to prevent.
+.PARAMETER Context
+    The same context the gates ran against.
+.PARAMETER Label
+    Name for the batch in the failure message (default 'gates').
+#>
+function Assert-BuildGates {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [string]$Label = 'gates'
+    )
+
+    if (-not $Context.Results.ContainsKey('Gates') -or $Context.Results['Gates'].Count -eq 0) {
+        throw "${Label}: no gate ran - refusing to report green over nothing."
+    }
+
+    $failures = $Context.Results['GateFailures']
+    if ($failures.Count -gt 0) {
+        throw ("$Label FAILED ({0} of {1}): {2}" -f $failures.Count,
+            $Context.Results['Gates'].Count, ($failures -join ', '))
+    }
+
+    Write-BuildLog -Context $Context -Message ("$Label OK ({0} gate(s))" -f $Context.Results['Gates'].Count)
+}
+
 function Invoke-BuildStep {
     param(
         [Parameter(Mandatory)]
@@ -575,6 +667,8 @@ Export-ModuleMember -Function @(
     'Write-BuildLogSuccess',
     'Invoke-BuildExternal',
     'Invoke-BuildOptional',
+    'Invoke-BuildGate',
+    'Assert-BuildGates',
     'Invoke-BuildStep',
     'Write-BuildSummary',
     'Resolve-DirectoryPath',

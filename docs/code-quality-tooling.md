@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **889 entries** over **242 distinct test commands**; both digits are
+manifest holds **967 entries** over **250 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1490,7 +1490,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 433 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 438 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2005,7 +2005,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-12 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
+18 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,
@@ -2271,6 +2271,45 @@ keyed per Dockerfile so an inherited path cannot leak to every image. Two more
 cover the vacuity edges: a tree with no Dockerfiles fails rather than reporting a
 clean sweep, and `--report-core-usage` stays read-only — its own docstring calls
 its counts a lower bound.
+
+### Dockerfile context paths (`context-paths`)
+
+`verify_dockerfile_context_paths.py`, the other half of the question above:
+`copy-coverage` asks whether a path referenced INSIDE a Linux image was
+provided, this one asks whether the host-side source exists at all — every
+`COPY`/`ADD` source and every `--mount=type=bind,source=` in every tracked
+Dockerfile, Windows lane included.
+
+It exists because two of them stood broken for weeks. An archive sweep moved
+`Test-SccacheWrite.ps1` into `diagnostics/archive/` and left
+`Dockerfile.sccache-write-probe` mounting the old path; #137 deleted
+`windows/upstream/sccache-nvcc-quote-fix` and left `Dockerfile.probe` mounting
+it, which killed EVERY `-ProbeScript` solve, live probes included. Both fail at
+BuildKit's context checksum — before instruction one, so the message names a
+path and not the lane that died — and both were static facts about the tree the
+whole time. Both are fixed, and `diagnostics/archive/` has since been retired:
+`Test-SccacheWrite.ps1` is back at `windows/scripts/diagnostics/`, which is what
+`Dockerfile.sccache-write-probe` and `Dockerfile.media-builder` now name. The
+paths above are the historical ones — kept because they are why this gate
+exists, not because the tree still spells them.
+
+The suite's load-bearing case is the sweep shape: the script exists SOMEWHERE,
+just not where the mount says. The rest pin the false-red edges, because a gate
+that is red on a healthy tree gets switched off: a `--from=`/`from=` source
+names a stage and is not judged, a `${VAR}` segment is a wildcard (which value
+the build arg takes is not a static fact), backslash-spelled Windows paths are
+normalised, and a `# escape=` directive is honoured — read a Windows Dockerfile
+with the backslash default and every source after line one is invisible.
+`CONTEXTS` (the three Dockerfiles not solved from the repo root) and `GENERATED`
+(sources a named script produces into the context first) are keyed per
+Dockerfile, so neither can widen to another image, and both are mutated to prove
+it. Untracked trees are out of scope: `external/` is somebody's local checkout
+with its own build contract.
+
+The suite deliberately has NO "the real tree is green" case. `verify_mutations.py`
+mirrors the repo without `linux/webserver/dist`, so such a case would fail inside
+every mutation workspace for a reason unrelated to the mutation. preflight runs
+the gate over the real tree; that is where the whole-tree answer belongs.
 
 ### Ubuntu mirror consistency (`mirror-consistency`)
 

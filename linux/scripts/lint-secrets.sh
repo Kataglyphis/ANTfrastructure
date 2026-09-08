@@ -19,7 +19,13 @@
 # 01-core/versions.env (GITLEAKS_VERSION / GITLEAKS_LINUX_*_SHA256); this
 # script no longer carries a second copy of the version.
 #
-# Usage: linux/scripts/lint-secrets.sh [path]   (no args = repo root)
+# Usage: linux/scripts/lint-secrets.sh [path] [config]  (no args = repo root)
+#
+# The optional CONFIG exists because the probe below only finds a .gitleaks.toml
+# sitting at the scanned path ITSELF. A consumer that scans its subdirectories
+# one at a time -- which is how a vendored subtree is kept out of scope -- was
+# therefore graded by the HUB's allowlist and never by its own.
+# run-lint-gates.sh passes the consumer root's config for exactly that reason.
 set -uo pipefail
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -34,7 +40,30 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # (third_party/ContainerHub/linux/scripts/lint-secrets.sh .), and resolving it
 # after the cd re-anchored both the scan and the config lookup inside the hub
 # checkout — so the consumer's tree was never graded at all.
-SCAN_ROOT="$(cd "${1:-${REPO_ROOT}}" 2>/dev/null && pwd)" || err "scan root not found: ${1:-.}"
+
+# A single FILE is a legal scan root, not just a directory: a consumer that
+# excludes a vendored subtree scans its top-level entries one at a time, and
+# some of those are plain files (README.md, pubspec.yaml, a third_party/
+# CMakeLists.txt). `cd` on those failed with "scan root not found" and took the
+# whole gate down. gitleaks itself accepts either -- measured against the
+# pinned 8.30.1, a file source scans exactly that file.
+if [ -f "${1:-}" ]; then
+  SCAN_ROOT="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+else
+  SCAN_ROOT="$(cd "${1:-${REPO_ROOT}}" 2>/dev/null && pwd)" || err "scan root not found: ${1:-.}"
+fi
+
+# The .gitleaks.toml probe below wants a DIRECTORY to look in.
+SCAN_CONFIG_DIR="${SCAN_ROOT}"
+[ -d "${SCAN_CONFIG_DIR}" ] || SCAN_CONFIG_DIR="$(dirname "${SCAN_ROOT}")"
+
+# Same reason, same timing: an explicit config is resolved against the CALLER's
+# cwd, before the cd below re-anchors every relative path inside the hub.
+CONFIG_ARG=""
+if [ -n "${2:-}" ]; then
+  [ -f "$2" ] || err "gitleaks config not found: $2"
+  CONFIG_ARG="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+fi
 
 cd "${REPO_ROOT}" || err "cannot enter the hub checkout: ${REPO_ROOT}"
 
@@ -103,8 +132,10 @@ fi
 # say nothing about ITS false positives — grading a consumer tree by the hub
 # config is the same category of error as scanning the wrong tree.
 # ---------------------------------------------------------------------------
-if [ -f "${SCAN_ROOT}/.gitleaks.toml" ]; then
-  CONFIG="${SCAN_ROOT}/.gitleaks.toml"
+if [ -n "${CONFIG_ARG}" ]; then
+  CONFIG="${CONFIG_ARG}"
+elif [ -f "${SCAN_CONFIG_DIR}/.gitleaks.toml" ]; then
+  CONFIG="${SCAN_CONFIG_DIR}/.gitleaks.toml"
 else
   CONFIG="${REPO_ROOT}/.gitleaks.toml"
 fi

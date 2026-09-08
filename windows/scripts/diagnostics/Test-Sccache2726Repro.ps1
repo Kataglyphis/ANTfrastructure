@@ -49,7 +49,11 @@ Set-Location $WorkDir
 & git remote add origin https://github.com/mozilla/sccache 2>$null
 & git fetch -q --depth 1 origin $rev
 & git checkout -q FETCH_HEAD
-foreach ($patch in (Get-ChildItem 'C:\bkmnt\patch\*.patch' | Sort-Object Name)) {
+# An EMPTY patch dir runs this loop zero times, and the repro then measures
+# UNPATCHED sccache while still printing a verdict. No subject is not a pass.
+$patches = @(Get-ChildItem 'C:\bkmnt\patch\*.patch' | Sort-Object Name)
+if (-not $patches) { throw 'C:\bkmnt\patch holds no patches - nothing to repro (see Dockerfile.probe)' }
+foreach ($patch in $patches) {
     & git apply $patch.FullName
     if ($LASTEXITCODE -ne 0) { throw "patch apply failed: $($patch.Name) ($LASTEXITCODE)" }
     Write-Host "applied: $($patch.Name)"

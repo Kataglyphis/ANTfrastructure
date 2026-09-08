@@ -884,9 +884,13 @@ windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
                          Import-Versions.ps1), host/ (Install-*/Set-*/
                          Repair-*/Reset-* + elevated maintenance),
                          diagnostics/ (Test-*/Get-*/Invoke-*/Measure-* probes
-                         + the Invoke-DiagnosticProbe.ps1 runner; settled
-                         one-shots in diagnostics/archive/, still runnable via
-                         -ProbeScript archive/<name>.ps1). Container mounts
+                         + the Invoke-DiagnosticProbe.ps1 runner). A settled
+                         one-shot is DELETED, not archived: git history is the
+                         record, and the diagnostics/archive/ facility that
+                         used to hold them never worked as advertised —
+                         `**/archive/` in .dockerignore strips it from every
+                         build context, so the -ProbeScript archive/<name>.ps1
+                         it promised could not solve. Container mounts
                          stay FLAT (C:\bkmnt, C:\temp\scripts) — the
                          $scriptAssetRoot resolver bridges both layouts and
                          is gated by ScriptAssetRoot.Parity.Tests.

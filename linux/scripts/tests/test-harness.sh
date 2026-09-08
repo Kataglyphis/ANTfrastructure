@@ -86,6 +86,46 @@ t_gate_tree() {
   printf '%s' "${root}"
 }
 
+# t_git_commit <dir> — stage and commit a fixture checkout, quietly. An
+# identity is passed per-command so the suite does not depend on whatever the
+# runner's global git config happens to be.
+t_git_commit() {
+  git -C "$1" add -A >/dev/null 2>&1
+  git -C "$1" -c user.email=t@t -c user.name=t commit -qm fixture >/dev/null 2>&1
+}
+
+# t_consumer_fixture <parent-dir> <plant-fn> <shape> [vendored]
+#   -> a throwaway CONSUMER checkout, printed on stdout.
+#
+# Every lint gate that takes a consumer root needs the same fixture, and needs
+# it to be a real git checkout, because a consumer's scope is read from git
+# ls-files. With `vendored` as the fourth argument it also carries a NESTED
+# checkout at T_VENDORED, which git records as a GITLINK — the shape this repo
+# itself has inside every consumer, and the one a root-taking gate must refuse
+# to grade as the consumer's own work.
+
+# The suite supplies <plant-fn>, called as `<plant-fn> <dir> <shape>`: once for
+# the consumer with the caller's shape, and once for the vendored checkout with
+# the shape `vendored`. What every such fixture shares is here; what differs —
+# the files, and what is wrong with them — stays in the suite. Third owner of a
+# shape the shell, python and Dockerfile lint suites had each grown separately.
+# docs/code-quality-tooling.md#the-mutation-gate-mutations
+T_VENDORED=third_party/ContainerHub
+t_consumer_fixture() {
+  local parent="$1" plant="$2" shape="$3" vendored="${4:-}" d
+  d="$(mktemp -d "${parent}/consumer.XXXXXX")"
+  git -C "${d}" init -q
+  "${plant}" "${d}" "${shape}"
+  if [ "${vendored}" = vendored ]; then
+    mkdir -p "${d}/${T_VENDORED}"
+    git -C "${d}/${T_VENDORED}" init -q
+    "${plant}" "${d}/${T_VENDORED}" vendored
+    t_git_commit "${d}/${T_VENDORED}"
+  fi
+  t_git_commit "${d}"
+  printf '%s' "${d}"
+}
+
 # t_out <command...> — combined stdout+stderr, to assert on messages
 t_out() { "$@" 2>&1; }
 # t_rc <command...> — the exit code as text, for t_assert_eq

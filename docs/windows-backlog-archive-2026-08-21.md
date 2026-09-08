@@ -18,6 +18,14 @@ windows-backlog-archive-2026-08-17.md.
 > entries below are left exactly as written -- this is the record, not the
 > rulebook.
 
+> **Editorial note (2026-09-08).** #112 below points at
+> `scripts/diagnostics/archive/Test-FfmpegProvenance.ps1`. That path no longer
+> exists: the settled-probe sweep deleted the probe and retired
+> `diagnostics/archive/` entirely (`Test-SccacheWrite.ps1`, the one live
+> resident, moved back out to `diagnostics/`). The probe is in git history --
+> the entry keeps its name because the name is the record. Same for any other
+> `diagnostics/archive/` path in this file.
+
 ## CURRENT SEQUENCE (the one list — batches A–D/G completed, see archive)
 
 > Ordered by what unblocks what; the verification chain is the bottleneck, not

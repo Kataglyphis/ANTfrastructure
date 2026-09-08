@@ -189,6 +189,7 @@ Common development targets:
    cross-build-verification
    code-quality-tooling
    code-quality-gates
+   consumer-inventory
    shared-script-libraries
    slang-shader-compilation
    python-ci

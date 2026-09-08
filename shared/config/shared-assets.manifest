@@ -1,0 +1,21 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# The ContainerHub-owned files a consumer may hold a COPY of, and how each one
+# is compared. This is the OWNER side; a consumer declares which of these ids it
+# takes in its own .containerhub-shared.manifest. See README.md next to this file.
+#
+# id | canonical path (ContainerHub-relative) | default path in the consumer | mode | knob line prefixes (';'-separated)
+#
+# mode=exact  the copy must match byte for byte (line endings normalised).
+# mode=body   the leading prose header is a legitimate per-consumer delta; from
+#             the first line of CODE down the copy must match, except that a
+#             line starting with a declared knob prefix may carry any value.
+
+clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |
+clang-tidy           | shared/config/.clang-tidy                        | .clang-tidy                             | exact |
+cmake-format         | shared/config/.cmake-format.yaml                 | .cmake-format.yaml                      | exact |
+gcovr                | shared/config/gcovr.cfg                          | gcovr.cfg                               | exact |
+pre-commit           | shared/config/.pre-commit-config.yaml            | .pre-commit-config.yaml                 | exact |
+containerhub-sh      | shared/linux/templates/containerhub.sh           | scripts/linux/lib/containerhub.sh       | body  | : "${KATAGLYPHIS_REPO_ROOT_RELATIVE:=
+resolve-build-module | shared/windows/templates/Resolve-BuildModule.ps1 | scripts/windows/Resolve-BuildModule.ps1 | body  | $script:RepoRootRelativeToHere

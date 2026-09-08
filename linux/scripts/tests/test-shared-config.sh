@@ -23,6 +23,7 @@ _tree() {
      "${REPO_ROOT}"/shared/config/gcovr.cfg \
      "${REPO_ROOT}"/shared/config/.pre-commit-config.yaml \
      "${REPO_ROOT}"/shared/config/Sync-SharedConfig.ps1 \
+     "${REPO_ROOT}"/shared/config/shared-assets.manifest \
      "${TREE}/shared/config/"
   cp "${REPO_ROOT}/shared/config/.cmake-format.yaml" "${TREE}/.cmake-format.yaml"
 }

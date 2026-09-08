@@ -30,6 +30,11 @@ _fixture() {
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts" "${d}/linux/host-config" "${d}/linux/llm-stack" "${d}/linux/webserver"
   cp "${GATE}" "${TESTS_DIR}/../quality_allow.py" "${LINT}" "${d}/linux/scripts/"
+  # lint-shell.sh sources the consumer-root contract from beside itself, so the
+  # fixture has to carry it: without it --list-files dies on line 1 and every
+  # assertion below would be about a broken copy rather than about the gate.
+  install -D -m 0644 "${TESTS_DIR}/../01-core/lint-root.sh" \
+    "${d}/linux/scripts/01-core/lint-root.sh"
   for spec in "$@"; do
     name="${spec%%:*}"; shape="${spec##*:}"
     case "${shape}" in
@@ -149,7 +154,7 @@ t_assert_eq "1" "$(_rc "${fix}")" "the full run sees b.sh's new SC2155"
 t_assert_eq "0" "$(_rc "${fix}" --files linux/scripts/a.sh)" "a.sh alone is at its baseline"
 out="$(_run "${fix}" --files "${fix}/linux/scripts/a.sh")"
 t_assert_eq "0" "$(_rc "${fix}" --files "${fix}/linux/scripts/a.sh")" "absolute paths resolve too"
-t_assert_contains "${out}" "(1 of 3 file(s))" "and resolve INTO the scope, rather than passing by being skipped"
+t_assert_contains "${out}" "(1 of 4 file(s))" "and resolve INTO the scope, rather than passing by being skipped"
 t_assert_fails grep -q -F -e "note:" <<<"${out}"
 t_assert_eq "1" "$(_rc "${fix}" --files linux/scripts/b.sh)" "b.sh alone is over its baseline"
 t_assert_contains "$(_run "${fix}" --files linux/scripts/b.sh)" "b.sh:SC2155 is 1 findings"
@@ -158,7 +163,8 @@ rm -rf "${fix}"
 t_case "--files on a file with zero rows and zero findings passes"
 fix="$(_fixture a:unused c:clean)"
 t_assert_eq "0" "$(_rc "${fix}" --files linux/scripts/c.sh)"
-t_assert_contains "$(_run "${fix}" --files linux/scripts/c.sh)" "(1 of 3 file(s))" "the copied lint-shell.sh is in scope too"
+t_assert_contains "$(_run "${fix}" --files linux/scripts/c.sh)" "(1 of 4 file(s))" \
+  "the copied lint-shell.sh and the 01-core/lint-root.sh it sources are in scope too"
 rm -rf "${fix}"
 
 t_case "--files on a file outside the lint-shell.sh scope is skipped with a note"
@@ -168,7 +174,7 @@ out="$(_run "${fix}" --files docs/x.sh linux/scripts/gone.sh)"
 t_assert_eq "0" "$(_rc "${fix}" --files docs/x.sh)"
 t_assert_contains "${out}" "note: docs/x.sh is outside the lint-shell.sh scope, skipped"
 t_assert_contains "${out}" "note: linux/scripts/gone.sh is outside" "a deleted file is outside too"
-t_assert_contains "${out}" "(0 of 2 file(s))"
+t_assert_contains "${out}" "(0 of 3 file(s))"
 rm -rf "${fix}"
 
 # ── --write-baseline: how a freeze and a recorded decrease are produced ──────

@@ -201,3 +201,118 @@ of being skipped: a docs site quietly missing its theme and half its pages is
 worse than a build that stops and says so. The same rule governs the CI
 ownership fix — the container writes `doc/` as root over a bind mount, and a
 `chown` that fails leaves a tree the host user cannot rebuild.
+
+## The rustdoc theme sheet
+
+`02-toolchain/rust/cargo_build_doc.sh` styles `cargo doc` output with the same
+generated brand sheet the Sphinx and dartdoc builds use: DocumANTation's
+`style/generate_style.py` renders it from `style/brand.json` and ships it inside
+the `sphinx_kataglyphis` package.
+
+It did not always find it. Both probes that stood in that script named a hub path
+that resolves to nothing — the hub's own `docs/_static/css/custom.css` was dropped
+in `28425115` (2026-07-15) as a stale fork of that very sheet, and the fallback
+pointed one level short, at `linux/docs/_static/`, which has never existed in this
+repository. The block therefore produced an empty `EXT_CSS` on every run and
+rustdoc got no theme at all, silently.
+
+The path is now resolved from `SCRIPT_DIR` rather than the working directory, so
+it answers the same inside a consumer's `third_party/ContainerHub` checkout —
+which is the case the cwd-relative probe existed for in the first place.
+
+## Consumer entry points that are not libraries
+
+Three things below are executables a consumer *runs*, not cores it sources. They
+share one rule, and it is the rule the `lint-secrets.sh` and `lint-workflows.sh`
+repairs were both about: **the consumer repo root is an explicit argument, never
+inferred from `BASH_SOURCE`.** A consumer checks this repo out at
+`third_party/ContainerHub/`, so a self-derived root resolves to ContainerHub and
+the tool operates on the wrong tree — reporting green, having looked at nothing.
+
+### Gate aggregation (`01-core/gates.sh`)
+
+`run_gate` / `assert_gates`, the shell half of the fleet's
+"run every gate, then fail once" idiom (the PowerShell half is
+`Invoke-BuildGate` / `Assert-BuildGates` in `WindowsBuild.Common.psm1`).
+
+```bash
+source "${CORE_DIR}/gates.sh"
+gate_reset "static analysis"
+run_gate "ruff check" ruff check --no-fix src
+run_gate "ty"         ty check
+assert_gates            # 0 when all passed; 1 naming every failure
+```
+
+Every gate RUNS even after an earlier one fails, so one push names every finding
+instead of one per round trip. `run_gate` returns 0 for a *failing* gate — that
+is deliberate and it is only safe because `assert_gates` re-raises: a `run_gate`
+batch with no closing `assert_gates` is suppression, not aggregation. It is
+compatible with `set -e` (the command runs inside a `||` list). `assert_gates`
+also fails when **no** gate ran, because an aggregator whose list came out empty
+reporting success is the failure this mechanism exists to prevent.
+
+### Tool presence (`01-core/tool-checks.sh`)
+
+`has_tool <cmd>` and `require_tools <cmd>...`, the latter naming *every* missing
+tool rather than the first. Each is defined only when the caller has not already
+defined it, so a project `common.sh` still wins — that conditional shape is what
+the inline fallbacks in `lib/code-quality.sh` and `lib/coverage.sh` were, and
+those two now source this instead of carrying a copy each.
+
+### `ci-image-ref.sh` — the family CI image reference
+
+Prints `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` (or `…_WINDOWS_TAG` with
+`--windows`) on stdout and nothing else, so it is safe in a command substitution.
+
+```bash
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  "$(third_party/ContainerHub/linux/scripts/ci-image-ref.sh)" <cmd>
+```
+
+Workflow steps do **not** need it: the four container composite actions carry the
+same value as their `image:` input default. It is for the callers that cannot omit
+an input because they are not calling an action — a raw `docker run`, a local
+repro, a lane driver. It is the one entry point here that takes **no** consumer
+root, because the only file it reads is this repo's `versions.env` whatever tree
+is being built; a root parameter would imply a per-consumer answer and there is
+none. Its PowerShell twin is `Get-CiImageReference`
+(`WindowsContainerImage.Common.psm1`) and
+`tests/test-ci-image-ref.sh` asserts that both agree with
+`verify_ci_image_refs.py`, which grades the four action defaults.
+
+### `run-lint-gates.sh` — the three lint gates over a consumer tree
+
+```bash
+bash third_party/ContainerHub/linux/scripts/run-lint-gates.sh "$PWD"
+bash third_party/ContainerHub/linux/scripts/run-lint-gates.sh "$PWD" --exclude vendor
+```
+
+shellcheck, actionlint (+ the CI image-ref check) and gitleaks, in one command,
+all three running even after one fails. Three consumers had grown their own copy
+— two of them as `run:` blocks inside a workflow, so the gate blocking their
+deploy could not be reproduced locally at all.
+
+What the copies carried and this keeps: the `git ls-files` scope (a `**/*.sh`
+glob does not recurse without `globstar`, so it graded the directories somebody
+remembered), the empty-list guards (`lint-shell.sh` with zero file arguments
+falls back to **ContainerHub's own** tree and exits 0), and the gitleaks
+self-test — a clean-tree positive control plus a planted-PAT canary matched **by
+path**, which is what tells "the gate ran and found nothing" from "the gate never
+started" and proves the scan root was honoured.
+
+`--exclude <dir>` (default `third_party`) drops a vendored top-level directory
+from every scope while KEEPING the tracked plain files directly inside it: those
+are the consumer's own, and dropping the whole prefix excluded them silently.
+
+The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
+understand a scan root yet?") are gone by construction: this script ships in the
+same commit as the gates it calls.
+
+### `05-frameworks/flutter/setup-sqlite3-wasm.sh`
+
+Fetches the pinned `sqlite3.wasm` into `<consumer-root>/web/`, SHA256-verified
+through `download_verified_file`. Two consumers had copied the same unverified
+`curl` and had already drifted to different versions; the version and its digest
+now live in `01-core/versions.env` (`SQLITE3_WASM_VERSION` /
+`SQLITE3_WASM_SHA256`). There is deliberately no version argument — the pin is
+the point.

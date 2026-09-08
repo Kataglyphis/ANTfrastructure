@@ -192,7 +192,7 @@ _dartdoc_build_guide_rows() {
 }
 
 dartdoc_build_stage_guides() {
-  local api_dir md_dir rows src slug title
+  local api_dir md_dir rows src slug _title
   api_dir="$(_dartdoc_build_require_api_dir)"
   md_dir="${api_dir}/md"
   mkdir -p "${md_dir}"
@@ -200,7 +200,7 @@ dartdoc_build_stage_guides() {
   # Collected BEFORE the loop so a malformed entry's err() exits the script
   # rather than just the subshell a process substitution would have run in.
   rows="$(_dartdoc_build_guide_rows)" || exit 1
-  while IFS=$'\t' read -r src slug title; do
+  while IFS=$'\t' read -r src slug _title; do
     [[ -n "${src}" ]] || continue
     if [[ ! -f "${src}" ]]; then
       err "Guide source not found: ${src} (listed in DARTDOC_BUILD_GUIDES)."

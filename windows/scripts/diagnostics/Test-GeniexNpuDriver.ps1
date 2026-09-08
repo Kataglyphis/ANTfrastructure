@@ -98,7 +98,13 @@ try {
                 } catch { $false }
             } | Select-Object -First 1
     }
-} catch { }
+} catch {
+    # Swallowed on purpose: this block only NARROWS the report to the active
+    # driver copy. $active stays $null, every store copy is reported, and the
+    # verdict below still stands -- so a CIM/version-parse failure must not
+    # abort a probe whose contract is "never throws on a negative result".
+    Write-Debug ("active-driver lookup failed ({0}) -- reporting every driver-store copy instead" -f $_.Exception.Message)
+}
 
 Write-Host '=== libcdsprpc.dll copies and dspqueue coverage ==='
 $copies = Get-ChildItem 'C:\Windows\System32\DriverStore\FileRepository' -Recurse -Filter 'libcdsprpc.dll' -ErrorAction SilentlyContinue

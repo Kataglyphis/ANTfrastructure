@@ -307,7 +307,13 @@ function Start-Lane {
             Write-Host ("  {0,-6} :{1}  up ({2}s)  log: {3}" -f $Compute, $Port, $i, $outLog) -ForegroundColor Green
             Invoke-Warmup -Compute $Compute -Port $Port -Model $model
             return
-        } catch { }
+        } catch {
+            # Expected every second until the lane binds its port -- this IS the
+            # readiness poll. Not silent overall: exhausting the 20 attempts
+            # falls through to the Write-Warning below, which names the log and
+            # quotes it.
+            Write-Debug ("  {0} :{1} not ready after {2}s: {3}" -f $Compute, $Port, $i, $_.Exception.Message)
+        }
     }
     # Name the log AND quote what it already says: a lane that exits immediately
     # has written its reason before this loop ends.

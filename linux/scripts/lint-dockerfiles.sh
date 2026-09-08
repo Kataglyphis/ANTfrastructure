@@ -16,9 +16,29 @@
 # pulls no base images — only the dockerfile frontend image). It is advisory
 # and auto-skipped when docker/buildx is unavailable (e.g. nerdctl-only hosts).
 #
-# Usage: linux/scripts/lint-dockerfiles.sh [Dockerfile ...]
-#   With no arguments, lints the full known set (Linux chain + services +
+# Usage: linux/scripts/lint-dockerfiles.sh [--root <dir>] [Dockerfile ...]
+#   With no file arguments, lints the full known set (Linux chain + services +
 #   Windows). LINT_DOCKERFILES_BUILD_CHECK=0 skips the advisory pass entirely.
+#
+# --root is the same contract lint-workflows.sh, lint-shell.sh and lint-python.sh
+# document, for the same reason: a submodule checkout puts this script INSIDE
+# the consumer, where the default root resolves to ContainerHub and the gate
+# grades the wrong tree while reporting green over one nobody looked at. The
+# hadolint bootstrap, its cache and versions.env always come from THIS repo.
+#
+# Under a root the file set is `git ls-files`, not the hub's fixed glob list: a
+# vendored submodule (this very repo, at third_party/ContainerHub) is a GITLINK
+# there, so the consumer's scope cannot quietly swallow the hub's own 20-odd
+# Dockerfiles and report their verdict as the consumer's. The root must be a git
+# checkout, which is checked rather than assumed.
+#
+# The rule config follows the tree too, on the lint-secrets.sh precedent: a
+# consumer shipping its own .hadolint.yaml is graded by ITS waivers, since the
+# hub's say nothing about a Dockerfile the hub never wrote.
+#
+# An empty file list is already fatal below and stays fatal under a root — a
+# consumer with no Dockerfile gets an error, never a green verdict about
+# nothing.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -30,11 +50,30 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 : "${LINT_DOCKERFILES_BUILD_CHECK:=1}"
 
+# --root is parsed and resolved by the contract's one owner; what comes back is
+# the tree to grade. The remaining arguments go back into "$@", so the explicit
+# file-list call shape below is untouched.
+# shellcheck source=01-core/lint-root.sh
+. "${CORE_DIR}/lint-root.sh"
+lint_root_begin "${REPO_ROOT}" "$@" || exit 1
+SCAN_ROOT="${LINT_ROOT_PATH}"
+set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
+
+# The hub's .hadolint.yaml unless the consumer ships one of its own.
+HADOLINT_CONFIG="${REPO_ROOT}/.hadolint.yaml"
+[ -f "${SCAN_ROOT}/.hadolint.yaml" ] && HADOLINT_CONFIG="${SCAN_ROOT}/.hadolint.yaml"
+
 # ---------------------------------------------------------------------------
 # Target set
 # ---------------------------------------------------------------------------
 if [ "$#" -gt 0 ]; then
   DOCKERFILES=("$@")
+elif [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
+  DOCKERFILES=()
+  while IFS= read -r -d '' df; do
+    DOCKERFILES+=("${SCAN_ROOT}/${df}")
+  done < <(lint_root_tracked "${SCAN_ROOT}" 'Dockerfile' 'Dockerfile.*' \
+             '*/Dockerfile' '*/Dockerfile.*')
 else
   DOCKERFILES=()
   for df in linux/Dockerfile.* linux/webserver/Dockerfile linux/llm-stack/Dockerfile \
@@ -42,7 +81,8 @@ else
     [ -f "${df}" ] && DOCKERFILES+=("${df}")
   done
 fi
-[ "${#DOCKERFILES[@]}" -gt 0 ] || err "No Dockerfiles found to lint."
+[ "${#DOCKERFILES[@]}" -gt 0 ] || err "No Dockerfiles found to lint under ${SCAN_ROOT}."
+printf '== dockerfile lint under %s ==\n' "${SCAN_ROOT}"
 
 FAILED=0
 
@@ -129,9 +169,11 @@ HADOLINT_WINDOWS_IGNORES=(
 )
 
 for df in "${DOCKERFILES[@]}"; do
-  hl_args=(--config "${REPO_ROOT}/.hadolint.yaml")
+  hl_args=(--config "${HADOLINT_CONFIG}")
+  # Under a root the paths are absolute, so the prefix arm alone would stop
+  # matching and every Windows Dockerfile would be graded by Linux SC rules.
   case "${df}" in
-    windows/*)
+    windows/*|*/windows/*)
       for rule in "${HADOLINT_WINDOWS_IGNORES[@]}"; do hl_args+=(--ignore "${rule}"); done ;;
   esac
   if "${HADOLINT_BIN}" "${hl_args[@]}" "${df}"; then
@@ -153,8 +195,8 @@ if [ "${LINT_DOCKERFILES_BUILD_CHECK}" = "1" ] \
     # Windows Dockerfiles use `# escape=`` + servercore bases; the Linux
     # BuildKit frontend still parses them, but skip them to avoid noise on
     # hosts without a Windows daemon.
-    case "${df}" in windows/*) continue ;; esac
-    if docker buildx build --check -f "${df}" . >/dev/null 2>&1; then
+    case "${df}" in windows/*|*/windows/*) continue ;; esac
+    if docker buildx build --check -f "${df}" "${SCAN_ROOT}" >/dev/null 2>&1; then
       printf '  ok: %s\n' "${df}"
     else
       printf '  note: --check reported issues in %s (advisory, not failing the gate)\n' "${df}"

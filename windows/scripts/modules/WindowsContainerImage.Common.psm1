@@ -159,6 +159,63 @@ function Assert-ContainerCommandAvailable {
     return $command.Source
 }
 
+<#
+.SYNOPSIS
+    The family CI container image reference, composed from ContainerHub's versions.env.
+.DESCRIPTION
+    The PowerShell twin of linux/scripts/ci-image-ref.sh, and the same contract:
+    versions.env owns IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG / CI_IMAGE_WINDOWS_TAG,
+    the four container composite actions carry the composed value as their `image:`
+    input DEFAULT, and this exists for the callers that cannot omit an input because
+    they are not calling an action -- a local lane driver, a `docker run`, a sweep script.
+
+    It takes NO consumer repo root, deliberately, where every other entry point in this
+    repo does. versions.env is resolved from THIS module's own location, so the answer
+    always comes from the ContainerHub the caller actually imported -- i.e. that
+    consumer's pinned submodule. A -RepoRoot parameter would imply a per-consumer answer
+    and there is not one; worse, it would let two roots disagree about one fleet.
+
+    A missing key THROWS rather than returning an empty string: an empty image reference
+    reaches `docker run` as "run the argument after it as an image" and fails a long way
+    from the cause. Parsed, never sourced -- versions.env is inert KEY=value data.
+.PARAMETER Windows
+    Compose the Windows image reference instead of the Linux one.
+.PARAMETER VersionsEnvPath
+    Override the versions.env location. For tests; leave unset in production.
+.OUTPUTS
+    [string] e.g. 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross'
+#>
+function Get-CiImageReference {
+    param(
+        [switch]$Windows,
+        [string]$VersionsEnvPath = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($VersionsEnvPath)) {
+        $hubRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+        $VersionsEnvPath = Join-Path $hubRoot 'linux/scripts/01-core/versions.env'
+    }
+
+    if (-not (Test-Path -LiteralPath $VersionsEnvPath -PathType Leaf)) {
+        throw ("ContainerHub versions.env not found at $VersionsEnvPath. " +
+            'If the whole directory is missing, the submodule is not checked out: ' +
+            'git submodule update --init --recursive third_party/ContainerHub')
+    }
+
+    $versions = ConvertFrom-VersionsEnv -Path $VersionsEnvPath
+    $tagKey = if ($Windows) { 'CI_IMAGE_WINDOWS_TAG' } else { 'CI_IMAGE_LINUX_TAG' }
+
+    foreach ($key in @('IMAGE_REGISTRY_PREFIX', $tagKey)) {
+        if (-not $versions.Contains($key) -or [string]::IsNullOrWhiteSpace($versions[$key])) {
+            throw ("$key is not set in $VersionsEnvPath. That file is the fleet-wide owner " +
+                'of the CI image tags; a missing key means the ContainerHub pin predates ' +
+                'the convention.')
+        }
+    }
+
+    return ('{0}:{1}' -f $versions['IMAGE_REGISTRY_PREFIX'], $versions[$tagKey])
+}
+
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Resolve-VsBuildToolsRoot',
@@ -166,12 +223,14 @@ Export-ModuleMember -Function @(
     'Clear-PendingFileHandle',
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
+    'Get-CiImageReference',
     # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
     # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
+    'ConvertFrom-VersionsEnv',
     'Expand-ArchiveSubdirectory'
 )
 

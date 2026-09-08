@@ -987,7 +987,13 @@ function Get-BuildJobCount {
             try {
                 $resp = & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --max-time 5 "$($env:SCCACHE_WEBDAV_ENDPOINT)/preseed/memory-limit-gb.txt" 2>$null
                 if ("$resp".Trim() -match '^\d+$') { $script:WebdavMemoryLimitGb = "$resp".Trim() }
-            } catch { }
+            } catch {
+                # Fails open BY DESIGN: the webdav budget is an optimisation, and
+                # $script:WebdavMemoryLimitGb stays '' so the CIM branch below
+                # computes the job count instead. Throwing here would break every
+                # build on a host that merely cannot reach the LAN endpoint.
+                Write-Debug ("webdav memory-limit probe failed ({0}) -- falling back to CIM" -f $_.Exception.Message)
+            }
             $global:LASTEXITCODE = 0
         }
         if ($script:WebdavMemoryLimitGb -match '^\d+$') { $memGB = [int]$script:WebdavMemoryLimitGb }

@@ -133,6 +133,22 @@ otherwise exit 0 with `FailedCount` 0 - green having run nothing. Inputs:
 `path` (required), `version`.
 
 
+### `upload-codeql-sarif`
+Probes for CodeQL SARIF results with a *step* and uploads them, instead of
+gating on `hashFiles()`. Inputs: `workspace` (required - the absolute path of
+the tree the build actually ran in), `results-dir` (default `codeql-results`,
+relative to `workspace`), `category`. Output: `found` (`'true'` when at least
+one `.sarif` was present).
+
+`hashFiles()` only sees inside `GITHUB_WORKSPACE`. A Windows lane builds in a
+short-path clone (see `clone-into-short-path` /
+`prepare-windows-container-host`), so the results land *outside* that tree and
+`hashFiles()` silently reports nothing - a green job that uploaded no alerts.
+Note also the `checkout_path` this action passes on: `upload-sarif` defaults it
+to `github.workspace`, which under a short-path clone is the wrong tree and
+leaves alerts unable to anchor to source.
+
+
 ## The two images, and the one place they are named
 
 Every containerised lane in the family runs in exactly two images:
@@ -205,6 +221,41 @@ sibling's verbatim fragment — Windows argv must stay literal). Other inputs:
 `cpus` (default: all runner CPUs, min 2), `memory` (default `16g`),
 `mount-source`/`mount-target` (default `D:\ws` → `C:\ws`). Values containing
 newlines cannot be expressed in the per-line inputs.
+
+## Testing these actions
+
+`.github/workflows/actions-selftest.yml` is the only thing standing between an
+edit here and 61 consumer call sites that resolve these actions at `@main` -
+which the submodule pin does not freeze. It `uses:` all eleven, and it fires on
+any change under `.github/actions/`. Read its header before trusting a green
+run; the short version:
+
+**Statically, on every run and locally.** actionlint reads the metadata of a
+locally-`uses:`d action and checks the call site: an input name the action does
+not declare, a *required* input left out, and a `steps.<id>.outputs.<name>` the
+action does not declare are all errors. The self-test therefore passes **every
+declared input** of every action and **reads every declared output**, so
+renaming or deleting either fails `linux/scripts/lint-workflows.sh` (preflight
+slug `workflow-lint`) here rather than in a consumer. Verified by mutation:
+renaming `measure-data-root` in `prepare-windows-container-host`, and `free-gb`
+in `set-docker-data-root`'s outputs, each turn `WORKFLOW LINT OK` into a named
+failure. `if:` does not matter - actionlint grades a step it will never run, so
+the dispatch-gated jobs still carry their contract on every push.
+
+**Can actionlint lint `action.yml` itself?** No - not at the pinned 1.7.12.
+Handed an action file as an argument it parses it as a *workflow* and reports
+`"on" section is missing`, then one `unexpected key` per top-level key. Being
+`uses:`d from a workflow is the only way into its scope, and the self-test is
+what supplies that. The actions' own `run:` blocks are therefore still
+ungraded - no shellcheck over the bash ones, no parse check on the pwsh ones.
+
+**At runtime, only on GitHub.** The jobs really run the actions and assert on
+specific values, never on "the step exited 0". Not covered, deliberately: every
+FAILURE path (asserting one needs `continue-on-error`, which this repository
+does not use), the `image` input of the four container actions (omitted per the
+doctrine above - `verify_ci_image_refs.py` guards it better), the SARIF upload
+branch and the Windows container lane (both opt-in; see the workflow header for
+why).
 
 ## Adding a new reusable action
 Create `.github/actions/<name>/action.yml` here, keep it self-contained (no

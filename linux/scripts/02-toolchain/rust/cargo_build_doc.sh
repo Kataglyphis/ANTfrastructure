@@ -18,13 +18,16 @@ fi
 CRATE_DIR_NAME="${CRATE_NAME//-/_}"
 info "Detected crate name: $CRATE_NAME (doc dir: $CRATE_DIR_NAME)"
 
-# Combine CSS files to create a custom rustdoc theme
-# Assuming the ExternalLib submodule is available locally, or paths are provided
+# Combine CSS files to create a custom rustdoc theme, from the brand sheet
+# DocumANTation generates. Resolved from SCRIPT_DIR, not the working directory,
+# so it answers the same inside a consumer's third_party/ContainerHub checkout.
+# Why both earlier probes found nothing:
+# docs/shared-script-libraries.md#the-rustdoc-theme-sheet
+HUB_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+BRAND_CSS="$HUB_ROOT/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css"
 EXT_CSS=""
-if [ -f "./third_party/ContainerHub/docs/_static/css/custom.css" ]; then
-    EXT_CSS="./third_party/ContainerHub/docs/_static/css/custom.css"
-elif [ -f "$SCRIPT_DIR/../../../docs/_static/css/custom.css" ]; then
-    EXT_CSS="$SCRIPT_DIR/../../../docs/_static/css/custom.css"
+if [ -f "$BRAND_CSS" ]; then
+    EXT_CSS="$BRAND_CSS"
 fi
 
 if [ -n "$EXT_CSS" ] && [ -f "./resources/web/rustdoc-mapping.css" ]; then

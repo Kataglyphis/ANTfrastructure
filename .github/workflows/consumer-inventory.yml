@@ -1,0 +1,86 @@
+# Who actually calls this hub. See docs/consumer-inventory.md#the-consumer-inventory
+#
+# The repository has restored three deletions because "zero callers" was decided
+# from a grep over whichever repos happened to be checked out on one machine.
+# This job clones every repository declared in .github/consumers.json and grades
+# each hub entry point, so the deletion list rests on the whole family instead.
+#
+# Weekly rather than per-push: the answer changes when a CONSUMER changes, and
+# this repository never sees those commits. Nothing here writes to a consumer.
+name: Consumer Inventory
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC, after the stale-docs check at 06:00
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/consumers.json'
+      - 'linux/scripts/verify_consumer_inventory.py'
+      - '.github/workflows/consumer-inventory.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/consumers.json'
+      - 'linux/scripts/verify_consumer_inventory.py'
+      - '.github/workflows/consumer-inventory.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consumer-inventory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inventory:
+    name: Grade every hub entry point against its consumers
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      # Anonymous HTTPS reaches every public consumer, and the default
+      # GITHUB_TOKEN cannot read another repository anyway. Set this secret to a
+      # PAT with `repo` scope the day a PRIVATE consumer joins the inventory;
+      # until then it is empty and the clone is anonymous. An unreadable
+      # consumer FAILS the run -- it is never skipped.
+      CONSUMER_INVENTORY_TOKEN: ${{ secrets.CONSUMER_INVENTORY_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      # No continue-on-error, and no `|| true`. A consumer that cannot be
+      # cloned, or a consumer calling a hub path that no longer exists, is a
+      # finding: the whole point is that this refuses to answer from a partial
+      # view of the family.
+      - name: Clone every declared consumer and grade the entry points
+        run: |
+          python3 linux/scripts/verify_consumer_inventory.py \
+            --report out/consumer-inventory.md
+
+      # always(): the report is written before the dangling-reference verdict is
+      # raised, so a red run still has to hand over the thing a human acts on.
+      - name: Publish the report to the run summary
+        if: always()
+        run: |
+          if [ -f out/consumer-inventory.md ]; then
+            cat out/consumer-inventory.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::no report was produced - the run failed before any consumer was graded"
+          fi
+
+      - name: Upload the report
+        if: always() && hashFiles('out/consumer-inventory.md') != ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: consumer-inventory
+          path: out/consumer-inventory.md
+          if-no-files-found: error
+          retention-days: 90

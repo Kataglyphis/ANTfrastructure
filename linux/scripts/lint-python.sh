@@ -16,7 +16,25 @@
 # hard dependency of this repo; uvx caches the pinned wheel). The pin is
 # RUFF_VERSION in 01-core/versions.env, sourced below.
 #
-# Usage: linux/scripts/lint-python.sh [file.py ...]   (no args = full set)
+# Usage: linux/scripts/lint-python.sh [--root <dir>] [file.py ...]
+#        (no file arguments = the full set under the root)
+#
+# --root is the same contract lint-workflows.sh and lint-shell.sh document, for
+# the same reason: a submodule checkout puts this script INSIDE the consumer,
+# where the default root resolves to ContainerHub and the gate grades the wrong
+# tree while reporting green over one nobody looked at. It is what lets a
+# consumer's Python be reached at all — OrchestrANT's 65 files were outside
+# every lint gate in the fleet until this argument existed. The ruff pin,
+# versions.env and the extractor always come from THIS repo regardless.
+#
+# Under a root the file set is `git ls-files`, not a find: a vendored submodule
+# (this very repo, at third_party/ContainerHub) is a GITLINK there, so the
+# consumer's scope cannot quietly swallow the hub's own Python, and untracked
+# build output cannot get in either. The root must therefore be a git checkout,
+# which is checked rather than assumed.
+#
+# An empty file list is already fatal below and stays fatal under a root: a gate
+# handed a tree and reporting green over nothing is worse than no gate.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -39,11 +57,27 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
 trap 'rm -f "${_RUFF_OUT}"; rm -rf "${_EMB_DIR:-}"' EXIT
 
+# --root is parsed and resolved by the contract's one owner; what comes back is
+# the tree to grade. The remaining arguments go back into "$@", so the staged /
+# pre-commit call shape below is untouched.
+# shellcheck source=01-core/lint-root.sh
+. "${_core}/lint-root.sh"
+lint_root_begin "${REPO_ROOT}" "$@" || exit 1
+SCAN_ROOT="${LINT_ROOT_PATH}"
+set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
+
 # ---------------------------------------------------------------------------
 # Target set — first-party Python only (vendored/venv/checkout trees excluded)
 # ---------------------------------------------------------------------------
 if [ "$#" -gt 0 ]; then
   PY_FILES=("$@")
+elif [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
+  # The same three exclusions the hub sweep carries, as git pathspecs.
+  PY_FILES=()
+  while IFS= read -r -d '' f; do
+    PY_FILES+=("${SCAN_ROOT}/${f}")
+  done < <(lint_root_tracked "${SCAN_ROOT}" '*.py' \
+             ':!:*/node_modules/*' ':!:*/__pycache__/*' ':!:*/.venv/*')
 else
   PY_FILES=()
   while IFS= read -r f; do
@@ -53,17 +87,30 @@ else
              -not -path '*/node_modules/*' -not -path '*/__pycache__/*' \
              -not -path '*/.venv/*' 2>/dev/null | sort)
 fi
-[ "${#PY_FILES[@]}" -gt 0 ] || err "No Python files found to lint."
+[ "${#PY_FILES[@]}" -gt 0 ] || err "No Python files found to lint under ${SCAN_ROOT}."
 
 # Python living in shell heredocs is invisible to ruff otherwise (775 lines as of
 # 2026-09-01). Only directly-executed blocks are self-contained; `cat`ed fragments
 # are assembled into one program later. The git hooks are in scope too: a hook
 # cannot carry a .sh suffix. docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
+#
+# Under a root the two hub directories name nothing, so the shell handed to the
+# extractor is the CONSUMER's tracked shell. Skipping this step there would have
+# been the quiet half-gate this whole file argues against: heredoc Python is
+# still Python, and a consumer's is no more visible to ruff than the hub's.
 if [ "$#" -eq 0 ]; then
   _EMB_DIR="$(mktemp -d)"
   _EMB_MAP="${_EMB_DIR}/.sources"
+  _EMB_SH=()
+  if [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
+    while IFS= read -r -d '' f; do _EMB_SH+=("${SCAN_ROOT}/${f}"); done \
+      < <(lint_root_tracked "${SCAN_ROOT}" '*.sh')
+  else
+    while IFS= read -r f; do _EMB_SH+=("${f}"); done \
+      < <(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f)
+  fi
   if python3 linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
-       $(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f) > "${_EMB_MAP}" 2>/dev/null; then
+       ${_EMB_SH[@]+"${_EMB_SH[@]}"} > "${_EMB_MAP}" 2>/dev/null; then
     while IFS= read -r f; do PY_FILES+=("${f}"); done \
       < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
   fi
@@ -119,7 +166,7 @@ else
   err "neither ruff nor uvx found — install uv (repo standard) or ruff"
 fi
 
-echo "== python lint: ${#PY_FILES[@]} file(s), ruff via '${RUFF[*]}' =="
+echo "== python lint under ${SCAN_ROOT}: ${#PY_FILES[@]} file(s), ruff via '${RUFF[*]}' =="
 
 # Gate pass — real-error classes only, hard-fails.
 if ! "${RUFF[@]}" check --quiet --select "${GATE_SELECT}" "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then

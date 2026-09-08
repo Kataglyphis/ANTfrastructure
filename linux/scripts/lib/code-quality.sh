@@ -13,22 +13,11 @@ _CODE_QUALITY_SH_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
-# has_tool/require_tools normally come from the project's common.sh; define
-# equivalents only when the caller has not.
-if ! declare -F has_tool >/dev/null 2>&1; then
-  has_tool() { command -v "$1" >/dev/null 2>&1; }
-fi
-if ! declare -F require_tools >/dev/null 2>&1; then
-  require_tools() {
-    local missing=() tool
-    for tool in "$@"; do
-      command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
-    done
-    if [[ ${#missing[@]} -gt 0 ]]; then
-      err "Required tools not found: ${missing[*]}"
-    fi
-  }
-fi
+# has_tool/require_tools: the canonical pair, which itself declares each only
+# when the caller has not - so a project common.sh still wins. This replaced two
+# byte-similar inline copies (here and in coverage.sh).
+# shellcheck source=../01-core/tool-checks.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/tool-checks.sh"
 
 _code_quality_project_root() {
   printf '%s\n' "${CODE_QUALITY_PROJECT_ROOT:-$(pwd)}"

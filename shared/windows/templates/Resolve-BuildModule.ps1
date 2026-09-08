@@ -54,7 +54,16 @@ function Resolve-BuildModule {
         [string] $Name
     )
 
-    $fileName = if ($Name.EndsWith('.psm1', [System.StringComparison]::OrdinalIgnoreCase)) { $Name } else { "$Name.psm1" }
+    # An explicit .psm1 OR .ps1 extension is honoured; a bare name means .psm1.
+    # The .ps1 arm is what makes the repo's dot-sourced helpers reachable at all:
+    # ContainerHub ships windows/scripts/modules/Initialize-CiEnvironment.ps1
+    # (New-CiSession + the Write-CiLog family), and because this resolver used to
+    # append '.psm1' unconditionally, every consumer hand-rolled that CI-session
+    # preamble instead. Dot-source it:
+    #     . (Resolve-BuildModule -Name 'Initialize-CiEnvironment.ps1')
+    $known = @('.psm1', '.ps1')
+    $hasExt = $known | Where-Object { $Name.EndsWith($_, [System.StringComparison]::OrdinalIgnoreCase) }
+    $fileName = if ($hasExt) { $Name } else { "$Name.psm1" }
 
     $probed = [System.Collections.Generic.List[string]]::new()
     foreach ($root in $script:BuildModuleSearchRoots) {
@@ -98,6 +107,11 @@ function Import-BuildModule {
     )
 
     foreach ($moduleName in $Name) {
+        if ($moduleName.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+            # Import-Module on a plain .ps1 runs it in a throwaway scope and defines
+            # nothing for the caller -- a silent no-op. Dot-source those instead.
+            throw "'$moduleName' is a dot-source script, not a module. Use: . (Resolve-BuildModule -Name '$moduleName')"
+        }
         Import-Module (Resolve-BuildModule -Name $moduleName) -Force -Global -DisableNameChecking
     }
 

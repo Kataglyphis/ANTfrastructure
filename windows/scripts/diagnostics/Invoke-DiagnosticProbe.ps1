@@ -21,9 +21,12 @@
         executing; without the marker check that reads as a clean run.
 
 .PARAMETER ProbeScript
-    Script under windows/scripts/diagnostics/ (e.g. Test-Sccache2726Repro.ps1,
-    or archive/probe-x.ps1). Runs it through the shared Dockerfile.probe —
-    the normal way to run a probe since the 2026-08-21 consolidation.
+    Script under windows/scripts/diagnostics/ (e.g. Test-Sccache2726Repro.ps1).
+    Runs it through the shared Dockerfile.probe — the normal way to run a probe
+    since the 2026-08-21 consolidation. A subdirectory only works if the build
+    context carries it: the retired archive/ was covered by `**/archive/` in
+    .dockerignore, so the Test-Path check below passed on the host and the solve
+    then died on the missing file.
 
 .PARAMETER Dockerfile
     Filename under windows/ (e.g. Dockerfile.sccache-write-probe) — only for

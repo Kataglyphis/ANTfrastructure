@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""verify_code_dupes.py -- the CODE duplication gate (shell, Dockerfiles, docs).
+"""verify_code_dupes.py -- the CODE duplication gate (shell, PowerShell, Dockerfiles, docs).
 
 Why this exists
 ---------------
@@ -23,8 +23,9 @@ literals folded to ``"S"``, numbers to ``N``, variable names to ``$V`` -- and
 the shingles are taken over those tokens. That finds renamed clones (type-2),
 which is the kind this repo actually grows.
 
-Units are the things a human would move: a shell function, a Dockerfile
-instruction (continuations joined), a Markdown paragraph.
+Units are the things a human would move: a shell function, a PowerShell
+function or filter, a Dockerfile instruction (continuations joined), a Markdown
+paragraph.
 
 Deliberate twins
 ----------------
@@ -46,7 +47,19 @@ row whose pair no longer overlaps -- the four-way rule of quality_allow, kept
 local because the key here is an UNORDERED file pair. A gate that fires on day
 one about work nobody plans to undo is a gate people learn to ignore.
 
-Windows files are out of scope on purpose: that lane has its own backlog.
+The Windows lane
+----------------
+``windows/`` held 50,862 lines of PowerShell that no structural gate scanned.
+That was never a decision, only where the effort went, and it is how the
+``Build-Windows.ps1`` and ``Resolve-BuildModule.ps1`` families were free to
+drift. ``.ps1``/``.psm1`` are now a fourth kind, scanned wherever they live --
+``windows/`` included. The lane's prose and Dockerfiles stay out (``md`` and
+``docker`` keep their own backlog there), so ``windows`` is a PER-KIND skip
+now, not a blanket one.
+
+Its 50k lines are frozen the same way every other pre-existing offender is: one
+``code-dupes.allow`` row per pair, budget EQUAL to today's measurement. Nothing
+has to be de-duplicated before the gate is useful, and nothing may grow.
 
 No network, and one project import: the shared allow reader
 (``linux/scripts/quality_allow.py``). Safe for hooks and CI.
@@ -78,13 +91,13 @@ ALLOW_FMT = "a | b | budget | reason"
 sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
 from quality_allow import iter_rows  # noqa: E402
 
-# Never scanned: vendored trees, generated output, the Windows lane (own
-# backlog), and the records that narrate the same work on purpose.
+# Never scanned: vendored trees, generated output, and the records that narrate
+# the same work on purpose.
 # "third_party" joined 2026-09-07: the external/ -> third_party/ submodule move
 # (2026-09-05) renamed the vendored tree but not this exclusion, so a checkout
 # with initialized submodules scanned DocumANTation's own prose for
 # ContainerHub duplication. "external" stays for the leftover husk.
-SKIP_DIRS = {".git", "external", "third_party", "node_modules", "windows", "out", "archive",
+SKIP_DIRS = {".git", "external", "third_party", "node_modules", "out", "archive",
              "_build", "dist", "sphinx-kataglyphis-theme", "logs",
              # Third-party and generated: nothing here is ours to de-duplicate.
              ".venv", "venv", "site-packages", ".tox", "license-assets",
@@ -96,6 +109,10 @@ SKIP_DIRS = {".git", "external", "third_party", "node_modules", "windows", "out"
              ".pytest_cache", "__pycache__", ".dart_tool",
              "source_templates", "deps"}
 SKIP_NAME_MARKERS = ("archive", "backlog", "CHANGELOG")
+# Skips that belong to ONE kind. "windows" was a blanket skip while no kind
+# could read PowerShell; now that "ps" can, the lane's scripts are in scope and
+# only its prose and Dockerfiles keep the backlog exemption.
+KIND_SKIP_DIRS = {"shell": {"windows"}, "docker": {"windows"}, "md": {"windows"}}
 
 # Code repeats itself far more than prose, so the window is wider than the
 # prose gate's 8 words: 12 normalised tokens of shell is already a real gesture
@@ -115,6 +132,18 @@ VARIABLE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*(:[-=+?][^}]*)?\}|\$[A-Za-z_][
 NUMBER = re.compile(r"\b\d+(\.\d+)?\b")
 TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*|\$V|\"S\"|\bN\b|[^\s\w]")
 SHELL_FUNC = re.compile(r"^([A-Za-z_][A-Za-z0-9_:-]*)\s*\(\)\s*\{\s*$")
+# PowerShell opens a body on the header line OR on the next one, so the brace is
+# optional here; _brace_units counts from the header either way.
+PS_FUNC = re.compile(r"^\s*(?:function|filter)\s+([^\s({]+)\s*(?:\([^)]*\))?\s*\{?\s*$",
+                     re.IGNORECASE)
+# Blanked before the unit split: an unbalanced brace inside a <# #> comment
+# would otherwise swallow the rest of the file into one unit.
+PS_BLOCK_COMMENT = re.compile(r"<#.*?#>", re.S)
+# $env:PATH and $script:Foo are one variable each, not "$V : NAME". Folding the
+# qualifier away is what lets a renamed copy match, the whole point of the
+# normalisation.
+PS_SCOPE_VAR = re.compile(r"\$(?:global|script|local|private|using|env|variable):",
+                          re.IGNORECASE)
 DOCKER_INSTR = re.compile(r"^\s*(FROM|RUN|COPY|ADD|ARG|ENV|WORKDIR|ENTRYPOINT|CMD|LABEL|USER|VOLUME|EXPOSE|HEALTHCHECK|SHELL|ONBUILD|STOPSIGNAL)\b",
                           re.IGNORECASE)
 
@@ -178,15 +207,17 @@ def normalise(text: str) -> list[str]:
     return out
 
 
-def shell_units(path: Path) -> list[tuple[int, str]]:
-    """Shell functions; anything outside one is chunked on blank lines."""
-    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+def _brace_units(lines: list[str], header: re.Pattern) -> list[tuple[int, str]]:
+    """Brace-delimited named blocks, with everything outside one chunked on blank
+    lines. `header` is what opens a block -- shell's `name() {` or PowerShell's
+    `function Name`. One owner for both: the brace walk is identical, and the two
+    copies of it were exactly what this gate exists to refuse."""
     units: list[tuple[int, str]] = []
     i, n = 0, len(lines)
     loose: list[str] = []
     loose_start = 1
     while i < n:
-        m = SHELL_FUNC.match(lines[i])
+        m = header.match(lines[i])
         if m:
             if loose:
                 units.append((loose_start, "\n".join(loose)))
@@ -212,6 +243,20 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
     if loose:
         units.append((loose_start, "\n".join(loose)))
     return units
+
+
+def shell_units(path: Path) -> list[tuple[int, str]]:
+    """Shell functions; anything outside one is chunked on blank lines."""
+    return _brace_units(path.read_text(encoding="utf-8", errors="replace").split("\n"),
+                        SHELL_FUNC)
+
+
+def ps_units(path: Path) -> list[tuple[int, str]]:
+    """PowerShell functions and filters, block comments blanked first (newlines
+    kept, so every reported line number is still the file's own)."""
+    text = PS_BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"),
+                                path.read_text(encoding="utf-8", errors="replace"))
+    return _brace_units(text.split("\n"), PS_FUNC)
 
 
 def docker_units(path: Path) -> list[tuple[int, str]]:
@@ -254,6 +299,10 @@ def md_units(path: Path) -> list[tuple[int, str]]:
 def _file_kind(name: str) -> str | None:
     if name.endswith(".sh"):
         return "shell"
+    # Before the Dockerfile prefix on purpose: windows/scripts/tests holds
+    # Dockerfile.EolAttributes.Tests.ps1, a Pester suite, not a Dockerfile.
+    if name.endswith((".ps1", ".psm1")):
+        return "ps"
     if name.startswith("Dockerfile"):
         return "docker"
     if name.endswith(".md"):
@@ -271,18 +320,22 @@ def collect() -> list[tuple[Path, str]]:
         if not path.is_file():
             continue
         rel = path.relative_to(REPO_ROOT)
-        if SKIP_DIRS & set(rel.parts):
-            continue
         name = path.name
         if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
             continue
         kind = _file_kind(name)
-        if kind and not (kind == "md" and path in doc_gate_scope):
+        if kind is None or (SKIP_DIRS | KIND_SKIP_DIRS.get(kind, set())) & set(rel.parts):
+            continue
+        if not (kind == "md" and path in doc_gate_scope):
             found.append((path, kind))
     return found
 
 
-UNIT_READERS = {"shell": shell_units, "docker": docker_units, "md": md_units}
+UNIT_READERS = {"shell": shell_units, "ps": ps_units,
+                "docker": docker_units, "md": md_units}
+# Per-kind folding applied to a unit's text before the shared normaliser sees
+# it, never to the text the report quotes back.
+KIND_FOLD = {"ps": lambda text: PS_SCOPE_VAR.sub("$", text)}
 
 
 def load_allow() -> dict[frozenset[str], tuple[int, str]]:
@@ -316,12 +369,14 @@ def _index_units(files):
     for path, kind in files:
         rel = path.relative_to(REPO_ROOT).as_posix()
         kind_of[rel] = kind
+        fold = KIND_FOLD.get(kind)
         for line_no, body in UNIT_READERS[kind](path):
-            toks = normalise(body)
+            folded = fold(body) if fold else body
+            toks = normalise(folded)
             if len(toks) < MIN_TOKENS:
                 continue
             texts[(rel, line_no)] = " ".join(body.split())
-            unit_lines[(rel, line_no)] = normalise_lines(body)
+            unit_lines[(rel, line_no)] = normalise_lines(folded)
             for j in range(len(toks) - SHINGLE + 1):
                 sh = tuple(toks[j:j + SHINGLE])
                 owners[sh].add((rel, line_no))

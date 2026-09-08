@@ -35,17 +35,8 @@ _COVERAGE_SH_LOADED=1
 
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
-if ! declare -F require_tools >/dev/null 2>&1; then
-  require_tools() {
-    local missing=() tool
-    for tool in "$@"; do
-      command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
-    done
-    if [[ ${#missing[@]} -gt 0 ]]; then
-      err "Required tools not found: ${missing[*]}"
-    fi
-  }
-fi
+# shellcheck source=../01-core/tool-checks.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/tool-checks.sh"
 
 # ---------------------------------------------------------------------------
 # gcovr backend

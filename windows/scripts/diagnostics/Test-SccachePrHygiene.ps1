@@ -34,8 +34,11 @@ Set-Location $WorkDir
 & git checkout -q FETCH_HEAD
 # ALL patches, sorted - exactly what Install-RustToolchain.ps1 does. The old
 # -First 1 silently validated a one-patch subset once the series grew
-# (hygiene run 3 reported green with 0002/0003 never applied).
-foreach ($patch in (Get-ChildItem 'C:\bkmnt\patch\*.patch' | Sort-Object Name)) {
+# (hygiene run 3 reported green with 0002/0003 never applied). ZERO patches is
+# the same defect taken to the limit: fmt/clippy/test would grade stock sccache.
+$patches = @(Get-ChildItem 'C:\bkmnt\patch\*.patch' | Sort-Object Name)
+if (-not $patches) { throw 'C:\bkmnt\patch holds no patches - nothing to grade (see Dockerfile.probe)' }
+foreach ($patch in $patches) {
     & git apply $patch.FullName
     if ($LASTEXITCODE -ne 0) { throw "patch apply failed: $($patch.Name) ($LASTEXITCODE)" }
     Write-Host "applied: $($patch.Name)"
