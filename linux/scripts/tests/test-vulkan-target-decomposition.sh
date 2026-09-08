@@ -18,6 +18,7 @@ for _fn in _cross_build_sdk_component \
            _vk_note_failure \
            _vulkan_target_install_component \
            _vulkan_target_src \
+           _vulkan_patch_component \
            _vulkan_target_dynamic_args \
            _vulkan_target_build_sdk_rest \
            _vulkan_target_link_glslang_aliases \
@@ -312,6 +313,35 @@ t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN
 t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_SH}")" \
   '--target "${_t}"' \
   "and the helper has to actually drive them, between build and install"
+
+t_case "no SDK component is skipped for the target arch -- amd64 is the reference"
+# slang was skipped on riscv64 as "not yet ported upstream". That gated the HOST
+# x86_64 ./vulkansdk build on the TARGET arch, which cannot be a reason, and the
+# skip took the CHECKOUT with it -- so the cross build could not attempt it either:
+# 19 host components vs arm64's 20, 15 cross attempts vs 16. All three arches must
+# build the same set; what cannot cross-build says so with a measured reason.
+# CODE only: the comment above the list explains the removal and names riscv64,
+# which is exactly what this case must not read.
+_bcsrc="$(awk '/^_vulkan_build_components\(\) \{/,/^\}/' "${VULKAN_SH}" | grep -ve '^[[:space:]]*#')"
+t_assert_eq "" "$(printf '%s\n' "${_bcsrc}" | grep -e '_vulkan_skip' || true)" \
+  "an arch-keyed skip table is exactly what cost riscv64 slang"
+t_assert_eq "" "$(printf '%s\n' "${_bcsrc}" | grep -e 'riscv64' || true)" \
+  "no arch name may appear in the component selection at all"
+for _c in vulkan-tools gfxreconstruct vcv slang; do
+  t_assert_contains "${_bcsrc}" "${_c}" "every arch builds ${_c}"
+done
+
+t_case "gfxreconstruct is configured the way ./vulkansdk configures it"
+# The cross row built OpenXR that the VENDOR never builds -- build_gfxreconstruct()
+# passes GFXRECON_ENABLE_OPENXR=OFF. Its bundled OpenXR-SDK carries its OWN older
+# jsoncpp SOURCE, and our target prefix precedes it on the include path, so that
+# source compiled against our 1.9.6 header: 'skipCommentTokens' was not declared.
+# Parity with the vendor, not a skip: amd64 ships no openxr_loader either.
+_gfxrow="$(grep -e '^gfxreconstruct|' "${VULKAN_SH}")"
+for _f in GFXRECON_ENABLE_OPENXR=OFF D3D12_SUPPORT=OFF GFXRECON_TOCPP_SUPPORT=OFF \
+          GFXRECON_INCLUDE_TEST_APPS=OFF; do
+  t_assert_contains "${_gfxrow}" "${_f}" "./vulkansdk build_gfxreconstruct() passes it; the cross row must not diverge"
+done
 
 t_case "the extra-target list is RESET per component, or it leaks across rows"
 t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")" \

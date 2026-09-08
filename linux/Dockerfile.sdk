@@ -119,6 +119,12 @@ COPY --chmod=755 \
     linux/scripts/02-toolchain/gcc.sh \
     linux/scripts/02-toolchain/vulkan.sh \
     /opt/scripts/toolchain/
+# vulkan.sh's _vulkan_patch_component fixes upstream defects the PINNED SDK source
+# still carries, before the cross build sees them. Each patch is droppable the
+# moment the SDK ships the upstream fix -- the table that says when is in
+# docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
+COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
+COPY --chmod=644 linux/scripts/patches/slang/ /opt/scripts/patches/slang/
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=tmpfs,target=/tmp \

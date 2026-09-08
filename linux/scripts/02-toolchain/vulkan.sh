@@ -300,24 +300,11 @@ _vulkan_build_components() {
     spirv-cross spirv-reflect vulkan-profiles
   )
 
-  # Nothing is skipped for being a cross lane any more. These four used to be,
-  # because the host link died on the TARGET arch's libxcb -- the cause was the
-  # host build inheriting the cross pkg-config search path, fixed in
-  # _vulkan_run_vulkansdk. Skipping also skips the CHECKOUT, and source/ is what
-  # every target-arch build reads. docs/vulkan-foreign-arch-sdk.md
-  local -A _vulkan_skip=()
-  if [ "${arch_suffix}" = "riscv64" ]; then
-    _vulkan_skip[slang]="riscv64 (not yet ported upstream)"
-  fi
-
-  local comp
-  for comp in vulkan-tools gfxreconstruct vcv slang; do
-    if [ -n "${_vulkan_skip[${comp}]:-}" ]; then
-      log "Skipping ${comp} for ${_vulkan_skip[${comp}]}"
-    else
-      _vulkan_sdk_components_ref+=("${comp}")
-    fi
-  done
+  # NOTHING is arch-skipped: amd64 is the reference and all three build this set.
+  # This list drives the HOST x86_64 build, so the target arch cannot be a reason,
+  # and a skip takes the CHECKOUT with it -- which is what cost riscv64 slang.
+  # docs/vulkan-foreign-arch-sdk.md#amd64-is-the-reference-all-three-arches-build-the-same-set
+  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang)
 }
 
 # What ./vulkansdk skipped above but the TARGET build still wants. Source only:
@@ -640,7 +627,7 @@ jsoncpp|jsoncpp|-DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF 
 valijson|valijson|-Dvalijson_BUILD_TESTS=OFF -Dvalijson_BUILD_EXAMPLES=OFF -Dvalijson_INSTALL_HEADERS=ON
 vulkan-profiles|Vulkan-Profiles|-DPROFILES_BUILD_TESTS=OFF
 vulkan-validationlayers|Vulkan-ValidationLayers|-DUPDATE_DEPS=OFF -DBUILD_WERROR=OFF
-gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF
+gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF -DD3D12_SUPPORT=OFF -DGFXRECON_TOCPP_SUPPORT=OFF -DGFXRECON_INCLUDE_TEST_APPS=OFF -DGFXRECON_ENABLE_OPENXR=OFF
 slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF -DSLANG_SLANG_LLVM_FLAVOR=DISABLE -DSLANG_ENABLE_DXIL=OFF
 vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
 "
@@ -682,6 +669,23 @@ _vulkan_target_dynamic_args() {
   esac
 }
 
+# Upstream defects the pinned SDK source still carries. Idempotent, and a no-op
+# when the source is absent. RE-CHECK EVERY VULKAN SDK BUMP -- see the patch
+# header for the upstream ref that makes each one droppable.
+# docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
+_vulkan_patch_component() {
+  local label="$1" src="$2" patch
+  [ -n "${src}" ] && [ -d "${src}" ] || return 0
+  case "${label}" in
+    slang) patch="slang/001-riscv64-arch-detection.patch" ;;
+    *) return 0 ;;
+  esac
+  local dir="/opt/scripts/patches"
+  [ -f "${dir}/${patch}" ] || { log "${label}: no ${patch} at ${dir}; skipping"; return 0; }
+  bash "/opt/scripts/core/apply-patch.sh" "${dir}/${patch}" "${src}" \
+    "${label}: derive pointer size and endianness from the compiler (upstream PR #12305)"
+}
+
 # Everything the LunarG SDK ships beyond the four TVM needed, cross-built for the
 # arch the image runs. docs/vulkan-foreign-arch-sdk.md
 _vulkan_target_build_sdk_rest() {
@@ -693,6 +697,7 @@ _vulkan_target_build_sdk_rest() {
     [ -n "${label}" ] || continue
     # shellcheck disable=SC2086  # both are deliberately word-split
     src="$(_vulkan_target_src "${target_dir}/source" ${cands//,/ })"
+    _vulkan_patch_component "${label}" "${src}"
     _vulkan_target_dynamic_args "${label}" "${target_dir}" "${archdir}" "${triplet}" dyn
     # shellcheck disable=SC2086
     _vulkan_target_install_component "${arch_suffix}" "${archdir}" "${src}" "${label}" \

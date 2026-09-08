@@ -472,7 +472,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **886 entries** over **242 distinct test commands**; both digits are
+manifest holds **887 entries** over **242 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -852,6 +852,31 @@ instead of the slug. `windows/` is not scanned: it is its own lane.
 Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
+
+### The retry classifier: anchor every status, and DNS is transient
+
+`_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`) decides
+whether a failed stage is worth retrying, by grepping the log tail. Two defects
+found by real chains on 2026-09-08, both now pinned by mutations:
+
+* **Anchor every HTTP status to its status TEXT or to a `status:` label.** A bare
+  `[^0-9]429[^0-9]` matched BuildKit's own elapsed-time prefix — `#15 429.0 <cmd>`
+  — so any step that had been running 429.x seconds made the NEXT deterministic
+  failure look rate-limited. A smoke that could never pass was rebuilt three times
+  before the cap. The `(500|502|503|504)` arm beside it always required the status
+  text and so never had the bug; that asymmetry is the tell. The same trap waits
+  at 4290–4299 s, which is where a long LLVM step sits.
+* **DNS belongs in the list.** A source stage clones from github, and a blip
+  reading `Could not resolve host` killed a whole chain at `sdk-riscv64` — the
+  STAGE BARRIER takes every arch down with it, so one failed lookup cost the run.
+  `could not resolve host`, `temporary failure in name resolution`, `name or
+  service not known` and `network is unreachable` are all retryable now.
+
+Both survived because `test-cross-stage-build-cmd.sh` STUBBED the classifier to
+`[ "${TRANSIENT:-0}" = "1" ]`, so its regex had zero coverage while the file
+looked well tested. Ten assertions now drive the SHIPPED function. **A stub of the
+unit under test is not coverage of it** — the same shape as the `code-size.*`
+mutations, which all drive fixture trees and so could never see the real `SCAN`.
 
 ### Generated data is not source, and git alone cannot say so
 
