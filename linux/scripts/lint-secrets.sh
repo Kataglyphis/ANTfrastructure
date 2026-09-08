@@ -154,8 +154,17 @@ echo "   config:    ${CONFIG}"
 # config, only when they are.
 # docs/code-quality-tooling.md#the-secret-scan-scans-from-inside-the-tree
 _CONFIG_ARG="${CONFIG}"
-[ "${CONFIG}" = "${SCAN_ROOT}/.gitleaks.toml" ] && _CONFIG_ARG=".gitleaks.toml"
-if ( cd "${SCAN_ROOT}" && "${GITLEAKS}" detect --no-git --source . \
+[ "${CONFIG}" = "${SCAN_CONFIG_DIR}/.gitleaks.toml" ] && _CONFIG_ARG=".gitleaks.toml"
+# A single FILE is a legal scan target: the gate walks a scope one path at a
+# time and a top-level path can be a file. gitleaks still has to be entered
+# from a DIRECTORY, so cd to the parent and name the file as the source.
+_SCAN_DIR="${SCAN_ROOT}"
+_SCAN_SRC="."
+if [ -f "${SCAN_ROOT}" ]; then
+  _SCAN_DIR="$(dirname "${SCAN_ROOT}")"
+  _SCAN_SRC="$(basename "${SCAN_ROOT}")"
+fi
+if ( cd "${_SCAN_DIR}" && "${GITLEAKS}" detect --no-git --source "${_SCAN_SRC}" \
      --config "${_CONFIG_ARG}" --no-banner --redact --verbose ); then
   echo "secret scan: clean"
   exit 0

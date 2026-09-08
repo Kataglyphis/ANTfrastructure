@@ -177,10 +177,14 @@ _lint_gates_selftest_canary() {
   alnum='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   tok=""
   for _ in $(seq 1 36); do tok="${tok}${alnum:RANDOM%62:1}"; done
-  file="${dir}/planted-credential.txt"
+  # gitleaks is invoked as `cd <root> && detect --source .`, so its fingerprint
+  # line carries the path RELATIVE to the scan root. Matching the absolute path
+  # here could never hit, which failed this self-test on every run.
+  local rel="planted-credential.txt"
+  file="${dir}/${rel}"
   printf 'token = "ghp_%s"\n' "${tok}" > "${file}"
   _lint_gates_scan "${dir}" "${log}"
-  if ! grep -qF "${file}:github-pat:" "${log}"; then
+  if ! grep -qF "${rel}:github-pat:" "${log}"; then
     _lint_gates_selftest_fail "${log}" \
       "the planted GitHub token at ${file} was not reported (exit ${_LINT_GATES_SCAN_RC}). It scanned another tree, the rule is allowlisted away, or it never ran."
     return 1
