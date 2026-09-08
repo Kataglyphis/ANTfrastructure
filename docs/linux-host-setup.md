@@ -187,9 +187,12 @@ bash linux/host-config/install-nerdctl-full.sh --rollback         # restore the 
 ```
 
 Knobs: `NERDCTL_VERSION=x.y.z` pins a release (default: latest),
-`NERDCTL_PREFIX` (default `/usr/local`), `NERDCTL_BACKUP_DIR`, `NERDCTL_FORCE=1`
-(re-install the version already present), `NERDCTL_SKIP_CACHE_CENSUS=1` (proceed
-without a cache baseline when buildkitd is down).
+`NERDCTL_PREFIX` (default `/usr/local`, or `$HOME/.local` in rootless mode),
+`NERDCTL_ROOTLESS=1|0` forces the prefix mode instead of auto-detecting it — see
+[B3c](#b3c-install-rootless-into-homelocal-no-sudo), `NERDCTL_BACKUP_DIR`,
+`NERDCTL_FORCE=1` (re-install the version already present),
+`NERDCTL_SKIP_CACHE_CENSUS=1` (proceed without a cache baseline when buildkitd
+is down).
 
 **This host runs rootless AND rootful side by side, and that changes the
 procedure.** The `systemd --user` units are the rootless stack the chain builds
@@ -271,9 +274,11 @@ Two gotchas worth repeating, both hit during that run:
   lines they are set in the parent shell, never exported, and the script runs
   as a plain dry run that changes nothing — which is exactly what happened on
   the first attempt.
-- Installing needs `sudo` (the bundle is root-owned), so it cannot be driven
-  from a non-interactive session. "Rootless" describes how the daemons **run**,
-  not how the bundle is **installed**.
+- Installing into `/usr/local` needs `sudo` (that tree is root-owned), so that
+  mode cannot be driven from a non-interactive session. This used to read as an
+  unconditional rule — it is not. A `$HOME/.local` install needs no sudo at all
+  and is the way to update a host whose sudo prompts for a password; see
+  [B3c](#b3c-install-rootless-into-homelocal-no-sudo).
 
 [bk6915]: https://github.com/moby/buildkit/issues/6915
 [bk6954]: https://github.com/moby/buildkit/issues/6954
@@ -281,6 +286,69 @@ Two gotchas worth repeating, both hit during that run:
 Afterwards run `linux/host-config/verify-host-config.sh` and
 `linux/scripts/preflight.sh` before starting the next chain — the daemon
 restart is also the moment the staged `buildkitd.toml` gcpolicy takes effect.
+
+### B3c. Install rootless, into $HOME/.local (no sudo)
+
+On a host whose stack is rootless-only, install the bundle **into the user's own
+prefix**. Nothing about this needs root, so it is the only mode that can update
+a machine where `sudo` prompts for a password. The distinction B3b's last gotcha
+used to blur: rootless describes both how the daemons **run** and where the
+bundle **lives**.
+
+```bash
+NERDCTL_INSTALL_CONFIRM=1 bash linux/host-config/install-nerdctl-full.sh
+```
+
+The mode is auto-detected — no knob needed. The script reads the `ExecStart` of
+the live `systemd --user` units and installs into whatever prefix they already
+name, because those units are the only authority on what the host actually
+runs. `NERDCTL_ROOTLESS=1` forces it on a host being converted for the first
+time; `NERDCTL_ROOTLESS=0` forces the `/usr/local` path back.
+
+**The units are rewritten for you, and that is the load-bearing half.**
+Extracting the bundle is not a prefix change on its own: the units keep the
+absolute `ExecStart` they were generated with, so without the rewrite the
+daemons keep launching the old prefix and the install moves nothing. The script
+repoints `~/.config/systemd/user/{containerd,buildkit}.service` and prepends
+`${PREFIX}/bin` to their `Environment=PATH` (`containerd-rootless.sh` resolves
+`rootlesskit`, `slirp4netns` and `containerd` through `PATH`), then reloads and
+restarts. The pre-image goes into `${NERDCTL_BACKUP_DIR}/systemd-user`, so
+`--rollback` restores the units as well as the binaries.
+
+**The CNI plugins are the half nobody verifies.** Rootless nerdctl resolves them
+under **its own** default — `$HOME/.local/libexec/cni` — not under `/usr/local`.
+A `/usr/local` install therefore leaves a rootless host with *no* plugins at
+all, and the symptom is a container-networking error that never mentions the
+install. Same class as [B6](#b6-ufw-silently-breaks-container-networking): the
+build looks correctly configured and the networking simply is not there. The
+script now counts them and fails the run at zero.
+
+**Performed on this host, 2026-09-08** (aarch64, Snapdragon X, WSL2):
+
+| | before | after |
+|---|---|---|
+| prefix | `/usr/local` | `$HOME/.local` |
+| nerdctl / containerd / buildkit | 2.3.5 / v2.3.3 / v0.31.2 | unchanged |
+| CNI plugins where nerdctl looks | **0** | **18** |
+| sudo needed | yes | **no** |
+
+The binaries were **byte-identical** — sha256 matched across `nerdctl`,
+`containerd`, `buildkitd`, `rootlesskit`, `runc` and `containerd-rootless.sh`,
+because `/usr/local` already held the same bundle. This was a relocation, not a
+version change, which is why the script proves the daemons now *execute* from
+`${PREFIX}/bin` instead of asserting that their reported version moved.
+
+**A drop-in `ExecStart` beats the unit file's.**
+`linux/host-config/buildkit.service-override.conf` therefore carries
+`@NERDCTL_PREFIX@` rather than a literal path; `apply-host-config.sh` and
+`verify-host-config.sh` substitute the live prefix before installing or
+diffing. Without that, applying host config after a rootless install silently
+reverted `buildkitd` to `/usr/local` — invisible until a build failed.
+
+`NERDCTL_INCLUDE_ROOTFUL` / `NERDCTL_IGNORE_ROOTFUL` are moot here: a
+`$HOME/.local` extraction cannot reach root daemons, so the script skips the
+rootful-coexistence fork entirely in this mode. Afterwards, run the same
+`verify-host-config.sh` + `preflight.sh` hand-off B3b ends with.
 
 ### B4. Verify a `nerdctl-full` install
 
@@ -309,6 +377,23 @@ for cmd in "${binaries[@]}"; do
     fi
 done
 ```
+
+`command -v` alone passes on a **stale copy in the other prefix** while the
+daemons run from the intended one, and the list above contains no CNI plugin at
+all — the exact gap that stayed invisible until 2026-09-08. Assert both:
+
+```bash
+prefix="$(sed -n 's/^ExecStart="\{0,1\}\([^"[:space:]]*\)\/bin\/.*/\1/p' \
+           ~/.config/systemd/user/containerd.service | head -1)"
+echo "units name: ${prefix}"
+echo "PATH gives: $(command -v nerdctl)"        # must be ${prefix}/bin/nerdctl
+cni="$(nerdctl info --format '{{.CNIPath}}')"
+echo "CNI: $(find "${cni}" -maxdepth 1 -type f ! -name 'LICENSE' ! -name 'README.md' | wc -l) plugins in ${cni}"
+for p in $(pgrep -f 'containerd$|buildkitd'); do readlink -f "/proc/$p/exe"; done
+```
+
+Expected on a healthy rootless host: `PATH` and the units agree, 18 CNI
+plugins, and every daemon `exe` under `${prefix}/bin`.
 
 ### B5. TLS handshake failures inside containers
 

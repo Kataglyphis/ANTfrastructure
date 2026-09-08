@@ -38,12 +38,15 @@ nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:
 
 Rootful nerdctl needs `sudo`. The sudo-less route is the rootless
 containerd + BuildKit stack this repo builds with — not the `docker` group,
-which nerdctl never consults (containerd's socket is `root:root 0660`).
+which nerdctl never consults (containerd's socket is `root:root 0660`). That
+stack can also be *installed* without sudo, into `$HOME/.local`.
 
 Build workflows: [Linux Build Basics](docs/linux-build-basics.md) ·
 [Linux Cross Builds](docs/linux-cross-builds.md) ·
 [Linux Accelerator Images](docs/linux-accelerator-images.md).
-**Fresh host?** Start at [Linux Host Setup](docs/linux-host-setup.md).
+**Fresh host?** Start at [Linux Host Setup](docs/linux-host-setup.md). The
+container stack installs from the nerdctl-full bundle — rootless, into
+`$HOME/.local`, no sudo: [B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
 
 ### Windows 🪟
 

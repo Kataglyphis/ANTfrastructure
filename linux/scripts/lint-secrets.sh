@@ -23,6 +23,10 @@ cd "${REPO_ROOT}" || exit 1
 
 GITLEAKS_PIN="8.30.1"   # versions.env rider — see header
 GITLEAKS_SHA256_X64="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+# aarch64 added 2026-09-08: without it this gate is unrunnable on the arm64
+# host, and an unrunnable gate is an unchecked one — preflight reported the
+# secret scan as a hard FAIL there while every other slug was green.
+GITLEAKS_SHA256_ARM64="e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -34,7 +38,8 @@ if command -v gitleaks >/dev/null 2>&1; then
   GITLEAKS="$(command -v gitleaks)"
 else
   case "$(uname -m)" in
-    x86_64) _asset="gitleaks_${GITLEAKS_PIN}_linux_x64.tar.gz"; _sha="${GITLEAKS_SHA256_X64}" ;;
+    x86_64)  _asset="gitleaks_${GITLEAKS_PIN}_linux_x64.tar.gz";   _sha="${GITLEAKS_SHA256_X64}" ;;
+    aarch64) _asset="gitleaks_${GITLEAKS_PIN}_linux_arm64.tar.gz"; _sha="${GITLEAKS_SHA256_ARM64}" ;;
     *) err "no gitleaks on PATH and no pinned asset for $(uname -m) — install gitleaks" ;;
   esac
   _cache="${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis-lint/gitleaks-${GITLEAKS_PIN}"

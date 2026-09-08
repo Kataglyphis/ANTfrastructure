@@ -6,6 +6,43 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-08 — the container stack installs rootless, with no sudo
+
+* **`install-nerdctl-full.sh` grew a rootless prefix mode.** It always installed
+  into `/usr/local` with unconditional `sudo tar` / `sudo cp -a`, which made it
+  unrunnable unattended on a host whose sudo prompts for a password. It now
+  installs into `$HOME/.local` with no sudo anywhere. The mode is AUTO-DETECTED
+  from the live `systemd --user` units' `ExecStart` — those units are the only
+  authority on what a host actually runs — so neither host needs a knob;
+  `NERDCTL_ROOTLESS=1|0` forces it. Every safety property is unchanged: busy-build
+  refusal, SHA256 verification, backup + `--rollback`, the cache-mount census, the
+  buildkitd worker assertion and the QEMU-binfmt warning.
+* **Extracting the bundle was only half a prefix change.** The units keep the
+  absolute `ExecStart` they were generated with, so an install into a new prefix
+  moved no daemon at all. The script now repoints
+  `~/.config/systemd/user/{containerd,buildkit}.service` and prepends
+  `${PREFIX}/bin` to their `Environment=PATH`, stashing the pre-image in
+  `${NERDCTL_BACKUP_DIR}/systemd-user` so `--rollback` restores units as well as
+  binaries. A relocation is same-version by definition, so the "daemon version
+  MOVED" proof is replaced there by the one that actually applies: every daemon's
+  `/proc/<pid>/exe` must resolve under the new prefix.
+* **A drop-in `ExecStart` beats the unit file's.**
+  `buildkit.service-override.conf` hardcoded `/usr/local`, so applying host config
+  after a rootless install silently reverted `buildkitd` to the other prefix —
+  invisible until a build failed. It now carries `@NERDCTL_PREFIX@`, substituted
+  by `apply-host-config.sh` and `verify-host-config.sh` before they install or
+  diff.
+* **CNI plugins: 0 → 18.** Rootless nerdctl resolves plugins under its own
+  `$HOME/.local/libexec/cni`, not under `/usr/local`, so summy-server had been
+  running with none at all — `/usr/local/libexec/cni` held only a LICENSE. The
+  install now counts them where nerdctl actually looks and fails the run at zero.
+* **Measured on summy-server (aarch64, Snapdragon X, WSL2).** The relocation was
+  byte-identical: sha256 matched across `nerdctl`, `containerd`, `buildkitd`,
+  `rootlesskit`, `runc` and `containerd-rootless.sh`, because `/usr/local` already
+  held the same nerdctl-full 2.3.5 bundle. Not a version change — a relocation.
+  Documented as [`linux-host-setup.md` § B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
+
+
 ## 2026-09-03 — the day with no entry: 79 commits, reconstructed
 
 **This entry was written on 2026-09-07 from the commit subjects, not from the work.**
