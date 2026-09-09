@@ -7912,5 +7912,13 @@
     "replace": "-DQT_HOST_PATH=/usr",
     "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
     "why": "upstream find_package(Qt6 QUIET) skips the whole configurator with a message() and exits 0, so the row counts as BUILT and the SDK ships without vkconfig -- a vacuous success no downstream check can see"
+  },
+  {
+    "id": "vulkan.dxc-vendored-spirv-tools-no-werror",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "-DHLSL_INCLUDE_TESTS=OFF -DSPIRV_WERROR=OFF -DLLVM_ENABLE_WERROR=OFF",
+    "replace": "-DHLSL_INCLUDE_TESTS=OFF",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "MEASURED 2026-09-09: without it the riscv64 cross-build dies at external/SPIRV-Tools/source/util/timer.h on GCC 16 -Warray-bounds promoted by -Werror, and the lane silently ships 23/24 -- the standalone SPIRV-Tools builder in the same file already carries the flag for the identical warning"
   }
 ]

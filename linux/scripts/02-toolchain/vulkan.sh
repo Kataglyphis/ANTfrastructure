@@ -651,7 +651,7 @@ slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF -DSLANG_SLANG_L
 vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
 vulkantools|VulkanTools|
 crash-diagnostic-layer|CrashDiagnosticLayer|
-dxc|DirectXShaderCompiler|-DLLVM_BUILD_TOOLS=OFF -DHLSL_COPY_GENERATED_SOURCES=ON -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DHLSL_INCLUDE_TESTS=OFF
+dxc|DirectXShaderCompiler|-DLLVM_BUILD_TOOLS=OFF -DHLSL_COPY_GENERATED_SOURCES=ON -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DHLSL_INCLUDE_TESTS=OFF -DSPIRV_WERROR=OFF -DLLVM_ENABLE_WERROR=OFF
 "
 
 # Row flags that only exist as a PATH, so the static table cannot carry them.

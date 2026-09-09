@@ -335,6 +335,8 @@ t_assert_contains "${_out}" "-CSDK/source/DirectXShaderCompiler/cmake/caches/Pre
 t_assert_contains "${_out}" "-DLLVM_TABLEGEN=SDK/source/DirectXShaderCompiler/build/bin/llvm-tblgen"
 t_assert_contains "${_out}" "-DCLANG_TABLEGEN=SDK/source/DirectXShaderCompiler/build/bin/clang-tblgen" \
   "an LLVM 3.7 fork: both generators must EXECUTE on the build host"
+t_assert_contains "${_out}" "-DSPIRV_WERROR=OFF" \
+  "DXC vendors its OWN external/SPIRV-Tools, so it needs the same flag the standalone copy already carries: GCC 16 -Warray-bounds false-positives on timer.h, and 23/24 on riscv64 is what that cost"
 
 t_case "dxc without host tblgens says so instead of passing an empty path"
 _fixture empty
