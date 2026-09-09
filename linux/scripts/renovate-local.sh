@@ -4,7 +4,7 @@
 # that half is git. Before changing it read
 # docs/dependency-updates.md#before-you-change-the-script first.
 #
-#   renovate-local.sh [<root>]                   report what is behind (default)
+#   renovate-local.sh [--refresh] [<root>]       report what is behind (default)
 #   renovate-local.sh --apply [--dry-run] <root> move the gitlinks / show the plan
 #   renovate-local.sh --managers <csv> <root>    default: git-submodules
 #   renovate-local.sh --print-bin                the resolved renovate.js
@@ -45,12 +45,14 @@ MODE=report
 MANAGERS=git-submodules
 TARGET=""
 DRY_RUN=0
+REFRESH=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply)     MODE=apply ;;
     --report)    MODE=report ;;
     --dry-run)   DRY_RUN=1 ;;
+    --refresh)   REFRESH=1 ;;
     --print-bin) MODE=print-bin ;;
     --managers)  shift; [ $# -gt 0 ] || err "--managers needs a value"; MANAGERS="$1" ;;
     --managers=*) MANAGERS="${1#*=}" ;;
@@ -173,6 +175,13 @@ REPORT_JSON=""
 
 run_renovate() {
   REPORT_JSON="$(mktemp)" || err "mktemp failed"
+  # --refresh drops the lookup cache first. A cache written before a push reports
+  # the OLD tip as "available", i.e. a downgrade presented as an update -- seen
+  # on 2026-09-09 with 46b73e33 -> 1fef6f28, which is its own parent.
+  if [ "${REFRESH}" -eq 1 ]; then
+    note "dropping the lookup cache at ${CACHE_ROOT}/base"
+    rm -rf "${CACHE_ROOT:?}/base"
+  fi
   # RENOVATE_BASE_DIR keeps Renovate's scratch out of the repo being graded.
   # A token is deliberately NOT required: the git-submodules manager uses the
   # git-refs datasource, i.e. anonymous `git ls-remote`, and ssh remotes are
