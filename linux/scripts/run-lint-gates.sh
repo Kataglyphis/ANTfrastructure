@@ -71,22 +71,43 @@ _lint_gates_excluded() {
 # without globstar, so it covered the directories somebody remembered and
 # silently skipped the rest - and a gate that reads 19 of 21 files still
 # reports green.
-_lint_gates_shell() {
-  local files=() f
+# The tracked files of one kind under the graded root, minus the excluded
+# top-level directories. ONE owner: the shell gate had this walk, the python
+# gate needs exactly the same one, and the empty-scope refusal is the
+# load-bearing half of both. Results land in _LINT_GATES_SCOPE because bash
+# cannot return an array.
+_lint_gates_scope() {
+  local label="$1" spec="$2" f
+  _LINT_GATES_SCOPE=()
   # -z, not plain ls-files: git QUOTES a path containing non-ASCII bytes
   # ("dummy_assetsÃ¤/x.sh), and the quoted string then names nothing.
   while IFS= read -r -d '' f; do
-    _lint_gates_excluded "${f}" || files+=("${f}")
-  done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- '*.sh')
-  if [ "${#files[@]}" -eq 0 ]; then
-    printf 'no tracked *.sh outside %s - the list driving this gate is empty;\n' "${_LINT_GATES_EXCLUDE[*]}" >&2
-    printf 'refusing to report green over nothing. (lint-shell.sh with zero file\n' >&2
-    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\n' >&2
+    _lint_gates_excluded "${f}" || _LINT_GATES_SCOPE+=("${f}")
+  done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- "${spec}")
+  if [ "${#_LINT_GATES_SCOPE[@]}" -eq 0 ]; then
+    printf 'no tracked %s outside %s - the list driving this gate is empty;\n' \
+      "${spec}" "${_LINT_GATES_EXCLUDE[*]}" >&2
+    printf 'refusing to report green over nothing. (the underlying linter with\n' >&2
+    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\n' >&2
     return 1
   fi
-  printf 'shellcheck scope (%d file(s)):\n' "${#files[@]}"
-  printf '  %s\n' "${files[@]}"
-  bash "${_LINT_GATES_DIR}/lint-shell.sh" "${files[@]}"
+  printf '%s scope (%d file(s)):\n' "${label}" "${#_LINT_GATES_SCOPE[@]}"
+  printf '  %s\n' "${_LINT_GATES_SCOPE[@]}"
+}
+
+_lint_gates_shell() {
+  _lint_gates_scope shellcheck '*.sh' || return 1
+  bash "${_LINT_GATES_DIR}/lint-shell.sh" "${_LINT_GATES_SCOPE[@]}"
+}
+
+# ABSOLUTE paths, unlike the shell gate: lint-python.sh cds to the HUB root
+# before resolving its arguments, so a path relative to the consumer would
+# name nothing there -- or, worse, name something.
+_lint_gates_python() {
+  _lint_gates_scope ruff '*.py' || return 1
+  local abs=() f
+  for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
+  bash "${_LINT_GATES_DIR}/lint-python.sh" "${abs[@]}"
 }
 
 _lint_gates_workflows() {
@@ -235,6 +256,7 @@ _lint_gates_main() {
   run_gate "shellcheck" _lint_gates_shell
   run_gate "actionlint + CI image refs" _lint_gates_workflows
   run_gate "gitleaks" _lint_gates_secrets
+  run_gate "ruff" _lint_gates_python
   assert_gates
 }
 
