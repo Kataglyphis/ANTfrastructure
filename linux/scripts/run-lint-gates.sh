@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # run-lint-gates.sh - the fleet's lint gates over ONE consumer tree.
 
-# The three gates - shell lint, workflow lint (+CI image refs) and secret scan -
-# bootstrapped pinned and SHA-verified from this repo, run over the tree named by
-# $1. Three
+# The gates - shell lint, workflow lint (+CI image refs), secret scan, python
+# lint and the shared-config drift check - bootstrapped pinned and SHA-verified
+# from this repo, run over the tree named by $1. Three
 # consumers had grown their own copy of this - two as `run:` blocks in a
 # workflow, so the gate that blocks their deploy could not be reproduced
 # locally at all. What each copy carried, and what is preserved here: the
 # git-ls-files scope construction, the empty-list vacuity guards, the
-# run-all-three-then-fail-once accumulator, and the gitleaks self-test.
+# run-all-then-fail-once accumulator, and the gitleaks self-test.
 
 # The consumer root is MANDATORY and never inferred. A submodule checkout puts
 # this script inside the consumer, where a BASH_SOURCE-derived root resolves to
@@ -120,6 +120,30 @@ _lint_gates_python() {
 
 _lint_gates_workflows() {
   bash "${_LINT_GATES_DIR}/lint-workflows.sh" "${_LINT_GATES_ROOT}"
+}
+
+# --- shared-config drift -----------------------------------------------------
+# The BASH half, never Sync-SharedConfig.ps1: no hub Linux image ships pwsh, and
+# that is why this gate had never joined a bash aggregator. A manifest is
+# REQUIRED and its absence fails rather than skips -- skipping would restore the
+# older failure, a gate that is present, green, and comparing nothing.
+# shared/config/README.md#why-a-manifest-and-not-an-ignore-list
+_lint_gates_shared_config() {
+  local sync="${_LINT_GATES_DIR}/../../shared/config/sync-shared-config.sh"
+  local manifest="${_LINT_GATES_ROOT}/.containerhub-shared.manifest"
+  if [ ! -f "${manifest}" ]; then
+    printf 'no .containerhub-shared.manifest at %s\n' "${_LINT_GATES_ROOT}" >&2
+    printf 'This gate compares the ContainerHub-owned files this repo holds a COPY of, and\n' >&2
+    printf 'it will not guess which those are: guessing is what made it unrunnable before.\n' >&2
+    printf 'Declare them - one id per line, from the registry in\n' >&2
+    printf '  third_party/ContainerHub/shared/config/shared-assets.manifest\n' >&2
+    printf 'A repo that takes only the two bootstrap templates writes exactly:\n' >&2
+    printf '  containerhub-sh\n  resolve-build-module\n' >&2
+    printf 'An asset left out is never compared - that is how an intentional\n' >&2
+    printf 'project-owned override is recorded. See shared/config/README.md.\n' >&2
+    return 1
+  fi
+  bash "${sync}" --repo-root "${_LINT_GATES_ROOT}" --check
 }
 
 # --- gitleaks ----------------------------------------------------------------
@@ -265,6 +289,7 @@ _lint_gates_main() {
   run_gate "actionlint + CI image refs" _lint_gates_workflows
   run_gate "gitleaks" _lint_gates_secrets
   run_gate "ruff" _lint_gates_python
+  run_gate "shared-config drift" _lint_gates_shared_config
   assert_gates
 }
 

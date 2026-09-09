@@ -96,6 +96,45 @@ t_assert_eq "1" "$(t_rc assert_gates)" \
   "an aggregator that graded nothing reporting OK is the hazard, not an edge case"
 t_assert_contains "$(t_out assert_gates)" "no gate ran"
 
+# --- the shared-config gate --------------------------------------------------
+# What is pinned is the one thing this gate can get wrong that nothing else
+# would notice: passing while comparing NOTHING. The verdict logic itself
+# belongs to test-shared-config-sync.sh; here it only has to be reached, and it
+# must not be reachable by accident.
+_HUB="$(cd "${SCRIPTS}/../.." && pwd)"
+
+_declaring() {  # _declaring <manifest-body> -> a git root carrying a faithful copy
+  local d; d="$(mktemp -d "${_work}/decl.XXXXXX")"
+  cp "${_HUB}/shared/config/.clang-format" "${d}/.clang-format"
+  printf '%s\n' "$1" > "${d}/.containerhub-shared.manifest"
+  git -C "${d}" init -q; git -C "${d}" add -A >/dev/null 2>&1
+  printf '%s' "${d}"
+}
+
+t_case "no manifest is a FAILURE, not a skip"
+_lint_gates_parse_args "$(_consumer)"
+t_assert_eq "1" "$(t_rc _lint_gates_shared_config)" \
+  "the legacy fallback grades five root names the repo may never have taken; a green gate over nothing is what made this mechanism inert in the first place"
+_out="$(t_out _lint_gates_shared_config)"
+t_assert_contains "${_out}" "no .containerhub-shared.manifest"
+t_assert_contains "${_out}" "containerhub-sh" \
+  "the failure must spell the declaration, or it only says no"
+
+t_case "a declared, faithful copy passes"
+_lint_gates_parse_args "$(_declaring clang-format)"
+t_assert_eq "0" "$(t_rc _lint_gates_shared_config)" \
+  "it must be able to be green, or the reds prove only that it is broken"
+
+t_case "a declared copy that drifted FAILS, and is named"
+_drift="$(_declaring clang-format)"
+printf '# an edit the consumer made locally\n' >> "${_drift}/.clang-format"
+_lint_gates_parse_args "${_drift}"
+t_assert_eq "1" "$(t_rc _lint_gates_shared_config)"
+t_assert_contains "$(t_out _lint_gates_shared_config)" "DRIFTED .clang-format"
+
+t_case "the gate is registered, so it cannot be defined and never called"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "shared-config drift" _lint_gates_shared_config'
+
 t_case "gates.sh: a clean batch is green, and a missing command is a caller bug"
 gate_reset "T"
 run_gate "only" true

@@ -3,18 +3,42 @@
 code-size scan set, under the four-way allow contract (code-complexity.allow).
 Heredoc bodies, comments and quoted text are invisible to the shell counter; a
 reserved word counts only in command position, case arms count, $(...)'s ')' does not.
-docs/code-quality-tooling.md#shell-complexity-code-complexity"""
+docs/code-quality-tooling.md#shell-complexity-code-complexity
+
+WHAT THIS GATE READS. It owns no scan set: `scan` -- and the ROOT that walk is
+measured against -- are verify_code_size's, so the two gates grade the same files
+by construction. That import is also how the root defect reached here: SCAN is
+four top-level directories resolved from a __file__ which, inside a consumer's
+third_party/ContainerHub, is the VENDORED hub and not the consumer.
+
+GRADING A CONSUMER. `--root` and `--allow` are the same contract
+docs/scripts/verify_mutations.py already documents, and for the same reason the
+lint gates take one: a submodule checkout puts this script INSIDE the consumer,
+where a root derived from __file__ resolves to ContainerHub and the gate grades
+the wrong tree while reporting green over one nobody looked at.
+
+Under the hub's own root the scan set is verify_code_size.scan's historical walk,
+so the hub's own verdict is unchanged. Under any other root it is every TRACKED
+*.sh and *.py minus the excluded top-level directories -- the same rule
+run-lint-gates.sh uses, so a consumer needs no per-repo configuration and a
+vendored subtree cannot creep in.
+"""
+import argparse
 import ast
+import functools
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_scope  # noqa: E402
 from quality_allow import check_counts, load_counts  # noqa: E402
-from verify_code_size import code_lines, scan, shell_functions  # noqa: E402
+from verify_code_size import ROOT, code_lines, scan, shell_functions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOW = os.path.join(HERE, "code-complexity.allow")
+EXCLUDE = ("third_party",)
 ALLOW_FMT = "<path> | <function> | cc|nesting | <count> | <reason>"
 CC_LIMIT = int(os.environ.get("COMPLEXITY_LIMIT", "15"))
 NEST_LIMIT = int(os.environ.get("NESTING_LIMIT", "5"))
@@ -155,8 +179,34 @@ def py_functions(path, rel):
     yield from walk(tree, "")
 
 
-def measure():
-    """Yield (rel, name, cc, nesting) for every function in the scan set."""
+def _tracked(root, *suffixes):
+    """Yield (path, rel) for every TRACKED file under `root` ending in one of `suffixes`.
+
+    `git ls-files`, not a walk: a vendored submodule is a GITLINK, so the scope
+    cannot swallow another repo's code, and build output cannot get in.
+    """
+    out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--"]
+                         + ["*" + s for s in suffixes],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.stderr.write("ERROR: %s is not a git checkout; --root must be one\n" % root)
+        raise SystemExit(2)
+    for rel in sorted(out.stdout.split("\0")):
+        head = rel.split("/", 1)[0]
+        if rel and not (head in EXCLUDE and rel != head):
+            yield os.path.join(root, rel), rel
+
+
+def scanner(root):
+    """The (path, rel) source for `root`: verify_code_size's own walk under the hub,
+    every tracked subject elsewhere."""
+    if root == os.path.abspath(ROOT):
+        return scan
+    return functools.partial(_tracked, root)
+
+
+def measure(scan):
+    """Yield (rel, name, cc, nesting) for every function `scan` reaches."""
     for path, rel in scan(".sh"):
         for _rel, name, _start, body in shell_functions(path, rel):
             yield (rel, name) + shell_metrics(body)
@@ -164,33 +214,59 @@ def measure():
         yield from py_functions(path, rel)
 
 
-def check_rows(frozen):
+def check_rows(frozen, allow_name):
     """1 if any frozen key is not `<path> | <function> | cc|nesting`, naming each bad row."""
     rc = 0
     for key in sorted(frozen):
         if key[2] not in METRICS:
             rc = 1
             sys.stderr.write("FAIL: %s row '%s' must name a metric column (%s).\n"
-                             % (os.path.basename(ALLOW), " | ".join(key),
+                             % (allow_name, " | ".join(key),
                                 " or ".join(METRICS)))
     return rc
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Complexity and nesting of every shell and "
+                                             "Python function, under the allow contract.")
+    ap.add_argument("--root", default=ROOT,
+                    help="the tree to grade (default: this repo)")
+    ap.add_argument("--allow", default=None,
+                    help="the freeze file (default: code-complexity.allow beside this "
+                         "script for the hub, <root>/code-complexity.allow otherwise)")
+    args = ap.parse_args()
+
+    try:
+        # resolve_root, not abspath: `git rev-parse` succeeds in any
+        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
+        # key a level down without saying so.
+        root = gate_scope.resolve_root(args.root, ROOT)
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
+    # A consumer's freeze belongs to the consumer: keeping it beside this script
+    # would put every repo's ratchet inside the hub, where no consumer can see it
+    # in its own diff.
+    allow = args.allow or (ALLOW if root == os.path.abspath(ROOT)
+                           else os.path.join(root, "code-complexity.allow"))
+    allow_name = os.path.basename(allow)
+
     print("=== code complexity gate (cc > %d, nesting > %d) ===" % (CC_LIMIT, NEST_LIMIT))
+    if root != os.path.abspath(ROOT):
+        print("  root: %s" % root)
+        print("  allow: %s" % allow)
     worst = {}
-    for rel, name, cc, nest in measure():
+    for rel, name, cc, nest in measure(scanner(root)):
         was = worst.get((rel, name), (0, 0))
         worst[(rel, name)] = (max(cc, was[0]), max(nest, was[1]))
-    frozen = load_counts(ALLOW, 3, ALLOW_FMT)
-    rc = check_rows(frozen)
+    frozen = load_counts(allow, 3, ALLOW_FMT)
+    rc = check_rows(frozen, allow_name)
     for metric, limit, unit, i in (("cc", CC_LIMIT, "paths", 0),
                                    ("nesting", NEST_LIMIT, "levels", 1)):
         items = [((f, n, metric), v[i]) for (f, n), v in sorted(worst.items())]
         rc |= check_counts(metric, items,
                            {k: c for k, c in frozen.items()
                             if k[2] == metric},
-                           limit, os.path.basename(ALLOW), unit)
+                           limit, allow_name, unit)
     if rc == 0:
         print("OK: no new or grown complexity offenders")
     return rc

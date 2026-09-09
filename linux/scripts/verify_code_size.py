@@ -18,14 +18,33 @@ it asks that the queue stay honest without a human re-counting.
 This module also owns strip_line/code_lines, the quote-, comment- and heredoc-aware
 view of shell source that every extent-based gate imports.
 docs/code-quality-tooling.md#what-a-shell-functions-extent-is
+
+GRADING A CONSUMER. `--root` and the two `--*-allow` flags are the same contract
+docs/scripts/verify_mutations.py already documents, and for the same reason the
+lint gates take one: a submodule checkout puts this script INSIDE the consumer,
+where a root derived from __file__ resolves to ContainerHub and the gate grades
+the wrong tree while reporting green over one nobody looked at. BOTH halves are
+rooted -- functions and files -- because half a gate over the right tree is still
+a gate over the wrong one.
+
+Under the hub's own root the scan set is the historical SCAN walk plus the flat
+FLAT_SCAN pass, so the hub's own verdict is unchanged. Under any other root it is
+every TRACKED subject minus the excluded top-level directories -- the same rule
+run-lint-gates.sh uses, so a consumer needs no per-repo configuration and a
+vendored subtree cannot creep in. FLAT_SCAN has no consumer meaning: it exists
+only because the hub's own Dockerfiles sit above every recursive scan root, and
+`git ls-files` finds a Dockerfile wherever a consumer keeps it.
 """
+import argparse
 import ast
 import os
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_counts, load_counts  # noqa: E402
+from quality_allow import check_counts, load_counts  # noqa: E402
+import gate_scope  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,10 +54,14 @@ FN_FMT = "<path> | <function> | <lines> | <reason>"
 FILE_FMT = "<path> | <lines> | <reason>"
 LIMIT = int(os.environ.get("FUNCTION_SIZE_LIMIT", "80"))
 FILE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", "800"))
+# SCAN is the CORPUS: the trees walked recursively for every subject. FLAT_SCAN is
+# not a second corpus but a narrowing -- Dockerfiles sit at the top of linux/ and
+# have no function structure, so they are size-checked as files only, and windows/
+# is out of scope for this repo lane.
 SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
-# Dockerfiles sit at the top of linux/ and have no function structure, so they
-# are size-checked as files only. windows/ is out of scope for this repo lane.
 FLAT_SCAN = ("linux",)
+# Top-level directories that belong to somebody else. Only consulted under a foreign
+# --root: the hub's own SCAN never names one.
 SKIP_DIRS = {".git", "__pycache__", "patches"}
 def _is_subject(fn):
     return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
@@ -165,15 +188,64 @@ def code_lines(lines):
     return out
 
 
-def scan(*suffixes):
-    """Yield (path, relpath) for every file in SCAN whose name ends in one of `suffixes`."""
-    for top in SCAN:
-        for base, dirs, files in os.walk(os.path.join(ROOT, top)):
+def _walk_scan(root, tops, match):
+    """Yield (path, relpath) for every file under `tops` whose name `match` accepts."""
+    for top in tops:
+        for base, dirs, names in os.walk(os.path.join(root, top)):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            for fn in sorted(files):
-                if fn.endswith(suffixes):
+            for fn in sorted(names):
+                if match(fn):
                     path = os.path.join(base, fn)
-                    yield path, os.path.relpath(path, ROOT)
+                    yield path, os.path.relpath(path, root)
+
+
+def _flat_scan(root, tops, match):
+    """Yield (path, relpath) for the files sitting directly IN `tops` -- no recursion."""
+    for top in tops:
+        d = os.path.join(root, top)
+        for fn in sorted(os.listdir(d) if os.path.isdir(d) else []):
+            path = os.path.join(d, fn)
+            if match(fn) and os.path.isfile(path):
+                yield path, os.path.relpath(path, root)
+
+
+def _tracked_scan(root, match):
+    """Every TRACKED file outside the excluded tops whose name `match` accepts.
+
+    The ls-files call, the exclusion and the root checks belong to
+    gate_scope; what is this gate's own is the basename predicate and the
+    (abspath, rel) pair its callers want.
+    """
+    for rel in gate_scope.tracked(root, ["*"]):
+        if match(os.path.basename(rel)):
+            yield os.path.join(root, rel), rel
+
+def _under(rel, tops):
+    """True when `rel` is one of `tops` or lives inside one."""
+    return any(rel == t or rel.startswith(t.rstrip("/") + "/") for t in tops)
+
+
+def subjects(root, match, tops=None):
+    """The scan set for one subject predicate, as (path, relpath).
+
+    Under the hub's own root this is the historical SCAN walk, so the hub's verdict
+    cannot move; under any other root it is the tracked set. `tops` is the --scan
+    narrowing: it REPLACES the walked trees, but only FILTERS the tracked set --
+    walking a consumer directory would give back exactly what ls-files was chosen
+    to keep out, a nested checkout's files and untracked build output.
+    """
+    root = os.path.abspath(root or ROOT)
+    if root == os.path.abspath(ROOT):
+        return _walk_scan(root, tops or SCAN, match)
+    return ((path, rel) for path, rel in _tracked_scan(root, match)
+            if not tops or _under(rel, tops))
+
+
+def scan(*suffixes, root=None, tops=None):
+    """Yield (path, relpath) for every file in the scan set whose name ends in one of
+    `suffixes`. Sibling gates import this, so the no-argument call keeps meaning
+    exactly what it meant: the hub's own corpus."""
+    return subjects(root, lambda fn: fn.endswith(suffixes), tops)
 
 
 def shell_functions(path, rel):
@@ -198,49 +270,41 @@ def shell_functions(path, rel):
                 break
 
 
-def functions():
-    """Yield (relpath, name, line_count) for every shell function found."""
-    for top in SCAN:
-        for base, dirs, files in os.walk(os.path.join(ROOT, top)):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            for fn in sorted(files):
-                path = os.path.join(base, fn)
-                rel = os.path.relpath(path, ROOT)
-                if fn.endswith(".py"):
-                    for item in _py_functions(path, rel):
-                        yield item
-                elif fn.endswith(".sh"):
-                    for _rel, name, _start, body in shell_functions(path, rel):
-                        yield rel, name, len(body)
+def functions(root=None, tops=None):
+    """Yield (relpath, name, line_count) for every shell or Python function found."""
+    for path, rel in subjects(root, lambda fn: fn.endswith((".py", ".sh")), tops):
+        if rel.endswith(".py"):
+            for item in _py_functions(path, rel):
+                yield item
+        else:
+            for _rel, name, _start, body in shell_functions(path, rel):
+                yield rel, name, len(body)
 
 
-def files():
-    """Yield (relpath, line_count) for every shell file scanned."""
-    for top in SCAN:
-        for base, dirs, fs in os.walk(os.path.join(ROOT, top)):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            for fn in sorted(fs):
-                if not _is_subject(fn):
-                    continue
-                path = os.path.join(base, fn)
-                try:
-                    n = sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
-                except OSError:
-                    continue
-                yield os.path.relpath(path, ROOT), n
-    for top in FLAT_SCAN:
-        d = os.path.join(ROOT, top)
-        for fn in sorted(os.listdir(d) if os.path.isdir(d) else []):
-            if not fn.startswith("Dockerfile"):
-                continue
-            path = os.path.join(d, fn)
-            if not os.path.isfile(path):
-                continue
-            try:
-                n = sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
-            except OSError:
-                continue
-            yield os.path.relpath(path, ROOT), n
+def _line_count(path):
+    """The file's line count, or None when it cannot be read."""
+    try:
+        return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+
+
+def files(root=None, tops=None):
+    """Yield (relpath, line_count) for every file graded as a whole."""
+    root = os.path.abspath(root or ROOT)
+    for path, rel in subjects(root, _is_subject, tops):
+        n = _line_count(path)
+        if n is not None:
+            yield rel, n
+    # The hub's Dockerfiles sit above every recursive scan root, so its own run adds
+    # one flat pass. A --scan narrowing asked for exactly those trees, and a foreign
+    # root needs no pass at all: ls-files finds a Dockerfile wherever it lives.
+    if tops or root != os.path.abspath(ROOT):
+        return
+    for path, rel in _flat_scan(root, FLAT_SCAN, lambda fn: fn.startswith("Dockerfile")):
+        n = _line_count(path)
+        if n is not None:
+            yield rel, n
 
 
 def _py_functions(path, rel):
@@ -266,17 +330,50 @@ def _py_functions(path, rel):
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Keep function and file sizes honest.")
+    ap.add_argument("--root", default=ROOT,
+                    help="the tree to grade (default: this repo)")
+    ap.add_argument("--fn-allow", default=None,
+                    help="the function freeze file (default: function-size.allow beside "
+                         "this script for the hub, <root>/function-size.allow otherwise)")
+    ap.add_argument("--file-allow", default=None,
+                    help="the file freeze file (default: file-size.allow beside this "
+                         "script for the hub, <root>/file-size.allow otherwise)")
+    ap.add_argument("--scan", action="append",
+                    help="restrict to this top-level directory (repeatable)")
+    args = ap.parse_args()
+
+    try:
+        # resolve_root, not abspath: `git rev-parse` succeeds in any
+        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
+        # key a level down without saying so.
+        root = gate_scope.resolve_root(args.root, ROOT)
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
+    hub = root == os.path.abspath(ROOT)
+    # A consumer's freeze belongs to the consumer: keeping these beside this script
+    # would put every repo's ratchet inside the hub, where no consumer can see it in
+    # its own diff.
+    fn_allow = args.fn_allow or (FN_ALLOW if hub else os.path.join(root, "function-size.allow"))
+    file_allow = args.file_allow or (FILE_ALLOW if hub
+                                     else os.path.join(root, "file-size.allow"))
+
     print("=== code size gate (functions > %d, files > %d) ===" % (LIMIT, FILE_LIMIT))
+    if not hub:
+        print("  root:       %s" % root)
+        print("  fn-allow:   %s" % fn_allow)
+        print("  file-allow: %s" % file_allow)
     # A name can be defined more than once in one file (a stub redefined later),
     # and the allow key is (file, name). Take the LONGEST -- the shortest would let
     # a redefinition hide the offender.
     longest: dict = {}
-    for f, n, c in functions():
+    for f, n, c in functions(root, args.scan):
         longest[(f, n)] = max(c, longest.get((f, n), 0))
     rc = check_counts("functions", sorted(longest.items()),
-                      load_counts(FN_ALLOW, 2, FN_FMT), LIMIT, "function-size.allow")
-    rc |= check_counts("files", [((f,), n) for f, n in files()],
-                       load_counts(FILE_ALLOW, 1, FILE_FMT), FILE_LIMIT, "file-size.allow")
+                      load_counts(fn_allow, 2, FN_FMT), LIMIT, os.path.basename(fn_allow))
+    rc |= check_counts("files", [((f,), n) for f, n in files(root, args.scan)],
+                       load_counts(file_allow, 1, FILE_FMT), FILE_LIMIT,
+                       os.path.basename(file_allow))
     if rc == 0:
         print("OK: no new or grown oversized functions or files")
     return rc

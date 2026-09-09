@@ -48,6 +48,7 @@ rather than an uninitialised checkout.
 | `KataglyphisAppImage.cmake` | `kataglyphis_provision_appimagetool`, `kataglyphis_appimagetool_pin` — appimagetool from the immutable release tag pinned in `linux/scripts/01-core/versions.env`, checksum-verified, **fatal** on mismatch or download failure |
 | `KataglyphisCMakeHelpers.cmake` | `kataglyphis_collect_module_interfaces` — globs C++20 module interface units |
 | `PreventInSourceBuilds.cmake` | in-source build guard |
+| `ProjectOptionsCommon.cmake` | `myproject_define_core_options` (the 14 `myproject_ENABLE_*` names the other modules here read, with the four contested defaults as **required** keyword arguments), `myproject_mark_core_options_advanced`, `myproject_cpp_modules_supported`, and the per-target dispatch — `myproject_create_option_targets`, `myproject_enable_profiling`, `myproject_apply_sanitizers`, `myproject_apply_unity_pch_cache`, `myproject_apply_static_analysis`, `myproject_apply_iwyu`, `myproject_apply_static_analyzer_flags`, `myproject_apply_warnings_as_errors_linker_check`, `myproject_set_output_directories`, `myproject_configure_lwyu_and_ipo`. Defines `MYPROJECT_PROJECT_OPTIONS_COMMON_VERSION` so a consumer can assert it did not load a stale local shadow |
 | `SanitizerSupport.cmake` | `myproject_supports_sanitizers`, `myproject_default_debug_sanitizers` — what this toolchain can run, and Debug defaults |
 | `Sanitizers.cmake` | `myproject_enable_sanitizers` — applies the selected set to a target, Debug-gated; clang-cl runtime story: [`../docs/windows-clang-cl-sanitizers.md`](../docs/windows-clang-cl-sanitizers.md) |
 | `Speedup.cmake` | parallel build level from the detected core count |
@@ -64,10 +65,20 @@ in every consumer for no behavioural gain.
 Anything encoding one project's *policy* rather than a reusable *mechanism*:
 the option list and its defaults, the language standard, whether exceptions are
 on, whether C++ modules are mandatory, packaging *values*, dependency lists.
-`CPackCommon.cmake` is the worked example of that line rather than an exception
-to it: the branch structure is here, while the icons, the installer copy, the
-MSI upgrade code and the `.desktop` name stay in the consumer and arrive as
-arguments.
+`CPackCommon.cmake` and `ProjectOptionsCommon.cmake` are the worked examples of
+that line rather than exceptions to it: the branch structure is here, while
+every project-specific value arrives as an argument — the icons, the installer
+copy, the MSI upgrade code and the `.desktop` name for the first; the four
+contested option defaults for the second.
+
+`ProjectOptionsCommon.cmake` does move one item off the list above: the option
+*names*. They are here because they are the interface the rest of this
+directory reads — `Sanitizers`, `StaticAnalyzers`, `Cache`, `Tests` and
+`InterproceduralOptimization` all key off `myproject_ENABLE_*`, so a consumer
+that spells one differently silently loses the feature. The *defaults* stay
+policy and are required arguments. The language standard, the exceptions
+policy, whether C++ modules are mandatory, and the build-type gating all remain
+in the consumer.
 Those stay in the consumer's own `cmake/` — typically a `ProjectOptions.cmake`
 that includes the modules above and composes them.
 
