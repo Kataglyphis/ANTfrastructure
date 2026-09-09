@@ -105,33 +105,13 @@ if ($SkipIfPresent -and (Test-Path $clangCl)) {
     return
 }
 
-# An unknown version must THROW rather than download unpinned (backlog #47).
-# Keep in step with Build-TvmFromSource.ps1 -- both consume the same tarball.
-$llvmSrcSha = @{
-    '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
-    '23.1.0' = 'ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff'
-}
-if ($env:LLVM_WINDOWS_SRC_SHA256) { $llvmSrcSha[$LlvmVersion] = $env:LLVM_WINDOWS_SRC_SHA256 }
-if (-not $llvmSrcSha.ContainsKey($LlvmVersion)) {
-    throw ("No SHA256 pin for the llvm-project-$LlvmVersion source tarball - add it to " +
-        "`$llvmSrcSha in this script AND in Build-TvmFromSource.ps1. Refusing an unpinned download (backlog #47).")
-}
-
-$null = New-Item -ItemType Directory -Force -Path $SourceRoot
-$tarball = Join-Path $SourceRoot "llvm-project-$LlvmVersion.src.tar.xz"
-$srcDir = Join-Path $SourceRoot "llvm-project-$LlvmVersion.src"
-
-if (-not (Test-Path $srcDir)) {
-    Invoke-DownloadWithRetry `
-        -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LlvmVersion/llvm-project-$LlvmVersion.src.tar.xz" `
-        -DestinationPath $tarball -ExpectedSha256 $llvmSrcSha[$LlvmVersion] `
-        -Description "llvm-project $LlvmVersion source tarball"
-    # System32 bsdtar (xz support baked in); git's GNU tar would need xz.exe.
-    $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-    if (-not $tarExe) { throw 'No tar.exe found to extract the LLVM source tarball.' }
-    & $tarExe -xf $tarball -C $SourceRoot
-    if (-not (Test-Path $srcDir)) { throw "LLVM source did not extract to $srcDir - upstream archive layout changed." }
-}
+# The SHA256 pin table, the LLVM_WINDOWS_SRC_SHA256 override and the
+# refuse-unpinned throw live in Get-LlvmSourceSha256 / Get-LlvmSourceTarball
+# (WindowsSourceBuild.Common.psm1) -- ONE owner, shared with
+# Build-TvmFromSource.ps1's mini-LLVM heal, which consumes the same tarball.
+# A hand-maintained pin table in two scripts is how a bump lands in one place
+# only and the other stage refuses (or worse, downloads pre-seeded) hours later.
+$srcDir = (Get-LlvmSourceTarball -Version $LlvmVersion -DestinationRoot $SourceRoot).SourceDir
 
 # The two AArch64 sizing fixes (upstream llvm#219275, llvm#219276), applied by the
 # same helper the OpenCV patches use so a drifted patch fails loudly here.

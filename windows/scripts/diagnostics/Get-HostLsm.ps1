@@ -32,15 +32,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutDir) {
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    $OutDir = Join-Path $repoRoot 'out\lsm-attach'
-}
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Setup only (cdb discovery, out dir, bait, silo wait) is shared with the other
+# LSM probes; every cdb command string below stays here, where it is read.
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
-$cdb = Get-ChildItem 'C:\Program Files\WindowsApps' -Filter cdb.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-    Where-Object { $_.DirectoryName -like '*Microsoft.WinDbg*amd64*' } | Select-Object -First 1
-if (-not $cdb) { throw 'cdb.exe not found - winget install Microsoft.WinDbg' }
+$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
+$cdb = Get-CdbPath
 
 $svc = Get-CimInstance Win32_Service -Filter "Name='LSM'" -ErrorAction SilentlyContinue
 if (-not $svc -or -not $svc.ProcessId) { throw 'host LSM service not found or not running' }
@@ -76,7 +73,7 @@ $cmds = @(
 
 function Invoke-HostLsmSnapshot([string]$tag) {
     $out = Join-Path $OutDir "host-lsm-$hostLsmPid-$stamp-$tag.txt"
-    & $cdb.FullName -pv -p $hostLsmPid -y $sym -c $cmds > $out 2>&1
+    & $cdb -pv -p $hostLsmPid -y $sym -c $cmds > $out 2>&1
     $stacks = @(Select-String -Path $out -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     $bad = @(Select-String -Path $out -Pattern 'Bad register|Syntax error' -ErrorAction SilentlyContinue).Count
     Write-Host ("  [{0}] stacks={1} errors={2} -> {3}" -f $tag, $stacks, $bad, (Split-Path $out -Leaf))
@@ -90,35 +87,15 @@ function Invoke-HostLsmSnapshot([string]$tag) {
 Write-Host "snapshot A (idle) ..."
 $logA = Invoke-HostLsmSnapshot 'A-idle'
 
-$buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-if (-not (Test-Path $buildctl)) { throw "buildctl not found at $buildctl" }
-$nonce = Get-Date -Format 'yyyyMMddHHmmss'
-$baitDir = Join-Path $env:TEMP "hostlsm-bait-$nonce"
-New-Item -ItemType Directory -Force -Path $baitDir | Out-Null
-# NONCE keeps the solve a cache MISS; a cached solve starts no container.
-@'
-ARG BASE
-FROM ${BASE}
-ARG NONCE
-RUN echo bait-$NONCE > C:bait.txt
-'@ | Set-Content (Join-Path $baitDir 'Dockerfile') -Encoding ascii
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
-Start-Process -FilePath $buildctl -WindowStyle Hidden -ArgumentList @(
-    '--addr', 'npipe:////./pipe/buildkitd', 'build', '--frontend', 'dockerfile.v0'
-    '--local', "context=$baitDir", '--local', "dockerfile=$baitDir"
-    '--opt', 'build-arg:BASE=mcr.microsoft.com/windows/servercore:ltsc2025'
-    '--opt', "build-arg:NONCE=$nonce", '--opt', 'image-resolve-mode=local'
-    '--output', "type=image,name=docker.io/local/kataglyphis:diag-hostlsm-$nonce"
-) | Out-Null
+$baseWininit = Get-WininitProcessId
+Start-SiloBaitContainer -Tag 'hostlsm' | Out-Null
 Write-Host "bait started; waiting for its silo ..."
 
-$deadline = (Get-Date).AddSeconds(180)
-$sawSilo = $false
-while ((Get-Date) -lt $deadline) {
-    if (Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Where-Object { $_.ProcessId -notin $baseWininit }) { $sawSilo = $true; break }
-    Start-Sleep -Seconds 2
+# 180 s, not the 900 s the watch-only probes use: this bait was started three
+# lines ago, so a silo that has not appeared by then is not coming.
+if (-not (Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec 180 -PollSec 2)) {
+    Write-Warning 'no silo appeared; snapshot B will be another idle sample'
 }
-if (-not $sawSilo) { Write-Warning 'no silo appeared; snapshot B will be another idle sample' }
 Start-Sleep -Seconds 20   # land inside the ~141 s stall, past silo creation
 
 Write-Host "snapshot B (container hanging) ..."

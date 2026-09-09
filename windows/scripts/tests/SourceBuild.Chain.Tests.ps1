@@ -7,6 +7,27 @@
 
 Describe 'Invoke-SourceBuildChain' {
 
+    # One owner for the plain stage tree seven cases built by hand, differing only in how many
+    # stages the array had (3, 3, 4, 2 for -StartAt / -Until / split-layer / full-chain, and
+    # 1 for the two unknown-name cases — those assert the log never appears, so what the fake
+    # stage would have written is irrelevant). Writes $Count fake stage scripts a.ps1, b.ps1,
+    # ... into $Dir — each appending only its own -SourceDir to $Log — and returns the
+    # matching stage array (@{ Name='A'; Script='a.ps1'; SourceDir='src-a' } ...). The leading
+    # comma is required: without it PowerShell unrolls a one-stage tree to a bare hashtable.
+    # A case that needs one stage to misbehave appends to that stage's script rather than
+    # taking a mode flag here (see the non-zero-exit case). The only hand-built tree left is
+    # the order case: its scripts log "<SourceDir>|<InstallDir>" and its SourceDirs are
+    # absolute, because InstallDir forwarding is what that case is about.
+    $newStageTree = {
+        param([string]$Dir, [string]$Log, [int]$Count)
+        # $SourceDir/$InstallDir stay literal (the fake script's own params); $Log is
+        # interpolated into the Add-Content path.
+        $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$Log' -Value `$SourceDir"
+        $letters = @(0..($Count - 1) | ForEach-Object { [string][char](97 + $_) })
+        foreach ($s in $letters) { Set-Content -LiteralPath (Join-Path $Dir "$s.ps1") -Value $body -Encoding ASCII }
+        return , @($letters | ForEach-Object { @{ Name = $_.ToUpperInvariant(); Script = "$_.ps1"; SourceDir = "src-$_" } })
+    }
+
     It 'runs every stage in order, forwarding its SourceDir and the shared InstallDir' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'order.log'
@@ -32,34 +53,23 @@ Describe 'Invoke-SourceBuildChain' {
     It 'throws on a stage that exits non-zero (native-exit safety net) and stops the chain' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'ran.log'
-            Set-Content -LiteralPath (Join-Path $dir 'ok.ps1')    -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'ok'"                 -Encoding ASCII
-            Set-Content -LiteralPath (Join-Path $dir 'fail.ps1')  -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'fail'`nexit 3"       -Encoding ASCII
-            Set-Content -LiteralPath (Join-Path $dir 'never.ps1') -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'never'"              -Encoding ASCII
-
-            $stages = @(
-                @{ Name = 'OK';    Script = 'ok.ps1';    SourceDir = 'x' }
-                @{ Name = 'FAIL';  Script = 'fail.ps1';  SourceDir = 'x' }
-                @{ Name = 'NEVER'; Script = 'never.ps1'; SourceDir = 'x' }
-            )
+            $stages = & $newStageTree $dir $log 3
+            # The one line that is this case's subject: stage B still logs itself, then exits
+            # non-zero. Appended (not a separate fake) so A and C stay ordinary stages.
+            Add-Content -LiteralPath (Join-Path $dir 'b.ps1') -Value 'exit 3' -Encoding ASCII
             Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir } 'a non-zero stage exit must throw'
 
             $ran = @(Get-Content -LiteralPath $log)
-            Assert-True  ($ran -contains 'ok')    'the first (passing) stage ran'
-            Assert-True  ($ran -contains 'fail')  'the failing stage ran'
-            Assert-False ($ran -contains 'never') 'the stage after the failure did NOT run'
+            Assert-True  ($ran -contains 'src-a') 'the first (passing) stage ran'
+            Assert-True  ($ran -contains 'src-b') 'the failing stage ran'
+            Assert-False ($ran -contains 'src-c') 'the stage after the failure did NOT run'
         }
     }
 
     It '-StartAt skips the stages before the named one (resume path)' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'resume.log'
-            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
-            foreach ($s in 'a', 'b', 'c') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
-            $stages = @(
-                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
-                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
-                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
-            )
+            $stages = & $newStageTree $dir $log 3
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'B'
 
             $ran = @(Get-Content -LiteralPath $log)
@@ -72,8 +82,7 @@ Describe 'Invoke-SourceBuildChain' {
     It '-StartAt with an unknown stage name throws before running anything' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'none.log'
-            Set-Content -LiteralPath (Join-Path $dir 'a.ps1') -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'ran'" -Encoding ASCII
-            $stages = @(@{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'x' })
+            $stages = & $newStageTree $dir $log 1
             Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'TYPO' } 'unknown -StartAt must throw (a typo must not rebuild from scratch)'
             Assert-False (Test-Path $log) 'no stage ran'
         }
@@ -82,13 +91,7 @@ Describe 'Invoke-SourceBuildChain' {
     It '-Until stops AFTER the named stage (inclusive) — the BK split-layer path' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'until.log'
-            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
-            foreach ($s in 'a', 'b', 'c') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
-            $stages = @(
-                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
-                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
-                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
-            )
+            $stages = & $newStageTree $dir $log 3
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
 
             $ran = @(Get-Content -LiteralPath $log)
@@ -100,14 +103,7 @@ Describe 'Invoke-SourceBuildChain' {
     It '-Until layer 1 + -StartAt layer 2 partition the chain without overlap or gap' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'split.log'
-            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
-            foreach ($s in 'a', 'b', 'c', 'd') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
-            $stages = @(
-                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
-                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
-                @{ Name = 'C'; Script = 'c.ps1'; SourceDir = 'src-c' }
-                @{ Name = 'D'; Script = 'd.ps1'; SourceDir = 'src-d' }
-            )
+            $stages = & $newStageTree $dir $log 4
             # exactly how Dockerfile.media-builder's two RUN layers call the wrapper
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'C'
@@ -120,8 +116,7 @@ Describe 'Invoke-SourceBuildChain' {
     It '-Until with an unknown stage name throws before running anything' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'noneu.log'
-            Set-Content -LiteralPath (Join-Path $dir 'a.ps1') -Value "param(`$SourceDir,`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value 'ran'" -Encoding ASCII
-            $stages = @(@{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'x' })
+            $stages = & $newStageTree $dir $log 1
             Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'TYPO' } 'unknown -Until must throw (a typo must not silently run the whole chain)'
             Assert-False (Test-Path $log) 'no stage ran'
         }
@@ -130,12 +125,7 @@ Describe 'Invoke-SourceBuildChain' {
     It 'empty -StartAt runs the full chain (default behavior unchanged)' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'full.log'
-            $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$log' -Value `$SourceDir"
-            foreach ($s in 'a', 'b') { Set-Content -LiteralPath (Join-Path $dir "$s.ps1") -Value $body -Encoding ASCII }
-            $stages = @(
-                @{ Name = 'A'; Script = 'a.ps1'; SourceDir = 'src-a' }
-                @{ Name = 'B'; Script = 'b.ps1'; SourceDir = 'src-b' }
-            )
+            $stages = & $newStageTree $dir $log 2
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt ''
             Assert-Equal 2 @(Get-Content -LiteralPath $log).Count 'all stages ran'
         }

@@ -43,6 +43,8 @@ $ErrorActionPreference = 'Continue'
 # (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
 # beside this script in the flat layout and one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+# Test-Elevated: this script GRADES elevation as a check, it never acts on it.
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $script:Fail = 0
 $script:Warn = 0
@@ -269,8 +271,7 @@ if ($SccacheEndpoint) {
 } else { Write-Check WARN 'no sccache endpoint given' 'media builds require it unless -NoSccache is deliberate' 'pass -SccacheEndpoint or set SCCACHE_WEBDAV_ENDPOINT' }
 
 # Reported, never skipped: absence must not look like success.
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator)
+$isAdmin = Test-Elevated
 if ($isAdmin) {
     $ex = @((Get-MpPreference).ExclusionPath)
     $want = @('C:\ProgramData\containerd', 'C:\ProgramData\buildkitd')

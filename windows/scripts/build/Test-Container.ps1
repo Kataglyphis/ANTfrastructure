@@ -903,14 +903,9 @@ Assert-Test -Name "clang-cl compiles C++ program" -Condition {
 if ($smokeCross) {
     Assert-Test -Name "Compiled program is target-arch (PE machine)" -Condition {
         if (-not (Test-Path $exeFile)) { return $false }
-        $fs = [System.IO.File]::OpenRead($exeFile)
-        try {
-            $br = New-Object System.IO.BinaryReader($fs)
-            $fs.Seek(0x3C, 'Begin') | Out-Null
-            $peOff = $br.ReadUInt32()
-            $fs.Seek($peOff + 4, 'Begin') | Out-Null
-            return ($br.ReadUInt16() -eq (Get-PeMachineType))
-        } finally { $fs.Dispose() }
+        # Same owner as §15's identical check: Get-PeFileMachine throws by name on a
+        # non-PE artifact, and Assert-Test turns that throw into a FAIL carrying it.
+        return ((Get-PeFileMachine -Path $exeFile) -eq (Get-PeMachineType))
     } -FailMessage "cross-compiled smoke.exe has the wrong PE machine type"
     Skip-Test 'Compiled program runs: skipped on the cross lane (aarch64 exe cannot execute on this x64 host; PE machine asserted instead)'
 } else {

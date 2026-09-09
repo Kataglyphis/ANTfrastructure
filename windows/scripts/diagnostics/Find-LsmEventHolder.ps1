@@ -40,11 +40,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutDir) {
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    $OutDir = Join-Path $repoRoot 'out\lsm-attach'
-}
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Setup only (cdb discovery, out dir, bait, silo descent) is shared with the
+# other LSM probes; the R10 read and the handle scan below stay here.
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
+
+$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
 
 Add-Type -TypeDefinition @'
 using System;
@@ -98,62 +98,23 @@ function Get-ProcLabel([long]$procId) {
 
 # --- 1. locate the hung LSM svchost and the handle it waits on --------------
 if (-not $LsmPid -or -not $Handle) {
-    $cdb = Get-ChildItem 'C:\Program Files\WindowsApps' -Filter cdb.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-        Where-Object { $_.DirectoryName -like '*Microsoft.WinDbg*amd64*' } | Select-Object -First 1
-    if (-not $cdb) { throw 'cdb.exe not found - winget install Microsoft.WinDbg' }
+    $cdb = Get-CdbPath
 
-    $baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+    $baseWininit = Get-WininitProcessId
 
     if (-not $NoBait) {
-        $buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-        if (-not (Test-Path $buildctl)) { throw "buildctl not found at $buildctl (use -NoBait and start a container yourself)" }
-        $nonce = Get-Date -Format 'yyyyMMddHHmmss'
-        $baitDir = Join-Path $env:TEMP "lsm-bait-$nonce"
-        New-Item -ItemType Directory -Force -Path $baitDir | Out-Null
-        # NONCE in the RUN keeps every launch a cache MISS - a cached solve
-        # starts no container and there would be nothing to attach to.
-        @'
-ARG BASE
-FROM ${BASE}
-ARG NONCE
-RUN echo bait-$NONCE > C:bait.txt
-'@ | Set-Content (Join-Path $baitDir 'Dockerfile') -Encoding ascii
-        $bait = Start-Process -FilePath $buildctl -PassThru -WindowStyle Hidden -ArgumentList @(
-            '--addr', 'npipe:////./pipe/buildkitd', 'build', '--frontend', 'dockerfile.v0'
-            '--local', "context=$baitDir", '--local', "dockerfile=$baitDir"
-            '--opt', 'build-arg:BASE=mcr.microsoft.com/windows/servercore:ltsc2025'
-            '--opt', "build-arg:NONCE=$nonce"
-            '--opt', 'image-resolve-mode=local'
-            '--output', "type=image,name=docker.io/local/kataglyphis:diag-lsmbait-$nonce"
-        )
+        $bait = Start-SiloBaitContainer -Tag 'lsmbait'
         Write-Host "bait solve started (buildctl pid $($bait.Id)); its container is the one we inspect"
     }
 
     Write-Host "Waiting for a NEW silo (max $WaitForSiloSec s)..."
-    $deadline = (Get-Date).AddSeconds($WaitForSiloSec)
-    $newWininit = $null
-    while ((Get-Date) -lt $deadline) {
-        $newWininit = Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
-            Where-Object { $_.ProcessId -notin $baseWininit } | Select-Object -First 1
-        if ($newWininit) { break }
-        Start-Sleep -Seconds 3
-    }
+    $newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
     if (-not $newWininit) { throw 'No new silo appeared - start a build/probe and retry.' }
 
-    $siloServices = $null
-    foreach ($i in 1..20) {
-        $siloServices = Get-CimInstance Win32_Process -Filter "Name='services.exe' AND ParentProcessId=$($newWininit.ProcessId)" | Select-Object -First 1
-        if ($siloServices) { break }
-        Start-Sleep -Seconds 1
-    }
+    $siloServices = Get-SiloServicesProcess -WininitProcessId $newWininit.ProcessId
     if (-not $siloServices) { throw 'silo has no services.exe yet' }
 
-    $svchosts = @()
-    foreach ($i in 1..20) {
-        $svchosts = @(Get-CimInstance Win32_Process -Filter "Name='svchost.exe' AND ParentProcessId=$($siloServices.ProcessId)" | Sort-Object CreationDate)
-        if ($svchosts.Count -ge 1) { break }
-        Start-Sleep -Seconds 2
-    }
+    $svchosts = @(Get-SiloSvchost -ServicesProcessId $siloServices.ProcessId)
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
@@ -163,7 +124,7 @@ RUN echo bait-$NONCE > C:bait.txt
         # .printf swallow the semicolons ("Bad register error at '@r10; kb'")
         # and NO stack is printed at all - measured 2026-09-02. Pass 1 is the
         # plain ~*kb that is known to work.
-        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
+        & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
         if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
 
         # Which THREAD owns that frame. Reading the first WaitForSingleObjectEx
@@ -181,7 +142,7 @@ RUN echo bait-$NONCE > C:bait.txt
         # argument 1 - the handle. kb's "args to child" columns are home-space
         # reconstructions and are not trustworthy here.
         $rlog = Join-Path $OutDir "holder-r10-$($p.ProcessId)-$stamp.txt"
-        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c ".reload /f; ~$($idx)s; r r10; qd" > $rlog 2>&1
+        & $cdb -pv -p $p.ProcessId -y $sym -c ".reload /f; ~$($idx)s; r r10; qd" > $rlog 2>&1
         $rm = Select-String -Path $rlog -Pattern 'r10=([0-9a-f`]+)' -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $rm) { Write-Warning "pid $($p.ProcessId): thread $idx is LSM but R10 was unreadable (see $rlog)"; continue }
         $Handle = [uint32][Convert]::ToUInt64(($rm.Matches[0].Groups[1].Value -replace '`', ''), 16)
@@ -219,7 +180,7 @@ $holders = @($rows | Where-Object { $_.Item3 -eq $obj })
 $detail = ''
 if ($cdb -and (Get-Process -Id $LsmPid -ErrorAction SilentlyContinue)) {
     $hlog = Join-Path $OutDir "handle-detail-$LsmPid-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
-    & $cdb.FullName -pv -p $LsmPid -y $sym -c ".reload /f; !handle $($Handle.ToString('x')) f; qd" > $hlog 2>&1
+    & $cdb -pv -p $LsmPid -y $sym -c ".reload /f; !handle $($Handle.ToString('x')) f; qd" > $hlog 2>&1
     $detail = (Get-Content $hlog | Select-String -Pattern 'HandleCount|PointerCount|Event Type|Event is|Type ' | ForEach-Object { '    ' + $_.Line.Trim() }) -join "`n"
 }
 $report = Join-Path $OutDir "event-holders-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"

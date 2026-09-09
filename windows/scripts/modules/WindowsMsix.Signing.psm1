@@ -25,12 +25,12 @@ if (-not (Get-Module -Name 'WindowsBuild.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
 
+# The elevation probe itself lives in WindowsScripts.Shared (Test-Elevated,
+# imported above). This wrapper stays: WindowsMsix.Signing.Tests.ps1 mocks
+# Test-Administrator with -ModuleName WindowsMsix.Signing, and that mock needs a
+# real command in THIS module to attach to.
 function Test-Administrator {
-  try {
-    return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  } catch {
-    return $false
-  }
+  return (Test-Elevated)
 }
 
 function Invoke-MsixSign {
