@@ -154,3 +154,38 @@ Describe 'Path and command assertions' {
         }
     }
 }
+
+Describe 'The native DLL probe type' {
+
+    # Neither function had a test until 2026-09-09, which is how KataNativeProbe came
+    # to be Add-Type'd twice with DIFFERENT member sets. The type is session-global and
+    # both sites guarded on it already existing, so the first function to run decided
+    # what the second one got: this exact order reported a MethodNotFound on
+    # GetProcAddress as a missing export. The order is the test.
+
+    It 'a DLL sweep does not poison the -Export check that runs after it' {
+        Invoke-InTestDir { param($dir)
+            $sys = Join-Path $env:WINDIR 'System32'
+            Copy-Item (Join-Path $sys 'version.dll') $dir
+            Initialize-SmokeTestRun
+            Assert-AllDllsLoad -Name 'sweep first' -Root $dir -MinimumChecked 1
+            Assert-DllLoads -Name 'then an export check' `
+                -DllPath (Join-Path $sys 'kernel32.dll') -Export 'GetProcAddress'
+            $s = Get-SmokeTestSummary
+            Assert-Equal 2 $s.Passed 'the sweep and the export check both pass in this order'
+            Assert-Equal 0 $s.Failed 'GetProcAddress resolved on the shared probe type'
+        }
+    }
+
+    It 'the export check reports a REAL missing export as a failure' {
+        # The guard on the test above: it must fail for the right reason when the
+        # export is genuinely absent, not pass because nothing was checked.
+        Initialize-SmokeTestRun
+        Assert-DllLoads -Name 'absent export' `
+            -DllPath (Join-Path $env:WINDIR 'System32\kernel32.dll') `
+            -Export 'NoSuchExportXyzzy'
+        $s = Get-SmokeTestSummary
+        Assert-Equal 0 $s.Passed 'a missing export is not a pass'
+        Assert-Equal 1 $s.Failed 'a missing export is a failure'
+    }
+}

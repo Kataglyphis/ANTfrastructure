@@ -285,6 +285,67 @@ t_assert_contains "${_out}" "-DCMAKE_PREFIX_PATH=SDK/aarch64;/usr/lib/aarch64-li
 t_assert_contains "${_out}" "-DVULKAN_LOADER_INSTALL_DIR=SDK/aarch64" \
   "upstream interpolates \${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so RAW -- unset it resolves to the HOST /lib/libvulkan.so and ninja refuses the graph before any rule runs"
 
+# ── VK4: the three components the vendor's own build_all builds ────────────
+# They were never in the HOST list, so nothing checked them out and nothing was
+# ever ATTEMPTED -- the same silent shape that cost riscv64 slang.
+# docs/vulkan-foreign-arch-sdk.md#vk4-the-components-the-vendor-builds-and-we-did-not
+
+t_case "the HOST list checks out dxc, vulkantools and cdl, or nothing can build them"
+_HOST_SRC="$(awk '/^_vulkan_build_components\(\) \{/,/^\}/' "${VULKAN_SH}")"
+for _c in vulkantools dxc cdl; do
+  t_assert_contains "${_HOST_SRC}" "${_c}" \
+    "a name missing here takes the CHECKOUT with it, and the row then skips without being counted"
+done
+
+t_case "vulkantools gets Qt6, the raw loader path and the config-package dirs"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/VulkanTools"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "CMAKE -S SDK/source/VulkanTools -B TMP/vulkantools-aarch64"
+t_assert_contains "${_out}" "-DQT_HOST_PATH=/usr" "vkconfig-gui is Qt6, same split as the caps viewer"
+t_assert_contains "${_out}" "-DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE" \
+  "upstream's find_package(Qt6 QUIET) drops the configurator with a message() and exits 0: the row would count as BUILT while shipping no vkconfig"
+t_assert_contains "${_out}" "-DVULKAN_LOADER_INSTALL_DIR=SDK/aarch64"
+t_assert_contains "${_out}" "-DJSONCPP_INSTALL_DIR=SDK/aarch64 -DVALIJSON_INSTALL_DIR=SDK/aarch64"
+t_assert_contains "${_out}" "-DSDK_VERSION=" "the vendor passes it; unset it labels the build wrongly"
+
+t_case "the crash diagnostic layer gets glslang and yaml-cpp from the target prefix"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/CrashDiagnosticLayer"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "-DGLSLANG_INSTALL_DIR=SDK/aarch64 -DYAML_CPP_INSTALL_DIR=SDK/aarch64" \
+  "yaml-cpp is CDL's own dependency and has its own row above it"
+
+t_case "dxc gets the vendor cache file and the HOST tblgens"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" \
+         "${SDK}/source/DirectXShaderCompiler/cmake/caches" \
+         "${SDK}/source/DirectXShaderCompiler/build/bin"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+: > "${SDK}/source/DirectXShaderCompiler/cmake/caches/PredefinedParams.cmake"
+for _g in llvm-tblgen clang-tblgen; do
+  printf '#!/bin/sh\n' > "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
+  chmod +x "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
+done
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "-CSDK/source/DirectXShaderCompiler/cmake/caches/PredefinedParams.cmake" \
+  "most of DXC's option set does not EXIST until the vendor cache file is read"
+t_assert_contains "${_out}" "-DLLVM_TABLEGEN=SDK/source/DirectXShaderCompiler/build/bin/llvm-tblgen"
+t_assert_contains "${_out}" "-DCLANG_TABLEGEN=SDK/source/DirectXShaderCompiler/build/bin/clang-tblgen" \
+  "an LLVM 3.7 fork: both generators must EXECUTE on the build host"
+t_assert_contains "${_out}" "-DSPIRV_WERROR=OFF" \
+  "DXC vendors its OWN external/SPIRV-Tools, so it needs the same flag the standalone copy already carries: GCC 16 -Warray-bounds false-positives on timer.h, and 23/24 on riscv64 is what that cost"
+
+t_case "dxc without host tblgens says so instead of passing an empty path"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/DirectXShaderCompiler"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "LOG dxc: no host tblgen at SDK/source/DirectXShaderCompiler/build/bin"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DLLVM_TABLEGEN' || true)"
+
 # ── the four defects the 2026-09-08 chain measured behind the VK2 routes ────
 # Each route worked; each component then died at something new. These pin the
 # answers. docs/vulkan-foreign-arch-sdk.md

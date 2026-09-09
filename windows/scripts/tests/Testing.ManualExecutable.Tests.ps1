@@ -27,6 +27,27 @@ BeforeAll {
         Set-Content -Path (Join-Path $dir 'x.exe') -Value 'x'
         return $dir
     }
+
+    # One owner for the assertion this file exists to make (see the header):
+    # the return value is exactly ONE boolean, and it is the expected one.
+    # Each case below differs only in the Mock lines that set the scenario up,
+    # so those stay at the call site; the ten lines that never differed do not.
+    # The Should -Throw case keeps its own body: it inspects an exception
+    # instead of a return value, so it shares nothing here but the temp dir.
+    function Assert-ManualTestOutcome {
+        param(
+            [Parameter(Mandatory)][bool]$Expected,
+            [string]$ExecutableName = 'x.exe'
+        )
+        $root = New-FakeBuildRoot
+        try {
+            $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName $ExecutableName)
+            $result.Count | Should -Be 1
+            $result[0] | Should -Be $Expected
+        } finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Describe 'Invoke-ManualTestExecutable' {
@@ -39,28 +60,14 @@ Describe 'Invoke-ManualTestExecutable' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code -1073741515' }
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
-            $root = New-FakeBuildRoot
-            try {
-                $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe')
-                $result.Count | Should -Be 1
-                $result[0] | Should -Be $false
-            } finally {
-                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Assert-ManualTestOutcome -Expected $false
         }
 
         It 'also tolerates STATUS_ENTRYPOINT_NOT_FOUND' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code -1073741511' }
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
-            $root = New-FakeBuildRoot
-            try {
-                $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe')
-                $result.Count | Should -Be 1
-                $result[0] | Should -Be $false
-            } finally {
-                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Assert-ManualTestOutcome -Expected $false
         }
     }
 
@@ -69,14 +76,7 @@ Describe 'Invoke-ManualTestExecutable' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { }
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
-            $root = New-FakeBuildRoot
-            try {
-                $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe')
-                $result.Count | Should -Be 1
-                $result[0] | Should -Be $true
-            } finally {
-                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Assert-ManualTestOutcome -Expected $true
         }
     }
 
@@ -102,14 +102,7 @@ Describe 'Invoke-ManualTestExecutable' {
         It 'warns and returns $false rather than searching forever' {
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
-            $root = New-FakeBuildRoot
-            try {
-                $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'absent.exe')
-                $result.Count | Should -Be 1
-                $result[0] | Should -Be $false
-            } finally {
-                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Assert-ManualTestOutcome -Expected $false -ExecutableName 'absent.exe'
         }
     }
 }

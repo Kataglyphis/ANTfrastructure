@@ -31,47 +31,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutDir) {
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    $OutDir = Join-Path $repoRoot 'out\lsm-attach'
-}
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Setup only (cdb discovery, out dir, bait, silo wait) is shared with the other
+# LSM probes; the per-process attach and its summary stay here.
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
-$cdb = Get-ChildItem 'C:\Program Files\WindowsApps' -Filter cdb.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-    Where-Object { $_.DirectoryName -like '*Microsoft.WinDbg*amd64*' } | Select-Object -First 1
-if (-not $cdb) { throw 'cdb.exe not found - winget install Microsoft.WinDbg' }
+$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
+$cdb = Get-CdbPath
 
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
-
-$buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-if (-not (Test-Path $buildctl)) { throw "buildctl not found at $buildctl" }
-$nonce = Get-Date -Format 'yyyyMMddHHmmss'
-$baitDir = Join-Path $env:TEMP "silo-bait-$nonce"
-New-Item -ItemType Directory -Force -Path $baitDir | Out-Null
-# NONCE keeps the solve a cache MISS; a cached solve starts no container.
-@'
-ARG BASE
-FROM ${BASE}
-ARG NONCE
-RUN echo bait-$NONCE > C:bait.txt
-'@ | Set-Content (Join-Path $baitDir 'Dockerfile') -Encoding ascii
-Start-Process -FilePath $buildctl -WindowStyle Hidden -ArgumentList @(
-    '--addr', 'npipe:////./pipe/buildkitd', 'build', '--frontend', 'dockerfile.v0'
-    '--local', "context=$baitDir", '--local', "dockerfile=$baitDir"
-    '--opt', 'build-arg:BASE=mcr.microsoft.com/windows/servercore:ltsc2025'
-    '--opt', "build-arg:NONCE=$nonce", '--opt', 'image-resolve-mode=local'
-    '--output', "type=image,name=docker.io/local/kataglyphis:diag-silo-$nonce"
-) | Out-Null
+$baseWininit = Get-WininitProcessId
+Start-SiloBaitContainer -Tag 'silo' | Out-Null
 Write-Host 'bait started; waiting for its silo ...'
 
-$deadline = (Get-Date).AddSeconds($WaitForSiloSec)
-$newWininit = $null
-while ((Get-Date) -lt $deadline) {
-    $newWininit = Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
-        Where-Object { $_.ProcessId -notin $baseWininit } | Select-Object -First 1
-    if ($newWininit) { break }
-    Start-Sleep -Seconds 2
-}
+$newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 2
 if (-not $newWininit) { throw 'No new silo appeared.' }
 Write-Host "silo wininit: pid $($newWininit.ProcessId)"
 Start-Sleep -Seconds 15   # land inside the ~141 s stall
@@ -101,7 +72,7 @@ $summary.Add('')
 
 foreach ($p in $silo) {
     $log = Join-Path $OutDir "silo-$($p.Name)-$($p.ProcessId)-$stamp.txt"
-    & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
+    & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
     $stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     if ($stacks -lt 1) {
         # smss/csrss/wininit/services are PPL - 0n5 here is the OS refusing a

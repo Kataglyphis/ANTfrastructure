@@ -242,6 +242,25 @@ function Assert-NativeLinkRun {
     }.GetNewClosure() -FailMessage $FailMessage
 }
 
+# ONE definition, deliberately holding the SUPERSET of what the callers need.
+# An Add-Type'd type is session-global and both call sites guard on the type
+# already existing, so two definitions meant the FIRST function to run in a
+# session decided what the second one got. Assert-AllDllsLoad's copy omitted
+# GetProcAddress, which Assert-DllLoads calls for -Export: a sweep followed by
+# an export check reported MethodNotFound as a missing export.
+function Initialize-KataNativeProbe {
+    if ('KataNativeProbe' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KataNativeProbe {
+    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
+    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
+    [DllImport("kernel32", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr h, string n);
+}
+'@
+}
+
 function Assert-DllLoads {
     # LoadLibrary a native DLL (with its own dir + any dependency dirs on PATH) and optionally
     # GetProcAddress a known export. Proves the DLL AND its full dependent-DLL chain actually
@@ -257,18 +276,13 @@ function Assert-DllLoads {
         [string]$FailMessage
     )
     $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
+    # OUTSIDE the closure ON PURPOSE. .GetNewClosure() binds the scriptblock to a new
+    # dynamic module that cannot see this module's PRIVATE functions, so calling the
+    # initializer from inside the condition fails to resolve it at all. The type is
+    # session-global, so registering it here is equivalent -- and it is what the
+    # sibling Assert-AllDllsLoad already does for its own reason.
+    Initialize-KataNativeProbe
     Assert-Test -Name $Name -Condition {
-        if (-not ('KataNativeProbe' -as [type])) {
-            Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class KataNativeProbe {
-    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
-    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
-    [DllImport("kernel32", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr h, string n);
-}
-'@
-        }
         if (-not (Test-Path $dllPath)) { return $false }
         $prev = $env:PATH
         $env:PATH = ((@((Split-Path $dllPath)) + $depDirs) -join ';') + ';' + $env:PATH
@@ -324,16 +338,7 @@ function Assert-AllDllsLoad {
     # is a plain string evaluated at CALL time, so a message referring to results
     # computed inside the condition would always be empty. Do the work first,
     # then assert on a value that already exists.
-    if (-not ('KataNativeProbe' -as [type])) {
-        Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class KataNativeProbe {
-    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
-    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
-}
-'@
-    }
+    Initialize-KataNativeProbe
     $problems = @()
     $checked = 0
     if (-not (Test-Path $Root)) {

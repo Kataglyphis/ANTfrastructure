@@ -121,6 +121,7 @@ The two halves of one topic often split:
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
+| **Upgrading dependencies** — Renovate as a local CLI, and why `--apply` refuses some submodules | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
 | The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |

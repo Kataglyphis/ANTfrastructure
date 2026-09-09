@@ -25,6 +25,13 @@ $installerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsInstaller.Comm
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
+# For Assert-Elevated (the one home of the admin gate). Allowed here:
+# WindowsScripts.Shared is the first of the three modules COPY'd into
+# C:\temp\scripts\modules by Dockerfile.base before this script runs.
+$sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
+Import-Module $sharedModulePath -Force
+
 # For Resolve-VsBuildToolsRoot (shared VsDevCmd probe, also used by the smoke test).
 # Allowed here: WindowsContainerImage.Common is one of the three modules COPY'd
 # into Dockerfile.base BEFORE the setup-* scripts run.
@@ -32,14 +39,11 @@ $containerImageModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainer
 if (-not (Test-Path $containerImageModulePath)) { throw "Required module not found: $containerImageModulePath" }
 Import-Module $containerImageModulePath -Force
 
-# Admin-Check
-
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    # throw, not Write-Error+exit: under EAP=Stop Write-Error is itself terminating,
-    # which made the old `exit 1` dead code.
-    throw 'Please run PowerShell as Administrator.'
-}
+# Admin-Check. Assert-Elevated throws (not Write-Error+exit: under EAP=Stop
+# Write-Error is itself terminating, which made the old `exit 1` dead code).
+# WindowsScripts.Shared is COPY'd into C:\temp\scripts\modules beside this
+# script in Dockerfile.base, so the import holds inside the VS layer too.
+Assert-Elevated -Reason 'the VS Build Tools installer needs it'
 
 # Single source for the VS major: previously computed twice, 100 lines apart,
 # with the same '18' fallback — a drift between the two was a live bug waiting.

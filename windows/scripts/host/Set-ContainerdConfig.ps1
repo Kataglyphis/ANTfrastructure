@@ -42,6 +42,8 @@ $ErrorActionPreference = 'Stop'
 # #108: shared assets sit beside this script in the FLAT container mount and one
 # level up in the repo's scripts/<group>/ layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+# Test-Elevated: this script REPORTS elevation and degrades, it does not stop on it.
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
 
@@ -65,8 +67,7 @@ if (Test-Path $LogFile) {
     Write-Step ('debug log  : not present yet ({0})' -f $LogFile)
 }
 
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator)
+$isAdmin = Test-Elevated
 
 # --- CNI: the .conflist is AUTHORED, the .conf is DERIVED ---------------------
 # The host needs BOTH forms - buildkitd reads the .conf, nerdctl the .conflist -

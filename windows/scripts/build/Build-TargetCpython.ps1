@@ -78,15 +78,10 @@ $tgtLib = Get-ChildItem -Path $cpyOutDir -Filter 'python3*.lib' -File -ErrorActi
 if (-not (Test-Path $tgtExe)) { throw "Target CPython: $tgtExe was not produced" }
 if (-not $tgtLib) { throw "Target CPython: no python3XY.lib import library in $cpyOutDir" }
 # PE machine checked here, not only at the merge gate, so a wrong-arch interpreter
-# fails with a message that names the defect. IMAGE_FILE_MACHINE sits at (0x3C pointer)+4.
-$fs = [System.IO.File]::OpenRead($tgtExe)
-try {
-    $br = New-Object System.IO.BinaryReader($fs)
-    $fs.Seek(0x3C, 'Begin') | Out-Null
-    $peOff = $br.ReadUInt32()
-    $fs.Seek($peOff + 4, 'Begin') | Out-Null
-    $machine = $br.ReadUInt16()
-} finally { $fs.Dispose() }
+# fails with a message that names the defect. Get-PeFileMachine owns the header walk
+# (same accessor the staging loop below already uses); it validates the 'PE\0\0'
+# signature, so a truncated build.bat output throws by name instead of comparing garbage.
+$machine = Get-PeFileMachine -Path $tgtExe
 $wantMachine = Get-PeMachineType -Arch $tgtArch
 if ($machine -ne $wantMachine) {
     throw ('Target CPython: python.exe machine is 0x{0:X4}, expected 0x{1:X4} — the ARM64 platform build produced a host-arch binary (PreferredToolArchitecture / toolset resolution went wrong)' -f $machine, $wantMachine)

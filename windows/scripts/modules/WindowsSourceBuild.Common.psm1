@@ -1250,6 +1250,82 @@ function Get-LlvmMasmCmakeArg {
     return @("-DCMAKE_ASM_MASM_COMPILER:FILEPATH=$($llvmMl -replace '\\', '/')")
 }
 
+<#
+.SYNOPSIS
+    THE SHA256 pin table for the llvm-project source tarball, and the refusal to
+    download an unpinned one (backlog #47). Returns the pin for -Version.
+.DESCRIPTION
+    ONE owner, on purpose. The table used to be maintained BY HAND in two build
+    scripts -- Build-LlvmFromSource.ps1 (the #135 patched toolchain) and
+    Build-TvmFromSource.ps1 (the #47 mini-LLVM heal) -- and the throw in the first
+    one literally told the next bumper to edit the other as well. That is a
+    supply-chain hazard, not a deliberate twin: bump one and the other stage either
+    refuses hours later or, when LLVM_WINDOWS_SRC_SHA256 pre-seeds the current
+    version, sails past a pin nobody put in the record.
+    versions.env's LLVM_WINDOWS_SRC_SHA256 still overrides the entry for whichever
+    version is being built (#129); this table remains the record.
+.OUTPUTS
+    [string] the 64-char SHA256. THROWS for a version with no pin -- never returns
+    empty, because an empty -ExpectedSha256 is an unverified download.
+#>
+function Get-LlvmSourceSha256 {
+    param(
+        [Parameter(Mandatory)][string]$Version
+    )
+    $pins = @{
+        '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
+        '23.1.0' = 'ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff'
+    }
+    if ($env:LLVM_WINDOWS_SRC_SHA256) { $pins[$Version] = $env:LLVM_WINDOWS_SRC_SHA256 }
+    if (-not $pins.ContainsKey($Version)) {
+        throw ("No SHA256 pin for the llvm-project-$Version source tarball - add it to the table in " +
+            "Get-LlvmSourceSha256 (windows\scripts\modules\WindowsSourceBuild.Common.psm1), which is the " +
+            "ONE place it lives for every consumer. Refusing an unpinned download (backlog #47).")
+    }
+    return $pins[$Version]
+}
+
+<#
+.SYNOPSIS
+    Fetches the pin-verified llvm-project source tarball into -DestinationRoot and
+    extracts it there; returns @{ Tarball; SourceDir }.
+.DESCRIPTION
+    The download/extract half of the same #47 contract as Get-LlvmSourceSha256:
+    the pin is resolved BEFORE the request, so an unknown version throws instead of
+    downloading. Extraction is System32 bsdtar (xz support baked in) -- git's GNU
+    tar would need a separate xz.exe, and it parses C:\... as a remote-host spec.
+    Both gates the two former copies had are kept: tar's exit code AND the extracted
+    layout, because a non-zero tar can still leave a directory behind and a zero tar
+    can still land the tree somewhere else after an upstream repackaging.
+    Already-extracted trees are left alone, so a cached layer is not re-fetched;
+    callers that delete the tarball afterwards must test for it first.
+.OUTPUTS
+    [hashtable] Tarball = the .tar.xz path (absent when the tree was already
+    extracted), SourceDir = the llvm-project-<version>.src tree.
+#>
+function Get-LlvmSourceTarball {
+    param(
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$DestinationRoot
+    )
+    $sha = Get-LlvmSourceSha256 -Version $Version
+    $null = New-Item -ItemType Directory -Force -Path $DestinationRoot
+    $tarball = Join-Path $DestinationRoot "llvm-project-$Version.src.tar.xz"
+    $srcDir = Join-Path $DestinationRoot "llvm-project-$Version.src"
+    if (-not (Test-Path $srcDir)) {
+        Invoke-DownloadWithRetry `
+            -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$Version/llvm-project-$Version.src.tar.xz" `
+            -DestinationPath $tarball -ExpectedSha256 $sha `
+            -Description "llvm-project $Version source tarball (backlog #47)"
+        $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+        if (-not $tarExe) { throw 'No tar.exe found to extract the LLVM source tarball (#47).' }
+        & $tarExe -xf $tarball -C $DestinationRoot
+        if ($LASTEXITCODE -ne 0) { throw "Extracting $tarball failed (tar exit $LASTEXITCODE) (#47)." }
+        if (-not (Test-Path $srcDir)) { throw "LLVM source did not extract to $srcDir - upstream archive layout changed." }
+    }
+    return @{ Tarball = $tarball; SourceDir = $srcDir }
+}
+
 function Initialize-PythonPlatformTag {
     # Clang-built CPython's sys.version lacks the "64 bit (AMD64)" marker that
     # sysconfig.get_platform() keys on, so the 64-bit interpreter reports win32 and
@@ -1911,6 +1987,10 @@ Export-ModuleMember -Function @(
     'Get-CudaToolkitRootArg',
     'Get-CudnnLibrary',
     'Get-LlvmArchiverCmakeArg',
+    # The ONE llvm-project source pin table + its fetch (#47/#129): both the
+    # patched-toolchain build and TVM's mini-LLVM heal call these directly.
+    'Get-LlvmSourceSha256',
+    'Get-LlvmSourceTarball',
     'Resolve-LlvmMasm',
     'Get-LlvmMasmCmakeArg',
     'Initialize-SourceBuildEnvironment',
@@ -1970,7 +2050,9 @@ Export-ModuleMember -Function @(
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
-    # Called directly by Build-TvmFromSource.ps1's LLVM-source fallback (#47).
+    # Called directly by Build-LlvmFromSource.ps1's aarch64 compiler-rt staging and
+    # Build-GstreamerFromSource.ps1 (it was Build-TvmFromSource.ps1's LLVM-source
+    # fallback too, until that moved into Get-LlvmSourceTarball above).
     # Latent on both lanes, so no build ever caught it -- Modules.ScriptCallClosure.Tests.ps1 did.
     'Get-PreferredToolPath',
     # #113: used directly by Build-GstreamerFromSource.ps1 -- module-internal use

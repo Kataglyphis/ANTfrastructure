@@ -36,46 +36,26 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutDir) {
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    $OutDir = Join-Path $repoRoot 'out\lsm-attach'
-}
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Setup only (cdb discovery, out dir, silo descent) is shared with the other
+# LSM probes; the !handle enumeration below stays here.
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
-$cdb = Get-ChildItem 'C:\Program Files\WindowsApps' -Filter cdb.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-    Where-Object { $_.DirectoryName -like '*Microsoft.WinDbg*amd64*' } | Select-Object -First 1
-if (-not $cdb) { throw 'cdb.exe not found - install the WinDbg package (winget install Microsoft.WinDbg)' }
-Write-Host "cdb: $($cdb.FullName)"
+$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
+$cdb = Get-CdbPath
+Write-Host "cdb: $cdb"
 
 # Same silo detection as Get-LsmWaitstack.ps1: Win32_Process.ExecutablePath
 # and .CommandLine are EMPTY for silo processes even elevated, so go by tree.
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+$baseWininit = Get-WininitProcessId
 Write-Host "Baseline: $($baseWininit.Count) wininit. Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
-$deadline = (Get-Date).AddSeconds($WaitForSiloSec)
-$newWininit = $null
-while ((Get-Date) -lt $deadline) {
-    $newWininit = Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
-        Where-Object { $_.ProcessId -notin $baseWininit } | Select-Object -First 1
-    if ($newWininit) { break }
-    Start-Sleep -Seconds 3
-}
+$newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
 if (-not $newWininit) { throw 'No new silo appeared - start a RUN-bearing build or probe and retry.' }
 
-$siloServices = $null
-foreach ($i in 1..20) {
-    $siloServices = Get-CimInstance Win32_Process -Filter "Name='services.exe' AND ParentProcessId=$($newWininit.ProcessId)" | Select-Object -First 1
-    if ($siloServices) { break }
-    Start-Sleep -Seconds 1
-}
+$siloServices = Get-SiloServicesProcess -WininitProcessId $newWininit.ProcessId
 if (-not $siloServices) { throw "silo wininit $($newWininit.ProcessId) has no services.exe child" }
 
-$svchosts = @()
-foreach ($i in 1..20) {
-    $svchosts = @(Get-CimInstance Win32_Process -Filter "Name='svchost.exe' AND ParentProcessId=$($siloServices.ProcessId)" | Sort-Object CreationDate)
-    if ($svchosts.Count -ge 1) { break }
-    Start-Sleep -Seconds 2
-}
+$svchosts = @(Get-SiloSvchost -ServicesProcessId $siloServices.ProcessId)
 if (-not $svchosts) { throw "silo services $($siloServices.ProcessId) spawned no svchost" }
 Write-Host ("silo svchosts: {0}" -f (($svchosts.ProcessId) -join ', '))
 
@@ -90,7 +70,7 @@ foreach ($p in $svchosts) {
     $log = Join-Path $OutDir "attach-$($p.ProcessId)-$stamp.txt"
     Write-Host "  probing pid $($p.ProcessId) -> $log"
     $cmds = '.reload /f; ~*kb; !handle 0 f Event; !handle 0 f; qd'
-    & $cdb.FullName @attach $p.ProcessId -y $sym -c $cmds > $log 2>&1
+    & $cdb @attach $p.ProcessId -y $sym -c $cmds > $log 2>&1
     if (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue) {
         Write-Host "  >>> LSM host found: pid $($p.ProcessId)" -ForegroundColor Green
         $found = $true

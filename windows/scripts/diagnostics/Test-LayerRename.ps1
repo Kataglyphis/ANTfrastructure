@@ -57,14 +57,9 @@ param(
     [int]$Count    = 25
 )
 
-# --- Resolve docker.exe ($env:DOCKER_EXE, Stevedore install, then PATH) ---
-if (-not $Docker) {
-    $candidates = @($env:DOCKER_EXE,
-        'D:\Stevedore\bin\docker.exe',
-        "$env:ProgramFiles\Stevedore\bin\docker.exe") | Where-Object { $_ }
-    foreach ($c in $candidates) { if (Test-Path $c) { $Docker = $c; break } }
-    if (-not $Docker) { $Docker = (Get-Command docker -ErrorAction SilentlyContinue).Source }
-}
+# --- Resolve docker.exe: central candidate walk, not a pasted one (backlog #101) ---
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1')
+if (-not $Docker) { $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") }
 if (-not $Docker) { throw 'docker.exe not found. Pass -Docker <path>.' }
 
 # Native stderr must NOT throw under PS 5.1: never run with EAP=Stop around the

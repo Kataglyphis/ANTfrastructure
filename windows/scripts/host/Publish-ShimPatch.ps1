@@ -67,6 +67,11 @@ $ErrorActionPreference = 'Stop'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
+# Test-Elevated, the boolean half of the admin gate, for -ReportOnly below.
+# Two lines on purpose: this prologue is a reviewed twin of Optimize-HostVhdx's
+# (code-dupes.allow), so a verbatim third copy would grow that block.
+$sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
+Import-Module $sharedModulePath -Force
 $hostLog = New-HostMaintenanceLog -Name 'deploy-shim-patch' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
 # Thin local wrappers so the existing call sites keep their signature.
@@ -130,8 +135,7 @@ function Show-State {
 
 # --- guards ------------------------------------------------------------------
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$isAdmin = Test-Elevated
 
 if ($ReportOnly) {
     Write-Step 'ReportOnly - nothing will be changed'

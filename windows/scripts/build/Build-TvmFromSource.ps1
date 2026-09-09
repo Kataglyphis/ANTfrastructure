@@ -89,30 +89,18 @@ if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif (-not $llvmConfig) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
-    # An unknown version must THROW, never download unpinned (repo download policy). versions.env
-    # can pre-seed the current version via LLVM_WINDOWS_SRC_SHA256 (#129); the table is the record.
-    $llvmSrcSha = @{
-        '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
-        '23.1.0' = 'ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff'
-    }
-    if ($env:LLVM_WINDOWS_SRC_SHA256) { $llvmSrcSha[$llvmDevVersion] = $env:LLVM_WINDOWS_SRC_SHA256 }
-    if (-not $llvmSrcSha.ContainsKey($llvmDevVersion)) {
-        throw ("TVM: llvm-config.exe not on PATH and no SHA256 pin for the llvm-project-$llvmDevVersion source " +
-            "tarball - add it to `$llvmSrcSha in this script. Refusing an unpinned download (backlog #47).")
-    }
     $llvmDevRoot = 'C:\temp\llvm-dev'
-    $llvmSrcTar = Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src.tar.xz"
+    # Banner BEFORE the fetch: an unknown version throws inside Get-LlvmSourceTarball
+    # (the repo download policy -- never unpinned), and this line is the context that
+    # throw would otherwise lack. The pin table itself lives ONCE, in
+    # Get-LlvmSourceSha256 (WindowsSourceBuild.Common.psm1), shared with
+    # Build-LlvmFromSource.ps1; versions.env can still pre-seed the current version
+    # via LLVM_WINDOWS_SRC_SHA256 (#129).
     Write-Host "TVM: llvm-config.exe not on PATH (scoop LLVM never ships it) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
-    Invoke-DownloadWithRetry `
-        -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmDevVersion/llvm-project-$llvmDevVersion.src.tar.xz" `
-        -DestinationPath $llvmSrcTar -ExpectedSha256 $llvmSrcSha[$llvmDevVersion] `
-        -Description "llvm-project $llvmDevVersion source tarball (backlog #47)"
-    # System32 bsdtar (xz support baked in); git's GNU tar would need xz.exe.
-    $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-    if (-not $tarExe) { throw 'TVM: no tar.exe found to extract the LLVM source tarball (#47).' }
-    & $tarExe -xf $llvmSrcTar -C $llvmDevRoot
-    if ($LASTEXITCODE -ne 0) { throw "TVM: extracting the LLVM source tarball failed (tar exit $LASTEXITCODE) (#47)." }
-    Remove-Item $llvmSrcTar -Force  # keep the scratch tier lean; the tree is scrubbed post-build anyway
+    $llvmSrc = Get-LlvmSourceTarball -Version $llvmDevVersion -DestinationRoot $llvmDevRoot
+    # Keep the scratch tier lean; the tree is scrubbed post-build anyway. Guarded, not
+    # -ErrorAction'd: the helper leaves an already-extracted tree (and no tarball) alone.
+    if (Test-Path $llvmSrc.Tarball) { Remove-Item $llvmSrc.Tarball -Force }
     $llvmInstall = Join-Path $llvmDevRoot 'install'
     Write-Host 'Building minimal LLVM (X86+AArch64+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
     # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument position does not
@@ -134,7 +122,7 @@ if ($tvmCross) {
         )
     $llvmCmakeArgs += Get-LlvmArchiverCmakeArg
     Invoke-CmakeConfigure `
-        -SourceDir (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src\llvm") `
+        -SourceDir (Join-Path $llvmSrc.SourceDir 'llvm') `
         -BuildDir (Join-Path $llvmDevRoot 'build') -InstallPrefix $llvmInstall `
         -ExtraArgs $llvmCmakeArgs | Out-Null
     $llvmBuildLog = Get-PersistentBuildLogPath -Name 'llvm-minimal-build.log' -FallbackDir (Join-Path $llvmDevRoot 'build')
@@ -147,7 +135,7 @@ if ($tvmCross) {
     }
     # Reclaim the ~5 GB object tree now; only the install prefix is needed below.
     Remove-Item (Join-Path $llvmDevRoot 'build') -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $llvmSrc.SourceDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 $useLLVM = if ($tvmCross) { 'OFF' } else {
     Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"

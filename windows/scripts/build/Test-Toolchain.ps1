@@ -162,6 +162,45 @@ Import-Module $archModulePath -Force
 $armTriple  = Get-ClangTargetTriple -Arch 'arm64'
 $armMachine = Get-PeMachineType -Arch 'arm64'
 
+# Two helpers for the checks below. FILE-LOCAL on purpose, not a module: this
+# script runs in the base image, where only WindowsContainerImage.Common is
+# COPY'd (windows/Dockerfile.base), so promoting them to windows/scripts/modules
+# would silently widen this stage's build closure.
+
+# ONE owner for the WINDOWS_ARM64_STRICT escalation. The warning suffix is a
+# POLICY string -- it names the lane that is unaffected and the knob that makes
+# the check fatal -- and it was spelled out three times in this file, so a
+# change to the policy could land in one copy and miss the others.
+function Invoke-Arm64StrictPolicy {
+    param([Parameter(Mandatory)][string]$Shortfall)
+    if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $Shortfall }
+    Write-Warning "$Shortfall (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)"
+}
+
+# The versioned-directory probe both Microsoft component checks need: MSVC and
+# the Windows SDK each install their ARM64 import libraries under a VERSIONED
+# directory, so neither path can be spelled out -- both are <root>\<ver>\<rel>.
+# Four parameters, and every one of them is plain data (no behaviour flag): the
+# two call sites below differed only in root, relative path, label and remedy,
+# and were otherwise eleven byte-identical lines each.
+function Assert-Arm64ComponentLib {
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$RelativePath,
+        [Parameter(Mandatory)][string]$Remedy
+    )
+    $found = Get-ChildItem -Path $Root -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName $RelativePath } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+    if ($found) {
+        Write-Host "$Label OK: $found"
+        return
+    }
+    Invoke-Arm64StrictPolicy -Shortfall "$Label missing under $Root (expected <ver>\$RelativePath). $Remedy"
+}
+
 $probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ('archprobe-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Force -Path $probeDir
 try {
@@ -195,10 +234,7 @@ try {
             }
         }
     }
-    if ($probeFailure) {
-        if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $probeFailure }
-        Write-Warning "$probeFailure (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)"
-    }
+    if ($probeFailure) { Invoke-Arm64StrictPolicy -Shortfall $probeFailure }
 } finally {
     Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -208,32 +244,14 @@ $msvcRoot = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\$(Resolv
 if (-not (Test-Path $msvcRoot)) {
     $msvcRoot = Join-Path $env:ProgramFiles "Microsoft Visual Studio\$(Resolve-ContainerImageValue -EnvironmentVariable 'VISUAL_STUDIO_VERSION' -DefaultValue '18')\BuildTools\VC\Tools\MSVC"
 }
-$msvcArm64Lib = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue |
-    ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
-if (-not $msvcArm64Lib) {
-    $msg = ("MSVC ARM64 libraries missing under $msvcRoot (expected <ver>\lib\arm64\libcmt.lib). " +
-        'The VC.Tools.ARM64 component is not installed; clang-cl cannot link an aarch64 target without it.')
-    if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $msg } else { Write-Warning "$msg (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)" }
-} else {
-    Write-Host "MSVC ARM64 libraries OK: $msvcArm64Lib"
-}
+Assert-Arm64ComponentLib -Label 'MSVC ARM64 libraries' -Root $msvcRoot -RelativePath 'lib\arm64\libcmt.lib' -Remedy (
+    'The VC.Tools.ARM64 component is not installed; clang-cl cannot link an aarch64 target without it.')
 
 # Windows SDK ARM64 import libraries. The SDK component is architecture-complete,
 # so this asserts an expectation rather than a separate install step.
 $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Lib'
-$sdkArm64 = Get-ChildItem -Path $sdkLibRoot -Directory -ErrorAction SilentlyContinue |
-    ForEach-Object { Join-Path $_.FullName 'um\arm64\kernel32.lib' } |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
-if (-not $sdkArm64) {
-    $msg = ("Windows SDK ARM64 import libraries missing under $sdkLibRoot (expected <ver>\um\arm64\kernel32.lib). " +
-        'Reinstall the Windows 11 SDK component with ARM64 support.')
-    if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $msg } else { Write-Warning "$msg (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)" }
-} else {
-    Write-Host "Windows SDK ARM64 libraries OK: $sdkArm64"
-}
+Assert-Arm64ComponentLib -Label 'Windows SDK ARM64 import libraries' -Root $sdkLibRoot -RelativePath 'um\arm64\kernel32.lib' -Remedy (
+    'Reinstall the Windows 11 SDK component with ARM64 support.')
 
 # Vulkan ARM64 cross libraries (optional LunarG component com.lunarg.vulkan.arm64,
 # added by Install-ScoopTools.ps1). Same escape hatch as the install step.

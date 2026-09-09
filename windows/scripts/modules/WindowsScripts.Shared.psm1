@@ -666,6 +666,33 @@ function Get-PreferredToolPath {
     return $null
 }
 
+function Test-Elevated {
+    <#
+    .SYNOPSIS
+        The BOOLEAN half of the admin gate: is this process elevated?
+    .DESCRIPTION
+        Assert-Elevated is the half that STOPS you. This is the half for callers
+        whose behaviour BRANCHES on the answer instead of ending on it —
+        -ReportOnly paths that downgrade the requirement, and Test-HostSetup,
+        which must REPORT the answer as a graded check and never act on it.
+        The 2026-08-21 audit gave the throwing half one home and left these
+        behind as six hand-rolled copies of the same two lines; this is their
+        home. WindowsMsix.Signing's exported Test-Administrator now forwards
+        here (its name is load-bearing for a Pester mock, its body is not).
+        NB the module-free repair tools (Reset-ContainerLocks,
+        Repair-WindowsComponentstore) keep their inline check BY DESIGN —
+        a wedged-stack repair must not depend on a module import.
+    .OUTPUTS
+        [bool] $true when the current identity is in the Administrators role.
+    #>
+    try {
+        return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Assert-Elevated {
     <#
     .SYNOPSIS
@@ -680,8 +707,7 @@ function Assert-Elevated {
         [string]$Reason = '',
         [switch]$Interactive
     )
-    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
+    if (Test-Elevated) { return }
     $msg = if ($Reason) { "Run ELEVATED ($Reason)." } else { 'Run ELEVATED.' }
     if ($Interactive) {
         Write-Host $msg -ForegroundColor Red
@@ -738,6 +764,7 @@ function ConvertTo-NormalizedVersion {
 Export-ModuleMember -Function @(
     'Assert-Command',
     'Assert-Elevated',
+    'Test-Elevated',
     'ConvertTo-NormalizedVersion',
     # Add-DirectoryToPath: internal helper of Add-DirectoriesToPath (unexported
     # 2026-08-21, zero external callers). Resolve-PreferredTool was deleted the
