@@ -477,3 +477,41 @@ verdict line, so the message names the consumer symptom rather than a path.
   `llvm-target.fill-is-needed-driven`, `llvm-target.fill-replaces-dangling`,
   `llvm-target.fill-reaches-fixpoint`, `llvm-target.no-package-stage-copy`,
   `llvm-target.ld-path-published`, `tree-arch.frozen-count-must-match`.
+
+## The membership test must not shell out
+
+2026-09-09: this gate failed roughly one run in ten **on an unchanged tree**,
+naming a different artifact each time and in either direction —
+`/opt/ffmpeg`, `/opt/acl`, `/opt/armnn`, `/opt/flutter`,
+`${ONNXRUNTIME_OUTPUT_DIR}`. It blocked a commit whose diff touched neither
+`Dockerfile.package` nor the manifest.
+
+Instrumenting the failure settled it: on a red run the two sets are
+**byte-for-byte identical, 15 against 15**, and the needle that was reported
+absent is plainly in the haystack. The bug was the test itself,
+
+```sh
+printf '%s\n' "${haystack}" | grep -qxF -- "${p}"     # DO NOT
+```
+
+`-q` makes the matcher exit on its first hit while a pipe is still feeding it,
+and the exit status that comes back from `ugrep` (this host's `grep`) is not
+reliably 0 in that race. 2250 isolated repetitions did not reproduce it; only
+the gate's own two-direction loop did, at ~1 in 300 comparisons.
+
+The replacement needs no subprocess at all, and is both exact-line and literal:
+
+```sh
+case ${_hay_padded} in                 # _hay_padded="${_NL}${haystack}${_NL}"
+  *"${_NL}${p}${_NL}"*) ;;             # present
+  *) ...report the miss... ;;
+esac
+```
+
+200 consecutive runs green afterwards, and both directions still redden when a
+manifest row or a `COPY` is removed — the fix must not be allowed to make the
+gate quiet instead of correct.
+
+**The general rule this earns:** a set-membership test in a gate loop is a shell
+`case`, not a `grep -q` on a pipe. The same spelling appears elsewhere in this
+repo; each one is a coin flip waiting to be blamed on the tree.

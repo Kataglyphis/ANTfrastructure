@@ -7872,5 +7872,45 @@
     "replace": "grep -q -e \"${codename}-security\"",
     "test": "bash linux/scripts/tests/test-cross-apt.sh",
     "why": "an unanchored match hits a COMMENT naming the pocket and silently disables the whole repair on a file that does not carry it"
+  },
+  {
+    "id": "vulkan.host-list-checks-out-vk4",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang vulkantools dxc cdl)",
+    "replace": "  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang)",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "a name dropped here takes the CHECKOUT with it, so the row skips at the -d test and is never even counted as attempted -- exactly how riscv64 lost slang and how dxc/vulkantools/cdl went unnoticed for months"
+  },
+  {
+    "id": "vulkan.dxc-reads-the-vendor-cache",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      [ -f \"${src}/cmake/caches/PredefinedParams.cmake\" ] \\\n        && _vk_dyn_ref+=(-C\"${src}/cmake/caches/PredefinedParams.cmake\")",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "most of DXC's option set does not exist until the vendor -C cache file is read; without it the configure takes defaults that build none of the dx* tools"
+  },
+  {
+    "id": "vulkan.dxc-uses-host-tblgen",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "        _vk_dyn_ref+=(-DLLVM_TABLEGEN=\"${gen}/llvm-tblgen\")\n        [ -x \"${gen}/clang-tblgen\" ] && _vk_dyn_ref+=(-DCLANG_TABLEGEN=\"${gen}/clang-tblgen\")",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "an LLVM 3.7 fork cross-builds its own tblgens for the TARGET and then tries to run them: exit 127, the same Canadian cross llvm-cross.sh and slang already solve"
+  },
+  {
+    "id": "vulkan.vulkantools-gets-qt-and-the-loader",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      _vk_dyn_ref+=(-DQT_HOST_PATH=/usr -DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE)\n      _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH=\"${archdir};/usr/lib/${triplet}\")\n      _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR=\"${archdir}\")\n      _vk_dyn_ref+=(-DVULKAN_UTILITY_LIBRARIES_INSTALL_DIR=\"${archdir}\")",
+    "replace": "      _vk_dyn_ref+=(-DVULKAN_UTILITY_LIBRARIES_INSTALL_DIR=\"${archdir}\")",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "vkconfig-gui is Qt6 and the layers resolve the loader by raw path; without both the component dies the same two ways the caps viewer did"
+  },
+  {
+    "id": "vulkan.vulkantools-qt-is-required",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "-DQT_HOST_PATH=/usr -DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE",
+    "replace": "-DQT_HOST_PATH=/usr",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "upstream find_package(Qt6 QUIET) skips the whole configurator with a message() and exits 0, so the row counts as BUILT and the SDK ships without vkconfig -- a vacuous success no downstream check can see"
   }
 ]

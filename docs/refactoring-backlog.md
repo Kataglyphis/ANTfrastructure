@@ -194,10 +194,11 @@ container:** `x86_64/bin` 52 entries, `riscv64/bin` 37, riscv64 a strict subset.
 The 15-entry delta is exactly `dxa dxa-3.7 dxc dxc-3.7 dxl dxl-3.7 dxopt
 dxopt-3.7 dxr dxr-3.7 dxv dxv-3.7 llvm-tblgen vkconfig vkconfig-gui`.
 
-All 15 come from LunarG's prebuilt x86_64 tarball, and **no arch builds any of
-them**: `vkconfig`, `Vulkan-Configurator` and `dxc` appear nowhere in
-`vulkan.sh` — 0 hits, case-insensitively, in 912 lines. So this is not a
-regression VK2 left behind; it is a question that has never been asked.
+They were absent because `vulkan.sh` never named them — 0 hits for `vkconfig`,
+`Vulkan-Configurator` or `dxc`. **Not** because they are prebuilt-only: the
+vendor script builds both from a checkout, and the tarball's x86_64 binaries are
+that script's own output. So this is not a regression VK2 left behind; it is a
+question that had never been asked.
 
 Three answers, and only one needs a decision:
 * `llvm-tblgen` is structurally host-only. Nothing to do.
