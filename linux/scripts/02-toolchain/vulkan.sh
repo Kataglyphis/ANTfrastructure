@@ -460,8 +460,26 @@ _cross_build_sdk_component() {
   local build_dir
   build_dir="$(mktemp -d)/${label}"
 
+  # When the "cross" target IS the build host (a native arm64 build), the other
+  # arches' dev packages are installed system-wide and CMAKE_LIBRARY_ARCHITECTURE
+  # is only a PREFERENCE — find_library still reached /usr/lib/x86_64-linux-gnu
+  # and handed vulkaninfo an x86_64 libxcb.so ("file in wrong format",
+  # 2026-09-08). Ignore the foreign multiarch dirs outright. Only ever active on
+  # a host whose own arch is a cross target, i.e. never on the amd64 dev box,
+  # where for_each_cross_target skips the host arch entirely.
+  local _vk_ignore=""
+  if [ "${_xbuild_triplet}" = "$(arch_deb_multiarch_triplet_for "$(build_arch_oci)")" ]; then
+    local _o
+    for _o in x86_64-linux-gnu aarch64-linux-gnu riscv64-linux-gnu; do
+      [ "${_o}" = "${_xbuild_triplet}" ] && continue
+      [ -d "/usr/lib/${_o}" ] && _vk_ignore="${_vk_ignore:+${_vk_ignore};}/usr/lib/${_o}"
+    done
+    [ -n "${_vk_ignore}" ] && log "ignoring foreign multiarch lib dirs: ${_vk_ignore}"
+  fi
+
   if ! cmake -S "${src}" -B "${build_dir}" -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
+      ${_vk_ignore:+-DCMAKE_IGNORE_PATH="${_vk_ignore}"} \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR="${_xbuild_proc}" \
       -DCMAKE_C_COMPILER="${_xbuild_cc}" \

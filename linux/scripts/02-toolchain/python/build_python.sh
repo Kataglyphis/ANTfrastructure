@@ -505,8 +505,15 @@ make altinstall
 ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
 ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
 
-# Add the lib path to the system linker
-echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf"
+# Add the lib path to the system linker. The "00-" prefix is LOAD-BEARING:
+# ldconfig reads /etc/ld.so.conf.d/*.conf alphabetically and, for a duplicate
+# SONAME, the FIRST directory scanned wins (measured 2026-09-08). The distro
+# python3.14 ships its own libpython3.14.so.1.0 under the multiarch dir, so on
+# arm64 "aarch64-linux-gnu.conf" sorted before "libc.conf" and the from-source
+# --enable-shared interpreter loaded the DISTRO libpython, reporting 3.14.4 for
+# a 3.14.7 build. A digit sorts before every letter, so this wins on every arch;
+# on amd64 it names the directory libc.conf already won with, so nothing moves.
+echo "/usr/local/lib" > "/etc/ld.so.conf.d/00-python-${PYTHON_VERSION}.conf"
 ldconfig
 
 stage_requested_cross_python_payloads

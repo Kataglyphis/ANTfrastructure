@@ -236,15 +236,21 @@ llvm_cross_first_executable() {
 }
 
 llvm_cross_qemu_binary() {
+  # Binaries for the build host's arch need no emulator; every FOREIGN arch
+  # does — amd64 included. The old code returned empty for amd64 unconditionally
+  # ("the host serves it"), which is only true on an amd64 host. On an arm64 one
+  # it left the amd64 target LLVM unrunnable and `verify` reported an empty
+  # libdir (2026-09-08). qemu-user ships qemu-x86_64 on arm64 (verified 10.2.1).
+  [ "$1" = "$(build_arch_oci)" ] && return 0
   case "$1" in
+    amd64)
+      llvm_cross_first_executable qemu-x86_64 qemu-x86_64-static
+      ;;
     arm64)
       llvm_cross_first_executable qemu-aarch64 qemu-aarch64-static
       ;;
     riscv64)
       llvm_cross_first_executable qemu-riscv64 qemu-riscv64-static
-      ;;
-    amd64)
-      return 0
       ;;
     *)
       return 1
@@ -264,6 +270,13 @@ llvm_cross_qemu_sysroot() {
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || return 1
   case "${target_label}" in
+    amd64)
+      # Only reachable when amd64 is FOREIGN, i.e. on a non-amd64 build host.
+      loaders=(
+        "lib64/ld-linux-x86-64.so.2"
+        "lib/ld-linux-x86-64.so.2"
+      )
+      ;;
     arm64)
       loaders=(
         "lib/ld-linux-aarch64.so.1"
