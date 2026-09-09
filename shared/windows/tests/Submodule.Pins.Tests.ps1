@@ -26,9 +26,17 @@
 # and `git submodule status` marks it with a '+' that is easy to miss in a wall
 # of output. In the origin repo the symptom was a submodule repeatedly
 # re-checked-out to a newer tag by something nobody ever identified (investigated
-# 2026-07-20: no hook, no FetchContent, no script, no `submodule.<n>.branch` -
-# the evidence pointed at hand or agent experimentation). So this does not chase
-# a culprit; it detects the SYMPTOM whatever causes it.
+# 2026-07-20: no hook, no FetchContent, no script, no `submodule.<n>.branch`).
+# CORRECTION 2026-09-09: that last clause was doing work it cannot do. The 07-20
+# reasoning discounted `git submodule update --remote` BECAUSE the submodule
+# declares no `branch`, and an unset branch does not disarm --remote at all - it
+# makes --remote follow the REMOTE'S DEFAULT BRANCH. Proven on a synthetic
+# superproject whose upstream default branch is named `trunk`: --remote checked
+# out trunk, so the fallback is remote HEAD, not a hardcoded main/master. A bare
+# --remote is therefore a live candidate for exactly the symptom this file
+# detects, and it fits it well: a pin walked forward to a newer upstream commit
+# with nothing recorded. It does not change what this file does - it still
+# chases the SYMPTOM and not a culprit - but the culprit list was wrong.
 #
 # ASSERTION DIALECT: plain `throw`, never `Should`. Pester 3.x (`Should Be 0`)
 # and Pester 5.x (`Should -Be 0`) are incompatible dialects, and the consumers do
