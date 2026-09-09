@@ -467,7 +467,7 @@ _cross_build_sdk_component() {
   # 2026-09-08). Ignore the foreign multiarch dirs outright. Only ever active on
   # a host whose own arch is a cross target, i.e. never on the amd64 dev box,
   # where for_each_cross_target skips the host arch entirely.
-  local _vk_ignore=""
+  local _vk_ignore="" _vk_ldflags=""
   if [ "${_xbuild_triplet}" = "$(arch_deb_multiarch_triplet_for "$(build_arch_oci)")" ]; then
     local _o
     for _o in x86_64-linux-gnu aarch64-linux-gnu riscv64-linux-gnu; do
@@ -475,11 +475,26 @@ _cross_build_sdk_component() {
       [ -d "/usr/lib/${_o}" ] && _vk_ignore="${_vk_ignore:+${_vk_ignore};}/usr/lib/${_o}"
     done
     [ -n "${_vk_ignore}" ] && log "ignoring foreign multiarch lib dirs: ${_vk_ignore}"
+    # pkg-config hands CMake a BARE name (XCB_LIBRARIES=xcb) plus a separate
+    # XCB_LIBRARY_DIRS; components that link the former without the latter emit
+    # a plain -lxcb, and the cross-prefixed driver then searched no system
+    # multiarch dir: "cannot find -lxcb" (2026-09-09). LIBRARY_PATH is additive
+    # and invisible to CMake variables, so it fixes the -l resolution without
+    # clobbering any per-component flag the dynamic args set.
+    local _d
+    for _d in "/usr/lib/${_xbuild_triplet}" "/lib/${_xbuild_triplet}"; do
+      [ -d "${_d}" ] || continue
+      case ":${LIBRARY_PATH:-}:" in *":${_d}:"*) ;; *) export LIBRARY_PATH="${_d}${LIBRARY_PATH:+:${LIBRARY_PATH}}" ;; esac
+      _vk_ldflags="${_vk_ldflags:+${_vk_ldflags} }-L${_d}"
+    done
   fi
 
   if ! cmake -S "${src}" -B "${build_dir}" -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       ${_vk_ignore:+-DCMAKE_IGNORE_PATH="${_vk_ignore}"} \
+      ${_vk_ldflags:+-DCMAKE_EXE_LINKER_FLAGS="${_vk_ldflags}"} \
+      ${_vk_ldflags:+-DCMAKE_SHARED_LINKER_FLAGS="${_vk_ldflags}"} \
+      ${_vk_ldflags:+-DCMAKE_MODULE_LINKER_FLAGS="${_vk_ldflags}"} \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR="${_xbuild_proc}" \
       -DCMAKE_C_COMPILER="${_xbuild_cc}" \
