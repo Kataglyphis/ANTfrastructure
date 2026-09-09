@@ -51,6 +51,30 @@
       "self": false,
       "confirmed": true,
       "note": "Flutter/Dart. Submodule at third_party/ContainerHub."
+    },
+    {
+      "name": "OxidANT",
+      "clone_url": "https://github.com/Kataglyphis/OxidANT.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Rust. Submodule at third_party/ContainerHub. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted on 2026-09-09 as unreached because this repo was not declared here. Also the only consumer with no lib/containerhub.sh bootstrap."
+    },
+    {
+      "name": "AccelerANTgine",
+      "clone_url": "https://github.com/Kataglyphis/AccelerANTgine.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ContainerHub). Reaches lib/code-quality.sh and lib/coverage.sh through hand-written relative paths rather than containerhub_source, which is why a name-based grep for callers can miss it."
+    },
+    {
+      "name": "ANThology",
+      "clone_url": "https://github.com/Kataglyphis/ANThology.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ContainerHub submodule: dart.yml checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
     }
   ],
   "unconfirmed": [
