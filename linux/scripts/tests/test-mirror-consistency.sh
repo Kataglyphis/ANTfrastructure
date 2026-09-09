@@ -128,6 +128,46 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "${_out}" "FAILED: 2 mirror consistency errors" \
   "a per-file loop that reports and exits 0 is the shape this repo keeps finding"
 
+# --- the pocket half (3): each file is valid alone, only the PAIR is wrong ----
+
+# A second writer, so the fixture can carry a DISAGREEMENT and not just a flag.
+_second_writer() {
+  printf 'ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources "https://a/" resolute amd64 %s\n' \
+    "$2" > "$1/linux/scripts/01-core/_extra-writer.sh"
+}
+
+t_case "two writers that disagree on -security FAIL, naming both sides"
+# VK2: amd64 without -security + ports with it left libcurl3t64-gnutls with no
+# common version, so every Multi-Arch:same library became uninstallable.
+fix="$(_tree)"
+_second_writer "${fix}" 0
+_out="$(t_out _gate "${fix}")"
+t_assert_eq "1" "$(t_rc _gate "${fix}")"
+t_assert_contains "${_out}" "do not agree on the -security flag"
+t_assert_contains "${_out}" "_extra-writer.sh:1"
+t_assert_contains "${_out}" "cross-apt.sh"
+
+t_case "two writers that AGREE pass, so the red above is about the skew"
+fix="$(_tree)"
+_second_writer "${fix}" 1
+t_assert_eq "0" "$(t_rc _gate "${fix}")"
+
+t_case "a helper that drops -security for the host arch only FAILS"
+fix="$(_tree)"
+sed -i 's|  if \[ "${with_security}" = "1" \]; then|  if [ "${with_security}" = "1" ] \&\& [ "${arch}" != "amd64" ]; then|' \
+  "${fix}/linux/scripts/01-core/ubuntu-mirror.sh"
+_out="$(t_out _gate "${fix}")"
+t_assert_eq "1" "$(t_rc _gate "${fix}")" "equal flags that yield unequal suite sets is the bug in the helper instead of the caller"
+t_assert_contains "${_out}" "asymmetric for equal flags"
+
+t_case "a tree with no writer at all is reported, not silently green"
+fix="$(_tree)"
+sed -i 's|^  ubuntu_write_deb822_source "${ports_sources}"|  : "${ports_sources}" #|' \
+  "${fix}/linux/scripts/01-core/cross-apt.sh"
+_out="$(t_out _gate "${fix}")"
+t_assert_eq "1" "$(t_rc _gate "${fix}")" "a scan that finds nothing must not read as a pass"
+t_assert_contains "${_out}" "NOSITES"
+
 t_case "the REAL tree is consistent today"
 t_assert_eq "0" "$(t_rc bash "${CORE}/verify-ubuntu-mirror-consistency.sh")"
 
