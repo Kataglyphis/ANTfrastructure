@@ -66,32 +66,11 @@ _lint_gates_excluded() {
   return 1
 }
 
-# --- shellcheck --------------------------------------------------------------
-# The list is `git ls-files`, NOT a glob: `scripts/**/*.sh` does not recurse
-# without globstar, so it covered the directories somebody remembered and
-# silently skipped the rest - and a gate that reads 19 of 21 files still
-# reports green.
-# The tracked files of one kind under the graded root, minus the excluded
-# top-level directories. ONE owner: the shell gate had this walk, the python
-# gate needs exactly the same one, and the empty-scope refusal is the
-# load-bearing half of both. Results land in _LINT_GATES_SCOPE because bash
-# cannot return an array.
-# The tracked files of one kind under the graded root, minus the excluded
-# top-level directories. ONE owner: the shell gate had this walk, the python
-# gate needs the same one.
-#
-# $3 decides what an EMPTY result means, and the two gates genuinely differ:
-#   refuse-empty (default)  an empty list is a BROKEN SCOPE. lint-shell.sh with
-#                           zero file arguments falls back to ContainerHub OWN
-#                           tree and passes, so green over nothing is a lie.
-#   allow-empty             an empty list is a FACT about the repo. Used by the
-#                           python gate, which passes explicit absolute paths and
-#                           therefore has no fallback to be fooled by: with no
-#                           paths there is nothing to run and nothing to
-#                           mis-grade. ANThology is a pure Dart package and
-#                           OxidANT a Rust crate; neither has a single .py, and
-#                           failing them forever would be a tolerated failure.
-#
+# --- the file walk both list-driven gates share ------------------------------
+# `git ls-files`, NOT a glob: `scripts/**/*.sh` does not recurse without
+# globstar, so a glob covered the directories somebody remembered and silently
+# skipped the rest. $3 decides what an EMPTY result MEANS, and the two gates
+# genuinely differ - see docs/shared-script-libraries.md#the-empty-scope-rule.
 # Results land in _LINT_GATES_SCOPE because bash cannot return an array.
 _lint_gates_scope() {
   local label="$1" spec="$2" on_empty="${3:-refuse-empty}" f
