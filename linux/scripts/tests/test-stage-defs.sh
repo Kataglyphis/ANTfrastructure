@@ -15,8 +15,10 @@ IMAGE_REPO="example.io/repo"
 CROSS_TARGETS="amd64,arm64,riscv64"
 
 t_case "cross_stage_tag resolves every stage through the real tag functions"
-t_assert_eq "example.io/repo:base"                 "$(cross_stage_tag base)"
-t_assert_eq "example.io/repo:cross-compiler-amd64" "$(cross_stage_tag compiler)"
+t_assert_eq "example.io/repo:base"                 "$(BUILDARCH=amd64 cross_stage_tag base)"
+# BUILDARCH pinned: the compiler tag follows the BUILD HOST arch since
+# 2026-09-10, so an unpinned assert would encode whatever host runs the suite.
+t_assert_eq "example.io/repo:cross-compiler-amd64" "$(BUILDARCH=amd64 cross_stage_tag compiler)"
 t_assert_eq "example.io/repo:cross-sdk-arm64"      "$(cross_stage_tag sdk arm64)"
 t_assert_eq "example.io/repo:cross-media-riscv64"  "$(cross_stage_tag media riscv64)"
 t_assert_eq "example.io/repo:cross-android-amd64"  "$(cross_stage_tag android amd64)"
