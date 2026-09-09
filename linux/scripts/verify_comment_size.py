@@ -6,9 +6,10 @@ longer moves into docs/ and the code keeps a pointer. Existing blocks are frozen
 in comment-size.allow so the gate only refuses new ones — shrinking one means
 deleting its line. docs/code-quality-tooling.md#comment-size-comment-size
 
-GRADING A CONSUMER. `--root` and `--allow` are the same contract
-docs/scripts/verify_mutations.py already documents, and for the same reason the
-lint gates take one: a submodule checkout puts this script INSIDE the consumer,
+GRADING A CONSUMER. `--root` follows docs/scripts/verify_mutations.py, which
+takes the same flag for the same job; the freeze-file flag beside it is this
+gate's own (verify_mutations names its state file --manifest). Both exist for the
+reason the lint gates take a root: a submodule checkout puts this script INSIDE the consumer,
 where a root derived from __file__ resolves to ContainerHub and the gate grades
 the wrong tree while reporting green over one nobody looked at.
 
@@ -19,17 +20,16 @@ consumer needs no per-repo configuration and a vendored subtree cannot creep in.
 """
 import argparse
 import os
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_keys, load_keys  # noqa: E402
+import gate_scope  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comment-size.allow")
 LIMIT = int(os.environ.get("COMMENT_SIZE_LIMIT", "10"))
 SCAN = ("linux/scripts", "linux/host-config")
-EXCLUDE = ("third_party",)
 
 
 def _walk_scan(root, tops):
@@ -42,32 +42,12 @@ def _walk_scan(root, tops):
                     yield os.path.relpath(os.path.join(base, fn), root)
 
 
-def _tracked_shell(root):
-    """Every tracked *.sh outside the excluded tops.
-
-    `git ls-files`, not a walk: a vendored submodule is a GITLINK, so the scope
-    cannot swallow another repo's scripts, and build output cannot get in.
-    """
-    out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--", "*.sh"],
-                         capture_output=True, text=True)
-    if out.returncode != 0:
-        sys.stderr.write("ERROR: %s is not a git checkout; --root must be one\n" % root)
-        raise SystemExit(2)
-    for rel in out.stdout.split("\0"):
-        if not rel:
-            continue
-        head = rel.split("/", 1)[0]
-        if head in EXCLUDE and rel != head:
-            continue
-        yield rel
-
-
 def scan_paths(root, scan):
     if scan:
         return sorted(_walk_scan(root, scan))
-    if os.path.abspath(root) == os.path.abspath(ROOT):
+    if gate_scope.is_hub(root, ROOT):
         return sorted(_walk_scan(root, SCAN))
-    return sorted(_tracked_shell(root))
+    return gate_scope.tracked(root, ['*.sh'])
 
 
 def blocks(root, rels):
@@ -105,14 +85,32 @@ def main():
                     help="restrict to this top-level directory (repeatable)")
     args = ap.parse_args()
 
-    root = os.path.abspath(args.root)
+    try:
+
+        # resolve_root, not abspath: a SUBDIRECTORY of a checkout passes
+
+        # `git rev-parse`, and grading a fragment anchors every allowlist
+
+        # key one level down without saying so.
+
+        root = gate_scope.resolve_root(args.root, ROOT)
+
+    except gate_scope.ScopeError as exc:
+
+        return gate_scope.die(exc)
     # A consumer's freeze belongs to the consumer: keeping it beside this script
     # would put every repo's ratchet inside the hub, where no consumer can see it
     # in its own diff.
     allow = args.allow or (ALLOW if root == os.path.abspath(ROOT)
                            else os.path.join(root, "comment-size.allow"))
 
-    found = blocks(root, scan_paths(root, args.scan))
+    try:
+
+        found = blocks(root, scan_paths(root, args.scan))
+
+    except gate_scope.ScopeError as exc:
+
+        return gate_scope.die(exc)
     frozen = load_keys(allow)
     # Key on file + the block's FIRST comment text, not the line number: a block
     # must not re-flag because something above it moved.
