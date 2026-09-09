@@ -4,18 +4,31 @@
 or a bare call to a same-file function that is one of those -- because its false arm
 returns 1 on the "nothing to do" path and kills the caller under `set -e`.
 Predicates whose status IS the answer are frozen two-way in trailing-conditional.allow.
-docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional"""
+docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
+
+GRADING A CONSUMER. `--root` and `--allow` are the same contract
+docs/scripts/verify_mutations.py already documents, and for the same reason the lint
+gates take one: a submodule checkout puts this script INSIDE the consumer, where a
+root derived from __file__ resolves to ContainerHub and the gate grades the wrong
+tree while reporting green over one nobody looked at.
+
+Under the hub's own root the scan set is the historical linux/ walk, so the hub's own
+verdict is unchanged. Under any other root it is every TRACKED *.sh minus the excluded
+top-level directories -- the same rule run-lint-gates.sh uses, so a consumer needs no
+per-repo configuration and a vendored subtree cannot creep in."""
+import argparse
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
+from quality_allow import check_keys, load_keys  # noqa: E402
+import gate_scope  # noqa: E402
 from verify_code_size import DEF, ROOT, code_lines, shell_functions  # noqa: E402
 
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                      "trailing-conditional.allow")
-SCAN = "linux"
+SCAN = ("linux",)
 SKIP_DIRS = {".git", "__pycache__", "patches", "node_modules"}
 CONT_END = ("\\", "&&", "||", "|", "(", "then", "do", "else")
 TEST_HEAD = ("[", "[[", "test", "!")
@@ -164,26 +177,73 @@ def file_sites(path, rel):
             found[n] = calls.pop(n)[1]
 
 
-def sites():
-    """Yield (relpath, function, site) for every trailing-conditional function under linux/."""
-    for base, dirs, files in os.walk(os.path.join(ROOT, SCAN)):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        for fn in sorted(files):
-            if not fn.endswith(".sh"):
-                continue
-            path = os.path.join(base, fn)
-            rel = os.path.relpath(path, ROOT)
-            for name, site in file_sites(path, rel).items():
-                yield rel, name, site
+def _walk_scan(root, tops):
+    """Every *.sh under the named top-level directories."""
+    for top in tops:
+        for base, dirs, files in os.walk(os.path.join(root, top)):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fn in sorted(files):
+                if fn.endswith(".sh"):
+                    yield os.path.relpath(os.path.join(base, fn), root)
+
+
+def scan_paths(root, scan):
+    """The files to grade, relative to `root`: --scan narrows it, the hub's own root
+    keeps the historical walk, and any other root is what git tracks there."""
+    if scan:
+        return sorted(_walk_scan(root, scan))
+    if gate_scope.is_hub(root, ROOT):
+        return sorted(_walk_scan(root, SCAN))
+    return gate_scope.tracked(root, ['*.sh'])
+
+
+def sites(root, rels):
+    """Yield (relpath, function, site) for every trailing-conditional function found."""
+    for rel in rels:
+        for name, site in file_sites(os.path.join(root, rel), rel).items():
+            yield rel, name, site
 
 
 def main():
-    found = sorted(sites())
-    allow = load_keys(ALLOW)
+    ap = argparse.ArgumentParser(description="Fail on new trailing-conditional returns.")
+    ap.add_argument("--root", default=ROOT,
+                    help="the tree to grade (default: this repo)")
+    ap.add_argument("--allow", default=None,
+                    help="the freeze file (default: trailing-conditional.allow beside "
+                         "this script for the hub, <root>/trailing-conditional.allow "
+                         "otherwise)")
+    ap.add_argument("--scan", action="append",
+                    help="restrict to this top-level directory (repeatable)")
+    args = ap.parse_args()
+
+    try:
+
+        # resolve_root, not abspath: a SUBDIRECTORY of a checkout passes
+
+        # `git rev-parse`, and grading a fragment anchors every allowlist
+
+        # key one level down without saying so.
+
+        root = gate_scope.resolve_root(args.root, ROOT)
+
+    except gate_scope.ScopeError as exc:
+
+        return gate_scope.die(exc)
+    # A consumer's freeze belongs to the consumer: keeping it beside this script
+    # would put every repo's ratchet inside the hub, where no consumer can see it
+    # in its own diff.
+    allow_file = args.allow or (ALLOW if root == os.path.abspath(ROOT)
+                                else os.path.join(root, "trailing-conditional.allow"))
+
+    found = sorted(sites(root, scan_paths(root, args.scan)))
+    allow = load_keys(allow_file)
     keys = {"{}\t{}".format(f, n) for f, n, _s in found}
     print("=== trailing-conditional return gate ===")
+    if root != os.path.abspath(ROOT):
+        print("  root: {}".format(root))
+        print("  allow: {}".format(allow_file))
     print("  {} function(s) ending on a conditional; {} frozen in {}".format(
-        len(keys), len(allow), os.path.basename(ALLOW)))
+        len(keys), len(allow), os.path.basename(allow_file)))
 
     def _site(k):
         f, n = k.split("\t")

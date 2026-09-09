@@ -1,0 +1,15 @@
+# What THIS repo takes from itself. The hub is a consumer of its own
+# shared/config: its runners resolve .cmake-format.yaml at the repo root, like
+# every consumer's do, so the root copy is a copy and can drift from the
+# canonical file one directory away.
+#
+# Checked by the `shared-config` slug in linux/scripts/preflight.sh.
+#
+# One row. The other four canonical configs have NO root copy here - there is no
+# C++ in this repo for the clang tools or gcovr to read, and no pre-commit
+# config at the root - so they are simply not declared. That replaces the
+# `--ignore .clang-format,.clang-tidy,gcovr.cfg,.pre-commit-config.yaml` this
+# repo used to pass, which was the last caller of the legacy no-manifest path in
+# the whole fleet. See shared/config/README.md ("The two manifests").
+
+cmake-format

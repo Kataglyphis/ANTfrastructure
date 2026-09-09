@@ -70,9 +70,17 @@ try {
     # One owner for the uv-run-an-analyser shape. Every analyser below
     # differs only in tool name, flags and whether it takes the path list;
     # the shape lives here once instead of at every call site.
+    #
+    # Invoke-BuildGate, NOT Invoke-BuildOptional. WindowsBuild.Common's own
+    # docstring calls Optional "the exact inverse": it records a failure and
+    # carries on, and nothing re-raises it -- so this file was a gate in name
+    # only. Gate records the failure too, and Assert-BuildGates at the bottom
+    # turns the batch into one error. Its Linux twin
+    # (02-toolchain/python/ci_static_analysis.sh) has run this way since it was
+    # corrected for the same defect.
     $runAnalyser = {
         param([string]$Name, [string[]]$Argv, [string[]]$Targets)
-        Invoke-BuildOptional -Context $script:BuildContext -Name $Name -Script {
+        Invoke-BuildGate -Context $script:BuildContext -Name $Name -Script {
             Invoke-BuildExternal -Context $script:BuildContext -File "uv" `
                 -Parameters (@("run", "--active") + $Argv + $Targets) | Out-Null
         }.GetNewClosure()
@@ -85,10 +93,18 @@ try {
     ) @()
 
     & $runAnalyser "vulture"     @("vulture")                 $analysisPaths[0..3]
-    & $runAnalyser "ruff check"  @("ruff", "check", "--fix")  $analysisPaths[0..3]
-    & $runAnalyser "ruff format" @("ruff", "format")          $analysisPaths[0..3]
+    # --no-fix and --check --diff, not --fix and a bare format: a gate judges the
+    # tree as COMMITTED. Rewriting it makes the step pass and leaves the change in
+    # a CI checkout nobody sees. Same wording, same reason, as the Linux twin.
+    & $runAnalyser "ruff check"  @("ruff", "check", "--no-fix")          $analysisPaths[0..3]
+    & $runAnalyser "ruff format" @("ruff", "format", "--check", "--diff") $analysisPaths[0..3]
 
     & $runAnalyser "ty"          @("ty", "check")             @()
+
+    # The whole point of the change above: without this, every failure recorded
+    # by Invoke-BuildGate stays recorded and the script still exits 0. It also
+    # refuses to report green when no gate ran at all.
+    Assert-BuildGates -Context $script:BuildContext -Label 'python static analysis'
 
     Write-CiLog "Static analysis completed"
 

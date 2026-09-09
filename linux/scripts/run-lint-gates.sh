@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # run-lint-gates.sh - the fleet's lint gates over ONE consumer tree.
 
-# The three gates - shell lint, workflow lint (+CI image refs) and secret scan -
-# bootstrapped pinned and SHA-verified from this repo, run over the tree named by
-# $1. Three
+# The gates - shell lint, workflow lint (+CI image refs), secret scan, python
+# lint and the shared-config drift check - bootstrapped pinned and SHA-verified
+# from this repo, run over the tree named by $1. Three
 # consumers had grown their own copy of this - two as `run:` blocks in a
 # workflow, so the gate that blocks their deploy could not be reproduced
 # locally at all. What each copy carried, and what is preserved here: the
 # git-ls-files scope construction, the empty-list vacuity guards, the
-# run-all-three-then-fail-once accumulator, and the gitleaks self-test.
+# run-all-then-fail-once accumulator, and the gitleaks self-test.
 
 # The consumer root is MANDATORY and never inferred. A submodule checkout puts
 # this script inside the consumer, where a BASH_SOURCE-derived root resolves to
@@ -66,31 +66,84 @@ _lint_gates_excluded() {
   return 1
 }
 
-# --- shellcheck --------------------------------------------------------------
-# The list is `git ls-files`, NOT a glob: `scripts/**/*.sh` does not recurse
-# without globstar, so it covered the directories somebody remembered and
-# silently skipped the rest - and a gate that reads 19 of 21 files still
-# reports green.
-_lint_gates_shell() {
-  local files=() f
+# --- the file walk both list-driven gates share ------------------------------
+# `git ls-files`, NOT a glob: `scripts/**/*.sh` does not recurse without
+# globstar, so a glob covered the directories somebody remembered and silently
+# skipped the rest. $3 decides what an EMPTY result MEANS, and the two gates
+# genuinely differ - see docs/shared-script-libraries.md#the-empty-scope-rule.
+# Results land in _LINT_GATES_SCOPE because bash cannot return an array.
+_lint_gates_scope() {
+  local label="$1" spec="$2" on_empty="${3:-refuse-empty}" f
+  _LINT_GATES_SCOPE=()
   # -z, not plain ls-files: git QUOTES a path containing non-ASCII bytes
   # ("dummy_assetsÃ¤/x.sh), and the quoted string then names nothing.
   while IFS= read -r -d '' f; do
-    _lint_gates_excluded "${f}" || files+=("${f}")
-  done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- '*.sh')
-  if [ "${#files[@]}" -eq 0 ]; then
-    printf 'no tracked *.sh outside %s - the list driving this gate is empty;\n' "${_LINT_GATES_EXCLUDE[*]}" >&2
-    printf 'refusing to report green over nothing. (lint-shell.sh with zero file\n' >&2
-    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\n' >&2
+    _lint_gates_excluded "${f}" || _LINT_GATES_SCOPE+=("${f}")
+  done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- "${spec}")
+  if [ "${#_LINT_GATES_SCOPE[@]}" -eq 0 ]; then
+    if [ "${on_empty}" = allow-empty ]; then
+      printf '%s: no tracked %s outside %s - nothing to grade in this repo.\n' \
+        "${label}" "${spec}" "${_LINT_GATES_EXCLUDE[*]}"
+      printf '  (safe here: this gate passes explicit paths, so an empty list\n'
+      printf '   cannot fall back to grading ContainerHub OWN tree.)\n'
+      return 2
+    fi
+    printf 'no tracked %s outside %s - the list driving this gate is empty;\n' \
+      "${spec}" "${_LINT_GATES_EXCLUDE[*]}" >&2
+    printf 'refusing to report green over nothing. (the underlying linter with\n' >&2
+    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\n' >&2
     return 1
   fi
-  printf 'shellcheck scope (%d file(s)):\n' "${#files[@]}"
-  printf '  %s\n' "${files[@]}"
-  bash "${_LINT_GATES_DIR}/lint-shell.sh" "${files[@]}"
+  printf '%s scope (%d file(s)):\n' "${label}" "${#_LINT_GATES_SCOPE[@]}"
+  printf '  %s\n' "${_LINT_GATES_SCOPE[@]}"
+}
+
+_lint_gates_shell() {
+  _lint_gates_scope shellcheck '*.sh' || return 1
+  bash "${_LINT_GATES_DIR}/lint-shell.sh" "${_LINT_GATES_SCOPE[@]}"
+}
+
+# ABSOLUTE paths, unlike the shell gate: lint-python.sh cds to the HUB root
+# before resolving its arguments, so a path relative to the consumer would
+# name nothing there -- or, worse, name something.
+_lint_gates_python() {
+  local rc=0
+  _lint_gates_scope ruff '*.py' allow-empty || rc=$?
+  # 2 = no python in this repo, which is an answer, not a failure. 1 = a real
+  # scope failure and still fatal.
+  [ "${rc}" -eq 2 ] && return 0
+  [ "${rc}" -eq 0 ] || return "${rc}"
+  local abs=() f
+  for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
+  bash "${_LINT_GATES_DIR}/lint-python.sh" "${abs[@]}"
 }
 
 _lint_gates_workflows() {
   bash "${_LINT_GATES_DIR}/lint-workflows.sh" "${_LINT_GATES_ROOT}"
+}
+
+# --- shared-config drift -----------------------------------------------------
+# The BASH half, never Sync-SharedConfig.ps1: no hub Linux image ships pwsh, and
+# that is why this gate had never joined a bash aggregator. A manifest is
+# REQUIRED and its absence fails rather than skips -- skipping would restore the
+# older failure, a gate that is present, green, and comparing nothing.
+# shared/config/README.md#why-a-manifest-and-not-an-ignore-list
+_lint_gates_shared_config() {
+  local sync="${_LINT_GATES_DIR}/../../shared/config/sync-shared-config.sh"
+  local manifest="${_LINT_GATES_ROOT}/.containerhub-shared.manifest"
+  if [ ! -f "${manifest}" ]; then
+    printf 'no .containerhub-shared.manifest at %s\n' "${_LINT_GATES_ROOT}" >&2
+    printf 'This gate compares the ContainerHub-owned files this repo holds a COPY of, and\n' >&2
+    printf 'it will not guess which those are: guessing is what made it unrunnable before.\n' >&2
+    printf 'Declare them - one id per line, from the registry in\n' >&2
+    printf '  third_party/ContainerHub/shared/config/shared-assets.manifest\n' >&2
+    printf 'A repo that takes only the two bootstrap templates writes exactly:\n' >&2
+    printf '  containerhub-sh\n  resolve-build-module\n' >&2
+    printf 'An asset left out is never compared - that is how an intentional\n' >&2
+    printf 'project-owned override is recorded. See shared/config/README.md.\n' >&2
+    return 1
+  fi
+  bash "${sync}" --repo-root "${_LINT_GATES_ROOT}" --check
 }
 
 # --- gitleaks ----------------------------------------------------------------
@@ -235,6 +288,8 @@ _lint_gates_main() {
   run_gate "shellcheck" _lint_gates_shell
   run_gate "actionlint + CI image refs" _lint_gates_workflows
   run_gate "gitleaks" _lint_gates_secrets
+  run_gate "ruff" _lint_gates_python
+  run_gate "shared-config drift" _lint_gates_shared_config
   assert_gates
 }
 

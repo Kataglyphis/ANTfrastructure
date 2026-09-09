@@ -2562,3 +2562,31 @@ asserted on the gate's own fix hint, which spells `sync_versions.py` — and the
 registry credits a suite that MENTIONS a gate's script. `version-snapshot` flipped
 to `proven` on a suite that asserts nothing about it. The assertion now stops
 short of the basename, with a comment saying why.
+
+## The scan-root contract
+
+Twelve ratchet gates used to resolve their scan root from `__file__`. In a
+consumer's `third_party/ContainerHub` checkout that is the HUB, so each gate
+reported green over a tree nobody asked about while roughly 15,700 lines of
+consumer shell went ungraded. `--root` fixes that;
+[`linux/scripts/gate_scope.py`](../linux/scripts/gate_scope.py) is the one owner
+of what a root means, after the first attempt left seven copies of it.
+
+Four rules, each of which a copy got wrong somewhere:
+
+1. **A `--root` must be a git checkout AND its toplevel.** `git rev-parse`
+   succeeds in any subdirectory, so `--root <repo>/third_party` passed and graded
+   a fragment with every relative path anchored one level down — which shifts
+   every allowlist key without saying so. Refused now, naming the real toplevel.
+2. **An empty scan is a decision, never a default.** `refuse` where every repo
+   must have such files, so an empty list means the scope construction broke;
+   `allow` where a repo may legitimately have none. The caller says which.
+3. **`git ls-files`, never a walk.** A submodule is a gitlink, so the scope cannot
+   descend into another repo, and untracked build output stays out.
+4. **A tracked path that is not on disk is reported, not skipped.** The old walk
+   could only yield files that exist; the index can name files a sparse checkout
+   never materialised, and `except OSError: continue` turned that into a quiet
+   partial grading.
+
+The freeze file follows the root. Keeping it beside the script would put every
+repo's ratchet inside the hub, where no consumer sees it in its own diff.

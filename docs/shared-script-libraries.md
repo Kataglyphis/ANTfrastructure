@@ -280,6 +280,24 @@ none. Its PowerShell twin is `Get-CiImageReference`
 `tests/test-ci-image-ref.sh` asserts that both agree with
 `verify_ci_image_refs.py`, which grades the four action defaults.
 
+### The empty-scope rule
+
+`_lint_gates_scope` builds a gate's file list from `git ls-files` under the graded
+root, minus the excluded top-level directories. Its third argument decides what an
+**empty** result means, and the two callers genuinely differ:
+
+| Mode | Meaning | Who uses it |
+|---|---|---|
+| `refuse-empty` (default) | a BROKEN SCOPE. `lint-shell.sh` with zero file arguments falls back to ContainerHub's OWN tree and passes, so green over nothing is a lie. | the shell gate |
+| `allow-empty` | a FACT about the repo. | the python gate |
+
+The python gate can allow it because it passes **explicit absolute paths**: with no
+paths there is no argument list to fall back from, so there is nothing to run and
+nothing to mis-grade. That distinction is not cosmetic — ANThology is a pure Dart
+package and OxidANT a Rust crate, neither has a single `.py`, and refusing an empty
+Python scope made both lanes exit 1 on every push for a reason nothing in either tree
+could change. A permanently red lane is a tolerated failure by construction.
+
 ### `run-lint-gates.sh` — the three lint gates over a consumer tree
 
 ```bash

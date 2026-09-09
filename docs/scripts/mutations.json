@@ -1194,7 +1194,7 @@
   {
     "id": "comment-size.limit-not-enforced",
     "target": "linux/scripts/verify_comment_size.py",
-    "find": "                    if n > LIMIT:",
+    "find": "            if n > LIMIT:",
     "replace": "                    if False:",
     "test": "bash linux/scripts/tests/test-prevention-gates.sh",
     "why": "a block that ends at a code line is the common shape; stop collecting it and the gate sees nothing"

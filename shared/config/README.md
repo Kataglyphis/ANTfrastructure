@@ -244,3 +244,26 @@ failure.
 refuses and says why: splicing a canonical body under the consumer's own header
 while preserving its knob values is a merge, not a copy, and a merge that went
 quietly wrong would defeat the gate it was fixing.
+
+## Why a manifest, and not an --ignore list
+
+A consumer declares what it TAKES, in a root `.containerhub-shared.manifest`. It
+used to be able to declare what it does not take, as an `--ignore` list passed at
+the call site, and the two cannot be combined — passing both is a deliberate
+exit 2.
+
+The ignore form is gone because it made the gate unusable and therefore unused.
+Without a manifest, `sync-shared-config.sh` falls back to its legacy list and
+grades all five shared config names at the consumer root whether or not that repo
+ever took them — so every repo with no C++ saw four MISSING. That is why nobody
+wired this gate into an aggregator, and why the shared files then drifted
+unwatched in every repo at once.
+
+An absent manifest is therefore a FAILURE, not a skip. Skipping would restore the
+older and worse failure: a gate that is present, green, and comparing nothing.
+The declaration is two lines, and the error message spells them out.
+
+The bash half is the one that runs in CI. No hub Linux image ships pwsh, so the
+PowerShell form failed with "pwsh: command not found" on every Linux run — a gate
+that could not report on the platform it gates. `linux/scripts/tests/`
+`test-shared-config-sync.sh` holds the two to the same verdict.
