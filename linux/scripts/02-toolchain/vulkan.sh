@@ -304,7 +304,7 @@ _vulkan_build_components() {
   # This list drives the HOST x86_64 build, so the target arch cannot be a reason,
   # and a skip takes the CHECKOUT with it -- which is what cost riscv64 slang.
   # docs/vulkan-foreign-arch-sdk.md#amd64-is-the-reference-all-three-arches-build-the-same-set
-  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang)
+  _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang vulkantools dxc cdl)
 }
 
 # What ./vulkansdk skipped above but the TARGET build still wants. Source only:
@@ -643,11 +643,15 @@ vulkan-tools|Vulkan-Tools|-DBUILD_VULKANINFO=ON -DBUILD_CUBE=ON
 vulkan-extensionlayer|Vulkan-ExtensionLayer|
 jsoncpp|jsoncpp|-DJSONCPP_WITH_TESTS=OFF -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF -DJSONCPP_WITH_EXAMPLE=OFF -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON
 valijson|valijson|-Dvalijson_BUILD_TESTS=OFF -Dvalijson_BUILD_EXAMPLES=OFF -Dvalijson_INSTALL_HEADERS=ON
+yaml-cpp|yaml-cpp|-DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DYAML_CPP_BUILD_CONTRIB=OFF -DYAML_CPP_INSTALL=ON
 vulkan-profiles|Vulkan-Profiles|-DPROFILES_BUILD_TESTS=OFF
 vulkan-validationlayers|Vulkan-ValidationLayers|-DUPDATE_DEPS=OFF -DBUILD_WERROR=OFF
 gfxreconstruct|gfxreconstruct|-DGFXRECON_BUILD_TESTS=OFF -DD3D12_SUPPORT=OFF -DGFXRECON_TOCPP_SUPPORT=OFF -DGFXRECON_INCLUDE_TEST_APPS=OFF -DGFXRECON_ENABLE_OPENXR=OFF
 slang|slang|-DSLANG_ENABLE_TESTS=OFF -DSLANG_ENABLE_EXAMPLES=OFF -DSLANG_SLANG_LLVM_FLAVOR=DISABLE -DSLANG_ENABLE_DXIL=OFF
 vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
+vulkantools|VulkanTools|
+crash-diagnostic-layer|CrashDiagnosticLayer|
+dxc|DirectXShaderCompiler|-DLLVM_BUILD_TOOLS=OFF -DHLSL_COPY_GENERATED_SOURCES=ON -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DHLSL_INCLUDE_TESTS=OFF
 "
 
 # Row flags that only exist as a PATH, so the static table cannot carry them.
@@ -657,7 +661,7 @@ vulkancapsviewer|VulkanCapsViewer,vulkanCapsViewer,vcv|
 _vulkan_target_dynamic_args() {
   local label="$1" target_dir="$2" archdir="$3" triplet="$4"
   local -n _vk_dyn_ref="$5"
-  local gen
+  local gen src
 
   _vk_dyn_ref=()
   _xbuild_extra_targets=()
@@ -691,6 +695,36 @@ _vulkan_target_dynamic_args() {
       # "${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so" raw, so unset it
       # degrades to the HOST /lib/libvulkan.so and ninja refuses the graph.
       _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
+      ;;
+    vulkantools)
+      # vkconfig-gui is Qt6 (same split as vcv). REQUIRE_FIND_PACKAGE is the
+      # load-bearing one: upstream's find_package(Qt6 QUIET) drops the whole
+      # configurator with a message() and still exits 0, so the row would count
+      # as built while shipping no vkconfig at all.
+      _vk_dyn_ref+=(-DQT_HOST_PATH=/usr -DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE)
+      _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
+      _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
+      _vk_dyn_ref+=(-DVULKAN_UTILITY_LIBRARIES_INSTALL_DIR="${archdir}")
+      _vk_dyn_ref+=(-DJSONCPP_INSTALL_DIR="${archdir}" -DVALIJSON_INSTALL_DIR="${archdir}")
+      _vk_dyn_ref+=(-DSDK_VERSION="${target_dir##*/}")
+      ;;
+    crash-diagnostic-layer)
+      _vk_dyn_ref+=(-DVULKAN_UTILITY_LIBRARIES_INSTALL_DIR="${archdir}")
+      _vk_dyn_ref+=(-DGLSLANG_INSTALL_DIR="${archdir}" -DYAML_CPP_INSTALL_DIR="${archdir}")
+      ;;
+    dxc)
+      # An LLVM 3.7 fork: most of its option set only EXISTS once the vendor
+      # cache file is read, and its two tblgens must run on the build host.
+      src="$(_vulkan_target_src "${target_dir}/source" DirectXShaderCompiler)"
+      [ -f "${src}/cmake/caches/PredefinedParams.cmake" ] \
+        && _vk_dyn_ref+=(-C"${src}/cmake/caches/PredefinedParams.cmake")
+      gen="${target_dir}/source/DirectXShaderCompiler/build/bin"
+      if [ -x "${gen}/llvm-tblgen" ]; then
+        _vk_dyn_ref+=(-DLLVM_TABLEGEN="${gen}/llvm-tblgen")
+        [ -x "${gen}/clang-tblgen" ] && _vk_dyn_ref+=(-DCLANG_TABLEGEN="${gen}/clang-tblgen")
+      else
+        log "dxc: no host tblgen at ${gen}; the cross build will try to run its own"
+      fi
       ;;
   esac
 }

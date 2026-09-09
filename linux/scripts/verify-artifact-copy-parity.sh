@@ -23,6 +23,8 @@ case "${DOCKERFILE}" in
   -h|--help) usage; exit 0 ;;
 esac
 
+_NL=$'\n'
+
 # Documented intentional src != dst relocations, one "SRC DST" pair per entry.
 ALLOWED_RELOCATIONS=(
   "/opt/llvm-target /usr/local/llvm-target"
@@ -115,13 +117,23 @@ main() {
 _report_absent() {
   local -n _cnt="$1"
   local needles="$2" haystack="$3" head="$4" hint="$5" p
+  local _hay_padded="${_NL}${haystack}${_NL}"
   while IFS= read -r p; do
     [ -n "${p}" ] || continue
-    if ! printf '%s\n' "${haystack}" | grep -qxF -- "${p}"; then
-      echo "${head//@P@/${p}}"
-      echo "      ${hint//@P@/${p}}"
-      _cnt=$((_cnt + 1))
-    fi
+    # Pure-bash exact-line membership, NOT `printf | grep -qxF`. That spelling
+    # made this gate fail ~10% of runs on an unchanged tree, naming a different
+    # artifact each time: with `-q` the matcher exits on the first hit while
+    # still being fed by a pipe, and the resulting status is not reliably 0
+    # here. A set test needs no subprocess.
+    # docs/artifact-copy-completeness.md#the-membership-test-must-not-shell-out
+    case ${_hay_padded} in
+      *"${_NL}${p}${_NL}"*) ;;
+      *)
+        echo "${head//@P@/${p}}"
+        echo "      ${hint//@P@/${p}}"
+        _cnt=$((_cnt + 1))
+        ;;
+    esac
   done <<< "${needles}"
 }
 

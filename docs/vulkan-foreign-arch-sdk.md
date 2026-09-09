@@ -12,7 +12,8 @@ The install root is versioned and split by architecture:
 /opt/vulkan/active           symlink to the prefix this image runs
 ```
 
-`x86_64/bin` holds 52 tools, but inside an arm64 image every one of them is an
+`x86_64/bin` holds 52 tools (and, since VK4, so should the foreign prefixes —
+see below), but inside an arm64 image every one of them is an
 x86-64 ELF: `vulkaninfo` there exits 127. It is build scaffolding. Only the
 own-arch prefix is usable at runtime, and `VULKAN_SDK` points at it.
 
@@ -149,6 +150,62 @@ The optional target packages were the other parity worry and they are NOT a gap:
 riscv64 and `qt6-base-dev` is in `universe`, which `ubuntu-mirror.sh` enables for
 the foreign arch (`Components: main universe restricted multiverse`).
 
+## VK4: the components the vendor builds and we did not
+
+Measured 2026-09-09 inside a container, from the pushed sdk digest — both
+directories listed, not derived from a log:
+
+| | `x86_64` | `riscv64` | only x86_64 |
+| --- | --- | --- | --- |
+| `bin/` | 52 | 37 | **15** |
+| `lib/` | 118 | 52 | **72** |
+| `share/vulkan/explicit_layer.d` | 9 | 6 | **4** |
+
+`riscv64/bin` is a strict subset — nothing exists there that x86_64 lacks. The
+gap is not a build failure: it is three components LunarG's own `./vulkansdk`
+builds under `all` and this repo's HOST list never named, so nothing was ever
+checked out and **no row was even counted as attempted**. The same silent shape
+that cost riscv64 slang, and the reason the arch-skip comment above exists.
+
+Read the vendor script for the recipe — it is in the image at
+`/opt/vulkan/<ver>/vulkansdk`, and it is the authority, not upstream READMEs:
+
+| vendor name | `<ver>/source/` | delivers |
+| --- | --- | --- |
+| `dxc` | `DirectXShaderCompiler` | `dxa dxc dxl dxopt dxr dxv` ×2 (a plain and a `-3.7` alias) + `llvm-tblgen` = **13 binaries**, plus the `libLLVM*.a`/`libclang*.a`/`libdxcompiler.so` half of the 72-file `lib/` gap |
+| `vulkantools` | `VulkanTools` | `vkconfig`, `vkconfig-gui` = **2 binaries**, and 3 of the 4 missing layers (`api_dump`, `monitor`, `screenshot`) |
+| `cdl` | `CrashDiagnosticLayer` | the 4th layer. **No binaries** — it does not move the 52 |
+| `yaml-cpp` | `yaml-cpp` | nothing shipped; `cdl` will not configure without it |
+
+13 + 2 = 15, so the table is now 21 rows + 3 hardwired = **24**, which is exactly
+the number of `BUILD_*` flags the vendor's `build_all` sets. That equality is the
+cheapest check that nothing else is missing.
+
+Three of the four need PATHS, so they are arms of `_vulkan_target_dynamic_args`
+rather than table columns:
+
+* **`vulkantools`** takes the same pair the caps viewer needed — `QT_HOST_PATH`
+  for `vkconfig-gui`'s moc, and `VULKAN_LOADER_INSTALL_DIR` because the layers
+  resolve the loader by raw path. The foreign prefixes keep `libvulkan.so*` FLAT
+  in `<arch>/lib` while amd64 has it under `lib/VulkanLoader/`, so the vendor's
+  own `${LIBDIR}/VulkanLoader/` would be wrong here.
+* **`crash-diagnostic-layer`** wants `GLSLANG_INSTALL_DIR` and
+  `YAML_CPP_INSTALL_DIR`; both resolve to the target prefix.
+* **`dxc`** needs two things a table cannot hold. Its `-C
+  cmake/caches/PredefinedParams.cmake` is a path into the checkout, and **most of
+  its option set does not exist until that file is read**. And it is a fork of
+  **LLVM 3.7**, so `LLVM_TABLEGEN` and `CLANG_TABLEGEN` must point at the host
+  build's `build/bin` — the same Canadian cross `llvm-cross.sh` and slang already
+  do. Without them the cross build links the generators for the target and runs
+  them: exit 127.
+
+**The risk to watch on the next bump, and on riscv64 in particular:** LLVM 3.7
+predates RISC-V entirely. Nothing in DXC needs a RISC-V *backend* — it emits DXIL
+and SPIR-V — but its host-triple detection has never seen `riscv64`. aarch64 is
+the safer of the two. A failure here is non-fatal by contract (`dxc` is not in
+`_VK_REQUIRED_COMPONENTS`), so the tell is the count, not an error: the stage
+reports `N/24` and ships.
+
 ## Upstream patches: recheck on every SDK bump
 
 `_vulkan_patch_component` applies these to the pinned SDK source before the cross
@@ -220,14 +277,18 @@ there with `SLANG_GENERATORS_PATH`. `SLANG_SLANG_LLVM_FLAVOR=DISABLE` and
 Qt's own host tools — `moc`, `rcc`, `uic` — from the build host, which is what
 `QT_HOST_PATH=/usr` names.
 
-**dxc is NOT a row, and the reason is not "host-only".** slang does not build
-DXC here; it fetches a prebuilt x86_64 binary
-(`_dxc_probe/dxc_v1.9.2602.tar.gz`) and `libdxcompiler.so` comes from that
-tarball. The Canadian-cross pattern needs a host-built `clang-tblgen` from DXC's
-own LLVM fork to point at, and no such binary exists on disk here. Cross-building
-DXC means building it from source on the host first
-(`SLANG_DXC_BUILD_FROM_SOURCE=ON`), which is an LLVM-sized build, not a table
-row.
+**dxc IS a row now (VK4, 2026-09-09), and what changed is the premise.** This
+paragraph used to say the Canadian cross had no host-built `clang-tblgen` to
+point at, "and no such binary exists on disk here". That was true only because
+the HOST list never named `dxc`. Naming it makes `./vulkansdk` clone and build
+DXC on x86_64 first, which is exactly what produces `build/bin/llvm-tblgen` and
+`build/bin/clang-tblgen` — the same shape slang's generators already have. The
+cost is real and worth stating: it is an LLVM-sized build, it now runs on every
+foreign lane, and the clone is `--recurse-submodules` with no `--depth`.
+
+What slang does is unrelated and unchanged: it fetches a prebuilt x86_64
+`_dxc_probe/dxc_v1.9.2602.tar.gz`, which is why its row keeps
+`-DSLANG_ENABLE_DXIL=OFF`.
 
 ## VK_LAYER_PATH pointed at a directory that has never existed
 
