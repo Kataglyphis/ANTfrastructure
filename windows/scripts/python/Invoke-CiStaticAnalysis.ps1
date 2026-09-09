@@ -67,38 +67,28 @@ try {
 
     $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md")
 
-    Invoke-BuildOptional -Context $script:BuildContext -Name "codespell" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @("run", "--active", "codespell") + $analysisPaths | Out-Null
+    # One owner for the uv-run-an-analyser shape. Every analyser below
+    # differs only in tool name, flags and whether it takes the path list;
+    # the shape lives here once instead of at every call site.
+    $runAnalyser = {
+        param([string]$Name, [string[]]$Argv, [string[]]$Targets)
+        Invoke-BuildOptional -Context $script:BuildContext -Name $Name -Script {
+            Invoke-BuildExternal -Context $script:BuildContext -File "uv" `
+                -Parameters (@("run", "--active") + $Argv + $Targets) | Out-Null
+        }.GetNewClosure()
     }
+    & $runAnalyser "codespell"   @("codespell")               $analysisPaths
 
-    Invoke-BuildOptional -Context $script:BuildContext -Name "bandit" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @(
-            "run", "--active", "bandit", "-r", $PackageName,
-            "-x", "tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results"
-        ) | Out-Null
-    }
+    & $runAnalyser "bandit" @(
+        "bandit", "-r", $PackageName,
+        "-x", "tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results"
+    ) @()
 
-    Invoke-BuildOptional -Context $script:BuildContext -Name "vulture" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @(
-            "run", "--active", "vulture"
-        ) + $analysisPaths[0..3] | Out-Null
-    }
+    & $runAnalyser "vulture"     @("vulture")                 $analysisPaths[0..3]
+    & $runAnalyser "ruff check"  @("ruff", "check", "--fix")  $analysisPaths[0..3]
+    & $runAnalyser "ruff format" @("ruff", "format")          $analysisPaths[0..3]
 
-    Invoke-BuildOptional -Context $script:BuildContext -Name "ruff check" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @(
-            "run", "--active", "ruff", "check", "--fix"
-        ) + $analysisPaths[0..3] | Out-Null
-    }
-
-    Invoke-BuildOptional -Context $script:BuildContext -Name "ruff format" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @(
-            "run", "--active", "ruff", "format"
-        ) + $analysisPaths[0..3] | Out-Null
-    }
-
-    Invoke-BuildOptional -Context $script:BuildContext -Name "ty" -Script {
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @("run", "--active", "ty", "check") | Out-Null
-    }
+    & $runAnalyser "ty"          @("ty", "check")             @()
 
     Write-CiLog "Static analysis completed"
 

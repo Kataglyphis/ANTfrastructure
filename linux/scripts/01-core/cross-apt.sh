@@ -12,25 +12,37 @@ fi
 _CROSS_APT_LOADED=1
 
 
+# Rewrite a deb822 sources file through an awk program: `<file> <caller>
+# <awk-args...>`. Owns the temp/cleanup/mode contract for every caller, and a
+# failing awk must never reach the `mv`. awk only, no cross_* deps.
+# docs/cross-build-verification.md#rewriting-a-deb822-sources-file-in-place
+_apt_sources_rewrite() {
+  local sources_file="$1" caller="$2" tmp=""
+  shift 2
+
+  tmp="$(mktemp "${sources_file}.XXXXXX")" || {
+    printf '%s: mktemp failed beside %s\n' "${caller}" "${sources_file}" >&2
+    return 1
+  }
+  if ! awk "$@" "${sources_file}" > "${tmp}"; then
+    rm -f "${tmp}"
+    printf '%s: awk rewrite of %s failed; file left unchanged\n' \
+      "${caller}" "${sources_file}" >&2
+    return 1
+  fi
+  chmod 0644 "${tmp}"
+  mv "${tmp}" "${sources_file}"
+}
+
 # Set/overwrite the `Architectures:` line in every stanza of a deb822 sources
-# file. Self-contained (awk only; no cross_* deps), so it is also sourced by
-# 02-toolchain/android-sdk.sh for its "amd64 i386" host case.
+# file. Also sourced STANDALONE by 02-toolchain/android-sdk.sh ("amd64 i386").
 apt_sources_set_architectures() {
-  local sources_file="$1" arch_string="$2" tmp=""
+  local sources_file="$1" arch_string="$2"
 
   [ -f "${sources_file}" ] || return 0
 
-  # Temp file NEXT TO the target, not in $TMPDIR: several RUNs mount /tmp as a
-  # tmpfs (Dockerfile.sdk, Dockerfile.toolchain), which turns the final `mv`
-  # into a cross-device copy instead of an atomic rename. The random suffix
-  # keeps it out of apt's own *.sources/*.list globs — and out of
-  # cross_prune_foreign_arch_apt_sources' ubuntu-ports*.sources glob — for the
-  # moments it exists.
-  tmp="$(mktemp "${sources_file}.XXXXXX")" || {
-    printf 'apt_sources_set_architectures: mktemp failed beside %s\n' "${sources_file}" >&2
-    return 1
-  }
-  if ! awk -v archs="${arch_string}" '
+  _apt_sources_rewrite "${sources_file}" apt_sources_set_architectures \
+    -v archs="${arch_string}" '
     BEGIN { in_stanza=0; has_arch=0 }
     /^[[:space:]]*$/ {
       if (in_stanza && !has_arch) print "Architectures: " archs
@@ -57,26 +69,7 @@ apt_sources_set_architectures() {
     END {
       if (in_stanza && !has_arch) print "Architectures: " archs
     }
-  ' "${sources_file}" > "${tmp}"; then
-    # Cleanup is EXPLICIT at every exit, never a trap: this file is SOURCED, and
-    # a trap armed inside a sourced function stays armed and re-fires on the
-    # CALLER's return (the parallel-loop.sh RETURN-trap incident, which turned a
-    # fully green chain into exit 1).
-    #
-    # Bailing out here is the load-bearing half. The old code ran `mv`
-    # unconditionally, so a failing awk (ENOSPC on the temp, a shadowed/broken
-    # awk) REPLACED the host sources file with awk's truncated output and still
-    # returned 0 — every later apt-get in that RUN then died with "Unable to
-    # locate package" and no trace of the real cause.
-    rm -f "${tmp}"
-    printf 'apt_sources_set_architectures: awk rewrite of %s failed; file left unchanged\n' \
-      "${sources_file}" >&2
-    return 1
-  fi
-  # mktemp creates 0600 and `mv` carries that mode onto the target; apt sources
-  # are 0644 root:root everywhere else in /etc/apt/sources.list.d.
-  chmod 0644 "${tmp}"
-  mv "${tmp}" "${sources_file}"
+  '
 }
 
 cross_target_uses_ubuntu_ports() {
@@ -167,6 +160,24 @@ cross_apt_update() {
   _CROSS_ENV_APT_UPDATED=1
 }
 
+# A pocket the HOST sources lack strands every Multi-Arch:same library one
+# version behind the target's, and apt then reports the DEPENDENT as
+# uninstallable. Repair an inherited skew here, at the point of use.
+# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+cross_align_host_apt_pockets() {
+  local host_sources="$1" codename="$2"
+
+  [ -f "${host_sources}" ] || return 0
+  if grep -q -e "^Suites:.*${codename}-security" "${host_sources}"; then
+    return 0
+  fi
+
+  _apt_sources_rewrite "${host_sources}" cross_align_host_apt_pockets \
+    -v sec="${codename}-security" \
+    '/^Suites:/ && !added { print $0 " " sec; added = 1; next } { print }' || return 1
+  _CROSS_ENV_APT_UPDATED=0
+}
+
 cross_configure_foreign_arch_apt_sources() {
   local target_arch build_arch distro ports_url host_sources ports_sources existing_ports_source
 
@@ -186,6 +197,7 @@ cross_configure_foreign_arch_apt_sources() {
   esac
 
   apt_sources_set_architectures "${host_sources}" "${build_arch}"
+  cross_align_host_apt_pockets "${host_sources}" "${distro}"
 
   cross_prune_foreign_arch_apt_sources "${ports_sources}"
 

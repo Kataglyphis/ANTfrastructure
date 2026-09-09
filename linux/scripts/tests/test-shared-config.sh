@@ -13,7 +13,8 @@ printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 
 TREE=""
 # _tree <name> — an owner-shaped fixture: the real shared/config/ set plus the
-# one root copy the gate compares.
+# one root copy the gate compares. The sync script itself is part of that set:
+# check_shared_config shells out to it, so a fixture without it fails at exec.
 _tree() {
   TREE="${WORK}/$1"
   mkdir -p "${TREE}/shared/config"
@@ -24,6 +25,7 @@ _tree() {
      "${REPO_ROOT}"/shared/config/.pre-commit-config.yaml \
      "${REPO_ROOT}"/shared/config/Sync-SharedConfig.ps1 \
      "${REPO_ROOT}"/shared/config/shared-assets.manifest \
+     "${REPO_ROOT}"/shared/config/sync-shared-config.sh \
      "${TREE}/shared/config/"
   cp "${REPO_ROOT}/shared/config/.cmake-format.yaml" "${TREE}/.cmake-format.yaml"
 }

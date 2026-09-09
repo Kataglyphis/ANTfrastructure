@@ -98,5 +98,12 @@ mutation-family:census
 # and the consumer inventory gate.
 mutation-family:lint-gates
 mutation-family:ci-image-ref
-mutation-family:shared-config-sync
 mutation-family:consumer-inventory
+
+# shared-config owns sync-shared-config.sh, which READS this manifest but never
+# names it on the preflight command line - the hub uses --ignore, not a manifest,
+# so the data file is exercised only by the test suite. The mutation is real and
+# bites there; what is missing is an ownership edge the registry can see.
+# Anchoring it on the script instead was tried and rejected: --check never reaches
+# the mode validation, so that proof would have been vacuous.
+mutation-id:shared-config.exact-mode-is-declared-in-the-manifest

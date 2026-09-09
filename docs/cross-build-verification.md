@@ -762,6 +762,107 @@ failing to configure with no hint as to why. Say so, loudly.
 * helper present, arch UNRECOGNISED (rc 1) = expected degradation. The
 candidate is skipped and we stay quiet, exactly as before.
 
+### Rewriting a deb822 sources file in place
+
+`_apt_sources_rewrite <file> <caller> <awk-args...>` (cross-apt.sh) is the one
+owner of that operation; `apt_sources_set_architectures` and
+`cross_align_host_apt_pockets` both go through it, and it was extracted the
+moment the second one existed — the two had drifted into an eight-line identical
+run before the dupes gate said so.
+
+Three properties are load-bearing, each paid for by a real failure:
+
+* **The temp file lives NEXT TO the target, not in `$TMPDIR`.** Several RUNs
+  mount `/tmp` as a tmpfs (Dockerfile.sdk, Dockerfile.toolchain), which turns the
+  final `mv` from an atomic rename into a cross-device copy. The random suffix
+  keeps it out of apt's own `*.sources`/`*.list` globs, and out of
+  `cross_prune_foreign_arch_apt_sources`' `ubuntu-ports*.sources` glob, for the
+  moments it exists.
+* **Cleanup is EXPLICIT at every exit, never a trap.** This file is SOURCED, and
+  a trap armed inside a sourced function stays armed and re-fires on the
+  CALLER's return — the parallel-loop.sh RETURN-trap incident, which turned a
+  fully green chain into exit 1.
+* **A failing awk must not reach the `mv`.** The original ran `mv`
+  unconditionally, so a failing awk (ENOSPC on the temp, a shadowed or broken
+  awk) REPLACED the host sources file with awk's truncated output and still
+  returned 0. Every later `apt-get` in that RUN then died with "Unable to locate
+  package" and no trace of the real cause.
+
+`mktemp` creates 0600 and `mv` carries that mode onto the target, so the helper
+chmods 0644 first — apt sources are 0644 root:root everywhere else in
+`/etc/apt/sources.list.d`. The `<caller>` argument only names the function in
+the two error messages; it keeps a shared helper from reporting failures under
+its own name.
+
+### Host and target apt sources must expose the same pockets
+
+VK2/riscv64, 2026-09-08. `qt6-base-dev:riscv64` refused to install with
+
+```
+libappstream5:riscv64 : Depends: libcurl3t64-gnutls:riscv64 (>= 7.63.0) but it is not going to be installed
+libproxy1v5:riscv64   : Depends: libcurl3t64-gnutls:riscv64 (>= 7.16.2) but it is not going to be installed
+E: Broken packages
+```
+
+and every dependency in that list existed in ports at a satisfying version, so
+the message named the symptom and not the cause. The cause was a **pocket
+asymmetry** between the host and target sources, both written by
+`ubuntu_write_deb822_source`, whose 5th argument decides whether `-security` is
+appended:
+
+* `02-toolchain/python/build_python.sh` (`_python_cross_enable_multiarch_apt`,
+  compiler stage) wrote `ubuntu.sources` for amd64 with `0` and
+  `ubuntu-ports.sources` for arm64/riscv64 with `1`.
+* `Dockerfile.media` did the same for its own reset.
+
+`libcurl3t64-gnutls` is `Multi-Arch: same`, so the amd64 and riscv64 copies must
+be the **identical version**. Ports could see `8.18.0-1ubuntu2.5` (security);
+amd64 topped out at `8.18.0-1ubuntu2.4` (updates). No common version existed in
+apt's view, so the foreign-arch library became uninstallable — and with it every
+`Multi-Arch: same` library that has ever had a security-only upload. It sank the
+caps viewer because `qt6-base-dev:riscv64` pulls `libappstream5`/`libproxy1v5`,
+but nothing about it is Qt- or riscv64-specific.
+
+Proven by A/B on `:base`, same image, one line different:
+
+| amd64 stanza | amd64 candidate | riscv64 candidate | `qt6-base-dev:riscv64` |
+| --- | --- | --- | --- |
+| without `-security` | 8.18.0-1ubuntu2.4 | 8.18.0-1ubuntu2.5 | `E: Broken packages` |
+| with `-security`    | 8.18.0-1ubuntu2.5 | 8.18.0-1ubuntu2.5 | installs |
+
+`archive.ubuntu.com` carries `<codename>-security` for amd64 (HTTP 200,
+`Architectures: amd64 amd64v3 arm64 armhf i386 ppc64el riscv64 s390x`), so the
+`0` bought nothing — it was not a mirror-coverage workaround.
+
+Both call sites now pass `1`, and the `mirror-consistency` gate asserts the
+invariant directly rather than the two literals: it runs the real
+`ubuntu_write_deb822_source` for a host arch and a ports arch and requires the
+two suite sets to match, then greps the call sites so a future writer cannot
+reintroduce the skew. **The rule is symmetry, not `-security` as such** — a host
+source that gains a pocket the ports source lacks breaks co-installation in
+exactly the same way, just in the other direction.
+
+Fixing the writers only helps a stage built after them, so the invariant is also
+enforced at the point of use: `cross_align_host_apt_pockets` (cross-apt.sh) runs
+inside `cross_configure_foreign_arch_apt_sources`, right after the
+`Architectures:` rewrite, and appends `<codename>-security` to the host sources
+when no stanza carries it. It is a no-op on the stock Ubuntu layout, where the
+pocket lives in its own `security.ubuntu.com` stanza — appending a second copy
+there would double-define the target and spam every apt call with "configured
+multiple times". When it does change the file it clears `_CROSS_ENV_APT_UPDATED`,
+because `install_target_packages` skips `apt-get update` when the flag is already
+set and the new pocket would otherwise never be fetched.
+
+One consequence worth stating: a custom `FAST_UBUNTU_MIRROR_URL` must now carry
+the security pocket for the host arch. Ports mirrors already had to (the ports
+source has always been written with it), so this is the same requirement applied
+to both halves rather than a new one.
+
+Note what did NOT catch it: the failure is invisible to every static gate (the
+sources are correct in isolation), invisible to a same-arch build, and invisible
+until a `Multi-Arch: same` package actually receives a security-only upload.
+Before 2026-09-08 the two pockets happened to agree.
+
 ### Rust version parsing across toolchain spellings
 
 Resolve the version a CI run should stamp, from the sources every consumer

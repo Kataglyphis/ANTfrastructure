@@ -7618,7 +7618,7 @@
     "why": "same guard for the other half of the pair: a caller's has_tool (which may know about a vendored toolchain that is not on PATH) must survive the source"
   },
   {
-    "id": "shared-config-sync.verdict-reaches-the-exit-code",
+    "id": "shared-config.verdict-reaches-the-exit-code",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ ${#SSC_MISSING[@]} -gt 0 ] || [ ${#SSC_DRIFTED[@]} -gt 0 ]; then return 1; fi",
     "replace": "    if false; then return 1; fi",
@@ -7626,7 +7626,7 @@
     "why": "the MISSING/DRIFTED lists must decide the exit code; printing them and returning 0 is a gate that reports every drift and blocks none of it"
   },
   {
-    "id": "shared-config-sync.missing-copy-is-a-verdict",
+    "id": "shared-config.missing-copy-is-a-verdict",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ ! -e \"$target\" ]; then",
     "replace": "    if false; then",
@@ -7634,7 +7634,7 @@
     "why": "a declared asset whose copy is not there is MISSING; without this arm the file is compared as if it existed and the consumer is told something else entirely"
   },
   {
-    "id": "shared-config-sync.body-mode-drops-the-header",
+    "id": "shared-config.body-mode-drops-the-header",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ \"$mode\" = body ]; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
     "replace": "    if false; then first=\"$(_ssc_first_code_line \"$path\")\"; fi",
@@ -7642,7 +7642,7 @@
     "why": "body mode compares from the first CODE line down: the consumer's own header prose is the legitimate per-consumer delta, and grading it turns every template copy into permanent drift"
   },
   {
-    "id": "shared-config-sync.knob-values-are-masked",
+    "id": "shared-config.knob-values-are-masked",
     "target": "shared/config/sync-shared-config.sh",
     "find": "            SSC_MASKED=\"<knob> ${knob}\"",
     "replace": "            SSC_MASKED=\"$line\"",
@@ -7650,7 +7650,7 @@
     "why": "a declared knob line may carry any VALUE -- it is the one line the template tells the consumer to adjust; comparing its value makes a correctly adjusted copy read as drifted"
   },
   {
-    "id": "shared-config-sync.line-endings-normalised",
+    "id": "shared-config.line-endings-normalised",
     "target": "shared/config/sync-shared-config.sh",
     "find": "        SSC_LINES+=(\"${line%\"${_SSC_CR}\"}\")",
     "replace": "        SSC_LINES+=(\"$line\")",
@@ -7658,7 +7658,7 @@
     "why": "the CR is stripped on both sides before comparing; without it a Windows and a Linux checkout of the same bytes disagree, and the twin's verdict depends on which OS ran it"
   },
   {
-    "id": "shared-config-sync.write-refuses-body-assets",
+    "id": "shared-config.write-refuses-body-assets",
     "target": "shared/config/sync-shared-config.sh",
     "find": "    if [ \"${SSC_MODE[$id]}\" = body ]; then",
     "replace": "    if false; then",
@@ -7666,7 +7666,7 @@
     "why": "--write is a verbatim copy, so it must refuse a body-mode asset: copying over one would delete the consumer's header prose and its knob values, which is a merge, not a copy"
   },
   {
-    "id": "shared-config-sync.unknown-id-is-broken-input",
+    "id": "shared-config.unknown-id-is-broken-input",
     "target": "shared/config/sync-shared-config.sh",
     "find": "        if [ -z \"${SSC_MODE[$id]:-}\" ]; then",
     "replace": "        if false; then",
@@ -7674,12 +7674,12 @@
     "why": "an id ContainerHub does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
   },
   {
-    "id": "shared-config-sync.exact-mode-is-declared-in-the-manifest",
+    "id": "shared-config.exact-mode-is-declared-in-the-manifest",
     "target": "shared/config/shared-assets.manifest",
     "find": "clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |",
     "replace": "clang-format         | shared/config/.clang-format                      | .clang-format                           | body  |",
     "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
-    "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift, and this file is one the fleet must hold byte for byte"
+    "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift."
   },
   {
     "id": "consumer-inventory.external-is-not-self",
@@ -7784,5 +7784,93 @@
     "replace": "    :",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "the vendored checkout must be a NESTED repository, which git records as a gitlink: without its own .git the fixture's files become the consumer's own tracked files, and the suites asserting that a vendored tree is out of scope would pass over a fixture that never had one"
+  },
+  {
+    "id": "mirror-consistency.pocket-skew-is-caught",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if len(sites) > 1:",
+    "replace": "if False:",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "two writers disagreeing on -security is the VK2 bug itself; without this branch the gate reads the call sites and reports nothing"
+  },
+  {
+    "id": "mirror-consistency.no-writer-is-not-a-pass",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if not sites:",
+    "replace": "if False:",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "a scan that finds no call site would otherwise be indistinguishable from a scan that found them all in agreement"
+  },
+  {
+    "id": "mirror-consistency.helper-symmetry-is-asserted",
+    "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+    "find": "if ! cmp -s \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" \\\n   || ! [ -s \"${fixture_root}/host.suites\" ]; then\n  echo \"ERROR: ubuntu_write_deb822_source is asymmetric for equal flags (host vs ports):\" >&2\n  diff -u \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" | sed 's/^/    /' >&2\n  errors=$((errors + 1))\nfi",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "equal flags must yield equal suite sets; a helper that special-cases the host arch defeats every call-site check above it"
+  },
+  {
+    "id": "python.host-apt-source-keeps-security",
+    "target": "linux/scripts/02-toolchain/python/build_python.sh",
+    "find": "\"$(ubuntu_default_archive_mirror_url)\" \"${_codename}\" amd64 1",
+    "replace": "\"$(ubuntu_default_archive_mirror_url)\" \"${_codename}\" amd64 0",
+    "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+    "why": "this is the compiler-stage line that cost riscv64 its Qt6: amd64 without -security stranded libcurl3t64-gnutls one version behind ports and broke Multi-Arch:same co-installation"
+  },
+  {
+    "id": "cross-build.pocket-align-is-wired",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "  apt_sources_set_architectures \"${host_sources}\" \"${build_arch}\"\n  cross_align_host_apt_pockets \"${host_sources}\" \"${distro}\"",
+    "replace": "  apt_sources_set_architectures \"${host_sources}\" \"${build_arch}\"",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "the function existing but never being called from the host-sources rewrite is the exact shape this repo keeps shipping"
+  },
+  {
+    "id": "cross-build.pocket-align-forces-reupdate",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "    '/^Suites:/ && !added { print $0 \" \" sec; added = 1; next } { print }' || return 1\n  _CROSS_ENV_APT_UPDATED=0",
+    "replace": "    '/^Suites:/ && !added { print $0 \" \" sec; added = 1; next } { print }' || return 1",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "a new pocket in the sources is invisible until apt-get update runs again; install_target_packages skips the update when the flag is already 1"
+  },
+  {
+    "id": "cross-build.pocket-align-is-idempotent",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "  if grep -q -e \"^Suites:.*${codename}-security\" \"${host_sources}\"; then\n    return 0\n  fi",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "without the presence check the stock two-stanza Ubuntu layout gains a duplicate pocket and apt warns \"configured multiple times\" on every call"
+  },
+  {
+    "id": "cross-build.pocket-align-touches-one-stanza",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "    '/^Suites:/ && !added { print $0 \" \" sec; added = 1; next } { print }' || return 1",
+    "replace": "    '/^Suites:/ { print $0 \" \" sec; next }' || return 1",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "appending the pocket to every stanza double-defines it across mirrors that carry different subsets"
+  },
+  {
+    "id": "cross-build.sources-rewrite-bails-before-mv",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "    rm -f \"${tmp}\"\n    printf '%s: awk rewrite of %s failed; file left unchanged\\n' \\\n      \"${caller}\" \"${sources_file}\" >&2\n    return 1\n  fi",
+    "replace": "    printf '%s: awk rewrite of %s failed; file left unchanged\\n' \\\n      \"${caller}\" \"${sources_file}\" >&2\n  fi",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "the original mv'd unconditionally, so a failing awk replaced the host sources with truncated output and still returned 0 -- every later apt-get died with 'Unable to locate package' and no trace of the cause"
+  },
+  {
+    "id": "cross-build.sources-rewrite-keeps-0644",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "  chmod 0644 \"${tmp}\"\n  mv \"${tmp}\" \"${sources_file}\"",
+    "replace": "  mv \"${tmp}\" \"${sources_file}\"",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "mktemp creates 0600 and mv carries that mode onto the target; apt sources are 0644 root:root everywhere else in /etc/apt/sources.list.d"
+  },
+  {
+    "id": "cross-build.pocket-check-reads-suites-only",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "grep -q -e \"^Suites:.*${codename}-security\"",
+    "replace": "grep -q -e \"${codename}-security\"",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "an unanchored match hits a COMMENT naming the pocket and silently disables the whole repair on a file that does not carry it"
   }
 ]

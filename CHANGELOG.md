@@ -6,6 +6,48 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-09 — riscv64 reaches 20/20, and the apt pockets have to agree
+
+* **VK2 is closed: 20/20 Vulkan cross-components on both foreign arches.**
+  `Vulkan cross-targets riscv64: 20/20` (`sdk-rv64-20260908-211949`, pushed
+  `@sha256:09a4d255`) and `aarch64: 20/20` (`sdk-20260908-132426`). Verified on
+  the shipped bytes, not the log: `riscv64/bin` holds 37 entries and is a strict
+  subset of `x86_64/bin`'s 52, and `vulkanCapsViewer`, `slangc`, `gfxrecon-info`
+  and `vulkaninfo` all report ELF machine RISC-V. The 15-entry delta is entirely
+  LunarG's prebuilt tarball (the DXC family, `llvm-tblgen`, `vkconfig`) — which no
+  arch builds from source, and which is now VK4 rather than a regression.
+* **The last blocker was not Qt and not riscv64: the host and target apt sources
+  disagreed on a POCKET.** The compiler stage wrote `ubuntu.sources` for amd64
+  **without** `-security` and `ubuntu-ports.sources` **with** it. Since
+  `libcurl3t64-gnutls` is `Multi-Arch: same`, amd64 topped out at
+  `8.18.0-1ubuntu2.4` while riscv64's candidate was `2.5`, no common version
+  existed, and apt reported the DEPENDENT (`libappstream5:riscv64`) as
+  unsatisfiable. Every `Multi-Arch: same` library with a security-only upload was
+  affected; Qt6 was just the first to matter. Proven by A/B on the same base
+  image, one line different.
+* **Fixed in three places, because two of them are not enough.**
+  `build_python.sh` and `Dockerfile.media` now write both halves with
+  `-security`; `cross_align_host_apt_pockets` (cross-apt.sh) repairs an
+  **inherited** skew at the point of use, so a stage benefits without its parent
+  being rebuilt — which is why the riscv64 sdk stage could be fixed with no
+  compiler rebuild. `archive.ubuntu.com` carries `<codename>-security` for amd64
+  (HTTP 200), so the old `0` bought nothing.
+* **The `mirror-consistency` gate now asserts the pair, not the literals.** It
+  runs the real `ubuntu_write_deb822_source` for a host arch and a ports arch and
+  requires the two suite sets to match, then parses every shipped call site with
+  `shlex` and fails if they disagree on the flag. Neither file is invalid on its
+  own, so nothing that reads one file at a time could ever have caught this.
+* **`_apt_sources_rewrite` now owns the atomic sources rewrite.** The pocket
+  repair had drifted into an eight-line identical run with
+  `apt_sources_set_architectures`; the dupes gate caught it, and the shared owner
+  keeps the three properties each of which was paid for by a real failure (temp
+  beside the target, explicit cleanup instead of a trap in a SOURCED file, and no
+  `mv` after a failing awk).
+* **Also this window:** the retry classifier stopped reading BuildKit's elapsed
+  prefix as an HTTP 429, `smoke-toolchain.sh` asserts LLVM by major.minor instead
+  of the full pin, `lint-secrets.sh`'s gitleaks invocation was repaired, and
+  `bench_coding.py`'s `RLIMIT_NPROC` counts tasks rather than processes.
+
 ## 2026-09-08 — the container stack installs rootless, with no sudo
 
 * **`install-nerdctl-full.sh` grew a rootless prefix mode.** It always installed

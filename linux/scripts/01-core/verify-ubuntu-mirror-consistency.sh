@@ -104,6 +104,96 @@ else
   fi
 fi
 
+# --- (3) POCKET SYMMETRY -------------------------------------------------
+# Host and ports sources must expose the SAME suite set. An amd64 stanza
+# written without -security while ports had it made every Multi-Arch:same
+# library uninstallable for the foreign arch (VK2, 2026-09-08) -- and each
+# file is perfectly valid on its own, so only the pair can be checked.
+# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/linux/scripts/01-core/ubuntu-mirror.sh"
+_fixture_suites() {
+  ubuntu_write_deb822_source "${fixture_root}/$1.sources" "https://$1.invalid/" resolute "$2" 1
+  sed -n 's/^Suites: //p' "${fixture_root}/$1.sources"
+}
+_fixture_suites host amd64    > "${fixture_root}/host.suites"
+_fixture_suites ports riscv64 > "${fixture_root}/ports.suites"
+if ! cmp -s "${fixture_root}/host.suites" "${fixture_root}/ports.suites" \
+   || ! [ -s "${fixture_root}/host.suites" ]; then
+  echo "ERROR: ubuntu_write_deb822_source is asymmetric for equal flags (host vs ports):" >&2
+  diff -u "${fixture_root}/host.suites" "${fixture_root}/ports.suites" | sed 's/^/    /' >&2
+  errors=$((errors + 1))
+fi
+
+# Shipped call sites must agree on that flag. Tests and this file are excluded
+# on purpose: their calls are fixtures, free to be deliberately skewed.
+if ! _flag_report="$(python3 - "${REPO_ROOT}/linux" <<'PYEOF'
+import pathlib
+import re
+import shlex
+import sys
+
+root = pathlib.Path(sys.argv[1])
+sites, unparsable = {}, []
+for path in sorted(root.rglob("*")):
+    if not path.is_file() or "scripts/tests/" in path.as_posix():
+        continue
+    if path.name == "verify-ubuntu-mirror-consistency.sh":
+        continue
+    if not (path.name.startswith("Dockerfile") or path.suffix == ".sh"):
+        continue
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        continue
+    if "ubuntu_write_deb822_source " not in text:
+        continue
+    joined, start, buffer = [], 0, ""
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        if not buffer:
+            start = lineno
+        if raw.endswith("\\"):
+            buffer += raw[:-1] + " "
+            continue
+        joined.append((start, buffer + raw))
+        buffer = ""
+    if buffer:
+        joined.append((start, buffer))
+    for lineno, line in joined:
+        if line.lstrip().startswith("#"):
+            continue
+        for chunk in re.split(r"[;&|]", line):
+            if "ubuntu_write_deb822_source" not in chunk:
+                continue
+            try:
+                tokens = shlex.split(chunk, posix=True)
+            except ValueError:
+                unparsable.append(f"{path.relative_to(root)}:{lineno}")
+                continue
+            if "ubuntu_write_deb822_source" not in tokens:
+                continue
+            args = tokens[tokens.index("ubuntu_write_deb822_source") + 1:]
+            flag = args[4] if len(args) >= 5 else "1"
+            sites.setdefault(flag, []).append(f"{path.relative_to(root)}:{lineno}")
+
+if unparsable:
+    print("UNPARSABLE " + " ".join(unparsable))
+    sys.exit(1)
+if not sites:
+    print("NOSITES")
+    sys.exit(1)
+if len(sites) > 1:
+    print("SKEW " + "  ".join(
+        f"{flag}={','.join(where)}" for flag, where in sorted(sites.items())))
+    sys.exit(1)
+print("OK " + next(iter(sites)))
+PYEOF
+)"; then
+  echo "ERROR: ubuntu_write_deb822_source call sites do not agree on the -security flag: ${_flag_report}" >&2
+  errors=$((errors + 1))
+fi
+
 if [ "$errors" -gt 0 ]; then
   echo "FAILED: ${errors} mirror consistency errors" >&2
   exit 1
