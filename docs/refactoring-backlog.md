@@ -410,14 +410,19 @@ the archive — including that the docstring it gained said *six* consumers when
 call at the launcher-resolution site. `smoke-runtime-image.sh` also moved; its own row
 carries both lanes' reasons.
 
-### F4. The 28 extractions the 2026-09-09 PowerShell review identified and did not apply [S-M each, review]
+### F4. The 27 extractions the 2026-09-09 PowerShell review identified and did not apply [S-M each, review]
 
 The PowerShell lane got its first full row-by-row review on 2026-09-09: all 359
 rows that had been frozen with `not yet reviewed` were judged, 319 as deliberate
-twins and 40 as real extractions. **Eight were applied that day** and their rows
-are gone from `code-dupes.allow`. The 28 below were not, for one reason only: the
-appliers were held to disjoint file sets so two of them could never edit the same
-file, and these did not fit in one pass. Nothing here was judged not worth doing.
+twins and 40 as real extractions. **Eight were applied that day** and the rows
+they emptied are gone from `code-dupes.allow`. A ninth landed right after, because
+the review found it was not a style question but a live bug: `KataNativeProbe` was
+`Add-Type`d twice with two different member sets, and one
+`Initialize-KataNativeProbe` now owns it.
+
+The 27 below were not applied, for one reason only: the appliers were held to
+disjoint file sets so two of them could never edit the same file, and these did
+not fit in one pass. Nothing here was judged not worth doing.
 
 **`docs/scripts/code-dupes.allow` is the authority for the numbers** - each row
 below still carries its budget and the measurement that set it, and the budget
@@ -446,12 +451,6 @@ Get-ProjectCmakeFiles and Get-ProjectCppFiles share 29 lines of real logic in tw
 READ 2026-09-09: the ar (COFF archive) MEMBER HEADER is written out by hand four times — once inside the $script:NewArchive fixture (lines 65-69) and three more times inline, twice in the linker-member case (lines 189-193 and 198-202) and once in the malformed-size case (lines 248-252). All four are the same five `$bw.Write([System.Text.Encoding]::ASCII.GetBytes(<name>.PadRight(16)))` / PadRight(12) / PadRight(6) / PadRight(6) / '100644'.PadRight(8) lines, and those widths are the ar spec, not test data: getting one of them wrong makes the fixture silently unparseable and the case vacuously green. This is the one block in the file that has a name ("the ar member header") and exactly one correct spelling.
 
 *Plan:* Owner: a `$script:WriteArMemberHeader` scriptblock added beside $script:NewPe / $script:NewCoffObj / $script:NewArchive inside the BeforeAll of windows/scripts/tests/SourceBuild.VerifyTargetArch.Tests.ps1 (declare it before $script:NewArchive, around line 43). `param([System.IO.BinaryWriter]$Writer, [string]$MemberName)` -> writes $MemberName.PadRight(16).Substring(0,16) then the four fixed fields ('0'.PadRight(12), '0'.PadRight(6), '0'.PadRight(6), '100644'.PadRight(8)). Two parameters, four callers, no flags. Call sites to repoint: inside $script:NewArchive replace lines 65-69 with `& $script:WriteArMemberHeader $bw $MemberName`; in the 'skips the linker members' case replace lines 189-193 with `& $script:WriteArMemberHeader $bw '/'` and lines 198-202 with `& $script:WriteArMemberHeader $bw 'foo.obj'`; in the 'malformed size field' case replace lines 248-252 with `& $script:WriteArMemberHeader $bw 'foo.obj'`. NOTE THE ONE RISK the file itself flags in its comment at line 41: Pester 5 It blocks are child scopes that do not see file-level FUNCTIONS, which is why these fixtures are $script:-scoped scriptblocks; a $script: scriptblock invoked from inside another $script: scriptblock resolves at call time and should work, but it is the one thing to confirm by RUNNING rather than by reading. Verify with `pwsh -NoProfile -File windows\scripts\tests\Invoke-Tests.ps1` (baseline 815/815); if the nested $script: lookup misbehaves, abandon and record KEEP. HONEST PAYOFF: shrinks, does not retire — the residual is the 5-line PadRight run the byte-level PE fixtures still share, so expect the budget to be re-trued from 85 to roughly 45.
-
-**`windows/scripts/modules/WindowsSmokeTest.Common.psm1` (self)** - budget 68.
-
-The module Add-Types the KataNativeProbe P/Invoke class TWICE (lines 261-271 inside Assert-NativeLinkRun's closure, lines 327-336 at the top of Assert-AllDllsLoad), 7 substantive lines shared - and the two copies are not identical: the second omits GetProcAddress. An Add-Type'd type is session-global and both sites guard with `if (-not ('KataNativeProbe' -as [type]))`, so whichever function runs first wins. Run a DLL sweep and then an Assert-NativeLinkRun with -Export and the GetProcAddress call lands on a type that does not have that method: a missing-method failure reported as a missing export. The duplication is not cosmetic, it is a live ordering bug.
-
-*Plan:* Add a private, non-exported `function Initialize-KataNativeProbe { if ('KataNativeProbe' -as [type]) { return }; Add-Type -TypeDefinition @'...'@ }` to windows/scripts/modules/WindowsSmokeTest.Common.psm1 carrying the SUPERSET of the two current definitions (LoadLibraryW, FreeLibrary, GetProcAddress). Replace lines 261-271 with `Initialize-KataNativeProbe` and lines 327-336 with the same call. Zero parameters, two callers, no mode flag; every surrounding line at both sites stays as it is. MEASURED on an in-memory overlay through the gate's own indexer: this pair goes 68 -> 13, NOT ONE other pair in the corpus changes, and no new unallowlisted pair appears; the overlay parses clean under [Parser]::ParseFile. 13 is still above the gate's threshold of 10, so the row shrinks rather than retiring, and its reason should then read as a measurement of what is left (the Export-ModuleMember list and the shared Assert-* failure-recording tail). Verify by running the gate and `pwsh -NoProfile -File windows\scripts\tests\Invoke-Tests.ps1` - the smoke module's own suite is the one that exercises both call sites.
 
 **`windows/scripts/diagnostics/Test-LayerRename.ps1` <-> `windows/scripts/diagnostics/Test-ProcessIsolationCommit.ps1`** - budget 52.
 
