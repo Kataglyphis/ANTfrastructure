@@ -92,21 +92,28 @@ install_vulkan_prereqs() {
       || log "jsonschema venv install failed (schema validation will be skipped — non-fatal)"
   fi
 
-  if command -v install_target_packages >/dev/null 2>&1; then
-    # The WSI and compression dev packages are needed for whatever arch the SDK
-    # is about to be built FOR — including when that arch IS the build host,
-    # where cross_build_is_active() is false by definition and the old guard
-    # skipped them entirely. install_target_packages already resolves to plain
-    # (unsuffixed) names off the cross path, so on a native target this simply
-    # installs/repairs the native ones; on a foreign target it is unchanged.
-    # 2026-09-09: an arm64 native build linked vulkaninfo against nothing
-    # ("cannot find -lxcb/-lX11/-lwayland-client") even with -L present.
+  # REVERTED 2026-09-10. Dropping this guard for the native-target case was
+  # WRONG: with it gone, install_target_packages ran on an arm64 host and
+  # installed 60 packages as :amd64 — every one of them displacing the arm64
+  # dev package it was supposed to complement, which is what actually deletes
+  # /usr/lib/aarch64-linux-gnu/lib{xcb,X11,wayland-client}.so. The guard was
+  # never the cause; it was the thing preventing the damage. Why plain names
+  # resolve to :amd64 on a host whose dpkg --print-architecture is arm64 is
+  # still UNEXPLAINED — see the WSI report below, which makes it visible in
+  # minutes instead of after a 7 h build.
+  if cross_build_is_active && \
+     command -v install_target_packages >/dev/null 2>&1; then
+    # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
+    # Install the WSI and compression dev packages for that target too.
     install_target_packages "${target_pkgconfig_packages[@]}"
     if command -v install_optional_target_packages >/dev/null 2>&1; then
       install_optional_target_packages "${target_optional_packages[@]}"
     fi
-    _vulkan_report_wsi_link_libs
   fi
+
+  # OUTSIDE the guard on purpose: the native-target case is exactly the one
+  # where the packages are NOT installed, so that is when the report matters.
+  _vulkan_report_wsi_link_libs
 }
 
 # default install location - overrideable from environment
