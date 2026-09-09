@@ -72,11 +72,15 @@ _check "${_d}"
 t_assert_eq "1" "${rc}" "a declared asset that vanished must fail, not pass quietly"
 t_assert_contains "${OUT}" "MISSING .clang-format"
 
-t_case "line endings alone are not drift (the same bytes with LF endings pass)"
-# The canonical .clang-format is stored CRLF; a consumer whose checkout
-# normalised it to LF holds the same content and must not read as drifted.
+t_case "line endings alone are not drift (the same content with CRLF passes)"
+# A Windows checkout holds the same content with CRLF and must not read as
+# drifted. The fixture has to CREATE that difference: the canonical
+# .clang-format is plain LF here (0 CR bytes), so the old `sed 's/\r$//'` was a
+# no-op on a file that had none and the assertion passed with the normalisation
+# removed -- the mutation over it survived, invisibly.
 _d="$(_consumer)"
-sed -i 's/\r$//' "${_d}/.clang-format"
+sed -i 's/$/\r/' "${_d}/.clang-format"
+t_assert_ok grep -q -e $'\r' "${_d}/.clang-format"
 _check "${_d}"
 t_assert_eq "0" "${rc}" \
   "line endings are normalised on both sides before comparing; output was: ${OUT}"

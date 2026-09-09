@@ -237,6 +237,82 @@ t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)" \
   "the temp must be removed on the failure path too (no EXIT trap: this file is SOURCED)"
 
 # ---------------------------------------------------------------------------
+# cross_align_host_apt_pockets: the HOST sources must not be one pocket behind
+# the ports sources, or a Multi-Arch:same library becomes uninstallable for the
+# target and apt blames its DEPENDENT instead (VK2 lost riscv64 its Qt6).
+
+_write_host_only_sources() {
+  cat > "${_SRC_FILE}" <<'SRC'
+Types: deb
+URIs: https://archive.ubuntu.com/ubuntu/
+Suites: resolute resolute-updates resolute-backports
+Components: main universe restricted multiverse
+Architectures: amd64
+SRC
+  chmod 0644 "${_SRC_FILE}"
+}
+
+t_case "a host source missing -security gains it"
+_write_host_only_sources
+_CROSS_ENV_APT_UPDATED=1
+t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
+t_assert_eq "Suites: resolute resolute-updates resolute-backports resolute-security" \
+  "$(grep -e '^Suites:' "${_SRC_FILE}")"
+t_assert_eq "0" "${_CROSS_ENV_APT_UPDATED}" \
+  "changing the sources must force the next apt-get update, or the new pocket is never fetched"
+
+t_case "a host source that already carries -security is left alone"
+_before="$(cat "${_SRC_FILE}")"
+_CROSS_ENV_APT_UPDATED=1
+t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
+t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
+t_assert_eq "1" "${_CROSS_ENV_APT_UPDATED}" "an unchanged file must not cost a re-update"
+
+t_case "a separate security.ubuntu.com stanza counts as carrying the pocket"
+# The stock Ubuntu layout: the pocket lives in its own stanza, so appending a
+# second copy would double-define it and spam apt with "configured multiple
+# times" on every call.
+_write_sources
+_before="$(cat "${_SRC_FILE}")"
+t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
+t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
+
+t_case "a COMMENT naming the pocket does not count as carrying it"
+# The presence check reads Suites: lines only. Matching anywhere in the file let
+# a stock Ubuntu sources comment silently disable the whole repair.
+printf '# resolute-security is handled elsewhere\nTypes: deb\nSuites: resolute\n' > "${_SRC_FILE}"
+t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
+t_assert_eq "Suites: resolute resolute-security" "$(grep -e '^Suites:' "${_SRC_FILE}")"
+
+t_case "only the FIRST stanza gains the pocket"
+printf 'Types: deb\nSuites: resolute\n\nTypes: deb\nSuites: resolute-updates\n' > "${_SRC_FILE}"
+t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
+t_assert_eq "1" "$(grep -c -e 'resolute-security' "${_SRC_FILE}")" \
+  "one pocket, one stanza — a copy per stanza is the multiple-definition warning again"
+
+t_case "the aligned file stays 0644 and leaves no temp behind"
+t_assert_eq "644" "$(stat -c '%a' "${_SRC_FILE}")"
+t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)"
+
+t_case "a missing host sources file is a silent no-op"
+t_assert_ok cross_align_host_apt_pockets "${_SRC_DIR}/not-here.sources" resolute
+
+t_case "a FAILING awk leaves the host sources untouched and returns 1"
+_write_host_only_sources
+_before="$(cat "${_SRC_FILE}")"
+( PATH="${_AWK_DIR}:${PATH}"; cross_align_host_apt_pockets "${_SRC_FILE}" resolute ) 2>/dev/null
+_rc=$?
+t_assert_eq "1" "${_rc}"
+t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
+t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)"
+
+t_case "cross_configure_foreign_arch_apt_sources aligns the pockets, not just the arch"
+# The wiring is the half that rots: the function existed and was simply never
+# called from the path that rewrites the host sources.
+t_assert_contains "$(awk '/^cross_configure_foreign_arch_apt_sources\(\)/,/^}/' \
+  "${TESTS_DIR}/../01-core/cross-apt.sh")" "cross_align_host_apt_pockets"
+
+# ---------------------------------------------------------------------------
 # DUP1: cross_pkg_config_libdir's host-multiarch fallback routes through
 # platform.sh instead of a hand-rolled uname->triplet case. The fallback only
 # fires when DEB_BUILD_MULTIARCH is unset AND dpkg-architecture is unusable, so

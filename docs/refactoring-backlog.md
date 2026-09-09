@@ -8,17 +8,18 @@ observation journal live in the archives:
 [`…-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md),
 [`…-archive-2026-09-02.md`](refactoring-backlog-archive-2026-09-02.md),
 [`…-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md),
-[`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md).
+[`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md),
+[`…-archive-2026-09-09.md`](refactoring-backlog-archive-2026-09-09.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **VK**=the
-foreign-arch Vulkan SDK · **F#**=the size and
-duplication tracks. Everything else
+foreign-arch Vulkan SDK · **AS**=the apt sources invariants · **EX**=gate scan
+extent · **F#**=the size and duplication tracks. Everything else
 is archive-only: **CC/CL/CS/AB/R#/YB/DISK/APP** closed on 2026-09-07,
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and
-**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#/EX** long before that.
+**AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#** long before that.
 
 Last groomed: **2026-09-07 (second pass), after an audit re-derived every number
 in this file from the gate that produces it.** The first pass that day claimed the
@@ -42,7 +43,7 @@ benchmark run — and nothing in this file knew. That merge also arrived red: th
 that put 66 model-output JSONs back inside the doc-links scan. All four are fixed;
 the lesson is that a grooming is only true of the commit it was written at.
 
-## ONE ENTRY IS OPEN, AND A BUILD DECIDES IT
+## VK2 IS CLOSED; WHAT IS LEFT IS SMALL
 
 Read this before anything else. The validating chain
 (`chain-status.json` run `20260905-120554-7b7a0d4e`, then the 2026-09-07
@@ -52,8 +53,11 @@ VK3, CS2, CS3, DISK3, R1, YB and F3 — and they now live in
 [`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md) with the
 evidence that closed each one.
 
-**What is left in this file is two open entries and two standing tracks.** VK2 is
-open because only a build can close it. **EX1 is new on 2026-09-07**: the extent
+**What is left in this file is four open entries and two standing tracks.** VK2
+closed on 2026-09-09 — 20/20 on both foreign arches, proven on the shipped bytes —
+and left three successors behind it: **VK4** (the 15 tarball-only binaries),
+**VK5** (aarch64 never ran on the current tree) and **AS1** (the apt sources still
+assume an amd64 build host). **EX1 is new on 2026-09-07**: the extent
 gates do not scan `linux/llm-stack` at all, so F1's and F2's registers have never
 been able to see a fifth of the repo's Python. F1 and F2 themselves are registers of
 reviewed verdicts, not queues: nothing in them is a defect, and their job is to catch
@@ -66,22 +70,24 @@ experience says: a first rebuild attempt found two build-killing bugs (HEAD
 `e109f5ad`) in minutes after a full green battery. Assume the next chain finds
 more, and read **[`build-watch-list.md`](build-watch-list.md)** while it runs.
 
-### Next up — everything above is landed; what is left is ONE build
+### Next up — VK2 is settled; the rest still needs one compile-heavy chain
 
 The 2026-09-07 chain ran green end to end and published a 3-arch `:latest-cross`
-(`manifest-freshness PASS`). The wave that followed it closed every OPEN entry
-this file carried. What remains is not a queue, it is a **verification**:
+(`manifest-freshness PASS`). Two sdk-only runs on 2026-09-08/09 then closed VK2 —
+`sdk-20260908-132426` (aarch64 20/20) and `sdk-rv64-20260908-211949`
+(riscv64 20/20, pushed `@sha256:09a4d255`). **Those runs covered the `sdk` stage
+only.** Everything downstream of it is still landed-but-unbuilt:
 
-1. **Run a compile-heavy chain — that is the whole list.** Everything below was
-   landed against a green static battery and an idle tree, and nothing here has
-   been through a real build:
-   * **VK2** wired four components that have never cross-built (`vulkan-profiles`
-     and its two config packages, `gfxreconstruct` behind `CMAKE_LIBRARY_ARCHITECTURE`,
-     `slang` behind the host generators, `vulkanCapsViewer` behind target Qt6).
-     The entry stays OPEN until `<arch>/bin` shows them.
+1. **VK2 — DONE.** Its four named defects are fixed, and the fifth nobody had
+   named (the host/target apt pocket asymmetry) is fixed, gated and documented.
+   Evidence in [`…-archive-2026-09-09.md`](refactoring-backlog-archive-2026-09-09.md).
+   It left VK4, VK5 and AS1 behind it, all small.
+2. **Still waiting on a chain that reaches `media`, `android` and `runtime`** —
+   none of these has been through a real build:
    * **VK3**'s two `>=` floors get promoted to exact counts from that run's
      `RATCHET: floor 20 -> N` line, and the four `_VK_REPORTED_TOOLS` names move
-     into the required set in the same edit — once, not twice.
+     into the required set in the same edit — once, not twice. The sdk runs now
+     give the count those floors should carry: **20** on both foreign arches.
    * **DISK3**'s image lever has never fired in anger; the `[disk-images]` lines
      are what to read.
    * **CS3**'s prebuilt download replaces ~1900 s of QEMU on arm64 and riscv64
@@ -89,12 +95,16 @@ this file carried. What remains is not a queue, it is a **verification**:
      … release binary` line is the proof.
    * **R1.1**'s llvm-target walk should read `0 of 142` on amd64 and `0 of 127`
      on the foreign pair.
-2. **Then re-groom this file against that run**, the way the 2026-09-05 grooming
+3. **Then re-groom this file against that run**, the way the 2026-09-05 grooming
    re-derived every number from the gate that produces it. Four figures did not
-   survive that exercise last time; assume some will not survive the next.
+   survive that exercise last time, and two did not survive this one: the
+   `x86_64/bin` count and the composition of its delta were both quoted before
+   either directory had been listed. Assume some will not survive the next.
 
-**Nothing else is open.** No entry in this file names a defect with a known
-failure mode, and the two things that are genuinely not the agent's are below.
+**No entry in this file names a defect with a live failure mode.** AS1's three
+neighbours are latent (every cross stage builds on `linux/amd64`); VK4 and VK5 are
+a decision and a confirming run.
+
 
 **Image sizes from this run**, which CC1 asked for at three groomings and never got:
 
@@ -115,7 +125,7 @@ existed.
 **Honesty about the rest:** the one open entry names no defect with a known failure
 mode. What F1 and F2 now carry from `linux/llm-stack` is real, named, seam-bearing
 debt — but it is a register, not a queue, and none of it blocks a build.
-What is left is **one open entry (VK2) and two registers (F1, F2)** — the same
+What is left is **four open entries (VK4, VK5, AS1, EX1) and two registers (F1, F2)** — the same
 inventory the section above gives. Earlier groomings carried a second, longer count
 here ("one owner decision, two cheap wins, a ratchet, a guard that needs a lever it
 does not have, and three tracks") that matched nothing in the file.
@@ -177,86 +187,76 @@ linked its closure. Everything below is context, not a block:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### VK2. MEASURED — the routes work; four NEW, named defects behind them [M, ★★★]
+### VK4. The 15 binaries no arch builds — is `vkconfig` one of them? [S, ★★]
 
-**The 2026-09-08 chain (`20260908-040111`) built the aarch64 SDK and the answer is
-not the one the wiring predicted.** All four components are still
-`<component> unavailable on aarch64` — **but not for any of the reasons VK2 named,
-and none of them fails where it used to.** The stage now attempts **18** components
-and ships **14**; on 2026-09-05 it attempted 15 and shipped 11. Every VK2 route did
-what it was built to do; each component now dies one phase later, at something new.
+**Measured on the pushed `@sha256:09a4d255`, both directories listed in a
+container:** `x86_64/bin` 52 entries, `riscv64/bin` 37, riscv64 a strict subset.
+The 15-entry delta is exactly `dxa dxa-3.7 dxc dxc-3.7 dxl dxl-3.7 dxopt
+dxopt-3.7 dxr dxr-3.7 dxv dxv-3.7 llvm-tblgen vkconfig vkconfig-gui`.
 
-Diagnosed from `out/build-logs/20260908-040111/sdk-arm64.log`, each by a reader and
-an independent skeptic that re-checked the quoted line really is the FIRST fatal one.
+All 15 come from LunarG's prebuilt x86_64 tarball, and **no arch builds any of
+them**: `vkconfig`, `Vulkan-Configurator` and `dxc` appear nowhere in
+`vulkan.sh` — 0 hits, case-insensitively, in 912 lines. So this is not a
+regression VK2 left behind; it is a question that has never been asked.
 
-**1. `vulkan-profiles` — the route worked; `jsoncpp` is not PIC.** The two new rows
-install first, `find_package(valijson)` and `find_package(jsoncpp)` both succeed
-silently, configure completes in 0.8 s and 16 of 17 ninja edges build. It dies at the
-link of `libVkLayer_khronos_profiles.so`:
+Three answers, and only one needs a decision:
+* `llvm-tblgen` is structurally host-only. Nothing to do.
+* The 12 DXC entries are a large LLVM fork LunarG ships prebuilt for x86_64.
+  Building it per-target is out of proportion to any use this image has.
+* **`vkconfig`/`vkconfig-gui` is the open one.** It is a Qt6 GUI app, and Qt6
+  cross-compilation only started working on 2026-09-09 — so the reason it was
+  never in `_VK_TARGET_COMPONENTS` no longer applies. **What closes this:** an
+  owner decision, then either an 18th table row or a line in
+  `vulkan-foreign-arch-sdk.md` saying it is deliberately host-only.
 
-    ld.bfd: /opt/vulkan/1.4.357.0/aarch64/lib/libjsoncpp.a(json_value.cpp.o):
-    relocation R_AARCH64_ADR_PREL_PG_HI21 ... can not be used when making a shared
-    object; recompile with -fPIC
+`spirv-remap` is in neither tree, so `-DENABLE_SPVREMAPPER=OFF` on the cross
+glslang costs no parity — checked because it was the one concrete reason to doubt
+subset-ness.
 
-jsoncpp 1.9.6 sets `POSITION_INDEPENDENT_CODE` only on its `jsoncpp_object` target;
-`jsoncpp_static`, which produces the archive, inherits nothing, and nothing in
-`vulkan.sh` passes a PIC flag. The counter-check that isolates it: the *other* archive
-on the same link line, `libVulkanLayerSettings.a`, goes into
-`libVkLayer_khronos_validation.so` 160 s later without complaint.
-**Fix:** `-DCMAKE_POSITION_INDEPENDENT_CODE=ON` — better in
-`_cross_build_sdk_component` than in the one row, since any archive we hand the SDK
-can end up inside a layer `.so`. Do NOT switch jsoncpp to a shared lib; that adds a
-runtime dependency to every shipped image.
+### VK5. aarch64 has never run on the current tree [S, ★★]
 
-**2. `gfxreconstruct` — VK2's diagnosis is CONFIRMED and is no longer the cause.**
-The configure is now completely clean: zero `Could NOT find`, and every dependency
-resolves against the target triplet (`Found ZSTD: /usr/lib/aarch64-linux-gnu/…`,
-`Found OpenGL: …/libOpenGL.so`, `Found JsonCpp: /opt/vulkan/…/aarch64/include`). So
-`CMAKE_LIBRARY_ARCHITECTURE` was the right call and the GL packages did install. What
-is left is a *header* gap, not a library one: `_vulkan_setup_sdk_includes`
-(`vulkan.sh:220`) bridges only `X11` and `xcb` into the cross compiler's
-native-system-header dir. **Fix:** `for entry in X11 xcb GL KHR EGL GLES2 GLES3; do`.
-`KHR` is not optional — `GL/gl.h` and `glcorearb.h` include `<KHR/khrplatform.h>`. The
-existing `[[ -e /usr/include/${entry} ]]` guard makes each entry a no-op where the
-package is absent, so this cannot regress a thinner lane.
+aarch64 reached `Vulkan cross-targets aarch64: 20/20 component(s) built`
+(`out/build-logs/sdk-20260908-132426/sdk-arm64.log:21316`, a real 3710 s build) —
+but that run predates every file the riscv64 closure touched: `vulkan.sh`
+(HEAD `68d4cd1d`, 21:30), `build_python.sh` (23:01) and `cross-apt.sh` (00:31)
+were all written after it ended at 16:39, and `find out -name '*arm64*' -newermt
+'2026-09-08 16:45'` returns nothing at all.
 
-**3. `vulkancapsviewer` — target Qt6 works; upstream hardcodes a raw path.** The
-REQUIRED `find_package` for Qt6 succeeds from the sysroot ("Configuring done (0.8s)"),
-so `QT_HOST_PATH` + the sysroot `CMAKE_PREFIX_PATH` did their job. It then dies at
-ninja *graph-load* time, before any rule runs:
+The lanes are demonstrably symmetric — one component table, one apt path, and the
+single substantive arch conditional (`slang`'s prebuilt-Dawn flags,
+`vulkan.sh:659-666`) is a **no-op on aarch64** by construction — so the expected
+result is an unchanged 20/20. **What closes this:** one `--only sdk
+--target-arches arm64` run reprinting that line. Cheap, and the alternative is
+carrying a number that was true of a different tree.
 
-    ninja: error: '/lib/libvulkan.so', needed by 'vulkanCapsViewer', missing
+### AS1. The apt sources still assume the build host is amd64 [M, ★★]
 
-Upstream never calls `find_package(Vulkan)` at all; its `CMakeLists.txt:92`
-interpolates `"${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so"` raw, and LunarG's own
-`./vulkansdk` passes that variable for the host build. Unset, it degrades to the host
-path. **Fix:** one line in the `vulkancapsviewer)` arm of
-`_vulkan_target_dynamic_args` — `-DVULKAN_LOADER_INSTALL_DIR="${archdir}"`, which is
-where `_vulkan_target_build_loader` already put the loader in the same stage. It
-belongs in that function and not in the table precisely because it is a PATH.
-**Still unproven after the fix:** no rule in this target has ever run on aarch64, so
-AUTOMOC/AUTORCC under `QT_HOST_PATH=/usr` remains untested. The line to look for next
-run is an aarch64 counterpart to the host's
-`[  5%] Automatic MOC and UIC for target vulkanCapsViewer`.
+Found by sweeping every writer of `/etc/apt/sources.list*` after the VK2 pocket
+fix landed. The fixed defect is closed — all three `ubuntu_write_deb822_source`
+call sites now agree on `-security`, and `Components:` has one hardcoded source of
+truth in `ubuntu-mirror.sh:104` used by both halves. Three neighbours survive it,
+all **latent today** because every cross stage builds on `linux/amd64`:
 
-**4. `slang` — the Canadian-cross fix WORKED, and the entry's own account was wrong
-about what remained.** `FAILED: [code=127] prelude/slang-cpp-host-prelude.h.cpp` is
-gone; `SLANG_GENERATORS_PATH` removed all 24 generator edges plus the 3 DXC ones. The
-new failure is an asymmetry with the vendor script, not a cross problem at all:
-LunarG's `build_slang()` copies `gfx.slang` and `slang.slang` into the build's
-`Release/bin` **between build and install**, and our generic
-`_cross_build_sdk_component` has no such step. **Fix:** replicate the vendor step —
-`cmake --build "${build_dir}" --target copy-gfx-slang-modules`, which is exactly those
-two `cp` lines and needs neither `slang-test` nor tests enabled. That needs a small
-extension to the helper (an `_xbuild_extra_targets` array threaded the way
-`_xbuild_cc`/`_xbuild_triplet` already are), so it is the largest of the four.
+1. **`Dockerfile.media:204` and `build_python.sh:159` hardcode the literal
+   `amd64`** for the host stanza, while `cross-apt.sh:199` uses
+   `$(cross_build_arch)`. On a non-amd64 build host no stanza lists the host's own
+   arch, and deb822 `Architectures:` is an absolute override, not an intersection.
+2. **An amd64 (or i386) cross TARGET gets an architecture but no archive.**
+   `cross_target_uses_ubuntu_ports` (`cross-apt.sh:75-80`) answers yes only for
+   arm64/riscv64, so `cross_prepare_foreign_arch` runs `dpkg --add-architecture`
+   at :223 and then writes nothing — and the new pocket repair never fires.
+   Reachable since `b720f17b` made non-amd64 build hosts supported.
+3. **`use-fast-ubuntu-mirror.sh:45,57-64`**: with the fast mirror on and
+   `FAST_UBUNTU_REWRITE_SECURITY` at its default `false`, the host's `-security`
+   stays on `security.ubuntu.com` while the target's comes from the fast ports
+   mirror. Same pocket, two archives — a lagging mirror reproduces the identical
+   `Multi-Arch: same` skew, and `cross_align_host_apt_pockets` cannot see it
+   because it compares suite names, never URIs.
 
-**What closes this entry** is unchanged: `<arch>/bin` carrying everything
-`x86_64/bin` does that is not structurally host-only. Three of the four fixes are one
-line; the fourth is a helper extension. **They were NOT applied during the run** —
-`vulkan.sh` is in the build context and this repo has been bitten by mid-chain edits
-before. `docs/` is `.dockerignore`d, which is why this entry could be written while
-the chain was still in `sdk-riscv64`.
+**What closes this:** (1) and (2) are small and mechanical. (3) is a decision —
+either rewrite the security URI with the archive URI, or document that a fast
+mirror must serve `-security` for the host too. None is worth a rebuild on its
+own; fold them into the next stage that touches apt.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 

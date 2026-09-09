@@ -83,11 +83,24 @@ print_smoke_header() {
   echo ""
 }
 
+# The machine string the host compiler's -dumpmachine must contain. Derived
+# from the build host, NOT hardcoded to x86_64 (2026-09-08): on an arm64 host
+# the host gcc reports aarch64-unknown-linux-gnu and the smoke failed while the
+# cross compilers it was meant to police both passed.
+smoke_host_machine() {
+  case "$(smoke_host_arch)" in
+    amd64)   printf '%s' 'x86_64' ;;
+    arm64)   printf '%s' 'aarch64' ;;
+    riscv64) printf '%s' 'riscv64' ;;
+    *)       printf '%s' "$(uname -m)" ;;
+  esac
+}
+
 check_host_gcc() {
   # Host GCC
-  echo "--- Host GCC (amd64) ---"
+  echo "--- Host GCC ($(smoke_host_arch)) ---"
   check_version "${GCC_PREFIX}/bin/gcc --version" "${GCC_VERSION}" "host gcc"
-  check_dumpmachine "${GCC_PREFIX}/bin/gcc" "x86_64" "host gcc"
+  check_dumpmachine "${GCC_PREFIX}/bin/gcc" "$(smoke_host_machine)" "host gcc"
   check_version "${GCC_PREFIX}/bin/g++ --version" "${GCC_VERSION}" "host g++"
   echo ""
 }
@@ -96,7 +109,7 @@ check_llvm_clang() {
   # LLVM/Clang
   echo "--- LLVM/Clang ---"
   check_version_major_minor "clang --version" "${LLVM_RELEASE}" "clang"
-  check_dumpmachine "$(command -v clang)" "x86_64" "host clang"
+  check_dumpmachine "$(command -v clang)" "$(smoke_host_machine)" "host clang"
   check_version_major_minor "clang++ --version" "${LLVM_RELEASE}" "clang++"
   echo ""
 }
@@ -184,7 +197,14 @@ check_python() {
 
   # Python
   echo "--- Python ---"
-  check_version "/usr/local/bin/python${PYTHON_MAJOR_MINOR} --version" "${PYTHON_VERSION}" "python${PYTHON_MAJOR_MINOR}"
+  # Say WHICH interpreter answered. A version mismatch here means the
+  # from-source CPython did not land at /usr/local/bin, and the distro one
+  # answered instead — the bare version string alone cannot tell those apart
+  # (2026-09-08, an arm64 native build reported 3.14.4 for a 3.14.7 chain).
+  local _py="/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
+  echo "  interpreter: ${_py} -> $(readlink -f "${_py}" 2>/dev/null || echo MISSING)" \
+       "($(stat -c '%y' "${_py}" 2>/dev/null | cut -d. -f1 || echo '?'))"
+  check_version "${_py} --version" "${PYTHON_VERSION}" "python${PYTHON_MAJOR_MINOR}"
   local py_sysver
   py_sysver="$(/usr/local/bin/python${PYTHON_MAJOR_MINOR} -c "import sys; print(sys.version)" 2>/dev/null | head -1 || true)"
   if echo "${py_sysver}" | grep -q "${PYTHON_VERSION}"; then

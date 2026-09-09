@@ -1,9 +1,9 @@
 {
-  "run_id": "20260903-130440-72432897",
-  "arches": "arm64",
-  "range": "media..media",
+  "run_id": "20260908-211949-d403c058",
+  "arches": "riscv64",
+  "range": "sdk..sdk",
   "stages": {
-    "media": {"status": "running", "pin": ""}
+    "sdk": {"status": "ok", "pin": ""}
   },
-  "updated": "2026-09-03T13:04:40Z"
+  "updated": "2026-09-08T22:37:51Z"
 }

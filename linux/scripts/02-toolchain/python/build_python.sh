@@ -152,10 +152,12 @@ _python_cross_enable_multiarch_apt() {
     local _codename
     _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
-    # 5th arg = add "-security" (archive: no, ports: yes). USE_FAST_UBUNTU_MIRROR is
-    # deliberately NOT honoured here — that would be a behaviour change (TS8).
+    # 5th arg = add "-security", and host and ports MUST agree: a pocket the
+    # other side lacks makes every Multi-Arch:same library uninstallable.
+    # USE_FAST_UBUNTU_MIRROR is deliberately not honoured here (TS8).
+    # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources \
-      "$(ubuntu_default_archive_mirror_url)" "${_codename}" amd64 0
+      "$(ubuntu_default_archive_mirror_url)" "${_codename}" amd64 1
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu-ports.sources \
       "$(ubuntu_default_ports_mirror_url)" "${_codename}" "arm64 riscv64" 1
     apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
@@ -505,8 +507,15 @@ make altinstall
 ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
 ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
 
-# Add the lib path to the system linker
-echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-${PYTHON_VERSION}.conf"
+# Add the lib path to the system linker. The "00-" prefix is LOAD-BEARING:
+# ldconfig reads /etc/ld.so.conf.d/*.conf alphabetically and, for a duplicate
+# SONAME, the FIRST directory scanned wins (measured 2026-09-08). The distro
+# python3.14 ships its own libpython3.14.so.1.0 under the multiarch dir, so on
+# arm64 "aarch64-linux-gnu.conf" sorted before "libc.conf" and the from-source
+# --enable-shared interpreter loaded the DISTRO libpython, reporting 3.14.4 for
+# a 3.14.7 build. A digit sorts before every letter, so this wins on every arch;
+# on amd64 it names the directory libc.conf already won with, so nothing moves.
+echo "/usr/local/lib" > "/etc/ld.so.conf.d/00-python-${PYTHON_VERSION}.conf"
 ldconfig
 
 stage_requested_cross_python_payloads
