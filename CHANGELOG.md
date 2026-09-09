@@ -6,6 +6,41 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-09 (later) — all three arches ship 52 Vulkan binaries
+
+* **VK4/VK5 closed: 52 = 52 = 52, and the foreign pair leads on layers.** Measured
+  on the pushed digests with both directories listed in a container, not derived
+  from a log: `bin/` 52 on amd64, arm64 (`@sha256:6eefc3c3`) and riscv64
+  (`@sha256:1bdfbb3a`); `explicit_layer.d` 9 on amd64 and **10** on both foreign
+  arches. Zero entries in either direction — the sets are identical, not just
+  equal in size. `dxc`, `vkconfig`, `vkconfig-gui` and `llvm-tblgen` report ELF
+  AArch64 / RISC-V, so none is a copied host binary.
+* **The gap was never a build failure.** LunarG's `./vulkansdk` builds 24
+  components under `all`; the HOST list named 18. A component not named there is
+  never checked out, and the install helper returns before incrementing
+  `_vk_attempted` — so the three missing ones were never counted as attempted and
+  the verdict read a clean `N/N`. Four rows and three dynamic-arg arms later the
+  table is 21 + 3 hardwired = 24, exactly the vendor's own `build_all` count.
+* **`-Werror` on a warning this file already knew about.** `dxc` failed the first
+  riscv64 run at `external/SPIRV-Tools/source/util/timer.h` on GCC 16's
+  `-Warray-bounds`. Configure had completed, so LLVM 3.7 does know the riscv64
+  host triple. `_vulkan_target_build_spirv_tools` had carried
+  `-DSPIRV_WERROR=OFF` for that exact warning for ages; DXC vendors its own copy
+  of SPIRV-Tools. The rebuild logged 164 such warnings on riscv64 and **93 on
+  aarch64** — the fix saved both lanes, not one.
+* **A vacuous success caught before it shipped.** VulkanTools does
+  `find_package(Qt6 ... QUIET)` and, without Qt6, drops the whole configurator
+  with a `message()` and exits 0 — the row would have counted as BUILT with no
+  vkconfig in the image. `CMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE` makes it honest.
+* **A gate that was coin-flipping.** `verify-artifact-copy-parity.sh` failed ~1
+  run in 10 on an unchanged tree, naming a different artifact each time. Both
+  sets were byte-identical on a red run: the bug was `printf | grep -qxF`, whose
+  status is not reliably 0 when `-q` exits early on a pipe. Replaced with a shell
+  `case`; 200 runs green and both directions still redden.
+* **Still open, both small:** VK6 (13 shared libraries the foreign arches do not
+  get, caused by our own `ENABLE_OPT=OFF` / `SPIRV_CROSS_SHARED` flags) and VK7
+  (11 DXC files they ship that the vendor prunes).
+
 ## 2026-09-09 — riscv64 reaches 20/20, and the apt pockets have to agree
 
 * **VK2 is closed: 20/20 Vulkan cross-components on both foreign arches.**

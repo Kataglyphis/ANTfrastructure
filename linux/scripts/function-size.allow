@@ -1,4 +1,6 @@
-# Shell functions currently over the size limit, frozen at their present length.
+# Functions currently over the size limit, frozen at their present length. Shell AND
+# Python -- 15 of the rows below are *.py. Scope is verify_code_size.py's; the
+# file-size.allow header states it.
 #
 # Format: <path> | <function> | <lines> | <reason>
 #

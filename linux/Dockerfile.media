@@ -206,11 +206,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
     # ports. Hard-coded amd64 here made a native arm64 host resolve every
     # unqualified name to :amd64 — binutils:amd64 replaced the aarch64
     # assembler and `as -EL` failed. amd64 hosts are unchanged.
+    # AS1: which archive an arch lives on is ubuntu_arch_uses_ports' answer, not
+    # a second inline list -- the host and target halves disagreeing is the class
+    # of bug that cost riscv64 its Qt6.
     _build_arch="$(build_arch_oci 2>/dev/null || echo amd64)"; \
-    case "${_build_arch}" in \
-      arm64|riscv64) _host_url="${_ports_url}" ;; \
-      *) _host_url="${_archive_url}" ;; \
-    esac; \
+    _host_url="${_archive_url}"; \
+    ubuntu_arch_uses_ports "${_build_arch}" && _host_url="${_ports_url}"; \
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources "${_host_url}" "${UBUNTU_CODENAME}" "${_build_arch}" 1; \
     # Ports sources: ONLY for the actual cross target, under the canonical
     # per-arch filename (cross-apt.sh's prune globs ubuntu-ports*.sources and
@@ -220,12 +221,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
     # "configured multiple times" warnings per apt call, 1300+/build) and made
     # every build download the OTHER arch's package indexes for nothing.
     # ... and only when the target is not the build host itself.
-    case "${TARGET_ARCH:-amd64}" in \
-      arm64|riscv64) \
-        [ "${TARGET_ARCH}" = "${_build_arch}" ] || \
-          ubuntu_write_deb822_source "/etc/apt/sources.list.d/ubuntu-ports-${TARGET_ARCH}.sources" "${_ports_url}" "${UBUNTU_CODENAME}" "${TARGET_ARCH}" 1 ;; \
-      *) : ;; \
-    esac; \
+    _tgt="${TARGET_ARCH:-amd64}"; \
+    if [ "${_tgt}" != "${_build_arch}" ]; then \
+      _tgt_url="${_archive_url}"; \
+      ubuntu_arch_uses_ports "${_tgt}" && _tgt_url="${_ports_url}"; \
+      ubuntu_write_deb822_source "/etc/apt/sources.list.d/ubuntu-ports-${_tgt}.sources" "${_tgt_url}" "${UBUNTU_CODENAME}" "${_tgt}" 1; \
+    fi; \
     apt-get update -qq
 
 # Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts).

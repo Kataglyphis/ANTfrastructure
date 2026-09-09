@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **986 entries** over **251 distinct test commands**; both digits are
+manifest holds **997 entries** over **252 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -751,9 +751,10 @@ Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
 cannot fool it. Dockerfiles have no function structure, so they are size-checked
 as files only — `Dockerfile.media` at 1162 lines is the largest **Dockerfile**
-in the tree (two files in the gate's scan set are bigger:
-`smoke-runtime-image.sh` at 2433 and `build-app-wheelhouse.sh` at 1248) and was
-invisible to every gate until 2026-09-03.
+in the tree (four files in the gate's scan set are bigger:
+`smoke-runtime-image.sh` at 2433, `bench_coding.py` at 2053, `bench_tasks.py` at
+1889 and `build-app-wheelhouse.sh` at 1248) and was invisible to every gate until
+2026-09-03.
 
 One script rather than two: the four-way contract and the allow-file handling are
 shared, and a second copy would have tripped the duplication gate — correctly.
@@ -822,9 +823,10 @@ asserts the exit code too.
 
 Owner directive 6 says two lines at the point of use; longer text belongs in
 `docs/` with a pointer. `verify_comment_size.py` fails on any NEW comment block
-over 10 lines in `linux/scripts` or `linux/host-config`. The 175 blocks that
-predate the gate are frozen in `comment-size.allow`; shrinking one means
-deleting its line, and a stale entry fails too, so the list cannot rot.
+over 10 lines in the `code-size` scan set, walked shell-only (`docs/scripts` has no
+`*.sh`, so it contributes none). The 172 blocks frozen in `comment-size.allow` are
+the inventory; shrinking one means deleting its line, and a stale entry fails too,
+so the list cannot rot.
 
 Entries are keyed on **file + the block's first comment line**, not on a line
 number — a block must not re-flag because something above it moved. One subtlety
@@ -1244,7 +1246,8 @@ and 28 entries (`gate-registry.*`).
 (`COMPLEXITY_LIMIT`, default 15, in decision paths) and **nesting depth**
 (`NESTING_LIMIT`, default 5, block levels below the function body) — over the
 same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
-`docs/scripts`), frozen in `code-complexity.allow` under the four-way contract.
+`docs/scripts`, `linux/llm-stack`), frozen in `code-complexity.allow` under the
+four-way contract.
 Today: `cc: 86 over 15 paths; 86 frozen` and `nesting: 4 over 5 levels; 4 frozen`
 (EX1 widened the scan to `linux/llm-stack` on 2026-09-07: +25 cc and +2 nesting).
 (Re-derived 2026-09-07; it read 67 and 3 for a while, which is the failure this very
@@ -1533,7 +1536,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 439 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 440 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

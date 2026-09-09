@@ -252,6 +252,25 @@ SRC
   chmod 0644 "${_SRC_FILE}"
 }
 
+t_case "one table decides which archive an arch lives on -- AS1"
+# The HOST stanza and the TARGET stanza used to answer this question in two
+# different places, and Dockerfile.media answered it with a literal. Same table
+# now, so they cannot disagree about where an arch comes from.
+# shellcheck disable=SC1090
+. "${TESTS_DIR}/../01-core/ubuntu-mirror.sh"
+for _a in arm64 riscv64 ppc64el s390x armhf; do
+  t_assert_ok ubuntu_arch_uses_ports "${_a}"
+done
+for _a in amd64 i386; do
+  t_assert_fails ubuntu_arch_uses_ports "${_a}"
+done
+t_assert_fails ubuntu_arch_uses_ports ""
+
+t_case "cross_target_uses_ubuntu_ports answers from that table, not its own list"
+t_assert_contains "$(awk '/^cross_target_uses_ubuntu_ports\(\)/,/^}/' "${TESTS_DIR}/../01-core/cross-apt.sh")" \
+  "ubuntu_arch_uses_ports" \
+  "a second inline arm64|riscv64 case is how the host and target halves drift apart"
+
 t_case "a host source missing -security gains it"
 _write_host_only_sources
 _CROSS_ENV_APT_UPDATED=1

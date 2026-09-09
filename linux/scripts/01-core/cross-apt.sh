@@ -72,11 +72,11 @@ apt_sources_set_architectures() {
   '
 }
 
+# Delegates to ubuntu-mirror.sh's single table. Same answer as the old inline
+# arm64|riscv64 case for every arch this chain builds; the difference is that a
+# NEW arch is right here for free instead of silently taking the archive branch.
 cross_target_uses_ubuntu_ports() {
-  case "$(cross_target_arch)" in
-    arm64|riscv64) return 0 ;;
-    *) return 1 ;;
-  esac
+  ubuntu_arch_uses_ports "$(cross_target_arch)"
 }
 
 cross_detect_distro_codename() {

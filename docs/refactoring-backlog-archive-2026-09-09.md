@@ -122,3 +122,68 @@ build, and it only bites once a `Multi-Arch: same` package receives a
 security-only upload. The `mirror-consistency` gate now asserts the pair rather
 than either file, and `cross_align_host_apt_pockets` repairs an inherited skew at
 the point of use so a stage need not be rebuilt to benefit.
+
+---
+
+## VK4 + VK5. CLOSED — all three arches ship 52 binaries [S, ★★]
+
+**Measured on the pushed digests, both directories listed inside a container.**
+Not derived from a log.
+
+| | amd64 | arm64 `@sha256:6eefc3c3` | riscv64 `@sha256:1bdfbb3a` |
+| --- | --- | --- | --- |
+| `bin/` | 52 | **52** | **52** |
+| `share/vulkan/explicit_layer.d` | 9 | **10** | **10** |
+| entries amd64 has and the arch lacks | — | **0** | **0** |
+
+The sets are *identical*, not merely equal in size — zero entries in either
+direction. `dxc`, `vkconfig`, `vkconfig-gui` and `llvm-tblgen` report ELF machine
+AArch64 and RISC-V respectively, so nothing is a copied host binary. Both foreign
+arches are AHEAD on layers: only they ship `VkLayer_khronos_timeline_semaphore`.
+
+`Vulkan cross-targets riscv64: 24/24` and `aarch64: 24/24`, with zero
+`unavailable on <arch>` lines in either log.
+
+### The gap was a question nobody had asked
+
+LunarG's `./vulkansdk` builds **24** components under `all`. The HOST list in
+`_vulkan_build_components` named **18**. A component not named there is never
+checked out, and `_vulkan_target_install_component` returns at its `-d` test
+*before* incrementing `_vk_attempted` — so the three missing ones were never
+counted as attempted, and the verdict line read a clean `N/N`. That is why it
+survived months of green runs.
+
+The fix was four table rows (`dxc`, `vulkantools`, `crash-diagnostic-layer`,
+`yaml-cpp`) plus three dynamic-arg arms, and the count now equals the vendor's
+own `build_all` flag count: 21 rows + 3 hardwired = 24.
+
+### Two traps that would have faked success
+
+* **`vulkantools` would have reported BUILT with no vkconfig in it.** Upstream
+  does `find_package(Qt6 ... QUIET)` and, when Qt6 is missing, skips the entire
+  configurator with a `message()` and **exits 0**. `_vk_ok` would have
+  incremented. `-DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE` turns that into an honest
+  failure; the shipped ELF proves Qt6 really was found.
+* **`dxc` failed the first run, and NOT because of riscv64.** Configure
+  completed — LLVM 3.7 does know the host triple, upstream PR #4894 carries. It
+  died compiling `external/SPIRV-Tools/source/util/timer.h` on GCC 16's
+  `-Warray-bounds`, promoted by `-Werror`. `_vulkan_target_build_spirv_tools` in
+  the same file had carried `-DSPIRV_WERROR=OFF` for that identical warning since
+  it was first diagnosed; DXC vendors its **own** copy of SPIRV-Tools, which
+  never saw the flag.
+
+**That fix saved both lanes, not one.** The rebuild logged 164 `array-bounds`
+warnings on riscv64 and **93 on aarch64** — arm64 would have died at the same
+header. It only surfaced on a foreign arch because GCC inlines differently on
+x86_64, where the host build passed.
+
+### What it cost, and what it leaves
+
+Four sdk builds. VK5 is closed in the same breath: arm64's previous 20/20 was
+measured against a tree that no longer existed, and the rebuild settles it on the
+current one.
+
+Left behind, both small and both owner decisions: **VK6** (13 shared libraries
+the foreign arches do not get, caused by our own `ENABLE_OPT=OFF` /
+`SPIRV_CROSS_SHARED` flags) and **VK7** (11 DXC files the foreign arches ship
+that the vendor prunes from the tarball).

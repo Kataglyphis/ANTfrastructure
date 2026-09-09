@@ -206,6 +206,78 @@ the safer of the two. A failure here is non-fatal by contract (`dxc` is not in
 `_VK_REQUIRED_COMPONENTS`), so the tell is the count, not an error: the stage
 reports `N/24` and ships.
 
+## The DXC prune mirrors the vendor's own
+
+VK4 gave the foreign prefixes `dxc`, and with it 1 378 new entries under
+`<ver>/<arch>/` — counted from the `cmake --install` manifest of the 2026-09-09
+runs (`vk4-arm64-20260909-134356`, `vk4b-rv64-20260909-112950`), identical on
+both arches: **13** binaries, **1 283** headers, **58** `lib/` entries, 24 under
+`share/`.
+
+LunarG's `./vulkansdk` runs `clean_nonsdk_files` at the end of every invocation
+(`CLEAN_NONSDK_FILES=1` is the default), and its `BUILD_DXC` arm deletes eight
+paths from the prefix it just built. The tarball amd64 unpacks is that script's
+output, so **amd64 has never carried them**; our cross build installs into
+`<arch>/` *after* `./vulkansdk` has finished and its clean has run, so the
+foreign prefixes kept them. Every path is arch-relative — the vendor's
+`INCLUDEDIR` and `LIBDIR` are `${SDKDIR}/$(uname -m)/{include,lib}` — so nothing
+shared is involved:
+
+| pruned | what it is | on aarch64 |
+| --- | --- | --- |
+| `include/clang/`, `include/clang-c/` | the LLVM 3.7 fork's clang headers | 480 + 8 files |
+| `include/llvm/`, `include/llvm-c/` | ditto, LLVM | 769 + 21 files |
+| `lib/libdxil.so` | the DXIL validator, `dlopen`ed by name and never a `NEEDED` | — |
+| `lib/libdxcvalidator.a`, `lib/libLLVMDxilHash.a`, `lib/libLLVMDxilValidation.a` | its static halves, already linked into `dxv` | — |
+
+**What stays is everything amd64 has**: all 13 binaries, `include/dxc/` (the
+public `dxcapi.h`/`WinAdapter.h` API), `lib/libdxcompiler.so` and the other 54
+`lib/` entries — the `libLLVM*.a`/`libclang*.a` half of the 72-file `lib/` gap the
+VK4 table names. Dropping those would swap one asymmetry for the opposite one.
+
+**Disk is not the reason.** The four header trees are 14.8 MiB at the pinned DXC
+commit (`a107ba61`, measured through the GitHub tree API) plus the tablegen output
+the install adds, so call it low tens of MB per foreign arch against a prefix that
+measured 60 MB on arm64 and 88 MB on riscv64 before VK4. The reasons are the other
+two:
+
+* **Parity.** VK4/VK5 closed on "the sets are identical, not merely equal in
+  size". This was the one remaining direction of difference, and keeping it means
+  any future prefix diff has to carry an exception list.
+* **An LLVM 3.7 `llvm/` tree inside a directory that goes on the include path.**
+  `_vulkan_setup_sdk_includes` exports `<archdir>/include` into `CPATH`,
+  `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH` and `CMAKE_INCLUDE_PATH`, and
+  `find_package(Vulkan)` hands the same directory to every consumer as
+  `Vulkan_INCLUDE_DIR`. It resolves to the `x86_64` prefix today only because
+  `install_vulkan_sdk` `rm -rf`s the version dir before each extract, so
+  `<archdir>` does not exist yet when that function runs — an ordering accident,
+  not a guard. A `#include <llvm/IR/…>` that reaches those headers ahead of LLVM
+  23 is the TVM build, and it would not fail anywhere obvious.
+
+`_vulkan_target_prune_nonsdk_dxc` (`02-toolchain/vulkan.sh`) runs from
+`_build_vulkan_targets`, which only the foreign lanes reach, immediately after
+`_vulkan_target_build_sdk_rest` — `dxc` is the **last** row of
+`_VK_TARGET_COMPONENTS`, and the install manifest confirms the row is the sole
+writer of all eight paths. It no-ops unless `<archdir>/include/dxc/dxcapi.h` is
+there: that file is the vendor's own marker that a dxc install landed *here*, and
+it is what stops the helper being pointed at `/opt/llvm-target`, whose
+`include/llvm` is 41 MB of the real LLVM 23 headers.
+
+### The other three arms are NOT mirrored
+
+`clean_nonsdk_files` has three more arms, and the foreign prefixes trip all of
+them. They are left alone deliberately:
+
+| arm | what the foreign prefixes carry | why it stays |
+| --- | --- | --- |
+| `BUILD_SPIRV_HEADERS` | `include/spirv/{1.0,1.1,1.2}` (13 files each) + `spir-v.xml` | 40 legacy-grammar files, harmless, and `spir-v.xml` is the grammar a consumer may actually read |
+| `BUILD_VUL` | `include/vulkan/layer/` (2 files) | the layer-authoring headers; free |
+| `BUILD_EXTENSION_LAYERS` | `lib/libVkLayer_khronos_timeline_semaphore.so` + its `explicit_layer.d` manifest | this is **functionality**, and it is why the foreign arches show 10 layer manifests against amd64's 9. Mirroring here would delete a working layer to match a prefix that is poorer |
+
+VK7 named the DXC arm; that is the arm the code mirrors. If the owner ever wants
+byte-for-byte vendor parity instead, the first two rows are cheap and the third
+is a regression.
+
 ## Upstream patches: recheck on every SDK bump
 
 `_vulkan_patch_component` applies these to the pinned SDK source before the cross

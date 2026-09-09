@@ -25,6 +25,7 @@ for _fn in _cross_build_sdk_component \
            _vulkan_target_build_glslang \
            _vulkan_target_verdict \
            _vulkan_prune_sdk_sources \
+           _vulkan_target_prune_nonsdk_dxc \
            _build_vulkan_targets; do
   _src="$(awk "/^${_fn}\(\) \{/,/^\}/" "${VULKAN_SH}")"
   t_case "vulkan.sh still defines ${_fn}"
@@ -125,7 +126,7 @@ t_assert_contains "${_out}" \
   "glslang flags changed"
 
 t_case "step order: the four TVM needs, then the rest of the SDK, then the verdict"
-t_assert_eq "vulkan-loader-aarch64 spirv-tools-aarch64 glslang-aarch64 spirv-headers-aarch64" \
+t_assert_eq "vulkan-loader-aarch64 spirv-tools-aarch64 glslang-shared-aarch64 glslang-aarch64 spirv-headers-aarch64" \
   "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
 t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 4/4 component(s) built"
 t_assert_contains "${_out}" "EXIT 0"
@@ -276,6 +277,25 @@ _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG slang: no host generators at SDK/source/slang/build/generators/Release/bin"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DSLANG_GENERATORS_PATH' || true)"
 
+t_case "glslang is configured TWICE, shared first and static LAST -- VK6"
+# BUILD_SHARED_LIBS is exclusive, not additive: ON alone trades the six static
+# installs for nine shared ones. The vendor runs both passes into one prefix, and
+# the static one must land last because it owns the exported CMake package that
+# find_package(glslang) reads. Order is the whole point, so assert it.
+_fixture full
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "-B TMP/glslang-shared-aarch64" "the shared pass must exist at all"
+t_assert_contains "${_out}" "-DBUILD_SHARED_LIBS=ON" "without it the pass is a duplicate of the static one"
+t_assert_contains "${_out}" "-DBUILD_SHARED_LIBS=OFF" "the static pass must say so explicitly, not rely on the default"
+_shared_at="$(printf '%s\n' "${_out}" | grep -n -e '-B TMP/glslang-shared-aarch64' | head -1 | cut -d: -f1)"
+_static_at="$(printf '%s\n' "${_out}" | grep -n -e '-B TMP/glslang-aarch64' | head -1 | cut -d: -f1)"
+t_assert_eq "shared-first" "$([ "${_shared_at}" -lt "${_static_at}" ] && echo shared-first || echo WRONG-ORDER)" \
+  "static last, or lib/cmake/glslang describes SHARED imported targets and every find_package consumer changes meaning"
+
+t_case "spirv-cross also emits the shared C API -- VK6"
+t_assert_contains "${_VK_TABLE_SRC}" "-DSPIRV_CROSS_SHARED=ON" \
+  "purely additive here: it ADDS libspirv-cross-c-shared.so* and its .pc without turning the static targets off"
+
 t_case "the caps viewer gets target Qt6 from the sysroot and host moc from /usr"
 _fixture rest
 _out="$(_trace 0 0)"
@@ -345,6 +365,70 @@ mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/DirectXShaderCompiler"
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG dxc: no host tblgen at SDK/source/DirectXShaderCompiler/build/bin"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DLLVM_TABLEGEN' || true)"
+
+# ── VK7: the DXC files the vendor prunes out of its own tarball ────────────
+# clean_nonsdk_files' BUILD_DXC arm. Measured on the 2026-09-09 sdk runs: the row
+# installs 1 283 headers into <arch>/include, 1 278 of them the LLVM 3.7 fork's
+# clang/llvm trees, and 4 of its 58 lib entries are the ones amd64 never sees.
+# docs/vulkan-foreign-arch-sdk.md#the-dxc-prune-mirrors-the-vendors-own
+_dxc_installed() {
+  mkdir -p "${SDK}/aarch64/include/clang/Basic" "${SDK}/aarch64/include/clang-c" \
+           "${SDK}/aarch64/include/llvm/IR" "${SDK}/aarch64/include/llvm-c" \
+           "${SDK}/aarch64/include/dxc" "${SDK}/aarch64/lib" "${SDK}/aarch64/bin"
+  : > "${SDK}/aarch64/include/clang/Basic/Version.inc"
+  : > "${SDK}/aarch64/include/clang-c/Index.h"
+  : > "${SDK}/aarch64/include/llvm/IR/Module.h"
+  : > "${SDK}/aarch64/include/llvm-c/Core.h"
+  : > "${SDK}/aarch64/include/dxc/dxcapi.h"
+  : > "${SDK}/aarch64/include/dxc/WinAdapter.h"
+  local _l
+  for _l in libdxil.so libLLVMDxilHash.a libLLVMDxilValidation.a libdxcvalidator.a \
+            libdxcompiler.so libLLVMDxilContainer.a libclangSPIRV.a libLLVMSupport.a; do
+    : > "${SDK}/aarch64/lib/${_l}"
+  done
+  : > "${SDK}/aarch64/bin/dxc"
+}
+_present() { test -e "${SDK}/aarch64/$1" && echo kept || echo gone; }
+
+t_case "the four DXC include trees and four libs the vendor prunes are dropped"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/DirectXShaderCompiler"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_dxc_installed
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "LOG Pruning the DXC non-SDK files LunarG prunes from its own tarball under SDK/aarch64"
+for _p in include/clang include/clang-c include/llvm include/llvm-c \
+          lib/libdxil.so lib/libLLVMDxilHash.a lib/libLLVMDxilValidation.a lib/libdxcvalidator.a; do
+  t_assert_eq "gone" "$(_present "${_p}")" \
+    "${_p} is in clean_nonsdk_files' BUILD_DXC arm; the amd64 tarball has never carried it"
+done
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "everything the vendor KEEPS from the same install survives"
+for _p in include/dxc/dxcapi.h include/dxc/WinAdapter.h bin/dxc lib/libdxcompiler.so \
+          lib/libLLVMDxilContainer.a lib/libclangSPIRV.a lib/libLLVMSupport.a; do
+  t_assert_eq "kept" "$(_present "${_p}")" \
+    "amd64 ships this (lib/ 118 vs 52 on 2026-09-09); pruning it swaps one asymmetry for another"
+done
+
+t_case "the prune runs AFTER the row that installs them, or it deletes nothing"
+t_assert_eq "_vulkan_target_build_sdk_rest _vulkan_target_prune_nonsdk_dxc _vulkan_target_verdict" \
+  "$(awk '/^_build_vulkan_targets\(\) \{/,/^\}/' "${VULKAN_SH}" \
+     | sed -n 's/^  \(_vulkan_target_\(build_sdk_rest\|prune_nonsdk_dxc\|verdict\)\) .*/\1/p' \
+     | tr '\n' ' ' | sed 's/ $//')" \
+  "dxc is the LAST table row; a prune ahead of it is a no-op that still reports success"
+
+t_case "a prefix where dxc did not land is left alone"
+_fixture empty
+mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/aarch64/include/llvm" "${SDK}/aarch64/lib"
+: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+: > "${SDK}/aarch64/include/llvm/IR.h"
+: > "${SDK}/aarch64/lib/libdxil.so"
+_out="$(_trace 0 0)"
+t_assert_eq "kept" "$(_present include/llvm/IR.h)" \
+  "include/dxc/dxcapi.h is the marker that this prefix IS a dxc install; /opt/llvm-target carries a 41 MB include/llvm of its own"
+t_assert_eq "kept" "$(_present lib/libdxil.so)"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'Pruning the DXC' || true)"
 
 # ── the four defects the 2026-09-08 chain measured behind the VK2 routes ────
 # Each route worked; each component then died at something new. These pin the

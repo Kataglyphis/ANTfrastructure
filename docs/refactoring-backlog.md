@@ -53,11 +53,13 @@ VK3, CS2, CS3, DISK3, R1, YB and F3 — and they now live in
 [`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md) with the
 evidence that closed each one.
 
-**What is left in this file is four open entries and two standing tracks.** VK2
-closed on 2026-09-09 — 20/20 on both foreign arches, proven on the shipped bytes —
-and left three successors behind it: **VK4** (the 15 tarball-only binaries),
-**VK5** (aarch64 never ran on the current tree) and **AS1** (the apt sources still
-assume an amd64 build host). **EX1 is new on 2026-09-07**: the extent
+**What is left in this file is four open entries and two standing tracks.** VK2,
+VK4 and VK5 all closed on 2026-09-09: **all three arches now ship 52 binaries and
+the foreign pair ships 10 layers to amd64's 9**, measured on the pushed digests
+with both directories listed. What VK4 left behind is smaller and named:
+**VK6** (13 shared libraries the foreign arches do not get), **VK7** (11 files
+they ship that amd64 prunes) and **AS1** (the apt sources still assume an amd64
+build host). **EX1 is new on 2026-09-07**: the extent
 gates do not scan `linux/llm-stack` at all, so F1's and F2's registers have never
 been able to see a fifth of the repo's Python. F1 and F2 themselves are registers of
 reviewed verdicts, not queues: nothing in them is a defect, and their job is to catch
@@ -102,8 +104,8 @@ only.** Everything downstream of it is still landed-but-unbuilt:
    either directory had been listed. Assume some will not survive the next.
 
 **No entry in this file names a defect with a live failure mode.** AS1's three
-neighbours are latent (every cross stage builds on `linux/amd64`); VK4 and VK5 are
-a decision and a confirming run.
+neighbours are latent (every cross stage builds on `linux/amd64`); VK6 and VK7 are
+two owner decisions and no rebuild.
 
 
 **Image sizes from this run**, which CC1 asked for at three groomings and never got:
@@ -125,7 +127,7 @@ existed.
 **Honesty about the rest:** the one open entry names no defect with a known failure
 mode. What F1 and F2 now carry from `linux/llm-stack` is real, named, seam-bearing
 debt — but it is a register, not a queue, and none of it blocks a build.
-What is left is **four open entries (VK4, VK5, AS1, EX1) and two registers (F1, F2)** — the same
+What is left is **four open entries (VK6, VK7, AS1, EX1) and two registers (F1, F2)** — the same
 inventory the section above gives. Earlier groomings carried a second, longer count
 here ("one owner decision, two cheap wins, a ratchet, a guard that needs a lever it
 does not have, and three tracks") that matched nothing in the file.
@@ -187,48 +189,43 @@ linked its closure. Everything below is context, not a block:
    validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
    it (login-gated).
 
-### VK4. The 15 binaries no arch builds — is `vkconfig` one of them? [S, ★★]
+### VK6. Thirteen SHARED libraries the foreign arches do not get [S, ★★]
 
-**Measured on the pushed `@sha256:09a4d255`, both directories listed in a
-container:** `x86_64/bin` 52 entries, `riscv64/bin` 37, riscv64 a strict subset.
-The 15-entry delta is exactly `dxa dxa-3.7 dxc dxc-3.7 dxl dxl-3.7 dxopt
-dxopt-3.7 dxr dxr-3.7 dxv dxv-3.7 llvm-tblgen vkconfig vkconfig-gui`.
+Measured 2026-09-09 on the pushed riscv64 sdk digest, both `lib/` trees listed in
+a container: **x86_64 118, riscv64 115**, and after VK4 the delta is down from 72
+to 14. One of those 14 is not a gap at all (`VulkanLoader/` is a subdirectory on
+amd64 while the foreign prefixes keep `libvulkan.so*` flat beside it — the layout
+`Dockerfile.package:270`, `tvm-detect.sh:338` and `prune-vulkan-host-sdk.sh:37`
+all already assume). The other **13 are real**:
 
-They were absent because `vulkan.sh` never named them — 0 hits for `vkconfig`,
-`Vulkan-Configurator` or `dxc`. **Not** because they are prebuilt-only: the
-vendor script builds both from a checkout, and the tarball's x86_64 binaries are
-that script's own output. So this is not a regression VK2 left behind; it is a
-question that had never been asked.
+    libglslang.so{,.16,.16.4.0}
+    libglslang-default-resource-limits.so{,.16,.16.4.0}
+    libSPIRV.so{,.16,.16.4.0}
+    libspirv-cross-c-shared.so{,.0,.0.68.0}
+    libshaderc_util.a
 
-Three answers, and only one needs a decision:
-* `llvm-tblgen` is structurally host-only. Nothing to do.
-* The 12 DXC entries are a large LLVM fork LunarG ships prebuilt for x86_64.
-  Building it per-target is out of proportion to any use this image has.
-* **`vkconfig`/`vkconfig-gui` is the open one.** It is a Qt6 GUI app, and Qt6
-  cross-compilation only started working on 2026-09-09 — so the reason it was
-  never in `_VK_TARGET_COMPONENTS` no longer applies. **What closes this:** an
-  owner decision, then either an 18th table row or a line in
-  `vulkan-foreign-arch-sdk.md` saying it is deliberately host-only.
+The cause is in our own flags, not the architecture: `vulkan.sh:757` builds
+glslang with `-DENABLE_OPT=OFF` and never sets `BUILD_SHARED_LIBS`, and the
+spirv-cross row never sets `SPIRV_CROSS_SHARED`. The foreign arches get only the
+static halves. **A consumer that links `-lglslang` or `spirv-cross-c-shared`
+dynamically works on amd64 and fails on arm64/riscv64** — which is the shape of
+bug this repo keeps paying for late.
 
-`spirv-remap` is in neither tree, so `-DENABLE_SPVREMAPPER=OFF` on the cross
-glslang costs no parity — checked because it was the one concrete reason to doubt
-subset-ness.
+**What closes this:** either set the two flags and re-measure, or write down in
+`vulkan-foreign-arch-sdk.md` that the foreign prefixes are static-only and say
+what that costs a consumer. Not a rebuild on its own.
 
-### VK5. aarch64 has never run on the current tree [S, ★★]
+### VK7. Eleven files the foreign arches ship and amd64 does not [S, ★]
 
-aarch64 reached `Vulkan cross-targets aarch64: 20/20 component(s) built`
-(`out/build-logs/sdk-20260908-132426/sdk-arm64.log:21316`, a real 3710 s build) —
-but that run predates every file the riscv64 closure touched: `vulkan.sh`
-(HEAD `68d4cd1d`, 21:30), `build_python.sh` (23:01) and `cross-apt.sh` (00:31)
-were all written after it ended at 16:39, and `find out -name '*arm64*' -newermt
-'2026-09-08 16:45'` returns nothing at all.
+The same measurement, the other direction: `libdxil.so`, `libdxcvalidator.a`,
+`libLLVMDxilHash.a`, `libLLVMDxilValidation.a` and the `include/{clang,llvm}`
+trees exist on riscv64 and arm64 but **not** on amd64. They are exactly the eight
+paths LunarG's own `clean_nonsdk_files` deletes when `BUILD_DXC=1` — the vendor
+prunes them out of the tarball and our cross build does not.
 
-The lanes are demonstrably symmetric — one component table, one apt path, and the
-single substantive arch conditional (`slang`'s prebuilt-Dawn flags,
-`vulkan.sh:659-666`) is a **no-op on aarch64** by construction — so the expected
-result is an unchanged 20/20. **What closes this:** one `--only sdk
---target-arches arm64` run reprinting that line. Cheap, and the alternative is
-carrying a number that was true of a different tree.
+This is how VK4 proved the tarball is that script's own output, so the asymmetry
+is understood, not mysterious. It is still an owner decision: mirror the vendor's
+prune, or keep them and say why. Cheap either way, and it does not move the 52.
 
 ### AS1. The apt sources still assume the build host is amd64 [M, ★★]
 

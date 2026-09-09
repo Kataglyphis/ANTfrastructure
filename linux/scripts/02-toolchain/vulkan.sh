@@ -448,6 +448,22 @@ _vulkan_prune_sdk_sources() {
   ${SUDO:-} rm -rf "${target_dir}/source"
 }
 
+# The DXC row installs an LLVM 3.7 fork's headers and validator into the target
+# prefix; LunarG's own clean_nonsdk_files drops them, so the tarball amd64 gets
+# has never carried them. Mirror that arm, after the row that writes them.
+# docs/vulkan-foreign-arch-sdk.md#the-dxc-prune-mirrors-the-vendors-own
+_vulkan_target_prune_nonsdk_dxc() {
+  local archdir="$1" rel
+
+  [ -f "${archdir}/include/dxc/dxcapi.h" ] || return 0
+  log "Pruning the DXC non-SDK files LunarG prunes from its own tarball under ${archdir}"
+  for rel in include/clang include/clang-c include/llvm include/llvm-c \
+             lib/libdxil.so lib/libLLVMDxilHash.a lib/libLLVMDxilValidation.a \
+             lib/libdxcvalidator.a; do
+    ${SUDO:-} rm -rf "${archdir:?}/${rel}"
+  done
+}
+
 _build_vulkan_sdk_cross() {
   local arch_suffix="$1"
   local target_dir="$2"
@@ -680,7 +696,7 @@ spirv-headers|SPIRV-Headers|
 vulkan-utility-libraries|Vulkan-Utility-Libraries|
 volk|volk|-DVOLK_INSTALL=ON
 vma|VulkanMemoryAllocator|
-spirv-cross|SPIRV-Cross|-DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_TESTS=OFF
+spirv-cross|SPIRV-Cross|-DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_TESTS=OFF -DSPIRV_CROSS_SHARED=ON
 spirv-reflect|SPIRV-Reflect|-DSPIRV_REFLECT_EXECUTABLE=ON -DSPIRV_REFLECT_STATIC_LIB=ON
 shaderc|shaderc/src,shaderc|-DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_ENABLE_INSTALL=ON
 vulkan-tools|Vulkan-Tools|-DBUILD_VULKANINFO=ON -DBUILD_CUBE=ON
@@ -852,13 +868,27 @@ _vulkan_target_build_glslang() {
   if [ -d "${glslang_src}" ]; then
     _vk_attempted=$((_vk_attempted + 1))
     log "Cross-building glslang (glslangValidator) for ${arch_suffix}"
+    # BUILD_SHARED_LIBS is EXCLUSIVE, not additive: ON alone would trade the six
+    # static installs for nine shared ones. The vendor configures glslang twice
+    # into one prefix, and the STATIC pass must land last because it owns the
+    # exported CMake package that find_package(glslang) reads.
+    _cross_build_sdk_component "${glslang_src}" "glslang-shared-${arch_suffix}" \
+        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+        -DENABLE_OPT=OFF \
+        -DGLSLANG_TESTS=OFF \
+        -DBUILD_TESTING=OFF \
+        -DENABLE_GLSLANG_BINARIES=ON \
+        -DENABLE_SPVREMAPPER=OFF \
+        -DBUILD_SHARED_LIBS=ON \
+      || log "glslang: shared pass failed; the prefix keeps the static half only"
     if _cross_build_sdk_component "${glslang_src}" "glslang-${arch_suffix}" \
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
         -DENABLE_OPT=OFF \
         -DGLSLANG_TESTS=OFF \
         -DBUILD_TESTING=OFF \
         -DENABLE_GLSLANG_BINARIES=ON \
-        -DENABLE_SPVREMAPPER=OFF; then
+        -DENABLE_SPVREMAPPER=OFF \
+        -DBUILD_SHARED_LIBS=OFF; then
       _vulkan_target_link_glslang_aliases "${archdir}"
       _vk_ok=$((_vk_ok + 1))
       log "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
@@ -943,6 +973,7 @@ _build_vulkan_targets() {
   _vulkan_target_build_spirv_tools "${arch_suffix}" "${archdir}" "${spirv_tools_src}" "${spirv_headers_src}"
   _vulkan_target_build_glslang "${arch_suffix}" "${archdir}" "${target_dir}"
   _vulkan_target_build_sdk_rest "${arch_suffix}" "${archdir}" "${target_dir}" "${target_triplet}"
+  _vulkan_target_prune_nonsdk_dxc "${archdir}"
   _vulkan_target_verdict "${arch_suffix}" "${target_triplet}"
 }
 

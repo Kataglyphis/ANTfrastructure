@@ -29,7 +29,9 @@ import gate_scope  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comment-size.allow")
 LIMIT = int(os.environ.get("COMMENT_SIZE_LIMIT", "10"))
-SCAN = ("linux/scripts", "linux/host-config")
+SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
+# verify_code_size.SCAN, minus its SKIP_DIRS: patches/ holds one real script whose
+# header this gate has always covered. Shell-only, so docs/scripts contributes none.
 
 
 def _walk_scan(root, tops):

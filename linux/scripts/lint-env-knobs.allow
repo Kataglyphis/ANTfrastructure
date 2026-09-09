@@ -401,3 +401,9 @@ APP_PACKAGING_MAINTAINER
 KATAGLYPHIS_FLATPAK_VERBOSE
 KATAGLYPHIS_FLATPAK_WORKDIR
 KATAGLYPHIS_PACKAGING_WORKDIR
+# renovate-local.sh (1fef6f28) — two operator switches for the local dependency
+# CLI. Both are read-only fallbacks with sane defaults and are never assigned
+# in-repo: RENOVATE_LOCAL_CACHE overrides the XDG cache root (:88),
+# RENOVATE_LOG_LEVEL is passed through to renovate itself (:191).
+RENOVATE_LOCAL_CACHE
+RENOVATE_LOG_LEVEL

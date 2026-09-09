@@ -2,6 +2,11 @@
 # Owner directive (AGENTS.md priority 6): two lines at the point of use;
 # longer text goes into docs/ with a pointer. Shrink one, then DELETE its line.
 # Format: <file>\t<first comment line>.  docs/code-quality-tooling.md
+# --- EX1 2026-09-09: docs/scripts and linux/llm-stack enter this gate too, so its
+# scan set is code-size's. ONE block was over the limit -- ci-contract-tests.sh's
+# header, which records why the CI command is UNCHANGED. Frozen, not shortened:
+# moving it needs a docs/ home and an anchor, a separate edit from bringing the
+# directory into scope.
 
 linux/host-config/ghcr-common.sh	#!/usr/bin/env bash
 linux/host-config/ghcr-delete-tags.sh	#!/usr/bin/env bash
@@ -10,6 +15,7 @@ linux/host-config/install-mistral-vibe-riscv64.sh	#!/usr/bin/env bash
 linux/host-config/install-nerdctl-full.sh	# ── QEMU binfmt: restarting the rootless stack DESTROYS it
 linux/host-config/install-nerdctl-full.sh	#!/usr/bin/env bash
 linux/host-config/prune-safe.sh	#!/usr/bin/env bash
+linux/llm-stack/ci-contract-tests.sh	#!/usr/bin/env bash
 linux/scripts/01-core/abseil-headers.sh	# install_abseil_headers — fetch and extract the abseil-cpp
 linux/scripts/01-core/ancestry.sh	# ==========================================================
 linux/scripts/01-core/ancestry.sh	# Read a provenance value out of the image CONFIG labels (th

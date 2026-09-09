@@ -1200,6 +1200,14 @@
     "why": "a block that ends at a code line is the common shape; stop collecting it and the gate sees nothing"
   },
   {
+    "id": "comment-size.llm-stack-is-a-subject",
+    "target": "linux/scripts/verify_comment_size.py",
+    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
+    "replace": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "EX1: this gate kept its own narrow scan after code-size widened, so linux/llm-stack's shell files sat outside owner directive 6 entirely; dropping it again un-freezes the ci-contract-tests.sh row in silence"
+  },
+  {
     "id": "masked-decls.verdict-discarded",
     "target": "linux/scripts/verify_masked_assignments.py",
     "find": "    return rc",
@@ -7409,7 +7417,7 @@
   {
     "id": "lint-gates.shell-list-is-git-not-a-glob",
     "target": "linux/scripts/run-lint-gates.sh",
-    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- '*.sh')",
+    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- \"${spec}\")",
     "replace": "  done < <(cd \"${_LINT_GATES_ROOT}\" && printf '%s\\0' */*.sh)",
     "test": "bash linux/scripts/tests/test-lint-gates.sh",
     "why": "the shellcheck scope is `git ls-files`, not a glob: `*/*.sh` does not recurse without globstar, so the gate reads the directories somebody remembered and reports green over the rest"
@@ -7417,16 +7425,16 @@
   {
     "id": "lint-gates.non-ascii-path-needs-nul",
     "target": "linux/scripts/run-lint-gates.sh",
-    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- '*.sh')",
-    "replace": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -- '*.sh' | tr '\\n' '\\0')",
+    "find": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -z -- \"${spec}\")",
+    "replace": "  done < <(git -C \"${_LINT_GATES_ROOT}\" ls-files -- \"${spec}\" | tr '\\n' '\\0')",
     "test": "bash linux/scripts/tests/test-lint-gates.sh",
     "why": "without -z git QUOTES a non-ASCII path (\"a\\303\\237-dir/d.sh\") and the quoted string names no file, so that script is silently never linted"
   },
   {
     "id": "lint-gates.empty-shell-list-refuses",
     "target": "linux/scripts/run-lint-gates.sh",
-    "find": "    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\\n' >&2\n    return 1",
-    "replace": "    printf 'arguments falls back to ContainerHub OWN tree and would pass.)\\n' >&2\n    return 0",
+    "find": "    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\\n' >&2\n    return 1",
+    "replace": "    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\\n' >&2\n    return 0",
     "test": "bash linux/scripts/tests/test-lint-gates.sh",
     "why": "an empty file list must FAIL, not merely print: lint-shell.sh with zero file arguments lints ContainerHub's own tree and exits 0, which is green over the consumer's nothing"
   },
@@ -7920,5 +7928,85 @@
     "replace": "-DHLSL_INCLUDE_TESTS=OFF",
     "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
     "why": "MEASURED 2026-09-09: without it the riscv64 cross-build dies at external/SPIRV-Tools/source/util/timer.h on GCC 16 -Warray-bounds promoted by -Werror, and the lane silently ships 23/24 -- the standalone SPIRV-Tools builder in the same file already carries the flag for the identical warning"
+  },
+  {
+    "id": "vulkan.dxc-nonsdk-prune-wired",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  _vulkan_target_prune_nonsdk_dxc \"${archdir}\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the helper is unreachable unless _build_vulkan_targets calls it, and without the call both foreign prefixes keep the 1 278 LLVM 3.7 headers and 4 validator libs LunarG's own clean_nonsdk_files drops -- the VK7 asymmetry amd64 has never had"
+  },
+  {
+    "id": "vulkan.dxc-nonsdk-prune-runs-after-the-row-that-writes-them",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  _vulkan_target_build_sdk_rest \"${arch_suffix}\" \"${archdir}\" \"${target_dir}\" \"${target_triplet}\"\n  _vulkan_target_prune_nonsdk_dxc \"${archdir}\"",
+    "replace": "  _vulkan_target_prune_nonsdk_dxc \"${archdir}\"\n  _vulkan_target_build_sdk_rest \"${arch_suffix}\" \"${archdir}\" \"${target_dir}\" \"${target_triplet}\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "dxc is the LAST row of _VK_TARGET_COMPONENTS and the sole writer of all eight paths; a prune ahead of it deletes nothing and still logs and exits 0, which is the silent shape VK4 already paid for"
+  },
+  {
+    "id": "vulkan.dxc-nonsdk-prune-marker-guard",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  [ -f \"${archdir}/include/dxc/dxcapi.h\" ] || return 0",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "dxcapi.h is the vendor's own marker that a dxc install landed in THIS prefix; without it the helper rm -rf's include/llvm out of whatever directory it is handed, and /opt/llvm-target's include/llvm is 41 MB of real LLVM 23 headers that LLVMConfig.cmake and 1.3 GB of libLLVM*.a resolve through"
+  },
+  {
+    "id": "vulkan.dxc-nonsdk-prune-keeps-the-public-api",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "  for rel in include/clang include/clang-c include/llvm include/llvm-c \\\n",
+    "replace": "  for rel in include/dxc include/clang include/clang-c include/llvm include/llvm-c \\\n",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "clean_nonsdk_files KEEPS include/dxc -- build_dxc installs dxcapi.h and WinAdapter.h there on purpose and amd64 ships them; over-pruning swaps the VK7 asymmetry for its mirror image and takes the only public DXC API header with it"
+  },
+  {
+    "id": "vulkan.glslang-shared-pass-exists",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "        -DBUILD_SHARED_LIBS=ON \\\n      || log \"glslang: shared pass failed; the prefix keeps the static half only\"",
+    "replace": "        -DBUILD_SHARED_LIBS=OFF \\\n      || log \"glslang: shared pass failed; the prefix keeps the static half only\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "VK6: without BUILD_SHARED_LIBS=ON the first pass is a duplicate of the second and libglslang.so/libSPIRV.so/libglslang-default-resource-limits.so never exist on the foreign arches -- 9 of the 13 files amd64 has and they do not"
+  },
+  {
+    "id": "vulkan.glslang-static-pass-lands-last",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "-DBUILD_SHARED_LIBS=OFF; then",
+    "replace": "-DBUILD_SHARED_LIBS=ON; then",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "the LAST install owns lib/cmake/glslang, so a shared-last order makes find_package(glslang) describe SHARED imported targets and silently changes what every consumer links -- the flags are exclusive, not additive"
+  },
+  {
+    "id": "vulkan.spirv-cross-emits-the-shared-c-api",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "-DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_TESTS=OFF -DSPIRV_CROSS_SHARED=ON",
+    "replace": "-DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_TESTS=OFF",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "VK6: SPIRV_CROSS_SHARED defaults OFF, so libspirv-cross-c-shared.so* and lib/pkgconfig/spirv-cross-c-shared.pc simply never install on the foreign arches"
+  },
+  {
+    "id": "cross-build.arch-table-knows-ports",
+    "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+    "find": "    amd64|i386) return 1 ;;\n    \"\") return 1 ;;\n    *) return 0 ;;",
+    "replace": "    *) return 1 ;;",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "AS1: every non-x86 Ubuntu arch lives on ports.ubuntu.com; answering 'archive' for arm64 routes the HOST stanza at a URL that 404s binary-arm64, and apt cannot skip a wrongly-routed arch because the Release file advertises all seven"
+  },
+  {
+    "id": "cross-build.target-ports-comes-from-the-table",
+    "target": "linux/scripts/01-core/cross-apt.sh",
+    "find": "cross_target_uses_ubuntu_ports() {\n  ubuntu_arch_uses_ports \"$(cross_target_arch)\"\n}",
+    "replace": "cross_target_uses_ubuntu_ports() {\n  case \"$(cross_target_arch)\" in\n    arm64|riscv64) return 0 ;;\n    *) return 1 ;;\n  esac\n}",
+    "test": "bash linux/scripts/tests/test-cross-apt.sh",
+    "why": "a second inline list is how the host and target halves drift apart -- the VK2 pocket skew was exactly two places answering one question differently"
+  },
+  {
+    "id": "cross-build.fast-mirror-rewrites-security",
+    "target": "linux/scripts/01-core/base-image.sh",
+    "find": "  rewrite_security=\"${FAST_UBUNTU_REWRITE_SECURITY:-true}\"",
+    "replace": "  rewrite_security=\"${FAST_UBUNTU_REWRITE_SECURITY:-false}\"",
+    "test": "bash linux/scripts/tests/test-base-image-parse-options.sh",
+    "why": "AS1: false leaves the host -security on security.ubuntu.com while the target pocket comes from the fast mirror -- same pocket, two archives, and a lagging mirror reproduces the Multi-Arch:same skew that cost riscv64 its Qt6"
   }
 ]

@@ -170,6 +170,15 @@ for _b in 1 true TRUE yes YES 0 false FALSE no NO; do
   t_assert_eq "${_b}" "$(bi_var FAST_UBUNTU_REWRITE_SECURITY configure-fast-mirror --rewrite-security "${_b}")"
 done
 
+t_case "the -security rewrite DEFAULT is on -- AS1"
+# Not a style choice. With it off the host keeps its -security on
+# security.ubuntu.com while the target pocket comes from the fast mirror: the
+# same pocket from two archives, and a lagging mirror then reproduces the
+# Multi-Arch:same version skew that cost riscv64 its Qt6. Read the shipped
+# default out of the script, so flipping it back reddens here.
+t_assert_contains "$(grep -e 'rewrite_security="\${FAST_UBUNTU_REWRITE_SECURITY' "${TESTS_DIR}/../01-core/base-image.sh")" \
+  ":-true}" "false stays the explicit opt-out; it must not be what you get by saying nothing"
+
 t_case "parse_bool_flag rejects non-booleans"
 t_assert_fails bi_var FAST_UBUNTU_REWRITE_SECURITY configure-fast-mirror --rewrite-security True
 t_assert_fails bi_var FAST_UBUNTU_REWRITE_SECURITY configure-fast-mirror --rewrite-security 2
