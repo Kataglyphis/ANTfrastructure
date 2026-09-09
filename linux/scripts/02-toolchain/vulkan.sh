@@ -21,6 +21,22 @@ if ! command -v download_file >/dev/null 2>&1; then
   unset _vulkan_dl
 fi
 
+# State, not guesswork: a later "cannot find -lxcb" must be diagnosable from the
+# log alone. These three link-time symlinks decide whether vulkan-tools links at
+# all, and they are exactly what went missing on 2026-09-09.
+_vulkan_report_wsi_link_libs() {
+  local t l
+  t="$(arch_deb_multiarch_triplet_for "$(cross_target_arch)" 2>/dev/null || true)"
+  [ -n "${t}" ] || return 0
+  for l in libxcb libX11 libwayland-client; do
+    if [ -e "/usr/lib/${t}/${l}.so" ]; then
+      log "WSI link lib present: /usr/lib/${t}/${l}.so"
+    else
+      warn "WSI link lib MISSING: /usr/lib/${t}/${l}.so — vulkan-tools cannot link"
+    fi
+  done
+}
+
 install_vulkan_prereqs() {
   log "Installing Vulkan SDK prerequisites"
   local -a host_packages=(
@@ -76,14 +92,20 @@ install_vulkan_prereqs() {
       || log "jsonschema venv install failed (schema validation will be skipped — non-fatal)"
   fi
 
-  if cross_build_is_active && \
-     command -v install_target_packages >/dev/null 2>&1; then
-    # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
-    # Install the WSI and compression dev packages for that target too.
+  if command -v install_target_packages >/dev/null 2>&1; then
+    # The WSI and compression dev packages are needed for whatever arch the SDK
+    # is about to be built FOR — including when that arch IS the build host,
+    # where cross_build_is_active() is false by definition and the old guard
+    # skipped them entirely. install_target_packages already resolves to plain
+    # (unsuffixed) names off the cross path, so on a native target this simply
+    # installs/repairs the native ones; on a foreign target it is unchanged.
+    # 2026-09-09: an arm64 native build linked vulkaninfo against nothing
+    # ("cannot find -lxcb/-lX11/-lwayland-client") even with -L present.
     install_target_packages "${target_pkgconfig_packages[@]}"
     if command -v install_optional_target_packages >/dev/null 2>&1; then
       install_optional_target_packages "${target_optional_packages[@]}"
     fi
+    _vulkan_report_wsi_link_libs
   fi
 }
 
