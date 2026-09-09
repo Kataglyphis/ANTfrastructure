@@ -61,15 +61,19 @@ function Get-PinScanAst {
     }
 }
 
+# Both Describe blocks below read the same canonical pin file; they differed only
+# in the label on the throw, which the duplication gate counted as a copied block.
+function Get-CanonicalPins {
+    param([Parameter(Mandatory)][string]$Label)
+    $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
+    if (-not (Test-Path $envPath)) {
+        throw "${Label}: canonical pin file not found at $envPath"
+    }
+    return (ConvertFrom-VersionsEnv -Path $envPath)
+}
 Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' {
 
-    function Get-PinParityPins {
-        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
-        if (-not (Test-Path $envPath)) {
-            throw "PinParity: canonical pin file not found at $envPath"
-        }
-        return (ConvertFrom-VersionsEnv -Path $envPath)
-    }
+    function Get-PinParityPins { return (Get-CanonicalPins -Label 'PinParity') }
 
     # Non-version -DefaultValue literals (paths/roots, deliberately never pinned
     # in versions.env). Entry format: '<script name>|<EnvironmentVariables joined by ,>'.
@@ -314,13 +318,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 # ============================================================================
 Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValue fallbacks vs versions.env' {
 
-    function Get-RcivPins {
-        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
-        if (-not (Test-Path $envPath)) {
-            throw "PinParity(W1b): canonical pin file not found at $envPath"
-        }
-        return (ConvertFrom-VersionsEnv -Path $envPath)
-    }
+    function Get-RcivPins { return (Get-CanonicalPins -Label 'PinParity(W1b)') }
 
     # Non-version Resolve-ContainerImageValue defaults (paths / derived URLs /
     # dynamic pass-throughs -- deliberately never pinned in versions.env).
