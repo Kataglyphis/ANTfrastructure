@@ -511,6 +511,52 @@ def _print_findings(findings, runs, texts, ranked) -> None:
           file=sys.stderr)
 
 
+def _dispatch_mode(args, owners, texts, unit_lines, per_file, allow):
+    """The modes that answer instead of judging. None means "carry on and judge".
+
+    They live here rather than in main() so that adding one does not raise main's
+    complexity -- which is exactly what --explain did, and what the complexity
+    ratchet caught.
+    """
+    if args.explain:
+        return _explain_pair(args.explain, owners, texts, unit_lines)
+    if args.baseline:
+        return _write_baseline(per_file, allow)
+    return None
+
+def _explain_targets(paths, texts):
+    """The one or two files --explain was given, or None after saying why not."""
+    if len(paths) > 2:
+        print("ERROR: --explain takes one or two paths", file=sys.stderr)
+        return None
+    want = [Path(x).as_posix() for x in paths]
+    a_file = want[0]
+    b_file = want[1] if len(want) == 2 else want[0]
+    known = {rel for rel, _line in texts}
+    for f in {a_file, b_file}:
+        if f not in known:
+            print(f"ERROR: {f} is not a scanned unit-bearing file", file=sys.stderr)
+            print("       (paths are repo-relative, e.g. linux/scripts/preflight.sh)",
+                  file=sys.stderr)
+            return None
+    return a_file, b_file
+
+
+def _explain_counts(owners, a_file, b_file):
+    """Shared shingles per unit pair, split into counted and dropped-as-idiom."""
+    counted: Counter = Counter()
+    idiom: Counter = Counter()
+    for _sh, holders in owners.items():
+        left = sorted(h for h in holders if h[0] == a_file)
+        right = sorted(h for h in holders if h[0] == b_file)
+        if not left or not right:
+            continue
+        for x in left:
+            for y in right:
+                if x < y:   # skip a unit against itself and the mirror of a seen pair
+                    (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
+    return counted, idiom
+
 def _explain_pair(paths, owners, texts, unit_lines) -> int:
     """Answer the question every allowlist review asks: what ARE these shingles?
 
@@ -520,33 +566,12 @@ def _explain_pair(paths, owners, texts, unit_lines) -> int:
     idiom before the count is taken, so a pair can look small while sharing plenty
     that is merely widespread. Both halves are printed.
     """
-    if len(paths) > 2:
-        print("ERROR: --explain takes one or two paths", file=sys.stderr)
+    pair = _explain_targets(paths, texts)
+    if pair is None:
         return 2
-    want = [Path(x).as_posix() for x in paths]
-    a_file = want[0]
-    b_file = want[1] if len(want) == 2 else want[0]
+    a_file, b_file = pair
 
-    known = {rel for rel, _line in texts}
-    for f in {a_file, b_file}:
-        if f not in known:
-            print(f"ERROR: {f} is not a scanned unit-bearing file", file=sys.stderr)
-            print("       (paths are repo-relative, e.g. linux/scripts/preflight.sh)",
-                  file=sys.stderr)
-            return 2
-
-    counted: Counter = Counter()
-    idiom: Counter = Counter()
-    for sh, holders in owners.items():
-        left = sorted(h for h in holders if h[0] == a_file)
-        right = sorted(h for h in holders if h[0] == b_file)
-        if not left or not right:
-            continue
-        for x in left:
-            for y in right:
-                if x >= y:          # same unit, or the mirror of a pair already seen
-                    continue
-                (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
+    counted, idiom = _explain_counts(owners, a_file, b_file)
 
     if not counted and not idiom:
         print(f"{a_file} <-> {b_file}: nothing shared")
@@ -639,11 +664,9 @@ def main() -> int:
     allow = {k: v for k, v in load_allow().items()
              if all(_file_kind(Path(f).name) in kinds for f in k)}
 
-    if args.explain:
-        return _explain_pair(args.explain, owners, texts, unit_lines)
-
-    if args.baseline:
-        return _write_baseline(per_file, allow)
+    dispatched = _dispatch_mode(args, owners, texts, unit_lines, per_file, allow)
+    if dispatched is not None:
+        return dispatched
 
     findings, allowed, shrunk = [], [], []
     for key, (n, a, b) in per_file.items():
