@@ -76,8 +76,25 @@ _lint_gates_excluded() {
 # gate needs exactly the same one, and the empty-scope refusal is the
 # load-bearing half of both. Results land in _LINT_GATES_SCOPE because bash
 # cannot return an array.
+# The tracked files of one kind under the graded root, minus the excluded
+# top-level directories. ONE owner: the shell gate had this walk, the python
+# gate needs the same one.
+#
+# $3 decides what an EMPTY result means, and the two gates genuinely differ:
+#   refuse-empty (default)  an empty list is a BROKEN SCOPE. lint-shell.sh with
+#                           zero file arguments falls back to ContainerHub OWN
+#                           tree and passes, so green over nothing is a lie.
+#   allow-empty             an empty list is a FACT about the repo. Used by the
+#                           python gate, which passes explicit absolute paths and
+#                           therefore has no fallback to be fooled by: with no
+#                           paths there is nothing to run and nothing to
+#                           mis-grade. ANThology is a pure Dart package and
+#                           OxidANT a Rust crate; neither has a single .py, and
+#                           failing them forever would be a tolerated failure.
+#
+# Results land in _LINT_GATES_SCOPE because bash cannot return an array.
 _lint_gates_scope() {
-  local label="$1" spec="$2" f
+  local label="$1" spec="$2" on_empty="${3:-refuse-empty}" f
   _LINT_GATES_SCOPE=()
   # -z, not plain ls-files: git QUOTES a path containing non-ASCII bytes
   # ("dummy_assetsÃ¤/x.sh), and the quoted string then names nothing.
@@ -85,6 +102,13 @@ _lint_gates_scope() {
     _lint_gates_excluded "${f}" || _LINT_GATES_SCOPE+=("${f}")
   done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- "${spec}")
   if [ "${#_LINT_GATES_SCOPE[@]}" -eq 0 ]; then
+    if [ "${on_empty}" = allow-empty ]; then
+      printf '%s: no tracked %s outside %s - nothing to grade in this repo.\n' \
+        "${label}" "${spec}" "${_LINT_GATES_EXCLUDE[*]}"
+      printf '  (safe here: this gate passes explicit paths, so an empty list\n'
+      printf '   cannot fall back to grading ContainerHub OWN tree.)\n'
+      return 2
+    fi
     printf 'no tracked %s outside %s - the list driving this gate is empty;\n' \
       "${spec}" "${_LINT_GATES_EXCLUDE[*]}" >&2
     printf 'refusing to report green over nothing. (the underlying linter with\n' >&2
@@ -104,7 +128,12 @@ _lint_gates_shell() {
 # before resolving its arguments, so a path relative to the consumer would
 # name nothing there -- or, worse, name something.
 _lint_gates_python() {
-  _lint_gates_scope ruff '*.py' || return 1
+  local rc=0
+  _lint_gates_scope ruff '*.py' allow-empty || rc=$?
+  # 2 = no python in this repo, which is an answer, not a failure. 1 = a real
+  # scope failure and still fatal.
+  [ "${rc}" -eq 2 ] && return 0
+  [ "${rc}" -eq 0 ] || return "${rc}"
   local abs=() f
   for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
   bash "${_LINT_GATES_DIR}/lint-python.sh" "${abs[@]}"
