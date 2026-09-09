@@ -1830,6 +1830,22 @@ is hand-ordered and carries per-row review notes, so the 2026-09-03 re-baseline
 was done **in place** rather than by running `--baseline`. Treat the flag as a
 first-freeze tool.
 
+**`--explain <file> [file]` answers the question a row review actually asks.**
+`--report` gives a pair and a number; deciding whether that number is a deliberate
+twin or a real copy needs the units behind it. `--explain` prints them: which unit in
+A overlaps which unit in B, on which lines, the longest identical run, and the head of
+each. One path for a self-pair, two for a cross-file pair.
+
+It also prints the half the count hides. Shingles held by more than `MAX_OWNERS`
+units are dropped as idiom BEFORE the pair is counted, so a pair can look small while
+sharing a lot that is merely widespread — `--explain` reports those separately as
+`(+N dropped as idiom)`. That is what makes a budget move without any code changing,
+and it is the single most confusing thing about this gate to someone reading a diff.
+
+It exists because it was written four times as a throwaway during the 2026-09-09
+PowerShell review, each time importing this module to walk `_index_units()` by hand.
+It reads only; it can never write the allow file.
+
 No census number is kept here: the scanned-unit and file counts move with every
 file added, so a copy in prose is stale the day after it is written. The gate's
 own OK line prints them — run `python3 docs/scripts/verify_code_dupes.py`. The

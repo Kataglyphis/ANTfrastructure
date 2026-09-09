@@ -511,6 +511,67 @@ def _print_findings(findings, runs, texts, ranked) -> None:
           file=sys.stderr)
 
 
+def _explain_pair(paths, owners, texts, unit_lines) -> int:
+    """Answer the question every allowlist review asks: what ARE these shingles?
+
+    --report gives a pair and a number. Deciding whether a row is a deliberate twin
+    or a real copy needs the units behind that number, and the number is not the
+    whole truth either: shingles held by more than MAX_OWNERS units are dropped as
+    idiom before the count is taken, so a pair can look small while sharing plenty
+    that is merely widespread. Both halves are printed.
+    """
+    if len(paths) > 2:
+        print("ERROR: --explain takes one or two paths", file=sys.stderr)
+        return 2
+    want = [Path(x).as_posix() for x in paths]
+    a_file = want[0]
+    b_file = want[1] if len(want) == 2 else want[0]
+
+    known = {rel for rel, _line in texts}
+    for f in {a_file, b_file}:
+        if f not in known:
+            print(f"ERROR: {f} is not a scanned unit-bearing file", file=sys.stderr)
+            print("       (paths are repo-relative, e.g. linux/scripts/preflight.sh)",
+                  file=sys.stderr)
+            return 2
+
+    counted: Counter = Counter()
+    idiom: Counter = Counter()
+    for sh, holders in owners.items():
+        left = sorted(h for h in holders if h[0] == a_file)
+        right = sorted(h for h in holders if h[0] == b_file)
+        if not left or not right:
+            continue
+        for x in left:
+            for y in right:
+                if x >= y:          # same unit, or the mirror of a pair already seen
+                    continue
+                (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
+
+    if not counted and not idiom:
+        print(f"{a_file} <-> {b_file}: nothing shared")
+        return 0
+
+    label = a_file if a_file == b_file else f"{a_file} <-> {b_file}"
+    print(f"{label}")
+    print(f"  MAX_OWNERS={MAX_OWNERS}; a shingle held by more units is dropped as idiom")
+    print()
+    for (x, y), n in sorted(counted.items(), key=lambda kv: -kv[1]):
+        hidden = idiom.get((x, y), 0)
+        extra = f"  (+{hidden} dropped as idiom)" if hidden else ""
+        print(f"  {n:4d} shingle(s)  line {x[1]} <-> line {y[1]}{extra}")
+        run = longest_common_run(unit_lines.get(x, []), unit_lines.get(y, []))
+        print(f"        longest identical run: {run} line(s)")
+        print(f"        A: {texts.get(x, '')[:120]}")
+        print(f"        B: {texts.get(y, '')[:120]}")
+    only_idiom = {k: v for k, v in idiom.items() if k not in counted}
+    if only_idiom:
+        total = sum(only_idiom.values())
+        print()
+        print(f"  {total} further shingle(s) across {len(only_idiom)} unit pair(s) are"
+              f" held by more than {MAX_OWNERS} units and never counted.")
+    return 0
+
 def _write_baseline(per_file, allow) -> int:
     """Rewrite the allow file: rows sorted by budget, existing reasons kept
     verbatim, new rows dated; only the header comments survive."""
@@ -532,7 +593,8 @@ def _write_baseline(per_file, allow) -> int:
     return 0
 
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
+    """The CLI surface, lifted out of main() so main() stays control flow."""
     ap = argparse.ArgumentParser(description="Verify code is free of copied blocks.")
     ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD,
                     help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
@@ -546,7 +608,14 @@ def main() -> int:
                             " (whole file; cannot be scoped with --kind)")
     scope.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
                        help="restrict to one kind (repeatable); default all")
-    args = ap.parse_args()
+    ap.add_argument("--explain", nargs="+", metavar="FILE",
+                    help="say WHAT one pair shares: the overlapping units, their"
+                         " line numbers and how much the idiom cutoff hides."
+                         " One path for a self-pair, two for a cross-file pair")
+    return ap
+
+def main() -> int:
+    args = _build_parser().parse_args()
 
     kinds = set(args.kind) if args.kind else set(UNIT_READERS)
     files = [(p, k) for p, k in collect() if k in kinds]
@@ -569,6 +638,9 @@ def main() -> int:
 
     allow = {k: v for k, v in load_allow().items()
              if all(_file_kind(Path(f).name) in kinds for f in k)}
+
+    if args.explain:
+        return _explain_pair(args.explain, owners, texts, unit_lines)
 
     if args.baseline:
         return _write_baseline(per_file, allow)
