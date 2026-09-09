@@ -35,6 +35,7 @@ what you are about to do:
 - [Build Workflow](#build-workflow) — stage graph, prerequisites, expected outputs
 - [Validation](#validation) — the preflight gate list, host config, disk reclaim
 - [Version Bumping](#version-bumping) — `versions.env` first, then the sweep
+- [Dependency Updates](#dependency-updates) — Renovate as a LOCAL CLI, and the one submodule it must never move
 - [Common Failure Modes](#common-failure-modes) — pointer into the symptom index
 
 **Orientation**
@@ -1658,6 +1659,38 @@ base ─┬─ onnxruntime ───────┐
   `runtime-build-fns.sh`): it builds `--target wrapper-smoke` between the
   package and wrapper stages, reusing cached package layers. Skip with
   `WRAPPER_SMOKE_GATE=0`. Unit-tested by `test-runtime-smoke-gate.sh`.
+
+## Dependency Updates
+
+**Owner directive 2026-09-09: dependency upgrades are driven by Renovate run as a
+LOCAL CLI, in every repo in the family.** Not by hand, and not by waiting for a bot.
+
+```bash
+linux/scripts/renovate-local.sh .              # what is behind, per this repo’s config
+linux/scripts/renovate-local.sh --apply --dry-run .   # the plan
+linux/scripts/renovate-local.sh --apply .      # move the gitlinks
+```
+
+Consumers call their own thin `scripts/linux/renovate-local.sh`, same shape as
+`run-lint-gates.sh`. Node 24 and Renovate are pinned in `01-core/versions.env` and
+bootstrapped on demand, checksum-verified, into `~/.cache/kataglyphis`.
+
+Three things an agent must not rediscover the hard way:
+
+* **`--platform=local` cannot write.** Renovate forces dryRun there; it is a
+  detector. The script owns both halves — Renovate decides, `git submodule update
+  --remote -- <explicit paths>` applies.
+* **A bare `git submodule update --remote` is forbidden in this family.** For a
+  submodule that declares no `branch =` it does not skip, it walks the pin to the
+  remote’s DEFAULT branch. That is why `--apply` passes explicit paths, includes
+  only submodules that declare a branch, and never uses `--recursive`.
+* **The apply half needs the git that WROTE the working tree.** A Windows checkout
+  read by Linux git shows every text file as modified and the checkout aborts half
+  way, leaving the superproject partially updated. The script detects this and
+  switches to `git.exe`; it also refuses up front rather than applying partially.
+
+The Renovate GitHub App is still installed nowhere, so every `renovate.json` in the
+family is inert. Full rationale: [docs/dependency-updates.md](docs/dependency-updates.md).
 
 ## Common Failure Modes
 

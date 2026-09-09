@@ -190,6 +190,7 @@ Common development targets:
    code-quality-tooling
    code-quality-gates
    consumer-inventory
+   dependency-updates
    shared-script-libraries
    slang-shader-compilation
    python-ci

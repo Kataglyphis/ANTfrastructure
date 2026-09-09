@@ -101,6 +101,7 @@ The entry points people actually want:
 | I want to… | Read |
 |---|---|
 | **Wire a new project to this repo** | [docs/adopting-in-a-new-project.md](docs/adopting-in-a-new-project.md) |
+| **Upgrade dependencies** — Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published and what is in it | [docs/overview.md](docs/overview.md) |
 | Build the Linux images | [docs/linux-build-basics.md](docs/linux-build-basics.md) |
 | Build the Windows image | [docs/windows-builds.md](docs/windows-builds.md) |
