@@ -2,7 +2,8 @@
 # run-lint-gates.sh - the fleet's lint gates over ONE consumer tree.
 
 # The gates - shell lint, workflow lint (+CI image refs), secret scan, python
-# lint and the shared-config drift check - bootstrapped pinned and SHA-verified
+# lint, the shared-config drift check and the consumer pin-forwarding check -
+# bootstrapped pinned and SHA-verified
 # from this repo, run over the tree named by $1. Three
 # consumers had grown their own copy of this - two as `run:` blocks in a
 # workflow, so the gate that blocks their deploy could not be reproduced
@@ -34,8 +35,26 @@ source "${_LINT_GATES_DIR}/01-core/gates.sh"
 
 _LINT_GATES_EXCLUDE=()
 _LINT_GATES_ROOT=""
+_LINT_GATES_HUB_FILE=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
+
+# _lint_gates_hub <hub-relative path> -> 0, with the absolute path in
+# _LINT_GATES_HUB_FILE. Two gates below run a program from the HUB half over the
+# consumer root, and both need the same answer to "is it there?": a hub file that
+# is missing is a BROKEN CHECKOUT, never a gate to skip - skipping is what makes
+# a gate green over a tree nothing graded, which is the failure this whole file
+# was written against. Published in a variable rather than on stdout, like
+# _LINT_GATES_SCOPE and _LINT_GATES_SCAN_RC: the messages go to fd 2, and a
+# function whose value comes back through stdout collects anything a caller ever
+# adds to it.
+_lint_gates_hub() {
+  _LINT_GATES_HUB_FILE="${_LINT_GATES_DIR}/../../$1"
+  [ -f "${_LINT_GATES_HUB_FILE}" ] && return 0
+  printf '%s is missing from the hub half (looked at %s).\n' "$1" "${_LINT_GATES_HUB_FILE}" >&2
+  printf 'It ships in this repo, so this is a broken checkout and not a gate to skip.\n' >&2
+  return 1
+}
 
 _lint_gates_parse_args() {
   [ "$#" -ge 1 ] || _lint_gates_die "the consumer repo root is required (got no arguments)"
@@ -129,7 +148,8 @@ _lint_gates_workflows() {
 # older failure, a gate that is present, green, and comparing nothing.
 # shared/config/README.md#why-a-manifest-and-not-an-ignore-list
 _lint_gates_shared_config() {
-  local sync="${_LINT_GATES_DIR}/../../shared/config/sync-shared-config.sh"
+  _lint_gates_hub shared/config/sync-shared-config.sh || return 1
+  local sync="${_LINT_GATES_HUB_FILE}"
   local manifest="${_LINT_GATES_ROOT}/.containerhub-shared.manifest"
   if [ ! -f "${manifest}" ]; then
     printf 'no .containerhub-shared.manifest at %s\n' "${_LINT_GATES_ROOT}" >&2
@@ -144,6 +164,20 @@ _lint_gates_shared_config() {
     return 1
   fi
   bash "${sync}" --repo-root "${_LINT_GATES_ROOT}" --check
+}
+
+# --- consumer pin forwarding -------------------------------------------------
+# versions.env owns RUFF_VERSION, but pip/uv read pyproject.toml and pre-commit
+# reads .pre-commit-config.yaml, so a consumer repeats the number by hand -- and
+# that hand-sync HAS drifted. THIS is the lane that can see it: the hub's own
+# preflight has no consumer around it and prints "NOT CHECKED". A consumer that
+# declares neither file reports "0 pins compared" and passes.
+# python3, not ${PREFLIGHT_PYTHON}: that knob is preflight.sh's, and this
+# aggregator runs on a consumer's runner.
+# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
+_lint_gates_consumer_pins() {
+  _lint_gates_hub docs/scripts/sync_versions.py || return 1
+  python3 "${_LINT_GATES_HUB_FILE}" --consumer-pins --consumer-root "${_LINT_GATES_ROOT}"
 }
 
 # --- gitleaks ----------------------------------------------------------------
@@ -290,6 +324,7 @@ _lint_gates_main() {
   run_gate "gitleaks" _lint_gates_secrets
   run_gate "ruff" _lint_gates_python
   run_gate "shared-config drift" _lint_gates_shared_config
+  run_gate "consumer pins" _lint_gates_consumer_pins
   assert_gates
 }
 

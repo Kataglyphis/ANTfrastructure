@@ -2,20 +2,32 @@
 """sync_versions.py — propagate linux/scripts/01-core/versions.env everywhere.
 
 `versions.env` is the single authority for every pinned version in the tree.
-This walks the seven places that repeat one of those numbers and either checks
+This walks the eight places that repeat one of those numbers and either checks
 them or rewrites them:
 
-  --check   (default) fail if any generated section, marker, table, ARG default
-            or documented literal disagrees with versions.env
-  --write   rewrite them all in place
+  --check           (default) fail if any generated section, marker, table, ARG
+                    default or documented literal disagrees with versions.env
+  --write           rewrite them all in place
+  --consumer-pins   run ONLY the eighth check below, over a named consumer
+                    checkout; this is what run-lint-gates.sh calls
 
-The seven consumers are the README version snapshot, the paired inline
-`generated:<key>` markers in the docs, the dependency table, Dockerfile `ARG`
-defaults, Windows PowerShell build-script `-DefaultValue` pins, documented version
-literals in the docs (check-only — there is no write pass for these), and the
-website license pages (delegated to generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
+Seven of the eight consumers are files in THIS repo: the README version
+snapshot, the paired inline `generated:<key>` markers in the docs, the
+dependency table, Dockerfile `ARG` defaults, Windows PowerShell build-script
+`-DefaultValue` pins, documented version literals in the docs (check-only —
+there is no write pass for these), and the website license pages (delegated to
+generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
 snapshot reads its numbers back out of them, so the other order needs two
 passes to converge.
+
+The eighth is a CONSUMER repository's own package metadata — a pin that pip/uv
+or pre-commit must read from a file this repo does not own, so it is repeated
+there by hand. That copy is check-only and its root must be NAMED
+(`--consumer-root <dir>`, or the vendored `third_party/` position); it lives in
+consumer_pins.py, which says why it is neither written nor guessed at. The
+lane that has a root to name is the CONSUMER's, so `run-lint-gates.sh` runs it
+as its own gate via `--consumer-pins`; in the hub's own preflight there is no
+consumer and the check says so rather than passing.
 
 A malformed marker fails BOTH modes. The updater silently skips a marker it
 cannot parse, so without that check a typo would read as "in sync" forever.
@@ -31,6 +43,8 @@ import argparse
 import re
 import sys
 from pathlib import Path
+
+from consumer_pins import check_consumer_pins
 
 
 START_MARKER = "<!-- generated:version-snapshot:start -->"
@@ -714,6 +728,23 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync generated documentation version snapshots.")
     parser.add_argument("--check", action="store_true", help="Fail if generated sections are out of date.")
     parser.add_argument("--write", action="store_true", help="Rewrite generated sections in place.")
+    parser.add_argument(
+        "--consumer-root",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="A consumer repo checkout whose own copies of versions.env pins "
+             "(pyproject.toml, .pre-commit-config.yaml) are compared against this "
+             "repo's. Repeatable. Never written to, in any mode.",
+    )
+    parser.add_argument(
+        "--consumer-pins",
+        action="store_true",
+        help="Run ONLY the consumer pin forwarding check, over the roots named "
+             "by --consumer-root (or the vendored position). This is the mode "
+             "run-lint-gates.sh calls from a consumer's lane; a run with no "
+             "usable root FAILS instead of reporting NOT CHECKED.",
+    )
     return parser.parse_args()
 
 
@@ -822,6 +853,13 @@ def write_snapshot(replacement: str) -> int:
 def determine_mode(args: argparse.Namespace) -> str:
     if args.check and args.write:
         raise ValueError("Use either --check or --write, not both.")
+    if args.consumer_pins and (args.check or args.write):
+        raise ValueError(
+            "--consumer-pins runs that check ALONE; combine it with neither "
+            "--check nor --write (--check already includes it)."
+        )
+    if args.consumer_pins:
+        return "consumer-pins"
     return "check" if args.check or not args.write else "write"
 
 
@@ -835,6 +873,14 @@ def main() -> int:
 
     versions = parse_versions_env()
 
+    if mode == "consumer-pins":
+        # The consumer lane's entry point (run-lint-gates.sh). Only this
+        # section: everything else --check does grades files under REPO_ROOT,
+        # i.e. the vendored hub, which is not the tree that lane was handed.
+        return check_consumer_pins(
+            versions, args.consumer_root, REPO_ROOT, required=True
+        )
+
     if mode == "check":
         result = check_snapshot(render_snapshot())
         result |= validate_inline_marker_tokens()
@@ -843,6 +889,7 @@ def main() -> int:
         result |= check_dockerfile_args(versions)
         result |= check_script_defaults(versions)
         result |= check_doc_literals(versions)
+        result |= check_consumer_pins(versions, args.consumer_root, REPO_ROOT)
         # Also check website license files.
         import subprocess
         lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
@@ -863,6 +910,11 @@ def main() -> int:
     result |= validate_inline_marker_tokens()
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
+    # The consumer copies are the one thing --write cannot repair (they live in
+    # another repository), so they are CHECKED here rather than skipped: a bump
+    # that leaves a consumer contradicting the new value must not exit 0 and
+    # read as "propagated everywhere".
+    result |= check_consumer_pins(versions, args.consumer_root, REPO_ROOT)
     # Auto-regenerate website license files so they never go stale.
     import subprocess
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"

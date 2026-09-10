@@ -853,13 +853,28 @@ REPORT: list[tuple[str, Callable]] = [
     ("PY_CMAKE_VERSION", _pypi("cmake")),
     ("PY_NUMPY_VERSION", _pypi("numpy")),
     ("PY_PACKAGING_VERSION", _pypi("packaging")),
-    # -- report-only until their consumers read the keys (C4 / TS1 riders):
-    #    lint-python.sh still hardcodes RUFF_PIN, packaging-deps.sh still
-    #    hardcodes the four appimagetool sha256 case-arms — an automated bump
-    #    today would desync versions.env from the literal actually enforced.
-    #    Move each to SAFE when its consumer wiring lands. --
-    ("RUFF_VERSION", _r("astral-sh/ruff")),
+    # -- APPIMAGETOOL_VERSION is report-only until its consumer reads the key
+    #    (TS1 rider): packaging-deps.sh still carries `${APPIMAGETOOL_VERSION:-
+    #    1.9.1}` plus four hardcoded per-arch sha256 case-arms, so an automated
+    #    bump would desync versions.env from the literal actually enforced and
+    #    hand download_verified_file the previous release's checksum. Move it to
+    #    SAFE when those SHAs become keys. --
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
+    # -- RUFF_VERSION is report-only for a DIFFERENT reason, corrected
+    #    2026-09-09. The reason here used to read "lint-python.sh still
+    #    hardcodes RUFF_PIN". That stopped being true on 2026-08-26 and the
+    #    line outlived it, so this tier was justified by a fact about the tree
+    #    that no longer held. lint-python.sh reads RUFF_VERSION and carries no
+    #    literal at all — its `:-` fallback, the last one, went on 2026-09-09.
+    #    What keeps it out of SAFE is that the bump is not this repo's to
+    #    finish: pip/uv and pre-commit cannot read a versions.env, so every
+    #    Python consumer repeats the number in its own pyproject.toml and
+    #    .pre-commit-config.yaml, and a sweep that writes versions.env alone
+    #    leaves those contradicting it — visibly now, because run-lint-gates.sh
+    #    runs sync_versions.py --consumer-pins in the consumer's own lane. A
+    #    ruff bump is a two-repo commit, so it is REPORTED for a human to
+    #    finish rather than written by the sweep. --
+    ("RUFF_VERSION", _r("astral-sh/ruff")),
 ]
 
 MANUAL = [
