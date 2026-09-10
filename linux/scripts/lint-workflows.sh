@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # lint-workflows.sh — actionlint over .github/workflows/*.yml (composite
 # actions under .github/actions are pulled in automatically when referenced),
-# PLUS verify_ci_image_refs.py: a stale image tag is valid YAML, so actionlint
-# cannot see the drift the fleet actually suffers.
+# PLUS two gates over what valid YAML cannot say. verify_ci_image_refs.py: a
+# stale image tag is valid YAML, so actionlint cannot see the drift the fleet
+# actually suffers. verify_workflow_conventions.py: the four fleet conventions
+# that were transmitted as copied header comments and enforced by nobody - the
+# `*-latest` runner ban, job-level `timeout-minutes`, a `permissions:` block and
+# `if-no-files-found: error`. Three of the four are ADVISORY until armed with
+# WORKFLOW_CONVENTIONS_GATE (preflight.sh arms `permissions` here); the runner
+# ban is enforced always, and workflow-conventions.allow freezes every
+# repository's remaining count so an advisory check cannot grow. That script's
+# header carries the ramp, the ratchet and the reason for both.
 #
 # actionlint is bootstrapped on demand: PATH copy preferred, otherwise the
 # pinned release (ACTIONLINT_VERSION / ACTIONLINT_*_SHA256 in versions.env) is
@@ -130,7 +138,7 @@ shellcheck_for_actionlint() {
 # enclosing checkout, and it fails for the one reason it is asked about.
 shellcheck_rule_selftest() {
   local out
-  out="$(printf 'name: probe\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          if [ "x" = "y" ] then\n            echo hi\n          fi\n' \
+  out="$(printf 'name: probe\non: push\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          if [ "x" = "y" ] then\n            echo hi\n          fi\n' \
     | "${ACTIONLINT_BIN}" -stdin-filename shellcheck-selftest.yml - 2>&1)"
   case "${out}" in
     *"shellcheck reported issue"*) return 0 ;;
@@ -162,6 +170,12 @@ if ! command -v "${_PY}" >/dev/null 2>&1 || ! "${_PY}" -c "pass" >/dev/null 2>&1
   exit 1
 fi
 ( cd "${REPO_ROOT}" && "${_PY}" linux/scripts/verify_ci_image_refs.py "${LINT_ROOT}" ) || FAILED=1
+
+# The conventions half runs on the same terms: this checkout's copy, the handed
+# tree, and its own exit status folded into the one verdict. Its allow file is
+# read from THIS repo too, which is what lets one table hold the deviations of
+# every consumer that vendors this hub.
+( cd "${REPO_ROOT}" && "${_PY}" linux/scripts/verify_workflow_conventions.py "${LINT_ROOT}" ) || FAILED=1
 
 if [ "${FAILED}" -eq 0 ]; then
   printf 'WORKFLOW LINT OK\n'

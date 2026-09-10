@@ -40,13 +40,16 @@ line — enabling the `git-submodules` manager, which Renovate **disables by
 default**, and which is why no gitlink in this family has ever been watched by
 anything.
 
-None of it runs. **The Renovate GitHub App has never been installed on any of
-these repositories.** The configs are not wrong — all six validate, plain and
-under `--strict` — they are simply inert. Installing the App remains worth doing
-(it is the only thing that opens PRs on a schedule and produces the dependency
-dashboard), but the local CLI is what makes the same answer available now, and it
-stays useful afterwards: it tells you what a bot would propose without waiting
-for one.
+None of it runs on GitHub. **The Renovate GitHub App is installed on none of
+these repositories, and it is not going to be** — owner decision, 2026-09-09:
+"die renovate github app wird nicht installiert. benutze immer renovate cli".
+
+The configs are not wrong, and they are not idle either: all eight validate,
+plain and under `--strict`, and the local CLI reads exactly these files — the
+preset, the git-submodules manager and the grouping rules all take effect
+through it. What the family gives up is the scheduled PR and the dependency
+dashboard. What it keeps is the same answer on demand, from a tool that needs no
+permissions on the account and leaves no bot commits in the history.
 
 There is also nothing else watching. **No gate in this repository checks gitlink
 freshness** — no `verify_*.py` looks at it. That is how two nested ContainerHub

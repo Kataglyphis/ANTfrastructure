@@ -133,6 +133,7 @@ The two halves of one topic often split:
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
 | Opting a commit into the heavy CI lanes | [`ci-build-triggers.md`](ci-build-triggers.md) |
+| **Publishing docs or a site over FTP** — the one composite action, its pin, and why a failed publish always fails the job | [`ftp-deploys.md`](ftp-deploys.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |
 | **GenieX on Snapdragon** — on-device OpenAI-compatible server (Adreno GPU / Hexagon NPU), serving a coding agent inside WSL2 | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) |

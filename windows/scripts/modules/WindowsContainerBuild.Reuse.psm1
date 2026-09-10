@@ -358,7 +358,7 @@ function Get-ContainerIsolationArgs {
   Tests whether a bind mount of $SourcePath actually attaches.
 .DESCRIPTION
   EXPECTED to fail on Dev Drive hosts: the filesystem minifilter cannot attach
-  unless 'fsutil devdrv setfiltersallowed bindFlt, wcifs' has been run. Callers
+  unless 'fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"' has been run. Callers
   fall back to a tar-pipe transport. Docker's stderr must not become a
   terminating NativeCommandError (Windows PowerShell turns redirected native
   stderr into ErrorRecords under $ErrorActionPreference = 'Stop').
@@ -745,7 +745,7 @@ function Resolve-ContainerBuildCommand {
        allow-listed the mount cannot attach at all (error "Der
        Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
        werden"); to make it attachable, run once (elevated):
-         fsutil devdrv setfiltersallowed bindFlt, wcifs
+         fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"
        then remount the volume (or reboot).
 
   -WorkspacePath is used as the mount target AND as the tar-pipe destination,

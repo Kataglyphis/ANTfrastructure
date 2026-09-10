@@ -45,7 +45,17 @@ class ScopeError(Exception):
 
 
 def resolve_root(arg, default_root):
-    """Absolute, verified scan root. ``None`` means the gate's own repo."""
+    """Absolute, verified scan root. ``None`` means the gate's own repo.
+
+    That ``None`` is load-bearing and every gate must default to it, NOT to
+    its own ROOT. Passing ROOT reaches the git-toplevel check below on every
+    bare run, so a gate then demands a git checkout merely to grade its own
+    tree. Measured 2026-09-10: with default=ROOT the whole set exits 2
+    ("is not a git checkout") in a git-less export, and docs/scripts/
+    verify_mutations.py cannot prove any of them because its mirror excludes
+    .git by design. An explicitly NAMED root still has to be a real
+    checkout -- that is the part this check exists for.
+    """
     if arg is None:
         return os.path.abspath(default_root)
     root = os.path.abspath(arg)

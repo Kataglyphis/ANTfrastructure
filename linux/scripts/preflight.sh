@@ -157,6 +157,13 @@ run_check arg-consistency "ARG consistency"       bash linux/scripts/01-core/ver
 # 5. Version snapshots / inline markers / deps table are in sync.
 # [ -f ] guards FAIL (not skip) on a missing file: absence means a broken
 # tree/rename, not a check to skip.
+#
+# Eight sub-checks, and the EIGHTH (check_consumer_pins) deliberately reports
+# "NOT CHECKED" here: a standalone hub clone has no consumer around it, and
+# --consumer-root would only name this repo, which the other seven already
+# grade. run-lint-gates.sh runs it from the CONSUMER side, where the root is a
+# mandatory argument. Why that is not a skipped check:
+# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 if [ -f docs/scripts/sync_versions.py ]; then
   run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
 else
@@ -280,8 +287,14 @@ fi
 #    SHA-verified hadolint when none is on PATH).
 run_check dockerfile-lint "dockerfile lint (hadolint)" bash linux/scripts/lint-dockerfiles.sh
 
-# 9. Workflow/composite-action lint (actionlint, same bootstrap pattern).
-run_check workflow-lint "workflow lint (actionlint)" bash linux/scripts/lint-workflows.sh
+# 9. Workflow/composite-action lint (actionlint, same bootstrap pattern), plus
+#    the four fleet conventions. WORKFLOW_CONVENTIONS_GATE arms the ramped ones
+#    the way KNOB_GATE=1 above arms lint-env-knobs -- `permissions` because this
+#    repo is measured clean of it, so a workflow added without one is red here
+#    the day it lands. job-timeout and artifact-error still have 1 and 2 open in
+#    python-ci-*.yml and are held at exactly that count by the census ratchet in
+#    workflow-conventions.allow until they are cleared and named here too.
+run_check workflow-lint "workflow lint (actionlint)" env WORKFLOW_CONVENTIONS_GATE=permissions bash linux/scripts/lint-workflows.sh
 
 # Python gate: hard-fails only on real-error classes; full ruleset is advisory.
 run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh

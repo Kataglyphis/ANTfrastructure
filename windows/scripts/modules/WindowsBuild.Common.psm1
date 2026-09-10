@@ -347,6 +347,24 @@ function Invoke-BuildOptional {
     $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
 }
 
+# The three gate buckets, created together so Add-BuildGateSkip works on a
+# context no Invoke-BuildGate has touched yet -- a batch whose every tool turned
+# out to be missing is exactly the case the skip bucket exists for, and it must
+# still reach the no-gate-ran arm rather than a NullReferenceException.
+# Private: it is state management, not a step a driver ever calls.
+function Initialize-BuildGateBuckets {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    if (-not $Context.Results.ContainsKey('Gates')) {
+        $Context.Results['Gates'] = New-Object System.Collections.Generic.List[string]
+        $Context.Results['GateFailures'] = New-Object System.Collections.Generic.List[string]
+        $Context.Results['GateSkips'] = New-Object System.Collections.Generic.List[string]
+    }
+}
+
 <#
 .SYNOPSIS
     Runs one GATING step: a failure is recorded and the run continues; the verdict
@@ -379,10 +397,7 @@ function Invoke-BuildGate {
         [scriptblock]$Script
     )
 
-    if (-not $Context.Results.ContainsKey('Gates')) {
-        $Context.Results['Gates'] = New-Object System.Collections.Generic.List[string]
-        $Context.Results['GateFailures'] = New-Object System.Collections.Generic.List[string]
-    }
+    Initialize-BuildGateBuckets -Context $Context
     $Context.Results['Gates'].Add($Name) | Out-Null
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -404,8 +419,53 @@ function Invoke-BuildGate {
 
 <#
 .SYNOPSIS
+    Records a gate that COULD NOT run -- its tool is absent -- and why. The third
+    bucket: neither a pass nor a failure.
+.DESCRIPTION
+    The PowerShell twin of gate_skip in linux/scripts/01-core/gates.sh. Both
+    other ways of handling an unrunnable gate are the suppression Invoke-BuildGate
+    exists to prevent: Invoke-BuildOptional files it as a non-gating
+    AllowedFailure, and simply not calling Invoke-BuildGate leaves the batch
+    silently one gate smaller with nothing in the log to say so.
+
+    A skip does NOT count as a gate that ran, so a batch of nothing but skips
+    still trips the no-gate-ran arm of Assert-BuildGates -- nothing was graded,
+    so there is no result to tolerate. And it is RED BY DEFAULT: lifting it takes
+    an explicit -TolerateSkips at the Assert-BuildGates call site, which is one
+    grep away from an audit, because "allowed to fail" is exactly what the fleet
+    rule forbids as a default.
+    docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+.PARAMETER Context
+    Build context from New-BuildContext / New-CiSession.
+.PARAMETER Name
+    Gate name, as it will appear in the skip list and in the verdict.
+.PARAMETER Reason
+    Why it could not run. Optional only to match gate_skip's signature; a skip
+    without one is indistinguishable from a gate somebody quietly deleted.
+#>
+function Add-BuildGateSkip {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory)]
+        [string]$Name,
+        [string]$Reason = ''
+    )
+
+    Initialize-BuildGateBuckets -Context $Context
+    $Context.Results['GateSkips'].Add($Name) | Out-Null
+    if ($Reason) {
+        $Context.Results.Errors[$Name] = "skipped: $Reason"
+        Write-BuildLogWarning -Context $Context -Message "== ${Name}: SKIPPED ($Reason) =="
+    } else {
+        Write-BuildLogWarning -Context $Context -Message "== ${Name}: SKIPPED =="
+    }
+}
+
+<#
+.SYNOPSIS
     Raises the verdict for every Invoke-BuildGate in this context. Throws on any
-    failure, and throws when NO gate ran.
+    failure, on any un-tolerated skip, and when NO gate ran.
 .DESCRIPTION
     The throw is what puts the step into Results.Failed for the caller's own
     Invoke-BuildStep wrapper, so one failing gate fails the build exactly once
@@ -413,20 +473,44 @@ function Invoke-BuildGate {
 
     The no-gate-ran arm is not an edge case: an aggregator whose gate list came
     out empty -- a bad filter, a skipped bootstrap -- reporting success is the
-    failure mode this whole mechanism exists to prevent.
+    failure mode this whole mechanism exists to prevent. It outranks
+    -TolerateSkips: a batch of nothing but skips graded nothing, so there is no
+    result for the switch to tolerate.
 .PARAMETER Context
     The same context the gates ran against.
 .PARAMETER Label
     Name for the batch in the failure message (default 'gates').
+.PARAMETER TolerateSkips
+    Let an Add-BuildGateSkip record pass. Off by default, so tolerance is a
+    thing a driver has to ASK for at a call site anybody can grep for.
 #>
 function Assert-BuildGates {
     param(
         [Parameter(Mandatory)]
         [pscustomobject]$Context,
-        [string]$Label = 'gates'
+        [string]$Label = 'gates',
+        [switch]$TolerateSkips
     )
 
+    # Two statements, and @() on both sides: an if-EXPRESSION enumerates its
+    # result, so a one-element list arrives as a bare string and an empty one as
+    # $null -- and .Count on either throws under Set-StrictMode -Version Latest,
+    # which every suite and driver in this tree runs with. Measured 2026-09-09:
+    # the first cut of this line was the expression form and 6 of the 11 cases
+    # in tests/BuildGates.ThirdBucket.Tests.ps1 died on exactly that.
+    $skips = @()
+    if ($Context.Results.ContainsKey('GateSkips')) {
+        $skips = @($Context.Results['GateSkips'])
+    }
+    if ($skips.Count -gt 0) {
+        Write-BuildLogWarning -Context $Context -Message (
+            "${Label}: {0} gate(s) SKIPPED, and graded nothing: {1}" -f $skips.Count, ($skips -join ', '))
+    }
+
     if (-not $Context.Results.ContainsKey('Gates') -or $Context.Results['Gates'].Count -eq 0) {
+        if ($skips.Count -gt 0) {
+            throw ("${Label}: no gate ran - all {0} were skipped, so there is no result to report." -f $skips.Count)
+        }
         throw "${Label}: no gate ran - refusing to report green over nothing."
     }
 
@@ -436,7 +520,18 @@ function Assert-BuildGates {
             $Context.Results['Gates'].Count, ($failures -join ', '))
     }
 
-    Write-BuildLog -Context $Context -Message ("$Label OK ({0} gate(s))" -f $Context.Results['Gates'].Count)
+    if ($skips.Count -gt 0 -and -not $TolerateSkips) {
+        $ask = 'Pass -TolerateSkips to Assert-BuildGates if a skip is acceptable, and say why.'
+        throw ('{0} FAILED: {1} gate(s) skipped and a skip is not tolerated here: {2}. {3}' -f
+            $Label, $skips.Count, ($skips -join ', '), $ask)
+    }
+
+    if ($skips.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message (
+            "$Label OK ({0} gate(s), {1} skipped)" -f $Context.Results['Gates'].Count, $skips.Count)
+    } else {
+        Write-BuildLog -Context $Context -Message ("$Label OK ({0} gate(s))" -f $Context.Results['Gates'].Count)
+    }
 }
 
 function Invoke-BuildStep {
@@ -668,6 +763,7 @@ Export-ModuleMember -Function @(
     'Invoke-BuildExternal',
     'Invoke-BuildOptional',
     'Invoke-BuildGate',
+    'Add-BuildGateSkip',
     'Assert-BuildGates',
     'Invoke-BuildStep',
     'Write-BuildSummary',

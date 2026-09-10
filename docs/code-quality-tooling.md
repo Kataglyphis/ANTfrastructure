@@ -2447,6 +2447,100 @@ resolves that config from the project it LINTS, not from this repo: a consumer
 calling `lint-workflows.sh <root>` lints its own tree with its own
 `.github/actionlint.yaml`, so this file covers ContainerHub alone.
 
+### Four fleet workflow conventions (`workflow-lint`)
+
+`linux/scripts/verify_workflow_conventions.py`, run by `lint-workflows.sh` on the
+same terms as `verify_ci_image_refs.py` — this checkout's copy, the root it was
+handed, its status folded into the one `WORKFLOW LINT` verdict. Baseline
+`linux/scripts/workflow-conventions.allow`, suite
+`linux/scripts/tests/test-workflow-lint.sh`.
+
+**Why it exists.** Four rules the fleet agreed on and wrote down, each enforced by
+nobody:
+
+| convention | how it was transmitted | why the backlog is what it is |
+| --- | --- | --- |
+| no `*-latest` runner label | restated in **seven** workflow headers | the one already clean fleet-wide, which is why it is enforced from day one with no knob |
+| job-level `timeout-minutes` | nowhere but the jobs that happen to have one | worst in `BeschleunigerBallett/.github/workflows/Linux.yml`, whose own comments price two lanes at ~25 minutes each and the whole run at 2h13m, then warn about "the 6-hour job cap" every one of its jobs is left sitting under |
+| a `permissions:` block | nowhere | includes `jotrockenmitlocken`'s `dart.yml`, which consumes 14 distinct secrets and runs four FTP deploys on the repository default token |
+| `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
+
+The counts are deliberately not written here. They live once, as the CENSUS rows
+of `linux/scripts/workflow-conventions.allow`, where they are the gate's own
+output and a gate grades them; a number restated in prose is a number that
+drifts, and this pair had already drifted once.
+
+A copied comment is not a convention: it is as strong as the last person who read
+one, and it says nothing at all about the file it was never copied into.
+
+**The ramp.** `shellcheck-warnings` can freeze its individual offenders because
+they live in THIS repo. These do not: the corpus is other repositories'
+workflows, and a hub-side freeze of named jobs would turn every consumer red the
+moment it edited one, then demand a submodule bump to record the fix. So this
+follows `lint-env-knobs.sh`'s ramp — the three checks with a backlog **report and
+pass** until `WORKFLOW_CONVENTIONS_GATE` arms them (`1`, `all`, or a
+comma-separated list, so a repository can clear one convention at a time;
+`0`/`off`/`no`/`none`/`false`/empty disarms them again), while `runner-ban` is
+armed always. `preflight.sh` runs the gate with `permissions` armed, the way it
+runs `lint-env-knobs.sh` with `KNOB_GATE=1`: this repo is measured clean of that
+one, so a workflow added here without a `permissions:` block is red the day it
+lands.
+
+**The ratchet, which is what makes "advisory" safe.** A report-and-pass check can
+grow for ever with nothing turning red, so each repository's count per RAMPING
+check is frozen in a `CENSUS | <repo> | <check> | <count> | <reason>` row and may
+only go down. Above it the gate fails whatever the arming says; a check with
+findings and **no** row fails too, so the ramp cannot be dodged by omission. An
+armed check counts zero — its findings already failed on their own, one finding
+never gets two verdicts, and arming a check therefore retires its row. Going down
+is the point, so it is cheap: in ContainerHub, whose commit edits this file
+beside the fix, an unrecorded shrink fails like every other allow file here; in a
+consumer, which reads the table through the submodule and cannot edit it, the
+shrink is printed with the number to write down and passes.
+
+**Deviations are declared, not silent.** A row in `workflow-conventions.allow`
+reads `<repo> | <path> | <check> | <detail> | <reason>` — the EXCUSED-with-reason
+table `verify_ci_image_refs.py` carries as a dict, moved into a file because these
+rows name other repositories' files. The gate resolves the tree it is linting from
+its `origin` remote and grades only that repository's rows, since one table is
+shared by every consumer through the submodule. That table ships **empty on
+purpose**: not one finding is excused, because excusing a finding to make a lane
+green is the opposite of the job.
+
+**What a row is graded on.** A row that matches a live finding excuses it and
+prints its reason, and lowers the census count above it, so the two tables have to
+agree. A row for THIS repository that matches nothing is stale and fails. A row
+naming a repository `.github/consumers.json` does not declare is a typo and fails
+— otherwise a mis-spelled first column would grade nothing, for ever, and look
+like an excuse that worked. So does a tree whose own `origin` names an undeclared
+repository: no row could ever be keyed to it, and grading its files with the
+excuse table and the ratchet both inert is the same silence. A duplicate row
+fails: two reasons for one deviation means one of them is unread. A missing or
+malformed `consumers.json` fails rather than returning an empty set, which used
+to switch the typo check off without saying so.
+
+**What it cannot see, said plainly.** A row about repository A is neither used nor
+stale while repository B is being linted, so a deviation that repository A deleted
+is only reported the next time A's own lane runs — and the same is true of its
+census row. `timeout-minutes` is not asked of a job that `uses:` a reusable
+workflow, because GitHub rejects the key there and the only "fix" would be an
+invalid workflow.
+
+**The parser, and what it refuses.** The YAML is read by a hand-written subset
+parser, for `verify_ci_image_refs.py`'s reason: the gate runs on the stdlib alone.
+The subset is block mappings, block sequences — indented **or at the same column
+as their key**, which is ordinary Actions YAML and was silently dropped until
+2026-09-09 — flow sequences and flow mappings, plain and quoted scalars, and block
+scalars kept as one opaque string. Everything else RAISES, and a file that raises
+is reported under a `parse` pseudo-check that never ramps and cannot be excused:
+anchors, aliases, merge keys, multi-document files, a flow collection that spans
+lines or holds a collection as a key, a top level that is not a mapping, a file
+that is empty or all comments, and any line the walk did not consume. That last
+one is the truncation guard: whatever is left over was graded by nothing. The
+parser was validated against PyYAML over all **49** workflow and composite-action
+files of the declared fleet (37 workflows, 12 actions) on 2026-09-09 — same
+findings, file for file, no file unreadable.
+
 ### Secret scan (`secret-scan`)
 
 `lint-secrets.sh` over the working tree with the pinned `gitleaks`. The suite
@@ -2527,13 +2621,31 @@ run the gate where it is supposed to run.** Two of these probes had never
 executed anywhere, and no suite written against them would have said so.
 
 **`version-snapshot` got the one-fixture-per-sub-check suite its reason demanded.**
-`sync_versions.py --check` is a fan-out: `result |=` over seven sub-checks plus a
+`sync_versions.py --check` is a fan-out: `result |=` over eight sub-checks plus a
 subprocess into `generate-website-licenses.py`, whose targets span `README.md`
-markers, the deps table, doc literals, Dockerfile ARG defaults and
-`windows/scripts/build-*-from-source.ps1`. Because the verdict is an OR, a suite
-that reddens ONE sub-check would un-freeze the slug while six stayed unproven —
-the hollow-proof shape this list exists to prevent. `test-version-snapshot.sh`
-reddens six of the seven independently, plus the subprocess, and pins the seventh.
+markers, the deps table, doc literals, Dockerfile ARG defaults,
+`windows/scripts/build-*-from-source.ps1` and — the eighth, added 2026-09-09 — a
+CONSUMER repository's own `pyproject.toml` / `.pre-commit-config.yaml`. Because
+the verdict is an OR, a suite that reddens ONE sub-check would un-freeze the slug
+while seven stayed unproven — the hollow-proof shape this list exists to prevent.
+`test-version-snapshot.sh` reddens seven of the eight independently, plus the
+subprocess, and pins the one that cannot be reddened (the KNOWN GAP below).
+
+**The eighth arrived unproven, and that is exactly the shape described above.**
+It shipped with nine mutations in the registry and none of them touching
+`check_consumer_pins`, no fixture, and a registry row still reading
+`test+mutation` — a slug crediting a suite for a sub-check it had never
+executed. Worse, the check itself could not run: its only caller was the hub's
+own `preflight.sh`, which runs in a standalone clone where no consumer root can
+be named, so it printed `NOT CHECKED` and exited 0 on every run in the fleet.
+Both halves are closed together, because either alone is still hollow — the
+check now runs as `run-lint-gates.sh`'s `consumer pins` gate in a CONSUMER's
+lane (that aggregator takes the consumer root as a mandatory argument, which is
+the thing the hub lane does not have), and four mutations
+(`consumer-pins-ored`, `-empty-run-fatal`, `-skip-comments`,
+`-one-declaration`) each fail a named new assertion. **The generalisable part:
+"a check exists" and "a check runs" are different claims, and a registry can
+only see the first one.**
 
 **The fixture is a SYMLINK FARM, and that is what made the wave affordable.**
 `collect_versions()` — which `render_snapshot()` calls, so every `--check` run
@@ -2544,10 +2656,21 @@ therefore cannot reach a verdict at all, and a full copy is 8 GB. So the fixture
 mirrors the repo as symlinks one directory at a time, materialising only the file
 under test as a real copy. `sync_versions.py` itself must always be a real copy:
 it derives `REPO_ROOT` from `Path(__file__).resolve()`, and `resolve()` would
-follow a symlink straight back to the real tree. The suite's own first case is the
-green baseline printing all seven verdict lines — without it none of the reds
+follow a symlink straight back to the real tree. The eighth sub-check's code moved
+out to [`docs/scripts/consumer_pins.py`](scripts/consumer_pins.py) on 2026-09-10 —
+it is the one target whose subject is a file this repo does not own, so it is
+detection-only under a different contract from the seven it shared a file with.
+That module takes the hub root as a PARAMETER instead of deriving one, and the
+farm is precisely why: it is NOT materialised as a real copy, so a
+`Path(__file__).resolve()` there would follow the symlink back to the real tree
+and grade a different root than the `sync_versions.py` that called it. The suite's own first case is the
+green baseline printing all eight verdict lines — without it none of the reds
 would mean anything — and its last case proves the perturbations are DISJOINT,
 which under an OR is the difference between proving a sub-check and hiding one.
+The eighth sub-check is the one the farm cannot supply a subject for: its
+subject is a different repository, so the suite writes a two-file consumer of
+its own (a matching one that rides along in every case, and perturbed copies for
+the reds) rather than reading a sibling checkout that a CI runner does not have.
 
 **Writing that suite found a sub-check that has never checked anything.**
 `script_default_target_files()` globs `windows/scripts/build-*-from-source.ps1`.

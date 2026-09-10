@@ -81,8 +81,13 @@ t_assert_eq "ghcr.io/x/y:tag1" \
 # repo keeps finding. Each case below plants exactly one wrong value and asserts
 # the gate goes red on it.
 
-# _gh_tree <action image default | ""> <workflow text> -> a consumer-shaped
-# .github/ with ONE of the four container actions and one workflow.
+# _gh_tree <action image default | ""> <workflow text> [<relpath>=<body> ...]
+#   -> a consumer-shaped .github/ with ONE of the four container actions, one
+#      workflow, and any extra files the case needs.
+#
+# git init + add, because check D reads the git INDEX (gate_scope rule 3), not a
+# walk: a walk of a working tree picks up .venv/ and build dirs. The "an
+# UNTRACKED file" case below is what proves that is what actually happens.
 _gh_tree() {
   local d
   d="$(mktemp -d "${_work}/gh.XXXXXX")"
@@ -94,6 +99,15 @@ _gh_tree() {
     printf 'runs:\n  using: composite\n  steps:\n    - run: "true"\n      shell: bash\n'
   } > "${d}/.github/actions/run-in-linux-container/action.yml"
   printf '%s\n' "$2" > "${d}/.github/workflows/ci.yml"
+  shift 2
+  local spec rel
+  for spec in "$@"; do
+    rel="${spec%%=*}"
+    mkdir -p "${d}/$(dirname "${rel}")"
+    printf '%s\n' "${spec#*=}" > "${d}/${rel}"
+  done
+  git -C "${d}" init -q
+  git -C "${d}" add -A
   printf '%s' "${d}"
 }
 
@@ -157,7 +171,104 @@ if [ "${_have_py}" -eq 1 ]; then
   _d="$(mktemp -d "${_work}/empty.XXXXXX")"
   t_assert_eq "1" "$(t_rc _gate "${_d}")" \
     "a gate that graded nothing must say so; the usual cause is the wrong root"
-  t_assert_contains "$(t_out _gate "${_d}")" "wrong root?"
+  t_assert_contains "$(t_out _gate "${_d}")" "wrong root?" \
+    "and it must say it BEFORE the git-index scan, whose message names the wrong problem"
+
+  # --- check D: a COPY of a currently-canonical ref -------------------------
+  # A/B/C were blind to this class and said so in green: the three copies that
+  # survived (two workflow `env:` entries and a PowerShell param default) were
+  # CANONICAL, so B waved them through and C only ever compares platforms.
+
+  t_case "a canonical ref spelled out in a tracked *.sh FAILS"
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
+    "scripts/run.sh=#!/usr/bin/env bash
+docker run ${_linux_ref} true")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" \
+    "shell has ci-image-ref.sh to ask; a ref typed here is frozen at today's tag"
+  _out_d="$(t_out _gate "${_d}")"
+  t_assert_contains "${_out_d}" "scripts/run.sh:2"
+  t_assert_contains "${_out_d}" "ci-image-ref.sh" "the finding must name the owner to ask"
+
+  t_case "a canonical ref in a tracked *.ps1 FAILS, and names the PowerShell owner"
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
+    "scripts/Build.ps1=param([string]\$Image = '${_win_ref}')")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" \
+    "a param default is exactly where the Windows copy hid"
+  t_assert_contains "$(t_out _gate "${_d}")" "Get-CiImageReference" \
+    "pointing a PowerShell caller at a bash script would be useless advice"
+
+  t_case "a COMMENT copy fails too: that is where two of the three were"
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
+    "scripts/doc.sh=#!/usr/bin/env bash
+# Runs in ${_linux_ref}.
+true")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" \
+    "a ref in a comment rots on a tag bump exactly like one in code"
+
+  t_case "a per-arch CHILD of the family tag in a script is NOT a copy"
+  # The build chain really does produce and run these, and D must not turn into
+  # "no ghcr reference anywhere" -- that would only teach people to excuse it.
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
+    "scripts/smoke.sh=#!/usr/bin/env bash
+docker run ${_linux_ref}-arm64 true")"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")" \
+    "a tag that merely STARTS with the canonical one is a different image"
+
+  t_case "an UNTRACKED file is not graded: the index is the scope, not the disk"
+  # Measured before choosing: a walk of one consumer's tree yields 38 *.sh under
+  # .venv/, build-*/ and .pub-cache/ against 21 tracked ones, and would report a
+  # vendored dependency's shell as this repo's drift.
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}")"
+  mkdir -p "${_d}/.venv/bin"
+  printf 'docker run %s true\n' "${_linux_ref}" > "${_d}/.venv/bin/activate.sh"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")" \
+    "grading untracked build output makes the gate unrunnable on a dev box"
+
+  t_case "a script under third_party/ belongs to that repo's own run"
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
+    "third_party/ContainerHub/linux/scripts/x.sh=docker run ${_linux_ref} true")"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")" \
+    "a submodule is a separate root; double-reporting it makes both verdicts noise"
+
+  t_case "the family ref hoisted into a workflow env: FAILS"
+  _WF_ENV='name: ci
+on: push
+env:
+  CONTAINER_IMAGE: REF_HERE
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hello'
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_ENV//REF_HERE/${_linux_ref}}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" \
+    "this is the exact shape three lanes carried while the gate reported green"
+  _out_d="$(t_out _gate "${_d}")"
+  t_assert_contains "${_out_d}" "workflows/ci.yml:4"
+  t_assert_contains "${_out_d}" "omit the input" "the finding must name the way out"
+
+  t_case "the two YAML forms with nowhere else to get the value stay green"
+  # D's ONE carve-out is `default:` -- an input's owner. A reusable workflow's
+  # input default and an expression fallback are how a caller keeps an override,
+  # and neither can inherit an action default. If this case ever goes red, D has
+  # stopped being a rule about copies and become a ban on the string.
+  _WF_OWNER='name: ci
+on:
+  workflow_call:
+    inputs:
+      container-image:
+        type: string
+        default: REF_HERE
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CONTAINER_IMAGE: ${{ inputs.container-image || '"'"'REF_HERE'"'"' }}
+    steps:
+      - run: echo hello'
+  _d="$(_gh_tree "${_linux_ref}" "${_WF_OWNER//REF_HERE/${_linux_ref}}")"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")" \
+    "an input default IS the owner of that value; an expression leaves the caller a choice"
 else
   t_assert_eq "no-python" "no-python" "PREFLIGHT_PYTHON unset and python3 is a stub"
 fi

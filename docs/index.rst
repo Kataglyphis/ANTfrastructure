@@ -195,6 +195,7 @@ Common development targets:
    slang-shader-compilation
    python-ci
    ci-build-triggers
+   ftp-deploys
    github-cli-pipeline-monitoring
    mistral-vibe-glm-setup
    geniex-local-ai-setup

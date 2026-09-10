@@ -354,6 +354,32 @@ def run_shards(args, entries, src, report):
             shutil.rmtree(root, ignore_errors=True)
 
 
+def select_only(entries, only, manifest):
+    """The --only subset, or SystemExit(2) if it names an id that does not exist.
+
+    EXACT ids, never globs. An unknown id used to select nothing and exit 0,
+    so `--only workflow-lint.*` -- which LOOKS like a wildcard and matches no
+    id -- printed "nothing selected" and read as proof. That exact string was
+    quoted as evidence in a report on 2026-09-09; it can no longer be produced.
+
+    --changed selecting nothing stays legitimate: a commit can touch no
+    target. An id that does not exist cannot.
+    """
+    if not only:
+        return entries
+    known = {e["id"] for e in entries}
+    unknown = [o for o in only if o not in known]
+    if unknown:
+        sys.stderr.write("ERROR: --only names %d id(s) not in %s: %s\n"
+                         % (len(unknown), manifest, ", ".join(sorted(unknown))))
+        if any("*" in o or "?" in o for o in unknown):
+            sys.stderr.write("       --only takes exact ids, not globs. Pass"
+                             " each id explicitly, or use --changed.\n")
+        sys.stderr.write("       %d id(s) are declared.\n" % len(known))
+        raise SystemExit(2)
+    return [e for e in entries if e["id"] in set(only)]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -372,8 +398,7 @@ def main():
     args = ap.parse_args()
 
     entries = load(args.manifest)
-    if args.only:
-        entries = [e for e in entries if e["id"] in set(args.only)]
+    entries = select_only(entries, args.only, args.manifest)
     if args.changed:
         touched = changed_files()
         # By target OR by the test the entry runs: a commit that only weakens

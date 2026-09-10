@@ -231,16 +231,22 @@ the tool operates on the wrong tree — reporting green, having looked at nothin
 
 ### Gate aggregation (`01-core/gates.sh`)
 
-`run_gate` / `assert_gates`, the shell half of the fleet's
+`run_gate` / `gate_skip` / `assert_gates`, the shell half of the fleet's
 "run every gate, then fail once" idiom (the PowerShell half is
-`Invoke-BuildGate` / `Assert-BuildGates` in `WindowsBuild.Common.psm1`).
+`Invoke-BuildGate` / `Add-BuildGateSkip` / `Assert-BuildGates` in
+`WindowsBuild.Common.psm1`).
 
 ```bash
 source "${CORE_DIR}/gates.sh"
 gate_reset "static analysis"
 run_gate "ruff check" ruff check --no-fix src
 run_gate "ty"         ty check
-assert_gates            # 0 when all passed; 1 naming every failure
+if has_tool clang-tidy; then
+  run_gate  "clang-tidy" clang-tidy src
+else
+  gate_skip "clang-tidy" "not installed in this image"
+fi
+assert_gates            # 0 when all passed; 1 naming every failure or skip
 ```
 
 Every gate RUNS even after an earlier one fails, so one push names every finding
@@ -250,6 +256,69 @@ batch with no closing `assert_gates` is suppression, not aggregation. It is
 compatible with `set -e` (the command runs inside a `||` list). `assert_gates`
 also fails when **no** gate ran, because an aggregator whose list came out empty
 reporting success is the failure this mechanism exists to prevent.
+
+#### The third bucket: a gate that could not RUN
+
+A gate can also be neither a pass nor a failure: its tool is not installed. Both
+ways of forcing that into the other two buckets are lies — counted as a pass it
+is the suppression this file exists to prevent, counted as a failure it is a red
+nobody can act on — so `gate_skip <name> [why]` records it as its own thing. The
+reason is part of the record on purpose: "skipped" without one reads exactly like
+a gate somebody quietly deleted.
+
+| Bucket | Recorded by | Counts as "a gate ran"? | Verdict |
+|---|---|---|---|
+| pass | `run_gate`, command exits 0 | yes | green |
+| failure | `run_gate`, command exits non-zero | yes | red, and named |
+| skip | `gate_skip` | **no** | **red, unless `--tolerate-skips`** |
+
+**A skip is RED BY DEFAULT, and that default is the inverse of the first cut.**
+The earlier spelling was `assert_gates --fail-on-skip`: tolerance was what you
+got for free and strictness was the thing you had to remember, which is exactly
+the "allowed to fail" shape the fleet rule forbids. A driver that forgot the flag
+reported green over a tool that never ran, and nothing in the tree recorded which
+drivers those were. Inverted, tolerance is an explicit `--tolerate-skips` at a
+call site, so one `grep -rn -- --tolerate-skips` enumerates every place in the
+fleet where a missing tool is currently allowed to pass and the audit is finite.
+`assert_gates` returns **2** for any other argument, so a stale `--fail-on-skip`
+is a caller bug rather than a silently re-armed default.
+
+A skip does not count towards `_GATE_RAN`, so **a batch of nothing but skips is
+red even with `--tolerate-skips`**: nothing was graded, so there is no result to
+tolerate. That is the no-gate-ran rule above, and it outranks the flag — as does
+a real failure sharing the batch.
+
+#### `run_gate` runs its command in a SUBSHELL
+
+`( "$@" )`, not a bare `"$@"`. Upstream check helpers report failure with `err()`
+(`01-core/logging.sh`), which ends in `exit 1`. Called directly that `exit`
+unwinds the *driver*, not just the gate: the findings already recorded are lost,
+the gates after it never run, and the batch never reaches `assert_gates` — "stop
+at the first failure" arriving through the back door, in the one file whose whole
+job is to prevent it. `||` does not catch `exit`; only a subshell does. The cost
+is that a gate can no longer export state back to the driver, which no caller
+wanted. `linux/scripts/tests/test-lint-gates.sh` grades this by running one
+driver against the shipped file and against a copy with the subshell removed: the
+copy has to die mid-batch, or the shipped file passing proves nothing.
+
+#### Windows parity, and the one place the halves differ
+
+The third bucket is mirrored exactly — `Add-BuildGateSkip -Context -Name
+[-Reason]` and `Assert-BuildGates [-TolerateSkips]`, where a `[switch]` is false
+unless passed, so the inverted default is the same fact on both halves.
+
+The subshell is **not** mirrored, and that was measured rather than assumed:
+`exit` inside a gate scriptblock terminates the whole PowerShell driver through
+both `& $Script` and `$Script.Invoke()`, and the only containment left is a child
+runspace, which breaks the closures a gate scriptblock is written with. The
+hazard also does not arise there for the reason it does in bash.
+`Invoke-BuildGate`'s contract is that a gate fails by *throwing*, or by a
+non-zero exit propagated through `Invoke-BuildExternal`, and its `try`/`catch`
+already contains both; PowerShell has no equivalent of the fleet-wide `err()`
+helper that makes `exit` the normal way to report a failure.
+`windows/scripts/tests/BuildGates.ThirdBucket.Tests.ps1` pins both halves of that
+paragraph, the child-`pwsh` measurement included, so the day PowerShell contains
+an `exit` this section goes red instead of quietly aging into a false claim.
 
 ### Tool presence (`01-core/tool-checks.sh`)
 

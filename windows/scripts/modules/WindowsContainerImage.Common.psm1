@@ -183,7 +183,10 @@ function Assert-ContainerCommandAvailable {
 .PARAMETER VersionsEnvPath
     Override the versions.env location. For tests; leave unset in production.
 .OUTPUTS
-    [string] e.g. 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross'
+    [string] '<IMAGE_REGISTRY_PREFIX>:<CI_IMAGE_LINUX_TAG>', or the
+    CI_IMAGE_WINDOWS_TAG one under -Windows. No sample value is spelled out here:
+    a ref in a comment freezes at the tag it was typed on exactly like one in
+    code, and verify_ci_image_refs.py check D reads comments too.
 #>
 function Get-CiImageReference {
     param(
