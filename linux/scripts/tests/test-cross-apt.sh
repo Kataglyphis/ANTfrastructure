@@ -447,24 +447,26 @@ t_assert_eq "no" "${_hit}" "a prefix of a listed arch must NOT match"
 apt_source_declares_arch "${_PRUNE_DIR}/absent.sources" arm64 && _hit=yes || _hit=no
 t_assert_eq "no" "${_hit}" "an absent file declares nothing"
 
+# Both prune cases plant the same two sources and read the same two files back;
+# only the build arch and the keep-argument differ. One owner, so the pair reads
+# as the contrast it is: $1 build arch, $2 kept, $3 pruned, $4.. keep-args.
+_prune_case() {
+  local host="$1" kept="$2" gone="$3"; shift 3
+  cross_build_arch() { printf '%s' "${host}"; }
+  _write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64"
+  _write_ports_source "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" "riscv64"
+  cross_prune_foreign_arch_apt_sources "$@"
+  printf '%s %s' \
+    "$([ -f "${_PRUNE_DIR}/ubuntu-ports-${kept}.sources" ] && echo 1 || echo 0)" \
+    "$([ -f "${_PRUNE_DIR}/ubuntu-ports-${gone}.sources" ] && echo 1 || echo 0)"
+}
+
 t_case "an arm64 build host keeps its own ports source"
-cross_build_arch() { printf 'arm64'; }
-_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64"
-_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" "riscv64"
-cross_prune_foreign_arch_apt_sources
-t_assert_eq "1" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" ] && echo 1 || echo 0)" \
-  "the host's own ports source is not foreign and must survive"
-t_assert_eq "0" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" ] && echo 1 || echo 0)" \
-  "a genuinely foreign ports source is still pruned"
+t_assert_eq "1 0" "$(_prune_case arm64 arm64 riscv64)" \
+  "the host's own ports source is not foreign and must survive; a genuinely foreign one is still pruned"
 
 t_case "an amd64 build host prunes exactly as before"
-cross_build_arch() { printf 'amd64'; }
-_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64"
-_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" "riscv64"
-cross_prune_foreign_arch_apt_sources "${_PRUNE_DIR}/ubuntu-ports-arm64.sources"
-t_assert_eq "1" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" ] && echo 1 || echo 0)" \
-  "the explicit keep-source still wins"
-t_assert_eq "0" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" ] && echo 1 || echo 0)" \
-  "no ports source declares amd64, so amd64 hosts see no behaviour change"
+t_assert_eq "1 0" "$(_prune_case amd64 arm64 riscv64 "${_PRUNE_DIR}/ubuntu-ports-arm64.sources")" \
+  "the explicit keep-source still wins, and no ports source declares amd64 -- amd64 hosts see no behaviour change"
 
 t_summary
