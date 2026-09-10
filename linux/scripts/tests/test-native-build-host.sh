@@ -203,4 +203,32 @@ t_assert_eq "0" "$(grep -c '/usr/lib/llvm-\${_major}' "${_MAT}" || true)" \
 t_assert_contains "$(cat "${_MAT}")" '/opt/llvm-target-${_arch}' \
   "the pinned source tree must be the first host candidate"
 
+# ---------------------------------------------------------------------------
+# Emulating amd64 only becomes necessary once the BUILD HOST is not amd64 —
+# which is exactly what this suite is about. Both helpers had no amd64 arm, and
+# _binfmt_qemu_name's catch-all produced "qemu-amd64", a handler that does not
+# exist under any name (the real one is qemu-x86_64). verify_foreign_binfmt
+# therefore err()'d before the build loop on every arm64/riscv64 host.
+t_case "every arch maps to a QEMU handler that really exists"
+_BRM="${REPO_SCRIPTS}/build-runtime-manifest.sh"
+_qemu_name() {
+  bash -c "$(sed -n '/^_binfmt_qemu_name()/,/^}/p' "${_BRM}")"$'\n''_binfmt_qemu_name "$1"' _ "$1"
+}
+t_assert_eq "qemu-x86_64"  "$(_qemu_name amd64)" \
+  "qemu-amd64 is not a handler name anywhere; the binary is qemu-x86_64"
+t_assert_eq "qemu-x86_64"  "$(_qemu_name x86_64)"
+t_assert_eq "qemu-aarch64" "$(_qemu_name arm64)"
+t_assert_eq "qemu-riscv64" "$(_qemu_name riscv64)"
+
+t_case "the registrar can register the arch the chain now has to emulate"
+_REG="${REPO_SCRIPTS}/setup-rootless-binfmt.sh"
+_reg_bin() {
+  bash -c "$(sed -n '/^qemu_bin_for()/,/^}/p' "${_REG}")"$'\n''qemu_bin_for "$1"' _ "$1"
+}
+t_assert_eq "qemu-x86_64"  "$(_reg_bin amd64)"
+t_assert_eq "qemu-aarch64" "$(_reg_bin arm64)"
+# e_machine 0x3e is x86-64; the byte pair is what binfmt_misc matches on.
+t_assert_contains "$(sed -n '/^elf_magic_for()/,/^}/p' "${_REG}")" 'x3e' \
+  "without the ELF magic the registrar cannot install the amd64 handler"
+
 t_summary

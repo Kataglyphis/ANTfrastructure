@@ -31,12 +31,15 @@ while [ $# -gt 0 ]; do
 done
 
 # arch -> qemu binary name, ELF e_machine magic + mask (little-endian, offset 0)
-qemu_bin_for()  { case "$1" in arm64) echo qemu-aarch64 ;; riscv64) echo qemu-riscv64 ;; arm) echo qemu-arm ;; *) return 1 ;; esac; }
+qemu_bin_for()  { case "$1" in arm64) echo qemu-aarch64 ;; riscv64) echo qemu-riscv64 ;; amd64) echo qemu-x86_64 ;; arm) echo qemu-arm ;; *) return 1 ;; esac; }
 elf_magic_for() {
   # \x7fELF, EI_CLASS=2 (64-bit), EI_DATA=1 (LE), e_type=2 (EXEC) at 0x10, e_machine at 0x12
   case "$1" in
     arm64)   printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xb7\\x00' ;;
     riscv64) printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xf3\\x00' ;;
+    # x86-64 is e_machine 0x3e. Needed when the BUILD HOST is not amd64 -- the
+    # arch that used to be "the host" and therefore never needed emulating.
+    amd64)   printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x3e\\x00' ;;
     *) return 1 ;;
   esac
 }

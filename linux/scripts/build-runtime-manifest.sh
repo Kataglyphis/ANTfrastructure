@@ -215,9 +215,10 @@ ensure_foreign_binfmt() {
 # as an output-less BuildKit step error, so prove the emulator is there and die here.
 _binfmt_qemu_name() {
   case "$1" in
-    arm64|aarch64) printf 'qemu-aarch64' ;;
-    riscv64)       printf 'qemu-riscv64' ;;
-    *)             printf 'qemu-%s' "$1" ;;
+    arm64|aarch64)  printf 'qemu-aarch64' ;;
+    riscv64)        printf 'qemu-riscv64' ;;
+    amd64|x86_64)   printf 'qemu-x86_64' ;;
+    *)              printf 'qemu-%s' "$1" ;;
   esac
 }
 
