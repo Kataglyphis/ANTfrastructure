@@ -26,6 +26,24 @@ Neither is sufficient alone, and the reason is measurable rather than
 theoretical. From a real scan of `:latest-cross` (`linux/amd64`, syft 1.51.0,
 2026-08-25):
 
+> **Which syft produced the numbers on this page, and why it is not the pinned
+> one.** Every figure below, and in the Windows section under it, comes from
+> **syft 1.51.0** — not from `versions.env`'s `SYFT_VERSION=v1.20.0`. That was
+> nobody's decision: until 2026-09-09 `scan-image-sbom.sh` used whatever `syft`
+> `command -v` found on PATH and bootstrapped the pin only when there was none,
+> so these counts were measured by whichever scanner the workstation happened to
+> have — thirty-one minor releases past the pin, on a page whose own
+> [Generating them](#generating-them) section calls the scanner pinned. The
+> script now **refuses** a syft that is not the pinned version, from PATH or
+> from a stale bootstrap cache, which is what makes a re-run reproducible at
+> all. Until someone re-measures under `v1.20.0` — it needs the published image
+> and a network — read the numbers below as **dated evidence for the SHAPE of
+> the two halves** (thousands of packages, most carrying no declared licence,
+> every copyleft component reported as the distro copy or not at all) rather
+> than as figures a pinned run will reproduce: cataloguer coverage and licence
+> conclusion both moved across that version range. Replace the numbers and this
+> note together.
+
 - **4,112 packages** catalogued (2,202 distinct names) — maven 1,340, deb 1,255,
   cargo 1,072, pypi 228, npm 149, go 13. No human maintains that by hand.
 - **73 % of them carry no declared licence**, and **94 % no concluded licence**.
@@ -41,8 +59,9 @@ theoretical. From a real scan of `:latest-cross` (`linux/amd64`, syft 1.51.0,
 
 ### The Windows image behaves differently again
 
-Scanning `:winamd64` (syft 1.51.0, 2026-08-25) returns **26,253 packages** — six
-times the Linux count, and far noisier:
+Scanning `:winamd64` (syft 1.51.0, 2026-08-25 — the unpinned scanner the note
+above describes) returns **26,253 packages** — six times the Linux count, and
+far noisier:
 
 | Ecosystem | Count | What it really is |
 |---|---|---|
@@ -75,8 +94,11 @@ python3 docs/scripts/generate_sbom.py --write     # -> docs/deps/sbom-curated.sp
 python3 docs/scripts/generate_sbom.py --check     # gated in preflight as slug `sbom`
 
 # Scanner half — reads straight from the registry, no daemon, no local
-# build. ONE driver: it bootstraps syft, scans, refuses a scan that catalogued
-# under 50 packages, then runs the comparison below. The image argument is
+# build. ONE driver: it bootstraps syft at versions.env's SYFT_VERSION (a syft
+# on PATH is used only when it IS that version, and any other one — from PATH
+# or from a stale bootstrap cache — is refused rather than silently used),
+# scans, refuses a scan that catalogued under 50 packages, then runs the
+# comparison below. The image argument is
 # optional — omitted, it is composed from IMAGE_REGISTRY_PREFIX +
 # CI_IMAGE_LINUX_TAG in versions.env, so a local scan and every CI lane target
 # the same tag by construction.

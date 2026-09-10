@@ -14,7 +14,8 @@
 #
 # ruff bootstrap: PATH copy preferred; else `uvx ruff@PIN` (uv is already a
 # hard dependency of this repo; uvx caches the pinned wheel). The pin is
-# RUFF_VERSION in 01-core/versions.env, sourced below.
+# RUFF_VERSION in 01-core/versions.env and NOWHERE ELSE — this file carries no
+# fallback literal, and refuses to run rather than invent one (see below).
 #
 # Usage: linux/scripts/lint-python.sh [--root <dir>] [file.py ...]
 #        (no file arguments = the full set under the root)
@@ -45,12 +46,20 @@ cd "${REPO_ROOT}" || exit 1
 # values may contain shell metacharacters, and sourcing it ran three of
 # CUDA_ARCHITECTURES' arch numbers as commands on every hook run.
 # docs/cross-build-verification.md#per-arch-version-truth
+#
+# RUFF_VERSION below is `:?`, never `:-` (2026-09-09): a `:-` fallback IS a
+# second literal, reconciled only by an advisory scan that exits 0. Same
+# argument as scan-image-sbom.sh's SYFT_VERSION.
+# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 _core="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core"
-if [ -f "${_core}/versions.env" ] && [ -f "${_core}/load-versions-env.sh" ]; then
-  # shellcheck source=01-core/load-versions-env.sh
-  . "${_core}/load-versions-env.sh" && load_versions_env "${_core}/versions.env"
+if [ ! -f "${_core}/versions.env" ] || [ ! -f "${_core}/load-versions-env.sh" ]; then
+  printf 'ERROR: %s\n' "01-core/versions.env or 01-core/load-versions-env.sh is missing beside ${_core} -- the ruff pin has nowhere to come from." >&2
+  exit 1
 fi
-RUFF_PIN="${RUFF_VERSION:-0.16.4}"
+# shellcheck source=01-core/load-versions-env.sh
+. "${_core}/load-versions-env.sh" && load_versions_env "${_core}/versions.env"
+: "${RUFF_VERSION:?RUFF_VERSION is not set (01-core/versions.env parsed, but the key is gone from it)}"
+RUFF_PIN="${RUFF_VERSION}"
 GATE_SELECT="E9,F63,F7,F82"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
