@@ -394,7 +394,15 @@ llvm_host_native_tool_dir() {
 
   major="$(version_major "${major}")"
 
+  # The PINNED host tree first: since 2026-09-10 llvm-cross.sh builds the build
+  # host's own arch from llvmorg-${LLVM_RELEASE} into /opt/llvm-target-<arch>.
+  # Without this the nested tools came from the apt bootstrap, i.e. a 23.1.1
+  # tablegen generating .inc files for a 23.1.0 source tree — on EVERY cross
+  # build, including the arches that already passed. Falls through unchanged
+  # when that tree does not exist yet (it is built by the same target loop, so
+  # the arches built before the host's turn still take the apt path).
   for candidate in \
+    "/opt/llvm-target-$(build_arch_oci 2>/dev/null || echo amd64)/bin" \
     "/usr/local/llvm-${major}/bin" \
     "/usr/lib/llvm-${major}/bin" \
     "/usr/local/bin"; do

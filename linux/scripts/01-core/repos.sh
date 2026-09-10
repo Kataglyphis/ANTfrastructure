@@ -96,16 +96,15 @@ add_llvm_repo() {
   $SUDO mkdir -p /etc/apt/sources.list.d
   echo "deb [signed-by=${key}] https://apt.llvm.org/${DISTRO}/ llvm-toolchain-${DISTRO}-${LLVM_WANTED} main" | $SUDO tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
 
-  # Reproducibility: the suite llvm-toolchain-<distro>-<major> FLOATS across
-  # point releases. When the full LLVM_RELEASE is known, pin apt to that exact
-  # upstream version so a rebuild installs the same toolchain as the shipped
-  # images instead of whatever apt.llvm.org currently serves.
-  if [ -n "${LLVM_RELEASE:-}" ] && [ "${LLVM_RELEASE}" != "${LLVM_WANTED}" ]; then
-    $SUDO mkdir -p /etc/apt/preferences.d
-    printf 'Package: *llvm* *clang* *lld* *polly* libclang* liblld*\nPin: version %s*\nPin-Priority: 1001\n' \
-      "${LLVM_RELEASE}" | $SUDO tee /etc/apt/preferences.d/apt-llvm-org-pin >/dev/null
-    log "Pinned apt.llvm.org packages to ${LLVM_RELEASE}*"
-  fi
+  # RE-SCOPED 2026-09-10 (was: "pin apt to the exact LLVM_RELEASE"). That pin
+  # could not work and failed SILENTLY: the suite tracks the release BRANCH
+  # HEAD, so once 23.1.1 landed no 23.1.0 existed, the `Pin: version 23.1.0*`
+  # glob matched nothing, and apt installed 23.1.1 at default priority. A
+  # control that asserts nothing while reading as working is worse than none.
+  # apt.llvm.org is now only the BOOTSTRAP (clang-tblgen); the SHIPPED clang is
+  # built from llvmorg-${LLVM_RELEASE} and verified against LLVM_COMMIT at clone
+  # time (llvm-cross.sh / build-clang.sh). Re-scopes audit finding #5.
+  $SUDO rm -f /etc/apt/preferences.d/apt-llvm-org-pin 2>/dev/null || true
 
   APT_UPDATED="" # force refresh
   export APT_UPDATED

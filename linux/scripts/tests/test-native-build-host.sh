@@ -160,4 +160,47 @@ t_assert_eq "linux/arm64"  "$(CROSS_BUILD_PLATFORM=linux/arm64 cross_build_platf
 t_assert_eq "linux/amd64"  "$(BUILDARCH=riscv64 cross_build_platform)" \
   "the knob, never the host — an emulated build must describe itself honestly"
 
+# ---------------------------------------------------------------------------
+# LLVM_COMMIT turns the pin from a bookmark into a pin. Before 2026-09-10 the
+# key existed, was documented as OPT-IN, and NO consumer read it — while
+# apt.llvm.org silently shipped 23.1.1 against LLVM_RELEASE=23.1.0.
+t_case "llvm_assert_commit_pin has ONE owner and both clone sites call it"
+_CORE="${REPO_SCRIPTS}/01-core"
+t_assert_eq "1" "$(grep -c '^llvm_assert_commit_pin()' "${_CORE}/common.sh" || true)"
+for _f in 02-toolchain/build-clang.sh 02-toolchain/llvm-cross.sh; do
+  t_assert_eq "1" "$(grep -c 'llvm_assert_commit_pin ' "${REPO_SCRIPTS}/${_f}" || true)" \
+    "${_f} must verify its checkout, not re-implement the check"
+done
+
+t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
+# Read the file rather than sourcing it: versions.env is a flat KEY=value list
+# and the suite runs under `set -u`, where sourcing it would trip on the first
+# ${OTHER:-} reference it happens to contain.
+_VERS="${_CORE}/versions.env"
+_vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
+t_assert_eq "23.1.0" "$(_vers_val LLVM_RELEASE)"
+t_assert_eq "ea7d852a70e8bdfaf601d6626a760f9771b2c4b4" "$(_vers_val LLVM_COMMIT)" \
+  "refs/tags/llvmorg-23.1.0^{} — the PEELED sha, per the convention above the key"
+t_assert_eq "40" "$(printf '%s' "$(_vers_val LLVM_COMMIT)" | wc -c | tr -d ' ')"
+
+t_case "llvm_assert_commit_pin fails on a mismatch and is quiet when unset"
+# shellcheck disable=SC1090
+. "${_CORE}/common.sh" 2>/dev/null || true
+_TMPGIT="$(mktemp -d)"
+git -C "${_TMPGIT}" init -q 2>/dev/null
+git -C "${_TMPGIT}" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x 2>/dev/null
+LLVM_COMMIT="" t_assert_ok llvm_assert_commit_pin "${_TMPGIT}" sometag
+LLVM_COMMIT="0000000000000000000000000000000000000000" \
+  t_assert_fails llvm_assert_commit_pin "${_TMPGIT}" sometag
+_real="$(git -C "${_TMPGIT}" rev-parse HEAD)"
+LLVM_COMMIT="${_real}" t_assert_ok llvm_assert_commit_pin "${_TMPGIT}" sometag
+rm -rf "${_TMPGIT}"
+
+t_case "the apt bootstrap can no longer become the shipped clang"
+_MAT="${REPO_SCRIPTS}/02-toolchain/materialize-llvm-target.sh"
+t_assert_eq "0" "$(grep -c '/usr/lib/llvm-\${_major}' "${_MAT}" || true)" \
+  "the apt tree was the fallback that shipped 23.1.1 against a 23.1.0 pin"
+t_assert_contains "$(cat "${_MAT}")" '/opt/llvm-target-${_arch}' \
+  "the pinned source tree must be the first host candidate"
+
 t_summary

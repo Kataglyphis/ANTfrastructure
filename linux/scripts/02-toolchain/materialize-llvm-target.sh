@@ -97,22 +97,20 @@ _host_arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 _host_multiarch="$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)"
 
 if [ "${_arch}" = "${_host_arch}" ]; then
-    # Ship the SOURCE-built host clang (LLVM_RELEASE) at /usr/local/llvm-<major>
-    # as amd64's target-native clang. /usr/lib/llvm-<major> is the APT bootstrap
-    # clang (apt.llvm.org LAGS point releases) and must NOT become the shipped
-    # clang, or amd64 ships a stale clang that mismatches LLVM_RELEASE (caught
-    # by the runtime clang-version smoke). Prefer source; fall back to the apt
-    # path / PATH clang only if the source build is somehow absent.
+    # Ship a SOURCE-built host clang at exactly LLVM_RELEASE. The apt bootstrap
+    # at /usr/lib/llvm-<major> is deliberately NOT a candidate any more: this
+    # branch's own comment always said it "must NOT become the shipped clang",
+    # but it WAS the fallback, and since apt.llvm.org's per-major suite tracks
+    # the release branch head it silently shipped 23.1.1 against a 23.1.0 pin
+    # (2026-09-07). llvm-cross.sh now builds the host arch from
+    # llvmorg-${LLVM_RELEASE} like every other target, so the pinned tree is
+    # there; absent, this is FATAL rather than a quiet downgrade.
     _hostllvm=""
-    for _cand in "/usr/local/llvm-${_major}" "/usr/lib/llvm-${_major}"; do
+    for _cand in "/opt/llvm-target-${_arch}" "/usr/local/llvm-${_major}"; do
         if [ -x "${_cand}/bin/clang" ]; then _hostllvm="${_cand}"; break; fi
     done
-    if [ -z "${_hostllvm}" ]; then
-        _cc="$(command -v clang || true)"
-        [ -n "${_cc}" ] && _hostllvm="$(dirname "$(dirname "$(readlink -f "${_cc}")")")"
-    fi
     [ -n "${_hostllvm}" ] && [ -d "${_hostllvm}" ] || {
-        echo "ERROR: host LLVM dir not found for ${_arch} (tried /usr/local/llvm-${_major}, /usr/lib/llvm-${_major})"; exit 1; }
+        echo "ERROR: no SOURCE-built host LLVM for ${_arch} (tried /opt/llvm-target-${_arch}, /usr/local/llvm-${_major}). The apt bootstrap is not a substitute: it tracks the ${_major}.x branch head, not LLVM_RELEASE=${LLVM_RELEASE}." >&2; exit 1; }
     echo "${_arch} target-native clang from ${_hostllvm} ($("${_hostllvm}/bin/clang" --version 2>/dev/null | head -1))"
     cp -a "${_hostllvm}" /opt/llvm-target
 

@@ -183,28 +183,27 @@ _artifact_source_check_llvm() {
     fi
   fi
   if [ -x "${llvm_target}" ]; then
-    local clang_ver clang_major_minor
+    local clang_ver
     # Read version from binary's embedded DEB metadata (avoids runtime lib
     # resolution issue where apt's libclang-cpp shadows the source-built one).
     clang_ver="$(_vc_clang_embedded_version "${llvm_target}")"
-    if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"; then
+    if printf '%s' "${clang_ver}" | grep -qxF "${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
-      clang_major_minor="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
-      clang_major_minor="${clang_major_minor%.*}"
-      if [[ "${clang_ver}" == *"clang version ${clang_major_minor}"* ]]; then
-        echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
+      # The major.minor arm that used to sit here was DEAD: it tested for the
+      # substring "clang version 23.1" against _vc_clang_embedded_version, whose
+      # both branches emit bare digits. It could never match, so this check
+      # silently degraded to the ELF-machine test below on every native build.
+      # Cross-built Clang can't execute on the build host and carries no DEB
+      # metadata, so _vc_clang_embedded_version returns empty for it (measured
+      # 2026-09-10). Check the ELF arch instead.
+      local clang_elf expected_machine=""
+      clang_elf="$(LC_ALL=C readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+      expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
+      if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
+        echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
       else
-        # Cross-built Clang can't execute on build host; check ELF arch instead
-        local clang_elf
-        clang_elf="$(LC_ALL=C readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-        local expected_machine=""
-        expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
-        if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
-          echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
-        else
-          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)})${clang_elf:+ ELF: ${clang_elf}}"
-        fi
+        validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)})${clang_elf:+ ELF: ${clang_elf}}"
       fi
     fi
   elif cross_build_is_active && [ -d /opt/llvm-target ]; then
@@ -484,9 +483,10 @@ _smoke_compiler_versions() {
   fi
 
   # --- clang version ---
-  _clang_real="$(readlink -f "$(command -v clang)" 2>/dev/null)"
+  local _clang_real
+  _clang_real="$(readlink -f "$(command -v clang 2>/dev/null)" 2>/dev/null || true)"
   clang_ver_out="$(_vc_clang_embedded_version "${_clang_real}")"
-  if echo "${clang_ver_out}" | grep -q "${llvm_ver}"; then
+  if printf '%s' "${clang_ver_out}" | grep -qxF "${llvm_ver}"; then
     echo "SMOKE OK: clang reports ${clang_ver_out}"
   else
     validate_fail "clang-version" "clang --version: ${clang_ver_out:-MISSING} (expected ${llvm_ver})"

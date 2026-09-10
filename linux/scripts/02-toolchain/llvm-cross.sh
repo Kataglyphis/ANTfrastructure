@@ -33,8 +33,13 @@ _llvm_cross_resolve_dirs() {
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
   target_label="$(arch_normalize "${target_label}")"
-  [ "${target_label}" = "$(build_arch_oci)" ] \
-    && { log "Skipping cross LLVM build for ${target_label} (build host already serves it)"; return 1; }
+  # The build host used to be exempt here ("already serves it") — but what it
+  # serves is the apt.llvm.org BOOTSTRAP, whose per-major suite tracks the
+  # release branch head. So the host arch shipped whatever patch apt had that
+  # week (23.1.1 on 2026-09-07) while versions.env pinned 23.1.0, and
+  # materialize-llvm-target.sh's own comment predicted exactly that. Build the
+  # host arch from llvmorg-${LLVM_RELEASE} like every other target; apt stays a
+  # bootstrap (clang-tblgen).
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 
@@ -120,6 +125,7 @@ _llvm_cross_retrieve_source() {
     rm -rf "${source_dir}"
     log "Cloning llvm-project ${tag} for ${mode} ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
+    llvm_assert_commit_pin "${source_dir}" "${tag}" || die "LLVM_COMMIT pin mismatch"
   fi
 }
 
@@ -427,6 +433,8 @@ build_cross_llvm_targets() {
   _llvm_cross_ensure_host_binutils_dev
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
-  # amd64 is skipped by default (the host already serves amd64 LLVM).
-  for_each_cross_target _build_cross_llvm_for_target "${targets_raw}"
+  # --include-amd64 means "do not skip the BUILD HOST's arch" (the flag name
+  # predates the host-relative meaning). Without it the host arch never gets a
+  # pinned LLVM and materialize-llvm-target.sh falls back to the apt bootstrap.
+  for_each_cross_target _build_cross_llvm_for_target --include-amd64 "${targets_raw}"
 }
