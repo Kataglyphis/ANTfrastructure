@@ -34,7 +34,16 @@ ALLOWED_RELOCATIONS=(
 # inside the package-image stage. Flags (tokens starting with --) may appear in
 # any position between COPY and the paths.
 extract_artifact_copy_pairs() {
+  # sub(/\r$/, "") FIRST, before any field is read: on a Windows checkout
+  # (core.autocrlf=true) every line here ends CRLF, so the LAST token on a COPY
+  # line carries a trailing CR. `[ "${src}" = "${dst}" ]` below then compares
+  # "/opt/ffmpeg" with "/opt/ffmpeg\r", which are unequal and PRINT IDENTICALLY
+  # -- the gate reported 15 relocations of paths onto themselves. Measured
+  # 2026-09-10: linux/Dockerfile.package carries 480 CR bytes over 480 lines in
+  # the working tree and none in a `git archive` export, which is also why the
+  # same check looks green when graded from an export.
   awk '
+    { sub(/\r$/, "") }
     /^[[:space:]]*FROM[[:space:]]/ {
       in_stage = ($0 ~ /[[:space:]]AS[[:space:]]+package-image([[:space:]]|$)/)
       next

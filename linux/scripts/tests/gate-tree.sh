@@ -7,6 +7,12 @@
 _GATE_TREE_SH_LOADED=1
 
 # gate_tree <module.py>... -> tree path; every module named is copied in beside the gate.
+# A plain directory is enough. It was briefly a git checkout: the ratchet gates
+# defaulted --root to their own ROOT, which reached gate_scope.resolve_root's
+# git-toplevel check on every bare run and killed a mktemp -d fixture at "not a
+# git checkout". The gates now default --root to None, which resolve_root has
+# always documented as "the gate's own repo" and exempts from that check, so the
+# init here would be dead weight with a comment claiming it was load-bearing.
 gate_tree() {
   local dir
   dir="$(mktemp -d)"
