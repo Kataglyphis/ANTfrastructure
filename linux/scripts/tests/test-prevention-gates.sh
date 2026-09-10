@@ -24,7 +24,13 @@ _verdict() {
   local d out rc
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts"
-  cp "${S}/$1" "${S}/quality_allow.py" "${d}/linux/scripts/"
+  # A git checkout, because gate_scope's --root contract (7f668cc1) refuses a
+  # plain directory. Without this every case here reports "not a git checkout"
+  # instead of the verdict it was written to assert.
+  git -C "${d}" init -q 2>/dev/null || true
+  # gate_scope.py too: the gates import it since 7f668cc1, and a fixture that
+  # does not carry what the gate NEEDS fails with a traceback, not a verdict.
+  cp "${S}/$1" "${S}/quality_allow.py" "${S}/gate_scope.py" "${d}/linux/scripts/"
   printf '%s\n' "$3" > "${d}/linux/scripts/subject.sh"
   [ "$#" -lt 4 ] || printf '%s\n' "${@:4}" > "${d}/linux/scripts/$2"
   out="$("${PY}" "${d}/linux/scripts/$1" 2>&1)"; rc=$?
@@ -97,7 +103,8 @@ t_case "the REAL scan set covers linux/llm-stack -- EX1, and the frozen row rest
 # the BEHAVIOUR -- a file only that tree has is walked -- not the literal tuple.
 _ex1_probe="$(t_gate_probe linux/scripts/verify_comment_size.py <<'PYCHK'
 want = "linux/llm-stack/ci-contract-tests.sh"
-print("scanned" if any(r == want for r, _, _ in g.blocks()) else f"MISSING {want} from {g.SCAN}")
+rels = g.scan_paths(g.ROOT, g.SCAN)
+print("scanned" if want in rels else f"MISSING {want} from {g.SCAN}")
 PYCHK
 )"
 t_assert_eq "scanned" "${_ex1_probe}" \

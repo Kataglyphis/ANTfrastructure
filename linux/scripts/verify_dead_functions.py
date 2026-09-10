@@ -36,7 +36,8 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
+from quality_allow import check_keys, load_keys  # noqa: E402
+
 import gate_scope  # noqa: E402
 from verify_code_size import DEF_HEAD, ROOT, scan, shell_functions  # noqa: E402
 
@@ -330,7 +331,7 @@ def disarmer(key, corpus_texts):
 
 def main(argv):
     ap = argparse.ArgumentParser(description="Fail on new dead shell functions.")
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: dead-functions.allow beside this "

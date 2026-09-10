@@ -29,7 +29,8 @@ _fixture() {
   local d spec name shape
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts" "${d}/linux/host-config" "${d}/linux/llm-stack" "${d}/linux/webserver"
-  cp "${GATE}" "${TESTS_DIR}/../quality_allow.py" "${LINT}" "${d}/linux/scripts/"
+  cp "${GATE}" "${TESTS_DIR}/../quality_allow.py" "${TESTS_DIR}/../gate_scope.py" \
+     "${LINT}" "${d}/linux/scripts/"
   # lint-shell.sh sources the consumer-root contract from beside itself, so the
   # fixture has to carry it: without it --list-files dies on line 1 and every
   # assertion below would be about a broken copy rather than about the gate.

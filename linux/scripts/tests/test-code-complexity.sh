@@ -13,7 +13,7 @@ ROW="linux/scripts/subject.sh | f"
 # _tree [allow-row...]: a tree holding the gate, its imports, subject.sh from stdin
 # and, when rows are given, a code-complexity.allow.
 _tree() {
-  local root; root="$(t_gate_tree "${GATE}" verify_code_size.py quality_allow.py)"
+  local root; root="$(t_gate_tree "${GATE}" verify_code_size.py quality_allow.py gate_scope.py)"
   cat > "${root}/linux/scripts/subject.sh"
   [ $# -eq 0 ] || printf '%s\n' "$@" > "${root}/linux/scripts/code-complexity.allow"
   printf '%s' "${root}"

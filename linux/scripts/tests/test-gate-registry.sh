@@ -25,6 +25,7 @@ mutation-family:wheels'
 _subjects() {
   local d="$1"
   cp "${GATE_DIR}/verify_gate_registry.py" "${GATE_DIR}/quality_allow.py" \
+     "${GATE_DIR}/gate_scope.py" \
      "${GATE_DIR}/verify_code_size.py" "${d}/linux/scripts/"
   printf 'import sys\n' > "${d}/linux/scripts/verify_alpha.py"
   printf 'import sys\n' > "${d}/linux/scripts/verify_beta.py"

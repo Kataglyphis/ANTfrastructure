@@ -15,7 +15,8 @@ _tree() {
   local d
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts"
-  cp "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" "${d}/linux/scripts/"
+  cp "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" \
+     "${SCRIPTS_DIR}/gate_scope.py" "${d}/linux/scripts/"
   printf '%s' "${d}"
 }
 

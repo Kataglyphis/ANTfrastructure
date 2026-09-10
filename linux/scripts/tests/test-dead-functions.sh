@@ -23,7 +23,8 @@ MASKING=$'foo_fn() {\n  :\n}\nfoo_fn "$@"'
 # _fixture <subject.sh content> [allow content] -> tree path
 _fixture() {
   gate_tree_subject dead-functions.allow "$1" "${2-}" \
-    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py"
+    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" \
+    "${SCRIPTS_DIR}/gate_scope.py"
 }
 _gate() { local d="$1"; shift; "${PY}" "${d}/linux/scripts/verify_dead_functions.py" "$@"; }
 _run() { t_out _gate "$@"; }

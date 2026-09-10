@@ -43,7 +43,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_counts, load_counts  # noqa: E402
+from quality_allow import check_counts, load_counts  # noqa: E402
+
 import gate_scope  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -331,7 +332,7 @@ def _py_functions(path, rel):
 
 def main():
     ap = argparse.ArgumentParser(description="Keep function and file sizes honest.")
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--fn-allow", default=None,
                     help="the function freeze file (default: function-size.allow beside "

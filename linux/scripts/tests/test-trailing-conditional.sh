@@ -14,7 +14,8 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 
 _fixture() {
   gate_tree_subject trailing-conditional.allow "$1" "${2-}" \
-    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py"
+    "${GATE}" "${SCRIPTS_DIR}/verify_code_size.py" "${SCRIPTS_DIR}/quality_allow.py" \
+    "${SCRIPTS_DIR}/gate_scope.py"
 }
 _gate() { "${PY}" "$1/linux/scripts/verify_trailing_conditional.py"; }
 

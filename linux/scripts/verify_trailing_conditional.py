@@ -22,7 +22,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
+from quality_allow import check_keys, load_keys  # noqa: E402
+
 import gate_scope  # noqa: E402
 from verify_code_size import DEF, ROOT, code_lines, shell_functions  # noqa: E402
 
@@ -206,7 +207,7 @@ def sites(root, rels):
 
 def main():
     ap = argparse.ArgumentParser(description="Fail on new trailing-conditional returns.")
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: trailing-conditional.allow beside "

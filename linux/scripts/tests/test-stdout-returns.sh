@@ -22,9 +22,16 @@ _plant() { mkdir -p "$(dirname "${fix}/$1")"; printf '%s\n' "$2" > "${fix}/$1"; 
 _check() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/linux/scripts"
-  cp "${GATE}" "${fix}/linux/scripts/"
+  # gate_scope.py too: the gate imports it since 6ad5d880, and a fixture that
+  # does not carry what the gate NEEDS fails with a traceback, not a verdict.
+  cp "${GATE}" "$(dirname "${GATE}")/gate_scope.py" "${fix}/linux/scripts/"
   _plant "$1" "$2"
   [ $# -le 2 ] || _plant "$3" "$4"
+  # A git checkout WITH an index: gate_scope.tracked() reads `git ls-files`, so
+  # a bare init lists nothing and the gate reports an empty scope instead of
+  # the verdict this case asserts.
+  git -C "${fix}" init -q 2>/dev/null || true
+  git -C "${fix}" add -A 2>/dev/null || true
   out="$("${PY}" "${fix}/linux/scripts/verify_stdout_returns.py" 2>&1)"; rc=$?
   rm -rf "${fix}"
 }

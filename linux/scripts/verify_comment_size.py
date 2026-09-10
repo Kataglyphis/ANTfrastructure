@@ -78,7 +78,7 @@ def blocks(root, rels):
 
 def main():
     ap = argparse.ArgumentParser(description="Fail on new oversized comment blocks.")
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: comment-size.allow beside this "

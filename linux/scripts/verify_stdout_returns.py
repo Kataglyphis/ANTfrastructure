@@ -55,7 +55,8 @@ import argparse
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gate_scope  # noqa: E402
@@ -94,7 +95,7 @@ def scan_files(root: Path) -> list[Path]:
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Catch stdout logging inside functions whose stdout is their value.")
-    ap.add_argument("--root", default=str(ROOT),
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     args = ap.parse_args()
 
@@ -102,7 +103,10 @@ def main() -> int:
     # ends up grading whatever it happens to be standing in; and a root that is
     # not a directory must say so rather than reach git and be reported as "not
     # a git checkout".
-    if not args.root:
+    # `--root ""` would resolve to the CURRENT directory; NOT passing --root at
+    # all is the documented "this repo" case that resolve_root handles without
+    # demanding a git checkout. argparse tells them apart: None vs "".
+    if args.root is not None and not args.root:
         ap.error("--root needs a directory")
     try:
         # See gate_scope: a subdirectory of a checkout is not a valid root.
@@ -116,7 +120,8 @@ def main() -> int:
     files = scan_files(root)
     if root != ROOT:
         print(f"stdout-return gate over {root}")
-        print(f"  scope: {len(files)} tracked *.sh outside {', '.join(EXCLUDE)}")
+        print(f"  scope: {len(files)} tracked *.sh outside "
+              f"{', '.join(gate_scope.EXCLUDE)}")
 
     consumed: set[str] = set()
     for p in files:

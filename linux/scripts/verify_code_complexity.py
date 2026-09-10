@@ -229,7 +229,7 @@ def check_rows(frozen, allow_name):
 def main():
     ap = argparse.ArgumentParser(description="Complexity and nesting of every shell and "
                                              "Python function, under the allow contract.")
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: code-complexity.allow beside this "

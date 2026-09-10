@@ -32,7 +32,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_counts, load_counts, load_rows  # noqa: E402
+from quality_allow import check_counts, load_counts, load_rows  # noqa: E402
+
 import gate_scope  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -185,7 +186,7 @@ def write_baseline(counts, checked, partial, allow):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--root", default=ROOT,
+    ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: %s beside this script for this repo, "
