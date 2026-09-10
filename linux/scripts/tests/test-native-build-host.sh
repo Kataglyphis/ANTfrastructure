@@ -231,4 +231,40 @@ t_assert_eq "qemu-aarch64" "$(_reg_bin arm64)"
 t_assert_contains "$(sed -n '/^elf_magic_for()/,/^}/p' "${_REG}")" 'x3e' \
   "without the ELF magic the registrar cannot install the amd64 handler"
 
+# ---------------------------------------------------------------------------
+# When the LLVM target IS the build host, setup_linux_cross_env returns early
+# and exports no AS/LD/AR/... — the native tools already are the target's. The
+# wrapper populator read them with a bare ${!VAR} and died under `set -u`. That
+# path was unreachable until the host arch started building its own pinned LLVM,
+# and it then cost a 142-minute chain run.
+_LLVM_SH="${REPO_SCRIPTS}/02-toolchain/llvm.sh"
+_FN_SRC="$(mktemp)"
+sed -n '/^llvm_cross_populate_tool_wrapper_dir()/,/^}/p' "${_LLVM_SH}" > "${_FN_SRC}"
+# shellcheck disable=SC1090
+. "${_FN_SRC}"
+
+t_case "the tool wrapper dir survives an unset AS/LD/AR (target == build host)"
+_WD="$(mktemp -d)"
+( set -u
+  unset AS LD AR NM RANLIB STRIP OBJCOPY
+  llvm_cross_populate_tool_wrapper_dir "${_WD}"
+) >/dev/null 2>&1
+for _t in as ld ar nm ranlib strip objcopy; do
+  t_assert_ok test -L "${_WD}/${_t}"
+done
+t_assert_eq "$(command -v as)" "$(readlink "${_WD}/as")" \
+  "with no AS exported the native assembler is the right one"
+rm -rf "${_WD}"
+
+t_case "an exported tool var still wins over PATH"
+_FAKE="$(mktemp -d)"; : > "${_FAKE}/fake-as"; chmod +x "${_FAKE}/fake-as"
+_WD2="$(mktemp -d)"
+( set -u
+  unset LD AR NM RANLIB STRIP OBJCOPY
+  AS="${_FAKE}/fake-as" llvm_cross_populate_tool_wrapper_dir "${_WD2}"
+) >/dev/null 2>&1
+t_assert_eq "${_FAKE}/fake-as" "$(readlink "${_WD2}/as")" \
+  "the cross path must keep using the target's assembler, not the host's"
+rm -rf "${_FAKE}" "${_WD2}" "${_FN_SRC}"
+
 t_summary

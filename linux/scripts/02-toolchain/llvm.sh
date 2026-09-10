@@ -375,13 +375,24 @@ llvm_cross_run_binary() {
 
 llvm_cross_populate_tool_wrapper_dir() {
   local wrapper_dir="$1"
-  local tool
+  local tool _tv _bin
 
   mkdir -p "${wrapper_dir}"
   for tool in as ld ar nm ranlib strip objcopy; do
-    # AS, LD, AR, NM, RANLIB, STRIP, OBJCOPY — env var name is the tool upper-cased
-    local _tv="${tool^^}"
-    ln -sfn "${!_tv}" "${wrapper_dir}/${tool}"
+    # AS, LD, AR, NM, RANLIB, STRIP, OBJCOPY — env var name is the tool upper-cased.
+    _tv="${tool^^}"
+    _bin="${!_tv:-}"
+    # setup_linux_cross_env returns EARLY when the target IS the build host, so
+    # it exports none of these — the native tools already are the target's. That
+    # path only became reachable when the host arch started building its own
+    # pinned LLVM (2026-09-10); until then ${!_tv} was always set, and the bare
+    # indirect expansion tripped `set -u` the first time it was not.
+    [ -n "${_bin}" ] || _bin="$(command -v "${tool}" 2>/dev/null || true)"
+    [ -n "${_bin}" ] || {
+      printf '[WARN] no %s and no %s on PATH; wrapper dir left without it\n' "${_tv}" "${tool}" >&2
+      continue
+    }
+    ln -sfn "${_bin}" "${wrapper_dir}/${tool}"
   done
 }
 
