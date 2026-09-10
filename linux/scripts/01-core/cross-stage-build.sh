@@ -607,7 +607,7 @@ cross_stage_assemble_runtime_helper_args() {
   _arha_out=(
     --image "${FINAL_IMAGE}"
     --target-arches "${TARGET_ARCHES}"
-    --artifact-image-prefix "${IMAGE_REPO}:cross-android"
+    --artifact-image-prefix "$(cross_android_tag_prefix)"
     --artifact-build-mode cross
   )
   # XC2: export (not flags — the child inherits via run_runtime_stage's `env`

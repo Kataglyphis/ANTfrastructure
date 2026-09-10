@@ -943,6 +943,62 @@ shape, not a packaging defect, and it is why `/opt/android-sdk` is already an
 [`artifact-copy-completeness.md`](artifact-copy-completeness.md#what-is-exempt-and-why-the-arm-names-the-tree).
 Build Android artifacts from the amd64 image.
 
+### Non-amd64 build hosts
+
+The paragraph above is about the *target* arch. There is a second, independent
+question: what happens when the **build host itself** is not amd64 — a native
+arm64 or riscv64 machine running the chain. Google publishes the NDK only as
+`toolchains/llvm/prebuilt/linux-x86_64`, so on such a host the payload cannot be
+installed at all, and `commandlinetools-linux-<ver>_latest.zip` has no riscv64
+counterpart either.
+
+**Turning the payload off must not turn the build red.** The android stage still
+builds, still tags, still captures its pin and still exports its OCI layout — it
+just carries an empty payload. The stage graph never changes shape, so `runtime`,
+`package` and `wrapper` keep their single artifact source and no COPY has to
+become conditional.
+
+`android_build_host_supported()`
+([`platform.sh`](../linux/scripts/01-core/platform.sh)) is the **one** owner of
+the decision: `[ "$(build_arch_oci)" = "amd64" ]`. Everything else reads its
+answer rather than asking the arch again.
+
+| Consumer | amd64 build host | non-amd64 build host |
+| --- | --- | --- |
+| `android-sdk.sh` | installs SDK + NDK | writes `/opt/android/.android-payload-off`, exits 0 |
+| `android-build-preamble.sh` (5 lib stages) | builds | exits 0 via the same predicate |
+| `Dockerfile.android` | populated `/opt/android/*` | the same directories, empty (they are `mkdir`'d after the script returns) |
+| `smoke-android.sh` | runs all seven checks | reads the marker, prints `SKIP` per check, exits 0 |
+| `swap-native-gcc.sh` | swaps in the Canadian cross GCC | target == build host, so the host GCC already IS native |
+| `cross_android_tag` | `:cross-android-<arch>` | `:cross-android-host<host>-<arch>` |
+
+Two of those rows are the parts that are easy to get wrong:
+
+**The marker is written, not re-derived.** `smoke-android.sh` deliberately does
+not source `platform.sh` — it reads the file. Its NDK check hard-codes the
+`prebuilt/linux-x86_64` path, which on riscv64 can never exist; asking the arch a
+second time there would also flip its ELF helpers away from the inline fallbacks
+[`smoke-arch-parity`](../linux/scripts/tests/test-smoke-arch-parity.sh) pins.
+
+**The GCC swap keys on the build host, not on the literal `amd64`.**
+[`gcc.sh`](../linux/scripts/02-toolchain/gcc.sh) builds the Canadian
+`/opt/gcc-<ver>-native-<arch>` only when `target != build_arch_oci`; when they
+are equal it takes `link_amd64_host_as_cross` and produces no such prefix. A
+consumer testing the literal therefore demanded, on a native arm64 host, exactly
+the prefix its own toolchain image deliberately does not build.
+
+**The tag carries the build host** because every cross stage is always pushed
+(`--no-push` is the real toggle). Without the infix, a native arm64 run would
+overwrite the amd64 lane's real android artifact under the same name. The infix
+is empty on amd64, so that lane's tags are byte-identical to before.
+
+**What this does not deliver.** android stops being the reason a non-amd64-hosted
+run fails; it does not make the chain finish. The runtime lane still pins
+`--platform linux/amd64` for its artifact source and asks binfmt for a handler
+name that does not exist, and on riscv64 the compiler stage is blocked earlier
+and harder: apt.llvm.org publishes no riscv64 packages at all. See
+[`refactoring-backlog.md`](refactoring-backlog.md).
+
 **No JDK ships in any arch.** `java`, `javac` and `keytool` are absent and
 `/usr/lib/jvm` does not exist, so the SDK's Java wrappers (`sdkmanager`,
 `avdmanager`, `apkanalyzer`, `d8`, `apksigner`) and `flutter build apk` still

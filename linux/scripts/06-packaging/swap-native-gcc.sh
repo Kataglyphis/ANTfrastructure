@@ -168,9 +168,18 @@ main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"
   : "${GCC_VERSION:?GCC_VERSION is required}"
 
-  if [ "${TARGET_ARCH}" = "amd64" ]; then
-    assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "amd64"
-    echo "Using host-native amd64 GCC at /opt/gcc-${GCC_VERSION}"
+  # The producer decides by BUILD HOST, so the consumer must too: gcc.sh:376
+  # takes `link_amd64_host_as_cross` (plain symlinks over the host GCC) exactly
+  # when target == build_arch_oci, and therefore never builds the Canadian
+  # /opt/gcc-<ver>-native-<arch> for that arch. Testing the literal amd64 here
+  # made a native arm64 build host demand a prefix its own toolchain image
+  # deliberately does not produce. On an amd64 build host this reduces to the
+  # old literal, so all three targets behave exactly as before.
+  local build_arch
+  build_arch="$(build_arch_oci)"
+  if [ "${TARGET_ARCH}" = "${build_arch}" ]; then
+    assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${TARGET_ARCH}"
+    echo "Using host-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"
     return 0
   fi
   # Non-amd64 but not a cross build: keep whatever GCC is already in place.

@@ -180,9 +180,29 @@ check_opencv() {
   echo ""
 }
 
+# The payload-off marker is READ, never re-derived. Deliberately a file test and
+# not an arch question: this script does not source platform.sh (smoke-common.sh
+# documents that), and sourcing it here would flip smoke_elf_machine_of /
+# smoke_host_arch away from their inline fallbacks inside check_ndk on the one
+# host where that code actually runs. android-sdk.sh owns the decision.
+_android_payload_off_marker=/opt/android/.android-payload-off
+
 main() {
   echo "=== Android SDK/NDK Smoke Test ==="
   echo ""
+
+  if [ -f "${_android_payload_off_marker}" ]; then
+    echo "Android payload is OFF for this image:"
+    cat "${_android_payload_off_marker}"
+    echo ""
+    local _check
+    for _check in sdk_root sdkmanager adb ndk build_tools android_cmake opencv; do
+      echo "SKIP ${_check} (android payload off)"
+    done
+    echo ""
+    smoke_summary
+    return
+  fi
 
   check_sdk_root
   check_sdkmanager

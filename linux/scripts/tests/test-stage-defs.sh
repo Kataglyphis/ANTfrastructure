@@ -21,7 +21,13 @@ t_assert_eq "example.io/repo:base"                 "$(BUILDARCH=amd64 cross_stag
 t_assert_eq "example.io/repo:cross-compiler-amd64" "$(BUILDARCH=amd64 cross_stage_tag compiler)"
 t_assert_eq "example.io/repo:cross-sdk-arm64"      "$(cross_stage_tag sdk arm64)"
 t_assert_eq "example.io/repo:cross-media-riscv64"  "$(cross_stage_tag media riscv64)"
-t_assert_eq "example.io/repo:cross-android-amd64"  "$(cross_stage_tag android amd64)"
+# BUILDARCH pinned for the same reason as the compiler tag above: since the
+# android payload depends on the BUILD host (its NDK is prebuilt/linux-x86_64
+# only), the android tag carries a build-host infix. sdk/media above stay
+# UNPINNED on purpose — that is the proof those two tags were not touched.
+t_assert_eq "example.io/repo:cross-android-amd64"  "$(BUILDARCH=amd64 cross_stage_tag android amd64)"
+t_assert_eq "example.io/repo:cross-android-hostarm64-riscv64" \
+  "$(BUILDARCH=arm64 cross_stage_tag android riscv64)"
 
 t_case "cross_stage_tag rejects unknown stages"
 t_assert_fails cross_stage_tag no-such-stage
@@ -137,7 +143,13 @@ RUNTIME_IMAGE_PREFIX="example.io/repo:runtime"
 t_assert_eq "example.io/repo:runtime-base-arm64"    "$(runtime_stage_tag base arm64)"
 t_assert_eq "example.io/repo:runtime-package-arm64" "$(runtime_stage_tag package arm64)"
 t_assert_eq "example.io/repo:runtime-arm64"         "$(runtime_stage_tag wrapper arm64)"
-t_assert_eq "example.io/repo:cross-android-arm64"   "$(runtime_stage_tag android arm64)"
+# BUILDARCH pinned: runtime_stage_tag android delegates to cross_android_tag,
+# which carries the build-host infix. Unpinned, this row asserted whatever host
+# ran the suite — it went red the moment the suite was run on an arm64 box.
+t_assert_eq "example.io/repo:cross-android-arm64" \
+  "$(BUILDARCH=amd64 runtime_stage_tag android arm64)"
+t_assert_eq "example.io/repo:cross-android-hostarm64-arm64" \
+  "$(BUILDARCH=arm64 runtime_stage_tag android arm64)"
 t_assert_fails runtime_stage_tag no-such-stage arm64
 
 t_case "cross_stage_is_per_arch does not clobber the caller's loop variable"

@@ -26,7 +26,9 @@ t_assert_eq "example.io/repo:base-riscv64"          "$(BUILDARCH=riscv64 cross_b
 t_assert_eq "example.io/repo:cross-compiler-riscv64" "$(BUILDARCH=riscv64 cross_compiler_tag)"
 t_assert_eq "example.io/repo:cross-sdk-arm64"     "$(cross_sdk_tag arm64)"
 t_assert_eq "example.io/repo:cross-media-riscv64" "$(cross_media_tag riscv64)"
-t_assert_eq "example.io/repo:cross-android-amd64" "$(cross_android_tag amd64)"
+# BUILDARCH pinned like the shared stages above: android's payload depends on
+# the build host, so its tag does too.
+t_assert_eq "example.io/repo:cross-android-amd64" "$(BUILDARCH=amd64 cross_android_tag amd64)"
 
 t_case "cross tags fall back to IMAGE_REGISTRY_PREFIX"
 unset IMAGE_REPO
@@ -61,5 +63,29 @@ t_assert_eq "example.io/repo:cross-android-arm64" "$(runtime_artifact_image_ref 
 ARTIFACT_BUILD_MODE=native
 t_assert_eq "example.io/repo:cross-android" "$(runtime_artifact_image_ref arm64)"
 unset ARTIFACT_BUILD_MODE ARTIFACT_IMAGE_PREFIX
+
+# ---------------------------------------------------------------------------
+# The android tag has TWO spellings — cross_android_tag() and the
+# --artifact-image-prefix cross-stage-build.sh hands the runtime helper. Until
+# 2026-09-10 the second was a hardcoded literal, which is exactly the drift that
+# produced the compiler-tag incident. These rows keep them one function.
+t_case "the android tag's two spellings cannot drift apart"
+IMAGE_REPO="example.io/repo" IMAGE_REGISTRY_PREFIX="WRONG"
+for _h in amd64 arm64 riscv64; do
+  t_assert_eq "$(BUILDARCH="${_h}" cross_android_tag_prefix)-arm64" \
+    "$(BUILDARCH="${_h}" cross_android_tag arm64)" \
+    "cross_android_tag must be the prefix plus the target arch (host=${_h})"
+done
+
+t_case "the build-host infix is empty on amd64 and present elsewhere"
+t_assert_eq "" "$(BUILDARCH=amd64 _cross_build_host_infix)" \
+  "an amd64 build host keeps the historical android tag byte-for-byte"
+t_assert_eq "-hostarm64"   "$(BUILDARCH=arm64 _cross_build_host_infix)"
+t_assert_eq "-hostriscv64" "$(BUILDARCH=riscv64 _cross_build_host_infix)"
+t_assert_eq "example.io/repo:cross-android-amd64" \
+  "$(BUILDARCH=amd64 cross_android_tag amd64)"
+t_assert_eq "example.io/repo:cross-android-hostarm64-amd64" \
+  "$(BUILDARCH=arm64 cross_android_tag amd64)" \
+  "a payload-off android built on arm64 must not overwrite the amd64 lane's artifact"
 
 t_summary

@@ -31,7 +31,18 @@ ensure_host_apt_architectures() {
   apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"
 }
 
+# Record WHY the payload is absent, in the image, for the consumers that would
+# otherwise re-derive the decision (and get it wrong on a host whose NDK path
+# cannot exist). smoke-android.sh reads this file rather than asking the arch
+# again. Dockerfile.android creates /opt/android only AFTER this script returns,
+# so create it here. Literal path on purpose: a knob would need a registry row.
 if ! android_require_amd64_build_host "Android SDK/NDK installation"; then
+  mkdir -p /opt/android
+  {
+    printf 'reason=Android NDK ships as prebuilt/linux-x86_64 only\n'
+    printf 'build_host=%s\n' "$(build_arch_oci)"
+    printf 'skipped=sdk,ndk,gstreamer,onnxruntime,litert,opencv,iree,smoke\n'
+  } > /opt/android/.android-payload-off
   exit 0
 fi
 

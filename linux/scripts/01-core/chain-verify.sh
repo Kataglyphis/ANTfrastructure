@@ -149,6 +149,14 @@ describe_cross_chain() {
     if cross_stage_is_per_arch "${stage}"; then
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-ubuntu:26.04}"
       printf '  Dockerfile: %s\n' "${dockerfile}"
+      # Say BEFORE the run that android will produce an empty payload here, so
+      # a non-amd64 operator is not left to infer it from the build log.
+      if [ "${stage}" = "android" ] && \
+         command -v android_build_host_supported >/dev/null 2>&1 && \
+         ! android_build_host_supported; then
+        printf '  Payload:    SKIPPED (Android NDK is prebuilt/linux-x86_64 only; build host is %s)\n' \
+          "$(build_arch_oci)"
+      fi
       for arch in $(arch_list_to_words "${arches_csv}"); do
         tag="$(cross_stage_tag "${stage}" "${arch}")"
         printf '  %-6s → %s\n' "${arch}" "${tag}"

@@ -39,7 +39,21 @@ cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-compiler-$(_cross_build_host_arch)"; }
 cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-sdk-${1}"; }
 cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-media-${1}"; }
-cross_android_tag()           { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android-${1}"; }
+# Android is the one per-arch stage whose IMAGE depends on the build host: on a
+# non-amd64 host the NDK payload is absent (platform.sh:354), and every cross
+# stage is ALWAYS pushed (build-cross-chain.sh:207). Without this infix a native
+# arm64 run would overwrite the amd64 lane's real artifact under the same tag.
+# Derived from _cross_build_host_arch so there is no fourth independent
+# `= amd64` test; empty on amd64, so the historical name is byte-identical.
+_cross_build_host_infix() {
+  local a; a="$(_cross_build_host_arch)"
+  [ "${a}" = "amd64" ] && return 0
+  printf -- '-host%s' "${a}"
+}
+# Split so cross-stage-build.sh's --artifact-image-prefix and cross_android_tag
+# are two callers of ONE function instead of two spellings that can drift.
+cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(_cross_build_host_infix)"; }
+cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }
 
 # ==============================================================================
 # Runtime tag name functions.
