@@ -1,0 +1,79 @@
+# workflow-conventions.allow — the two graded tables behind the four fleet
+# workflow conventions verify_workflow_conventions.py asserts. Both are keyed on
+# the repository the gate resolved from its `origin` remote, because this one
+# file is shared by every consumer through the submodule; rows for other
+# repositories are read, checked for typos, and otherwise left alone.
+# docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
+#
+# ---------------------------------------------------------------------------
+# 1. THE CENSUS RATCHET: CENSUS | <repo> | <check> | <count> | <reason>
+#
+#   The frozen number of unexcused findings that RAMPING check has in that
+#   repository. It may only go down. Above it the gate FAILS whatever
+#   WORKFLOW_CONVENTIONS_GATE says, and a check with findings and no row FAILS
+#   too — so a new violation is red on the day it lands even while its
+#   convention is still ramping, which is the half a report-and-pass ramp does
+#   not have on its own. An ARMED check counts zero here, because its findings
+#   already failed on their own: arming a check retires its row, and one finding
+#   never produces two verdicts.
+#   Below it: in ContainerHub, whose commit can edit this file beside the fix, an
+#   unrecorded shrink FAILS like every other allow file here. In a consumer,
+#   which reads this table through the submodule and cannot edit it, the shrink
+#   is printed with the number to write down and passes — that asymmetry is why
+#   this is a count and not the frozen offender list shellcheck-warnings.allow
+#   can afford.
+#   These numbers are measured, never typed: they are the output of the gate
+#   itself over each repository's default branch, and nothing else in the tree
+#   restates them. The measurement below is 2026-09-09, all eight repositories at
+#   their `origin` head, 49 files (37 workflows + 12 composite actions).
+#
+CENSUS | ContainerHub | job-timeout | 1 | build-test-python-package-on-windows in python-ci-windows.yml — the one job in this repo still without a bound. Clear it and this check can be armed here beside `permissions`, and this row deleted
+CENSUS | ContainerHub | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
+CENSUS | BeschleunigerBallett | job-timeout | 15 | 13 in Linux.yml plus 2 in Windows.yml. Linux.yml's own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
+CENSUS | BeschleunigerBallett | permissions | 12 | Every job in Linux.yml; Windows.yml declares one at the top level. One `permissions:` block at the top of Linux.yml clears all twelve at once
+CENSUS | BeschleunigerBallett | artifact-error | 2 | The package uploads in Linux.yml and Windows.yml — the two artifacts a release actually ships, which is where an empty upload is worst
+CENSUS | OmniAccelerANT | job-timeout | 5 | Across four dart_* workflows; the Flutter lanes are the fleet's longest and the least bounded
+CENSUS | OmniAccelerANT | permissions | 1 | The `lint` job of dart_on_native_linux.yml, alone in this repo in declaring none at either level
+CENSUS | OmniAccelerANT | artifact-error | 4 | The APK, the Linux packages, the generic artifact and the build log
+CENSUS | OrchestrANT | permissions | 2 | The `linux` and `windows` jobs, which call the hub's reusable python-ci workflows; the caller declares the token scope, so it cannot be fixed in the callee
+CENSUS | jotrockenmitlocken | job-timeout | 2 | The `lint` and `build` jobs of dart.yml — the workflow that also consumes 14 distinct secrets and runs four FTP deploys
+CENSUS | jotrockenmitlocken | permissions | 2 | The same two jobs of the same workflow, with nothing declared at either level
+CENSUS | OxidANT | job-timeout | 4 | Three in rust_ubuntu26_04.yml (including the feature matrix) and one in rust_windows2025.yml
+CENSUS | OxidANT | permissions | 1 | The `windows-pipeline` job; rust_ubuntu26_04.yml declares one at the top level
+CENSUS | OxidANT | artifact-error | 4 | The MSI, MSIX, build and combined artifact uploads — a Windows release that uploads nothing and stays green
+CENSUS | AccelerANTgine | job-timeout | 2 | The `build` jobs of linux_run.yml and windows_run.yml
+CENSUS | AccelerANTgine | permissions | 6 | Every job of linux_run.yml, linux_run_arm.yml, linux_run_x86.yml and windows_run.yml
+CENSUS | AccelerANTgine | artifact-error | 2 | The Linux package upload and the Windows installer/zip upload
+CENSUS | ANThology | job-timeout | 1 | The `build` job of dart.yml, this repo's only lane
+#
+# `runner-ban` has no row anywhere, and never will: it is armed with no knob, so
+# its ceiling is zero and a single `*-latest` label is a hard failure the day it
+# is written. It is measured at 0 across all eight repositories today.
+# `ContainerHub | permissions` has no row for the same reason — preflight.sh
+# arms `permissions` for this repo, which is measured clean of it.
+#
+# ---------------------------------------------------------------------------
+# 2. THE EXCUSED-WITH-REASON TABLE: <repo> | <path> | <check> | <detail> | <reason>
+#
+#   <repo>    the repository the row is about, as .github/consumers.json declares
+#             it. A repo name consumers.json does not declare is a typo and FAILS.
+#   <path>    the workflow or action file, relative to that repository's root.
+#   <check>   runner-ban | job-timeout | permissions | artifact-error
+#   <detail>  the job id (job-timeout, permissions), the offending runner label
+#             (runner-ban), or the upload step's `name:` (artifact-error).
+#   <reason>  why the deviation is correct. The rest of the line, `|` allowed.
+#
+# Same contract as verify_ci_image_refs.py's EXCUSED dict, which this replaces
+# for these four checks: a deliberate deviation is DECLARED, never silent, and a
+# row that matches no live finding is STALE and fails — so the list can only
+# shrink by becoming true. A stale row fails whatever the arming says; the
+# arming knob ramps the FINDINGS, never the bookkeeping. Excusing a finding also
+# lowers the census count above it, so the two tables have to agree.
+#
+# EMPTY ON PURPOSE, 2026-09-09. Not one of the 68 findings the census freezes is
+# excused here: excusing a finding to make a lane green is the opposite of the
+# job, and every one of them is a decision for the repository's owner.
+#
+# Worked example of the row shape, for whoever adds the first one:
+#
+#   ContainerHub | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/ and docs/test_results/ the artifact carries for the diagnosis.
