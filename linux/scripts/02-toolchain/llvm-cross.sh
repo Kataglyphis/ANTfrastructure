@@ -436,5 +436,19 @@ build_cross_llvm_targets() {
   # --include-amd64 means "do not skip the BUILD HOST's arch" (the flag name
   # predates the host-relative meaning). Without it the host arch never gets a
   # pinned LLVM and materialize-llvm-target.sh falls back to the apt bootstrap.
+  #
+  # The HOST arch goes FIRST, deliberately: llvm_host_native_tool_dir prefers
+  # /opt/llvm-target-<host>, and that tree is produced by this very loop. Built
+  # in list order, the arches ahead of the host's turn would still take their
+  # tablegen from the apt bootstrap — a 23.1.1 tablegen generating .inc files
+  # for a 23.1.0 source tree. On an amd64 host the list order already happened
+  # to do the right thing; on arm64 it did not.
+  local _host_arch _rest
+  _host_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
+  _rest="$(printf '%s' "${targets_raw}" | tr ',' '\n' | grep -vx "${_host_arch}" | paste -sd, -)"
+  case ",${targets_raw}," in
+    *",${_host_arch},"*) targets_raw="${_host_arch}${_rest:+,${_rest}}" ;;
+  esac
+  log "LLVM cross targets (build host first): ${targets_raw}"
   for_each_cross_target _build_cross_llvm_for_target --include-amd64 "${targets_raw}"
 }
