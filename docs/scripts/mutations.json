@@ -50,16 +50,16 @@
   {
     "id": "code-size.python-ast",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "                if fn.endswith(\".py\"):",
-    "replace": "                if False:",
+    "find": "        if rel.endswith(\".py\"):",
+    "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-code-size.sh",
     "why": "python functions are in scope"
   },
   {
     "id": "code-size.dockerfile-pass",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "            if not fn.startswith(\"Dockerfile\"):",
-    "replace": "            if True:",
+    "find": "    for path, rel in _flat_scan(root, FLAT_SCAN, lambda fn: fn.startswith(\"Dockerfile\")):",
+    "replace": "    for path, rel in _flat_scan(root, FLAT_SCAN, lambda fn: False):",
     "test": "bash linux/scripts/tests/test-code-size.sh",
     "why": "Dockerfiles are size-checked"
   },
@@ -1218,8 +1218,8 @@
   {
     "id": "masked-decls.substitution-required",
     "target": "linux/scripts/verify_masked_assignments.py",
-    "find": "                if m and SUBST.search(code):",
-    "replace": "                if m:",
+    "find": "            if m and SUBST.search(code):",
+    "replace": "            if m:",
     "test": "bash linux/scripts/tests/test-prevention-gates.sh",
     "why": "`local x` with no command substitution masks nothing; flagging it would make the split fix itself an offence"
   },
@@ -4018,24 +4018,24 @@
   {
     "id": "code-complexity.allow-keys-declared",
     "target": "linux/scripts/verify_code_complexity.py",
-    "find": "    frozen = load_counts(ALLOW, 3, ALLOW_FMT)",
-    "replace": "    frozen = load_counts(ALLOW)",
+    "find": "    frozen = load_counts(allow, 3, ALLOW_FMT)",
+    "replace": "    frozen = load_counts(allow, 3, None)",
     "test": "bash linux/scripts/tests/test-code-complexity.sh",
     "why": "three declared key columns are what let a reason carry |; counting from the right mis-keys the row and reports it STALE"
   },
   {
     "id": "code-size.fn-allow-keys-declared",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "load_counts(FN_ALLOW, 2, FN_FMT), LIMIT",
-    "replace": "load_counts(FN_ALLOW), LIMIT",
+    "find": "load_counts(fn_allow, 2, FN_FMT), LIMIT",
+    "replace": "load_counts(fn_allow), LIMIT",
     "test": "bash linux/scripts/tests/test-code-size.sh",
     "why": "function-size.allow has two key columns; without the declaration a | in the reason shifts the count"
   },
   {
     "id": "code-size.file-allow-keys-declared",
     "target": "linux/scripts/verify_code_size.py",
-    "find": "load_counts(FILE_ALLOW, 1, FILE_FMT), FILE_LIMIT",
-    "replace": "load_counts(FILE_ALLOW), FILE_LIMIT",
+    "find": "load_counts(file_allow, 1, FILE_FMT), FILE_LIMIT",
+    "replace": "load_counts(file_allow), FILE_LIMIT",
     "test": "bash linux/scripts/tests/test-code-size.sh",
     "why": "file-size.allow has one key column; same rule, and its reasons already carry a docs anchor"
   },
