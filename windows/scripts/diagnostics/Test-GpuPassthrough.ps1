@@ -42,8 +42,10 @@
       4. Verdict   -- PASSTHROUGH WORKS / BLOCKED (build skew) / DEVICE-NOT-INJECTED.
 
 .PARAMETER Image
-    Container image to test. Must contain clang-cl + the Windows SDK (the built
-    winamd64 image does). Default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+    Container image to test. Must contain clang-cl + the Windows SDK (the family
+    Windows CI image does). Left empty it is composed by Get-CiImageReference
+    -Windows from versions.env, so it follows a fleet-wide tag bump with no edit
+    here; the ref is deliberately not written out in this comment either.
 
 .PARAMETER Docker
     Path to docker.exe. Defaults to Stevedore's, then PATH.
@@ -52,12 +54,18 @@
     pwsh -File windows/scripts/diagnostics/Test-GpuPassthrough.ps1
 #>
 param(
-    [string]$Image = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64',
+    # Empty, not the ref: a param default is evaluated before the module below is
+    # imported, so the composed value cannot be written here -- it is resolved
+    # right after the import instead.
+    [string]$Image = '',
     [string]$Docker = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsContainerImage.Common.psm1')
+if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windows }
 
 # The DirectX GPU device interface class GUID (Microsoft-documented). A wrong
 # variant (e.g. ...-4AA3-9020-C4B8B62E36F7) is accepted by docker but matches no

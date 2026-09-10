@@ -47,8 +47,11 @@
     .\windows\scripts\diagnostics\Test-LayerRename.ps1
 
 .EXAMPLE
-    # Probe the built image's own layers:
-    .\windows\scripts\diagnostics\Test-LayerRename.ps1 -Base ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+    # Probe the built image's own layers. The family Windows image reference is
+    # composed from versions.env rather than retyped, so this line cannot go
+    # stale on a tag bump:
+    Import-Module .\windows\scripts\modules\WindowsContainerImage.Common.psm1
+    .\windows\scripts\diagnostics\Test-LayerRename.ps1 -Base (Get-CiImageReference -Windows)
 #>
 [CmdletBinding()]
 param(
@@ -134,7 +137,7 @@ if ($probeExit -eq 0 -and $joined -match 'rename-ok') {
 elseif ($hitKnownBug) {
     Write-Host 'BUG PRESENT: the known run-side wcifs rename failure still occurs on this version.' -ForegroundColor Yellow
     Write-Host 'Keep the consumer workaround: bind-mount source trees from plain NTFS (Dev Drive needs' -ForegroundColor Yellow
-    Write-Host '`fsutil devdrv setfiltersallowed bindFlt, wcifs` once, elevated) and avoid git/rename' -ForegroundColor Yellow
+    Write-Host '`fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"` once, elevated) and avoid git/rename' -ForegroundColor Yellow
     Write-Host 'operations in image-layer directories.' -ForegroundColor Yellow
     exit 1
 }
