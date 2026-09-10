@@ -135,4 +135,93 @@ t_assert_eq "--build /build/aarch64-linux-gnu --parallel 7 --target llvm-config"
 t_assert_eq "--install /build/aarch64-linux-gnu --strip" "${_CMAKE_CALLS[2]}"
 t_assert_eq "--install /build/aarch64-linux-gnu --strip --prefix /opt/llvm-cross/aarch64-linux-gnu" "${_CMAKE_CALLS[3]}"
 
+# ---------------------------------------------------------------------------
+# HOST-AS-TARGET. setup_linux_cross_env returns EARLY when the target is the
+# build host and exports nothing; since 2026-09-10 this file's own loop asks for
+# exactly that case on every host (--include-amd64). Ten bare reads died there,
+# one build cycle each. Scrub the WHOLE export surface and prove the configure
+# still produces a complete argv. Run in a clean `bash -c` so no exported value
+# from this suite's own first case can leak in and make it pass for free.
+_stanza_scenario() {
+  # $1 = target triplet, $2 = build triplet (equal => host-as-target).
+  # Captured into _BT first: inside a function, $2 is the FUNCTION's arg.
+  bash -c '
+    set -u
+    _TT="$1"; _BT="$2"
+    source linux/scripts/02-toolchain/llvm-cross.sh 2>/dev/null
+    _CMAKE_ARGV=""; cmake() { _CMAKE_ARGV="$*"; }
+    # llvm-cross.sh is sourced standalone here, without common.sh: supply the
+    # one helper the resolver needs so its refusal is observable, not a 127.
+    die() { printf "%s\n" "$*" >&2; exit 1; }
+    require_cross_gcc_tool()          { return 1; }
+    resolve_build_gcc_tool()          { printf "/usr/bin/%s" "$1"; }
+    arch_cmake_system_processor_for() { printf "x86_64"; }
+    build_deb_multiarch_triplet()     { printf "%s" "${_BT}"; }
+    declare -A st=([source_dir]=/s [build_dir]=/b [prefix]=/p [wrapper_dir]=/w
+                   [backend]=X86 [native_tool_dir]=/n [jobs]=1 [llvm_prefix]=/l
+                   [target_label]=amd64 [triplet]="${_TT}")
+    a=(); b=(); c=()
+    _llvm_cross_cmake_configure st some-triple a b c
+    printf "%s" "${_CMAKE_ARGV}"
+  ' _ "$1" "$2" 2>&1
+}
+
+# One owner for the scrub list: both cases must start from the SAME empty env,
+# or one of them passes because this suite's first case exported CC=xcc.
+_stanza_scrubbed() {
+  env -u CC -u CXX -u AR -u AS -u LD -u NM -u RANLIB -u STRIP -u OBJCOPY \
+      -u CLANG -u CLANGXX -u CROSS_TARGET_TRIPLET -u CROSS_TARGET_PROCESSOR \
+      -u CROSS_RUST_TARGET -u CMAKE_SYSROOT -u LIBRARY_PATH \
+      bash -c "$(declare -f _stanza_scenario)"'; _stanza_scenario "$1" "$2"' _ "$1" "$2" || true
+}
+
+t_case "configure resolves its own toolchain when the cross env exported nothing"
+_HOST_ARGV="$(_stanza_scrubbed x86_64-linux-gnu x86_64-linux-gnu)"
+t_assert_contains "${_HOST_ARGV}" "-DCMAKE_C_COMPILER=/usr/bin/gcc" \
+  "an unset cross env is a legitimate state here, not an unbound-variable abort"
+t_assert_contains "${_HOST_ARGV}" "-DCMAKE_AR=/usr/bin/ar"
+t_assert_contains "${_HOST_ARGV}" "-DCMAKE_SYSTEM_PROCESSOR=x86_64"
+t_assert_contains "${_HOST_ARGV}" "-DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu"
+# An empty -D<NAME>= is the silent failure this replaced: cmake accepts it.
+t_assert_eq "0" "$(printf '%s' "${_HOST_ARGV}" | grep -oE -e '-D[A-Z_]+= ' | wc -l | tr -d ' ')" \
+  "no cmake define may be handed an empty value"
+
+t_case "a foreign target gets NO host fallback — it dies naming the tool"
+_FT_OUT="$(_stanza_scrubbed aarch64-linux-gnu x86_64-linux-gnu)"
+t_assert_contains "${_FT_OUT}" "no host fallback is allowed" \
+  "silently substituting the BUILD host's gcc for a foreign target is how a cross image ships the wrong ELF"
+t_assert_eq "0" "$(printf '%s' "${_FT_OUT}" | grep -c -e '-DCMAKE_C_COMPILER=/usr/bin/gcc' || true)" \
+  "the host compiler must never reach a foreign target's configure"
+
+# ---------------------------------------------------------------------------
+# STANDING PROOF, not a one-off grep. The two functions below run with target ==
+# build host, where setup_linux_cross_env exports NOTHING. Every unguarded read
+# of its export surface is a future "unbound variable" that costs a build cycle
+# to find. This fails on the eleventh one.
+t_case "no unguarded read of the cross-env export surface in the host-as-target path"
+_LC="${TESTS_DIR}/../02-toolchain/llvm-cross.sh"
+# The surface _cross_env_export_all exports (cross-env.sh). Keep this list HERE,
+# beside the assertion, so it is updated when the export surface grows.
+_SURFACE='CC CXX AR AS LD NM RANLIB STRIP OBJCOPY CLANG CLANGXX
+CROSS_TARGET_TRIPLET CROSS_TARGET_PROCESSOR CROSS_RUST_TARGET
+CMAKE_SYSROOT CMAKE_AR CMAKE_RANLIB CMAKE_NM CMAKE_STRIP CMAKE_OBJCOPY
+PKG_CONFIG_LIBDIR PKG_CONFIG_PATH PKG_CONFIG_ALLOW_CROSS LIBRARY_PATH
+CARGO_BUILD_TARGET PYTHON_CROSS_ROOT'
+_scan_fn() {
+  # body of $1, comments stripped
+  sed -n "/^$1()/,/^}/p" "${_LC}" | sed 's/[[:space:]]*#.*$//'
+}
+_unguarded=""
+for _fn in _llvm_cross_cmake_configure _llvm_cross_setup_and_build; do
+  _body="$(_scan_fn "${_fn}")"
+  for _n in ${_SURFACE}; do
+    # ${NAME} or ${NAME[^:-]... — a guarded read is ${NAME:-...} or ${NAME:?...}
+    if printf '%s' "${_body}" | grep -qE '\$\{'"${_n}"'\}'; then
+      _unguarded="${_unguarded} ${_fn}:${_n}"
+    fi
+  done
+done
+t_assert_eq "" "${_unguarded}" \
+  "each of these is a build cycle: the cross env exports nothing when the target IS the build host"
+
 t_summary

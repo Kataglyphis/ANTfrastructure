@@ -213,8 +213,56 @@ _llvm_cross_superset_cmake_args() {
   )
 }
 
-# Callable ONLY from inside _llvm_cross_setup_and_build's subshell: CC/AR/
-# CROSS_TARGET_*/CMAKE_SYSROOT come from the env setup_linux_cross_env exported.
+# Resolve ONE tool through the three-rung ladder. ${!envvar:-} not ${!envvar}:
+# an unset var is a legitimate state here, not a bug (see the contract below).
+_llvm_cross_resolve_tool() {
+  local -n _rt1="$1"
+  local key="$2" envvar="$3" tool="$4" triplet="$5" native_ok="$6"
+  local val="${!envvar:-}"
+  [ -n "${val}" ] || val="$(require_cross_gcc_tool "${tool}" "${triplet}" 2>/dev/null || true)"
+  if [ -z "${val}" ] && [ "${native_ok}" = "1" ]; then
+    val="$(resolve_build_gcc_tool "${tool}" 2>/dev/null || true)"
+    [ -n "${val}" ] || val="$(command -v "${tool}" 2>/dev/null || true)"
+  fi
+  [ -n "${val}" ] || die "llvm-cross: cannot resolve '${tool}' for ${triplet:-<no triplet>}: \$${envvar} unset, require_cross_gcc_tool found nothing$( [ "${native_ok}" = "1" ] && printf ', and neither did resolve_build_gcc_tool / command -v' || printf ' (target is foreign, so no host fallback is allowed)' )"
+  _rt1["${key}"]="${val}"
+}
+
+# This function resolves its OWN toolchain and is valid for target == build host.
+# It used to read CC/AR/CROSS_TARGET_* bare, on the assumption that
+# setup_linux_cross_env had exported them — but that function returns EARLY when
+# the target is the build host, and since 2026-09-10 this file's own loop asks
+# for exactly that case (--include-amd64), on every host including amd64.
+#   rung 1  the exported cross env      -> a FOREIGN target keeps today's argv
+#   rung 2  target-explicit helpers     -> no dependence on the cross guard
+#   rung 3  the build host's own tools  -> ONLY when target triplet == build triplet
+# No rung left is a die() naming the tool and the ladder, never an empty -D<NAME>=.
+_llvm_cross_resolve_configure_toolchain() {
+  local -n _rt="$1"
+  local target_label="$2" triplet="$3"
+  local build_triplet native_ok=0
+
+  build_triplet="$(build_deb_multiarch_triplet 2>/dev/null || true)"
+  [ -n "${triplet}" ] && [ "${triplet}" = "${build_triplet}" ] && native_ok=1
+
+  _rt[processor]="${CROSS_TARGET_PROCESSOR:-}"
+  [ -n "${_rt[processor]}" ] \
+    || _rt[processor]="$(arch_cmake_system_processor_for "${target_label}" 2>/dev/null || true)"
+  [ -n "${_rt[processor]}" ] \
+    || die "llvm-cross: no CMAKE_SYSTEM_PROCESSOR for '${target_label}'"
+
+  _rt[triplet]="${CROSS_TARGET_TRIPLET:-${triplet}}"
+  [ -n "${_rt[triplet]}" ] || die "llvm-cross: no target triplet for '${target_label}'"
+
+  _llvm_cross_resolve_tool _rt cc      CC      gcc     "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt cxx     CXX     g++     "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt ar      AR      ar      "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt ranlib  RANLIB  ranlib  "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt nm      NM      nm      "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt objcopy OBJCOPY objcopy "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt strip   STRIP   strip   "${triplet}" "${native_ok}"
+}
+
 _llvm_cross_cmake_configure() {
   local -n _cfg="$1"
   local clang_triple="$2"
@@ -225,27 +273,32 @@ _llvm_cross_cmake_configure() {
   local wrapper_dir="${_cfg[wrapper_dir]}" backend="${_cfg[backend]}"
   local native_tool_dir="${_cfg[native_tool_dir]}"
 
+  # State keys read with :- because the regression fixture supplies neither.
+  local -A _tc=()
+  _llvm_cross_resolve_configure_toolchain _tc \
+    "${_cfg[target_label]:-}" "${_cfg[triplet]:-}"
+
   cmake -G Ninja \
     "${_cfg_launcher_args[@]}" \
     -S "${source_dir}/llvm" \
     -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_SYSTEM_NAME=Linux \
-    -DCMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}" \
+    -DCMAKE_SYSTEM_PROCESSOR="${_tc[processor]}" \
     -DCMAKE_SYSROOT="${CMAKE_SYSROOT:-/}" \
-    -DCMAKE_C_COMPILER="${CC}" \
-    -DCMAKE_CXX_COMPILER="${CXX}" \
-    -DCMAKE_ASM_COMPILER="${CC}" \
-    -DCMAKE_AR="${AR}" \
-    -DCMAKE_RANLIB="${RANLIB}" \
-    -DCMAKE_NM="${NM}" \
-    -DCMAKE_OBJCOPY="${OBJCOPY}" \
-    -DCMAKE_STRIP="${STRIP}" \
+    -DCMAKE_C_COMPILER="${_tc[cc]}" \
+    -DCMAKE_CXX_COMPILER="${_tc[cxx]}" \
+    -DCMAKE_ASM_COMPILER="${_tc[cc]}" \
+    -DCMAKE_AR="${_tc[ar]}" \
+    -DCMAKE_RANLIB="${_tc[ranlib]}" \
+    -DCMAKE_NM="${_tc[nm]}" \
+    -DCMAKE_OBJCOPY="${_tc[objcopy]}" \
+    -DCMAKE_STRIP="${_tc[strip]}" \
     "${_cfg_linker_args[@]}" \
     -DCMAKE_C_FLAGS_INIT="-B${wrapper_dir}" \
     -DCMAKE_CXX_FLAGS_INIT="-B${wrapper_dir}" \
     -DCMAKE_ASM_FLAGS_INIT="-B${wrapper_dir}" \
-    -DCMAKE_LIBRARY_ARCHITECTURE="${CROSS_TARGET_TRIPLET}" \
+    -DCMAKE_LIBRARY_ARCHITECTURE="${_tc[triplet]}" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
