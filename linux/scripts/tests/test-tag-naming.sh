@@ -46,9 +46,22 @@ t_assert_eq "example.io/repo:runtime-base-arm64"    "$(runtime_base_tag arm64)"
 t_assert_eq "example.io/repo:runtime-package-amd64" "$(runtime_package_tag amd64)"
 t_assert_eq "example.io/repo:runtime-riscv64"       "$(runtime_wrapper_tag riscv64)"
 
-t_case "runtime_artifact_platform: cross builds on amd64, native on the target"
+t_case "runtime_artifact_platform: the cross arm follows the KNOB, not a literal"
+# The cross arm is not "amd64" — it is "the platform the cross lane built the
+# artifact on". Every row pins CROSS_BUILD_PLATFORM explicitly: with only the
+# default asserted, the change would be vacuously green in both directions.
 ARTIFACT_BUILD_MODE=cross
-t_assert_eq "linux/amd64" "$(runtime_artifact_platform arm64)"
+t_assert_eq "linux/amd64" "$(CROSS_BUILD_PLATFORM=linux/amd64 runtime_artifact_platform arm64)" \
+  "the amd64 production lane keeps the old literal byte-for-byte"
+t_assert_eq "linux/arm64" "$(CROSS_BUILD_PLATFORM=linux/arm64 runtime_artifact_platform arm64)" \
+  "a native arm64 lane's artifact IS arm64, and the package FROM must say so"
+t_assert_eq "linux/amd64" "$(runtime_artifact_platform arm64)" \
+  "the shipped default survives with the knob unset"
+# The row that forbids a future 'simplification' to linux/$(build_arch_oci):
+# with the shipped default an arm64 MACHINE still builds amd64-under-QEMU
+# images, and a host-derived answer would be wrong about exactly those.
+t_assert_eq "linux/amd64" "$(BUILDARCH=arm64 runtime_artifact_platform arm64)" \
+  "the platform follows the knob, never the host"
 ARTIFACT_BUILD_MODE=native
 t_assert_eq "linux/arm64" "$(runtime_artifact_platform arm64)"
 t_assert_eq "linux/riscv64" "$(runtime_artifact_platform riscv64)"
@@ -78,14 +91,29 @@ for _h in amd64 arm64 riscv64; do
 done
 
 t_case "the build-host infix is empty on amd64 and present elsewhere"
-t_assert_eq "" "$(BUILDARCH=amd64 _cross_build_host_infix)" \
+t_assert_eq "" "$(BUILDARCH=amd64 cross_build_host_infix)" \
   "an amd64 build host keeps the historical android tag byte-for-byte"
-t_assert_eq "-hostarm64"   "$(BUILDARCH=arm64 _cross_build_host_infix)"
-t_assert_eq "-hostriscv64" "$(BUILDARCH=riscv64 _cross_build_host_infix)"
+t_assert_eq "-hostarm64"   "$(BUILDARCH=arm64 cross_build_host_infix)"
+t_assert_eq "-hostriscv64" "$(BUILDARCH=riscv64 cross_build_host_infix)"
 t_assert_eq "example.io/repo:cross-android-amd64" \
   "$(BUILDARCH=amd64 cross_android_tag amd64)"
 t_assert_eq "example.io/repo:cross-android-hostarm64-amd64" \
   "$(BUILDARCH=arm64 cross_android_tag amd64)" \
   "a payload-off android built on arm64 must not overwrite the amd64 lane's artifact"
+
+t_case "the final image carries the build host, like the android tag"
+IMAGE_REPO="example.io/repo" IMAGE_REGISTRY_PREFIX="WRONG"
+t_assert_eq "example.io/repo:latest-cross" "$(BUILDARCH=amd64 cross_final_image_tag)"
+t_assert_eq "example.io/repo:latest-cross-hostarm64" "$(BUILDARCH=arm64 cross_final_image_tag)" \
+  "a native arm64 run must never write the amd64 lane's :latest-cross-<arch> children"
+
+t_case "the final image and the android prefix carry the SAME infix"
+# build-cross-chain.sh and cross-stage-build.sh must not drift apart about which
+# host they are on — one helper, asserted for every host.
+for _h in amd64 arm64 riscv64; do
+  _inf="$(BUILDARCH="${_h}" cross_build_host_infix)"
+  t_assert_eq "example.io/repo:latest-cross${_inf}" "$(BUILDARCH="${_h}" cross_final_image_tag)"
+  t_assert_eq "example.io/repo:cross-android${_inf}" "$(BUILDARCH="${_h}" cross_android_tag_prefix)"
+done
 
 t_summary

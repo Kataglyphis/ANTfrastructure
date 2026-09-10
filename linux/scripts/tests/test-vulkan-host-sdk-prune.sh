@@ -28,7 +28,12 @@ _fixture() {
   esac
 }
 
-_run() { bash "${PRUNE}" "$1" "${ROOT}" 2>&1; }
+# BUILDARCH pinned: since 2026-09-10 the builder prefix is whatever the BUILD
+# HOST is (it was the frozen literal x86_64, which kept the wrong tree whenever
+# the cross lane built on a non-amd64 host). Every case below describes the
+# amd64-hosted lane, so it must say so — unpinned, these rows asserted whatever
+# machine ran the suite and went red the moment it ran on an arm64 box.
+_run() { BUILDARCH="${2:-amd64}" bash "${PRUNE}" "$1" "${ROOT}" 2>&1; }
 
 # ---------------------------------------------------------------------------
 t_case "a foreign arch with its own loader loses the builder prefix and the sources"
@@ -111,5 +116,22 @@ t_assert_ok test -n "${_COPY_LINE}"
 t_assert_ok test "${_RUN_LINE}" -lt "${_COPY_LINE}"
 t_assert_contains "$(sed -n "1,${_RUN_LINE}p" "${_DF}")" "AS artifact-source" \
   "the prune must run in the stage the COPY reads from"
+
+# ---------------------------------------------------------------------------
+t_case "the builder prefix follows the BUILD HOST, not a frozen x86_64"
+# An arm64-hosted cross build produces an aarch64 SDK prefix. With the old
+# literal, THAT tree was kept as 'the builder's' and the target's was pruned —
+# exactly backwards. The fixture is the mirror image of the amd64 one.
+rm -rf "${ROOT:?}"/*
+mkdir -p "${ROOT}/1.4.357.0/aarch64/lib" "${ROOT}/1.4.357.0/riscv64/lib" \
+         "${ROOT}/1.4.357.0/source/glslang"
+: > "${ROOT}/1.4.357.0/aarch64/lib/libvulkan.so.1"
+: > "${ROOT}/1.4.357.0/riscv64/lib/libvulkan.so.1"
+_out="$(_run riscv64 arm64)"
+# on an arm64 build host, aarch64 IS the builder prefix and must go
+t_assert_ok test '!' -e "${ROOT}/1.4.357.0/aarch64"
+# the target's loader must survive
+t_assert_ok test -e "${ROOT}/1.4.357.0/riscv64/lib/libvulkan.so.1"
+t_assert_contains "${_out}" "riscv64 runs riscv64/lib/libvulkan.so.1"
 
 t_summary

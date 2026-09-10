@@ -7,7 +7,9 @@ set -euo pipefail
 # /opt/vulkan COPY, so the runtime layer never carries what it cannot execute.
 # docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 
-HOST_PREFIX="x86_64"
+# Assigned in main(), AFTER platform.sh loads: this runs inside the artifact-
+# source container, whose own arch IS the builder prefix to keep.
+HOST_PREFIX=""
 
 _prune_load_platform() {
   local dir candidate
@@ -62,6 +64,13 @@ main() {
 
   _prune_load_platform || {
     echo "ERROR: prune-vulkan-host-sdk.sh found no platform.sh defining arch_uname_name_for" >&2
+    exit 1
+  }
+  # The builder prefix is whatever THIS container is — hardcoding x86_64 kept
+  # the wrong tree (and pruned the right one) whenever the cross lane built on
+  # a non-amd64 host. amd64 hosts resolve to x86_64, exactly as before.
+  HOST_PREFIX="$(arch_uname_name_for "$(build_arch_oci)")" || {
+    echo "ERROR: cannot resolve the builder Vulkan prefix for $(build_arch_oci)" >&2
     exit 1
   }
   arch_deb_multiarch_triplet_for "${target_arch}" >/dev/null 2>&1 || {

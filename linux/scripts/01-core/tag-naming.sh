@@ -14,7 +14,7 @@ _TAG_NAMING_SH_LOADED=1
 #   runtime_package_tag()         — <prefix>-package-<arch>
 #   runtime_wrapper_tag()         — <prefix>-<arch>
 #   runtime_artifact_image_ref()  — cross-android ref or native artifact
-#   runtime_artifact_platform()   — linux/amd64 or linux/<arch>
+#   runtime_artifact_platform()   — the cross lane's build platform, or linux/<arch>
 #   runtime_require_image_prefix()— guard for RUNTIME_IMAGE_PREFIX
 
 # ==============================================================================
@@ -45,15 +45,21 @@ cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 # arm64 run would overwrite the amd64 lane's real artifact under the same tag.
 # Derived from _cross_build_host_arch so there is no fourth independent
 # `= amd64` test; empty on amd64, so the historical name is byte-identical.
-_cross_build_host_infix() {
+cross_build_host_infix() {
   local a; a="$(_cross_build_host_arch)"
   [ "${a}" = "amd64" ] && return 0
   printf -- '-host%s' "${a}"
 }
 # Split so cross-stage-build.sh's --artifact-image-prefix and cross_android_tag
 # are two callers of ONE function instead of two spellings that can drift.
-cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(_cross_build_host_infix)"; }
+cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(cross_build_host_infix)"; }
 cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }
+# The chain's final image. Same infix, same reason: the per-arch wrapper images
+# are PUSHED before the manifest gate runs, so without it a native arm64 run
+# would overwrite the amd64 lane's published :latest-cross-<arch> family.
+# Never _cross_shared_tag_suffix here — that yields :latest-cross-arm64, which
+# IS the amd64 lane's arm64 wrapper tag.
+cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest-cross$(cross_build_host_infix)"; }
 
 # ==============================================================================
 # Runtime tag name functions.
@@ -86,7 +92,15 @@ runtime_wrapper_tag() {
 runtime_artifact_platform() {
   local arch="$1"
   case "${ARTIFACT_BUILD_MODE:-cross}" in
-    cross) printf '%s' "linux/amd64" ;;
+    cross)
+      # Never "amd64" — this is "the platform the cross lane built the artifact
+      # on", which cross-stage-build.sh:258 passes as CROSS_BUILD_PLATFORM.
+      local p; p="$(cross_build_platform)"
+      if [ -z "${p}" ]; then
+        printf '[ERROR] cross_build_platform returned empty (platform.sh not loaded?)\n' >&2
+        return 1
+      fi
+      printf '%s' "${p}" ;;
     native) printf '%s' "linux/${arch}" ;;
     *)
       printf '[ERROR] Unsupported artifact build mode: %s\n' "${ARTIFACT_BUILD_MODE}" >&2

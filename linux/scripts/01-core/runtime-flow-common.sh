@@ -23,7 +23,10 @@ init_runtime_flow_defaults() {
   [ -n "${RUNTIME_FLOW_DEFAULTS_INITIALIZED:-}" ] && return 0
   RUNTIME_FLOW_DEFAULTS_INITIALIZED=1
 
-  ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:cross-android}"
+  # Second spelling of the android tag — must ask the same owner as
+  # cross-stage-build.sh's --artifact-image-prefix, or a non-amd64 build host
+  # names the AMD box's artifact here.
+  ARTIFACT_IMAGE_PREFIX="${ARTIFACT_IMAGE_PREFIX:-$(cross_android_tag_prefix)}"
   ARTIFACT_BUILD_MODE="${ARTIFACT_BUILD_MODE:-cross}"
   BASE_DOCKERFILE_PATH="${BASE_DOCKERFILE_PATH:-linux/Dockerfile.base}"
   PACKAGE_DOCKERFILE_PATH="${PACKAGE_DOCKERFILE_PATH:-linux/Dockerfile.package}"

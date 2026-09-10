@@ -126,4 +126,38 @@ done
 t_assert_eq "0" "$(_count "${_with_marker}" -- "--- sdkmanager ---")" \
   "the strict checks must not run at all"
 
+# ---------------------------------------------------------------------------
+# The frozen-build-host CLASS, as one checkable row. No test anywhere asserts a
+# --platform argument on any code path (`grep -rn -e '--platform' tests/` is
+# empty), so the literal count is the only thing standing between this and a
+# silent revert to a hardcoded platform.
+t_case "linux/amd64 survives in exactly one place: the accessor's own default"
+# CODE only — a comment may name the default (and stage-defs.sh's does, to say
+# what CROSS_BUILD_PLATFORM defaults to). What must not exist is a second place
+# that DECIDES it.
+_count_lit() { grep -v '^[[:space:]]*#' "${REPO_SCRIPTS}/$1" | grep -c 'linux/amd64' || true; }
+t_assert_eq "1" "$(_count_lit 01-core/platform.sh)" \
+  "cross_build_platform owns the default; a second copy is a second answer"
+for _f in 01-core/tag-naming.sh 01-core/stage-defs.sh 01-core/chain-verify.sh; do
+  t_assert_eq "0" "$(_count_lit "${_f}")" \
+    "${_f} must ask cross_build_platform, not freeze the platform"
+done
+
+t_case "the platform knob is EXPORTED, or the fix is inert where it is needed"
+# build-cross-chain.sh launches build-runtime-manifest.sh through `run env`,
+# which forwards only exported vars. Unexported, the child re-sources
+# cross-stage-build.sh, re-defaults to linux/amd64, and pins the runtime
+# artifact-source to a platform the artifact is not. No in-process test can see
+# this, so it is asserted structurally.
+# Matches the SC2155-clean two-line form (assign, then bare `export NAME`) as
+# well as a single-line export, so splitting for the masked-declaration gate
+# cannot silently retire this assertion.
+t_assert_eq "1" "$(grep -cE '^export CROSS_BUILD_PLATFORM\b' "${REPO_SCRIPTS}/01-core/cross-stage-build.sh" || true)"
+
+t_case "cross_build_platform reads the knob and defaults to the amd64 lane"
+t_assert_eq "linux/amd64"  "$(cross_build_platform)"
+t_assert_eq "linux/arm64"  "$(CROSS_BUILD_PLATFORM=linux/arm64 cross_build_platform)"
+t_assert_eq "linux/amd64"  "$(BUILDARCH=riscv64 cross_build_platform)" \
+  "the knob, never the host — an emulated build must describe itself honestly"
+
 t_summary

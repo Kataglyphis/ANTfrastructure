@@ -5,13 +5,21 @@
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
 
+# _disk_guard_free_gb for the salvage free-space check below (idempotent load).
+_CROSS_STAGE_BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # The platform every cross stage is built on. Default linux/amd64 keeps the
 # amd64 dev host byte-identical; linux/arm64 makes a native ARM build possible
 # on an arm64 host, where the old hardcoded literal produced x86_64-under-QEMU.
-CROSS_BUILD_PLATFORM="${CROSS_BUILD_PLATFORM:-linux/amd64}"
-
-# _disk_guard_free_gb for the salvage free-space check below (idempotent load).
-_CROSS_STAGE_BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# EXPORTED: build-cross-chain.sh launches the runtime helper through `run env`,
+# which forwards only exported vars — an unexported knob let the child re-default
+# to linux/amd64 and pin the runtime artifact-source to a platform the artifact
+# is not. platform.sh owns the default; source it hard so the value cannot be
+# empty (an empty --platform "" would be silent on amd64 and fatal on arm64).
+# shellcheck disable=SC1091
+source "${_CROSS_STAGE_BUILD_SH_DIR}/platform.sh"
+CROSS_BUILD_PLATFORM="$(cross_build_platform)"
+export CROSS_BUILD_PLATFORM
 # shellcheck disable=SC1091
 [ -f "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh" ] \
   && source "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh"

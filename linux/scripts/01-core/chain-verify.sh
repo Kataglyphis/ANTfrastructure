@@ -170,7 +170,7 @@ describe_cross_chain() {
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-ubuntu:26.04}"
       printf '  Dockerfile: %s\n' "${dockerfile}"
       printf '  Tag:        %s\n' "${tag}"
-      printf '  Platform:   %s  (shared, not per-arch)\n' "${CROSS_BUILD_PLATFORM:-linux/amd64}"
+      printf '  Platform:   %s  (shared, not per-arch)\n' "$(cross_build_platform)"
     fi
   done
   printf '\n'

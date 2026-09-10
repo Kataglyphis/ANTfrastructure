@@ -219,11 +219,18 @@ runtime_build_base_image() {
 append_package_build_args() {
   local -n _apba_out=$1
   local arch="$2" parent_image="$3" artifact_image="$4" package_base_stage="$5"
+  # Resolved into a local so a failure is caught HERE. Inline, a non-zero
+  # runtime_artifact_platform would have appended `ARTIFACT_PLATFORM=` and let
+  # BuildKit pick the default platform for the artifact-source FROM — the exact
+  # wrong-image-silently class this change exists to close.
+  local _apba_plat
+  _apba_plat="$(runtime_artifact_platform "${arch}")" || return 1
+  [ -n "${_apba_plat}" ] || { err "ARTIFACT_PLATFORM resolved empty for ${arch}"; return 1; }
   _apba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "ARTIFACT_IMAGE=${artifact_image}"
     --build-arg "PACKAGE_BASE_STAGE=${package_base_stage}"
-    --build-arg "ARTIFACT_PLATFORM=$(runtime_artifact_platform "${arch}")"
+    --build-arg "ARTIFACT_PLATFORM=${_apba_plat}"
     --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}"
     --build-arg "TARGET_ARCH=${arch}"
   )
@@ -249,6 +256,14 @@ append_wrapper_build_args() {
   # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
   local _wheels_image
   _wheels_image="$(runtime_android_pin "${arch}")"
+  # The pin is empty under --no-push. On a build host whose android tag carries
+  # a -host<arch> infix, Dockerfile.torch's un-infixed default would then name
+  # the AMD box's artifact and bind-mount ITS /opt/wheels. Name this host's tag
+  # instead, so a miss fails loudly rather than shipping the wrong generation.
+  # Structurally unreachable on amd64: the infix is empty there.
+  if [ -z "${_wheels_image}" ] && [ -n "$(cross_build_host_infix)" ]; then
+    _wheels_image="$(cross_android_tag "${arch}" 2>/dev/null || true)"
+  fi
   _awba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "BUILD_MODE=native"
@@ -300,7 +315,7 @@ runtime_build_package_image() {
     return 0
   fi
 
-  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}"
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}" || return 1
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
@@ -380,7 +395,7 @@ _runtime_run_package_smoke() {
   local parent_image parent_context_dir
   _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
 
-  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}"
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}" || return 1
 
   log "[smoke] running wrapper-smoke gate for ${arch} (target wrapper-smoke)"
 
