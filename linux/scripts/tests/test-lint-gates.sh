@@ -142,4 +142,119 @@ t_assert_eq "0" "$(t_rc assert_gates)" \
   "it must be able to be green, or the reds above prove only that it is broken"
 t_assert_eq "2" "$(t_rc run_gate "nocmd")"
 
+# --- the third bucket: a gate that COULD NOT run -----------------------------
+# A missing tool is neither a pass nor a failure, and the two ways to pretend
+# otherwise are both lies this file exists to prevent. So the assertions are
+# that the record is KEPT, that keeping it is red until somebody asks for
+# tolerance in writing, and that tolerance never reaches the other two buckets.
+# docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+
+t_case "gates.sh: gate_skip records the gate and its reason, and grades nothing"
+gate_reset "T"
+# t_out is a command SUBSTITUTION, so the record it makes dies with the
+# subshell; the call that has to leave a mark on this shell is the bare one.
+_skip_out="$(t_out gate_skip "clang-tidy" "not installed in this image")"
+t_assert_contains "${_skip_out}" "SKIPPED"
+t_assert_contains "${_skip_out}" "not installed in this image" \
+  "a skip without its reason reads the same as a gate somebody quietly deleted"
+gate_skip "clang-tidy" "not installed in this image" 2>/dev/null
+t_assert_eq "clang-tidy" "${_GATE_SKIPPED[*]}"
+t_assert_eq "0" "${_GATE_RAN}" \
+  "counting a skip as a gate that RAN makes a batch of nothing but skips green"
+
+t_case "gates.sh: the reason is optional, and gate_reset empties the bucket"
+gate_reset "T"
+gate_skip "bare" 2>/dev/null
+t_assert_eq "bare" "${_GATE_SKIPPED[*]}"
+gate_reset "T"
+t_assert_eq "0" "${#_GATE_SKIPPED[@]}" \
+  "a skip surviving gate_reset reds the NEXT batch over a tool it never wanted"
+
+t_case "gates.sh: a skip is RED by default"
+gate_reset "T"
+run_gate "ran" true >/dev/null
+gate_skip "missing-tool" "no such binary" 2>/dev/null
+t_assert_eq "1" "$(t_rc assert_gates)" \
+  "a silently tolerated skip is the 'allowed to fail' default the fleet rule forbids"
+_skip_verdict="$(t_out assert_gates)"
+t_assert_contains "${_skip_verdict}" "missing-tool"
+t_assert_contains "${_skip_verdict}" "--tolerate-skips" \
+  "the red must name the flag, or the only visible way out of it is to delete the gate"
+
+t_case "gates.sh: --tolerate-skips is what makes that same batch green"
+t_assert_eq "0" "$(t_rc assert_gates --tolerate-skips)" \
+  "tolerance must be reachable, or the red above proves only that it is broken"
+t_assert_contains "$(t_out assert_gates --tolerate-skips)" "1 skipped" \
+  "a tolerated skip is still printed: tolerated is not the same as invisible"
+
+t_case "gates.sh: a batch of ONLY skips is red even WITH --tolerate-skips"
+gate_reset "T"
+gate_skip "one" "absent" 2>/dev/null
+gate_skip "two" "absent" 2>/dev/null
+t_assert_eq "1" "$(t_rc assert_gates --tolerate-skips)" \
+  "nothing was graded, so there is no result to tolerate - the vacuity rule outranks the flag"
+t_assert_contains "$(t_out assert_gates --tolerate-skips)" "no gate ran"
+
+t_case "gates.sh: --tolerate-skips does not tolerate a FAILURE sharing the batch"
+gate_reset "T"
+run_gate "broken" false >/dev/null 2>&1
+gate_skip "absent" "no binary" 2>/dev/null
+t_assert_eq "1" "$(t_rc assert_gates --tolerate-skips)"
+t_assert_contains "$(t_out assert_gates --tolerate-skips)" "T FAILED (1 of 1): broken" \
+  "one flag covering both buckets would make a missing tool a way to pass a failing one"
+
+t_case "gates.sh: an unknown assert_gates flag is a caller bug, not a verdict"
+gate_reset "T"
+run_gate "ran" true >/dev/null
+t_assert_eq "2" "$(t_rc assert_gates --tolerate-skip)" \
+  "a near-miss flag swallowed as 'no flag given' silently re-arms the default it was meant to lift"
+t_assert_eq "2" "$(t_rc assert_gates --fail-on-skip)" \
+  "--fail-on-skip is the OLD spelling and is now the DEFAULT; accepting it would green batches it used to red"
+t_assert_contains "$(t_out assert_gates --nonsense)" "unknown argument"
+
+# --- run_gate contains a helper that reports failure with exit ---------------
+# The bug the subshell fixes. Upstream check helpers report failure with err(),
+# which is `exit 1`; run as a bare "$@" that exit unwinds the DRIVER, so the
+# gates after it never run and assert_gates never prints a verdict - "stop at
+# the first failure" arriving through the back door. Graded by running ONE
+# driver against the shipped file and against a copy with the subshell removed:
+# the copy has to die, or the shipped file's pass proves nothing.
+_GATES="${SCRIPTS}/01-core/gates.sh"
+_subshell_hits() { grep -c '( "\$@" )' "$1" || true; }
+
+_driver="${_work}/exiting-gate-driver.sh"
+cat > "${_driver}" <<'DRIVER'
+set -u
+source "$1"
+_erring() { echo "helper says no" >&2; exit 1; }
+gate_reset "D"
+run_gate "before" true
+run_gate "erring" _erring
+run_gate "after"  true
+assert_gates
+echo "VERDICT-REACHED rc=$?"
+DRIVER
+
+t_case "gates.sh: a gate whose command exits 1 does not kill the driver"
+t_assert_eq "1" "$(_subshell_hits "${_GATES}")" \
+  "the subshell this case is about is gone from the shipped file"
+_shipped_out="$(bash "${_driver}" "${_GATES}" 2>&1)"
+t_assert_contains "${_shipped_out}" "== after ==" \
+  "the exit unwound the driver, so every gate after the erring one never ran"
+t_assert_contains "${_shipped_out}" "D FAILED (1 of 3): erring" \
+  "assert_gates has to be REACHED, and still name the one gate that failed"
+t_assert_contains "${_shipped_out}" "VERDICT-REACHED rc=1"
+
+t_case "gates.sh: and without the subshell that same driver dies mid-batch"
+_bare="${_work}/gates-no-subshell.sh"
+sed 's/^  ( "\$@" ) || status=\$?$/  "$@" || status=$?/' "${_GATES}" > "${_bare}"
+t_assert_eq "0" "$(_subshell_hits "${_bare}")" \
+  "the control copy still has the subshell, so this whole case would pass vacuously"
+_bare_out="$(bash "${_driver}" "${_bare}" 2>&1)"
+t_assert_eq "1" "$(t_rc bash "${_driver}" "${_bare}")"
+t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep 'VERDICT-REACHED' || true)" \
+  "the control must die BEFORE its verdict; if it survives, the case above is not about the subshell"
+t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep '== after ==' || true)" \
+  "and it must take the remaining gates with it - that loss is the cost being pinned"
+
 t_summary
