@@ -399,4 +399,53 @@ t_assert_eq "0" "${_rc}" \
 t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
   "the target triplet dirs must survive the un-wired host lookup"
 
+# ---------------------------------------------------------------------------
+# cross_prune_foreign_arch_apt_sources: the prune must skip the BUILD HOST's
+# own ports source. It globs ubuntu-ports*.sources, and on a native arm64 (or
+# riscv64) build host cross_build_enabled() is false — target == build arch —
+# so cross_prepare_apt_sources_for_target takes the unconditional-prune branch
+# and used to delete the ONLY source serving the host's own packages. What was
+# left was ubuntu.sources with "Architectures: amd64", after which apt resolved
+# every unqualified name to :amd64: binutils:amd64 replaced the native aarch64
+# assembler and gcc's `as -EL` failed for the whole media stage.
+_PRUNE_DIR="${FAKE_DIR}/sources.list.d"
+mkdir -p "${_PRUNE_DIR}"
+_CROSS_APT_SOURCES_DIR="${_PRUNE_DIR}"
+
+_write_ports_source() { printf 'Types: deb\nURIs: http://ports/\nArchitectures: %s\n' "$2" > "$1"; }
+
+t_case "apt_source_declares_arch word-matches the Architectures line"
+_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64 riscv64"
+apt_source_declares_arch "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" arm64 \
+  && _hit=yes || _hit=no
+t_assert_eq "yes" "${_hit}" "arm64 is listed and must be found"
+apt_source_declares_arch "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" amd64 \
+  && _hit=yes || _hit=no
+t_assert_eq "no" "${_hit}" "amd64 is not listed"
+apt_source_declares_arch "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" arm \
+  && _hit=yes || _hit=no
+t_assert_eq "no" "${_hit}" "a prefix of a listed arch must NOT match"
+apt_source_declares_arch "${_PRUNE_DIR}/absent.sources" arm64 && _hit=yes || _hit=no
+t_assert_eq "no" "${_hit}" "an absent file declares nothing"
+
+t_case "an arm64 build host keeps its own ports source"
+cross_build_arch() { printf 'arm64'; }
+_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64"
+_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" "riscv64"
+cross_prune_foreign_arch_apt_sources
+t_assert_eq "1" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" ] && echo 1 || echo 0)" \
+  "the host's own ports source is not foreign and must survive"
+t_assert_eq "0" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" ] && echo 1 || echo 0)" \
+  "a genuinely foreign ports source is still pruned"
+
+t_case "an amd64 build host prunes exactly as before"
+cross_build_arch() { printf 'amd64'; }
+_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" "arm64"
+_write_ports_source "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" "riscv64"
+cross_prune_foreign_arch_apt_sources "${_PRUNE_DIR}/ubuntu-ports-arm64.sources"
+t_assert_eq "1" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-arm64.sources" ] && echo 1 || echo 0)" \
+  "the explicit keep-source still wins"
+t_assert_eq "0" "$([ -f "${_PRUNE_DIR}/ubuntu-ports-riscv64.sources" ] && echo 1 || echo 0)" \
+  "no ports source declares amd64, so amd64 hosts see no behaviour change"
+
 t_summary

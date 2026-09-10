@@ -110,13 +110,40 @@ cross_detect_distro_codename() {
   printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}"
 }
 
+# True when <sources-file> lists <arch> on its Architectures: line.
+apt_source_declares_arch() {
+  local sources_file="$1" arch="$2" line
+
+  [ -f "${sources_file}" ] || return 1
+  while IFS= read -r line; do
+    case "${line}" in Architectures:*) ;; *) continue ;; esac
+    case " ${line#Architectures:} " in *" ${arch} "*) return 0 ;; esac
+  done < "${sources_file}"
+  return 1
+}
+
+# Assigned (not read from the environment) so it is not an operator knob: the
+# unit tests point it at a fixture dir, production never changes it.
+_CROSS_APT_SOURCES_DIR=/etc/apt/sources.list.d
+
+# The build host's OWN arch is never "foreign". On an arm64/riscv64 build host
+# the host's packages come from ports too, so pruning that source left apt with
+# the amd64 archive alone -- every unqualified name then resolved to :amd64,
+# which is how binutils:amd64 replaced the native aarch64 assembler and made
+# gcc's `as -EL` fail in the media stage. amd64 hosts are unaffected: no
+# ubuntu-ports*.sources ever declares amd64.
 cross_prune_foreign_arch_apt_sources() {
   local keep_source="${1:-}"
-  local existing_ports_source
+  local existing_ports_source host_arch
+
+  host_arch="$(cross_build_arch 2>/dev/null || printf 'amd64')"
 
   shopt -s nullglob
-  for existing_ports_source in /etc/apt/sources.list.d/ubuntu-ports*.sources; do
+  for existing_ports_source in "${_CROSS_APT_SOURCES_DIR}"/ubuntu-ports*.sources; do
     [ -n "${keep_source}" ] && [ "${existing_ports_source}" = "${keep_source}" ] && continue
+    if apt_source_declares_arch "${existing_ports_source}" "${host_arch}"; then
+      continue
+    fi
     rm -f "${existing_ports_source}"
   done
   shopt -u nullglob
@@ -256,6 +283,17 @@ cross_resolve_target_package() {
   fi
 }
 
+# A per-package retry must never buy a package by uninstalling the toolchain.
+# Unqualified names can resolve to a foreign arch once the host's own apt source
+# is missing, and apt then satisfies e.g. `gfortran` with gfortran:amd64 —
+# removing gcc/binutils:arm64 on the way. With the retry's output discarded that
+# swap was invisible until gcc's `as -EL` failed hours later. Simulate first and
+# refuse (loudly) rather than install.
+_apt_install_would_remove() {
+  apt-get install -s -y --no-install-recommends "$1" 2>/dev/null \
+    | grep -q '^Remv '
+}
+
 install_host_packages() {
   [ "$#" -gt 0 ] || return 0
   # Fast path: one atomic transaction.
@@ -271,11 +309,17 @@ install_host_packages() {
   # installs so one bad name can't take the rest down, and report what was skipped.
   echo "WARN: batch host-package install failed; retrying per-package to isolate unavailable names" >&2
   local pkg
-  local -a _skipped=()
+  local -a _skipped=() _destructive=()
   for pkg in "$@"; do
+    if _apt_install_would_remove "${pkg}"; then
+      _destructive+=("${pkg}")
+      continue
+    fi
     apt-get install -y --no-install-recommends "${pkg}" >/dev/null 2>&1 || _skipped+=("${pkg}")
   done
   [ "${#_skipped[@]}" -eq 0 ] || echo "WARN: skipped unavailable host packages: ${_skipped[*]}" >&2
+  [ "${#_destructive[@]}" -eq 0 ] || \
+    echo "WARN: skipped host packages whose only solution removes installed ones: ${_destructive[*]}" >&2
   return 0
 }
 
