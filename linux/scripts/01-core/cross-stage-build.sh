@@ -417,8 +417,15 @@ _cross_stage_run_resolve_parent() {
     # the local image, never the registry. Missing context = parent not built
     # this run (--only/--from-stage) = today's registry fallback, unchanged.
     if cross_local_handoff_enabled; then
-      local parent_ctx
-      parent_ctx="$(cross_stage_context_dir "${parent}" "${arch}" 2>/dev/null || true)"
+      # The arch belongs to the CHILD. A SHARED parent (base, compiler) exported
+      # its layout WITHOUT one, so asking for "compiler-arm64" missed the
+      # "compiler" that was just written and the FROM fell back to the registry.
+      # Invisible until 2026-09-10 only because the fallback happened to find a
+      # same-named amd64 image there and built on it silently; once the shared
+      # tags carried the build-host arch it surfaced as a loud "not found".
+      local parent_ctx parent_ctx_arch=""
+      cross_stage_is_per_arch "${parent}" && parent_ctx_arch="${arch}"
+      parent_ctx="$(cross_stage_context_dir "${parent}" "${parent_ctx_arch}" 2>/dev/null || true)"
       if [ -n "${parent_ctx}" ] && [ -f "${parent_ctx}/index.json" ]; then
         _csrrp_out+=(--build-context "${parent_tag}=oci-layout://${parent_ctx}")
         log "[stage ${stage}-${arch}] local OCI handoff: ${parent_tag} <- ${parent_ctx}"
