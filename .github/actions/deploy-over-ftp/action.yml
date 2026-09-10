@@ -1,0 +1,278 @@
+name: 'Deploy over FTP'
+description: >-
+  One FTP publish policy for the whole family: the upstream action pinned by SHA
+  in ONE place, one make-the-tree-readable step, and one answer to "may a flaky
+  upload red this lane?" — YES, always. A failed publish fails the job.
+
+  Eleven deploy steps across eight workflows call SamKirkland/FTP-Deploy-Action
+  directly today, at three different pins and with five different permission
+  fixups (and five sites with none). Two of them carry `continue-on-error: true`;
+  this action deliberately does NOT offer that, because a publish that is
+  "allowed to fail" is a lane that can stop publishing without anyone noticing.
+  The inventory, and what each input replaces, is in
+  docs/ftp-deploys.md#the-eleven-call-sites-this-replaces.
+
+  It also closes three failure modes those raw call sites carry, all read off
+  the pinned library (@samkirkland/ftp-deploy v1.2.5):
+
+  1. The library DELETES every server file that is absent locally, so
+  publishing an empty tree wipes the live site. This refuses to sync a tree
+  with no files instead.
+
+  2. It writes its sync-state file INTO local-dir, so a tree the container
+  wrote as another uid fails the upload even after `chmod -R 755` — 755 is not
+  write permission for anyone but the owner. This chowns where it can and then
+  PROVES the tree is readable and writable before connecting.
+
+  3. It throws "<name> should be a folder (must end with /)" on a local-dir OR
+  a server-dir without a trailing slash — after connecting, in the server-dir
+  case. This normalises BOTH instead of failing.
+
+  SECRETS: server/username/password are passed to the upload step's `with:` and
+  never reach a `run:` block, so they are never on a command line. Do not add a
+  step that echoes them.
+
+inputs:
+  server:
+    description: 'FTP host.'
+    required: true
+  username:
+    description: 'FTP user.'
+    required: true
+  password:
+    description: 'FTP password.'
+    required: true
+  local-dir:
+    description: >-
+      Directory to publish, relative to the workspace or absolute. Required on
+      purpose: the upstream default is `./`, which publishes the whole checkout
+      — including whatever the build left in it.
+    required: true
+  server-dir:
+    description: >-
+      Remote directory. Empty uses the library default (`./`). A trailing slash
+      is added if missing: the library throws without one, and it throws AFTER
+      connecting.
+    required: false
+    default: ''
+  protocol:
+    description: 'ftp, ftps or ftps-legacy. Empty uses the library default (ftp).'
+    required: false
+    default: ''
+  port:
+    description: 'Server port. Empty uses the library default (21).'
+    required: false
+    default: ''
+  dry-run:
+    description: >-
+      'true' prints what would change and uploads nothing. Empty uses the
+      library default (false). Use it to prove a new call site is wired up
+      without touching production.
+    required: false
+    default: ''
+  log-level:
+    description: 'minimal, standard or verbose. Empty uses the library default (standard).'
+    required: false
+    default: ''
+  timeout:
+    description: 'FTP timeout in ms. Empty uses the library default (30000).'
+    required: false
+    default: ''
+
+outputs:
+  outcome:
+    description: >-
+      'success' or 'failure' of the upload step itself. A caller only ever reads
+      'failure' from a step with `if: always()`, because this action fails the
+      job on that value.
+    value: ${{ steps.ftp.outcome }}
+  file-count:
+    description: 'Files found under local-dir before the sync (excludes .git and the sync-state file).'
+    value: ${{ steps.prep.outputs.file-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    # `shell` is declared explicitly on every run step: composite steps inherit
+    # no `defaults.run.shell` from the calling workflow. Inputs reach the script
+    # through `env:`, never `${{ }}` inside `run:` — a path is data, not code.
+    - name: Preflight the upload tree
+      id: prep
+      shell: bash
+      env:
+        LOCAL_DIR: ${{ inputs.local-dir }}
+        SERVER_DIR: ${{ inputs.server-dir }}
+        PROTOCOL: ${{ inputs.protocol }}
+        PORT: ${{ inputs.port }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        LOG_LEVEL: ${{ inputs.log-level }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -euo pipefail
+
+        fail() { printf '::error title=deploy-over-ftp: %s::%s\n' "$1" "$2"; exit 1; }
+
+        # Every enum is validated HERE rather than left to the upload step, so a
+        # typo names itself instead of surfacing as a connection error.
+        case "${PROTOCOL}" in
+          ''|ftp|ftps|ftps-legacy) ;;
+          *) fail "bad protocol" "protocol must be ftp, ftps or ftps-legacy (or empty for the default), got '${PROTOCOL}'." ;;
+        esac
+        case "${LOG_LEVEL}" in
+          ''|minimal|standard|verbose) ;;
+          *) fail "bad log-level" "log-level must be minimal, standard or verbose (or empty), got '${LOG_LEVEL}'." ;;
+        esac
+        case "${DRY_RUN}" in
+          ''|true|false) ;;
+          *) fail "bad dry-run" "dry-run must be 'true' or 'false' (or empty), got '${DRY_RUN}'." ;;
+        esac
+        case "${PORT}" in
+          '') ;;
+          *[!0-9]*) fail "bad port" "port must be a whole number (or empty), got '${PORT}'." ;;
+        esac
+        case "${TIMEOUT}" in
+          '') ;;
+          *[!0-9]*) fail "bad timeout" "timeout must be a whole number of milliseconds (or empty), got '${TIMEOUT}'." ;;
+        esac
+
+        # A newline in local-dir would let the value forge a second line in
+        # GITHUB_OUTPUT; an empty one can only be a mistake.
+        [ -n "${LOCAL_DIR}" ] || fail "local-dir is empty" "local-dir is required: the library's own default is './', which would publish the entire workspace."
+        [ "$(printf '%s' "${LOCAL_DIR}" | wc -l)" -eq 0 ] || fail "local-dir spans lines" "local-dir must be a single path."
+        [ "$(printf '%s' "${SERVER_DIR}" | wc -l)" -eq 0 ] || fail "server-dir spans lines" "server-dir must be a single path."
+
+        # Exactly one trailing slash, which "${LOCAL_DIR%/}/" does NOT give: that
+        # strips a single slash, so 'site//' stays 'site//' and the library then
+        # builds 'site//.ftp-deploy-sync-state.json'. Strip every trailing slash,
+        # then add one.
+        dir="${LOCAL_DIR}"
+        while [ "${dir%/}" != "${dir}" ]; do dir="${dir%/}"; done
+        [ -n "${dir}" ] || fail "local-dir is the filesystem root" "local-dir '${LOCAL_DIR}' is nothing but slashes. Publishing '/' is never intended."
+        dir="${dir}/"
+
+        # server-dir gets the same treatment, and it matters MORE: the library
+        # throws on a missing trailing slash only after it has connected.
+        sdir="${SERVER_DIR}"
+        if [ -n "${sdir}" ]; then
+          while [ "${sdir%/}" != "${sdir}" ]; do sdir="${sdir%/}"; done
+          [ -n "${sdir}" ] || fail "server-dir is the remote root" "server-dir '${SERVER_DIR}' is nothing but slashes. Say './' if you mean the login directory."
+          sdir="${sdir}/"
+        fi
+        [ -d "${dir}" ] || fail "nothing to publish" "local-dir '${dir}' does not exist or is not a directory. The docs/site build either did not run or wrote somewhere else; publishing must not be attempted on a guess."
+
+        # Access is repaired BEFORE anything walks the tree: a directory the
+        # runner cannot enter makes the file count below fail on `find` instead
+        # of on something that can explain itself.
+        #
+        # The tree is usually written by a container as another uid, and the
+        # runner needs more than read: the library writes its sync-state file
+        # INTO local-dir before it connects. `chmod -R 755` alone does not give
+        # a non-owner that write, which is why the fixups downstream differ and
+        # some of them cannot work. The first chmod is a PROBE - it fails on the
+        # tree we do not own, including the common mixed case (runner-owned
+        # directory, root-owned files) that an ownership test on the top
+        # directory alone reports as fine. The verdict comes from the two probes
+        # after it, never from these repairs.
+        if ! chmod -R u+rwX,go+rX "${dir}" 2>/dev/null; then
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            printf 'deploy-over-ftp: cannot set permissions on every file under %s as uid %s (top directory owned by uid %s); taking ownership with sudo.\n' "${dir}" "$(id -u)" "$(stat -c '%u' "${dir}")"
+            sudo chown -R "$(id -u):$(id -g)" "${dir}"
+            chmod -R u+rwX,go+rX "${dir}"
+          else
+            printf 'deploy-over-ftp: cannot set permissions on every file under %s as uid %s (top directory owned by uid %s), and passwordless sudo is unavailable to take ownership. The probes below decide whether that is a problem.\n' "${dir}" "$(id -u)" "$(stat -c '%u' "${dir}")"
+          fi
+        fi
+
+        # Probes, not assumptions: the repair may have been skipped or partial.
+        # `find` failing IS the finding here, so its stderr is captured into the
+        # same variable rather than discarded.
+        if ! unreadable="$(find "${dir}" ! -readable -print 2>&1)"; then
+          unreadable="${unreadable:-find could not walk ${dir}}"
+        fi
+        [ -z "${unreadable}" ] || fail "upload tree is not readable" "$(printf '%s' "${unreadable}" | head -c 800)"
+
+        probe="${dir}.deploy-over-ftp-write-probe"
+        if : > "${probe}"; then
+          rm -f "${probe}"
+        else
+          fail "upload tree is not writable" "Cannot create a file in '${dir}' as uid $(id -u). The FTP library writes its sync-state file there before it connects, so the upload would fail after opening the connection."
+        fi
+
+        # An EXISTING but empty tree is the dangerous one: the library diffs
+        # local against the server's sync state and deletes what is missing, so
+        # syncing an empty tree is a request to erase the live site.
+        #
+        # This count must mirror what the UPLOAD will see, not what is on disk.
+        # At the pinned digest that exclude set is ["**/.git*", "**/.git*/**",
+        # "**/node_modules/**"] (dist/index.js), so a tree holding only
+        # node_modules/ or only a .gitignore looks non-empty to `find` and EMPTY
+        # to the library - which is the unpublish this guard exists to stop. The
+        # sync-state file is discounted on top of that: the library does upload
+        # it, but a leftover state file is not content.
+        count="$(find "${dir}" -type f \
+          ! -name '.ftp-deploy-sync-state.json' \
+          ! -name '.git*' \
+          ! -path '*/.git*/*' \
+          ! -path '*/node_modules/*' | wc -l)"
+        [ "${count}" -gt 0 ] || fail "refusing to publish an empty tree" "local-dir '${dir}' contains no files. The FTP library deletes every server file that is absent locally, so syncing this would delete the published site."
+
+        {
+          printf 'local-dir=%s\n' "${dir}"
+          printf 'server-dir=%s\n' "${sdir}"
+          printf 'file-count=%s\n' "${count}"
+        } >> "${GITHUB_OUTPUT}"
+        printf '%s file(s) to publish from %s\n' "${count}" "${dir}"
+        ls -la "${dir}"
+
+    # The pin this action contributes. A SHA, not a tag: the consumers' renovate
+    # configs promise digest pins for third-party actions, and a tag is mutable.
+    # It is NOT yet the family's only one - nothing calls this action, ContainerHub
+    # still pins SamKirkland directly in two workflows, and nine of the eleven
+    # fleet call sites are on mutable tags. docs/ftp-deploys.md tracks that.
+    #
+    # `continue-on-error` here does NOT tolerate anything: it exists so the step
+    # below can turn the library's raw exit into a diagnostic that names the
+    # cause, and that step always re-raises a failure.
+    #
+    # Every optional passed empty here is not "set to nothing": the upstream
+    # action declares no defaults at all, and its parser maps an empty string to
+    # undefined, which is what makes the library apply its own default
+    # (v1.2.5 src/utilities.ts, getDefaultSettings).
+    - name: 📂 Sync files to domain
+      id: ftp
+      continue-on-error: true
+      uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
+      with:
+        server: ${{ inputs.server }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+        local-dir: ${{ steps.prep.outputs.local-dir }}
+        server-dir: ${{ steps.prep.outputs.server-dir }}
+        protocol: ${{ inputs.protocol }}
+        port: ${{ inputs.port }}
+        dry-run: ${{ inputs.dry-run }}
+        log-level: ${{ inputs.log-level }}
+        timeout: ${{ inputs.timeout }}
+
+    - name: Re-raise a failed publish
+      shell: bash
+      env:
+        FTP_OUTCOME: ${{ steps.ftp.outcome }}
+      run: |
+        set -euo pipefail
+        # An outcome this step does not understand is its OWN failure, not the
+        # upload's: `outcome` is the step result before continue-on-error is
+        # applied, and if the runner ever stopped supplying it the empty string
+        # would otherwise be reported as a failed publish on every green run.
+        case "${FTP_OUTCOME}" in
+          success) exit 0 ;;
+          failure|cancelled) ;;
+          *) printf '::error title=deploy-over-ftp: no usable outcome from the upload step::The runner reported the upload step outcome as "%s"; expected "success" or "failure". The failure policy is not being applied to a value this action does not understand - the publish itself may well have succeeded.\n' "${FTP_OUTCOME}"
+             exit 1 ;;
+        esac
+        # No tolerate switch, on purpose. A publish that is allowed to fail is a
+        # lane that can stop publishing without anyone noticing, and it tolerates
+        # a wrong password exactly as it tolerates a dropped socket. If uploads
+        # here are genuinely flaky, that is the defect to fix.
+        printf '::error title=deploy-over-ftp: publish failed::The FTP sync failed (outcome: %s). NOTHING WAS PUBLISHED - the site still serves the previous deploy. The cause is in the upstream step above.\n' "${FTP_OUTCOME}"
+        exit 1

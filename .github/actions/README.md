@@ -148,6 +148,36 @@ Note also the `checkout_path` this action passes on: `upload-sarif` defaults it
 to `github.workspace`, which under a short-path clone is the wrong tree and
 leaves alerts unable to anchor to source.
 
+### `deploy-over-ftp`
+Publishes a built tree over FTP: the upstream `SamKirkland/FTP-Deploy-Action`
+pinned by digest in ONE place, one make-the-tree-readable step, and one failure
+policy. Inputs: `server`, `username`, `password`, `local-dir` (all required),
+plus `server-dir`, `protocol`, `port`, `dry-run`, `log-level` and `timeout`,
+which are empty by default because the upstream action declares no defaults and
+maps empty to `undefined` - which is what lets the library apply its own.
+Outputs: `outcome`, `file-count`.
+
+**A failed publish always fails the job.** There is no best-effort input and no
+`continue-on-error` a caller can reach: the action cannot tell a dropped socket
+from an expired password, so tolerating one tolerates the other, and a lane that
+has quietly stopped publishing is the defect this exists to surface. The
+`continue-on-error: true` on the upload step is not tolerance - it is what lets
+the "Re-raise a failed publish" step turn a raw non-zero exit into an annotation
+that names the cause, and that step exits 1 on anything but `success`.
+
+The preflight closes three ways the eleven raw call sites this replaces can lose
+a site or a lane, all read off the pinned bundle: the library DELETES every
+server file absent locally, so publishing an empty tree unpublishes the site
+(and "empty" is counted with the library's own excludes, so a tree holding only
+`node_modules/` counts as empty); it writes its sync-state file INTO `local-dir`
+before connecting, so a container-written tree fails the upload even after
+`chmod -R 755`; and it throws on a `local-dir` or `server-dir` without a
+trailing slash. Full inventory, the reasoning and what was measured:
+[`../../docs/ftp-deploys.md`](../../docs/ftp-deploys.md).
+
+Not yet covered by `actions-selftest.yml` - see the note under
+**Testing these actions**.
+
 
 ## The two images, and the one place they are named
 
@@ -226,9 +256,15 @@ newlines cannot be expressed in the per-line inputs.
 
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
 edit here and 61 consumer call sites that resolve these actions at `@main` -
-which the submodule pin does not freeze. It `uses:` all eleven, and it fires on
-any change under `.github/actions/`. Read its header before trusting a green
-run; the short version:
+which the submodule pin does not freeze. It `uses:` eleven of the twelve
+directories here, and it fires on any change under `.github/actions/`. Read its
+header before trusting a green run; the short version:
+
+**The twelfth is `deploy-over-ftp`, and it is not covered.** Nothing calls it
+yet, so nothing has broken, but the static contract below is exactly what would
+catch a renamed input before a consumer does - and it is not being applied to
+that action. Adding it needs only a `uses:` whose inputs and outputs are all
+named; the runtime half wants a real FTP server and is a separate question.
 
 **Statically, on every run and locally.** actionlint reads the metadata of a
 locally-`uses:`d action and checks the call site: an input name the action does
@@ -251,13 +287,25 @@ ungraded - no shellcheck over the bash ones, no parse check on the pwsh ones.
 
 **At runtime, only on GitHub.** The jobs really run the actions and assert on
 specific values, never on "the step exited 0". Not covered, deliberately: every
-FAILURE path (asserting one needs `continue-on-error`, which this repository
-does not use), the `image` input of the four container actions (omitted per the
-doctrine above - `verify_ci_image_refs.py` guards it better), the SARIF upload
-branch and the Windows container lane (both opt-in; see the workflow header for
-why).
+FAILURE path (asserting one needs `continue-on-error` in the *self-test*, which
+it does not use - `deploy-over-ftp` uses one internally, for a different reason
+its own section explains), the `image` input of the four container actions
+(omitted per the doctrine above - `verify_ci_image_refs.py` guards it better),
+the SARIF upload branch and the Windows container lane (both opt-in; see the
+workflow header for why).
 
 ## Adding a new reusable action
 Create `.github/actions/<name>/action.yml` here, keep it self-contained (no
 hard-coded consumer paths unless input-gated), and reference it cross-repo as
-above.
+above. Two more steps, neither of which any gate enforces today - both were
+skipped for `deploy-over-ftp` and had to be caught by hand:
+
+1. **Add a `### <name>` section above.** `AGENTS.md` names this file as the full
+   list of the actions consumers call, so a directory with no section here is
+   invisible to the only place that claims to be complete. `doc-links`'
+   index-coverage check does the equivalent job for `docs/*.md` and does not
+   reach `.github/`.
+2. **Add it to `.github/workflows/actions-selftest.yml`**, passing every declared
+   input and reading every declared output. That call site is what makes
+   actionlint hold the action's contract on every push; without it, a renamed
+   input is found by a consumer.
