@@ -6,6 +6,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-11 (night) - ASan runtime staging follows the link policy
+
+* **The build stages the runtime the link selected.** `Get-SanitizerRuntimeDlls`
+  (WindowsCMake.Common) walked `clang-cl`-on-PATH first and returned LLVM's
+  `clang_rt.*san*.dll`, while `cmake/Sanitizers.cmake` links Microsoft's
+  import lib from the VS toolset; inside the Windows image every
+  ASAN-instrumented build tool then died at load with
+  `STATUS_ENTRYPOINT_NOT_FOUND` (`0xC0000139`). It now delegates to
+  `Get-AsanRuntimeDirs` (WindowsTesting.Common), the one owner of the
+  Msvc-first policy - no second root ordering to drift.
+* **Regression covered:** `WindowsCMake.Common.Tests.ps1` pins the delegation
+  and the empty-result array (full suite: 826/828; the 2 LiteRT-LM pin parity
+  failures predate this change).
+
+
 ## 2026-09-11 (late) — bump_versions.py shrinks to the complement
 
 * **The detection half is gone, the finishing half stays.** The script's tiers

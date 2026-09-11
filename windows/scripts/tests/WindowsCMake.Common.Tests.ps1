@@ -43,4 +43,41 @@ Describe 'WindowsCMake.Common' {
         Should -Be $compilePath
     }
   }
+
+  Context 'Get-SanitizerRuntimeDlls' {
+    It 'stages the runtime Get-AsanRuntimeDirs selects, not clang-cl-on-PATH' {
+      # Regression (2026-09-11): this used to walk clang-cl-on-PATH roots
+      # first, so inside the Windows image it staged LLVM's DLL while the
+      # shared cmake/Sanitizers.cmake links Microsoft's -- every
+      # ASAN-instrumented build tool then died at load with
+      # STATUS_ENTRYPOINT_NOT_FOUND. Delegation to the one owner of the
+      # selection policy (WindowsTesting.Common) is the contract under test.
+      $fakeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("kataglyphis-asan-fake-" + $PID)
+      $null = New-Item -ItemType Directory -Path $fakeDir -Force
+      $fakeDll = Join-Path $fakeDir 'clang_rt.asan_dynamic-x86_64.dll'
+      Set-Content -Path $fakeDll -Value 'x'
+
+      try {
+        InModuleScope WindowsCMake.Common {
+          $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("kataglyphis-asan-fake-" + $PID)
+          Mock Get-AsanRuntimeDirs { @($dir) }
+
+          $result = @(Get-SanitizerRuntimeDlls)
+          $result.Count | Should -Be 1
+          $result[0].FullName | Should -Be (Join-Path $dir 'clang_rt.asan_dynamic-x86_64.dll')
+        }
+      } finally {
+        Remove-Item -LiteralPath $fakeDir -Recurse -Force -ErrorAction SilentlyContinue
+      }
+    }
+
+    It 'returns an empty array when no runtime directory is selected' {
+      InModuleScope WindowsCMake.Common {
+        Mock Get-AsanRuntimeDirs { @() }
+
+        $result = @(Get-SanitizerRuntimeDlls)
+        $result.Count | Should -Be 0
+      }
+    }
+  }
 }
