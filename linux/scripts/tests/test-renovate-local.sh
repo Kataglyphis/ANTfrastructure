@@ -259,8 +259,8 @@ t_case "with the tool present the manifest is written and the lock command runs"
 _run_stubbed "${L}" "${L_REPORT}" --apply --managers cargo
 t_assert_eq "0" "${RC}" "apply must succeed"
 t_assert_eq 'serde = "=1.0.229"' "$(_cargo_line "${L}" 5)" "the manifest moved"
-t_assert_eq "cargo | update -p serde | l" "$(cat "${ARGV_LOG}")" \
-  "cargo update -p <dep> ran in the manifest's own directory"
+t_assert_eq "cargo | update -p serde@1.0.100 | l" "$(cat "${ARGV_LOG}")" \
+  "cargo update -p <dep>@<range> ran in the manifest's own directory"
 
 t_case "a manifest with no lockfile in the tree needs no tool"
 W="$(_plant w requirements.txt 'ruff==0.9.0\n')"
@@ -588,8 +588,8 @@ _report "${GP_REPORT}" cargo Cargo.toml cxx 1.0 1.0
 _run_stubbed "${GP}" "${GP_REPORT}" --apply --managers cargo
 t_assert_eq "0" "${RC}" "a lockfile-only report must not fail the run"
 t_assert_eq 'cxx = "1.0"' "$(_cargo_line "${GP}" 5)" "the manifest line is untouched"
-t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p cxx | gp" \
-  "and the lockfile owner ran for the named dep"
+t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p cxx@1.0 | gp" \
+  "and the lockfile owner ran for the named dep, disambiguated by the range"
 t_assert_ok git -C "${GP}" diff --quiet HEAD
 
 # --------------------------------------------------------------------------

@@ -479,7 +479,10 @@ plan_edit_row() {
   PLAN_EDITS+=("${file}:${line}  ${dep}  ${cur} -> ${new}" "  - ${before}" "  + ${after}")
   EDIT_LINES=$((EDIT_LINES + 1))
   case " ${EDIT_FILES[*]-} " in *" ${file} "*) ;; *) EDIT_FILES+=("${file}") ;; esac
-  key="${mgr}|${file}|${dep}"
+  # The declared value is part of the key because cargo's lock command needs it
+  # to disambiguate a crate the lockfile holds twice (renovate-locks.sh,
+  # cargo_spec).
+  key="${mgr}|${file}|${dep}|${cur}"
   case " ${LOCK_JOBS[*]-} " in *" ${key} "*) ;; *) LOCK_JOBS+=("${key}") ;; esac
 }
 

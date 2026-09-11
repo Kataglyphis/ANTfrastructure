@@ -431,7 +431,7 @@ K22="$(_k21_repo k22)"
 _run_stubbed "${K22}" "${K21_REPORT}" --apply --managers cargo
 t_assert_eq "0" "${RC}" "the run completes"
 t_assert_eq 'serde = "=1.0.200"' "$(_line "${K22}/crates/foo/Cargo.toml" 5)" "the member moved"
-t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p serde | k22" \
+t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p serde@1.0.100 | k22" \
   "and the tool ran in the directory that owns the lock, not the member's"
 
 t_case "(K23) a nested manifest with NO workspace declaration still gets no lock job"

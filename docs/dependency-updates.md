@@ -740,7 +740,7 @@ exists beside the manifest is the one that does.
 | Manager | Lockfile, whichever is there | Refreshed with |
 |---|---|---|
 | `pep621` | `uv.lock` / `poetry.lock` / `pdm.lock` | `uv lock` / `poetry lock` / `pdm lock` |
-| `cargo` | `Cargo.lock` | `cargo update -p <dep>` |
+| `cargo` | `Cargo.lock` | `cargo update -p <dep>@<declared range>` |
 | `pub` | `pubspec.lock` | `dart pub get`, or `flutter pub get` when the pubspec declares `flutter` |
 | `npm` | `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` | `npm install --package-lock-only --ignore-scripts` / `yarn install --mode update-lockfile` / `pnpm install --lockfile-only` |
 
@@ -811,6 +811,15 @@ its 21 cargo rows were exactly this shape. `(G2)` in
 [`test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) pins
 both halves: the manifest line stays byte-identical, and `cargo update -p <dep>`
 still runs.
+
+The lock command carries the declared range as a package-id spec —
+`cargo update -p wgpu@30` — because a bare name is ambiguous the moment the
+lockfile holds two versions of the crate: `cargo update -p wgpu` stops with
+`specification 'wgpu' is ambiguous` once wgpu 29 and wgpu 30 are both in the
+lock (measured on OxidANT). `cargo_spec` strips the requirement operators,
+because a package-id spec takes a partial version and rejects `=2.12.0` with
+"unexpected version requirement", and falls back to the bare name for a value
+that is not a dotted number.
 
 ## Why `--apply` refuses some submodules
 

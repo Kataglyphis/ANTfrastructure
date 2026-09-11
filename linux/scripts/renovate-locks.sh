@@ -170,6 +170,23 @@ lock_names() {
 # the LOCK is in, which for a workspace member is not the manifest's own.
 lock_label() { rl_join "$1" "$2"; printf '\n'; }
 
+# A cargo package-id spec is `name[@partial-version]`, and the version part is a
+# PARTIAL VERSION -- `1.0` -- never a requirement: `=2.12.0` is rejected with
+# "unexpected version requirement". It is what disambiguates a bare name when
+# the lockfile holds two versions of the crate: `cargo update -p wgpu` refuses
+# with "specification `wgpu` is ambiguous" once wgpu 29 and 30 are both in the
+# lock (measured on OxidANT 2026-09-11), and the manifest's own range picks the
+# lineage. Operators are stripped and anything that is not a dotted number
+# falls back to the bare name, which is what a `*` or a comma range gets.
+cargo_spec() {
+  local dep="$1" cur="${2:-}" v
+  v="${cur//[ =^~<>]/}"
+  case "${v}" in
+    ""|*[!0-9.]*) printf '%s' "${dep}" ;;
+    *) printf '%s@%s' "${dep}" "${v}" ;;
+  esac
+}
+
 # The one command each lock tool needs, run in the directory that owns the
 # LOCKFILE -- the manifest's own for a standalone package, the workspace ROOT for
 # a member. `npm install --package-lock-only` in a member directory writes a
@@ -181,10 +198,10 @@ lock_label() { rl_join "$1" "$2"; printf '\n'; }
 # out of the arms deliberately -- one `&&` per arm is one branch per arm, and
 # nine of them put this function over the complexity gate's limit.
 run_lock_tool() {
-  local tool="$1" dir="$2" dep="$3"
+  local tool="$1" dir="$2" dep="$3" cur="$4"
   local -a argv=()
   case "${tool}" in
-    cargo)        argv=(cargo update -p "${dep}") ;;
+    cargo)        argv=(cargo update -p "$(cargo_spec "${dep}" "${cur}")") ;;
     dart|flutter) argv=("${tool}" pub get) ;;
     uv)           argv=(uv lock) ;;
     poetry)       argv=(poetry lock) ;;
@@ -198,18 +215,20 @@ run_lock_tool() {
 }
 
 # Every lock job that HAS exactly one lockfile in this tree, handed to <fn> as
-#   <fn> <tool> <dep> <lockfile-dir> <label>
+#   <fn> <tool> <dep> <lockfile-dir> <label> <declared-value>
 # One walk with the consumer as the argument: the pre-flight, the dry-run plan,
 # the backup and the real refresh all need the same list, and four copies of the
 # same `IFS='|' read` plus lock_target round trip is exactly the clone the
 # duplication gate catches. A manifest sitting beside SEVERAL lockfiles is not
 # handed on at all -- it is recorded in LOCK_AMBIGUOUS, which the pre-flight
-# turns into a refusal before anything is written.
+# turns into a refusal before anything is written. The declared value rides
+# along because cargo needs it to disambiguate a crate the lockfile holds twice
+# (cargo_spec), and only the refresh consumer reads it.
 for_each_lock() {
-  local fn="$1" job mgr file dep found rc lock tool dir
+  local fn="$1" job mgr file dep cur found rc lock tool dir
   LOCK_AMBIGUOUS=()
   for job in ${LOCK_JOBS[@]+"${LOCK_JOBS[@]}"}; do
-    IFS='|' read -r mgr file dep <<<"${job}"
+    IFS='|' read -r mgr file dep cur <<<"${job}"
     found="$(lock_target "${mgr}" "${file}")"
     rc=$?
     if [ "${rc}" -eq 1 ]; then
@@ -220,11 +239,11 @@ for_each_lock() {
       continue
     fi
     IFS=' ' read -r lock tool dir <<<"${found}"
-    "${fn}" "${tool}" "${dep}" "${dir}" "$(lock_label "${dir}" "${lock}")"
+    "${fn}" "${tool}" "${dep}" "${dir}" "$(lock_label "${dir}" "${lock}")" "${cur}"
   done
 }
 
-# The four consumers of that walk. Args: <tool> <dep> <dir> <label>.
+# The four consumers of that walk. Args: <tool> <dep> <dir> <label> <value>.
 lock_missing_one() {
   if ! command -v "$1" >/dev/null 2>&1; then
     LOCK_MISSING+=("$4 needs '$1', which is not on this PATH")
@@ -239,7 +258,7 @@ lock_planned_one() { LOCK_PLANNED+=("$4 via $1"); }
 lock_refresh_one() {
   if [ -n "${LOCK_FAILED}" ]; then return 0; fi
   note "  $4 via $1"
-  if ! run_lock_tool "$1" "${TARGET}/$3" "$2"; then
+  if ! run_lock_tool "$1" "${TARGET}/$3" "$2" "$5"; then
     LOCK_FAILED="'$1' could not refresh $4"
     return 0
   fi
