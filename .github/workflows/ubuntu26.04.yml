@@ -50,6 +50,14 @@ jobs:
       # requests, which no manifest baseline imports at top level.
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
+      # renovate_audit.py reads a YAML manifest back with a REAL parser before
+      # renovate-local.sh is allowed to keep an edit, and refuses the run when
+      # there is none -- so the script-tests slug needs PyYAML on this runner.
+      # Unpinned, like the pytest above and for the same reason: a runner
+      # convenience for a gate, shipped by no image, so versions.env owns no
+      # number for it (docs/dependency-updates.md#what-this-costs).
+      - name: Install PyYAML (renovate_audit.py's real YAML parser)
+        run: pip install --quiet pyyaml
       - name: Run preflight checks
         run: bash linux/scripts/preflight.sh
 

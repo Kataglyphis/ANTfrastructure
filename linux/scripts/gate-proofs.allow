@@ -100,6 +100,19 @@ mutation-family:lint-gates
 mutation-family:ci-image-ref
 mutation-family:consumer-inventory
 
+# renovate-local.sh and the modules beside it are the family's dependency-upgrade
+# tool -- an ordinary script no preflight slug owns, proved by three suites of
+# its own that the script-tests slug runs. The fifteen ids here each neuter one
+# mechanic of a REFUSAL or of the UNDO (the exit code, the signal traps SIGPIPE
+# included, the duplicate-key raise, the dry-run prediction, the rollback on a
+# raising audit, the restored mtime, the kept backup, the joined pip
+# continuation, the gitlink snapshot, the single settle across both halves, the
+# undo on a failed submodule update, the marker an untrappable kill leaves and
+# the refusal that reads it, the mapping written beside the copies) and name the
+# suite that must then go red.
+# docs/dependency-updates.md#the-mechanics-of-a-refusal
+mutation-family:renovate
+
 # shared-config owns sync-shared-config.sh, which READS this manifest but never
 # names it on the preflight command line - the hub uses --ignore, not a manifest,
 # so the data file is exercised only by the test suite. The mutation is real and
