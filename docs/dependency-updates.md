@@ -1551,18 +1551,127 @@ the regex does not match — a stray blank line, a second comment between it and
 its key, a datasource carrying a character outside its class — is the same
 silence, and nothing checked for it before.
 
-### What was NOT annotated, and why
+### 2026-09-11: the annotation pass, 18 -> 68
 
-**90 further keys** have a known upstream (`bump_versions.py` names it, in
-`SPECS` or `REPORT`) and no annotation. They are not the same finding and they
-were not annotated blind. Each needs the right datasource, depName and often an
-`extractVersion`, and a wrong one produces a confident wrong answer on the
-dependency dashboard — `SQLITE3_WASM_VERSION` is the worked example: it is
-genuinely the RUFF shape (the consumers pin `sqlite3: ^3.3.1` in a `pubspec.yaml`
-Renovate reads), but `simolus3/sqlite3.dart` tags releases as
-`sqlite3_web_js-0.2.5`, so neither `github-tags` nor a guessed prefix is right and
-the correct annotation was not established. It is recorded here rather than
-guessed at.
+`bump_versions.py` tracks **99 keys**; **68 now carry an annotation** (up from
+18) and a live local run proves the whole set resolves: `renovate-local.sh
+--managers custom.regex .` (with `RENOVATE_TOKEN`) printed 20 pending updates
+across the datasource families -- `uv 0.12.13`, LLVM `23.1.1`, LiteRT-LM
+`0.17.0`, ComputeLibrary `v53.3.0`, openh264 `2.6.0`, flutter `3.47.3`, syft
+`v1.51.1` -- with **zero lookup warnings**. The datasources in use are
+`github-tags`/`github-releases` (most), `pypi` (the Python build executors),
+`npm` (the vendored web runtimes), `node-version`, `python-version`,
+`flutter-version`, and `crate`.
+
+Two details the pass needed:
+
+* **A `v`-prefixed tag carried verbatim uses no `extractVersion`; a bare value
+  derived from a prefixed tag uses one.** Every tag shape was checked against
+  `git ls-remote` first, per the paragraph above -- a datasource returning a
+  differently-*shaped* string reports an update that is not the same kind of
+  value.
+* **`versioning=` is a new capture** in the customManager, with the standard
+  `versioningTemplate`. It exists for the two tags whose numeric parts carry
+  leading zeros (`ARM-software/armnn` `v26.07`, `microsoft/vcpkg`
+  `2026.07.29`), which strict semver rejects; the regex can capture the group
+  and still ignore it without the template. `test-renovate-annotations.sh`
+  now asserts the two cannot drift apart.
+
+Two bumps Renovate would otherwise propose are guarded by `packageRules`, to
+match the writer's own tiers: `NODE_VERSION` within its major and
+`PYTHON_VERSION` within its minor.
+
+### 2026-09-11 (later): 68 -> 89, and the vendor feeds
+
+The first pass stopped where a standard datasource stopped. The later ones
+closed most of that gap with `customDatasources`, `versioning=regex` and the
+regex manager's `currentDigest` capture:
+
+* **Three custom datasources** -- `custom.cuda` (the redist index is HTML: the
+  `html` fetcher turns every href into a candidate, and a JSONata transform
+  strips `redistrib_*.json` down to the version the key carries),
+  `custom.vulkan` (LunarG's `latest.json`, its WINDOWS value, because the
+  shared key must exist on the lagging lane) and `custom.nuget`
+  (`dist.nuget.org/tools.json`, `ReleasedAndBlessed` only -- the same filter
+  `bump_versions.py` applies).
+* **`versioning=regex:...` now covers every tag shape `extractVersion` cannot
+  transform** -- FFmpeg's `n9.0`, Freetype's `VER-2-14-3`,
+  gobject-introspection's `GOBJECT_INTROSPECTION_1_86_0`,
+  nv-codec-headers' `n13.1.15.0`, and the PyPI twins whose versions are
+  4-part (`nvidia-cudnn-cu13`, `tensorrt`). PROTOC's `31.1` needed a
+  major.minor-only scheme, because strict semver wants three parts.
+* **`currentDigest` for the two registry digests** -- a second customManager
+  whose hint carries the tag and whose KEY= line carries the sha256
+  (`UBUNTU_DIGEST`, `WINDOWS_BASE_DIGEST`), so the docker datasource reports
+  when a tag's digest moves.
+* **Two more same-major/range guards** -- the WiX pair behind
+  `allowedVersions <5`, and `PY_SETUPTOOLS_LT82_VERSION` behind
+  `allowedVersions <82` scoped with a slashed `matchCurrentValue` regex (both
+  keys are `depName=setuptools`, which is why the scope needs one).
+* **Proven on the live report**: 29 pending updates with zero lookup
+  warnings. Two iterations were measured, not guessed: `custom.cuda`, where
+  `format: plain` maps each LINE to a version, and a `skipReason:
+  invalid-value` that named strict semver as the reason for the 4-part and
+  major.minor-only pins.
+
+### What is still NOT annotated, and why
+
+**20 of the 99 tracked keys remain annotation-free**, in classes that are a
+reason rather than an omission:
+
+* **Slaved** -- `LITERT_TFLITE_PROTOC_VERSION` follows LiteRT's vendored
+  protobuf commit, which has no feed of its own.
+* **Feeds no datasource can serve** -- `MIGRAPHX_VERSION` (its GitHub tags are
+  test artifacts and PyPI has no package), `FLATPAK_RUNTIME_VERSION` (a
+  freedesktop branch, not a release), `JRE_VERSION` (a major-only selector;
+  every feed returns full versions), `LIBFFI_MESON_VERSION` (a GStreamer wrap
+  port).
+* **Base platform matrices with no version feed** -- the six `ANDROID_*`
+  keys, `WINDOWS_LTSC`, `WINDOWS_SDK_BUILD`, `VISUAL_STUDIO_VERSION`,
+  `UBUNTU_CODENAME`.
+* **Checksums and raw SHAs** -- `SCCACHE_LINUX_X86_64_SHA256` /
+  `..._AARCH64_SHA256`, and `SCCACHE_GIT_REV`.
+* **Artifact-gated** -- `TENSORFLOW_C_VERSION`: the git tag is not the
+  tarball.
+* **Dated** -- `RUST_NIGHTLY_TOOLCHAIN` is a deliberate date.
+
+`SQLITE3_WASM_VERSION` remains the worked example from the paragraph above,
+still unannotated for the same reason: its consumer copy is the RUFF shape, but
+`simolus3/sqlite3.dart` tags releases as `sqlite3_web_js-0.2.5`, so neither
+`github-tags` nor a guessed prefix is right.
+
+## The annotated env manifest
+
+Renovate DETECTS every annotated `versions.env` key; since 2026-09-11 the local
+`--apply` half can also WRITE the self-contained ones. This is the arm that
+retires the manual `bump_versions.py --check`/`--write` ritual where it was
+never needed -- and leaves the script exactly where it was needed.
+
+* **`regex` is a manager the locator knows.** The `customManager` reports rows
+  under manager `regex`; `renovate_locator.find_annotated_env` anchors on the
+  hint's `depName` and returns the KEY= line under it (through the blank lines
+  and the optional `# noforward` the regex allows), and
+  `renovate_audit._parse_env` reads the file back independently. A KEY, not a
+  dep name, identifies a leaf: `NODE_VERSION` and `RENOVATE_NODE_VERSION` share
+  `depName=node`, and the count rule decides which line a report row means. A
+  hint with no readable KEY= line is a refusal, never a fallback.
+* **Which keys are writable is POLICY, not inference** -- the file-scoped
+  `packageRules` in `.github/renovate.json`. The first sends every
+  `versions.env` key to a human (`dependencyDashboardApproval: true`); the
+  second clears it for the self-contained set: the Rust security-tool and
+  Python build-executor installs, the npm web runtimes, `rust-lang/rust`,
+  `lu-zero/cargo-c`, `Kataglyphis/OrchestrANT` and `anchore/syft` -- versions
+  that move ALONE, because no paired `*_SHA256`/`*_COMMIT` goes stale and the
+  build consumes them at download/install time.
+* **Everything else still goes through `bump_versions.py`** -- coupled
+  checksum/commit pins, source-patched libraries and the 41 unannotated keys --
+  so the script is now the LOCK TOOL and the detector-of-last-resort, not the
+  only way to move a pin.
+
+[`test-renovate-env.sh`](../linux/scripts/tests/test-renovate-env.sh) holds the
+write, the file-scoped refusal and the unreadable-hint refusal; it deliberately
+does NOT cover which keys belong in the allowlist (that is the policy above)
+nor any `*_SHA256` refresh.
 
 ## Where the moving parts live
 

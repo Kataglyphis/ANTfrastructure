@@ -61,6 +61,7 @@ else. renovate_planner.py is the only caller.
 """
 import collections
 import json
+import re
 import tomllib
 
 import renovate_locator
@@ -90,6 +91,8 @@ FORMATS = {
     "npm": "json",
     "pip_requirements": "requirements",
     "pip-compile": "requirements",
+    "regex": "env",
+    "custom.regex": "env",
 }
 
 # A ceiling on how many paths one manifest may have. A YAML document can expand
@@ -209,6 +212,44 @@ def _parse_json(body):
     return json.loads(body, object_pairs_hook=_json_pairs)
 
 
+def _parse_env(body):
+    """An annotated env file as {depName: {KEY: value}}, one entry per
+    `# renovate:` hint and the KEY= line under it.
+
+    A dep NAME is not unique in this file -- `NODE_VERSION` and
+    `RENOVATE_NODE_VERSION` both say `depName=node` -- so the KEY is what
+    identifies a leaf, and one dep may carry several. An independent reading,
+    which is why it repeats the hint grammar instead of sharing
+    renovate_locator's regexes. A hint with no readable KEY= line under it, or
+    one KEY assigned twice, is Unreadable: neither can be compared leaf by
+    leaf."""
+    ann = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
+    kv = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
+    out = {}
+    lines = body.split("\n")
+    for num, line in enumerate(lines):
+        match = ann.match(line)
+        if match is None:
+            continue
+        key_line = num + 1
+        while key_line < len(lines) and not lines[key_line].strip():
+            key_line += 1
+        if key_line < len(lines) and lines[key_line].strip() == "# noforward":
+            key_line += 1
+        if key_line >= len(lines) or kv.match(lines[key_line]) is None:
+            raise Unreadable(
+                "line %d: the # renovate hint for '%s' is not followed by a "
+                "KEY=value line" % (num + 1, match.group(1)))
+        key, value = kv.match(lines[key_line]).groups()
+        values = out.setdefault(match.group(1), {})
+        if key in values:
+            raise Unreadable(
+                "line %d: %s is assigned twice, and one leaf cannot carry two "
+                "values" % (key_line + 1, key))
+        values[key] = value
+    return out
+
+
 def _joined(lines):
     """requirements.txt lines with pip's backslash continuations joined."""
     out = []
@@ -296,7 +337,7 @@ def hash_pinned(opts):
 
 
 PARSERS = {"yaml": _parse_yaml, "toml": tomllib.loads, "json": _parse_json,
-           "requirements": parse_requirements}
+           "requirements": parse_requirements, "env": _parse_env}
 
 
 def parse(manager, text):
@@ -555,6 +596,14 @@ def decl_npm(struct, dep):
             if isinstance(_mapping(root.get(obj)).get(dep), str)]
 
 
+def decl_annotated(struct, dep):
+    """Every KEY= line the hints name for this dep, the whole value being the
+    leaf. There can be more than one -- NODE_VERSION and RENOVATE_NODE_VERSION
+    share depName=node -- so the KEY, not the dep name, is the path."""
+    return [_whole((dep, key), value)
+            for key, value in sorted(_mapping(_mapping(struct).get(dep)).items())]
+
+
 def decl_requirements(struct, dep):
     """Every requirement naming this dep, its specifier the value that moves --
     unless the digests glued after it say it may not move at all."""
@@ -580,6 +629,8 @@ DECLARERS = {
     "npm": decl_npm,
     "pip_requirements": decl_requirements,
     "pip-compile": decl_requirements,
+    "regex": decl_annotated,
+    "custom.regex": decl_annotated,
 }
 
 

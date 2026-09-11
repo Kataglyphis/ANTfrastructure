@@ -1685,7 +1685,10 @@ agent must not rediscover the hard way:
 * **`--platform=local` cannot write.** Renovate forces dryRun there; it is a
   detector. The apply half is this repo's own code: git for gitlinks, a located
   single-line rewrite for cargo/pub/npm/pep621/pip_requirements/pre-commit/
-  dockerfile/github-actions, then that ecosystem's own lock tool.
+  dockerfile/github-actions, and `custom.regex` over `versions.env` for the
+  self-contained keys its file-scoped packageRule clears (the rest stay
+  approval-gated), then that ecosystem's own lock tool -- for `versions.env`'s
+  coupled checksums that is still `bump_versions.py`.
 * **It DOES resolve `extends`** - measured 2026-09-09 on 44.71.0, against the
   older claim in this repo's own docs. The shared preset and every
   `dependencyDashboardApproval` rule reachable through it are in force locally,
@@ -1742,7 +1745,9 @@ the store · Stevedore and the docker service · build content and toolchain.
 
 **Single source of truth: `linux/scripts/01-core/versions.env`.** Update it first.
 
-**Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys.
+**Renovate detects, this script finishes (2026-09-11).** Every `# renovate:`-annotated key in versions.env is reported by Renovate's customManager (89 of 99 tracked; locally `renovate-local.sh --managers custom.regex`), and that same CLI's `--apply` writes the self-contained keys its file-scoped allowlist clears. `bump_versions.py` shrinks to the part no datasource can do: the paired `*_SHA256`/`*_COMMIT` refresh, the keys with no feed, the two registry digests, and the SLAVED PROTOC derivation. What is annotated and what is not (with reasons): [`docs/dependency-updates.md`](docs/dependency-updates.md#what-is-still-not-annotated-and-why).
+
+**Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
 **`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks ALL automated writes for that key (reported as `HELD`). Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
 

@@ -59,6 +59,22 @@ for _want in ruff microsoft/onnxruntime microsoft/onnxruntime-genai \
   t_assert_contains "${ROWS}" "${_want}=" "${_want} must be visible to Renovate"
 done
 
+t_case "the 2026-09-11 datasource families are visible too"
+for _want in node python flutter Kitware/CMake ARM-software/armnn \
+             microsoft/vcpkg FFmpeg/FFmpeg cuda vulkan nuget.exe wix \
+             nvidia-cudnn-cu13 tensorrt ROCm/TheRock \
+             protocolbuffers/protobuf ubuntu; do
+  t_assert_contains "${ROWS}" "${_want}=" "${_want} must be visible to Renovate"
+done
+
+t_case "a versioning= annotation has the versioningTemplate that reads it"
+# The regex captures the group and the engine still ignores it without the
+# template, so the two can only be added together.
+if grep -q "versioning=" "${ENV_FILE}"; then
+  t_assert_contains "$(cat "${CFG_FILE}")" versioningTemplate \
+    "the captured versioning group is IGNORED without versioningTemplate"
+fi
+
 t_case "and the value the regex reads is the value the key carries"
 t_assert_contains "${ROWS}" "ruff=$(sed -n 's/^RUFF_VERSION=//p' "${ENV_FILE}")" \
   "a regex that matches but reads the wrong value is worse than no match"

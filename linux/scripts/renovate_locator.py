@@ -620,6 +620,43 @@ def find_npm(lines, dep, _dep_type):
     return out
 
 
+# --------------------------------------------------------------------------
+# custom.regex over an annotated env file
+# --------------------------------------------------------------------------
+# The hint the customManager reads: `# renovate: datasource=... depName=<name>`.
+# The depName it names is the anchor; the declaration is the KEY= line under it,
+# or under the `# noforward` line the same regex allows in between.
+_ENV_ANN = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
+_ENV_KV = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
+
+
+def find_annotated_env(lines, dep, _dep_type):
+    """The value of the KEY= line under the hint naming this dependency.
+
+    A hint with no readable KEY= line under it is not a site at all, so the
+    caller refuses rather than rewriting a neighbouring declaration. Two hints
+    naming the same dep yield two sites, and the count rule decides."""
+    out = []
+    for num, line in enumerate(lines):
+        match = _ENV_ANN.match(line)
+        if match is None or match.group(1) != dep:
+            continue
+        key_line = num + 1
+        # The customManager regex allows whitespace between hint and key, and a
+        # `# noforward` line after it; reading less than that would report a dep
+        # the writer then refuses.
+        while key_line < len(lines) and not lines[key_line].strip():
+            key_line += 1
+        if key_line < len(lines) and lines[key_line].strip() == "# noforward":
+            key_line += 1
+        if key_line >= len(lines):
+            continue
+        kv = _ENV_KV.match(lines[key_line])
+        if kv is not None:
+            out.append(_site(key_line, kv.start(2), kv.group(2)))
+    return out
+
+
 FINDERS = {
     "github-actions": find_actions,
     "pub": find_pub,
@@ -629,6 +666,8 @@ FINDERS = {
     "pre-commit": find_precommit,
     "cargo": find_cargo,
     "npm": find_npm,
+    "regex": find_annotated_env,
+    "custom.regex": find_annotated_env,
 }
 
 
