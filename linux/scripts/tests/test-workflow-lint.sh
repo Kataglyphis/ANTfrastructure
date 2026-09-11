@@ -173,6 +173,9 @@ _sc_tree() {  # <lint-shell.sh body>
   local d; d="$(_pin_tree "$(cat "${SCRIPTS}/01-core/versions.env")")"
   install -D -m 0644 "${SCRIPTS}/verify_ci_image_refs.py" \
     "${d}/linux/scripts/verify_ci_image_refs.py"
+  # gate_scope.py too: verify_ci_image_refs.py imports it, and a fixture that
+  # does not carry what the gate NEEDS fails with a traceback, not a verdict.
+  install -D -m 0644 "${SCRIPTS}/gate_scope.py" "${d}/linux/scripts/gate_scope.py"
   _conv_half "${d}" "$(cat "${HUB_ALLOW}")"
   printf '#!/usr/bin/env bash\n%s\n' "$1" > "${d}/linux/scripts/lint-shell.sh"
   chmod +x "${d}/linux/scripts/lint-shell.sh"

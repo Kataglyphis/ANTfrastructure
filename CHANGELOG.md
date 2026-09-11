@@ -6,6 +6,32 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-10 — the foreign Vulkan prefixes are two files from amd64
+
+* **VK6 and VK7 closed, measured on both pushed digests.** `lib/` is 118 on
+  amd64 and **123** on arm64 (`@sha256:f77f97fa`) and riscv64
+  (`@sha256:028ce048`); `bin/` 52 everywhere; layers 9 / 10 / 10. The gap VK6
+  opened at **72 files is now 2**, identically on both arches.
+* **The entry's own fix would have made it worse.** `BUILD_SHARED_LIBS` is
+  exclusive, not additive: ON alone gains 9 files and LOSES 6, because glslang
+  guards three static installs behind `if(NOT BUILD_SHARED_LIBS)`. The vendor
+  configures glslang twice into one prefix and the STATIC pass must land LAST,
+  because the second install owns `lib/cmake/glslang` and therefore what
+  `find_package(glslang)` describes. A test asserts the order, not just the
+  presence.
+* **Two files stay, both explained.** `VulkanLoader` is a layout difference the
+  consumers already assume; `libshaderc_util.a` has no install rule and ships
+  with no headers even on amd64, so it is unlinkable there too.
+* **VK7 mirrors the vendor's own prune** and is guarded on `include/dxc/dxcapi.h`
+  — without that marker the helper would `rm -rf include/llvm` out of whatever
+  directory it is handed, and `/opt/llvm-target` holds 41 MB of real LLVM 23
+  headers.
+* **VK5 closed with them:** arm64's earlier number was measured against a tree
+  that no longer existed. Both foreign arches now report `24/24` from the
+  current one, with zero `unavailable on <arch>` lines.
+* **EX1 closed too**, and the residual AS1 neighbours are latent (every cross
+  stage builds on `linux/amd64`).
+
 ## 2026-09-09 (later) — all three arches ship 52 Vulkan binaries
 
 * **VK4/VK5 closed: 52 = 52 = 52, and the foreign pair leads on layers.** Measured
