@@ -1665,6 +1665,9 @@ base ─┬─ onnxruntime ───────┐
 **Owner directive 2026-09-09: dependency upgrades are driven by Renovate run as a
 LOCAL CLI, in every repo in the family.** Not by hand, and not by waiting for a bot.
 
+**Report-first (owner directive 2026-09-11): a run reports. `--apply` only when the
+owner explicitly asked for it in that turn.**
+
 ```bash
 linux/scripts/renovate-local.sh .              # what is behind, per this repo's config
 linux/scripts/renovate-local.sh --apply --dry-run .   # the plan, every ecosystem
