@@ -88,6 +88,17 @@ exit 1
 FAKE
 chmod +x "${FAKE_BIN}/dpkg-query"
 
+# Fake dpkg: only --print-foreign-architectures is read (by the installed-
+# foreign-arch source helper). FAKE_FOREIGN_ARCHS scripts the answer.
+cat > "${FAKE_BIN}/dpkg" <<'FAKE'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --print-foreign-architectures) printf '%s\n' ${FAKE_FOREIGN_ARCHS:-arm64 riscv64 i386} ;;
+esac
+exit 0
+FAKE
+chmod +x "${FAKE_BIN}/dpkg"
+
 export PATH="${FAKE_BIN}:${PATH}"
 
 # _reset_fakes [mode] [absent-list] — wipe logs/state, script the next scenario.
@@ -468,5 +479,50 @@ t_assert_eq "1 0" "$(_prune_case arm64 arm64 riscv64)" \
 t_case "an amd64 build host prunes exactly as before"
 t_assert_eq "1 0" "$(_prune_case amd64 arm64 riscv64 "${_PRUNE_DIR}/ubuntu-ports-arm64.sources")" \
   "the explicit keep-source still wins, and no ports source declares amd64 -- amd64 hosts see no behaviour change"
+
+# ---------------------------------------------------------------------------
+# cross_ensure_installed_foreign_arch_sources: every foreign arch installed in
+# the compiler base needs its own source, or a fresh install from the OTHER
+# archive is unsatisfiable. Measured live 2026-09-11: android died on all three
+# arches with "libc6:arm64 Breaks libc6:i386 (!= ...)" because Dockerfile.media
+# leaves apt sources for the build host and the current target only, while the
+# compiler base carries libc6 for both foreign arches.
+# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+_ENSURE_DIR="${FAKE_DIR}/ensure-sources.list.d"
+mkdir -p "${_ENSURE_DIR}"
+_CROSS_APT_SOURCES_DIR="${_ENSURE_DIR}"
+
+# ubuntu_write_deb822_source came from ubuntu-mirror.sh in the AS1 case above;
+# these stubs keep the expectation independent of the machine running the suite.
+cross_build_arch() { printf 'amd64'; }
+cross_detect_distro_codename() { printf 'resolute'; }
+
+t_case "a ports source is written for every installed foreign arch that lacks one"
+export FAKE_FOREIGN_ARCHS="arm64 riscv64 i386"
+rm -f "${_ENSURE_DIR}"/*
+t_assert_ok cross_ensure_installed_foreign_arch_sources
+t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-arm64.sources"
+t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-riscv64.sources"
+t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-i386.sources"
+t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-amd64.sources"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-ports-arm64.sources")" "Architectures: arm64"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-ports-arm64.sources")" "ports.ubuntu.com"
+
+t_case "an existing ports source is left untouched"
+printf 'marker\n' > "${_ENSURE_DIR}/ubuntu-ports-arm64.sources"
+t_assert_ok cross_ensure_installed_foreign_arch_sources
+t_assert_eq "marker" "$(cat "${_ENSURE_DIR}/ubuntu-ports-arm64.sources")"
+
+t_case "missing ubuntu-mirror.sh wiring is a silent no-op, not a half-written source"
+rm -f "${_ENSURE_DIR}"/*
+( unset -f ubuntu_write_deb822_source; cross_ensure_installed_foreign_arch_sources )
+t_assert_eq "0" "$?" "the helper must not fail when its collaborator is absent"
+t_assert_eq "0" "$(find "${_ENSURE_DIR}" -type f | wc -l)" "no file may be written without a source template"
+
+t_case "android-sdk.sh actually calls the helper"
+# Whole-line match on purpose: the name also appears in the sourcing comment,
+# and a substring check over the whole file goes green with the CALL deleted.
+t_assert_ok grep -qx -e cross_ensure_installed_foreign_arch_sources \
+  "${TESTS_DIR}/../02-toolchain/android-sdk.sh"
 
 t_summary

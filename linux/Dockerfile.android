@@ -85,6 +85,15 @@ ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tool
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
+# cross-apt.sh: the compiler base bakes an OLDER 01-core; android-sdk.sh sources
+# this copy for cross_ensure_installed_foreign_arch_sources (the foreign-arch
+# ports sources that make the i386 libc6 install satisfiable). The base's
+# ubuntu-mirror.sh predates ubuntu_arch_uses_ports, which the helper needs — so
+# refresh that file too, or the helper silently no-ops on arches whose parent
+# carried no ports source (measured: android-amd64).
+# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+COPY --chmod=755 linux/scripts/01-core/cross-apt.sh /opt/scripts/core/cross-apt.sh
+COPY --chmod=755 linux/scripts/01-core/ubuntu-mirror.sh /opt/scripts/core/ubuntu-mirror.sh
 # downloads.sh (retry-capable download_file/download_and_extract) is consumed by
 # android-sdk.sh here and by the gstreamer android build in downstream stages;
 # all android-* stages FROM android-sdk, so this one COPY covers them.

@@ -41,6 +41,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
+- [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
@@ -404,6 +405,45 @@ be (an sdkmanager component, a table column, a word from an `echo` string). Brea
 the extractor and the check exits 2 before it ever reports green. A gate whose
 input extraction can silently degrade to nothing is the failure this repo keeps
 re-learning; a scanner has to prove it is still scanning.
+
+### apt: `libc6:i386` install is unsatisfiable after an archive/ports drift
+
+**Symptom.** The android stage dies a few seconds into the SDK install, on every
+arch, with:
+
+```
+E: Unable to satisfy dependencies. Reached two conflicting assignments:
+   1. libgcc-s1:arm64 is selected for install
+   2. libgcc-s1:arm64 Depends libc6:arm64 (>= 2.35)
+      but none of the choices are installable:
+      - libc6:arm64 is selected for removal because:
+        1. libc6:i386=2.43-2ubuntu2.4 is selected for install
+        2. libc6:arm64 Breaks libc6:i386 (!= 2.43-2ubuntu2.3)
+```
+
+The arch named varies by lane: `arm64` on the riscv64 image, `riscv64` on the
+arm64 one, both on amd64.
+
+**Cause.** Two facts combine. The compiler base installs `libc6` for BOTH
+foreign arches, but `Dockerfile.media`'s apt reset wipes all sources and writes
+only the build host's and the current target's. When archive.ubuntu.com
+publishes a libc6 update before ports.ubuntu.com (measured 2026-09-11: i386 2.4
+on archive, arm64/riscv64 still 2.3 on ports), the freshly installed
+`libc6:i386` Breaks the frozen foreign copies — and apt cannot upgrade an arch
+it has no source for. The mirrors were back in sync minutes later; the failure
+mode is the drift, not the package.
+
+**Fix.** `cross_ensure_installed_foreign_arch_sources`
+(`01-core/cross-apt.sh`), called from `android-sdk.sh` before `apt-get update`:
+it writes a per-arch ports source for every installed foreign arch that has
+none, so apt moves all libc6 arches to the new version together. Guarded by
+`test-cross-apt.sh`, including a whole-line wiring check — the first mutation
+run showed a substring check over the file still passes with the call deleted,
+because the helper's name appears in a comment.
+
+**Retry after a drift.** Nothing in the image needs rebuilding. Wait for the
+mirror to catch up and re-run the stage (`--from-stage android`, ancestry
+checked) — the failed run left no partial tags (0/7 cache stages exported).
 
 ### A from-source CPython silently drops an extension module
 

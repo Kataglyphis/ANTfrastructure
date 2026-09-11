@@ -231,6 +231,41 @@ cross_configure_foreign_arch_apt_sources() {
   ubuntu_write_deb822_source "${ports_sources}" "${ports_url}" "${distro}" "${target_arch}" 1
 }
 
+# The compiler base installs libc6 for every cross target, but media's apt reset
+# leaves sources for the build host and the current target only. A frozen foreign
+# arch then makes the next fresh install from the other archive unsatisfiable
+# ("libc6:arm64 Breaks libc6:i386 (!= ...)").
+# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+cross_ensure_installed_foreign_arch_sources() {
+  local build_arch arch file ports_url distro
+
+  command -v ubuntu_write_deb822_source >/dev/null 2>&1 || return 0
+  command -v ubuntu_arch_uses_ports >/dev/null 2>&1 || return 0
+
+  build_arch="$(cross_build_arch 2>/dev/null || build_arch_oci 2>/dev/null || printf 'amd64')"
+  distro="$(cross_detect_distro_codename 2>/dev/null || true)"
+  [ -n "${distro}" ] || return 0
+  if command -v cross_foreign_arch_ports_mirror_url >/dev/null 2>&1; then
+    ports_url="$(cross_foreign_arch_ports_mirror_url)"
+  else
+    ports_url="$(ubuntu_effective_ports_mirror_url)"
+  fi
+
+  while IFS= read -r arch; do
+    [ -n "${arch}" ] || continue
+    if [ "${arch}" = "${build_arch}" ]; then
+      continue
+    fi
+    ubuntu_arch_uses_ports "${arch}" || continue
+    file="${_CROSS_APT_SOURCES_DIR}/ubuntu-ports-${arch}.sources"
+    if [ -f "${file}" ]; then
+      continue
+    fi
+    ubuntu_write_deb822_source "${file}" "${ports_url}" "${distro}" "${arch}" 1
+  done < <(dpkg --print-foreign-architectures 2>/dev/null || true)
+  return 0
+}
+
 # A phased-back libc6:<host> makes EVERY foreign-arch install unsatisfiable
 # ("libc6:amd64 Breaks libc6:riscv64 (!= <ver>)"). docs/cross-build-verification.md
 _CROSS_APT_PHASED_CONF=/etc/apt/apt.conf.d/99cross-phased-updates

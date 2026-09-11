@@ -6,6 +6,35 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-11 — android stage unblocked: every installed foreign arch gets a source
+
+* **Symptom.** The android stage failed on all three arches within seconds:
+  `libc6:i386=2.43-2ubuntu2.4` (fresh from archive) Breaks the foreign
+  `libc6:arm64`/`riscv64=2.43-2ubuntu2.3` (frozen on ports) and apt had no
+  source to upgrade them from.
+* **Root cause.** The compiler base installs `libc6` for both foreign arches,
+  but `Dockerfile.media`'s apt reset leaves sources for the build host and the
+  current target only. A transient archive/ports sync gap (i386 2.4 vs
+  arm64/riscv64 2.3, back in sync minutes later) then makes the i386 install
+  unsatisfiable.
+* **Fix.** `cross_ensure_installed_foreign_arch_sources` (`01-core/cross-apt.sh`)
+  writes a per-arch ports source for every installed foreign arch that lacks
+  one; `android-sdk.sh` calls it before `apt-get update`. Reproduced and
+  validated against the real media-parent state in a container before coding.
+* **Test.** `test-cross-apt.sh` covers the helper (ports arches only, existing
+  file untouched, missing wiring = no-op) plus a whole-line wiring check on
+  `android-sdk.sh`. Both mutations proven red — the first attempt at the wiring
+  check passed with the call deleted because the helper's name appeared in a
+  comment.
+* **Two gates the fix flushed out.** `test-mirror-consistency`'s NOSITES fixture
+  went blind because `command -v ubuntu_write_deb822_source` parsed as a call
+  site; the scanner now skips `command -v`/`type -t`/`declare -F` probes, which
+  could previously make a writer-less tree read green. `test-script-copy-coverage`
+  needed `ubuntu-mirror.sh` in `KNOWN_BASE_PROVIDED` for Dockerfile.android
+  (inherited from the compiler base).
+* **Symptom entry:** [`docs/failure-modes.md`](docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift).
+
+
 ## 2026-09-10 — the foreign Vulkan prefixes are two files from amd64
 
 * **VK6 and VK7 closed, measured on both pushed digests.** `lib/` is 118 on

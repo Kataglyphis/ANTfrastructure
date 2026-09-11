@@ -11,6 +11,12 @@ if [ -f /opt/scripts/core/cross-apt.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-apt.sh
 fi
+# ubuntu_write_deb822_source / ubuntu_effective_ports_mirror_url live in
+# ubuntu-mirror.sh; cross_ensure_installed_foreign_arch_sources needs them.
+if [ -f /opt/scripts/core/ubuntu-mirror.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/ubuntu-mirror.sh
+fi
 
 # download_file (retry-capable) lives in 01-core/downloads.sh; load it directly
 # since this installer runs without the full module chain.
@@ -64,6 +70,10 @@ if ! dpkg --print-foreign-architectures | grep -qx i386; then
   dpkg --add-architecture i386
 fi
 ensure_host_apt_architectures
+# Every installed foreign arch needs its own source, or the i386 install below
+# is unsatisfiable the moment archive and ports drift apart.
+# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+cross_ensure_installed_foreign_arch_sources
 apt-get update
 apt-get install -y --no-install-recommends \
   libc6:i386 libncurses6:i386 libstdc++6:i386 \

@@ -162,7 +162,14 @@ t_assert_contains "${_out}" "asymmetric for equal flags"
 
 t_case "a tree with no writer at all is reported, not silently green"
 fix="$(_tree)"
-sed -i 's|^  ubuntu_write_deb822_source "${ports_sources}"|  : "${ports_sources}" #|' \
+# Neutralise EVERY writer, not just the target one: cross-apt.sh gained a
+# second caller (installed-foreign-arch sources), and leaving it live made this
+# fixture still find a writer, so the NOSITES red could never fire again.
+# The `command -v ubuntu_write_deb822_source` probe that remains must be read
+# as a probe, not a call — it once made a writer-less tree read green.
+sed -i 's|^[[:space:]]*ubuntu_write_deb822_source .*|  : # writer removed|' \
+  "${fix}/linux/scripts/01-core/cross-apt.sh"
+t_assert_ok grep -q 'command -v ubuntu_write_deb822_source' \
   "${fix}/linux/scripts/01-core/cross-apt.sh"
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")" "a scan that finds nothing must not read as a pass"

@@ -173,7 +173,13 @@ for path in sorted(root.rglob("*")):
                 continue
             if "ubuntu_write_deb822_source" not in tokens:
                 continue
-            args = tokens[tokens.index("ubuntu_write_deb822_source") + 1:]
+            idx = tokens.index("ubuntu_write_deb822_source")
+            # `command -v NAME` / `type -t NAME` / `declare -F NAME` probe the
+            # function; counting a probe as a call site made a writer-less tree
+            # read green (and could split one writer into a false SKEW).
+            if tokens[:idx] and tokens[idx - 1] in ("-v", "-t", "-F"):
+                continue
+            args = tokens[idx + 1:]
             flag = args[4] if len(args) >= 5 else "1"
             sites.setdefault(flag, []).append(f"{path.relative_to(root)}:{lineno}")
 
