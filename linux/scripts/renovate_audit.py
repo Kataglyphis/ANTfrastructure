@@ -644,7 +644,15 @@ def _expected(manager, text, groups):
                 return {}, {}, (
                     "two of this report's updates both claim %s; one value "
                     "cannot become two things" % show(decl.path))
-            want[decl.path] = decl.leaf[:decl.start] + new + decl.leaf[decl.end:]
+            rewritten = decl.leaf[:decl.start] + new + decl.leaf[decl.end:]
+            # A report whose old and new are the SAME string is a lockfile-only
+            # update: the range already covers the release, so writing it is a
+            # no-op whose only job is to register the lockfile refresh. `want`
+            # is the set of paths the write MUST MOVE, so a no-op path is not
+            # one -- including it here made --apply refuse every cargo manifest
+            # with an in-range patch available (measured 2026-09-11).
+            if rewritten != decl.leaf:
+                want[decl.path] = rewritten
     return want, leaves, ""
 
 

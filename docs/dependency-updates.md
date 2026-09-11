@@ -795,6 +795,23 @@ worse than an unedited one, so nothing is written:
   Cargo.lock needs 'cargo', which is not on this PATH
 ```
 
+### When the manifest already carries the new value
+
+A report whose `currentValue` and `newValue` are the **same string** is a
+**lockfile-only** update: the declared range already covers the release Renovate
+found, and the lockfile is the thing that is behind. The plan writes the line to
+itself, byte for byte, for one reason — an edit is what registers the lockfile
+job, and the lock tool is the actual update.
+
+The read-back audit therefore sanctions a declaration that was never expected to
+move. Until 2026-09-11 it counted the no-op as "the declaration the report named
+was left alone" and failed the whole run, which made `--apply` unusable in any
+cargo manifest with an in-range release available — measured on OxidANT, 20 of
+its 21 cargo rows were exactly this shape. `(G2)` in
+[`test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) pins
+both halves: the manifest line stays byte-identical, and `cargo update -p <dep>`
+still runs.
+
 ## Why `--apply` refuses some submodules
 
 A bare `git submodule update --remote` moves **every** gitlink. For a submodule

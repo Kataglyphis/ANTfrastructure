@@ -569,6 +569,29 @@ _run_stubbed "${GW}" "${GW_REPORT}" --apply --managers cargo
 t_assert_eq "0" "${RC}" "the second apply must succeed"
 t_assert_contains "${OUT}" "already applied" "and report DONE, structurally"
 
+# (G2) A report whose old and new are the SAME string is a LOCKFILE-ONLY update:
+# the declared range already covers the release, so the manifest line is written
+# to itself for one reason only -- it registers the lockfile refresh, which is
+# the whole update. Measured 2026-09-11 against OxidANT: the read-back audit
+# counted the no-op as "the declaration the report named was left alone" and
+# refused the entire run, so every cargo manifest with an in-range patch
+# available made --apply unusable. The manifest half must stay still AND the
+# lock tool must still run; asserting only the first would pass on a tool that
+# dropped the update silently.
+t_case "(G2) cargo: a range moving to itself refreshes the lock, not the file"
+GP="$(_repo gp)"
+printf '[package]\nname = "fixture"\n\n[dependencies]\ncxx = "1.0"\n' > "${GP}/Cargo.toml"
+printf '# placeholder\n' > "${GP}/Cargo.lock"
+_commit "${GP}"
+GP_REPORT="${WORK}/gp.json"
+_report "${GP_REPORT}" cargo Cargo.toml cxx 1.0 1.0
+_run_stubbed "${GP}" "${GP_REPORT}" --apply --managers cargo
+t_assert_eq "0" "${RC}" "a lockfile-only report must not fail the run"
+t_assert_eq 'cxx = "1.0"' "$(_cargo_line "${GP}" 5)" "the manifest line is untouched"
+t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p cxx | gp" \
+  "and the lockfile owner ran for the named dep"
+t_assert_ok git -C "${GP}" diff --quiet HEAD
+
 # --------------------------------------------------------------------------
 # (H) The cleanliness check and a NESTED submodule. One question asked once per
 # direction, because the fix is a single option and the way to get it wrong is
