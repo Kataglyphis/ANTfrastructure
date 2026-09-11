@@ -10,7 +10,7 @@ ARG WINDOWS_LTSC=2025
 # Microsoft's monthly patch releases; the digest makes a from-base rebuild
 # reproducible and base OS revisions deliberate (they matter here — the wcifs
 # commit bug is version-skew-sensitive). The digest wins over the tag.
-ARG WINDOWS_BASE_DIGEST=sha256:eeaa17aefe5d949f03b1db17182f5855cf40e757533468cf5b50e07c7c385ada
+ARG WINDOWS_BASE_DIGEST=sha256:e18a49cbc074dfaa8e106296d51cebd62bbf6effb999f134a5c48eed1c2334e1
 # NB the tag part is COSMETIC — the digest wins (see above); a WINDOWS_LTSC
 # bump without a matching digest bump changes nothing. Single default only
 # (the inline :-2025 fallback duplicated the ARG default, #127).

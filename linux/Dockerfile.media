@@ -1,10 +1,10 @@
-# syntax=docker/dockerfile:1.24.0
+# syntax=docker/dockerfile:1.27.0
 #
 # Dockerfile.media — media libraries layer (ONNX Runtime, LiteRT, OpenCV,
 # FFmpeg, GStreamer, libcamera).
 #
 # BuildKit feature summary used in this file:
-#   # syntax=docker/dockerfile:1.24.0  — enables BuildKit frontend extensions.
+#   # syntax=docker/dockerfile:1.27.0  — enables BuildKit frontend extensions.
 #   --mount=type=cache   — persistent cross-build cache. The ids are NOT keyed
 #                          uniformly; read the split off the mounts themselves,
 #                          not off a rule of thumb:

@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1.24.0
+# syntax=docker/dockerfile:1.27.0
 # Digest-pinned like linux/Dockerfile.base: this image builds standalone (via
 # linux/docker-compose.yml, no orchestrator forwarding), so the ARG defaults are
 # load-bearing and are kept synced to versions.env by sync_versions.py.
 ARG UBUNTU_VERSION=26.04
-ARG UBUNTU_DIGEST=sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
+ARG UBUNTU_DIGEST=sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}
 ENV DEBIAN_FRONTEND=noninteractive
 
