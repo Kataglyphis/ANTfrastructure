@@ -187,6 +187,23 @@ cargo_spec() {
   esac
 }
 
+# cargo is the one lock tool that can need a SECOND attempt, so it gets its own
+# runner beside the shared table. Both failure modes are measured:
+#   * spec too WIDE -- `cargo update -p wgpu` is ambiguous while the lock holds
+#     wgpu 29 and 30, which is what the manifest's range disambiguates;
+#   * spec too NARROW -- an earlier job in the SAME run re-resolved the
+#     workspace and already carried the crate past the range the manifest named
+#     (`flutter_rust_bridge =2.12.0 -> =2.13.0`: job N moved it, job N+1's
+#     `@2.12.0` matched nothing), so the bare name -- unambiguous by then -- is
+#     the retry.
+run_cargo_lock() {
+  local dir="$1" dep="$2" cur="$3" spec
+  spec="$(cargo_spec "${dep}" "${cur}")"
+  ( cd "${dir}" && cargo update -p "${spec}" ) && return 0
+  [ "${spec}" = "${dep}" ] && return 1
+  ( cd "${dir}" && cargo update -p "${dep}" )
+}
+
 # The one command each lock tool needs, run in the directory that owns the
 # LOCKFILE -- the manifest's own for a standalone package, the workspace ROOT for
 # a member. `npm install --package-lock-only` in a member directory writes a
@@ -201,7 +218,7 @@ run_lock_tool() {
   local tool="$1" dir="$2" dep="$3" cur="$4"
   local -a argv=()
   case "${tool}" in
-    cargo)        argv=(cargo update -p "$(cargo_spec "${dep}" "${cur}")") ;;
+    cargo)        run_cargo_lock "${dir}" "${dep}" "${cur}"; return $? ;;
     dart|flutter) argv=("${tool}" pub get) ;;
     uv)           argv=(uv lock) ;;
     poetry)       argv=(poetry lock) ;;

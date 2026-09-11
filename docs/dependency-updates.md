@@ -821,6 +821,13 @@ because a package-id spec takes a partial version and rejects `=2.12.0` with
 "unexpected version requirement", and falls back to the bare name for a value
 that is not a dotted number.
 
+The versioned spec can also go **stale inside one run**, because each job
+re-resolves the whole workspace: an earlier job carried
+`flutter_rust_bridge =2.12.0 -> =2.13.0` before that crate's own job ran, whose
+`@2.12.0` then matched nothing. So a failed versioned spec is retried as the
+bare name, which is unambiguous by then — the retry exists for that measured
+case, not as a general fallback.
+
 ## Why `--apply` refuses some submodules
 
 A bare `git submodule update --remote` moves **every** gitlink. For a submodule
