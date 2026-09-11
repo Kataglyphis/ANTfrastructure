@@ -2554,8 +2554,8 @@
   {
     "id": "python-lint.versions-env-is-data",
     "target": "linux/scripts/lint-python.sh",
-    "find": "# shellcheck source=01-core/load-versions-env.sh\n. \"${_core}/load-versions-env.sh\" && load_versions_env \"${_core}/versions.env\"",
-    "replace": "# shellcheck disable=SC1090\n. \"${_core}/versions.env\"",
+    "find": ". \"${_core}/load-versions-env.sh\" && load_versions_env \"${_core}/versions.env\"",
+    "replace": ". \"${_core}/versions.env\"",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "versions.env is inert data with shell metacharacters in it: sourcing runs CUDA_ARCHITECTURES' arch numbers as commands, three errors on stderr every hook run"
   },

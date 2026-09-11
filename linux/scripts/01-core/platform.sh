@@ -351,6 +351,13 @@ build_arch_oci() {
   arch_normalize "$(_platform_raw_build_arch)"
 }
 
+# The platform the cross lane builds every stage on, and therefore the platform
+# every cross ARTIFACT is. cross-stage-build.sh owns the knob; this is the one
+# place its default is written. NOT linux/$(build_arch_oci): with the shipped
+# default an arm64 host still builds amd64-under-QEMU images, and a host-derived
+# answer would be wrong about exactly those.
+cross_build_platform() { printf '%s' "${CROSS_BUILD_PLATFORM:-linux/amd64}"; }
+
 android_build_host_supported() {
   [ "$(build_arch_oci)" = "amd64" ]
 }

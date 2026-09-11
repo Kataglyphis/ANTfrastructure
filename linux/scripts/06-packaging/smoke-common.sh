@@ -223,12 +223,14 @@ check_version() {
 }
 
 # check_version_major_minor <cmd> <pinned x.y.z> <label>
-# For a tool installed from a MAJOR channel. Every actor here derives the apt
-# channel from ${LLVM_RELEASE%%.*}, so the patch component of the pin is a label,
-# never something we install; apt.llvm.org ships whatever patch that channel
-# currently holds (23.1.1 landed 2026-09-07 and failed a 23.1.0 assertion three
-# times before the chain gave up). validate-compilers.sh already falls back this
-# way. The trailing dot is load-bearing: a bare "23.1" also matches 23.10.x.
+# For a tool installed from a MAJOR channel, where the patch digit really is
+# only a label. NOT for LLVM any more (2026-09-10): the shipped clang is built
+# from llvmorg-${LLVM_RELEASE} and verified against LLVM_COMMIT, so its patch
+# digit IS installed and its gates stay exact. The justification this comment
+# used to carry — "validate-compilers.sh already falls back this way" — was
+# false; that arm tested a substring against bare-digit output, could never
+# match, and has been deleted.
+# The trailing dot is load-bearing: a bare "23.1" also matches 23.10.x.
 check_version_major_minor() {
   local cmd="$1" expected="$2" label="$3"
   local ver mm

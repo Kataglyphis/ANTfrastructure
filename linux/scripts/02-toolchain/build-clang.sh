@@ -58,15 +58,20 @@ ARCH="$(uname -m)"
 NUM_JOBS=""
 LLVM_TARGETS=""
 
+# BOOTSTRAP defaults OFF everywhere since 2026-09-10. It used to default ON off
+# riscv64, which built `--target stage2` and then installed the plain `install`
+# target — i.e. it paid for TWO compilers and shipped the FIRST. OFF preserves
+# exactly the compiler that has always shipped and halves the cost, which now
+# matters: the build host's own arch is source-built too (llvm-cross.sh), so
+# this path went from optional to load-bearing. If a self-hosted compiler is
+# ever wanted, the fix is `--target stage2-install`, not flipping this back.
+BOOTSTRAP="OFF"
 if [ "$ARCH" = "riscv64" ]; then
-    BOOTSTRAP="OFF"
-    info "RISC-V detected: Defaulting to NO-BOOTSTRAP to save time."
-else
-    BOOTSTRAP="ON"
+    info "RISC-V detected: NO-BOOTSTRAP (the default everywhere)."
 fi
 
 DO_STRIP="1"
-KEEP_SRC="0"
+KEEP_SRC="1"   # keep the verified checkout; KEEP_SRC=0 wipes it
 KEEP_BUILD="0"
 USE_CCACHE="0"
 ENABLE_LTO="OFF"
@@ -246,6 +251,7 @@ if [[ "${_src_valid}" != "1" ]]; then
     git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git
     git -C "${SRC_DIR}" fetch --depth 1 origin tag "${LLVM_TAG}"
     git -C "${SRC_DIR}" checkout -q FETCH_HEAD
+    llvm_assert_commit_pin "${SRC_DIR}" "${LLVM_TAG}" || die "LLVM_COMMIT pin mismatch"
     rm -rf "${BUILD_DIR}"  # fresh source = fresh build
 elif [ ! -f "${BUILD_DIR}/CMakeCache.txt" ] || [ "${FORCE_REBUILD:-0}" = "1" ]; then
     rm -rf "${BUILD_DIR}"
@@ -321,7 +327,13 @@ else
 fi
 
 echo "==> Installing..."
-${SUDO} cmake --build . --target install
+# The install target must match what was BUILT: `install` ships stage1 even when
+# stage2 was built, which is how a bootstrap build shipped the wrong compiler.
+if [[ "${BOOTSTRAP}" == "ON" ]]; then
+    ${SUDO} cmake --build . --target stage2-install
+else
+    ${SUDO} cmake --build . --target install
+fi
 
 echo "==> Setting system defaults..."
 BIN_DIR="${INSTALL_DIR}/bin"
@@ -346,7 +358,10 @@ if [[ "${DO_STRIP}" == "1" ]]; then
     strip_elf_tree "${INSTALL_DIR}" "${NUM_JOBS:-$(nproc)}"
 fi
 
-[[ "${KEEP_SRC}" != "1" ]] && rm -rf "${SRC_DIR}"
+# The checkout is verified against LLVM_TAG (and LLVM_COMMIT) before it is
+# reused, so keeping it is safe and turns every rebuild from a ~2 GB re-clone
+# into a no-op. KEEP_SRC=0 restores the old wipe.
+[[ "${KEEP_SRC}" == "0" ]] && rm -rf "${SRC_DIR}"
 [[ "${KEEP_BUILD}" != "1" ]] && rm -rf "${BUILD_DIR}"
 
 if [[ "${WD}" == "${AUTO_WORKDIR}" ]]; then

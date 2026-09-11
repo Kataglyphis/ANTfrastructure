@@ -33,7 +33,8 @@ _STAGE_DEFS_SH_LOADED=1
 CROSS_STAGE_ORDER=(base compiler sdk media android runtime)
 
 # Stages that fan out per target architecture (amd64, arm64, riscv64).
-# These are built once per arch on linux/amd64 using cross-compilers.
+# These are built once per arch on CROSS_BUILD_PLATFORM using cross-compilers
+# (linux/amd64 by default; linux/arm64 on a native ARM build host).
 CROSS_PER_ARCH_STAGES=(sdk media android)
 
 # ── Runtime lane stage order ───────────────────────────────────────────────────
@@ -415,6 +416,6 @@ cross_stage_ensure_parent_available() {
     fi
 
     log "[stage ${stage}] pulling ${parent_tag}"
-    run "${NERDCTL_BIN:-nerdctl}" pull --platform "${CROSS_BUILD_PLATFORM:-linux/amd64}" "${parent_tag}"
+    run "${NERDCTL_BIN:-nerdctl}" pull --platform "$(cross_build_platform)" "${parent_tag}"
   done
 }

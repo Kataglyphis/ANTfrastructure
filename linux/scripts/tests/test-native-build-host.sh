@@ -126,4 +126,145 @@ done
 t_assert_eq "0" "$(_count "${_with_marker}" -- "--- sdkmanager ---")" \
   "the strict checks must not run at all"
 
+# ---------------------------------------------------------------------------
+# The frozen-build-host CLASS, as one checkable row. No test anywhere asserts a
+# --platform argument on any code path (`grep -rn -e '--platform' tests/` is
+# empty), so the literal count is the only thing standing between this and a
+# silent revert to a hardcoded platform.
+t_case "linux/amd64 survives in exactly one place: the accessor's own default"
+# CODE only — a comment may name the default (and stage-defs.sh's does, to say
+# what CROSS_BUILD_PLATFORM defaults to). What must not exist is a second place
+# that DECIDES it.
+_count_lit() { grep -v '^[[:space:]]*#' "${REPO_SCRIPTS}/$1" | grep -c 'linux/amd64' || true; }
+t_assert_eq "1" "$(_count_lit 01-core/platform.sh)" \
+  "cross_build_platform owns the default; a second copy is a second answer"
+for _f in 01-core/tag-naming.sh 01-core/stage-defs.sh 01-core/chain-verify.sh; do
+  t_assert_eq "0" "$(_count_lit "${_f}")" \
+    "${_f} must ask cross_build_platform, not freeze the platform"
+done
+
+t_case "the platform knob is EXPORTED, or the fix is inert where it is needed"
+# build-cross-chain.sh launches build-runtime-manifest.sh through `run env`,
+# which forwards only exported vars. Unexported, the child re-sources
+# cross-stage-build.sh, re-defaults to linux/amd64, and pins the runtime
+# artifact-source to a platform the artifact is not. No in-process test can see
+# this, so it is asserted structurally.
+# Matches the SC2155-clean two-line form (assign, then bare `export NAME`) as
+# well as a single-line export, so splitting for the masked-declaration gate
+# cannot silently retire this assertion.
+t_assert_eq "1" "$(grep -cE '^export CROSS_BUILD_PLATFORM\b' "${REPO_SCRIPTS}/01-core/cross-stage-build.sh" || true)"
+
+t_case "cross_build_platform reads the knob and defaults to the amd64 lane"
+t_assert_eq "linux/amd64"  "$(cross_build_platform)"
+t_assert_eq "linux/arm64"  "$(CROSS_BUILD_PLATFORM=linux/arm64 cross_build_platform)"
+t_assert_eq "linux/amd64"  "$(BUILDARCH=riscv64 cross_build_platform)" \
+  "the knob, never the host — an emulated build must describe itself honestly"
+
+# ---------------------------------------------------------------------------
+# LLVM_COMMIT turns the pin from a bookmark into a pin. Before 2026-09-10 the
+# key existed, was documented as OPT-IN, and NO consumer read it — while
+# apt.llvm.org silently shipped 23.1.1 against LLVM_RELEASE=23.1.0.
+t_case "llvm_assert_commit_pin has ONE owner and both clone sites call it"
+_CORE="${REPO_SCRIPTS}/01-core"
+t_assert_eq "1" "$(grep -c '^llvm_assert_commit_pin()' "${_CORE}/common.sh" || true)"
+for _f in 02-toolchain/build-clang.sh 02-toolchain/llvm-cross.sh; do
+  t_assert_eq "1" "$(grep -c 'llvm_assert_commit_pin ' "${REPO_SCRIPTS}/${_f}" || true)" \
+    "${_f} must verify its checkout, not re-implement the check"
+done
+
+t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
+# Read the file rather than sourcing it: versions.env is a flat KEY=value list
+# and the suite runs under `set -u`, where sourcing it would trip on the first
+# ${OTHER:-} reference it happens to contain.
+_VERS="${_CORE}/versions.env"
+_vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
+t_assert_eq "23.1.0" "$(_vers_val LLVM_RELEASE)"
+t_assert_eq "ea7d852a70e8bdfaf601d6626a760f9771b2c4b4" "$(_vers_val LLVM_COMMIT)" \
+  "refs/tags/llvmorg-23.1.0^{} — the PEELED sha, per the convention above the key"
+t_assert_eq "40" "$(printf '%s' "$(_vers_val LLVM_COMMIT)" | wc -c | tr -d ' ')"
+
+t_case "llvm_assert_commit_pin fails on a mismatch and is quiet when unset"
+# shellcheck disable=SC1090
+. "${_CORE}/common.sh" 2>/dev/null || true
+_TMPGIT="$(mktemp -d)"
+git -C "${_TMPGIT}" init -q 2>/dev/null
+git -C "${_TMPGIT}" -c user.email=t@t -c user.name=t commit -q --allow-empty -m x 2>/dev/null
+LLVM_COMMIT="" t_assert_ok llvm_assert_commit_pin "${_TMPGIT}" sometag
+LLVM_COMMIT="0000000000000000000000000000000000000000" \
+  t_assert_fails llvm_assert_commit_pin "${_TMPGIT}" sometag
+_real="$(git -C "${_TMPGIT}" rev-parse HEAD)"
+LLVM_COMMIT="${_real}" t_assert_ok llvm_assert_commit_pin "${_TMPGIT}" sometag
+rm -rf "${_TMPGIT}"
+
+t_case "the apt bootstrap can no longer become the shipped clang"
+_MAT="${REPO_SCRIPTS}/02-toolchain/materialize-llvm-target.sh"
+t_assert_eq "0" "$(grep -c '/usr/lib/llvm-\${_major}' "${_MAT}" || true)" \
+  "the apt tree was the fallback that shipped 23.1.1 against a 23.1.0 pin"
+t_assert_contains "$(cat "${_MAT}")" '/opt/llvm-target-${_arch}' \
+  "the pinned source tree must be the first host candidate"
+
+# ---------------------------------------------------------------------------
+# Emulating amd64 only becomes necessary once the BUILD HOST is not amd64 —
+# which is exactly what this suite is about. Both helpers had no amd64 arm, and
+# _binfmt_qemu_name's catch-all produced "qemu-amd64", a handler that does not
+# exist under any name (the real one is qemu-x86_64). verify_foreign_binfmt
+# therefore err()'d before the build loop on every arm64/riscv64 host.
+t_case "every arch maps to a QEMU handler that really exists"
+_BRM="${REPO_SCRIPTS}/build-runtime-manifest.sh"
+_qemu_name() {
+  bash -c "$(sed -n '/^_binfmt_qemu_name()/,/^}/p' "${_BRM}")"$'\n''_binfmt_qemu_name "$1"' _ "$1"
+}
+t_assert_eq "qemu-x86_64"  "$(_qemu_name amd64)" \
+  "qemu-amd64 is not a handler name anywhere; the binary is qemu-x86_64"
+t_assert_eq "qemu-x86_64"  "$(_qemu_name x86_64)"
+t_assert_eq "qemu-aarch64" "$(_qemu_name arm64)"
+t_assert_eq "qemu-riscv64" "$(_qemu_name riscv64)"
+
+t_case "the registrar can register the arch the chain now has to emulate"
+_REG="${REPO_SCRIPTS}/setup-rootless-binfmt.sh"
+_reg_bin() {
+  bash -c "$(sed -n '/^qemu_bin_for()/,/^}/p' "${_REG}")"$'\n''qemu_bin_for "$1"' _ "$1"
+}
+t_assert_eq "qemu-x86_64"  "$(_reg_bin amd64)"
+t_assert_eq "qemu-aarch64" "$(_reg_bin arm64)"
+# e_machine 0x3e is x86-64; the byte pair is what binfmt_misc matches on.
+t_assert_contains "$(sed -n '/^elf_magic_for()/,/^}/p' "${_REG}")" 'x3e' \
+  "without the ELF magic the registrar cannot install the amd64 handler"
+
+# ---------------------------------------------------------------------------
+# When the LLVM target IS the build host, setup_linux_cross_env returns early
+# and exports no AS/LD/AR/... — the native tools already are the target's. The
+# wrapper populator read them with a bare ${!VAR} and died under `set -u`. That
+# path was unreachable until the host arch started building its own pinned LLVM,
+# and it then cost a 142-minute chain run.
+_LLVM_SH="${REPO_SCRIPTS}/02-toolchain/llvm.sh"
+_FN_SRC="$(mktemp)"
+sed -n '/^llvm_cross_populate_tool_wrapper_dir()/,/^}/p' "${_LLVM_SH}" > "${_FN_SRC}"
+# shellcheck disable=SC1090
+. "${_FN_SRC}"
+
+t_case "the tool wrapper dir survives an unset AS/LD/AR (target == build host)"
+_WD="$(mktemp -d)"
+( set -u
+  unset AS LD AR NM RANLIB STRIP OBJCOPY
+  llvm_cross_populate_tool_wrapper_dir "${_WD}"
+) >/dev/null 2>&1
+for _t in as ld ar nm ranlib strip objcopy; do
+  t_assert_ok test -L "${_WD}/${_t}"
+done
+t_assert_eq "$(command -v as)" "$(readlink "${_WD}/as")" \
+  "with no AS exported the native assembler is the right one"
+rm -rf "${_WD}"
+
+t_case "an exported tool var still wins over PATH"
+_FAKE="$(mktemp -d)"; : > "${_FAKE}/fake-as"; chmod +x "${_FAKE}/fake-as"
+_WD2="$(mktemp -d)"
+( set -u
+  unset LD AR NM RANLIB STRIP OBJCOPY
+  AS="${_FAKE}/fake-as" llvm_cross_populate_tool_wrapper_dir "${_WD2}"
+) >/dev/null 2>&1
+t_assert_eq "${_FAKE}/fake-as" "$(readlink "${_WD2}/as")" \
+  "the cross path must keep using the target's assembler, not the host's"
+rm -rf "${_FAKE}" "${_WD2}" "${_FN_SRC}"
+
 t_summary

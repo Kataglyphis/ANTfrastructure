@@ -33,8 +33,13 @@ _llvm_cross_resolve_dirs() {
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
   target_label="$(arch_normalize "${target_label}")"
-  [ "${target_label}" = "$(build_arch_oci)" ] \
-    && { log "Skipping cross LLVM build for ${target_label} (build host already serves it)"; return 1; }
+  # The build host used to be exempt here ("already serves it") — but what it
+  # serves is the apt.llvm.org BOOTSTRAP, whose per-major suite tracks the
+  # release branch head. So the host arch shipped whatever patch apt had that
+  # week (23.1.1 on 2026-09-07) while versions.env pinned 23.1.0, and
+  # materialize-llvm-target.sh's own comment predicted exactly that. Build the
+  # host arch from llvmorg-${LLVM_RELEASE} like every other target; apt stays a
+  # bootstrap (clang-tblgen).
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 
@@ -120,6 +125,7 @@ _llvm_cross_retrieve_source() {
     rm -rf "${source_dir}"
     log "Cloning llvm-project ${tag} for ${mode} ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
+    llvm_assert_commit_pin "${source_dir}" "${tag}" || die "LLVM_COMMIT pin mismatch"
   fi
 }
 
@@ -207,8 +213,56 @@ _llvm_cross_superset_cmake_args() {
   )
 }
 
-# Callable ONLY from inside _llvm_cross_setup_and_build's subshell: CC/AR/
-# CROSS_TARGET_*/CMAKE_SYSROOT come from the env setup_linux_cross_env exported.
+# Resolve ONE tool through the three-rung ladder. ${!envvar:-} not ${!envvar}:
+# an unset var is a legitimate state here, not a bug (see the contract below).
+_llvm_cross_resolve_tool() {
+  local -n _rt1="$1"
+  local key="$2" envvar="$3" tool="$4" triplet="$5" native_ok="$6"
+  local val="${!envvar:-}"
+  [ -n "${val}" ] || val="$(require_cross_gcc_tool "${tool}" "${triplet}" 2>/dev/null || true)"
+  if [ -z "${val}" ] && [ "${native_ok}" = "1" ]; then
+    val="$(resolve_build_gcc_tool "${tool}" 2>/dev/null || true)"
+    [ -n "${val}" ] || val="$(command -v "${tool}" 2>/dev/null || true)"
+  fi
+  [ -n "${val}" ] || die "llvm-cross: cannot resolve '${tool}' for ${triplet:-<no triplet>}: \$${envvar} unset, require_cross_gcc_tool found nothing$( [ "${native_ok}" = "1" ] && printf ', and neither did resolve_build_gcc_tool / command -v' || printf ' (target is foreign, so no host fallback is allowed)' )"
+  _rt1["${key}"]="${val}"
+}
+
+# This function resolves its OWN toolchain and is valid for target == build host.
+# It used to read CC/AR/CROSS_TARGET_* bare, on the assumption that
+# setup_linux_cross_env had exported them — but that function returns EARLY when
+# the target is the build host, and since 2026-09-10 this file's own loop asks
+# for exactly that case (--include-amd64), on every host including amd64.
+#   rung 1  the exported cross env      -> a FOREIGN target keeps today's argv
+#   rung 2  target-explicit helpers     -> no dependence on the cross guard
+#   rung 3  the build host's own tools  -> ONLY when target triplet == build triplet
+# No rung left is a die() naming the tool and the ladder, never an empty -D<NAME>=.
+_llvm_cross_resolve_configure_toolchain() {
+  local -n _rt="$1"
+  local target_label="$2" triplet="$3"
+  local build_triplet native_ok=0
+
+  build_triplet="$(build_deb_multiarch_triplet 2>/dev/null || true)"
+  [ -n "${triplet}" ] && [ "${triplet}" = "${build_triplet}" ] && native_ok=1
+
+  _rt[processor]="${CROSS_TARGET_PROCESSOR:-}"
+  [ -n "${_rt[processor]}" ] \
+    || _rt[processor]="$(arch_cmake_system_processor_for "${target_label}" 2>/dev/null || true)"
+  [ -n "${_rt[processor]}" ] \
+    || die "llvm-cross: no CMAKE_SYSTEM_PROCESSOR for '${target_label}'"
+
+  _rt[triplet]="${CROSS_TARGET_TRIPLET:-${triplet}}"
+  [ -n "${_rt[triplet]}" ] || die "llvm-cross: no target triplet for '${target_label}'"
+
+  _llvm_cross_resolve_tool _rt cc      CC      gcc     "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt cxx     CXX     g++     "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt ar      AR      ar      "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt ranlib  RANLIB  ranlib  "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt nm      NM      nm      "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt objcopy OBJCOPY objcopy "${triplet}" "${native_ok}"
+  _llvm_cross_resolve_tool _rt strip   STRIP   strip   "${triplet}" "${native_ok}"
+}
+
 _llvm_cross_cmake_configure() {
   local -n _cfg="$1"
   local clang_triple="$2"
@@ -219,27 +273,32 @@ _llvm_cross_cmake_configure() {
   local wrapper_dir="${_cfg[wrapper_dir]}" backend="${_cfg[backend]}"
   local native_tool_dir="${_cfg[native_tool_dir]}"
 
+  # State keys read with :- because the regression fixture supplies neither.
+  local -A _tc=()
+  _llvm_cross_resolve_configure_toolchain _tc \
+    "${_cfg[target_label]:-}" "${_cfg[triplet]:-}"
+
   cmake -G Ninja \
     "${_cfg_launcher_args[@]}" \
     -S "${source_dir}/llvm" \
     -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_SYSTEM_NAME=Linux \
-    -DCMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}" \
+    -DCMAKE_SYSTEM_PROCESSOR="${_tc[processor]}" \
     -DCMAKE_SYSROOT="${CMAKE_SYSROOT:-/}" \
-    -DCMAKE_C_COMPILER="${CC}" \
-    -DCMAKE_CXX_COMPILER="${CXX}" \
-    -DCMAKE_ASM_COMPILER="${CC}" \
-    -DCMAKE_AR="${AR}" \
-    -DCMAKE_RANLIB="${RANLIB}" \
-    -DCMAKE_NM="${NM}" \
-    -DCMAKE_OBJCOPY="${OBJCOPY}" \
-    -DCMAKE_STRIP="${STRIP}" \
+    -DCMAKE_C_COMPILER="${_tc[cc]}" \
+    -DCMAKE_CXX_COMPILER="${_tc[cxx]}" \
+    -DCMAKE_ASM_COMPILER="${_tc[cc]}" \
+    -DCMAKE_AR="${_tc[ar]}" \
+    -DCMAKE_RANLIB="${_tc[ranlib]}" \
+    -DCMAKE_NM="${_tc[nm]}" \
+    -DCMAKE_OBJCOPY="${_tc[objcopy]}" \
+    -DCMAKE_STRIP="${_tc[strip]}" \
     "${_cfg_linker_args[@]}" \
     -DCMAKE_C_FLAGS_INIT="-B${wrapper_dir}" \
     -DCMAKE_CXX_FLAGS_INIT="-B${wrapper_dir}" \
     -DCMAKE_ASM_FLAGS_INIT="-B${wrapper_dir}" \
-    -DCMAKE_LIBRARY_ARCHITECTURE="${CROSS_TARGET_TRIPLET}" \
+    -DCMAKE_LIBRARY_ARCHITECTURE="${_tc[triplet]}" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
@@ -427,6 +486,22 @@ build_cross_llvm_targets() {
   _llvm_cross_ensure_host_binutils_dev
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
-  # amd64 is skipped by default (the host already serves amd64 LLVM).
-  for_each_cross_target _build_cross_llvm_for_target "${targets_raw}"
+  # --include-amd64 means "do not skip the BUILD HOST's arch" (the flag name
+  # predates the host-relative meaning). Without it the host arch never gets a
+  # pinned LLVM and materialize-llvm-target.sh falls back to the apt bootstrap.
+  #
+  # The HOST arch goes FIRST, deliberately: llvm_host_native_tool_dir prefers
+  # /opt/llvm-target-<host>, and that tree is produced by this very loop. Built
+  # in list order, the arches ahead of the host's turn would still take their
+  # tablegen from the apt bootstrap — a 23.1.1 tablegen generating .inc files
+  # for a 23.1.0 source tree. On an amd64 host the list order already happened
+  # to do the right thing; on arm64 it did not.
+  local _host_arch _rest
+  _host_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
+  _rest="$(printf '%s' "${targets_raw}" | tr ',' '\n' | grep -vx "${_host_arch}" | paste -sd, -)"
+  case ",${targets_raw}," in
+    *",${_host_arch},"*) targets_raw="${_host_arch}${_rest:+,${_rest}}" ;;
+  esac
+  log "LLVM cross targets (build host first): ${targets_raw}"
+  for_each_cross_target _build_cross_llvm_for_target --include-amd64 "${targets_raw}"
 }

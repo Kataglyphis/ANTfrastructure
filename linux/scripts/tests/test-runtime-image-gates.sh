@@ -477,6 +477,7 @@ ENV android-home
 ENV android-sdk-root
 DIR android-platform-tools yes
 FACT android-path no
+FACT android-payload-off no
 FACT flutter-sdk yes
 FACT flutter-foreign 37
 FACT flutter-foreign-examples /opt/flutter/.git/FETCH_HEAD /opt/flutter/.git/refs/tags
@@ -498,6 +499,7 @@ ENV android-home /opt/android-sdk
 ENV android-sdk-root /opt/android-sdk
 DIR android-platform-tools yes
 FACT android-path yes
+FACT android-payload-off no
 FACT flutter-sdk yes
 FACT flutter-foreign 0
 FACT flutter-foreign-examples
@@ -595,13 +597,15 @@ t_assert_contains "$(_cc_verdicts 'CCPROBE_DONE' amd64 android-home)" "NOFACT an
   "a missing DIR line must not read as an existing platform-tools"
 
 # An android capture with both variables set: $1 = DIR android-platform-tools,
-# $2 = FACT android-path. One shape, so the two halves of the row differ by the
-# fact under test and nothing else.
+# $2 = FACT android-path, $3 = FACT android-payload-off (default no, i.e. an
+# amd64-hosted build that DID ship an SDK). One shape, so the halves of the row
+# differ by the fact under test and nothing else.
 _cc_android() {
   _cc_verdicts "ENV android-home /opt/android-sdk
 ENV android-sdk-root /opt/android-sdk
 DIR android-platform-tools $1
 FACT android-path $2
+FACT android-payload-off ${3:-no}
 CCPROBE_DONE" amd64 android-home
 }
 
@@ -613,6 +617,23 @@ t_case "an SDK that is set and present but not on PATH still fails"
 # flutter finds it by variable; sdkmanager, adb and avdmanager are found by PATH,
 # and the consumer asked for both halves.
 t_assert_contains "$(_cc_android yes no)" "is on PATH" "half a wiring is not the contract"
+
+t_case "a payload-off image SKIPs the row instead of failing it"
+# The NDK is prebuilt/linux-x86_64 only, so a non-amd64-hosted android stage
+# ships empty directories. Failing that image would make the runtime lane
+# unreachable on exactly the hosts native builds exist for.
+t_assert_contains "$(_cc_android no no yes)" "SKIP android-home" \
+  "an image that RECORDED why the SDK is absent must not be judged as if it hid it"
+
+t_case "a MISSING payload-off fact is NOFACT, never a silent grant"
+# The whole point of reading a recorded fact is that its ABSENCE is unknown, not
+# false — an old probe must not restore the pre-marker verdict by omission.
+t_assert_contains "$(_cc_verdicts "ENV android-home /opt/android-sdk
+ENV android-sdk-root /opt/android-sdk
+DIR android-platform-tools yes
+FACT android-path yes
+CCPROBE_DONE" amd64 android-home)" "NOFACT android-home" \
+  "no FACT android-payload-off line means the gate could not judge, not that it passed"
 
 t_case "the android row asserts exactly the two PATH entries Dockerfile.package appends"
 t_assert_contains "$(_cc_android yes yes)" "OK android-home" \

@@ -633,6 +633,7 @@ if [ -d "${ANDROID_HOME:-/nonexistent}/platform-tools" ]; then
 else
   printf 'DIR android-platform-tools no\n'
 fi
+printf 'FACT android-payload-off %s\n' "$(if [ -f /opt/android/.android-payload-off ]; then echo yes; else echo no; fi)"
 _on_path() { case ":${PATH}:" in *":$1:"*) return 0 ;; *) return 1 ;; esac; }
 if [ -n "${ANDROID_HOME:-}" ] && _on_path "${ANDROID_HOME}/platform-tools" \
    && _on_path "${ANDROID_HOME}/cmdline-tools/latest/bin"; then
@@ -762,7 +763,21 @@ _consumer_jdk_verdict() {
 }
 
 _consumer_android_verdict() {
-  local row="$1" val root dir onpath
+  local row="$1" val root dir onpath off
+  # The build host, not the target, decides whether an SDK exists to ship: the
+  # NDK is prebuilt/linux-x86_64 only, so a non-amd64-hosted android stage
+  # builds payload-off and android-sdk.sh records that in the image. Read the
+  # record. A MISSING fact is NOFACT, not a grant — an absent line must never
+  # silently restore the old verdict.
+  off="$(_consumer_contract_fact "$2" FACT android-payload-off)"
+  if [ -z "${off}" ]; then
+    printf 'NOFACT %s no FACT android-payload-off line' "${row}"
+    return 0
+  fi
+  if [ "${off}" = yes ]; then
+    printf 'SKIP %s the android payload is off for this build host (/opt/android/.android-payload-off)' "${row}"
+    return 0
+  fi
   val="$(_consumer_contract_fact "$2" ENV android-home)"
   root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
   dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
@@ -868,6 +883,7 @@ printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
     case "${verb}" in
       OK)       echo "  OK   ${row} ${rest}" ;;
       EXEMPT)   echo "  ~~   ${row} (documented ${target_arch} exception)" ;;
+      SKIP)     echo "  --   ${row} ${rest}" ;;
       BAD)      fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- $(_consumer_contract_symptom "${row}")" ;;
       STALE)    fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest}" ;;
       NOFACT)   fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- the probe reported no fact, so the gate could not judge the row" ;;

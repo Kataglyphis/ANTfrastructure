@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 orchestrator_preamble
 
-FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
+FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
 # Set by --final-image so _chain_resolve_final_image can tell "user chose this"
 # from "still the default" — comparing against the default string cannot.
 FINAL_IMAGE_SET=0
@@ -224,7 +224,7 @@ _chain_resolve_final_image() {
   # The default was computed from the default IMAGE_REPO, so --image-repo must
   # recompute it; an explicit --final-image always wins.
   if [ "${FINAL_IMAGE_SET}" -eq 0 ]; then
-    FINAL_IMAGE="${IMAGE_REPO}:latest-cross"
+    FINAL_IMAGE="$(cross_final_image_tag)"
   fi
 }
 
@@ -886,10 +886,22 @@ _chain_prune_archived_logs() {
   log "archive retention: ${removed} old run dir(s) removed, newest ${keep} kept (CROSS_LOG_ARCHIVE_KEEP=${keep})"
 }
 
+# After the artifact-source pin started following CROSS_BUILD_PLATFORM, a
+# forgotten knob no longer fails the FROM — it succeeds, emulated, for hours.
+# Warn, do not err: emulated builds stay a legitimate (if slow) choice.
+_chain_warn_emulated_platform() {
+  local want have
+  want="$(cross_build_platform)"
+  have="linux/$(build_arch_oci)"
+  [ "${want}" = "${have}" ] && return 0
+  warn "CROSS_BUILD_PLATFORM=${want} but this host is ${have} — every cross stage AND the runtime artifact-source will run under emulation. Set CROSS_BUILD_PLATFORM=${have} for a native build."
+}
+
 main() {
   _chain_parse_args "$@"
   cross_run_id_ensure
   _chain_resolve_final_image
+  _chain_warn_emulated_platform
   _chain_validate_stages       # may exit for --describe-chain / --verify-chain
   _chain_no_push_guard         # refuse --no-push multi-stage (stale parent)
   _chain_prepare_log_dir

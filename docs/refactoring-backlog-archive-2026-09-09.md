@@ -187,3 +187,65 @@ Left behind, both small and both owner decisions: **VK6** (13 shared libraries
 the foreign arches do not get, caused by our own `ENABLE_OPT=OFF` /
 `SPIRV_CROSS_SHARED` flags) and **VK7** (11 DXC files the foreign arches ship
 that the vendor prunes from the tarball).
+
+---
+
+## VK6 + VK7. CLOSED — the foreign prefixes are 2 files from amd64, and both are explained [S]
+
+**Measured inside a container on the pushed digests, both `lib/` trees listed.**
+Not derived from a log.
+
+| | amd64 | arm64 `@sha256:f77f97fa` | riscv64 `@sha256:028ce048` |
+| --- | --- | --- | --- |
+| `lib/` | 118 | **123** | **123** |
+| `bin/` | 52 | 52 | 52 |
+| layers | 9 | 10 | 10 |
+| only amd64 has | — | **2** | **2** |
+
+The gap VK6 opened at **72** is now **2**, identically on both arches:
+`VulkanLoader` (a layout difference the consumers already assume: the foreign
+prefixes keep `libvulkan.so*` flat) and `libshaderc_util.a` (below).
+`libglslang.so`, `libSPIRV.so` and `libspirv-cross-c-shared.so` report ELF
+machine AArch64 and RISC-V respectively.
+
+### VK6: the entry's own fix would have made it worse
+
+`BUILD_SHARED_LIBS` is **exclusive, not additive**. Flipping it ON would have
+gained 9 files and LOST 6, because glslang guards its static installs of
+`MachineIndependent`, `GenericCodeGen` and `OSDependent` behind
+`if(NOT BUILD_SHARED_LIBS)`. The vendor configures glslang **twice** into one
+prefix, and the order is load-bearing: the second install owns
+`lib/cmake/glslang`, so the STATIC pass must land last or `find_package(glslang)`
+silently starts describing SHARED imported targets. Both passes are now in
+`_vulkan_target_build_glslang`, and a test asserts the order rather than just
+their presence.
+
+`SPIRV_CROSS_SHARED=ON` is the separate, genuinely additive half.
+
+**`libshaderc_util.a` is deliberately NOT replicated.** It has no `install()`
+rule anywhere — the vendor copies it by hand after `cmake --install` — and
+amd64 ships **no** libshaderc_util headers, so the archive is unlinkable as
+shipped even there. Copying it would be file-name parity for something nobody
+can use.
+
+Also left alone, and worth knowing: our `libglslang.so` is still not the same
+library as amd64's, because we pass `ENABLE_OPT=OFF` and the vendor does not.
+That is a deeper difference than a file list and belongs in its own measured
+change.
+
+### VK7: mirrors the vendor's own prune, with the guard that matters
+
+`_vulkan_target_prune_nonsdk_dxc` deletes exactly what `clean_nonsdk_files`
+deletes under `BUILD_DXC=1` — four include trees and four libs, all
+arch-relative. It is guarded on `include/dxc/dxcapi.h`, the vendor's own marker
+that a dxc install landed in THIS prefix. Without that guard the helper would
+`rm -rf include/llvm` out of whatever directory it is handed, and
+`/opt/llvm-target/include/llvm` is 41 MB of real LLVM 23 headers that
+`LLVMConfig.cmake` and 1.3 GB of `libLLVM*.a` resolve through. Four mutations,
+one of them on that guard.
+
+### VK5 closed with them
+
+arm64's earlier 20/20 was measured against a tree that no longer existed. Both
+foreign arches have now been rebuilt from the current one and report
+`24/24 component(s) built` with zero `unavailable on <arch>` lines.

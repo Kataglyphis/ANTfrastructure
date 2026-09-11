@@ -282,6 +282,21 @@ llvm_git_tag() {
   printf '%s' "llvmorg-$(llvm_release_version "$@")"
 }
 
+# A tag is movable; LLVM_COMMIT is not. Fail at CLONE time, where the message can
+# name the tag and both SHAs — not stages later as a baffling version mismatch.
+# Empty LLVM_COMMIT = keep tracking the tag (the documented opt-in).
+llvm_assert_commit_pin() {
+  local dir="$1" tag="$2" got
+  [ -n "${LLVM_COMMIT:-}" ] || return 0
+  got="$(git -C "${dir}" rev-parse HEAD 2>/dev/null || true)"
+  [ "${got}" = "${LLVM_COMMIT}" ] || {
+    printf 'ERROR: llvm-project %s resolved to %s, but LLVM_COMMIT pins %s\n' \
+      "${tag}" "${got:-<unknown>}" "${LLVM_COMMIT}" >&2
+    return 1
+  }
+  printf 'llvm-project %s verified against LLVM_COMMIT %s\n' "${tag}" "${LLVM_COMMIT}"
+}
+
 cross_wheel_platform_tag() {
   if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
     return 1
