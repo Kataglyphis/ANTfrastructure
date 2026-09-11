@@ -114,8 +114,8 @@ halves fit together and why neither is sufficient alone.
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.8.1 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| Node.js | 26.8.2 | [nodejs.org](https://nodejs.org/) | MIT |
+| uv | 0.12.13 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -172,8 +172,8 @@ halves fit together and why neither is sufficient alone.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA Toolkit | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9.25.0.15 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.2.1.2 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional GPU — AMD (`Dockerfile.amd`)
 
@@ -188,7 +188,7 @@ halves fit together and why neither is sufficient alone.
 | --- | --- | --- | --- |
 | PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.3 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
@@ -200,7 +200,7 @@ halves fit together and why neither is sufficient alone.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.33.1 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.34.0 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -239,15 +239,15 @@ halves fit together and why neither is sufficient alone.
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.3 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9.25.0.15 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.2.1.2 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Media Layer
 
@@ -280,7 +280,7 @@ halves fit together and why neither is sufficient alone.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| Pandoc | 3.10.2 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
+| Pandoc | 3.11 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
 | TeX Live (texlive-full) | Ubuntu apt | [tug.org/texlive](https://tug.org/texlive/) | Collection; per package LPPL / GPL / X11 / modified BSD |
 | Latin Modern fonts (lmodern) | Ubuntu apt | [www.gust.org.pl/projects/e-foundry/latin-modern](http://www.gust.org.pl/projects/e-foundry/latin-modern) | GUST Font License (LPPL-style) |
 | Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
@@ -291,7 +291,7 @@ halves fit together and why neither is sufficient alone.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.13 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)
@@ -486,7 +486,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-2.0-or-later
 - **Source:** <https://github.com/jgm/pandoc>
-- **Revision:** 3.10.2
+- **Revision:** 3.11
 
 ### TeX Live (texlive-full) — Documentation Image
 

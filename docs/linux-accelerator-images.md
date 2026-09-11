@@ -7,7 +7,7 @@ Optional NVIDIA GPU image chain. Two ways to enable:
 - **Orchestrated (since 2026-08-08):** `ENABLE_NVIDIA=true bash linux/scripts/build-cross-chain.sh ...` — the env toggle now reaches the cross media stage (it used to be silently dropped by the cross lane while the runtime lane honored it, leaving a GPU-configured runtime on CPU-only media artifacts). **This is the recommended path.**
 - **Hand-run:** passing `--build-arg ENABLE_NVIDIA=true` to the standard Dockerfiles. Requires a pre-existing `:cross-sdk-amd64` image (the chain's sdk stage output; the old `:sdk` tag was deleted 2026-08-27).
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:cross-sdk-amd64`)
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.26.0.51<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:cross-sdk-amd64`)
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -26,7 +26,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:cross-sdk
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.26.0.51<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
@@ -127,7 +127,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt --> |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt --> |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |
