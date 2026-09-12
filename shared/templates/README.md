@@ -4,9 +4,8 @@ Copy-and-edit starting points that are not language-specific. (The Windows
 PowerShell bootstrap lives in [`../windows/templates/`](../windows/templates/README.md);
 the agentic-loop config and runners in [`../agentic-loop/templates/`](../agentic-loop/templates/README.md).)
 
-| File | Copy to | Then |
-|---|---|---|
-| `AGENTS.md.template` | `<your-repo>/AGENTS.md` | Fill in sections 1, 3, 4 and 5. Leave section 2 as links. |
+Copy `AGENTS.md.template` to `<your-repo>/AGENTS.md`, then fill in sections 1,
+3, 4 and 5. Leave section 2 as links.
 
 ## What the layout is for
 

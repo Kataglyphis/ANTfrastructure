@@ -4,11 +4,14 @@ Copy-and-edit starting points for a project adopting the loop. The loop's
 logic lives in `windows/scripts/modules/WindowsAgenticLoop.Common.psm1` and
 `linux/scripts/lib/agentic-loop.sh`; these files are the thin consumer half.
 
-| File | Copy to | Then |
-|---|---|---|
-| `AgenticLoop.config.template.json` | `scripts/agentic-loop/AgenticLoop.config.json` | Replace every `TODO`: the build matrix entries and the build/test/quality commands. The loop refuses to start while any remain, naming each one — so you cannot silently run a half-filled template. |
-| `Invoke-AgenticLoop.ps1` | `scripts/agentic-loop/Invoke-AgenticLoop.ps1` | Nothing, unless your submodule path differs. |
-| `Run-AgenticLoop.sh` | `scripts/agentic-loop/Run-AgenticLoop.sh` | Same. `chmod +x`. |
+- `AgenticLoop.config.template.json` → `scripts/agentic-loop/AgenticLoop.config.json`.
+  Replace every `TODO`: the build matrix entries and the build/test/quality
+  commands. The loop refuses to start while any remain, naming each one — so you
+  cannot silently run a half-filled template.
+- `Invoke-AgenticLoop.ps1` → `scripts/agentic-loop/Invoke-AgenticLoop.ps1`.
+  Nothing, unless your submodule path differs.
+- `Run-AgenticLoop.sh` → `scripts/agentic-loop/Run-AgenticLoop.sh`. Same;
+  `chmod +x`.
 
 You also need a `BACKLOG.md` at the repo root using the checkbox protocol:
 `- [ ]` actionable, `- [b]` blocked (skipped by the executor and excluded

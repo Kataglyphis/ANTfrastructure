@@ -4,9 +4,9 @@ Copy-and-edit starting points for the bash side. (The PowerShell equivalent is
 [`../../windows/templates/`](../windows/templates/README.md); the consumer
 `AGENTS.md` skeleton is in [`../../templates/`](../templates/README.md).)
 
-| File | Copy to | Then |
-|---|---|---|
-| `antfrastructure.sh` | `<your-repo>/scripts/linux/lib/antfrastructure.sh` | Adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE` if it does not sit three levels below the repo root. Nothing else. |
+Copy `antfrastructure.sh` to `<your-repo>/scripts/linux/lib/antfrastructure.sh`
+and adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE` if it does not sit three levels
+below the repo root. Nothing else.
 
 ## Why this is copied rather than consumed
 

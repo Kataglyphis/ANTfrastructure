@@ -1104,8 +1104,9 @@ declare the descriptive prefixes used over ordinary build scripts, which no gate
 owns. 16 declared on 2026-09-04, covering 43 ids. An undeclared prefix fails as
 NEW; a family no id carries any more is STALE. If a family name is ever adopted as
 a preflight slug, every id under it starts being judged by ownership and the
-declaration goes stale in the same run. The file therefore holds three counts: 15
-frozen slugs, 5 `mutation-id:` freezes and 16 `mutation-family:` declarations.
+declaration goes stale in the same run. The file therefore holds three counts —
+frozen slugs, `mutation-id:` freezes and `mutation-family:` declarations — which
+the gate prints live on every run.
 
 Today's five frozen ids are the shape the file-ownership model cannot express.
 `mutations.preflight-callsite-isolated` and `mutations.preflight-runs-the-gate`

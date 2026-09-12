@@ -32,9 +32,6 @@
 # ORDINARY build scripts, which no gate owns. Not debt -- a vocabulary. An
 # undeclared prefix fails, and a family no id carries any more is STALE.
 mutation-family:android-env
-mutation-family:bench-agent
-mutation-family:coding
-mutation-family:compare
 mutation-family:boot
 mutation-family:chain-status
 mutation-family:cross-build
@@ -62,28 +59,9 @@ mutation-family:qairt
 mutation-family:rust
 mutation-family:sccache
 mutation-family:tree-arch
-mutation-family:toolcall-shim
 mutation-family:vulkan
 mutation-family:wheels
 mutation-family:trailing-return
-
-# Arrived by merge 2026-09-06 with the shared/ agentic-loop work. Declared as a
-# group: each names a subject the mutations already describe in their own why.
-mutation-family:agent
-mutation-family:backends
-mutation-family:bench-cli
-mutation-family:lanes
-mutation-family:llm-stack-tests
-mutation-family:provenance
-mutation-family:report
-mutation-family:stats
-mutation-family:sweep
-mutation-family:tools
-mutation-family:tools-opencode
-mutation-family:bench_cli
-mutation-family:bench_sweep
-mutation-family:benchmark_openai_api
-mutation-family:build_viewer
 
 # Arrived by merge 2026-09-07 with the NAS document-AI census (3f300c32).
 mutation-family:census
