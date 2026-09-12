@@ -37,7 +37,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # "secret-scan.scope-is-the-argument".
 # Resolved to an ABSOLUTE path against the CALLER's cwd and BEFORE the cd below.
 # The natural consumer invocation is a relative one from the consumer's own root
-# (third_party/ContainerHub/linux/scripts/lint-secrets.sh .), and resolving it
+# (third_party/ANTfrastructure/linux/scripts/lint-secrets.sh .), and resolving it
 # after the cd re-anchored both the scan and the config lookup inside the hub
 # checkout — so the consumer's tree was never graded at all.
 

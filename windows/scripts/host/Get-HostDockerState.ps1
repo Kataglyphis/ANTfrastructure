@@ -9,7 +9,7 @@
 # (dism) and filter (fltmc) reads; degrades gracefully when not.
 #
 #   pwsh -File windows\scripts\host\Get-HostDockerState.ps1
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\Get-HostDockerState.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Get-HostDockerState.ps1'
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off

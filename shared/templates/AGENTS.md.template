@@ -6,14 +6,14 @@ TEMPLATE — copy to <your-repo>/AGENTS.md and fill in. Delete these comments.
 The point of the layout below is one rule:
 
     Would this still be true in a different project?
-        yes -> ContainerHub owns it. LINK, do not restate.
+        yes -> ANTfrastructure owns it. LINK, do not restate.
         no  -> it belongs here. Write it out.
 
 Section 2 is links only, on purpose. The moment a procedure gets retyped here it
 starts drifting from upstream - that is not hypothetical, see
-ContainerHub docs/INDEX.md for the three-broken-copies case that motivated this.
+ANTfrastructure docs/INDEX.md for the three-broken-copies case that motivated this.
 
-Topic -> owning document: third_party/ContainerHub/docs/INDEX.md
+Topic -> owning document: third_party/ANTfrastructure/docs/INDEX.md
 -->
 
 Guidance for coding agents (and new contributors) working in <PROJECT>.
@@ -26,34 +26,34 @@ Guidance for coding agents (and new contributors) working in <PROJECT>.
 | Path | What lives there |
 | --- | --- |
 | `src/…` | |
-| `scripts/windows/`, `scripts/linux/` | Thin wrappers over ContainerHub drivers + this project's payload |
-| `third_party/ContainerHub/` | The submodule that owns every reusable script, module and doc |
+| `scripts/windows/`, `scripts/linux/` | Thin wrappers over ANTfrastructure drivers + this project's payload |
+| `third_party/ANTfrastructure/` | The submodule that owns every reusable script, module and doc |
 
-## 2. What ContainerHub owns — links only
+## 2. What ANTfrastructure owns — links only
 
 **Do not restate procedures in this section.** One line of orientation, then the
 link. If you catch yourself typing a command that would work in another repo,
 it belongs upstream.
 
 Start at
-[`third_party/ContainerHub/docs/INDEX.md`](third_party/ContainerHub/docs/INDEX.md)
+[`third_party/ANTfrastructure/docs/INDEX.md`](third_party/ANTfrastructure/docs/INDEX.md)
 — topic → owning document, so these links stay valid when upstream reorganises.
 
 | Topic | Where |
 | --- | --- |
-| Wiring this repo to ContainerHub (resolver, actions, libraries) | `docs/adopting-in-a-new-project.md` |
+| Wiring this repo to ANTfrastructure (resolver, actions, libraries) | `docs/adopting-in-a-new-project.md` |
 | The Windows image, its entrypoint and known traps | `docs/windows-builds.md` |
 | Bind mount vs tar-pipe, Dev Drive filter setup, container reuse | `docs/windows-container-build-performance.md` |
 | Linux container builds | `docs/linux-build-basics.md` |
 | clang-format / clang-tidy / cmake-format and the canonical configs | `docs/code-quality-tooling.md` |
-| The five shell-safety bug classes | ContainerHub `AGENTS.md` § *Shell safety conventions* |
+| The five shell-safety bug classes | ANTfrastructure `AGENTS.md` § *Shell safety conventions* |
 
 Two facts worth stating here because they bite immediately, not because this
 repo owns them:
 
-- Every ContainerHub PowerShell module declares `#requires -Version 7.0`, so the
+- Every ANTfrastructure PowerShell module declares `#requires -Version 7.0`, so the
   entry scripts do too — launch with `pwsh`, never `powershell`.
-- Workflows resolve ContainerHub's composite actions at `@main`, so an upstream
+- Workflows resolve ANTfrastructure's composite actions at `@main`, so an upstream
   change a workflow depends on must be pushed **before** the consumer change.
 
 ## 3. Critical invariant: submodule pins
@@ -78,19 +78,19 @@ fallout in the same change.
      If there are none yet, say so — an empty list that was checked is worth
      more than a missing section. -->
 
-Drift is guarded by ContainerHub's shared suite. It asserts that every configured
+Drift is guarded by ANTfrastructure's shared suite. It asserts that every configured
 submodule is checked out at all, sits at its recorded commit, and is pinned to a
 commit a fresh clone could restore — a pin that is on no remote branch works only on
 the machine that made it:
 
 ```yaml
-- uses: ./third_party/ContainerHub/.github/actions/run-pester-suite
+- uses: ./third_party/ANTfrastructure/.github/actions/run-pester-suite
   with:
-    path: third_party/ContainerHub/shared/windows/tests/Submodule.Pins.Tests.ps1
+    path: third_party/ANTfrastructure/shared/windows/tests/Submodule.Pins.Tests.ps1
 ```
 
 The suite takes the repo root as a parameter, falling back to
-`CONTAINERHUB_PIN_CHECK_REPO_ROOT` and then `GITHUB_WORKSPACE`, and the checkout that
+`ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT` and then `GITHUB_WORKSPACE`, and the checkout that
 runs it needs `submodules: true` — without it the suite FAILS rather than passing on
 an empty tree, which is the point. Run it after any pin bump. It does **not** check
 the version couplings above; those are on you.

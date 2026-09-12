@@ -161,7 +161,7 @@ function Assert-ContainerCommandAvailable {
 
 <#
 .SYNOPSIS
-    The family CI container image reference, composed from ContainerHub's versions.env.
+    The family CI container image reference, composed from ANTfrastructure's versions.env.
 .DESCRIPTION
     The PowerShell twin of linux/scripts/ci-image-ref.sh, and the same contract:
     versions.env owns IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG / CI_IMAGE_WINDOWS_TAG,
@@ -171,7 +171,7 @@ function Assert-ContainerCommandAvailable {
 
     It takes NO consumer repo root, deliberately, where every other entry point in this
     repo does. versions.env is resolved from THIS module's own location, so the answer
-    always comes from the ContainerHub the caller actually imported -- i.e. that
+    always comes from the ANTfrastructure the caller actually imported -- i.e. that
     consumer's pinned submodule. A -RepoRoot parameter would imply a per-consumer answer
     and there is not one; worse, it would let two roots disagree about one fleet.
 
@@ -200,9 +200,9 @@ function Get-CiImageReference {
     }
 
     if (-not (Test-Path -LiteralPath $VersionsEnvPath -PathType Leaf)) {
-        throw ("ContainerHub versions.env not found at $VersionsEnvPath. " +
+        throw ("ANTfrastructure versions.env not found at $VersionsEnvPath. " +
             'If the whole directory is missing, the submodule is not checked out: ' +
-            'git submodule update --init --recursive third_party/ContainerHub')
+            'git submodule update --init --recursive third_party/ANTfrastructure')
     }
 
     $versions = ConvertFrom-VersionsEnv -Path $VersionsEnvPath
@@ -211,7 +211,7 @@ function Get-CiImageReference {
     foreach ($key in @('IMAGE_REGISTRY_PREFIX', $tagKey)) {
         if (-not $versions.Contains($key) -or [string]::IsNullOrWhiteSpace($versions[$key])) {
             throw ("$key is not set in $VersionsEnvPath. That file is the fleet-wide owner " +
-                'of the CI image tags; a missing key means the ContainerHub pin predates ' +
+                'of the CI image tags; a missing key means the ANTfrastructure pin predates ' +
                 'the convention.')
         }
     }

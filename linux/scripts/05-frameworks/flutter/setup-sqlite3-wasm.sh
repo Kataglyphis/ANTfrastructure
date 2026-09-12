@@ -11,7 +11,7 @@
 #   setup-sqlite3-wasm.sh <consumer-root>
 
 # The consumer root is MANDATORY and never inferred: this script runs from
-# inside third_party/ContainerHub, where a BASH_SOURCE-derived root would drop
+# inside third_party/ANTfrastructure, where a BASH_SOURCE-derived root would drop
 # the file into the submodule's own tree and the app would still not start.
 #
 # There is deliberately NO version argument. The pin is the point; a consumer
@@ -33,7 +33,7 @@ setup_sqlite3_wasm() {
   load_versions_env "${_SQLITE3_WASM_CORE}/versions.env"
   if [ -z "${SQLITE3_WASM_VERSION:-}" ] || [ -z "${SQLITE3_WASM_SHA256:-}" ]; then
     printf 'setup-sqlite3-wasm.sh: SQLITE3_WASM_VERSION/SQLITE3_WASM_SHA256 are not set in\n' >&2
-    printf '                       %s/versions.env - the ContainerHub pin predates the key.\n' "${_SQLITE3_WASM_CORE}" >&2
+    printf '                       %s/versions.env - the ANTfrastructure pin predates the key.\n' "${_SQLITE3_WASM_CORE}" >&2
     return 1
   fi
   out_dir="${consumer_root}/web"

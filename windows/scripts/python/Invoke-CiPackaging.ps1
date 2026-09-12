@@ -9,7 +9,7 @@
 
 .DESCRIPTION
     Builds source distribution and binary wheels for Python packages.
-    Uses shared modules from ContainerHub.
+    Uses shared modules from ANTfrastructure.
 
 .PARAMETER PythonVersion
     Python version to use (default: "3.14")
@@ -17,8 +17,8 @@
 .PARAMETER RepoRoot
     Root of the repo being built. Default (empty) keeps today's behaviour:
     Initialize-CiEnvironment resolves three levels above this script, i.e. the
-    ContainerHub checkout itself. A consumer that vendors or submodules
-    ContainerHub passes ITS OWN root here.
+    ANTfrastructure checkout itself. A consumer that vendors or submodules
+    ANTfrastructure passes ITS OWN root here.
 
 .EXAMPLE
     Invoke-CiPackaging.ps1 -PythonVersion "3.13"
@@ -29,8 +29,8 @@ Param(
     [string]$PythonVersion = "3.14",
     # Root of the repo being built. Empty = today's behaviour, where
     # Initialize-CiEnvironment resolves three levels above this script and lands
-    # in the ContainerHub checkout. A consumer that vendors or submodules
-    # ContainerHub (<consumer>/third_party/ContainerHub/windows/scripts/python)
+    # in the ANTfrastructure checkout. A consumer that vendors or submodules
+    # ANTfrastructure (<consumer>/third_party/ANTfrastructure/windows/scripts/python)
     # MUST pass its own root, or every path derived below -- pyproject.toml, the
     # venvs, the log dir -- is read from and written into the hub checkout
     # instead of the repo under test.

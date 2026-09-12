@@ -484,12 +484,12 @@ def _value_info(name, dims):
 # NodeProto{input=1, output=2, name=3, op_type=4}
 node = _txt(1, "X") + _txt(1, "Y") + _txt(2, "Z") + _txt(3, "add") + _txt(4, "Add")
 # GraphProto{node=1, name=2, input=11, output=12}
-graph = (_msg(1, node) + _txt(2, "containerhub-smoke")
+graph = (_msg(1, node) + _txt(2, "antfrastructure-smoke")
          + _msg(11, _value_info("X", (1, 4)))
          + _msg(11, _value_info("Y", (1, 4)))
          + _msg(12, _value_info("Z", (1, 4))))
 # ModelProto{ir_version=1, producer_name=2, graph=7, opset_import=8}
-model = (_int(1, 7) + _txt(2, "containerhub-smoke") + _msg(7, graph)
+model = (_int(1, 7) + _txt(2, "antfrastructure-smoke") + _msg(7, graph)
          + _msg(8, _int(2, 13)))
 
 sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])

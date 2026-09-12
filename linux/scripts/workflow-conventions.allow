@@ -16,7 +16,7 @@
 #   not have on its own. An ARMED check counts zero here, because its findings
 #   already failed on their own: arming a check retires its row, and one finding
 #   never produces two verdicts.
-#   Below it: in ContainerHub, whose commit can edit this file beside the fix, an
+#   Below it: in ANTfrastructure, whose commit can edit this file beside the fix, an
 #   unrecorded shrink FAILS like every other allow file here. In a consumer,
 #   which reads this table through the submodule and cannot edit it, the shrink
 #   is printed with the number to write down and passes — that asymmetry is why
@@ -27,8 +27,8 @@
 #   restates them. The measurement below is 2026-09-09, all eight repositories at
 #   their `origin` head, 49 files (37 workflows + 12 composite actions).
 #
-CENSUS | ContainerHub | job-timeout | 1 | build-test-python-package-on-windows in python-ci-windows.yml — the one job in this repo still without a bound. Clear it and this check can be armed here beside `permissions`, and this row deleted
-CENSUS | ContainerHub | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
+CENSUS | ANTfrastructure | job-timeout | 1 | build-test-python-package-on-windows in python-ci-windows.yml — the one job in this repo still without a bound. Clear it and this check can be armed here beside `permissions`, and this row deleted
+CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
 CENSUS | BeschleunigerBallett | job-timeout | 15 | 13 in Linux.yml plus 2 in Windows.yml. Linux.yml's own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
 CENSUS | BeschleunigerBallett | permissions | 12 | Every job in Linux.yml; Windows.yml declares one at the top level. One `permissions:` block at the top of Linux.yml clears all twelve at once
 CENSUS | BeschleunigerBallett | artifact-error | 2 | The package uploads in Linux.yml and Windows.yml — the two artifacts a release actually ships, which is where an empty upload is worst
@@ -49,7 +49,7 @@ CENSUS | ANThology | job-timeout | 1 | The `build` job of dart.yml, this repo's 
 # `runner-ban` has no row anywhere, and never will: it is armed with no knob, so
 # its ceiling is zero and a single `*-latest` label is a hard failure the day it
 # is written. It is measured at 0 across all eight repositories today.
-# `ContainerHub | permissions` has no row for the same reason — preflight.sh
+# `ANTfrastructure | permissions` has no row for the same reason — preflight.sh
 # arms `permissions` for this repo, which is measured clean of it.
 #
 # ---------------------------------------------------------------------------
@@ -76,4 +76,4 @@ CENSUS | ANThology | job-timeout | 1 | The `build` job of dart.yml, this repo's 
 #
 # Worked example of the row shape, for whoever adds the first one:
 #
-#   ContainerHub | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/ and docs/test_results/ the artifact carries for the diagnosis.
+#   ANTfrastructure | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/ and docs/test_results/ the artifact carries for the diagnosis.

@@ -335,7 +335,7 @@ The 2026-09-06 runtime smoke failed on amd64 with three findings that are one
 cause: `app wheel smoke FAILED`, `ARCH-PARITY: OrchestrANT missing`, and
 `application module (orchestrant) failed to import`.
 
-The GitHub repo was renamed to `OrchestrANT` and ContainerHub followed (it clones
+The GitHub repo was renamed to `OrchestrANT` and ANTfrastructure followed (it clones
 `OrchestrANT.git` into `/opt/OrchestrANT` and runs `python -m orchestrant.smoke`).
 The app repo's CONTENTS had not: at tag `v0.0.27` it still declared
 `name = "Orchestr-ANT-ion"`, shipped the module as `orchestr_ant_ion/`, and carried
@@ -346,7 +346,7 @@ via `git mv`, dist name -> `orchestrant`, console script -> `orchestrant-smoke`,
 `VERSION.txt` -> `0.0.28`, every GitHub URL -> `Kataglyphis/OrchestrANT`, display
 name -> `OrchestrANT` (which keeps the ANT), remote URL updated, `uv.lock`
 regenerated. The two CHANGELOGs deliberately keep the old name: they are a record
-of what happened, not a description of what is. ContainerHub's `APP_REF` is
+of what happened, not a description of what is. ANTfrastructure's `APP_REF` is
 `v0.0.28` in all four Linux places, and the repo's own `sync_versions.py --write`
 carried the same pin into `windows/Dockerfile.torch` and the dependency table.
 

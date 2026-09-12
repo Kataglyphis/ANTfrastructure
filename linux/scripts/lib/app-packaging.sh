@@ -70,8 +70,8 @@ app_packaging_assert_artifact() {
   echo "Created: ${artifact} ($(du -h "$artifact" 2>/dev/null | cut -f1))"
 }
 
-# appimagetool comes from ContainerHub (pinned version + SHA256) — AGENTS.md § 2.
-app_packaging_ensure_appimagetool_via_containerhub() {
+# appimagetool comes from ANTfrastructure (pinned version + SHA256) — AGENTS.md § 2.
+app_packaging_ensure_appimagetool_via_antfrastructure() {
   if command -v appimagetool >/dev/null 2>&1; then return 0; fi
   bash "${_APP_PACKAGING_DIR}/../02-toolchain/packaging-deps.sh" appimagetool || return 1
   # The provisioner's own PATH export dies with the child process.
@@ -82,7 +82,7 @@ app_packaging_ensure_appimagetool_via_containerhub() {
 app_packaging_setup_dependencies_for_container() {
   local matrix_arch="${1:?matrix_arch required}"
 
-  # The CI image already ships these: ContainerHub's Dockerfile.base runs
+  # The CI image already ships these: ANTfrastructure's Dockerfile.base runs
   # linux/scripts/02-toolchain/packaging-deps.sh, whose
   # packaging_prerequisite_packages list is exactly dpkg / flatpak /
   # flatpak-builder / elfutils / libfuse2(t64) / dbus-user-session / wget.
@@ -107,7 +107,7 @@ app_packaging_setup_dependencies_for_container() {
     app_packaging_run_privileged_cmd apt-get install -y dpkg flatpak flatpak-builder elfutils libfuse2 dbus-user-session wget
   fi
 
-  app_packaging_ensure_appimagetool_via_containerhub
+  app_packaging_ensure_appimagetool_via_antfrastructure
 
   XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
   export XDG_RUNTIME_DIR
@@ -283,7 +283,7 @@ app_packaging_map_arch_to_flatpak() {
 
 # Prints the command name; stdout stays clean because the provisioner logs to stderr.
 app_packaging_resolve_appimagetool() {
-  app_packaging_ensure_appimagetool_via_containerhub >&2 || return 1
+  app_packaging_ensure_appimagetool_via_antfrastructure >&2 || return 1
   echo "appimagetool"
 }
 

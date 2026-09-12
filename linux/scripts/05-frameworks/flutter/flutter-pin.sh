@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# flutter-pin.sh - resolve the Flutter pin ContainerHub owns.
+# flutter-pin.sh - resolve the Flutter pin ANTfrastructure owns.
 #
 # versions.env pins FLUTTER_VERSION *together with* the tarball's
 # FLUTTER_SDK_SHA256. The two are one pin: overriding only the version can never

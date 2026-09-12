@@ -4,7 +4,7 @@
 """The scan-root contract for the ratchet gates. One owner, four rules.
 
 WHY THIS EXISTS. Twelve gates resolved their scan root from ``__file__``, which
-in a consumer's ``third_party/ContainerHub`` checkout is the HUB -- so each one
+in a consumer's ``third_party/ANTfrastructure`` checkout is the HUB -- so each one
 reported green over a tree nobody asked about while ~15,700 lines of consumer
 shell went ungraded. Giving them ``--root`` fixed that and immediately produced a
 second problem: seven copies of the same twenty lines, because the port was done

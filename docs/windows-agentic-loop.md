@@ -95,12 +95,12 @@ Agent invocations retry with linear backoff (`agentRetries` ×
 Place the module in your repository's module path, then import it:
 
 ```pwsh
-# If using ContainerHub as a submodule:
-$modulePath = Resolve-Path 'third_party/ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
+# If using ANTfrastructure as a submodule:
+$modulePath = Resolve-Path 'third_party/ANTfrastructure/windows/scripts/modules/WindowsAgenticLoop.Common.psm1'
 Import-Module $modulePath -Force
 ```
 
-Do not vendor a copy into the consumer repo — resolve it ContainerHub-first
+Do not vendor a copy into the consumer repo — resolve it ANTfrastructure-first
 (e.g. BeschleunigerBallett's `Resolve-BuildModule.ps1`); vendored duplicates
 are exactly the drift the 2026-08-02 dedup pass removed.
 
@@ -114,7 +114,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $configPath = Join-Path $PSScriptRoot 'AgenticLoop.config.json'
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-Import-Module (Join-Path $repoRoot 'third_party/ContainerHub/windows/scripts/modules/WindowsAgenticLoop.Common.psm1') -Force
+Import-Module (Join-Path $repoRoot 'third_party/ANTfrastructure/windows/scripts/modules/WindowsAgenticLoop.Common.psm1') -Force
 
 Initialize-AgenticLoop -ConfigPath $configPath -RepoRoot $repoRoot
 

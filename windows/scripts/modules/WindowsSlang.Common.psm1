@@ -43,7 +43,7 @@ Set-StrictMode -Version Latest
 #
 # WGSL requires every non-builtin member of an inter-stage (varying) struct to
 # carry @location(N). slangc 2026.1-52-gc8ddf20bb - the build in Vulkan SDK
-# 1.4.341.1, i.e. the ContainerHub Linux image - drops that attribute in the
+# 1.4.341.1, i.e. the ANTfrastructure Linux image - drops that attribute in the
 # COMBINED emit (no -entry/-stage) while emitting it correctly per entry point,
 # so a regeneration on that toolchain silently produced WGSL naga rejects.
 # 2026.8 is correct on both Windows and Linux. Two defences, both needed:

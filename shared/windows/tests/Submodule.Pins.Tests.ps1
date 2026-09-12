@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: MIT
 
 # Guards a repository's submodule pins against silent drift. Repo-agnostic: it
-# is meant to be run FROM the ContainerHub submodule by any consumer, not copied
+# is meant to be run FROM the ANTfrastructure submodule by any consumer, not copied
 # into it.
 #
-#   - uses: ./third_party/ContainerHub/.github/actions/run-pester-suite
+#   - uses: ./third_party/ANTfrastructure/.github/actions/run-pester-suite
 #     with:
-#       path: third_party/ContainerHub/shared/windows/tests/Submodule.Pins.Tests.ps1
+#       path: third_party/ANTfrastructure/shared/windows/tests/Submodule.Pins.Tests.ps1
 #
 # Promoted from BeschleunigerBallett scripts/windows/tests/Submodule.Pins.Tests.ps1
 # on 2026-09-07. The checks were always generic - the guards themselves have
@@ -41,7 +41,7 @@
 # ASSERTION DIALECT: plain `throw`, never `Should`. Pester 3.x (`Should Be 0`)
 # and Pester 5.x (`Should -Be 0`) are incompatible dialects, and the consumers do
 # not agree on a version - BeschleunigerBallett's Windows lane pins 3.4.0 while
-# ContainerHub's own suites need >= 5. A throwing It block is a failed test in
+# ANTfrastructure's own suites need >= 5. A throwing It block is a failed test in
 # both, so one file serves every consumer.
 #
 # All the work happens in BeforeAll and the It blocks only assert on what it
@@ -58,7 +58,7 @@
 [CmdletBinding()]
 param(
     # Superproject working tree to check. Falls back, in order, to
-    # $env:CONTAINERHUB_PIN_CHECK_REPO_ROOT, $env:GITHUB_WORKSPACE (what
+    # $env:ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT, $env:GITHUB_WORKSPACE (what
     # actions/checkout checked out), and finally the git top level of the
     # current directory. The run-pester-suite composite action can only pass a
     # path, so the environment fallbacks are what make it usable there.
@@ -89,7 +89,7 @@ Describe 'Submodule pins' {
 
         $candidates = @(
             $repoRootArg
-            $env:CONTAINERHUB_PIN_CHECK_REPO_ROOT
+            $env:ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT
             $env:GITHUB_WORKSPACE
         )
         $resolvedRoot = $null
@@ -105,12 +105,12 @@ Describe 'Submodule pins' {
         if (-not $resolvedRoot) {
             # Last resort only. This deliberately asks about the CURRENT
             # directory and not about $PSScriptRoot: inside a consumer this file
-            # lives in the ContainerHub submodule, so its own top level is
-            # ContainerHub, never the superproject the caller means.
+            # lives in the ANTfrastructure submodule, so its own top level is
+            # ANTfrastructure, never the superproject the caller means.
             $topLevel = (& git rev-parse --show-toplevel 2>$null | Select-Object -First 1)
             if ([string]::IsNullOrWhiteSpace($topLevel)) {
                 throw ('Submodule pin check: no repo root. Pass -RepoRoot, set ' +
-                    'CONTAINERHUB_PIN_CHECK_REPO_ROOT, or run from inside the repository.')
+                    'ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT, or run from inside the repository.')
             }
             $resolvedRoot = (Resolve-Path -LiteralPath $topLevel.Trim()).Path
         }
@@ -119,7 +119,7 @@ Describe 'Submodule pins' {
         # WindowsRepoHygiene.Common is located relative to THIS file rather than
         # through a consumer's Resolve-BuildModule: the path is identical whether
         # this repository is the superproject or is checked out at
-        # third_party/ContainerHub, so it cannot resolve to a stale vendored
+        # third_party/ANTfrastructure, so it cannot resolve to a stale vendored
         # copy. -Global so the exports survive into every It body.
         $modulePath = Join-Path $PSScriptRoot '..\..\..\windows\scripts\modules\WindowsRepoHygiene.Common.psm1'
         if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {

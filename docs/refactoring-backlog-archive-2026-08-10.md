@@ -479,7 +479,7 @@ validated by the 0717 media→android→runtime rebuild unless noted):
   parsed (gated); WebRTC signalling-server binary + Vulkan loader probes (WARN).
 - **DONE (app v0.0.26, afbca10): wheel smokes** — JPEG imencode + onnxruntime-EP
   asserts (gated); optional cv2 dnn / tiff-webp-exr codecs / freetype-text checks.
-  ContainerHub APP_REF v0.0.24→v0.0.26 (a1e8236).
+  ANTfrastructure APP_REF v0.0.24→v0.0.26 (a1e8236).
 
 **DEFERRED — `setup_gi_cross_wrappers` decomposition (C1, gstreamer/common/
 pre-setup.sh:190, ~221 lines, M·★★★).** The single largest complexity win, but the

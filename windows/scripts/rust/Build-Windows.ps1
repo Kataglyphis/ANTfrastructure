@@ -5,7 +5,7 @@
 
 <#
 .SYNOPSIS
-  Build script for running inside the Windows container, using the ContainerHub build framework.
+  Build script for running inside the Windows container, using the ANTfrastructure build framework.
 
 .DESCRIPTION
   - Uses WindowsBuild.Common.psm1 for structured logging and step management.
@@ -26,7 +26,7 @@ if ([string]::IsNullOrWhiteSpace($Workspace)) {
     $Workspace = (Get-Location).Path
 }
 
-# Import ContainerHub build framework (relative to this script's location in ContainerHub)
+# Import ANTfrastructure build framework (relative to this script's location in ANTfrastructure)
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsScripts.Shared')
 
@@ -41,13 +41,13 @@ Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Comm
 # hazard the versions.env note for these two keys describes: a new advisory-db
 # schema or a new default lint turns this lane red with no commit behind it and
 # nothing to bisect. An unresolvable pin THROWS instead.
-function Get-ContainerHubPin {
+function Get-ANTfrastructurePin {
     param([Parameter(Mandatory)][string]$Name)
 
     $fromEnv = [Environment]::GetEnvironmentVariable($Name)
     if (-not [string]::IsNullOrWhiteSpace($fromEnv)) { return $fromEnv }
 
-    # windows\scripts\rust -> windows\scripts -> windows -> the ContainerHub root.
+    # windows\scripts\rust -> windows\scripts -> windows -> the ANTfrastructure root.
     $versionsEnv = Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env'
     if (Test-Path $versionsEnv) {
         $pins = ConvertFrom-VersionsEnv -Path $versionsEnv
@@ -60,8 +60,8 @@ function Get-ContainerHubPin {
            'install unpinned would let crates.io choose the version instead.')
 }
 
-$CargoAuditVersion = Get-ContainerHubPin -Name 'CARGO_AUDIT_VERSION'
-$CargoDenyVersion  = Get-ContainerHubPin -Name 'CARGO_DENY_VERSION'
+$CargoAuditVersion = Get-ANTfrastructurePin -Name 'CARGO_AUDIT_VERSION'
+$CargoDenyVersion  = Get-ANTfrastructurePin -Name 'CARGO_DENY_VERSION'
 
 # Initialize Build Context
 $logDir = Join-Path $Workspace "logs"

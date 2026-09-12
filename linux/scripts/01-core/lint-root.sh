@@ -4,7 +4,7 @@
 # The callers — linux/scripts/lint-shell.sh, linux/scripts/lint-python.sh and
 # linux/scripts/lint-dockerfiles.sh — each take an optional consumer root, for
 # one reason: a submodule checkout puts them INSIDE the consumer, where a
-# BASH_SOURCE-derived root resolves to ContainerHub and the gate grades the hub
+# BASH_SOURCE-derived root resolves to ANTfrastructure and the gate grades the hub
 # while reporting green over a tree nobody looked at.
 # docs/shared-script-libraries.md#consumer-entry-points-that-are-not-libraries
 
@@ -71,7 +71,7 @@ lint_root_begin() {
 
 # lint_root_tracked <root> <pathspec>... — NUL-separated tracked paths.
 # git ls-files, never find: a vendored submodule (this very repo, at
-# third_party/ContainerHub) is a GITLINK there, so a consumer's scope cannot
+# third_party/ANTfrastructure) is a GITLINK there, so a consumer's scope cannot
 # quietly swallow the hub's own files, and untracked build output stays out.
 lint_root_tracked() {
   local root="$1"

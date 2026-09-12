@@ -5,7 +5,7 @@
 
 <#
 .SYNOPSIS
-  Checks or refreshes a consumer's copies of the ContainerHub-owned shared files.
+  Checks or refreshes a consumer's copies of the ANTfrastructure-owned shared files.
 
 .DESCRIPTION
   See README.md next to this script for WHY these files are copied into
@@ -31,7 +31,7 @@
 
 .PARAMETER Manifest
   Path to the consumer manifest. Defaults to
-  <RepoRoot>/.containerhub-shared.manifest when that file exists.
+  <RepoRoot>/.antfrastructure-shared.manifest when that file exists.
 
 .PARAMETER Ignore
   LEGACY, and only honoured when no manifest is in play: file names this project
@@ -77,7 +77,7 @@ function Read-ManifestRow {
   }
   # Comma on purpose: returning an array of ONE row would unroll on the way out
   # and hand the caller that row's fields instead, so a single-line manifest
-  # read as one character per field ('containerhub-sh' -> 'c').
+  # read as one character per field ('antfrastructure-sh' -> 'c').
   return , $rows
 }
 
@@ -140,7 +140,7 @@ function Get-DeclaredAsset {
   foreach ($f in (Read-ManifestRow -Path $Path -Separator '\s+')) {
     $id = $f[0]
     if (-not $Registry.Contains($id)) {
-      throw ("$Path declares '$id', which ContainerHub does not own. " +
+      throw ("$Path declares '$id', which ANTfrastructure does not own. " +
         "Known ids: $($Registry.Keys -join ', ').")
     }
     $local = $Registry[$id].Default
@@ -214,7 +214,7 @@ function Write-Copy {
 $registry = Get-AssetRegistry
 $resolvedRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 if (-not $Manifest) {
-  $default = Join-Path $resolvedRoot '.containerhub-shared.manifest'
+  $default = Join-Path $resolvedRoot '.antfrastructure-shared.manifest'
   if (Test-Path -LiteralPath $default) { $Manifest = $default }
 }
 
@@ -279,9 +279,9 @@ if ($missing.Count -gt 0) {
 if ($drifted.Count -gt 0) {
   Write-Host ''
   Write-Host 'DECLARED and present, but the content differs from the canonical copy.' -ForegroundColor Red
-  Write-Host 'Edit the file UPSTREAM (in ContainerHub), then refresh here with:' -ForegroundColor Red
-  Write-Host '  pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write' -ForegroundColor Red
-  Write-Host '  bash third_party/ContainerHub/shared/config/sync-shared-config.sh --repo-root . --write' -ForegroundColor Red
+  Write-Host 'Edit the file UPSTREAM (in ANTfrastructure), then refresh here with:' -ForegroundColor Red
+  Write-Host '  pwsh -File third_party/ANTfrastructure/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write' -ForegroundColor Red
+  Write-Host '  bash third_party/ANTfrastructure/shared/config/sync-shared-config.sh --repo-root . --write' -ForegroundColor Red
   Write-Host 'If this project genuinely owns the file, drop its line from the manifest instead.' -ForegroundColor Red
 }
 if ($missing.Count -gt 0 -or $drifted.Count -gt 0) { exit 1 }

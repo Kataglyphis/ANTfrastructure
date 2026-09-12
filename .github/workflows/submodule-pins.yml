@@ -1,7 +1,7 @@
 # .github/workflows/submodule-pins.yml
 # The hub gating ITSELF on the invariant it hands the consumers.
 #
-# ContainerHub has shipped the submodule-pin guards (WindowsRepoHygiene.Common)
+# ANTfrastructure has shipped the submodule-pin guards (WindowsRepoHygiene.Common)
 # since 2026-08-07 and the shared suite that drives them
 # (shared/windows/tests/Submodule.Pins.Tests.ps1) since 2026-09-07 - and until
 # this workflow existed, nothing checked this repository's OWN
@@ -57,7 +57,7 @@ jobs:
       # only pass a path, so the root comes through the environment. It would
       # fall back to GITHUB_WORKSPACE on its own; naming it here keeps the wiring
       # visible instead of implied.
-      CONTAINERHUB_PIN_CHECK_REPO_ROOT: ${{ github.workspace }}
+      ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

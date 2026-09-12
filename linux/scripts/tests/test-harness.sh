@@ -110,7 +110,7 @@ t_git_commit() {
 # the files, and what is wrong with them — stays in the suite. Third owner of a
 # shape the shell, python and Dockerfile lint suites had each grown separately.
 # docs/code-quality-tooling.md#the-mutation-gate-mutations
-T_VENDORED=third_party/ContainerHub
+T_VENDORED=third_party/ANTfrastructure
 t_consumer_fixture() {
   local parent="$1" plant="$2" shape="$3" vendored="${4:-}" d
   d="$(mktemp -d "${parent}/consumer.XXXXXX")"

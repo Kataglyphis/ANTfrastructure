@@ -788,7 +788,7 @@ _iree_check_prereqs() {
 
 # ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
 # (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
-# stable API, so we CANNOT substitute ContainerHub's release-tag toolchain LLVM;
+# stable API, so we CANNOT substitute ANTfrastructure's release-tag toolchain LLVM;
 # IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
 # itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
 # /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media

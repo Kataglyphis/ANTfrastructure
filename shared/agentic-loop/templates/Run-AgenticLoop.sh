@@ -5,12 +5,12 @@ set -euo pipefail
 # TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.sh.
 #
 # Agentic loop (Linux). Thin wrapper: sources the reusable library from the
-# ContainerHub submodule, parses flags into the env vars the library reads,
-# and calls run_agentic_loop. Task prompts default to ContainerHub's
+# ANTfrastructure submodule, parses flags into the env vars the library reads,
+# and calls run_agentic_loop. Task prompts default to ANTfrastructure's
 # shared/agentic-loop/prompts/*.md - do not hard-code prompt text here.
 #
 # Thin wrapper around the reusable library in
-# third_party/ContainerHub/linux/scripts/lib/agentic-loop.sh.
+# third_party/ANTfrastructure/linux/scripts/lib/agentic-loop.sh.
 #
 # Engines (config .engine, or --engine / AGENTIC_ENGINE):
 #   claude   — Claude Code CLI; models come from the config
@@ -35,8 +35,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# ── Source reusable library from ContainerHub ───────────────────────────
-AGENTIC_LIB="${REPO_ROOT}/third_party/ContainerHub/linux/scripts/lib/agentic-loop.sh"
+# ── Source reusable library from ANTfrastructure ───────────────────────────
+AGENTIC_LIB="${REPO_ROOT}/third_party/ANTfrastructure/linux/scripts/lib/agentic-loop.sh"
 if [[ -f "$AGENTIC_LIB" ]]; then
     source "$AGENTIC_LIB"
 else

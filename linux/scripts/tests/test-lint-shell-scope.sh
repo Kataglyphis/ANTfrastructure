@@ -80,7 +80,7 @@ t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"
 
 # --- the consumer root (--root) ----------------------------------------------
 # A submodule checkout puts this script INSIDE the consumer, where the default
-# root resolves to ContainerHub: without --root the gate grades the hub's own
+# root resolves to ANTfrastructure: without --root the gate grades the hub's own
 # files, reports green, and nobody has read a line of the consumer's shell.
 # These cases pin the three ways that goes wrong -- the wrong tree graded, the
 # vendored hub graded AS the consumer, and an empty scope reported as a pass.
@@ -104,7 +104,7 @@ _c_broken="$(_consumer broken)"
 t_assert_eq "0" "$(t_rc bash "${SUBJECT}" --root "${_c_clean}")" \
   "the gate must be able to be green over a consumer, or the red below proves only that it is broken"
 t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_c_broken}")" \
-  "a gate that ignored --root would grade ContainerHub and give both checkouts the same verdict"
+  "a gate that ignored --root would grade ANTfrastructure and give both checkouts the same verdict"
 t_assert_contains "$(bash "${SUBJECT}" --root "${_c_broken}" 2>&1)" "broken.sh" \
   "the finding has to name the consumer's file to be actionable"
 

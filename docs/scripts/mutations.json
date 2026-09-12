@@ -1653,7 +1653,7 @@
     "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
     "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
-    "why": "the root is the only thing that puts a consumer's Python in front of ruff at all; ignoring it grades ContainerHub -- which is clean -- and reports OK for 65 files nobody linted"
+    "why": "the root is the only thing that puts a consumer's Python in front of ruff at all; ignoring it grades ANTfrastructure -- which is clean -- and reports OK for 65 files nobody linted"
   },
   {
     "id": "python-lint.consumer-heredoc-extraction",
@@ -2421,7 +2421,7 @@
     "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
     "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
-    "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades ContainerHub and reports OK for a tree nobody looked at"
+    "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades ANTfrastructure and reports OK for a tree nobody looked at"
   },
   {
     "id": "shellcheck.non-git-root-refused",
@@ -2437,7 +2437,7 @@
     "find": "  LINT_ROOT_PATH=\"$(cd \"${LINT_ROOT_RAW}\" 2>/dev/null && pwd)\" \\\n    || _lint_root_die \"lint root not found: ${LINT_ROOT_RAW}\" || return 1",
     "replace": "  LINT_ROOT_PATH=\"$(cd \"${LINT_ROOT_RAW}\" 2>/dev/null && pwd)\" || LINT_ROOT_PATH=\"$1\"",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
-    "why": "a mistyped root that falls back to ContainerHub grades a clean tree and reports OK for the checkout the caller actually named -- the wrong-tree bug this whole contract exists to stop"
+    "why": "a mistyped root that falls back to ANTfrastructure grades a clean tree and reports OK for the checkout the caller actually named -- the wrong-tree bug this whole contract exists to stop"
   },
   {
     "id": "shellcheck.consumer-scope-is-tracked-files",
@@ -3557,7 +3557,7 @@
     "find": "LINT_ROOT=\"$(cd \"${1:-${SCRIPT_REPO_ROOT}}\" && pwd)\" || exit 1",
     "replace": "LINT_ROOT=\"${SCRIPT_REPO_ROOT}\"",
     "test": "bash linux/scripts/tests/test-workflow-lint.sh",
-    "why": "a submodule checkout puts this script inside the consumer; ignoring the argument lints ContainerHub and reports OK for a tree nobody looked at"
+    "why": "a submodule checkout puts this script inside the consumer; ignoring the argument lints ANTfrastructure and reports OK for a tree nobody looked at"
   },
   {
     "id": "workflow-lint.cd-into-lint-root",
@@ -7433,10 +7433,10 @@
   {
     "id": "lint-gates.empty-shell-list-refuses",
     "target": "linux/scripts/run-lint-gates.sh",
-    "find": "    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\\n' >&2\n    return 1",
-    "replace": "    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\\n' >&2\n    return 0",
+    "find": "    printf 'zero file arguments falls back to ANTfrastructure OWN tree and passes.)\\n' >&2\n    return 1",
+    "replace": "    printf 'zero file arguments falls back to ANTfrastructure OWN tree and passes.)\\n' >&2\n    return 0",
     "test": "bash linux/scripts/tests/test-lint-gates.sh",
-    "why": "an empty file list must FAIL, not merely print: lint-shell.sh with zero file arguments lints ContainerHub's own tree and exits 0, which is green over the consumer's nothing"
+    "why": "an empty file list must FAIL, not merely print: lint-shell.sh with zero file arguments lints ANTfrastructure's own tree and exits 0, which is green over the consumer's nothing"
   },
   {
     "id": "lint-gates.vendored-dir-default-exclusion",
@@ -7679,7 +7679,7 @@
     "find": "        if [ -z \"${SSC_MODE[$id]:-}\" ]; then",
     "replace": "        if false; then",
     "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
-    "why": "an id ContainerHub does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
+    "why": "an id ANTfrastructure does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
   },
   {
     "id": "shared-config.exact-mode-is-declared-in-the-manifest",

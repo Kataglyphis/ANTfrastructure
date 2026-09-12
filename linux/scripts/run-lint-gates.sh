@@ -13,7 +13,7 @@
 
 # The consumer root is MANDATORY and never inferred. A submodule checkout puts
 # this script inside the consumer, where a BASH_SOURCE-derived root resolves to
-# ContainerHub and every gate reports green over the wrong tree - the same bug
+# ANTfrastructure and every gate reports green over the wrong tree - the same bug
 # that made lint-secrets.sh and lint-workflows.sh take a root.
 #
 #   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]...
@@ -104,13 +104,13 @@ _lint_gates_scope() {
       printf '%s: no tracked %s outside %s - nothing to grade in this repo.\n' \
         "${label}" "${spec}" "${_LINT_GATES_EXCLUDE[*]}"
       printf '  (safe here: this gate passes explicit paths, so an empty list\n'
-      printf '   cannot fall back to grading ContainerHub OWN tree.)\n'
+      printf '   cannot fall back to grading ANTfrastructure OWN tree.)\n'
       return 2
     fi
     printf 'no tracked %s outside %s - the list driving this gate is empty;\n' \
       "${spec}" "${_LINT_GATES_EXCLUDE[*]}" >&2
     printf 'refusing to report green over nothing. (the underlying linter with\n' >&2
-    printf 'zero file arguments falls back to ContainerHub OWN tree and passes.)\n' >&2
+    printf 'zero file arguments falls back to ANTfrastructure OWN tree and passes.)\n' >&2
     return 1
   fi
   printf '%s scope (%d file(s)):\n' "${label}" "${#_LINT_GATES_SCOPE[@]}"
@@ -150,15 +150,15 @@ _lint_gates_workflows() {
 _lint_gates_shared_config() {
   _lint_gates_hub shared/config/sync-shared-config.sh || return 1
   local sync="${_LINT_GATES_HUB_FILE}"
-  local manifest="${_LINT_GATES_ROOT}/.containerhub-shared.manifest"
+  local manifest="${_LINT_GATES_ROOT}/.antfrastructure-shared.manifest"
   if [ ! -f "${manifest}" ]; then
-    printf 'no .containerhub-shared.manifest at %s\n' "${_LINT_GATES_ROOT}" >&2
-    printf 'This gate compares the ContainerHub-owned files this repo holds a COPY of, and\n' >&2
+    printf 'no .antfrastructure-shared.manifest at %s\n' "${_LINT_GATES_ROOT}" >&2
+    printf 'This gate compares the ANTfrastructure-owned files this repo holds a COPY of, and\n' >&2
     printf 'it will not guess which those are: guessing is what made it unrunnable before.\n' >&2
     printf 'Declare them - one id per line, from the registry in\n' >&2
-    printf '  third_party/ContainerHub/shared/config/shared-assets.manifest\n' >&2
+    printf '  third_party/ANTfrastructure/shared/config/shared-assets.manifest\n' >&2
     printf 'A repo that takes only the two bootstrap templates writes exactly:\n' >&2
-    printf '  containerhub-sh\n  resolve-build-module\n' >&2
+    printf '  antfrastructure-sh\n  resolve-build-module\n' >&2
     printf 'An asset left out is never compared - that is how an intentional\n' >&2
     printf 'project-owned override is recorded. See shared/config/README.md.\n' >&2
     return 1

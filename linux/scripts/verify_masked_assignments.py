@@ -14,7 +14,7 @@ GRADING A CONSUMER. `--root` follows docs/scripts/verify_mutations.py, which
 takes the same flag for the same job; the freeze-file flag beside it is this
 gate's own (verify_mutations names its state file --manifest). Both exist for the
 reason the lint gates take a root: a submodule checkout puts this script INSIDE the consumer,
-where a root derived from __file__ resolves to ContainerHub and the gate grades
+where a root derived from __file__ resolves to ANTfrastructure and the gate grades
 the wrong tree while reporting green over one nobody looked at.
 
 Under the hub's own root the scan set is the historical SCAN tuple, so the hub's

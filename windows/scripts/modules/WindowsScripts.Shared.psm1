@@ -723,7 +723,7 @@ function Assert-Elevated {
 # consumer's Build-Windows.ps1, all three identical. One home now.
 #
 # There is deliberately NO general Resolve-Executable here. Both the
-# ContainerHub scripts above and the consumer carried one, and all of them
+# ANTfrastructure scripts above and the consumer carried one, and all of them
 # `Get-ChildItem -Recurse` the whole Windows Kits tree to find an SDK tool.
 # WindowsMsix.Common's Resolve-WindowsSdkToolPath already does that job
 # properly - honouring an explicit override, then VsDevCmd's

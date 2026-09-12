@@ -8,7 +8,7 @@ docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 GRADING A CONSUMER. `--root` and `--allow` are the same contract
 docs/scripts/verify_mutations.py already documents, and for the same reason the lint
 gates take one: a submodule checkout puts this script INSIDE the consumer, where a root
-derived from __file__ resolves to ContainerHub and the gate grades the wrong tree while
+derived from __file__ resolves to ANTfrastructure and the gate grades the wrong tree while
 reporting green over one nobody looked at.
 
 This gate needs TWO scan sets, and the second one decides whether the verdict means

@@ -16,14 +16,14 @@ by path. That is what lets a module move between the consumer and this repo
 without its callers changing:
 
 ```cmake
-set(KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ContainerHub/cmake")
-if(NOT EXISTS "${KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR}/Sanitizers.cmake")
-  message(FATAL_ERROR "ContainerHub submodule not checked out. Run: git submodule update --init --recursive")
+set(KATAGLYPHIS_ANTFRASTRUCTURE_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ANTfrastructure/cmake")
+if(NOT EXISTS "${KATAGLYPHIS_ANTFRASTRUCTURE_CMAKE_DIR}/Sanitizers.cmake")
+  message(FATAL_ERROR "ANTfrastructure submodule not checked out. Run: git submodule update --init --recursive")
 endif()
 
 # Local first, so a project can override any module by dropping a same-named
 # file in its own cmake/ without editing this repo.
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${KATAGLYPHIS_CONTAINERHUB_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${KATAGLYPHIS_ANTFRASTRUCTURE_CMAKE_DIR}")
 
 include(PreventInSourceBuilds)
 include(Sanitizers)

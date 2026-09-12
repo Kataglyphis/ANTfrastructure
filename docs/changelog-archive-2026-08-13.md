@@ -188,7 +188,7 @@ mistake. Restating produced three broken copies.
   through it, so reorganising docs here means editing that page rather than
   hunting links across seven repositories.
 - **`shared/templates/AGENTS.md.template` (new)** is the consumer skeleton, with
-  section 2 ("what ContainerHub owns") deliberately links-only.
+  section 2 ("what ANTfrastructure owns") deliberately links-only.
 
 Explicitly NOT added: a lint that fails consumer docs for mentioning `wcifs` or
 `--isolation process`. A keyword cannot tell *restating* from *applying* -
@@ -305,7 +305,7 @@ turned out the direction of travel was removal, not consolidation), the
 gitignored `.github/instructions/codacy.instructions.md`, and the `.codacy`
 entries in `.gitignore` / `.dockerignore`.
 
-Nine repositories were swept: ContainerHub, BeschleunigerBallett,
+Nine repositories were swept: ANTfrastructure, BeschleunigerBallett,
 Inference-Engine, Orchestr-ANT-ion, RustProjectTemplate, WebDavClient,
 jotrockenmitlocken, Kataglyphis and Cpp-Inference (plus DocumANTation's
 `.dockerignore`). No README badges and no CI steps referenced Codacy, so nothing
@@ -319,7 +319,7 @@ back clean; what was left was shared *configuration*, and two live defects.
 
 - **`.codacy/` (new: `cli.sh`, `codacy.yaml`)** — Kataglyphis-Orchestr-ANT-ion
   and Kataglyphis-RustProjectTemplate both symlink `.codacy/cli.sh` to
-  `../ExternalLib/Kataglyphis-ContainerHub/.codacy/cli.sh`, and this repo had no
+  `../ExternalLib/Kataglyphis-ANTfrastructure/.codacy/cli.sh`, and this repo had no
   `.codacy/` at all: **both symlinks were dangling.** Adopted from
   Inference-Engine's real copy (Codacy's stock CLI bootstrap, nothing
   project-specific in it), which makes the two symlinks resolve and lets the

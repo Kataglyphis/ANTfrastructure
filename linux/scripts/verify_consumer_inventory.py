@@ -224,7 +224,7 @@ def is_hub_reference(text, start, matched, entry, ctx):
 
     In the hub itself every hit does. In a consumer the reference may be to its
     own file of the same path or module name, so it counts only when qualified
-    (third_party/ContainerHub/..., owner/ContainerHub/...) or when the consumer
+    (third_party/ANTfrastructure/..., owner/ANTfrastructure/...) or when the consumer
     owns no such path -- and, for a by-name alias, no file of that basename.
     """
     if ctx["is_self"]:
@@ -268,7 +268,7 @@ def scan_consumer(root, files, entries, ctx):
 def inside_url(text, start):
     """Is this hit part of an http(s) URL rather than a path in a tree?
 
-    github.com/<owner>/ContainerHub/actions/... and .../blob/main/... look
+    github.com/<owner>/ANTfrastructure/actions/... and .../blob/main/... look
     exactly like repository paths and are not ones.
     """
     before = text[max(0, start - 96):start]
@@ -389,7 +389,7 @@ def render_report(rows, consumers, dangling):
     counts = {s: len([r for r in rows if r["status"] == s]) for s in STATUS_ORDER}
     names = ", ".join("%s%s" % (c["name"], " (hub)" if c["self"] else "")
                       for c in consumers)
-    out = ["# ContainerHub consumer inventory", "",
+    out = ["# ANTfrastructure consumer inventory", "",
            "Consumers scanned: %d -- %s" % (len(consumers), names), "",
            "Entry points graded: %d" % len(rows), "",
            "| verdict | count |", "| --- | --- |"]

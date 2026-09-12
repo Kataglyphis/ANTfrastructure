@@ -20,7 +20,7 @@ had diverged by 36 lines and `gcovr.cfg` by 4).
 
 `.cmake-format.yaml` was left out of that 2026-08-07 adoption and only joined on
 2026-09-05. It was the one config the mechanism could not see: still
-byte-identical in ContainerHub, BeschleunigerBallett and AccelerANTgine (all
+byte-identical in ANTfrastructure, BeschleunigerBallett and AccelerANTgine (all
 three at blob `81211b60`), but held there by luck rather than by the check —
 exactly the position `.clang-tidy` and `gcovr.cfg` had been in before they
 diverged by 36 and 4 lines.
@@ -31,7 +31,7 @@ Every other shared thing in this repo is consumed by reference — CMake modules
 via `CMAKE_MODULE_PATH`, PowerShell modules via a resolver, composite actions via
 `uses:`. These five cannot be, because **the tools that read them discover them
 by walking up the directory tree from the file being processed**. A config
-sitting in `third_party/ContainerHub/shared/config/` is never found:
+sitting in `third_party/ANTfrastructure/shared/config/` is never found:
 it is below the source tree, not above it.
 
 Passing explicit paths (`clang-format --style=file:<path>`, `clang-tidy
@@ -52,13 +52,13 @@ touches without one error message.
 So the copy stays, and drift is made **impossible instead of unnoticed**:
 
 ```pwsh
-pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check
-pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write
+pwsh -File third_party/ANTfrastructure/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check
+pwsh -File third_party/ANTfrastructure/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write
 ```
 
 ```bash
-bash third_party/ContainerHub/shared/config/sync-shared-config.sh --repo-root . --check
-bash third_party/ContainerHub/shared/config/sync-shared-config.sh --repo-root . --write
+bash third_party/ANTfrastructure/shared/config/sync-shared-config.sh --repo-root . --check
+bash third_party/ANTfrastructure/shared/config/sync-shared-config.sh --repo-root . --write
 ```
 
 `-Check` exits non-zero on any difference and is meant to run as a test in the
@@ -70,14 +70,14 @@ reserved for "this gate or its input is broken" so it never reads as drift.
 Edit it **here**, then run `-Write` in each consumer and commit both. Editing a
 consumer's copy directly is what the check exists to catch.
 
-That instruction includes the repo this directory lives in: ContainerHub's own
+That instruction includes the repo this directory lives in: ANTfrastructure's own
 root `.cmake-format.yaml` is a consumer copy (its runners resolve the config at
 the repo root, like every consumer's), so refresh it with the same `-Write`
 run. `linux/scripts/preflight.sh` (slug `shared-config`) goes red when it
 drifts from — or goes missing against — the canonical file here; the other four
-names have no root copy in ContainerHub and are `-Ignore`d by name there. That
+names have no root copy in ANTfrastructure and are `-Ignore`d by name there. That
 call is the one remaining `-Ignore` caller and becomes a two-word
-`.containerhub-shared.manifest` at this repo's root the moment `preflight.sh`
+`.antfrastructure-shared.manifest` at this repo's root the moment `preflight.sh`
 is touched.
 
 ## MISSING is not DRIFTED
@@ -106,23 +106,23 @@ never mentioned in the output.
 ## The two manifests
 
 **Owner side — `shared-assets.manifest`, next to this file.** One row per file
-ContainerHub is the source of truth for: `id | canonical path here | default
+ANTfrastructure is the source of truth for: `id | canonical path here | default
 path in a consumer | mode | knob prefixes`. Adding a shared file is one row.
 
-**Consumer side — `.containerhub-shared.manifest` at the consumer's repo root.**
+**Consumer side — `.antfrastructure-shared.manifest` at the consumer's repo root.**
 One row per asset that repo takes: the id, and optionally the path if the file
 does not sit where the registry's default says. It is picked up automatically;
 `-Manifest` / `--manifest` points at one elsewhere. Whole file, for jotrockenmitlocken:
 
 ```
-containerhub-sh   scripts/lib/containerhub.sh
+antfrastructure-sh   scripts/lib/antfrastructure.sh
 ```
 
 and for OmniAccelerANT:
 
 ```
 cmake-format
-containerhub-sh
+antfrastructure-sh
 resolve-build-module
 ```
 
@@ -131,7 +131,7 @@ same typo guard `-Ignore` used to carry, now covering the whole declaration
 rather than the exception list.
 
 `-Ignore` survives only for a repo root that has no manifest yet
-(ContainerHub's own preflight `shared-config` gate is the last such caller).
+(ANTfrastructure's own preflight `shared-config` gate is the last such caller).
 Passing it *together* with a manifest is refused: a stale ignore silently
 overriding a declaration is precisely the confusion being removed.
 
@@ -186,23 +186,23 @@ reading a `-Check` failure: confirm which side is actually right before running
 ## The template trees are owners too
 
 `shared/windows/templates/Resolve-BuildModule.ps1` and
-`shared/linux/templates/containerhub.sh` are the two files a consumer cannot
+`shared/linux/templates/antfrastructure.sh` are the two files a consumer cannot
 consume by reference, because each one is what *finds* the submodule. They were
 copied into consumers and then nothing watched them: on 2026-09-08
 `Resolve-BuildModule.ps1` existed in four copies under three distinct headers,
-and `containerhub.sh` sat in all four consumers. They are now registry rows like
+and `antfrastructure.sh` sat in all four consumers. They are now registry rows like
 any other shared file, in `body` mode.
 
 `body` mode exists because a verbatim compare would be wrong here. Two deltas
 are legitimate and one is not:
 
 - **The header prose.** Every consumer replaces the template's "TEMPLATE — copy
-  to …" block with its own "copied from ContainerHub, do not hand-edit" note,
+  to …" block with its own "copied from ANTfrastructure, do not hand-edit" note,
   and OrchestrANT's additionally records what it verified and when. So the
   comparison starts at the file's **first line of code** — `Set-StrictMode` in
   the PowerShell file, the load guard in the bash one — and everything above it
   is the consumer's to write.
-- **The declared knob.** `containerhub.sh` documents
+- **The declared knob.** `antfrastructure.sh` documents
   `KATAGLYPHIS_REPO_ROOT_RELATIVE` as an adjustable, and jotrockenmitlocken
   really does set `../..` because its copy sits two levels down rather than
   three. `Resolve-BuildModule.ps1` has the same knob in
@@ -247,7 +247,7 @@ quietly wrong would defeat the gate it was fixing.
 
 ## Why a manifest, and not an --ignore list
 
-A consumer declares what it TAKES, in a root `.containerhub-shared.manifest`. It
+A consumer declares what it TAKES, in a root `.antfrastructure-shared.manifest`. It
 used to be able to declare what it does not take, as an `--ignore` list passed at
 the call site, and the two cannot be combined — passing both is a deliberate
 exit 2.

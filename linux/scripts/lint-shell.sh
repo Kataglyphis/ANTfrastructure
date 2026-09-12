@@ -25,12 +25,12 @@
 #
 # --root is the same contract lint-workflows.sh documents, for the same reason:
 # a submodule checkout puts this script INSIDE the consumer, where the default
-# root resolves to ContainerHub and the gate grades the wrong tree while
+# root resolves to ANTfrastructure and the gate grades the wrong tree while
 # reporting green over one nobody looked at. The shellcheck bootstrap, its cache
 # and versions.env always come from THIS repo regardless of the root.
 #
 # Under a root the file set is `git ls-files -- '*.sh'`, not a find: a vendored
-# submodule (this very repo, at third_party/ContainerHub) is a GITLINK there, so
+# submodule (this very repo, at third_party/ANTfrastructure) is a GITLINK there, so
 # the consumer's scope cannot quietly swallow the hub's own scripts — the same
 # failure from the other direction. That the root must be a git checkout is
 # therefore stated and checked, not assumed.

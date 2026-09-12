@@ -182,7 +182,7 @@ _sub_repo() {
 
 # The same superproject, one level DEEPER: `sub` itself carries a submodule
 # `deep`. That is the family's real shape -- every consumer has
-# third_party/ContainerHub, and every ContainerHub has third_party/DocumANTation
+# third_party/ANTfrastructure, and every ANTfrastructure has third_party/DocumANTation
 # -- and it is the only shape that can ask what a NESTED submodule's dirtiness
 # means for the cleanliness check the parent gets.
 _deep_repo() {

@@ -40,7 +40,7 @@ ci_image_ref_read_key() {
   if [ -z "${value}" ]; then
     printf 'ci-image-ref.sh: %s is not set in %s\n' "${key}" "${file}" >&2
     printf '                 That file is the fleet-wide owner of the CI image tags; a\n' >&2
-    printf '                 missing key means the ContainerHub pin predates the convention.\n' >&2
+    printf '                 missing key means the ANTfrastructure pin predates the convention.\n' >&2
     return 1
   fi
   printf '%s' "${value}"
@@ -59,7 +59,7 @@ ci_image_ref() {
   esac
   if [ ! -f "${file}" ]; then
     printf 'ci-image-ref.sh: versions.env not found: %s\n' "${file}" >&2
-    printf '                 git submodule update --init --recursive third_party/ContainerHub\n' >&2
+    printf '                 git submodule update --init --recursive third_party/ANTfrastructure\n' >&2
     return 1
   fi
   prefix="$(ci_image_ref_read_key IMAGE_REGISTRY_PREFIX "${file}")" || return 1

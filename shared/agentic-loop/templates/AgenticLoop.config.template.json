@@ -2,7 +2,7 @@
   "_comment": "TEMPLATE agentic-loop config. Copy to <your-repo>/scripts/agentic-loop/AgenticLoop.config.json and edit. Keys marked TODO are project-specific; everything else is a sane default. Env overrides: AGENTIC_ENGINE, AGENTIC_PLANNER_MODEL, AGENTIC_EXECUTOR_MODEL.",
   "engine": "claude",
   "promptOverlays": {
-    "_comment": "Your project DELTA on top of ContainerHub's shared role prompts. Engine-agnostic on purpose: the loop composes shared+overlay once and delivers it to claude via --append-system-prompt-file AND to opencode as a GENERATED .opencode/agents/<role>.md. Gitignore .opencode/agents/ - it is a build artefact, and hand-maintaining it is how consumers ended up with drifted copies of the shared prompt. The legacy engines.<engine>.<role>PromptFile full-override still works but replaces the shared prompt entirely; prefer an overlay.",
+    "_comment": "Your project DELTA on top of ANTfrastructure's shared role prompts. Engine-agnostic on purpose: the loop composes shared+overlay once and delivers it to claude via --append-system-prompt-file AND to opencode as a GENERATED .opencode/agents/<role>.md. Gitignore .opencode/agents/ - it is a build artefact, and hand-maintaining it is how consumers ended up with drifted copies of the shared prompt. The legacy engines.<engine>.<role>PromptFile full-override still works but replaces the shared prompt entirely; prefer an overlay.",
     "plannerPromptOverlayFile": "scripts/agentic-loop/prompts/planner-overlay.md",
     "executorPromptOverlayFile": "scripts/agentic-loop/prompts/executor-overlay.md"
   },

@@ -91,6 +91,7 @@ $reclaimable = @(
     'c:\bkmnt'
     '$env:temp'
     '%temp%'
+    'd:\github\kataglyphis-antfrastructure'
     'd:\github\kataglyphis-containerhub'
 )
 

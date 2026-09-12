@@ -32,7 +32,7 @@ function Invoke-EarlyWebDavDownload {
     [string]$WebDavLocal
   )
 
-  # The download helper ships next to this module in the ContainerHub layout
+  # The download helper ships next to this module in the ANTfrastructure layout
   # (windows/scripts/certificates). It is extension-agnostic; the .pfx filter
   # for the early certificate fetch is passed explicitly below.
   $earlyScript = Join-Path $PSScriptRoot '..\certificates\download_webdav_files.py'

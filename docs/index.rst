@@ -1,9 +1,9 @@
-.. ContainerHub documentation master file, created by
+.. ANTfrastructure documentation master file, created by
    sphinx-quickstart on Thu Dec 11 16:37:46 2025.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-ContainerHub documentation
+ANTfrastructure documentation
 ======================================
 
 .. rst-class:: hero-section

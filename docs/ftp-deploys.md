@@ -16,14 +16,14 @@ not an input, and the section on it below says why it is not.
 
 Measured 2026-09-09 across the five top-level repos plus the three owned
 submodules (`AccelerANTgine`, `OxidANT`, `ANThology`). Vendored
-`third_party/ContainerHub` copies are the same two hub workflows and are not
+`third_party/ANTfrastructure` copies are the same two hub workflows and are not
 counted twice. Line numbers are the committed ones; the step is the stable
 handle.
 
 | Repo | Step | Pin | On upload failure | Readability fixup |
 |---|---|---|---|---|
-| ContainerHub | `python-ci-linux.yml:201` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
-| ContainerHub | `build-docs.yml:106` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
+| ANTfrastructure | `python-ci-linux.yml:201` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
+| ANTfrastructure | `build-docs.yml:106` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
 | jotrockenmitlocken | `dart.yml:157` (main site) | tag `v4.4.0` | fails the lane | none |
 | jotrockenmitlocken | `dart.yml:166` (dev wasm site) | tag `v4.4.0` | fails the lane | none |
 | jotrockenmitlocken | `dart.yml:182` (dev site) | tag `v4.4.0` | fails the lane | none |
@@ -49,7 +49,7 @@ moved without producing a diff anywhere in this family.
 
 None of those nine is outside a promise it never made: all seven repositories
 holding these sites extend the shared preset
-(`"extends": ["github>Kataglyphis/ContainerHub"]`), and `default.json` extends
+(`"extends": ["github>Kataglyphis/ANTfrastructure"]`), and `default.json` extends
 `helpers:pinGitHubActionDigests` — exactly the rule that would replace those
 tags with digests. The reason it has not is the one recorded in every one of
 those `renovate.json` files: the Renovate app is not installed on these
@@ -233,7 +233,7 @@ After — the fixup, the pin and the policy all move inside:
 
 ```yaml
       - name: 📂 Sync files to domain
-        uses: Kataglyphis/ContainerHub/.github/actions/deploy-over-ftp@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main
         with:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}

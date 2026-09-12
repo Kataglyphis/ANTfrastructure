@@ -8,7 +8,7 @@ docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
 GRADING A CONSUMER. `--root` and `--allow` are the pair docs/scripts/verify_mutations.py
 already documents, and lint-shell.sh itself takes the first of them for the reason this
 gate inherits unchanged: a submodule checkout puts this script INSIDE the consumer, where
-a root derived from __file__ resolves to ContainerHub, so the ratchet grades the hub's own
+a root derived from __file__ resolves to ANTfrastructure, so the ratchet grades the hub's own
 warnings and reports green over a tree nobody looked at.
 
 The scope stays lint-shell.sh's under a consumer root exactly as it is under this one --

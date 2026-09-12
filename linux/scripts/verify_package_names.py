@@ -421,14 +421,14 @@ def read_mirrors():
 def cache_dir(codename):
     base = os.environ.get("PKG_NAMES_CACHE_DIR") or os.path.join(
         os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
-        "containerhub-pkg-names")
+        "antfrastructure-pkg-names")
     path = os.path.join(base, codename)
     os.makedirs(path, exist_ok=True)
     return path
 
 
 def fetch(url, timeout):
-    req = urllib.request.Request(url, headers={"User-Agent": "containerhub-verify-package-names"})
+    req = urllib.request.Request(url, headers={"User-Agent": "antfrastructure-verify-package-names"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 

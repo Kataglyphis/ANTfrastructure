@@ -22,12 +22,12 @@
 #
 # --root is the same contract lint-workflows.sh, lint-shell.sh and lint-python.sh
 # document, for the same reason: a submodule checkout puts this script INSIDE
-# the consumer, where the default root resolves to ContainerHub and the gate
+# the consumer, where the default root resolves to ANTfrastructure and the gate
 # grades the wrong tree while reporting green over one nobody looked at. The
 # hadolint bootstrap, its cache and versions.env always come from THIS repo.
 #
 # Under a root the file set is `git ls-files`, not the hub's fixed glob list: a
-# vendored submodule (this very repo, at third_party/ContainerHub) is a GITLINK
+# vendored submodule (this very repo, at third_party/ANTfrastructure) is a GITLINK
 # there, so the consumer's scope cannot quietly swallow the hub's own 20-odd
 # Dockerfiles and report their verdict as the consumer's. The root must be a git
 # checkout, which is checked rather than assumed.

@@ -226,7 +226,7 @@ runs:
 
     # The pin this action contributes. A SHA, not a tag: the consumers' renovate
     # configs promise digest pins for third-party actions, and a tag is mutable.
-    # It is NOT yet the family's only one - nothing calls this action, ContainerHub
+    # It is NOT yet the family's only one - nothing calls this action, ANTfrastructure
     # still pins SamKirkland directly in two workflows, and nine of the eleven
     # fleet call sites are on mutable tags. docs/ftp-deploys.md tracks that.
     #

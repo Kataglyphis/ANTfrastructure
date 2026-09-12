@@ -111,7 +111,7 @@ jobs:
       # could have produced is what proves the input reached it rather than the
       # action's own default.
       # run-setup-script: 'true' exercises the "consumer script absent" branch -
-      # ContainerHub has no scripts/linux/setup-dependencies.sh, so the action
+      # ANTfrastructure has no scripts/linux/setup-dependencies.sh, so the action
       # must warn and continue instead of failing.
       - name: install-deps (uv, no Rust)
         uses: ./.github/actions/install-deps
@@ -316,7 +316,7 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'selftest-pester'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           @'
-          Describe 'ContainerHub composite actions self-test' {
+          Describe 'ANTfrastructure composite actions self-test' {
               It 'runs a real assertion' {
                   (1 + 1) | Should Be 2
               }
@@ -362,7 +362,7 @@ jobs:
         with:
           workspace: ${{ github.workspace }}
           results-dir: selftest-no-such-directory
-          category: containerhub-actions-selftest-absent
+          category: antfrastructure-actions-selftest-absent
 
       - name: The probe reported no SARIF
         run: |
@@ -391,7 +391,7 @@ jobs:
               '$schema' = 'https://json.schemastore.org/sarif-2.1.0.json'
               runs = @(
                   @{
-                      tool = @{ driver = @{ name = 'containerhub-actions-selftest'; informationUri = 'https://github.com/Kataglyphis/ContainerHub'; rules = @() } }
+                      tool = @{ driver = @{ name = 'antfrastructure-actions-selftest'; informationUri = 'https://github.com/Kataglyphis/ANTfrastructure'; rules = @() } }
                       results = @()
                   }
               )
@@ -405,7 +405,7 @@ jobs:
         with:
           workspace: 'D:\ws'
           results-dir: codeql-results
-          category: containerhub-actions-selftest
+          category: antfrastructure-actions-selftest
 
       - name: The probe found the SARIF hashFiles() cannot see
         if: github.event_name == 'workflow_dispatch'

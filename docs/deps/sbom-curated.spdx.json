@@ -2,8 +2,8 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "ContainerHub-curated",
-  "documentNamespace": "https://github.com/Kataglyphis/ContainerHub/spdx/curated",
+  "name": "ANTfrastructure-curated",
+  "documentNamespace": "https://github.com/Kataglyphis/ANTfrastructure/spdx/curated",
   "creationInfo": {
     "created": "1970-01-01T00:00:00Z",
     "creators": [

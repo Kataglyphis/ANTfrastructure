@@ -1,10 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
-    "ContainerHub's own Renovate config. Everything that is not specific to THIS repo now lives in the shared preset at the repository root (default.json), so the consumers get the same rules by extending one line - most importantly the git-submodules manager, which Renovate disables by default and which is why this repo's own third_party/DocumANTation pin went unwatched.",
-    "Renovate resolves `github>Kataglyphis/ContainerHub` from the DEFAULT BRANCH even for this repository, so a default.json change is not exercised by the PR that makes it; it takes effect after merge."
+    "ANTfrastructure's own Renovate config. Everything that is not specific to THIS repo now lives in the shared preset at the repository root (default.json), so the consumers get the same rules by extending one line - most importantly the git-submodules manager, which Renovate disables by default and which is why this repo's own third_party/DocumANTation pin went unwatched.",
+    "Renovate resolves `github>Kataglyphis/ANTfrastructure` from the DEFAULT BRANCH even for this repository, so a default.json change is not exercised by the PR that makes it; it takes effect after merge."
   ],
-  "extends": ["github>Kataglyphis/ContainerHub"],
+  "extends": ["github>Kataglyphis/ANTfrastructure"],
   "packageRules": [
     {
       "description": "versions.env keys are notification-only by DEFAULT: most bumps are coupled to a paired *_SHA256/*_COMMIT in the same file or to a source patch, so they keep the human ritual (AGENTS.md § Version Bumping). Matched by FILE, not by manager id, so it holds for the local CLI's report (manager 'regex') and the platform's ('custom.regex') alike.",

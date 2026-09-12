@@ -6,6 +6,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 (later) — the hub is now ANTfrastructure
+
+* **`Kataglyphis/ContainerHub` is renamed to `Kataglyphis/ANTfrastructure`.**
+  GitHub redirects the old URLs so nothing breaks in flight, but the whole
+  family is swept in the same change: every URL, `uses:` ref and Renovate
+  `github>` preset; the submodule path (`third_party/ANTfrastructure`); the
+  bash bootstrap (`shared/linux/templates/antfrastructure.sh`,
+  `antfrastructure_path` / `antfrastructure_source` / `antfrastructure_exec`);
+  the `CONTAINERHUB_*` environment variables; and the per-consumer
+  `.antfrastructure-shared.manifest`. The rename starts here because this repo
+  owns the template every consumer copies.
+
+
 ## 2026-09-12 — merge cleanup: the CI reds the Renovate merge left behind
 
 * Eight preflight checks were red on `origin/main` after the Renovate merge;
@@ -126,7 +139,7 @@
 * **Which keys may be written is a file-scoped policy** in
   `.github/renovate.json`: approval by default, cleared for the Rust
   security-tool and Python build-executor installs, the npm web runtimes,
-  `rust-lang/rust`, `cargo-c`, `APP_REF` and `syft`. On the live ContainerHub
+  `rust-lang/rust`, `cargo-c`, `APP_REF` and `syft`. On the live ANTfrastructure
   report that is 7 applicable rows and 13 refusals, exactly as intended.
 * **`bump_versions.py` is demoted, not deleted:** it remains the lock tool for
   every coupled `*_SHA256`/`*_COMMIT` pin and the detector for the 41
@@ -863,7 +876,7 @@ fixture carrying this config plus `runs-on: ubuntu-99.99` still fails, so the
 assertions). Scope, as the gate's header warns: actionlint reads the config
 from the project it lints, so a consumer calling `lint-workflows.sh <root>`
 (BeschleunigerBallett does, with `github.workspace`) needs its own copy once
-it adopts the labels; this file covers ContainerHub alone. Registered in
+it adopts the labels; this file covers ANTfrastructure alone. Registered in
 `docs/code-quality-tooling.md#workflow-lint-workflow-lint`.
 
 ## 2026-09-07 — housekeeping after the round: dupes scanner learns third_party/, two registries stop lying
@@ -871,7 +884,7 @@ it adopts the labels; this file covers ContainerHub alone. Registered in
 Three small truths restored in one sweep. `docs/scripts/verify_code_dupes.py`
 excluded `external` but never learned `third_party` when the vendored tree
 moved (2026-09-05) — a checkout with initialized submodules scanned
-DocumANTation's own prose for ContainerHub duplication; `third_party` joins
+DocumANTation's own prose for ANTfrastructure duplication; `third_party` joins
 `SKIP_DIRS`. `prepare-linux-ci-host`'s consumer registry named one consumer of
 what were nine — re-censused, and it now points at grep as the authority.
 `code-dupes.allow` gains the seven suite-preamble rows the two new preflight
@@ -931,7 +944,7 @@ empty, nothing is appended and the consumer's `.clang-tidy`
 (BeschleunigerBallett included) are byte-for-byte unaffected. AccelerANTgine
 passes `Src/.*` from its `ProjectOptions.cmake` and has deleted its local
 `cmake/StaticAnalyzers.cmake` override, so `include(StaticAnalyzers)` there
-resolves upstream once its ContainerHub pin is bumped. What the override had
+resolves upstream once its ANTfrastructure pin is bumped. What the override had
 that upstream deliberately does NOT adopt:
 
 * clang-tidy `--fix` — it rewrote sources mid-build; a build gate reports, it
@@ -1049,7 +1062,7 @@ consumer of this mechanism at all — Python-only, no `CMakeLists.txt`, none of
 the five files carried as copies (its `.pre-commit-config.yaml` is its own
 ruff config) — so it has nothing to sync and nothing to ignore.
 
-**New preflight slug `shared-config`.** ContainerHub's own root
+**New preflight slug `shared-config`.** ANTfrastructure's own root
 `.cmake-format.yaml` is itself a consumer copy — the runners resolve it at
 the repo root here like everywhere else — and nothing compared it to the
 canonical file, so "edit it in `shared/config/`, run `-Write` in each
@@ -1276,9 +1289,9 @@ runner minutes.
 `third_party/DocumANTation` (`.gitmodules`, and `requirements.txt` now installs
 the theme from `./third_party/DocumANTation/sphinx-kataglyphis-theme`), and
 `5c3b3820` fixed the other direction: consumers vendor *this* repo at
-`third_party/ContainerHub`, but the `git submodule add` target in the adoption
+`third_party/ANTfrastructure`, but the `git submodule add` target in the adoption
 guide and the `shared/` templates copied verbatim into new repos still handed
-out `ExternalLib/Kataglyphis-ContainerHub`. The path-exclusion filters in
+out `ExternalLib/Kataglyphis-ANTfrastructure`. The path-exclusion filters in
 `code-quality.sh`, `WindowsFormatting.Common.psm1` and both static-analysis
 entry points had `third_party/` **added** rather than substituted, so a consumer
 mid-migration is not caught between the two layouts.

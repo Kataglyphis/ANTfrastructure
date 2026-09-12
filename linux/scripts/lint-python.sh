@@ -22,14 +22,14 @@
 #
 # --root is the same contract lint-workflows.sh and lint-shell.sh document, for
 # the same reason: a submodule checkout puts this script INSIDE the consumer,
-# where the default root resolves to ContainerHub and the gate grades the wrong
+# where the default root resolves to ANTfrastructure and the gate grades the wrong
 # tree while reporting green over one nobody looked at. It is what lets a
 # consumer's Python be reached at all — OrchestrANT's 65 files were outside
 # every lint gate in the fleet until this argument existed. The ruff pin,
 # versions.env and the extractor always come from THIS repo regardless.
 #
 # Under a root the file set is `git ls-files`, not a find: a vendored submodule
-# (this very repo, at third_party/ContainerHub) is a GITLINK there, so the
+# (this very repo, at third_party/ANTfrastructure) is a GITLINK there, so the
 # consumer's scope cannot quietly swallow the hub's own Python, and untracked
 # build output cannot get in either. The root must therefore be a git checkout,
 # which is checked rather than assumed.

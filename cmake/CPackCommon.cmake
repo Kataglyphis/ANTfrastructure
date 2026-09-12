@@ -359,7 +359,7 @@ macro(kataglyphis_cpack_common)
         # and returns non-zero if it cannot.
         #
         # KataglyphisAppImage prefers an appimagetool on PATH (inside a
-        # ContainerHub image that IS the checksum-verified one packaging-deps.sh
+        # ANTfrastructure image that IS the checksum-verified one packaging-deps.sh
         # installed). NO_SYSTEM_SEARCH is how we tell it to skip that step when
         # the PATH copy is the unreadable one, so it downloads the pinned asset
         # - which it chmods world-readable - instead of handing back a tool that

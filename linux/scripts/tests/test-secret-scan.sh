@@ -33,7 +33,7 @@ _dir() {
 _abs() { ( cd "$1" && pwd ); }
 
 # _from <dir> <args...>: run the gate WITH <dir> as the working directory. That
-# is how a consumer calls it -- third_party/ContainerHub/linux/scripts/lint-secrets.sh .
+# is how a consumer calls it -- third_party/ANTfrastructure/linux/scripts/lint-secrets.sh .
 # from its own root -- and a relative argument only means the right tree if the
 # gate resolves it before it cd's into the hub checkout.
 _from() { local d="$1"; shift; ( cd "${d}" && bash "${GATE}" "$@" ); }

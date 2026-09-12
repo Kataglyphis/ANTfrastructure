@@ -104,7 +104,7 @@ The `ml-ai` extra cannot be installed on riscv64 at all:
 
 A second group is gated off riscv64 by the app's own markers, i.e. it would be
 absent even if `uv sync` worked here: `mlflow` (and its ~60-package closure),
-`boto3`, `captum`, `onnxruntime`/`onnxruntime-genai` (ContainerHub ships local
+`boto3`, `captum`, `onnxruntime`/`onnxruntime-genai` (ANTfrastructure ships local
 wheels instead), and `iree-base-compiler` — riscv64 builds IREE runtime-only.
 
 `pycairo`/`pygobject` show as missing in `uv pip list` on riscv64 but are

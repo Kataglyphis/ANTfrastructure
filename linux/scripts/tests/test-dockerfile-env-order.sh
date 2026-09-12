@@ -119,7 +119,7 @@ t_assert_fails grep -q 'ANDROID_HOME}/build-tools' "${PKG}"
 # --- lint-dockerfiles.sh over a CONSUMER tree (--root) ------------------------
 # Same contract as lint-workflows.sh / lint-shell.sh / lint-python.sh, and the
 # same reason: a submodule checkout puts the gate inside the consumer, where the
-# default root resolves to ContainerHub, all 24 of ITS Dockerfiles get graded
+# default root resolves to ANTfrastructure, all 24 of ITS Dockerfiles get graded
 # and the verdict is reported as the consumer's.
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT

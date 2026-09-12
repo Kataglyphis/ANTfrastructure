@@ -3,7 +3,7 @@
 # Consumed BY REFERENCE, not by copy: a consumer repo's own
 # analysis_options.yaml starts with
 #
-#   include: third_party/ContainerHub/shared/config/analysis_options.yaml
+#   include: third_party/ANTfrastructure/shared/config/analysis_options.yaml
 #
 # (Dart's native relative include, resolved from the including file) and then
 # adds only its own deltas. That is deliberately NOT the Sync-SharedConfig.ps1
@@ -17,7 +17,7 @@
 # The `package:` include below is resolved against the CONSUMER's package
 # config (the same way package:flutter_lints/flutter.yaml itself includes
 # package:lints/recommended.yaml from the pub cache), so this file works even
-# though third_party/ContainerHub is not a Dart package. Every consumer must
+# though third_party/ANTfrastructure is not a Dart package. Every consumer must
 # therefore keep `flutter_lints` in its dev_dependencies.
 #
 # Common subset extracted 2026-09-07 from OmniAccelerANT's and

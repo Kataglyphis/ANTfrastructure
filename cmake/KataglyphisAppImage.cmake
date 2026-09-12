@@ -20,7 +20,7 @@
 #     images from exactly those pins, checksum-verified.
 #
 # So this module reads the SAME pin file rather than restating the values, and
-# prefers an already-provisioned appimagetool (inside a ContainerHub image there
+# prefers an already-provisioned appimagetool (inside a ANTfrastructure image there
 # is one on PATH and it got there through the verified path above) before it
 # downloads anything itself.
 #
@@ -30,11 +30,11 @@
 include_guard(GLOBAL)
 
 # The pin file. Resolved relative to THIS module so it is correct both in this
-# repo and in a consumer that has third_party/ContainerHub/cmake on
+# repo and in a consumer that has third_party/ANTfrastructure/cmake on
 # CMAKE_MODULE_PATH. Override only to test against a different pin set.
 set(KATAGLYPHIS_VERSIONS_ENV
     "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/01-core/versions.env"
-    CACHE FILEPATH "ContainerHub versions.env holding the appimagetool pins")
+    CACHE FILEPATH "ANTfrastructure versions.env holding the appimagetool pins")
 
 # Reads one KEY=VALUE out of a versions.env-shaped file.
 function(
@@ -46,7 +46,7 @@ function(
     message(
       FATAL_ERROR
         "KataglyphisAppImage: pin file not found: ${versions_env}\n"
-        "This module reads ContainerHub's linux/scripts/01-core/versions.env. If the ContainerHub "
+        "This module reads ANTfrastructure's linux/scripts/01-core/versions.env. If the ANTfrastructure "
         "submodule is not checked out, run: git submodule update --init --recursive. To point at a "
         "different pin file, set -DKATAGLYPHIS_VERSIONS_ENV=<path>.")
   endif()
@@ -184,7 +184,7 @@ endfunction()
 #
 # Resolution order:
 #   1. -DKATAGLYPHIS_APPIMAGETOOL=<path>   an explicit, caller-owned tool
-#   2. appimagetool on PATH                inside a ContainerHub image this is
+#   2. appimagetool on PATH                inside a ANTfrastructure image this is
 #                                          the checksum-verified one that
 #                                          packaging-deps.sh installed
 #                                          (NO_SYSTEM_SEARCH skips this)

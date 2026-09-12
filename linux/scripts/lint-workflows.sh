@@ -28,7 +28,7 @@
 # The optional root exists so consumers can lint their workflows with the same
 # pinned, SHA-verified actionlint instead of bootstrapping their own. It is
 # needed because a submodule checkout puts this script INSIDE the consumer,
-# where the default root resolves to ContainerHub and would silently lint the
+# where the default root resolves to ANTfrastructure and would silently lint the
 # wrong tree - and a lint gate that checks nothing still reports green. The
 # bootstrap cache and versions.env always come from THIS repo regardless.
 set -uo pipefail

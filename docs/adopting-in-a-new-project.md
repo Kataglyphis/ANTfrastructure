@@ -1,4 +1,4 @@
-# Adopting ContainerHub in a New Project
+# Adopting ANTfrastructure in a New Project
 
 This repo is not only a set of Dockerfiles. It ships the build/run/automation
 tooling that consuming projects import instead of copying: Windows container
@@ -13,13 +13,13 @@ is ambiguous, read how that repo does it.
 ## 0. Add the submodule
 
 ```bash
-git submodule add https://github.com/Kataglyphis/ContainerHub.git third_party/ContainerHub
+git submodule add https://github.com/Kataglyphis/ANTfrastructure.git third_party/ANTfrastructure
 git submodule update --init --recursive
 ```
 
 Everything below assumes that path. Consumers pin a commit like any other
 submodule; bump the pin and the consuming change in the same commit, and push
-ContainerHub `main` **before** the consumer, because CI resolves composite
+ANTfrastructure `main` **before** the consumer, because CI resolves composite
 actions at `@main`.
 
 ## Submodule maintenance
@@ -31,7 +31,7 @@ git submodule update --remote --merge --recursive
 ```
 
 Commit the resulting pointer change together with the consuming change, and push
-ContainerHub `main` **first** — CI resolves composite actions at `@main`.
+ANTfrastructure `main` **first** — CI resolves composite actions at `@main`.
 
 ### Resolving a submodule conflict on merge
 
@@ -147,7 +147,7 @@ to `scripts/windows/Resolve-BuildModule.ps1` and adjust
 `$script:RepoRootRelativeToHere` if the script does not sit exactly two
 directories below the repo root. It resolves a module
 name to
-`third_party/ContainerHub/windows/scripts/modules/<Name>.psm1`
+`third_party/ANTfrastructure/windows/scripts/modules/<Name>.psm1`
 first, then a local `modules/` fallback beside itself, and throws with both
 paths if neither exists.
 
@@ -163,11 +163,11 @@ instead — that test is what moved `WindowsTesting.Common` and
 
 Bash consumers have no equivalent bootstrap problem — they source libraries by
 relative path directly, e.g.
-`third_party/ContainerHub/linux/scripts/lib/app-runner.sh`. Resolve
+`third_party/ANTfrastructure/linux/scripts/lib/app-runner.sh`. Resolve
 that path from `${BASH_SOURCE[0]}` rather than assuming the caller's working
 directory is the repo root, and fail loudly (naming the
 `git submodule update --init --recursive` command) when the submodule is not
-checked out. OmniAccelerANT's `scripts/linux/lib/containerhub.sh`
+checked out. OmniAccelerANT's `scripts/linux/lib/antfrastructure.sh`
 is a two-function example.
 
 ## 2. Windows container builds (Stevedore)
@@ -301,7 +301,7 @@ holding defaults and hooks.
 
 Composite actions live in [`.github/actions/`](../.github/actions/README.md)
 and are referenced from a consumer workflow as
-`Kataglyphis/ContainerHub/.github/actions/<name>@main`:
+`Kataglyphis/ANTfrastructure/.github/actions/<name>@main`:
 
 | Action | Use |
 |---|---|
@@ -315,7 +315,7 @@ They replace the hand-rolled `docker run` blocks that otherwise accumulate — i
 the reference consumer, twenty-plus copies across two workflows.
 
 Because actions resolve at `@main`, a consumer workflow change that depends on
-an action change requires the ContainerHub push to land first.
+an action change requires the ANTfrastructure push to land first.
 
 ## 7. Certificates / packaging (Windows)
 
@@ -351,7 +351,7 @@ then source a per-repo bridge that pulls in `01-core/common.sh`:
 set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/ci_common.sh"          # or lib/common.sh
-source "${_SCRIPT_DIR}/../../third_party/ContainerHub/linux/scripts/lib/<lib>.sh"
+source "${_SCRIPT_DIR}/../../third_party/ANTfrastructure/linux/scripts/lib/<lib>.sh"
 ```
 
 Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`

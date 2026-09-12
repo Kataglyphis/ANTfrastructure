@@ -194,7 +194,7 @@ ssc_load_declared() {
     for row in "${SSC_ROWS[@]}"; do
         read -r id local_path <<<"$row"
         if [ -z "${SSC_MODE[$id]:-}" ]; then
-            _ssc_die "${path} declares '${id}', which ContainerHub does not own. Known ids: ${known}."
+            _ssc_die "${path} declares '${id}', which ANTfrastructure does not own. Known ids: ${known}."
         fi
         SSC_DECL_ID+=("$id")
         SSC_DECL_PATH+=("${local_path:-${SSC_DEFAULT[$id]}}")
@@ -288,9 +288,9 @@ ssc_report_missing() {
 ssc_report_drifted() {
     echo ''
     echo 'DECLARED and present, but the content differs from the canonical copy.'
-    echo 'Edit the file UPSTREAM (in ContainerHub), then refresh here with:'
-    echo '  pwsh -File third_party/ContainerHub/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write'
-    echo '  bash third_party/ContainerHub/shared/config/sync-shared-config.sh --repo-root . --write'
+    echo 'Edit the file UPSTREAM (in ANTfrastructure), then refresh here with:'
+    echo '  pwsh -File third_party/ANTfrastructure/shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Write'
+    echo '  bash third_party/ANTfrastructure/shared/config/sync-shared-config.sh --repo-root . --write'
     echo 'If this project genuinely owns the file, drop its line from the manifest instead.'
 }
 
@@ -326,8 +326,8 @@ ssc_parse_args() {
 }
 
 ssc_resolve_declarations() {
-    if [ -z "$SSC_MANIFEST" ] && [ -f "${SSC_ROOT}/.containerhub-shared.manifest" ]; then
-        SSC_MANIFEST="${SSC_ROOT}/.containerhub-shared.manifest"
+    if [ -z "$SSC_MANIFEST" ] && [ -f "${SSC_ROOT}/.antfrastructure-shared.manifest" ]; then
+        SSC_MANIFEST="${SSC_ROOT}/.antfrastructure-shared.manifest"
     fi
     if [ -n "$SSC_MANIFEST" ]; then
         if [ ! -f "$SSC_MANIFEST" ]; then _ssc_die "Manifest '${SSC_MANIFEST}' does not exist."; fi

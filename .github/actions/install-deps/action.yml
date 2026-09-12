@@ -61,7 +61,7 @@ runs:
         fi
 
         # Optionally run the CONSUMER repo's setup script (path is theirs, not
-        # ContainerHub's — the skip branch keeps this action usable everywhere).
+        # ANTfrastructure's — the skip branch keeps this action usable everywhere).
         if [ "$RUN_SETUP_SCRIPT" = "true" ]; then
           if [ -f "scripts/linux/setup-dependencies.sh" ]; then
             sudo chmod +x scripts/linux/setup-dependencies.sh

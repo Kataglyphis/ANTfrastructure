@@ -13,7 +13,7 @@
 #
 # Contract (docs/adopting-in-a-new-project.md § 1):
 #
-#   1. third_party/ContainerHub/windows/scripts/modules/<Name>.psm1
+#   1. third_party/ANTfrastructure/windows/scripts/modules/<Name>.psm1
 #   2. <this script's directory>/modules/<Name>.psm1   (project-specific fallback)
 #   3. throw, naming BOTH probed paths
 #
@@ -30,14 +30,14 @@ Set-StrictMode -Version Latest
 $script:RepoRootRelativeToHere = '..\..'
 
 $script:BuildModuleSearchRoots = @(
-    [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot (Join-Path $script:RepoRootRelativeToHere 'third_party\ContainerHub\windows\scripts\modules'))),
+    [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot (Join-Path $script:RepoRootRelativeToHere 'third_party\ANTfrastructure\windows\scripts\modules'))),
     [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'modules'))
 )
 
 function Get-BuildModuleSearchRoot {
     <#
     .SYNOPSIS
-        The module search roots in preference order (ContainerHub first).
+        The module search roots in preference order (ANTfrastructure first).
     #>
     return @($script:BuildModuleSearchRoots)
 }
@@ -45,7 +45,7 @@ function Get-BuildModuleSearchRoot {
 function Resolve-BuildModule {
     <#
     .SYNOPSIS
-        Resolves a build-module name to its .psm1, ContainerHub first.
+        Resolves a build-module name to its .psm1, ANTfrastructure first.
     .PARAMETER Name
         Module name with or without the .psm1 suffix, e.g. 'WindowsBuild.Common'.
     #>
@@ -56,7 +56,7 @@ function Resolve-BuildModule {
 
     # An explicit .psm1 OR .ps1 extension is honoured; a bare name means .psm1.
     # The .ps1 arm is what makes the repo's dot-sourced helpers reachable at all:
-    # ContainerHub ships windows/scripts/modules/Initialize-CiEnvironment.ps1
+    # ANTfrastructure ships windows/scripts/modules/Initialize-CiEnvironment.ps1
     # (New-CiSession + the Write-CiLog family), and because this resolver used to
     # append '.psm1' unconditionally, every consumer hand-rolled that CI-session
     # preamble instead. Dot-source it:
@@ -78,8 +78,8 @@ function Resolve-BuildModule {
     # always "submodule not checked out", and the first probed path says so.
     throw ("Build module '$Name' not found. Probed:" + [Environment]::NewLine +
         '  ' + ($probed -join ([Environment]::NewLine + '  ')) + [Environment]::NewLine +
-        'If the ContainerHub path is missing, the submodule is not checked out: ' +
-        'git submodule update --init --recursive third_party/ContainerHub')
+        'If the ANTfrastructure path is missing, the submodule is not checked out: ' +
+        'git submodule update --init --recursive third_party/ANTfrastructure')
 }
 
 # Back-compat alias for consumers that adopted the earlier name.
@@ -95,7 +95,7 @@ function Import-BuildModule {
     .DESCRIPTION
         Imports with -Force -Global, in the order given. List modules in
         DEPENDENCY ORDER (WindowsScripts.Shared and WindowsBuild.Common first):
-        ContainerHub's modules pull their own dependencies in with a plain,
+        ANTfrastructure's modules pull their own dependencies in with a plain,
         guarded Import-Module, so one forced top-level import gives every module
         the same copy, whereas forcing a dependency *after* its dependents can
         yank it back out of the global session state — the shadowing pitfall

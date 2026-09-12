@@ -226,7 +226,7 @@ docker run ${_linux_ref}-arm64 true")"
 
   t_case "a script under third_party/ belongs to that repo's own run"
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
-    "third_party/ContainerHub/linux/scripts/x.sh=docker run ${_linux_ref} true")"
+    "third_party/ANTfrastructure/linux/scripts/x.sh=docker run ${_linux_ref} true")"
   t_assert_eq "0" "$(t_rc _gate "${_d}")" \
     "a submodule is a separate root; double-reporting it makes both verdicts noise"
 

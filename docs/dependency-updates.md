@@ -11,18 +11,18 @@ in the family are driven by **Renovate run as a local CLI**, through
 
 ```bash
 # what is behind, in this repo, according to THIS repo's renovate.json
-third_party/ContainerHub/linux/scripts/renovate-local.sh .
+third_party/ANTfrastructure/linux/scripts/renovate-local.sh .
 
 # show every write it would make, and make none of them
-third_party/ContainerHub/linux/scripts/renovate-local.sh --apply --dry-run .
+third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply --dry-run .
 
 # ...and make them: gitlinks move with git, every other ecosystem is one
 # value rewritten on one line, and the lockfile beside it is refreshed
-third_party/ContainerHub/linux/scripts/renovate-local.sh --apply .
+third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply .
 ```
 
 Consumers reach it through their own thin wrapper, named `renovate-local.sh` and
-placed wherever that repo already keeps its ContainerHub wrappers -
+placed wherever that repo already keeps its ANTfrastructure wrappers -
 `scripts/linux/` in BeschleunigerBallett, OmniAccelerANT and OrchestrANT, but the
 flat `scripts/` in jotrockenmitlocken. Same shape as `run-lint-gates.sh` there.
 
@@ -63,7 +63,7 @@ dashboard. What it keeps is the same answer on demand, from a tool that needs no
 permissions on the account and leaves no bot commits in the history.
 
 There is also nothing else watching. **No gate in this repository checks gitlink
-freshness** — no `verify_*.py` looks at it. That is how two nested ContainerHub
+freshness** — no `verify_*.py` looks at it. That is how two nested ANTfrastructure
 pins (in AccelerANTgine and OxidANT) drifted 54 commits without a single red
 build.
 
@@ -888,7 +888,7 @@ The report half is safe from anywhere; it only reads.
 missing half made `--apply` refuse in **five of seven** family repos over a
 difference of zero bytes.
 
-`third_party/DocumANTation` sits two levels down inside every ContainerHub
+`third_party/DocumANTation` sits two levels down inside every ANTfrastructure
 checkout. On a Windows checkout read by Linux git every text file in it differs
 by a CR, so it is always dirty — and a dirty submodule makes its parent's gitlink
 read as:
@@ -901,7 +901,7 @@ read as:
 The two shas are **equal**. The whole difference is the `-dirty` suffix git
 appends after running its own status *inside* the submodule — a status that does
 not inherit `--ignore-cr-at-eol`, which is why no end-of-line option can reach
-it. Measured on all four consumer ContainerHub checkouts from WSL that day
+it. Measured on all four consumer ANTfrastructure checkouts from WSL that day
 (Linux git 2.53.0 over `/mnt/d`): identical shas every time.
 
 `--ignore-submodules=dirty` fixes it, and it is not an ignore of anything a run
@@ -1266,7 +1266,7 @@ them: [`renovate-fleet.sh`](../linux/scripts/renovate-fleet.sh).
 linux/scripts/renovate-fleet.sh                     # report every repo
 linux/scripts/renovate-fleet.sh --apply --dry-run   # the whole plan, no writes
 linux/scripts/renovate-fleet.sh --apply
-linux/scripts/renovate-fleet.sh --only ContainerHub,OrchestrANT
+linux/scripts/renovate-fleet.sh --only ANTfrastructure,OrchestrANT
 linux/scripts/renovate-fleet.sh --here              # this repo only, no fleet
 linux/scripts/renovate-fleet.sh --timeout 120       # a tighter per-repo budget
 ```
@@ -1289,13 +1289,13 @@ are git checkouts whose remote has **the same owner as the root's** — read fro
 the root's own `origin`, never from a name list here.
 
 One level deep, and not a recursive sweep. Measured 2026-09-11: eight checkouts
-under `D:\GitHub` carry the ContainerHub identity and **none** of them is under
+under `D:\GitHub` carry the ANTfrastructure identity and **none** of them is under
 `_ratchet/` or `_hubgate_logs/` — but those two directories do hold **six**
 throwaway checkouts (`_ratchet/scratch/gitlab/{fresh,fresh2,super,work}`,
 `_ratchet/scratch/tw/BB`, `_hubgate_logs/head1`), and a recursive sweep is what
 would reach them. A fleet that writes into a scratch clone is the accident this
 whole file is shaped around, so the depth bound is the guard. (An earlier
-version of this paragraph said "eight ContainerHub checkouts, two of them
+version of this paragraph said "eight ANTfrastructure checkouts, two of them
 scratch". Re-measured: eight carry the identity, none is scratch, and the eight
 are the own checkout plus seven vendored — which is what the section below
 already said.)
@@ -1325,15 +1325,15 @@ rather than a silence:
 * **an uninitialised submodule** — see *Order* below.
 
 Measured over the real family, 2026-09-11 (report mode, injected report, no
-network, 16s): seven members, ordered ContainerHub → Kataglyphis → llvm-project
+network, 16s): seven members, ordered ANTfrastructure → Kataglyphis → llvm-project
 → BeschleunigerBallett → OmniAccelerANT → OrchestrANT → jotrockenmitlocken, with
-seven vendored ContainerHub copies named and not touched, six repos of the
+seven vendored ANTfrastructure copies named and not touched, six repos of the
 owner's named as having no own checkout, twenty further vendored checkouts
 counted as somebody else's, and one unplaceable sibling named.
 
 ### Order
 
-ContainerHub is pinned by everyone; a consumer bumped before the hub lands points
+ANTfrastructure is pinned by everyone; a consumer bumped before the hub lands points
 at a commit that does not exist yet. So a repo runs **after** every fleet repo it
 vendors.
 
@@ -1381,7 +1381,7 @@ run prints it as exactly that.
 ### The same repo, checked out several times
 
 Measured on this machine by remote identity, re-measured 2026-09-11:
-ContainerHub has **eight** checkouts — its own, plus seven vendored inside the
+ANTfrastructure has **eight** checkouts — its own, plus seven vendored inside the
 family (one each in BeschleunigerBallett, OrchestrANT and jotrockenmitlocken;
 three under OmniAccelerANT, via its own `third_party`, via OxidANT and via
 AccelerANTgine; one under BeschleunigerBallett's OxidANT). DocumANTation also has
@@ -1406,7 +1406,7 @@ not keep is worse than no promise.
 
 #### Two OWN checkouts of one repository
 
-A second clone beside the first, a `git worktree`, a `ContainerHub-2` kept for a
+A second clone beside the first, a `git worktree`, a `ANTfrastructure-2` kept for a
 bisect: all three carry the same `origin`, so all three used to be **members**,
 and `--apply` wrote the same update into every one of them. Measured 2026-09-11
 on a fixture: `hub` and `hub2` with one identity both appeared in the run order,
@@ -1532,7 +1532,7 @@ here and in a file one of Renovate's own managers already reads:
 | key | the consumer copy Renovate already saw |
 |---|---|
 | `RUFF_VERSION` | OrchestrANT `pyproject.toml` `"ruff==0.16.4"`, and its `.pre-commit-config.yaml` `rev:` |
-| `ONNXRUNTIME_GENAI_VERSION` | OrchestrANT `"onnxruntime-genai==0.15.2"` — whose own comment says "keep in sync with ContainerHub ONNXRUNTIME_GENAI_VERSION" |
+| `ONNXRUNTIME_GENAI_VERSION` | OrchestrANT `"onnxruntime-genai==0.15.2"` — whose own comment says "keep in sync with ANTfrastructure ONNXRUNTIME_GENAI_VERSION" |
 | `ONNXRUNTIME_VERSION` | the version that pin resolves, named in the same file |
 | `PYTORCH_VERSION` | OrchestrANT `"torch==2.13.0"` and `torch @ git+…@v2.13.0` |
 | `TORCHVISION_VERSION` | OrchestrANT `"torchvision==0.28.0"` |

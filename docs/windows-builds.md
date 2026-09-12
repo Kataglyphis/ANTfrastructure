@@ -964,7 +964,7 @@ Asks a BUILT media image what video backends OpenCV actually has (backlog #93-#9
 
 ## Reusable module: WindowsContainerBuild.Reuse
 
-The container-reuse pattern, packaged so consumers do not each reinvent it. Consumers resolve it ContainerHub-first with a vendored fallback.
+The container-reuse pattern, packaged so consumers do not each reinvent it. Consumers resolve it ANTfrastructure-first with a vendored fallback.
 
 `windows/scripts/modules/WindowsContainerBuild.Reuse.psm1` implements the
 container-reuse pattern so consumers do not each reinvent it:
@@ -1005,5 +1005,5 @@ exec'd build did. There, a non-zero `docker exec` is instead classified against
 the container's state, so "the container died under the build" stops being
 reported as a build error to hunt in the log.
 
-Consumers resolve it ContainerHub-first with a vendored fallback (see
+Consumers resolve it ANTfrastructure-first with a vendored fallback (see
 BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).

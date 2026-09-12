@@ -17,7 +17,7 @@ param(
     # (default: analyzer is advisory).
     [switch]$FailOnAnalyzer,
     # Directories and/or single .ps1/.psm1 files to lint. Omitted = the hub's own
-    # scope (windows\ + shared\windows), so ContainerHub's own invocation is
+    # scope (windows\ + shared\windows), so ANTfrastructure's own invocation is
     # unchanged. A consumer that submodules this repo points -Path at ITS tree;
     # the PSScriptAnalyzer settings file stays resolved against $PSScriptRoot
     # below, so the hub's ruleset is consumed BY REFERENCE - nothing is copied.
@@ -28,7 +28,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # $PSScriptRoot, not $MyInvocation.MyCommand.Path: identical for the hub's own
 # run, but it anchors $settings to THIS script's location rather than to
-# whatever -Path a consumer passes, which is what lets a submoduled ContainerHub
+# whatever -Path a consumer passes, which is what lets a submoduled ANTfrastructure
 # hand out its ruleset without anyone copying the .psd1.
 $scriptsDir = $PSScriptRoot                                         # windows/scripts
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows

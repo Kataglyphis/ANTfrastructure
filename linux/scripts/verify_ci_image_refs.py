@@ -44,7 +44,7 @@ Usage:
 
 The consumer root exists for the same reason lint-workflows.sh takes one: a
 submodule checkout puts this script INSIDE the consumer, where the default root
-resolves to ContainerHub and the gate would report green over the wrong tree.
+resolves to ANTfrastructure and the gate would report green over the wrong tree.
 versions.env always comes from THIS repo regardless of the root.
 
 A/B/C read <root>/.github/ by glob; D's script half reads the git INDEX through
@@ -167,7 +167,7 @@ def ask_instead(path: Path) -> str:
     be able to turn a finding into a KeyError.
     """
     if path.suffix.lower() == ".sh":
-        return "bash <ContainerHub>/linux/scripts/ci-image-ref.sh [--windows]"
+        return "bash <ANTfrastructure>/linux/scripts/ci-image-ref.sh [--windows]"
     return "Get-CiImageReference [-Windows] (WindowsContainerImage.Common.psm1)"
 
 

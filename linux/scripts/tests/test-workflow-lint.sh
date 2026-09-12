@@ -84,7 +84,7 @@ t_assert_contains "${_out}" "no_such_property" "the finding itself has to reach 
 
 t_case "the root argument decides WHICH tree is linted"
 # A submodule checkout puts this script inside the consumer, where the default
-# root resolves to ContainerHub. The two verdicts must follow the ARGUMENT: the
+# root resolves to ANTfrastructure. The two verdicts must follow the ARGUMENT: the
 # broken checkout red, a clean sibling green while the broken one still exists.
 t_assert_eq "1" "$(t_rc bash "${GATE}" "${broken}")"
 t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" \
@@ -658,7 +658,7 @@ t_assert_contains "$(t_out _conv_at "${hube}" "${one_off}")" "RATCHET [job-timeo
 
 # A tree whose `origin` names the HUB, which is the half of the ratchet that is
 # strict: this repository's commit can edit the row beside the fix.
-hub_root="$(_conv_root ContainerHub 'name: ci
+hub_root="$(_conv_root ANTfrastructure 'name: ci
 on: push
 permissions:
   contents: read
@@ -669,13 +669,13 @@ jobs:
       - run: echo hi')"
 
 t_case "...but an unrecorded shrink in the HUB fails, like every other allow file here"
-hubf="$(_conv_hub 'CENSUS | ContainerHub | job-timeout | 4 | above the fixture on purpose')"
+hubf="$(_conv_hub 'CENSUS | ANTfrastructure | job-timeout | 4 | above the fixture on purpose')"
 t_assert_eq "1" "$(t_rc _conv_at "${hubf}" "${hub_root}")"
 t_assert_contains "$(t_out _conv_at "${hubf}" "${hub_root}")" \
-  "down to 1 in ContainerHub from a frozen 4"
+  "down to 1 in ANTfrastructure from a frozen 4"
 
 t_case "an ARMED check counts zero, so arming one retires its row instead of double-reporting"
-hubg="$(_conv_hub 'CENSUS | ContainerHub | job-timeout | 1 | the row arming is expected to retire')"
+hubg="$(_conv_hub 'CENSUS | ANTfrastructure | job-timeout | 1 | the row arming is expected to retire')"
 _hub_armed() { WORKFLOW_CONVENTIONS_GATE=job-timeout _conv_at "${hubg}" "$1"; }
 t_assert_eq "1" "$(t_rc _hub_armed "${hub_root}")"
 _out="$(t_out _hub_armed "${hub_root}")"
@@ -721,7 +721,7 @@ t_case "the SHIPPED allow file parses and its census is EXACT for this repo"
 hub_probe="$(mktemp -d "${_work}/hubprobe.XXXXXX")"
 cp -r "${SCRIPTS}/../../.github" "${hub_probe}/.github"
 git -C "${hub_probe}" init -q
-git -C "${hub_probe}" remote add origin "https://github.com/Kataglyphis/ContainerHub.git"
+git -C "${hub_probe}" remote add origin "https://github.com/Kataglyphis/ANTfrastructure.git"
 _out="$(t_out _conv "${hub_probe}")"
 t_assert_contains "${_out}" "workflow conventions under"
 t_assert_fails grep -q -F -e "expected '<repo>" <<<"${_out}"

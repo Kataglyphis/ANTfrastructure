@@ -149,7 +149,7 @@ cmake_build_prepare_env() {
   # (clang presets) ignores it, so only the gcc presets are hit, which is why the
   # gcc lanes - benchmarks (gcc) included - were red for months. Neutralize any
   # CCACHE_SECONDARY_STORAGE that is not an actual URL so the deployed image works
-  # without a rebuild (the env is also removed at source in ContainerHub's
+  # without a rebuild (the env is also removed at source in ANTfrastructure's
   # Dockerfile.package). A real remote URL, if ever set, is left intact.
   if [[ -n "${CCACHE_SECONDARY_STORAGE:-}" && "${CCACHE_SECONDARY_STORAGE}" != *"://"* ]]; then
     echo "Ignoring invalid CCACHE_SECONDARY_STORAGE='${CCACHE_SECONDARY_STORAGE}' (not a URL)"
@@ -184,7 +184,7 @@ cmake_build_prepare_env() {
   fi
 
   # Same treatment for the compiler caches. The image bakes
-  # SCCACHE_DIR=/var/cache/sccache (ContainerHub Dockerfile.base), which is
+  # SCCACHE_DIR=/var/cache/sccache (ANTfrastructure Dockerfile.base), which is
   # only writable through BuildKit cache mounts during IMAGE builds; at
   # runtime it is root-owned, and as a non-root user every sccache-wrapped
   # compile dies with "failed to create directory ... Permission denied"

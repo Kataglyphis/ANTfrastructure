@@ -1455,7 +1455,7 @@ took 107 s on a 254 Mbit/s link because `security.ubuntu.com` round-robin DNS
 resolved to an unhealthy node; the regional mirror took it under 3 s. That cost
 is paid on every uncached image layer, not just the host. (2) `-X theirs` on a
 merge resolves file contents but leaves submodule POINTERS conflicted — a merge
-can look resolved while pinning the wrong ContainerHub commit. The resolution
+can look resolved while pinning the wrong ANTfrastructure commit. The resolution
 loop is now in `adopting-in-a-new-project.md` § Submodule maintenance.
 
 **Nothing sensitive crossed over.** The source tree holds live secrets — two

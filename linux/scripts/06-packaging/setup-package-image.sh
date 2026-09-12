@@ -515,7 +515,7 @@ report_rust_provenance() {
         fi
     done
     if ! command -v rustup >/dev/null 2>&1; then
-        echo "  NOTE: no rustup. Consumers must call cargo directly; ContainerHub's" >&2
+        echo "  NOTE: no rustup. Consumers must call cargo directly; ANTfrastructure's" >&2
         echo "        own cargo_fmt_clippy.sh does 'rustup component add' and will" >&2
         echo "        exit 127 against this image." >&2
     fi

@@ -140,12 +140,12 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # ContainerHub's shared prologue: reclaim runner disk, check out, log in
+      # ANTfrastructure's shared prologue: reclaim runner disk, check out, log in
       # to ghcr and pull with retries. Replaces four hand-rolled steps including
       # a copy of the retry loop, so the retry count and timeout live in one
       # place for every repo instead of drifting per workflow.
       - name: Prepare CI host
-        uses: Kataglyphis/ContainerHub/.github/actions/prepare-linux-ci-host@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           registry-username: Kataglyphis
@@ -154,7 +154,7 @@ jobs:
           submodules: recursive
 
       - name: Python static analysis
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -163,7 +163,7 @@ jobs:
             '${{ matrix.arch }}' '${{ inputs.static-analysis-python-version }}'"
 
       - name: Run Python tests
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -180,7 +180,7 @@ jobs:
 
       - name: Build Docs
         if: ${{ matrix.arch == 'x64' }}
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -206,7 +206,7 @@ jobs:
           local-dir: ${{ inputs.docs-artifact-path }}
 
       - name: Packaging application
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}

@@ -6,7 +6,7 @@
 <#
 .SYNOPSIS
   Generic MSIX packaging script for Rust desktop applications.
-  Can be upstreamed to ContainerHub.
+  Can be upstreamed to ANTfrastructure.
 
 .DESCRIPTION
   - Uses WindowsBuild.Common.psm1 for structured logging.
@@ -47,7 +47,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Import ContainerHub build framework (relative to this script's location in ContainerHub).
+# Import ANTfrastructure build framework (relative to this script's location in ANTfrastructure).
 # WindowsScripts.Shared and WindowsMsix.Common are requested explicitly because
 # Initialize-CiEnvironment defaults to WindowsBuild.Common only -- which is why this
 # script used to carry its own copies of Assert-Command, ConvertTo-NormalizedVersion

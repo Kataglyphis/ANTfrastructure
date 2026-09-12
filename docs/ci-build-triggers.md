@@ -1,6 +1,6 @@
 # CI Build Triggers (commit-message opt-ins)
 
-> **These lanes live in CONSUMER repos, not here.** ContainerHub's own CI is
+> **These lanes live in CONSUMER repos, not here.** ANTfrastructure's own CI is
 > `ubuntu26.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
 > lint/tests), `llm-stack-tests.yml` (push/PR, path-filtered on
 > `linux/llm-stack/**`), and three scheduled housekeeping workflows —

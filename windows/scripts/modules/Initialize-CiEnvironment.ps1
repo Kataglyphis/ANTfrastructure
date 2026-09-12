@@ -4,7 +4,7 @@
 #requires -Version 7.0
 
 # Shared bootstrap for the CI entry scripts (windows/scripts/python/Invoke-Ci*.ps1,
-# windows/scripts/rust/*.ps1): resolves and imports the requested ContainerHub
+# windows/scripts/rust/*.ps1): resolves and imports the requested ANTfrastructure
 # modules and optionally enters the consumer repo root.
 #
 # Deliberately a dot-sourced SCRIPT, not a .psm1: the Import-Module calls must run
@@ -24,13 +24,13 @@ function Initialize-CiEnvironment {
         # Resolve the repo root and Set-Location into it; the resolved path is
         # returned as a [string]. WITHOUT this switch the function returns
         # nothing at all -- that contract is kept as-is.
-        # WHAT ROOT? Three levels above the calling script = the CONTAINERHUB
+        # WHAT ROOT? Three levels above the calling script = the ANTFRASTRUCTURE
         # CHECKOUT ROOT (python -> scripts -> windows -> root). #140
         # (2026-08-21): an earlier comment claimed "the parent of the
-        # ContainerHub checkout" — that was never what the code did, and no
+        # ANTfrastructure checkout" — that was never what the code did, and no
         # caller exists anywhere (all local consumer repos verified) that
         # depends on either reading. A vendored consumer
-        # (<consumer>/third_party/ContainerHub/...) wanting ITS
+        # (<consumer>/third_party/ANTfrastructure/...) wanting ITS
         # OWN root passes -RepoRoot explicitly.
         [switch]$EnterRepoRoot,
         # Explicit repo-root override for vendored-checkout consumers.

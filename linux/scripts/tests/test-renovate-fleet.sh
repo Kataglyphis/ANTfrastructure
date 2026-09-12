@@ -4,7 +4,7 @@
 # are properties of SHAPES: a hub everyone vendors, two url spellings for one
 # repo, a repo that only ever appears vendored, a repo that cannot be worked on,
 # a sibling with no origin at all, and one repository checked out twice. The
-# real family has them -- eight ContainerHub checkouts, under both spellings --
+# real family has them -- eight ANTfrastructure checkouts, under both spellings --
 # and a suite keyed on its names would prove nothing about the next machine.
 # docs/dependency-updates.md#the-fleet
 set -u
@@ -432,7 +432,7 @@ t_case "(F14) TWO OWN CHECKOUTS of one repository: refused, not written twice"
 # Measured against the old code: `hub` and `hub2` with one origin both appeared
 # in the run order, --apply rewrote pubspec.yaml in BOTH, both rows said rc 0,
 # and hub2 was named nowhere. A second clone, a `git worktree` and a
-# `ContainerHub-2` all have this shape.
+# `ANTfrastructure-2` all have this shape.
 DUPFAM="${WORK}/dupfam"
 mkdir -p "${DUPFAM}"
 DUP_URL="https://example.invalid/dup/hub.git"

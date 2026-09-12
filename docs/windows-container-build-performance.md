@@ -269,7 +269,7 @@ destructive — and leaves a 150 GB drive sitting at 146.6 GB free.
 
 ```yaml
 - name: 'Put the Docker data-root on D:'
-  uses: Kataglyphis/ContainerHub/.github/actions/set-docker-data-root@main
+  uses: Kataglyphis/ANTfrastructure/.github/actions/set-docker-data-root@main
   with:
     data-root: 'D:\docker'
 ```

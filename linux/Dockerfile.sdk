@@ -235,7 +235,7 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSIO
     else \
         _cached=/var/cache/flutter/sdk; \
         _stage=/var/cache/flutter/.staging; \
-        _marker=.containerhub-cache-complete; \
+        _marker=.antfrastructure-cache-complete; \
         mkdir -p /var/cache/flutter /opt; \
         if [ -f "${_cached}/${_marker}" ]; then \
             echo "Restoring Flutter ${FLUTTER_VERSION} from the SDK cache"; \

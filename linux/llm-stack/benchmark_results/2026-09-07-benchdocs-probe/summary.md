@@ -1,6 +1,6 @@
 # bench_docs_probe summary
 
-Run: `/tmp/claude-1000/-home-jonas-GitHub-Kataglyphis-ContainerHub/8ac2595b-42be-44a3-b364-ad8bb0ffec2a/scratchpad/benchdocs/results/20260907-142306` — 2026-09-07 18:57:55
+Run: `/tmp/claude-1000/-home-jonas-GitHub-Kataglyphis-ANTfrastructure/8ac2595b-42be-44a3-b364-ad8bb0ffec2a/scratchpad/benchdocs/results/20260907-142306` — 2026-09-07 18:57:55
 
 style=glm rows measure recognition + this harness's deterministic extraction; style=chat rows measure the model's own extraction. CUT/ERR excluded from pass_rate.
 

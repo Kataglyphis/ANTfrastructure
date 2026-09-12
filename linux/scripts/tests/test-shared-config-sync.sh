@@ -14,7 +14,7 @@ source "${TESTS_DIR}/test-harness.sh"
 HUB="$(cd "${TESTS_DIR}/../../.." && pwd)"
 SYNC="${HUB}/shared/config/sync-shared-config.sh"
 CANON_EXACT="${HUB}/shared/config/.clang-format"
-CANON_BODY="${HUB}/shared/linux/templates/containerhub.sh"
+CANON_BODY="${HUB}/shared/linux/templates/antfrastructure.sh"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
@@ -26,9 +26,9 @@ _consumer() {
   d="$(mktemp -d "${_work}/consumer.XXXXXX")"
   mkdir -p "${d}/scripts/linux/lib"
   cp "${CANON_EXACT}" "${d}/.clang-format"
-  cp "${CANON_BODY}" "${d}/scripts/linux/lib/containerhub.sh"
-  printf '# what this repo takes from ContainerHub\nclang-format\ncontainerhub-sh\n' \
-    > "${d}/.containerhub-shared.manifest"
+  cp "${CANON_BODY}" "${d}/scripts/linux/lib/antfrastructure.sh"
+  printf '# what this repo takes from ANTfrastructure\nclang-format\nantfrastructure-sh\n' \
+    > "${d}/.antfrastructure-shared.manifest"
   printf '%s' "${d}"
 }
 
@@ -87,7 +87,7 @@ t_assert_eq "0" "${rc}" \
 
 t_case "'body' mode: the consumer's own header prose is a legitimate delta"
 _d="$(_consumer)"
-_reheader "${_d}/scripts/linux/lib/containerhub.sh"
+_reheader "${_d}/scripts/linux/lib/antfrastructure.sh"
 _check "${_d}"
 t_assert_eq "0" "${rc}" \
   "body mode compares from the first CODE line down; output was: ${OUT}"
@@ -95,25 +95,25 @@ t_assert_eq "0" "${rc}" \
 t_case "'body' mode: a declared knob may carry any VALUE"
 _d="$(_consumer)"
 sed -i 's|KATAGLYPHIS_REPO_ROOT_RELATIVE:=\.\./\.\./\.\.|KATAGLYPHIS_REPO_ROOT_RELATIVE:=../..|' \
-  "${_d}/scripts/linux/lib/containerhub.sh"
+  "${_d}/scripts/linux/lib/antfrastructure.sh"
 _check "${_d}"
 t_assert_eq "0" "${rc}" \
   "the knob is the one line a consumer is expected to adjust; output was: ${OUT}"
 
 t_case "'body' mode forgives the header and the knobs, and NOTHING else"
 _d="$(_consumer)"
-_reheader "${_d}/scripts/linux/lib/containerhub.sh"
-printf 'export CONTAINERHUB_EXTRA=1\n' >> "${_d}/scripts/linux/lib/containerhub.sh"
+_reheader "${_d}/scripts/linux/lib/antfrastructure.sh"
+printf 'export ANTFRASTRUCTURE_EXTRA=1\n' >> "${_d}/scripts/linux/lib/antfrastructure.sh"
 _check "${_d}"
 t_assert_eq "1" "${rc}" "an edited code line is drift even under a rewritten header"
-t_assert_contains "${OUT}" "DRIFTED scripts/linux/lib/containerhub.sh"
+t_assert_contains "${OUT}" "DRIFTED scripts/linux/lib/antfrastructure.sh"
 
-t_case "an id ContainerHub does not own is broken INPUT (2), not a finding"
+t_case "an id ANTfrastructure does not own is broken INPUT (2), not a finding"
 _d="$(_consumer)"
-printf 'not-an-asset\n' >> "${_d}/.containerhub-shared.manifest"
+printf 'not-an-asset\n' >> "${_d}/.antfrastructure-shared.manifest"
 _check "${_d}"
 t_assert_eq "2" "${rc}" "2 separates 'your manifest is wrong' from 'your copies drifted'"
-t_assert_contains "${OUT}" "which ContainerHub does not own"
+t_assert_contains "${OUT}" "which ANTfrastructure does not own"
 t_assert_contains "${OUT}" "Known ids:" "the message must list what it could have meant"
 
 t_case "--ignore and a manifest cannot be combined"
@@ -126,8 +126,8 @@ t_assert_contains "${OUT}" "cannot be combined"
 t_case "--write refuses a body-mode asset instead of clobbering the header"
 # It has to be DRIFTED first: --write only touches what --check would report.
 _d="$(_consumer)"
-_reheader "${_d}/scripts/linux/lib/containerhub.sh"
-printf 'export CONTAINERHUB_EXTRA=1\n' >> "${_d}/scripts/linux/lib/containerhub.sh"
+_reheader "${_d}/scripts/linux/lib/antfrastructure.sh"
+printf 'export ANTFRASTRUCTURE_EXTRA=1\n' >> "${_d}/scripts/linux/lib/antfrastructure.sh"
 OUT="$(bash "${SYNC}" --repo-root "${_d}" --write 2>&1)"; rc=$?
 t_assert_eq "2" "${rc}" "a verbatim copy would delete the consumer's header and knob values"
 t_assert_contains "${OUT}" "body-mode"

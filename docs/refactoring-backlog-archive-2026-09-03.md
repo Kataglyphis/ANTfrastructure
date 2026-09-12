@@ -520,8 +520,8 @@ The count is produced by exactly one line in a DIFFERENT repo:
 ion/orchestr_ant_ion/smoke/__main__.py:73 `f"=== {passed}/{len(results)} ok,
 "`, reached only on the non---json path (line 68-74); `main` returns 0
 whenever `failures` is empty (line 76), and `warnings` (optional checks) are
-excluded from `failures` (line 58). ContainerHub pins that repo only by
-APP_REF (linux/Dockerfile.torch:37, v0.0.27) -- nothing in ContainerHub gates
+excluded from `failures` (line 58). ANTfrastructure pins that repo only by
+APP_REF (linux/Dockerfile.torch:37, v0.0.27) -- nothing in ANTfrastructure gates
 the output format, so this is an unguarded cross-repo string contract. The `?`
 placeholder at smoke-runtime-image.sh:258 (`${_wheel_ok:-?}`) shows the empty
 case was anticipated for the message but not for the verdict. Backlog line 84
@@ -546,11 +546,11 @@ catching a broken LiteRT that imported fine). 2. "SILENTLY" NEEDS
 QUALIFICATION. The app is pinned by tag (`APP_REF=v0.0.27`,
 linux/scripts/01-core/versions.env:329, mirrored at
 linux/Dockerfile.torch:37/102), so an upstream push cannot drift the format
-into a running build. The trigger is a deliberate ContainerHub commit bumping
+into a running build. The trigger is a deliberate ANTfrastructure commit bumping
 APP_REF to an app version whose summary wording changed. The `--json` half of
 the scenario is not reachable at all: line 252 invokes `python -m
 orchestr_ant_ion.smoke` as a fixed literal with no flag forwarding, so
-`--json` requires editing ContainerHub. The defect is that such a bump disarms
+`--json` requires editing ANTfrastructure. The defect is that such a bump disarms
 the ratchet with nothing going red — not that the format can drift on its own.
 3. IT IS INVISIBLE TO THE GATE, NOT TO A READER. Line 258 prints `? ok >= 15`
 via `${_wheel_ok:-?}`, and line 253 dumps the full smoke output, so a human
@@ -737,7 +737,7 @@ Code: setup-package-image.sh:463-466 `local want="${RUST_VERSION:-}" got` /
 `if [ -z "${want}" ]; then echo " NOTE: RUST_VERSION unset; cannot verify the
 toolchain matches its pin." >&2; return 0`. Same file:317 `if [ -n
 "${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then`. Live proof,
-/home/bigjuicyjones/GitHub/Kataglyphis-ContainerHub/out/build-logs/runtime-
+/home/bigjuicyjones/GitHub/Kataglyphis-ANTfrastructure/out/build-logs/runtime-
 retry2.log, three occurrences (lines 402047-402052 amd64, 1358864-1358869
 arm64, 2046845-2046850 riscv64): `#49 60.38 cargo /bin/cargo ->
 /usr/lib/rust-1.93/bin/cargo (cargo 1.93.1 ...)` `#49 60.41 rustc /bin/rustc

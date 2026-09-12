@@ -334,7 +334,7 @@ ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platf
 #   error: failed to create directory `/usr/local/cargo/registry/cache/...`
 #   Caused by: Permission denied (os error 13)
 # while the same lane's script-driven cargo steps survived, because those call
-# ContainerHub's own cargo-home guard. Default the values, do not impose them.
+# ANTfrastructure's own cargo-home guard. Default the values, do not impose them.
 RUN printf '%s\n' \
       ': "${RUSTUP_HOME:=/usr/local/rustup}"; export RUSTUP_HOME' \
       ': "${CARGO_HOME:=/usr/local/cargo}"; export CARGO_HOME' \

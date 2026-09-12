@@ -110,7 +110,7 @@ ROOT="$(git -C "${ROOT}" rev-parse --show-toplevel)"
 
 # --------------------------------------------------------------------------
 # Identity. One repository is checked out under several paths AND under both url
-# spellings -- OrchestrANT declares ContainerHub over https, everyone else over
+# spellings -- OrchestrANT declares ANTfrastructure over https, everyone else over
 # git@ -- so a fleet keyed on paths or on raw urls counts it as several. The key
 # is the normalised remote: host/owner/name, lowercased, no scheme, user or .git.
 # KNOWN LIMIT: an ssh url with an explicit PORT turns its port into a path
@@ -180,7 +180,7 @@ climb_to_top() {
 }
 
 # How deep the submodule walk goes. The family's deepest real chain is
-# consumer -> OxidANT -> ContainerHub -> DocumANTation -> awesome-beamer, i.e.
+# consumer -> OxidANT -> ANTfrastructure -> DocumANTation -> awesome-beamer, i.e.
 # 4. The bound is not a tuning knob: a .gitmodules that points at an ancestor
 # makes the walk run forever, and a fleet tool that hangs is worse than one
 # that stops and says how deep it looked.
@@ -288,7 +288,7 @@ discover_graph() {
 #     duplicate this file exists to answer, and an ordering constraint
 #   * a repo of the owner's with NO own checkout -- named, not updated
 #   * somebody else's upstream -- COUNTED, not listed: printing all of them
-#     buried the seven ContainerHub copies in noise (measured over the real
+#     buried the seven ANTfrastructure copies in noise (measured over the real
 #     family 2026-09-11: 56 rows, 36 of them the owner's, 20 somebody else's,
 #     which is the count the tool itself prints)
 classify_vendored() {
@@ -346,7 +346,7 @@ own_index() {
 }
 
 # --------------------------------------------------------------------------
-# ORDER. A repo runs AFTER every fleet repo it vendors: ContainerHub is pinned
+# ORDER. A repo runs AFTER every fleet repo it vendors: ANTfrastructure is pinned
 # by everyone, and a consumer bumped before the hub lands points at a commit
 # that does not exist yet. The rank is the number of fleet identities the repo
 # vendors transitively, and sorting on it IS a topological order because
@@ -430,7 +430,7 @@ selected() {
 }
 
 # TWO OWN CHECKOUTS OF ONE REPOSITORY. A second clone beside the first, a
-# `git worktree`, a `ContainerHub-2` kept for a bisect: all three carry one
+# `git worktree`, a `ANTfrastructure-2` kept for a bisect: all three carry one
 # origin, all three used to be members, and `--apply` wrote the same update into
 # every one (measured 2026-09-11: `hub` and `hub2`, both rewritten, both rc 0,
 # neither named anywhere). The fleet cannot know which one the human pushes
@@ -509,7 +509,7 @@ summarise_no_own() {
 # THE DUPLICATE-CHECKOUT ANSWER, and the point of this whole file: a repo is
 # UPDATED where it lives as a repository, and the POINTERS to it are moved where
 # it is vendored. A vendored checkout is never a fleet member, and it is NAMED,
-# because eight working trees of ContainerHub written by one --apply is how work
+# because eight working trees of ANTfrastructure written by one --apply is how work
 # got lost twice in one day. The measurements and the argument:
 # docs/dependency-updates.md#the-same-repo-checked-out-several-times
 print_duplicates() {

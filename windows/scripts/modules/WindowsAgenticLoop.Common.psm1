@@ -743,7 +743,7 @@ function Write-AgenticOpenCodeAgentFile {
         'GENERATED FILE - DO NOT EDIT.'
         ''
         'Written on every agentic-loop start by Write-AgenticOpenCodeAgentFile'
-        '(ContainerHub windows/scripts/modules/WindowsAgenticLoop.Common.psm1).'
+        '(ANTfrastructure windows/scripts/modules/WindowsAgenticLoop.Common.psm1).'
         'opencode takes no system-prompt file on its command line, so this is the'
         'only way `opencode run --agent <role>` can be given the shared role prompt.'
         ''

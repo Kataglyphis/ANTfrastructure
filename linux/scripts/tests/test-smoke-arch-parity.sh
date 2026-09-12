@@ -510,13 +510,13 @@ _scf() { bash -c "source '${SMOKE_COMMON}' >/dev/null 2>&1; $1; echo \"FAILURES=
 t_case "smoke_resolve_bin prefers PATH and otherwise returns the fallback verbatim"
 t_assert_eq "$(command -v sh)" "$(_sc 'smoke_resolve_bin sh /nowhere/sh')"
 t_assert_eq "/opt/ffmpeg/bin/ffmpeg" \
-            "$(_sc 'smoke_resolve_bin containerhub-no-such-tool /opt/ffmpeg/bin/ffmpeg')"
+            "$(_sc 'smoke_resolve_bin antfrastructure-no-such-tool /opt/ffmpeg/bin/ffmpeg')"
 
 t_case "smoke_resolve_bin never trips errexit on the miss path"
 # The four call sites are `x="$(smoke_resolve_bin …)"` under `set -euo
 # pipefail`; a non-zero rc there would kill the smoke instead of falling back.
 t_assert_eq "reached" \
-  "$(_sc 'x="$(smoke_resolve_bin containerhub-no-such-tool /opt/x)"; [ "$x" = /opt/x ] && echo reached')"
+  "$(_sc 'x="$(smoke_resolve_bin antfrastructure-no-such-tool /opt/x)"; [ "$x" = /opt/x ] && echo reached')"
 
 # ELF fixtures: a real magic header, a text file, an empty file.
 printf '\177ELF\002\001\001\000' > "${_RT_SANDBOX}/fake.elf"

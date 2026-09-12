@@ -46,13 +46,13 @@ _consumer() {
   mkdir -p "${d}/scripts"
   {
     printf '#!/usr/bin/env bash\n'
-    printf 'bash third_party/ContainerHub/linux/scripts/called-by-consumer.sh\n'
+    printf 'bash third_party/ANTfrastructure/linux/scripts/called-by-consumer.sh\n'
     case "${shape}" in
-      dangling)  printf 'bash third_party/ContainerHub/linux/scripts/gone.sh\n' ;;
-      commented) printf '# third_party/ContainerHub/linux/scripts/gone.sh was removed upstream\n' ;;
+      dangling)  printf 'bash third_party/ANTfrastructure/linux/scripts/gone.sh\n' ;;
+      commented) printf '# third_party/ANTfrastructure/linux/scripts/gone.sh was removed upstream\n' ;;
     esac
   } > "${d}/scripts/build.sh"
-  printf 'We use third_party/ContainerHub/linux/scripts/only-mentioned.sh one day.\n' \
+  printf 'We use third_party/ANTfrastructure/linux/scripts/only-mentioned.sh one day.\n' \
     > "${d}/README.md"
   git -C "${d}" init -q
   t_git_commit "${d}"
@@ -64,8 +64,8 @@ _inventory() {
   local out="$1" classes="$2" self="${3:-true}"
   cat > "${out}" <<JSON
 {
-  "hub": { "owner": "Kataglyphis", "repo": "ContainerHub",
-           "submodule_path": "third_party/ContainerHub" },
+  "hub": { "owner": "Kataglyphis", "repo": "ANTfrastructure",
+           "submodule_path": "third_party/ANTfrastructure" },
   "consumers": [
     { "name": "hub-self", "clone_url": "unused", "ref": "main", "self": ${self} },
     { "name": "consumer-a", "clone_url": "unused", "ref": "main", "self": false }

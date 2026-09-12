@@ -14,7 +14,7 @@
 #      restart-on-failure - independent of any user session;
 #   3. starts it and verifies the endpoint answers.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\Install-DufsService.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Install-DufsService.ps1'
 
 [CmdletBinding()]
 param(

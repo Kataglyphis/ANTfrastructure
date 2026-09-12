@@ -22,7 +22,7 @@
 # pipefail so that sourcing it cannot change the caller's shell options.
 #
 # Usage:
-#   source "<containerhub>/linux/scripts/lib/wasm-opt.sh"
+#   source "<antfrastructure>/linux/scripts/lib/wasm-opt.sh"
 #   wasm_opt_ensure                              # bootstraps if needed
 #   wasm_opt_optimize in.wasm out.wasm [-Oz]     # feature flags + fallback
 
@@ -131,11 +131,11 @@ wasm_opt_ensure() {
 
   if [[ ! -x "${install_dir}/bin/wasm-opt" ]]; then
     info "wasm-opt not on PATH; fetching pinned binaryen ${BINARYEN_VERSION}"
-    # SHA-verified download comes from ContainerHub 01-core (download_verified_file).
+    # SHA-verified download comes from ANTfrastructure 01-core (download_verified_file).
     if ! declare -F download_verified_file >/dev/null 2>&1; then
       # shellcheck source=../01-core/downloads.sh
       source "${_WASM_OPT_CORE_DIR}/downloads.sh" 2>/dev/null \
-        || err "ContainerHub downloads.sh not available for verified binaryen fetch"
+        || err "ANTfrastructure downloads.sh not available for verified binaryen fetch"
     fi
 
     mkdir -p "${cache_root}" || err "Cannot create binaryen cache directory ${cache_root}"

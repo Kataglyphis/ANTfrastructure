@@ -63,7 +63,7 @@ write_opencode_agent_file() {
 GENERATED FILE - DO NOT EDIT.
 
 Written on every agentic-loop start by write_opencode_agent_file
-(ContainerHub linux/scripts/lib/agentic-engines.sh).
+(ANTfrastructure linux/scripts/lib/agentic-engines.sh).
 opencode takes no system-prompt file on its command line, so this is the
 only way \`opencode run --agent <role>\` can be given the shared role prompt.
 

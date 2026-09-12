@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for check_shared_config, the inline preflight gate: ContainerHub's own
+# Tests for check_shared_config, the inline preflight gate: ANTfrastructure's own
 # root .cmake-format.yaml is a consumer copy and must match shared/config's.
 #
 # WHICH assets the gate looks at now comes from the root
-# .containerhub-shared.manifest, not from the `--ignore` list this function used
+# .antfrastructure-shared.manifest, not from the `--ignore` list this function used
 # to carry. So the manifest is part of the owner-shaped fixture below, and the
 # four names with no root copy here are asserted to be ABSENT from the report
 # rather than present as SKIP lines -- an undeclared asset is not this
@@ -35,7 +35,7 @@ _tree() {
      "${REPO_ROOT}"/shared/config/shared-assets.manifest \
      "${REPO_ROOT}"/shared/config/sync-shared-config.sh \
      "${TREE}/shared/config/"
-  cp "${REPO_ROOT}/.containerhub-shared.manifest" "${TREE}/.containerhub-shared.manifest"
+  cp "${REPO_ROOT}/.antfrastructure-shared.manifest" "${TREE}/.antfrastructure-shared.manifest"
   cp "${REPO_ROOT}/shared/config/.cmake-format.yaml" "${TREE}/.cmake-format.yaml"
 }
 
@@ -76,7 +76,7 @@ t_assert_contains "${OUT}" "MISSING .cmake-format.yaml" "the missing file must b
 
 t_case "an undeclared asset is invisible, but a manifest that names it is not"
 _tree declared
-printf 'gcovr\n' >> "${TREE}/.containerhub-shared.manifest"
+printf 'gcovr\n' >> "${TREE}/.antfrastructure-shared.manifest"
 _guard
 t_assert_eq "1" "${rc}" \
   "declaring an asset this repo has no root copy of must fail -- the declaration is what turns silence into a verdict"

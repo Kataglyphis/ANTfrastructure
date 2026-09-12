@@ -8,13 +8,13 @@
   ],
   "hub": {
     "owner": "Kataglyphis",
-    "repo": "ContainerHub",
-    "submodule_path": "third_party/ContainerHub"
+    "repo": "ANTfrastructure",
+    "submodule_path": "third_party/ANTfrastructure"
   },
   "consumers": [
     {
-      "name": "ContainerHub",
-      "clone_url": "https://github.com/Kataglyphis/ContainerHub.git",
+      "name": "ANTfrastructure",
+      "clone_url": "https://github.com/Kataglyphis/ANTfrastructure.git",
       "ref": "main",
       "self": true,
       "confirmed": true,
@@ -26,7 +26,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "C++/CMake. Submodule at third_party/ContainerHub; uses the four container composite actions and run-lint-gates.sh."
+      "note": "C++/CMake. Submodule at third_party/ANTfrastructure; uses the four container composite actions and run-lint-gates.sh."
     },
     {
       "name": "OmniAccelerANT",
@@ -34,7 +34,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Flutter/Dart. Submodule at third_party/ContainerHub."
+      "note": "Flutter/Dart. Submodule at third_party/ANTfrastructure."
     },
     {
       "name": "OrchestrANT",
@@ -50,7 +50,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Flutter/Dart. Submodule at third_party/ContainerHub."
+      "note": "Flutter/Dart. Submodule at third_party/ANTfrastructure."
     },
     {
       "name": "OxidANT",
@@ -58,7 +58,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Rust. Submodule at third_party/ContainerHub. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted on 2026-09-09 as unreached because this repo was not declared here. Also the only consumer with no lib/containerhub.sh bootstrap."
+      "note": "Rust. Submodule at third_party/ANTfrastructure. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted on 2026-09-09 as unreached because this repo was not declared here. Also the only consumer with no lib/antfrastructure.sh bootstrap."
     },
     {
       "name": "AccelerANTgine",
@@ -66,7 +66,7 @@
       "ref": "main",
       "self": false,
       "confirmed": true,
-      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ContainerHub). Reaches lib/code-quality.sh and lib/coverage.sh through hand-written relative paths rather than containerhub_source, which is why a name-based grep for callers can miss it."
+      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches lib/code-quality.sh and lib/coverage.sh through hand-written relative paths rather than antfrastructure_source, which is why a name-based grep for callers can miss it."
     },
     {
       "name": "ANThology",
@@ -74,7 +74,7 @@
       "ref": "main",
       "self": false,
       "confirmed": true,
-      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ContainerHub submodule: dart.yml checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
+      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: dart.yml checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
     }
   ],
   "unconfirmed": [
@@ -99,7 +99,7 @@
       "kind": "action",
       "glob": ".github/actions/*/action.yml",
       "needle": "dir",
-      "why": "A composite action is reached as `<owner>/ContainerHub/.github/actions/<name>@<ref>`, so the DIRECTORY is the entry point."
+      "why": "A composite action is reached as `<owner>/ANTfrastructure/.github/actions/<name>@<ref>`, so the DIRECTORY is the entry point."
     },
     {
       "kind": "reusable-workflow",

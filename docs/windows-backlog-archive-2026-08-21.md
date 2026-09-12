@@ -682,9 +682,9 @@ contracts VERIFIED against the local repos. Suite 523 -> 547 over the day.
 ## P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
 ## themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
 
-- **140 DONE 2026-08-21: ZERO callers verified across ALL local consumer repos (BeschleunigerBallett/Inference-Engine/Orchestr-ANT-ion/RustProjectTemplate/WebDavClient/jotrockenmitlocken + the reusable workflows) — the comment was wrong, the code was unowned. Comment now states the truth (ContainerHub checkout root) + explicit -RepoRoot override for vendored consumers. Original: [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
-  comment.** `..\..\..` from scripts/python resolves to the ContainerHub
-  checkout root, the comment claims "the parent of the ContainerHub checkout".
+- **140 DONE 2026-08-21: ZERO callers verified across ALL local consumer repos (BeschleunigerBallett/Inference-Engine/Orchestr-ANT-ion/RustProjectTemplate/WebDavClient/jotrockenmitlocken + the reusable workflows) — the comment was wrong, the code was unowned. Comment now states the truth (ANTfrastructure checkout root) + explicit -RepoRoot override for vendored consumers. Original: [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
+  comment.** `..\..\..` from scripts/python resolves to the ANTfrastructure
+  checkout root, the comment claims "the parent of the ANTfrastructure checkout".
   All 8 python/rust lane drivers have ZERO in-repo callers — the real contract
   lives in the consumer repos. Verify against a consumer checkout, then fix
   either the comment or the depth. Highest-value unknown of the outer ring.

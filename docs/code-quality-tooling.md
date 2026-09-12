@@ -2432,7 +2432,7 @@ basename — see below.
 reports green". Two ways that happens, and both are driven against the real
 `actionlint`. Linting the WRONG TREE: the optional root argument exists because a
 submodule checkout puts this script inside the consumer, where the default root
-resolves to ContainerHub; the suite gives it a broken checkout and a clean one and
+resolves to ANTfrastructure; the suite gives it a broken checkout and a clean one and
 requires the verdicts to follow the argument, and a root that does not exist to be
 refused rather than fall back. Running an UNPINNED binary: with no `actionlint` on
 `PATH` and an empty cache, a missing `ACTIONLINT_VERSION` and a missing
@@ -2445,7 +2445,7 @@ that carries its own `versions.env`.
 unknown label still fails, so the `runner-label` check stays live. actionlint
 resolves that config from the project it LINTS, not from this repo: a consumer
 calling `lint-workflows.sh <root>` lints its own tree with its own
-`.github/actionlint.yaml`, so this file covers ContainerHub alone.
+`.github/actionlint.yaml`, so this file covers ANTfrastructure alone.
 
 ### Four fleet workflow conventions (`workflow-lint`)
 
@@ -2493,7 +2493,7 @@ only go down. Above it the gate fails whatever the arming says; a check with
 findings and **no** row fails too, so the ramp cannot be dodged by omission. An
 armed check counts zero — its findings already failed on their own, one finding
 never gets two verdicts, and arming a check therefore retires its row. Going down
-is the point, so it is cheap: in ContainerHub, whose commit edits this file
+is the point, so it is cheap: in ANTfrastructure, whose commit edits this file
 beside the fix, an unrecorded shrink fails like every other allow file here; in a
 consumer, which reads the table through the submodule and cannot edit it, the
 shrink is printed with the number to write down and passes.
@@ -2692,7 +2692,7 @@ short of the basename, with a comment saying why.
 ## The scan-root contract
 
 Twelve ratchet gates used to resolve their scan root from `__file__`. In a
-consumer's `third_party/ContainerHub` checkout that is the HUB, so each gate
+consumer's `third_party/ANTfrastructure` checkout that is the HUB, so each gate
 reported green over a tree nobody asked about while roughly 15,700 lines of
 consumer shell went ungraded. `--root` fixes that;
 [`linux/scripts/gate_scope.py`](../linux/scripts/gate_scope.py) is the one owner

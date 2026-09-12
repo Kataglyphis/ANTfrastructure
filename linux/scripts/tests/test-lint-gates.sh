@@ -32,7 +32,7 @@ _consumer() {
 
 t_case "the consumer root is mandatory and never inferred"
 t_assert_eq "2" "$(t_rc bash "${GATE}")" \
-  "a BASH_SOURCE-derived root resolves inside the submodule and grades ContainerHub"
+  "a BASH_SOURCE-derived root resolves inside the submodule and grades ANTfrastructure"
 t_assert_contains "$(t_out bash "${GATE}")" "consumer repo root is required"
 t_assert_eq "2" "$(t_rc bash "${GATE}" "${_work}/does-not-exist")"
 t_assert_eq "2" "$(t_rc bash "${GATE}" "${_work}")" \
@@ -73,13 +73,13 @@ t_assert_contains "${_scope}" "README.md"
 t_assert_eq "" "$(printf '%s\n' "${_scope}" | grep -x 'third_party' || true)" \
   "the vendored directory itself must never be handed to gitleaks"
 
-t_case "an empty shell list FAILS instead of falling back to ContainerHub's own tree"
+t_case "an empty shell list FAILS instead of falling back to ANTfrastructure's own tree"
 _empty="$(mktemp -d "${_work}/empty.XXXXXX")"
 printf 'x\n' > "${_empty}/README.md"
 git -C "${_empty}" init -q; git -C "${_empty}" add -A >/dev/null 2>&1
 _lint_gates_parse_args "${_empty}"
 t_assert_eq "1" "$(t_rc _lint_gates_shell)" \
-  "lint-shell.sh with zero file arguments lints ContainerHub and exits 0"
+  "lint-shell.sh with zero file arguments lints ANTfrastructure and exits 0"
 
 t_case "gates.sh: every gate runs, and the verdict is raised once at the end"
 gate_reset "T"
@@ -106,7 +106,7 @@ _HUB="$(cd "${SCRIPTS}/../.." && pwd)"
 _declaring() {  # _declaring <manifest-body> -> a git root carrying a faithful copy
   local d; d="$(mktemp -d "${_work}/decl.XXXXXX")"
   cp "${_HUB}/shared/config/.clang-format" "${d}/.clang-format"
-  printf '%s\n' "$1" > "${d}/.containerhub-shared.manifest"
+  printf '%s\n' "$1" > "${d}/.antfrastructure-shared.manifest"
   git -C "${d}" init -q; git -C "${d}" add -A >/dev/null 2>&1
   printf '%s' "${d}"
 }
@@ -116,8 +116,8 @@ _lint_gates_parse_args "$(_consumer)"
 t_assert_eq "1" "$(t_rc _lint_gates_shared_config)" \
   "the legacy fallback grades five root names the repo may never have taken; a green gate over nothing is what made this mechanism inert in the first place"
 _out="$(t_out _lint_gates_shared_config)"
-t_assert_contains "${_out}" "no .containerhub-shared.manifest"
-t_assert_contains "${_out}" "containerhub-sh" \
+t_assert_contains "${_out}" "no .antfrastructure-shared.manifest"
+t_assert_contains "${_out}" "antfrastructure-sh" \
   "the failure must spell the declaration, or it only says no"
 
 t_case "a declared, faithful copy passes"

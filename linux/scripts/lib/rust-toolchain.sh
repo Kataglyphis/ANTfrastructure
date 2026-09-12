@@ -4,7 +4,7 @@
 # Source it, then call the functions. Self-sufficient: log-bootstrap.sh gives
 # it info/warn/err whether or not the caller has its own.
 #
-#   source "<containerhub>/linux/scripts/lib/rust-toolchain.sh"
+#   source "<antfrastructure>/linux/scripts/lib/rust-toolchain.sh"
 #   ensure_wasm32_target || echo "cannot build wasm here"
 
 [ -n "${_RUST_TOOLCHAIN_LIB_LOADED:-}" ] && return 0

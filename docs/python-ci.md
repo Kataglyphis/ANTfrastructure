@@ -16,7 +16,7 @@ share their whole CI surface with this repository:
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
 
 A consumer's workflow is configuration, not steps. Its `scripts/linux/ci_*.sh`
-are wrappers that `containerhub_exec` into the drivers above — see
+are wrappers that `antfrastructure_exec` into the drivers above — see
 [`../shared/linux/templates/README.md`](../shared/linux/templates/README.md).
 
 ## Positional arguments: empty means default
@@ -70,7 +70,7 @@ was meant to route around. The group's text is now accumulated during the same w
 and read at the `]` that closes it, so the inline, multi-line and mixed layouts all
 give the same answer. OrchestrANT writes the multi-line form, so this was
 latent there; what settles it is a consuming repo's CI lane running
-`uv sync --all-extras`, because no ContainerHub cross stage calls `uv_sync_project`
+`uv sync --all-extras`, because no ANTfrastructure cross stage calls `uv_sync_project`
 at all — it is reached only from `02-toolchain/python/ci_*.sh`.
 
 ## Trap 2 — `UV_PYTHON` beats the activated venv

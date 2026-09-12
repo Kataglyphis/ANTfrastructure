@@ -9,12 +9,12 @@ WHAT THIS GATE READS. It owns no scan set: `scan` -- and the ROOT that walk is
 measured against -- are verify_code_size's, so the two gates grade the same files
 by construction. That import is also how the root defect reached here: SCAN is
 four top-level directories resolved from a __file__ which, inside a consumer's
-third_party/ContainerHub, is the VENDORED hub and not the consumer.
+third_party/ANTfrastructure, is the VENDORED hub and not the consumer.
 
 GRADING A CONSUMER. `--root` and `--allow` are the same contract
 docs/scripts/verify_mutations.py already documents, and for the same reason the
 lint gates take one: a submodule checkout puts this script INSIDE the consumer,
-where a root derived from __file__ resolves to ContainerHub and the gate grades
+where a root derived from __file__ resolves to ANTfrastructure and the gate grades
 the wrong tree while reporting green over one nobody looked at.
 
 Under the hub's own root the scan set is verify_code_size.scan's historical walk,

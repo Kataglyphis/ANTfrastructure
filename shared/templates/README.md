@@ -13,12 +13,12 @@ the agentic-loop config and runners in [`../agentic-loop/templates/`](../agentic
 One rule decides where any piece of knowledge goes:
 
 > **Would this still be true in a different project?**
-> Yes → ContainerHub owns it; link to it. No → write it out in your repo.
+> Yes → ANTfrastructure owns it; link to it. No → write it out in your repo.
 
 The template's sections encode that split:
 
 - **§1 what this project is** — yours
-- **§2 what ContainerHub owns** — *links only*, no procedures
+- **§2 what ANTfrastructure owns** — *links only*, no procedures
 - **§3 project-specific pitfalls** — yours, written out in full
 - **§4 build/run/test** — yours
 - **§5 docs owned here** — yours

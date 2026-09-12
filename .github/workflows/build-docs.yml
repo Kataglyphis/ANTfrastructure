@@ -51,12 +51,12 @@ jobs:
       # when the password is empty, which keeps this reusable workflow callable
       # without secrets it does not need.
       - name: Prepare CI host (checkout + pull the family Linux image)
-        uses: Kataglyphis/ContainerHub/.github/actions/prepare-linux-ci-host@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@main
         with:
           fetch-depth: '0'
           # Non-recursive: we only need the flat docs tooling from the
           # DocumANTation submodule, not its own nested submodules.
-          # (DocumANTation also references ContainerHub, so recursing would
+          # (DocumANTation also references ANTfrastructure, so recursing would
           # re-clone this repo in a cycle.)
           submodules: 'true'
 
@@ -76,7 +76,7 @@ jobs:
       # subsumes `bash -n` outright. The inline find reached none of
       # linux/llm-stack, linux/webserver or linux/host-config/git-hooks.
       - name: Run preflight verification (docs-relevant subset)
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           script: >-
             bash -lc "PREFLIGHT_ONLY=version-snapshot,mirror-consistency,doc-links,doc-dupes,shellcheck
@@ -87,7 +87,7 @@ jobs:
       # requirements.txt and runs `make html`, then fails if index.html is
       # absent so a green sphinx run cannot FTP an empty tree over the site.
       - name: Build web page
-        uses: Kataglyphis/ContainerHub/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
         with:
           script: bash linux/scripts/build-docs.sh
 

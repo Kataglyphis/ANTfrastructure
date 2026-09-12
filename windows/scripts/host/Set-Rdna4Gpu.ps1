@@ -16,7 +16,7 @@
 #
 #   pwsh -File windows\scripts\host\Set-Rdna4Gpu.ps1            # default: enable
 #   pwsh -File windows\scripts\host\Set-Rdna4Gpu.ps1 -Disable
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\Set-Rdna4Gpu.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Set-Rdna4Gpu.ps1'
 
 [CmdletBinding()]
 param(

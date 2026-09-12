@@ -1,4 +1,4 @@
-# ContainerHub — agent guardrails
+# ANTfrastructure — agent guardrails
 
 **This file is the rulebook, not the manual.** It captures what an automated
 agent must and must not do to avoid regressing the build, plus the canonical
@@ -609,7 +609,7 @@ When adding here:
   (`19982134`, `9b819f28`), so an old `verb-noun-name.ps1` spelling in a doc, a
   Dockerfile `COPY` or a module import is stale, not a variant.
 - PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and
-  consumers resolve it ContainerHub-first with a vendored fallback. The resolver
+  consumers resolve it ANTfrastructure-first with a vendored fallback. The resolver
   itself is a copied template:
   [`shared/windows/templates/Resolve-BuildModule.ps1`](shared/windows/templates/README.md).
 - **Exporting a function is TWO edits when a build script calls it directly.**

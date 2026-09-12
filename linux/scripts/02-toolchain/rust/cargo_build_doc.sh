@@ -20,7 +20,7 @@ info "Detected crate name: $CRATE_NAME (doc dir: $CRATE_DIR_NAME)"
 
 # Combine CSS files to create a custom rustdoc theme, from the brand sheet
 # DocumANTation generates. Resolved from SCRIPT_DIR, not the working directory,
-# so it answers the same inside a consumer's third_party/ContainerHub checkout.
+# so it answers the same inside a consumer's third_party/ANTfrastructure checkout.
 # Why both earlier probes found nothing:
 # docs/shared-script-libraries.md#the-rustdoc-theme-sheet
 HUB_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"

@@ -6,7 +6,7 @@ cross-repo with the fully-qualified path:
 
 ```yaml
 - name: Cleanup disk space
-  uses: Kataglyphis/ContainerHub/.github/actions/cleanup-disk-space@main
+  uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@main
 ```
 
 Pin `@main` for latest, or `@<sha>` for reproducibility.
@@ -25,7 +25,7 @@ individual removals never fail the job (`exit 0`).
 Prepares a Linux runner's toolchain PATH: cargo/rustup (installs a stable
 default toolchain when missing), the Vulkan SDK bin dir (input
 `vulkan-version` — pass it explicitly; the default can drift from
-ContainerHub's `versions.env`, which composite actions cannot read, and has
+ANTfrastructure's `versions.env`, which composite actions cannot read, and has
 drifted before), plus packaging utilities. `require-rust` (default `'true'`)
 controls the rustc gate: with `'false'` the Rust toolchain block is skipped
 with a notice instead of failing, so uv-only consumers can use the action on
@@ -202,7 +202,7 @@ reference or the reverse. It takes a consumer repository root as its argument,
 so a consumer lints its own workflows against the same convention:
 
 ```bash
-bash third_party/ContainerHub/linux/scripts/lint-workflows.sh .
+bash third_party/ANTfrastructure/linux/scripts/lint-workflows.sh .
 ```
 
 Windows lanes additionally pin `runs-on: windows-2025` rather than

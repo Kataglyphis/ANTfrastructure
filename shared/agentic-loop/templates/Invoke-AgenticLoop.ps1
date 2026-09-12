@@ -4,10 +4,10 @@
   TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Invoke-AgenticLoop.ps1.
 
   Agentic loop: planner adds tasks to BACKLOG.md, executor drains the queue.
-  Uses the WindowsAgenticLoop.Common module from ContainerHub, so
+  Uses the WindowsAgenticLoop.Common module from ANTfrastructure, so
   this wrapper stays thin: it resolves the module, loads the config, and calls
   Invoke-AgenticLoop. Build configurations come from the config's buildMatrix
-  and the planner/executor task prompts default to ContainerHub's
+  and the planner/executor task prompts default to ANTfrastructure's
   shared/agentic-loop/prompts/*.md - do NOT hard-code prompt text here, that
   is how the two platforms drifted apart once already.
 
@@ -26,9 +26,9 @@ $ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest
 $scriptRoot = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot '..\..')).Path
 
-# Resolve module from ContainerHub or vendored fallback
+# Resolve module from ANTfrastructure or vendored fallback
 $modulePath = $null
-foreach ($c in @((Join-Path $repoRoot 'third_party\ContainerHub\windows\scripts\modules\WindowsAgenticLoop.Common.psm1'),
+foreach ($c in @((Join-Path $repoRoot 'third_party\ANTfrastructure\windows\scripts\modules\WindowsAgenticLoop.Common.psm1'),
                  (Join-Path $scriptRoot 'modules\WindowsAgenticLoop.Common.psm1'))) {
     if (Test-Path $c) { $modulePath = (Resolve-Path $c).Path; break }
 }
@@ -45,7 +45,7 @@ Initialize-AgenticLoop -ConfigPath $configPath -RepoRoot $repoRoot -DryRun:$DryR
 
 # Build configs and planner/executor task prompts come from the module:
 # configs from the config's buildMatrix (legacy buildConfigurations fallback),
-# prompts from ContainerHub's shared/agentic-loop/prompts/*.md defaults.
+# prompts from ANTfrastructure's shared/agentic-loop/prompts/*.md defaults.
 try {
     Invoke-AgenticLoop -Config $config -Engine $Engine -RepoRoot $repoRoot `
         -MaxIterations:$MaxIterations -SkipBuild:$SkipBuild -SkipTests:$SkipTests `

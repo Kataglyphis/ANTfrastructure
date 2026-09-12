@@ -758,7 +758,7 @@ function Resolve-ContainerBuildCommand {
   It must still be a path that is NOT baked into the image: mounting over a
   directory that exists in the image (C:\workspace) fails at
   CreateComputeSystem when the host OS build differs from the image base build.
-  C:\ws is absent from the ContainerHub image (verified) and is created by the
+  C:\ws is absent from the ANTfrastructure image (verified) and is created by the
   mount.
 .PARAMETER BuildCommand
   Scriptblock (receives the in-container workspace path) or string[] returning

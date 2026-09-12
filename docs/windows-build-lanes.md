@@ -637,7 +637,7 @@ Housekeeping and sharing:
   pwsh -File windows\scripts\host\Update-HostVhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
   pwsh -File windows\scripts\host\Update-HostVhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
   pwsh -File windows\scripts\host\Update-HostVhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
-       -VerifyPath D:\GitHub\ContainerHub -LogPath C:\rebuild.log -RetireOld
+       -VerifyPath D:\GitHub\ANTfrastructure -LogPath C:\rebuild.log -RetireOld
   ```
 
   The COPY phase touches nothing live. The SWAP phase detaches the volume and

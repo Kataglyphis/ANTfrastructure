@@ -56,7 +56,7 @@ Usage:
 
 The consumer root exists for the reason lint-workflows.sh takes one: a submodule
 checkout puts this script INSIDE the consumer, where a root derived from
-__file__ resolves to ContainerHub and the gate reports green over the wrong tree.
+__file__ resolves to ANTfrastructure and the gate reports green over the wrong tree.
 """
 from __future__ import annotations
 

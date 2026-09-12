@@ -248,7 +248,7 @@ Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 # onnx scoped_resource.h: INVALID_HANDLE_VALUE is a reinterpret_cast, not a valid non-type
 # template argument under clang; swap the alias for an interface-identical RAII class.
 $scopedHandleFix = @'
-// [clang-cl compat, ContainerHub] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+// [clang-cl compat, ANTfrastructure] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
 // is not a valid non-type template argument under clang (reinterpret_cast in a
 // constant expression; MSVC permits it as an extension). Interface-identical
 // RAII type with the sentinel held at runtime instead.

@@ -6,7 +6,7 @@
 # builds. MUST run elevated (Get-MpPreference/Add-MpPreference need admin).
 # Prints BEFORE, applies missing, prints AFTER.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ContainerHub\windows\scripts\host\Sync-DefenderExclusions.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Sync-DefenderExclusions.ps1'
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

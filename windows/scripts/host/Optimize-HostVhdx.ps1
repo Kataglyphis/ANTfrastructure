@@ -33,7 +33,7 @@
 #
 #   # another machine: different disk, different services, verify the checkout came back
 #   pwsh -File windows\scripts\host\Optimize-HostVhdx.ps1 -VhdxPath E:\disks\ci.vhdx `
-#        -Service buildkitd, containerd, stevedore -VerifyPath E:\src\ContainerHub
+#        -Service buildkitd, containerd, stevedore -VerifyPath E:\src\ANTfrastructure
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(

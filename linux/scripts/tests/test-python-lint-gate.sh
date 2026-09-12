@@ -162,7 +162,7 @@ t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is
 # Every case above builds a throwaway HUB. These build a throwaway CONSUMER and
 # run the SHIPPED gate against it, because that is the invocation that was
 # impossible: a submodule checkout puts this script inside the consumer, where
-# the default root resolves to ContainerHub and OrchestrANT's 65 Python files
+# the default root resolves to ANTfrastructure and OrchestrANT's 65 Python files
 # were reachable by no lint gate in the fleet.
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
@@ -190,7 +190,7 @@ _c_broken="$(_consumer broken)"
 t_assert_eq "0" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_clean}")" \
   "the gate must be able to be green over a consumer, or the red below proves only that it is broken"
 t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_broken}")" \
-  "a gate that ignored --root would grade ContainerHub -- which is clean -- and report OK"
+  "a gate that ignored --root would grade ANTfrastructure -- which is clean -- and report OK"
 t_assert_contains "$(_at_root "${_c_broken}")" "nope_in_consumer" \
   "the finding has to name the consumer's undefined name to be actionable"
 

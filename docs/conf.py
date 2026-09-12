@@ -11,7 +11,7 @@ from sphinx_kataglyphis import brand, setup_theme
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-PROJECT = "ContainerHub"
+PROJECT = "ANTfrastructure"
 
 # Author and copyright are NOT set here: setup_theme() takes them from the
 # `identity` section of the submodule's style/brand.json, the same source as the

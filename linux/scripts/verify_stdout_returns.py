@@ -27,7 +27,7 @@ GRADING A CONSUMER
 `--root` is the contract docs/scripts/verify_mutations.py already documents, and
 it exists here for the reason run-lint-gates.sh refuses to infer a root: a
 submodule checkout puts this script INSIDE the consumer, where a root derived
-from __file__ resolves to ContainerHub. The gate then grades the hub, passes,
+from __file__ resolves to ANTfrastructure. The gate then grades the hub, passes,
 and reports green over a consumer's shell that nobody graded at all -- and this
 particular defect travels with the library, since a consumer sourcing
 `logging.sh` inherits the exact fd-1 log() the two shipped bugs came from.

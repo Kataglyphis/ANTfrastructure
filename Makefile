@@ -1,5 +1,5 @@
 # ==============================================================================
-# Kataglyphis ContainerHub — cross-build entrypoint
+# Kataglyphis ANTfrastructure — cross-build entrypoint
 #
 # Thin, discoverable wrappers over linux/scripts/*. The scripts remain the
 # source of truth; this file just gives a stable `make <target>` surface and

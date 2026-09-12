@@ -65,8 +65,8 @@ lands in `verify_code_dupes`' `suppressed as idiom at >6 owners` bucket
 
 Sourcing a sibling to get logging is not the bootstrap paradox it looks like.
 The block it replaced already sourced a file — `../01-core/logging.sh`, one
-directory further away — and every consumer vendors the whole ContainerHub
-checkout (`third_party/ContainerHub/linux/scripts/lib/<lib>.sh`), so
+directory further away — and every consumer vendors the whole ANTfrastructure
+checkout (`third_party/ANTfrastructure/linux/scripts/lib/<lib>.sh`), so
 a missing file **next to** the library it serves is a broken checkout, not a
 supported state. `tests/test-lib-modules.sh` holds that line: every `lib/*.sh`
 must source cleanly standalone, define `info`/`warn`/`err`, survive a double
@@ -217,7 +217,7 @@ repository. The block therefore produced an empty `EXT_CSS` on every run and
 rustdoc got no theme at all, silently.
 
 The path is now resolved from `SCRIPT_DIR` rather than the working directory, so
-it answers the same inside a consumer's `third_party/ContainerHub` checkout —
+it answers the same inside a consumer's `third_party/ANTfrastructure` checkout —
 which is the case the cwd-relative probe existed for in the first place.
 
 ## Consumer entry points that are not libraries
@@ -226,7 +226,7 @@ Three things below are executables a consumer *runs*, not cores it sources. They
 share one rule, and it is the rule the `lint-secrets.sh` and `lint-workflows.sh`
 repairs were both about: **the consumer repo root is an explicit argument, never
 inferred from `BASH_SOURCE`.** A consumer checks this repo out at
-`third_party/ContainerHub/`, so a self-derived root resolves to ContainerHub and
+`third_party/ANTfrastructure/`, so a self-derived root resolves to ANTfrastructure and
 the tool operates on the wrong tree — reporting green, having looked at nothing.
 
 ### Gate aggregation (`01-core/gates.sh`)
@@ -335,7 +335,7 @@ Prints `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` (or `…_WINDOWS_TAG` wi
 
 ```bash
 docker run --rm -v "$PWD:/workspace" -w /workspace \
-  "$(third_party/ContainerHub/linux/scripts/ci-image-ref.sh)" <cmd>
+  "$(third_party/ANTfrastructure/linux/scripts/ci-image-ref.sh)" <cmd>
 ```
 
 Workflow steps do **not** need it: the four container composite actions carry the
@@ -357,7 +357,7 @@ root, minus the excluded top-level directories. Its third argument decides what 
 
 | Mode | Meaning | Who uses it |
 |---|---|---|
-| `refuse-empty` (default) | a BROKEN SCOPE. `lint-shell.sh` with zero file arguments falls back to ContainerHub's OWN tree and passes, so green over nothing is a lie. | the shell gate |
+| `refuse-empty` (default) | a BROKEN SCOPE. `lint-shell.sh` with zero file arguments falls back to ANTfrastructure's OWN tree and passes, so green over nothing is a lie. | the shell gate |
 | `allow-empty` | a FACT about the repo. | the python gate |
 
 The python gate can allow it because it passes **explicit absolute paths**: with no
@@ -370,8 +370,8 @@ could change. A permanently red lane is a tolerated failure by construction.
 ### `run-lint-gates.sh` — the three lint gates over a consumer tree
 
 ```bash
-bash third_party/ContainerHub/linux/scripts/run-lint-gates.sh "$PWD"
-bash third_party/ContainerHub/linux/scripts/run-lint-gates.sh "$PWD" --exclude vendor
+bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
+bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --exclude vendor
 ```
 
 shellcheck, actionlint (+ the CI image-ref check) and gitleaks, in one command,
@@ -382,7 +382,7 @@ deploy could not be reproduced locally at all.
 What the copies carried and this keeps: the `git ls-files` scope (a `**/*.sh`
 glob does not recurse without `globstar`, so it graded the directories somebody
 remembered), the empty-list guards (`lint-shell.sh` with zero file arguments
-falls back to **ContainerHub's own** tree and exits 0), and the gitleaks
+falls back to **ANTfrastructure's own** tree and exits 0), and the gitleaks
 self-test — a clean-tree positive control plus a planted-PAT canary matched **by
 path**, which is what tells "the gate ran and found nothing" from "the gate never
 started" and proves the scan root was honoured.

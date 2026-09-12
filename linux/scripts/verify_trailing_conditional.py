@@ -9,7 +9,7 @@ docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
 GRADING A CONSUMER. `--root` and `--allow` are the same contract
 docs/scripts/verify_mutations.py already documents, and for the same reason the lint
 gates take one: a submodule checkout puts this script INSIDE the consumer, where a
-root derived from __file__ resolves to ContainerHub and the gate grades the wrong
+root derived from __file__ resolves to ANTfrastructure and the gate grades the wrong
 tree while reporting green over one nobody looked at.
 
 Under the hub's own root the scan set is the historical linux/ walk, so the hub's own
