@@ -19,10 +19,34 @@ OVERLAYS = ("docker-compose.gpu.yml", "docker-compose.lan.yml")
 REGISTRY = HERE / "backends.json"
 
 
+class _ComposeLoader(yaml.SafeLoader):
+    """SafeLoader that tolerates Compose's `!override` / `!reset` tags.
+
+    They are directives to `docker compose`, not data: the overlay REPLACES the
+    base list. PyYAML has no constructor for them unless one is registered, and
+    the point here is that the file PARSES, not that PyYAML knows Compose.
+    """
+
+
+def _compose_tag(loader, _tag_suffix, node):
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+_ComposeLoader.add_multi_constructor("!", _compose_tag)
+
+
+def _load(path):
+    return yaml.load((HERE / path).read_text(encoding="utf-8"), Loader=_ComposeLoader)
+
+
 def _compose(*paths):
-    doc = yaml.safe_load((HERE / paths[0]).read_text(encoding="utf-8"))
+    doc = _load(paths[0])
     for extra in paths[1:]:
-        overlay = yaml.safe_load((HERE / extra).read_text(encoding="utf-8"))
+        overlay = _load(extra)
         doc["services"].update(overlay.get("services", {}))
     return doc
 
