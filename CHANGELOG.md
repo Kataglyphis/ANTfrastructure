@@ -16,6 +16,9 @@
   now skips `linux/scripts/tests/` and `windows/scripts/tests/`: those suites
   build fake consumer trees full of paths that must not exist, and a real call
   in a test fails the suite itself.
+* **And on vendored submodule paths.** A fresh clone leaves
+  `third_party/DocumANTation/` empty, so a reference into it read as dangling;
+  paths declared in `.gitmodules` are now outside the check.
 * **The version snapshot failed on the DocumANTation Dockerfile.** The pin was
   behind, so its `ARG` defaults had drifted from versions.env; bumped to the
   rename commit.

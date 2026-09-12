@@ -282,7 +282,25 @@ def inside_url(text, start):
     return cut >= 0 and not re.search(r"[\s'\"`<>]", before[cut:])
 
 
-def dangling_refs(root, files, hub_root, ref_re):
+def submodule_prefixes(hub_root):
+    """Paths declared in the hub's .gitmodules.
+
+    A fresh CI clone leaves submodule worktrees EMPTY, so a reference into one
+    (e.g. .../third_party/DocumANTation/docs-tooling/...) looks like a path that
+    does not exist. Those files are vendored, not hub entry points, so a
+    reference into one is not a dangling hub path and this gate must not grade it.
+    """
+    gitmodules = hub_root / ".gitmodules"
+    prefixes = []
+    if gitmodules.is_file():
+        for line in gitmodules.read_text(encoding="utf-8", errors="replace").splitlines():
+            found = re.match(r"\s*path\s*=\s*(.+?)\s*$", line)
+            if found:
+                prefixes.append(found.group(1).rstrip("/") + "/")
+    return tuple(sorted(prefixes))
+
+
+def dangling_refs(root, files, hub_root, ref_re, vendored):
     """Executable references to hub paths that do not exist -- a caller pointing
     at nothing is the other half of the question this inventory asks.
 
@@ -298,7 +316,8 @@ def dangling_refs(root, files, hub_root, ref_re):
             continue
         for match in ref_re.finditer(text):
             target = match.group(1).split("@", 1)[0].rstrip(REF_TRAIL).rstrip("/")
-            if not target or (hub_root / target).exists() or inside_url(text, match.start()):
+            if (not target or target.startswith(vendored)
+                    or (hub_root / target).exists() or inside_url(text, match.start())):
                 continue
             lineno, line = line_at(text, match.start())
             if use_kind(rel, line) == REACHED:
@@ -465,6 +484,7 @@ def collect(data, args, hub_root, entries, work):
     names = [c["name"] for c in data["consumers"]]
     local = parse_local(args.local, args.local_root, names)
     qualifiers = qualifier_set(data["hub"])
+    vendored = submodule_prefixes(hub_root)
     ref_re = re.compile("(?:%s)([A-Za-z0-9_./@-]+)"
                         % "|".join(re.escape(q) for q in qualifiers[:2]))
     per_consumer = {}
@@ -475,7 +495,7 @@ def collect(data, args, hub_root, entries, work):
         ctx = scan_context(files, qualifiers, spec["self"])
         hits = scan_consumer(root, files, entries, ctx)
         per_consumer[spec["name"]] = (spec["self"], hits)
-        dangling[spec["name"]] = dangling_refs(root, files, hub_root, ref_re)
+        dangling[spec["name"]] = dangling_refs(root, files, hub_root, ref_re, vendored)
         print("   %-22s %5d tracked files, %3d entry points touched, %d dangling"
               % (spec["name"], len(files), len(hits), len(dangling[spec["name"]])))
     return per_consumer, dangling
