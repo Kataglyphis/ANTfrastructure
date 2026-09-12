@@ -398,7 +398,15 @@ for _cut in 3 6 9; do
   _commit "${X13}"
   rm -rf "${PIPE_TMP:?}"/*
   _run_piped "${X13}" "${SIG_REPORT}" "${_cut}"
-  t_assert_eq "141" "${RC}" "a run cut off at line ${_cut} is 128+SIGPIPE, not head's 0"
+  # Two mechanisms end the run, and which one wins is a race: the PIPE trap
+  # (141) when SIGPIPE lands on a write, or bash's EPIPE-on-builtin path (1)
+  # when the builtin's write fails first. Both are failures; the tree
+  # assertions below are the part that must not vary.
+  if [ "${RC}" = "141" ]; then
+    t_assert_eq "141" "${RC}" "a run cut off at line ${_cut} died on SIGPIPE"
+  else
+    t_assert_eq "1" "${RC}" "a run cut off at line ${_cut} died on the EPIPE path, not head's 0"
+  fi
   t_assert_eq 'serde = "=1.0.100"' "$(_cargo_line "${X13}" 5)" \
     "the manifest is untouched at cut ${_cut}"
   t_assert_eq "# lock-bytes" "$(cat "${X13}/Cargo.lock")" \
@@ -409,8 +417,8 @@ for _cut in 3 6 9; do
 done
 # The undo has to be SAID somewhere the human can still read. stdout is the pipe
 # that just closed, so on_signal moves to stderr -- which `| head` leaves open.
-t_assert_contains "${OUT}" "SIGPIPE received" \
-  "the run names the signal on stderr, because stdout is gone"
+t_assert_contains_any "${OUT}" "the run names the dead pipe on stderr, because stdout is gone" \
+  "SIGPIPE received" "Broken pipe"
 
 # --------------------------------------------------------------------------
 # The one that cannot be undone, and therefore has to be declared

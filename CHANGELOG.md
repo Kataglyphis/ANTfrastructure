@@ -6,6 +6,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 (latest) — the pre-existing CI reds, fixed
+
+* **The composite-actions self-test could not find its own local actions.**
+  Three jobs called `./.github/actions/...` with no checkout ahead of them, so
+  GitHub searched an empty workspace. Each now bootstraps the repository first;
+  the actions under test still do their own checkout.
+* **The consumer inventory failed on its own test fixtures.** `dangling_refs`
+  now skips `linux/scripts/tests/` and `windows/scripts/tests/`: those suites
+  build fake consumer trees full of paths that must not exist, and a real call
+  in a test fails the suite itself.
+* **The version snapshot failed on the DocumANTation Dockerfile.** The pin was
+  behind, so its `ARG` defaults had drifted from versions.env; bumped to the
+  rename commit.
+* **The SIGPIPE case in test-renovate-exit.sh was a race, not a defect.** A
+  closed pipe ends the run through the PIPE trap (141) or through bash's
+  EPIPE-on-builtin path (1); the test accepts both and still asserts the tree is
+  intact, which is the part that must not vary. New helper:
+  `t_assert_contains_any`.
+
+
 ## 2026-09-12 (later) — the hub is now ANTfrastructure
 
 * **`Kataglyphis/ContainerHub` is renamed to `Kataglyphis/ANTfrastructure`.**

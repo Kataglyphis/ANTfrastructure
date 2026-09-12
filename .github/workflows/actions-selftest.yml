@@ -168,6 +168,10 @@ jobs:
       run:
         shell: bash
     steps:
+      # A local action must exist before it can run, and no other step in this
+      # job checks the repository out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # ORDER IS LOAD-BEARING. exclude-submodules writes `submodule.<name>.active
       # false` into the GLOBAL git config - deliberately, because the nested
       # `git submodule` processes spawned by --recursive share no other scope.
@@ -233,6 +237,10 @@ jobs:
       run:
         shell: bash
     steps:
+      # The local action must be loadable before it runs; its own checkout input
+      # then produces the tree this job asserts on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # `image` omitted on purpose - see the header. registry-password is the
       # repository secret when there is one and the empty string otherwise,
       # which is exactly what a fork PR gets: the action must then SKIP the
@@ -426,6 +434,10 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # A local action must exist before it can run, and no other step in this
+      # job checks the repository out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # Real order for a consumer: move the data-root, then assert the drive it
       # now lives on. cleanup-disk-space comes LAST here, unlike in a consumer
       # lane, because it deletes Visual Studio and the whole hostedtoolcache -

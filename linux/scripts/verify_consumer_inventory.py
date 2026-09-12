@@ -49,6 +49,12 @@ BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip",
                    ".pyc", ".woff", ".woff2", ".ttf", ".otf", ".bin", ".ninja"}
 MAX_FILE_BYTES = 4 * 1024 * 1024
 
+# Test suites build FAKE consumer trees and name fixture paths that must not
+# exist -- a dangling hit there is the fixture doing its job, not a stale
+# reference. A real call in a test fails the suite itself, which is the better
+# gate for it.
+FIXTURE_PREFIXES = ("linux/scripts/tests/", "windows/scripts/tests/")
+
 REACHED = "reached"
 MENTIONED = "mentioned"
 
@@ -285,6 +291,8 @@ def dangling_refs(root, files, hub_root, ref_re):
     """
     found = []
     for rel in files:
+        if rel.startswith(FIXTURE_PREFIXES):
+            continue
         text = readable(root, rel)
         if text is None:
             continue

@@ -145,6 +145,22 @@ t_assert_contains() {
   case "$1" in *"$2"*) _t_pass ;; *) _t_fail "${3:-missing substring}: '$2' not in '$1'" ;; esac
 }
 
+# t_assert_contains_any <haystack> <message> <needle>...
+#   One of several acceptable strings must be present. Some evidence is
+#   environment-shaped -- a closed pipe is "SIGPIPE received" when the trap wins
+#   the race and bash's own "write error: Broken pipe" when the builtin's write
+#   fails first -- and picking a winner red-lights a runner over a race it did
+#   not choose.
+t_assert_contains_any() {
+  local haystack="$1" message="$2"; shift 2
+  _T_RUN=$((_T_RUN + 1))
+  local needle
+  for needle in "$@"; do
+    case "${haystack}" in *"${needle}"*) _t_pass; return ;; esac
+  done
+  _t_fail "${message}: none of '$*' in '${haystack}'"
+}
+
 # Both take a COMMAND and no message, so `t_assert_fails test -f X "why"` runs
 # `test -f X why` -- which fails for the WRONG reason (bash: "too many arguments",
 # rc 2) and passes vacuously. Four of those were written and caught by review in
