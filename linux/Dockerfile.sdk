@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24.0
+# syntax=docker/dockerfile:1.27.0
 
 ARG BASE_IMAGE=local/kataglyphis:compiler
 FROM ${BASE_IMAGE}
@@ -154,7 +154,7 @@ ARG TVM_USE_VULKAN=1
 ARG TVM_USE_CUDA=0
 ARG TVM_USE_OPENCL=0
 ARG TVM_INSTALL_PYTHON=1
-ARG FLUTTER_VERSION=3.47.1
+ARG FLUTTER_VERSION=3.47.3
 
 ENV TVM_REF=${TVM_REF} \
     TVM_BUILD_TYPE=${TVM_BUILD_TYPE} \

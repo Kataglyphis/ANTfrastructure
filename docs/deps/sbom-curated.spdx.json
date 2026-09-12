@@ -54,7 +54,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Node.js-2c735d35",
       "name": "Node.js",
-      "versionInfo": "26.8.1",
+      "versionInfo": "26.8.2",
       "downloadLocation": "https://nodejs.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -67,7 +67,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
       "name": "uv",
-      "versionInfo": "0.12.6",
+      "versionInfo": "0.12.13",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -483,7 +483,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-cuDNN-5abf555b",
       "name": "cuDNN",
-      "versionInfo": "9.25.0.15",
+      "versionInfo": "9.26.0.51",
       "downloadLocation": "https://developer.nvidia.com/cudnn",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -496,7 +496,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TensorRT-49ee4087",
       "name": "TensorRT",
-      "versionInfo": "11.2.1.2",
+      "versionInfo": "11.3.0.99",
       "downloadLocation": "https://developer.nvidia.com/tensorrt",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -561,7 +561,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.1",
+      "versionInfo": "3.47.3",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -587,7 +587,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.33.1",
+      "versionInfo": "0.34.0",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -821,7 +821,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.1",
+      "versionInfo": "3.47.3",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -847,7 +847,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-cuDNN-e1729940",
       "name": "cuDNN",
-      "versionInfo": "9.25.0.15",
+      "versionInfo": "9.26.0.51",
       "downloadLocation": "https://developer.nvidia.com/cudnn",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -860,7 +860,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-TensorRT-5571ddd1",
       "name": "TensorRT",
-      "versionInfo": "11.2.1.2",
+      "versionInfo": "11.3.0.99",
       "downloadLocation": "https://developer.nvidia.com/tensorrt",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -964,7 +964,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-LM-52b13bdc",
       "name": "LiteRT-LM",
-      "versionInfo": "0.16.1",
+      "versionInfo": "0.17.0",
       "downloadLocation": "https://github.com/google-ai-edge/LiteRT-LM",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1055,7 +1055,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-Pandoc-127df2cb",
       "name": "Pandoc",
-      "versionInfo": "3.10.2",
+      "versionInfo": "3.11",
       "downloadLocation": "https://github.com/jgm/pandoc",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1063,7 +1063,7 @@
       "licenseConcluded": "GPL-2.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.10.2"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.11"
     },
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-TeX-Live-texlive-full-543e12e7",
@@ -1133,7 +1133,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
       "name": "uv",
-      "versionInfo": "0.12.6",
+      "versionInfo": "0.12.13",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

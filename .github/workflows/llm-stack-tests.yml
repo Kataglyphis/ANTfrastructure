@@ -48,7 +48,7 @@ jobs:
         # test non-hermetic (could drift/flake with upstream releases). Bump by
         # re-resolving the digest deliberately, not implicitly on every run.
         # latest @ pin time = resolved via registry HEAD.
-        image: ollama/ollama@sha256:9d30908e41144b1f1da89b9d8e33c07e4aeb43ff41a8660241b1686e2cc330ad
+        image: ollama/ollama@sha256:684d8674b4315fa18f4f0e973a118ec2652ed96f67563277839985175858e0ba
         ports:
           - 11434:11434
     steps:

@@ -6,6 +6,33 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 — merge cleanup: the CI reds the Renovate merge left behind
+
+* Eight preflight checks were red on `origin/main` after the Renovate merge;
+  all fixed here: code-dupes (2 budgets tightened, 4 stale rows removed, the
+  env-suite clone given one owner), SBOM regenerated, comment-size (6 new
+  blocks frozen), code-size re-baselined after the `bump_versions.py` shrink,
+  shellcheck SC2088 reworded, workflow-lint's spelled-out CI image ref replaced
+  with the helper's name, and the six failing unit suites.
+* The Windows job's failures were LiteRT-LM pin parity: `0.16.1 -> 0.17.0` and
+  PROTOC `31.1 -> 35.1` in `Build-LitertLmFromSource.ps1`, plus the same
+  LiteRT-LM default in `Build-LitertLmBazel.ps1`. The PinParity scanner also
+  excluded `tests/` with Windows path separators only, so on Linux it scanned
+  the test fixtures themselves.
+* `verify_mutations.py --jobs > 1` raced: the first shard mutates the repo root
+  in place while the other shards were still copying their mirrors, so a mirror
+  could capture a mutated file and its baseline read as a vacuous bite. Mirrors
+  are now materialized before any shard starts.
+* The fleet suite's per-repo budget was 1s, which flaked on a loaded host (the
+  repo before the slow one timed out too); it is 5s now, and the slow fixture
+  still sleeps 20s so the verdict is unchanged.
+* The hook itself carried a bug the new renovate suites exposed: git exports
+  `GIT_DIR` to pre-commit, so fixtures that shell out to git operated on the
+  superproject and the mutation sample failed under `git commit` while passing
+  standalone. The hook clears `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE`/
+  `GIT_PREFIX` before it runs anything.
+
+
 ## 2026-09-11 — android stage unblocked: every installed foreign arch gets a source
 
 * **Symptom.** The android stage failed on all three arches within seconds:
@@ -34,6 +61,103 @@
   (inherited from the compiler base).
 * **Symptom entry:** [`docs/failure-modes.md`](docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift).
 
+
+## 2026-09-11 (night) - ASan runtime staging follows the link policy
+
+* **The build stages the runtime the link selected.** `Get-SanitizerRuntimeDlls`
+  (WindowsCMake.Common) walked `clang-cl`-on-PATH first and returned LLVM's
+  `clang_rt.*san*.dll`, while `cmake/Sanitizers.cmake` links Microsoft's
+  import lib from the VS toolset; inside the Windows image every
+  ASAN-instrumented build tool then died at load with
+  `STATUS_ENTRYPOINT_NOT_FOUND` (`0xC0000139`). It now delegates to
+  `Get-AsanRuntimeDirs` (WindowsTesting.Common), the one owner of the
+  Msvc-first policy - no second root ordering to drift.
+* **Regression covered:** `WindowsCMake.Common.Tests.ps1` pins the delegation
+  and the empty-result array (full suite: 826/828; the 2 LiteRT-LM pin parity
+  failures predate this change).
+
+
+## 2026-09-11 (late) — bump_versions.py shrinks to the complement
+
+* **The detection half is gone, the finishing half stays.** The script's tiers
+  drop every key Renovate now owns and reports (23 entries out of SAFE/REPORT),
+  about 80 lines of upstream-querying helpers with them, and the coverage
+  audit learns `renovate_owned()` — a key is classified when it is in a tier,
+  carries a `# renovate:` annotation, or is a non-version.
+* **What it still does, on purpose:** paired `*_SHA256`/`*_COMMIT` refresh
+  (`--write`/`--write-all`), the keys with no feed, the two registry digests,
+  the artifact-gated TENSORFLOW_C check, and the slaved PROTOC derivation.
+* **Measured after the shrink:** `--check` completes with **0 lookup failures
+  and 0 unclassified keys**, and still reports the real outstanding bumps
+  (pwsh, uv, node, ollama, pandoc, flutter, CUDA/cuDNN, both digests).
+* **Pre-existing, not introduced:** `--audit-sha-pairs` fails on 11 scattered
+  `*_SHA256` keys that predate this change (verified on HEAD); recorded here so
+  the next sweep can classify them rather than rediscover them.
+
+## 2026-09-11 (evening) — 68 -> 89: vendor JSON, PyPI twins and digests
+
+* **Twenty-one more keys.** Three custom datasources (`custom.cuda` with an
+  HTML-href fetch and a JSONata strip, `custom.vulkan`'s WINDOWS value,
+  `custom.nuget`'s `tools.json`), a second customManager using the regex
+  manager's `currentDigest` capture for `UBUNTU_DIGEST` /
+  `WINDOWS_BASE_DIGEST`, `versioning=regex:...` for the 4-part PyPI twins
+  (`nvidia-cudnn-cu13`, `tensorrt`) and for `protocolbuffers/protobuf`'s
+  major.minor-only `31.1`, plus ROCm via `ROCm/TheRock` tags.
+* **Two live iterations, both measured.** `format: plain` maps each LINE to a
+  version, so CUDA needed the HTML fetcher; and `skipReason: invalid-value`
+  named strict semver as the reason cuDNN, TensorRT and protoc were silently
+  updateless.
+* **Live report: 29 pending updates and zero lookup warnings** — including the
+  two digest moves and the setuptools `<82` cap holding (no 84 proposal).
+* **20 tracked keys remain annotation-free**, in documented classes: a slaved
+  pin, feeds no datasource can serve (MIGraphX, flatpak branch, JRE selector,
+  the libffi wrap), platform matrices with no feed, checksums/raw SHAs,
+  artifact-gated and dated pins —
+  [`docs/dependency-updates.md`](docs/dependency-updates.md#what-is-still-not-annotated-and-why).
+
+## 2026-09-11 (later) — the local apply half can write versions.env
+
+* **`custom.regex` becomes a writable manager for the self-contained keys.**
+  `renovate_locator.find_annotated_env` anchors on the hint's `depName` and
+  returns the KEY= line under it; `renovate_audit._parse_env` reads the file
+  back independently. A KEY, not a dep name, identifies a leaf — the live
+  dry-run immediately caught that `NODE_VERSION` and `RENOVATE_NODE_VERSION`
+  share `depName=node`, which a dep-keyed parser had refused wholesale.
+* **Which keys may be written is a file-scoped policy** in
+  `.github/renovate.json`: approval by default, cleared for the Rust
+  security-tool and Python build-executor installs, the npm web runtimes,
+  `rust-lang/rust`, `cargo-c`, `APP_REF` and `syft`. On the live ContainerHub
+  report that is 7 applicable rows and 13 refusals, exactly as intended.
+* **`bump_versions.py` is demoted, not deleted:** it remains the lock tool for
+  every coupled `*_SHA256`/`*_COMMIT` pin and the detector for the 41
+  unannotated keys. New suite
+  [`test-renovate-env.sh`](linux/scripts/tests/test-renovate-env.sh) covers the
+  write, the refusal and the unreadable hint; all six Renovate suites stay
+  green (201/87/105/98/15/11 assertions).
+
+## 2026-09-11 — versions.env is 68 keys visible to Renovate, not 18
+
+* **The annotation pass, verified against the real report.** `bump_versions.py`
+  tracks 99 keys; 68 now carry a `# renovate:` annotation (up from 18). A live
+  `renovate-local.sh --managers custom.regex .` resolved every one of them with
+  **zero lookup warnings** and reported 20 pending updates — `uv 0.12.13`, LLVM
+  `23.1.1`, LiteRT-LM `0.17.0`, ComputeLibrary `v53.3.0`, openh264 `2.6.0`,
+  flutter `3.47.3`, syft `v1.51.1`, among others. The remaining 41 tracked keys
+  are documented exclusions in
+  [`docs/dependency-updates.md`](docs/dependency-updates.md#what-is-still-not-annotated-and-why):
+  coupled `bump:hold` pairs, vendor indexes with no datasource, base/platform
+  pins, untransformable tag shapes, deliberate same-major pins and checksums.
+* **Every datasource was tag-shape checked first** (`git ls-remote`), then
+  added: `github-tags`/`github-releases`, `pypi`, `npm`, `node-version`,
+  `python-version`, `flutter-version`, `crate`. The customManager grew a
+  `versioning=` capture with the standard `versioningTemplate`, needed by the
+  two leading-zero tags (`ARM-software/armnn` `v26.07`,
+  `microsoft/vcpkg` `2026.07.29`); `test-renovate-annotations.sh` now asserts
+  the capture and the template cannot drift apart.
+* **Two would-be wrong bumps are gated to match the writer's tiers:**
+  `NODE_VERSION` within its major (`allowedVersions <27`) and
+  `PYTHON_VERSION` within its minor (`<3.15`) — what `bump_versions.py` classes
+  same-major/same-minor in SAFE.
 
 ## 2026-09-10 — the foreign Vulkan prefixes are two files from amd64
 

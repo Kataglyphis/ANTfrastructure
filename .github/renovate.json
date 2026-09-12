@@ -7,14 +7,53 @@
   "extends": ["github>Kataglyphis/ContainerHub"],
   "packageRules": [
     {
-      "description": "versions.env keys are notification-only: a bump requires the human ritual (sync_versions.py --write + refreshing the *_SHA256 pins per AGENTS.md § Version Bumping), so never auto-PR them.",
-      "matchManagers": ["custom.regex"],
+      "description": "versions.env keys are notification-only by DEFAULT: most bumps are coupled to a paired *_SHA256/*_COMMIT in the same file or to a source patch, so they keep the human ritual (AGENTS.md § Version Bumping). Matched by FILE, not by manager id, so it holds for the local CLI's report (manager 'regex') and the platform's ('custom.regex') alike.",
+      "matchFileNames": ["linux/scripts/01-core/versions.env"],
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Self-contained keys the local CLI may apply: the version moves alone (no paired value in versions.env goes stale) and the tool or package installs at run time. Everything else keeps the approval rule above.",
+      "matchFileNames": ["linux/scripts/01-core/versions.env"],
+      "matchDepNames": [
+        "cargo-audit", "cargo-deny", "cargo-tarpaulin",
+        "meson", "ninja", "Cython", "pybind11", "setuptools", "wheel",
+        "scikit-build-core", "setuptools-scm", "auditwheel", "patchelf",
+        "cmake", "numpy", "packaging",
+        "@litertjs/core", "@mediapipe/tasks-genai",
+        "rust-lang/rust", "lu-zero/cargo-c", "Kataglyphis/OrchestrANT",
+        "anchore/syft"
+      ],
+      "dependencyDashboardApproval": false
     },
     {
       "description": "Dockerfile digest updates (UBUNTU_DIGEST-style FROM pins) also need sync_versions.py --write to propagate; require dashboard approval.",
       "matchManagers": ["dockerfile"],
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "NODE_VERSION may only move within its major: the image tail and the tools built on it are validated per major (bump_versions.py SAFE tier: same-major only).",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["node"],
+      "allowedVersions": "<27.0.0"
+    },
+    {
+      "description": "PYTHON_VERSION may only move within its minor: the CPython source build and its patch set are re-verified per minor (bump_versions.py SAFE tier: same-minor only).",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["python"],
+      "allowedVersions": "<3.15.0"
+    },
+    {
+      "description": "WIX_VERSION / WIX_UI_EXT_VERSION stay on WiX 4: a WiX major changes the CLI/authoring model, which is why bump_versions.py same-major-locks them.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["wix", "WixToolset.UI.wixext"],
+      "allowedVersions": "<5.0.0"
+    },
+    {
+      "description": "PY_SETUPTOOLS_LT82_VERSION is capped for the torch wheelhouse: only candidates below 82 are offered. Scoped by currentValue so PY_SETUPTOOLS_VERSION keeps seeing the newest release.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["setuptools"],
+      "matchCurrentValue": ["/^81\\./"],
+      "allowedVersions": "<82.0.0"
     }
   ],
   "customManagers": [
@@ -23,8 +62,43 @@
       "description": "versions.env keys annotated with a renovate hint comment: # renovate: datasource=<ds> depName=<name> [extractVersion=...]",
       "managerFilePatterns": ["/^linux/scripts/01-core/versions\\.env$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-.]+) depName=(?<depName>[^\\s]+)(?: extractVersion=(?<extractVersion>[^\\s]+))?\\s*(?:\\n# noforward)?\\n[A-Z0-9_]+=(?<currentValue>[^\\s#]+)"
+        "# renovate: datasource=(?<datasource>[a-z-.]+) depName=(?<depName>[^\\s]+)(?: extractVersion=(?<extractVersion>[^\\s]+))?(?: versioning=(?<versioning>[^\\s]+))?\\s*(?:\\n# noforward)?\\n[A-Z0-9_]+=(?<currentValue>[^\\s#]+)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Digest pins: the hint carries the tag, the KEY= line under it the sha256. The docker datasource then reports when that tag's digest moves.",
+      "managerFilePatterns": ["/^linux/scripts/01-core/versions\\.env$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-.]+) depName=(?<depName>\\S+) tag=(?<currentValue>\\S+)(?:\\n# noforward)?\\n[A-Z0-9_]+=(?<currentDigest>sha256:[0-9a-f]{64})"
       ]
     }
-  ]
+  ],
+  "customDatasources": {
+    "cuda": {
+      "description": "NVIDIA's CUDA redist index: the html fetcher turns every href into a candidate, and the transform strips the redistrib_/.json wrapper so the version is written in the shape the key already carries.",
+      "defaultRegistryUrlTemplate": "https://developer.download.nvidia.com/compute/cuda/redist/",
+      "format": "html",
+      "transformTemplates": [
+        "{ \"releases\": $map($.releases, function($r) { { \"version\": $replace($replace($r.version, /^redistrib_/, \"\"), /\\.json$/, \"\") } }) }"
+      ]
+    },
+    "vulkan": {
+      "description": "LunarG's latest.json. The WINDOWS value, deliberately: VULKAN_VERSION feeds both lanes and LunarG ships Windows last, so the Windows entry is the one that exists everywhere (the bump_versions.py spec takes the oldest of linux/windows for the same reason).",
+      "defaultRegistryUrlTemplate": "https://vulkan.lunarg.com/sdk/latest.json",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": [ { \"version\": $lookup($, \"windows\") } ] }"
+      ]
+    },
+    "nuget": {
+      "description": "dist.nuget.org's tool manifest: every nuget.exe ever, tagged with its release stage. ReleasedAndBlessed only, exactly what bump_versions.py spec_nuget filters on.",
+      "defaultRegistryUrlTemplate": "https://dist.nuget.org/tools.json",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": $map($lookup($, \"nuget.exe\")[stage = \"ReleasedAndBlessed\"], function($t) { { \"version\": $t.version } }) }"
+      ]
+    }
+  }
 }

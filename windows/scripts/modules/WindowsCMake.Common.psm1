@@ -15,6 +15,11 @@ Import-Module $buildCommonPath
 $sharedCommonPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedCommonPath
 
+# Get-AsanRuntimeDirs; same no -Force rule as above. WindowsTesting.Common owns
+# the ASan runtime selection policy Get-SanitizerRuntimeDlls delegates to.
+$testingCommonPath = Join-Path $PSScriptRoot 'WindowsTesting.Common.psm1'
+Import-Module $testingCommonPath
+
 # Returns the path of the build tree's compile_commands.json, generating it from
 # the ninja build graph when CMake did not emit one (the input database for
 # clang-tidy/clangd). Project-agnostic: only the build root is needed.
@@ -60,47 +65,13 @@ function Get-CompileCommandsDatabase {
 }
 
 function Get-SanitizerRuntimeDlls {
-  $clangRootPaths = [System.Collections.Generic.List[string]]::new()
-
-  foreach ($commandName in @('clang-cl.exe', 'clang.exe')) {
-    $clangCommand = Get-Command $commandName -ErrorAction SilentlyContinue
-    if ($clangCommand) {
-      $clangBinDir = Split-Path $clangCommand.Source -Parent
-      $clangRoot = Split-Path $clangBinDir -Parent
-      if (-not [string]::IsNullOrWhiteSpace($clangRoot) -and -not $clangRootPaths.Contains($clangRoot)) {
-        $clangRootPaths.Add($clangRoot)
-      }
-    }
-  }
-
-  foreach ($fallbackRoot in @('C:\Program Files\LLVM', 'C:\Program Files (x86)\LLVM')) {
-    if (-not $clangRootPaths.Contains($fallbackRoot)) {
-      $clangRootPaths.Add($fallbackRoot)
-    }
-  }
-
-  # Shared vswhere discovery (WindowsScripts.Shared.psm1), the same helper
-  # WindowsSourceBuild.Common's Get-VsInstallPath/Get-MsvcToolsRoot use.
-  # -AllowMissing is what keeps this probe non-throwing: a missing VS install
-  # just means one fewer clang_rt root to search. Newest toolset first.
-  $vcToolsPath = @(Get-MsvcToolsRoots -AllowMissing) | Select-Object -First 1
-  if ($vcToolsPath -and -not $clangRootPaths.Contains($vcToolsPath)) {
-    $clangRootPaths.Add($vcToolsPath)
-  }
-
-  foreach ($rootPath in $clangRootPaths) {
-    if (-not (Test-Path $rootPath)) {
-      continue
-    }
-
-    $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\lib\clang\*\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
-    if ($sanitizerDlls.Count -eq 0) {
-      $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\lib\windows\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
-    }
-    if ($sanitizerDlls.Count -eq 0) {
-      $sanitizerDlls = @(Get-ChildItem -Path "$rootPath\bin\Hostx64\x64\clang_rt.*san*.dll" -ErrorAction SilentlyContinue)
-    }
-
+  # Get-AsanRuntimeDirs (WindowsTesting.Common) owns the runtime-selection
+  # policy: Microsoft's first -- the one cmake/Sanitizers.cmake links
+  # (docs/windows-clang-cl-sanitizers.md) -- LLVM's only as fallback. The two
+  # share the DLL name but not the export set, so staging the wrong one makes
+  # every instrumented build tool die at load with STATUS_ENTRYPOINT_NOT_FOUND.
+  foreach ($runtimeDir in @(Get-AsanRuntimeDirs)) {
+    $sanitizerDlls = @(Get-ChildItem -Path (Join-Path $runtimeDir 'clang_rt.*san*.dll') -ErrorAction SilentlyContinue)
     if ($sanitizerDlls.Count -gt 0) {
       return $sanitizerDlls
     }

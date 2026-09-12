@@ -11,6 +11,13 @@
 # Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
 set -euo pipefail
 
+# Git exports GIT_DIR (and may export GIT_WORK_TREE/GIT_INDEX_FILE/GIT_PREFIX) to
+# hooks. Test fixtures that shell out to git then operate on the superproject
+# instead of their own temp repo -- measured 2026-09-12: every renovate mutation
+# baseline failed under `git commit` and passed standalone. No fixture may be
+# asked to defend against the caller's environment; clear it here.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
 _MUTATION_CAP="${PRECOMMIT_MUTATION_CAP:-16}"
 _MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
 

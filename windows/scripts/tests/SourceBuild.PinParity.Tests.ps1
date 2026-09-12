@@ -44,7 +44,7 @@ function Get-PinScanAst {
     param([string]$MustMentionPattern = '')
     $scriptsDir = Split-Path $PSScriptRoot -Parent
     $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
-            Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
+            Where-Object { $_.FullName -notmatch '[\\/](tests|modules)[\\/]' } | Sort-Object Name)  # #108 grouped layout
     $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
     foreach ($f in $files) {
         $tokens = $null; $errors = $null

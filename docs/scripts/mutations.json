@@ -8008,5 +8008,125 @@
     "replace": "  rewrite_security=\"${FAST_UBUNTU_REWRITE_SECURITY:-false}\"",
     "test": "bash linux/scripts/tests/test-base-image-parse-options.sh",
     "why": "AS1: false leaves the host -security on security.ubuntu.com while the target pocket comes from the fast mirror -- same pocket, two archives, and a lagging mirror reproduces the Multi-Arch:same skew that cost riscv64 its Qt6"
+  },
+  {
+    "id": "renovate.refusal-exits-two",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "  EXIT_CODE=\"${EXIT_REFUSED}\"",
+    "replace": "  EXIT_CODE=0",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "a plan-time refusal exiting 0 is indistinguishable, to a caller, from a repo with nothing behind -- which is what it did until 2026-09-10"
+  },
+  {
+    "id": "renovate.rollback-survives-a-raising-audit",
+    "target": "linux/scripts/renovate_planner.py",
+    "find": "        problems = _audited(files)\n    except BaseException as exc:                   # noqa: BLE001 -- see above\n        sys.exit(_refused(\n            [\"  the audit itself raised %s: %s\" % (type(exc).__name__, exc)],\n            files))",
+    "replace": "        problems = _audited(files)",
+    "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+    "why": "an exception from the audit travelled past _put_back(), so a hostile write stayed on disk at rc 1; the rollback must not rest on the audit finishing"
+  },
+  {
+    "id": "renovate.duplicate-key-is-refused",
+    "target": "linux/scripts/renovate_audit.py",
+    "find": "                if key in seen:\n                    raise Unreadable(_duplicate(\"mapping\", key))\n                seen.add(key)",
+    "replace": "                seen.add(key)",
+    "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+    "why": "PyYAML and a line reader BOTH take the last of two equal keys, so they agree, the edit lands on the winner, and the file is left saying two things about one dependency"
+  },
+  {
+    "id": "renovate.dry-run-predicts-the-write",
+    "target": "linux/scripts/renovate_planner.py",
+    "find": "        predict(_verify(load(sys.argv[3]), sys.argv[2]))",
+    "replace": "        _verify(load(sys.argv[3]), sys.argv[2])",
+    "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+    "why": "without the prediction --dry-run printed a clean plan at rc 0 for a write --apply then refused, while claiming to show the exact writes it would make"
+  },
+  {
+    "id": "renovate.signal-rolls-the-run-back",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "trap 'on_signal INT 130' INT\ntrap 'on_signal TERM 143' TERM\ntrap 'on_signal HUP 129' HUP",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "untrapped, a signal during the lock refresh left the manifest written, the lockfile half-written and the copies deleted -- at rc 0 for SIGINT"
+  },
+  {
+    "id": "renovate.unproven-backup-is-kept",
+    "target": "linux/scripts/renovate-locks.sh",
+    "find": "    applied|restored) rm -rf \"${BACKUP_DIR:?}\" ;;",
+    "replace": "    *) rm -rf \"${BACKUP_DIR:?}\" ;;",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "a copy may be deleted only because the file was PROVEN put back; deleting it whenever nothing failed also deletes it when no restore was ever attempted"
+  },
+  {
+    "id": "renovate.rollback-restores-the-mtime",
+    "target": "linux/scripts/renovate_planner.py",
+    "find": "            was = target[\"stat\"]\n            os.utime(target[\"path\"], ns=(was.st_atime_ns, was.st_mtime_ns))",
+    "replace": "            _was = target[\"stat\"]",
+    "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+    "why": "a rolled-back manifest stamped with now is a change to every timestamp-driven tool downstream, over an edit that was undone"
+  },
+  {
+    "id": "renovate.hash-pinned-pin-is-located",
+    "target": "linux/scripts/renovate_locator.py",
+    "find": "    return stripped[:-1] if stripped.endswith(\"\\\\\") else body",
+    "replace": "    return body",
+    "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+    "why": "unjoined, `ruff==0.9.0 \\` reads as the value `==0.9.0 \\`, so a hash-pinned file was refused one step early for the WRONG reason and the digest rule was reachable by nothing"
+  },
+  {
+    "id": "renovate.gitlink-is-snapshotted",
+    "target": "linux/scripts/renovate-locks.sh",
+    "find": "  snapshot_gitlinks ${APPLY_PATHS[@]+\"${APPLY_PATHS[@]}\"}\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "with no gitlink recorded the undo has nothing to put a submodule back to, which is why a signal or a failure in the submodule half undid NOTHING while the header, the docs and the report all promised a rollback"
+  },
+  {
+    "id": "renovate.both-halves-settle-together",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "  apply_files\n  apply_submodules\n",
+    "replace": "  apply_files\n  settle_targets\n  apply_submodules\n",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "settling between the halves is exactly the bug: apply_files discarded its safety net one line before the gitlink half began, so a signal there found BACKUP_STATE=applied and rolled nothing back"
+  },
+  {
+    "id": "renovate.submodule-failure-undoes-the-run",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "    || undo_run \"git submodule update --remote failed\"",
+    "replace": "    || err \"git submodule update --remote failed\"",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "err() exits 1, and rc 1 is documented as 'the tree is where it started'; without the undo it exited 1 with the manifests written and the copies already gone -- measured 2026-09-10"
+  },
+  {
+    "id": "renovate.sigpipe-is-trapped",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "trap 'on_signal PIPE 141' PIPE",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "SIGPIPE is fatal by default, so `--apply | head` killed the run at whatever byte it had reached -- measured leaving the manifest at its new value with the lockfile never refreshed, while the caller read head's rc 0 as the script's"
+  },
+  {
+    "id": "renovate.kill-leaves-a-marker",
+    "target": "linux/scripts/renovate-locks.sh",
+    "find": "  write_inflight\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "SIGKILL cannot be trapped, so the marker written before the first byte is the only record that a half-applied tree exists; without it the next run over the same report exited 0 calling the wreckage 'already applied'"
+  },
+  {
+    "id": "renovate.wreckage-is-refused",
+    "target": "linux/scripts/renovate-local.sh",
+    "find": "assert_no_wreckage\ndetect_managers",
+    "replace": "detect_managers",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "a marker nobody reads is a file, not a guard: the refusal is what turns an untrappable kill into rc 1 with instructions instead of rc 0 over a manifest whose lock was never refreshed"
+  },
+  {
+    "id": "renovate.backup-copies-are-named",
+    "target": "linux/scripts/renovate-locks.sh",
+    "find": "  printf '%s\\t%s\\n' \"${n}\" \"${rel}\" >> \"${BACKUP_DIR}/MANIFEST\" \\\n    || err \"cannot record ${rel} in ${BACKUP_DIR}/MANIFEST; nothing written\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-renovate-exit.sh",
+    "why": "the copies are named 0 and 1 because restore_targets indexes them by position; with the mapping only in a shell array, a kill left a directory of anonymous files and nothing to say where any of them belonged"
   }
 ]

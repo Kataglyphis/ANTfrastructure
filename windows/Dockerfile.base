@@ -10,7 +10,7 @@ ARG WINDOWS_LTSC=2025
 # Microsoft's monthly patch releases; the digest makes a from-base rebuild
 # reproducible and base OS revisions deliberate (they matter here — the wcifs
 # commit bug is version-skew-sensitive). The digest wins over the tag.
-ARG WINDOWS_BASE_DIGEST=sha256:eeaa17aefe5d949f03b1db17182f5855cf40e757533468cf5b50e07c7c385ada
+ARG WINDOWS_BASE_DIGEST=sha256:e18a49cbc074dfaa8e106296d51cebd62bbf6effb999f134a5c48eed1c2334e1
 # NB the tag part is COSMETIC — the digest wins (see above); a WINDOWS_LTSC
 # bump without a matching digest bump changes nothing. Single default only
 # (the inline :-2025 fallback duplicated the ARG default, #127).
@@ -20,8 +20,8 @@ FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIG
 # as the default container shell instead of Windows PowerShell 5.1.
 # The zip's SHA256 rides along as an ARG because this bootstrap runs before any
 # shared module (Invoke-DownloadWithRetry) or versions.env baking is available.
-ARG PWSH_VERSION=7.6.5
-ARG PWSH_ZIP_SHA256=32eb8f6cdce08f86e987d625a2733e54ac3e289ae7e1621b14c0b5bcec2434ea
+ARG PWSH_VERSION=7.6.6
+ARG PWSH_ZIP_SHA256=02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 # TEMP_DIR must sit above the VS layer (the pwsh bootstrap RUN below reads it);
@@ -140,7 +140,7 @@ ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278164108f2512
 ARG WIX_VERSION=4.0.6
 ARG WIX_UI_EXT_VERSION=4.0.6
-ARG FLUTTER_VERSION=3.47.1
+ARG FLUTTER_VERSION=3.47.3
 # LAN preseed source for the 275 MB vulkan SDK exe: sdk.lunarg.com stalls out
 # reproducibly from inside containers (2026-08-19, 3x ~20-min deaths), so the
 # driver stages the exe on the webdav and setup-scoop-tools pulls it into

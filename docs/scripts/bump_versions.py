@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """bump_versions.py — automated updater for linux/scripts/01-core/versions.env.
 
-Queries every upstream (GitHub releases with per-asset sha256 digests, registry
-manifests, nuget/nodejs/LunarG endpoints), then:
+What owns what (2026-09-11): Renovate's customManager reports every
+`# renovate:`-annotated key in versions.env (89 of 99 tracked; the exceptions
+are documented in docs/dependency-updates.md#what-is-still-not-annotated-and-why)
+and its local --apply half writes the self-contained ones. THIS script owns the
+rest: the paired *_SHA256/*_COMMIT refresh a bump drags with it, the tracked
+keys Renovate cannot see, the registry digests, and the SLAVED PROTOC
+derivation.
 
-  --check          report current vs latest for ALL tracked keys (default)
+Queries every remaining upstream (GitHub releases with per-asset sha256
+digests, registry manifests, nuget/nodejs/LunarG endpoints), then:
+
+  --check          report current vs latest for every tracked key (default)
   --write          bump the SAFE set to latest and refresh the paired *_SHA256
                    pins in one pass; HIGH-RISK keys are always report-only
   --only K1,K2     restrict --write to specific keys (must be in the safe set)
-
-Safe vs report-only:
-  * SAFE keys are self-contained tool/app pins whose failures surface at
-    download/install time (pwsh, git, cmake, node, uv, ollama, ...).
-  * REPORT-ONLY keys (GCC, LLVM, CUDA/cuDNN/TensorRT, ONNX/LiteRT/TVM/IREE,
-    GStreamer, PyAV, Android, ROCm) carry source patches and multi-hour build
-    entanglement — bump them deliberately, one at a time, by hand.
 
 After a --write, finish with (same ritual as AGENTS.md § Version Bumping):
     python docs/scripts/sync_versions.py --write
@@ -233,32 +234,11 @@ def mcr_manifest_digest(repo: str, tag: str) -> str:
     )
 
 
-def npm_latest(pkg: str) -> str:
-    return http_json(f"https://registry.npmjs.org/{urllib.parse.quote(pkg, safe='')}/latest")["version"]
-
-
-def gitlab_latest_tag(host: str, project: str, pattern: str) -> str:
-    """Newest tag matching `pattern` on a GitLab instance (tags are updated-desc)."""
-    rx = re.compile(pattern)
-    tags = http_json(f"https://{host}/api/v4/projects/{urllib.parse.quote(project, safe='')}/repository/tags?per_page=100")
-    matches = [t["name"] for t in tags if rx.match(t["name"])]
-    return max(matches, key=lambda v: [int(x) for x in re.findall(r"\d+", v)]) if matches else ""
-
-
 def nvidia_redist_latest(product: str) -> str:
     """Newest redistrib_<version>.json in NVIDIA's redist index for a product."""
     html = http_text(f"https://developer.download.nvidia.com/compute/{product}/redist/")
     versions = re.findall(r"redistrib_(\d+(?:\.\d+)+)\.json", html)
     return max(versions, key=lambda v: [int(x) for x in v.split(".")]) if versions else ""
-
-
-def rocm_apt_latest() -> str:
-    """Newest ROCm version in AMD's TheRock apt repo (stable.repo.amd.com)."""
-    url = "https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/dists/stable/main/binary-amd64/Packages.gz"
-    raw = http_bytes(url)
-    text = gzip.decompress(raw).decode("utf-8", errors="replace")
-    m = re.search(r"^Package: amdrocm-core-dev\n.*?^Version: (\d+\.\d+(?:\.\d+)?)", text, re.M | re.S)
-    return m.group(1) if m else ""
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +321,26 @@ def derive_protoc_from_litert_lm(litert_lm_version: str) -> str | None:
         return None
     # protobuf runtime MAJOR.MINOR.PATCH -> protoc release is MINOR.PATCH
     return f"{m.group(2)}.{m.group(3)}"
+
+
+def renovate_owned() -> set[str]:
+    """Keys whose detection Renovate owns: the KEY= line under a `# renovate:`
+    hint. The coverage audit counts them as classified, so a key can leave a
+    tier here the moment its annotation lands (and vice versa)."""
+    out: set[str] = set()
+    lines = VERSIONS_ENV.read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        if not line.startswith("# renovate:"):
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if j < len(lines) and lines[j].strip() == "# noforward":
+            j += 1
+        m = re.match(r"([A-Z0-9_]+)=", lines[j]) if j < len(lines) else None
+        if m:
+            out.add(m.group(1))
+    return out
 
 
 def write_env_values(updates: dict[str, str]) -> list[str]:
@@ -749,13 +749,10 @@ def _r(repo, strip_v=True, pattern=None, prefix=""):
     return fn
 
 
-def _pypi(pkg: str) -> Callable:
-    """REPORT helper: latest release of a PyPI package (F7)."""
-    return lambda cur: (http_json(f"https://pypi.org/pypi/{pkg}/json")["info"]["version"], {})
-
-
 SAFE: list[tuple[str, Callable, str]] = [
-    # (env key, spec, rebuild impact of a bump)
+    # Renovate writes the self-contained annotated keys now (its file-scoped
+    # allowlist); what stays here is every key whose bump ALSO moves a paired
+    # *_SHA256 in versions.env, which a datasource cannot compute.
     ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1)"),
     ("GIT_VERSION", spec_git, "windows base scoop layer"),
     ("NUGET_VERSION", spec_nuget, "windows toolchain run (cheap)"),
@@ -768,114 +765,43 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("HADOLINT_VERSION", spec_hadolint, "none (host-side lint bootstrap)"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
     ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
-    ("RUST_VERSION", spec_rust, "linux toolchain rust layer + tail"),
-    ("CARGO_C_VERSION", spec_cargo_c, "linux toolchain rust layer + tail"),
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
     ("PYTHON_VERSION", spec_python, "linux+windows toolchain CPython builds (same-minor only)"),
     ("VULKAN_VERSION", spec_vulkan, "linux base/sdk + windows scoop layer"),
     ("GSTREAMER_VERSION", spec_gstreamer, "linux media gstreamer stage (+ android universal)"),
-    ("APP_REF", spec_app_ref, "torch + final leaves (minutes)"),
     ("UBUNTU_DIGEST", spec_ubuntu_digest, "linux base (full chain)"),
     ("WINDOWS_BASE_DIGEST", spec_windows_digest, "windows base (full chain)"),
 ]
 
+
 REPORT: list[tuple[str, Callable]] = [
-    ("LLVM_RELEASE", _r("llvm/llvm-project", prefix="llvmorg-")),
-    ("GCC_VERSION", _r("gcc-mirror/gcc", pattern=r"^releases/gcc-\d+\.\d+\.\d+$", prefix="releases/gcc-")),
-    ("ONNXRUNTIME_VERSION", _r("microsoft/onnxruntime", strip_v=False)),
-    ("ONNXRUNTIME_GENAI_VERSION", _r("microsoft/onnxruntime-genai", strip_v=False)),
-    ("LITERT_VERSION", _r("google-ai-edge/LiteRT", strip_v=False)),
+    # Everything Renovate can DETECT moved to its annotations
+    # (docs/dependency-updates.md#what-is-still-not-annotated-and-why). What is
+    # left is what a datasource cannot do: paired checksum/commit extras,
+    # artifact gating, and the SLAVED PROTOC derivation.
+    #
+    # LiteRT-LM drives that derivation -- the loop below reads its
+    # protobuf.cmake for the slaved PROTOC_VERSION, which is why both stay.
     ("LITERT_LM_VERSION", _r("google-ai-edge/LiteRT-LM")),
-    ("TVM_REF", _r("apache/tvm", strip_v=False)),
-    ("IREE_VERSION", _r("iree-org/iree", strip_v=False)),
-    # GSTREAMER_VERSION moved to SPECS (spec_gstreamer) so it also refreshes the
-    # android-universal tarball SHA (F6); the version-detection logic is unchanged.
-    ("PYAV_VERSION", _r("PyAV-Org/PyAV")),
-    ("NV_CODEC_HEADERS_REF", _r("FFmpeg/nv-codec-headers", strip_v=False, pattern=r"^n[\d.]+$")),
-    # -- media/library build deps --
-    ("VVDEC_VERSION", _r("fraunhoferhhi/vvdec", strip_v=False)),
-    # BT2: TF stopped publishing the libtensorflow C tarball after 2.18.1 —
+    ("PROTOC_VERSION", _r("protocolbuffers/protobuf")),
+    # BT2: TF stopped publishing the libtensorflow C tarball after 2.18.1 --
     # gate the report on the ARTIFACT existing, not the git tag.
     ("TENSORFLOW_C_VERSION", lambda cur: (
         (lambda tag: tag if artifact_exists(
             f"https://storage.googleapis.com/tensorflow/versions/{tag}/libtensorflow-cpu-linux-x86_64.tar.gz")
          else cur)(gh_latest("tensorflow/tensorflow").lstrip("v")), {})),
-    ("OPENVINO_VERSION", _r("openvinotoolkit/openvino")),
-    ("ARMNN_VERSION", _r("ARM-software/armnn", strip_v=False, pattern=r"^v\d+\.\d+$")),
-    ("ACL_VERSION", _r("ARM-software/ComputeLibrary", strip_v=False, pattern=r"^v\d+\.\d+(\.\d+)?$")),
-    ("RICE_VERSION", _r("ystreet/librice", strip_v=False, pattern=r"^v\d+\.\d+\.\d+$")),
+    # Paired extras: these versions drag hashes the datasource cannot compute
+    # (CUDA installer, cuDNN zip), refreshed by their specs under --write-all.
     ("ABSEIL_VERSION", spec_abseil),
-    ("FREETYPE_VERSION", lambda cur: (
-        gh_latest("freetype/freetype", pattern=r"^VER-\d+-\d+-\d+$")
-        .removeprefix("VER-").replace("-", "."), {})),
-    ("LIBPNG_VERSION", _r("pnggroup/libpng", pattern=r"^v\d+\.\d+\.\d+$")),
-    ("GOBJECT_INTROSPECTION_VERSION", lambda cur: (
-        gitlab_latest_tag("gitlab.gnome.org", "GNOME/gobject-introspection", r"^\d+\.\d+\.\d+$"), {})),
-    # -- npm-vendored web runtimes (media litert stage) --
-    ("LITERTJS_VERSION", lambda cur: (npm_latest("@litertjs/core"), {})),
-    ("MEDIAPIPE_GENAI_VERSION", lambda cur: (npm_latest("@mediapipe/tasks-genai"), {})),
-    # -- riscv64 cross wheel builds --
-    ("PYTORCH_VERSION", _r("pytorch/pytorch", strip_v=False)),
-    ("TORCHVISION_VERSION", _r("pytorch/vision", strip_v=False)),
-    # -- GPU stacks (vendor indexes; versions are LISTINGS, driver compat is on you) --
     ("CUDA_VERSION", spec_cuda),
     ("CUDNN_VERSION", spec_cudnn),
-    ("ROCM_VERSION", lambda cur: (rocm_apt_latest(), {})),
-    # -- assorted build deps --
-    ("ANTLR_VERSION", _r("antlr/antlr4")),
-    # protoc/protobuf are a COUPLED pair: protoc X.Y ships as python protobuf
-    # (X+? major offset) — bump them together or codegen and runtime disagree.
-    ("PROTOC_VERSION", _r("protocolbuffers/protobuf")),
-    ("PROTOBUF_VERSION", lambda cur: (
-        http_json("https://pypi.org/pypi/protobuf/json")["info"]["version"], {})),
-    ("VCPKG_REF", _r("microsoft/vcpkg", strip_v=False)),
-    # -- F7 (2026-08-18): python build-dep pins (wheelhouse/venv tooling) --
-    ("PY_AUDITWHEEL_VERSION", _pypi("auditwheel")),
-    ("PY_CYTHON_VERSION", _pypi("Cython")),
-    ("PY_MESON_VERSION", _pypi("meson")),
-    ("PY_NINJA_VERSION", _pypi("ninja")),
-    ("PY_PATCHELF_VERSION", _pypi("patchelf")),
-    ("PY_PYBIND11_VERSION", _pypi("pybind11")),
-    ("PY_SCIKIT_BUILD_CORE_VERSION", _pypi("scikit-build-core")),
-    ("PY_SETUPTOOLS_SCM_VERSION", _pypi("setuptools-scm")),
-    ("PY_SETUPTOOLS_VERSION", _pypi("setuptools")),
-    ("PY_WHEEL_VERSION", _pypi("wheel")),
-    ("LIBCAMERA_VERSION", lambda cur: (
-        gitlab_latest_tag("gitlab.freedesktop.org", "camera/libcamera", r"^v\d+\.\d+\.\d+$"), {})),
-    # -- package-image runtime-venv executor pins (setup-package-image.sh
-    #    create_runtime_venv; added 2026-08-24 closing its last bare installs).
-    #    That script sources platform.sh/package-lists.sh only (not common.sh),
-    #    so nothing loads versions.env into its env and its ${VAR:-literal}
-    #    fallbacks are the live values — a bump must update BOTH sites (the
-    #    verify-arg-consistency drift check compares them). --
-    ("PY_CMAKE_VERSION", _pypi("cmake")),
-    ("PY_NUMPY_VERSION", _pypi("numpy")),
-    ("PY_PACKAGING_VERSION", _pypi("packaging")),
-    # -- APPIMAGETOOL_VERSION is report-only until its consumer reads the key
-    #    (TS1 rider): packaging-deps.sh still carries `${APPIMAGETOOL_VERSION:-
-    #    1.9.1}` plus four hardcoded per-arch sha256 case-arms, so an automated
-    #    bump would desync versions.env from the literal actually enforced and
-    #    hand download_verified_file the previous release's checksum. Move it to
-    #    SAFE when those SHAs become keys. --
+    # APPIMAGETOOL_VERSION: report-only until its consumer reads the key (TS1
+    # rider); spec_appimagetool refreshes all four per-arch SHAs.
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
-    # -- RUFF_VERSION is report-only for a DIFFERENT reason, corrected
-    #    2026-09-09. The reason here used to read "lint-python.sh still
-    #    hardcodes RUFF_PIN". That stopped being true on 2026-08-26 and the
-    #    line outlived it, so this tier was justified by a fact about the tree
-    #    that no longer held. lint-python.sh reads RUFF_VERSION and carries no
-    #    literal at all — its `:-` fallback, the last one, went on 2026-09-09.
-    #    What keeps it out of SAFE is that the bump is not this repo's to
-    #    finish: pip/uv and pre-commit cannot read a versions.env, so every
-    #    Python consumer repeats the number in its own pyproject.toml and
-    #    .pre-commit-config.yaml, and a sweep that writes versions.env alone
-    #    leaves those contradicting it — visibly now, because run-lint-gates.sh
-    #    runs sync_versions.py --consumer-pins in the consumer's own lane. A
-    #    ruff bump is a two-repo commit, so it is REPORTED for a human to
-    #    finish rather than written by the sweep. --
-    ("RUFF_VERSION", _r("astral-sh/ruff")),
 ]
+
 
 MANUAL = [
     # sccache for the LINUX lane. Pinned deliberately at the version that has
@@ -904,6 +830,13 @@ MANUAL = [
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
     "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (24.08), not a package version
     "SCCACHE_GIT_REV",             # git SHA rides the sccache quote-fix PR state
+    # Renovate detects the annotated keys; these have no feed at all and stay
+    # operator-managed (per-arch truth overrides, a version embedded in a patch,
+    # the documented SQLITE3_WASM tag-shape exception).
+    "CMAKE_VERSION_RISCV64", "NODE_VERSION_RISCV64",
+    "CMAKE_POLICY_VERSION_MINIMUM",
+    "ANDROID_AGP_VERSION", "ANDROID_GRADLE_VERSION",
+    "SQLITE3_WASM_VERSION",
     # F7: Windows-lane pins — bump via the WINDOWS backlog, not this tool
     "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
     "NINJA_WINDOWS_VERSION", "SCCACHE_WINDOWS_VERSION",
@@ -1093,11 +1026,12 @@ def main() -> int:
     # or a recognized non-version key (checksums/digests are refreshed as the
     # paired extras of their version key; toggles/paths/registry aren't
     # versions). Anything else prints here — add it to a tier when it appears.
-    covered = {k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL)
+    covered = ({k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL) | renovate_owned())
     nonversion = re.compile(
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
         r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
-        r"|_COMMIT$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$)"
+        r"|_COMMIT$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
+        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^JDK_PACKAGE$)"
     )
     unclassified = sorted(k for k in env if k not in covered and not nonversion.search(k))
     if unclassified:

@@ -44,7 +44,7 @@ services:
     # TODO: verify current release (no network at pin time); NOTE: if the
     # open-webui-data volume was last written by a NEWER :main image, its DB
     # migrations may not be backward-compatible with this tag.
-    image: ghcr.io/open-webui/open-webui:v0.6.18
+    image: ghcr.io/open-webui/open-webui:v0.11.3
     ports:
       # Loopback-only by default; see docker-compose.lan.yml for LAN exposure.
       - "127.0.0.1:3000:8080"
@@ -61,7 +61,7 @@ services:
   glances:
     # Pinned major release (was :latest-full).
     # TODO: verify current 4.x release (no network at pin time).
-    image: nicolargo/glances:4.3.1-full
+    image: nicolargo/glances:4.5.6-full
     ports:
       # Loopback-only by default: Glances exposes full host telemetry
       # (process list) unauthenticated. See docker-compose.lan.yml.

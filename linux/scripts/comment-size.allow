@@ -181,3 +181,13 @@ linux/scripts/lib/app-packaging.sh	#!/usr/bin/env bash
 linux/scripts/05-frameworks/flutter/flutter-pin.sh	#!/usr/bin/env bash
 
 linux/scripts/03-media/runtime/assemble-torch-app.sh	# `uv sync` installs the app project itself (OrchestrANT ->
+
+# Frozen 2026-09-11: the renovate CLI merge brought six blocks over the limit.
+# Kept as-is rather than trimmed mid-merge (the detail has no docs/ home yet);
+# shrink one and DELETE its line.
+linux/scripts/renovate-locks.sh	# Does the manifest in <dir> belong to a WORKSPACE declared
+linux/scripts/renovate-tree.sh	# Putting collateral back, and the one case where this tool
+linux/scripts/renovate-tree.sh	# THE ONE RULE THE THREE SET DIFFERENCES BELOW SHARE, and th
+linux/scripts/renovate-tree.sh	# The rows handed to restore_collateral_one, then PROVEN bac
+linux/scripts/renovate-tree.sh	# Tracked, and the ONLY thing that differs from HEAD is the
+linux/scripts/renovate-tree.sh	# git's OWN view of the whole checkout, one porcelain line p

@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24.0
+# syntax=docker/dockerfile:1.27.0
 
 # ==============================================================================
 # Dockerfile.nvidia  —  Optional NVIDIA GPU library layer
@@ -38,8 +38,8 @@ FROM ${BASE_IMAGE}
 # ------------------------------------------------------------------------------
 # CUDA 13.3 requires driver >= 590.44.01 (Linux)
 ARG CUDA_VERSION=13.3.1
-ARG CUDNN_VERSION=9.25.0.15
-ARG TENSORRT_VERSION=11.2.1.2
+ARG CUDNN_VERSION=9.26.0.51
+ARG TENSORRT_VERSION=11.3.0.99
 # Apt package-name forms derived from the shared semvers:
 #   13.3.0 → 13.3 (repo paths) → 13-3 (apt package suffix); 9.23.2.1 → 9 (cuDNN major)
 ARG CUDA_VERSION_DOT=${CUDA_VERSION%.*}

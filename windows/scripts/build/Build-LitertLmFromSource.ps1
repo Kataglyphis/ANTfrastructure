@@ -22,7 +22,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.16.1'
+$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.17.0'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
 #region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)
@@ -86,7 +86,7 @@ function Install-PortableZipTool {
 
 # Host protoc must MATCH the from-source runtime (6.31.1): vcpkg's is a different major
 # whose gencode the 6.31.1 headers reject, and a from-source 6.31.1 protoc fails to link.
-$protocVer = Get-SourceBuildVersion -EnvironmentVariables @('PROTOC_VERSION') -DefaultValue '31.1'
+$protocVer = Get-SourceBuildVersion -EnvironmentVariables @('PROTOC_VERSION') -DefaultValue '35.1'
 $hostProtocDir = "C:\temp\protoc-$protocVer"
 $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
 [void](Install-PortableZipTool -Url "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip" `

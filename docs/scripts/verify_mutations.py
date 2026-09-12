@@ -330,23 +330,29 @@ def run_entries(args, entries, report, baselines=None):
     return rc
 
 
-def run_shard(args, entries, root, src, report, baselines):
-    if root != args.root:
-        mirror_tree(src, root)
+def run_shard(args, entries, root, report, baselines):
     local = argparse.Namespace(**vars(args))
     local.root = root
     return run_entries(local, entries, report, baselines)
 
 
 def run_shards(args, entries, src, report):
-    """Deal the entries round-robin over --jobs mirrors and run the shards at once."""
+    """Deal the entries round-robin over --jobs mirrors and run the shards at once.
+
+    Every mirror is materialized BEFORE any shard starts. The first shard runs
+    in the repo root and mutates IN PLACE, so a mirror copied while one of its
+    files is mid-mutation captures the mutation and its baseline reads as an
+    unmutated failure (vacuous bite) -- the race a --jobs > 1 run lost.
+    """
     jobs = max(1, min(args.jobs, len(entries)))
     shards = [entries[n::jobs] for n in range(jobs)]
     extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in shards[1:]]
     baselines = Baselines()
     try:
+        for root in extra:
+            mirror_tree(src, root)
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-            done = [pool.submit(run_shard, args, shard, root, src, report, baselines)
+            done = [pool.submit(run_shard, args, shard, root, report, baselines)
                     for shard, root in zip(shards, [args.root] + extra)]
             return max(f.result() for f in done)
     finally:
