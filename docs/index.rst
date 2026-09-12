@@ -199,8 +199,6 @@ Common development targets:
    github-cli-pipeline-monitoring
    mistral-vibe-glm-setup
    geniex-local-ai-setup
-   llm-benchmark-roadmap
-   llm-benchmark-review-2026-09-05
    nas-document-ai
    agentic-loop-build-matrix
    windows-agentic-loop

@@ -1,0 +1,42 @@
+name: llm-stack serving
+
+# The serving stack's shape and its registry, now that the benchmark suite
+# lives in OrchestrANT. No image is built and no model is pulled: compose files
+# are validated, and the properties the two registry consumers rely on are
+# pinned by tests.
+
+on:
+  push:
+    paths:
+      - "linux/llm-stack/**"
+      - ".github/workflows/llm-stack-serving.yml"
+  pull_request:
+    paths:
+      - "linux/llm-stack/**"
+      - ".github/workflows/llm-stack-serving.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  serving:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # docker compose is on the hosted runner and "config" only parses and
+      # merges: no daemon, no pull, no container.
+      - name: Compose files parse, overlays included
+        run: |
+          docker compose -f linux/llm-stack/docker-compose.yml config -q
+          docker compose -f linux/llm-stack/docker-compose.yml \
+            -f linux/llm-stack/docker-compose.gpu.yml config -q
+          docker compose -f linux/llm-stack/docker-compose.yml \
+            -f linux/llm-stack/docker-compose.lan.yml config -q
+
+      - name: Install pytest + PyYAML
+        run: python3 -m pip install --quiet pytest pyyaml
+
+      - name: Serving-shape tests
+        run: python3 -m pytest linux/llm-stack/tests -q

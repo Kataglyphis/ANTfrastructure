@@ -97,17 +97,17 @@ t_assert_contains "${_out}" "rc=0" "declare first, assign second, check the stat
 t_case "a frozen site passes, and a stale freeze fails"
 _freeze_contract _masked "${MASKED}" "${SPLIT}" "${MASKED_KEY}"
 
-t_case "the REAL scan set covers linux/llm-stack -- EX1, and the frozen row rests on it"
+t_case "the REAL scan set still covers linux/llm-stack -- EX1"
 # Every negative case above copies the gate into a throwaway tree, so none of them can
 # see the scan set that SHIPS. linux/llm-stack sat outside it until 2026-09-09. Assert
 # the BEHAVIOUR -- a file only that tree has is walked -- not the literal tuple.
 _ex1_probe="$(t_gate_probe linux/scripts/verify_comment_size.py <<'PYCHK'
-want = "linux/llm-stack/ci-contract-tests.sh"
+want = "linux/llm-stack/scripts/download-ollama.sh"
 rels = g.scan_paths(g.ROOT, g.SCAN)
 print("scanned" if want in rels else f"MISSING {want} from {g.SCAN}")
 PYCHK
 )"
 t_assert_eq "scanned" "${_ex1_probe}" \
-  "removing linux/llm-stack from SCAN silently un-freezes its comment-size row"
+  "removing linux/llm-stack from SCAN silently drops the rest of its files from this gate"
 
 t_summary

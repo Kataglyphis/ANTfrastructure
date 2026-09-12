@@ -31,7 +31,7 @@ gets built, embeddings.
 
 ## 1. Does the benchmark already answer this? No — it measures a different construct
 
-Across all 16 production `.py` files in [`linux/llm-stack/`](../linux/llm-stack/README.md)
+Across the benchmark suite's production `.py` files, now in [https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks)
 there is not one occurrence of `image_url`, `input_audio`, `base64`, `mmproj`,
 `clip` or `ocr`. Every request-building site hardcodes `"content": <str>`
 (`benchmark_openai_api.py:485`, `bench_coding.py:1436`, `bench_tools.py:442`
@@ -57,7 +57,7 @@ untouched — sending the first image is a ~3-line change at one call site.
 `paired_sign_test`), `bench_compare`'s baselines and `bench_report`'s manifest
 all transfer verbatim. The plumbing is done; the measurement is not (§ 5).
 
-One correction to [`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md)
+One correction to [`llm-benchmark-review-2026-09-05.md`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md)
 line 480 while here: *"bench_vision.py is an addition to the suite, not a new
 harness"* is true of the HTTP plumbing only. The measurement construct —
 fixture corpus, hand-keyed ground truth, document graders, image-token
@@ -350,7 +350,7 @@ adversarially hardened before any model ran). Corpus: 4 families
 rot-1.2°/JPEG-45 degradations on seed 1, a text twin per seed — 32 cases per
 model, A4 @ 200 dpi, temperature 0, one repeat. Raw replies, summary,
 grader snapshot and regrade notes:
-[`../linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/`](../linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/).
+[`benchmarks/benchmark_results/2026-09-07-benchdocs-probe/`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/benchmark_results/2026-09-07-benchdocs-probe).
 Serving: **the running GenieX v0.6.1 CPU lane (18184), per-request model
 swap** — `geniex pull --model-type vlm` wires the mmproj itself, closing § 7's
 blocking unknown. No new lane was needed.

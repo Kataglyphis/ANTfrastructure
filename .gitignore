@@ -18,10 +18,6 @@ linux/llm-stack/ollama-binary.tar.zst
 linux/llm-stack/.env
 # Run-scoped scratch results stay untracked; DATED report directories are the
 # exception (review R4: every published number keeps its raw report in-tree).
-linux/llm-stack/benchmark_results/*
-!linux/llm-stack/benchmark_results/20*/
-linux/llm-stack/benchmark-viewer/dist/
-linux/llm-stack/benchmark-viewer/node_modules/
 linux/nextcloud-aio/.env
 .claude/*
 # ...except the safety gate. A guard that only exists on one machine is not a

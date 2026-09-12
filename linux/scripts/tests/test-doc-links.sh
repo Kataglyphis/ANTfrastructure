@@ -186,7 +186,7 @@ rel = [f.relative_to(g.REPO_ROOT) for f in cand]
 # broken together, the second time in one day.
 probe = [pathlib.Path(e) / "probe.bin" if not e.endswith((".zst", ".env", ".cjs"))
          else pathlib.Path(e) for e in g.UNTRACKED_OUTPUT]
-keep = [pathlib.Path("linux/llm-stack/bench_coding.py"),
+keep = [pathlib.Path("linux/llm-stack/nas_census.py"),
         pathlib.Path("linux/llm-stack/.env.example")]
 floor_probe = g._static_ignores(probe + keep)
 with_git = g._ignored_paths(rel)

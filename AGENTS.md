@@ -370,46 +370,22 @@ model's max, not what fits — ~19 GB of weights + ~104 KB/token q8_0 KV means a
 28 GB stack (e.g. 12 GB + 16 GB GPUs) caps at ~64K, and 256K needs >45 GB VRAM.
 Requires the nvidia-container-toolkit on any host that wants GPU mode.
 
-**The stack also owns the measurement tooling** for any OpenAI-compatible
-server, not only its own. Endpoints are named in `linux/llm-stack/backends.json`
-(`--backend ollama` is the default; the GenieX lanes are listed too); resolution
-order is `--base-url` > `LLM_BASE_URL`/`OLLAMA_BASE_URL` > `--backend` > the
-default entry, and an unknown name exits with the known list rather than
-silently benchmarking the wrong host.
+**The stack is the family's reference server.** Endpoints are named in
+`linux/llm-stack/backends.json` (`ollama` is the default; the GenieX lanes are
+listed too), and the model ids there are what `Start-GeniexServers.ps1` starts —
+one edit serves both consumers. Never put a key in that file, only the NAME of
+the environment variable that holds it.
 
-- `benchmark_openai_api.py` — speed **and** correctness. `--correctness` /
-  `--correctness-only` runs verifiable-answer probes at `temperature=0`; exit
-  `1` = genuinely wrong, `2` = INCONCLUSIVE (truncated, raise
-  `--correctness-max-tokens`), `0` = clean. `run_benchmarks.sh` gates its sweep
-  on it (`BENCH_SKIP_CORRECTNESS=1` bypasses, `BENCH_BACKEND=<name>` retargets).
-- `bench_lanes.py` — `--batching` (does one server overlap concurrent
-  requests?) and `--lanes <backend> <backend>` (do several add up?).
-- `bench_coding.py` — does the generated code RUN, in Python/bash/CMake/Dockerfile, executed in a sandbox; `bench_tools.py` — tool calling, single- and multi-turn; `bench_agent.py` — the whole opencode loop against a scratch repo; `bench_embeddings.py` — do the vectors mean anything.
-- `bench_sweep.py` — the whole suite over a `candidates.json` in one command; `bench_compare.py` — two reports, paired sign test, `baselines/`; `bench_report.py` — summaries and the viewer manifest; `bench_stats.py`/`bench_provenance.py`/`bench_cli.py` — intervals, what produced a run, and the one request path.
-- `inspect_gguf.py` — tensor-type histogram from the file header, verdict
-  OK / LIKELY OK / RISKY, exit 1 on RISKY.
-
-**Why correctness is gated first: a broken model is fast.** Sub-4-bit i-quants
-on GenieX produce fluent nonsense that every throughput metric rates as an
-excellent run — unchanged across two llama.cpp builds (v0.5.0 `873e5d8` and
-v0.6.1 `0eadefe`), so it is a property of these kernels, not of one release. Rank models by **time to a finished answer**, not `tok/s` — a
-1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
-spent ~1900 tokens thinking.
-
-Testing: `pytest linux/llm-stack/tests -q` runs offline and is enforced offline — a conftest fixture refuses an outbound `socket.connect` and names the test, after a renamed seam silently sent three tests at a real Ollama and hung the suite; only `test_v1_api.py` and `test_harness_against_ollama.py` need a live server, and both skip themselves. The
-viewer has a server-side smoke render (`cd benchmark-viewer && npm run smoke`) —
-`vite build` only proves the JSX compiles, and a silently-failed edit once made
-the comparison table render empty cells while the build reported success.
-
-**Verification status:** the GenieX lanes are verified end-to-end on real
-hardware. Ollama's dialect differences (spaced `data: ` SSE prefix, `/api/tags`
-fallback, legacy `OLLAMA_BASE_URL`) are covered by stub tests in
-`tests/test_backend_compat.py`, and `tests/test_harness_against_ollama.py` runs
-the harness against a **live** server — it skips when none is reachable, and
-`llm-stack-tests.yml` starts a digest-pinned `ollama/ollama` service, so CI is
-where the Ollama backend gets confirmed. No live Ollama run has happened on the
-dev host yet; if you have one up, `--correctness-only` against it is the
-one-command check.
+**The benchmark suite moved to OrchestrANT.** The `orchestrant.benchmark`
+package owns the runner (one request path, the backend registry, speed and
+lane measurement, statistics, provenance; `orchestrant-bench speed|lanes|report`)
+and `benchmarks/` carries the capability evals (coding, tool calling, the agent
+loop, embeddings, sweep, compare), the viewer and the tracked results, with
+their docs. Read the measurement rationale there — including **why correctness
+is gated first: a broken model is fast**, and the sub-4-bit i-quant evidence.
+`llm-stack-serving.yml` runs this directory's serving-shape tests and a
+compose-parse check; `nas_census.py` stays for the NAS document-AI thread
+([`docs/nas-document-ai.md`](docs/nas-document-ai.md)).
 
 ### GenieX on Snapdragon (on-device OpenAI server)
 
@@ -442,7 +418,7 @@ schemas are 8,175 tokens** (measured off the wire 2026-09-04), so the QAIRT
 lane cannot drive opencode at all — every task fails before the model reads it,
 and stripping tools does not rescue it (6 core tools still need 6,008). Use the
 QAIRT 4B for chat and completion; use a **GGUF lane** (`--nctx 16384`) for agent
-work. `linux/llm-stack/bench_agent.py` measures this end-to-end against a
+work. `bench_agent.py` in OrchestrANT's `benchmarks/` measures this end-to-end against a
 scratch repo, scoring by whether the repo's tests pass rather than by the
 transcript.
 
@@ -452,7 +428,8 @@ GenieX page). Gone: the hard 2048-token output cap, `max_tokens` being ignored,
 the missing prefix cache (an identical request now costs 0.1 s warm instead of
 122 s, and ~800 appended tokens cost 0.9 s), and the missing tool-call parsing
 (`Qwen3.8-9B-Distill` now returns proper `tool_calls`, so
-`linux/llm-stack/geniex_toolcall_shim.py` is only needed on pre-0.6 builds).
+`geniex_toolcall_shim.py`, also in OrchestrANT's `benchmarks/`, is only needed on
+pre-0.6 builds).
 Unchanged: `temperature: 0` still samples, so `--repeats` still earns its place;
 the QAIRT 4096 ceiling is compiled into the bundle and no release moves it.
 

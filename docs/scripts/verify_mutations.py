@@ -55,8 +55,7 @@ COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/
                  # 1.5 GB, gitignored, read by no gate test -- and it was
                  # copied into every mirrored workspace, including the hook's.
                  # With --jobs that cost is paid once per shard.
-                 "linux/llm-stack/ollama-binary.tar.zst",
-                 "linux/llm-stack/benchmark-viewer/node_modules")
+                 "linux/llm-stack/ollama-binary.tar.zst")
 _IGNORED_CACHE = {}
 _IGNORED_LOCK = threading.Lock()
 DEFAULT_JOBS = min(8, os.cpu_count() or 1)

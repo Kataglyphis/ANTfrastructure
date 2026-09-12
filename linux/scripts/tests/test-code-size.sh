@@ -217,17 +217,17 @@ SH
 t_assert_contains "${_out}" "subject.sh:outer is 4 lines" "outer must be measured at all"
 t_assert_contains "${_out}" "subject.sh:inner is 3 lines" "inner is its own function"
 
-t_case "the REAL scan set covers linux/llm-stack -- EX1, and the 47 rows rest on it"
+t_case "the REAL scan set covers linux/llm-stack -- EX1, and its rows rest on it"
 # Every other case builds a throwaway tree, so none of them can see the scan set the
 # gate actually ships with. linux/llm-stack was outside it until 2026-09-07: 43 files
 # and 19,874 lines, including the second-largest .py in the repo, invisible to every
 # extent gate. Assert the BEHAVIOUR (a file only that tree has is walked), not the
 # literal tuple, so a rename of the directory fails here rather than going quiet.
 t_assert_eq "scanned" "$(t_gate_probe linux/scripts/verify_code_size.py <<'PYCHK'
-want = "linux/llm-stack/bench_coding.py"
+want = "linux/llm-stack/nas_census.py"
 seen = any(rel == want for _, rel in g.scan(".py"))
 print("scanned" if seen else f"MISSING {want} from SCAN={g.SCAN}")
 PYCHK
-)" "removing linux/llm-stack from SCAN silently un-freezes 47 reviewed rows"
+)" "removing linux/llm-stack from SCAN silently un-freezes its reviewed rows"
 
 t_summary

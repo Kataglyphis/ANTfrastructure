@@ -233,27 +233,16 @@ An Ollama + Open WebUI serving stack lives in
 opt-in GPU override for NVIDIA machines, and a VRAM/context sizing table so a
 256K-listed model is only configured at a context the GPUs can actually hold.
 
-It also carries the **measurement tooling** for any OpenAI-compatible server,
-not just its own. Endpoints are named in `backends.json` (`ollama` is the
-default; the Snapdragon GenieX lanes are listed too), so a sweep can be pointed
-at another backend without editing anything:
+It is the **reference server** for the family's benchmark lab, which lives in
+[OrchestrANT](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks): the `orchestrant.benchmark` package ships the runner
+(`orchestrant-bench speed` / `lanes` / `report`) and `benchmarks/` carries the
+capability evals, the viewer and the tracked results. Endpoints are named in
+`backends.json` (`ollama` is the default; the Snapdragon GenieX lanes are listed
+too), so a sweep can be pointed at another backend without editing anything.
 
-| Tool | Answers |
-|---|---|
-| [`benchmark_openai_api.py`](linux/llm-stack/benchmark_openai_api.py) | How fast — and, with `--correctness`, **whether the model is working at all** |
-| [`bench_coding.py`](linux/llm-stack/bench_coding.py) | Does its code **run**? (extracted, executed in a subprocess against hidden tests) |
-| [`bench_tools.py`](linux/llm-stack/bench_tools.py) | Can it call tools — the right one, with the right arguments? |
-| [`bench_agent.py`](linux/llm-stack/bench_agent.py) | Does the whole **agent loop** work? (a scratch repo, scored by whether its tests pass afterwards — never by the transcript) |
-| [`bench_lanes.py`](linux/llm-stack/bench_lanes.py) | Does one server batch concurrent requests? Do several servers add up, or fight? |
-| [`bench_compare.py`](linux/llm-stack/bench_compare.py) | Did this change make it worse — or is the sample simply too small to tell? |
-| [`inspect_gguf.py`](linux/llm-stack/inspect_gguf.py) | Is this GGUF sane? (tensor-type histogram, header-only read) |
-| [`geniex_toolcall_shim.py`](linux/llm-stack/geniex_toolcall_shim.py) | Pre-GenieX-0.6 only: translates Qwen's `<tool_call>` template into real `tool_calls`, which that build dropped |
-
-The correctness probe exists because **a broken model is fast**: sub-4-bit
-i-quant kernels on one runtime produced fluent nonsense that every throughput
-metric rated as an excellent run. Speed alone cannot tell a working model from
-a broken one, so `run_benchmarks.sh` gates its sweep on a verifiable-answer
-check before spending hours measuring.
+The correctness-first rationale — **a broken model is fast**, so a sweep gates
+on a verifiable-answer check before spending hours measuring — is owned by the
+lab's docs next to the tools that implement it.
 
 ## CI
 
@@ -264,7 +253,7 @@ check before spending hours measuring.
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
 | `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
 | `python-ci-windows.yml` | Reusable (`workflow_call`) — the same for Windows |
-| `llm-stack-tests.yml` | Push/PR, path-filtered on `linux/llm-stack/**` |
+| `llm-stack-serving.yml` | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape, the backend registry and the NAS census test |
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |

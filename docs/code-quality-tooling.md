@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1012 entries** over **254 distinct test commands**; both digits are
+manifest holds **805 entries** over **90 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -632,7 +632,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 29 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 28 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, and both halves of
@@ -910,7 +910,7 @@ mutations, which all drive fixture trees and so could never see the real `SCAN`.
 
 ### Generated data is not source, and git alone cannot say so
 
-A benchmark result under `linux/llm-stack/benchmark_results/` holds MODEL
+A benchmark result under OrchestrANT's `benchmarks/benchmark_results/` holds MODEL
 OUTPUT. A model that writes a plausible `docs/<page>.md` link into its answer is
 not making a repo reference, and two such lines once failed the gate with
 findings nobody could act on. `_ignored_paths()` therefore drops the output
@@ -1249,7 +1249,7 @@ same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
 `docs/scripts`, `linux/llm-stack`), frozen in `code-complexity.allow` under the
 four-way contract.
 Today: `cc: 86 over 15 paths; 86 frozen` and `nesting: 4 over 5 levels; 4 frozen`
-(EX1 widened the scan to `linux/llm-stack` on 2026-09-07: +25 cc and +2 nesting).
+(EX1 widened the scan to `linux/llm-stack` on 2026-09-07; the benchmark rows left with the lab in September 2026, and the NAS census rows remain).
 (Re-derived 2026-09-07; it read 67 and 3 for a while, which is the failure this very
 page's rule about census figures exists to prevent.)
 
@@ -1536,7 +1536,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 473 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 474 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

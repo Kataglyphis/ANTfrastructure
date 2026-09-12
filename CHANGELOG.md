@@ -6,6 +6,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 (later still) — the benchmark lab leaves for OrchestrANT
+
+* **The measurement suite, the viewer and the tracked results moved out of
+  `linux/llm-stack/`** to OrchestrANT (`benchmarks/`, with the runner in the
+  `orchestrant.benchmark` package). This repo keeps the serving stack,
+  `backends.json` — the registry both host tooling and the benchmarks consume —
+  and `nas_census.py`. `llm-stack-tests.yml` becomes `llm-stack-serving.yml`:
+  the compose files parse, the registry keeps its default and GenieX lanes, and
+  the NAS census test still runs.
+* The roadmap and panel-review pages, ~200 mutation entries, the size
+  allowlists, the doc-link test fixtures and every prose pointer moved with the
+  lab; the two gate tests that pinned `linux/llm-stack`'s scan membership now
+  pin the NAS file that stayed.
+
+
 ## 2026-09-12 (latest) — the pre-existing CI reds, fixed
 
 * **The composite-actions self-test could not find its own local actions.**
@@ -1337,7 +1352,7 @@ gets artifacts, never CMake state.
 
 The review below found 36 defects and changed nothing. This is the work unit
 that fixed them — `R1`–`R15` and `D1`–`D32` of
-[`docs/llm-benchmark-review-2026-09-05.md`](docs/llm-benchmark-review-2026-09-05.md),
+[`docs/llm-benchmark-review-2026-09-05.md`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md),
 which now carries a status line per item. Read that page for the per-item
 detail; what follows is what a reader of the numbers has to know.
 
@@ -1594,7 +1609,7 @@ defect claim then went to an independent skeptic told to refute it; **36 went in
 and 36 came back confirmed**, most reproduced from a scratch script against the
 imported module. The tree was `b03ac235`, clean, and **it was not modified**.
 
-**New — [`docs/llm-benchmark-review-2026-09-05.md`](docs/llm-benchmark-review-2026-09-05.md).**
+**New — [`docs/llm-benchmark-review-2026-09-05.md`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md).**
 The ranked backlog (`R1`–`R15`), the 32 confirmed defects with a file and line
 each (`D1`–`D32`), the documentation found contradicting the code, how a model is
 added today and what blocks it, a shortlist of models to add, and the design for
@@ -1671,7 +1686,7 @@ and the curated SPDX SBOM rebuilt from it.
 Three pieces of work, and each found that the previous one had been measuring
 the wrong thing.
 
-**New — [`linux/llm-stack/bench_agent.py`](linux/llm-stack/bench_agent.py)
+**New — [`linux/llm-stack/bench_agent.py`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/bench_agent.py)
 (P3.1).** Every other benchmark here measures an *endpoint*. You run an
 *agent*. This drives opencode against a scratch git repository and scores by
 **running that repository's own tests afterwards** — never by reading the
@@ -1695,7 +1710,7 @@ every OpenAI-compatible agent saw prose and did nothing. The benchmark had been
 measuring the server, and the same number would have been produced by a
 genuinely incapable model — the 2B, which emits markdown fences, is the control
 that keeps that honest. New
-[`geniex_toolcall_shim.py`](linux/llm-stack/geniex_toolcall_shim.py) translates
+[`geniex_toolcall_shim.py`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/geniex_toolcall_shim.py) translates
 the template; behind it, `Qwen3.8-9B-Distill` scored **3/3** — the first pass
 this suite had ever observed. *(Obsolete as of v0.6.0 — see the entry above.)*
 

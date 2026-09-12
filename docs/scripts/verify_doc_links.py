@@ -86,8 +86,6 @@ CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__", ".pytest_cache", "node_modu
 # test-doc-links.sh pins that equality, so a new output directory fails loudly
 # here instead of rotting the gate.
 UNTRACKED_OUTPUT = (
-    "linux/llm-stack/benchmark-viewer/dist",
-    "linux/llm-stack/benchmark-viewer/ssr-smoke/out.cjs",
     "linux/llm-stack/benchmark_results",
     "linux/llm-stack/.env",
     "linux/llm-stack/ollama-binary.tar.zst",

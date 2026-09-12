@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT
 
 # GenieX on Snapdragon — on-device OpenAI-compatible server
 
+> The benchmark tools named on this page live in **OrchestrANT** (`benchmarks/`, plus the `orchestrant.benchmark` runner); their paths are relative to that repository.
+
 How to run **Qualcomm GenieX** — the on-device LLM/VLM runtime for Snapdragon —
 so an AI coding agent inside WSL2 talks to a local OpenAI-compatible API
 backed by the Windows host's **Adreno GPU** (and, when the driver cooperates,
@@ -724,7 +726,7 @@ lane, or do not run the 27B.
 Every claim above is about speed. This one is about *output*: each model was
 given three coding tasks with an exact required signature, its code was
 extracted and **executed** against hidden tests
-(`linux/llm-stack/bench_coding.py`). Nothing judged by eye.
+(`benchmarks/bench_coding.py`). Nothing judged by eye.
 
 > **Re-run on v0.6.1 (2026-09-05) — § 1n.** The ranking below survives: the
 > QAIRT 4B-Instruct is still 3/3 and still fastest by 3x. The wall-clock column
@@ -904,7 +906,7 @@ room — at 43 s per task.
 
 An agent lives on tool calls: a model that writes flawless code but cannot emit
 a valid one never reads a file, runs a test, or applies a patch. Measured with
-`linux/llm-stack/bench_tools.py` (four advertised tools, six cases, 2 repeats).
+`benchmarks/bench_tools.py` (four advertised tools, six cases, 2 repeats).
 
 **GenieX supports tool calling natively** on both lanes —
 `finish_reason: tool_calls`, correct names, correctly extracted arguments.
@@ -1355,7 +1357,7 @@ lanes in one command.
 
 Everything above this line measures an **endpoint**: a prompt goes in, tokens
 come out, a grader scores them. You do not run an endpoint, you run an **agent**
-— and the two had never been connected. `linux/llm-stack/bench_agent.py`
+— and the two had never been connected. `benchmarks/bench_agent.py`
 connects them: a scratch git repository, a task with a verifiable outcome, and
 success defined as *the repository's tests pass afterwards*. Not the transcript.
 An agent that says it fixed the bug and did not is exactly the failure a
@@ -1506,13 +1508,13 @@ really cannot do function calling. Both look like "0 tool calls" from outside.
 | `Qwen3.8-9B-Distill` Q4_K_M | `<tool_call><function=…>` template | **yes** |
 | `Qwen3.8-2B-Distill` Q4_K_M | markdown code fences | no — it is not a call |
 
-**`linux/llm-stack/geniex_toolcall_shim.py` does the translation** the server
+**`benchmarks/geniex_toolcall_shim.py` does the translation** the server
 does not: it sits between the agent and the lane, parses the template into
 proper `tool_calls`, and sets `finish_reason` to `"tool_calls"` so the agent
 loop continues instead of stopping.
 
 ```bash
-python3 linux/llm-stack/geniex_toolcall_shim.py \
+python3 benchmarks/geniex_toolcall_shim.py \
     --upstream http://localhost:18184 --port 18190
 # then point the opencode provider at 18190 instead of 18184
 ```
@@ -1586,7 +1588,7 @@ broken fixture, or weak model? So `--self-test` applies a known-good solution to
 each fixture by hand and asserts the verification is red before and green after:
 
 ```bash
-python3 linux/llm-stack/bench_agent.py --self-test
+python3 benchmarks/bench_agent.py --self-test
 #   fix_failing_test         OK   unsolved=fail solved=pass
 #   add_function_and_test    OK   unsolved=fail solved=pass
 #   multi_file_rename        OK   unsolved=fail solved=pass
@@ -1773,8 +1775,8 @@ Reproduce with (`geniex-cpu` is the opencode provider key declared in Step 3;
 a future PASS can be re-audited — this run's could not be):
 
 ```bash
-python3 linux/llm-stack/bench_agent.py --self-test    # prove the fixtures first
-python3 linux/llm-stack/bench_agent.py \
+python3 benchmarks/bench_agent.py --self-test    # prove the fixtures first
+python3 benchmarks/bench_agent.py \
     --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
     --timeout 1800 --keep-output --output agent-v0.6.1.json
 ```
@@ -1783,7 +1785,7 @@ python3 linux/llm-stack/bench_agent.py \
 
 Everything above was measured with the grader as it stood on the morning of
 2026-09-05. A panel review found four defects in it the same day
-([`llm-benchmark-review-2026-09-05.md`](llm-benchmark-review-2026-09-05.md)),
+([the benchmark review](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md)),
 all now fixed, and each moves a published number without any model changing:
 
 - **The truncation rule was wrong in both directions.** A reply whose final
