@@ -95,3 +95,7 @@ external/
 # RUNs — ORT cpu, ORT genai, litert, tvm, app-wheelhouse — so a README edit alone
 # re-pays ~95 min per arch. Scripts only NAME it in comments; none reads it.
 linux/qnn-sdk/*.md
+
+# Home Assistant live state (DB, backups, core dump, secrets): no Dockerfile
+# reads it, and ~1.5 GB would otherwise ride in every root-context solve.
+linux/homeassistant/config/

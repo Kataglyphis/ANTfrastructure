@@ -1,0 +1,27 @@
+#
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+switch:
+  - platform: wake_on_lan
+    name: "rechenkiste"
+    mac: !secret rechenkiste_mac
+    turn_off:
+      action: shell_command.turn_off_rechenkiste
+
+shell_command:
+  turn_on_rechenkiste: !secret cmd_turn_on_rechenkiste
+  turn_off_rechenkiste: !secret cmd_turn_off_rechenkiste
+  sleep_for_90sec: sleep 90
+  restart_fah: !secret cmd_restart_fah
+  start_fah: !secret cmd_start_fah
+  stop_fah: !secret cmd_stop_fah
+  send_mail: !secret cmd_send_mail

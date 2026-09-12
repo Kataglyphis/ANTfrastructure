@@ -1,0 +1,59 @@
+- alias: Restart FAH Docker
+  trigger:
+  - platform: state
+    entity_id: input_button.restart_fah_docker
+  action:
+  - service: shell_command.restart_fah
+  id: 396425633137445cb6d839e41079ce0d
+- id: 48951a674e884440816112e7dda3334a
+  alias: Run shell command at sunrise
+  triggers:
+  - trigger: sun
+    event: sunrise
+    offset: 04:00:00
+  actions:
+  - action: shell_command.turn_on_rechenkiste
+    data: {}
+- id: 7f0b4eb6de8740f6ac0a5f283a550a46
+  alias: Run shell command at dawn
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: 0
+  actions:
+  - action: shell_command.turn_off_rechenkiste
+    data: {}
+- id: '1742812399677'
+  alias: Proteine Falten bei gutem Wetter
+  description: ''
+  triggers:
+  - trigger: numeric_state
+    entity_id:
+    - weather.forecast_home
+    above: 0
+  conditions:
+  - condition: sun
+    after: sunrise
+    after_offset: 04:00:00
+  actions:
+  - action: switch.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: switch.rechenkiste
+  mode: single
+- id: '1746058583851'
+  alias: Strom Überschuss; Proteine falten
+  description: ''
+  triggers:
+  - trigger: time_pattern
+    seconds: /5
+  conditions:
+  - condition: numeric_state
+    entity_id: sensor.bitshake_smartmeterreader_mt631_power
+    below: -100
+  actions:
+  - action: shell_command.start_fah
+    metadata: {}
+    data: {}
+  mode: single

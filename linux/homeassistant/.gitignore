@@ -1,0 +1,16 @@
+# Live Home Assistant state — never commit
+config/secrets.yaml
+config/.storage/
+config/.ssh/
+config/.cloud/
+config/.cache/
+config/backups/
+config/deps/
+config/tts/
+config/core
+config/*.db
+config/*.db-*
+config/*.log
+config/*.log.*
+config/.ha_run.lock
+config/.HA_VERSION

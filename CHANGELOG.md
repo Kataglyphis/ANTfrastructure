@@ -6,6 +6,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 (evening) — the Home Assistant stack moves in
+
+* **`linux/homeassistant/` now tracks the compose stack that lived in
+  `~/Documents/homeassistant`** — compose plus the hand-written YAML and
+  blueprints, with the volume rewritten to the relative `./config`. Live state
+  (recorder DB, logs, `backups/`, `secrets.yaml`, `.storage/`) is gitignored and
+  also excluded from every Docker build context, and the stale 455 MB `core`
+  dump was deleted. `secrets.yaml.example` is the tracked template; the WoL MAC,
+  the F@H SSH commands and the alert address live in the gitignored
+  `secrets.yaml` as whole-value `!secret` nodes, and the three stale-device
+  automations plus the unwanted high-power F@H stop were removed.
+* **Two pre-existing reds cleared on the way**, because the newly installed
+  pre-commit hook runs whole-tree gates: the three `shared/*/templates/README.md`
+  pages lost their duplicated table boilerplate (code-dupes), and
+  `gate-proofs.allow` shed the 19 mutation families the benchmark lab took to
+  OrchestrANT, with `docs/code-quality-gates.md` regenerated (gate-registry).
+
+
 ## 2026-09-12 (later still) — the benchmark lab leaves for OrchestrANT
 
 * **The measurement suite, the viewer and the tracked results moved out of
