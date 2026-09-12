@@ -26,17 +26,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # docker compose is on the hosted runner and "config" only parses and
-      # merges: no daemon, no pull, no container.
+      # merges: no daemon, no pull, no container. The stack refuses to render
+      # without its WebUI secret, so give it the parse-only placeholder the
+      # gitignored .env slot expects.
       - name: Compose files parse, overlays included
         run: |
+          printf 'WEBUI_SECRET_KEY=ci-parse-only\n' > linux/llm-stack/.env
           docker compose -f linux/llm-stack/docker-compose.yml config -q
           docker compose -f linux/llm-stack/docker-compose.yml \
             -f linux/llm-stack/docker-compose.gpu.yml config -q
           docker compose -f linux/llm-stack/docker-compose.yml \
             -f linux/llm-stack/docker-compose.lan.yml config -q
 
+      # Ubuntu 26.04's system Python is externally managed; a venv keeps pytest
+      # and PyYAML out of it.
       - name: Install pytest + PyYAML
-        run: python3 -m pip install --quiet pytest pyyaml
+        run: |
+          python3 -m venv /tmp/serving-venv
+          /tmp/serving-venv/bin/pip install --quiet pytest pyyaml
 
       - name: Serving-shape tests
-        run: python3 -m pytest linux/llm-stack/tests -q
+        run: /tmp/serving-venv/bin/python -m pytest linux/llm-stack/tests -q
