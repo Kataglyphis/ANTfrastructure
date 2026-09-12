@@ -17,6 +17,9 @@
   the F@H SSH commands and the alert address live in the gitignored
   `secrets.yaml` as whole-value `!secret` nodes, and the three stale-device
   automations plus the unwanted high-power F@H stop were removed.
+* All remaining automations were dropped at the owner's request —
+  `automations.yaml` is `[]` — leaving the WoL switch and the `shell_command`
+  services callable from the UI.
 * **Two pre-existing reds cleared on the way**, because the newly installed
   pre-commit hook runs whole-tree gates: the three `shared/*/templates/README.md`
   pages lost their duplicated table boilerplate (code-dupes), and
