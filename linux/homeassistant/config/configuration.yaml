@@ -2,13 +2,25 @@
 # Loads default set of integrations. Do not remove.
 default_config:
 
-# Load frontend themes from the themes folder
-frontend:
-  themes: !include_dir_merge_named themes
-
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+
+recorder:
+  commit_interval: 30
+
+homeassistant:
+  customize:
+    # Tasmota smartmeter counters arrive without metadata; the Energy
+    # dashboard needs real energy totals.
+    sensor.bitshake_smartmeterreader_e320_e_in:
+      unit_of_measurement: kWh
+      state_class: total_increasing
+      device_class: energy
+    sensor.bitshake_smartmeterreader_e320_e_out:
+      unit_of_measurement: kWh
+      state_class: total_increasing
+      device_class: energy
 
 switch:
   - platform: wake_on_lan
@@ -20,7 +32,6 @@ switch:
 shell_command:
   turn_on_rechenkiste: !secret cmd_turn_on_rechenkiste
   turn_off_rechenkiste: !secret cmd_turn_off_rechenkiste
-  sleep_for_90sec: sleep 90
   restart_fah: !secret cmd_restart_fah
   start_fah: !secret cmd_start_fah
   stop_fah: !secret cmd_stop_fah

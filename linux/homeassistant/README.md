@@ -39,7 +39,19 @@ nerdctl compose -f linux/homeassistant/compose.yaml up -d
 
 ## Notes
 
-- `privileged` and the `/run/dbus` mount are required for Bluetooth/USB
-  integrations.
+- Bluetooth is unavailable: a rootless container cannot authenticate to the
+  host D-Bus (EXTERNAL auth is rejected), so the stack runs without
+  `privileged` and without the `/run/dbus` mount — which also removes the
+  recurring BlueZ error spam. Re-add both only under a rootful runtime.
+- `stop_grace_period: 60s` gives the recorder time to close the SQLite DB
+  cleanly; a 10s stop leaves an "unfinished session" warning behind.
 - The 455 MB `core` dump from 2025-03-19 was deleted during the move; the
   `.gitignore` `core` pattern keeps any future dump out of git.
+
+## Backups
+
+Automatic backups run daily into `config/backups/` and are currently
+**unencrypted** — the directory contains `secrets.yaml` and `.storage` in the
+clear, so treat it as secret. They are local-only: add the NAS as a network
+storage, then register it as a backup location
+(Settings → System → Backups → Locations) to get them off the Pi.

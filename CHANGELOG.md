@@ -6,6 +6,23 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-12 (night) — Home Assistant hardening pass
+
+* **Energy dashboard repaired**: solar is back on the Growatt inverter
+  (`sensor.hannemann_total_energy_today`) and the Tasmota smartmeter counters
+  are the grid import/export source, after `homeassistant.customize` gave them
+  `kWh`/`total_increasing`/`energy` metadata.
+* **Security/runtime**: login ban threshold 5 (was −1 = off), recorder
+  `commit_interval: 30`, `stop_grace_period: 60s`, `privileged` and
+  `/run/dbus` dropped — the latter silences the BlueZ D-Bus spam, since a
+  rootless container cannot authenticate to the host bus anyway.
+* **Cleanup**: 5 stale `mobile_app` registrations and the 2 Bluetooth adapter
+  entries deleted; dead `sleep_for_90sec`, the missing `themes/` include,
+  `automationsBackup.yaml` and `.storage/tmp*` removed. The two
+  `forecast_solar` entries are two arrays (10 kWp + 2.5 kWp), not duplicates,
+  and both were kept.
+
+
 ## 2026-09-12 (evening) — the Home Assistant stack moves in
 
 * **`linux/homeassistant/` now tracks the compose stack that lived in
