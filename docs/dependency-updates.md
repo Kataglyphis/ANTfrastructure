@@ -978,7 +978,10 @@ No token is needed for submodules — the `git-submodules` manager uses the
 `git-refs` datasource, i.e. anonymous `git ls-remote`, and `git@github.com:` URLs
 are rewritten to `https://` automatically. Other managers will warn that a
 GitHub token would give better results; supply one with
-`RENOVATE_TOKEN=$(gh auth token)` when you care about those.
+`GITHUB_COM_TOKEN=$(gh auth token)` when you care about those. `--platform=local`
+reads `GITHUB_COM_TOKEN` for GitHub-hosted dependencies; `RENOVATE_TOKEN` only
+applies to `--platform=github` (measured 2026-09-09 on ANThology: 1 row with
+neither, 1 row with `RENOVATE_TOKEN`, 5 rows with `GITHUB_COM_TOKEN`).
 
 ## Full fidelity, when the report is not enough
 
@@ -987,7 +990,7 @@ preset works. That needs the GitHub platform in dry-run — which still writes
 nothing:
 
 ```bash
-RENOVATE_TOKEN=$(gh auth token) \
+GITHUB_COM_TOKEN=$(gh auth token) \
   node "$(scripts/linux/renovate-local.sh --print-bin)" \
        --platform=github --dry-run=full \
        --enabled-managers=git-submodules Kataglyphis/BeschleunigerBallett
@@ -1555,7 +1558,7 @@ silence, and nothing checked for it before.
 
 `bump_versions.py` tracks **99 keys**; **68 now carry an annotation** (up from
 18) and a live local run proves the whole set resolves: `renovate-local.sh
---managers custom.regex .` (with `RENOVATE_TOKEN`) printed 20 pending updates
+--managers custom.regex .` (with `GITHUB_COM_TOKEN`) printed 20 pending updates
 across the datasource families -- `uv 0.12.13`, LLVM `23.1.1`, LiteRT-LM
 `0.17.0`, ComputeLibrary `v53.3.0`, openh264 `2.6.0`, flutter `3.47.3`, syft
 `v1.51.1` -- with **zero lookup warnings**. The datasources in use are

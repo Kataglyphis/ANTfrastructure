@@ -19,7 +19,7 @@ apart from executable ones.
 Usage:
     python3 linux/scripts/verify_consumer_inventory.py --report out/consumers.md
     python3 linux/scripts/verify_consumer_inventory.py --offline
-        --local-root /d/GitHub --report out/consumers.md
+        --local-root /c/GitHub --report out/consumers.md
 
 docs/consumer-inventory.md#the-consumer-inventory
 """

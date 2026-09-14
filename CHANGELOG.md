@@ -6,6 +6,76 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-14 — family audit: the hub's side of the fixes
+
+A cross-repo audit of all nine consumers against this hub (reuse, duplication,
+docs freshness, naming, quality-gate reuse, topic separation) landed the hub
+half of its mechanical fixes here; the consumer halves are one commit per repo.
+
+* **Three files the 2026-09-08 "no consumer" sweep (2eaed40e) deleted are
+  back**: `windows/scripts/modules/WindowsOnnx.Common.psm1` (AccelerANTgine's
+  `Build-Windows.ps1` imports it by NAME; its Windows lane was red from the pin
+  bump that carried the deletion), `windows/scripts/modules/WindowsContainerLog.Common.psm1`
+  and `windows/scripts/rust/New-Archive.ps1` (OxidANT reaches both by path).
+  The consumer inventory gains a `windows-lang-script` class for
+  `windows/scripts/rust/*.ps1` (the `windows/scripts/*.ps1` glob is
+  non-recursive, so nothing graded them), and AGENTS.md § Contributing
+  Reusable Work Here now carries the rule: a hub file is deleted only when the
+  inventory reports it *named by nobody*.
+* **`.github/consumers.json`**: WebDavClient is a confirmed consumer (verified
+  against a clone; it still calls the python-ci lanes under the pre-rename
+  `Kataglyphis-ContainerHub` name, which is its own migration item); the
+  `unconfirmed` array is empty (AccelerANTgine and ANThology were already
+  confirmed rows); the OxidANT and AccelerANTgine notes say what those repos
+  actually do.
+* **`Sync-UvProjectDependencies` excludes the extras that `[tool.uv] conflicts`
+  forbid** (`Get-UvConflictGroups`, `Get-UvExtrasToExclude`, `UV_SYNC_EXTRAS`
+  override), the port of `python_uv.sh`'s `_uv_extras_to_exclude` — OrchestrANT's
+  Windows lane had failed on `uv sync --all-extras` since 2026-09-12 while the
+  Linux twin routed around it. Pinned by `Uv.ConflictExtras.Tests.ps1`.
+* **`run-lint-gates.sh --ratchets`** (opt-in): the eight `--root` measurement
+  gates over the consumer tree, freeze files at `<root>/<gate>.allow`; no
+  consumer had run any of them. The consumer-pins gate and the new step run
+  under `PREFLIGHT_PYTHON` instead of a bare `python3`, through the probe
+  `lint-workflows.sh` had carried inline — now `01-core/python-probe.sh`
+  (`preflight_python_require`), the one owner both call, and it accepts a
+  command-line value such as `uv run --no-project python`, which is the hint the
+  failure message itself gives. `gate_scope.tracked()` pins `encoding="utf-8"`
+  (a non-ASCII tracked path aborted every `*`-scoped gate on a cp1252 host).
+* **Two reusable lanes**: `.github/workflows/lint-gates.yml` (`workflow_call`;
+  inputs `exclude`, `submodules`, `hub-checkout`, `ratchets`) replaces the seven
+  consumer copies of the lint job, and `submodule-pins.yml` gained
+  `workflow_call` (inputs `suite-path`, `pester-version`, `runner`) so the three
+  consumer copies collapse to one `uses:` line.
+* **`deploy-over-ftp` has callers**: `build-docs.yml` and `python-ci-linux.yml`
+  publish through it (their own `chmod -R 755` steps are gone with it), and
+  `actions-selftest.yml` names every input in a guarded step so actionlint
+  holds the contract. `docs/ftp-deploys.md` and `.github/actions/README.md`
+  say so.
+* **`.gitattributes`** pins the extensionless bash files
+  (`linux/host-config/git-hooks/*`, `linux/nextcloud-aio/custom-bin/*`), the
+  Linux build context's text files (`linux/Dockerfile*`, `*.txt`, `*.allow`) and
+  the Python gates (`linux/**/*.py`, `docs/**/*.py`, `.claude/**/*.py`) to LF: a
+  `core.autocrlf=true` checkout materialised them CRLF, and preflight's
+  crlf-guard, shellcheck, android-parity and `test-advertised-keys.sh` (its
+  fixture mutates a gate with a `$`-anchored sed) went red on every Windows host
+  bind-mount while Linux CI stayed green.
+* **Docs**: `adopting-in-a-new-project.md` gains § 9 *Quality gates* (manifest,
+  aggregator, pin suite, python-ci lanes) and four checklist rows, and stops
+  claiming a layout uniform "across all seven consumers" (the two Linux-only
+  Flutter repos keep a flat `scripts/`); `shared/templates/README.md` describes
+  the six-section AGENTS template it ships; `docs/INDEX.md` cites a
+  BeschleunigerBallett passage that still exists; `dependency-updates.md` names
+  `GITHUB_COM_TOKEN` for `--platform=local` (three sites said `RENOVATE_TOKEN`,
+  which is why four consumers had measured and retyped the correction);
+  `shared-script-libraries.md` documents six lint gates, not three; stale counts
+  in AGENTS.md (12 actions; the pre-commit mutation cap), README.md (no
+  hard-coded slug count), `.github/actions/README.md` and `ci-build-triggers.md`
+  (`llm-stack-serving.yml`, the pins/selftest/inventory workflows) corrected;
+  the consumer-inventory examples say `/c/GitHub`; a broken link in
+  `shared/linux/templates/README.md` fixed.
+
+
 ## 2026-09-12 (night) — Home Assistant hardening pass
 
 * **Energy dashboard repaired**: solar is back on the Growatt inverter

@@ -16,12 +16,18 @@
 # ANTfrastructure and every gate reports green over the wrong tree - the same bug
 # that made lint-secrets.sh and lint-workflows.sh take a root.
 #
-#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]...
+#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets]
 
 # --exclude drops a vendored top-level directory (default: third_party) from
 # every scope, while KEEPING the tracked plain files directly inside it: those
 # are the consumer's own (a third_party/CMakeLists.txt), and dropping the whole
 # prefix silently excluded them.
+
+# --ratchets adds the eight --root measurement gates (code size, complexity,
+# dead functions, comment size, stdout returns, masked declarations, trailing
+# conditionals, the shellcheck warning ratchet) over the consumer tree, with
+# freeze files at <consumer-root>/<gate>.allow. Opt-in: seed the freeze files
+# from the first run, commit them, then keep the flag on.
 
 # The pin PRECONDITIONS the consumer copies carried ("does the pinned
 # lint-secrets.sh understand a scan root yet?") are gone by construction: this
@@ -32,10 +38,14 @@ set -uo pipefail
 _LINT_GATES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=01-core/gates.sh
 source "${_LINT_GATES_DIR}/01-core/gates.sh"
+# shellcheck source=01-core/python-probe.sh
+source "${_LINT_GATES_DIR}/01-core/python-probe.sh"
 
 _LINT_GATES_EXCLUDE=()
 _LINT_GATES_ROOT=""
 _LINT_GATES_HUB_FILE=""
+_LINT_GATES_RATCHETS=0
+_LINT_GATES_PY=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
 
@@ -68,7 +78,11 @@ _lint_gates_parse_args() {
         _LINT_GATES_EXCLUDE+=("${2%/}")
         shift 2
         ;;
-      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir>)" ;;
+      --ratchets)
+        _LINT_GATES_RATCHETS=1
+        shift
+        ;;
+      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir> or --ratchets)" ;;
     esac
   done
   [ "${#_LINT_GATES_EXCLUDE[@]}" -gt 0 ] || _LINT_GATES_EXCLUDE=(third_party)
@@ -172,12 +186,39 @@ _lint_gates_shared_config() {
 # that hand-sync HAS drifted. THIS is the lane that can see it: the hub's own
 # preflight has no consumer around it and prints "NOT CHECKED". A consumer that
 # declares neither file reports "0 pins compared" and passes.
-# python3, not ${PREFLIGHT_PYTHON}: that knob is preflight.sh's, and this
-# aggregator runs on a consumer's runner.
 # docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 _lint_gates_consumer_pins() {
   _lint_gates_hub docs/scripts/sync_versions.py || return 1
-  python3 "${_LINT_GATES_HUB_FILE}" --consumer-pins --consumer-root "${_LINT_GATES_ROOT}"
+  _lint_gates_interpreter || return 1
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --consumer-pins --consumer-root "${_LINT_GATES_ROOT}"
+}
+
+# --- the interpreter for the hub-side Python gates ----------------------------
+# One owner with lint-workflows.sh: 01-core/python-probe.sh. Published in
+# _LINT_GATES_PY, expanded UNQUOTED below because the value may be a command
+# line ("uv run --no-project python"), which is the hint the probe itself gives.
+_lint_gates_interpreter() {
+  preflight_python_require run-lint-gates.sh || return 1
+  _LINT_GATES_PY="${PREFLIGHT_PYTHON}"
+}
+
+# --- the ratchet gates, opt-in ------------------------------------------------
+# The eight measurement gates that take --root grade the CONSUMER tree, with the
+# freeze files read from <root>/<gate>.allow (docs/code-quality-tooling.md
+# § The scan-root contract). Opt-in via --ratchets rather than always on: a tree
+# with no freeze files is red on its first run, and that first report is what
+# seeds them. verify_stdout_returns has no freeze file at all.
+_LINT_GATES_RATCHET_GATES=(verify_stdout_returns verify_masked_assignments verify_trailing_conditional
+  verify_comment_size verify_code_size verify_code_complexity verify_dead_functions verify_shellcheck_warnings)
+_lint_gates_ratchet() {
+  local gate rc=0
+  _lint_gates_interpreter || return 1
+  for gate in "${_LINT_GATES_RATCHET_GATES[@]}"; do
+    _lint_gates_hub "linux/scripts/${gate}.py" || return 1
+    printf '== %s --root %s ==\n' "${gate}" "${_LINT_GATES_ROOT}"
+    ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}" || rc=1
+  done
+  return "${rc}"
 }
 
 # --- gitleaks ----------------------------------------------------------------
@@ -325,6 +366,9 @@ _lint_gates_main() {
   run_gate "ruff" _lint_gates_python
   run_gate "shared-config drift" _lint_gates_shared_config
   run_gate "consumer pins" _lint_gates_consumer_pins
+  if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
+    run_gate "ratchets" _lint_gates_ratchet
+  fi
   assert_gates
 }
 

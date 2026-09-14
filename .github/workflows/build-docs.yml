@@ -91,21 +91,18 @@ jobs:
         with:
           script: bash linux/scripts/build-docs.sh
 
-      # The tree is written by the container user; the FTP action reads it from
-      # the host. Same split (and same fixup) python-ci-linux.yml uses.
-      - name: Fix permissions for the built docs
-        run: |
-          chmod -R 755 ./docs/_build/html/
-          ls -la ./docs/_build/html/
-
       # Deploy gate: a reusable workflow sees the CALLER's event, and
       # ubuntu26.04.yml calls this on pull_request too — without the
       # event_name guard, PR content would deploy straight to production.
+      # The tree is written by the container user; deploy-over-ftp owns the
+      # readability fixup, the pin and the empty-tree refusal (docs/ftp-deploys.md).
+      # Named at @main, not ./: this is a workflow_call workflow and runs in the
+      # CALLER's checkout, where ./ does not resolve to this repository.
       - name: 📂 Sync files to domain
         if: success() && github.event_name == 'push'
-        uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
+        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main
         with:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PW }}
-          local-dir: "./docs/_build/html/"
+          local-dir: ./docs/_build/html/

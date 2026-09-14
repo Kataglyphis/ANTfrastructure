@@ -1,7 +1,7 @@
 # Linux consumer templates
 
 Copy-and-edit starting points for the bash side. (The PowerShell equivalent is
-[`../../windows/templates/`](../windows/templates/README.md); the consumer
+[`../../windows/templates/`](../../windows/templates/README.md); the consumer
 `AGENTS.md` skeleton is in [`../../templates/`](../templates/README.md).)
 
 Copy `antfrastructure.sh` to `<your-repo>/scripts/linux/lib/antfrastructure.sh`

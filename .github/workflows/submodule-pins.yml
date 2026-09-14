@@ -21,9 +21,40 @@
 # now, but a future repoint would swap the OS image - and with it the Windows
 # PowerShell 5.1 that Pester 3.4.0 needs - under a green build with no commit to
 # blame. windows-2025 is what the rest of the family already uses.
+#
+# REUSABLE since 2026-09-14. Three consumers carried this workflow as a
+# near-copy (plus one embedded job), each with its own 40-line Pester
+# rationale. A consumer now calls it as
+#
+#   jobs:
+#     pins:
+#       uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@main
+#
+# keeping only its own `on:` filters. The suite path defaults to the consumer's
+# vendored copy; the hub's own push/PR run passes nothing and falls back to its
+# in-tree copy. run-pester-suite is named at @main in both cases: a
+# workflow_call workflow runs in the CALLER's checkout, where ./ does not
+# resolve to this repository.
 name: Submodule Pins
 
 on:
+  workflow_call:
+    inputs:
+      suite-path:
+        description: Path of the pin suite inside the caller's checkout.
+        type: string
+        default: 'third_party/ANTfrastructure/shared/windows/tests/Submodule.Pins.Tests.ps1'
+      pester-version:
+        description: >-
+          Exact Pester version run-pester-suite installs. 3.4.0 is the only
+          version the action's invocation survives today (5.x loses the
+          per-failure diagnostics, 6.x rejects -Quiet), measured 2026-09-07.
+        type: string
+        default: '3.4.0'
+      runner:
+        description: Runner label; a Windows one, because Pester 3.4.0 is a Windows PowerShell-era module.
+        type: string
+        default: 'windows-2025'
   push:
     branches: [main]
     paths:
@@ -50,7 +81,7 @@ concurrency:
 
 jobs:
   pins:
-    runs-on: windows-2025
+    runs-on: ${{ inputs.runner || 'windows-2025' }}
     timeout-minutes: 15
     env:
       # The suite takes the repo root as a parameter and the composite action can
@@ -69,6 +100,7 @@ jobs:
           submodules: true
 
       - name: Submodule pins sit at their recorded, restorable commits
-        uses: ./.github/actions/run-pester-suite
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-pester-suite@main
         with:
-          path: shared/windows/tests/Submodule.Pins.Tests.ps1
+          path: ${{ inputs.suite-path || 'shared/windows/tests/Submodule.Pins.Tests.ps1' }}
+          version: ${{ inputs.pester-version || '3.4.0' }}

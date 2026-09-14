@@ -1,0 +1,107 @@
+# .github/workflows/lint-gates.yml
+# The consumer lint lane, ONCE. Seven consumers carried this job as a copy
+# (four standalone files, three embedded in a build workflow), every copy's
+# header saying "replace this with a `uses:` when ANTfrastructure grows a
+# reusable lint lane". This is that lane. A consumer calls it as
+#
+#   jobs:
+#     lint:
+#       uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@main
+#
+# and keeps its ~5-line scripts/linux/run-lint-gates.sh wrapper for the dev-box
+# command; the CI step and the wrapper drive the same aggregator with the same
+# explicit root (docs/shared-script-libraries.md § run-lint-gates.sh).
+#
+# The aggregator is run DIRECTLY from the hub checkout with an explicit root,
+# not through the consumer's wrapper: the wrappers sit at different paths
+# (scripts/linux/ vs a flat scripts/) and one consumer has no submodule at all.
+# `hub-checkout: true` is for that last shape (ANThology): the hub is checked
+# out beside the consumer into antfrastructure-tools, untracked, so no gate
+# grades it.
+#
+# No container image is named here, on purpose: the gate binaries are
+# bootstrapped from this repo's versions.env at pinned, SHA-verified versions,
+# so the verdict does not depend on what a base image happens to ship.
+name: Lint gates
+
+on:
+  workflow_call:
+    inputs:
+      submodules:
+        description: >-
+          Value for actions/checkout `submodules`. `recursive` is the safe
+          default: the secret scan reads the whole tree, and a half-checked-out
+          submodule would change what it sees between runs.
+        type: string
+        default: 'recursive'
+      exclude:
+        description: >-
+          Top-level directory dropped from every scope (the aggregator's
+          --exclude; default third_party). One name only - repeat the lane for
+          more, or keep the extra exclusions in your wrapper.
+        type: string
+        default: 'third_party'
+      hub-checkout:
+        description: >-
+          Check the hub out into antfrastructure-tools and run its aggregator
+          from there. For consumers with NO third_party/ANTfrastructure
+          submodule.
+        type: boolean
+        default: false
+      ratchets:
+        description: >-
+          Pass --ratchets: the eight --root measurement gates over the consumer
+          tree, freeze files at <root>/<gate>.allow. Only once those are seeded
+          and committed.
+        type: boolean
+        default: false
+      runner:
+        description: Runner label; pinned to an OS version, never a moving alias.
+        type: string
+        default: 'ubuntu-26.04'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-gates:
+    name: shell + workflow + secret + config gates
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    env:
+      LINT_EXCLUDE: ${{ inputs.exclude }}
+      LINT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+      LINT_RATCHETS: ${{ inputs.ratchets }}
+    steps:
+      # fetch-depth 1 is enough: every scope comes from `git ls-files`, not
+      # from history.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: ${{ inputs.submodules }}
+
+      - name: Get ANTfrastructure tooling (consumers without a submodule)
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: main
+          path: antfrastructure-tools
+
+      # uvx is how the aggregator runs ruff; the runner carries no uv.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+
+      # The consumer root is passed EXPLICITLY and is never inferred upstream:
+      # the aggregator sits inside the consumer's tree, and a self-derived root
+      # would grade ANTfrastructure and report green over the wrong repository.
+      - name: Lint gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${LINT_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          args=(--exclude "${LINT_EXCLUDE}")
+          if [ "${LINT_RATCHETS}" = 'true' ]; then args+=(--ratchets); fi
+          bash "${hub}/linux/scripts/run-lint-gates.sh" "${GITHUB_WORKSPACE}" "${args[@]}"

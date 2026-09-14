@@ -248,16 +248,17 @@ second-guess it.
 
 ## What this change does not do
 
-Nothing calls the action yet. The eleven sites above are untouched on purpose:
-adopting it is a per-repo change, and for the two lanes that currently tolerate
-a failed upload it is also a per-repo policy change — neither belongs in the
-commit that creates the thing. The two hub workflows (`python-ci-linux.yml`,
-`build-docs.yml`) are the natural first adopters, since they already sit at the
-right pin.
+The hub's two workflows (`python-ci-linux.yml`, `build-docs.yml`) adopted the
+action on 2026-09-14, dropping their own `chmod -R 755` steps with it, and the
+action joined `actions-selftest.yml` as a static contract (every input named,
+the step guarded off so no runner ever dials a server). The consumer sites in
+the table above are adopted repo by repo — one `uses:` swap each, keeping the
+step's `if:` and `with:` keys — and for the two lanes that tolerate a failed
+upload (`continue-on-error: true`) adoption is also a policy change the owner
+takes deliberately, since the action does not offer that knob.
 
-Note for whoever does adopt it in `python-ci-linux.yml`: that workflow's
-`chmod -R 755` step becomes redundant, and its `docs-artifact-path` input no
-longer has to end in a slash.
+`python-ci-linux.yml`'s `docs-artifact-path` input no longer has to end in a
+slash: the action normalises it.
 
 One gap to close with, or before, the first adoption:
 `.github/workflows/actions-selftest.yml` `uses:` eleven of the twelve actions in

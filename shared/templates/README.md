@@ -5,7 +5,7 @@ PowerShell bootstrap lives in [`../windows/templates/`](../windows/templates/REA
 the agentic-loop config and runners in [`../agentic-loop/templates/`](../agentic-loop/templates/README.md).)
 
 Copy `AGENTS.md.template` to `<your-repo>/AGENTS.md`, then fill in sections 1,
-3, 4 and 5. Leave section 2 as links.
+3, 4, 5 and 6. Leave section 2 as links.
 
 ## What the layout is for
 
@@ -18,9 +18,10 @@ The template's sections encode that split:
 
 - **§1 what this project is** — yours
 - **§2 what ANTfrastructure owns** — *links only*, no procedures
-- **§3 project-specific pitfalls** — yours, written out in full
-- **§4 build/run/test** — yours
-- **§5 docs owned here** — yours
+- **§3 critical invariant: submodule pins** — the one rule every consumer shares, plus your own version couplings
+- **§4 project-specific pitfalls** — yours, written out in full
+- **§5 build/run/test** — yours
+- **§6 docs owned here** — yours
 
 Section 2 being links-only is the load-bearing part. A procedure retyped into a
 consumer starts drifting immediately: on 2026-08-11 the Dev Drive filter command

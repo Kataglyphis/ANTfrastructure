@@ -257,4 +257,55 @@ t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep 'VERDICT-REACHED' || true)
 t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep '== after ==' || true)" \
   "and it must take the remaining gates with it - that loss is the cost being pinned"
 
+# --- the ratchet gates, opt-in -----------------------------------------------
+# Eight --root gates exist for consumers and no consumer ran them, because the
+# aggregator never called them. They are now behind --ratchets: registered only
+# when asked, because a tree with no freeze files is red on its first run.
+t_case "--ratchets is accepted and sets the flag; no flag, no ratchet"
+_LINT_GATES_RATCHETS=0
+_lint_gates_parse_args "$(_consumer)" --ratchets
+t_assert_eq "1" "${_LINT_GATES_RATCHETS}"
+_LINT_GATES_RATCHETS=0
+_lint_gates_parse_args "$(_consumer)"
+t_assert_eq "0" "${_LINT_GATES_RATCHETS}"
+
+t_case "the ratchet gate is registered, and only behind the flag"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "ratchets" _lint_gates_ratchet'
+t_assert_eq "0" "$(grep -c '^  run_gate "ratchets"' "${GATE}")" \
+  "an unconditional registration reddens every consumer that has not seeded its freeze files"
+
+t_case "every gate the ratchet step names ships beside the aggregator"
+for _ratchet in "${_LINT_GATES_RATCHET_GATES[@]}"; do
+  t_assert_eq "0" "$(t_rc test -f "${SCRIPTS}/${_ratchet}.py")" "${_ratchet}.py is named by the step and must exist"
+  t_assert_contains "$(grep -c -- '--root' "${SCRIPTS}/${_ratchet}.py")" "" \
+    "${_ratchet}.py must take --root, or the step grades the hub over a consumer"
+  t_assert_eq "1" "$(grep -q -- '"--root"' "${SCRIPTS}/${_ratchet}.py" && echo 1 || echo 0)" \
+    "${_ratchet}.py must take --root, or the step grades the hub over a consumer"
+done
+
+t_case "the Python gates run under PREFLIGHT_PYTHON, and a dead interpreter is named"
+_LINT_GATES_PY=""
+t_assert_eq "1" "$(PREFLIGHT_PYTHON=/nonexistent/python t_rc _lint_gates_interpreter)"
+t_assert_contains "$(PREFLIGHT_PYTHON=/nonexistent/python t_out _lint_gates_interpreter)" "PREFLIGHT_PYTHON" \
+  "the failure must name the knob that fixes it"
+
+t_case "a working PREFLIGHT_PYTHON is published verbatim, a command line included"
+# The probe's own hint is PREFLIGHT_PYTHON="uv run --no-project python", so a
+# multi-word value must pass the probe and reach the call sites unquoted.
+_fakepy="$(mktemp -d)/fakepy"
+printf '#!/bin/sh\nexit 0\n' > "${_fakepy}"; chmod +x "${_fakepy}"
+_LINT_GATES_PY=""
+PREFLIGHT_PYTHON="${_fakepy}" _lint_gates_interpreter
+t_assert_eq "${_fakepy}" "${_LINT_GATES_PY}" "single-word interpreter published"
+_LINT_GATES_PY=""
+PREFLIGHT_PYTHON="${_fakepy} --flag" _lint_gates_interpreter
+t_assert_eq "${_fakepy} --flag" "${_LINT_GATES_PY}" "multi-word interpreter published as one command line"
+t_assert_eq "0" "$(grep -c '"\${_LINT_GATES_PY}"' "${GATE}")" \
+  "the interpreter must be expanded UNQUOTED at every call site, or the hint the probe gives cannot work"
+
+t_case "the probe did not shadow the ruff gate: _lint_gates_python is defined once and registered as ruff"
+t_assert_eq "1" "$(grep -c '^_lint_gates_python() {' "${GATE}")" "one definition, the ruff scope"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "ruff" _lint_gates_python'
+t_assert_eq "1" "$(grep -c '^_lint_gates_interpreter() {' "${GATE}")" "the probe has its own name"
+
 t_summary

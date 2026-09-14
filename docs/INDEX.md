@@ -183,6 +183,7 @@ exists only in one of these, promote it to its owning page above.
 
 Check this page first. If the topic is listed, link instead — one sentence of
 orientation plus the link, then whatever is genuinely specific to your project.
-BeschleunigerBallett's `AGENTS.md` does this well: it states the
-Dev Drive command and its one gotcha, links here for setup/verify/revert, and
-keeps only *its own measured transport numbers* locally.
+BeschleunigerBallett's `AGENTS.md`, in its submodule-pins invariant section,
+does this well: it states the one project-specific coupling (FUZZTEST and the
+Abseil pin move together), links the shared suite for the mechanism, and keeps
+only its own measured numbers locally.

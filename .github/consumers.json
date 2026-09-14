@@ -58,7 +58,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Rust. Submodule at third_party/ANTfrastructure. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted on 2026-09-09 as unreached because this repo was not declared here. Also the only consumer with no lib/antfrastructure.sh bootstrap."
+      "note": "Rust. Submodule at third_party/ANTfrastructure; bootstraps through scripts/linux/lib/antfrastructure.sh. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted in 2eaed40e (2026-09-08) as unreached because this repo was not declared here, and restored on 2026-09-09. Its Windows lane and container scripts reach windows/scripts/rust/New-Archive.ps1 and WindowsContainerLog.Common by path, which the same sweep deleted and 2026-09-14 restored."
     },
     {
       "name": "AccelerANTgine",
@@ -66,7 +66,7 @@
       "ref": "main",
       "self": false,
       "confirmed": true,
-      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches lib/code-quality.sh and lib/coverage.sh through hand-written relative paths rather than antfrastructure_source, which is why a name-based grep for callers can miss it."
+      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches cmake-build, ctest-run, coverage, code-quality, docs-build and 01-core/python_uv via antfrastructure_source; run-lint-gates and renovate-local via antfrastructure_exec; its Windows lane imports WindowsOnnx.Common by NAME through Resolve-BuildModule (deleted in 2eaed40e, restored 2026-09-14)."
     },
     {
       "name": "ANThology",
@@ -76,24 +76,17 @@
       "confirmed": true,
       "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: dart.yml checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
     }
-  ],
-  "unconfirmed": [
+,
     {
       "name": "WebDavClient",
-      "why": "An earlier audit recorded it consuming the python-ci reusable workflows. Never verified against a clone.",
-      "action": "Owner: confirm the repository name and default branch, then move this row into `consumers` with confirmed:true. If it does not exist, delete the row."
-    },
-    {
-      "name": "AccelerANTgine",
-      "why": "Named in an earlier audit as consuming hub content.",
-      "action": "Owner: confirm, then promote or delete."
-    },
-    {
-      "name": "ANThology",
-      "why": "Named in an earlier audit as consuming hub content; the 2026-09-08 shared-half work took code from it.",
-      "action": "Owner: confirm, then promote or delete."
+      "clone_url": "https://github.com/Kataglyphis/WebDavClient.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Python. Calls the python-ci-linux.yml / python-ci-windows.yml reusable workflows (verified 2026-09-14 against a clone; still under the pre-rename name Kataglyphis-ContainerHub at ExternalLib/, which is its own migration item). kataglyphis_webdavclient is imported by windows/scripts/certificates/download_webdav_files.py and by jotrockenmitlocken's scripts/download_markdown_files.py, so the hub is also a consumer of it."
     }
   ],
+  "unconfirmed": [],
   "entry_point_classes": [
     {
       "kind": "action",
@@ -149,6 +142,12 @@
       "glob": "windows/scripts/*.ps1",
       "needle": "path",
       "why": "The top-level Windows entry points."
+    },
+    {
+      "kind": "windows-lang-script",
+      "glob": "windows/scripts/rust/*.ps1",
+      "needle": "path",
+      "why": "Per-language Windows drivers a consumer calls by hub PATH from its workflow (OxidANT's rust_windows2025.yml names New-Archive.ps1 this way). The windows/scripts/*.ps1 class above is non-recursive, so without this row nothing graded them and the 2026-09-08 sweep deleted one that was live."
     },
     {
       "kind": "windows-module",

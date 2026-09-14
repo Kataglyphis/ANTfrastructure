@@ -1537,7 +1537,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 474 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 475 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2692,7 +2692,7 @@ short of the basename, with a comment saying why.
 
 ## The scan-root contract
 
-Twelve ratchet gates used to resolve their scan root from `__file__`. In a
+The ratchet gates used to resolve their scan root from `__file__`. In a
 consumer's `third_party/ANTfrastructure` checkout that is the HUB, so each gate
 reported green over a tree nobody asked about while roughly 15,700 lines of
 consumer shell went ungraded. `--root` fixes that;
