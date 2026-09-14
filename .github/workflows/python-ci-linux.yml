@@ -188,17 +188,13 @@ jobs:
             bash -lc "bash scripts/linux/ci_build_docs.sh
             '${{ inputs.docs-python-version }}'"
 
-      # The docs are built as root inside the container; the deploy action reads
-      # them from the host.
-      - name: Fix permissions for doc directory
-        if: ${{ matrix.arch == 'x64' }}
-        run: |
-          chmod -R 755 "${{ inputs.docs-artifact-path }}"
-          ls -la "${{ inputs.docs-artifact-path }}"
-
+      # The docs are built as root inside the container; deploy-over-ftp owns
+      # the readability fixup, the pin, the trailing-slash normalisation and the
+      # empty-tree refusal (docs/ftp-deploys.md). Named at @main: a workflow_call
+      # workflow runs in the CALLER's checkout, where ./ does not resolve here.
       - name: 📂 Sync files to domain
         if: ${{ matrix.arch == 'x64' && inputs.deploy-docs }}
-        uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
+        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}

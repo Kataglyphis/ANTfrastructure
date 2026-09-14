@@ -2,12 +2,11 @@
 
 > **These lanes live in CONSUMER repos, not here.** ANTfrastructure's own CI is
 > `ubuntu26.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
-> lint/tests), `llm-stack-tests.yml` (push/PR, path-filtered on
-> `linux/llm-stack/**`), and three scheduled housekeeping workflows —
-> `ghcr-cleanup.yml` (Sundays), `sbom.yml` and `stale-docs-check.yml` (both
-> Mondays). None of them builds a container image — `llm-stack-tests.yml` runs
-> against a digest-pinned `ollama/ollama` *service* container, it does not build
-> one — and none reacts to the tokens below. This page documents the convention
+> lint/tests), `llm-stack-serving.yml` (push/PR, path-filtered on
+> `linux/llm-stack/**`), `submodule-pins.yml`, `actions-selftest.yml`, and the
+> scheduled housekeeping workflows — `ghcr-cleanup.yml` (Sundays), `sbom.yml`,
+> `stale-docs-check.yml` and `consumer-inventory.yml` (Mondays). None of them
+> builds a container image, and none reacts to the tokens below. This page documents the convention
 > the *consuming* application repos use with the images published from here.
 
 Not every CI lane runs on every push. The heavier lanes are **opt-in per

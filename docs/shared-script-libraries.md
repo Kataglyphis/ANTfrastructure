@@ -328,6 +328,19 @@ defined it, so a project `common.sh` still wins — that conditional shape is wh
 the inline fallbacks in `lib/code-quality.sh` and `lib/coverage.sh` were, and
 those two now source this instead of carrying a copy each.
 
+### Python interpreter probe (`01-core/python-probe.sh`)
+
+`preflight_python_require <caller>` returns 0 with `PREFLIGHT_PYTHON` exported
+when that value (or, unset, `python3`) runs `-c pass`, and 1 naming the caller
+and the knob otherwise. Plain `python3` is not trusted because on Windows Git
+Bash it is the Microsoft Store stub, which prints an install hint and exits
+non-zero. `preflight.sh` probes a candidate list and exports the winner; a gate
+run standalone inherits nothing, so `lint-workflows.sh` and `run-lint-gates.sh`
+call this before their Python steps instead of each carrying the check inline,
+which is where the second copy sat until 2026-09-14. Expand the value unquoted,
+as `preflight.sh` does: it may be a command line such as
+`uv run --no-project python`, the very hint the failure message gives.
+
 ### `ci-image-ref.sh` — the family CI image reference
 
 Prints `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` (or `…_WINDOWS_TAG` with
@@ -367,15 +380,16 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — the three lint gates over a consumer tree
+### `run-lint-gates.sh` — the lint gates over a consumer tree
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --exclude vendor
 ```
 
-shellcheck, actionlint (+ the CI image-ref check) and gitleaks, in one command,
-all three running even after one fails. Three consumers had grown their own copy
+shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
+the shared-config drift check and the consumer pin-forwarding check, in one
+command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.
 
@@ -394,6 +408,25 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**`--ratchets`** (opt-in, 2026-09-14) adds the eight measurement gates that take
+`--root` — `verify_code_size`, `verify_code_complexity`, `verify_dead_functions`,
+`verify_comment_size`, `verify_stdout_returns`, `verify_masked_assignments`,
+`verify_trailing_conditional` and `verify_shellcheck_warnings` — over the
+consumer tree, exactly as [the scan-root contract](code-quality-tooling.md#the-scan-root-contract)
+describes: the freeze files are read from `<consumer-root>/<gate>.allow`
+(`function-size.allow`, `file-size.allow`, `code-complexity.allow`,
+`dead-functions.allow`, `comment-size.allow`, `masked-assignments.allow`,
+`trailing-conditional.allow`, `shellcheck-warnings.allow`; `verify_stdout_returns`
+has none). It is opt-in because a tree with no freeze files is red on its first
+run — that first report is what seeds them. Seed, commit, then keep the flag on
+in the wrapper and the workflow. A consumer with no tracked shell has nothing to
+ratchet and should not pass the flag.
+
+The Python gates run under `PREFLIGHT_PYTHON` when it is set (the same contract
+`preflight.sh` and `lint-workflows.sh` document) and probe the interpreter first:
+on a Windows host plain `python3` is the Microsoft Store stub, and the probe
+names the fix instead of letting a gate die inside its Python step.
 
 ### `05-frameworks/flutter/setup-sqlite3-wasm.sh`
 

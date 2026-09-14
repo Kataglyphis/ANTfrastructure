@@ -610,6 +610,23 @@ When adding here:
   recognising an error message, not by reading code.
 - Keep functions free of consumer-specific paths, preset names and build
   directories; pass those in as parameters.
+- **Deleting is a consumer change.** A hub file may be removed only when the
+  consumer inventory (`linux/scripts/verify_consumer_inventory.py`, walked over
+  every repo in `.github/consumers.json`) reports it as *named by nobody*, and
+  the deleting commit names the consumer commits that dropped the reference. A
+  "zero callers" grep of this tree is not evidence: consumers pin a submodule
+  commit and reach modules by NAME (`Import-BuildModule`) or by backslash path,
+  so they neither break at delete time nor appear in the grep. The 2026-09-08
+  sweep (2eaed40e) removed `WindowsOnnx.Common`, `WindowsContainerLog.Common`
+  and `rust/New-Archive.ps1` that way — the fourth instance of the same blind
+  spot — and all three were restored on 2026-09-14.
+- **Bash file names.** New files are kebab-case. The snake_case names that
+  exist under `linux/scripts/` (`02-toolchain/python/ci_*.sh` and
+  `build_python.sh`, `02-toolchain/rust/cargo_*.sh`, `_*_guard.sh`,
+  `version_util.sh`, `01-core/python_uv.sh`, `05-frameworks/flutter/flutter_checks.sh`,
+  `06-packaging/package_archive.sh`) and `linux/webserver/scripts/flutter_integration_smoke_test.sh`
+  are frozen: consumer wrappers resolve them by path, so a rename is a
+  consumer-breaking change with no structural gain.
 
 ### Reusable Module: WindowsContainerBuild.Reuse
 
@@ -899,7 +916,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
-.github/actions/         10 composite actions consumers call @main, incl.
+.github/actions/         12 composite actions consumers call @main, incl.
                          cleanup-disk-space (Windows runners),
                          run-in-linux-container, run-in-windows-container;
                          full list in .github/actions/README.md
@@ -1377,7 +1394,7 @@ base ─┬─ onnxruntime ───────┐
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most 6 entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs via `PREFLIGHT_ONLY`, plus `shellcheck` + the warning ratchet on the STAGED shell files, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) entries whose target is staged, newest first, which PRINTS `SAMPLED n of m` whenever it cut | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured end to end 2026-09-04; was 5m26s) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/ubuntu26.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 

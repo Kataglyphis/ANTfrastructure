@@ -119,6 +119,9 @@ _pin_tree() {  # <versions.env body>
   _stage "${d}" lint-workflows.sh 0755
   _stage "${d}" 01-core/load-versions-env.sh
   _stage "${d}" 01-core/downloads.sh
+  # The interpreter probe the gate sources before its Python half (2026-09-14):
+  # a fixture without it fails on the source line, not on what a case is about.
+  _stage "${d}" 01-core/python-probe.sh
   printf '%s\n' "$1" > "${d}/linux/scripts/01-core/versions.env"
   mkdir -p "${d}/.github/workflows"
   git -C "${d}" init -q

@@ -158,24 +158,18 @@ FAILED=0
 # Run from the SCRIPT's repo so the relative path resolves to this checkout's
 # copy, and hand it the tree actually being linted - the same split, and the
 # reason this script takes a root at all.
-# Interpreter: the same contract preflight.sh documents at its top — plain
-# python3 is NOT trusted, because on Windows Git Bash it is the Microsoft Store
-# stub, which prints an install hint and exits non-zero. preflight exports the
-# probed interpreter; a standalone run inherits nothing, so verify before use
-# rather than letting the gate die inside the Python step with a stub message.
-_PY="${PREFLIGHT_PYTHON:-python3}"
-if ! command -v "${_PY}" >/dev/null 2>&1 || ! "${_PY}" -c "pass" >/dev/null 2>&1; then
-  printf "lint-workflows.sh: no working Python (tried %s).\n" "${_PY}" >&2
-  printf "                   Set PREFLIGHT_PYTHON, e.g. PREFLIGHT_PYTHON=\"uv run --no-project python\"\n" >&2
-  exit 1
-fi
-( cd "${REPO_ROOT}" && "${_PY}" linux/scripts/verify_ci_image_refs.py "${LINT_ROOT}" ) || FAILED=1
+# Interpreter: the contract preflight.sh documents at its top, owned by
+# 01-core/python-probe.sh since 2026-09-14 (run-lint-gates.sh shares it).
+# shellcheck source=01-core/python-probe.sh
+source "${CORE_DIR}/python-probe.sh"
+preflight_python_require lint-workflows.sh || exit 1
+( cd "${REPO_ROOT}" && ${PREFLIGHT_PYTHON} linux/scripts/verify_ci_image_refs.py "${LINT_ROOT}" ) || FAILED=1
 
 # The conventions half runs on the same terms: this checkout's copy, the handed
 # tree, and its own exit status folded into the one verdict. Its allow file is
 # read from THIS repo too, which is what lets one table hold the deviations of
 # every consumer that vendors this hub.
-( cd "${REPO_ROOT}" && "${_PY}" linux/scripts/verify_workflow_conventions.py "${LINT_ROOT}" ) || FAILED=1
+( cd "${REPO_ROOT}" && ${PREFLIGHT_PYTHON} linux/scripts/verify_workflow_conventions.py "${LINT_ROOT}" ) || FAILED=1
 
 if [ "${FAILED}" -eq 0 ]; then
   printf 'WORKFLOW LINT OK\n'

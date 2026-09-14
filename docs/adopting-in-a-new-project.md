@@ -312,7 +312,14 @@ and are referenced from a consumer workflow as
 | `cleanup-disk-space` | Free space on Windows runners — the historical, destructive fallback; prefer the two rows above |
 
 They replace the hand-rolled `docker run` blocks that otherwise accumulate — in
-the reference consumer, twenty-plus copies across two workflows.
+the reference consumer, twenty-plus copies across two workflows. The table is
+the short list; all twelve actions, with their inputs, are in
+[`.github/actions/README.md`](../.github/actions/README.md) — including
+`deploy-over-ftp`, the one FTP publish policy for the family
+([`ftp-deploys.md`](ftp-deploys.md)). Two lanes are reusable workflows rather
+than actions: `lint-gates.yml` (the consumer lint gates, § 9) and
+`submodule-pins.yml` (the pin suite, § 9), both called with
+`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@main`.
 
 Because actions resolve at `@main`, a consumer workflow change that depends on
 an action change requires the ANTfrastructure push to land first.
@@ -363,17 +370,23 @@ is the canonical example.
 (§ *Shell safety conventions*) apply to consumer scripts too. Every one of them
 falsified or killed a real build here; they are not style preferences.
 
-**Directory layout is now uniform across all seven consumers** (normalised
-2026-08-11): lowercase `scripts/`, with `scripts/windows/`, `scripts/linux/`,
-`scripts/windows/modules/` and — where the agentic loop is wired up —
-`scripts/agentic-loop/`. Two repos used `Scripts/` + `Scripts/Windows/` until
-that sweep. Use lowercase in a new consumer; there is no per-repo casing rule
-to look up any more.
+**Directory layout is uniform across the five consumers that have a Windows
+lane** (BeschleunigerBallett, OmniAccelerANT, OrchestrANT, AccelerANTgine,
+OxidANT; normalised 2026-08-11): lowercase `scripts/`, with `scripts/windows/`,
+`scripts/linux/`, `scripts/windows/modules/` and — where the agentic loop is
+wired up — `scripts/agentic-loop/`. The two Linux-only Flutter repos
+(jotrockenmitlocken, ANThology) keep a flat `scripts/`, with the bootstrap at
+`scripts/lib/` and that path declared in `.antfrastructure-shared.manifest`.
+Two repos used `Scripts/` + `Scripts/Windows/` until that sweep. Use lowercase
+in a new consumer; there is no per-repo casing rule to look up any more.
 
 **Bash filenames still differ**, but not the way this note used to claim.
-Measured 2026-09-06: kebab-case everywhere except OrchestrANT, which is
-snake_case in 4 of its 5 scripts. The old wording said "snake_case in the rest"
-and was wrong about OxidANT and AccelerANTgine — both are kebab. That one is
+Measured 2026-09-14: kebab-case everywhere except OrchestrANT, where the four
+`ci_*.sh` wrappers mirror the hub's own snake_case drivers under
+`linux/scripts/02-toolchain/python/` by name and `benchmarks/run_benchmarks.sh`
+kept its name from the hub's llm-stack; its other scripts are kebab. The old
+wording said "snake_case in the rest" and was wrong about OxidANT and
+AccelerANTgine — both are kebab. That one is
 left alone deliberately: unlike a directory rename it buys no structural
 consistency, and renaming every script would churn history for a purely lexical
 preference. Match the repo you are in.
@@ -382,16 +395,55 @@ preference. Match the repo you are in.
 file-scope `set -e` in a library leaks into whoever sources it. `lib/common.sh`
 in BeschleunigerBallett says so in its own header.
 
+## 9. Quality gates
+
+Every gate the hub runs over itself has a consumer-facing half; a consumer wires
+four things and gets all of it:
+
+1. **The shared-asset manifest.** `.antfrastructure-shared.manifest` at the
+   consumer root declares which hub-owned files the repo holds a copy of
+   (configs, the two bootstrap templates); `sync-shared-config.sh --repo-root .
+   --check` is the drift gate, `--write` refreshes. The registry of asset ids and
+   the rules are in [`../shared/config/README.md`](../shared/config/README.md).
+2. **The lint aggregator.** `bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh .`
+   runs shellcheck, actionlint + CI image refs, gitleaks (with a self-test),
+   ruff, the manifest drift check and the consumer pin-forwarding check, all
+   from pinned and SHA-verified binaries — see
+   [`shared-script-libraries.md`](shared-script-libraries.md) § run-lint-gates.sh.
+   Keep a ~5-line `scripts/linux/run-lint-gates.sh` wrapper so the dev-box
+   command and the CI step are the same string, and call the reusable lane from
+   CI: `jobs: lint: uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@main`
+   (inputs: `exclude`, `submodules`, `hub-checkout` for a consumer without a
+   submodule). Add `--ratchets` once the eight `<gate>.allow` freeze files are
+   seeded and committed; that switches on the measurement gates (code size,
+   complexity, dead functions, comment size, stdout returns, masked
+   declarations, trailing conditionals, shellcheck warnings) over the consumer's
+   own shell.
+3. **The pin suite.** `Submodule.Pins.Tests.ps1` asserts every submodule sits at
+   its recorded, remotely reachable commit; consumers call
+   `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@main`
+   (the AGENTS.md template's § 3 names the suite) instead of copying the job.
+4. **Python repos** get the whole CI surface from the reusable
+   `python-ci-linux.yml` / `python-ci-windows.yml` workflows —
+   [`python-ci.md`](python-ci.md).
+
+Still hub-only, deliberately: the docs gates (`doc-links`, `doc-dupes`,
+`code-dupes`) resolve their root from `__file__`, and the versioned git hooks
+`cd` into the hub layout; neither can be pointed at a consumer yet.
+
 ## Checklist
 
 - [ ] Submodule added; `Resolve-BuildModule.ps1` copied
 - [ ] Entry points named and shaped as in § 8
-- [ ] Windows build script built on `WindowsContainerBuild.Reuse`, ending in a delivery check
+- [ ] Windows build script built on `WindowsContainerBuild.Reuse`, ending in a delivery check (where the consumer has a Windows lane)
 - [ ] Linux build uses a container-native build dir and a cargo cache volume
-- [ ] No consumer copy of anything that exists upstream (check before writing)
+- [ ] No consumer copy of anything that exists upstream (check before writing) — the manifest drift gate and the lint aggregator of § 9 are the mechanism
+- [ ] `.antfrastructure-shared.manifest` declared; `sync-shared-config.sh --check` green
+- [ ] `run-lint-gates.sh` wired as a wrapper and as the reusable `lint-gates.yml` lane; ratchets on with freeze files committed
+- [ ] `submodule-pins.yml` lane called (any repo with a submodule)
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
-- [ ] Workflows call the composite actions
+- [ ] Workflows call the composite actions, FTP publishes through `deploy-over-ftp`
 - [ ] Consumer AGENTS.md links to these docs instead of restating them
 
 ### When the push is refused

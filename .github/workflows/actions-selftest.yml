@@ -73,6 +73,13 @@ on:
           costs roughly an hour and is off by default.
         type: boolean
         default: false
+      ftp-dry-run:
+        description: >-
+          Also run deploy-over-ftp in the library's dry-run mode against the
+          docs server (connects and diffs a one-directory tree, uploads
+          nothing). Off by default; the contract is checked statically either way.
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -608,3 +615,38 @@ jobs:
             back`tick
           mount-source: 'D:\ws'
           mount-target: 'C:\ws'
+
+  # ---------------------------------------------------------------------------
+  # deploy-over-ftp: the static contract on every run, a dry run on request
+  # ---------------------------------------------------------------------------
+  # Every input named, so actionlint checks the call site against action.yml on
+  # every run (a renamed input fails here before it fails a consumer). The step
+  # only RUNS when the workflow is dispatched with ftp-dry-run, and then in the
+  # library's dry-run mode against the docs server: it connects and diffs,
+  # uploads nothing. The runtime half is otherwise exercised by the hub's own
+  # build-docs.yml and python-ci-linux.yml on every push to main since
+  # 2026-09-14.
+  linux-ftp-contract:
+    name: deploy-over-ftp (contract; dry run on dispatch)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: deploy-over-ftp (dry run; inputs checked statically on every run)
+        if: ${{ inputs.ftp-dry-run }}
+        uses: ./.github/actions/deploy-over-ftp
+        with:
+          server: ${{ secrets.SERVER }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PW }}
+          local-dir: ./.github/actions/deploy-over-ftp/
+          server-dir: /selftest/
+          protocol: ftp
+          port: '21'
+          dry-run: 'true'
+          log-level: minimal
+          timeout: '30000'

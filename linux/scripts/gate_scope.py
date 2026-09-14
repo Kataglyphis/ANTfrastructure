@@ -86,7 +86,9 @@ def tracked(root, patterns, exclude=EXCLUDE):
     path is missing from the working tree -- see rule 4.
     """
     cmd = ["git", "-C", root, "ls-files", "-z", "--"] + list(patterns)
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    # encoding pinned: on a cp1252 Windows host the default codec raises on a
+    # non-ASCII tracked path and every '*'-scoped gate aborts before grading.
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if out.returncode != 0:
         raise ScopeError("%s is not a git checkout; --root must be one" % root)
     rels, missing = [], []

@@ -57,3 +57,25 @@ windows/downloads/** -text
 # into the rust layer, #114); both PRs merged upstream and the COPY is retired.
 # Rule kept for when the patch worktree returns.
 windows/upstream/sccache-nvcc-quote-fix/** -text
+
+# Extensionless bash entry points outside the image trees: the versioned git
+# hooks and the nextcloud custom-bin shims. Without a rule a core.autocrlf=true
+# checkout materialises them CRLF, which fails preflight's crlf-guard and
+# shellcheck on every Windows host (found 2026-09-14). Same reasoning as *.sh.
+linux/host-config/git-hooks/* text eol=lf
+linux/nextcloud-aio/custom-bin/* text eol=lf
+# The Linux build context's own text files, same reasoning: the preflight gates
+# read them with awk/grep (android-parity, the codec so-package map, the allow
+# files), and a CRLF checkout fails those gates on a Windows host while Linux CI
+# is green. Pinned LF so a Windows checkout grades the same bytes CI does.
+linux/Dockerfile* text eol=lf
+linux/docker-compose.yml text eol=lf
+linux/**/*.txt text eol=lf
+linux/**/*.allow text eol=lf
+# The Python gates and their tests, same reasoning again: the shell suites copy a
+# gate into a fixture and mutate it with `sed '/…$/'`, which never matches a CRLF
+# line, so test-advertised-keys.sh failed on a Windows host bind-mount and
+# nowhere else (found 2026-09-14). windows/** keeps its -text rules above.
+.claude/**/*.py text eol=lf
+docs/**/*.py text eol=lf
+linux/**/*.py text eol=lf

@@ -212,10 +212,105 @@ function Install-UvRequirements {
         -CommandRunner $CommandRunner -LogInfo $LogInfo
 }
 
+<#
+.SYNOPSIS
+    The `[tool.uv] conflicts` groups of a pyproject.toml, as arrays of extra names.
+.DESCRIPTION
+    Reads the table the way the bash twin (01-core/python_uv.sh
+    _uv_conflict_groups) does: a character walk from the `conflicts =` line,
+    depth-2 brackets delimit one group, `extra = "name"` occurrences inside it
+    are the members - so the inline, multi-line and mixed layouts uv accepts
+    all give the same answer. No TOML parser ships with PowerShell, and one
+    key is not worth a dependency.
+.OUTPUTS
+    One string[] per group, in declaration order, written to the pipeline one
+    group at a time (collect with @(...)); nothing when the file has no
+    conflicts table.
+#>
+function Get-UvConflictGroups {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param([Parameter(Mandatory)][string]$PyprojectPath)
+
+    $groups = @()
+    $inBlock = $false
+    $depth = 0
+    $group = ''
+    foreach ($line in (Get-Content -LiteralPath $PyprojectPath)) {
+        if (-not $inBlock) {
+            if ($line -match '^\s*conflicts\s*=') { $inBlock = $true; $depth = 0; $group = '' } else { continue }
+        }
+        foreach ($c in $line.ToCharArray()) {
+            if ($c -eq '[') {
+                $depth++
+                if ($depth -eq 2) { $group = '' }
+            } elseif ($c -eq ']') {
+                if ($depth -eq 2) {
+                    $extras = @([regex]::Matches($group, 'extra\s*=\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+                    if ($extras.Count -gt 0) { $groups += , [string[]]$extras }
+                    $group = ''
+                }
+                $depth--
+                if ($depth -le 0) { $inBlock = $false; break }
+            } elseif ($depth -ge 2) {
+                $group += $c
+            }
+        }
+        if ($inBlock -and $depth -ge 2) { $group += ' ' }
+    }
+    # Plain return: the pipeline unrolls ONE level, so each string[] group
+    # arrives as one object and @(...) at the call site rebuilds the list. A
+    # comma-wrapped return here plus @() at the caller nested it twice (the
+    # first cut of this function, caught by Uv.ConflictExtras.Tests.ps1).
+    return $groups
+}
+
+<#
+.SYNOPSIS
+    The extras `uv sync --all-extras` must leave out for a project that
+    declares `[tool.uv] conflicts`.
+.DESCRIPTION
+    uv refuses --all-extras outright on such a project ("Extras `a` and `b` are
+    incompatible with the declared conflicts") and has no "install as much as
+    possible" flag. Greedy over the groups in DECLARATION ORDER, exactly as
+    01-core/python_uv.sh _uv_extras_to_exclude does: keep an extra unless it
+    conflicts with one already kept, otherwise exclude it. That keeps the
+    first-declared member of each family - for OrchestrANT `ml-ai` and
+    `pytorch-cpu`, the pair its CI wants.
+.OUTPUTS
+    The extras to pass as --no-extra, one string per pipeline object (collect
+    with @(...)); nothing when nothing conflicts or the file does not exist.
+#>
+function Get-UvExtrasToExclude {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$PyprojectPath)
+
+    if (-not (Test-Path -LiteralPath $PyprojectPath)) { return }
+    $groups = @(Get-UvConflictGroups -PyprojectPath $PyprojectPath)
+    $keep = [System.Collections.Generic.List[string]]::new()
+    $drop = [System.Collections.Generic.List[string]]::new()
+    foreach ($group in $groups) {
+        foreach ($extra in $group) {
+            if ($keep.Contains($extra) -or $drop.Contains($extra)) { continue }
+            $conflicted = $false
+            foreach ($other in $groups) {
+                if ($other -notcontains $extra) { continue }
+                foreach ($member in $other) {
+                    if ($member -ne $extra -and $keep.Contains($member)) { $conflicted = $true }
+                }
+            }
+            if ($conflicted) { $drop.Add($extra) } else { $keep.Add($extra) }
+        }
+    }
+    return $drop.ToArray()
+}
+
 function Sync-UvProjectDependencies {
     <#
     .SYNOPSIS
-        `uv sync --dev --all-extras`, optionally pinned to the lockfile.
+        `uv sync --dev --all-extras`, optionally pinned to the lockfile, with the
+        extras that declared conflicts forbid excluded (see Get-UvExtrasToExclude).
     .PARAMETER RetryWithoutLocked
         With -UseLocked, retry once WITHOUT --locked when uv reports the
         lockfile is out of date. Upstreamed from OrchestrANT
@@ -232,14 +327,41 @@ function Sync-UvProjectDependencies {
         [switch]$NoBuildIsolationPackageWxPython,
         [switch]$UseLocked,
         [switch]$RetryWithoutLocked,
+        # The pyproject whose `[tool.uv] conflicts` decide which extras
+        # --all-extras must leave out. Defaults to the one in the current
+        # directory, which is where `uv sync` reads it too.
+        [string]$PyprojectPath = (Join-Path (Get-Location).Path 'pyproject.toml'),
         [scriptblock]$CommandRunner,
         [scriptblock]$LogInfo,
         [scriptblock]$LogWarning
     )
 
+    # Which extras. UV_SYNC_EXTRAS wins (the project knows best); otherwise
+    # --all-extras minus whatever the declared conflicts make unsatisfiable -
+    # the same choice the Linux twin (01-core/python_uv.sh uv_sync_project)
+    # makes, so the two lanes sync the same set. OrchestrANT's Windows lane was
+    # red from 2026-09-12 to 2026-09-14 because only the Linux half did this.
+    $extraArgs = @()
+    $wanted = [Environment]::GetEnvironmentVariable('UV_SYNC_EXTRAS')
+    if (-not [string]::IsNullOrWhiteSpace($wanted)) {
+        foreach ($extra in ($wanted -split '[,\s]+')) {
+            if ($extra) { $extraArgs += @('--extra', $extra) }
+        }
+        if ($LogInfo) { & $LogInfo "UV_SYNC_EXTRAS set - syncing extras: $wanted" }
+    } else {
+        $extraArgs = @('--all-extras')
+        $excluded = @(Get-UvExtrasToExclude -PyprojectPath $PyprojectPath)
+        if ($excluded.Count -gt 0) {
+            if ($LogInfo) {
+                & $LogInfo ('Project declares conflicting extras; --all-extras alone would fail. Excluding (keeping the first-declared of each family): {0}. Set UV_SYNC_EXTRAS to choose a different combination.' -f ($excluded -join ' '))
+            }
+            foreach ($extra in $excluded) { $extraArgs += @('--no-extra', $extra) }
+        }
+    }
+
     $buildArgs = {
         param([bool]$Locked)
-        $a = @('-v', 'sync', '--dev', '--all-extras')
+        $a = @('-v', 'sync', '--dev') + $extraArgs
         if ($Locked) { $a += '--locked' }
         if ($NoBuildIsolationPackageWxPython) { $a += @('--no-build-isolation-package', 'wxpython') }
         return $a
@@ -368,6 +490,8 @@ Export-ModuleMember -Function @(    'New-UvProjectEnvironment',
     'Remove-TrackedUvEnvironment',
     'Test-ExperimentalPython',
     'Sync-UvProjectDependencies',
+    'Get-UvConflictGroups',
+    'Get-UvExtrasToExclude',
     'Test-UvVenvHealthy',
     'Initialize-UvVenv',
     'Install-UvRequirements',

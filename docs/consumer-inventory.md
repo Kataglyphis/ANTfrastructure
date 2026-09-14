@@ -36,7 +36,7 @@ Run it against checkouts you already have, with no network at all:
 
 ```bash
 python3 linux/scripts/verify_consumer_inventory.py --offline \
-    --local-root /d/GitHub --report out/consumer-inventory.md
+    --local-root /c/GitHub --report out/consumer-inventory.md
 ```
 
 `--local-root DIR` picks up `DIR/<name>` for every consumer whose name matches a

@@ -266,7 +266,8 @@ is a deliberate subset — the full suite takes minutes (the secret scan alone i
 `make preflight` yourself before a rebuild or a push; CI runs it on every push
 regardless.
 
-The first row's suite is `bash linux/scripts/preflight.sh` (33 slugs). Newest
+The first row's suite is `bash linux/scripts/preflight.sh` (the `KNOWN_SLUGS`
+array in that file is the list). Newest
 gates in it (2026-09-03): **`gate-registry`** is the meta-gate — every slug must
 carry a proof, a suite naming its script or a mutation, or sit frozen in an
 allowlist; **`code-complexity`** caps cyclomatic complexity and nesting,

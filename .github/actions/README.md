@@ -255,16 +255,16 @@ newlines cannot be expressed in the per-line inputs.
 ## Testing these actions
 
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
-edit here and 61 consumer call sites that resolve these actions at `@main` -
-which the submodule pin does not freeze. It `uses:` eleven of the twelve
-directories here, and it fires on any change under `.github/actions/`. Read its
-header before trusting a green run; the short version:
+edit here and the 84 consumer call sites (counted 2026-09-14) that resolve these
+actions at `@main` - which the submodule pin does not freeze. It `uses:` all
+twelve directories here, and it fires on any change under `.github/actions/`.
+Read its header before trusting a green run; the short version:
 
-**The twelfth is `deploy-over-ftp`, and it is not covered.** Nothing calls it
-yet, so nothing has broken, but the static contract below is exactly what would
-catch a renamed input before a consumer does - and it is not being applied to
-that action. Adding it needs only a `uses:` whose inputs and outputs are all
-named; the runtime half wants a real FTP server and is a separate question.
+**`deploy-over-ftp` is covered statically only.** Its self-test step names every
+input and is guarded off (`if: false`), so actionlint checks the call site on
+every run while no runner ever dials an FTP server; the runtime half wants a
+real server and is exercised by the hub's own `build-docs.yml` and
+`python-ci-linux.yml`, which adopted the action on 2026-09-14.
 
 **Statically, on every run and locally.** actionlint reads the metadata of a
 locally-`uses:`d action and checks the call site: an input name the action does
