@@ -16,9 +16,11 @@ windows/downloads/*
 !windows/downloads/README.md
 linux/llm-stack/ollama-binary.tar.zst
 linux/llm-stack/.env
-# Run-scoped scratch results stay untracked; DATED report directories are the
-# exception (review R4: every published number keeps its raw report in-tree).
 linux/nextcloud-aio/.env
+# Per-run chain state, rewritten at every stage start/ok/fail by
+# build-cross-chain.sh:_chain_status_emit. It was tracked until 2026-09-15, which
+# made every chain run dirty the working tree and every pull need a stash.
+/chain-status.json
 .claude/*
 # ...except the safety gate. A guard that only exists on one machine is not a
 # guard: a fresh clone, or a `git clean -xdf`, would silently disarm it
@@ -98,5 +100,3 @@ linux/qnn-sdk/*
 # Agent scratch: transient patch/probe files, never part of the repo.
 .agentout/
 
-# Local working clones of sibling repos, not submodules.
-external/
