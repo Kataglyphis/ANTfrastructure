@@ -219,11 +219,21 @@ _real = g.subprocess.run
 g.subprocess.run = lambda *a, **k: _Proc()
 try:
     tracked = g._ignored_paths(rel)
+    tracked_probe = g._ignored_paths(probe + keep)
 finally:
     g.subprocess.run = _real
 if tracked != floor:
     problems.append("git answering NOTHING returned %d, not the floor %d"
                     % (len(tracked), len(floor)))
+# On the SYNTHETIC list too, and that is the half with teeth: inside the
+# mutation mirror `rel` holds no output path at all, so `floor` is empty there
+# and every comparison against it is set() == set(). The union under a happy
+# git could be deleted and nothing above would notice -- which is exactly what
+# doc-links.tracked-output-floor SURVIVED reported, run after run, while the
+# git-free arm beside it bit because it had already been moved to the probe.
+if tracked_probe != floor_probe:
+    problems.append("git answering NOTHING ignored the floor on the probe list: "
+                    "%d, not %d" % (len(tracked_probe), len(floor_probe)))
 print("wired" if not problems else "BROKEN: " + "; ".join(problems))
 PYCHK
 )"
