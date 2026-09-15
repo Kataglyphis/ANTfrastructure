@@ -20,7 +20,15 @@ submodules (`AccelerANTgine`, `OxidANT`, `ANThology`). Vendored
 counted twice. Line numbers are the committed ones; the step is the stable
 handle.
 
-| Repo | Step | Pin | On upload failure | Readability fixup |
+**The Pin column below is history, not the present.** Every one of these steps
+now reads `uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main`
+(adopted 2026-09-14; the hub's own two workflows the same day), so the library
+version and its digest live in the action and nowhere else, and the host-side
+`chmod`/`chown` fixups in the last column are gone with it — the action does
+that itself. What the table still answers is what each site looked like before,
+which is what makes the two POLICY changes below visible rather than silent.
+
+| Repo | Step | Pin (before adoption) | On upload failure (before) | Readability fixup (before) |
 |---|---|---|---|---|
 | ANTfrastructure | `python-ci-linux.yml:201` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
 | ANTfrastructure | `build-docs.yml:106` | SHA `110f9186` (v4.4.0) | fails the lane | host `chmod -R 755` + `ls -la` |
@@ -248,25 +256,30 @@ second-guess it.
 
 ## What this change does not do
 
-The hub's two workflows (`python-ci-linux.yml`, `build-docs.yml`) adopted the
-action on 2026-09-14, dropping their own `chmod -R 755` steps with it, and the
-action joined `actions-selftest.yml` as a static contract (every input named,
-the step guarded off so no runner ever dials a server). The consumer sites in
-the table above are adopted repo by repo — one `uses:` swap each, keeping the
-step's `if:` and `with:` keys — and for the two lanes that tolerate a failed
-upload (`continue-on-error: true`) adoption is also a policy change the owner
-takes deliberately, since the action does not offer that knob.
+All eleven sites were adopted on 2026-09-14 — the hub's two workflows
+(`python-ci-linux.yml`, `build-docs.yml`) and the nine consumer steps — each one
+`uses:` swap keeping the step's `if:` and `with:` keys, and each dropping its own
+`chmod -R 755` / `chown -R` fixup, which the action does itself. The gap this
+section used to name is closed with them: `actions-selftest.yml` `uses:` all
+twelve actions in `.github/actions/` now, `deploy-over-ftp` among them, guarded
+so no runner dials a server. That is what makes actionlint hold every declared
+input and output on every push, so renaming one breaks the hub rather than a
+consumer.
+
+**OWNER DECISION, recorded here because it is a behaviour change and not a
+refactor.** Two lanes tolerated a failed upload before adoption —
+BeschleunigerBallett `Linux.yml` and OxidANT `rust_ubuntu26_04.yml`, both
+`continue-on-error: true`. This action deliberately offers no such knob (a
+publish that silently did not happen is the failure mode the whole page is
+about), so adopting it in those two lanes means **a failed upload now fails the
+lane**. The owner accepted that on 2026-09-14: the lanes publish documentation,
+a green tick over a site that did not update is worse than a red one, and
+`continue-on-error` was in both lanes for the same reason nobody could state
+when asked. Restoring the old behaviour means not using the action there, not
+adding a knob to it.
 
 `python-ci-linux.yml`'s `docs-artifact-path` input no longer has to end in a
 slash: the action normalises it.
-
-One gap to close with, or before, the first adoption:
-`.github/workflows/actions-selftest.yml` `uses:` eleven of the twelve actions in
-`.github/actions/`, and `deploy-over-ftp` is the one it does not. That self-test
-is what makes actionlint hold every action's declared inputs and outputs on
-every push, so until this action appears there, renaming one of its inputs
-breaks a consumer rather than the hub. Its runtime half needs a real server and
-is not the part that matters here; a statically linted call site is.
 
 ## How this was verified
 

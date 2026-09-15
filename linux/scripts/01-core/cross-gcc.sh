@@ -37,6 +37,98 @@ gcc_toolchain_bindir() {
   printf '%s' "$(gcc_toolchain_prefix)/bin"
 }
 
+# gcc_toolchain_resolve_prefix -> the GCC prefix clang should be pointed at.
+#
+# gcc_toolchain_prefix() above composes a path from the VERSION; this answers
+# "which prefix on THIS machine actually holds a usable GCC", which is a
+# different question and the one every consumer got wrong. Two of them carried
+# the literal /opt/gcc-15.2.0 in a workflow env and went stale on 2026-08-07,
+# taking every clang lane red with them: the composed path was right and the
+# typed one was not.
+#
+# Four answers, first that holds:
+#   1. MYPROJECT_GCC_TOOLCHAIN_PATH -- the consumer said so explicitly
+#   2. GCC_PREFIX -- the image says so
+#   3. the composed prefix, IF it really holds a toolchain. The probe is
+#      lib/gcc/*/*/crtbeginS.o: a directory that exists but has no crt files is
+#      a half-installed prefix, and clang pointed at one fails at LINK time with
+#      a message about crtbeginS.o that names nothing else.
+#   4. the newest /opt/gcc-* that passes the same probe. An image built from a
+#      different GCC_VERSION than the caller assumes is exactly case 3 failing,
+#      and guessing "the newest one present" beats failing with no toolchain.
+# Prints nothing and returns 1 when there is no usable prefix at all; a caller
+# that treats an empty answer as a path produces `--gcc-toolchain=` and a clang
+# error three steps from the cause.
+gcc_toolchain_resolve_prefix() {
+  local candidate
+  for candidate in "${MYPROJECT_GCC_TOOLCHAIN_PATH:-}" "${GCC_PREFIX:-}"; do
+    if [ -n "${candidate}" ] && [ -d "${candidate}" ]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+  candidate="$(gcc_toolchain_prefix)"
+  if compgen -G "${candidate}/lib/gcc/*/*/crtbeginS.o" >/dev/null 2>&1; then
+    printf '%s' "${candidate}"
+    return 0
+  fi
+  local newest=""
+  for candidate in /opt/gcc-*; do
+    [ -d "${candidate}" ] || continue
+    compgen -G "${candidate}/lib/gcc/*/*/crtbeginS.o" >/dev/null 2>&1 || continue
+    newest="${candidate}"
+  done
+  if [ -n "${newest}" ]; then
+    printf '%s' "${newest}"
+    return 0
+  fi
+  return 1
+}
+
+# Point clang at the source-built GCC (headers, libstdc++, crt). Exports the
+# --gcc-toolchain flags only; CC/CXX selection stays with the caller, and GCC
+# itself rejects the flag, so this is a no-op unless clang is in use.
+#
+# RESTORED 2026-09-15. It was deleted on 2026-09-05 for having no caller, which
+# was true of this repository and false of the family: two consumers had each
+# re-derived it, and one of them did so by typing /opt/gcc-15.2.0 into a
+# workflow env block, where it went stale and took every clang lane red. A hub
+# file is deleted when the consumer inventory reports it as named by nobody --
+# see AGENTS.md, "Contributing Reusable Work Here" -- and this one was not.
+# Callers: AccelerANTgine scripts/linux/ci-run-all.sh, BeschleunigerBallett
+# scripts/linux/run-static-analysis-format.sh.
+# Docs: docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
+export_clang_gcc_toolchain_env() {
+  : "${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_resolve_prefix || gcc_toolchain_prefix)}"
+  local root="${CROSS_GCC_TOOLCHAIN_PATH}"
+  case "$(basename "${CC:-}")" in clang*) ;; *) return 0 ;; esac
+  if [ ! -d "$root" ]; then
+    printf 'export_clang_gcc_toolchain_env: no GCC toolchain at %s; clang will use its own discovery\n' "$root" >&2
+    return 0
+  fi
+
+  local lib=""
+  if [ -d "$root/lib64" ]; then
+    lib="$root/lib64"
+  elif [ -d "$root/lib" ]; then
+    lib="$root/lib"
+  fi
+
+  export CFLAGS="--gcc-toolchain=${root} ${CFLAGS:-}"
+  export CXXFLAGS="--gcc-toolchain=${root} ${CXXFLAGS:-}"
+  local triple
+  for triple in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu riscv64gc-unknown-linux-gnu i686-unknown-linux-gnu; do
+    export "CFLAGS_${triple//-/_}=--gcc-toolchain=${root}"
+    export "CXXFLAGS_${triple//-/_}=--gcc-toolchain=${root}"
+  done
+
+  if [ -n "$lib" ]; then
+    export LDFLAGS="-L${lib} -Wl,-rpath,${lib} --gcc-toolchain=${root} ${LDFLAGS:-}"
+  else
+    export LDFLAGS="--gcc-toolchain=${root} ${LDFLAGS:-}"
+  fi
+}
+
 resolve_build_gcc_tool() {
   local tool="$1"
   local bindir build_triplet resolved=""

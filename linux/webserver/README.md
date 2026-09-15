@@ -53,6 +53,44 @@ bash linux/webserver/scripts/flutter_integration_smoke_test.sh http://localhost:
 python3 linux/webserver/scripts/flutter_capture_console_errors.py --build-dir /path/to/build/web
 ```
 
+## Prerequisites for the browser smoke test
+
+The Playwright script drives a real headless browser, so it needs one. **flatpak
+Chromium**, because it is the option that works on ARM64 as well as x86-64 —
+which is why this is not "install chromium with your package manager":
+
+```bash
+flatpak install flathub org.chromium.Chromium
+python3 -m pip install --break-system-packages playwright
+```
+
+`--break-system-packages` is not carelessness: on a Debian/Ubuntu host with an
+externally-managed Python, `pip install` refuses outright, and a venv is the
+wrong shape here because the script is run by hand next to a build, not by a
+lane that owns an environment.
+
+What the script does, so a green run means something: it serves the build
+directory over HTTP, launches headless Chromium through Playwright's flatpak
+binary, then walks every route, four viewport widths (375 / 768 / 1280 / 1920),
+the asset and renderer wiring, page-load timings and the interactive bits
+(loading-screen fade, cookie notice and consent, navigation, dark mode). It
+reports errors, warnings and info separately and writes a screenshot. **A WebGL
+GPU-stall warning in headless mode is expected** and is not a finding.
+
+## Troubleshooting the browser smoke test
+
+Four failures account for nearly all of them, and each looks like something else:
+
+- **`No module named 'playwright'`** — the install above was skipped or landed in
+  another interpreter: `python3 -m pip install --break-system-packages playwright`.
+- **Chromium not found** — check the flatpak is really there
+  (`flatpak list | grep chromium`); a system chromium does not satisfy this.
+- **Port 8080 already in use** — a previous run's server survived:
+  `kill $(lsof -t -i:8080)`. The symptom is a test that passes against the OLD
+  build, which is worse than a failure.
+- **Browser launch fails** — inside a container or WSL, Chromium needs
+  `--no-sandbox`; without it the launch dies with no useful message.
+
 ---
 
 # Troubleshooting

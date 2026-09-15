@@ -315,13 +315,61 @@ def dangling_refs(root, files, hub_root, ref_re, vendored):
         if text is None:
             continue
         for match in ref_re.finditer(text):
-            target = match.group(1).split("@", 1)[0].rstrip(REF_TRAIL).rstrip("/")
+            target = match.group(1).split("@", 1)[0].rstrip(REF_TRAIL)
+            # One spelling from here on: the path is checked against a POSIX
+            # checkout, and `windows\scripts` is not a file there.
+            target = target.replace("\\", "/").rstrip("/")
             if (not target or target.startswith(vendored)
                     or (hub_root / target).exists() or inside_url(text, match.start())):
                 continue
             lineno, line = line_at(text, match.start())
             if use_kind(rel, line) == REACHED:
                 found.append("%s:%d -> %s" % (rel, lineno, target))
+    return sorted(set(found))
+
+
+# A PowerShell module is asked for by NAME, never by path, so a path-only scan
+# can never see one dangle -- and a dangling module name fails at RUNTIME, inside
+# a build, with "module not found". Three shapes reach one:
+#
+#   Import-BuildModule @('WindowsBuild.Common', 'WindowsOnnx.Common')
+#   Resolve-BuildModule -Name 'WindowsContainerLog.Common'
+#   Join-Path $modulesDir 'WindowsMsix.Common.psm1'
+#
+# Every name they mention whose stem is not a file under windows/scripts/modules/
+# at HEAD is dangling. This is the reachability question STEM_ALIASES answers for
+# the other direction (is this hub module named by anybody), asked backwards.
+MODULE_DIR = "windows/scripts/modules"
+MODULE_REFS = (
+    re.compile(r"Import-BuildModule\s*(?:-Name\s*)?@?\s*\(?([^)\n]*)\)?"),
+    re.compile(r"Resolve-BuildModule(?:Path)?\s+-Name\s+([^\n]*)"),
+    re.compile(r"Join-Path\s+\S+\s+('[A-Za-z0-9_.]+\.psm1')"),
+)
+MODULE_NAME = re.compile(r"['{q}]([A-Za-z0-9_.]+?)(?:\.psm1)?['{q}]".replace("{q}", chr(34)))
+
+
+def dangling_modules(root, files, hub_root):
+    """Module NAMES a consumer imports that the hub no longer ships."""
+    have = {p.stem for p in (hub_root / MODULE_DIR).glob("*.psm1")}
+    found = []
+    for rel in files:
+        if rel.startswith(FIXTURE_PREFIXES) or not rel.endswith((".ps1", ".psm1")):
+            continue
+        text = readable(root, rel)
+        if text is None:
+            continue
+        for pattern in MODULE_REFS:
+            for match in pattern.finditer(text):
+                lineno, line = line_at(text, match.start())
+                if use_kind(rel, line) != REACHED:
+                    continue
+                for name in MODULE_NAME.findall(match.group(1)):
+                    # A local fallback module is the consumer's own and is not
+                    # this inventory's business; only a name the HUB is expected
+                    # to carry can dangle here.
+                    if name in have or not name.startswith("Windows"):
+                        continue
+                    found.append("%s:%d -> %s.psm1 (module name)" % (rel, lineno, name))
     return sorted(set(found))
 
 
@@ -479,14 +527,32 @@ def qualifier_set(hub):
             hub["repo"] + "/")
 
 
+def ref_qualifiers(hub):
+    r"""The same two path qualifiers, in BOTH separator spellings.
+
+    A PowerShell caller writes `third_party\ANTfrastructure\windows\...`, and a
+    slash-only qualifier matched none of them -- so every Windows-side reference
+    to a hub path was invisible to the dangling check, which is exactly the half
+    of the fleet where three files were deleted for having "no callers".
+    """
+    out = []
+    for qualifier in qualifier_set(hub)[:2]:
+        out.append(qualifier)
+        out.append(qualifier.replace("/", "\\"))
+    return out
+
+
 def collect(data, args, hub_root, entries, work):
     """Obtain every consumer and scan it. Returns (per-consumer hits, dangling)."""
     names = [c["name"] for c in data["consumers"]]
     local = parse_local(args.local, args.local_root, names)
     qualifiers = qualifier_set(data["hub"])
     vendored = submodule_prefixes(hub_root)
-    ref_re = re.compile("(?:%s)([A-Za-z0-9_./@-]+)"
-                        % "|".join(re.escape(q) for q in qualifiers[:2]))
+    # The character class carries the backslash for the same reason the
+    # qualifiers do: a Windows path is separated by them, and stopping at the
+    # first one truncated every such reference to its first segment.
+    ref_re = re.compile(r"(?:%s)([A-Za-z0-9_./@\\-]+)"
+                        % "|".join(re.escape(q) for q in ref_qualifiers(data["hub"])))
     per_consumer = {}
     dangling = {}
     for spec in data["consumers"]:
@@ -495,7 +561,9 @@ def collect(data, args, hub_root, entries, work):
         ctx = scan_context(files, qualifiers, spec["self"])
         hits = scan_consumer(root, files, entries, ctx)
         per_consumer[spec["name"]] = (spec["self"], hits)
-        dangling[spec["name"]] = dangling_refs(root, files, hub_root, ref_re, vendored)
+        dangling[spec["name"]] = sorted(set(
+            dangling_refs(root, files, hub_root, ref_re, vendored)
+            + dangling_modules(root, files, hub_root)))
         print("   %-22s %5d tracked files, %3d entry points touched, %d dangling"
               % (spec["name"], len(files), len(hits), len(dangling[spec["name"]])))
     return per_consumer, dangling

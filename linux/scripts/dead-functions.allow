@@ -55,3 +55,17 @@ linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
 linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
 linux/scripts/lib/app-packaging.sh	app_packaging_setup_dependencies_for_container
 linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin
+
+# Consumer-facing helpers landed 2026-09-15, each the upstream half of a copy
+# one or more consumers carry today; the consumer deletions are a separate pass,
+# so the callers are outside this corpus by construction. Dispatch sites:
+# flutter_lane_prepare_env / flutter_build_web from a Flutter lane's container
+# prologue (docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh);
+# wait_for_http from the nginx and http.server smoke lanes
+# (#01-corehttp-readinesssh); webdav_download_tree from a site's content sync
+# (#01-corewebdav-downloadsh). Each row goes STALE the day a caller lands here,
+# which is the signal that the hub grew one.
+linux/scripts/01-core/http-readiness.sh	wait_for_http
+linux/scripts/01-core/webdav-download.sh	webdav_download_tree
+linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_build_web
+linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_lane_prepare_env

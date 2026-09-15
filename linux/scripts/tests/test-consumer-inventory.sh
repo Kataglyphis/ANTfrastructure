@@ -29,6 +29,11 @@ _hub() {
   # a caller, so this must still come out as named by nobody.
   printf '#!/usr/bin/env bash\necho linux/scripts/nobody-names-it.sh\n' \
     > "${d}/linux/scripts/nobody-names-it.sh"
+  # One real PowerShell module, so a module-name reference has something to
+  # resolve against: without it EVERY Windows* name would dangle and the
+  # module case below would pass for the wrong reason.
+  mkdir -p "${d}/windows/scripts/modules"
+  printf '%s\n' 'function Get-Thing { }' > "${d}/windows/scripts/modules/WindowsBuild.Common.psm1"
   # The hub's own use of one entry point, from a file that is not itself one.
   printf 'all:\n\tbash linux/scripts/hub-internal.sh\n' > "${d}/Makefile"
   git -C "${d}" init -q
@@ -37,9 +42,17 @@ _hub() {
 }
 
 # _consumer <shape> -- an external consumer checkout.
-#   plain     one qualified call, one prose mention, nothing else
-#   dangling  plus a qualified call to a hub path that does not exist
-#   commented plus the same missing path, in a COMMENT
+#   plain      one qualified call, one prose mention, nothing else
+#   dangling   plus a qualified call to a hub path that does not exist
+#   commented  plus the same missing path, in a COMMENT
+#   backslash  plus a PowerShell call spelling a missing hub path with
+#              BACKSLASHES, which is how half the fleet writes hub paths and
+#              which a slash-only qualifier could not see at all
+#   module     plus the three shapes that reach a module by NAME rather than
+#              by path -- Import-BuildModule, Resolve-BuildModule -Name, and a
+#              Join-Path onto '<Name>.psm1'. A path-only scan can never see one
+#              of these dangle, and a dangling module name fails at RUNTIME,
+#              inside a build, with "module not found".
 _consumer() {
   local d shape="$1"
   d="$(mktemp -d "${_work}/consumer.XXXXXX")"
@@ -52,6 +65,15 @@ _consumer() {
       commented) printf '# third_party/ANTfrastructure/linux/scripts/gone.sh was removed upstream\n' ;;
     esac
   } > "${d}/scripts/build.sh"
+  case "${shape}" in
+    backslash)
+      printf '%s\n' '& "third_party\ANTfrastructure\linux\scripts\gone.ps1"' > "${d}/scripts/Build-Windows.ps1" ;;
+    module)
+      { printf '%s\n' "Import-BuildModule @('WindowsBuild.Common', 'WindowsGone.Common')"
+        printf '%s\n' "Resolve-BuildModule -Name 'WindowsAlsoGone.Common'"
+        printf '%s\n' "Import-Module (Join-Path \$modulesDir 'WindowsThirdGone.Common.psm1')"
+      } > "${d}/scripts/Build-Windows.ps1" ;;
+  esac
   printf 'We use third_party/ANTfrastructure/linux/scripts/only-mentioned.sh one day.\n' \
     > "${d}/README.md"
   git -C "${d}" init -q
@@ -126,6 +148,30 @@ t_assert_contains "$(_section 'Mentioned, never reached')" "linux/scripts/only-m
 
 t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
   "the only hit on it is its own file naming itself, which is not a caller"
+
+t_case "a BACKSLASH-spelled hub path is a hub path"
+# Half the fleet writes hub paths with backslashes, and a slash-only qualifier
+# matched none of them -- so every Windows-side reference was invisible here,
+# which is the half of the fleet where three files were deleted for "no callers".
+_cb="$(_consumer backslash)"
+_run "${_h}" "${_cb}" "${_inv}"
+t_assert_eq "1" "${rc}" "a dangling backslash path must fail the run like any other"
+t_assert_contains "${OUT}" "gone.ps1" "the finding must name the path it could not resolve"
+rm -rf "${_cb}"
+
+t_case "a module reached by NAME can dangle, in all three shapes"
+# A PowerShell module is asked for by name, never by path, so a path-only scan
+# can never see one dangle -- and a dangling name fails at RUNTIME, inside a
+# build, with "module not found".
+_cm="$(_consumer module)"
+_run "${_h}" "${_cm}" "${_inv}"
+t_assert_eq "1" "${rc}" "three missing modules must fail the run"
+for _shape in WindowsGone.Common WindowsAlsoGone.Common WindowsThirdGone.Common; do
+  t_assert_contains "${OUT}" "${_shape}" "the ${_shape} reference shape is not graded"
+done
+t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsBuild.Common' || true)" \
+  "a module the hub DOES ship must not be reported; that would make the check noise"
+rm -rf "${_cm}"
 
 t_case "an executable reference to a hub path that does not exist FAILS the run"
 _run "${_h}" "$(_consumer dangling)" "${_inv}"

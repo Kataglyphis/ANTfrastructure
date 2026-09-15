@@ -226,9 +226,10 @@ runs:
 
     # The pin this action contributes. A SHA, not a tag: the consumers' renovate
     # configs promise digest pins for third-party actions, and a tag is mutable.
-    # It is NOT yet the family's only one - nothing calls this action, ANTfrastructure
-    # still pins SamKirkland directly in two workflows, and nine of the eleven
-    # fleet call sites are on mutable tags. docs/ftp-deploys.md tracks that.
+    # Since 2026-09-14 it IS the family's only one: all eleven FTP publish sites
+    # go through this action -- the hub's own two workflows included -- so the
+    # library version and its digest move here and nowhere else.
+    # docs/ftp-deploys.md holds the table and the adoption record.
     #
     # `continue-on-error` here does NOT tolerate anything: it exists so the step
     # below can turn the library's raw exit into a diagnostic that names the
