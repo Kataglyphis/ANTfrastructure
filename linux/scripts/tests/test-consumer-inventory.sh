@@ -48,6 +48,12 @@ _hub() {
 #   backslash  plus a PowerShell call spelling a missing hub path with
 #              BACKSLASHES, which is how half the fleet writes hub paths and
 #              which a slash-only qualifier could not see at all
+#   escape     plus a shell line that PRINTS an existing hub path, from a
+#              format string ending in the two characters a C escape is
+#              spelled with -- which are not a path separator
+#   fixture    a consumer-layout TEST tree naming a missing hub path with
+#              backslashes; a fixture path that must not exist is the fixture
+#              doing its job, in any repo's directory naming
 #   module     plus the three shapes that reach a module by NAME rather than
 #              by path -- Import-BuildModule, Resolve-BuildModule -Name, and a
 #              Join-Path onto '<Name>.psm1'. A path-only scan can never see one
@@ -63,11 +69,17 @@ _consumer() {
     case "${shape}" in
       dangling)  printf 'bash third_party/ANTfrastructure/linux/scripts/gone.sh\n' ;;
       commented) printf '# third_party/ANTfrastructure/linux/scripts/gone.sh was removed upstream\n' ;;
+      escape)    printf '%s\n' "printf '  third_party/ANTfrastructure/linux/scripts/called-by-consumer.sh\\n'" ;;
     esac
   } > "${d}/scripts/build.sh"
   case "${shape}" in
     backslash)
       printf '%s\n' '& "third_party\ANTfrastructure\linux\scripts\gone.ps1"' > "${d}/scripts/Build-Windows.ps1" ;;
+    fixture)
+      mkdir -p "${d}/scripts/windows/tests"
+      printf '%s\n' \
+        "Should Match ([regex]::Escape('third_party\\ANTfrastructure\\windows\\scripts\\modules\\NoSuchModule.psm1'))" \
+        > "${d}/scripts/windows/tests/Resolve-BuildModule.Tests.ps1" ;;
     module)
       { printf '%s\n' "Import-BuildModule @('WindowsBuild.Common', 'WindowsGone.Common')"
         printf '%s\n' "Resolve-BuildModule -Name 'WindowsAlsoGone.Common'"
@@ -114,6 +126,19 @@ _run() {
   rc=$?
 }
 
+# _clean <shape> <needle> <why> -- a consumer the gate must find NOTHING in.
+# Both callers below assert the same two things about a different false
+# positive, so the block has one owner rather than a twin.
+_clean() {
+  local shape="$1" needle="$2" why="$3" c
+  c="$(_consumer "${shape}")"
+  _run "${_h}" "${c}" "${_inv}"
+  t_assert_eq "0" "${rc}" "${why}; output was: ${OUT}"
+  t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F "${needle}" || true)" \
+    "the gate reported ${needle}, which is not a broken call"
+  rm -rf "${c}"
+}
+
 # The rows of one report section, which is where the verdict lives: the same
 # entry point appears in every report, only under a different heading.
 _section() { sed -n "/^## $1 --/,/^## .* --/p" "${REPORT}"; }
@@ -158,6 +183,24 @@ _run "${_h}" "${_cb}" "${_inv}"
 t_assert_eq "1" "${rc}" "a dangling backslash path must fail the run like any other"
 t_assert_contains "${OUT}" "gone.ps1" "the finding must name the path it could not resolve"
 rm -rf "${_cb}"
+
+t_case "a printed hub path is a path, and the escape after it is not a segment"
+# ref_re carries the backslash so a Windows-spelled path is visible at all --
+# and that made a printf format's trailing escape read as one more segment: the
+# gate invented `shared-assets.manifest` + `/n` and reported a file that is
+# right there as a dangling reference, on the hub's own run-lint-gates.sh. A
+# reference spelled with slashes ENDS at the first backslash.
+_clean escape 'called-by-consumer.sh/n' \
+  "the printed path exists; only the C escape after it is new"
+
+t_case "a consumer's TEST tree is a fixture tree, whatever the layout calls it"
+# The hub writes linux/scripts/tests/, a consumer writes scripts/windows/tests/,
+# and both build fake trees naming paths that must NOT exist. A negative test
+# asserting that resolving 'NoSuchModule' names the locations it searched is
+# the fixture doing its job; reading it as a broken call is how the two hub
+# prefixes failed the whole fleet the moment backslashes became visible.
+_clean fixture 'NoSuchModule' \
+  "a fixture path in a consumer's test tree must not fail the run"
 
 t_case "a module reached by NAME can dangle, in all three shapes"
 # A PowerShell module is asked for by name, never by path, so a path-only scan
