@@ -7,6 +7,57 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-15 (later) — the four red lanes: one this batch caused, three it did not
+
+Separating cause from coincidence first, because the batch above is 27 commits
+and three of these lanes were already red before it.
+
+**Consumer Inventory — NEW, this batch.** Green at the pre-batch tip
+(run 34816752742 on `4f6f516a`), red at `604294e2` (run 35015536117). The batch
+taught `ref_re` the backslash so a Windows-spelled hub path is visible at all,
+and that widened capture then swallowed things that are not path separators:
+
+* The hub's own `run-lint-gates.sh:173` prints a hub path from a format string
+  ending `manifest\n`. That trailing C escape read as one more path segment,
+  so the gate reported `shared-assets.manifest/n` — a file that is right
+  there — as a dangling reference. A reference SPELLED with slashes now ends
+  at the first backslash; one spelled with backslashes is unchanged, and still
+  caught.
+* BeschleunigerBallett's `scripts/windows/tests/Resolve-BuildModule.Tests.ps1`
+  asserts that resolving `NoSuchModule` names both locations it searched. That
+  is a fixture path that must NOT exist, which `FIXTURE_PREFIXES` already
+  excused — for `linux/scripts/tests/` and `windows/scripts/tests/` only. A
+  consumer spells the same directory `scripts/windows/tests/`. The rule is now
+  a path SEGMENT, so it holds in every repo's layout.
+
+Both are false positives with a test each; a dangling backslash path outside a
+test tree still fails the run, which is the arm the batch added.
+
+**Composite actions self-test — PRE-EXISTING.** Red on `4667b00c`
+(run 34683896775) and `8203965d` (run 34681555187) before the batch, with the
+same message: the step asserted `ACTION_DIRS=11` and the container reported 12.
+`deploy-over-ftp` made it twelve on 2026-09-10. The literal was a claim about
+the repository wearing the clothes of a claim about the mount; the step now
+counts the host checkout and compares, which cannot rot and also catches a
+miscount on the host side.
+
+**Ubuntu 26.04 — PRE-EXISTING.** Red at the pre-batch tip on `4f6f516a`
+(run 34722813887): preflight's mutation gate, one survivor,
+`doc-links.tracked-output-floor`. The mutation deletes the static floor from
+under a HAPPY git, and the test that should have caught it measured the floor
+against what is on disk — and inside the mutation mirror no output path is on
+disk, so `floor` was empty and every comparison was `set() == set()`. The
+git-free arm beside it had already been moved to the synthetic probe list for
+exactly this reason; the tracked arm now uses it too, and the mutation bites.
+
+**SBOM — PRE-EXISTING, and not a test problem.** Red on every scheduled run:
+`4f6f516a` (34808919489, 2026-09-14), `2a4e8a9b` (34086038781, 2026-09-07),
+`6a9fd5fb` (33359833450, 2026-08-31). All three arches die the same way, mid
+layer: `unable to populate layer cache ... disk quota exceeded`. `registry:`
+streams rather than pulling into a daemon, but syft still caches layers under
+`TMPDIR`, and a cross image does not fit on the runner's root volume. The cache
+moves to `/mnt`. Nothing about what is scanned changes.
+
 ## 2026-09-15 — the audit's second hub batch: the owner's decisions, executed
 
 The 2026-09-14 family audit left 33 open items against this repository and
