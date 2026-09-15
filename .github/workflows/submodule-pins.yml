@@ -75,9 +75,17 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: submodule-pins-${{ github.ref }}
-  cancel-in-progress: true
+# NO workflow-level `concurrency` here, deliberately, since 2026-09-15. This file
+# is a reusable workflow, and every consumer that called it failed before a
+# single job started, with GitHub's bare "this run likely failed because of a
+# workflow file issue" and zero jobs to inspect: OrchestrANT, OmniAccelerANT,
+# AccelerANTgine, OxidANT and jotrockenmitlocken, all five at once, the first
+# time they pushed a `uses:` of this lane. The hub's three other reusable
+# lanes - lint-gates.yml, python-ci-linux.yml, python-ci-windows.yml - carry no
+# such block and their callers start fine, which is the measurement that
+# isolated it. Concurrency belongs to the CALLER anyway: it is the caller that
+# knows which of its own runs may cancel each other, and every consumer copy
+# already declares its own group.
 
 jobs:
   pins:
