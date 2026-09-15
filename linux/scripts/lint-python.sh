@@ -69,6 +69,17 @@ trap 'rm -f "${_RUFF_OUT}"; rm -rf "${_EMB_DIR:-}"' EXIT
 # --root is parsed and resolved by the contract's one owner; what comes back is
 # the tree to grade. The remaining arguments go back into "$@", so the staged /
 # pre-commit call shape below is untouched.
+# The embedded-Python extractor and the source-namer below are Python, and
+# plain `python3` is the Microsoft Store stub on a Windows Git Bash host: it
+# prints an install hint and exits non-zero, which silently turned both steps
+# into no-ops (the extractor's failure is swallowed by `2>/dev/null`, and the
+# namer would have printed nothing). One owner answers it.
+# docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
+# shellcheck source=01-core/python-probe.sh
+. "${_core}/python-probe.sh"
+preflight_python_require lint-python.sh || exit 1
+_LINT_PY="${PREFLIGHT_PYTHON}"
+
 # shellcheck source=01-core/lint-root.sh
 . "${_core}/lint-root.sh"
 lint_root_begin "${REPO_ROOT}" "$@" || exit 1
@@ -118,7 +129,8 @@ if [ "$#" -eq 0 ]; then
     while IFS= read -r f; do _EMB_SH+=("${f}"); done \
       < <(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f)
   fi
-  if python3 linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  if ${_LINT_PY} linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
        ${_EMB_SH[@]+"${_EMB_SH[@]}"} > "${_EMB_MAP}" 2>/dev/null; then
     while IFS= read -r f; do PY_FILES+=("${f}"); done \
       < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
@@ -130,7 +142,8 @@ fi
 # extractor's map turns the pair back into the shell file and its real line.
 # docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 _name_sources() {
-  python3 - "${_EMB_MAP:-/dev/null}" "$1" <<'EMBPY'
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_PY} - "${_EMB_MAP:-/dev/null}" "$1" <<'EMBPY'
 import re
 import sys
 
