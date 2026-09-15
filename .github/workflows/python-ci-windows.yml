@@ -4,6 +4,11 @@
 # WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
 # inside the winamd64 image and uploads whatever it produced.
 #
+# TWO INDEPENDENT JOBS, each with its own switch: the container build
+# (`build-python-package`, default true) and the PowerShell lint
+# (`lint-powershell`, default false). Either runs without the other, which is
+# what lets a repo with no Python package take the lint gate alone.
+#
 # Twin of python-ci-linux.yml. Before this existed the two callers each carried a
 # ~70-line copy differing on 20 lines, and none of those differences were a
 # deliberate policy choice - they were drift. Where the copies disagreed this
@@ -83,12 +88,29 @@ on:
           ./dist/
           ./logs/
           ./docs/test_results/
+      build-python-package:
+        description: >-
+          Run the container build job. DEFAULT TRUE, so every caller that
+          predates this input is byte-for-byte unaffected.
+
+          `false` takes the lint job below ALONE. Until 2026-09-15 the build job
+          carried no `if:`, so `lint-powershell: true` also bought a winamd64
+          image pull, a run of `build-script` as a Python package build, a
+          `./dist/` upload and a GHCR_PAT - and OxidANT, which measured the lint
+          job as byte-for-byte its own, still had to keep that job: it is a Rust
+          crate with no Python package, and its Windows container build is
+          rust_windows2025.yml. Trading a two-minute lint for a second container
+          build was not the trade the input was offering.
+        required: false
+        type: boolean
+        default: true
       lint-powershell:
         description: >-
           Run ANTfrastructure's PowerShell lint gate (mandatory parse pass, AST
           traps, PSScriptAnalyzer) over this repo's PowerShell tree, as a second
           job on the same Windows runner. Default false, so every existing caller
-          is unchanged.
+          is unchanged. Pair it with `build-python-package: false` to run the
+          lint and nothing else.
 
           It is a SEPARATE JOB and not a step of the build above, for two
           reasons: it must run even when the build fails (a syntax error in the
@@ -120,18 +142,41 @@ on:
         default: scripts
     secrets:
       GHCR_PAT:
-        description: Token used to pull the build image from ghcr.
-        required: true
+        description: >-
+          Token used to pull the build image from ghcr. `required: false` since
+          2026-09-15: a caller that runs the lint alone
+          (`build-python-package: false`) pulls no image, and a required secret
+          is refused at call time - it would have made the lint unreachable for
+          exactly the callers the gate was added for. The build job asserts it
+          in its first step, so a caller that forgets it is told which input it
+          wanted.
+        required: false
 
 defaults:
   run:
     shell: pwsh
 
 jobs:
+  # ON unless the caller passes `build-python-package: false`, which is how the
+  # lint job below is taken alone. The gate is here and not on the lint job
+  # because the two are independent: either may run without the other.
   build-test-python-package-on-windows:
+    if: ${{ inputs.build-python-package }}
     runs-on: ${{ inputs.runs-on }}
 
     steps:
+      # GHCR_PAT is `required: false` so a lint-only caller need not own a
+      # registry token. THIS job does need one, and an empty secret otherwise
+      # surfaces inside the prologue action as a `docker login` failure that
+      # names the registry rather than the missing input.
+      - name: Require GHCR_PAT for the container build
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          if (-not $env:GHCR_PAT) {
+            throw "GHCR_PAT is empty: this job pulls ${{ inputs.image }} from ghcr.io. Pass the secret, or call this lane with build-python-package: false to take the PowerShell lint alone."
+          }
+
       # ANTfrastructure's shared Windows prologue: long paths, checkout, the
       # data-root move onto D:, disk cleanup, ghcr login, pull, disk report.
       # What stood here was a step-for-step copy of that action - same seven

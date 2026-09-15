@@ -6705,5 +6705,29 @@
     "replace": "Install-Module PSScriptAnalyzer -Force -Scope CurrentUser",
     "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
     "why": "an unpinned analyzer lets a new release add a rule that fails the lane with no commit to blame"
+  },
+  {
+    "id": "windows-lane.python-build-job-is-gated",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "    if: ${{ inputs.build-python-package }}",
+    "replace": "    if: ${{ always() }}",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "without the gate the build job runs for every caller, so the PowerShell lint cannot be taken alone: a repo with no Python package would trade a two-minute lint for a winamd64 image pull, a package build and a ./dist/ upload, which is why one consumer kept a hand-written copy of a job it had measured as identical"
+  },
+  {
+    "id": "windows-lane.python-build-gate-defaults-on",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "        default: true",
+    "replace": "        default: false",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "an input that gates the build must default ON, or every caller written before it silently stops building and the lane goes green having done nothing"
+  },
+  {
+    "id": "windows-lane.build-job-asserts-its-ghcr-token",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "          if (-not $env:GHCR_PAT) {",
+    "replace": "          if ($false) {",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "GHCR_PAT is required: false so a lint-only caller need not own a registry token; the job that DOES need one must then say so itself, or an empty secret surfaces four steps later as a ghcr docker login failure that names the registry instead of the missing input"
   }
 ]

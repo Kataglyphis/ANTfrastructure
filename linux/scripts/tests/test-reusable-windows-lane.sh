@@ -26,8 +26,11 @@ sys.path.insert(0, '${ROOT}/linux/scripts')
 import verify_workflow_conventions as V
 lane = V.load_yaml(pathlib.Path('${LANE}'))
 jobs = V.value(lane, 'jobs') or {}
-inputs = V.value(V.value(V.value(lane, 'on'), 'workflow_call'), 'inputs') or {}
+call = V.value(V.value(lane, 'on'), 'workflow_call')
+inputs = V.value(call, 'inputs') or {}
+secrets = V.value(call, 'secrets') or {}
 job = V.value(jobs, 'lint-powershell')
+build = V.value(jobs, 'build-test-python-package-on-windows')
 steps = V.value(job, 'steps') if job else []
 raw = pathlib.Path('${LANE}').read_text(encoding='utf-8')
 def run_text():
@@ -92,6 +95,38 @@ t_case "the gate is invoked with -Path <lint-path> AND -FailOnAnalyzer"
 # still exits 0, which is a check that cannot fail. Both consumers that
 # hand-wrote this job reached the same conclusion on their own.
 t_assert_eq "True" "$(_raw_has "pwsh -NoProfile -File \$gate -Path '\${{ inputs.lint-path }}' -FailOnAnalyzer")"
+
+# THE BUILD HALF, for the same reason the lint half is here: until the build job
+# took an `if:` the lint could not be had without it, so OxidANT -- a Rust crate
+# with no Python package, whose Windows container build is a different workflow
+# -- kept its own copy of a job it had measured as byte-for-byte identical.
+t_case "build-python-package is a boolean that DEFAULTS ON"
+# The whole caller-compatibility argument: a lane whose build job can be turned
+# off must still build for every caller written before the switch existed.
+t_assert_eq "True" "$(_q "'build-python-package' in inputs")"
+t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'build-python-package'),'type')")"
+t_assert_eq "true" "$(_q "V.value(V.value(inputs,'build-python-package'),'default')")"
+t_assert_eq "false" "$(_q "V.value(V.value(inputs,'build-python-package'),'required')")"
+
+t_case "the build job is GATED on it, which is what makes the lint takeable alone"
+t_assert_eq "True" "$(_q "build is not None")"
+t_assert_contains "$(_q "V.value(build,'if')")" "inputs.build-python-package"   "with no if: a caller that wants only the lint also buys an image pull, a package build and a ./dist/ upload"
+
+t_case "neither job waits for the other: both switches are independent"
+t_assert_eq "None" "$(_q "V.value(build,'needs')")"
+t_assert_eq "None" "$(_q "V.value(job,'needs')")"
+
+t_case "GHCR_PAT is NOT required, so a lint-only caller need not own a token"
+# A required secret is refused at call time, which would have made the lint
+# unreachable for exactly the callers `build-python-package: false` is for.
+t_assert_eq "True" "$(_q "'GHCR_PAT' in secrets")"
+t_assert_eq "false" "$(_q "V.value(V.value(secrets,'GHCR_PAT'),'required')")"
+
+t_case "the build job asserts the token it does need, and names the way out"
+# Optional at the lane boundary must not mean silent in the job that needs it:
+# without this the empty secret surfaces as a ghcr `docker login` failure.
+t_assert_eq "True" "$(_raw_has 'if (-not $env:GHCR_PAT) {')"
+t_assert_eq "True" "$(_raw_has 'build-python-package: false to take the PowerShell lint alone')"
 
 t_case "a missing submodule fails with a message that names the fix"
 # `pwsh -File <absent>` reports its own error about a path, which reads as a
