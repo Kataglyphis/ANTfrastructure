@@ -154,6 +154,44 @@ pointed the gate at. It is a second job on the same runner, defaulted OFF, and
 deliberately does not `needs:` the build — a syntax error in the build scripts
 is exactly when the lint is worth having.
 
+### The third pass: two gaps the consumers measured in what shipped yesterday
+
+Both were found by a consumer running the new code, and both are the same
+failure: a hub helper that is *almost* the consumer's, so the consumer keeps its
+own copy and the duplication the upstreaming was for survives.
+
+**`app_packaging_require_flatpak_tools` requires ostree.** It checked `flatpak`
+and `flatpak-builder` only, while the verdict both flatpak packagers ask is
+`app_packaging_assert_flatpak_committed`'s `ostree refs`. Debian's and Ubuntu's
+`flatpak` package depends on libostree and **not** on the ostree CLI, so a dev
+box with both declared tools present passed the check and then failed at the
+verdict — `is not in <repo>` over an export that had succeeded. AccelerANTgine
+measured exactly that and kept its local `ensure_flatpak_tools` with ostree
+added rather than adopt the hub's; that local check can go now (its apt /
+`AUTO_INSTALL_FLATPAK` half is a separate, deliberate difference and stays).
+Each missing tool is reported with the reason the packaging step needs it, and
+all of them at once, because one `apt-get` installs the set.
+
+**`python-ci-windows.yml` gains `build-python-package`.** The `lint-powershell`
+input added yesterday was unreachable for the consumer it was written for:
+`build-test-python-package-on-windows` carried no `if:`, so turning the lint on
+also bought a winamd64 image pull, a Python package build, a `./dist/` upload
+and a `GHCR_PAT`. OxidANT is a Rust crate with no Python package — it measured
+the hub job as byte-for-byte its own and still had to keep it. The build job is
+gated on the new input, which **defaults true** so every existing caller is
+unchanged, and `GHCR_PAT` is `required: false`, because a required secret is
+refused at call time and would have kept the lint unreachable for exactly the
+callers the gate is for. The build job asserts the token in its own first step,
+so a caller that wanted the build and forgot the secret is told which input it
+missed instead of failing inside a `docker login`. OxidANT's `powershell-lint`
+job can become a `uses:` now — the retirement condition its comment records.
+
+Ten assertions over four cases join `test-app-packaging-flatpak.sh` and twelve
+over five join `test-reusable-windows-lane.sh`, with six mutations (three per
+gap) proven to bite. No budget moved: the only derived number that changed is the mutation
+manifest, 835 -> 841 entries over the same 91 distinct test commands, written by
+`test-doc-numbers.sh --update`.
+
 ### Gates and hooks
 
 One Python-probe owner for `lint-python.sh` and the versioned hooks: eight bare
