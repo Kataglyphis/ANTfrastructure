@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# pre-commit — the consumer-facing hook, reached BY REFERENCE, never copied.
+#
+# Install it with one config line, from the consumer's repo root:
+#
+#   git config core.hooksPath third_party/ANTfrastructure/shared/linux/templates/git-hooks
+#
+# That is the whole adoption. There is deliberately NO shared-assets.manifest
+# row and no sync step: a copied hook is a fork that nobody re-syncs, and a hook
+# is the one file where a stale copy is invisible — it keeps passing.
+#
+# Everything this runs lives upstream in run-lint-gates.sh, so a new gate
+# reaches every consumer on the next submodule pin bump, with no per-repo edit.
+# The hub's OWN hooks are a different pair (linux/host-config/git-hooks): they
+# gate this repository's internals (mutations, the shellcheck ratchet) and are
+# not for consumers.
+#
+# Bypass: git commit --no-verify — then run the gates before pushing.
+# docs/adopting-in-a-new-project.md
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
