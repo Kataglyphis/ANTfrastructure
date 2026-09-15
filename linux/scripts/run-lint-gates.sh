@@ -210,12 +210,58 @@ _lint_gates_interpreter() {
 # seeds them. verify_stdout_returns has no freeze file at all.
 _LINT_GATES_RATCHET_GATES=(verify_stdout_returns verify_masked_assignments verify_trailing_conditional
   verify_comment_size verify_code_size verify_code_complexity verify_dead_functions verify_shellcheck_warnings)
+# The docs gate is hub-relative rather than a bare stem: it lives under
+# docs/scripts/, not beside the eight. It has NO freeze file and nothing to
+# seed, so it is safe the first time a consumer turns the flag on -- and it runs
+# even when the tree carries no shell at all, which is exactly the Dart and
+# Python consumers whose READMEs nothing has ever graded.
+_LINT_GATES_RATCHET_DOC_GATES=(docs/scripts/verify_doc_links.py)
+# Rule 2 of the scan-root contract -- "an empty scan is a decision, never a
+# default" -- is the CALLER's to make, and the aggregator is the caller. A
+# consumer with no tracked shell at all (a pure Dart or Python repo) is a
+# legitimate empty scan, not a broken scope, so this answers `allow` ONCE here
+# rather than letting eight gates report green over nothing each. The gates keep
+# their own default; `allow` is not a property of the gate, it is a property of
+# who pointed it at this tree. Exit 0 = grade, 1 = nothing to grade, 2 = the
+# root itself is unusable (gate_scope.die already said why).
+_lint_gates_ratchet_scope() {
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_GATES_PY} - "${_LINT_GATES_DIR}" "${_LINT_GATES_ROOT}" <<'RATCHETSCOPE'
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import gate_scope  # noqa: E402
+
+ROOT = sys.argv[2]
+try:
+    RELS = gate_scope.tracked(ROOT, ["*.sh"])
+except gate_scope.ScopeError as exc:
+    sys.exit(gate_scope.die(exc))
+sys.exit(0 if gate_scope.assert_non_empty(RELS, ROOT, ["*.sh"], "allow", "ratchets") else 1)
+RATCHETSCOPE
+}
+
 _lint_gates_ratchet() {
   local gate rc=0
   _lint_gates_interpreter || return 1
+  _lint_gates_ratchet_scope
+  local shell_scope="$?"
+  if [ "${shell_scope}" -eq 2 ]; then
+    return 1
+  fi
+  for gate in "${_LINT_GATES_RATCHET_DOC_GATES[@]}"; do
+    _lint_gates_hub "${gate}" || return 1
+    printf '== %s --root %s ==\n' "${gate##*/}" "${_LINT_GATES_ROOT}"
+    # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+    ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}" || rc=1
+  done
+  if [ "${shell_scope}" -eq 1 ]; then
+    return "${rc}"
+  fi
   for gate in "${_LINT_GATES_RATCHET_GATES[@]}"; do
     _lint_gates_hub "linux/scripts/${gate}.py" || return 1
     printf '== %s --root %s ==\n' "${gate}" "${_LINT_GATES_ROOT}"
+    # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
     ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}" || rc=1
   done
   return "${rc}"

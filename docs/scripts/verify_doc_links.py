@@ -50,7 +50,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and main()
+# re-points the second one from --root. They differ the moment a consumer runs
+# it out of third_party/ANTfrastructure, where __file__ is the HUB: a gate that
+# never asked graded this repo and reported green over the consumer's own pages.
+# docs/code-quality-tooling.md#the-scan-root-contract
+HUB_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = HUB_ROOT
 DOCS = REPO_ROOT / "docs"
 SECTION_SIGN = "§"
 
@@ -86,7 +92,6 @@ CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__", ".pytest_cache", "node_modu
 # test-doc-links.sh pins that equality, so a new output directory fails loudly
 # here instead of rotting the gate.
 UNTRACKED_OUTPUT = (
-    "linux/llm-stack/benchmark_results",
     "linux/llm-stack/.env",
     "linux/llm-stack/ollama-binary.tar.zst",
 )
@@ -96,11 +101,12 @@ def _ignored_paths(paths: list) -> set:
     """Paths git ignores — build output and captured data, not source.
 
     The gate scans every file under the code trees for `docs/*.md` pointers.
-    That is right for source and wrong for generated data: a benchmark result
-    under linux/llm-stack/benchmark_results/ contains MODEL OUTPUT, and a model
-    that writes a markdown link to some invented page under the docs directory
-    is not making a repo reference. Two such lines failed the gate with findings
-    nobody could act on. (The example is deliberately paraphrased rather than
+    That is right for source and wrong for generated data: the benchmark results
+    that used to live under linux/llm-stack/ held MODEL OUTPUT, and a model that
+    writes a markdown link to some invented page under the docs directory was not
+    making a repo reference. Two such lines failed the gate with findings nobody
+    could act on. (The lab moved to OrchestrANT/benchmarks on 2026-09-12; the
+    mechanism stays because the next output tree needs no second decision.) (The example is deliberately paraphrased rather than
     quoted — quoting it here made this very docstring trip the gate.)
 
     Asking git is better than a hand-kept skip list: the same .gitignore that
@@ -157,8 +163,9 @@ CODE_POINTER = re.compile(
     r"(?<![\w/.-])((?:\.\./)*docs/[A-Za-z0-9._/-]+\.md)(?:#([A-Za-z0-9_-]+))?"
 )
 
-sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
 from quality_allow import load_keys  # noqa: E402
+import gate_scope  # noqa: E402
 
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.MULTILINE)
@@ -218,9 +225,25 @@ class Doc:
         )
 
 
+def _is_hub() -> bool:
+    return gate_scope.is_hub(str(REPO_ROOT), str(HUB_ROOT))
+
+
 def collect() -> dict[str, Doc]:
-    paths = [REPO_ROOT / n for n in ROOT_DOCS]
-    paths += sorted(DOCS.rglob("*.md"))
+    """The hub's curated page set, or -- under --root -- every tracked page.
+
+    The hub's set is ROOT_DOCS plus docs/**; a consumer has no such curation to
+    inherit and no reason to hide a page from the graph, so the scan-root
+    contract answers instead. That is what puts a consumer's own README (and,
+    say, OrchestrANT's benchmarks/README.md) into the graph at all.
+    """
+    if _is_hub():
+        paths = [REPO_ROOT / n for n in ROOT_DOCS]
+        paths += sorted(DOCS.rglob("*.md"))
+    else:
+        paths = [REPO_ROOT / rel
+                 for rel in gate_scope.tracked(str(REPO_ROOT), ["*.md", "*.rst"])
+                 if rel.endswith(".md")]
     docs: dict[str, Doc] = {}
     for p in paths:
         if not p.is_file() or "_build" in p.parts or ".venv" in p.parts:
@@ -336,10 +359,20 @@ def check_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
 
 def code_files() -> list[Path]:
     out: list[Path] = []
+    if not _is_hub():
+        # A consumer has no CODE_SCAN layout to assume, and assuming one is how
+        # a gate silently grades nothing. Tracked files, minus the suffixes the
+        # hub path skips for the same reason.
+        return [REPO_ROOT / rel
+                for rel in gate_scope.tracked(str(REPO_ROOT), ["*"])
+                if not rel.endswith(CODE_SKIP_SUFFIXES)
+                and not (CODE_SKIP_PARTS & set(Path(rel).parts))]
     for name in CODE_SCAN:
         root = REPO_ROOT / name
         if root.is_file():
             out.append(root)
+            continue
+        if not root.is_dir():
             continue
         for f in sorted(root.rglob("*")):
             if f.is_file() and f.suffix not in CODE_SKIP_SUFFIXES and not (
@@ -475,7 +508,12 @@ def check_index_coverage(docs: dict[str, Doc], findings: list[str]) -> int:
     index_rst = DOCS / "index.rst"
     index_md = DOCS / "INDEX.md"
     if not index_rst.is_file() or not index_md.is_file():
-        findings.append("[index]   docs/index.rst or docs/INDEX.md is missing")
+        # Required of the hub, whose INDEX.md is the map the whole doc system
+        # rests on. A consumer is not obliged to run Sphinx or keep an index at
+        # all, and inventing that obligation here would fail every consumer on
+        # its first run over something this gate was not asked about.
+        if _is_hub():
+            findings.append("[index]   docs/index.rst or docs/INDEX.md is missing")
         return 0
     toctree = {
         line.strip()
@@ -499,13 +537,30 @@ def check_index_coverage(docs: dict[str, Doc], findings: list[str]) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Verify docs cross-references.")
     ap.add_argument("--quiet", action="store_true", help="only print on failure")
+    ap.add_argument("--root", metavar="DIR",
+                    help="grade this checkout instead of the gate's own repo")
     args = ap.parse_args()
 
-    if not DOCS.is_dir():
+    global REPO_ROOT, DOCS, HEADER_ALLOW
+    try:
+        REPO_ROOT = Path(gate_scope.resolve_root(args.root, str(HUB_ROOT)))
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
+    DOCS = REPO_ROOT / "docs"
+    if not _is_hub():
+        # The freeze file follows the root, like every other ratchet: a
+        # consumer's frozen pointers belong in the consumer's diff. An absent
+        # one means "nothing frozen", which is the honest starting state.
+        HEADER_ALLOW = REPO_ROOT / HEADER_ALLOW.name
+
+    if _is_hub() and not DOCS.is_dir():
         print("ERROR: docs/ not found -- run from the repo (or fix REPO_ROOT)", file=sys.stderr)
         return 2
 
-    docs = collect()
+    try:
+        docs = collect()
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
     if not docs:
         print("ERROR: no Markdown found to check", file=sys.stderr)
         return 2

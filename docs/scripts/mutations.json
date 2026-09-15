@@ -5867,7 +5867,7 @@
     "timeout": 900
   },
   {
-    "id": "ci-image-ref.action-default-drifted",
+    "id": "workflow-lint.action-default-drifted",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "        elif value != refs[platform]:",
     "replace": "        elif False:",
@@ -5875,7 +5875,7 @@
     "why": "check A: each of the four container actions' `image` default is COMPARED with the ref versions.env composes FOR THAT ACTION'S PLATFORM; without the comparison a canonical-but-wrong default (the Windows ref on a Linux action) passes every other check and four copies drift away from the one owner"
   },
   {
-    "id": "ci-image-ref.action-default-required",
+    "id": "workflow-lint.action-default-required",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "        if value is None:",
     "replace": "        if False:",
@@ -5883,7 +5883,7 @@
     "why": "an `image` input with no default is not 'nothing to compare': every caller then re-types the tag, which is where the copies drift apart"
   },
   {
-    "id": "ci-image-ref.non-canonical-literal-fails",
+    "id": "workflow-lint.non-canonical-literal-fails",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "            if tag in canonical_tags:\n                continue",
     "replace": "            if True:\n                continue",
@@ -5891,7 +5891,7 @@
     "why": "check B: every kataglyphis_beschleuniger:<tag> literal under .github/ must name one of the two canonical tags -- an arch-suffixed or stale ':latest' has to fail here rather than at docker pull in someone else's lane"
   },
   {
-    "id": "ci-image-ref.call-site-platform-checked",
+    "id": "workflow-lint.call-site-platform-checked",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "            if found and found.group(1) != refs[pending[0]].rsplit(\":\", 1)[1]:",
     "replace": "            if False:",
@@ -5899,7 +5899,7 @@
     "why": "check C is the half check B cannot do: both tags are canonical, so a Linux action handed ':winamd64' passes B and runs the wrong operating system"
   },
   {
-    "id": "ci-image-ref.no-yaml-is-a-refusal",
+    "id": "workflow-lint.no-yaml-is-a-refusal",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "    if not files:",
     "replace": "    if False:",
@@ -6441,5 +6441,85 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-renovate-exit.sh",
     "why": "the copies are named 0 and 1 because restore_targets indexes them by position; with the mapping only in a shell array, a kill left a directory of anonymous files and nothing to say where any of them belonged"
+  },
+  {
+    "id": "code-size.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_code_size.py",
+    "find": "        root = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        root = os.path.abspath(ROOT)",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "code-complexity.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_code_complexity.py",
+    "find": "        root = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        root = os.path.abspath(ROOT)",
+    "test": "bash linux/scripts/tests/test-code-complexity.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "masked-decls.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_masked_assignments.py",
+    "find": "        root = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        root = os.path.abspath(ROOT)",
+    "test": "bash linux/scripts/tests/test-masked-assignments.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "trailing-conditional.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_trailing_conditional.py",
+    "find": "        root = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        root = os.path.abspath(ROOT)",
+    "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "dead-functions.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_dead_functions.py",
+    "find": "        GRADED = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        GRADED = os.path.abspath(ROOT)",
+    "test": "bash linux/scripts/tests/test-dead-functions.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "stdout-returns.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_stdout_returns.py",
+    "find": "        root = Path(gate_scope.resolve_root(args.root, str(ROOT)))",
+    "replace": "        root = ROOT",
+    "test": "bash linux/scripts/tests/test-stdout-returns.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "shellcheck-warnings.root-argument-is-the-tree",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "        root = gate_scope.resolve_root(args.root, ROOT)",
+    "replace": "        root = os.path.abspath(ROOT)",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "doc-links.root-argument-is-the-tree",
+    "target": "docs/scripts/verify_doc_links.py",
+    "find": "        REPO_ROOT = Path(gate_scope.resolve_root(args.root, str(HUB_ROOT)))",
+    "replace": "        REPO_ROOT = HUB_ROOT",
+    "test": "bash linux/scripts/tests/test-doc-links.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "doc-dupes.root-argument-is-the-tree",
+    "target": "docs/scripts/verify_doc_dupes.py",
+    "find": "        REPO_ROOT = Path(gate_scope.resolve_root(args.root, str(HUB_ROOT)))",
+    "replace": "        REPO_ROOT = HUB_ROOT",
+    "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "code-dupes.root-argument-is-the-tree",
+    "target": "docs/scripts/verify_code_dupes.py",
+    "find": "        root = Path(gate_scope.resolve_root(arg, str(HUB_ROOT)))",
+    "replace": "        root = HUB_ROOT",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+    "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
   }
 ]

@@ -5,13 +5,17 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 GATE="${TESTS_DIR}/../../../docs/scripts/verify_doc_dupes.py"
+PY="${PREFLIGHT_PYTHON:-python3}"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 mkdir -p "${_work}/docs/scripts" "${_work}/linux/scripts"
 cp "${GATE}" "${_work}/docs/scripts/"
-cp "${TESTS_DIR}/../quality_allow.py" "${_work}/linux/scripts/"
+# gate_scope.py too: the gate takes --root since 2026-09-15 and imports it at
+# module level, so a fixture without it fails with a traceback, not a verdict.
+cp "${TESTS_DIR}/../quality_allow.py" "${TESTS_DIR}/../gate_scope.py" "${_work}/linux/scripts/"
 : > "${_work}/docs/scripts/doc-dupes.allow"
 
 # One paragraph, long enough to carry shingles, plus a reworded twin.
@@ -90,5 +94,11 @@ t_case "an allowlist row whose overlap is GONE fails as stale"
 rm -f "${_work}/${_D}/beta.md"
 t_assert_eq "1" "$(_rc)" "a row that no longer measures anything is cover for the next copy"
 t_assert_contains "$(_gate)" "no longer overlaps"
+
+# The --root arm. ${_D} hides the fixture page names from doc-links.
+t_case "--root grades the named tree, and its budget lives under that root"
+_D='docs/'
+_root_para="$(printf 'The runtime image ships a cross built toolchain for every architecture we\ntarget and the media layer is rebuilt on top of it whenever a pin moves so the\nresulting artifacts stay reproducible across the whole fleet of machines.')"
+gate_root_pair_arm "${PY}" "${GATE}" "${_root_para}" "${_D}one.md" "${_D}two.md" doc-dupes.allow
 
 t_summary

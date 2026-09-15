@@ -1883,6 +1883,14 @@ stage sources it, so counting its 39 keys would invent an owner for every path
 knob. `tests/test-env-knobs.sh` pins both directions, and a mutation each way
 holds them.
 
+**The prefix says who owns a knob**, and the vocabulary is family-wide:
+`KATAGLYPHIS_*` is a build/tree knob shared by every repo, `ANTFRASTRUCTURE_*`
+configures this hub's own machinery (the pin suite, the shared-config sync),
+`AGENTIC_*` belongs to the agentic loop, and a consumer-private knob takes that
+repo's name (`ORCHESTRANT_*`). Written down once in
+[`adopting-in-a-new-project.md` § 8](adopting-in-a-new-project.md); this gate
+grades the hub's own knobs against it.
+
 Unowned knobs stay advisory unless `KNOB_GATE=1` (preflight always sets it).
 A **stale** row — one whose knob no reader consumes any more — fails
 unconditionally, `KNOB_GATE` or not, because it is bookkeeping, not a judgement
@@ -2717,3 +2725,15 @@ Four rules, each of which a copy got wrong somewhere:
 
 The freeze file follows the root. Keeping it beside the script would put every
 repo's ratchet inside the hub, where no consumer sees it in its own diff.
+
+**The three docs gates joined the contract on 2026-09-15.** `doc-links`,
+`doc-dupes` and `code-dupes` resolved their root from `__file__` until then, so
+they graded the hub and nothing else. Each now takes `--root`, keeps its
+current behaviour exactly when the root *is* the hub — the curated page set,
+the hub's own budgets, the `docs/index.rst` coverage requirement — and under any
+other root reads its scope from `gate_scope.tracked` and its budget from
+`<root>/<gate>.allow`. Two consequences worth stating: a consumer is **not**
+required to keep a Sphinx index (that check is hub-only, because inventing the
+obligation would fail every consumer on a question nobody asked), and
+`doc-links` is the one of the three wired into the `--ratchets` step, because it
+is the only one with no budget to seed.

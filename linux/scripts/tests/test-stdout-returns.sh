@@ -7,6 +7,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 GATE="$(cd "${TESTS_DIR}/.." && pwd)/verify_stdout_returns.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 SUBJ="linux/scripts/subject.sh"
@@ -78,5 +79,12 @@ t_assert_eq "0" "${rc}" "that lane has its own backlog"
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
+
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a consumed function logging on stdout, in the fixture.
+t_case "--root grades the named tree"
+_root_subject="$(_subject 'log "starting"')"
+gate_root_arm "${PY}" "${GATE}" "${_root_subject}"
 
 t_summary

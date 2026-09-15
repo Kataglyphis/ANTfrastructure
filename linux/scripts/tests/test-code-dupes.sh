@@ -8,6 +8,7 @@ set -u
 : "${SKIP_REAL_TREE:=}"
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 GATE="$(cd "${TESTS_DIR}/../../.." && pwd)/docs/scripts/verify_code_dupes.py"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
@@ -93,7 +94,9 @@ _fixture() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/docs/scripts" "${fix}/linux/scripts"
   cp "${GATE}" "${fix}/docs/scripts/"
-  cp "${SCRIPTS_DIR}/quality_allow.py" "${fix}/linux/scripts/"
+  # gate_scope.py too: the gate takes --root since 2026-09-15 and imports it at
+  # module level, so a fixture without it fails with a traceback, not a verdict.
+  cp "${SCRIPTS_DIR}/quality_allow.py" "${SCRIPTS_DIR}/gate_scope.py" "${fix}/linux/scripts/"
   _twin > "${fix}/${A}"
   _twin | sed 's/probe_widget/probe_gadget/' > "${fix}/${B}"
   [ $# -gt 0 ] && printf '%s\n' "$@" > "${fix}/docs/scripts/code-dupes.allow"
@@ -278,5 +281,9 @@ if [ -z "${SKIP_REAL_TREE}" ]; then
   t_case "the REAL tree is clean today"
   t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
 fi
+
+# The --root arm: a second checkout with its own twin pair and its own budget.
+t_case "--root grades the named tree, and its budget lives under that root"
+gate_root_pair_arm "${PY}" "${GATE}" "$(_twin)" scripts/a.sh scripts/b.sh code-dupes.allow
 
 t_summary

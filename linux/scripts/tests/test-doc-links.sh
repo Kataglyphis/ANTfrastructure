@@ -7,6 +7,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
 GATE="${REPO_ROOT}/docs/scripts/verify_doc_links.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
@@ -17,7 +18,10 @@ D='docs/'
 _fixture() {
   local d; d="$(mktemp -d)"
   mkdir -p "${d}/docs" "${d}/tools/gate" "${d}/linux/scripts"
-  cp "${GATE}" "${REPO_ROOT}/linux/scripts/quality_allow.py" "${d}/tools/gate/"
+  # gate_scope.py too, beside the gate: the docs gates take --root since
+  # 2026-09-15 and import it at module level, so a fixture without it fails
+  # with a traceback instead of a verdict.
+  cp "${GATE}" "${REPO_ROOT}/linux/scripts/quality_allow.py"      "${REPO_ROOT}/linux/scripts/gate_scope.py" "${d}/tools/gate/"
   printf '# Guide\n\n<a id="stable"></a>\n## Real Heading\n\ntext\n' > "${d}/docs/guide.md"
   printf '# Index\n\n- [guide](guide.md)\n' > "${d}/docs/INDEX.md"
   printf '.. toctree::\n\n   guide\n' > "${d}/docs/index.rst"
@@ -226,5 +230,15 @@ PYCHK
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
+
+# The --root arm. `${D}` keeps this file's own text out of the real gate's
+# pointer scan, like every other fixture pointer here.
+t_case "--root grades the named tree, not this repo"
+_root_fx="$(gate_tree_git "$(printf '# Fixture\n\nSee [gone](%snope.md).\n' "${D}")" README.md)"
+t_assert_eq "1" "$(t_rc "${PY}" "${GATE}" --root "${_root_fx}")" "a dangling fixture link must fail"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_root_fx}")" "nope.md" "the finding names the fixture"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_root_fx}")" "README.md" \
+  "a consumer README enters the graph only because the scope is git ls-files"
+rm -rf "${_root_fx}"
 
 t_summary
