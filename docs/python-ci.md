@@ -85,6 +85,30 @@ needs no image pull. `-FailOnAnalyzer` is passed unconditionally and is not an
 input — without it the analyzer prints its findings and exits 0, which is a
 check that cannot fail.
 
+**The lint without the build.** `build-python-package` (boolean, default
+`true`) gates the container build job, so a repo with no Python package can call
+this lane for the gate alone:
+
+```yaml
+jobs:
+  powershell-lint:
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@main
+    with:
+      build-python-package: false
+      lint-powershell: true
+```
+
+There is no `secrets:` block there and that is the point: `GHCR_PAT` is
+`required: false`, because a required secret is refused at call time and would
+have made the lint unreachable for exactly the callers this switch is for. The
+build job asserts the token in its own first step, so a caller that wanted the
+build and forgot the secret is told which input it missed instead of failing
+inside a `docker login` against ghcr. OxidANT — a Rust crate whose Windows
+container build is a different workflow — had measured the lint job as
+byte-for-byte its own and still could not call this lane until the gate existed.
+
+Every caller written before the switch is unchanged, because it defaults on.
+
 ## Trap 1 — `--all-extras` is fatal with declared conflicts
 
 `uv sync --all-extras` is not "install as much as possible". On a project that
