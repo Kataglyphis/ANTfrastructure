@@ -6053,8 +6053,8 @@
   {
     "id": "python.static-analysis-tool-failure-is-not-swallowed",
     "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
-    "find": "run_gate \"bandit\" uv_run bandit -r \"$PACKAGE_NAME\" -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results",
-    "replace": "uv_run bandit -r \"$PACKAGE_NAME\" -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results 2>/dev/null || true",
+    "find": "run_gate \"bandit\" uv_run bandit -r \"$PACKAGE_NAME\" ${EXTRA_PATHS[@]+\"${EXTRA_PATHS[@]}\"} -x \"$BANDIT_EXCLUDES\"",
+    "replace": "uv_run bandit -r \"$PACKAGE_NAME\" ${EXTRA_PATHS[@]+\"${EXTRA_PATHS[@]}\"} -x \"$BANDIT_EXCLUDES\" 2>/dev/null || true",
     "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
     "why": "the old per-tool `2>/dev/null || true` is the exact suppression this batch removed: the findings reach no log and the verdict reaches no exit code, and the batch quietly grades five analysers while reporting six"
   },
@@ -6557,10 +6557,10 @@
   {
     "id": "packaging.flatpak-cmake-install-ostree-is-the-verdict",
     "target": "linux/scripts/lib/app-packaging.sh",
-    "find": "    --repo=\"$repo_dir\" \"$build_root\" \"$manifest_path\" || fb_rc=$?\n\n  if ! ostree --repo=\"$repo_dir\" refs 2>/dev/null | grep -q \"^app/${app_id}/\"; then",
-    "replace": "    --repo=\"$repo_dir\" \"$build_root\" \"$manifest_path\" || fb_rc=$?\n\n  if [ \"$fb_rc\" -ne 0 ]; then",
+    "find": "  if ! ostree --repo=\"$repo_dir\" refs 2>/dev/null | grep -q \"^app/${app_id}/\"; then",
+    "replace": "  if [ \"$fb_rc\" -ne 0 ]; then",
     "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
-    "why": "flatpak-builder can export the app completely and still fail in Pruning cache, and can exit 0 having committed nothing; the exit code is not the verdict"
+    "why": "flatpak-builder can export the app completely and still fail in Pruning cache, and can exit 0 having committed nothing; the exit code is not the verdict. Pinned on the shared helper both flatpak packagers call"
   },
   {
     "id": "packaging.flatpak-cmake-install-missing-binary-is-fatal",

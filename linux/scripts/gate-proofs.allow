@@ -76,6 +76,16 @@ mutation-family:trailing-return
 # workflow-lint owns that file by name and its five ids carry that prefix. What is
 # left in this family is the shell half, ci-image-ref.sh: consumers and workflows
 # call it, no preflight slug does, and test-ci-image-ref.sh is its proof.
+# Arrived 2026-09-15 with the six upstreamed consumer helpers. Both name files
+# no preflight slug owns: 01-core/bind-mount-ownership.sh, whose proof is
+# tests/test-bind-mount-ownership.sh, and the PowerShell-lint half of the
+# reusable .github/workflows/python-ci-windows.yml, whose proof is
+# tests/test-reusable-windows-lane.sh. (The batch's other ids joined existing
+# families: `lib` for cmake-build.sh, `packaging` for app-packaging.sh and
+# `python` for the static-analysis driver.)
+mutation-family:bind-mount
+mutation-family:windows-lane
+
 mutation-family:lint-gates
 mutation-family:ci-image-ref
 mutation-family:consumer-inventory
