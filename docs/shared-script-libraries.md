@@ -281,6 +281,15 @@ tree** rather than a Flutter bundle:
   is routinely the build directory on a mounted workspace, which is exactly why
   nothing but the bundle is written there.
 
+`app_packaging_require_flatpak_tools`, which both packagers call first, requires
+**three** binaries: `flatpak`, `flatpak-builder` and — since 2026-09-15 —
+`ostree`. The verdict above is `ostree refs`, but Debian's and Ubuntu's `flatpak`
+package depends on libostree and **not** on the ostree CLI, so a box with the two
+obvious tools installed passed the check and then reported `is not in <repo>`
+over an export that had succeeded. Each missing tool is reported with what the
+packaging step wanted it for, and all of them at once: one `apt-get` installs the
+set.
+
 `tests/test-app-packaging-flatpak.sh` pins both against stubbed
 flatpak/flatpak-builder/ostree/cmake, including the two cases the exit code
 cannot see: a non-zero `flatpak-builder` whose app **is** committed still ships,

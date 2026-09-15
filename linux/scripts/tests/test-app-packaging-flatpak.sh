@@ -5,9 +5,9 @@
 #
 # What is pinned here is what a green run cannot show: the three conventions in
 # app-packaging.sh's header -- container-native staging, ostree and not the exit
-# code as the verdict, no success line without assert_artifact -- and the
-# user-first/system-fallback install. Stubs for flatpak/flatpak-builder/ostree/
-# cmake record every invocation and can be told to fail a chosen one.
+# code as the verdict, no success line without assert_artifact -- the
+# user-first/system-fallback install, and the tool check that must name ostree
+# because the verdict is its. Stubs record every call and can fail a chosen one.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -109,6 +109,58 @@ _call() {
     bash -c "$(t_stubbed_script "${LIB}" "$@")" 2>&1)"
   rc=$?
 }
+
+# ── app_packaging_require_flatpak_tools ──────────────────────────────────────
+
+# _require <tool>... -- run the check with EXACTLY these tools resolvable. The
+# library is sourced with the real PATH and the narrowing happens AFTER it, so
+# the cases cannot depend on what the host image ships: an image that already
+# carries ostree would otherwise pass the case that is about a box without it.
+_require() {
+  local dir _t
+  dir="$(mktemp -d "${_work}/req.XXXXXX")"
+  for _t in "$@"; do
+    printf '#!/usr/bin/env bash
+exit 0
+' > "${dir}/${_t}"
+    chmod +x "${dir}/${_t}"
+  done
+  OUT="$(bash -c "$(printf 'set -uo pipefail
+source %q
+PATH=%q
+app_packaging_require_flatpak_tools
+'     "${LIB}" "${dir}")" 2>&1)"
+  rc=$?
+}
+
+t_case "require_flatpak_tools: all three tools present is a pass"
+_require flatpak flatpak-builder ostree
+t_assert_eq "0" "${rc}" "output was: ${OUT}"
+
+t_case "require_flatpak_tools: OSTREE is required, and the message says what for"
+# The measured box: Debian's and Ubuntu's `flatpak` depends on libostree and NOT
+# on the ostree CLI, so both declared tools are present, this check passed, and
+# app_packaging_assert_flatpak_committed then reported "is not in <repo>" over an
+# export that had succeeded. AccelerANTgine kept a local tool check over it.
+_require flatpak flatpak-builder
+t_assert_eq "1" "${rc}" "a packaging run whose verdict cannot be asked is not a packaging run"
+t_assert_contains "${OUT}" "ostree not found"
+t_assert_contains "${OUT}" "is the verdict that the export committed the app"
+
+t_case "require_flatpak_tools: every missing tool names why packaging needs it"
+_require ostree
+t_assert_eq "1" "${rc}"
+t_assert_contains "${OUT}" "flatpak not found"
+t_assert_contains "${OUT}" "build-bundle"
+t_assert_contains "${OUT}" "flatpak-builder not found"
+t_assert_contains "${OUT}" "exports it to the repo"
+
+t_case "require_flatpak_tools: ALL of them are reported, not just the first"
+# One apt-get installs all three, so stopping at the first costs a second round
+# trip to discover the next one.
+_require
+t_assert_eq "3" "$(printf '%s
+' "${OUT}" | grep -c 'not found')"
 
 # ── app_packaging_ensure_flatpak_runtime ─────────────────────────────────────
 

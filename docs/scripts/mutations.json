@@ -6587,6 +6587,30 @@
     "why": "CMake installs name after the project; flatpak resolves by app id, and a .desktop under the wrong name is an unlaunchable app"
   },
   {
+    "id": "packaging.flatpak-tool-check-requires-ostree",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "  for _t in flatpak flatpak-builder ostree; do",
+    "replace": "  for _t in flatpak flatpak-builder; do",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "ostree is the VERDICT both flatpak packagers ask, and Debian's and Ubuntu's flatpak package depends on libostree rather than on the CLI -- without it in the check, a box with both declared tools present fails at `ostree refs` over an export that succeeded, which is the measurement that kept a consumer on a local copy of this check"
+  },
+  {
+    "id": "packaging.flatpak-tool-check-names-the-reason",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "    echo \"Error: ${_t} not found. Install '${_t}' to build Flatpak bundles: ${_why}.\" >&2",
+    "replace": "    echo \"Error: ${_t} not found.\" >&2",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "the tool name alone names no package to install and does not say what the packaging step wanted it for; for ostree that sentence IS the fix, because nothing about a flatpak build suggests a separate CLI"
+  },
+  {
+    "id": "packaging.flatpak-tool-check-reports-every-missing-tool",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "    _missing=1",
+    "replace": "    return 1",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "one apt-get installs all three, so a check that stops at the first missing tool costs a second round trip to discover the next"
+  },
+  {
     "id": "packaging.flatpak-runtime-skips-installed-refs",
     "target": "linux/scripts/lib/app-packaging.sh",
     "find": "    if flatpak info --user \"$_ref\" >/dev/null 2>&1 || flatpak info --system \"$_ref\" >/dev/null 2>&1; then",
