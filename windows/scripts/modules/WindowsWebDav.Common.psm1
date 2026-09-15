@@ -82,8 +82,18 @@ function Invoke-EarlyWebDavDownload {
     Write-BuildLog -Context $Context -Message "DEBUG: Running: $($uvCmd.Source) pip install --upgrade pip"
     Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', '--upgrade', 'pip') -IgnoreExitCode | Out-Null
 
-    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: git+https://github.com/Kataglyphis/WebDavClient"
-    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', 'git+https://github.com/Kataglyphis/WebDavClient') -IgnoreExitCode | Out-Null
+    # PINNED, from the one file the family keeps pins in. Unpinned, this
+    # installed whatever the default branch was that day, so "which client did
+    # this run use" had no answer -- and the bash half pins the same ref, so
+    # the two lanes cannot drift apart any more.
+    $hubRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+    $versions = ConvertFrom-VersionsEnv -Path (Join-Path $hubRoot 'linux/scripts/01-core/versions.env')
+    if (-not $versions.Contains('WEBDAVCLIENT_REF')) {
+      throw 'WEBDAVCLIENT_REF is not set in linux/scripts/01-core/versions.env; the ANTfrastructure pin predates the convention.'
+    }
+    $webdavRef = $versions['WEBDAVCLIENT_REF']
+    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: git+https://github.com/Kataglyphis/WebDavClient@$webdavRef"
+    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', "git+https://github.com/Kataglyphis/WebDavClient@$webdavRef") -IgnoreExitCode | Out-Null
   } catch {
     Write-BuildLogWarning -Context $Context -Message "uv pip install step failed: $($_.Exception.Message)"
   }

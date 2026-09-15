@@ -2451,10 +2451,13 @@ that carries its own `versions.env`.
 `.github/actionlint.yaml` extends the known-runner-label set with the family's
 `ubuntu-26.04` / `ubuntu-26.04-arm` preview labels, which the pinned actionlint
 (still the newest release) predates. The config only ADDS labels — a genuinely
-unknown label still fails, so the `runner-label` check stays live. actionlint
-resolves that config from the project it LINTS, not from this repo: a consumer
-calling `lint-workflows.sh <root>` lints its own tree with its own
-`.github/actionlint.yaml`, so this file covers ANTfrastructure alone.
+unknown label still fails, so the `runner-label` check stays live. actionlint resolves that config from the project it LINTS, not from this repo.
+That used to mean every consumer needed its own copy of the same file, and seven
+of them grew one. It does not any more: when the linted root carries no
+`.github/actionlint.yaml`, `lint-workflows.sh` passes `-config-file` pointing at
+the HUB's, so a consumer gets the family's preview-runner labels without holding
+a copy that can drift. A consumer that genuinely needs different labels still
+wins by having its own file — the fallback only fires when there is none.
 
 ### Four fleet workflow conventions (`workflow-lint`)
 

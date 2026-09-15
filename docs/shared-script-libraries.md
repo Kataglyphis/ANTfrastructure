@@ -517,6 +517,33 @@ different toolchain from the one it ships.
 second half: `flutter build web --release` with the two flags every consumer
 passes named rather than re-spelled, everything else forwarded untouched.
 
+### `01-core/webdav-download.sh`
+
+`webdav_download_tree <remote> <local> [extension|all]` pulls a WebDAV tree into
+a directory. Credentials come from `WEBDAV_HOSTNAME` / `WEBDAV_USERNAME` /
+`WEBDAV_PASSWORD` and are never arguments — a password on a command line is in
+every `ps` listing and in every CI log line that echoes the command.
+
+It installs the client at `WEBDAVCLIENT_REF` from
+[`01-core/versions.env`](../linux/scripts/01-core/versions.env), which is the
+point of the pin: the PowerShell twin (`WindowsWebDav.Common.psm1`) installs the
+same ref, so "which WebDavClient did this run use" has one answer instead of
+"whatever the default branch was that day". The `--python` in the install is
+load-bearing — the image bakes a root-owned `/opt/venv` and exports `UV_PYTHON`
+at it, so a plain `uv pip install` inside an activated `.venv` still targets
+`/opt/venv` and dies with "Permission denied (os error 13)" as the uid-1001
+build user.
+
+The script it runs is `01-core/download-webdav-files.py`. With no `--extension`
+(or `all`) it hands the whole walk to the client's own
+`download_all_files_iterative`; a 140-line hand-rolled traversal used to live in
+its place, with its own URL joining, sub-path sanitising and streaming download,
+each a second implementation of something the client already did. The
+extension-filtered path stays for the early `.pfx` certificate fetch, which
+genuinely wants one file type out of a shared folder. A one-line shim remains at
+`windows/scripts/certificates/download_webdav_files.py`, because the PowerShell
+module resolves that path relative to itself.
+
 ### `01-core/http-readiness.sh`
 
 `wait_for_http <url> <who> [attempts] [sleep]` polls until an endpoint answers.

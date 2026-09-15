@@ -341,10 +341,17 @@ an action change requires the ANTfrastructure push to land first.
 ## 7. Certificates / packaging (Windows)
 
 `windows/scripts/certificates/` holds MSIX certificate generation and import
-(`README.md` there) plus `download_webdav_files.py`, a generic WebDAV tree
-downloader (`--extension`, Windows path sanitisation) used to fetch signing
-certificates in CI instead of committing them. The `WindowsMsix.Common`,
-`WindowsMsix.Signing` and `WindowsWebDav.Common` modules drive it.
+(`README.md` there). The `WindowsMsix.Common`, `WindowsMsix.Signing` and
+`WindowsWebDav.Common` modules drive it.
+
+The WebDAV downloader that fetches those signing certificates in CI (rather than
+committing them) is **not** Windows-specific and no longer lives there: it is
+`linux/scripts/01-core/download-webdav-files.py`, with a shim at the old
+`windows/scripts/certificates/download_webdav_files.py` path because the
+PowerShell module resolves it relative to itself. A Linux lane calls it through
+`webdav_download_tree`
+([`shared-script-libraries.md`](shared-script-libraries.md#01-corewebdav-downloadsh)).
+Both halves install the client at `WEBDAVCLIENT_REF` from `versions.env`.
 
 ## 8. Calling conventions (what every consumer looks like)
 

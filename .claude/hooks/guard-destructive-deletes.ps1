@@ -91,9 +91,15 @@ $reclaimable = @(
     'c:\bkmnt'
     '$env:temp'
     '%temp%'
-    'd:\github\kataglyphis-antfrastructure'
-    'd:\github\kataglyphis-containerhub'
 )
+# NO repo-root row. Two used to sit here -- 'd:\github\kataglyphis-antfrastructure'
+# and 'd:\github\kataglyphis-containerhub' -- naming a drive and two repository
+# names that have not existed since the 2026-09-12 rename and the move to C:. A
+# reclaimable row that matches nothing is not harmless: it reads as "deleting a
+# repo checkout is fine here", which is the opposite of what this guard is for,
+# and the next reader would have spelled the CURRENT checkout to make it work.
+# If a repo root ever genuinely needs to be reclaimable, spell the real path and
+# add a Guard.DestructiveDeletes.Tests.ps1 case with it.
 
 # Any of these under a delete verb = hard stop. Everything a host needs to
 # stay a working host, plus the profile that carries the user's settings.

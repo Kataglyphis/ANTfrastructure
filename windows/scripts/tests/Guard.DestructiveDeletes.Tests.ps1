@@ -88,6 +88,18 @@ Describe 'guard-destructive-deletes: the reclaimable set still works' {
         Assert-Equal 'ask' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
     }
 
+    It 'carries no repository checkout as reclaimable' {
+        # Two dead rows lived here until 2026-09-15 ('d:\github\kataglyphis-antfrastructure',
+        # 'd:\github\kataglyphis-containerhub'): a drive and two repo names that
+        # stopped existing at the 2026-09-12 rename. A row matching nothing reads
+        # as "deleting a repo checkout is fine", which is the inverse of this
+        # guard's job. This case is what makes re-adding one a decision.
+        $guardText = Get-Content -Raw -LiteralPath $guard
+        $block = [regex]::Match($guardText, '(?s)\$reclaimable = @\((.*?)\n\)').Groups[1].Value
+        Assert-False ($block -match 'github') "a repository checkout is listed as reclaimable: $block"
+        Assert-False ($block -match 'containerhub') "the renamed repo is still named here: $block"
+    }
+
     It 'does not touch the daemon-level reclaim levers at all' {
         Assert-Equal 'allow' (Get-GuardDecision -Tool 'PowerShell' -Command 'buildctl prune --free-storage 900000')
         Assert-Equal 'allow' (Get-GuardDecision -Tool 'PowerShell' -Command 'docker image prune -f')

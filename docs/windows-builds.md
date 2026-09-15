@@ -962,6 +962,35 @@ Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min
 
 Asks a BUILT media image what video backends OpenCV actually has (backlog #93-#95): prints the `Video I/O:` block, runs the three #95 assertions, and shows `videoio_registry.getBackends()` beside them. ~4 s against `bk-windows-media-core-ffmpeg`, versus a full chain rebuild — which is what let the #95 guards be watched FAILING on the real artifact before the fixes land. Same two safeguards as the sccache probe: `PROBE_NONCE` (a re-run with an unchanged script otherwise gives `CACHED` and replays an old verdict) and a `probe complete` marker check; `--no-cache` is not the alternative, it empties cache mounts (#96).
 
+## Why the pin suite runs on a Windows runner, under Pester 3.4.0
+
+Written here once because three consumers each carried a 40-line copy of it in
+their own `submodule-pins.yml`, and they had begun to disagree.
+
+`.github/actions/run-pester-suite` installs **Pester 3.4.0** by default — the
+dialect BeschleunigerBallett's Windows lane pins — and 3.4.0 is a Windows
+PowerShell-era module. So the lane needs a **Windows** runner, not one of the
+cheaper `ubuntu-26.04` ones the rest of the Linux jobs use. The suite itself is
+version-agnostic: `shared/windows/tests/Submodule.Pins.Tests.ps1` asserts with
+`throw` rather than `Should`, and was verified under both 3.4.0 and 6.1.0 — so
+the lane can move to a cheaper runner the day the action can be told a
+Core-compatible version. Nothing else has to change for that.
+
+The label is **`windows-2025`, pinned**, not `windows-latest`. The alias
+resolves to windows-2025 today, so pinning is a no-op right now; the point is
+that a future repoint would swap the OS image — and with it the Windows
+PowerShell 5.1 that Pester 3.4.0 needs — under a green build with no commit to
+blame.
+
+The hub's `submodule-pins.yml` is `workflow_call`-able, so a consumer calls it
+with `uses:` and inherits all of the above instead of restating it:
+
+```yaml
+jobs:
+  pins:
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@main
+```
+
 ## Reusable module: WindowsContainerBuild.Reuse
 
 The container-reuse pattern, packaged so consumers do not each reinvent it. Consumers resolve it ANTfrastructure-first with a vendored fallback.
