@@ -270,15 +270,31 @@ app_packaging_map_arch_to_appimage() {
   esac
 }
 
-# Both flatpak packagers need the same two binaries and give the same advice.
+# The THREE binaries both flatpak packagers need, each reported with the reason
+# the packaging step needs it: a bare "not found" names no package to install,
+# and for ostree that is the whole difficulty. IT JOINED THE LIST on 2026-09-15
+# -- the verdict is app_packaging_assert_flatpak_committed's `ostree refs`, but
+# Debian's and Ubuntu's `flatpak` depends on libostree and NOT on the CLI, so a
+# box with both other tools present passed this check and then reported "is not
+# in <repo>" over an export that had SUCCEEDED. That is what kept AccelerANTgine
+# on a local copy of this check rather than calling it.
 app_packaging_require_flatpak_tools() {
-  local _t
-  for _t in flatpak flatpak-builder; do
-    if ! command -v "$_t" >/dev/null 2>&1; then
-      echo "Error: ${_t} not found. Install '${_t}' to build Flatpak bundles." >&2
-      return 1
+  local _t _why _missing=0
+  # Every missing tool is reported, not just the first: one apt-get installs all
+  # three, so stopping at the first costs a second round trip to find the next.
+  for _t in flatpak flatpak-builder ostree; do
+    if command -v "$_t" >/dev/null 2>&1; then
+      continue
     fi
+    case "$_t" in
+      flatpak) _why="'flatpak build-bundle' writes the bundle" ;;
+      flatpak-builder) _why="'flatpak-builder' builds the app and exports it to the repo" ;;
+      ostree) _why="'ostree refs' is the verdict that the export committed the app, and the flatpak package depends on libostree rather than on this CLI" ;;
+    esac
+    echo "Error: ${_t} not found. Install '${_t}' to build Flatpak bundles: ${_why}." >&2
+    _missing=1
   done
+  return "${_missing}"
 }
 
 # THE VERDICT for both flatpak packagers, and it is not flatpak-builder's exit
