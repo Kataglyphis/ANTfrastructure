@@ -83,6 +83,41 @@ on:
           ./dist/
           ./logs/
           ./docs/test_results/
+      lint-powershell:
+        description: >-
+          Run ANTfrastructure's PowerShell lint gate (mandatory parse pass, AST
+          traps, PSScriptAnalyzer) over this repo's PowerShell tree, as a second
+          job on the same Windows runner. Default false, so every existing caller
+          is unchanged.
+
+          It is a SEPARATE JOB and not a step of the build above, for two
+          reasons: it must run even when the build fails (a syntax error in the
+          build scripts is exactly when the lint is worth having), and it needs
+          no image pull, so it answers in a couple of minutes instead of waiting
+          behind a container build.
+
+          This input exists because two consumers hand-wrote the same job within
+          a week - OrchestrANT's .github/workflows/powershell-lint.yml and the
+          powershell-lint job in OxidANT's lint-gates.yml. They agreed on
+          everything that matters (windows-2025, PSScriptAnalyzer pinned to
+          1.25.0, submodules, -FailOnAnalyzer) and differed only in which
+          directory they pointed the gate at, which is what lint-path is.
+        required: false
+        type: boolean
+        default: false
+      lint-path:
+        description: >-
+          What the lint gate walks, relative to the repo root: a directory
+          (recursive) or a single .ps1/.psm1. The default is the family layout's
+          `scripts`, which covers scripts\windows\ and everything under it.
+          OrchestrANT's narrower `scripts/windows` is the other spelling in use.
+
+          Passing a path that does not exist THROWS rather than reporting "0
+          files parse clean" - a typo here must not read as a green gate over
+          nothing.
+        required: false
+        type: string
+        default: scripts
     secrets:
       GHCR_PAT:
         description: Token used to pull the build image from ghcr.
@@ -146,3 +181,46 @@ jobs:
           name: ${{ inputs.artifact-name }}
           if-no-files-found: warn
           path: ${{ inputs.artifact-paths }}
+
+  # OFF by default; `lint-powershell: true` turns it on. Independent of the build
+  # job above on purpose: a syntax error in the build scripts is exactly when
+  # this gate is worth having, and it needs no image pull.
+  lint-powershell:
+    if: ${{ inputs.lint-powershell }}
+    name: PowerShell lint (ANTfrastructure gate)
+    runs-on: ${{ inputs.runs-on }}
+    # Install-Module is the step that can hang.
+    timeout-minutes: 20
+    steps:
+      # submodules: true, TOP LEVEL ONLY. The gate script and its ruleset both
+      # live in third_party/ANTfrastructure; its own chain is minutes of clone
+      # that nothing here reads. fetch-depth 1: nothing here reads history.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: true
+
+      # PINNED, the way the hub pins it for its own windows-scripts.yml lane: an
+      # unpinned install lets a new analyzer release add a rule that fails this
+      # lane with no commit to blame - the argument the ruff pin makes.
+      - name: Install PSScriptAnalyzer
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
+
+      # -Path points the gate at the CALLER's tree; the PSScriptAnalyzerSettings
+      # file stays resolved against the gate script's own $PSScriptRoot, so the
+      # hub's ruleset is consumed BY REFERENCE and no consumer copies a ruleset.
+      #
+      # -FailOnAnalyzer is not optional and is not an input. Without it the
+      # analyzer pass prints its findings and exits 0, which is a check that
+      # cannot fail; both consumers that hand-wrote this job reached the same
+      # conclusion, one of them after triaging its findings to zero first. A
+      # repo with an untriaged backlog fixes it or narrows the hub's ruleset -
+      # it does not get a green lane over ungraded scripts.
+      - name: Lint PowerShell (parse gate + AST traps + PSScriptAnalyzer)
+        run: |
+          $gate = 'third_party/ANTfrastructure/windows/scripts/Invoke-Lint.ps1'
+          if (-not (Test-Path -LiteralPath $gate)) {
+            throw "Missing $gate - this lane expects ANTfrastructure at third_party/ANTfrastructure (the family layout) and checks it out with submodules: true."
+          }
+          pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}' -FailOnAnalyzer

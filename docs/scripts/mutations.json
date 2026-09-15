@@ -6649,5 +6649,37 @@
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
     "why": "a docs step that produced nothing has nothing to hand back; failing there makes the finalize step the thing that breaks the lane"
+  },
+  {
+    "id": "windows-lane.powershell-lint-defaults-off",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "        default: false",
+    "replace": "        default: true",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "an input that defaults ON makes every caller that predates it suddenly run a Windows lint job"
+  },
+  {
+    "id": "windows-lane.powershell-lint-job-is-gated",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "    if: ${{ inputs.lint-powershell }}",
+    "replace": "    if: ${{ always() }}",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "without the gate the job runs for every caller regardless of the input, which is the same defect as defaulting it on"
+  },
+  {
+    "id": "windows-lane.powershell-lint-fails-on-analyzer",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}' -FailOnAnalyzer",
+    "replace": "pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}'",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "without -FailOnAnalyzer the analyzer prints its findings and exits 0: a check that cannot fail"
+  },
+  {
+    "id": "windows-lane.powershell-analyzer-is-version-pinned",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser",
+    "replace": "Install-Module PSScriptAnalyzer -Force -Scope CurrentUser",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "an unpinned analyzer lets a new release add a rule that fails the lane with no commit to blame"
   }
 ]

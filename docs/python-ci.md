@@ -59,6 +59,32 @@ back.
 consumer that names an exclude set means that set. Setting it is how a consumer
 stops hard-coding the whole `-x` string in its own driver.
 
+## Turning the Windows PowerShell lint on
+
+`python-ci-windows.yml` takes `lint-powershell` (boolean, default `false`) and
+`lint-path` (string, default `scripts`). Together they add a second job on the
+same Windows runner that runs
+[`windows/scripts/Invoke-Lint.ps1`](../windows/scripts/Invoke-Lint.ps1) — the
+mandatory parse pass, the AST traps and PSScriptAnalyzer — over the **caller's**
+tree, with the hub's ruleset consumed by reference.
+
+```yaml
+jobs:
+  windows:
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@main
+    with:
+      lint-powershell: true
+      lint-path: scripts/windows
+    secrets:
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+```
+
+It is a separate job and deliberately does **not** `needs:` the build: a syntax
+error in the build scripts is exactly when the lint is worth having, and it
+needs no image pull. `-FailOnAnalyzer` is passed unconditionally and is not an
+input — without it the analyzer prints its findings and exits 0, which is a
+check that cannot fail.
+
 ## Trap 1 — `--all-extras` is fatal with declared conflicts
 
 `uv sync --all-extras` is not "install as much as possible". On a project that
