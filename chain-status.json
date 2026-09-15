@@ -1,9 +1,0 @@
-{
-  "run_id": "20260911-182805-c2ba6bec",
-  "arches": "amd64",
-  "range": "android..android",
-  "stages": {
-    "android": {"status": "ok", "pin": ""}
-  },
-  "updated": "2026-09-11T18:55:40Z"
-}

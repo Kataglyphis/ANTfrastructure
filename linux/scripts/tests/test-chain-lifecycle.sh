@@ -367,10 +367,11 @@ _chain_prune_archived_logs
 t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
 
 # ---------------------------------------------------------------------------
-# chain-status.json must NOT follow LOG_DIR. The repo-root copy is git-TRACKED;
-# when LOG_DIR gained a default, a ${LOG_DIR}-relative path would have frozen
-# that tracked file at the last run's "ok" — a brand-new stale-GREEN artifact,
-# the exact class this item exists to kill.
+# chain-status.json must NOT follow LOG_DIR. Readers look for the repo-root copy;
+# when LOG_DIR gained a default, a ${LOG_DIR}-relative path would have frozen that
+# copy at the last run's "ok" — a brand-new stale-GREEN artifact, the exact class
+# this item exists to kill. (The file is gitignored since 2026-09-15; the pin is
+# about WHERE it is written, not about tracking.)
 declare -A _CHAIN_STATUS=()
 CROSS_STAGE_ORDER=( runtime )
 cross_stage_pin_varname() { printf ''; }

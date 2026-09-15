@@ -296,7 +296,9 @@ _chain_no_push_guard() {
 }
 
 # chain-status.json: atomic tmp+mv at each stage start/ok/fail. Pinned to REPO
-# ROOT, NOT LOG_DIR — a moved file would freeze the tracked copy stale-GREEN.
+# ROOT, NOT LOG_DIR — readers (docs/build-watch-list.md, the backlog) look for it
+# there, and a LOG_DIR-relative path would leave the repo-root copy frozen at the
+# last run's "ok". Gitignored since 2026-09-15; the writer is unchanged.
 declare -A _CHAIN_STATUS=()
 _chain_status_emit() {
   local stage="$1" status="$2"

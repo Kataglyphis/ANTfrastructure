@@ -155,8 +155,9 @@ linked its closure. Everything below is context, not a block:
    The `~/.ssh/id_ed25519` key is NOT registered with GitHub — it fails with
    `Permission denied (publickey)` — so the path is `gh auth setup-git` plus HTTPS
    remotes, which is local config and touches no account setting. Pull with
-   `--rebase`, stash `chain-status.json` first (always dirty, never staged), and a
-   rebase needs `-c core.hooksPath=/dev/null` because the hooks run on commit.
+   `--rebase`; a rebase needs `-c core.hooksPath=/dev/null` because the hooks run
+   on commit. (`chain-status.json` no longer needs a stash: it is gitignored since
+   2026-09-15.)
    The pre-push hook is no longer theoretical: it fired on real pushes and caught
    two mutations left stale by upstream refactors, which is exactly its job.
 2. **Downstream consumers of `linux/scripts/lib/`.** Ten of the thirteen files in
