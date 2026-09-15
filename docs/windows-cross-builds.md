@@ -956,6 +956,61 @@ exactly that form, so the classifier now also looks for a **network signature**
 (`HTTP Error …`, `Failed to download`, `URLError`, timeouts, refused connections) and retries when
 it finds one, without weakening the short-circuit for genuine errors.
 
+## TensorRT staging, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+TensorRT is **not downloaded automatically** — it needs an accepted NVIDIA EULA.
+[`docs/windows-builds.md`](windows-builds.md) § TensorRT setup owns the
+staging procedure, the `current/` rationale and the reasoning behind each rule
+below. The rules themselves:
+
+- **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
+  pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip and
+  delete the superseded one.
+- Set `TENSORRT_ZIP_SHA256` in `versions.env` for the new zip. A stale hash
+  failing the build loudly is intended.
+- `TENSORRT_VERSION` must never derive a **filesystem** path or the runtime
+  PATH; the tree is resolved from disk and normalised to `current`.
+- **No zip staged is the NORMAL state of this host's GPU lane — do NOT
+  re-harden the graceful skip into a fail-fast.** That was tried on 2026-08-04
+  and reverted the next day.
+- **A PRESENT zip fails CLOSED**: a half-extracted tree is a build failure,
+  while an absent one is supported.
+
+## QNN staging on Windows, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The Qualcomm QAIRT SDK is login-gated (Qualcomm developer account + EULA). Stage
+the Windows zip in `windows/qnn-sdk/` (git-ignored except its README); pin it with
+`QNN_SDK_ZIP_SHA256` in `versions.env`. When staged, `Resolve-QnnSdk` extracts it
+and enables the QNN EP in **ONE framework**: ONNX Runtime
+(`onnxruntime_USE_QNN=ON`). ONNX GenAI inherits it at runtime through the ORT it
+links. LiteRT, TVM and IREE were passing INVENTED flags that CMake dropped
+silently while printing a success banner — removed 2026-08-31, see backlog #154.
+`Copy-QnnRuntime` still stages the per-arch backend DLLs beside all five installs,
+but only ORT loads them. No zip = QNN off with one notice on every
+framework. A version-mismatch (SDK too old for the framework) also falls back to
+QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
+and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
+[`docs/windows-cross-builds.md`](windows-cross-builds.md) § QNN.
+**Windows #121 BUILD-TIME PATH PROVEN 2026-08-31** (staged QAIRT
+2.44.0.260225, full `:winarm64` chain: QNN EP ON with the
+`aarch64-windows-msvc` backend set, runtime staged beside all five frameworks,
+arch gate 1168/0, smoke 97/0/15); runtime execution still needs a Snapdragon
+host.
+
+The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
+on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the
+Linux AArch64 SDK zip in `linux/qnn-sdk/` (different SDK —
+`lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`), pin with
+`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env`. ORT-only today; framework
+fan-out to GenAI/LiteRT/TVM/IREE is OPEN. No zip = QNN off. Mechanism (the
+`QNN_ARCH_ABI` override, `stage_qnn_runtime`, the bind-mount): see
+[`docs/linux-cross-builds.md`](linux-cross-builds.md) (QNN EP, in the
+toggles section) and `docs/refactoring-backlog.md` A2. QNN-LINUX.
+
 ## What this lane cannot produce
 
 Components with no arm64 story, and what stands in their place.

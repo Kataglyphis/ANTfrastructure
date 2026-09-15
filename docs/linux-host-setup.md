@@ -114,6 +114,39 @@ rocm-smi
 
 ---
 
+## The prerequisites list AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+- **nerdctl** with BuildKit backend
+- **QEMU/binfmt** — and `--install-service` is NOT enough on its own. The unit
+  it writes used `After=`/`Wants=` only, which order STARTUP and do not
+  propagate a restart; combined with `Type=oneshot` + `RemainAfterExit=yes`,
+  systemd holds the unit permanently satisfied while its effect — a
+  registration inside the rootlesskit namespace — dies with every containerd
+  restart. Measured 2026-08-27 on the dev host: unit last ran 2026-08-09,
+  containerd restarted 2026-08-26, and the runtime stage then failed BOTH
+  foreign arches with an empty BuildKit error. The template now sets
+  `PartOf=containerd.service` (re-runs the unit on containerd restart) **plus**
+  `wait_for_namespace()` + `Restart=on-failure` (afefdfc) to win the cold-boot
+  race: `After=` orders only the unit start, so on a fresh boot the binfmt unit
+  fired before containerd-rootless had unshared and written its `child_pid`,
+  dying with `cat: …/child_pid: No such file`. `wait_for_namespace()` polls for
+  the pid file and a joinable namespace before registering; `Restart=on-failure`
+  is belt-and-braces. A daemon restart and a cold boot no longer silently strip
+  foreign-arch emulation. On this rootless host the privileged
+  `tonistiigi/binfmt --install` container does NOT work (wrong namespace); use:
+  ```bash
+  linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
+  ```
+  `--install-service` installs a systemd --user unit so re-registration is
+  automatic. Without registration, foreign-arch execs fail with `exec format
+  error` — including wrong-arch NATIVE tool sub-builds inside "no-emulation"
+  cross stages (the IREE tblgen failure mode).
+- **Registry access** (GHCR) for pushing intermediate and final images
+- **Disk space**: ~50GB+ for full cross chain with all architectures
+- **Python 3** for digest resolution (`registry-digest.py`)
+
 ## Phase B — Container runtime host config
 
 ### B1. Docker without sudo
@@ -437,6 +470,74 @@ in both cases the build looks correctly configured and the RUN steps simply have
 no network. Check this before debugging a mirror or a DNS resolver.
 
 ---
+
+### B7. Reclaiming disk without losing the compile caches
+
+Moved here from `AGENTS.md` on 2026-09-15: the rule lives there, the
+measurements live here.
+
+**`linux/host-config/prune-safe.sh`, never `nerdctl builder prune -f`.** The
+`-f` prune deletes `type==exec.cachemount` records — ccache, sccache, uv, cargo,
+the LLVM source tree — together with the cheap-to-regenerate layer cache.
+Measured on this host: **207 GB of cachemount against 4.9 GB of layer cache**,
+so the destructive half is 97% of what a `-f` prune takes, and one run paid
+about **1.5–2 h of cold LLVM rebuilds** for a few GB.
+
+`prune-safe.sh` prunes `type==regular` only, through `buildctl --filter`
+(nerdctl has no such flag), takes `PRUNE_KEEP_GB` and `DRY_RUN`, and proves
+cachemount survival by counting the records before and after. Through wave 4:
+**12 invocations, ~1 TB reclaimed, 0 cachemount losses.**
+
+**Mid-run, use `PRUNE_KEEP_GB>=100`.** Smaller budgets evict the in-flight
+lanes' fresh layers and buy recompile churn; the kata-buildcache media slugs,
+rewritten every round, are the better lever when the store runs lean.
+
+**The lever ORDER mid-run:**
+
+1. `prune-safe.sh`.
+2. `nerdctl rmi` of specific already-PUSHED tags — it refuses in-use ones, so
+   this is safe.
+3. The regenerable cache-export directory `~/.cache/kata-buildcache`. This is a
+   DIFFERENT store, which `prune-safe.sh` cannot reach: it grew 62 → 110 GB
+   inside one session and caused a disk emergency.
+
+`nerdctl system prune` and `nerdctl builder prune` are not on this list at all.
+`system prune` is worse again mid-run, because "unused" means
+not-container-referenced, so it deletes TAGGED cross-stage locals too — on
+2026-08-18 the `cross-media-*` tags vanished mid-run and only the
+registry-digest-pinned handoffs survived, via a re-pull that cost ~25 minutes.
+
+### B8. ghcr registry hygiene
+
+Also moved from `AGENTS.md` on 2026-09-15.
+
+Two tools over `ghcr-common.sh`: **`ghcr-prune-package.sh`** deletes UNTAGGED
+versions, **`ghcr-delete-tags.sh`** deletes NAMED tags from an explicit list and
+never guesses what is legacy. Both dry-run by default
+(`GHCR_PRUNE_CONFIRM=1` / `GHCR_DELETE_TAGS_CONFIRM=1` perform), and both take
+the PAT from a docker login or `GHCR_TOKEN`.
+
+**The shared Accept header is a safety property, not tidiness.** Listing the
+index media types makes a multi-arch tag resolve to its INDEX, so its children
+are visible; omitting them collapses the tag to a single platform manifest, and
+an incomplete keep-set is exactly how a prune tool deletes something it should
+not.
+
+**Never "delete all untagged" by hand.** The per-arch entries of a multi-arch
+index are themselves untagged manifests, and a chain that is pushing creates
+untagged manifests seconds before it tags them. The keep-set is: every tag,
+plus every index CHILD resolved live (abort on any unresolvable tag), plus
+everything younger than `KEEP_DAYS`.
+
+Runs: 604 versions deleted on 2026-08-24; then on 2026-08-27, 23 untagged plus
+47 tags with 0 failures — **81 → 34 tags, 204 → 134 versions** — with
+`:latest-cross` verified 3/3 children HTTP 200 afterwards and a running build
+untouched. Six long-dangling legacy tags (`android`, `compiler`, `latest`,
+`media`, `sdk`, `torch`, whose children had 404'd since before either tool
+existed) were deleted the same day by operator decision. `:latest` is therefore
+gone and will not come back by itself: the cross lane's orchestrators tag
+`cross-*` and `latest-cross`, and `build-runtime-manifest.sh` publishes only the
+cross manifest, so the native lane has no build path any more.
 
 ## Phase C — Performance mode
 

@@ -138,6 +138,84 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
   - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, plus a `cuda-runtime-stage` (via `Copy-CudaRuntime.ps1`) that FLATTENS the CUDA/cuDNN runtime DLLs into `C:\runtime\cuda-runtime\bin` on PATH — the CUDA-linked libs (notably OpenCV, which hard-links `cudnn64_9.dll`) otherwise fail to load in this non-nvidia-based image. Then GStreamer 1.29.2 is built via `Build-GstreamerFromSource.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile.torch` assembles the OrchestrANT app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
 
+## The Windows lane as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+**Fresh Windows machine?** Follow
+[`docs/windows-host-setup.md`](windows-host-setup.md) rather than
+reconstructing the sequence — after the interactive steps, the scriptable half
+is one elevated `Install-NewHost.ps1` run.
+
+All stages use **Ninja + clang-cl + lld-link**. The container toolchain is
+**containerd + BuildKit + nerdctl**. Role split — each tool where its pipe ACL
+allows:
+
+| Task | Tool | Shell |
+|---|---|---|
+| Build the chain | `windows\Build-Buildkit.ps1` → `buildctl` | non-admin |
+| Inspect / run the `bk-*` images | `nerdctl --namespace buildkit` | **admin** |
+| Publish / inspect images | Stevedore's `docker.exe` | non-admin |
+
+```pwsh
+.\windows\Build-Buildkit.ps1 -Gpu          # build (non-admin)
+```
+
+**The lane mechanics live in
+[`docs/windows-build-lanes.md`](windows-build-lanes.md)** — isolation
+policy and the probe-log trap, the sccache and RDNA4 and step-log preflight
+gates, the BuildKit/containerd lane, the nerdctl lane, the classic lane's
+run+commit path (historical), mid-chain failure recovery, and the RDNA4 A/B
+history.
+
+Four things an agent gets wrong without reading it:
+
+- **There is ONE Windows driver, `Build-Buildkit.ps1`.** The classic lane was
+  retired 2026-08-26 and `build.ps1` DELETED 2026-08-31. Two independent
+  structural defects, both verified; reviving it is a redesign, not a target-pin
+  change. Reasoning and the cut list live in
+  [`windows-build-lanes.md`](windows-build-lanes.md) — that page owns this
+  topic; do not restate the reasons here.
+- **`nerdctl` needs an ADMIN shell** — containerd's pipe is Administrator-only
+  upstream, and there is no `--group` equivalent. Do not attempt pipe-ACL
+  hacks and do not re-litigate it.
+- **Every Stevedore/containerd update reverts the patched runhcs shim.**
+  `windows/scripts/host/Publish-ShimPatch.ps1 -ReportOnly` belongs in your
+  post-update routine. Since 2026-09-01 the deployed shim is the
+  **`upstream-env` variant built from the owner's fork**
+  (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout`), and it is only
+  patched-in-effect when the **containerd** service `Environment` carries
+  `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` — a **Go duration string**;
+  a bare number silently means stock 30 s. So an update now reverts TWO things:
+  the binary AND (via reinstall) possibly that env value — check both, restore
+  both with `Publish-ShimPatch.ps1 -ShimPath <fork build> -ServiceEnvironment
+  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`. Changing the env value needs
+  a containerd restart (the shim inherits containerd's environment at spawn).
+  **It can also wipe the buildkitd service `Environment`**
+  (the `BUILDKIT_STEP_LOG_MAX_SIZE=-1` / `BUILDKIT_STEP_LOG_MAX_SPEED=-1` keys
+  that prevent the 2 MiB step-log clip) — check with
+  `(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment).Environment`
+  after any update, and re-apply via `Install-NewHost.ps1` or the registry
+  `Set-ItemProperty` if empty. The build driver refuses to start without them.
+- **A Stevedore REINSTALL wipes more than the shim** — the buildkitd service
+  `Environment`, the dufs task and its serve directory all go with it. See
+  [`docs/windows-host-setup.md`](windows-host-setup.md) § Phase R.
+
+See [`docs/windows-builds.md`](windows-builds.md) § Build Commands for the
+full build sequence.
+
+## The build notes AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `Build-LitertLmBazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `Build-MediaCoreAll.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
+
+- **Per-library reference** (generator/compiler per component, EP/delegate flags, patch stacks, RAM budgets, fallback paths): the authoritative table is `docs/windows-builds.md` § Component Build Matrix.
+- **Per-script reference** (every build/setup/verify and HOST-maintenance script, with flags, gotchas and refusal conditions): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
+- Build sequence and commands: `docs/windows-builds.md` § Build Commands; container validation: § Smoke Testing there.
+
+Update those tables in `docs/windows-builds.md` — this section stays a pointer. The Windows Build Invariants above remain here because they are agent-behavioral rules, not reference data.
+
 ## Component Build Matrix
 
 The **authoritative per-library build reference** for the Windows lane (AGENTS.md § Windows Build Notes points here — update THIS table, never a copy). Versions are pinned in `linux/scripts/01-core/versions.env`.

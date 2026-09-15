@@ -25,6 +25,144 @@ Two libraries in this directory have their own pages, because their topic is
 bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
 [`slang-compile.sh`](slang-shader-compilation.md).
 
+## The tree, as AGENTS.md drew it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
+this heading. AGENTS.md keeps one line per top-level directory; the per-file
+detail, the deletion history and the consumer-surface notes are here.
+
+```
+linux/scripts/
+├── 01-core/             shared utilities (62 as of 2026-09-01 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
+├── 03-media/            media library build scripts
+│   ├── core/common.sh   single DRY bootstrap — sourced by every media script
+│   ├── build/           per-library build scripts
+│   │   ├── onnxruntime/   ONNX Runtime + GenAI (build/ steps, runtime/ pkgconfig, android/)
+│   │   ├── litert/        LiteRT + TFLite C API (Critical Fix #2: abseil span.h copy in build-litert.sh)
+│   │   ├── opencv/        OpenCV 5.x
+│   │   ├── ffmpeg/        FFmpeg (build-ffmpeg.sh has fixed host compiler wrapper)
+│   │   ├── gstreamer/     GStreamer monorepo (common/ has patch-gstreamer-sources.sh — Critical Fix #5)
+│   │   ├── libcamera/     libcamera
+│   │   ├── pyav/          PyAV wheel (`import av`), built in a stage layered on the FFmpeg it links against (Dockerfile.media `FROM ffmpeg AS pyav`); versions.env pinned PYAV_VERSION while nothing built it until 2026-08
+│   │   ├── armnn/         Arm NN + Arm Compute Library — arm64 ONLY; other arches get empty /opt/armnn + /opt/acl
+│   │   └── iree/          android/ ONLY (dispatched via android-dispatch.sh); the Linux-lane IREE is built by 05-frameworks/torch/build-app-wheelhouse.sh
+│   └── runtime/         artifact collection, runtime config, wheel repair, verification, media-env.sh (canonical ENV)
+├── 04-runtime/          entrypoint + env scripts (gstreamer-env.sh, etc.)
+├── 05-frameworks/       TVM, Torch, Flutter
+└── 06-packaging/        assembly + smoke tests (smoke-media.sh, smoke-common.sh)
+```
+
+Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `build-cross-stage.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`. Verification: `verify-cross-chain.sh`, `verify-critical-fixes.sh`, `verify-artifact-copy-parity.sh`.
+
+Beyond `linux/scripts/`:
+
+```
+linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
+                         app-runner.sh (generic app launcher: arg parse, exe
+                         discovery, LD_LIBRARY_PATH, per-profile hooks),
+                         cmake-build.sh, code-quality.sh, coverage.sh,
+                         slang-compile.sh, wasm-opt.sh, ctest-run.sh (ctest
+                         runner + perf-baseline comparator), docs-build.sh
+                         (Sphinx build helper), rust-toolchain.sh — the last
+                         three had NO doc entry anywhere until the 2026-08-08
+                         orphan sweep; nothing in-repo invokes lib/, it is a
+                         consumer surface shipped into the images
+linux/scripts/02-toolchain/rust/   cargo_* helpers (test/bench/fmt+clippy/
+                         security/coverage/release/update/doc via
+                         _cargo_wrapper.sh) — consumer surface COPY'd into the
+                         toolchain/sdk/package images; nothing in-repo calls
+                         them (the redundant zero-ref Build-Linux.sh duplicate
+                         was deleted 2026-08-08)
+linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
+                         analysis, packaging, docs) — same consumer-surface
+                         status as rust/
+linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
+                         nerdctl/buildkit prerequisites); intentionally not
+                         wired into CI or builds
+linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
+                         assembly — consumer surface. Called from
+                         OxidANT's
+                         .github/workflows/rust_ubuntu26_04.yml release job.
+                         Deleted by the 2026-08-08 orphan sweep as
+                         "zero-reference" and restored 2026-08-11: the sweep
+                         searched only THIS repo, so a consumer's CI lane was
+                         broken silently. Grep the consumer repos before
+                         deleting anything under lib/, rust/, python/ or
+                         06-packaging/.
+windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
+                         build/ (chain components: Build-*FromSource.ps1,
+                         Build-*All.ps1 wrappers, Test-Container.ps1,
+                         Import-Versions.ps1), host/ (Install-*/Set-*/
+                         Repair-*/Reset-* + elevated maintenance),
+                         diagnostics/ (Test-*/Get-*/Invoke-*/Measure-* probes
+                         + the Invoke-DiagnosticProbe.ps1 runner). A settled
+                         one-shot is DELETED, not archived: git history is the
+                         record, and the diagnostics/archive/ facility that
+                         used to hold them never worked as advertised —
+                         `**/archive/` in .dockerignore strips it from every
+                         build context, so the -ProbeScript archive/<name>.ps1
+                         it promised could not solve. Container mounts
+                         stay FLAT (C:\bkmnt, C:\temp\scripts) — the
+                         $scriptAssetRoot resolver bridges both layouts and
+                         is gated by ScriptAssetRoot.Parity.Tests.
+                         Ungrouped residents BY DECISION (#131):
+                         Invoke-Lint.ps1, entrypoint.cmd, cargo-retry.cmd
+                         (consumer-CI suspect — never delete unverified),
+                         certificates/ (MSIX cert generation + WebDAV
+                         download_webdav_files.py — see its README.md),
+                         python/ + rust/ (consumer CI-lane drivers).
+                         modules/*.psm1 (reusable PS modules: SourceBuild,
+                         Build.Common, ContainerBuild.Reuse, AgenticLoop,
+                         CMake, Config, Formatting, Msix.{Common,Signing},
+                         WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
+                         ContainerImage, Flutter, Installer,
+                         HostMaintenance, SmokeTest, GstPlugins, …),
+                         tests/ (harness + suites), shims/
+windows/upstream/        prepared upstream submissions (not build inputs), one
+                         directory per submission = format-patch + PR.md. See
+                         its README.md for the index, and
+                         docs/upstream-windows-patches.md for the graded
+                         register of EVERY local third-party change.
+                         hcsshim-teardown-timeout/ is the one already FILED
+                         (microsoft/hcsshim#2855) and also carries ISSUE.md,
+                         the deployed 45min local patch and the rebuild
+                         recipe; the other 14 are prepared and UNSENT - do
+                         not post without the owner saying so.
+shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
+                         for the default planner/refactor-planner/executor task
+                         prompts read by BOTH WindowsAgenticLoop.Common.psm1
+                         and linux/scripts/lib/agentic-loop.sh
+.github/actions/         12 composite actions consumers call @main, incl.
+                         cleanup-disk-space (Windows runners),
+                         run-in-linux-container, run-in-windows-container;
+                         full list in .github/actions/README.md
+```
+
+`out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
+
+## Module loading order, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+`artifact-common.sh` sources 01-core modules in dependency order:
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `path-helpers.sh`. `abseil-headers.sh` is
+deliberately NOT in this loop (backlog A3, 2026-08-12): it has no host-side
+caller, and its in-image consumers load it via `source_module`.
+
+`runtime-flow-common.sh` is sourced by `lib-orchestrator.sh` inside `runtime_flow_preamble()`; `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`.
+
+**Which loader a NEW script should use (the dual-loader rule):** scripts that
+also execute INSIDE containers (bind-mounted or COPY'd — base-image, 02-toolchain,
+03-media, 06-packaging) load via `modules.sh` / `source_module`, which resolves
+both the repo layout and the `/opt/scripts` container layout. Host-only
+orchestration (`build-cross-*.sh`, runtime flows) sources `artifact-common.sh`
+directly. Do not mix: a container-capable script hard-sourcing repo paths breaks
+at `/opt/scripts`. (Known wart: `modules.sh` hardcodes a `../02-toolchain`
+search path — a 01-core file encoding stage-2 layout; fold a fix into any
+future `modules.sh` touch. The layer order itself is frozen by
+`tests/test-layer-order.sh`.)
+
 ## What holds the standalone contract
 
 Two suites, and they split the work. `tests/test-lib-smoke.sh` is the cheap half

@@ -855,6 +855,141 @@ measurement, not a default flip.
 
 ---
 
+## The rules as AGENTS.md carried them, with their reasons
+
+Moved out of `AGENTS.md` on 2026-09-15, unedited except for this heading. The
+RULES stay there, in four lines each; what is below is the evidence for them --
+which file lists, which commits, which measured failure -- and it belongs with
+the tiers rather than in a guardrails file.
+
+Full map: `docs/linux-build-basics.md` § Caching Layers. Toggles: `USE_CCACHE`,
+`USE_SCCACHE`, `USE_LLD` accept `0/false/no/off` to disable (since 2026-08-08 —
+previously ONLY the literal `false` worked and `USE_CCACHE=0` was silently
+ignored); `ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
+The rules an agent must never violate:
+
+1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
+   the base/toolchain closure changes the compiler image digest and forces
+   sdk/media/android to rebuild from scratch on the next run. Since 2026-08-08
+   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced per-file
+   closure**, not whole directories — 16 bind mounts (13× `01-core` `.sh` +
+   `versions.env` + `cmake.sh` + `packaging-deps.sh`; the lists live in
+   Dockerfile.base itself) plus the `linux/vulkan` directory. The
+   base/toolchain closure adds `python/build_python.sh`, the three bundled
+   `06-packaging/smoke-*` scripts, `Dockerfile.base` and
+   `Dockerfile.toolchain`. Editing 01-core files OUTSIDE those lists no longer
+   busts base — but `Dockerfile.toolchain`'s verify layer
+   (`# 3c. VERIFY TOOLCHAIN CONTRACT`, :214) still binds `01-core` and
+   `02-toolchain` **whole**, so an edit anywhere in either directory re-runs it —
+   and everything after it, Rust and the source-built CPython included. It sits
+   after the GCC/LLVM compiles, so those still cache-hit: minutes, not hours. A file
+   NEWLY needed by a base RUN must still be ADDED to the
+   per-file mount lists (closure = source edges + **exec/`bash` edges**; the
+   A1 validation build caught exactly such a miss). Batch closure edits;
+   apply them in ONE commit at
+   a planned rebuild boundary. Files in a not-yet-started stage's closure are
+   free to fix until that stage begins (each `nerdctl build` snapshots its
+   context at stage start).
+2. **`~/.config/buildkit/buildkitd.toml` pins the GC budget** (`gckeepstorage`)
+   so the multi-hour layers survive between runs. Restart buildkitd only
+   BETWEEN runs (`systemctl --user restart buildkit`), never while a build
+   solves. Do not delete this file.
+3. **sccache is the C/C++ compiler cache; ccache is its FALLBACK. Keep both
+   wired.** Owner directive 2026-08-26 (c42091e), REVERSING the earlier "full
+   switch rejected (2026-08-17)". This is no longer a per-language split:
+   every C/C++ launcher resolves at RUNTIME through `compiler_cache_launcher()`
+   (`01-core/common.sh`), which returns sccache when its server answers, else
+   ccache, else fails so the caller builds uncached. Call sites: build-gcc.sh
+   (CC/CXX prefix), build-clang.sh and llvm-cross.sh (`CMAKE_*_COMPILER_LAUNCHER`),
+   cmake-cache-linker.sh, the onnxruntime build lib, and build-app-wheelhouse.sh
+   (IREE). Since 2026-08-30 (backlog F2) `compiler-cache.sh` routes through the
+   SAME resolver: `_resolve_compiler_cache_launcher()` calls
+   `compiler_cache_launcher()` when 01-core is loaded (every media/ORT caller)
+   and inlines the identical decision only for the android preamble, which
+   sources compiler-cache.sh standalone. Both `setup_ccache` and `setup_sccache`
+   consume it; the agreement is pinned by `tests/test-compiler-cache.sh`.
+   New cache logic belongs in the resolver, not in another duplicate.
+   - Do NOT hardcode `ccache` as a launcher anywhere. `cmake-cache-linker.sh` is
+     SHARED; a literal there silently overrides the decision for every consumer.
+   - `--ccache` on build-gcc.sh/build-clang.sh is a historical FLAG NAME. It
+     means "use the compiler cache", not "use ccache". llvm.sh passes it.
+   - Both mounts stay on every heavy RUN (ccache AND sccache), because the
+     fallback needs somewhere to persist.
+   - **Rust IS cached again (2026-08-27, 4200f7b + 54fc1df) — through the
+     guarded launcher.** The 2026-08-20 "Rust stays UNCACHED" rule was earned by
+     the sccache SERVER dying mid-compile in three media rounds, killing green
+     builds at 99% — but that signature was the wrong-server-by-fixed-TCP-port
+     bug, cured by `SCCACHE_SERVER_UDS` (2359 media-stage sccache faults → 0).
+     Two places set the wrapper, in this order: `setup_sccache`
+     (compiler-cache.sh:156-195), which setup-gstreamer.sh:50 runs
+     unconditionally for the Rust-heavy gstreamer lane, and
+     build-gstreamer-monorepo.sh's launcher-preferring block, which only fires when
+     `RUSTC_WRAPPER` is still UNSET. Both PREFER
+     `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
+     a build at 99%. Since 26a30740 (2026-08-27, owner decision "immer sccache")
+     their FALLBACKS AGREE: with no executable launcher on disk both ship BARE
+     sccache — build-gstreamer-monorepo.sh's `for _rw in …sccache-launcher.sh` loop
+     (`export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"`) and `setup_sccache`'s
+     `_sc_launcher="sccache"` default (compiler-cache.sh:176). Never uncached;
+     the launcher is an upgrade, not a precondition. The
+     launcher is only reachable because 01-core is bind-mounted at
+     `/opt/scripts/core` on every heavy media RUN; keep it on those mount
+     lists.
+     Exporting `RUSTC_WRAPPER=""` is the opt-out — `Dockerfile.toolchain:66` and
+     `Dockerfile.package:217` do exactly that. nvcc stays untouched — the
+     Windows lane records that released sccache breaks around it.
+   - sccache-specific knobs live in `/etc/sccache/config.toml` (baked in
+     `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
+     and preprocessor/direct mode have NO env-var path in sccache. The size cap
+     is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
+   - **PREFER `01-core/sccache-launcher.sh`; fall back to bare `sccache` rather
+     than to nothing.** Superseded 2026-08-27 (`26a30740`): this rule used to
+     read "NEVER point a launcher at bare `sccache`", and taken literally it
+     tells you to delete the default at `compiler-cache.sh:176`
+     (`_sc_launcher="sccache"`, upgraded to the launcher when one is on disk) —
+     which would turn `verify-critical-fixes.sh` RED, because that gate checks
+     the DECISION (never UNCACHED), not the spelling. Always cache; use the
+     launcher when it is available.
+     The launcher still matters: sccache ABORTS the compile on its own
+     internal errors where ccache would just exec the compiler, and that is not
+     theoretical: it killed the media stage three times. The root cause —
+     CMake creates a TryCompile scratch dir, compiles in it, DELETES it, and
+     sccache then spawns the compiler with that dir as cwd (ENOENT) — is
+     written up ONCE, in [build-cache-tiers.md](build-cache-tiers.md)
+     § 5.1, with the measurements. Read it there. The launcher runs
+     sccache for every compile and only bypasses on
+     "sccache: encountered fatal error"; a REAL compile error is passed through
+     untouched, because blindly retrying would hide genuine failures.
+   - **Preprocessor cache mode stays OFF** (`SCCACHE_DIRECT=false`, set in
+     ensure_sccache_env and compiler-cache.sh, mirrored in Dockerfile.base's
+     config.toml). We turned it on to recover ccache's direct-mode hit rate; it
+     re-reads the input file AFTER the compile to store the entry and therefore
+     dies on the same deleted scratch dirs. It is off by default upstream.
+   - **Resolve the launcher through `compiler_cache_launcher()`.** If you add a
+     new cache call site, route it through the helper. The duplicated
+     resolution in compiler-cache.sh is why this class shipped INERT twice:
+     `setup_ccache` hardcoded the string `sccache`, so the guard had no effect
+     on the media lane for three runs (fixed c5b17ce); then `setup_sccache`
+     exported `RUSTC_WRAPPER="sccache"` unconditionally, and because
+     setup-gstreamer.sh:50 runs it BEFORE build-gstreamer-monorepo.sh's
+     `[ -z "${RUSTC_WRAPPER+x}" ]` test, every gst-plugins-rs crate went through
+     bare sccache (measured on the live media lane 2026-08-27; fixed 54fc1df).
+     Because the class shipped inert twice, `verify-critical-fixes.sh` now
+     GATES compiler-cache.sh against
+     `export RUSTC_WRAPPER|CMAKE_C{,XX}_COMPILER_LAUNCHER="sccache"`.
+   The failure mode this replaced (mount without wiring, wiring without mount)
+   was invisible — builds stayed green, just slow. Before committing a
+   multi-hour run to a change here, run
+   `bash linux/scripts/02-toolchain/probe-sccache.sh` INSIDE the compiler image:
+   it costs seconds and asserts, per compiler shape this chain actually feeds a
+   launcher, both that the compile survives AND that sccache recorded cache
+   activity. sccache HARD-FAILS on a compiler it cannot identify where ccache
+   would simply exec it, so "it compiles" is not the whole question.
+4. **Never edit a running orchestrator's main script** (`build-cross-chain.sh`
+   while a chain runs): bash reads it incrementally by byte offset; an edit can
+   corrupt the in-flight process. Sourced library files are safe to edit for
+   FUTURE runs (the running process holds them in memory) but see rule 1.
+
 ## 6. Knob reference
 
 | Knob | Default | Effect |

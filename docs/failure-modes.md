@@ -107,6 +107,34 @@ Two neighbours, so you land on the right page:
 
 ---
 
+## The shortlist AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+Symptom → cause → fix for 57 failures seen live on both lanes, keyed by the
+error message you actually get:
+[`docs/failure-modes.md`](failure-modes.md). Grouped as Linux/cross-lane ·
+the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and
+the store · Stevedore and the docker service · build content and toolchain.
+
+**Four reflexes that page encodes — worth holding before you need them:**
+
+1. **Check free disk FIRST** on any weird hcsshim failure. Disk exhaustion
+   wears three different costumes and only one of them names the disease.
+2. **Prefer letting a doomed solve fail cleanly over killing it.** A clean
+   finalize failure leaves no debris; a `buildctl` kill mid-finalize
+   manufactures the deterministic `0xb7` that then costs a `-NoCache` re-run.
+3. **After ANY red finalize, REBOOT before further A/B tests.** A wedged hcs
+   state falsifies every experiment run after it.
+4. **Identical step timings mean a TIMEOUT, not slow work.** When every RUN
+   lands on the same number, decode that number against the shim teardown knob
+   before debugging the workload (the 2026-08-31/09-01 incident: 2841.2 s
+   byte-identical = lost exit notification × 45 min constant; a 240 s probe
+   kill then misread it as a hard wedge for a day). Timing table + re-mitigate
+   command: `docs/failure-modes.md` § "Every RUN step reports DONE 2841.2s".
+
+---
+
 ## Linux and cross-lane
 
 ### `exec format error` on a foreign-arch build

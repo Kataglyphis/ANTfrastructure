@@ -26,6 +26,63 @@ placed wherever that repo already keeps its ANTfrastructure wrappers -
 `scripts/linux/` in BeschleunigerBallett, OmniAccelerANT and OrchestrANT, but the
 flat `scripts/` in jotrockenmitlocken. Same shape as `run-lint-gates.sh` there.
 
+## The six things AGENTS.md warned about
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The two owner directives that govern this -- local CLI everywhere, and report
+unless `--apply` was asked for in that turn -- are RULES and stayed in
+`AGENTS.md` § Dependency Updates. What follows is how the tool behaves.
+
+```bash
+linux/scripts/renovate-local.sh .              # what is behind, per this repo's config
+linux/scripts/renovate-local.sh --apply --dry-run .   # the plan, every ecosystem
+linux/scripts/renovate-local.sh --apply .      # gitlinks AND manifests AND locks
+```
+
+Consumers call their own thin `scripts/linux/renovate-local.sh`, same shape as
+`run-lint-gates.sh`. Node 24 and Renovate are pinned in `01-core/versions.env` and
+bootstrapped on demand, checksum-verified, into `~/.cache/kataglyphis`. The apply
+half's JSON reading and file editing live beside it in `renovate_planner.py`, and
+`tests/test-renovate-local.sh` drives the real script over fixtures through
+`RENOVATE_LOCAL_REPORT` / `RENOVATE_LOCAL_CONFIG` - no network, no node.
+
+`--apply` covers every ecosystem the repo HAS, not just gitlinks (owner decision:
+"cargo,pub,etc sollen alle auch wenn vorhanden geupdated werden"). Six things an
+agent must not rediscover the hard way:
+
+* **`--platform=local` cannot write.** Renovate forces dryRun there; it is a
+  detector. The apply half is this repo's own code: git for gitlinks, a located
+  single-line rewrite for cargo/pub/npm/pep621/pip_requirements/pre-commit/
+  dockerfile/github-actions, and `custom.regex` over `versions.env` for the
+  self-contained keys its file-scoped packageRule clears (the rest stay
+  approval-gated), then that ecosystem's own lock tool -- for `versions.env`'s
+  coupled checksums that is still `bump_versions.py`.
+* **It DOES resolve `extends`** - measured 2026-09-09 on 44.71.0, against the
+  older claim in this repo's own docs. The shared preset and every
+  `dependencyDashboardApproval` rule reachable through it are in force locally,
+  and `--print-config` is how the script reads that resolved config back.
+* **`--enabled-managers` does not override a manager's own `enabled: false`.**
+  `git-submodules` and `pre-commit` both ship disabled, so naming them is not
+  enough. Detected ones are enabled from the global config layer, where the
+  repo's own config still outranks the script.
+* **The `git submodule update --remote` refusal** is a rule, so it lives in
+  `AGENTS.md` § Dependency Updates. What the apply half does about it is here:
+  explicit paths, only submodules that declare a branch, never `--recursive`.
+* **The apply half needs the git that WROTE the working tree.** A Windows checkout
+  read by Linux git shows every text file as modified and the checkout aborts half
+  way, leaving the superproject partially updated. The script detects this and
+  switches to `git.exe`; it also refuses up front rather than applying partially.
+* **A stale lockfile fails the run.** When the tool that owns a lock is not on
+  PATH the manifest edit stands, the lock is named as NOT refreshed and the run
+  exits non-zero. `--allow-stale-locks` is the only way past that, and nothing
+  tolerates it by default.
+
+The Renovate GitHub App is installed nowhere in this family and will not be (owner
+decision, 2026-09-09), so this CLI is the permanent mechanism rather than a stopgap
+— and the only reader of every `renovate.json` here. Full rationale:
+[docs/dependency-updates.md](dependency-updates.md).
+
 ## Before you change the script
 
 Nine non-obvious rules shape
@@ -930,6 +987,53 @@ with "wrong git for this working tree" instead. (H1) asserts the absence of
 Ignoring nested dirt for the *decision* must not destroy it: (H4) runs the real
 apply over a dirty nested submodule and reads the uncommitted bytes back
 afterwards.
+
+## Version bumping, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+**Single source of truth: `linux/scripts/01-core/versions.env`.** Update it first.
+
+**Renovate detects, this script finishes (2026-09-11).** Every `# renovate:`-annotated key in versions.env is reported by Renovate's customManager (89 of 99 tracked; locally `renovate-local.sh --managers custom.regex`), and that same CLI's `--apply` writes the self-contained keys its file-scoped allowlist clears. `bump_versions.py` shrinks to the part no datasource can do: the paired `*_SHA256`/`*_COMMIT` refresh, the keys with no feed, the two registry digests, and the SLAVED PROTOC derivation. What is annotated and what is not (with reasons): [`docs/dependency-updates.md`](dependency-updates.md#what-is-still-not-annotated-and-why).
+
+**Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
+
+**`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks ALL automated writes for that key (reported as `HELD`). Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
+
+`common.sh` and `artifact-common.sh` source `versions.env` at load time with `set -a`. Per-Dockerfile ARG defaults are safety nets and should match.
+
+After changing versions:
+1. `python3 docs/scripts/sync_versions.py --write` (one pass now syncs Dockerfile
+   ARGs BEFORE regenerating the snapshot — no second pass needed; `--check` to verify)
+2. `python3 docs/scripts/generate-website-licenses.py --write` (regenerate website /openSourceLicenses page)
+3. **Refresh the matching `*_SHA256` pins in versions.env** (pwsh zip / git installer /
+   nuget / CUDA / cuDNN / ollama / binaryen / hadolint / actionlint — each key's comment
+   documents its fetch command; GitHub releases expose per-asset digests on
+   `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`)
+4. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
+5. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
+   (also enforces that every versions.env-named ARG has a safety-net default in its file)
+6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
+
+Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` requires adding the new
+version's SHA256 to `$llvmSrcSha` in **TWO** scripts — `Build-TvmFromSource.ps1`
+(the #47 mini-LLVM heal) and `Build-LlvmFromSource.ps1` (the #135 patched
+toolchain). Both pin the same llvm-project source tarball per version and THROW
+on an unknown one — deliberately, unpinned downloads are forbidden. Patching only
+one gives a green TVM stage and then a throw in the `patched-llvm` stage, hours
+later. A bump also invalidates `windows/scripts/patches/llvm/*.patch`, which are
+written against 23.1.0's `AArch64InstrInfo.cpp`.
+
+Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
+`CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them
+re-runs scoop, never the hours-long VS Build Tools layer. Keep new version ARGs
+below the VS layer unless they are consumed above it. Same trap for modules:
+`WindowsScripts.Shared.psm1` (plus `WindowsContainerImage.Common.psm1` and
+`WindowsInstaller.Common.psm1`) sit in `Dockerfile.base`'s PRE-VS module COPY —
+editing any of them re-pays the VS Build Tools layer, so batch such edits
+deliberately.
+
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` in `linux/scripts/01-core/versions.env` matches a supported Ubuntu codename (the ARG is declared in `Dockerfile.nvidia` and `Dockerfile.media`; `Dockerfile.amd` hardcodes its ROCm repo paths) (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed.
 
 ## Pins, and why Node is one of them
 
