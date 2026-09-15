@@ -9,6 +9,12 @@
 #   PYTHON_VERSION - Python version (default: 3.14)
 #   PACKAGE_NAME - Package name (derived from pyproject.toml if not specified)
 #   WORKSPACE_ROOT - Workspace root directory
+#   STATIC_ANALYSIS_EXTRA_PATHS - extra paths to analyse, space-separated and
+#     relative to WORKSPACE_ROOT (default: empty). A consumer whose package is
+#     not the whole first-party tree names the rest here: OrchestrANT's
+#     benchmarks/, frontend/ and bench/ were outside every analyser until this
+#     existed. Word-split on purpose -- it is a path LIST, not one path -- so
+#     the value must not contain spaces inside a path.
 
 # -e stays: a failing venv bootstrap or `uv sync` below must still abort. It is
 # compatible with the gate batch because run_gate runs its command in a `||`
@@ -32,6 +38,18 @@ info "Running static analysis for package: $PACKAGE_NAME"
 
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
+# shellcheck disable=SC2206  # a space-separated path LIST, split deliberately
+STATIC_ANALYSIS_EXTRA_PATHS="${STATIC_ANALYSIS_EXTRA_PATHS:-}"
+EXTRA_PATHS=( ${STATIC_ANALYSIS_EXTRA_PATHS} )
+if [ "${#EXTRA_PATHS[@]}" -gt 0 ]; then
+  info "Extra analysis paths: ${EXTRA_PATHS[*]}"
+fi
+# bandit takes -r per target, not a bare path list.
+BANDIT_EXTRA=()
+for _extra in ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}; do
+  BANDIT_EXTRA+=(-r "${_extra}")
+done
+
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
 
 UV_VENV_CLEAR=1 uv_venv_ensure "$VENV_DIR" "$PYTHON_VERSION" "virtual environment" VENV_WAS_PRESENT
@@ -48,15 +66,15 @@ uv_sync_project --no-wxpython
 # finding - and add the one it lacked: a verdict.
 gate_reset "static analysis (${PACKAGE_NAME})"
 
-run_gate "codespell" uv_run codespell "$PACKAGE_NAME" tests docs/source/conf.py setup.py README.md
-run_gate "bandit" uv_run bandit -r "$PACKAGE_NAME" -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results
-run_gate "vulture" uv_run vulture "$PACKAGE_NAME" tests docs/source/conf.py setup.py
+run_gate "codespell" uv_run codespell "$PACKAGE_NAME" tests docs/source/conf.py setup.py README.md ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
+run_gate "bandit" uv_run bandit -r "$PACKAGE_NAME" ${BANDIT_EXTRA[@]+"${BANDIT_EXTRA[@]}"} -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results
+run_gate "vulture" uv_run vulture "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 # --no-fix, not --fix: a gate judges the tree as COMMITTED. `--fix` rewrote the
 # working tree and then reported on the repaired copy, so this step could only
 # ever be green and the finding surfaced in the next `git status` instead.
-run_gate "ruff check" uv_run ruff check --no-fix "$PACKAGE_NAME" tests docs/source/conf.py setup.py
+run_gate "ruff check" uv_run ruff check --no-fix "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 # --check --diff, not a bare `format`: report, do not rewrite. Same argument.
-run_gate "ruff format" uv_run ruff format --check --diff "$PACKAGE_NAME" tests docs/source/conf.py setup.py
+run_gate "ruff format" uv_run ruff format --check --diff "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 run_gate "ty" uv_run ty check
 
 if [ "$VENV_WAS_PRESENT" -eq 0 ]; then

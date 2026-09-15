@@ -242,20 +242,11 @@ run_check shared-config "shared config owner-root sync" check_shared_config
 check_cmake_format() {
   (
     set -euo pipefail
-    # Bootstrap knobs are function names, not script files: same uv/venv path
-    # every consumer wrapper takes, without an exec-bit in the contract.
-    _cmf_venv_create() {
-      source linux/scripts/01-core/python_uv.sh
-      uv_venv_create .venv-cmake-format ""
-    }
-    _cmf_install_requirements() {
-      source linux/scripts/01-core/python_uv.sh
-      uv_pip_install_requirements .venv-cmake-format linux/scripts/cmake-format.requirements.txt
-    }
+    # No bootstrap knobs: unset is the hub's own uv/venv path since 2026-09-15
+    # (lib/code-quality.sh § cmake-format availability), which is exactly the
+    # two functions this gate used to spell out for itself.
     source linux/scripts/lib/code-quality.sh
     CODE_QUALITY_VENV_DIR="${PWD}/.venv-cmake-format"
-    CODE_QUALITY_UV_VENV_CREATE_SCRIPT=_cmf_venv_create
-    CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT=_cmf_install_requirements
     CODE_QUALITY_CMAKE_SEARCH_ROOT=.
     # third_party/external are not ours; the windows patch shims' bytes are
     # Windows layer-cache keys (.gitattributes); venvs/out can carry pip .cmake.

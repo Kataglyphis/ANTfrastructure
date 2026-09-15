@@ -23,6 +23,11 @@
     ANTfrastructure checkout itself. A consumer that vendors or submodules
     ANTfrastructure passes ITS OWN root here.
 
+.PARAMETER ExtraPaths
+    Extra paths to analyse, relative to the repo root. A consumer whose package
+    is not the whole first-party tree names the rest here; bandit gets each as
+    its own -r target. The Linux twin's knob is STATIC_ANALYSIS_EXTRA_PATHS.
+
 .EXAMPLE
     Invoke-CiStaticAnalysis.ps1 -PackageName "my_package"
 #>
@@ -38,7 +43,10 @@ Param(
     # MUST pass its own root, or every path derived below -- pyproject.toml, the
     # venvs, the log dir -- is read from and written into the hub checkout
     # instead of the repo under test.
-    [string]$RepoRoot = ''
+    [string]$RepoRoot = '',
+    # Extra first-party paths to analyse, relative to the repo root. Empty keeps
+    # today's behaviour. Same knob as the Linux twin's STATIC_ANALYSIS_EXTRA_PATHS.
+    [string[]]$ExtraPaths = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,7 +73,13 @@ try {
 
     Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython
 
-    $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md")
+    $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md") + $ExtraPaths
+    # bandit takes -r per target rather than a path list, so the extras are
+    # spelled separately below. $analysisPaths[0..3] indexing is gone with them:
+    # the non-README slice is now named, or appending would silently drop every
+    # extra path past the fourth element.
+    $codeOnlyPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py") + $ExtraPaths
+    $banditExtra = @($ExtraPaths | ForEach-Object { "-r"; $_ })
 
     # One owner for the uv-run-an-analyser shape. Every analyser below
     # differs only in tool name, flags and whether it takes the path list;
@@ -87,17 +101,18 @@ try {
     }
     & $runAnalyser "codespell"   @("codespell")               $analysisPaths
 
-    & $runAnalyser "bandit" @(
-        "bandit", "-r", $PackageName,
+    & $runAnalyser "bandit" (@(
+        "bandit", "-r", $PackageName
+    ) + $banditExtra + @(
         "-x", "tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results"
-    ) @()
+    )) @()
 
-    & $runAnalyser "vulture"     @("vulture")                 $analysisPaths[0..3]
+    & $runAnalyser "vulture"     @("vulture")                 $codeOnlyPaths
     # --no-fix and --check --diff, not --fix and a bare format: a gate judges the
     # tree as COMMITTED. Rewriting it makes the step pass and leaves the change in
     # a CI checkout nobody sees. Same wording, same reason, as the Linux twin.
-    & $runAnalyser "ruff check"  @("ruff", "check", "--no-fix")          $analysisPaths[0..3]
-    & $runAnalyser "ruff format" @("ruff", "format", "--check", "--diff") $analysisPaths[0..3]
+    & $runAnalyser "ruff check"  @("ruff", "check", "--no-fix")          $codeOnlyPaths
+    & $runAnalyser "ruff format" @("ruff", "format", "--check", "--diff") $codeOnlyPaths
 
     & $runAnalyser "ty"          @("ty", "check")             @()
 

@@ -179,6 +179,17 @@ own `index.html` shell, so a guide page carries the same header, sidebars and
 theme as an API page, and rewrites every relative `*.md` link onto the guide
 page rendered from that file.
 
+**dartdoc emits TWO page shapes, and a third kind of file.** Some pages carry a
+static left sidebar with a bare `<ol>`; the rest carry
+`<div id="dartdoc-sidebar-left-content"></div>`, filled at runtime from a
+`*-sidebar.html` fragment — measured on one consumer, 1030 of 1459 pages were the
+second kind. Those fragments are not documents at all: no `<html`, no `</body>`.
+So the renderer skips a page it cannot hang navigation on and skips a fragment it
+cannot attach a footer to, rather than aborting the run on the first one, and the
+END of the run is where vacuity is caught instead: a run that navigated no page,
+or that configured a footer and footered no page, fails. It prints both numbers
+(`navigated X/N and footered Y/N`) so "it worked" is a measurement.
+
 | Variable | Meaning | Default |
 |---|---|---|
 | `DARTDOC_BUILD_PROJECT_ROOT` | project root | cwd |
@@ -222,7 +233,7 @@ which is the case the cwd-relative probe existed for in the first place.
 
 ## Consumer entry points that are not libraries
 
-Three things below are executables a consumer *runs*, not cores it sources. They
+The things below are executables a consumer *runs*, not cores it sources. They
 share one rule, and it is the rule the `lint-secrets.sh` and `lint-workflows.sh`
 repairs were both about: **the consumer repo root is an explicit argument, never
 inferred from `BASH_SOURCE`.** A consumer checks this repo out at
@@ -341,6 +352,35 @@ which is where the second copy sat until 2026-09-14. Expand the value unquoted,
 as `preflight.sh` does: it may be a command line such as
 `uv run --no-project python`, the very hint the failure message gives.
 
+### `run-in-ci-image.sh` — run a command in the CI image
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scripts/linux/build.sh
+```
+
+`<repo-root> [--engine docker|nerdctl] [--platform ...] [--workdir ...]
+[--mount-hub-scripts] [--name N] [--keep] -- <command...>`.
+
+Every consumer README, every "reproducing CI locally" section and half the agent
+prompts carried the same hand-typed `docker run`, and they had all drifted: a
+different tag, a forgotten `MSYS_NO_PATHCONV`, a mount at a different path, no
+`safe.directory`. This is that line once. The image comes from
+`ci-image-ref.sh`, the root is mounted at `/workspace` and registered as a git
+safe.directory before the command runs (without it every `git ls-files` inside
+fails as "dubious ownership", which breaks a format gate long before anything
+builds), and the engine defaults to `nerdctl` when present, else `docker` — the
+local box runs Rancher Desktop and CI runs docker, and neither should have to
+say so.
+
+`MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` are exported by the script rather
+than documented for the reader: from Git Bash, MSYS rewrites anything that looks
+like a POSIX path into a Windows one, destroys every `-v`/`-w` argument, and
+fails with "expected an absolute path". A note nobody reads is how that keeps
+being rediscovered.
+
+CI workflow steps keep using the `run-in-linux-container` composite action; this
+is for everything that is not a workflow step.
+
 ### `ci-image-ref.sh` — the family CI image reference
 
 Prints `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` (or `…_WINDOWS_TAG` with
@@ -452,3 +492,39 @@ through `download_verified_file`. Two consumers had copied the same unverified
 now live in `01-core/versions.env` (`SQLITE3_WASM_VERSION` /
 `SQLITE3_WASM_SHA256`). There is deliberately no version argument — the pin is
 the point.
+
+### `05-frameworks/flutter/lane-prologue.sh`
+
+`flutter_lane_prepare_env [flutter_dir]` is the Flutter twin of
+`cmake-build.sh`'s `cmake_build_prepare_env`, and exists for the same reason:
+two consumers had each grown their own prologue, they had drifted, and the
+differences were all work the IMAGE already does.
+
+It asserts `${FLUTTER_DIR:-/opt/flutter}/bin/flutter`, puts its `bin/` on `PATH`
+once, registers a git `safe.directory` for **the repo root only**, defaults
+`PUB_CACHE` to `<repo>/.pub-cache`, and prints `flutter --version` — the tag is
+unpinned, so the version is a measurement rather than a constant.
+
+Three things it does not do, and must not gain: a `safe.directory` for the SDK
+(`setup-package-image.sh:556` registers `/opt/flutter` at `--system` level, so a
+`--global` copy is a no-op that reads like a requirement), sourcing `~/.bashrc`
+to find flutter (`Dockerfile.package:268` already puts it on `PATH`, and a stock
+non-interactive `.bashrc` returns early with a meaningless status while hiding a
+broken rc file), and installing an SDK — a lane that installs one is testing a
+different toolchain from the one it ships.
+
+`flutter_build_web [--wasm] [--no-tree-shake-icons] [args...]` is the optional
+second half: `flutter build web --release` with the two flags every consumer
+passes named rather than re-spelled, everything else forwarded untouched.
+
+### `01-core/http-readiness.sh`
+
+`wait_for_http <url> <who> [attempts] [sleep]` polls until an endpoint answers.
+Three consumers had written this loop and every difference between them was an
+accident — attempt count, sleep length, and the one that matters: whether
+failure kills the caller. It **returns** non-zero rather than exiting, because
+the nginx caller has to dump `docker logs` before it dies and a helper that
+calls `exit` takes that away. Probes that fail while the server is still
+starting are the expected case and stay silent; only the verdict is printed, and
+it names `who` — a bare URL never told anyone which server failed to come up.
+Defaults are 50 attempts at 0.2s, the ten seconds the consumers converged on.

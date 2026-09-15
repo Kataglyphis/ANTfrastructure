@@ -7,6 +7,19 @@
 # exited 127 before cargo ever ran. OxidANT's rust_ubuntu26_04.yml:134-139 records
 # that as "it died with exit 127 on every single build", and both of its lanes
 # hand-rolled the two cargo calls to get around it.
+#
+# Environment:
+#   CARGO_CLIPPY_ARGS - the feature/scope arguments clippy runs with
+#     (default: --all-features). This is the OTHER reason consumers hand-rolled
+#     the pair: --all-features was hard-coded here, and a workspace whose
+#     optional features do not all build on the runner could not use the driver
+#     at all. Set it to what that repo needs, e.g. '--workspace --locked'.
+#     Empty is allowed and means "clippy's own defaults".
+#
+# Positional arguments still go to `cargo fmt` (--check keeps its place after
+# the --) and NO LONGER to clippy: forwarding one argument list to two tools
+# that read it differently is how a --features meant for fmt became a scope
+# change for clippy.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +49,8 @@ cargo fmt --all "$@" -- --check
 
 _ensure_component clippy clippy
 info "Running clippy checks..."
-# Forward any args to cargo clippy
-cargo clippy --all-targets --all-features "$@" -- -D warnings
+CARGO_CLIPPY_ARGS="${CARGO_CLIPPY_ARGS---all-features}"
+# shellcheck disable=SC2086  # a deliberate argument LIST, split by the shell
+cargo clippy --all-targets ${CARGO_CLIPPY_ARGS} -- -D warnings
 
 info "Formatting and clippy checks completed successfully."

@@ -211,16 +211,19 @@ Three rules that cost real debugging time to learn:
 
 Image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
 
-Local runs go through Rancher Desktop's `nerdctl`. From Git Bash you must
-disable path mangling or the mount argument is destroyed:
+Local runs go through one driver, so the image tag, the mount layout, the git
+safe.directory and the Git Bash path-mangling escape are answered in one place
+rather than re-typed per repo:
 
 ```bash
-MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user root \
-  -v cargo-cache:/cargo-cache \
-  -v /mnt/d/path/to/repo:/workspace -w /workspace \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  bash -c 'bash scripts/linux/cmake-configure-build.sh --preset <preset> --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
+bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- \
+  bash scripts/linux/cmake-configure-build.sh --preset <preset> \
+       --build-dir /tmp/build --cargo-cache-dir /cargo-cache
 ```
+
+[`shared-script-libraries.md` § `run-in-ci-image.sh`](shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)
+has the options (engine, platform, named containers). A cargo-cache volume is
+still the caller's to create and mount; everything else is the driver's.
 
 Three constraints worth internalising:
 
