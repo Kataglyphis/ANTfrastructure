@@ -58,6 +58,21 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}"
           | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # syft streams every layer of the image through a cache under TMPDIR, and
+      # a cross image is tens of gigabytes per arch. The runner's root volume
+      # does not hold that: the scan died mid-layer with "disk quota exceeded"
+      # on all three arches, every Monday since 2026-08-31. /mnt is the large
+      # volume on these images, so the cache goes there. Nothing about WHAT is
+      # scanned changes -- `registry:` still streams, still pulls into no
+      # daemon; it just gets the volume with the room.
+      - name: Give the scanner cache the large volume
+        run: |
+          set -euo pipefail
+          df -h / /mnt
+          sudo mkdir -p /mnt/syft-tmp
+          sudo chown "$(id -u):$(id -g)" /mnt/syft-tmp
+          echo "TMPDIR=/mnt/syft-tmp" >> "${GITHUB_ENV}"
+
       # One script, and the SAME one docs/sbom.md tells a reader to run on a
       # workstation: the syft bootstrap, the `registry:` scan (no pull into a
       # daemon, no disk for the rootfs, and it works for arches this runner
