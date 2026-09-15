@@ -13,8 +13,21 @@ if (-not (Get-Module -Name 'WindowsUv.Common')) {
 function Get-ProjectCmakeFiles {
   param(
     [Parameter(Mandatory)]
-    [string]$WorkspacePath
+    [string]$WorkspacePath,
+    # Extra regexes a project excludes on top of the built-in build/_deps/vendor
+    # set. A consumer whose tree has its own generated CMake (a packaging
+    # staging dir, a patch shim) had to re-implement the whole enumeration to
+    # drop it; now it passes a pattern.
+    [string[]]$ExcludePattern = @()
   )
+
+  $keep = {
+    param([string]$Path)
+    foreach ($pattern in $ExcludePattern) {
+      if ($Path -match $pattern) { return $false }
+    }
+    return $true
+  }
 
   $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
   if ($gitCommand) {
@@ -30,7 +43,7 @@ function Get-ProjectCmakeFiles {
             ($_.ToString() -notmatch '\\_deps\\') -and
             ($_.ToString() -notmatch '\\vcpkg_installed\\')
           })
-        return @($trackedPaths | Sort-Object -Unique)
+        return @($trackedPaths | Where-Object { & $keep $_ } | Sort-Object -Unique)
       }
     } catch {
       # Best-effort: fall through to the filesystem enumeration below.
@@ -51,7 +64,7 @@ function Get-ProjectCmakeFiles {
     } |
     Select-Object -ExpandProperty FullName
 
-  return @($cmakeFiles | Sort-Object -Unique)
+  return @($cmakeFiles | Where-Object { & $keep $_ } | Sort-Object -Unique)
 }
 
 function Get-ProjectCppFiles {
@@ -122,7 +135,13 @@ function Initialize-UvVenvPython {
     [Parameter(Mandatory)]
     [string]$WorkspacePath,
     [string]$PythonVersion = '3.12',
-    [string]$EnvName = '.venv'
+    [string]$EnvName = '.venv',
+    # The requirements file to install into the venv. Default (empty) keeps
+    # today's behaviour: <workspace>/requirements.txt, skipped when absent. A
+    # caller that only needs cmake-format points this at the hub's pinned
+    # linux/scripts/cmake-format.requirements.txt instead of installing a
+    # project's whole dependency set to get one formatter.
+    [string]$RequirementsPath = ''
   )
 
   $uvCommand = Get-Command 'uv' -ErrorAction SilentlyContinue
@@ -146,7 +165,8 @@ function Initialize-UvVenvPython {
   $venvPython = Initialize-UvVenv -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $EnvName `
     -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning
 
-  $requirementsPath = Join-Path $WorkspacePath 'requirements.txt'
+  $requirementsPath = if ($RequirementsPath) { $RequirementsPath }
+                      else { Join-Path $WorkspacePath 'requirements.txt' }
   if (-not (Test-Path $requirementsPath)) {
     Write-BuildLog -Context $Context -Message "No requirements.txt found at $requirementsPath, skipping dependency sync."
     return $venvPython
@@ -164,28 +184,34 @@ function Invoke-CmakeFormatStep {
     [Parameter(Mandatory)]
     [pscustomobject]$Context,
     [Parameter(Mandatory)]
-    [string]$WorkspacePath
+    [string]$WorkspacePath,
+    # Report instead of rewriting. A gate judges the tree as COMMITTED: with
+    # --in-place the step can only ever pass and the change turns up in someone
+    # else's `git status`. The Linux twin has said so since it was corrected.
+    [switch]$Check,
+    [string]$RequirementsPath = '',
+    [string[]]$ExcludePattern = @()
   )
 
-  $venvPython = Initialize-UvVenvPython -Context $Context -WorkspacePath $WorkspacePath
+  $venvPython = Initialize-UvVenvPython -Context $Context -WorkspacePath $WorkspacePath `
+    -RequirementsPath $RequirementsPath
   $cmakeFormatExe = Join-Path (Split-Path $venvPython -Parent) 'cmake-format.exe'
   if (-not (Test-Path $cmakeFormatExe)) {
     throw "cmake-format not found in venv: $cmakeFormatExe"
   }
 
   $formatConfig = Join-Path $WorkspacePath '.cmake-format.yaml'
-  $cmakeFiles = @(Get-ProjectCmakeFiles -WorkspacePath $WorkspacePath)
+  $cmakeFiles = @(Get-ProjectCmakeFiles -WorkspacePath $WorkspacePath -ExcludePattern $ExcludePattern)
   if ($cmakeFiles.Count -eq 0) {
     Write-BuildLog -Context $Context -Message 'No CMake files found for cmake-format.'
     return
   }
 
+  $mode = if ($Check) { @('--check') } else { @('--in-place') }
   foreach ($cmakeFile in $cmakeFiles) {
-    if (Test-Path $formatConfig) {
-      Invoke-BuildExternal -Context $Context -File $cmakeFormatExe -Parameters @('-c', $formatConfig, '--in-place', $cmakeFile) | Out-Null
-    } else {
-      Invoke-BuildExternal -Context $Context -File $cmakeFormatExe -Parameters @('--in-place', $cmakeFile) | Out-Null
-    }
+    $parameters = if (Test-Path $formatConfig) { @('-c', $formatConfig) + $mode + @($cmakeFile) }
+                  else { $mode + @($cmakeFile) }
+    Invoke-BuildExternal -Context $Context -File $cmakeFormatExe -Parameters $parameters | Out-Null
   }
 }
 

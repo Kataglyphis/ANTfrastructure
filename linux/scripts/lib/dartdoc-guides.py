@@ -165,19 +165,26 @@ def sidebar_nav(root: pathlib.Path, page_path: pathlib.Path, guides) -> str:
 def inject_sidebar_nav(text: str, nav_html: str, where) -> str:
     """Hang the guide navigation off the left sidebar's first `<ol>`.
 
-    Already-injected pages and an empty nav are no-ops. A page that has neither
-    landmark is NOT: see _splice -- a missed injection used to leave the guides
-    unreachable while the run still reported success.
+    Already-injected pages and an empty nav are no-ops, and so is a page with no
+    STATIC sidebar: dartdoc emits two page shapes, and the second one's left
+    sidebar is `<div id="dartdoc-sidebar-left-content"></div>`, filled at runtime
+    from a `*-sidebar.html` fragment. There is nothing to splice into there. This
+    used to abort the whole run on the first such page -- measured on one
+    consumer, 1030 of 1459 pages -- so the guides never landed anywhere and the
+    docs lane could not finish. That consumer forked this file over exactly this
+    one function; upstreaming the behaviour is what retires the fork.
+
+    Nothing is weakened by it. The vacuity check in main() still fails a run in
+    which NOT ONE page ended up navigated, which is the failure that matters,
+    and every landmark read out of index.html -- the one shell every guide page
+    is built from -- stays hard.
     """
     if NAV_MARKER in text or not nav_html:
         return text
     sidebar = text.find(LEFT_START)
     ol_start = text.find("<ol>", sidebar) if sidebar != -1 else -1
     if ol_start == -1:
-        raise SystemExit(
-            f"{where}: no {LEFT_START!r} followed by '<ol>' to hang the guide "
-            "navigation on. dart doc's page shell changed; update the renderer."
-        )
+        return text
     at = text.find("\n", ol_start)
     at = ol_start + len("<ol>") if at == -1 else at
     return text[: at + 1] + nav_html + "\n" + text[at + 1 :]
@@ -190,6 +197,12 @@ def inject_footer(text: str, footer_html: str, where) -> str:
         return text.replace("</footer>", f"{footer_html}\n</footer>")
     if "</body>" in text:
         return text.replace("</body>", f"<footer>\n{footer_html}\n</footer>\n</body>")
+    # A FRAGMENT is not a document. The `*-sidebar.html` files dartdoc writes
+    # beside its pages are `<ol>` bodies with no `<html`, and a footer inside one
+    # would render in the middle of a sidebar. Skipping them is right; skipping a
+    # real page is not, so the refusal stays for anything that claims to be one.
+    if "<html" not in text:
+        return text
     raise SystemExit(f"{where}: neither '</footer>' nor '</body>' to attach the footer to.")
 
 
@@ -226,6 +239,7 @@ def main(argv) -> int:
 
     footer_html = build_footer(config["footer_title"], config["footer"])
     navigated = 0
+    footered = 0
     pages = 0
     for page_path in sorted(root.rglob("*.html")):
         pages += 1
@@ -236,7 +250,9 @@ def main(argv) -> int:
         # Carrying the marker, not "was edited this run": a second pass over an
         # already-navigated tree is a no-op, not a failure.
         navigated += NAV_MARKER in after
-        page_path.write_text(inject_footer(after, footer_html, rel), encoding="utf-8")
+        final = inject_footer(after, footer_html, rel)
+        footered += FOOTER_MARKER in final
+        page_path.write_text(final, encoding="utf-8")
     # Counted, not assumed: "Rendered N" over an untouched tree is exactly the
     # failure this file's landmark checks exist to make impossible.
     if guides and not navigated:
@@ -244,7 +260,18 @@ def main(argv) -> int:
             f"{len(guides)} guide page(s) rendered but not one of the {pages} page(s) "
             f"under {root} carries the guide navigation; the site would not link them."
         )
-    print(f"Rendered {len(guides)} guide page(s) and navigated {navigated}/{pages} under {root}")
+    # The footer gets the same treatment, for the same reason: since a page
+    # without a document body is skipped rather than fatal, "configured a footer
+    # and attached it to nothing" would otherwise pass silently.
+    if footer_html and not footered:
+        raise SystemExit(
+            f"a footer is configured but not one of the {pages} page(s) under {root} "
+            "received it; every page was skipped as a fragment, which cannot be right."
+        )
+    print(
+        f"Rendered {len(guides)} guide page(s), navigated {navigated}/{pages} "
+        f"and footered {footered}/{pages} under {root}"
+    )
     return 0
 
 

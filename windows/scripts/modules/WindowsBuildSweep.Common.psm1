@@ -121,21 +121,66 @@ function Invoke-InLinuxContainerBuild {
       Bash command executed inside the container. Run with `set -e` prepended so
       a failing line fails the step instead of being swallowed by the last
       command's status.
+    .PARAMETER Engine
+      docker (default) or nerdctl. -DockerExe still wins when given: a caller
+      that already resolved a full path keeps it. Rancher Desktop's nerdctl is
+      the local Linux engine on this family's Windows box, and every consumer
+      that wanted it had re-implemented the whole run instead.
+    .PARAMETER Platform
+      Overrides linux/amd64. An arm64 run needs binfmt registered per VM boot --
+      docs/rancher-desktop-linux-containers.md says how, and what does not work
+      under emulation.
+    .PARAMETER Name / -KeepContainer
+      Name the container, and keep it after it exits, so a failed run can be
+      inspected instead of re-run with the flags changed.
+    .PARAMETER NamedVolumes
+      'volume-name:/mount/path' entries. Created if absent and chowned to uid
+      1001 (the image's user) through a throwaway alpine run, because a fresh
+      volume is root-owned and every write from the build user then fails. The
+      LONG --mount form is used deliberately: Windows nerdctl reads
+      `-v name:/path` as a BIND of ./name and silently mounts a directory
+      instead of the volume.
+    .PARAMETER EnvFile
+      Passed through as --env-file.
   #>
   param(
     [Parameter(Mandatory)] [string]$RepoRoot,
     [Parameter(Mandatory)] [string]$Image,
     [Parameter(Mandatory)] [string]$Command,
     [string]$WorkDir = '/workspace',
-    [string]$DockerExe = 'docker'
+    [string]$DockerExe = 'docker',
+    [ValidateSet('docker', 'nerdctl')] [string]$Engine = 'docker',
+    [string]$Platform = 'linux/amd64',
+    [string]$Name = '',
+    [switch]$KeepContainer,
+    [string[]]$NamedVolumes = @(),
+    [string]$EnvFile = ''
   )
 
-  & $DockerExe run --rm `
-    --platform linux/amd64 `
-    -v "${RepoRoot}:${WorkDir}" `
-    -w $WorkDir `
-    $Image `
-    bash -c "set -e`n$Command"
+  $exe = if ($PSBoundParameters.ContainsKey('DockerExe')) { $DockerExe } else { $Engine }
+
+  foreach ($spec in $NamedVolumes) {
+    $volume = $spec.Split(':')[0]
+    # `volume create` is idempotent, so no exists-check to get wrong; the chown
+    # is not, but it is cheap and correct to repeat.
+    & $exe volume create $volume | Out-Null
+    & $exe run --rm --user root --mount "type=volume,source=$volume,target=/v" `
+      alpine:3.20 chown -R 1001:1001 /v | Out-Null
+  }
+
+  $runArgs = @('run')
+  if (-not $KeepContainer) { $runArgs += '--rm' }
+  if ($Name) { $runArgs += @('--name', $Name) }
+  if ($Platform) { $runArgs += @('--platform', $Platform) }
+  if ($EnvFile) { $runArgs += @('--env-file', $EnvFile) }
+  $runArgs += @('-v', "${RepoRoot}:${WorkDir}", '-w', $WorkDir)
+  foreach ($spec in $NamedVolumes) {
+    $parts = $spec.Split(':')
+    $runArgs += @('--mount', "type=volume,source=$($parts[0]),target=$($parts[1])")
+  }
+  $runArgs += @($Image, 'bash', '-c', "set -e`n$Command")
+
+  & $exe @runArgs
 }
 
 function Write-SweepSummary {
