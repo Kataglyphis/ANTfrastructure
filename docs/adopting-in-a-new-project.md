@@ -161,14 +161,21 @@ the local fallback directory. If a second consumer needs it, it belongs here
 instead — that test is what moved `WindowsTesting.Common` and
 `WindowsClang.Common` upstream on 2026-08-11.
 
-Bash consumers have no equivalent bootstrap problem — they source libraries by
-relative path directly, e.g.
-`third_party/ANTfrastructure/linux/scripts/lib/app-runner.sh`. Resolve
-that path from `${BASH_SOURCE[0]}` rather than assuming the caller's working
-directory is the repo root, and fail loudly (naming the
-`git submodule update --init --recursive` command) when the submodule is not
-checked out. OmniAccelerANT's `scripts/linux/lib/antfrastructure.sh`
-is a two-function example.
+Bash consumers have the same problem and the same answer: copy
+[`shared/linux/templates/antfrastructure.sh`](../shared/linux/templates/README.md)
+to `scripts/linux/lib/antfrastructure.sh` (or `scripts/lib/` in a flat Flutter
+repo), adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE`, and declare it as
+`antfrastructure-sh` in `.antfrastructure-shared.manifest` so the drift gate
+watches it. It resolves paths from `${BASH_SOURCE[0]}`, never from the caller's
+working directory, and its failure message names the fix.
+
+**A consumer with no submodule is supported.** The bootstrap takes
+`$ANTFRASTRUCTURE_DIR` first (a container mounts the workspace somewhere else
+than the host, so an explicit answer always wins), then
+`third_party/ANTfrastructure`, then a plain sibling clone at
+`<repo>/antfrastructure-tools`. Its error text follows the same fact: it offers
+`git submodule update` only when `.gitmodules` actually names that path, and
+otherwise tells you to clone or to export `ANTFRASTRUCTURE_DIR`.
 
 ## 2. Windows container builds (Stevedore)
 
@@ -221,9 +228,11 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- \
        --build-dir /tmp/build --cargo-cache-dir /cargo-cache
 ```
 
+A cargo-cache volume is still yours to create and mount; everything else —
+image, mount layout, safe.directory, engine, the Git Bash escape — is the
+driver's, and
 [`shared-script-libraries.md` § `run-in-ci-image.sh`](shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)
-has the options (engine, platform, named containers). A cargo-cache volume is
-still the caller's to create and mount; everything else is the driver's.
+owns the explanation.
 
 Three constraints worth internalising:
 

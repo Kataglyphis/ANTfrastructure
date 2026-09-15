@@ -92,12 +92,8 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- \
   bash ./scripts/linux/cmake-configure-build.sh --preset linux-debug-clang --build-dir /tmp/build
 ```
 
-That driver resolves the image from `versions.env`, mounts the root at
-`/workspace`, registers the git safe.directory and exports the Git Bash
-path-mangling escape — the four things this recipe used to spell out by hand and
-that drifted in every repo that copied it. Its options (engine, platform, named
-containers) are in
-[`shared-script-libraries.md` § `run-in-ci-image.sh`](shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image).
+Its options, and why this recipe is no longer four lines of `nerdctl`, are in
+[`shared-script-libraries.md`](shared-script-libraries.md).
 
 Notes that will save time:
 
