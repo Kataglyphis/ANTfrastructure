@@ -671,7 +671,7 @@ Read the strategy before editing that Dockerfile:
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/ubuntu26.04.yml` — `bash linux/scripts/preflight.sh` | CI |
 

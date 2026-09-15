@@ -7,6 +7,107 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-15 — the audit's second hub batch: the owner's decisions, executed
+
+The 2026-09-14 family audit left 33 open items against this repository and
+twelve questions for the owner. The answers came back; this is the hub's side of
+them. Cross-repo halves (the consumer wrappers, the OrchestrANT copy of the NAS
+census, the dartdoc fork deletion, the Flutter lane rewrite) are a separate pass
+— every hub-side helper they need exists now.
+
+### The owner's decisions
+
+**D1. The home-lab stacks stay, and the README says so.** `linux/homeassistant/`
+and `linux/nextcloud-aio/` are the owner's personal operations stacks, carried
+here deliberately. README.md states that under its own heading, with the
+consequence spelled out: anything claiming this repository is build
+infrastructure ONLY is false. The h4 that claimed exactly that is rewritten to
+what the tree actually holds.
+
+**D9. `linux/webserver/dist/` stops being tracked.** 82 MB of minified Flutter
+output, built in another repository, rewritten in full on every site build, and
+unrebuildable by anything here. The image takes it from a named BUILD CONTEXT
+now (`COPY --from=site`, `--build-context site=<jot>/build/web`), and a build
+that names no `site` context fails at that line rather than serving nothing.
+`git rm -r --cached` only — the files stay on disk. `license-assets/` stays
+TRACKED, against the item text: it is 48 KB, this repo GENERATES it, and a live
+gate checks it is current.
+
+**D8. The NAS document-AI thread leaves for OrchestrANT.** `nas_census.py`, its
+suite and `nas-document-ai.md` are removed here, with their mutations, their
+allow row and their family, and every reference repointed. The consumer side is
+a later pass; the files are recoverable from this commit's parent.
+
+**D4. The repository size is documented, not rewritten.** `project-info.md` now
+says what is large (nothing, after D9), why the pack is still ~154 MB (dist's
+history) and why no `filter-repo` runs: it would change every commit id, break
+the gitlink in six consumers and every SHA in every changelog entry, to save a
+one-time clone cost measured in seconds.
+
+**D10. AGENTS.md is 900 lines, down from 1863.** Nothing was deleted. Every
+paragraph either stayed because it is a RULE an agent must not break, or landed
+in the docs page that owns its topic with a link back — the Validation
+measurements to `linux-host-setup.md` § B7/B8, the caching mechanism to
+`build-cache-tiers.md` and `windows-build-resources.md`, the command reference to
+`linux-cross-builds.md`, the Repo Map's per-file detail to
+`shared-script-libraries.md`, and so on. § Contents states the split, so the next
+reader knows which side a new paragraph belongs on.
+
+**A089, decided by Claude because the item recommended it.**
+`renovate-fleet.sh --vendored` is an opt-in mode for the two cases that are not
+the accident the default protects against: a repo of the owner's with no own
+checkout anywhere, and a container that mounts a single superproject.
+
+### The scan-root contract reaches the docs gates
+
+`doc-links`, `doc-dupes` and `code-dupes` resolved their root from `__file__`,
+so in a consumer's `third_party/ANTfrastructure` checkout they graded THIS
+repository and reported that as the consumer's verdict. All three take `--root`
+now, keep their current behaviour exactly when the root is the hub, and read
+their budget from `<root>/<gate>.allow` otherwise. `doc-links` joins the
+`--ratchets` step — it is the only one with no budget to seed — which is what
+finally puts a consumer's own `README.md` into the cross-reference graph.
+
+Ten gates gained a `--root` test case and a
+`<gate>.root-argument-is-the-tree` mutation; nine are verified to bite (the
+tenth needs shellcheck, which this image has not). That needed a fixture the
+suites did not have: every existing one plants a tree AROUND the gate, so the
+gate cannot tell it from its own repo. `gate-tree.sh` grows `gate_tree_git` plus
+two assertion helpers, because ten hand-copied blocks are what the code-dupes
+gate exists to catch.
+
+### The upstream halves the consumer forks were waiting on
+
+A Flutter lane prologue and an HTTP-readiness helper (three consumers had each
+written the poll loop; this one RETURNS rather than exits, so the nginx caller
+can still dump its logs). `run-in-ci-image.sh`, which is the hand-typed
+`docker run` every README carried, once — with the Git Bash path-mangling escape
+exported rather than documented, because a note nobody reads is how that keeps
+being rediscovered. A cmake-format venv DEFAULT instead of an error. MSIX
+orchestration (`Invoke-MsixPackage`, `Get-PackageVersion`) with the assertion
+that makeappx actually produced a file. `export_clang_gcc_toolchain_env`
+restored, with a prefix resolver that probes for `crtbeginS.o` instead of
+trusting a composed path. The WebDAV downloader moved to `01-core/` with its
+client PINNED, so both lanes install the same one. `STATIC_ANALYSIS_EXTRA_PATHS`
+and `CARGO_CLIPPY_ARGS`, the two knobs whose absence made consumers hand-roll
+the drivers.
+
+### Gates and hooks
+
+One Python-probe owner for `lint-python.sh` and the versioned hooks: eight bare
+`python3` call sites, one of which was silently turning the embedded-Python
+extractor into a no-op on a Windows host. The consumer inventory can see the
+half of the fleet it was blind to — backslash-spelled hub paths, and the three
+shapes that reach a PowerShell module by NAME. A weekly failure now files an
+issue instead of reporting to nobody. The delete guard stops listing two
+repository checkouts that have not existed since the 2026-09-12 rename.
+
+Budgets moved with the code and every one is recorded at the measurement, with
+the cause: six code-dupes budgets re-measured after the corpus grew, seven rows
+retired as stale, seven added, two doc-dupes rule/mechanism pairs budgeted,
+`renovate-fleet.sh` frozen at 814 lines with the not-a-split argument, six
+comment-size headers frozen, and three new operator knobs registered.
+
 ## 2026-09-14 — family audit: the hub's side of the fixes
 
 A cross-repo audit of all nine consumers against this hub (reuse, duplication,
