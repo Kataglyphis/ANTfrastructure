@@ -407,3 +407,16 @@ KATAGLYPHIS_PACKAGING_WORKDIR
 # RENOVATE_LOG_LEVEL is passed through to renovate itself (:191).
 RENOVATE_LOCAL_CACHE
 RENOVATE_LOG_LEVEL
+
+# Landed 2026-09-15 with the consumer-facing helpers that read them. All three
+# are operator/caller answers, never assigned here on purpose:
+# KATAGLYPHIS_REPO_ROOT is the family bootstrap's export, set by the CONSUMER's
+# scripts/lib/antfrastructure.sh before a hub library is sourced, so a hub file
+# that assigned it would overwrite the caller's answer;
+# MYPROJECT_GCC_TOOLCHAIN_PATH is the explicit "point clang at THIS GCC" override
+# gcc_toolchain_resolve_prefix consults first;
+# WEBDAV_VENV_DIR relocates the venv webdav_download_tree installs the client
+# into, for a caller whose repo root is read-only.
+KATAGLYPHIS_REPO_ROOT
+MYPROJECT_GCC_TOOLCHAIN_PATH
+WEBDAV_VENV_DIR

@@ -213,7 +213,7 @@ absent-IBAN fabrication trap; rotation/JPEG degradations; text twins), exact
 ground truth, graders self-tested with negative checks before any model ran.
 Raw replies, summary, grader snapshot and regrade notes are committed under
 `linux/llm-stack/benchmark_results/2026-09-07-benchdocs-probe/`; the findings
-are § 9 of [`docs/nas-document-ai.md`](nas-document-ai.md).
+are § 9 of [`docs/nas-document-ai.md`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/docs/nas-document-ai.md).
 
 Headlines: **Qwen3-VL-4B Q4_K_M passed all 20 image cases at full score**
 (field-F1 1.0, table CSV 1.0 by its own extraction, CER 0.009, zero fabricated
@@ -235,7 +235,7 @@ as transport ERR and busts the prefix cache with a one-pixel change per repeat.
 
 ## 2026-09-07 — The NAS census tool
 
-[`docs/nas-document-ai.md`](nas-document-ai.md) § 6 called the corpus
+[`docs/nas-document-ai.md`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/docs/nas-document-ai.md) § 6 called the corpus
 "the largest unknown and the cheapest to close"; now the closer exists.
 [`linux/llm-stack/nas_census.py`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/nas_census.py) walks a tree
 and answers day 1's question: **the four numbers** (total PDF pages, scanned
@@ -893,7 +893,7 @@ green with them, against 779 before. The `Invoke-Tests.ps1` floor moved 762 →
 
 ## 2026-09-06 — The NAS document-AI question answered: a new page, and the benchmark's multimodal gap named precisely
 
-New page [`docs/nas-document-ai.md`](nas-document-ai.md) (wired into
+New page [`docs/nas-document-ai.md`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/docs/nas-document-ai.md) (wired into
 `docs/index.rst` and `docs/INDEX.md`), produced by a 36-agent review
 (adversarially verified web research + live probes on this host). It answers
 "which multimodal model for the NAS" — GLM-OCR 0.9B shortlisted against

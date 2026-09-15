@@ -32,7 +32,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/logging.sh"
 # KATAGLYPHIS_REPO_ROOT, else the current directory.
 flutter_lane_prepare_env() {
   local flutter_dir="${1:-${FLUTTER_DIR:-/opt/flutter}}"
-  local repo_root="${KATAGLYPHIS_REPO_ROOT:-$(pwd)}"
+  local repo_root="${KATAGLYPHIS_REPO_ROOT:-}"
+  [ -n "${repo_root}" ] || repo_root="$(pwd)"
 
   if [ ! -x "${flutter_dir}/bin/flutter" ]; then
     printf 'no Flutter SDK at %s.\n' "${flutter_dir}" >&2

@@ -48,6 +48,7 @@ The two halves of one topic often split:
 | **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |
+| **Why the pack is 154 MB, what is large, and why history is not rewritten** | [`project-info.md` § Repository size](project-info.md#repository-size-and-large-files) |
 | Licences of bundled software, what each one **obliges this project to do**, and the corresponding source for copyleft components | [`third-party-licenses.md`](third-party-licenses.md) |
 | **Known vulnerabilities** — running `grype`, and why the raw count misleads on these images | [`vulnerability-scanning.md`](vulnerability-scanning.md) |
 | **SBOM** — how to generate it, and what you can do with it (CVE scanning, procurement, release diffs, policy gates) | [`sbom.md`](sbom.md) |
@@ -141,7 +142,7 @@ The two halves of one topic often split:
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |
 | **GenieX on Snapdragon** — on-device OpenAI-compatible server (Adreno GPU / Hexagon NPU), serving a coding agent inside WSL2 | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) |
 | **Benchmarking an LLM endpoint** — speed *and* correctness, TTFT vs decode, concurrent lanes, named backends (`ollama`, `geniex-*`), and the capability benchmarks (coding, tool calling, the agent loop, embeddings, sweeps). **Lives in OrchestrANT now**: the `orchestrant.benchmark` runner plus `benchmarks/` (tools, viewer, tracked results, roadmap and the 2026-09-05 panel review) | [OrchestrANT benchmarks](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks) |
-| **Connecting a model to the NAS** (Word/Excel/PDF/images) — why the Hexagon NPU cannot read a page, the OCR-model shortlist and file-type routing, the `bench_docs.py` bake-off design, and the machine-topology corrections (summy-server, host RAM) | [`nas-document-ai.md`](nas-document-ai.md) |
+| **Connecting a model to the NAS** (Word/Excel/PDF/images) — why the Hexagon NPU cannot read a page, the OCR-model shortlist and file-type routing, the `bench_docs.py` bake-off design, and the machine-topology corrections. **Lives in OrchestrANT now**, beside the census tool and its tests | [OrchestrANT benchmarks](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/docs/nas-document-ai.md) |
 | **A model answers fast but wrong** (whitespace, random multilingual tokens) — GGUF tensor types, the sub-4-bit i-quant bug | [`geniex-local-ai-setup.md` § Debugged: i-quants](geniex-local-ai-setup.md), tool: [inspect_gguf.py](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/inspect_gguf.py) |
 
 ### Also owned here, not under `docs/`

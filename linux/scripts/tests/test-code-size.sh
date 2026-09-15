@@ -225,8 +225,8 @@ t_case "the REAL scan set covers linux/llm-stack -- EX1, and its rows rest on it
 # extent gate. Assert the BEHAVIOUR (a file only that tree has is walked), not the
 # literal tuple, so a rename of the directory fails here rather than going quiet.
 t_assert_eq "scanned" "$(t_gate_probe linux/scripts/verify_code_size.py <<'PYCHK'
-want = "linux/llm-stack/nas_census.py"
-seen = any(rel == want for _, rel in g.scan(".py"))
+want = "linux/llm-stack/backends.json"
+seen = any(rel == want for _, rel in g.scan(".json"))
 print("scanned" if seen else f"MISSING {want} from SCAN={g.SCAN}")
 PYCHK
 )" "removing linux/llm-stack from SCAN silently un-freezes its reviewed rows"

@@ -9,14 +9,31 @@ context-relative `./webserver/...` paths, which only resolve under `linux/`.
 
 `linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
 
-# dist/ provenance
+# The site comes from a build context, not from this repository
 
-`linux/webserver/dist/` is ~82 MB of **committed, pre-built Flutter web
-artifacts** (the site served by this image). They are deliberately checked in:
-they are built in the sibling app repository (not from any source in this
-repo), and committing the output lets this image build standalone without a
-Flutter toolchain. Do not hand-edit files under `dist/` — regenerate them in
-the app repo and copy the fresh build output over.
+The site this image serves is built in **jotrockenmitlocken**, from sources that
+do not exist here. It was committed under `linux/webserver/dist/` until
+2026-09-15 — 82 MB of minified output — so that the image could build standalone
+without a Flutter toolchain. That convenience was paid for by every clone of
+this repository, and by every gate that had to learn to skip the directory.
+
+Build it by naming the site as a context instead:
+
+```bash
+nerdctl build --build-context site=<path-to-jotrockenmitlocken>/build/web \
+  -f linux/webserver/Dockerfile -t kataglyphis-webserver:latest linux
+```
+
+`site` can be any directory holding a built web app — a fresh
+`flutter build web --release` output, or a CI artifact you downloaded and
+unpacked. `linux/docker-compose.yml` declares a default path for it under
+`additional_contexts`; adjust it for your checkout. A build that names no `site`
+context fails at the `COPY --from=site` line, by name, rather than producing an
+image that serves nothing.
+
+`linux/webserver/dist/` is gitignored. Files already there keep working for the
+volume-mount recipe below; they are simply not this repository's to carry, and
+nothing here can regenerate them.
 
 # Run mit Volume-Mount für dist UND nginx.conf
 ```bash

@@ -38,8 +38,8 @@ info "Running static analysis for package: $PACKAGE_NAME"
 
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
-# shellcheck disable=SC2206  # a space-separated path LIST, split deliberately
 STATIC_ANALYSIS_EXTRA_PATHS="${STATIC_ANALYSIS_EXTRA_PATHS:-}"
+# shellcheck disable=SC2206  # a space-separated path LIST, split deliberately
 EXTRA_PATHS=( ${STATIC_ANALYSIS_EXTRA_PATHS} )
 if [ "${#EXTRA_PATHS[@]}" -gt 0 ]; then
   info "Extra analysis paths: ${EXTRA_PATHS[*]}"

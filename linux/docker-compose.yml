@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: webserver/Dockerfile
+      # The built site, from wherever it was built. It is NOT in this repository
+      # (see linux/webserver/README.md): override the path for your checkout, or
+      # point it at a downloaded CI artifact.
+      additional_contexts:
+        site: ../../jotrockenmitlocken/build/web
     ports:
       - "80:80"
       - "443:443"
