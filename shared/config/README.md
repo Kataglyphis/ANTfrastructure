@@ -73,12 +73,10 @@ consumer's copy directly is what the check exists to catch.
 That instruction includes the repo this directory lives in: ANTfrastructure's own
 root `.cmake-format.yaml` is a consumer copy (its runners resolve the config at
 the repo root, like every consumer's), so refresh it with the same `-Write`
-run. `linux/scripts/preflight.sh` (slug `shared-config`) goes red when it
-drifts from — or goes missing against — the canonical file here; the other four
-names have no root copy in ANTfrastructure and are `-Ignore`d by name there. That
-call is the one remaining `-Ignore` caller and becomes a two-word
-`.antfrastructure-shared.manifest` at this repo's root the moment `preflight.sh`
-is touched.
+run. `linux/scripts/preflight.sh` (slug `shared-config`) goes red when it drifts
+from — or goes missing against — the canonical file here. It declares what it
+takes the same way every consumer does, in the root
+`.antfrastructure-shared.manifest`; there is no `-Ignore` call left anywhere.
 
 ## MISSING is not DRIFTED
 
@@ -130,9 +128,7 @@ An id the registry does not know is a hard error naming the valid ones — the
 same typo guard `-Ignore` used to carry, now covering the whole declaration
 rather than the exception list.
 
-`-Ignore` survives only for a repo root that has no manifest yet
-(ANTfrastructure's own preflight `shared-config` gate is the last such caller).
-Passing it *together* with a manifest is refused: a stale ignore silently
+Passing `-Ignore` *together* with a manifest is refused: a stale ignore silently
 overriding a declaration is precisely the confusion being removed.
 
 ## Intentional per-project overrides
@@ -259,9 +255,18 @@ ever took them — so every repo with no C++ saw four MISSING. That is why nobod
 wired this gate into an aggregator, and why the shared files then drifted
 unwatched in every repo at once.
 
-An absent manifest is therefore a FAILURE, not a skip. Skipping would restore the
-older and worse failure: a gate that is present, green, and comparing nothing.
-The declaration is two lines, and the error message spells them out.
+An absent manifest is a FAILURE in the **aggregator**, not a skip
+(`linux/scripts/run-lint-gates.sh:164-179`, gate `shared-config`): skipping would
+restore the older and worse failure, a gate that is present, green, and comparing
+nothing. The declaration is two lines, and the error message spells them out.
+
+The **standalone syncer** is one layer lower and still falls back: run
+`sync-shared-config.sh` by hand against a root with no manifest and it loads the
+legacy list and prints `NOTE  no consumer manifest; using the legacy -Ignore
+list.` (`ssc_load_legacy`, `sync-shared-config.sh:205` and `:341`). That is
+deliberate — the fallback is what lets a repo be graded *before* it declares
+anything — and it is why the refusal lives in the aggregator, which is the thing
+CI actually calls.
 
 The bash half is the one that runs in CI. No hub Linux image ships pwsh, so the
 PowerShell form failed with "pwsh: command not found" on every Linux run — a gate

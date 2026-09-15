@@ -86,6 +86,9 @@ The two halves of one topic often split:
 | Running Linux containers on a Windows host | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md) |
 | **A bind mount that resolves but is empty** — containerd's own mount namespace, Windows vs WSL path form, and why the obvious `/mnt` probe misleads | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#an-empty-mount-is-not-a-missing-drive) |
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
+| **A named volume that is silently a directory** — `-v name:/path` is a bind under Windows nerdctl; use the long `--mount type=volume` form | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#-v-namepath-is-a-bind-under-windows-nerdctl) |
+| **Running an arm64 container locally** — Rancher's VM ships no emulators, so `binfmt` must be registered once per VM boot | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#registering-arm64-emulation-in-ranchers-vm-per-vm-boot) |
+| **flatpak/AppImage fail on emulated arm64** — bubblewrap's user namespace and static-PIE loading, neither of which `qemu-user` carries | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#emulated-arm64-cannot-run-bubblewrap-or-static-pie) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | **Vulkan SDK on foreign arches** — LunarG ships x86_64 only, so arm64/riscv64 are cross-built; what the target prefix contains, why it used to hold two binaries, and the four components still open (`vulkan-profiles`, `gfxreconstruct`, `slang`, `vulkanCapsViewer`) | [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md) |
 | **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest-cross` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |
@@ -150,9 +153,13 @@ The two halves of one topic often split:
 | Reusable bash libraries | `linux/scripts/lib/` and `linux/scripts/01-core/` |
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |
+| Where a repo's Sphinx sources live | `docs/source/` in every consumer (`docs-build.sh`'s default); `docs/conf.py` beside the pages here and in DocumANTation — see [`adopting-in-a-new-project.md` § 8](adopting-in-a-new-project.md) |
 | Canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
 | Copy-and-edit templates (`Resolve-BuildModule.ps1`, `antfrastructure.sh`, `AGENTS.md` skeleton, agentic-loop config) | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
-| Reusable CI workflows (`workflow_call`) — the Python Linux lane, docs build | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), `../.github/workflows/build-docs.yml` |
+| Reusable CI workflows (`workflow_call`) — the Python lanes, the docs build, the lint aggregator, the submodule-pin suite | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml), `../.github/workflows/build-docs.yml`, `../.github/workflows/lint-gates.yml`, `../.github/workflows/submodule-pins.yml` |
+| Who still calls each hub entry point (weekly, every consumer cloned) | [`consumer-inventory.md`](consumer-inventory.md), `../.github/workflows/consumer-inventory.yml` |
+| The composite actions exercised against themselves — what a green tick does and does not prove | [`../.github/actions/README.md`](../.github/actions/README.md), `../.github/workflows/actions-selftest.yml` |
+| The submodule-pin invariant as a lane a consumer can `uses:` | [`adopting-in-a-new-project.md` § 9](adopting-in-a-new-project.md), `../.github/workflows/submodule-pins.yml` |
 
 ### Backlogs, history and archives
 
@@ -165,6 +172,7 @@ exists only in one of these, promote it to its owning page above.
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the exact log line that proves each one worked and the exact line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Written because eleven backlog entries closed on static proof and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries 2026-08-29 … 2026-09-07 | [`changelog-archive-2026-09-07.md`](changelog-archive-2026-09-07.md) | The 2026-09-07 backlog-audit day, the 2026-09-03 reconstruction, the GenieX/QNN rounds and everything back to 2026-08-29. |
 | Changelog entries 2026-08-14 … 2026-08-28 | [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) |
 | Changelog entries through 2026-08-13 | [`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md) |
 | Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) · [`2026-08-31`](windows-backlog-archive-2026-08-31.md) |

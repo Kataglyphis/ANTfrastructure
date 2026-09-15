@@ -19,7 +19,7 @@ Copying six different ones is the failure mode, and that is what was measured on
 |---|---|
 | BeschleunigerBallett | `source_module()` in `lib/common.sh` |
 | OmniAccelerANT | `antfrastructure_path` / `antfrastructure_source` |
-| KataglyphisCppInference | `_ANTFRASTRUCTURE_CORE` |
+| AccelerANTgine (then `KataglyphisCppInference`) | `_ANTFRASTRUCTURE_CORE` |
 | OrchestrANT | `_DRIVER`, re-inlined in every wrapper |
 | WebDavClient | `ANTFRASTRUCTURE_SETUP_SCRIPT` + `_DRIVER` |
 | jotrockenmitlocken | `ANTFRASTRUCTURE_DIR` / `ANTFRASTRUCTURE_SCRIPTS_DIR` |
