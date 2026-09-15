@@ -15,6 +15,9 @@
 #     benchmarks/, frontend/ and bench/ were outside every analyser until this
 #     existed. Word-split on purpose -- it is a path LIST, not one path -- so
 #     the value must not contain spaces inside a path.
+#   BANDIT_EXCLUDES - bandit's -x list, comma-separated (default: the seven
+#     paths below). Setting it REPLACES the default; a consumer that names its
+#     own exclude set means that set.
 
 # -e stays: a failing venv bootstrap or `uv sync` below must still abort. It is
 # compatible with the gate batch because run_gate runs its command in a `||`
@@ -44,11 +47,11 @@ EXTRA_PATHS=( ${STATIC_ANALYSIS_EXTRA_PATHS} )
 if [ "${#EXTRA_PATHS[@]}" -gt 0 ]; then
   info "Extra analysis paths: ${EXTRA_PATHS[*]}"
 fi
-# bandit takes -r per target, not a bare path list.
-BANDIT_EXTRA=()
-for _extra in ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}; do
-  BANDIT_EXTRA+=(-r "${_extra}")
-done
+# bandit's -x list, and the default is the literal the gate line used to spell.
+# Setting it REPLACES that list. Why it is a knob, and why the bandit gate line
+# below passes ONE -r and then the whole target list rather than one -r per
+# path: docs/python-ci.md#the-static-analysis-knobs-and-the-bandit-trap-between-them
+BANDIT_EXCLUDES="${BANDIT_EXCLUDES:-tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results}"
 
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
 
@@ -67,7 +70,7 @@ uv_sync_project --no-wxpython
 gate_reset "static analysis (${PACKAGE_NAME})"
 
 run_gate "codespell" uv_run codespell "$PACKAGE_NAME" tests docs/source/conf.py setup.py README.md ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
-run_gate "bandit" uv_run bandit -r "$PACKAGE_NAME" ${BANDIT_EXTRA[@]+"${BANDIT_EXTRA[@]}"} -x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results
+run_gate "bandit" uv_run bandit -r "$PACKAGE_NAME" ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"} -x "$BANDIT_EXCLUDES"
 run_gate "vulture" uv_run vulture "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 # --no-fix, not --fix: a gate judges the tree as COMMITTED. `--fix` rewrote the
 # working tree and then reported on the repaired copy, so this step could only

@@ -30,6 +30,35 @@ anywhere, and a caller names a version only to genuinely override it.
 This is also why two consumers that *looked* different were running identical
 commands: passing `'3.14'` to `ci_static_analysis.sh` is exactly its default.
 
+## The static-analysis knobs, and the bandit trap between them
+
+Two knobs decide what the six analysers grade, and each has a Windows twin that
+carries the same default:
+
+| Knob | Windows twin | Default |
+|---|---|---|
+| `STATIC_ANALYSIS_EXTRA_PATHS` | `-ExtraPaths` | empty |
+| `BANDIT_EXCLUDES` | `-BanditExcludes` | `tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results` |
+
+`STATIC_ANALYSIS_EXTRA_PATHS` is a space-separated path **list**, word-split on
+purpose, so no element may contain a space. It exists because a consumer whose
+importable package is not the whole first-party tree had the rest graded by
+nothing: OrchestrANT's `benchmarks/`, `frontend/`, `bench/` and `examples/`
+were outside every analyser until it landed.
+
+**The trap.** Both drivers spelled the extras as one `-r` per path. bandit's
+`-r` is `store_true` against a **single** `nargs='*'` positional, so
+`bandit -r a -r b` is `unrecognized arguments` and exit 2 — measured against
+bandit 1.9.4 in the family image. The bandit gate therefore failed on the very
+knob the other five analysers handled, which is why OrchestrANT could not adopt
+it. The form bandit accepts is **one `-r` followed by the whole target list**,
+and `tests/test-python-static-analysis.sh` counts the flags so it cannot come
+back.
+
+`BANDIT_EXCLUDES` **replaces** the default list rather than adding to it: a
+consumer that names an exclude set means that set. Setting it is how a consumer
+stops hard-coding the whole `-x` string in its own driver.
+
 ## Trap 1 — `--all-extras` is fatal with declared conflicts
 
 `uv sync --all-extras` is not "install as much as possible". On a project that

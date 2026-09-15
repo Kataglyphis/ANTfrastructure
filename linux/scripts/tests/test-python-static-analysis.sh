@@ -58,6 +58,20 @@ _run() {
   rc=$?
 }
 
+# _run_env VAR=VAL... — the same run with extra environment for the driver, for
+# the two knobs (STATIC_ANALYSIS_EXTRA_PATHS, BANDIT_EXCLUDES) whose whole point
+# is what an operator sets from outside.
+_run_env() {
+  LOG="$(mktemp "${_work}/log.XXXXXX")"
+  OUT="$(cd "${_work}" && env STUB_LOG="${LOG}" STUB_WORKSPACE="${_work}" \
+    STUB_FAIL="__nothing_fails__" "$@" \
+    bash "${TREE}/02-toolchain/python/ci_static_analysis.sh" 2>&1)"
+  rc=$?
+}
+
+# The bandit invocation as one line, from the recorded uv_run calls.
+_bandit_argv() { grep -F 'uv_run bandit' "${LOG}"; }
+
 t_case "with every analyser green the batch is green, and says how much it graded"
 _run
 t_assert_eq "0" "${rc}" "the driver must be able to pass, or the reds below prove only that it is broken; output was: ${OUT}"
@@ -99,5 +113,53 @@ t_assert_eq "" "$(grep -F -e 'ruff check --fix' "${LOG}" || true)"
 t_case "ruff format reports a diff instead of reformatting"
 t_assert_contains "$(cat "${LOG}")" "uv_run ruff format --check --diff" \
   "a bare 'ruff format' rewrites the files and exits 0; the finding then shows up in git status, not in the gate"
+
+# ---------------------------------------------------------------------------
+# STATIC_ANALYSIS_EXTRA_PATHS reaches bandit in the ONE shape bandit accepts.
+# The driver used to build `-r a -r b -r c`; bandit's -r is store_true against a
+# single nargs='*' positional, so argparse answered "unrecognized arguments" and
+# exit 2 -- and because run_gate records rather than raises, the whole batch went
+# red on a knob the other five analysers handled fine. Measured with bandit
+# 1.9.4. These cases COUNT the flags, so the per-path form cannot come back.
+# ---------------------------------------------------------------------------
+t_case "the extras reach bandit as plain targets after ONE -r"
+_run_env STATIC_ANALYSIS_EXTRA_PATHS="benchmarks frontend bench"
+t_assert_eq "0" "${rc}" "output was: ${OUT}"
+t_assert_contains "$(_bandit_argv)" "bandit -r fixture_pkg benchmarks frontend bench -x " \
+  "one -r, then the package and every extra as a bare target -- bandit's own documented form"
+t_assert_eq "1" "$(_bandit_argv | tr ' ' '\n' | grep -c -x -- '-r' || true)" \
+  "a SECOND -r is what argparse rejects; counting is the only assertion that can see it"
+
+t_case "the same extras still reach the five analysers that take a path list"
+for _tool in codespell vulture; do
+  t_assert_contains "$(cat "${LOG}")" "uv_run ${_tool} fixture_pkg tests docs/source/conf.py setup.py"
+done
+t_assert_contains "$(cat "${LOG}")" "benchmarks frontend bench"
+
+t_case "no extras: bandit is the package alone, still with exactly one -r"
+_run
+t_assert_contains "$(_bandit_argv)" "bandit -r fixture_pkg -x "
+t_assert_eq "1" "$(_bandit_argv | tr ' ' '\n' | grep -c -x -- '-r' || true)"
+
+# ---------------------------------------------------------------------------
+# BANDIT_EXCLUDES (OrchestrANT audit item A107): the -x list was a literal, so a
+# consumer with one more directory to skip had to hard-code the whole string in
+# its own driver.
+# ---------------------------------------------------------------------------
+t_case "BANDIT_EXCLUDES defaults to the literal it replaced"
+t_assert_contains "$(_bandit_argv)" \
+  "-x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results" \
+  "the default must be character-for-character what the gate line used to spell, or adding the knob moved the gate"
+
+t_case "BANDIT_EXCLUDES REPLACES the list, and reaches bandit as one -x argument"
+_run_env BANDIT_EXCLUDES="tests,vendor"
+t_assert_eq "0" "${rc}" "output was: ${OUT}"
+t_assert_contains "$(_bandit_argv)" "-x tests,vendor"
+t_assert_eq "" "$(_bandit_argv | grep -F 'ExternalLib' || true)" \
+  "a consumer that names an exclude set means that set; silently keeping the default too would grade a tree it was told to skip"
+t_assert_eq "1" "$(_bandit_argv | tr ' ' '\n' | grep -c -x -- '-x' || true)"
+
+t_case "BANDIT_EXCLUDES is bandit's alone: no other analyser grows an -x"
+t_assert_eq "" "$(grep -F 'uv_run' "${LOG}" | grep -v 'uv_run bandit' | grep -F -- ' -x ' || true)"
 
 t_summary
