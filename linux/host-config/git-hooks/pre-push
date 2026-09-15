@@ -7,17 +7,34 @@
 # definition. docs/code-quality-tooling.md#the-pre-push-hook
 set -euo pipefail
 
+# One owner for "is there a working Python here?", shared with preflight.sh and
+# the lint aggregator: plain `python3` on a Windows Git Bash host is the
+# Microsoft Store stub, which prints an install hint and exits non-zero -- every
+# gate below would then fail for a reason that has nothing to do with the commit.
+# Resolved from THIS file's path, not from the working directory: the
+# --print-mutation-plan entry point runs before the cd to the toplevel.
+# docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
+_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../scripts/01-core/python-probe.sh
+. "${_hook_dir}/../../scripts/01-core/python-probe.sh"
+preflight_python_require pre-push || exit 1
+# Expanded UNQUOTED at every call site: the value may be a command line
+# ("uv run --no-project python"), which is the hint the probe's failure gives.
+_PY="${PREFLIGHT_PYTHON}"
+
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
 echo "pre-push: mutation staleness over the whole manifest…"
-python3 docs/scripts/verify_mutations.py --stale-check || {
+# shellcheck disable=SC2086
+${_PY} docs/scripts/verify_mutations.py --stale-check || {
   echo "pre-push: a recorded mutation no longer applies — re-point or delete it, or 'git push --no-verify'" >&2
   exit 1
 }
 
 echo "pre-push: mutation gate over everything since origin/main…"
-python3 docs/scripts/verify_mutations.py --changed --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
+# shellcheck disable=SC2086
+${_PY} docs/scripts/verify_mutations.py --changed --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
   echo "pre-push: a recorded mutation SURVIVED — a test here cannot fail" >&2
   exit 1
 }

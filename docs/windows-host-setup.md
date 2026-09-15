@@ -454,6 +454,17 @@ uv run --no-project python -V                              # Python 3.x
 & "$env:USERPROFILE\.local\bin\python3.14.exe" -V          # if installed via uv python install
 ```
 
+`PREFLIGHT_PYTHON` is **not** preflight-only, and it is not a `python3` alias
+either: it may be a whole command line (`uv run --no-project python`), so every
+consumer expands it unquoted. One file answers the question for all of them —
+`linux/scripts/01-core/python-probe.sh`, whose `preflight_python_require` probes
+the value with `-c pass` and fails with this exact hint rather than dying inside
+a Python step. Export it once in the shell you run gates from and these all
+honour it: `preflight.sh`, `run-lint-gates.sh` (including the `--ratchets`
+gates), `lint-workflows.sh`, `lint-python.sh` and the repo's own `pre-commit` /
+`pre-push` hooks. A bare `python3` left in any of them is a bug, not a style
+choice — on this host it resolves to the Store stub.
+
 ### B5. shellcheck / hadolint / actionlint — nothing to install
 
 The preflight lint gates **auto-bootstrap** these: a PATH copy is used when

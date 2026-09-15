@@ -18,6 +18,21 @@ set -euo pipefail
 # asked to defend against the caller's environment; clear it here.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 
+# One owner for "is there a working Python here?", shared with preflight.sh and
+# the lint aggregator: plain `python3` on a Windows Git Bash host is the
+# Microsoft Store stub, which prints an install hint and exits non-zero -- every
+# gate below would then fail for a reason that has nothing to do with the commit.
+# Resolved from THIS file's path, not from the working directory: the
+# --print-mutation-plan entry point runs before the cd to the toplevel.
+# docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
+_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../scripts/01-core/python-probe.sh
+. "${_hook_dir}/../../scripts/01-core/python-probe.sh"
+preflight_python_require pre-commit || exit 1
+# Expanded UNQUOTED at every call site: the value may be a command line
+# ("uv run --no-project python"), which is the hint the probe's failure gives.
+_PY="${PREFLIGHT_PYTHON}"
+
 _MUTATION_CAP="${PRECOMMIT_MUTATION_CAP:-16}"
 _MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
 
@@ -27,7 +42,8 @@ _MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
 # pre-commit hook, so --print-mutation-plan is a test entry point only.
 # docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 _mutation_plan() {
-  python3 - "$1" "$2" "$3" <<'PY'
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_PY} - "$1" "$2" "$3" <<'PY'
 import json
 import sys
 
@@ -95,7 +111,7 @@ if [ -n "${_staged_sh}" ]; then
     exit 1
   }
   # shellcheck disable=SC2086
-  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {
+  ${_PY} linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {
     echo "pre-commit: shellcheck warning ratchet FAILED on staged files" >&2
     exit 1
   }
@@ -105,7 +121,8 @@ fi
 _staged_md="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^docs/.*\.md$' || true)"
 if [ -n "${_staged_md}" ]; then
   echo "pre-commit: doc duplication gate…"
-  python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
+  # shellcheck disable=SC2086
+  ${_PY} docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 
 # Mutation gate, SAMPLED. Scope is the STAGED files, not `--changed` (which also
@@ -128,7 +145,8 @@ if [ -n "${_staged_any}" ]; then
   done < <(printf '%s\n' "${_plan}" | tail -n +2)
   if [ "${#_only[@]}" -gt 0 ]; then
     _mutation_notice "${_run:-0}" "${_matched:-0}"
-    python3 docs/scripts/verify_mutations.py "${_only[@]}" || {
+    # shellcheck disable=SC2086
+    ${_PY} docs/scripts/verify_mutations.py "${_only[@]}" || {
       echo "pre-commit: a recorded mutation SURVIVED -- a test here cannot fail" >&2
       exit 1
     }
