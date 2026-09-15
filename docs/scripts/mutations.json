@@ -6497,5 +6497,21 @@
     "replace": "        root = HUB_ROOT",
     "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
     "why": "the argument is the only thing that puts a consumer's tree in front of this gate; ignoring it grades ANTfrastructure -- which is clean and frozen -- and reports that verdict as the consumer's, which is a green run over a tree nobody looked at"
+  },
+  {
+    "id": "python.static-analysis-bandit-takes-one-r",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "uv_run bandit -r \"$PACKAGE_NAME\" ${EXTRA_PATHS[@]+\"${EXTRA_PATHS[@]}\"}",
+    "replace": "uv_run bandit -r \"$PACKAGE_NAME\" ${EXTRA_PATHS[@]+\"-r\" \"${EXTRA_PATHS[@]}\"}",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "one -r PER extra path is the bug this fixed: bandit's -r is store_true against a single nargs='*' positional, so argparse rejects the run with exit 2"
+  },
+  {
+    "id": "python.static-analysis-bandit-excludes-knob",
+    "target": "linux/scripts/02-toolchain/python/ci_static_analysis.sh",
+    "find": "BANDIT_EXCLUDES=\"${BANDIT_EXCLUDES:-tests,",
+    "replace": "BANDIT_EXCLUDES=\"${BANDIT_EXCLUDES_UNREAD:-tests,",
+    "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
+    "why": "a knob the driver never reads is a knob a consumer sets and does not get; the default would still look right"
   }
 ]

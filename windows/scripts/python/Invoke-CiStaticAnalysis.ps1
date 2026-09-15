@@ -25,8 +25,15 @@
 
 .PARAMETER ExtraPaths
     Extra paths to analyse, relative to the repo root. A consumer whose package
-    is not the whole first-party tree names the rest here; bandit gets each as
-    its own -r target. The Linux twin's knob is STATIC_ANALYSIS_EXTRA_PATHS.
+    is not the whole first-party tree names the rest here; bandit takes them as
+    plain targets after its single -r. The Linux twin's knob is
+    STATIC_ANALYSIS_EXTRA_PATHS.
+
+.PARAMETER BanditExcludes
+    bandit's -x list, ONE comma-separated string of path fragments. The default
+    is the literal this file used to spell on the bandit line, so nothing moves
+    for a caller that is happy with it; passing it REPLACES the list. The Linux
+    twin's knob is BANDIT_EXCLUDES.
 
 .EXAMPLE
     Invoke-CiStaticAnalysis.ps1 -PackageName "my_package"
@@ -46,7 +53,11 @@ Param(
     [string]$RepoRoot = '',
     # Extra first-party paths to analyse, relative to the repo root. Empty keeps
     # today's behaviour. Same knob as the Linux twin's STATIC_ANALYSIS_EXTRA_PATHS.
-    [string[]]$ExtraPaths = @()
+    [string[]]$ExtraPaths = @(),
+    # bandit's -x list. Default = the literal that used to sit on the bandit
+    # line below; the Linux twin's knob is BANDIT_EXCLUDES and carries the same
+    # default, character for character, so the two lanes exclude the same set.
+    [string]$BanditExcludes = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results'
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,12 +85,15 @@ try {
     Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython
 
     $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md") + $ExtraPaths
-    # bandit takes -r per target rather than a path list, so the extras are
-    # spelled separately below. $analysisPaths[0..3] indexing is gone with them:
-    # the non-README slice is now named, or appending would silently drop every
-    # extra path past the fourth element.
+    # $analysisPaths[0..3] indexing is gone: the non-README slice is NAMED, or
+    # appending would silently drop every extra path past the fourth element.
     $codeOnlyPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py") + $ExtraPaths
-    $banditExtra = @($ExtraPaths | ForEach-Object { "-r"; $_ })
+    # bandit's targets. ONE -r, then the whole list -- bandit's -r is store_true
+    # against a SINGLE nargs='*' positional, so `-r a -r b` is "unrecognized
+    # arguments" and exit 2 (bandit 1.9.4). This file built exactly that shape
+    # ($ExtraPaths | ForEach-Object { "-r"; $_ }) until 2026-09-15, which is why
+    # -ExtraPaths could not be used on this lane either.
+    $banditTargets = @($PackageName) + $ExtraPaths
 
     # One owner for the uv-run-an-analyser shape. Every analyser below
     # differs only in tool name, flags and whether it takes the path list;
@@ -102,9 +116,9 @@ try {
     & $runAnalyser "codespell"   @("codespell")               $analysisPaths
 
     & $runAnalyser "bandit" (@(
-        "bandit", "-r", $PackageName
-    ) + $banditExtra + @(
-        "-x", "tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results"
+        "bandit", "-r"
+    ) + $banditTargets + @(
+        "-x", $BanditExcludes
     )) @()
 
     & $runAnalyser "vulture"     @("vulture")                 $codeOnlyPaths
