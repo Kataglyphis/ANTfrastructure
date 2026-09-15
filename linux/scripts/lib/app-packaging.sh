@@ -270,6 +270,32 @@ app_packaging_map_arch_to_appimage() {
   esac
 }
 
+# Both flatpak packagers need the same two binaries and give the same advice.
+app_packaging_require_flatpak_tools() {
+  local _t
+  for _t in flatpak flatpak-builder; do
+    if ! command -v "$_t" >/dev/null 2>&1; then
+      echo "Error: ${_t} not found. Install '${_t}' to build Flatpak bundles." >&2
+      return 1
+    fi
+  done
+}
+
+# THE VERDICT for both flatpak packagers, and it is not flatpak-builder's exit
+# code: the export can be complete while a later stage fails with `fchmod:
+# Operation not permitted` on a bind-mounted host drive, and a zero exit can
+# leave an empty repo. What decides is whether the app is committed.
+app_packaging_assert_flatpak_committed() {
+  local repo_dir="${1:?repo dir required}" app_id="${2:?app id required}" fb_rc="${3:-0}"
+  if ! ostree --repo="$repo_dir" refs 2>/dev/null | grep -q "^app/${app_id}/"; then
+    echo "Error: flatpak-builder exited ${fb_rc} and ${app_id} is not in ${repo_dir}" >&2
+    return 1
+  fi
+  if [ "$fb_rc" -ne 0 ]; then
+    echo "[Warn] flatpak-builder exited ${fb_rc}, but ${app_id} is committed; continuing to build-bundle." >&2
+  fi
+}
+
 app_packaging_map_arch_to_flatpak() {
   local a="${1:?arch required}"
   case "$(arch_normalize "$a")" in
@@ -474,14 +500,7 @@ app_packaging_package_linux_bundle_flatpak() {
   output_name="out/${package_name}-${version}.flatpak"
   flatpak_arch="$(app_packaging_map_arch_to_flatpak "$matrix_arch")"
 
-  if ! command -v flatpak >/dev/null 2>&1; then
-    echo "Error: flatpak not found. Install 'flatpak' to build Flatpak bundles." >&2
-    return 1
-  fi
-  if ! command -v flatpak-builder >/dev/null 2>&1; then
-    echo "Error: flatpak-builder not found. Install 'flatpak-builder' to build Flatpak bundles." >&2
-    return 1
-  fi
+  app_packaging_require_flatpak_tools || return 1
 
   mkdir -p "$manifest_dir/files"
   rm -rf "$manifest_dir/files" "$repo_dir" "$build_dir"
@@ -538,13 +557,7 @@ EOF
   flatpak-builder "${fb_flags[@]}" --force-clean --disable-rofiles-fuse --arch="$flatpak_arch" \
     --state-dir="${flatpak_work}/state" "$build_dir" "$manifest_file" --repo="$repo_dir" || fb_rc=$?
 
-  if ! ostree --repo="$repo_dir" refs 2>/dev/null | grep -q "^app/${app_id}/"; then
-    echo "Error: flatpak-builder exited ${fb_rc} and ${app_id} is not in ${repo_dir}" >&2
-    return 1
-  fi
-  if [ "$fb_rc" -ne 0 ]; then
-    echo "[Warn] flatpak-builder exited ${fb_rc}, but ${app_id} is committed; continuing to build-bundle." >&2
-  fi
+  app_packaging_assert_flatpak_committed "$repo_dir" "$app_id" "$fb_rc" || return 1
 
   # build-bundle chmods the file it writes, which a bind-mounted host drive
   # refuses — the failure reads as `error: fchmod: Operation not permitted` and
@@ -559,6 +572,204 @@ EOF
   cp -f "$staged_bundle" "$output_name"
 
   app_packaging_assert_artifact "${output_name}"
+}
+
+# Resolve the flatpak architecture the same way for the runtime install and the
+# build: an explicit spelling wins, then flatpak's own default, then this file's
+# app_packaging_map_arch_to_flatpak over the OCI arch. Prints it; stdout stays
+# clean because nothing else here writes to fd 1.
+app_packaging_resolve_flatpak_arch() {
+  local explicit="${1:-}"
+  if [[ -n "$explicit" ]]; then
+    echo "$explicit"
+    return 0
+  fi
+  local from_flatpak=""
+  if command -v flatpak >/dev/null 2>&1; then
+    from_flatpak="$(flatpak --default-arch 2>/dev/null || true)"
+  fi
+  if [[ -n "$from_flatpak" ]]; then
+    echo "$from_flatpak"
+    return 0
+  fi
+  app_packaging_map_arch_to_flatpak "$(arch_oci)"
+}
+
+# app_packaging_ensure_flatpak_runtime [arch] [runtime] [sdk] [runtime_version]
+#
+# flathub plus the runtime+SDK pair, for a packaging run that is NOT inside the
+# family CI image. Deliberately not app_packaging_setup_dependencies_for_container
+# (apt, privilege helper, unconditional install); why the two must not be merged,
+# and why every step is user-first with a system fallback:
+# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+app_packaging_ensure_flatpak_runtime() {
+  local flatpak_arch="${1:-}"
+  local runtime="${2:-org.freedesktop.Platform}"
+  local sdk="${3:-org.freedesktop.Sdk}"
+  local runtime_version="${4:-${FLATPAK_RUNTIME_VERSION}}"
+
+  if ! command -v flatpak >/dev/null 2>&1; then
+    echo "Error: flatpak not found. Install 'flatpak' before asking for a runtime." >&2
+    return 1
+  fi
+
+  flatpak_arch="$(app_packaging_resolve_flatpak_arch "$flatpak_arch")" || return 1
+
+  local runtime_ref="${runtime}/${flatpak_arch}/${runtime_version}"
+  local sdk_ref="${sdk}/${flatpak_arch}/${runtime_version}"
+
+  if ! flatpak remote-info --user flathub >/dev/null 2>&1 \
+     && ! flatpak remote-info --system flathub >/dev/null 2>&1; then
+    if ! flatpak --user remote-add --if-not-exists flathub \
+           https://flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1; then
+      flatpak --system remote-add --if-not-exists flathub \
+        https://flathub.org/repo/flathub.flatpakrepo || return 1
+    fi
+  fi
+
+  local _ref
+  for _ref in "$runtime_ref" "$sdk_ref"; do
+    if flatpak info --user "$_ref" >/dev/null 2>&1 || flatpak info --system "$_ref" >/dev/null 2>&1; then
+      echo "[Info] flatpak ref already installed: ${_ref}"
+      continue
+    fi
+    echo "[Info] Installing flatpak ref: ${_ref}"
+    flatpak --user install -y --noninteractive flathub "$_ref" \
+      || flatpak --system install -y --noninteractive flathub "$_ref" \
+      || return 1
+  done
+}
+
+# CMake install rules name their files after the PROJECT; flatpak wants them
+# named after the APP ID. Renames in place when the project-named file is there,
+# and tolerates a tree that already carries the app-id name (a second run).
+app_packaging_rename_installed_file() {
+  local dir="${1:?directory required}" from_name="${2:?source name required}" to_name="${3:?target name required}"
+  local source=""
+  if [[ -f "${dir}/${from_name}" ]]; then
+    source="${dir}/${from_name}"
+  elif [[ -f "${dir}/${to_name}" ]]; then
+    source="${dir}/${to_name}"
+  fi
+  if [[ -n "$source" && "$source" != "${dir}/${to_name}" ]]; then
+    cp -f "$source" "${dir}/${to_name}"
+    rm -f "$source"
+  fi
+}
+
+# The manifest for a cmake-install payload: one `simple` module that copies the
+# staged prefix to /app. Its own function so the packager stays under the
+# function-size limit; the here-document is most of its length.
+app_packaging_write_cmake_flatpak_manifest() {
+  local path="${1:?manifest path required}" app_id="${2:?app id required}"
+  local runtime="${3:?runtime required}" runtime_version="${4:?runtime version required}"
+  local sdk="${5:?sdk required}" command_name="${6:?command required}"
+  local source_app_path="${7:?source path required}"
+
+  cat > "$path" <<MANIFEST
+{
+  "app-id": "${app_id}",
+  "runtime": "${runtime}",
+  "runtime-version": "${runtime_version}",
+  "sdk": "${sdk}",
+  "command": "${command_name}",
+  "modules": [
+    {
+      "name": "${command_name}",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cp -a . /app"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "${source_app_path}"
+        }
+      ]
+    }
+  ]
+}
+MANIFEST
+}
+
+# app_packaging_package_cmake_install_flatpak <build_dir> <out_dir> <app_id>
+#   <project_name> <version_suffix> [runtime] [sdk] [runtime_version] [branch] [arch]
+#
+# The CMAKE-INSTALL twin of app_packaging_package_linux_bundle_flatpak, which
+# packages a Flutter *bundle* tree this project does not have. It obeys the three
+# conventions in this file's header: container-native staging (so <out_dir> may be
+# the build directory on a mounted workspace), ostree and not the exit code as the
+# verdict, and no success line without app_packaging_assert_artifact. Detail:
+# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+app_packaging_package_cmake_install_flatpak() {
+  local build_dir="${1:?build_dir is required}"
+  local out_dir="${2:?out_dir is required}"
+  local app_id="${3:?app_id is required}"
+  local project_name="${4:?project_name is required}"
+  local version_suffix="${5:?version_suffix is required}"
+  local runtime="${6:-org.freedesktop.Platform}"
+  local sdk="${7:-org.freedesktop.Sdk}"
+  local runtime_version="${8:-${FLATPAK_RUNTIME_VERSION}}"
+  local branch="${9:-master}"
+  local flatpak_arch="${10:-}"
+
+  app_packaging_require_flatpak_tools || return 1
+
+  local flatpak_work="${KATAGLYPHIS_FLATPAK_WORKDIR:-/tmp/flatpak-work}"
+  local stage_root="${flatpak_work}/cmake-install"
+  local source_dir="${stage_root}/source"
+  local build_root="${stage_root}/build"
+  local repo_dir="${stage_root}/repo"
+  local manifest_path="${stage_root}/${app_id}.json"
+
+  rm -rf "$stage_root"
+  mkdir -p "${source_dir}/app" "$build_root" "$repo_dir" "$out_dir"
+
+  if ! cmake --install "$build_dir" --prefix "${source_dir}/app"; then
+    echo "Error: cmake --install failed for ${build_dir}" >&2
+    return 1
+  fi
+
+  app_packaging_rename_installed_file "${source_dir}/app/share/applications" \
+    "${project_name}.desktop" "${app_id}.desktop"
+  app_packaging_rename_installed_file "${source_dir}/app/share/icons/hicolor/256x256/apps" \
+    "${project_name}.png" "${app_id}.png"
+  app_packaging_rename_installed_file "${source_dir}/app/share/metainfo" \
+    "${project_name}.appdata.xml" "${app_id}.appdata.xml"
+
+  # The install can "succeed" with nothing in bin/ (a component filter, a target
+  # that was never built). flatpak-builder would then commit an app whose
+  # `command` names a file that is not there, and it would fail on a user
+  # machine instead. Fail here, naming the path that is missing.
+  if [[ ! -x "${source_dir}/app/bin/${project_name}" ]]; then
+    echo "Error: Flatpak staging failed: expected an executable at ${source_dir}/app/bin/${project_name}" >&2
+    return 1
+  fi
+
+  local source_app_path
+  source_app_path="$(cd "${source_dir}/app" && pwd)"
+  app_packaging_write_cmake_flatpak_manifest "$manifest_path" "$app_id" "$runtime" \
+    "$runtime_version" "$sdk" "$project_name" "$source_app_path"
+
+  local -a fb_flags=(--disable-rofiles-fuse --force-clean)
+  [ -n "${KATAGLYPHIS_FLATPAK_VERBOSE:-}" ] && fb_flags+=(-v)
+  [ -n "$flatpak_arch" ] && fb_flags+=(--arch="$flatpak_arch")
+  local fb_rc=0
+  flatpak-builder "${fb_flags[@]}" --state-dir="${stage_root}/state" \
+    --repo="$repo_dir" "$build_root" "$manifest_path" || fb_rc=$?
+
+  app_packaging_assert_flatpak_committed "$repo_dir" "$app_id" "$fb_rc" || return 1
+
+  # build-bundle chmods the file it writes, which a bind-mounted host drive
+  # refuses - write it container-native, then copy the finished bundle out.
+  local out_name="${project_name}-${version_suffix}-linux.flatpak"
+  local staged_bundle="${stage_root}/${out_name}"
+  if ! flatpak build-bundle "$repo_dir" "$staged_bundle" "$app_id" "$branch"; then
+    return 1
+  fi
+  cp -f "$staged_bundle" "${out_dir}/${out_name}"
+
+  app_packaging_assert_artifact "${out_dir}/${out_name}"
 }
 
 app_packaging_package_android_apk_outputs_tar() {

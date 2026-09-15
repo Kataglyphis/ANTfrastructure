@@ -73,6 +73,21 @@ t_fn_src() {
   printf '%s\n' "${_src}"
 }
 
+# t_stubbed_script <library> <fn> [args...] — the `bash -c` BODY that sources a
+# library and calls ONE of its functions with the arguments quoted for
+# re-parsing. A suite runs a library function in its own process so a stub on
+# PATH and a `set -u` abort cannot leak into the suite; the printf '%q' loop is
+# the part two suites had copied. The caller keeps the environment PREFIX on its
+# own `bash -c` line, because a fixture switch spelled there is what gives the
+# env-knob registry an owner for it.
+t_stubbed_script() {
+  local _lib="${1:?t_stubbed_script: library path required}"
+  shift
+  local _args="" _a
+  for _a in "$@"; do _args+=" $(printf '%q' "${_a}")"; done
+  printf 'set -uo pipefail\nsource %q\n%s\n' "${_lib}" "${_args}"
+}
+
 # t_gate_tree <module>... — a throwaway root holding linux/scripts/<module> for each
 # named module, for a gate that derives its own root from __file__. Prints the root;
 # the caller adds its fixture and removes it. Second owner of a shape two suites had
