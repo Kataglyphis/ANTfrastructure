@@ -24,6 +24,7 @@ ${CMAKE_BUILD_USAGE_INTRO:-Configures and builds a CMake project.} Options:
   --build-dir DIR          build directory (default: ${CMAKE_BUILD_DEFAULT_BUILD_DIR:-build})
   --build-config CONFIG    value for 'cmake --build --config'
   --build-target TARGET    value for 'cmake --build --target'
+  --configure-arg ARG      extra argument for the CONFIGURE step (repeatable)
   --clean-build-dir BOOL   rm -rf the build dir before configuring
   --skip-configure [BOOL]  build an already-configured tree
   --parallel N             explicit job count (default: memory-aware auto-detect)
@@ -65,7 +66,7 @@ _cmake_build_resolve_vulkan() {
 
 # Fills PRESET, BUILD_DIR, CLEAN_BUILD_DIR, SKIP_CONFIGURE, CMAKE_BUILD_CONFIG,
 # CMAKE_BUILD_TARGET, PARALLEL_JOBS, MB_PER_JOB, CARGO_CACHE_DIR,
-# ALLOW_PREBUILD_FAILURE and CMAKE_BUILD_POSITIONAL.
+# ALLOW_PREBUILD_FAILURE, CMAKE_BUILD_CONFIGURE_ARGS and CMAKE_BUILD_POSITIONAL.
 #
 # Precedence per setting: CLI flag > pre-existing environment variable >
 # caller default. A trailing positional argument is accepted as the preset so
@@ -79,6 +80,12 @@ cmake_build_parse_args() {
   MB_PER_JOB="${CMAKE_BUILD_DEFAULT_MB_PER_JOB:-4000}"
   ALLOW_PREBUILD_FAILURE="${CMAKE_BUILD_DEFAULT_ALLOW_PREBUILD_FAILURE:-false}"
   CMAKE_BUILD_POSITIONAL=()
+  # Extra configure-step arguments, accumulated across repeats of
+  # --configure-arg. Seeded from the caller default (an ARRAY a sourcing wrapper
+  # sets; there is no environment-string form, because splitting one would break
+  # the first -D whose value contains a space) and RESET here, so a second parse
+  # in the same shell cannot inherit the first call's flags.
+  CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}"} )
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -87,6 +94,17 @@ cmake_build_parse_args() {
       --clean-build-dir)     clean_arg="${2:-}";          shift 2 ;;
       --build-config)        config_arg="${2:-}";         shift 2 ;;
       --build-target)        target_arg="${2:-}";         shift 2 ;;
+      # REPEATABLE, and the only way to get a -D into the configure step. Before
+      # it existed a wrapper that needed one had to skip the library's configure
+      # entirely (--skip-configure true) and issue its own `cmake -B … --preset`,
+      # which is three library entry points where one call would do -- see
+      # AccelerANTgine's scripts/linux/ci-release.sh, whose header named this
+      # flag as the thing that collapses that block. An EMPTY value is fatal
+      # rather than dropped: `cmake ""` fails with a message about the source
+      # directory, nowhere near the caller that meant to pass a flag.
+      --configure-arg)
+        [[ -n "${2:-}" ]] || err "--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)"
+        CMAKE_BUILD_CONFIGURE_ARGS+=("$2"); shift 2 ;;
       --cargo-cache-dir)     CARGO_CACHE_DIR="${2:-}";    shift 2 ;;
       --parallel)            PARALLEL_JOBS="${2:-}";      shift 2 ;;
       --mb-per-job)          MB_PER_JOB="${2:-}";         shift 2 ;;
@@ -230,6 +248,22 @@ cmake_build_jobs() {
 # ---------------------------------------------------------------------------
 # Configure + build
 # ---------------------------------------------------------------------------
+# The configure banner, and its own function ONLY because of the complexity
+# gate: cmake_build_run sat at 14 of its 15 allowed paths, and a log line that
+# names the extra arguments must not be what pushes it over. The extras are
+# ECHOED and not merely passed -- a -D that reaches cmake but no log is the
+# class of thing that gets blamed on the preset for a day. The `+x` guard keeps
+# a caller running under `set -u` alive when the array was never set.
+_cmake_build_log_configure() {
+  local _n=0
+  [[ -n "${CMAKE_BUILD_CONFIGURE_ARGS+x}" ]] && _n="${#CMAKE_BUILD_CONFIGURE_ARGS[@]}"
+  if [[ "${_n}" -gt 0 ]]; then
+    info "Configuring CMake with preset: ${PRESET} (+ ${CMAKE_BUILD_CONFIGURE_ARGS[*]})"
+  else
+    info "Configuring CMake with preset: ${PRESET}"
+  fi
+}
+
 # Consumes the variables produced by cmake_build_parse_args.
 cmake_build_run() {
   if [[ "${CLEAN_BUILD_DIR}" == "true" && -n "${BUILD_DIR}" ]]; then
@@ -241,11 +275,11 @@ cmake_build_run() {
     if [[ -z "${PRESET}" ]]; then
       err "Missing --preset for configure step."
     fi
-    info "Configuring CMake with preset: ${PRESET}"
+    _cmake_build_log_configure
     if [[ -n "${BUILD_DIR}" ]]; then
-      cmake -B "${BUILD_DIR}" --preset "${PRESET}"
+      cmake -B "${BUILD_DIR}" --preset "${PRESET}" ${CMAKE_BUILD_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_CONFIGURE_ARGS[@]}"}
     else
-      cmake --preset "${PRESET}"
+      cmake --preset "${PRESET}" ${CMAKE_BUILD_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_CONFIGURE_ARGS[@]}"}
     fi
   fi
 
