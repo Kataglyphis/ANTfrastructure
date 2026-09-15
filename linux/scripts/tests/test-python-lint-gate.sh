@@ -30,7 +30,11 @@ _mkroot() {
   # lint-python.sh sources the consumer-root contract from 01-core beside it, so
   # the fixture has to carry it: without it the gate dies on line 1 and every
   # assertion below would be about a broken copy rather than about the gate.
+  # python-probe.sh too: the gate sources it since 2026-09-15 to resolve the
+  # interpreter for the embedded-Python extractor, and a fixture without it
+  # makes every case fail on a missing source rather than on its own subject.
   cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" \
+     "${S}/01-core/python-probe.sh" \
      "${d}/linux/scripts/01-core/"
   printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/versions.env"
   printf '%s\n' "${d}"

@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **805 entries** over **90 distinct test commands**; both digits are
+manifest holds **812 entries** over **88 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1382,7 +1382,7 @@ and that case is what caught the gate tripping its own limit: `_code_char` reach
 cc 20 while gaining the arithmetic handling and had to be split into
 `_open_group` / `_close_group` / `_code_char`.
 
-47 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
+48 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
 the tokenizer guarantees (heredocs, here-strings, quotes, cross-line quote state,
 comments, case arms, worst-not-last, the Python walk, elif depth, the metric split,
 the surviving verdict), and one for each fix above — including **both** directions
@@ -1537,7 +1537,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 475 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 480 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1600,7 +1600,7 @@ those three rows STALE; that is the deliberate trade, not an oversight.
 
 `linux/scripts/tests/test-dead-functions.sh`, over throwaway trees —
 each case copies the gate plus the two modules it imports and plants a subject,
-callers and an allow file. 33 mutations (`dead-functions.*`), every one proven
+callers and an allow file. 34 mutations (`dead-functions.*`), every one proven
 to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
 `patches/`, `linux/webserver/dist`, `.pytest_cache`, `.dart_tool` and
@@ -1759,7 +1759,7 @@ workaround, not the fix: a shared `(count, reason)` reader belongs in
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 18 mutations (`shellcheck-warnings.*`), every one
+shellcheck cannot produce; 19 mutations (`shellcheck-warnings.*`), every one
 proven to bite. The suite's
 last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it —
 which is what every mutation `test` command sets, so no mutation can be recorded
@@ -2076,7 +2076,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-18 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
+19 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,
