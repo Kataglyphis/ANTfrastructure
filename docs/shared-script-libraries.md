@@ -738,3 +738,29 @@ calls `exit` takes that away. Probes that fail while the server is still
 starting are the expected case and stay silent; only the verdict is printed, and
 it names `who` — a bare URL never told anyone which server failed to come up.
 Defaults are 50 attempts at 0.2s, the ten seconds the consumers converged on.
+
+### `01-core/bind-mount-ownership.sh`
+
+`fix_bind_mount_ownership <target> <reference>` hands a tree a container wrote
+back to whoever owns the bind mount. `<reference>` is a path the host user owns
+— normally the workspace root — and its `uid:gid` is what `<target>` is handed
+back to; nothing takes a uid as an argument, because a number typed at a call
+site is the thing that goes stale.
+
+The three decisions around the `chown` are the whole reason this is shared:
+
+* **Only the paths that actually differ**, never a blanket `chown -R`. On a tree
+  that is mostly already correct, recursing over it asks the kernel for a chown
+  it refuses for a non-owner and turns a no-op into an error. `-h` so a symlink
+  is retargeted rather than its destination, which may be outside the tree.
+* **A failure as a non-root uid is explained and tolerated.** Giving a file to a
+  *different* uid needs `CAP_CHOWN`; as an unprivileged container user that is
+  arithmetic, not a defect, and it was measured red on a Windows host with
+  nothing an operator could do about it.
+* **The same failure as root is fatal.** There it means a read-only or broken
+  mount, and the tree really is left in the state this step exists to prevent.
+
+A missing `<target>` is not an error: a docs step that produced nothing has
+nothing to hand back. `lib/dartdoc-build.sh`'s `dartdoc_build_fix_ownership` is
+the older blanket `chown -R` form over one fixed tree and predates this;
+`tests/test-bind-mount-ownership.sh` pins all three decisions.

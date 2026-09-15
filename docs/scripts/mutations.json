@@ -6609,5 +6609,45 @@
     "replace": "      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || true",
     "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
     "why": "a missing runtime surfaces as a flatpak-builder manifest error much later, naming nothing the caller can act on"
+  },
+  {
+    "id": "bind-mount.chown-is-selective",
+    "target": "linux/scripts/01-core/bind-mount-ownership.sh",
+    "find": "  if printf '%s\\0' \"${wrong[@]}\" | xargs -0 --no-run-if-empty chown -h \"${owner_uid}:${owner_gid}\"; then",
+    "replace": "  if chown -R \"${owner_uid}:${owner_gid}\" \"${target}\"; then",
+    "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+    "why": "a blanket chown -R over a mostly-correct tree asks the kernel for a chown it refuses for a non-owner, turning a no-op into an error"
+  },
+  {
+    "id": "bind-mount.non-root-failure-is-tolerated",
+    "target": "linux/scripts/01-core/bind-mount-ownership.sh",
+    "find": "  if [ \"$(id -u)\" -ne 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+    "why": "only root can hand a file to another uid; failing there is a red an operator cannot act on, which is what the old || true was hiding from"
+  },
+  {
+    "id": "bind-mount.root-failure-is-fatal",
+    "target": "linux/scripts/01-core/bind-mount-ownership.sh",
+    "find": "  err \"chown -h ${owner_uid}:${owner_gid} under ${target} failed as root; the host user cannot clean or regenerate it.\"",
+    "replace": "  warn \"chown -h ${owner_uid}:${owner_gid} under ${target} failed as root; the host user cannot clean or regenerate it.\"",
+    "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+    "why": "as root the failure is a read-only or broken mount and the tree really is left unusable; a warning is the || true this replaced"
+  },
+  {
+    "id": "bind-mount.already-correct-is-a-no-op",
+    "target": "linux/scripts/01-core/bind-mount-ownership.sh",
+    "find": "  if [ \"${#wrong[@]}\" -eq 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+    "why": "a tree that is already correct must not be chowned at all"
+  },
+  {
+    "id": "bind-mount.missing-target-is-not-an-error",
+    "target": "linux/scripts/01-core/bind-mount-ownership.sh",
+    "find": "  if [ ! -d \"${target}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+    "why": "a docs step that produced nothing has nothing to hand back; failing there makes the finalize step the thing that breaks the lane"
   }
 ]
