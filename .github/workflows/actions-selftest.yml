@@ -287,8 +287,12 @@ jobs:
 
       # extra-args carries an env var, log-file tees, workdir is the mount
       # target, and the script reads all three back. ACTION_DIRS is counted
-      # INSIDE the container from the bind-mounted workspace, so the number
-      # proves the mount, and the number 11 is this workflow's own premise.
+      # INSIDE the container from the bind-mounted workspace, and compared with
+      # the count taken OUTSIDE it, on the host checkout: that equality is what
+      # proves the mount delivered the whole tree. A literal here instead was a
+      # premise that rotted the day an eleventh action landed -- deploy-over-ftp
+      # made it twelve on 2026-09-10 and this lane has been red ever since,
+      # asserting a number about the repository rather than about the mount.
       - name: run-in-linux-container
         uses: ./.github/actions/run-in-linux-container
         with:
@@ -307,7 +311,9 @@ jobs:
           cat "${log}"
           grep -qx 'MARKER=ok' "${log}" || { echo "::error::extra-args did not deliver SELFTEST_MARKER into the container"; exit 1; }
           grep -qx 'CWD=/selftest-workspace' "${log}" || { echo "::error::the workdir input did not become the container working directory"; exit 1; }
-          grep -qx 'ACTION_DIRS=11' "${log}" || { echo "::error::the container did not see 11 action directories under the mounted workspace"; exit 1; }
+          expected="$(find .github/actions -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          seen="$(sed -n 's/^ACTION_DIRS=//p' "${log}")"
+          [ "${seen}" = "${expected}" ] || { echo "::error::the container saw ${seen:-no} action directories under the mounted workspace, and this checkout holds ${expected}"; exit 1; }
 
   # ---------------------------------------------------------------------------
   # run-pester-suite + clone-into-short-path (Windows) + upload-codeql-sarif
