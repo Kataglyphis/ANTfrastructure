@@ -13,7 +13,7 @@ services:
     ports:
       - "8443:8443"
     volumes:
-      - ../../../Kataglyphis_NativeInferencePlugin/native/KataglyphisCppInference:/KataglyphisCppInference:ro
+      - ../../../OmniAccelerANT/third_party/AccelerANTgine:/AccelerANTgine:ro
       - ./scripts/04-runtime/start-webrtc-signalling.sh:/usr/local/bin/start-webrtc-signalling.sh:ro
     command: ["/usr/local/bin/start-webrtc-signalling.sh"]
     restart: unless-stopped

@@ -5,11 +5,13 @@
 
   <h1>ANTfrastructure</h1>
 
-  <h4>Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and a Windows build image.</h4>
+  <h4>Multi-arch build images (Linux amd64/arm64/riscv64, a slim nginx webserver, Windows Server Core) plus the shared CI actions, reusable workflows, build/quality gates and agentic-loop tooling every Kataglyphis repo consumes.</h4>
 </div>
 
 [![CI](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ubuntu26.04.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ubuntu26.04.yml)
 [![ghcr-cleanup](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml)
+[![Consumer Inventory](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml)
+[![Composite actions self-test](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
 ---
@@ -123,7 +125,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:latest-cross` | Multi-arch release index (amd64/arm64/riscv64) — the stable API |
 | `:latest-cross-<arch>` | Per-architecture wrapper |
 | `:cross-media-<arch>` | Media libraries layer |
-| `:webserver` | Slim nginx webserver |
+| `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
 | `:winamd64` | Windows build image |
 
 Full matrix with platforms, tag hints and per-stage intermediates:
@@ -244,6 +246,19 @@ The correctness-first rationale — **a broken model is fast**, so a sweep gates
 on a verifiable-answer check before spending hours measuring — is owned by the
 lab's docs next to the tools that implement it.
 
+## Home-lab stacks — deliberately here
+
+Besides the build images and the shared CI surface, this repository carries the
+owner's **personal operations stacks**: Home Assistant under
+[`linux/homeassistant/`](linux/homeassistant/README.md) and Nextcloud AIO under
+[`linux/nextcloud-aio/`](linux/nextcloud-aio/README.md). They are not build
+infrastructure and they are not here by accident — one owner, one host, one
+place to keep the compose files, the `.env.example` contracts and the runbooks
+that go with them. Anything in this repository that claims it is build
+infrastructure *only* is wrong; the declared topic includes these two stacks.
+They consume the same gates as everything else (crlf-guard, shellcheck,
+secret scan), and nothing else in the tree depends on them.
+
 ## CI
 
 | Workflow | Purpose |
@@ -257,6 +272,10 @@ lab's docs next to the tools that implement it.
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
+| `actions-selftest.yml` | The composite actions under `.github/actions/` exercised against themselves — push/PR on `.github/actions/**`, Mondays, and dispatch for the deep Windows lane |
+| `consumer-inventory.yml` | Scheduled (Mondays): clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
+| `submodule-pins.yml` | The submodule-pin invariant suite; also `workflow_call`, so a consumer runs it with `uses:` instead of copying the job |
+| `lint-gates.yml` | Reusable (`workflow_call`) — `run-lint-gates.sh` over a consumer tree |
 
 **Contributing?** Run `make hooks` once. It installs a pre-commit gate that
 costs **~4 seconds**: the cheap whole-tree checks, `shellcheck` on the shell

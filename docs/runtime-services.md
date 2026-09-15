@@ -82,7 +82,7 @@ The AccelerANTgine project includes WebRTC streaming support via GStreamer's `we
 
 ```bash
 # Build the project (inside container or on host with GStreamer)
-cd /KataglyphisCppInference
+cd /AccelerANTgine
 cmake --preset=linux-release-clang
 cmake --build build-release
 

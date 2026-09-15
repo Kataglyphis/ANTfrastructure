@@ -179,7 +179,7 @@ volume instead:
 nerdctl volume create cargo-cache        # once
 
 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user root \
-  -v cargo-cache:/cargo-cache \
+  --mount type=volume,source=cargo-cache,target=/cargo-cache \
   -v /mnt/d/path/to/repo:/workspace -w /workspace \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
   bash -c 'bash scripts/linux/cmake-configure-build.sh \
@@ -197,9 +197,13 @@ Three details that are easy to get wrong:
 - `--user root` sidesteps volume ownership. To avoid it, chown the volume to
   the image's uid once:
   ```bash
-  rdctl shell nerdctl run --rm --user root -v cargo-cache:/cargo-cache \
+  rdctl shell nerdctl run --rm --user root \
+    --mount type=volume,source=cargo-cache,target=/cargo-cache \
     alpine:3.20 chown -R 1001:1001 /cargo-cache
   ```
+- The long `--mount` form is not a style choice. See
+  [§ `-v name:/path` is a bind under Windows nerdctl](#-v-namepath-is-a-bind-under-windows-nerdctl)
+  below: the short form silently mounts a directory instead of the volume.
 
 The `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` prefix is required when
 invoking nerdctl from Git Bash — without it the `-v` argument is rewritten
@@ -207,6 +211,71 @@ into a Windows path and the run fails with "expected an absolute path".
 
 After the first build the registry and compiled dependencies are reused and
 subsequent runs are dramatically faster.
+
+## `-v name:/path` is a bind under Windows nerdctl
+
+**`-v name:/path` is not a named volume here.** Windows `nerdctl` reads it as a
+bind of `$PWD/name`, creates that directory silently, and mounts it; running
+`nerdctl volume create name` beforehand changes nothing — the volume exists and
+is never mounted.
+
+It was measured on a consumer's local Linux lane: after five runs `%TEMP%` held
+`…-workspace-build/` and four siblings at 729 MB each, while the volume of that
+name, mounted through `--mount type=volume,…`, was empty. One run started from a
+repo root left a 151 MB directory of that name *inside the checkout*. The whole
+point of the volume — keeping a write-heavy build tree off `drvfs` — was never in
+effect locally, and nothing failed only because the write-heavy steps had already
+been moved to `/tmp`.
+
+Always use the long form, which nerdctl cannot reinterpret as a path:
+
+```bash
+nerdctl run --rm --mount type=volume,source=<name>,target=/path ...
+```
+
+CI is unaffected: the Linux engine there resolves the short form correctly. One
+cosmetic consequence of mounting a build directory: a cleaner (`flutter clean`,
+`rm -rf build`) then logs `Device or resource busy (errno 16)` on the mount point
+itself — it empties the directory and cannot unlink it. Not a failure to chase.
+
+## Registering arm64 emulation in Rancher's VM (per VM boot)
+
+Rancher's VM starts with **no emulators at all**: `binfmt` reports
+`"emulators": null` and only `linux/amd64` variants under `supported`. An arm64
+container therefore runs x86-64 binaries and dies with `rustc: 1: ELF: not
+found`. Register once per VM boot:
+
+```bash
+nerdctl run --rm --privileged tonistiigi/binfmt --install arm64
+nerdctl run --rm --privileged tonistiigi/binfmt          # verify: qemu-aarch64 listed
+nerdctl run --rm --platform linux/arm64 alpine uname -m  # verify: aarch64
+```
+
+Like the `D:` mount in containerd's namespace, this does **not** survive a VM
+restart. The arm64 layers are a separate pull — roughly 6 GB over the wire and
+30 GB on disk beside the amd64 copy (`nerdctl pull --platform linux/arm64 …`) —
+and every compile then runs under emulation, so expect it to be far slower than
+the native x64 path.
+
+## Emulated arm64 cannot run bubblewrap or static-PIE
+
+Under `qemu-user`, two packaging formats fail for reasons that have nothing to do
+with this repository or the image. Both were verified 2026-09-05 on a consumer,
+after a full arm64 build that compiled Rust and C++ without a single error:
+
+- `bwrap: Creating new namespace failed, likely because the kernel does not
+  support user namespaces`. The kernel does support them
+  (`/proc/sys/user/max_user_namespaces` is 123100) and `--privileged` was passed;
+  `qemu-user` simply does not carry `unshare(CLONE_NEWUSER)` through, and
+  flatpak-builder sandboxes every module with bubblewrap.
+- `/usr/local/bin/appimagetool: cannot execute binary file: Exec format error`.
+  The binary is the correct architecture (`ELF aarch64, static-pie linked`);
+  `qemu-user` cannot load static-PIE executables.
+
+Real arm64 runners are unaffected, so a CI arm64 row that packages successfully
+proves nothing about the emulated path and vice versa. Locally, treat a failing
+flatpak/AppImage step on arm64 as expected and check for those two messages
+before investigating anything else.
 
 ## Long-running work: detached containers + tmux
 
