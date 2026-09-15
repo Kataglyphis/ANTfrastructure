@@ -268,7 +268,7 @@ secret scan), and nothing else in the tree depends on them.
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
 | `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
 | `python-ci-windows.yml` | Reusable (`workflow_call`) — the same for Windows |
-| `llm-stack-serving.yml` | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape, the backend registry and the NAS census test |
+| `llm-stack-serving.yml` | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |

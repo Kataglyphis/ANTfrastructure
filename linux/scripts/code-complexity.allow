@@ -69,8 +69,11 @@ linux/scripts/verify_advertised_keys.py | main | cc | 22 | reviewed 2026-09-04: 
 linux/scripts/verify_package_names.py | load_arch | cc | 17 | reviewed 2026-09-04: every branch is a way the gate must NOT produce a false verdict -- fresh-cache short-circuit, four parallel component fetches, the all-or-nothing refusal (one missing component would make real packages look dead), the STALE-cache fallback, then the cache write. Correct as written; the two functions above it were the ones that had grown
 linux/scripts/06-packaging/smoke-runtime-image.sh | check_manifest_tree_arch | cc | 20 | reviewed 2026-09-04 by MEASUREMENT: a verdict dispatcher, one arm per verb (OK/BAD/NOELF/MISSING/CAPPED/NONE/unknown), each naming its own failure. Splitting it would hide the table a reader needs to see whole; the CAPPED arm is what makes a partial scan fail instead of reading green; +4 on 2026-09-05 for the frozen-finding arms (known count, moved count, and the two they guard)
 
-# --- EX1 2026-09-07: linux/llm-stack enters the scan set. These 47 rows are the
-# territory the extent gates could never see; every one was read and given a
-# verdict in the same wave that widened SCAN, so none is a bare baseline. 34 of
-# them say DEBT and name their seam -- that is the honest state of a benchmark
-# harness nobody had reviewed for shape. docs/refactoring-backlog.md EX1
+# --- EX1 2026-09-07 widened the scan set to linux/llm-stack and froze 47 rows
+# here: the territory the extent gates could never see, every one read and given
+# a verdict in the same wave, 34 of them naming a seam. THE SECTION IS EMPTY NOW,
+# and that is the finished state, not a lost baseline -- the benchmark rows left
+# with the lab, and the last one (nas_census.py extract_xlsx_text, nesting 6,
+# whose seam is recorded in OrchestrANT beside the code) left with the NAS census
+# on 2026-09-15. linux/llm-stack is still in SCAN, so anything added back there
+# is graded from zero. docs/refactoring-backlog.md EX1
