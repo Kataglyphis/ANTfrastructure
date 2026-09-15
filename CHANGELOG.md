@@ -92,6 +92,68 @@ client PINNED, so both lanes install the same one. `STATIC_ANALYSIS_EXTRA_PATHS`
 and `CARGO_CLIPPY_ARGS`, the two knobs whose absence made consumers hand-roll
 the drivers.
 
+### The second pass: what the first one CLAIMED and did not ship
+
+A consumer measured the pinned tree and found six of the helpers above absent —
+they had been listed from a plan rather than from the tree, which is the exact
+mistake the audit keeps finding. They exist now, each shaped by the consumer
+code it replaces rather than by what looked tidy here.
+
+**The bandit bug, first, because it made an existing knob unusable.**
+`STATIC_ANALYSIS_EXTRA_PATHS` reached bandit as one `-r` per path. bandit's `-r`
+is `store_true` against a SINGLE `nargs='*'` positional, so `bandit -r a -r b`
+is "unrecognized arguments" and exit 2 — measured against bandit 1.9.4 in the
+family image. The knob therefore took the bandit gate down on every lane that
+set it, which is why OrchestrANT documented it as broken instead of adopting it.
+One `-r` and the whole target list now, on BOTH lanes: the Windows twin
+`Invoke-CiStaticAnalysis.ps1` had built the same shape. The tests COUNT the
+flags, and `Python.StaticAnalysisArgv.Tests.ps1` builds the Windows argv out of
+the script's AST and asserts its default exclude list equals the Linux one.
+
+**`BANDIT_EXCLUDES` / `-BanditExcludes`** (A107): the `-x` list was a literal on
+the gate line, so a consumer with one more directory to skip had to hard-code
+the whole string in its own driver. The default is that literal, character for
+character; setting the knob REPLACES the list, because a consumer that names an
+exclude set means that set.
+
+**`cmake-build.sh --configure-arg`**, repeatable, forwarded to the configure
+step only. AccelerANTgine's `ci-release.sh` needed `-DCMAKE_LINK_WHAT_YOU_USE`
+and `-DCPACK_ENABLE_APPIMAGE`, and with no way to add a `-D` it ran
+`--skip-configure true` plus its own `cmake -B … --preset …` — three library
+entry points where `cmake_build_main` now does. A value containing a space stays
+one argument, an empty value is fatal rather than dropped (`cmake ""` fails with
+a message about the source directory), and the list is reset per parse.
+
+**`app_packaging_ensure_flatpak_runtime` and
+`app_packaging_package_cmake_install_flatpak`.** The existing flatpak packager
+takes a Flutter BUNDLE tree; a CMake project has no bundle, so the cmake-install
+variant is its own function — but it obeys this file's three conventions, and
+two of them the consumer's fork did not: the staging tree is container-native
+(the out dir is routinely the build directory on a mounted workspace), and
+flatpak-builder's exit code is not the verdict — ostree is asked whether the app
+is committed. The runtime installer is deliberately not the container one: it
+installs nothing with apt, asks before installing, and falls back user→system.
+
+**`fix_bind_mount_ownership`** in `01-core/bind-mount-ownership.sh`, with the
+split that is the whole point of it intact: only the paths that actually differ
+are chowned, a failure as a non-root uid is explained and tolerated (handing a
+file to another uid needs CAP_CHOWN — a red nobody can act on is what the old
+`|| true` was hiding from), and the same failure as root is fatal.
+
+**`WindowsMediaRuntime.Common`** with `Copy-MediaRuntimeBundle` and
+`Get-MediaRuntimeDirectory`, collapsing the three sites — ClangCL debug, profile
+and release — that each staged the same GStreamer + ONNX Runtime DLL closure.
+One difference from the fork it replaces: the recursive NuGet probe is pinned to
+the TARGET runtime identifier instead of `win-x64`, so a foreign-rid payload
+cannot be staged next to the exe.
+
+**`python-ci-windows.yml` gains `lint-powershell` and `lint-path`.** OrchestrANT
+and OxidANT each hand-wrote the same PowerShell-lint job within a week; they
+agreed on everything that matters and differed only in the directory they
+pointed the gate at. It is a second job on the same runner, defaulted OFF, and
+deliberately does not `needs:` the build — a syntax error in the build scripts
+is exactly when the lint is worth having.
+
 ### Gates and hooks
 
 One Python-probe owner for `lint-python.sh` and the versioned hooks: eight bare
