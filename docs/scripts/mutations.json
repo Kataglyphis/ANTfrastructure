@@ -6513,5 +6513,37 @@
     "replace": "BANDIT_EXCLUDES=\"${BANDIT_EXCLUDES_UNREAD:-tests,",
     "test": "bash linux/scripts/tests/test-python-static-analysis.sh",
     "why": "a knob the driver never reads is a knob a consumer sets and does not get; the default would still look right"
+  },
+  {
+    "id": "lib.cmake-build-configure-args-reach-cmake",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "      cmake -B \"${BUILD_DIR}\" --preset \"${PRESET}\" ${CMAKE_BUILD_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_CONFIGURE_ARGS[@]}\"}",
+    "replace": "      cmake -B \"${BUILD_DIR}\" --preset \"${PRESET}\"",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "a parsed-but-not-forwarded --configure-arg is the exact shape of a knob that looks wired and changes nothing"
+  },
+  {
+    "id": "lib.cmake-build-configure-arg-accumulates",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "        CMAKE_BUILD_CONFIGURE_ARGS+=(\"$2\"); shift 2 ;;",
+    "replace": "        CMAKE_BUILD_CONFIGURE_ARGS=(\"$2\"); shift 2 ;;",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "the flag is REPEATABLE; overwriting keeps only the last -D and the consumer that needs two silently loses one"
+  },
+  {
+    "id": "lib.cmake-build-configure-args-reset-per-parse",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "  CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}\"} )",
+    "replace": "  CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_CONFIGURE_ARGS[@]}\"} ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}\"} )",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "two parses in one shell must not compound; a wrapper that parses twice would configure with flags it dropped"
+  },
+  {
+    "id": "lib.cmake-build-configure-arg-empty-is-fatal",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "        [[ -n \"${2:-}\" ]] || err \"--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)\"",
+    "replace": "        [[ -n \"${2:-}\" ]] || true",
+    "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+    "why": "an empty value reaches cmake as an empty argument, whose error names the source directory and not the caller"
   }
 ]

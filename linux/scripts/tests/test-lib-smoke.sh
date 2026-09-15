@@ -128,4 +128,111 @@ t_assert_fails bash -c "set -euo pipefail
   source '${LIB_DIR}/cmake-build.sh'
   cmake_build_parse_args --no-such-flag"
 
+
+# ── cmake-build.sh: --configure-arg ───────────────────────────────────────────
+# The library configured with exactly `cmake -B <dir> --preset <name>` and had
+# no way to add a -D, so a wrapper that needed one (AccelerANTgine's
+# scripts/linux/ci-release.sh: -DCMAKE_LINK_WHAT_YOU_USE=FALSE and
+# -DCPACK_ENABLE_APPIMAGE) had to run the configure itself with
+# --skip-configure true, which is three library entry points instead of one
+# cmake_build_main. These cases pin BOTH halves: the flag parses, and the
+# arguments actually reach the configure command line in order -- asserted
+# against a STUB cmake that records its argv, because "the parser stored it" is
+# exactly the half that can be true while the command line is unchanged.
+
+t_case "cmake_build_parse_args: --configure-arg is repeatable and keeps its order"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --preset p \
+    --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE \
+    --configure-arg -DCPACK_ENABLE_APPIMAGE=ON
+  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[*]}\"")"
+t_assert_eq "2|-DCMAKE_LINK_WHAT_YOU_USE=FALSE -DCPACK_ENABLE_APPIMAGE=ON" "${_out}"
+
+t_case "cmake_build_parse_args: a -D value is not mistaken for the next flag"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --configure-arg -DFOO=BAR --parallel 9
+  printf '%s|%s' \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\" \"\${PARALLEL_JOBS}\"")"
+t_assert_eq "-DFOO=BAR|9" "${_out}"
+
+t_case "cmake_build_parse_args: a value containing a space stays ONE argument"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --configure-arg '-DCMAKE_CXX_FLAGS=-O2 -g'
+  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
+t_assert_eq "1|-DCMAKE_CXX_FLAGS=-O2 -g" "${_out}"
+
+t_case "cmake_build_parse_args: no --configure-arg leaves the list EMPTY, not unset"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --preset p
+  printf '%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\"")"
+t_assert_eq "0" "${_out}"
+
+t_case "cmake_build_parse_args: a second parse does not inherit the first call's -D"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --configure-arg -DFIRST=1
+  cmake_build_parse_args --configure-arg -DSECOND=2
+  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
+t_assert_eq "1|-DSECOND=2" "${_out}"
+
+t_case "cmake_build_parse_args: CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS seeds the list"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS=(-DFROM_DEFAULT=1)
+  cmake_build_parse_args --configure-arg -DFROM_FLAG=1
+  printf '%s' \"\${CMAKE_BUILD_CONFIGURE_ARGS[*]}\"")"
+t_assert_eq "-DFROM_DEFAULT=1 -DFROM_FLAG=1" "${_out}"
+
+t_case "cmake_build_parse_args: --configure-arg without a value is fatal"
+t_assert_fails bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --configure-arg"
+
+# The EMPTY-STRING case is the one the guard exists for. A missing value is
+# caught by `set -u` alone in a strict caller, so asserting only that would
+# prove nothing about the guard; an explicitly empty value is bound, reaches the
+# array, and would arrive at cmake as `cmake "" …`, whose error message is about
+# the source directory and names nothing the caller typed.
+t_case "cmake_build_parse_args: --configure-arg with an EMPTY value is fatal"
+t_assert_fails bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --configure-arg ''"
+
+# The forwarding half. A stub cmake records each invocation; cmake_build_run is
+# driven with the prepare_env step skipped (it is exercised elsewhere and wants
+# a container).
+_cmake_stub_dir="$(mktemp -d)"
+cat > "${_cmake_stub_dir}/cmake" <<'STUB'
+#!/usr/bin/env bash
+printf 'cmake %s\n' "$*" >> "${STUB_CMAKE_LOG}"
+STUB
+chmod +x "${_cmake_stub_dir}/cmake"
+
+t_case "cmake_build_run: the extra arguments reach the CONFIGURE command, in order"
+_cmake_log="$(mktemp)"
+PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log}" bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --preset linux-release-clang --build-dir bld --parallel 2 \
+    --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE --configure-arg -DCPACK_ENABLE_APPIMAGE=ON
+  cmake_build_run" >/dev/null 2>&1
+t_assert_eq "cmake -B bld --preset linux-release-clang -DCMAKE_LINK_WHAT_YOU_USE=FALSE -DCPACK_ENABLE_APPIMAGE=ON" \
+  "$(head -1 "${_cmake_log}")"
+
+t_case "cmake_build_run: they go to the configure step ONLY, never to --build"
+t_assert_eq "" "$(grep -F -- '--build' "${_cmake_log}" | grep -F -- '-DCPACK_ENABLE_APPIMAGE=ON' || true)"
+t_assert_contains "$(tail -1 "${_cmake_log}")" "cmake --build bld"
+
+t_case "cmake_build_run: with no --configure-arg the configure line is unchanged"
+_cmake_log2="$(mktemp)"
+PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log2}" bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args --preset p --build-dir bld --parallel 2
+  cmake_build_run" >/dev/null 2>&1
+t_assert_eq "cmake -B bld --preset p" "$(head -1 "${_cmake_log2}")"
+
+rm -rf "${_cmake_stub_dir}" "${_cmake_log}" "${_cmake_log2}"
+
 t_summary

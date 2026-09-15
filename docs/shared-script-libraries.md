@@ -221,6 +221,7 @@ source, and end up with the *real* logging module rather than the fallbacks.
 | `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT` | `setup-env.sh` sourced when it exists | — |
 | `CMAKE_BUILD_DEFAULT_MB_PER_JOB` | peak RAM per compile job | `4000` |
 | `CMAKE_BUILD_DEFAULT_ALLOW_PREBUILD_FAILURE` | `true` makes a failing pre-build hook non-fatal | `false` |
+| `CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS` | bash ARRAY of extra configure-step arguments | empty |
 | `CMAKE_BUILD_SAFE_DIRECTORY` | path registered as a git `safe.directory`; empty disables | `/workspace` |
 | `CMAKE_BUILD_PREBUILD_LABEL` | label logged around the pre-build hook | — |
 | `CMAKE_BUILD_USAGE_INTRO` | one-line description shown in `--help` | — |
@@ -234,6 +235,19 @@ That `-f` test is the load-bearing half: `cmake_build_prepare_env` sources
 `VULKAN_SETUP_SCRIPT` unconditionally once it is set, so adopting a default that
 is not on disk turns a missing SDK into a sourcing error much later.
 `tests/test-lib-smoke.sh` pins all four cases.
+
+**Extra configure arguments — `--configure-arg`.** Repeatable, and the only way
+to put a `-D` on the configure command line. Each occurrence appends one
+argument, in order, to `CMAKE_BUILD_CONFIGURE_ARGS`; the list is reset per
+`cmake_build_parse_args` call and seeded from `CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS`
+(an array, not an environment string — splitting one would break the first `-D`
+whose value contains a space, and `--configure-arg '-DCMAKE_CXX_FLAGS=-O2 -g'`
+must stay one argument). They reach the **configure** step only, never
+`cmake --build`. An empty value is fatal rather than dropped: `cmake ""` fails
+with a message about the source directory, nowhere near the caller. Without
+this, a wrapper that needed one `-D` had to run `--skip-configure true` and
+issue its own `cmake -B … --preset …`, i.e. call three library entry points
+where `cmake_build_main` would do.
 
 **Hook — `cmake_build_prebuild_hook`.** Called only when the wrapper declares it.
 Runs after configure, immediately before `cmake --build`; use it for code or
