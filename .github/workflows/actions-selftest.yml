@@ -1,13 +1,13 @@
 # .github/workflows/actions-selftest.yml
 #
-# The eleven composite actions under .github/actions/ are the family's shared
-# CI surface: 61 call sites across BeschleunigerBallett, OmniAccelerANT,
-# OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology resolve them at
-# `@main`, which the submodule pin does NOT freeze. An edit here is live in
-# every consumer on the next push, and until this workflow existed exactly ONE
-# of the eleven (run-pester-suite, from submodule-pins.yml) was exercised by
-# anything in this repository. The other ten had no test between the edit and
-# the blast radius.
+# The twelve composite actions under .github/actions/ are the family's shared
+# CI surface: 84 call sites (counted 2026-09-14) across BeschleunigerBallett,
+# OmniAccelerANT, OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology
+# resolve them at `@main`, which the submodule pin does NOT freeze. An edit here
+# is live in every consumer on the next push, and until this workflow existed
+# exactly ONE of the twelve (run-pester-suite, from submodule-pins.yml) was
+# exercised by anything in this repository. The other eleven had no test between
+# the edit and the blast radius.
 #
 # WHAT THIS CAN AND CANNOT PROVE - read this before trusting a green run.
 #
@@ -90,6 +90,13 @@ on:
     paths:
       - '.github/actions/**'
       - '.github/workflows/actions-selftest.yml'
+  # Weekly, so a green tick means something on a week where nobody edited an
+  # action: these actions call the outside world (apt, ghcr, an FTP server,
+  # the Pester gallery), and that is where they rot. The deep Windows lane is
+  # NOT on this schedule -- it needs `deep: true`, which only a dispatch sets,
+  # so the ~54 GB pull never runs unattended.
+  schedule:
+    - cron: "0 8 * * 1" # Mondays 08:00 UTC, after consumer-inventory at 07:00
 
 concurrency:
   group: actions-selftest-${{ github.ref }}
