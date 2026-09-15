@@ -6545,5 +6545,69 @@
     "replace": "        [[ -n \"${2:-}\" ]] || true",
     "test": "bash linux/scripts/tests/test-lib-smoke.sh",
     "why": "an empty value reaches cmake as an empty argument, whose error names the source directory and not the caller"
+  },
+  {
+    "id": "packaging.flatpak-cmake-install-stages-container-native",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "  local stage_root=\"${flatpak_work}/cmake-install\"",
+    "replace": "  local stage_root=\"${out_dir}/flatpak\"",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "out_dir is routinely the build directory on a mounted workspace, and everything flatpak touches needs fchmod, which a bind mount refuses"
+  },
+  {
+    "id": "packaging.flatpak-cmake-install-ostree-is-the-verdict",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "    --repo=\"$repo_dir\" \"$build_root\" \"$manifest_path\" || fb_rc=$?\n\n  if ! ostree --repo=\"$repo_dir\" refs 2>/dev/null | grep -q \"^app/${app_id}/\"; then",
+    "replace": "    --repo=\"$repo_dir\" \"$build_root\" \"$manifest_path\" || fb_rc=$?\n\n  if [ \"$fb_rc\" -ne 0 ]; then",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "flatpak-builder can export the app completely and still fail in Pruning cache, and can exit 0 having committed nothing; the exit code is not the verdict"
+  },
+  {
+    "id": "packaging.flatpak-cmake-install-missing-binary-is-fatal",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "  if [[ ! -x \"${source_dir}/app/bin/${project_name}\" ]]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "an app committed with a command that is not in the bundle fails on a user machine instead of in CI"
+  },
+  {
+    "id": "packaging.flatpak-cmake-install-asserts-the-artifact",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "  app_packaging_assert_artifact \"${out_dir}/${out_name}\"",
+    "replace": "  echo \"Created: ${out_dir}/${out_name}\"",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "convention 3 of this file: an unconditional Created: line is how a packaging step reported success with no file on disk"
+  },
+  {
+    "id": "packaging.flatpak-cmake-install-renames-to-the-app-id",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "  app_packaging_rename_installed_file \"${source_dir}/app/share/applications\" \\",
+    "replace": "  true \"${source_dir}/app/share/applications\" \\",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "CMake installs name after the project; flatpak resolves by app id, and a .desktop under the wrong name is an unlaunchable app"
+  },
+  {
+    "id": "packaging.flatpak-runtime-skips-installed-refs",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "    if flatpak info --user \"$_ref\" >/dev/null 2>&1 || flatpak info --system \"$_ref\" >/dev/null 2>&1; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "a ref is 1-2 GB, and reinstalling one the machine already has system-wide creates a second copy"
+  },
+  {
+    "id": "packaging.flatpak-runtime-user-install-falls-back-to-system",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "    flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
+    "replace": "    flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "an unprivileged user cannot always write the user installation either; without the fallback the runtime is simply absent"
+  },
+  {
+    "id": "packaging.flatpak-runtime-install-failure-is-fatal",
+    "target": "linux/scripts/lib/app-packaging.sh",
+    "find": "      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
+    "replace": "      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || true",
+    "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+    "why": "a missing runtime surfaces as a flatpak-builder manifest error much later, naming nothing the caller can act on"
   }
 ]

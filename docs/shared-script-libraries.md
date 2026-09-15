@@ -255,6 +255,37 @@ asset generation the build or the runtime depends on (shader precompilation,
 codegen). **A non-zero return is fatal by default** — see `cmake_build_run()`
 for why.
 
+## `app-packaging.sh` — the two flatpak entry points
+
+The file's own header carries the three rules every packager in it obeys
+(container-native staging, flatpak-builder's exit code is not the verdict,
+nothing prints `Created:` without `app_packaging_assert_artifact`). Two entry
+points were added on 2026-09-15 for a consumer that packages a **CMake install
+tree** rather than a Flutter bundle:
+
+* **`app_packaging_ensure_flatpak_runtime [arch] [runtime] [sdk] [version]`** —
+  flathub plus the runtime/SDK pair, for a run that is **not** inside the family
+  CI image. Deliberately not `app_packaging_setup_dependencies_for_container`:
+  that one assumes the image already ships flatpak, installs missing packages
+  through a privilege helper and installs unconditionally under
+  `dbus-run-session`. This one installs nothing with apt and asks first, so a
+  warm dev box is a no-op. User installation first, system as the fallback, for
+  the remote and for both refs — an unprivileged user cannot write the system
+  installation, and pulling a second copy of a ref the machine already has
+  system-wide costs 1-2 GB.
+* **`app_packaging_package_cmake_install_flatpak <build_dir> <out_dir> <app_id>
+  <project_name> <version_suffix> [runtime] [sdk] [version] [branch] [arch]`** —
+  `cmake --install` into a container-native staging prefix, rename the
+  PROJECT-named `.desktop`/`.png`/`.appdata.xml` to the APP ID, write the
+  manifest, build, and copy only the finished bundle into `<out_dir>`. `<out_dir>`
+  is routinely the build directory on a mounted workspace, which is exactly why
+  nothing but the bundle is written there.
+
+`tests/test-app-packaging-flatpak.sh` pins both against stubbed
+flatpak/flatpak-builder/ostree/cmake, including the two cases the exit code
+cannot see: a non-zero `flatpak-builder` whose app **is** committed still ships,
+and a zero exit with an empty repo fails.
+
 ## `ctest-run.sh` — run a CMake project's test suite in a container
 
 The twin of `cmake-build.sh` for the test phase, and **deliberately a separate
