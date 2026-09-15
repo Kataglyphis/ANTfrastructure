@@ -558,7 +558,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — the lint gates over a consumer tree
+### `run-lint-gates.sh` — six gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
