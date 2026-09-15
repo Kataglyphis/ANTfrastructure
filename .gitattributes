@@ -64,6 +64,7 @@ windows/upstream/sccache-nvcc-quote-fix/** -text
 # shellcheck on every Windows host (found 2026-09-14). Same reasoning as *.sh.
 linux/host-config/git-hooks/* text eol=lf
 linux/nextcloud-aio/custom-bin/* text eol=lf
+shared/linux/templates/git-hooks/* text eol=lf
 # The Linux build context's own text files, same reasoning: the preflight gates
 # read them with awk/grep (android-parity, the codec so-package map, the allow
 # files), and a CRLF checkout fails those gates on a Windows host while Linux CI

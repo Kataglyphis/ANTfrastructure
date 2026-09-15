@@ -303,22 +303,24 @@ Composite actions live in [`.github/actions/`](../.github/actions/README.md)
 and are referenced from a consumer workflow as
 `Kataglyphis/ANTfrastructure/.github/actions/<name>@main`:
 
-| Action | Use |
-|---|---|
-| `run-in-linux-container` | One `docker run` in the Linux image, optional `tee` log and extra args |
-| `run-in-windows-container` | Same for the Windows image (CPU clamp, bind mount, pwsh payload) |
-| `set-docker-data-root` | **Use this FIRST on Windows runners**: moves docker's data root to the big D: drive — the ~54 GB image does not fit on a stock windows-2025 runner's C:, and a pull without the move dies late with `hcsshim::ImportLayer 0x70` (measured; see [windows-build-resources.md](windows-build-resources.md)) |
-| `assert-docker-disk-space` | Fail fast when the runner cannot hold the image, instead of minutes into the pull |
-| `cleanup-disk-space` | Free space on Windows runners — the historical, destructive fallback; prefer the two rows above |
-
-They replace the hand-rolled `docker run` blocks that otherwise accumulate — in
-the reference consumer, twenty-plus copies across two workflows. The table is
-the short list; all twelve actions, with their inputs, are in
-[`.github/actions/README.md`](../.github/actions/README.md) — including
+All twelve, with every input and output, are listed once in
+[`.github/actions/README.md`](../.github/actions/README.md) — that page is the
+list, and a table here would be a second copy of it to keep in sync. They
+replace the hand-rolled `docker run` blocks that otherwise accumulate (in the
+reference consumer, twenty-plus copies across two workflows), and they include
 `deploy-over-ftp`, the one FTP publish policy for the family
-([`ftp-deploys.md`](ftp-deploys.md)). Two lanes are reusable workflows rather
-than actions: `lint-gates.yml` (the consumer lint gates, § 9) and
-`submodule-pins.yml` (the pin suite, § 9), both called with
+([`ftp-deploys.md`](ftp-deploys.md)).
+
+**One ordering rule does not live in that page, because it is about your
+workflow rather than about an action:** on a Windows runner, `set-docker-data-root`
+runs **FIRST**. It moves docker's data root to the big `D:` drive — the ~54 GB
+image does not fit on a stock `windows-2025` runner's `C:`, and a pull without
+the move dies late with `hcsshim::ImportLayer 0x70` (measured; see
+[windows-build-resources.md](windows-build-resources.md)).
+
+Two lanes are reusable workflows rather than actions: `lint-gates.yml` (the
+consumer lint gates, § 9) and `submodule-pins.yml` (the pin suite, § 9), both
+called with
 `uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@main`.
 
 Because actions resolve at `@main`, a consumer workflow change that depends on
@@ -350,6 +352,15 @@ Import-BuildModule @('WindowsScripts.Shared', 'WindowsBuild.Common', ...)
 
 Run the app with a sibling `Start-Windows.ps1`. Project-specific modules go in
 `<scripts>/windows/modules/`, which the resolver checks after this repo.
+
+**The verb carries the meaning**, and the family uses three of PowerShell's
+approved ones with narrower senses than the approved-verb list gives them:
+`Start-` launches the built application, `Invoke-` runs a build step or a tool,
+and `Build-` produces artifacts. `Build-Windows.ps1` builds, `Start-Windows.ps1`
+runs, `Invoke-Lint.ps1` lints. **PowerShell lives under `scripts/windows/`**
+regardless of which lane it drives — a `.ps1` that starts a *Linux* container is
+still PowerShell and still belongs there, because the question a reader asks is
+"which shell do I need", not "which OS does it target".
 
 **Bash entry points** — `set -euo pipefail`, resolve the script's own directory,
 then source a per-repo bridge that pulls in `01-core/common.sh`:
@@ -395,6 +406,60 @@ preference. Match the repo you are in.
 file-scope `set -e` in a library leaks into whoever sources it. `lib/common.sh`
 in BeschleunigerBallett says so in its own header.
 
+### The rest of the naming rules, in one place
+
+Small decisions that were folklore until 2026-09-15. Each is one line because
+each is genuinely one line; the point is that the answer exists and is findable.
+
+- **Version file.** Where a repo has one, it is `VERSION.txt` at the repo root —
+  the default every entry point of
+  [`02-toolchain/rust/version_util.sh`](../linux/scripts/02-toolchain/rust/version_util.sh)
+  falls back to. A repo whose ecosystem already carries the version (a
+  `pyproject.toml`, a `pubspec.yaml`, a workspace `Cargo.toml`) does not add a
+  second one.
+- **CHANGELOG.** A repo that publishes a package (PyPI, pub.dev, crates.io)
+  keeps `CHANGELOG.md` **at the package root**, because that is what the registry
+  renders. Applications rely on git history; do not add an unmaintained file to
+  look tidy.
+- **Instruction file.** `AGENTS.md` is the **only** instruction file. Anything an
+  agent-specific tool wants at its own path (`.github/copilot-instructions.md`,
+  `CLAUDE.md`, a `.cursorrules`) is a two-line pointer to `AGENTS.md`, never a
+  second copy — the copies drift, and the one nobody re-reads wins.
+- **Sphinx layout.** Consumers keep their Sphinx sources under `docs/source/`,
+  which is `docs-build.sh`'s default. This hub and DocumANTation are the
+  exception: they keep `docs/conf.py` beside the pages.
+- **Package names.** A package name is unique within its registry. Reusing one
+  *across* registries is allowed only when the two artifacts are the same
+  capability in two languages, and the reuse is recorded here. There is exactly
+  one: `kataglyphis_inference` is OxidANT's `crates/inference` (an ONNX Runtime
+  Rust crate) and AccelerANTgine's staged Python binding around the same C++
+  inference path. Neither is published, the registries are disjoint, and they
+  are two faces of one capability — so both keep the name. A third use, or a
+  publish, reopens this.
+- **Environment-variable prefixes.** `KATAGLYPHIS_*` for build/tree knobs shared
+  by every family repo, `ANTFRASTRUCTURE_*` for knobs that configure this hub's
+  own machinery (the pin suite, the shared-config sync), `AGENTIC_*` for the
+  agentic loop, and the repo's own name for consumer-private knobs
+  (`ORCHESTRANT_*`). The hub's registry gate
+  ([`code-quality-tooling.md` § `env-knobs`](code-quality-tooling.md#env-knobs--a-stale-allow-row-always-fails))
+  grades the hub's own knobs against that vocabulary.
+
+### The pre-commit hook, by reference
+
+A consumer gets the whole lint aggregator on every commit with one config line
+and no copied file:
+
+```bash
+git config core.hooksPath third_party/ANTfrastructure/shared/linux/templates/git-hooks
+```
+
+That directory holds a single `pre-commit` that `cd`s to the toplevel and runs
+`run-lint-gates.sh` over it. It is deliberately **not** a
+`shared-assets.manifest` row: a copied hook is a fork nobody re-syncs, and a
+stale hook is invisible because it keeps passing. The hub's own hooks under
+`linux/host-config/git-hooks/` are a different pair — they gate this
+repository's internals and are not for consumers.
+
 ## 9. Quality gates
 
 Every gate the hub runs over itself has a consumer-facing half; a consumer wires
@@ -427,9 +492,17 @@ four things and gets all of it:
    `python-ci-linux.yml` / `python-ci-windows.yml` workflows —
    [`python-ci.md`](python-ci.md).
 
-Still hub-only, deliberately: the docs gates (`doc-links`, `doc-dupes`,
-`code-dupes`) resolve their root from `__file__`, and the versioned git hooks
-`cd` into the hub layout; neither can be pointed at a consumer yet.
+5. **The docs gates take `--root` too** (2026-09-15). `doc-links` runs in the
+   `--ratchets` step — it has no freeze file, so it is safe the first time —
+   and grades every tracked Markdown page, which is what finally puts a
+   consumer's own `README.md` into the cross-reference graph. `doc-dupes` and
+   `code-dupes` take `--root` as well, with budgets at `<root>/doc-dupes.allow`
+   and `<root>/code-dupes.allow`, and stay off until a consumer seeds one: a
+   duplication ratchet with no budget is red on its first run by construction.
+
+Still hub-only: the versioned git hooks under `linux/host-config/git-hooks/`
+`cd` into the hub layout and gate this repository's internals. Consumers get the
+hook of § 8 instead, which runs the aggregator and nothing hub-specific.
 
 ## Checklist
 
@@ -441,6 +514,7 @@ Still hub-only, deliberately: the docs gates (`doc-links`, `doc-dupes`,
 - [ ] `.antfrastructure-shared.manifest` declared; `sync-shared-config.sh --check` green
 - [ ] `run-lint-gates.sh` wired as a wrapper and as the reusable `lint-gates.yml` lane; ratchets on with freeze files committed
 - [ ] `submodule-pins.yml` lane called (any repo with a submodule)
+- [ ] `core.hooksPath` pointed at `third_party/ANTfrastructure/shared/linux/templates/git-hooks` (§ 8)
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
 - [ ] Workflows call the composite actions, FTP publishes through `deploy-over-ftp`
