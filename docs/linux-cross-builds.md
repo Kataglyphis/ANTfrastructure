@@ -282,6 +282,67 @@ Partial runs are supported, e.g. resume from media for one arch:
 When resuming mid-chain, the required upstream digest is resolved from the parent
 stage's current registry tag automatically.
 
+### The handoff rules, as AGENTS.md carried them
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The cross lane is a sequence of separate `nerdctl build` invocations where each
+stage does `FROM ${BASE_IMAGE}`: `base → compiler → sdk → media → android →
+package → torch → wrapper → manifest`. The base-image handoff MUST NOT rely on a
+bare mutable tag, or a stage can silently consume a STALE locally-cached image.
+
+`--output type=image,name=...` does not reliably refresh the local containerd
+tag; BuildKit's default `FROM` prefers an already-present local image. So
+rebuilding `media` then building `android` can quietly reuse the old `media`.
+**This is not just a `FROM` hazard — it broke the runtime wrapper's OWN tag.**
+On this rootless nerdctl host, `nerdctl build --output type=image,name=X`
+creates NO local tag X at all (verify: `--output type=image,name=X` → X absent
+from `nerdctl images`; `-t X` → present). The runtime lane used the annotated
+`--output type=image,name=<tag>,annotation.*` exporter to tag the wrapper, so
+the freshly built wrapper was invisible and `nerdctl push <tag>` +
+`nerdctl manifest create <tag>` resolved the STALE pre-existing tag — shipping
+`:latest-cross` byte-identical five times (2026-08-14/15, amd64 frozen at
+`35c1f1df`). FIXED: `runtime-build-fns.sh append_runtime_image_output` now uses
+plain `-t` on both paths (reliably creates AND overwrites the tag). Do NOT
+reintroduce the `--output type=image,name=` exporter for a tag you then push or
+index — use `-t`. (The dropped ancestry annotations never reached the registry
+anyway; they are re-embedded as config labels via `ancestry.sh`'s `--label`
+provenance args.)
+
+Rules:
+
+0. **The chain now checks this for you.** A run starting after `base` asserts the
+   recorded ancestry of every stage it inherits (`01-core/ancestry.sh`) and
+   refuses to build on a parent that was re-pushed after its child. Rules 1-4
+   below describe what that check enforces and what its failure message asks you
+   to do — they are no longer yours alone to remember. Bypass only deliberately,
+   with `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`. Images built before
+   this mechanism carry no annotation and only warn, so a chain that predates it
+   still needs rules 1-4 applied by hand until each stage has been rebuilt once.
+1. When ANY base image in the registry tag hierarchy is replaced, rebuild every
+   downstream image from the replaced stage, OR verify the downstream images
+   already contain the new content (e.g. check `/opt/gcc-16.2.0-native-arm64`
+   exists in the pinned sdk digest).
+2. `--from-stage` only controls where execution starts; it does NOT update the
+   base image of the first stage. If the previous stage's tag was built from a
+   stale upstream, your rebuild inherits that staleness.
+3. After pushing a rebuilt compiler image, run from `--from-stage sdk` (not
+   `media`) so the sdk is built from the new compiler.
+4. Do NOT use `--from-stage android` unless you verified the media tag already
+   contains the compiler's content (e.g. native GCC directories).
+5. Prefer `linux/scripts/build-cross-chain.sh` — it captures each stage's
+   registry digest after push and feeds it to the next as
+   `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`, making stale reuse
+   structurally impossible. Supports `--target-arches`, `--from-stage`,
+   `--to-stage`, `--only`.
+6. When driving manual `nerdctl` loops, pass `--pull=true` on every stage that
+   consumes a `BASE_IMAGE` tag (weaker defense; digest pinning preferred).
+7. Capture pinnable digests with `nerdctl manifest inspect --verbose <tag>` →
+   `.Descriptor.digest` (the `registry_pin_ref` helper in
+   `01-core/digest-pinning.sh`). Do NOT use `RepoDigests`: BuildKit pushes a
+   converted `docker.v2+json` manifest whose digest differs from the local OCI
+   manifest and is not registry-resolvable.
+
 ### Trap: stale-base propagation across orchestrator invocations
 
 Digest pinning only prevents drift **within a single orchestration run.** Across
@@ -350,6 +411,113 @@ what the check tells you to do):
 > Note the division of labour: **digest pinning** keeps a *single* orchestrator
 > run internally consistent; the **ancestry check** is the cross-run half. Neither
 > subsumes the other.
+
+## The command reference AGENTS.md used to carry
+
+Moved here on 2026-09-15, unedited except for this heading and the relative
+links. AGENTS.md keeps the four items that are RULES (never `pkill` the
+orchestrator, verify the shipped bytes, the closure freeze, `--log-dir` is not
+universal); everything below is reference, which is what this page is for.
+
+**Build logs.** `--log-dir ./out/build-logs` is accepted by
+`build-cross-chain.sh` and `build-cross-stage.sh` — the two that tee each stage
+build (the Makefile wraps them). The other three orchestrators
+(`build-cross-compiler.sh`, `build-runtime-manifest.sh`,
+`build-runtime-artifacts.sh`) do **not** take it: pipe them through
+`2>&1 | tee ./out/build-logs/<name>.log`.
+
+**Stopping a chain.** Use `bash linux/scripts/stop-cross-chain.sh` — it finds
+the run via its pidfile (falling back to a bracket-trick pgrep) and reaps the
+orphaned nerdctl/buildctl subtree. **Never `pkill` the orchestrator**; that
+orphans its children.
+
+**Cache knobs — three distinct things, never conflate them:**
+
+| Knob | What it actually does |
+|---|---|
+| `NO_CACHE=1` | disables ALL `--cache-from`, local **and** registry, for the whole chain |
+| `RUNTIME_NO_CACHE=1` | `--no-cache` on only the runtime package+wrapper builds (`runtime-build-fns.sh`) — a targeted guarantee against BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer |
+| `CROSS_NO_LOCAL_CACHE_EXPORT=1` | stops **writing** the local buildcache, but still **reads** the registry inline cache |
+
+The shipped-bytes rule that used to sit here is a RULE, so it stayed in
+`AGENTS.md` § Quick Reference; the saga behind it is
+[`cross-build-verification.md`](cross-build-verification.md#verify-the-shipped-bytes).
+
+**Three more knobs**, all detailed in
+[`docs/linux-cross-builds.md`](linux-cross-builds.md) § versions.env feature
+toggles: `MEDIA_STRIP=0` turns off the media-prefix symbol-strip pass (default
+ON; `--strip-all` keeps `.dynsym`, so runtime linking is unaffected), while
+`VULKAN_CROSS_STRICT=1` and `WHEEL_SOABI_STRICT=1` promote two advisory WARN
+gates to fatal — the second catches a vendored wheel whose native
+`.cpython-*.so` carries a SOABI for the wrong arch, which otherwise fails only
+at `import`.
+
+Most common build commands:
+
+```bash
+# Full cross-build chain (base -> compiler -> sdk -> media -> android -> runtime)
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Compiler image only (amd64-hosted, contains cross toolchains for all arches)
+./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
+
+# Compiler with custom image repo (matches --image-repo on the orchestrator)
+./linux/scripts/build-cross-compiler.sh --image-repo ghcr.io/myorg/kataglyphis_beschleuniger --push
+
+# Single cross stage — the canonical way to rebuild one stage for one arch.
+# Handles parent digest pinning, build-arg assembly, log capture, and push.
+# See docs/linux-cross-builds.md § "Recommended: digest-pinned orchestrator".
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
+
+# --no-push FULL CHAINS are SAFE since 2026-08-30 (local OCI-layout handoff):
+# every stage built locally is exported and handed to the child via
+# --build-context <tag>=oci-layout://<dir>, so no FROM resolves against the
+# registry (the 2026-08-08 stale-parent bug). Mid-chain resumes (--from-stage
+# after base) are still REFUSED — the parent prefix was not built this run.
+# CROSS_LOCAL_CONTEXT_HANDOFF=0 reverts to the old refusal; CROSS_NO_PUSH_FORCE=1
+# bypasses. Single-stage validation stays supported:
+bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./out/build-logs
+# Correct full-chain PUSH flow: push mode to android, then the runtime lane with
+# --skip-manifest so a partial-arch run cannot clobber the public manifest —
+# see docs/linux-cross-builds.md § "The flow that is correct today".
+
+# Opt-in: build the per-target cross GCCs concurrently inside the compiler
+# stage (~30% off the GCC RUN at 3 targets; default 0 = sequential).
+# Forwarded to the container via the compiler-stage build-arg plumbing
+# (stage-defs.sh) — a launch-time value that does not show up as a
+# --build-arg in the dry-run command line is DROPPED and the sequential path
+# runs instead. Validated on a real compiler build 2026-08-30.
+GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Verify chain freshness without building (real FRESH/STALE verdicts for images
+# that carry the org.kataglyphis.parent-digest ancestry annotation)
+bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Partial runs (--from-stage after base) auto-assert the ancestor chain against
+# the registry and REFUSE to build on a stale ancestor. Deliberate override:
+#   --no-verify-ancestry   (or CROSS_VERIFY_ANCESTRY=0)
+
+# Standalone quick chain verification (lighter, no orchestrator flags)
+bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
+
+# Print the full stage graph with tag names (no builds)
+bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Dry-run: print all build commands without executing
+bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Cheap packaging validation before publish (see docs/linux-cross-builds.md)
+# Uses the `wrapper-smoke` target in Dockerfile.package
+
+# Reinstall QEMU/binfmt after host reboot OR containerd restart (see § Prerequisites)
+linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
+```
+
+**Fresh Linux host?** GPU driver + CUDA install, the NVIDIA default-runtime `daemon.json`, the rootless container-stack install, CPU/GPU performance mode, and GRUB recovery are `docs/linux-host-setup.md` — the Linux counterpart to `docs/windows-host-setup.md`.
+
+> **See also:** [`docs/linux-cross-builds.md`](linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
 
 ## Manual staged build (low-level reference)
 

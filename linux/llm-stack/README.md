@@ -89,6 +89,37 @@ Settings → AI → OpenAI-compatible endpoint:
 - **API key**: *(leave blank)*
 - **Model**: `gemma4:26b`
 
+## What AGENTS.md used to say about this stack
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+A standalone serving stack lives in `linux/llm-stack/` (docs in its own
+README). CPU-only is the compose default; an opt-in GPU override
+(`linux/llm-stack/docker-compose.gpu.yml`, `docker compose -f docker-compose.yml
+-f docker-compose.gpu.yml up -d`) grants the Ollama service all NVIDIA GPUs and
+raises `OLLAMA_CONTEXT_LENGTH`. **VRAM caveat:** the context Ollama lists is the
+model's max, not what fits — ~19 GB of weights + ~104 KB/token q8_0 KV means a
+28 GB stack (e.g. 12 GB + 16 GB GPUs) caps at ~64K, and 256K needs >45 GB VRAM.
+Requires the nvidia-container-toolkit on any host that wants GPU mode.
+
+**The stack is the family's reference server.** Endpoints are named in
+`linux/llm-stack/backends.json` (`ollama` is the default; the GenieX lanes are
+listed too), and the model ids there are what `Start-GeniexServers.ps1` starts —
+one edit serves both consumers. Never put a key in that file, only the NAME of
+the environment variable that holds it.
+
+**The benchmark suite moved to OrchestrANT.** The `orchestrant.benchmark`
+package owns the runner (one request path, the backend registry, speed and
+lane measurement, statistics, provenance; `orchestrant-bench speed|lanes|report`)
+and `benchmarks/` carries the capability evals (coding, tool calling, the agent
+loop, embeddings, sweep, compare), the viewer and the tracked results, with
+their docs. Read the measurement rationale there — including **why correctness
+is gated first: a broken model is fast**, and the sub-4-bit i-quant evidence.
+`llm-stack-serving.yml` runs this directory's serving-shape tests and a
+compose-parse check. The NAS document-AI thread -- the census tool, its tests and
+its page -- moved to OrchestrANT on 2026-09-15, beside the benchmark lab it
+belongs to.
+
 ## Managing models
 
 ```bash

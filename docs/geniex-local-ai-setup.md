@@ -2052,6 +2052,60 @@ services should listen). Keep containers you actually use (e.g. the llm-stack
 - **Where the freed RAM matters most:** headroom for the host's normal workload
   while GenieX serves, and avoiding whole-machine swap storms.
 
+## The summary AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The Kataglyphis coding agents can run **fully on-device on Snapdragon** via
+Qualcomm's GenieX — an OpenAI-compatible server backed by the Adreno GPU or
+Hexagon NPU. **WSL2 has no NPU/GPU passthrough**, so the server runs on the
+Windows host (`geniex serve --compute npu --host 0.0.0.0:18181`) and WSL2's
+agent reaches it at `127.0.0.1:18181` via mirrored networking. **The NPU needs
+a recent Qualcomm Hexagon NPU driver** — the llama.cpp Hexagon backend dlsyms
+the `dspqueue_*` API from `libcdsprpc.dll`, which older drivers lack; diagnose
+with `windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1`. The full flow —
+install, the non-interactive chipset config, sharing the model cache across
+Windows/WSL2 without re-downloading, the opencode provider blocks, and the
+measured NPU/GPU/CPU envelope — is owned by
+[`docs/geniex-local-ai-setup.md`](geniex-local-ai-setup.md).
+
+**Lane choice, all measured 2026-08-31.** The CPU is the fastest llama.cpp
+backend here — it beats the Hexagon NPU ~2x on identical GGUFs (4B: 23.7 vs
+11.9 tok/s) — but it pegs 7.5 of 8 cores. The NPU's value is that it runs
+**QAIRT bundles** the CPU cannot load at all: `qualcomm/Qwen3-4B-Instruct-2507:W4A16`
+is the fastest path to a *finished* answer (19.5 tok/s, no `<think>` tax,
+**26.8 s vs 88.4 s**) at a fifth of the CPU cost. Never use `--compute hybrid`:
+slower than CPU on every model, no `--ngl` setting rescues it, and it is the
+only mode that damages a concurrent NPU lane. One server serves one request at
+a time (no batching), so throughput comes from lanes: NPU+CPU = 39.7 tok/s,
+all three = 45.4. QAIRT bundles are hard-capped at **4096 context** (`--nctx`
+is llama.cpp-only) — that, not speed, is the NPU lane's binding constraint, and
+it is harder than it sounds: **opencode's system prompt plus its ten tool
+schemas are 8,175 tokens** (measured off the wire 2026-09-04), so the QAIRT
+lane cannot drive opencode at all — every task fails before the model reads it,
+and stripping tools does not rescue it (6 core tools still need 6,008). Use the
+QAIRT 4B for chat and completion; use a **GGUF lane** (`--nctx 16384`) for agent
+work. `bench_agent.py` in OrchestrANT's `benchmarks/` measures this end-to-end against a
+scratch repo, scoring by whether the repo's tests pass rather than by the
+transcript.
+
+**Mind the GenieX version — v0.6 changed four of the constraints this section
+was written around** (all re-measured on v0.6.1, 2026-09-05; see § 1n of the
+GenieX page). Gone: the hard 2048-token output cap, `max_tokens` being ignored,
+the missing prefix cache (an identical request now costs 0.1 s warm instead of
+122 s, and ~800 appended tokens cost 0.9 s), and the missing tool-call parsing
+(`Qwen3.8-9B-Distill` now returns proper `tool_calls`, so
+`geniex_toolcall_shim.py`, also in OrchestrANT's `benchmarks/`, is only needed on
+pre-0.6 builds).
+Unchanged: `temperature: 0` still samples, so `--repeats` still earns its place;
+the QAIRT 4096 ceiling is compiled into the bundle and no release moves it.
+
+Still worth doing on any version: trim opencode's tool set via its top-level
+`tools` block (8,175 -> 5,234 tokens, and on a pre-cache build that was 36% off
+every turn), and compare prefill only *within one quant format* — a 2B Q4_K_M
+prefills 3.5x faster than a 9B Q4_K_M while a 4B in Q4_0 is slower than either.
+`windows/scripts/host/Start-GeniexServers.ps1` brings the fleet up correctly — it reads the model ids from `linux/llm-stack/backends.json`, passes `--nctx` and `-MaxTokens` (default 4096; the CLI's own 2048 default was invisible in every report), warms every lane **it starts** (a busy lane is left alone; re-run with `-Restart` to guarantee the recorded caps), and takes `-Models` / `-Pull`.
+
 ## References
 
 - **GenieX repository**: <https://github.com/qualcomm/GenieX>

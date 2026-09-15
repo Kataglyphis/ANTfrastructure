@@ -188,6 +188,73 @@ exists only in one of these, promote it to its owning page above.
 | Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md), [`../windows/upstream/README.md`](../windows/upstream/README.md) |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 
+## Where does a piece of knowledge belong? (from AGENTS.md)
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+The reuse rules below are about code. The same discipline applies to **what you
+write down**, and one question decides it:
+
+> **Would this still be true in a different project?**
+
+- **Yes** → it belongs here, and the consumer LINKS to it.
+- **No** → it belongs in the consumer.
+
+Most topics split down the middle. "Allow the `bindFlt`/`wcifs` filters on a Dev
+Drive" is ours; "Dart's `copySync` fails on a bind mount" is
+OmniAccelerANT's, because it only matters for a Flutter app.
+
+**Link rather than restate** — restating has produced three broken copies of
+one command before (the 2026-08-11 Dev Drive filter incident; the story lives
+in [`docs/INDEX.md`](INDEX.md)).
+
+[`docs/INDEX.md`](INDEX.md) maps topic → owning document. Consumers link
+one hop through it, so reorganising docs here means editing that page instead of
+hunting links across seven repositories.
+[`shared/templates/AGENTS.md.template`](../shared/templates/README.md) is the
+consumer-side skeleton that keeps the split visible.
+
+One caution against automating this: a keyword check ("this consumer doc
+mentions wcifs") cannot tell *restating* from *applying*. OmniAccelerANT's
+AddressSanitizer section legitimately discusses image-level runtimes, because
+which ASan runtime a Flutter/COM app can survive is a property of that app. A
+human has to read it.
+
+## Documentation maintenance, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+- **Pre-commit hooks:** Run **`make hooks`** once after clone; it points `core.hooksPath` at `linux/host-config/git-hooks`. See § Validation for what it runs.
+- **Four gates guard the docs; none of them is optional.** They exist because
+  this tree lost a licence page, a doc index and ~50 cross-references to silent
+  drift on a single day. Run them with
+  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot bash linux/scripts/preflight.sh`.
+  - `doc-links` — every relative link, deep-link anchor, `file.md § Heading`
+    prose reference, and index coverage against BOTH `docs/INDEX.md` and the
+    Sphinx toctree. **Rename a heading and this fails**, which is the point.
+  - `doc-dupes` — a passage copied into a second page. Deliberate rule-page /
+    mechanism-page overlap is budgeted in `docs/scripts/doc-dupes.allow`, which
+    also fails when an entry goes stale, so it cannot decay into a blanket
+    exemption. **Do not add an entry to silence a finding**; give the passage one
+    owner and link to it. `docs/INDEX.md` decides which page owns what.
+  - `sbom` / `version-snapshot` — the generated licence pages and the curated
+    SBOM must match `deps.json` + `versions.env`.
+- **Adding a dependency is a docs change.** A new component needs an entry in
+  `docs/deps/deps.json` with an `spdx` id, and — if that licence is copyleft — a
+  `source` block, or the build fails. If this repo patches it, a `modified`
+  marker too. The procedure, schema and worked examples are
+  [`docs/third-party-licenses.md`](third-party-licenses.md) § Maintaining
+  this list. Regenerate with `sync_versions.py --write` and
+  `generate_sbom.py --write`.
+- **Never hand-edit a generated block.** The licence tables, the version
+  snapshot and `docs/deps/sbom-curated.spdx.json` are all rewritten from
+  `deps.json` + `versions.env`; edits between the `generated:` markers are lost
+  on the next run and the gate will say so.
+- If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
+- If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
+- If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.
+- The canonical `custom.css` lives in the DocumANTation submodule — change it there and commit in that repo, then `cd docs && make html` to verify.
+
 ## If you are about to write a procedure in a consumer repo
 
 Check this page first. If the topic is listed, link instead — one sentence of

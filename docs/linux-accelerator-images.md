@@ -145,6 +145,27 @@ in the 2026-08-27 registry cleanup, and no orchestrator under `linux/scripts/` c
 republish it; details in
 [`rancher-desktop-linux-containers.md` § The image: always `:latest-cross`](rancher-desktop-linux-containers.md#the-image-always-latest-cross).
 
+## The media fan-out strategy, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+`Dockerfile.media` uses a parallel multi-stage DAG (BuildKit runs independent stages concurrently):
+
+```
+base ─┬─ onnxruntime ───────┐
+      ├─ litert ────────────┤
+      ├─ opencv ────────────┼─ media-inputs ─ gstreamer ─ libcamera ─ final
+      ├─ ffmpeg ────────────┤
+      └─ app-wheelhouse ────┘
+```
+
+- `--mount=type=cache` (apt/ccache/sccache/uv/pip/cargo) keyed per-arch via `id=...-${TARGETARCH}`, `sharing=locked`.
+- `--mount=type=bind,readonly` for per-library build scripts — no COPY layer, so editing one library's scripts invalidates only that RUN, not downstream layers.
+- `--mount=type=tmpfs` for `/tmp` scratch (no layer bloat).
+- `COPY --link` for layer-parallel copying from independent build stages.
+- Shared/common files (`core/common.sh`, `activate-cross-python.sh`, `verify-media-artifacts.sh`, 01-core helpers) are COPY'd in the `base` stage (rarely change → stable cache).
+- Runtime scripts are COPY'd only in the `final` stage (must persist in the published image; build scripts are NOT shipped).
+
 ## Torch Add-on (Linux)
 
 Builds on the base image:

@@ -156,6 +156,36 @@ both points are satisfied the bind mount lists the tree normally. Before blaming
 ReFS for an empty mount, rule out the namespace and the path form — they present
 identically and are far more likely.
 
+## The orientation AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+**Rancher Desktop is the preferred Linux-container runtime on this host**, and
+the way to reproduce a Linux CI failure locally instead of guessing through
+pipeline round trips. It does not replace the Windows lane — Windows containers
+still go through Stevedore's `docker.exe`. Full details:
+[`docs/rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md).
+
+```pwsh
+$nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
+& $nerdctl --namespace default run --rm alpine:3.20 uname -a   # expect ...WSL2... x86_64 Linux
+```
+
+- **Use `nerdctl`, not `docker`.** Rancher defaults to the **containerd** engine,
+  and `docker.exe` ships in the same directory while talking to a different
+  engine entirely — `docker info` on this host reports `OSType=windows`, because
+  the default context is the Windows lane. Both CLIs are present; only one is
+  talking to Linux. (Switching Rancher's engine to `dockerd (moby)` flips this —
+  pick one and stay with it.)
+- Pass `--namespace default` explicitly. containerd namespaces are real
+  isolation, so an image pulled into another namespace is genuinely "not found".
+- **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`,
+  in CI *and* locally.** Not `:latest` — that tag went unrebuilt from 2026-04-16
+  while the cross lane was refreshed (2026-07-20). Both publish amd64/arm64/
+  riscv64. `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
+  uses a different tag, reproducing a CI failure proves nothing. Neither tag is
+  digest-pinned, so both still float.
+
 ## When to reach for this
 
 - A CI step fails and the logs are not enough. This is the main case, and it is

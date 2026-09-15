@@ -99,6 +99,24 @@ path and its `-MediaCoreCpus` flag went with `build.ps1` on 2026-08-31. The
 litert/tvm aux branches get the whole budget once media-core is done — halved per
 child under `-ConcurrentAux`, which overlaps only those two.
 
+## Building a project inside the image, as AGENTS.md carried it
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+Consumers building large projects in this image should read
+[`docs/windows-container-build-performance.md`](windows-container-build-performance.md)
+before hand-rolling anything. The number that motivates it, measured on a
+~690-object C++23 modules project: **9.6 s ninja / 44 s wall** for a no-change
+incremental build against a reused container, versus **352-484 s** when every
+build got a fresh one.
+
+The rule that follows: **reuse ONE container**, recreating it only when the
+image ID changes; stream sources in and executables/logs out, never the
+intermediate build tree. Transport choice, the Dev Drive filter setup, and the
+four traps that cost measurable time (bind mount slower behind a filesystem
+filter, sccache useless on C++20/23 modules, a named volume unusable as a CMake
+build dir, deep paths aborting tar transfers) are all in that page.
+
 ## Maximum resource envelope (verified 2026-07-12)
 
 The defaults ARE the maximum for this 64 GB / 32-thread host — there is no
@@ -155,6 +173,110 @@ run later with
 > (→ ~39 GB container, ~56 GB peak) is the verified-safe budget here. The heavy
 > CUDA TUs (FlashAttention, MoE kernels) use **more than the ~4 GB/job estimate**, so
 > do not shrink the reserve without watching `docker stats` + host free RAM.
+
+## The Windows cache, tier by tier
+
+Moved out of `AGENTS.md` on 2026-09-15, unedited except for this heading and the
+list marker. The rule -- assume nothing from the Linux chain, preserve the layer
+ordering and the per-file module closures, check the reserve before blaming a
+cache key -- stays there; the tiers, the numbers and the two incidents are here.
+
+**The WINDOWS chain caches differently — do not assume rules 1-4 apply.**
+   It relies on (a) deliberate layer ORDERING — `Install-Vs.ps1` sits ABOVE the
+   `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
+   Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
+   PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED, PER-FILE
+   in-container module closures so a host-only module edit re-keys only the RUNs
+   that import it, (c) sccache, and (d) **buildkitd's GC reserve**. **Preserve
+   (a) and (b) in any Dockerfile edit** — moving a COPY above the VS layer, or
+   widening a module stage, costs hours per bump.
+
+   **(b) has only actually been true since 2026-08-31.**
+   `Dockerfile.toolchain-builder`'s `patched-llvm` RUN bind-mounted the WHOLE
+   `windows/scripts/modules` directory, and `patched-llvm` is the DEFAULT
+   toolchain target (`-StockLlvm` is the opt-out), so any `.psm1` edit re-keyed
+   the LLVM 23.1.0 compile and every media lane derived from that image. It is a
+   six-file mount now, and `BuildKit.ModuleClosure.Tests.ps1` fails a whole-dir
+   modules mount in any windows Dockerfile except `Dockerfile.probe` (exempt by
+   design — `PROBE_NONCE` busts its layer anyway).
+
+   **(d) is the one that fails SILENTLY and looks like a Dockerfile problem.**
+   `reservedSpace` in `windows/buildkitd.toml` is the only floor GC will not
+   prune below, and it must exceed the **fresh chain spine** (~120–150 GB: base
+   incl. VS + sdk + toolchain + branch images). Set below that, the ~37 GB
+   VS-class layer is evicted between driver runs and every run re-solves the
+   prefix — `#9 RUN Install-Vs.ps1` re-executing for 4–7 min while `#8`, the COPY
+   of that very script, reports CACHED. It has happened twice (2026-08-11,
+   2026-08-26). **Before blaming a cache key, check the reserve against
+   `buildctl du`'s Total and against the store size**: `Reclaimable: 0B` is not
+   "nothing to clean", it is what a store already pruned to its floor looks
+   like. `maxUsedSpace` below the working-set size has the same effect, because
+   it forces eviction regardless of what the reserve says.
+
+   **The module tiers (#134, 2026-08-26; toolchain narrowed 2026-08-31) — check
+   which one a module is in before editing it, because the cost differs by
+   hours:**
+   1. `Dockerfile.media-builder`'s **`buildmods`** six (SourceBuild.Common +
+      Shared, Patches, Cuda, Native.Common, TargetArch.Common). They ARE the
+      import closure — SourceBuild.Common imports the other five and every
+      mounted build script imports it — so the set cannot be shrunk and **every
+      media/merge RUN keys on all six**. A one-line edit costs a full media
+      rebuild on both lanes.
+   2. **`tvmmods`** (`FROM buildmods AS tvmmods` + `WindowsTvm.Common.psm1`),
+      mounted by `media-tvm-built` alone. That branch runs parallel to
+      media-core, so an edit costs nothing on the long pole. `Write-AssembledWheelDistInfo`
+      and `Get-PyprojectDependencies` moved off the tier-1 facade into this leaf
+      on 2026-08-31 — `Build-TvmFromSource.ps1` is their only caller.
+   3. The **merge leaves** in `Dockerfile.media-merge-builder`'s `buildmods`:
+      `WindowsGstPlugins.Common`, `WindowsMeson.Common`,
+      `WindowsRustToolchain.Common`, `WindowsInstaller.Common`. An edit costs
+      the GStreamer layer.
+   4. `Dockerfile.toolchain-builder`'s **`patched-llvm`** RUN mounts the same six
+      as tier 1, per-file. It is the DEFAULT toolchain target, so an edit re-pays
+      the LLVM 23.1.0 compile AND every media lane below it — the most expensive
+      tier in the chain.
+
+   Do NOT move a helper into `WindowsSourceBuild.Common` because "that is where
+   helpers go" — if one branch is its only consumer, it belongs in a leaf.
+   `BuildKit.ModuleClosure.Tests.ps1` enforces both directions (a mounted
+   script's transitive closure must be mounted; leaves must stay out of
+   `buildmods`, and `tvmmods` must keep exactly one consumer). It is
+   mutation-proven — trust it over reading the Dockerfile.
+
+   **Wired**, with the rules an agent must not break. Full rationale,
+   measurements and decision history:
+   [`docs/windows-build-resources.md`](windows-build-resources.md)
+   § Persistent compile cache (sccache).
+   - **sccache runs WebDAV-remote-only since 2026-08-16.**
+     `SCCACHE_MULTILEVEL_CHAIN` defaults to `""` in **both**
+     `Dockerfile.media-builder`'s `common` stage and the merge builder (not a
+     descendant, so the ENV is repeated — **change BOTH or neither**). Restore
+     `disk,webdav` only after re-verifying against a newer buildkit.
+     **`SCCACHE_DIR` alone does nothing** without the chain variable.
+   - **sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`** — load-bearing, not a
+     preference. Both upstream PRs (#2811 + #2816) merged; the pin is at `8ab39266`
+     (main HEAD, no local patches needed since 2026-08-28). **Never bump that pin
+     without verifying `cargo install --locked --git --rev` resolves** (check
+     `Cargo.lock` exists at the new rev).
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18.** Never
+     flip that default off silently, and never export the launcher onto a new
+     sccache without all THREE canaries — the miscompile it once caused is
+     invisible until the DLL link.
+   - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
+     would bake a build-only mount path into the shipped image).
+
+   Still NOT wired, with a measured reason: **source-fetch mounts.** The clones
+   are shallow (`Invoke-GitClone` passes `--depth`), so they cost minutes
+   against compiles that cost hours. If you do it, cache the ARCHIVES/CLONES
+   only, never the working tree — directory RENAMES fail on cache mounts and
+   `Build-GstreamerFromSource.ps1` moves the extracted tree. Also raise the
+   tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
+   **shared** by every cache mount plus local sources and git checkouts, and
+   the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
+   sizes and that cap are ONE decision, not two. (Since 2026-08-16 the L0 mount
+   is attached but DORMANT — the chain defaults to WebDAV-only — so its 15G is
+   reserved rather than consumed. Do not repurpose that headroom: the tier is
+   meant to return, see #99.)
 
 ## Persistent compile cache (sccache)
 

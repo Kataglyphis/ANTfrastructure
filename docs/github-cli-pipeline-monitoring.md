@@ -110,6 +110,40 @@ Windows container build is gated on `[build-win]` appearing in the commit
 message), and a gated-off workflow reports `skipped`, which is easy to read as
 success at a glance.
 
+## The orientation AGENTS.md carried
+
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+
+**Check the pipeline after every push, and again before starting unrelated
+work.** `gh` is installed (winget) and authenticated; see
+[`docs/github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md).
+
+```pwsh
+gh run list --limit 10
+```
+
+To go from a run id to the failing STEP, use the `--jq` recipe in
+[`docs/github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md)
+— that page owns the query, so it is maintained in one place.
+
+Three things that will otherwise cost you an hour:
+
+- **A shell opened before the winget install cannot find `gh`.** Use a new
+  shell, or `C:\Program Files\GitHub CLI\gh.exe`. Prefer PowerShell — Git
+  Bash may not see winget's user PATH at all.
+- **Never open with `gh run view --log-failed`.** It dumps every failed job's
+  full log — one antlr4 `llvm-ar` line alone is ~15 KB — and grepping it for
+  `error` mostly returns the runner's apt-get cleanup echoes. Ask which STEP
+  failed first (command above), then grep the log for `SUMMARY:` (sanitizers)
+  or `[  FAILED  ]` (GoogleTest).
+- **`skipped` is not a pass.** Gated workflows (the Windows container build
+  wants `[build-win]` in the commit message) report `skipped`, which reads as
+  success at a glance.
+
+Green local tests do not imply green CI: the Linux lane runs ASan/UBSan fuzzing
+that the Windows dev box does not, so some bugs are only ever observable there.
+Fix what failed — do not edit the workflow to silence it.
+
 ## Scope
 
 Reading status, logs, and re-running failed jobs is routine. **Cancelling other
