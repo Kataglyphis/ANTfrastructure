@@ -190,3 +190,22 @@ linux/scripts/renovate-tree.sh	# THE ONE RULE THE THREE SET DIFFERENCES BELOW SH
 linux/scripts/renovate-tree.sh	# The rows handed to restore_collateral_one, then PROVEN bac
 linux/scripts/renovate-tree.sh	# Tracked, and the ONLY thing that differs from HEAD is the
 linux/scripts/renovate-tree.sh	# git's OWN view of the whole checkout, one porcelain line p
+
+# File headers of the four libraries landed 2026-09-15. Each is a consumer
+# entry point whose header carries the thing a reader needs before calling it:
+# what the image already does so the prologue does not repeat it, why the HTTP
+# wait returns instead of exiting, where the WebDAV credentials come from and
+# why not as arguments, and which argument list clippy gets now that it is not
+# the fmt one. Same class as every other header frozen here.
+linux/scripts/01-core/http-readiness.sh	#!/usr/bin/env bash
+linux/scripts/01-core/webdav-download.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/rust/cargo_fmt_clippy.sh	#!/usr/bin/env bash
+linux/scripts/05-frameworks/flutter/lane-prologue.sh	#!/usr/bin/env bash
+# Two more from the same batch: run-in-ci-image.sh's header IS its interface
+# (the option list a caller reads before typing the command, plus the two
+# environment variables it exports on the caller's behalf and why), and the
+# consumer-inventory fixture's block is the shape catalogue the cases below it
+# are indexed by -- moving either into docs/ would put the reference one file
+# away from the only place it is used.
+linux/scripts/run-in-ci-image.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-consumer-inventory.sh	# _consumer <shape> -- an external consumer checkout.

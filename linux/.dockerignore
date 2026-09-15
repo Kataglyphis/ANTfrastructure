@@ -3,8 +3,9 @@
 # this context, so without this file the entire linux/ tree — scripts,
 # llm-stack, vulkan, nvidia-local-debs — uploads as build context.
 #
-# NOTE: webserver/dist MUST stay included here. The root .dockerignore excludes
-# **/dist/ for root-context builds; do not copy that rule into this file.
+# webserver/dist is NOT listed below, and that is not an omission: since
+# 2026-09-15 the site arrives through a named build context (`--build-context
+# site=...`), which is a separate context this file does not filter at all.
 #
 # Every COPY source in webserver/Dockerfile needs a negation below. Verified
 # 2026-08-27: security-headers.conf had none, so `nerdctl compose -f
@@ -15,5 +16,4 @@
 !webserver/nginx.conf
 !webserver/security-headers.conf
 !webserver/entrypoint.sh
-!webserver/dist/
 !webserver/license-assets/

@@ -19,9 +19,17 @@ context-relative `./webserver/nginx.conf` and `./webserver/security-headers.conf
 because `.dockerignore:18` excludes `linux/webserver` from the root context
 outright:
 
+The site itself is not in this repository — it is built in jotrockenmitlocken
+and named as a build CONTEXT, so `--build-context site=...` is required and a
+build without it fails by name
+([`../linux/webserver/README.md`](../linux/webserver/README.md)). The volume
+mount below is the local-iteration path and is independent of that.
+
 ```bash
 cd linux
-nerdctl build -t kataglyphis-webserver:latest -f webserver/Dockerfile .
+nerdctl build -t kataglyphis-webserver:latest \
+  --build-context site=<path-to-jotrockenmitlocken>/build/web \
+  -f webserver/Dockerfile .
 nerdctl run -d --name kataglyphis-webserver \
   -p 8080:80 \
   -v "$(pwd)/webserver/dist:/var/www/html" \

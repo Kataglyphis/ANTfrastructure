@@ -384,8 +384,9 @@ loop, embeddings, sweep, compare), the viewer and the tracked results, with
 their docs. Read the measurement rationale there — including **why correctness
 is gated first: a broken model is fast**, and the sub-4-bit i-quant evidence.
 `llm-stack-serving.yml` runs this directory's serving-shape tests and a
-compose-parse check; `nas_census.py` stays for the NAS document-AI thread
-([`docs/nas-document-ai.md`](docs/nas-document-ai.md)).
+compose-parse check. The NAS document-AI thread -- the census tool, its tests and
+its page -- moved to OrchestrANT on 2026-09-15, beside the benchmark lab it
+belongs to.
 
 ### GenieX on Snapdragon (on-device OpenAI server)
 

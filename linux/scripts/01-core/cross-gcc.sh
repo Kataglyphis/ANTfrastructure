@@ -37,28 +37,16 @@ gcc_toolchain_bindir() {
   printf '%s' "$(gcc_toolchain_prefix)/bin"
 }
 
-# gcc_toolchain_resolve_prefix -> the GCC prefix clang should be pointed at.
+# gcc_toolchain_resolve_prefix -> which prefix on THIS machine holds a usable
+# GCC, which is not the question gcc_toolchain_prefix() answers (that composes a
+# path from the VERSION). Two consumers got it wrong by typing /opt/gcc-15.2.0
+# into a workflow env, where it went stale and took every clang lane red.
 #
-# gcc_toolchain_prefix() above composes a path from the VERSION; this answers
-# "which prefix on THIS machine actually holds a usable GCC", which is a
-# different question and the one every consumer got wrong. Two of them carried
-# the literal /opt/gcc-15.2.0 in a workflow env and went stale on 2026-08-07,
-# taking every clang lane red with them: the composed path was right and the
-# typed one was not.
-#
-# Four answers, first that holds:
-#   1. MYPROJECT_GCC_TOOLCHAIN_PATH -- the consumer said so explicitly
-#   2. GCC_PREFIX -- the image says so
-#   3. the composed prefix, IF it really holds a toolchain. The probe is
-#      lib/gcc/*/*/crtbeginS.o: a directory that exists but has no crt files is
-#      a half-installed prefix, and clang pointed at one fails at LINK time with
-#      a message about crtbeginS.o that names nothing else.
-#   4. the newest /opt/gcc-* that passes the same probe. An image built from a
-#      different GCC_VERSION than the caller assumes is exactly case 3 failing,
-#      and guessing "the newest one present" beats failing with no toolchain.
-# Prints nothing and returns 1 when there is no usable prefix at all; a caller
-# that treats an empty answer as a path produces `--gcc-toolchain=` and a clang
-# error three steps from the cause.
+# MYPROJECT_GCC_TOOLCHAIN_PATH, then GCC_PREFIX, then the composed prefix IF it
+# carries lib/gcc/*/*/crtbeginS.o, then the newest /opt/gcc-* that does. That crt
+# probe matters: clang pointed at a half-installed prefix fails at LINK time
+# naming crtbeginS.o and nothing else. Returns 1 and prints nothing when there is
+# none -- an empty answer used as a path becomes `--gcc-toolchain=`.
 gcc_toolchain_resolve_prefix() {
   local candidate
   for candidate in "${MYPROJECT_GCC_TOOLCHAIN_PATH:-}" "${GCC_PREFIX:-}"; do
@@ -89,13 +77,9 @@ gcc_toolchain_resolve_prefix() {
 # --gcc-toolchain flags only; CC/CXX selection stays with the caller, and GCC
 # itself rejects the flag, so this is a no-op unless clang is in use.
 #
-# RESTORED 2026-09-15. It was deleted on 2026-09-05 for having no caller, which
-# was true of this repository and false of the family: two consumers had each
-# re-derived it, and one of them did so by typing /opt/gcc-15.2.0 into a
-# workflow env block, where it went stale and took every clang lane red. A hub
-# file is deleted when the consumer inventory reports it as named by nobody --
-# see AGENTS.md, "Contributing Reusable Work Here" -- and this one was not.
-# Callers: AccelerANTgine scripts/linux/ci-run-all.sh, BeschleunigerBallett
+# RESTORED 2026-09-15: deleted 2026-09-05 for having no caller, which was true
+# here and false of the family -- two consumers had each re-derived it. Callers:
+# AccelerANTgine scripts/linux/ci-run-all.sh, BeschleunigerBallett
 # scripts/linux/run-static-analysis-format.sh.
 # Docs: docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
 export_clang_gcc_toolchain_env() {

@@ -10,9 +10,6 @@ viewer and the tracked results now live in **OrchestrANT**
 OrchestrANT test extra. This stack is the reference server those benchmarks
 point at, and `backends.json` below is the registry that names its lanes.
 
-`nas_census.py` stays here for now (the NAS document-AI thread); it is
-documented in [`../../docs/nas-document-ai.md`](../../docs/nas-document-ai.md).
-
 ## Quick start
 
 ```bash

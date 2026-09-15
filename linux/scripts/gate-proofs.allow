@@ -63,9 +63,6 @@ mutation-family:vulkan
 mutation-family:wheels
 mutation-family:trailing-return
 
-# Arrived by merge 2026-09-07 with the NAS document-AI census (3f300c32).
-mutation-family:census
-
 # Arrived 2026-09-08 with the mutation coverage for this batch's new hub entry
 # points. Each names the subject its ids describe, over files no preflight slug
 # owns: the consumer-facing lint aggregator (linux/scripts/run-lint-gates.sh and

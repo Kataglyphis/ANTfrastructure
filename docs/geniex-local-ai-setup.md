@@ -958,7 +958,8 @@ it repairs the text-instead-of-call case that neither a better description nor
 | **QAIRT 4B-Instruct + `prompts/tool-disambiguation.md`** | **12/12, 24.1 s** |
 | GGUF Qwen3-4B `Q4_0` (for comparison) | 12/12, 88.1 s |
 
-`linux/llm-stack/prompts/tool-disambiguation.md` is that file, and
+[`benchmarks/prompts/tool-disambiguation.md`](https://github.com/Kataglyphis/OrchestrANT/tree/main/benchmarks/prompts/tool-disambiguation.md)
+in OrchestrANT is that file, and
 `bench_tools.py --system <file>` is how it was verified rather than assumed.
 Wired into this host's `~/.config/opencode/opencode.jsonc` via `instructions`.
 

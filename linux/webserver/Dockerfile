@@ -48,7 +48,18 @@ COPY --chmod=755 ./webserver/entrypoint.sh /docker-entrypoint.sh
 # `generate-website-licenses.py` writes only `license-assets/`, so nothing
 # refreshed the served copy and nothing noticed: both files existed, both were
 # valid Markdown, and only the URL told them apart.
-COPY --chown=nginx:nginx --chmod=755 ./webserver/dist/ /var/www/html/
+# FROM A NAMED BUILD CONTEXT, not from the tracked tree: the site is built in
+# jotrockenmitlocken and nothing here can rebuild it, so carrying 82 MB of its
+# output in this repository bought a standalone build at the cost of every
+# clone. Pass it at build time:
+#   nerdctl build --build-context site=<jot>/build/web -f linux/webserver/Dockerfile linux
+# A build with no `site` context fails HERE, by name, instead of producing an
+# image that serves nothing.
+# DL3022 wants --from to name a previous FROM alias. `site` is a named BUILD
+# CONTEXT (--build-context site=...), which hadolint does not model; the rule is
+# right about stage aliases and blind to contexts.
+# hadolint ignore=DL3022
+COPY --from=site --chown=nginx:nginx --chmod=755 / /var/www/html/
 COPY --chown=nginx:nginx --chmod=755 ./webserver/license-assets/ /var/www/html/assets/assets/
 
 EXPOSE 80 443

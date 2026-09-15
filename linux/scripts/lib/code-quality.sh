@@ -31,6 +31,33 @@ _code_quality_project_root() {
 # caller-supplied scripts (which in turn defer to 01-core/python_uv.sh) instead
 # of a hand-rolled uv variant; they operate on the caller's cwd, hence the
 # subshell cd.
+# The default bootstrap, in its own function so the ensure_ function below keeps
+# one job. _CQ_CORE/_CQ_REQS are resolved from THIS file, so they are right in a
+# consumer's vendored checkout too.
+_CQ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CQ_CORE="${_CQ_LIB_DIR}/../01-core"
+_CQ_REQS="${_CQ_LIB_DIR}/../cmake-format.requirements.txt"
+
+_code_quality_default_venv_create() {
+  # shellcheck source=../01-core/python_uv.sh
+  source "${_CQ_CORE}/python_uv.sh"
+  # "" for the python version: no --python pin, so UV_PYTHON (which the CI
+  # images export) decides. A pinned version fails in an image that ships one.
+  uv_venv_create "${venv_dir}" ""
+}
+
+_code_quality_default_install_requirements() {
+  # shellcheck source=../01-core/python_uv.sh
+  source "${_CQ_CORE}/python_uv.sh"
+  uv_pip_install_requirements "${venv_dir}" "${_CQ_REQS}"
+}
+
+_code_quality_apply_default_bootstrap() {
+  [[ -f "${_CQ_REQS}" ]] || err "cmake-format not found and the hub's ${_CQ_REQS} is missing -- this is a broken checkout, not a gate to skip."
+  [[ -n "${create_script}" ]] || create_script=_code_quality_default_venv_create
+  [[ -n "${install_script}" ]] || install_script=_code_quality_default_install_requirements
+}
+
 code_quality_ensure_cmake_format() {
   if has_tool cmake-format; then
     return 0
@@ -49,27 +76,7 @@ code_quality_ensure_cmake_format() {
   # requirements", which is the only answer there has ever been. The knobs stay
   # for a caller that genuinely needs its own venv policy; unset now means the
   # hub's answer rather than a refusal.
-  local _cq_lib _cq_core _cq_reqs
-  _cq_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  _cq_core="${_cq_lib}/../01-core"
-  _cq_reqs="${_cq_lib}/../cmake-format.requirements.txt"
-  _code_quality_default_venv_create() {
-    # shellcheck source=../01-core/python_uv.sh
-    source "${_cq_core}/python_uv.sh"
-    # "" for the python version: no --python pin, so UV_PYTHON (which the CI
-    # images export) decides. A pinned version fails in an image that ships one.
-    uv_venv_create "${venv_dir}" ""
-  }
-  _code_quality_default_install_requirements() {
-    # shellcheck source=../01-core/python_uv.sh
-    source "${_cq_core}/python_uv.sh"
-    uv_pip_install_requirements "${venv_dir}" "${_cq_reqs}"
-  }
-  [[ -n "${create_script}" ]] || create_script=_code_quality_default_venv_create
-  [[ -n "${install_script}" ]] || install_script=_code_quality_default_install_requirements
-  if [[ ! -f "${_cq_reqs}" ]]; then
-    err "cmake-format not found and the hub's ${_cq_reqs} is missing -- this is a broken checkout, not a gate to skip."
-  fi
+  _code_quality_apply_default_bootstrap
 
   if ! has_tool uv; then
     err "Required tool not found: uv (needed to manage ${venv_dir} and install requirements)"

@@ -38,20 +38,10 @@ renovate-fleet.sh [--apply [--dry-run]] [--only <csv>] [--skip <csv>]
   --only <csv>    keep only these repo directory names
   --skip <csv>    drop these
   --here          this repo only; no fleet discovery at all
-  --vendored      ALSO run in the vendored checkouts of repos that have no own
-                  checkout on this machine (opt-in; see below)
+  --vendored      ALSO run in vendored checkouts that are the only copy of one
+                  of the owner's repos (opt-in; dependency-updates.md#the-fleet)
   --managers <csv>  passed straight through to renovate-local.sh
   --timeout <s>   per-repo wall clock, default 600; 0 turns the budget OFF
-
---vendored, and why it is opt-in: a vendored checkout is normally a POINTER
-target -- the repo is updated where it lives and the pointer is moved where it
-is vendored -- and writing into eight working trees of one repository is how
-work got lost twice in one day. Two cases are not that, and they are the only
-ones this flag is for: a repo of the owner's with NO own checkout anywhere (its
-vendored copy is the only copy there is), and a CONTAINER that mounts a single
-superproject, where the siblings the fleet discovers by are simply not there.
-Only those checkouts are added: a second copy of a repo the fleet already
-updates in its own tree is still refused, by name, exactly as before.
 
 exit codes, composed from the per-repo ones, worst first:
   0    every repo finished, and every reported update is at its new value
@@ -70,8 +60,8 @@ LOCAL="${SELF_DIR}/renovate-local.sh"
 MODE=report
 DRY_RUN=0
 HERE=0
-# OFF by default, and it must stay that way: the default answer to "the same
-# repo is checked out eight times" is to write in exactly one of them.
+# OFF by default, and it stays that way: the answer to "one repo, eight
+# checkouts" is to write in exactly one of them.
 VENDORED_MODE=0
 ONLY=""; SKIP=""; MANAGERS=""
 ROOT=""
@@ -430,17 +420,11 @@ order_fleet() {
   rm -f "${sorted}"
 }
 
-# --vendored: append the vendored checkouts that are the ONLY checkout of one of
-# the owner's repos. Appended AFTER refuse_duplicate_own has run over the own
-# checkouts, so that refusal keeps its exact meaning -- two working trees a human
-# pushes from are still a refusal -- and last in the order, because a vendored
-# copy is downstream of everything that declares it.
-#
-# NO_OWN holds exactly the identities this is about: a repo of the owner's with
-# no own checkout beside the top. VENDORED holds "<rel>  is <id>" rows, and the
-# first copy of each identity is the one taken: a second copy of the SAME
-# identity is a duplicate again, and the run is not the place to choose between
-# them. docs/dependency-updates.md#the-same-repo-checked-out-several-times
+# --vendored: append the checkouts that are the ONLY copy of one of the owner's
+# repos (NO_OWN holds exactly those identities). AFTER refuse_duplicate_own, so
+# that refusal keeps its meaning, and LAST, because a vendored copy is
+# downstream of everything that declares it. First copy of each identity only.
+# docs/dependency-updates.md#the-same-repo-checked-out-several-times
 ORDER_VENDORED=0
 order_vendored_in_place() {
   local id row rel
@@ -806,8 +790,7 @@ else
   refuse_duplicate_own
   if [ "${VENDORED_MODE}" -eq 1 ]; then
     order_vendored_in_place
-    note "--vendored: ${ORDER_VENDORED} vendored checkout(s) appended -- each is the"
-    note "            ONLY checkout of one of ${OWNER}'s repos on this machine."
+    note "--vendored: ${ORDER_VENDORED} appended; each the ONLY checkout of a ${OWNER} repo here."
   fi
   print_plan
 fi

@@ -36,7 +36,9 @@ webdav_download_tree() {
   local remote="${1:?remote base path required}"
   local local_dir="${2:?local base path required}"
   local extension="${3:-all}"
-  local venv="${WEBDAV_VENV_DIR:-${KATAGLYPHIS_REPO_ROOT:-$(pwd)}/.venv}"
+  local venv_root="${KATAGLYPHIS_REPO_ROOT:-}"
+  [ -n "${venv_root}" ] || venv_root="$(pwd)"
+  local venv="${WEBDAV_VENV_DIR:-${venv_root}/.venv}"
   local script="${_webdav_core_dir}/download-webdav-files.py"
   local venv_python
 

@@ -227,15 +227,14 @@ def check_overlay_reaches_the_served_path() -> int:
               f"       Found: {copies[0].strip()}", file=sys.stderr)
         return 1
 
-    served = REPO_ROOT / "linux/webserver/dist/assets/assets/documents/footer"
-    if served.is_dir():
-        generated = {p.name for p in ASSETS_DIR.rglob("openSourceLicenses*.md")}
-        shipped = {p.name for p in served.glob("openSourceLicenses*.md")}
-        uncovered = shipped - generated
-        if uncovered:
-            print(f"Error: dist/ ships licence page(s) the generator does not own, so nothing "
-                  f"refreshes them: {', '.join(sorted(uncovered))}", file=sys.stderr)
-            return 1
+    # The SERVED-COPY comparison that used to sit here is gone with the tracked
+    # dist/ tree (2026-09-15). It compared the generator's output against files
+    # under linux/webserver/dist/, which this repository no longer carries: the
+    # site is built in another repo and arrives through a named build context,
+    # so there is nothing here to compare against and no way to refresh it if
+    # there were. What made the two disagree is removed with it -- the image
+    # takes the licence overlay from license-assets/ through the COPY checked
+    # above, and that is now the only copy this repository produces or ships.
     return 0
 
 

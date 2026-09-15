@@ -1437,7 +1437,7 @@ narrow rule is the one that holds. It costs one extra walk of the shell scan set
 | `*.md` | prose about code is not a caller |
 | `*.patch`, `*.diff`, any `patches/` directory | quoted upstream source |
 | `*.allow`, `docs/scripts/mutations.json` | a gate's own baseline *describes* code; counting an `.allow` row as a use would send every freeze STALE, and a mutation's `find`/`replace` text is the same argument |
-| `linux/webserver/dist` | the built Flutter bundle — minified output can name anything |
+| `linux/webserver/dist` | the built Flutter bundle — minified output can name anything. Gitignored since 2026-09-15, but the exclusion stays: the gate WALKS the tree, so a working copy that still has the directory would otherwise be graded |
 | `.pytest_cache`, `.dart_tool`, `__pycache__`, `_build`, `.venv`, `node_modules`, `.git` | generated, not written by anyone |
 | `windows/`, `shared/` | other lanes (see below) |
 
