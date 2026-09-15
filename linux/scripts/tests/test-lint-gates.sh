@@ -283,6 +283,36 @@ for _ratchet in "${_LINT_GATES_RATCHET_GATES[@]}"; do
     "${_ratchet}.py must take --root, or the step grades the hub over a consumer"
 done
 
+# Rule 2 of the scan-root contract: an empty scan is a decision, never a default,
+# and the decision belongs to whoever pointed the gate at the tree. Eight gates
+# each reporting green over nothing is the vacuity this whole suite is about, so
+# the aggregator answers ONCE, with `allow`, and says so out loud.
+t_case "an empty *.sh scan is allowed once by the aggregator, not eight times in silence"
+t_assert_contains "$(cat "${GATE}")" 'gate_scope.assert_non_empty(RELS, ROOT, ["*.sh"], "allow", "ratchets")' \
+  "the one owner of rule 2 must be asked, not re-implemented in bash"
+t_assert_contains "$(cat "${GATE}")" '_lint_gates_ratchet_scope' \
+  "the ratchet step must consult the scope before running any gate"
+_noshell="$(mktemp -d "${_work}/noshell.XXXXXX")"
+printf 'x\n' > "${_noshell}/README.md"
+git -C "${_noshell}" init -q
+t_git_commit "${_noshell}"
+_LINT_GATES_PY=""
+if _lint_gates_interpreter >/dev/null 2>&1; then
+  _LINT_GATES_ROOT="${_noshell}"
+  t_assert_eq "1" "$(t_rc _lint_gates_ratchet_scope)" \
+    "no tracked shell is 'nothing to grade', which is rc 1, not a refusal"
+  t_assert_contains "$(t_out _lint_gates_ratchet_scope)" "nothing to grade" \
+    "silence over an empty scope is what rule 2 exists to forbid"
+  t_assert_eq "0" "$(t_rc _lint_gates_ratchet)" \
+    "the step is green, and no gate ran"
+  _LINT_GATES_ROOT="$(_consumer)"
+  t_assert_eq "0" "$(t_rc _lint_gates_ratchet_scope)" \
+    "a consumer that HAS shell must still be graded"
+  _LINT_GATES_ROOT="${_work}"
+  t_assert_eq "2" "$(t_rc _lint_gates_ratchet_scope)" \
+    "a root that is not a checkout is a broken call, not an empty one"
+fi
+
 t_case "the Python gates run under PREFLIGHT_PYTHON, and a dead interpreter is named"
 _LINT_GATES_PY=""
 t_assert_eq "1" "$(PREFLIGHT_PYTHON=/nonexistent/python t_rc _lint_gates_interpreter)"

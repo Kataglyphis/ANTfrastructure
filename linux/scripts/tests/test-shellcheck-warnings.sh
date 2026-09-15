@@ -12,6 +12,7 @@ PY="$(command -v "${PREFLIGHT_PYTHON:-python3}")"
 TODAY="$(date +%F)"
 PIN="$(sed -n 's/^SHELLCHECK_VERSION=//p' "${TESTS_DIR}/../01-core/versions.env")"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 : "${SKIP_REAL_TREE:=}"
 
 if ! command -v shellcheck >/dev/null 2>&1; then
@@ -288,5 +289,12 @@ if [ -z "${SKIP_REAL_TREE}" ]; then
   t_case "the REAL tree matches its baseline today"
   t_assert_eq "0" "$("${PY}" "${GATE}" >/dev/null 2>&1; echo $?)"
 fi
+
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is an SC2034 in the fixture.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject=$'#!/usr/bin/env bash\nunused_var=1'
+gate_root_arm "${PY}" "${GATE}" "${_root_subject}" shellcheck-warnings.allow 'zz-sentinel.sh | SC2034 | 1 | sentinel' zz-sentinel.sh
 
 t_summary

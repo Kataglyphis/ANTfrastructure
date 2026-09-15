@@ -217,4 +217,11 @@ t_assert_eq "0" "$(_rc_of "_WASM_OPT_CORE_DIR=${_tmp}; export BINARYEN_VERSION=9
   "the documented contract is UNLESS already set, so an env-set pin is the normal path"
 rm -rf "${_tmp}"
 
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a function ending on `&&` in the fixture.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject=$'f() {\n  [ -n "${x}" ] && do_thing\n}'
+gate_root_arm "${PY}" "${GATE}" "${_root_subject}" trailing-conditional.allow $'zz-sentinel.sh\tzz_sentinel' zz_sentinel
+
 t_summary

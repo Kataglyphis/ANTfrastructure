@@ -43,13 +43,20 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and
+# main() re-points the second one from --root. In a consumer's
+# third_party/ANTfrastructure checkout __file__ is the HUB, so a gate that never
+# asked would grade the wrong tree and report green.
+# docs/code-quality-tooling.md#the-scan-root-contract
+HUB_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = HUB_ROOT
 DOCS = REPO_ROOT / "docs"
 ALLOW_FILE = Path(__file__).with_name("doc-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
-sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
 from quality_allow import iter_rows  # noqa: E402
+import gate_scope  # noqa: E402
 
 ROOT_DOCS = ("README.md", "AGENTS.md")
 
@@ -91,8 +98,19 @@ def paragraphs(path: Path) -> list[str]:
 
 
 def collect() -> list[Path]:
-    paths = [REPO_ROOT / n for n in ROOT_DOCS]
-    paths += sorted(DOCS.glob("*.md"))
+    """The hub keeps its curated page set; a consumer gets every tracked page.
+
+    The hub's set is deliberate — README, AGENTS and the flat ``docs/`` pages —
+    and changing it would re-budget every allowlisted pair for no reason. A
+    consumer has no such curation to inherit, so the scan-root contract answers
+    instead: tracked Markdown, vendored subtrees excluded by ``gate_scope``.
+    """
+    if gate_scope.is_hub(str(REPO_ROOT), str(HUB_ROOT)):
+        paths = [REPO_ROOT / n for n in ROOT_DOCS]
+        paths += sorted(DOCS.glob("*.md"))
+    else:
+        paths = [REPO_ROOT / rel
+                 for rel in gate_scope.tracked(str(REPO_ROOT), ["*.md"])]
     return [
         p
         for p in paths
@@ -191,9 +209,24 @@ def main() -> int:
                     help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
     ap.add_argument("--report", action="store_true",
                     help="list every pair over the threshold, allowed ones included")
+    ap.add_argument("--root", metavar="DIR",
+                    help="grade this checkout instead of the gate's own repo;"
+                         " the budget file is then <root>/doc-dupes.allow")
     args = ap.parse_args()
 
-    files = collect()
+    global REPO_ROOT, DOCS, ALLOW_FILE
+    try:
+        REPO_ROOT = Path(gate_scope.resolve_root(args.root, str(HUB_ROOT)))
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
+    DOCS = REPO_ROOT / "docs"
+    if not gate_scope.is_hub(str(REPO_ROOT), str(HUB_ROOT)):
+        ALLOW_FILE = REPO_ROOT / "doc-dupes.allow"
+
+    try:
+        files = collect()
+    except gate_scope.ScopeError as exc:
+        return gate_scope.die(exc)
     if not files:
         print("ERROR: no Markdown found to check", file=sys.stderr)
         return 2

@@ -84,12 +84,22 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and
+# main() re-points the second one from --root. They are the same thing until a
+# consumer passes --root, which is the whole point of the scan-root contract:
+# in a consumer's third_party/ANTfrastructure checkout, __file__ resolves to the
+# HUB, so a gate that never asked would report green over a tree nobody wanted.
+# docs/code-quality-tooling.md#the-scan-root-contract
+HUB_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = HUB_ROOT
+# Follows the root as well: keeping every repo's budget inside the hub would put
+# a consumer's ratchet where that consumer never sees it in its own diff.
 ALLOW_FILE = Path(__file__).with_name("code-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
-sys.path.insert(0, str(REPO_ROOT / "linux" / "scripts"))
+sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
 from quality_allow import iter_rows  # noqa: E402
+import gate_scope  # noqa: E402
 
 # Never scanned: vendored trees, generated output, and the records that narrate
 # the same work on purpose.
@@ -633,14 +643,36 @@ def _build_parser() -> argparse.ArgumentParser:
                             " (whole file; cannot be scoped with --kind)")
     scope.add_argument("--kind", choices=sorted(UNIT_READERS), action="append",
                        help="restrict to one kind (repeatable); default all")
+    ap.add_argument("--root", metavar="DIR",
+                    help="grade this checkout instead of the gate's own repo;"
+                         " the budget file is then <root>/code-dupes.allow")
     ap.add_argument("--explain", nargs="+", metavar="FILE",
                     help="say WHAT one pair shares: the overlapping units, their"
                          " line numbers and how much the idiom cutoff hides."
                          " One path for a self-pair, two for a cross-file pair")
     return ap
 
+def _apply_root(arg) -> None:
+    """Re-point the graded tree and its budget file. One place, before scope.
+
+    Raises SystemExit rather than handing main() an error to branch on: an
+    unusable root is not a finding, it is the end of the run, and putting the
+    try/except in main() only buys the caller one more path through a function
+    the complexity ratchet already holds at its limit.
+    """
+    global REPO_ROOT, ALLOW_FILE
+    try:
+        root = Path(gate_scope.resolve_root(arg, str(HUB_ROOT)))
+    except gate_scope.ScopeError as exc:
+        raise SystemExit(gate_scope.die(exc)) from None
+    REPO_ROOT = root
+    if not gate_scope.is_hub(str(root), str(HUB_ROOT)):
+        ALLOW_FILE = root / "code-dupes.allow"
+
+
 def main() -> int:
     args = _build_parser().parse_args()
+    _apply_root(args.root)
 
     kinds = set(args.kind) if args.kind else set(UNIT_READERS)
     files = [(p, k) for p, k in collect() if k in kinds]

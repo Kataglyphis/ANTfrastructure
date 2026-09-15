@@ -420,8 +420,24 @@ describes: the freeze files are read from `<consumer-root>/<gate>.allow`
 `trailing-conditional.allow`, `shellcheck-warnings.allow`; `verify_stdout_returns`
 has none). It is opt-in because a tree with no freeze files is red on its first
 run — that first report is what seeds them. Seed, commit, then keep the flag on
-in the wrapper and the workflow. A consumer with no tracked shell has nothing to
-ratchet and should not pass the flag.
+in the wrapper and the workflow.
+
+The step also runs **`docs/scripts/verify_doc_links.py --root`** (2026-09-15),
+which is the ninth gate and the odd one out: it has no freeze file, so there is
+nothing to seed and it is safe the very first time the flag goes on. It grades
+every tracked Markdown page in the consumer — which is what puts a consumer's
+own `README.md` into the cross-reference graph at all — and it runs even when
+the tree carries no shell, because a Dart or Python repo still has pages.
+
+A consumer with **no tracked shell at all** — a pure Dart or Python repo — may
+still pass the flag: the step asks `gate_scope.assert_non_empty` once with
+`on_empty="allow"`, prints `ratchets: no tracked *.sh outside third_party under
+<root> - nothing to grade.` and returns green. That decision belongs to the
+aggregator, not to the gates: rule 2 of the scan-root contract says an empty scan
+is a decision and never a default, and *who pointed the gate at this tree* is the
+only thing that knows which answer is right. Pointed at a tree by hand, a gate
+still refuses. A root that is not a usable checkout fails the step outright, with
+`gate_scope`'s own message.
 
 The Python gates run under `PREFLIGHT_PYTHON` when it is set (the same contract
 `preflight.sh` and `lint-workflows.sh` document) and probe the interpreter first:

@@ -279,4 +279,11 @@ t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 t_assert_eq "0" "$( "${PY}" "${GATE}" --census >/dev/null 2>&1; echo $? )"
 
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a function nothing calls, in the fixture.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject="${DEAD}"
+gate_root_arm "${PY}" "${GATE}" "${_root_subject}" dead-functions.allow $'zz-sentinel.sh\tzz_sentinel' zz_sentinel
+
 t_summary

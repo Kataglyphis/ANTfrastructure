@@ -7,6 +7,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
@@ -229,5 +230,12 @@ seen = any(rel == want for _, rel in g.scan(".py"))
 print("scanned" if seen else f"MISSING {want} from SCAN={g.SCAN}")
 PYCHK
 )" "removing linux/llm-stack from SCAN silently un-freezes its reviewed rows"
+
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a 90-line function in the fixture.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject="$( { echo "big() {"; for _ in $(seq 1 90); do echo "  :"; done; echo "}"; } )"
+gate_root_arm "${PY}" "${SCRIPTS_DIR}/verify_code_size.py" "${_root_subject}" function-size.allow 'zz-sentinel.sh | zz | 999 | sentinel' zz-sentinel.sh
 
 t_summary

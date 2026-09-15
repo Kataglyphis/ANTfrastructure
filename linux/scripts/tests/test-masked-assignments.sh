@@ -7,6 +7,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/gate-tree.sh"
 GATE="${TESTS_DIR}/../verify_masked_assignments.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
@@ -26,5 +27,12 @@ t_assert_contains "$(cat "${TESTS_DIR}/../preflight.sh")" "masked-decls" \
 t_case "the allowlist keys on file+variable, not line number"
 t_assert_eq "0" "$(grep -c -E '\t[0-9]+\t' "${TESTS_DIR}/../masked-assignments.allow")" \
   "a line number would re-flag every site whenever something above it moves"
+
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a masked `local x=$(...)` in the fixture, frozen nowhere.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject=$'f() {\n  local b="${B:-$(date)}"\n  echo "${b}"\n}'
+gate_root_arm "${PY}" "${GATE}" "${_root_subject}" masked-assignments.allow $'zz-sentinel.sh\tZZ_SENTINEL' ZZ_SENTINEL
 
 t_summary

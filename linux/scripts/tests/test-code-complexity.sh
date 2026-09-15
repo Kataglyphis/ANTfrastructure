@@ -5,6 +5,7 @@
 # docs/code-quality-tooling.md#shell-complexity-code-complexity
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/test-harness.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/gate-tree.sh"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 GATE=verify_code_complexity.py
@@ -461,5 +462,12 @@ t_assert_contains "${out}" "rc=0" "three key columns are declared, so the rest o
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${SRC}/${GATE}" >/dev/null 2>&1; echo $? )"
+
+# The --root arm, which no case above reaches: every fixture here is a tree
+# planted AROUND the gate, so it cannot tell --root from its own repo.
+# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a 21-path function in the fixture.
+t_case "--root grades the named tree, and reads its freeze file"
+_root_subject="$( { echo "f() {"; for _ in $(seq 1 20); do echo "a || b"; done; echo "}"; } )"
+gate_root_arm "${PY}" "${SRC}/${GATE}" "${_root_subject}" code-complexity.allow 'zz-sentinel.sh | zz | cc | 999 | sentinel' zz-sentinel.sh
 
 t_summary
