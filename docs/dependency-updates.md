@@ -1431,6 +1431,39 @@ Somebody else's upstreams (glm, imgui, fuzztest, …) are pointer targets and
 nothing else, so they are counted rather than listed: twenty of them, measured
 2026-09-11 over 56 vendored rows in all, 36 of which are the owner's.
 
+#### `--vendored`: the two cases where writing in place is right
+
+The default above is the answer to the accident, and it stays the default. But
+two situations are not that accident, and until 2026-09-15 a consumer had
+written its own submodule walker to deal with them — a second tool making the
+same decisions, with none of the refusals.
+
+1. **A repo of the owner's with no own checkout at all.** Its vendored copy is
+   not a *second* working tree; it is the only one there is. Refusing to update
+   it is not protecting anything, and the alternative the tool suggested —
+   clone it beside the others — is a change to the machine, not to the run.
+2. **A container that mounts a single superproject.** Fleet discovery looks
+   *beside* the top for the owner's other repos, and inside such a container
+   there is nothing beside it. Every dependency the run can reach is vendored,
+   so the default order is empty and the run is vacuous.
+
+`renovate-fleet.sh --vendored` (or `--in-place`) appends exactly those
+checkouts, and nothing else:
+
+* it appends them **after** the duplicate refusal has run, so two working trees
+  a human pushes from are still refused, by name, before anything is written;
+* it takes only identities the tool already classified as having **no own
+  checkout**, so a second copy of a repo the fleet updates in its own tree is
+  never a member;
+* it takes the **first** copy of each such identity — a second copy of the same
+  identity is the duplicate question again, and a run is not the place to
+  choose between two of them;
+* and they go **last**, because a vendored copy is downstream of everything
+  that declares it.
+
+It is opt-in and must stay opt-in: the default answer to "this repo is checked
+out eight times" is to write in exactly one of them.
+
 ### Stopping it
 
 **Ctrl-C stops the fleet.** That is a fix, not a description: until 2026-09-11

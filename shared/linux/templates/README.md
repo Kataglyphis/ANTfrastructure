@@ -8,6 +8,27 @@ Copy `antfrastructure.sh` to `<your-repo>/scripts/linux/lib/antfrastructure.sh`
 and adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE` if it does not sit three levels
 below the repo root. Nothing else.
 
+**A consumer with no submodule is a supported shape.** `ANTFRASTRUCTURE_DIR`
+still wins when set; otherwise the bootstrap takes `third_party/ANTfrastructure`
+when it exists and `antfrastructure-tools` (a plain sibling clone at the repo
+root) when it does not. One repo hand-rolled that probe because this template
+could not express it, which is how a seventh bootstrap variant gets born. The
+error text follows the same fact: it only offers `git submodule update` when
+`.gitmodules` actually names that path, and otherwise says to clone or to point
+`ANTFRASTRUCTURE_DIR` at a checkout — a `git submodule update` in a repo with no
+such submodule prints "No submodule mapping found" and sends the reader hunting
+a submodule that never existed.
+
+`renovate-local.sh` beside it is the second template: a copy-and-edit wrapper
+whose header is one link to
+[`dependency-updates.md`](../../../docs/dependency-updates.md) plus a two-line
+per-repo slot. Seven copies of that wrapper existed with headers between 50 and
+106 lines, each carrying a different half of the same explanation and most of it
+stale. It also does the `GITHUB_COM_TOKEN` fallback, which is the one thing a
+wrapper genuinely owns: without that token the GitHub-hosted managers are
+rate-limited into reporting nothing, which looks exactly like "nothing is
+behind".
+
 ## Why this is copied rather than consumed
 
 It is the file that *finds* the submodule, so it cannot live inside it — the
