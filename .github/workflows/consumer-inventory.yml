@@ -38,6 +38,12 @@ jobs:
     name: Grade every hub entry point against its consumers
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    # Job-scoped, so only this job can write issues. The weekly run is the only
+    # thing that ever sees a consumer commit, and a failure on a Monday morning
+    # with nobody watching is a failure nobody acts on - hence the issue below.
+    permissions:
+      contents: read
+      issues: write
     env:
       # Anonymous HTTPS reaches every public consumer, and the default
       # GITHUB_TOKEN cannot read another repository anyway. Set this secret to a
@@ -84,3 +90,56 @@ jobs:
           path: out/consumer-inventory.md
           if-no-files-found: error
           retention-days: 90
+
+      # failure() only, and deliberately NOT continue-on-error: the grading step
+      # above still fails the run, exactly as it did before. This adds the one
+      # thing a scheduled lane is missing - somewhere the verdict lands that is
+      # not a run page nobody opens. The issue is reused rather than duplicated:
+      # a weekly gate that files a fresh issue every Monday trains everyone to
+      # close them unread.
+      - name: File or update the dangling-reference issue
+        if: failure()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const title = 'consumer-inventory: dangling hub references';
+            const path = 'out/consumer-inventory.md';
+            const report = fs.existsSync(path)
+              ? fs.readFileSync(path, 'utf8')
+              : '_No report was produced - the run failed before any consumer was graded._';
+            const body = [
+              'The weekly consumer inventory failed. Either a declared consumer could',
+              'not be cloned, or a consumer names a hub entry point that no longer',
+              'exists at HEAD.',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              '---',
+              '',
+              report,
+            ].join('\n');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'documentation',
+            });
+            const existing = issues.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: body,
+              });
+              console.log(`Updated #${existing.number}.`);
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['documentation'],
+            });

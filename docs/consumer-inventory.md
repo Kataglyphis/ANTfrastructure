@@ -26,6 +26,15 @@ Two files, one workflow.
 | The checker that clones them and grades the entry points | `linux/scripts/verify_consumer_inventory.py` |
 | The weekly run that produces the report | `.github/workflows/consumer-inventory.yml` |
 
+A failed weekly run **files or updates a GitHub issue** titled
+`consumer-inventory: dangling hub references`, labelled `documentation`, with
+`out/consumer-inventory.md` as the body (the issue-filing step in that workflow,
+`if: failure()`, job-scoped `issues: write`). It updates the open issue instead
+of opening a second one, and it does not suppress the failure: the run is still
+red. This exists because the answer changes when a *consumer* changes, which this
+repository never sees — so the only reader of a Monday-morning red run would
+otherwise be whoever happened to open the Actions tab.
+
 Run it against clones:
 
 ```bash
