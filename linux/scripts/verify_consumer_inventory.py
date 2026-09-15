@@ -53,7 +53,19 @@ MAX_FILE_BYTES = 4 * 1024 * 1024
 # exist -- a dangling hit there is the fixture doing its job, not a stale
 # reference. A real call in a test fails the suite itself, which is the better
 # gate for it.
-FIXTURE_PREFIXES = ("linux/scripts/tests/", "windows/scripts/tests/")
+#
+# Matched on a path SEGMENT rather than on the hub's own two prefixes: a
+# consumer spells the same directory `scripts/windows/tests/`, which neither
+# prefix here covered. That went unnoticed while Windows-side references were
+# invisible; the moment backslash spellings became visible, a consumer's
+# NEGATIVE test -- one asserting that resolving 'NoSuchModule' names both the
+# locations it searched -- read as a broken call to a hub path.
+FIXTURE_DIR = "tests"
+
+
+def is_fixture(rel):
+    """True for a file inside a test-suite directory, in any repo's layout."""
+    return FIXTURE_DIR in Path(rel).parts[:-1]
 
 REACHED = "reached"
 MENTIONED = "mentioned"
@@ -309,13 +321,23 @@ def dangling_refs(root, files, hub_root, ref_re, vendored):
     """
     found = []
     for rel in files:
-        if rel.startswith(FIXTURE_PREFIXES):
+        if is_fixture(rel):
             continue
         text = readable(root, rel)
         if text is None:
             continue
         for match in ref_re.finditer(text):
-            target = match.group(1).split("@", 1)[0].rstrip(REF_TRAIL)
+            body = match.group(1)
+            # A backslash separates path segments only in a reference SPELLED
+            # with them. Where the qualifier that matched used slashes, the
+            # first backslash ENDS the path: a shell line that prints a hub
+            # path, `printf 'shared/config/shared-assets.manifest\n'`, is a
+            # slash path followed by a C string escape, and reading that escape
+            # as a separator invented `shared-assets.manifest/n` below and
+            # reported a file that is right there as a dangling reference.
+            if "\\" not in text[match.start(0):match.start(1)]:
+                body = body.split("\\", 1)[0]
+            target = body.split("@", 1)[0].rstrip(REF_TRAIL)
             # One spelling from here on: the path is checked against a POSIX
             # checkout, and `windows\scripts` is not a file there.
             target = target.replace("\\", "/").rstrip("/")
@@ -353,7 +375,7 @@ def dangling_modules(root, files, hub_root):
     have = {p.stem for p in (hub_root / MODULE_DIR).glob("*.psm1")}
     found = []
     for rel in files:
-        if rel.startswith(FIXTURE_PREFIXES) or not rel.endswith((".ps1", ".psm1")):
+        if is_fixture(rel) or not rel.endswith((".ps1", ".psm1")):
             continue
         text = readable(root, rel)
         if text is None:
