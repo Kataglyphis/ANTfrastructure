@@ -6,7 +6,6 @@
 <#
 .SYNOPSIS
   Generic MSIX packaging script for Rust desktop applications.
-  Can be upstreamed to ANTfrastructure.
 
 .DESCRIPTION
   - Uses WindowsBuild.Common.psm1 for structured logging.
@@ -183,7 +182,15 @@ try {
     $Workspace = (Resolve-Path $Workspace).Path
     $Version = ConvertTo-NormalizedVersion $Version
     
-    $resolvedCargoTargetDir = Join-Path $Workspace $CargoTargetDir
+    # An ABSOLUTE -CargoTargetDir is used as given. Join-Path on an absolute
+    # second argument returns something like C:\ws\D:\cache, which cargo then
+    # creates as a literal directory -- so a caller redirecting the target dir
+    # onto another volume silently got a target tree inside the workspace.
+    $resolvedCargoTargetDir = if ([System.IO.Path]::IsPathRooted($CargoTargetDir)) {
+        $CargoTargetDir
+    } else {
+        Join-Path $Workspace $CargoTargetDir
+    }
     $env:CARGO_TARGET_DIR = $resolvedCargoTargetDir
     $env:CARGO_INCREMENTAL = "0"
     
@@ -256,14 +263,19 @@ try {
         if (-not (Test-Path $resolvedManifestPath)) { throw "Manifest template not found: $resolvedManifestPath" }
 
         Write-BuildLog -Context $Context -Message "Generating AppxManifest.xml..."
-        $manifestContent = Get-Content $resolvedManifestPath -Raw
-        $manifestContent = $manifestContent.Replace("__PACKAGE_NAME__", $PackageName)
-        $manifestContent = $manifestContent.Replace("__PUBLISHER__", $Publisher)
-        $manifestContent = $manifestContent.Replace("__VERSION__", $Version)
-        $manifestContent = $manifestContent.Replace("__DISPLAY_NAME__", $DisplayName)
-        $manifestContent = $manifestContent.Replace("__PUBLISHER_DISPLAY_NAME__", $PublisherDisplayName)
-        $manifestContent = $manifestContent.Replace("__DESCRIPTION__", $Description)
-        $manifestContent = $manifestContent.Replace("__EXECUTABLE__", "$Binary.exe")
+        # ONE expansion through the module, not a seven-call .Replace chain: the
+        # chain did no XML escaping, so an ampersand or an angle bracket in a
+        # display name or description produced a manifest makeappx rejects with
+        # a parser error that names a line number and nothing else.
+        $manifestContent = Expand-XmlTemplateTokens -Template (Get-Content $resolvedManifestPath -Raw) -TokenMap @{
+            '__PACKAGE_NAME__'           = $PackageName
+            '__PUBLISHER__'              = $Publisher
+            '__VERSION__'                = $Version
+            '__DISPLAY_NAME__'           = $DisplayName
+            '__PUBLISHER_DISPLAY_NAME__' = $PublisherDisplayName
+            '__DESCRIPTION__'            = $Description
+            '__EXECUTABLE__'             = "$Binary.exe"
+        }
         Set-Content -Path (Join-Path $stagingRoot "AppxManifest.xml") -Value $manifestContent -Encoding utf8
     }
 
