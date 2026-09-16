@@ -109,4 +109,54 @@ t_case "the decision is order-dependent, and the order is DECLARATION order"
 _p="$(_pyproject "b a")"
 t_assert_eq "a" "$(_uv_extras_to_exclude "${_p}")" "declaring b first keeps b"
 
+# --- uv_run does not inherit the image's redirections ------------------------
+# The images export UV_PYTHON=/opt/venv/bin/python and VIRTUAL_ENV=/opt/venv, a
+# root-owned system venv, and uv honours UV_PYTHON OVER an activated one.
+# uv_sync_project clears exactly these two for its own call; uv_run did not, so
+# a gate that never activated ran its analysers against /opt/venv as uid 1001
+# ("Permission denied"), and one that DID activate lost its per-version venv to
+# a rebuild from the image interpreter -- without the extra pytest lives in.
+# What is asserted is the ENVIRONMENT the call is handed, which is what both
+# measured failures turned on.
+_src="$(t_fn_src "${UV_SH}" uv_run)" || exit 1
+eval "${_src}"
+_stub_dir="$(mktemp -d)"
+cat > "${_stub_dir}/uv" <<'STUB'
+#!/usr/bin/env bash
+printf 'UV_PYTHON=%s
+' "${UV_PYTHON-<unset>}"
+printf 'VIRTUAL_ENV=%s
+' "${VIRTUAL_ENV-<unset>}"
+printf 'ARGV=%s
+' "$*"
+STUB
+chmod +x "${_stub_dir}/uv"
+PATH="${_stub_dir}:${PATH}"
+export UV_PYTHON=/opt/venv/bin/python
+export VIRTUAL_ENV=/opt/venv
+
+t_case "with no venv of this run's own, BOTH image redirections are cleared"
+_CURRENT_VENV_PATH=""
+_uout="$(uv_run ruff check .)"
+t_assert_contains "${_uout}" "UV_PYTHON=<unset>" \
+  "UV_PYTHON outranks everything else uv is told; it must not reach the call"
+t_assert_contains "${_uout}" "VIRTUAL_ENV=<unset>" \
+  "--active would otherwise bind to the image's root-owned /opt/venv"
+t_assert_eq "" "$(printf '%s' "${_uout}" | grep -F -- '--active' || true)" \
+  "--active means nothing with no active environment, so it is not passed"
+
+t_case "a venv this run made or activated IS the environment, and is named"
+_v="$(mktemp -d)"; mkdir -p "${_v}/bin"
+printf '#!/bin/sh
+' > "${_v}/bin/python"; chmod +x "${_v}/bin/python"
+_CURRENT_VENV_PATH="${_v}"
+_uout="$(uv_run pytest)"
+t_assert_contains "${_uout}" "UV_PYTHON=<unset>" "the pin is cleared whether or not a venv is known"
+t_assert_contains "${_uout}" "VIRTUAL_ENV=${_v}" "the run's own venv must be the one uv sees"
+t_assert_contains "${_uout}" "--active" "with a real active environment --active is what binds to it"
+
+t_case "the CALL is cleared, not the caller's shell"
+t_assert_eq "/opt/venv/bin/python" "${UV_PYTHON}" "env -u must not leak into the caller"
+t_assert_eq "/opt/venv" "${VIRTUAL_ENV}" "a helper that unsets the shell's env would break the next one"
+
 t_summary

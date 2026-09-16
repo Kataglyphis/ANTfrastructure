@@ -405,8 +405,23 @@ uv_sync_project() {
   env "${_env_clear[@]}" uv "${sync_args[@]}"
 }
 
+# `uv run` with the image's redirections out of scope, which uv_sync_project
+# already does for its half and this did not. The images export
+# UV_PYTHON=/opt/venv/bin/python and VIRTUAL_ENV=/opt/venv (root-owned), and uv
+# honours UV_PYTHON OVER an activated venv: a gate that creates a venv without
+# activating it ran every analyser against /opt/venv as uid 1001 ("failed to
+# remove file `/opt/venv/.../bin/cygdb`: Permission denied"), and a gate that
+# DOES activate still lost its per-version venv, rebuilt from the image
+# interpreter with default groups -- where pytest, living in an extra, is not.
+# When this run made or activated a venv, name it: --active means nothing once
+# VIRTUAL_ENV is gone, so the pin has to be explicit.
 uv_run() {
-  uv run --active "$@"
+  local _venv="${_CURRENT_VENV_PATH:-}"
+  if [ -n "${_venv}" ] && [ -x "${_venv}/bin/python" ]; then
+    env -u UV_PYTHON "VIRTUAL_ENV=${_venv}" uv run --active "$@"
+  else
+    env -u UV_PYTHON -u VIRTUAL_ENV uv run "$@"
+  fi
 }
 
 fi
