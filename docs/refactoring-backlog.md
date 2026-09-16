@@ -668,13 +668,43 @@ and compare.
 
 *No consumer workaround exists* — it is absorbed as diff noise today.
 
-### CON5. Android SDK 37 [S, ★]
+### CON5. Raise the Android SDK to 37 [S, ★★★]
 
-`/opt/android-sdk` is read-only and ships android-36, so a consumer cannot
-install what AGP asks for. `permission_handler_android` is pinned back to 13.0.1
-in OmniAccelerANT's `pubspec_overrides.yaml` because the 14.x that
-permission_handler 13.0.2 resolves needs `compileSdk 37`. The pin unpins itself
-the day the image carries 37.
+**Raised from ★ to ★★★ on 2026-09-16: this is no longer latent, it is blocking
+dependency updates.**
+
+`/opt/android-sdk` is read-only and ships **android-36**, so a consumer cannot
+install what AGP asks for — Gradle stops with `The SDK directory is not
+writable`, one component per run. `permission_handler_android` is therefore
+pinned back to 13.0.1 in OmniAccelerANT's `pubspec_overrides.yaml`, with the
+reason written at the pin:
+
+```yaml
+# permission_handler_android 14.x requires compileSdk 37; the CI image ships
+# android-36 only. 13.0.1 builds against 35/36 and implements the same
+# platform interface. Drop this pin once the image carries android-37.
+permission_handler_android: 13.0.1
+```
+
+**What is new:** Dependabot has now opened
+[OmniAccelerANT#43](https://github.com/Kataglyphis/OmniAccelerANT/pull/43),
+whose lockfile moves `permission_handler_android` to **14.1.0**. That PR cannot
+be merged while the image is at 36 — it would take the Android lane with it —
+so the image version is now the thing standing between a consumer and a routine
+security-relevant dependency bump, and it will be again for every 14.x release
+after this one. A pin that blocks Dependabot is a different cost from a pin that
+just sits there: it turns into recurring manual triage on a PR nobody can
+action.
+
+The other three SDK components are already pinned to what the image ships
+(build-tools 36.0.0, NDK 29.0.14206865, cmake 4.1.2) across four Gradle files,
+so the consumer side of this is as tight as it can get; the only remaining lever
+is the image.
+
+*Request:* add android-37 (platform + the matching build-tools) to
+`/opt/android-sdk`. Keeping 36 alongside it is fine and is what lets consumers
+move one at a time. The consumer pin and its three-line comment are deleted the
+day it lands.
 
 ### CON6. flatpak `finish-args` has no camera access and no override hook [S, ★★]
 
