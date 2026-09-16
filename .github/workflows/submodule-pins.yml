@@ -56,7 +56,7 @@ on:
         type: string
         default: 'windows-2025'
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - '.gitmodules'
       - 'third_party/**'
@@ -64,7 +64,7 @@ on:
       - 'windows/scripts/modules/WindowsRepoHygiene.Common.psm1'
       - '.github/workflows/submodule-pins.yml'
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - '.gitmodules'
       - 'third_party/**'
