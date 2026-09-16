@@ -14,13 +14,13 @@ on:
     - cron: "0 7 * * 1" # Mondays 07:00 UTC, after the stale-docs check at 06:00
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'
       - '.github/workflows/consumer-inventory.yml'
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'

@@ -8,9 +8,9 @@ permissions:
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 # One run per ref: a force-push/new push supersedes the in-flight run instead
 # of burning runner minutes next to it. The called build-docs job additionally
