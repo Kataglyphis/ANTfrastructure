@@ -16,7 +16,10 @@ without re-verifying.
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **VK**=the
 foreign-arch Vulkan SDK · **AS**=the apt sources invariants · **EX**=gate scan
-extent · **F#**=the size and duplication tracks. Everything else
+extent · **F#**=the size and duplication tracks · **CON**=image issues reported
+by a consumer repo, each with the workaround that is live there today (added
+2026-09-16; these are the one group NOT derived from a gate in this repo).
+Everything else
 is archive-only: **CC/CL/CS/AB/R#/YB/DISK/APP** closed on 2026-09-07,
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and
 **AP/TG/TS/GPU/DUP/PAR/SCC/BT/LOG/LB/C#/D#/P#/S#/XC#** long before that.
@@ -565,3 +568,141 @@ Longest identical run 6 lines (Get-LsmWaitstack.ps1:53-58 / Get-SiloProcesses.ps
 Longest identical run 5 lines (Get-HostLsm.ps1:35-39 / Get-LsmWaitObject.ps1:39-43) -- the OutDir default: the triple `Split-Path ... -Parent` climb to repoRoot, `Join-Path $repoRoot 'out\lsm-attach'` and the New-Item. All five LSM probes carry it byte-identically. Both files also share the cdb.exe walk. A three-deep Split-Path climb repeated five times is the kind of path arithmetic that breaks silently when a directory moves; one owner fixes that too.
 
 *Plan:* Covered by the WindowsSiloProbe.Common.psm1 extraction described on the Get-HostLsm / Get-SiloProcesses row -- Initialize-LsmProbeOutDir -OutDir and Get-CdbPath.
+
+---
+
+## CON. Consumer-reported image issues (OmniAccelerANT, 2026-09-16)
+
+Filed from a consumer repo, not derived from a gate in this one. Each row names
+the consumer-side workaround that is live **today**, so the fix here is about
+deleting a workaround rather than unblocking someone. Verify each against the
+image before acting — these were observed against `:latest-cross` on one
+amd64 host (Rancher Desktop, nerdctl 2.2.2) and an image change may have landed
+since.
+
+### CON1. `rustup toolchain install nightly` cannot update inside the container [S, ★★★]
+
+The web lane runs
+`rustup toolchain install nightly --component rust-src --target wasm32-unknown-unknown`.
+The image already ships both — verified: `rustup component list --toolchain
+nightly` prints `rust-src (installed)` and `rustup target list` prints
+`wasm32-unknown-unknown (installed)`. But the command is not a no-op when the
+toolchain is present: it **updates** it, and on any day the baked nightly is not
+the newest nightly that update fails:
+
+```
+info: latest update on 2026-09-16 for version 1.100.0-nightly (215a8af4b 2026-09-15)
+info: removing previous version of component cargo
+info: rolling back changes
+error: could not rename 'component' file from
+  '/usr/local/rustup/toolchains/nightly-x86_64-unknown-linux-gnu/share/zsh/site-functions'
+  to '/usr/local/rustup/tmp/…/bk': Invalid cross-device link (os error 18)
+```
+
+The rename crosses out of a read-only image layer. So the lane is green on the
+day the image is built and red from the next nightly onwards — a time bomb, not
+a flake, which is why it looked like it had "always worked".
+
+*Fix here, cheapest first:* pin the channel to a dated nightly
+(`nightly-YYYY-MM-DD`) so there is nothing to update; or put `RUSTUP_HOME` on a
+writable path. Either deletes the consumer guard.
+
+*Consumer workaround (live):* OmniAccelerANT's
+`scripts/linux/ci/ci-container-run-web-linux.sh` now guards the install on the
+components being absent, mirroring its own `command -v
+flutter_rust_bridge_codegen` guard. A bare host with no nightly still takes the
+install path and is still exposed.
+
+### CON2. The flathub runtimes are installed twice [S, ★★]
+
+`linux/scripts/lib/app-packaging.sh:128-131`
+(`app_packaging_setup_dependencies_for_container`) ends with an unconditional
+
+```
+flatpak --user remote-add --if-not-exists flathub …
+flatpak --user install -y --arch=… flathub org.freedesktop.Platform//… org.freedesktop.Sdk//…
+```
+
+with no `flatpak info` probe. The image already installs the full set as root,
+system-wide (`01-core/base-image.sh` → `02-toolchain/packaging-deps.sh all`,
+`INSTALL_FLATPAK_RUNTIMES` default true), and the container runs as uid 1001, so
+every flatpak-packaging run pulls a second, per-user copy of the two largest
+refs of a set this repo measures at ~1.9 GB per run per arch
+(`docs/consumer-image-contract.md`).
+
+The sibling `app_packaging_ensure_flatpak_runtime`
+(`app-packaging.sh:637-656`) already does the right thing: probe `flatpak info
+--user` / `--system` first. `app_packaging_setup_dependencies_for_container`
+should do the same.
+
+*Consumer workaround (live):* OmniAccelerANT now calls
+`app_packaging_formats_include_flatpak` before the setup function, so a
+`--package-formats tar` run skips it entirely. That removes the waste on runs
+that do not package flatpak; the double pull on runs that **do** is this row.
+
+### CON3. `GSTREAMER_ROOT_ANDROID` is shipped but not exported [S, ★★]
+
+The Android GStreamer SDK sits at `/opt/android/gstreamer` as a flat prefix
+(`gst-android/ndk-build`, `include/`, `lib/`) and the variable is not in the
+image ENV, so a consumer's native plugin stops at CMake configure with
+`GSTREAMER_ROOT_ANDROID must be set`. The path alone is enough — consumers
+accept both the per-ABI and the flat layout.
+
+*Consumer workaround (live):* `export_android_gstreamer_env` in
+OmniAccelerANT's `scripts/linux/lib/container-steps.sh`, already written to
+no-op when the variable is set, so it can be deleted outright the day the image
+exports it. It is the last of a family of six such workarounds; the other five
+went on 2026-09-05.
+
+### CON4. The Linux and Windows images resolve different Dart dependencies [M, ★★]
+
+A consumer's `pubspec.lock` flips back and forth depending on which lane ran
+last: a Linux run writes intl 0.20.3 / matcher 0.12.20, the next Windows run
+writes 0.20.2 / 0.12.19. Both are legitimate resolutions, so whoever runs last
+"wins" and the diff is pure noise in every PR that touches either lane.
+
+The likely cause is a different Dart SDK constraint between the two images.
+Find which, and align them. This one needs a measurement first: print
+`dart --version` and `flutter --version` from `:latest-cross` and `:winamd64`
+and compare.
+
+*No consumer workaround exists* — it is absorbed as diff noise today.
+
+### CON5. Android SDK 37 [S, ★]
+
+`/opt/android-sdk` is read-only and ships android-36, so a consumer cannot
+install what AGP asks for. `permission_handler_android` is pinned back to 13.0.1
+in OmniAccelerANT's `pubspec_overrides.yaml` because the 14.x that
+permission_handler 13.0.2 resolves needs `compileSdk 37`. The pin unpins itself
+the day the image carries 37.
+
+### CON6. flatpak `finish-args` has no camera access and no override hook [S, ★★]
+
+`linux/scripts/lib/app-packaging.sh:544-548` generates exactly four args:
+
+```yaml
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+```
+
+`grep -c FINISH_ARGS` over that file returns **0** — there is no env hook, so a
+consumer cannot add to the list. An app that captures from V4L2 needs
+`--device=all` (flatpak has no `--device=video`), and one that loads a model
+from a user-chosen path needs a `--filesystem=`.
+
+The failure shape is the worst available: the flatpak builds **green**, installs
+fine, launches fine, and the camera silently never produces a frame. Nothing in
+the build or the packaging gates can see it, because nothing is wrong until a
+user opens the camera page.
+
+*Request:* honour a `KATAGLYPHIS_FLATPAK_FINISH_ARGS` (appended to the
+generated list, not replacing it), so a consumer that needs a device or a
+filesystem can say so without forking the manifest generator.
+
+*Consumer status:* OmniAccelerANT is adding a Rust-owned V4L2 → ONNX webcam
+path on Linux (2026-09-16). Its flatpak ships the Rust features OFF for now, so
+this is latent rather than broken there — but it blocks ever shipping the
+feature in the flatpak. Filed ahead of need deliberately.
