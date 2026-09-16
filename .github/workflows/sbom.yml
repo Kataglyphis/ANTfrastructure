@@ -58,13 +58,13 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}"
           | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # syft streams every layer of the image through a cache under TMPDIR, and
-      # a cross image is tens of gigabytes per arch. The runner's root volume
-      # does not hold that: the scan died mid-layer with "disk quota exceeded"
-      # on all three arches, every Monday since 2026-08-31. /mnt is the large
-      # volume on these images, so the cache goes there. Nothing about WHAT is
+      # syft caches every layer it streams under TMPDIR, and a cross image is
+      # tens of gigabytes per arch. /tmp on these runners is size-capped, so the
+      # scan died mid-layer with "disk quota exceeded" on all three arches,
+      # every Monday since 2026-08-31. A disk-backed path has the room: df
+      # reports 92G free on the volume under /mnt. Nothing about WHAT is
       # scanned changes -- `registry:` still streams, still pulls into no
-      # daemon; it just gets the volume with the room.
+      # daemon; the cache just lands somewhere that can hold it.
       - name: Give the scanner cache the large volume
         run: |
           set -euo pipefail
