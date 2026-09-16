@@ -64,6 +64,34 @@ image's root-owned system venv; the fixed form resolves to the run's own
 without the extra pytest lives in. This unblocks the deletion of WebDavClient's
 two local wrappers, which carry notes saying exactly that.
 
+## 2026-09-16 (later) — ten mutation entries the batch rotted, re-pointed
+
+The Ubuntu lane's preflight was red on the mutation gate for a SECOND reason,
+found only after the first was fixed: ten recorded mutations no longer applied
+to their targets. `verify_mutations.py --stale-check` named every one, and the
+pre-batch run at `4f6f516a` (34722813887) named none — so the 27-commit batch
+rotted them, the same way it rotted the consumer inventory.
+
+Two mechanical causes, and the manifest simply did not follow the code:
+
+* Seven entries pin a `python3 ...` call site in `lint-python.sh` and the two
+  versioned hooks. The batch replaced the literal interpreter with `${_PY}` /
+  `${_LINT_PY}`, so every one of those `find` strings stopped matching.
+* Two pin the LINE SPANS that `docs/cross-build-verification.md` quotes for the
+  pre-commit hook's `_FAST_SLUGS` block and its staged-shell block. The hook
+  moved, the prose was updated to `:87-90` and `:101-118`, the manifest was not.
+
+The tenth, `doc-numbers.total-re-quoted`, targeted a sentence in AGENTS.md that
+`acc61567` moved out when it cut that file from 1863 lines to 900.
+`test-doc-numbers.sh` still scans AGENTS.md and `cross-build-verification.md` as
+the two MIRRORS of `code-quality-tooling.md`, so the mirror arm keeps its
+mutation — on the mirror that still carries the sentence.
+
+A stale entry is not a cosmetic failure: it is a guarantee nobody is testing,
+and the gate says so by name rather than skipping it. All ten were re-pointed at
+the code they are meant to neuter and all ten bite again; the staleness pass is
+clean over the whole 841-entry manifest.
+
 ## 2026-09-15 (later) — the four red lanes: one this batch caused, three it did not
 
 Separating cause from coincidence first, because the batch above is 27 commits
