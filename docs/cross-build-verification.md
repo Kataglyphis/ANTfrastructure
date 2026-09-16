@@ -687,6 +687,36 @@ from source under QEMU at build time, so the headers are load-bearing; splitting
 build-deps from runtime-deps would risk the source-build path for marginal size
 savings. Left as-is by design.
 
+### The LLVM triple and the compiler-rt directory
+
+LLVM creates `lib/clang/<v>/lib/<triple>/` from the triple it was **configured**
+with (`LLVM_DEFAULT_TARGET_TRIPLE`), while the clang **driver** searches that
+path under the triple it normalizes the target to. The two spellings must be the
+same string or the runtimes are installed where nothing looks for them.
+
+The symptom is specific and easy to misread. A plain compile and link succeed,
+because they need no compiler-rt; anything that does — `-fprofile-instr-generate
+-fcoverage-mapping`, `-fsanitize=address` — fails at link with
+
+```
+ld.bfd: cannot find /usr/local/llvm-target/lib/clang/23/lib/x86_64-unknown-linux-gnu/libclang_rt.profile.a
+```
+
+while the file is really at `.../lib/x86_64-linux-gnu/`, and
+`clang -print-runtime-dir` reports `(runtime dir is not present)`. gcc jobs in
+the same lane pass, which is the corroboration: only clang needs compiler-rt.
+
+`llvm_cross_clang_triple` in `02-toolchain/llvm-cross.sh` derives the LLVM
+spelling from the Debian multiarch one by inserting the vendor field
+(`x86_64-linux-gnu` → `x86_64-unknown-linux-gnu`). It is derived rather than
+listed because it *was* a per-arch `case` list, and that list normalized arm64
+and riscv64 and never mentioned amd64 — so x86_64 alone was configured with the
+Debian spelling and shipped a clang whose runtime directory the driver could not
+find. A list can miss an arch; a derivation cannot. A string that is not a
+Debian multiarch triplet is refused, because falling through to the input is
+exactly what produced the wrong value. `test-llvm-cross-stanza.sh` pins all
+three arches by name.
+
 ### Advertised version keys (`advert-keys`)
 
 `linux/scripts/verify_advertised_keys.py` globs `linux/Dockerfile.*` for every

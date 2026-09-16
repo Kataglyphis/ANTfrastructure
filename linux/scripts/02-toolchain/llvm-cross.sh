@@ -263,6 +263,23 @@ _llvm_cross_resolve_configure_toolchain() {
   _llvm_cross_resolve_tool _rt strip   STRIP   strip   "${triplet}" "${native_ok}"
 }
 
+# The LLVM triple for a Debian multiarch one. LLVM creates the per-target
+# compiler-rt directory from the string it was CONFIGURED with, and the clang
+# driver looks it up under the triple it NORMALIZES to; the two must agree or
+# every compiler-rt link fails on a compiler that compiles fine. Deriving the
+# vendor field cannot miss an arch, which a per-arch list demonstrably could,
+# and a string that is not a Debian multiarch triplet is refused rather than
+# passed through -- the silent fall-through is how amd64 shipped wrong.
+# docs/cross-build-verification.md#the-llvm-triple-and-the-compiler-rt-directory
+llvm_cross_clang_triple() {
+  local deb="$1"
+  case "${deb}" in
+    *-unknown-linux-gnu) printf '%s' "${deb}" ;;
+    ?*-linux-gnu)        printf '%s' "${deb%-linux-gnu}-unknown-linux-gnu" ;;
+    *) return 1 ;;
+  esac
+}
+
 _llvm_cross_cmake_configure() {
   local -n _cfg="$1"
   local clang_triple="$2"
@@ -370,11 +387,8 @@ _llvm_cross_setup_and_build() {
     local -a linker_flag_args=()
     _llvm_cross_linker_flag_args linker_flag_args "${target_label}"
 
-    clang_triple="${triplet}"
-    case "${target_label}" in
-      arm64) clang_triple="aarch64-unknown-linux-gnu" ;;
-      riscv64) clang_triple="riscv64-unknown-linux-gnu" ;;
-    esac
+    clang_triple="$(llvm_cross_clang_triple "${triplet}")" \
+      || die "no LLVM triple for Debian multiarch triplet '${triplet}' (${target_label})"
     export PATH="${wrapper_dir}:${PATH}"
 
     # preference INVERTED: sccache first, ccache only as the fallback. See

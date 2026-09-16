@@ -42,6 +42,46 @@ t_assert_ok _llvm_cross_linker_flag_args _lf riscv64
 t_assert_eq "0" "${#_lf[@]}"
 llvm_cross_target_runtime_library_path() { printf '%s\n' "${STUB_RUNTIME_PATH:-}"; }
 
+# --- the LLVM triple ---------------------------------------------------------
+# LLVM builds the per-target compiler-rt directory from the string it is
+# CONFIGURED with; the clang driver looks it up under the triple it normalizes
+# to. A per-arch case list normalized arm64 and riscv64 and left amd64 on the
+# Debian spelling, so x86_64 alone shipped its runtimes in a directory the
+# driver never searched -- six clang jobs in a consumer died on "cannot find
+# .../libclang_rt.profile.a" while every gcc job passed. Each arch is pinned
+# BY NAME here, because the arm that went missing is the failure mode.
+source "${TESTS_DIR}/../01-core/platform.sh"
+
+t_case "every arch normalizes to the LLVM vendor spelling, amd64 included"
+t_assert_eq "x86_64-unknown-linux-gnu" "$(llvm_cross_clang_triple x86_64-linux-gnu)" \
+  "amd64 is the arm that was missing, and the only arch that shipped a clang with no runtime dir"
+t_assert_eq "aarch64-unknown-linux-gnu" "$(llvm_cross_clang_triple aarch64-linux-gnu)"
+t_assert_eq "riscv64-unknown-linux-gnu" "$(llvm_cross_clang_triple riscv64-linux-gnu)"
+t_assert_eq "i386-unknown-linux-gnu" "$(llvm_cross_clang_triple i386-linux-gnu)" \
+  "the mapping is derived, so an arch no list mentions is normalized too"
+
+t_case "the triplet platform.sh hands the build maps, for every arch it knows"
+# Walks the SAME source the build walks (llvm-cross.sh line ~44), so a new arch
+# cannot arrive on the Debian spelling the way amd64 did.
+for _a in amd64 arm64 riscv64; do
+  _deb="$(arch_deb_multiarch_triplet_for "${_a}")"
+  _llvm="$(llvm_cross_clang_triple "${_deb}")" || _llvm="REFUSED"
+  t_assert_eq "${_deb%-linux-gnu}-unknown-linux-gnu" "${_llvm}" \
+    "${_a}: ${_deb} must reach the vendor spelling the driver searches"
+done
+
+t_case "an already-normalized triple passes through unchanged"
+t_assert_eq "x86_64-unknown-linux-gnu" "$(llvm_cross_clang_triple x86_64-unknown-linux-gnu)"
+
+t_case "a string that is not a Debian multiarch triplet is REFUSED"
+# `|| _rc=$?` and not $( ...; echo $? ): llvm-cross.sh is sourced above and it
+# carries set -e, which kills the substitution subshell before the echo.
+_rc=0; llvm_cross_clang_triple nonsense >/dev/null 2>&1 || _rc=$?
+t_assert_eq "1" "${_rc}" \
+  "falling through to the input is exactly how amd64 shipped the wrong directory"
+_rc=0; llvm_cross_clang_triple -linux-gnu >/dev/null 2>&1 || _rc=$?
+t_assert_eq "1" "${_rc}" "an empty arch field is not a triplet"
+
 # --- compiler-cache launcher args -------------------------------------------
 t_case "no usable launcher -> no launcher args"
 _cl=(stale)
