@@ -7,6 +7,63 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-16 — four hub defects the family pass isolated
+
+Each was measured in a consumer and fixed here, where the code lives.
+
+**The clang runtime triple: amd64 was never normalized.** LLVM builds
+`lib/clang/<v>/lib/<triple>/` from the string it is CONFIGURED with; the driver
+searches it under the triple it NORMALIZES to. `llvm-cross.sh` had a per-arch
+case list that covered arm64 and riscv64 and never mentioned amd64, so x86_64
+alone was configured `x86_64-linux-gnu` and searched
+`x86_64-unknown-linux-gnu`. Six clang jobs in BeschleunigerBallett died on
+`cannot find .../libclang_rt.profile.a` while every gcc job passed, and
+`clang -print-runtime-dir` said `(runtime dir is not present)`. The mapping is
+DERIVED now (`llvm_cross_clang_triple`) and refuses a string that is not a
+Debian multiarch triplet, because falling through to the input is what shipped
+the wrong value. Measured after the fix:
+
+| target | deb triplet | LLVM triple |
+| --- | --- | --- |
+| amd64 | `x86_64-linux-gnu` | `x86_64-unknown-linux-gnu` |
+| arm64 | `aarch64-linux-gnu` | `aarch64-unknown-linux-gnu` |
+| riscv64 | `riscv64-linux-gnu` | `riscv64-unknown-linux-gnu` |
+
+The affected lane stays red until the image is rebuilt: `:latest-cross` moved on
+2026-09-12 and carries the defect, so this corrects the NEXT image, not today's
+runs.
+
+**The shared `.clang-format` has never parsed.** `Standard: c++23` is not a
+member of that enum (c++03 through c++20, plus `Latest` and `Auto`), so
+clang-format exits 1 on the config itself and formats nothing. Measured in the
+family image: before, `.clang-format:98:11: error: unknown enumerated scalar`
+and the file untouched; after `Standard: Latest`, exit 0 and the file rewritten.
+Every consumer carries the same line through the shared-assets manifest and none
+could fix it locally, because editing a vendored copy is what the drift gate
+exists to catch. **Consequence, not damage:** the formatter has never rewritten
+anything, so the first working run in each consumer produces a real diff —
+AccelerANTgine measured 13 of its 20 files under `Src/`. That is theirs to take.
+
+**PUB_CACHE lands inside the repo, and tree-walking gates found it.**
+`flutter_lane_prepare_env` defaults `PUB_CACHE` to `<repo>/.pub-cache` for a
+real reason, which stands. But `code_quality_find_cmake_files` shipped NO
+default excludes, so a consumer that ran the prologue and then the cmake-format
+gate graded its dependencies' `example/` CMake files — 28 in OmniAccelerANT.
+The hub creates the directory, so the hub excludes it:
+`CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES` is ADDED to whatever a consumer sets,
+never replaces it. Any OTHER tree-walking gate still needs its own row, and
+`docs/shared-script-libraries.md` now says so where the prologue is described.
+
+**`uv_run` leaked the image's virtualenv.** `uv_sync_project` clears `UV_PYTHON`
+and `VIRTUAL_ENV` for its call; `uv_run` was `uv run --active` with both still
+in scope, and uv honours `UV_PYTHON` OVER an activated venv. Measured in the
+family image as uid 1001: the old form resolves to `/opt/venv/bin/python3`, the
+image's root-owned system venv; the fixed form resolves to the run's own
+`.venv/bin/python3`. That is both reported failures — analysers dying on
+`Permission denied` under `/opt/venv`, and a per-version venv silently rebuilt
+without the extra pytest lives in. This unblocks the deletion of WebDavClient's
+two local wrappers, which carry notes saying exactly that.
+
 ## 2026-09-15 (later) — the four red lanes: one this batch caused, three it did not
 
 Separating cause from coincidence first, because the batch above is 27 commits
