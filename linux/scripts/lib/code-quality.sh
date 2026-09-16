@@ -134,15 +134,28 @@ _code_quality_name_predicate() {
   _CODE_QUALITY_NAME_PREDICATE+=(')')
 }
 
+# Directories the HUB's OWN helpers create inside a CONSUMER's tree, excluded
+# by the hub because the hub put them there. flutter_lane_prepare_env defaults
+# PUB_CACHE to <repo>/.pub-cache on purpose, so a consumer that runs the
+# prologue and then a tree-walking gate grades its DEPENDENCIES' CMake files --
+# OmniAccelerANT measured 28, fl_chart's example/linux/CMakeLists.txt among
+# them. A consumer's own list is ADDED to these, never replaced by them.
+# docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh
+CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(
+  '*/.pub-cache/*'
+)
+
 # Prints, one per line, every CMakeLists.txt / *.cmake under
-# CODE_QUALITY_CMAKE_SEARCH_ROOT that no CODE_QUALITY_CMAKE_EXCLUDE_PATHS glob
-# matches. Paths stay relative to the search root, as cmake-format wants them.
+# CODE_QUALITY_CMAKE_SEARCH_ROOT that no exclude glob matches -- the defaults
+# above plus whatever CODE_QUALITY_CMAKE_EXCLUDE_PATHS the consumer sets.
+# Paths stay relative to the search root, as cmake-format wants them.
 code_quality_find_cmake_files() {
   local root="${CODE_QUALITY_CMAKE_SEARCH_ROOT:-.}"
   local find_args=("${root}" -type f '(' -name 'CMakeLists.txt' -o -name '*.cmake' ')')
 
   local excl
-  for excl in "${CODE_QUALITY_CMAKE_EXCLUDE_PATHS[@]:-}"; do
+  for excl in "${CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES[@]}" \
+              "${CODE_QUALITY_CMAKE_EXCLUDE_PATHS[@]:-}"; do
     [[ -n "${excl}" ]] || continue
     find_args+=(-not -path "${excl}")
   done

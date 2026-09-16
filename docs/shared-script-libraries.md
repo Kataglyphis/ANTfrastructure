@@ -697,6 +697,18 @@ once, registers a git `safe.directory` for **the repo root only**, defaults
 `PUB_CACHE` to `<repo>/.pub-cache`, and prints `flutter --version` — the tag is
 unpinned, so the version is a measurement rather than a constant.
 
+Because that cache lands **inside the repository**, a consumer that also runs a
+tree-walking gate must keep it out of the walk: every dependency ships its own
+`example/` sources, and a gate that grades them fails on code the repository
+neither owns nor can format. OmniAccelerANT measured 28 such CMake files —
+`fl_chart`'s `example/linux/CMakeLists.txt` among them — after one `pub get`.
+`code_quality_find_cmake_files` therefore excludes `*/.pub-cache/*` by default
+(`CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES`, added to whatever
+`CODE_QUALITY_CMAKE_EXCLUDE_PATHS` a consumer sets, never replacing it): the hub
+created the directory, so the hub excludes it. Any OTHER tree-walking gate a
+consumer runs — clang-format, a licence sweep, a secret scan over sources — has
+to exclude it in that gate's own list.
+
 Three things it does not do, and must not gain: a `safe.directory` for the SDK
 (`setup-package-image.sh:556` registers `/opt/flutter` at `--system` level, so a
 `--global` copy is a no-op that reads like a requirement), sourcing `~/.bashrc`

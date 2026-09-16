@@ -66,4 +66,37 @@ _guard
 t_assert_eq "1" "${rc}" "zero files found must fail loud, not report green over nothing"
 t_assert_contains "${OUT}" "returned nothing" "the refusal must say the walk came back empty"
 
+# --- the walk's default exclusions -------------------------------------------
+# flutter_lane_prepare_env defaults PUB_CACHE to <repo>/.pub-cache on purpose,
+# so a consumer that runs the prologue and then this walk graded its
+# DEPENDENCIES' CMake files -- 28 of them in OmniAccelerANT, fl_chart's
+# example/linux/CMakeLists.txt among them. The hub made the directory, so the
+# hub excludes it, and a consumer's own list has to survive that.
+source "${REPO_ROOT}/linux/scripts/lib/code-quality.sh"
+_WALK="${WORK}/walk"
+mkdir -p "${_WALK}/src" "${_WALK}/.pub-cache/hosted/fl_chart/example/linux" "${_WALK}/vendor"
+: > "${_WALK}/src/CMakeLists.txt"
+: > "${_WALK}/.pub-cache/hosted/fl_chart/example/linux/CMakeLists.txt"
+: > "${_WALK}/vendor/Vendored.cmake"
+_walk() (
+  cd "${_WALK}" && CODE_QUALITY_CMAKE_SEARCH_ROOT=. code_quality_find_cmake_files | sort
+)
+
+t_case "the pub cache the hub's own prologue creates is excluded by default"
+CODE_QUALITY_CMAKE_EXCLUDE_PATHS=()
+_wout="$(_walk)"
+t_assert_contains "${_wout}" "./src/CMakeLists.txt" "the repo's own file must still be walked"
+t_assert_eq "" "$(printf '%s' "${_wout}" | grep -F '.pub-cache' || true)" \
+  "a dependency's example/ CMake is not the consumer's code to format"
+
+t_case "a consumer's own list is ADDED to the defaults, never replaces them"
+CODE_QUALITY_CMAKE_EXCLUDE_PATHS=('*/vendor/*')
+_wout="$(_walk)"
+t_assert_contains "${_wout}" "./src/CMakeLists.txt" "the repo's own file survives both lists"
+t_assert_eq "" "$(printf '%s' "${_wout}" | grep -F 'vendor' || true)" \
+  "the consumer's own glob must still apply"
+t_assert_eq "" "$(printf '%s' "${_wout}" | grep -F '.pub-cache' || true)" \
+  "setting a list must not silently drop the directories the hub itself created"
+CODE_QUALITY_CMAKE_EXCLUDE_PATHS=()
+
 t_summary
