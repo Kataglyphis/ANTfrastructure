@@ -1618,7 +1618,7 @@
   {
     "id": "python-lint.embedded-extraction-off",
     "target": "linux/scripts/lint-python.sh",
-    "find": "  if python3 linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       ${_EMB_SH[@]+\"${_EMB_SH[@]}\"} > \"${_EMB_MAP}\" 2>/dev/null; then",
+    "find": "  if ${_LINT_PY} linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       ${_EMB_SH[@]+\"${_EMB_SH[@]}\"} > \"${_EMB_MAP}\" 2>/dev/null; then",
     "replace": "  if false; then",
     "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
     "why": "the extraction call is the only thing putting heredoc Python in front of ruff; switching it off drops ~775 lines out of the gate while every suite stays green"
@@ -1690,15 +1690,15 @@
   {
     "id": "mutations.hook-callsite-isolated",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
-    "replace": "    python3 docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" || {",
+    "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "replace": "    ${_PY} docs/scripts/verify_mutations.py --in-place \"${_only[@]}\" || {",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "the hook runs on the live working tree; --in-place there mutates files a concurrent build is snapshotting"
   },
   {
     "id": "mutations.hook-runs-the-gate",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "    python3 docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
+    "find": "    ${_PY} docs/scripts/verify_mutations.py \"${_only[@]}\" || {",
     "replace": "    true || {",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "the commit decision must depend on the staged-file run of the gate, not on a stand-in"
@@ -1897,7 +1897,7 @@
   },
   {
     "id": "doc-numbers.total-re-quoted",
-    "target": "AGENTS.md",
+    "target": "docs/cross-build-verification.md",
     "find": "CI still run every entry.",
     "replace": "CI still run all 180 entries.",
     "test": "bash linux/scripts/tests/test-doc-numbers.sh",
@@ -1978,16 +1978,16 @@
   {
     "id": "pre-commit.ratchet-aborts",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {\n    echo \"pre-commit: shellcheck warning ratchet FAILED on staged files\" >&2\n    exit 1\n  }",
-    "replace": "  python3 linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || true",
+    "find": "  ${_PY} linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || {\n    echo \"pre-commit: shellcheck warning ratchet FAILED on staged files\" >&2\n    exit 1\n  }",
+    "replace": "  ${_PY} linux/scripts/verify_shellcheck_warnings.py --files ${_staged_sh} || true",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "a warning-ratchet regression must refuse the commit, not land as a frozen row later"
   },
   {
     "id": "pre-commit.doc-dupes-aborts",
     "target": "linux/host-config/git-hooks/pre-commit",
-    "find": "  python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo \"pre-commit: doc duplication FAILED\" >&2; exit 1; }",
-    "replace": "  python3 docs/scripts/verify_doc_dupes.py >/dev/null || true",
+    "find": "  ${_PY} docs/scripts/verify_doc_dupes.py >/dev/null || { echo \"pre-commit: doc duplication FAILED\" >&2; exit 1; }",
+    "replace": "  ${_PY} docs/scripts/verify_doc_dupes.py >/dev/null || true",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "a doc-duplication failure must refuse the commit"
   },
@@ -2450,16 +2450,16 @@
   {
     "id": "pre-commit.doc-span-fast-slugs",
     "target": "docs/cross-build-verification.md",
-    "find": "`_FAST_SLUGS` (`:71-74`)",
-    "replace": "`_FAST_SLUGS` (`:71-75`)",
+    "find": "`_FAST_SLUGS` (`:87-90`)",
+    "replace": "`_FAST_SLUGS` (`:87-91`)",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "the _FAST_SLUGS offset quoted in prose is re-derived from the hook, not trusted"
   },
   {
     "id": "pre-commit.doc-span-staged-shell",
     "target": "docs/cross-build-verification.md",
-    "find": "(`:85-102`, the binary resolved",
-    "replace": "(`:85-101`, the binary resolved",
+    "find": "(`:101-118`, the binary resolved",
+    "replace": "(`:101-117`, the binary resolved",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "the staged-shell block offset quoted in prose is re-derived from the hook, not trusted"
   },
@@ -3330,15 +3330,15 @@
   {
     "id": "mutations.push-stale-check-whole-manifest",
     "target": "linux/host-config/git-hooks/pre-push",
-    "find": "python3 docs/scripts/verify_mutations.py --stale-check ||",
-    "replace": "python3 docs/scripts/verify_mutations.py --stale-check --changed ||",
+    "find": "${_PY} docs/scripts/verify_mutations.py --stale-check ||",
+    "replace": "${_PY} docs/scripts/verify_mutations.py --stale-check --changed ||",
     "test": "bash linux/scripts/tests/test-prepush-hook.sh",
     "why": "scoping the staleness pass to the diff leaves every entry the push does not touch as invisible as it was before the hook existed"
   },
   {
     "id": "mutations.push-runs-the-gate",
     "target": "linux/host-config/git-hooks/pre-push",
-    "find": "python3 docs/scripts/verify_mutations.py --changed --jobs",
+    "find": "${_PY} docs/scripts/verify_mutations.py --changed --jobs",
     "replace": "true --changed --jobs",
     "test": "bash linux/scripts/tests/test-prepush-hook.sh",
     "why": "staleness alone never asks whether a test can fail; without this call the push hook proves only that the edits still apply"
