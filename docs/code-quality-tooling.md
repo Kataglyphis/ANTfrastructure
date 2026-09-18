@@ -1249,16 +1249,16 @@ and 28 entries (`gate-registry.*`).
 same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
 `docs/scripts`, `linux/llm-stack`), frozen in `code-complexity.allow` under the
 four-way contract.
-Today: `cc: 61 over 15 paths; 61 frozen` and `nesting: 1 over 5 levels; 1 frozen`
+Today: `cc: 59 over 15 paths; 59 frozen` and `nesting: 1 over 5 levels; 1 frozen`
 (EX1 widened the scan to `linux/llm-stack` on 2026-09-07 and every one of those
 rows has since left: the benchmark rows with the lab, and the last of them --
 `nas_census.py extract_xlsx_text`, the only `nesting` row EX1 added -- with the
 NAS census on 2026-09-15. `linux/llm-stack` stays in SCAN; it simply has nothing
 frozen against it now.)
-(Re-derived from the gate on 2026-09-15, which is where the 61 and the 1 come
-from; the page read 86 and 4 until then. It read 67 and 3 for a while before
-that, which is the failure this very page's rule about census figures exists to
-prevent.)
+(Re-derived from the gate on 2026-09-18, which is where the 59 and the 1 come
+from: F1's split of `bump_versions.py main` took its `cc` row off the register.
+The page read 61 until then -- one ABOVE the 60 the gate was already reporting,
+which is the drift this page's own rule about census figures exists to catch.)
 
 **Why, next to `code-size`.** Length is the cheap proxy. A 60-line function with
 a `case` inside a `while` inside two `if`s is the one that actually resists

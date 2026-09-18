@@ -118,19 +118,6 @@ this repo's cp314 pin).
   name, so a dispatch DLL adds zero static import edges. A green gate would mean
   nothing here.
 
-- **#157 — ~2.33 GB of QNN payload ships for one consumer.** `Copy-QnnRuntime` copies
-  the 35 backend DLLs (231 MB) plus seven `hexagon-v*` skel dirs (236 MB) into all FIVE
-  framework install dirs. After #154 only ORT can load them. Removing the four
-  redundant copies is a straight image-size win, but it moves the arch-gate binary count
-  (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
-
-- **#162 — versions.env full-copy couples the lanes: any Linux-only pin edit
-  re-keys the ENTIRE Windows chain (~4 h machine time, measured).** base COPYs
-  the whole 943-line file; toolchain consumes ~5 keys. Fix: base COPYs a
-  generated Windows subset behind a sync-gate (inventory failure mode = #50's
-  aftermath — helper reads like GIT_VERSION), toolchain keys become ARGs
-  (#49/#103 pattern). One-time full re-key; do it as its own closure window.
-
 - **#163 — `-ConcurrentAux` has never been used: ~24 min idle-capacity per full
   amd64 chain.** 43 manifests, zero concurrent runs; litert 3535 s + tvm
   1425 s always sequential; the 19 GB half-budget path works and no longer
@@ -263,6 +250,12 @@ this repo's cp314 pin).
 
 ## STANDING DIRECTIVES (survive their archived entries — do not re-litigate)
 
+- **#157 and #162 are DECLINED by the owner (2026-09-18).** The QNN payload keeps
+  its five copies (`Copy-QnnRuntime` unchanged), and `versions.env` stays the
+  whole-file COPY into base — one file, no generated Windows subset and no bake
+  relocation. The ~4 h re-key a Linux-only pin edit costs is accepted. Do not
+  re-propose either without new facts (a measured cost that changes the trade-off,
+  or an upstream that ships WebNN where it matters).
 - **NEVER trim CUDA_ARCHITECTURES** (80;86;89;90 in ALL builds, incl. dev
   iterations; pinned by Pins.CanonicalValues).
 - **CUDA compiles go THROUGH sccache** — `SCCACHE_CUDA_LAUNCHER` is DEFAULT ON
@@ -389,8 +382,15 @@ this repo's cp314 pin).
   3189 symbols; mozilla/sccache#2811 merged 2026-08-19), and the nvcc/CUDA crash
   proved to be #99 collateral, gone under a healthy backend. #75's `-j` ladder is
   no longer silent either — it warns before and after (archive 2026-08-21:150).
-  (2) **STILL OPEN:** one `Test-BuildCopy.ps1 -Heavy` smoke after the
-  poisoned-chain prune.
+  (2) **RE-SCOPED 2026-09-18, run measured:** one `Test-BuildCopy.ps1 -Heavy`
+  smoke after the poisoned-chain prune. With the RDNA4 dGPU ENABLED (RX 9070 XT,
+  `Status OK`) it is red on both lanes with the known signature —
+  `ActivateLayer 0x20` on the COPY commit, `failed to kill process on cancel` on
+  the heavy RUN — which is the documented RDNA4 host behaviour, not evidence
+  about the prune. Run it inside the build window after
+  `Set-Rdna4Gpu.ps1 -Disable` (the chain's `Assert-NoActiveRdna4Gpu` preflight
+  requires that anyway); a green heavy probe with the dGPU enabled is the only
+  thing that would justify `-SkipRdna4Gate`.
   (3) **CLOSED.** The at-scale hit rate was measured twice on real media builds:
   the 2026-08-18 base ride (100.00 % CUDA/PTX/CUBIN, 207/816 hits) and the
   2026-08-19 opencv run (99.97 % overall; opencv stage ~13 → ~4.3 min).

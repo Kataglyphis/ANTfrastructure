@@ -16,27 +16,28 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **F#**=the size and
-duplication registers · **CON**=image issues reported by a consumer repo, the one
-group NOT derived from a gate in this repo.
-Everything else is archive-only: **EX** closed on 2026-09-07/09 (the extent gates
-scan `linux/llm-stack` and froze its rows), **VK/AS** closed on 2026-09-17,
-**CC/CL/CS/AB/R#/YB/DISK/APP** on 2026-09-07, **HT/GH** before them,
-**QW/TC/SMK** in the 2026-09-04 waves, and the rest long before that.
+duplication registers.
+Everything else is archive-only: **CON** closed 2026-09-17/18 (the consumer
+issues, the last one measured and aligned at Flutter 3.47.4), **EX** closed on
+2026-09-07/09 (the extent gates scan `linux/llm-stack` and froze its rows),
+**VK/AS** closed on 2026-09-17, **CC/CL/CS/AB/R#/YB/DISK/APP** on 2026-09-07,
+**HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and the rest long
+before that.
 
-Last groomed: **2026-09-17, after the F4 application window and the CON/AS1
-closures** — every closed narrative moved to
-[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md). What
-stays here is **two registers, one blocked measurement and a short owner list**.
-Every earlier grooming's warning still applies: **re-derive; do not trust a
-number here, including these.**
+Last groomed: **2026-09-18, after CON4's Windows half was measured and the
+dependency wave landed** — every closed narrative moved to
+[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md) and the
+CHANGELOG. What stays here is **two registers and a short owner list**. Every
+earlier grooming's warning still applies: **re-derive; do not trust a number
+here, including these.**
 
 ## OPEN
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **25** function rows over 80 lines
-and **60** `cc` rows over 15 (plus 1 nesting), every one carrying a verdict that says what its
+transcribe them here.** Both are fully reviewed: **24** function rows over 80 lines
+and **59** `cc` rows over 15 (plus 1 nesting), every one carrying a verdict that says what its
 number IS. Read the reasons, not the numbers — and re-derive the counts from
 `verify_code_size.py` / `verify_code_complexity.py`, never from this line.
 
@@ -68,9 +69,14 @@ future reader should not re-discover:
 a module loader whose load ORDER is load-bearing. A table plus a loop would read
 shorter and say less; the ordering is the knowledge.
 
-**One outside-the-closure row survives the sweep.** `bump_versions.py main` (160)
-is blocked on coverage, because it WRITES `versions.env` and checksums and nothing
-drives it. Every other named row is inside the build closure.
+**The last outside-the-closure row closed on 2026-09-18.** `bump_versions.py
+main` (160) is now 32: `linux/scripts/tests/test-bump-versions.sh` — 40
+assertions over fake specs, in-process — was the coverage it was blocked on,
+then the split into `_parse_args` / `_lookup` / `_sweep` / `_safe_row` /
+`_report_row` / `_write_phase` and the reporting helpers. Its
+`function-size.allow` and `code-complexity.allow` rows were deleted rather than
+re-baselined. Every named row left in the two registers is inside the build
+closure.
 
 **Two rows carry a "do not do the obvious thing" verdict.** `verify_comment_size.blocks`
 (nesting 6): the honest fix is importing `verify_code_size.scan` like every other
@@ -100,29 +106,6 @@ number growing is the gate succeeding.
 finish-args block, 797 → 851); the row carries the NOT-a-split reason and the seam
 that kept it that way. Record in
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
-
-### CON4. The Linux and Windows images resolve different Dart dependencies [M, ★★]
-
-A consumer's `pubspec.lock` flips back and forth depending on which lane ran
-last: a Linux run writes intl 0.20.3 / matcher 0.12.20, the next Windows run
-writes 0.20.2 / 0.12.19. Both are legitimate resolutions, so whoever runs last
-"wins" and the diff is pure noise in every PR that touches either lane.
-
-The likely cause is a different Dart SDK constraint between the two images.
-Find which, and align them.
-
-*Measured (Linux half):* `:latest-cross` resolves **Dart 3.13.3 / Flutter
-3.47.3**. *Owed (Windows half):* the winamd64 image was not local to this
-host, so run exactly:
-
-```
-docker.exe run --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64 \
-  pwsh -NoProfile -Command "dart --version; flutter --version"
-```
-
-and compare the two SDK constraints before aligning anything.
-
-*No consumer workaround exists* — it is absorbed as diff noise today.
 
 ### Questions only the owner can answer
 
