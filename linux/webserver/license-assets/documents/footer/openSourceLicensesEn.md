@@ -75,7 +75,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| CUDA Toolkit | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
+| CUDA Toolkit | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
@@ -149,7 +149,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| CUDA | 13.3.1 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
+| CUDA | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 

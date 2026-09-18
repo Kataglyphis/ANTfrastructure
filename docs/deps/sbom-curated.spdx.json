@@ -470,7 +470,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-CUDA-Toolkit-9221b61d",
       "name": "CUDA Toolkit",
-      "versionInfo": "13.3.1",
+      "versionInfo": "13.4.2",
       "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -834,7 +834,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-CUDA-9080d584",
       "name": "CUDA",
-      "versionInfo": "13.3.1",
+      "versionInfo": "13.4.2",
       "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

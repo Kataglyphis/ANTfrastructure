@@ -110,7 +110,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | Cross-build | Multi-arch cross toolchain (amd64, arm64, riscv64) | ✔️ |
 | Cross-build | Digest-pinned stage handoff | ✔️ |
 | Cross-build | Runtime packaging via QEMU/binfmt | ✔️ |
-| GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
+| GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
 | GPU acceleration | DirectML (Windows, vendor-agnostic — ONNX Runtime + GenAI DML EP) | ✔️ |
 | GPU acceleration | AMD MIGraphX | ✔️ |
 | GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.357.0<!-- /generated:vulkan --> | ✔️ |
@@ -120,7 +120,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | Compiler | GCC <!-- generated:gcc -->16.2.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->23.1.1<!-- /generated:llvm --> | ✔️ |
 | Language runtime | Python <!-- generated:python -->3.14.7<!-- /generated:python -->, Node.js <!-- generated:node -->26.9.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
-| Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
+| Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.357.0<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.30.0<!-- /generated:onnx --> | ✔️ |
 | Windows-on-ARM | Cross-built **artifact bundle** (`:winarm64` labels a `windows/amd64` image — never publish it as `windows/arm64`): media + inference measured at runtime parity with amd64 on 2026-08-26 (statically verified only; HEAD carries unvalidated changes since). Not included: CUDA, the TVM/IREE compilers, LiteRT-LM, the torch app. [Details](windows-cross-builds.md) | ✔️ |
 
