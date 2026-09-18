@@ -51,8 +51,8 @@ RUN --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-Te
 # ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}
 
-ARG CUDA_VERSION=13.3.1
-ARG CUDA_VERSION_MAJOR_MINOR=13.3
+ARG CUDA_VERSION=13.4.2
+ARG CUDA_VERSION_MAJOR_MINOR=13.4
 ARG CUDNN_VERSION=9.26.0.51
 # NB: ARG TENSORRT_VERSION is declared BELOW the CUDA RUN on purpose (backlog
 # #53). An ARG in scope keys every following RUN, and nothing up to and
@@ -64,7 +64,7 @@ ARG CUDNN_VERSION=9.26.0.51
 # *_SHA256 values are STALE until base rebuilds — the ARG (forwarded by
 # Build-Buildkit.ps1 from the current versions.env) always matches the version ARGs
 # above. ARG-injected env wins over machine env inside the RUN.
-ARG CUDA_INSTALLER_SHA256=d68839fcce644576f0a1c6b066e0c5bc146a62db2fcac9fc6b4e6418e7ec533f
+ARG CUDA_INSTALLER_SHA256=8ebe88f46466108838d97d1ec6f76bae0788424438bccd6514242cfa7d228088
 ARG CUDNN_ZIP_SHA256=f8610d403685c918e690de5b1ec68da0b4b1358a6be62627591362b7eb811644
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]

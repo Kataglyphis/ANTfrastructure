@@ -703,13 +703,15 @@ def spec_windows_digest(cur):
 
 def spec_cuda(cur):
     """CUDA latest from the redist index; a CHANGED version also re-downloads
-    the full Windows installer (~3.7 GB, background-tolerable) to refresh
-    CUDA_INSTALLER_SHA256 — a stale hash would fail the next GPU base build."""
+    the full Windows installer (~4 GB, background-tolerable) to refresh
+    CUDA_INSTALLER_SHA256 — a stale hash would fail the next GPU base build.
+    13.4 renamed the installer to _windows_x86_64; older versions used the
+    un-suffixed name, so this spec only handles the current shape."""
     v = nvidia_redist_latest("cuda")
     extras = {}
     if v and v != cur and WRITE_MODE:
         extras["CUDA_INSTALLER_SHA256"] = sha256_of_url(
-            f"https://developer.download.nvidia.com/compute/cuda/{v}/local_installers/cuda_{v}_windows.exe"
+            f"https://developer.download.nvidia.com/compute/cuda/{v}/local_installers/cuda_{v}_windows_x86_64.exe"
         )
     return v, extras
 

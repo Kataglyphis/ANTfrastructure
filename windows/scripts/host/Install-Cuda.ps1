@@ -37,7 +37,14 @@ $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 # Use NVIDIA's full CUDA installer (not Scoop -- Scoop's portable install strips CCCL headers).
 # The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
 Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
-$cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/cuda_$CudaVersion`_windows.exe"
+# 13.4 renamed the Windows installer to _windows_x86_64.exe; older pins keep
+# the un-suffixed name, so pick by version rather than probing the network.
+$cudaInstallerName = if ([version]$CudaVersion -ge [version]'13.4') {
+    "cuda_${CudaVersion}_windows_x86_64.exe"
+} else {
+    "cuda_${CudaVersion}_windows.exe"
+}
+$cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/$cudaInstallerName"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
 # SHA256 pin from versions.env (CUDA_INSTALLER_SHA256, baked env); empty skips.

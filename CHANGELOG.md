@@ -48,12 +48,14 @@ still open. The full per-patch verdicts are in
 [`upstream-windows-patches.md`](docs/upstream-windows-patches.md) and
 [`upstreamable-patches.md`](docs/upstreamable-patches.md), both refreshed.
 
-**Not bumped, deliberately:** CUDA 13.4.2 - the redist manifest has no toolkit
-installer entry, and the spec's `cuda_<v>_windows.exe` name no longer resolves
-(404); the spec needs the real installer name before this can move. protobuf
-36.2 - `PROTOC_VERSION` is slaved to LiteRT-LM's vendored pin (`bump:hold`).
-The `renovate` row reported a `sha512-...` value, which is a datasource artifact,
-not a version; the approval gate keeps it from being written.
+**Not bumped, deliberately:** protobuf 36.2 - `PROTOC_VERSION` is slaved to
+LiteRT-LM's vendored pin (`bump:hold`). The `renovate` row reported a
+`sha512-...` value, which is a datasource artifact, not a version; the approval
+gate keeps it from being written. **CUDA 13.4.2 landed later the same day**
+once the 404 was explained: 13.4 renamed the Windows installer to
+`cuda_<v>_windows_x86_64.exe`, `Install-Cuda.ps1` now picks the name by
+version, `spec_cuda` follows, and `CUDA_INSTALLER_SHA256` was refreshed from the
+downloaded installer.
 
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
