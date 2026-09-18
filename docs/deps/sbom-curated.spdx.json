@@ -54,7 +54,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Node.js-2c735d35",
       "name": "Node.js",
-      "versionInfo": "26.8.2",
+      "versionInfo": "26.9.0",
       "downloadLocation": "https://nodejs.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -67,7 +67,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
       "name": "uv",
-      "versionInfo": "0.12.13",
+      "versionInfo": "0.12.16",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -106,7 +106,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-LLVM-Clang-c755ff77",
       "name": "LLVM / Clang",
-      "versionInfo": "23.1.0",
+      "versionInfo": "23.1.1",
       "downloadLocation": "https://llvm.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -158,7 +158,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-53539972",
       "name": "ONNX Runtime",
-      "versionInfo": "v1.29.0",
+      "versionInfo": "v1.30.0",
       "downloadLocation": "https://github.com/microsoft/onnxruntime",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -249,7 +249,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-d47a4e0a",
       "name": "FFmpeg",
-      "versionInfo": "n9.0",
+      "versionInfo": "n9.0.1",
       "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -257,7 +257,7 @@
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.1 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-codec-libraries-x264-x265-libvpx-aom-dav-f869ef9c",
@@ -301,7 +301,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Arm-Compute-Library-arm64-58a2fa34",
       "name": "Arm Compute Library (arm64)",
-      "versionInfo": "v53.2.0",
+      "versionInfo": "v53.3.0",
       "downloadLocation": "https://github.com/ARM-software/ComputeLibrary",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -548,7 +548,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TorchVision-f7194265",
       "name": "TorchVision",
-      "versionInfo": "v0.28.0",
+      "versionInfo": "v0.29.0",
       "downloadLocation": "https://github.com/pytorch/vision",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -561,7 +561,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.3",
+      "versionInfo": "3.47.4",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -587,7 +587,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.34.0",
+      "versionInfo": "0.34.2",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -821,7 +821,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.3",
+      "versionInfo": "3.47.4",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -899,7 +899,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb",
       "name": "ONNX Runtime",
-      "versionInfo": "v1.29.0",
+      "versionInfo": "v1.30.0",
       "downloadLocation": "https://github.com/microsoft/onnxruntime",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -938,7 +938,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-FFmpeg-d6e7671b",
       "name": "FFmpeg",
-      "versionInfo": "n9.0",
+      "versionInfo": "n9.0.1",
       "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -946,7 +946,7 @@
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Media Layer",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 | Patched in this repository: windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch | MODIFIED before redistribution: The Windows build patches configure to allow MSYS2 builds."
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.1 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 | Patched in this repository: windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch | MODIFIED before redistribution: The Windows build patches configure to allow MSYS2 builds."
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-TensorFlow-Lite-a0c4d270",
@@ -964,7 +964,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-LM-52b13bdc",
       "name": "LiteRT-LM",
-      "versionInfo": "0.17.0",
+      "versionInfo": "0.17.1",
       "downloadLocation": "https://github.com/google-ai-edge/LiteRT-LM",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1001,8 +1001,8 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-scc-c8e9215b",
-      "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-NAS-0ab2edca",
+      "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
       "versionInfo": "latest (scoop)",
       "downloadLocation": "https://scoop.sh/",
       "filesAnalyzed": false,
@@ -1016,7 +1016,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-sccache-Windows-lane-16ab13cf",
       "name": "sccache (Windows lane)",
-      "versionInfo": "8ab39266246b26d736bee44dfa313ab0d5fceb1d",
+      "versionInfo": "0.18.0",
       "downloadLocation": "https://github.com/mozilla/sccache",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1024,7 +1024,7 @@
       "licenseConcluded": "Apache-2.0",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Build Tooling (build-time only)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file | MODIFIED before redistribution: Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-vcpkg-61e4fb57",
@@ -1146,7 +1146,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
       "name": "uv",
-      "versionInfo": "0.12.13",
+      "versionInfo": "0.12.16",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1718,7 +1718,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-scc-c8e9215b"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-NAS-0ab2edca"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

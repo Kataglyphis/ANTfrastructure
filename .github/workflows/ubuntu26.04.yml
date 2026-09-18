@@ -42,7 +42,7 @@ jobs:
       # install that rather than a second, unpinned ruff: lint-python.sh pins the
       # version itself (RUFF_PIN) and uvx honours it.
       - name: Install uv (provides uvx for the python-lint gate)
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v8.3.2
       # The mutation gate's 164 pytest baselines ran `python3 -m pytest` on a
       # runner image that ships pip but no pytest, so every one exited 1 before
       # collecting a test and 206 manifest entries sat permanently "vacuous"

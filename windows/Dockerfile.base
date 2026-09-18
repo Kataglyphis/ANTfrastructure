@@ -124,12 +124,12 @@ RUN & 'C:\temp\scripts\Install-Vs.ps1' -TempDir $env:TEMP_DIR
 # consumers).
 ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.3
-ARG LLVM_WINDOWS_VERSION=23.1.0
+ARG LLVM_WINDOWS_VERSION=23.1.1
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
-# sccache joined the pinned set 2026-08-08 -- for a FEATURE gate, not output
-# determinism: multi-tier caching needs >= v0.16.0 and degrades silently below.
-ARG SCCACHE_WINDOWS_VERSION=0.17.0
+# sccache is pinned for a FEATURE gate, not output determinism (>= v0.16.0 or
+# the multilevel chain is ignored silently) — docs/windows-build-resources.md § sccache.
+ARG SCCACHE_WINDOWS_VERSION=0.18.0
 # #50: these used to arrive via the baked versions.env Machine env; as ARGs
 # (auto-env during this stage's RUNs, names match the script reads) a Linux
 # key edit no longer re-pays this layer. Defaults mirror versions.env; the
@@ -140,7 +140,7 @@ ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278164108f2512
 ARG WIX_VERSION=4.0.6
 ARG WIX_UI_EXT_VERSION=4.0.6
-ARG FLUTTER_VERSION=3.47.3
+ARG FLUTTER_VERSION=3.47.4
 # LAN preseed source for the 275 MB vulkan SDK exe: sdk.lunarg.com stalls out
 # reproducibly from inside containers (2026-08-19, 3x ~20-min deaths), so the
 # driver stages the exe on the webdav and setup-scoop-tools pulls it into
@@ -158,7 +158,7 @@ ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-ScoopTools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
-    -SccacheVersion $env:SCCACHE_WINDOWS_VERSION -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
+    -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 
 # #50: VCPKG_REF as ARG for the same reason (was baked env).
 ARG VCPKG_REF=2026.07.29
@@ -199,14 +199,10 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # FIRST so edits to the cheap assertion/config scripts below never re-pay it
 # (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
 # assertion list cost a full rust reinstall).
-# #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
-ARG SCCACHE_GIT_REV=8ab39266246b26d736bee44dfa313ab0d5fceb1d
+# sccache: the released 0.18.0 zip replaces the retired source build (#2722 +
+# #2811 + #2816 ship in it); installed into CARGO_BIN. docs/windows-build-resources.md § sccache.
+ARG SCCACHE_WINDOWS_ZIP_SHA256=8965c74d5e8a225244f741e18ad2f3f504f48228dc1bac948fc22761a348363d
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
-# Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
-# source build. Deliberately in the SAME layer group as the rust install - a
-# patch change must re-pay this layer, because it produces a different
-# sccache built from source at SCCACHE_GIT_REV (both upstream PRs #2811 + #2816
-# merged; no local patches needed since 2026-08-28).
 RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'
 
 # versions.env bake, relocated BELOW the expensive layers (#50): a Linux-key

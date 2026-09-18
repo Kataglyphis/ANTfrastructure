@@ -423,7 +423,7 @@ int _isatty(int);
             # only (fallback; the toolchain stage normally stages the lib already).
             $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($rtHostLib.Count -gt 0) {
-                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
+                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
                 $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
                 try {
                     log "Fetching aarch64 compiler-rt (LLVM $rtVer) - the patched toolchain ships x86_64 builtins only"
@@ -637,7 +637,7 @@ int _isatty(int);
         # Same env-name order as Build-OnnxFromSource.ps1: reading only ONNX_VERSION
         # wrote a 1.28.0 .pc against a 1.29.0 install in standalone runs, and passed
         # the >= 1.16.1 constraint silently.
-        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.29.0' -StripVPrefix
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
         # ORT's headers sit at include\ AND include\onnxruntime\core\session on some
         # layouts; both are handed over so the plugin's #include resolves either way.
         $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),

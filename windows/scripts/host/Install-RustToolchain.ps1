@@ -243,78 +243,41 @@ Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Comm
     flutter_rust_bridge_codegen --version
 }
 
-#endregion
-#region 3. sccache from source (split candidate, #146 note)
 # #146 accepted risk (2026-08-21): after the local-mirror URL rewrite the
 # channel manifest SHA is REGENERATED from the rewritten bytes — manifest
 # authenticity is self-asserted; per-component tarball hashes inside it
 # survive untouched, which is the integrity that matters for the payload.
-# ── sccache FROM SOURCE, overwriting the scoop baseline on PATH ───────────────
-# Released sccache cannot wrap nvcc on CUDA 13.3: it decomposes nvcc by parsing
-# `nvcc --dryrun`, and 13.3.33 moved `--simt-only` AFTER the input file, so the
-# positional parser took the flag as the input, mis-grouped the cicc/ptxas
-# device steps, and the per-arch .cubin files were never produced. The build
-# dies at the combine step with
-#   fatbinary fatal : Could not open input file '<tu>.compute_80.cubin'
-# (measured here 2026-08-08 on ONNX's CUDA provider). Upstream fix:
-# mozilla/sccache#2722, merged 2026-08-04 — five days AFTER v0.17.0 shipped, so
-# no release carries it yet. SCCACHE_GIT_REV pins that merge commit.
-#
-# This is what makes CMAKE_CUDA_COMPILER_LAUNCHER usable, i.e. what lets ~1h of
-# CUDA/TensorRT kernel compiles be cached instead of re-paid every run.
-#
-# Lands in CARGO_BIN, which sits BEFORE the scoop shims in Dockerfile.base's
-# PATH, so this binary wins. The scoop install stays as the version-pinned
-# baseline; Test-Toolchain.ps1 asserts that the CARGO_BIN one is what
-# resolves, because `sccache --version` CANNOT tell them apart (main still
-# reports 0.17.0).
-#
-# Default features are `all`, which includes `webdav` — the L2 backend must not
-# quietly disappear from a source build.
-$sccacheRev = [string]$env:SCCACHE_GIT_REV
-if ([string]::IsNullOrWhiteSpace($sccacheRev)) {
-    throw 'SCCACHE_GIT_REV is not set (versions.env not loaded?) — refusing to build an unpinned sccache.'
+#endregion
+#region 3. sccache from the released zip (source build retired 2026-09-18)
+# ── sccache 0.18.0 from the OFFICIAL RELEASED ZIP ─────────────────────────────
+# 0.18.0 carries #2722/#2811/#2816; history + CUDA canary bar:
+# docs/windows-build-resources.md § Persistent compile cache (sccache).
+# Lands in CARGO_BIN, which precedes the scoop shims in Dockerfile.base's PATH.
+$sccacheVersion = [string]$env:SCCACHE_WINDOWS_VERSION
+if ([string]::IsNullOrWhiteSpace($sccacheVersion)) {
+    throw 'SCCACHE_WINDOWS_VERSION is not set (versions.env not loaded?) — refusing an unpinned sccache.'
 }
-Write-Host "Building sccache from source at $sccacheRev (both PRs #2811 + #2816 merged upstream; no local patches since 2026-08-28)..."
-# Local patch machinery (#114) auto-retired: the patch dir is no longer COPY'd
-# into the image. If patches are somehow present (manual mount), they are
-# applied on top of the pin before the build; otherwise the stock
-# `cargo install --git --rev` path is taken.
-$sccachePatches = @(Get-ChildItem 'C:\temp\scripts\sccache-patches\*.patch' -ErrorAction SilentlyContinue | Sort-Object Name)
-if ($sccachePatches.Count -eq 0) {
-    Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache' `
-        -FilePath (Join-Path $cargoBin 'cargo.exe') `
-        -ArgumentList @('install', 'sccache', '--locked', '--git', 'https://github.com/mozilla/sccache', '--rev', $sccacheRev) `
-        -TimeoutSec 3600
-} else {
-    Write-Host "Applying $($sccachePatches.Count) local sccache patch(es) on top of $sccacheRev (#114):"
-    $sccacheSrc = 'C:\temp\sccache-src'
-    & git init -q $sccacheSrc
-    Push-Location $sccacheSrc
-    try {
-        & git remote add origin https://github.com/mozilla/sccache
-        & git fetch -q --depth 1 origin $sccacheRev
-        if ($LASTEXITCODE -ne 0) { throw "sccache fetch failed ($LASTEXITCODE)" }
-        & git checkout -q FETCH_HEAD
-        foreach ($p in $sccachePatches) {
-            & git apply --check $p.FullName
-            if ($LASTEXITCODE -ne 0) {
-                throw ("sccache patch $($p.Name) does not apply on $sccacheRev. Either the pin moved (rebase the " +
-                    'patch in windows/upstream/sccache-nvcc-quote-fix) or the fix merged upstream (then bump ' +
-                    'SCCACHE_GIT_REV past the merge and DELETE the .patch - the stock path takes over). ' +
-                    'Refusing a silent fallback: an unpatched sccache reintroduces the CUDA miscompile.')
-            }
-            & git apply $p.FullName
-            Write-Host "  applied: $($p.Name)"
-        }
-    } finally { Pop-Location }
-    Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache (patched source)' `
-        -FilePath (Join-Path $cargoBin 'cargo.exe') `
-        -ArgumentList @('install', 'sccache', '--locked', '--path', $sccacheSrc) `
-        -TimeoutSec 3600
-    Remove-Item $sccacheSrc -Recurse -Force -ErrorAction SilentlyContinue
+$sccacheSha = [string]$env:SCCACHE_WINDOWS_ZIP_SHA256
+if ([string]::IsNullOrWhiteSpace($sccacheSha)) {
+    throw 'SCCACHE_WINDOWS_ZIP_SHA256 is not set (versions.env not loaded?) — refusing an unverified sccache download.'
 }
-Invoke-NativeRustStep -Description 'sccache --version (cargo build)' -Command {
+$sccacheZip = Join-Path $env:TEMP "sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
+$sccacheUrl = "https://github.com/mozilla/sccache/releases/download/v$sccacheVersion/sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
+Write-Host "Installing released sccache v$sccacheVersion into $cargoBin (SHA256-verified)..."
+Invoke-DownloadWithRetry -Url $sccacheUrl -DestinationPath $sccacheZip `
+    -Description "sccache v$sccacheVersion zip" -ExpectSignature PK -ExpectedSha256 $sccacheSha
+$sccacheExtract = Join-Path $env:TEMP "sccache-v$sccacheVersion-extract"
+try {
+    Expand-Archive -Path $sccacheZip -DestinationPath $sccacheExtract -Force
+    # Search for the exe, never assume the archive's top-level directory name.
+    $sccacheExe = @(Get-ChildItem -Path $sccacheExtract -Recurse -Filter 'sccache.exe' -File | Select-Object -First 1)
+    if ($sccacheExe.Count -eq 0) { throw "sccache.exe not found inside $sccacheZip — the release asset layout changed." }
+    Copy-Item -Path $sccacheExe[0].FullName -Destination (Join-Path $cargoBin 'sccache.exe') -Force
+} finally {
+    Remove-Item $sccacheZip -Force -ErrorAction SilentlyContinue
+    Remove-Item $sccacheExtract -Recurse -Force -ErrorAction SilentlyContinue
+}
+Invoke-NativeRustStep -Description 'sccache --version (released zip)' -Command {
     & (Join-Path $cargoBin 'sccache.exe') --version
 }
 

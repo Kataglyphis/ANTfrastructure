@@ -40,7 +40,7 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
-$LlvmVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
+$LlvmVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
 Write-Host "=== clang/LLVM $LlvmVersion source build (AArch64 instruction-size fixes) ==="
 
 # WU spool writes land in the layer and kill its finalize; no-op outside a container (#158).

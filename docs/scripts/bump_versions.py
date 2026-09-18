@@ -830,7 +830,6 @@ MANUAL = [
     # F7 (2026-08-18): deliberate pins + non-versions
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
     "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (24.08), not a package version
-    "SCCACHE_GIT_REV",             # git SHA rides the sccache quote-fix PR state
     # Renovate detects the annotated keys; these have no feed at all and stay
     # operator-managed (per-arch truth overrides, a version embedded in a patch,
     # the documented SQLITE3_WASM tag-shape exception).
@@ -841,6 +840,9 @@ MANUAL = [
     # F7: Windows-lane pins — bump via the WINDOWS backlog, not this tool
     "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
     "NINJA_WINDOWS_VERSION", "SCCACHE_WINDOWS_VERSION",
+    # The released-zip checksum (SCCACHE_WINDOWS_VERSION's pair): refreshed by
+    # hand off the release asset, which is why it is registered here.
+    "SCCACHE_WINDOWS_ZIP_SHA256",
 ]
 
 

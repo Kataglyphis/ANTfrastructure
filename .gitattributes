@@ -53,10 +53,6 @@ gcovr.cfg text eol=lf
 # overridden. If one is ever added, re-check that ordering.)
 windows/scripts/** -text
 windows/downloads/** -text
-# Was COPY-reachable 2026-08-18..28 (Dockerfile.base COPY'd the sccache patches
-# into the rust layer, #114); both PRs merged upstream and the COPY is retired.
-# Rule kept for when the patch worktree returns.
-windows/upstream/sccache-nvcc-quote-fix/** -text
 
 # Extensionless bash entry points outside the image trees: the versioned git
 # hooks and the nextcloud custom-bin shims. Without a rule a core.autocrlf=true

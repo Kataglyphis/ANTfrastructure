@@ -253,11 +253,10 @@ cache key -- stays there; the tiers, the numbers and the two incidents are here.
      descendant, so the ENV is repeated — **change BOTH or neither**). Restore
      `disk,webdav` only after re-verifying against a newer buildkit.
      **`SCCACHE_DIR` alone does nothing** without the chain variable.
-   - **sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`** — load-bearing, not a
-     preference. Both upstream PRs (#2811 + #2816) merged; the pin is at `8ab39266`
-     (main HEAD, no local patches needed since 2026-08-28). **Never bump that pin
-     without verifying `cargo install --locked --git --rev` resolves** (check
-     `Cargo.lock` exists at the new rev).
+   - **sccache is the released 0.18.0 zip, installed into `CARGO_BIN`** (since
+     2026-09-18; the `SCCACHE_GIT_REV` source build is retired). 0.18.0 carries
+     #2722 + #2811 + #2816 — everything the pin carried. History and the CUDA
+     canary bar: § Persistent compile cache (sccache).
    - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18.** Never
      flip that default off silently, and never export the launcher onto a new
      sccache without all THREE canaries — the miscompile it once caused is
@@ -309,17 +308,47 @@ when the remote backend is configured). FFmpeg (MSVC/make) remains uncached.
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
-**Why sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`, not installed from
-scoop (decision history moved here 2026-08-24; it previously lived only in
-AGENTS.md and a closed backlog archive):** released sccache cannot wrap nvcc
-on CUDA 13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved
-`--simt-only` after the input file, and the build DIES with `fatbinary fatal:
-Could not open input file '<tu>.compute_80.cubin'` (mozilla/sccache#2722,
-merged 2026-08-04, five days AFTER v0.17.0 shipped). `Test-Toolchain.ps1`
-asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell the
-fixed and broken builds apart — main still reports 0.17.0. Never bump
-`SCCACHE_GIT_REV` without checking the local patch series still applies (the
-base rust layer THROWS if not).
+**sccache is the OFFICIAL RELEASED 0.18.0 zip since 2026-09-18 — the source
+build at `SCCACHE_GIT_REV` is retired.** `Install-RustToolchain.ps1` downloads
+`sccache-v0.18.0-x86_64-pc-windows-msvc.zip`, verifies it against
+`SCCACHE_WINDOWS_ZIP_SHA256`, and installs `sccache.exe` into `CARGO_BIN`,
+which precedes the scoop shims on PATH. `Test-Toolchain.ps1` asserts the
+version, which works now because 0.18.0 reports 0.18.0 — unlike
+main-at-git-rev, which still said 0.17.0 and forced a path-based assert.
+
+Why the source build existed, and what would bring a bare-nvcc exception back:
+
+- **CUDA 13.3's `--simt-only` dryrun mis-parse.** Released sccache decomposes
+  nvcc by parsing `nvcc --dryrun`; 13.3.33 emits `--simt-only` AFTER the input
+  file, so the positional parser took the flag as the input, mis-grouped the
+  cicc/ptxas device steps, and the per-arch `.cubin` files were never produced.
+  The build died at the combine step with
+  `fatbinary fatal : Could not open input file '<tu>.compute_80.cubin'`
+  (measured here 2026-08-08 on ONNX's CUDA provider). Fixed by
+  mozilla/sccache#2722, merged 2026-08-04 — five days AFTER v0.17.0 shipped.
+- **#2811 (dryrun quote collapse).** `\"` escapes flattened before tokenization
+  packed ~30 `-D` pairs into one 493-char token, so the cpp4 preprocess lost
+  `USE_CUDA` & friends; that was the 2026-08-10 miscompile (dropped
+  instantiations, `lld-link: undefined symbol`). Merged 2026-08-19.
+- **#2816 (`--diag-suppress` separated form).** The OpenCV #115 blocker; merged
+  2026-08-26.
+- All three ship in **0.18.0 (released 2026-09-14)**, which is why the git-rev
+  pin, the `windows/upstream/sccache-nvcc-quote-fix/` series and the
+  `cargo install --git --rev` path are gone.
+- **The cuda_llm scope (patch 006).** While the fix was in flight, ONNX's
+  `onnxruntime_providers_cuda_llm` target was scoped to BARE nvcc, because
+  sccache's server died deterministically on the cutlass-generated fused_moe
+  GEMM launchers (~4910 s in, clients got `os error 10054`; #2808). Patch 006
+  was retired 2026-08-18 with the #114 series: fused_moe compiles through the
+  launcher and links green. If undefined fused_moe/QkvToContext symbols return,
+  check the series still applies before resurrecting a bare-nvcc exception.
+- **The canary bar.** Never point `CMAKE_CUDA_COMPILER_LAUNCHER` at a new
+  sccache on the strength of a green compile: the miscompile class is invisible
+  until the DLL link. A candidate must pass
+  `windows/scripts/diagnostics/Test-CudaCache.ps1` (its in-container payload
+  `verify-cuda-cache/Test-Cache.ps1` compiles the same `.cu` twice and asserts
+  a cache hit AND a backend write) plus an ONNX canary through the fused_moe
+  launchers before cuda_llm is re-wrapped.
 
 **The CUDA launcher (`CMAKE_CUDA_COMPILER_LAUNCHER`) is ON BY DEFAULT since
 2026-08-18** (`SCCACHE_CUDA_LAUNCHER="1"` in the media-core-built-onnx stage),
@@ -330,8 +359,8 @@ after a decision history worth keeping:
   escapes flattened before tokenization packed ~30 `-D` pairs into one
   493-char token, so the cpp4 preprocess lost `USE_CUDA` & friends. Fixed
   upstream (mozilla/sccache#2811, MERGED 2026-08-19). The `--diag-suppress`
-  separated form (mozilla/sccache#2816) also merged upstream 2026-08-26; the
-  pin is at `8ab39266` (main HEAD) and the local patch dir is retired.
+  separated form (mozilla/sccache#2816) also merged upstream 2026-08-26; both
+  ship in the released 0.18.0 the lane now installs.
 - The three-canary bar passed on the evening of 2026-08-18: fused_moe compile
   green, providers_cuda link green COLD (153 CUDA device writes), link green
   on the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —

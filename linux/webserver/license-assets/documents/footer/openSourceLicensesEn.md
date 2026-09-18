@@ -18,8 +18,8 @@ its own license terms.
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.8.2 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.13 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| Node.js | 26.9.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| uv | 0.12.16 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -27,7 +27,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GCC (host + cross) | 16.2.0 | [gcc.gnu.org](https://gcc.gnu.org/) | GPLv3+ with GCC Runtime Library Exception |
-| LLVM / Clang | 23.1.0 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
+| LLVM / Clang | 23.1.1 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
 | Python | 3.14.7 | [python.org](https://python.org/) | PSF License |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 
@@ -41,18 +41,18 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| ONNX Runtime | v1.29.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | librice / rice-proto (webrtcbin2) | v0.4.3 | [github.com/ystreet/librice](https://github.com/ystreet/librice) | Apache 2.0 |
-| FFmpeg | n9.0 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| FFmpeg | n9.0.1 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) | Ubuntu apt | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) | GPL / LGPL / various |
 | VVdeC (VVC/H.266 decoder) | v3.2.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
-| Arm Compute Library (arm64) | v53.2.0 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
+| Arm Compute Library (arm64) | v53.3.0 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20260817.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
@@ -91,8 +91,8 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.3 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| TorchVision | v0.29.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
@@ -104,7 +104,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.34.0 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.34.2 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -143,7 +143,7 @@ its own license terms.
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.3 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
@@ -159,12 +159,12 @@ its own license terms.
 | --- | --- | --- | --- |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
-| ONNX Runtime | v1.29.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
-| FFmpeg | n9.0 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| FFmpeg | n9.0.1 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
-| LiteRT-LM | 0.17.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
+| LiteRT-LM | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 
 ### Build Tooling (build-time only)
@@ -172,8 +172,8 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
-| Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
-| sccache (Windows lane) | 8ab39266246b26d736bee44dfa313ab0d5fceb1d | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
+| Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
+| sccache (Windows lane) | 0.18.0 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
 | vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
 
@@ -196,7 +196,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.13 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.16 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)
@@ -286,7 +286,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-3.0-or-later
 - **Source:** <https://git.ffmpeg.org/ffmpeg.git>
-- **Revision:** n9.0
+- **Revision:** n9.0.1
 - **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
 - Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.
 
@@ -368,17 +368,17 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-3.0-or-later
 - **Source:** <https://git.ffmpeg.org/ffmpeg.git>
-- **Revision:** n9.0
+- **Revision:** n9.0.1
 - **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
 - **Patches applied:** `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`
 - Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.
 
-### Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) — Windows Image
+### Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) — Windows Image
 
 - **Licence:** LicenseRef-Distro-Bundle
 - **Source:** <https://scoop.sh/>
 - **Revision:** —
-- Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source.
+- Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is installed from the official release zip.
 
 ### Ubuntu — Documentation Image
 
@@ -442,7 +442,6 @@ This project patches the following upstreams before redistributing them. Both th
 
 - **GStreamer — Windows Image** — The Windows build patches a GES symbol rename. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
 - **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
-- **sccache (Windows lane) — Windows Image** — Built from source at the pinned git rev with a local patch series, NOT installed from a package manager. Patches: `windows/upstream/sccache-nvcc-quote-fix/`.
 
 Each patch is in this repository at the path shown, and travels with the corresponding source above.
 

@@ -505,7 +505,8 @@ if ($Stages -contains 'base') {
         WIX_UI_EXT_VERSION           = Get-Ver 'WIX_UI_EXT_VERSION'
         FLUTTER_VERSION              = Get-Ver 'FLUTTER_VERSION'
         VCPKG_REF                    = Get-Ver 'VCPKG_REF'
-        SCCACHE_GIT_REV              = Get-Ver 'SCCACHE_GIT_REV'
+        SCCACHE_WINDOWS_VERSION      = Get-Ver 'SCCACHE_WINDOWS_VERSION'
+        SCCACHE_WINDOWS_ZIP_SHA256   = Get-Ver 'SCCACHE_WINDOWS_ZIP_SHA256'
     }
 }
 

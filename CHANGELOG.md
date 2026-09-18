@@ -7,6 +7,54 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-18 - the dependency wave, and sccache 0.18 retires its source build
+
+**Reported by Renovate (local CLI, 35 updates), applied through the two tools
+that own the writes; nothing was proven by a build.** The Windows base and the
+Linux chain must prove it in the next window.
+
+**Renovate's allowed set (12 lines):** `actions/checkout` v6.0.2,
+`docker/login-action` v4.0.0, `github/codeql-action`, `actions/upload-artifact`,
+`astral-sh/setup-uv` pins, and `SYFT_VERSION=v1.52.0` (a self-contained key its
+file-scoped packageRule clears). The other 23 reported updates are
+`dependencyDashboardApproval`-gated by design and were applied by hand, which is
+the documented ritual for them.
+
+**Safe + report tiers (`bump_versions.py --write-all`, checksums refreshed with
+each version):** uv 0.12.16, node 26.9.0, ollama 0.34.2, flutter 3.47.4,
+LiteRT-LM 0.17.1, the ubuntu base digest, syft v1.52.0.
+
+**Hand bumps (Renovate-visible, no programmatic checksum source):**
+LLVM 23.1.1 on BOTH lanes - `LLVM_RELEASE` + `LLVM_COMMIT=e7ce3600` +
+`LLVM_WINDOWS_VERSION` + the 23.1.1 source-tarball SHA + the aarch64
+compiler-rt SHA (now pinned instead of warn-unverified); onnxruntime v1.30.0;
+FFmpeg n9.0.1; openvino 2026.4.0; ComputeLibrary v53.3.0; torchvision v0.29.0;
+openh264 2.6.0; ruff 0.16.8; sccache 0.18.0 on both lanes.
+
+**The one patch this wave retires: the Windows sccache source build.** 0.18.0
+ships mozilla/sccache#2722 + #2811 + #2816 - the three fixes `SCCACHE_GIT_REV`
+was pinning - so `Install-RustToolchain.ps1` now installs the released
+`x86_64-pc-windows-msvc` zip against a new `SCCACHE_WINDOWS_ZIP_SHA256`, the
+scoop sccache install is gone, and `SCCACHE_GIT_REV` is deleted from
+`versions.env`, the base ARG, the driver, and `bump_versions.py`. **The CUDA
+canary bar stands:** `cuda_llm` stays on bare nvcc until a candidate sccache
+passes `verify-cuda-cache` + the ONNX fused_moe canary; history and the bar are
+in [`windows-build-resources.md`](docs/windows-build-resources.md).
+
+**The patch audit found nothing else to retire.** Every other local patch still
+fixes something the pinned version lacks - including on LLVM 23.1.1, which does
+NOT carry llvm#219275 (merged 2026-09-16, after the tag) and whose #219276 is
+still open. The full per-patch verdicts are in
+[`upstream-windows-patches.md`](docs/upstream-windows-patches.md) and
+[`upstreamable-patches.md`](docs/upstreamable-patches.md), both refreshed.
+
+**Not bumped, deliberately:** CUDA 13.4.2 - the redist manifest has no toolkit
+installer entry, and the spec's `cuda_<v>_windows.exe` name no longer resolves
+(404); the spec needs the real installer name before this can move. protobuf
+36.2 - `PROTOC_VERSION` is slaved to LiteRT-LM's vendored pin (`bump:hold`).
+The `renovate` row reported a `sha512-...` value, which is a datasource artifact,
+not a version; the approval gate keeps it from being written.
+
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
 **Nothing in this entry was proven by an image rebuild.** The Linux chain was not
