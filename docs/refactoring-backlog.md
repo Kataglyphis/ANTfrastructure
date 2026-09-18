@@ -24,10 +24,11 @@ issues, the last one measured and aligned at Flutter 3.47.4), **EX** closed on
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and the rest long
 before that.
 
-Last groomed: **2026-09-18, after CON4's Windows half was measured and the
-dependency wave landed** — every closed narrative moved to
+Last groomed: **2026-09-18, after CON4's Windows half was measured, the
+dependency wave landed and the two owner questions were answered** — every closed
+narrative moved to
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md) and the
-CHANGELOG. What stays here is **two registers and a short owner list**. Every
+CHANGELOG. What stays here is **two registers**. Every
 earlier grooming's warning still applies: **re-derive; do not trust a number
 here, including these.**
 
@@ -106,26 +107,6 @@ number growing is the gate succeeding.
 finish-args block, 797 → 851); the row carries the NOT-a-split reason and the seam
 that kept it that way. Record in
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
-
-### Questions only the owner can answer
-
-The two 2026-09-03 audit questions this list used to carry were answered and
-fixed on 2026-09-17: `Get-Pin` strips the surrounding quote pair (proved by the
-passing `CUDA_ARCHITECTURES` assertion over the quoted value), and
-`sync_versions.py`'s `check_script_defaults` glob now matches the renamed
-`windows/scripts/**/Build-*FromSource.ps1` scripts, with the TVM_COMMIT→TVM_REF
-exception the PinParity suite already documented.
-
-1. **`06-packaging/package_archive.sh` — does it have a consumer?** Nothing in
-   this repo invokes it and no Dockerfile copies it. `ResolvedBinary` is provably
-   dead, but `--appdata-file`, `--app-id` and `--appimage-extract-and-run` are a
-   CLI CONTRACT whose only possible callers live outside this repo: dropping the
-   flags turns a silent no-op into `Unknown argument` plus a mis-shifted operand.
-   If no external consumer exists, delete the script. Its
-   `shellcheck-warnings.allow` row stays at 4 until someone answers.
-2. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and
-   validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
-   it (login-gated).
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
 `gh auth setup-git` + HTTPS remotes, and ten of the thirteen files in
