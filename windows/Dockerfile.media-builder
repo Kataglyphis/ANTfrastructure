@@ -369,7 +369,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # thing future readers must first prove is not load-bearing.)
 # #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
 # never the ONNX stage above.
-ARG FFMPEG_VERSION=n9.0.1
+ARG FFMPEG_VERSION=n9.0.2
 ARG PYAV_VERSION=18.1.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `

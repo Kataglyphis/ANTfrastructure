@@ -19,7 +19,7 @@ its own license terms.
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.9.0 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.16 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.17 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -48,7 +48,7 @@ its own license terms.
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | librice / rice-proto (webrtcbin2) | v0.4.3 | [github.com/ystreet/librice](https://github.com/ystreet/librice) | Apache 2.0 |
-| FFmpeg | n9.0.1 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) | Ubuntu apt | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) | GPL / LGPL / various |
 | VVdeC (VVC/H.266 decoder) | v3.2.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
@@ -162,7 +162,7 @@ its own license terms.
 | ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
-| FFmpeg | n9.0.1 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
+| FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | LiteRT-LM | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
@@ -196,7 +196,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.16 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.17 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)
@@ -286,7 +286,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-3.0-or-later
 - **Source:** <https://git.ffmpeg.org/ffmpeg.git>
-- **Revision:** n9.0.1
+- **Revision:** n9.0.2
 - **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
 - Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.
 
@@ -368,7 +368,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-3.0-or-later
 - **Source:** <https://git.ffmpeg.org/ffmpeg.git>
-- **Revision:** n9.0.1
+- **Revision:** n9.0.2
 - **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
 - **Patches applied:** `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`
 - Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.

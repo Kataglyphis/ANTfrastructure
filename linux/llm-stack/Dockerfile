@@ -3,7 +3,7 @@
 # orchestrator forwarding), so the ARG defaults are load-bearing and are kept
 # synced to versions.env by sync_versions.py.
 ARG UBUNTU_VERSION=26.04
-ARG UBUNTU_DIGEST=sha256:9559ceb7c21e528e233e8dff26a0fb2682f4094cce06176eeb075d87a22b31de
+ARG UBUNTU_DIGEST=sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST} AS base
 
 # The Ollama tarball is downloaded OUTSIDE the build by scripts/download-ollama.sh
