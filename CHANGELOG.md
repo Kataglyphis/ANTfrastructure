@@ -91,6 +91,17 @@ the passing `CUDA_ARCHITECTURES` assertion over the quoted value), and
 `windows/scripts/**/Build-*FromSource.ps1` scripts with the TVM_COMMIT→TVM_REF
 exception the PinParity suite documents.
 
+**The first rebuild caught the LLVM pin — and the catch is the pin doing its
+job.** `LLVM_COMMIT` had been set to `e7ce3600`, which is the ANNOTATED TAG
+OBJECT of `llvmorg-23.1.1`, not the commit it peels to. The compiler stage's
+clone-time assertion (`llvm_assert_commit_pin` compares `git rev-parse HEAD`
+against the pin) died with `resolved to 6dfe1677…, but LLVM_COMMIT pins
+e7ce3600…`. Fixed to the peeled commit
+`6dfe1677ab8dffbc6ec13d53a1e0215d75147689` in `versions.env` and in
+`test-native-build-host.sh`, which had locked the wrong hash. The 22.1.8 and
+23.1.0 rows above it were correct peeled commits, so only the 23.1.1 row was
+mis-copied from `git ls-remote`'s first (tag-object) line.
+
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
 **Nothing in this entry was proven by an image rebuild.** The Linux chain was not
