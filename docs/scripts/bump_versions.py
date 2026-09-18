@@ -909,7 +909,7 @@ def audit_sha_pairs() -> int:
     return 0
 
 
-def main() -> int:
+def _parse_args():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report only (default)")
     ap.add_argument("--write", action="store_true", help="bump the safe set + refresh checksums")
@@ -927,106 +927,106 @@ def main() -> int:
              "allowlisted. Catches the scattered-pair hazard: a NEW version+SHA "
              "pair added OUTSIDE this script's refresh registry gets its version "
              "bumped while the far-away SHA silently freezes (backlog F6).")
-    args = ap.parse_args()
-    if args.audit_sha_pairs:
-        return audit_sha_pairs()
-    if args.write_all:
-        args.write = True
-    global WRITE_MODE
-    WRITE_MODE = args.write
+    return ap.parse_args()
 
-    env = read_env()
-    holds = read_holds()
-    only = {k.strip() for k in args.only.split(",") if k.strip()}
-    unknown = only - {k for k, _, _ in SAFE}
-    if unknown:
-        print(f"ERROR: --only keys not in the safe set: {', '.join(sorted(unknown))}", file=sys.stderr)
-        return 2
 
-    updates: dict[str, str] = {}
-    # Lookup failures must not abort the sweep (a single flaky registry would
-    # hide every other key's status) — but they must not vanish into a rc-0
-    # report either: a cron/CI caller previously read "success" while half the
-    # keys said "lookup failed". Count them; nonzero exit at the end.
-    lookup_failures = 0
-    print(f"{'KEY':32} {'CURRENT':22} {'LATEST':22} NOTE")
-    print("-" * 100)
+def _lookup(key, spec, cur):
+    """(failed, latest, extras) for one key, failure PRINTED and swallowed.
 
-    for key, spec, impact in SAFE:
-        if only and key not in only:
-            continue
-        cur = env.get(key, "")
-        try:
-            latest, extras = spec(cur)
-        except Exception as e:  # noqa: BLE001 — report and move on, never abort the sweep
-            print(f"{key:32} {cur:22} {'?':22} lookup failed: {e}")
-            lookup_failures += 1
-            continue
-        if latest == cur:
-            print(f"{key:32} {cur:22} {latest:22} up to date")
-            continue
-        if key in holds:
-            print(f"{key:32} {cur:22} {latest:22} HELD (bump:hold in versions.env)")
-            continue
+    A lookup failure must not abort the sweep (a single flaky registry would
+    hide every other key's status) — but it must not vanish into a rc-0 report
+    either: a cron/CI caller previously read "success" while half the keys said
+    "lookup failed". The caller counts these; nonzero exit at the end.
+    """
+    try:
+        latest, extras = spec(cur)
+    except Exception as e:  # noqa: BLE001 — report and move on, never abort the sweep
+        print(f"{key:32} {cur:22} {'?':22} lookup failed: {e}")
+        return True, "", {}
+    return False, latest, extras
+
+
+def _record(key, latest, extras, updates):
+    updates[key] = latest
+    updates.update(extras)
+    for ek, ev in extras.items():
+        print(f"  {ek:30} -> {ev}")
+
+
+def _safe_row(key, cur, latest, extras, impact, holds, updates, write):
+    if latest == cur:
+        print(f"{key:32} {cur:22} {latest:22} up to date")
+    elif key in holds:
+        print(f"{key:32} {cur:22} {latest:22} HELD (bump:hold in versions.env)")
+    else:
         print(f"{key:32} {cur:22} {latest:22} BUMP - rebuilds: {impact}")
-        if args.write:
-            updates[key] = latest
-            updates.update(extras)
-            for ek, ev in extras.items():
-                print(f"  {ek:30} -> {ev}")
+        if write:
+            _record(key, latest, extras, updates)
 
-    tier_label = "WRITTEN under --write-all" if args.write_all else "bump by hand, one at a time"
-    print(f"\n-- report tier ({tier_label} - patches/build entanglement) --")
-    for key, spec in REPORT:
-        if only:
+
+def _report_row(key, cur, latest, extras, env, holds, updates, write_all):
+    if not latest:
+        print(f"{key:32} {cur:22} {'?':22} lookup returned nothing")
+        return
+    if latest.lstrip("v") == cur.lstrip("v"):
+        print(f"{key:32} {cur:22} {latest:22} up to date")
+        return
+    if key in holds:
+        note = "HELD (bump:hold in versions.env)"
+        if key == "PROTOC_VERSION":
+            derived = derive_protoc_from_litert_lm(env.get("LITERT_LM_VERSION", ""))
+            if derived:
+                ok = "matches" if derived == cur else f"MISMATCH — set PROTOC_VERSION={derived}"
+                note += f"; slaved pin derived from LiteRT-LM's protobuf.cmake: {derived} ({ok})"
+        print(f"{key:32} {cur:22} {latest:22} {note}")
+        return
+    marker = "BUMP (--write-all)" if write_all else "NEWER AVAILABLE"
+    print(f"{key:32} {cur:22} {latest:22} {marker}")
+    if key == "LITERT_LM_VERSION":
+        # F4 soft rider: PROTOC_VERSION is a slaved, bump:hold'd pin — a
+        # LiteRT-LM bump without re-deriving it replays the 2026-08-03
+        # gencode-#error incident. Nudge with the NEW tag's derivation.
+        _derived = derive_protoc_from_litert_lm(latest)
+        _hint = "PROTOC_VERSION is SLAVED to this pin (bump:hold) — re-derive when bumping"
+        if _derived:
+            _hint += f"; the new tag's protobuf.cmake wants protoc {_derived}"
+        print(f"  NOTE: {_hint}")
+    if write_all:
+        # Extras (paired *_SHA256 refreshes, e.g. CUDA installer / cuDNN zip)
+        # MUST be applied together with the version — discarding them once
+        # shipped a 13.3.1 version pin with 13.3.0's installer hash, which the
+        # download gate then (correctly) refused mid-build.
+        _record(key, latest, extras, updates)
+
+
+def _sweep(entries, env, holds, only, updates, args, *, report):
+    """One tier's loop. SAFE and REPORT differ only in the row renderer and the
+    write switch (`--write` vs `--write-all`); the walk, the `--only` filter and
+    the lookup-failure count are shared. Returns that count."""
+    failures = 0
+    for entry in entries:
+        key, spec = entry[0], entry[1]
+        if only and (report or key not in only):
             continue
         cur = env.get(key, "")
-        try:
-            # NB: extras (paired *_SHA256 refreshes, e.g. CUDA installer / cuDNN
-            # zip) MUST be applied under --write-all — discarding them once
-            # shipped a 13.3.1 version pin with 13.3.0's installer hash, which
-            # the download gate then (correctly) refused mid-build.
-            latest, extras = spec(cur)
-        except Exception as e:  # noqa: BLE001
-            print(f"{key:32} {cur:22} {'?':22} lookup failed: {e}")
-            lookup_failures += 1
+        failed, latest, extras = _lookup(key, spec, cur)
+        if failed:
+            failures += 1
             continue
-        if not latest:
-            print(f"{key:32} {cur:22} {'?':22} lookup returned nothing")
-            continue
-        if latest.lstrip("v") == cur.lstrip("v"):
-            print(f"{key:32} {cur:22} {latest:22} up to date")
-            continue
-        if key in holds:
-            note = "HELD (bump:hold in versions.env)"
-            if key == "PROTOC_VERSION":
-                derived = derive_protoc_from_litert_lm(env.get("LITERT_LM_VERSION", ""))
-                if derived:
-                    ok = "matches" if derived == cur else f"MISMATCH — set PROTOC_VERSION={derived}"
-                    note += f"; slaved pin derived from LiteRT-LM's protobuf.cmake: {derived} ({ok})"
-            print(f"{key:32} {cur:22} {latest:22} {note}")
-            continue
-        marker = "BUMP (--write-all)" if args.write_all else "NEWER AVAILABLE"
-        print(f"{key:32} {cur:22} {latest:22} {marker}")
-        if key == "LITERT_LM_VERSION":
-            # F4 soft rider: PROTOC_VERSION is a slaved, bump:hold'd pin — a
-            # LiteRT-LM bump without re-deriving it replays the 2026-08-03
-            # gencode-#error incident. Nudge with the NEW tag's derivation.
-            _derived = derive_protoc_from_litert_lm(latest)
-            _hint = "PROTOC_VERSION is SLAVED to this pin (bump:hold) — re-derive when bumping"
-            if _derived:
-                _hint += f"; the new tag's protobuf.cmake wants protoc {_derived}"
-            print(f"  NOTE: {_hint}")
-        if args.write_all:
-            updates[key] = latest
-            updates.update(extras)
-            for ek, ev in extras.items():
-                print(f"  {ek:30} -> {ev}")
+        if report:
+            _report_row(key, cur, latest, extras, env, holds, updates, args.write_all)
+        else:
+            _safe_row(key, cur, latest, extras, entry[2], holds, updates, args.write)
+    return failures
 
+
+def _print_manual(env):
     print("\n-- manual (no reliable programmatic source / deliberate pins) --")
     for key in MANUAL:
         print(f"{key:32} {env.get(key, ''):22} {'-':22} check vendor release notes")
 
+
+def _print_unclassified(env):
     # Coverage self-audit: every versions.env key must be SAFE, REPORT, MANUAL,
     # or a recognized non-version key (checksums/digests are refreshed as the
     # paired extras of their version key; toggles/paths/registry aren't
@@ -1044,23 +1044,30 @@ def main() -> int:
         for k in unclassified:
             print(f"{k:32} {env.get(k, ''):22}")
 
-    if args.write:
-        if not updates:
-            print("\nNothing to write — safe set already at latest.")
-            if lookup_failures:
-                print(
-                    f"WARNING: {lookup_failures} lookup(s) failed — 'already at latest' "
-                    "is unverified for those keys.",
-                    file=sys.stderr,
-                )
-                return 1
-            return 0
-        changed = write_env_values(updates)
-        print(f"\nWrote {len(changed)} key(s) to {VERSIONS_ENV.relative_to(REPO_ROOT)}.")
-        print("Finish the ritual:")
-        print("  python docs/scripts/sync_versions.py --write")
-        print("  bash linux/scripts/01-core/verify-arg-consistency.sh")
-        print("  bash linux/scripts/preflight.sh")
+
+def _write_phase(updates, lookup_failures):
+    """Apply the write and print the ritual. Returns an exit code when the run
+    ends here (nothing to write), or None to fall through to the shared verdict."""
+    if not updates:
+        print("\nNothing to write — safe set already at latest.")
+        if lookup_failures:
+            print(
+                f"WARNING: {lookup_failures} lookup(s) failed — 'already at latest' "
+                "is unverified for those keys.",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    changed = write_env_values(updates)
+    print(f"\nWrote {len(changed)} key(s) to {VERSIONS_ENV.relative_to(REPO_ROOT)}.")
+    print("Finish the ritual:")
+    print("  python docs/scripts/sync_versions.py --write")
+    print("  bash linux/scripts/01-core/verify-arg-consistency.sh")
+    print("  bash linux/scripts/preflight.sh")
+    return None
+
+
+def _lookup_verdict(lookup_failures):
     if lookup_failures:
         print(
             f"\nWARNING: {lookup_failures} lookup(s) failed — the report above is "
@@ -1069,6 +1076,40 @@ def main() -> int:
         )
         return 1
     return 0
+
+
+def main() -> int:
+    args = _parse_args()
+    if args.audit_sha_pairs:
+        return audit_sha_pairs()
+    if args.write_all:
+        args.write = True
+    global WRITE_MODE
+    WRITE_MODE = args.write
+
+    env = read_env()
+    holds = read_holds()
+    only = {k.strip() for k in args.only.split(",") if k.strip()}
+    unknown = only - {k for k, _, _ in SAFE}
+    if unknown:
+        print(f"ERROR: --only keys not in the safe set: {', '.join(sorted(unknown))}", file=sys.stderr)
+        return 2
+
+    updates: dict[str, str] = {}
+    print(f"{'KEY':32} {'CURRENT':22} {'LATEST':22} NOTE")
+    print("-" * 100)
+    lookup_failures = _sweep(SAFE, env, holds, only, updates, args, report=False)
+    tier_label = "WRITTEN under --write-all" if args.write_all else "bump by hand, one at a time"
+    print(f"\n-- report tier ({tier_label} - patches/build entanglement) --")
+    lookup_failures += _sweep(REPORT, env, holds, only, updates, args, report=True)
+    _print_manual(env)
+    _print_unclassified(env)
+
+    if args.write:
+        rc = _write_phase(updates, lookup_failures)
+        if rc is not None:
+            return rc
+    return _lookup_verdict(lookup_failures)
 
 
 if __name__ == "__main__":

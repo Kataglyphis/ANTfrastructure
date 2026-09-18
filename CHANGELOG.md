@@ -57,6 +57,21 @@ once the 404 was explained: 13.4 renamed the Windows installer to
 version, `spec_cuda` follows, and `CUDA_INSTALLER_SHA256` was refreshed from the
 downloaded installer.
 
+CON4 is measured and closed: winamd64 was Dart 3.12.2 / Flutter 3.44.8 against
+`:latest-cross` Dart 3.13.3 / Flutter 3.47.3. Both pins are now 3.47.4, so the
+next Windows rebuild is what aligns them; the backlog entry is gone.
+
+**F1's last outside-the-closure row closed.** `docs/scripts/bump_versions.py
+main` (160 lines) is 32: `linux/scripts/tests/test-bump-versions.sh` drives the
+real `main()` in-process over fake tiers (40 assertions: the `--only` refusal,
+the lookup-failure sweep contract, `--check`/`--write`/`--write-all`, `bump:hold`,
+the UNCLASSIFIED self-audit and the offline half of `--audit-sha-pairs`), and the
+split into `_parse_args` / `_lookup` / `_sweep` / `_safe_row` / `_report_row` /
+`_write_phase` plus the reporting helpers kept rc, stdout, stderr and the
+written bytes identical to HEAD's for the same inputs (checked side by side).
+The `function-size.allow` and `code-complexity.allow` rows are deleted, and the
+`file-size.allow` row is re-trued to 1116.
+
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
 **Nothing in this entry was proven by an image rebuild.** The Linux chain was not
