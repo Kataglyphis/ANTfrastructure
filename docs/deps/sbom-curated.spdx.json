@@ -67,7 +67,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
       "name": "uv",
-      "versionInfo": "0.12.16",
+      "versionInfo": "0.12.17",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -249,7 +249,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-d47a4e0a",
       "name": "FFmpeg",
-      "versionInfo": "n9.0.1",
+      "versionInfo": "n9.0.2",
       "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -257,7 +257,7 @@
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.1 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.2 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-codec-libraries-x264-x265-libvpx-aom-dav-f869ef9c",
@@ -938,7 +938,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-FFmpeg-d6e7671b",
       "name": "FFmpeg",
-      "versionInfo": "n9.0.1",
+      "versionInfo": "n9.0.2",
       "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -946,7 +946,7 @@
       "licenseConcluded": "GPL-3.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Media Layer",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.1 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 | Patched in this repository: windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch | MODIFIED before redistribution: The Windows build patches configure to allow MSYS2 builds."
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0.2 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 | Patched in this repository: windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch | MODIFIED before redistribution: The Windows build patches configure to allow MSYS2 builds."
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-TensorFlow-Lite-a0c4d270",
@@ -1146,7 +1146,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
       "name": "uv",
-      "versionInfo": "0.12.16",
+      "versionInfo": "0.12.17",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
