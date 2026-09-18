@@ -343,7 +343,7 @@ Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # Gate on CUDA_ROOT, not just -SkipCudaTests: a CPU-only image legitimately has no nvcc/cuDNN.
 if ($script:gpuNvidia) {
     Assert-CommandExists 'nvcc'
-    $cudaMajorMinor = ((Get-ExpectedVersion 'CUDA_VERSION' '13.3') -split '\.' | Select-Object -First 2) -join '.'
+    $cudaMajorMinor = ((Get-ExpectedVersion 'CUDA_VERSION' '13.4.2') -split '\.' | Select-Object -First 2) -join '.'
     Assert-Test -Name "nvcc version is $cudaMajorMinor.x" -Condition {
         $ver = & nvcc --version 2>&1 | Out-String
         return $ver -match [regex]::Escape($cudaMajorMinor)
