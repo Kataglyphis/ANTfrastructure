@@ -1681,8 +1681,9 @@ only because nothing static can prove a chain still runs. Four are **closed on
 re-baselined 3 → 2 — each deletion landing with a suite that executes what
 survives it, not with a grep. `package_archive.sh` stays at 4 by DECISION, not
 by inertia: nothing in this repo invokes it and no stage copies it, so its three
-parsed-and-ignored flags are a CLI contract for callers outside this repo and no
-build can rule on them either. The two `SC2206` cmake-argv rows also stay, with
+parsed-and-ignored flags are a CLI contract for callers outside this repo — one
+exists (OxidANT's Ubuntu workflow runs the hub path directly, found 2026-09-18)
+— and no build can rule on them either. The two `SC2206` cmake-argv rows also stay, with
 sharper reasons: `build-clang.sh`'s two values are file literals, so quoting is
 provably a no-op, while `cross-env.sh`'s is operator-reachable, so quoting is a
 real argv change only a build can price.

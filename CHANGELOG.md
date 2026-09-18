@@ -72,6 +72,25 @@ written bytes identical to HEAD's for the same inputs (checked side by side).
 The `function-size.allow` and `code-complexity.allow` rows are deleted, and the
 `file-size.allow` row is re-trued to 1116.
 
+**The Linux backlog's two owner questions are answered; the list is now two
+registers.** `06-packaging/package_archive.sh` HAS a consumer: OxidANT's
+`.github/workflows/rust_ubuntu26_04.yml:204` runs the hub path directly, so the
+`--appdata-file`/`--app-id`/`--appimage-extract-and-run` CLI contract is live and
+the script stays — the `shellcheck-warnings.allow` row's "Needs the OWNER" is
+replaced by that evidence, and `docs/code-quality-tooling.md` names it. The QNN
+SDK pin stays at v2.49.0.260730: only a newer SDK needs a re-pin, none is staged
+and the fetch is login-gated. The consumer inventory did not catch the consumer
+because its `linux-script` class covers `linux/scripts/*.sh` only and treats the
+stage trees as reached THROUGH the top level; OxidANT proves a direct call
+exists, and the class note now says so.
+
+The two 2026-09-03 audit questions that section also carried were already
+answered on 2026-09-17 — `Get-Pin` strips the surrounding quote pair (proved by
+the passing `CUDA_ARCHITECTURES` assertion over the quoted value), and
+`sync_versions.py`'s `check_script_defaults` glob matches the renamed
+`windows/scripts/**/Build-*FromSource.ps1` scripts with the TVM_COMMIT→TVM_REF
+exception the PinParity suite documents.
+
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
 **Nothing in this entry was proven by an image rebuild.** The Linux chain was not

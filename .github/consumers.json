@@ -111,7 +111,7 @@
       "kind": "linux-script",
       "glob": "linux/scripts/*.sh",
       "needle": "path",
-      "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are reached THROUGH these and are deliberately out of scope."
+      "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are deliberately out of scope, though a consumer CAN reach one directly: OxidANT's Ubuntu workflow calls 06-packaging/package_archive.sh (found 2026-09-18), so this class under-reports those trees."
     },
     {
       "kind": "docs-gate",
