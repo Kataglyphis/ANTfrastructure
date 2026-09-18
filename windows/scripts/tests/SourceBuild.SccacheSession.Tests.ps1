@@ -6,19 +6,20 @@
 # previous run's failures as a live regression) and the failures-first dump.
 # -SccachePath is the test seam: a fake .cmd logs every invocation.
 
-Describe 'Start-SccacheServerSession' {
+# File scope: both Describes below use the same fake (WBT_SCC_LOG appender).
+$newFakeSccache = {
+    param($dir)
+    $lines = @(
+        '@echo off',
+        'echo SCCACHE %* >> "%WBT_SCC_LOG%"',
+        'exit /b 0'
+    )
+    $path = Join-Path $dir 'sccache.cmd'
+    Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
+    return $path
+}
 
-    $newFakeSccache = {
-        param($dir)
-        $lines = @(
-            '@echo off',
-            'echo SCCACHE %* >> "%WBT_SCC_LOG%"',
-            'exit /b 0'
-        )
-        $path = Join-Path $dir 'sccache.cmd'
-        Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
-        return $path
-    }
+Describe 'Start-SccacheServerSession' {
 
     It 'stops then starts the server, truncating the error log in between' {
         Invoke-InTestDir { param($dir)
@@ -63,18 +64,6 @@ Describe 'Start-SccacheServerSession' {
 }
 
 Describe 'Complete-SccacheServerSession' {
-
-    $newFakeSccache = {
-        param($dir)
-        $lines = @(
-            '@echo off',
-            'echo SCCACHE %* >> "%WBT_SCC_LOG%"',
-            'exit /b 0'
-        )
-        $path = Join-Path $dir 'sccache.cmd'
-        Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
-        return $path
-    }
 
     It 'stops the server and dumps error/warn lines failures-first' {
         Invoke-InTestDir { param($dir)

@@ -1543,7 +1543,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 482 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 483 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2690,16 +2690,18 @@ subject is a different repository, so the suite writes a two-file consumer of
 its own (a matching one that rides along in every case, and perturbed copies for
 the reds) rather than reading a sibling checkout that a CI runner does not have.
 
-**Writing that suite found a sub-check that has never checked anything.**
-`script_default_target_files()` globs `windows/scripts/build-*-from-source.ps1`.
-Those ten scripts live one directory deeper, in `windows/scripts/build/`, so the
-glob returns an EMPTY list and `check_script_defaults` prints
+**Writing that suite found a sub-check that had never checked anything.**
+`script_default_target_files()` globbed `windows/scripts/build-*-from-source.ps1`
+while the ten scripts live one directory deeper, in `windows/scripts/build/`, so
+the glob returned an EMPTY list and `check_script_defaults` printed
 `Windows build-script -DefaultValue pins match versions.env.` having scanned zero
-files. No fixture can redden it, so the suite pins the emptiness as a KNOWN GAP —
-two `find` counts, 0 here and 10 there — which goes red the day the glob is fixed.
-It was NOT fixed here on purpose: widening it makes ten PowerShell scripts gate
-subjects for the first time, and any fallout is Windows-lane work that this repo's
-standing directive keeps out of a Linux wave. It is the owner's call.
+files. The suite pinned the emptiness as a KNOWN GAP until 2026-09-17, when the
+glob was fixed to `windows/scripts/**/Build-*FromSource.ps1`; the case now
+perturbs `Build-TvmFromSource.ps1` and proves the sub-check reddens, and the
+TVM_COMMIT→TVM_REF exception (the same one-entry map the PinParity suite
+documents, #134) keeps the tag fallback from being rewritten to the commit hash.
+The ten scripts are gate subjects for the first time; the only drift they carried
+was that TVM default, which the exception resolves.
 
 **A hollow mention nearly happened while writing this.** `test-arg-consistency.sh`
 asserted on the gate's own fix hint, which spells `sync_versions.py` — and the

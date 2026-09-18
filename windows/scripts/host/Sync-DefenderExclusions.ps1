@@ -29,13 +29,22 @@ $desiredPaths = @(
 )
 $desiredProcs = @('buildkitd.exe', 'containerd.exe', 'dockerd.exe', 'nerdctl.exe', 'CExecSvc.exe', 'vmcompute.exe')
 
-Write-Host ''
-Write-Host '== BEFORE ==' -ForegroundColor Cyan
-$mp = Get-MpPreference
-Write-Host '  ExclusionPath:'
-$mp.ExclusionPath | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
-Write-Host '  ExclusionProcess:'
-$mp.ExclusionProcess | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
+# BEFORE and AFTER print the SAME two lists on purpose -- the operator diffs
+# them. One owner is what keeps them printable as a diff.
+function Show-Exclusions {
+    param([Parameter(Mandatory)][string]$Label)
+
+    Write-Host ''
+    Write-Host "== $Label ==" -ForegroundColor Cyan
+    $pref = Get-MpPreference
+    Write-Host '  ExclusionPath:'
+    $pref.ExclusionPath | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
+    Write-Host '  ExclusionProcess:'
+    $pref.ExclusionProcess | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
+    return $pref
+}
+
+$mp = Show-Exclusions 'BEFORE'
 
 Write-Host ''
 Write-Host '== Applying missing ==' -ForegroundColor Cyan
@@ -45,13 +54,7 @@ foreach ($p in $missPath) { Add-MpPreference -ExclusionPath $p; Write-Host "  ad
 foreach ($p in $missProc) { Add-MpPreference -ExclusionProcess $p; Write-Host "  added proc $p" -ForegroundColor Green }
 if ($missPath.Count -eq 0 -and $missProc.Count -eq 0) { Write-Host '  nothing missing - all exclusions already present' -ForegroundColor Green }
 
-Write-Host ''
-Write-Host '== AFTER ==' -ForegroundColor Cyan
-$mp2 = Get-MpPreference
-Write-Host '  ExclusionPath:'
-$mp2.ExclusionPath | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
-Write-Host '  ExclusionProcess:'
-$mp2.ExclusionProcess | Sort-Object | ForEach-Object { Write-Host ('    ' + $_) }
+$null = Show-Exclusions 'AFTER'
 Write-Host ''
 Write-Host 'Done. Tell the agent to re-run the probe.' -ForegroundColor Green
 Read-Host 'Press ENTER to close'

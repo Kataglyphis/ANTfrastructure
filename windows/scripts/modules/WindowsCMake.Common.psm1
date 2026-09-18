@@ -243,26 +243,12 @@ function Invoke-CmakeConfigureAndBuild {
   if ($sccachePath) {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $($sccachePath.Source)"
 
-    # Unless the caller explicitly requested disabling sccache, enable
-    # compiler/runtime wrapper environment variables so CMake/cargo will
-    # use the sccache executable for compiler invocations. Use the fully
-    # resolved sccache path to avoid PATH lookup issues in constrained
-    # environments (containers/CI).
-    # Near-duplicate of the wrapper wiring in Initialize-BuildCacheEnvironment
-    # (WindowsBuild.Common.psm1), but per-invocation and honoring
-    # -DisableSccache - merge candidate.
+    # Per-invocation sccache wiring, honoring -DisableSccache; the fully
+    # resolved path avoids PATH lookup issues in containers/CI.
     if (-not $DisableSccache) {
       $sccacheExe = $sccachePath.Source
       Write-BuildLog -Context $Context -Message "DEBUG: Enabling sccache wrappers using: $sccacheExe"
-      $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
-      $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
-      # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
-      # sccache-wrapped nvcc loses its per-arch intermediate .cubin files before
-      # `fatbinary` combines them, and ONNX builds four -gencode arches per TU.
-      # Full diagnosis in WindowsSourceBuild.Common.psm1.
-      $env:RUSTC_WRAPPER = $sccacheExe
-      $env:CC_WRAPPER = $sccacheExe
-      $env:CXX_WRAPPER = $sccacheExe
+      Enable-SccacheCompilerWrapper -SccacheExe $sccacheExe
       # SCCACHE_MAX_JOBS is already defaulted above, before the wrapper choice.
     } else {
       Write-BuildLog -Context $Context -Message "DEBUG: sccache wrappers remain disabled (DisableSccache=true)"

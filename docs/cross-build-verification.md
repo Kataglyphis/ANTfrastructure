@@ -18,7 +18,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 > equivalent of the per-arch ELF/machine check is `windows/scripts/build/Test-TargetArch.ps1`
 > (PE `Machine` field over the whole install prefix, with a minimum-inspected floor so a
 > lane that staged nothing cannot pass green), and its smoke gate runs the host-toolchain
-> sections against an arm64-specific floor column (66/25, measured green 97/0/15), reporting
+> sections against an arm64-specific floor column (69/20, measured green 97/0/15), reporting
 > only the payload-execution sections NOT APPLICABLE (since 2026-08-24 — before that the whole
 > gate was reported NOT APPLICABLE).
 
@@ -887,6 +887,31 @@ One consequence worth stating: a custom `FAST_UBUNTU_MIRROR_URL` must now carry
 the security pocket for the host arch. Ports mirrors already had to (the ports
 source has always been written with it), so this is the same requirement applied
 to both halves rather than a new one.
+
+Three AS1 neighbours closed on 2026-09-17, all latent while every cross stage
+builds on `linux/amd64`:
+
+* **The host stanza follows the BUILD arch.** `Dockerfile.media` and
+  `build_python.sh` pinned it to `amd64` regardless of the machine; a non-amd64
+  host therefore had no source for its own packages, and deb822
+  `Architectures:` replaces rather than intersects. They now use
+  `ubuntu_arch_uses_ports` like `cross-apt.sh`, so the two halves cannot answer
+  differently.
+* **An amd64/i386 cross TARGET gets an archive, not just an architecture.**
+  `cross_configure_foreign_arch_apt_sources` returned early whenever the target
+  was not a ports arch, so `dpkg --add-architecture` ran and nothing wrote a
+  source. It now writes `ubuntu-archive-<arch>.sources` for amd64/i386 and
+  `ubuntu-ports-<arch>.sources` for everything else, from the same table; the
+  prune glob covers both prefixes, and `386` is in the archive arm because that
+  is `arch_normalize`'s canonical spelling for i386.
+* **`use-fast-ubuntu-mirror.sh` rewrites `-security` by default.** With the fast
+  mirror on and the knob at `false`, the host `-security` stayed on
+  security.ubuntu.com while the target pocket came from the fast ports mirror,
+  and `cross_align_host_apt_pockets` cannot see it because it compares suite
+  names, never URIs. The default now matches `bootstrap_ca`'s (true, decided for
+  the same reason); `FAST_UBUNTU_REWRITE_SECURITY=false` stays the explicit
+  opt-out and the only way to keep the stock security host. A mirror without the
+  security pocket for the host arch fails the media stage either way.
 
 Note what did NOT catch it: the failure is invisible to every static gate (the
 sources are correct in isolation), invisible to a same-arch build, and invisible

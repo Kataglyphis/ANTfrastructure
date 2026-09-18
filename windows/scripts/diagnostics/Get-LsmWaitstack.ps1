@@ -43,20 +43,17 @@ Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSilo
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir -DefaultSubPath 'out\lsm-dumps'
 
-$baseWininit = Get-WininitProcessId
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
 Write-Host "Baseline: $($baseWininit.Count) wininit (host + existing silos). Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
-$newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
+$newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
 if (-not $newWininit) { throw 'No new silo appeared - is a build running? Start one RUN-bearing solve and retry.' }
-
-$siloServices = Get-SiloServicesProcess -WininitProcessId $newWininit.ProcessId
-if (-not $siloServices) { throw "silo wininit $($newWininit.ProcessId) has no services.exe child yet" }
 
 # The FIRST svchosts of the silo boot; one hosts DcomLaunch (and with it LSM).
 # During the hang window exactly the early ones exist - dump whatever is there.
 # Three is this probe's own appetite, not a property of the descent.
-$targets = @(Get-SiloSvchost -ServicesProcessId $siloServices.ProcessId | Select-Object -First 3)
-if (-not $targets) { throw "silo services $($siloServices.ProcessId) spawned no svchost yet" }
+$targets = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId | Select-Object -First 3)
+if (-not $targets) { throw "silo wininit $($newWininit.ProcessId) spawned no svchost yet" }
 Write-Host ("New silo detected; dumping PIDs: {0}" -f (($targets.ProcessId) -join ', '))
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'

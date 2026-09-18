@@ -217,6 +217,12 @@ ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$
 # See the identical pattern in Dockerfile.media-builder (common stage).
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
+# Floors on the target python deps gate. Declared GLOBALLY so the driver's
+# --build-arg binds, then redeclared and ENV'd in `built` (its RUN reads them):
+# declared after that RUN, they were empty and the floors were dead since landing.
+ARG DEPS_MIN_BUNDLE_WHEELS=0
+ARG DEPS_MIN_FIRST_TOUCH_REQS=0
+
 # ── BuildKit lane (direct solve, de-warmed 2026-08-06 round 2) ──────────────
 # GStreamer builds AND exports in one plain RUN. The former warm/materialize
 # pair existed for the ExportLayer-0x3 defect — root cause was the runhcs
@@ -225,6 +231,13 @@ COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 # Dockerfile.media-builder's BK header + docs/windows-builds.md § roadmap
 # "DEFECT SOLVED").
 FROM merge-fanin AS built
+# Target python deps floors: redeclared inside the stage (ARGs do not cross a
+# FROM) and ENV'd ABOVE the Copy-TargetPythonDeps RUN that reads them - a drop
+# in wheel/requirement count is a finding, not a greener gate.
+ARG DEPS_MIN_BUNDLE_WHEELS=0
+ARG DEPS_MIN_FIRST_TOUCH_REQS=0
+ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
+    DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
 # ARGs do not cross stage boundaries — redeclare for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
@@ -344,10 +357,6 @@ RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,tar
 # already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
-ARG DEPS_MIN_BUNDLE_WHEELS=0
-ARG DEPS_MIN_FIRST_TOUCH_REQS=0
-ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
-    DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
 # -ImportWalk (#127): every shipped PE + every wheel's native members must
 # resolve their imports against the bundle, the loader's API sets or this
 # container's System32 names -- CRT excluded from System32 on a cross lane.

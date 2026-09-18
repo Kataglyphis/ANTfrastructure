@@ -6,44 +6,8 @@
     Start the GenieX server fleet in the measured-optimal topology for a coding agent.
 
 .DESCRIPTION
-    One `geniex serve` binds ONE compute unit and serves ONE request at a time --
-    it does not batch, and while it generates it does not even answer /v1/models.
-    Aggregate throughput therefore comes from running several servers.
-
-    Measured on this host (Snapdragon X, 2026-08-31):
-
-      Single lane        NPU 19.5   CPU 23.7   GPU 12.5   hybrid 9.96  (4B class)
-      NPU + GPU          19.25 + 12.11               = 31.4 tok/s
-      NPU + CPU          18.85 + 20.81               = 39.7 tok/s   <- best pair
-      NPU + GPU + CPU    18.66 + 11.13 + 15.64       = 45.4 tok/s   <- max
-
-    The NPU lane is immune to contention (18.6-19.25 tok/s in every combination):
-    isolated silicon, and its CPU footprint is pinned to 3 cores (cpu-mask 0xe0).
-    The CPU and GPU lanes fight over the same 8 Oryon cores.
-
-    Default is NPU + GPU: a second lane at low CPU cost, leaving the machine
-    usable. -WithCpu adds the fastest GGUF lane (23.7 tok/s) but it pegs 7.5 of
-    8 cores, so the box becomes unresponsive for interactive work.
-
-    -WithHybrid exists only for completeness. Do NOT use it: hybrid is slower
-    than plain CPU on every model measured (4B 9.96 vs 23.7; 9B 7.5 vs 15.2),
-    no --ngl setting rescues it (6-8 tok/s across the sweep), its first token
-    takes 14-27 s, and it is the only mode that damages a concurrent NPU lane
-    (19.25 -> 12.84) because it shares the same HTP.
-
-    Three defaults matter and are all wrong out of the box for agent use:
-      --keepalive 300   unloads the model after 5 idle minutes, so every pause in
-                        a coding session costs a 15 s cold reload. We set 24 h.
-      --nctx 4096       is smaller than the 8192 the opencode config advertises;
-                        overflowing it makes the server crawl instead of erroring.
-      --max-tokens 2048 caps ONE response. Benchmark § 1j/§ 1k lost 26 of 27
-                        coding tasks to truncation under a 2048 cap that was
-                        never recorded anywhere, so it read as a model result.
-                        We set 4096 and pass it EXPLICITLY, so the value that
-                        produced a number is visible in this file.
-
-    The model ids come from linux/llm-stack/backends.json, so the benchmark
-    suite and this launcher cannot drift apart; -Models overrides per lane.
+    Fleet topology, measured numbers and flag rationale: docs/geniex-local-ai-setup.md.
+    Default is NPU + GPU; -WithCpu and -WithHybrid are opt-in and not recommended.
 
 .PARAMETER Models
     Hashtable of compute -> model id, e.g. @{ npu = 'qualcomm/Qwen3-4B-Instruct-2507:W4A16' }.

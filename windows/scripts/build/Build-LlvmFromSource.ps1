@@ -43,56 +43,35 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $LlvmVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
 Write-Host "=== clang/LLVM $LlvmVersion source build (AArch64 instruction-size fixes) ==="
 
-# Toolchain-level home for the aarch64 builtins (#135 follow-up, landed in the
-# 2026-08-31 rebuild window). The source build ships host builtins only, so the
-# arm64 GStreamer link died on __udivti3 and the merge stage self-healed by
-# downloading this lib EVERY cross run. Staging it here makes the toolchain image
-# complete; the merge self-heal stays as the fallback and now never fires.
-# FAIL-OPEN (warning): only the cross lane needs the lib, and the downstream
-# self-heal still covers a miss - a GitHub blip must not kill the LLVM layer.
+# WU spool writes land in the layer and kill its finalize; no-op outside a container (#158).
+Disable-ContainerWindowsUpdate
+
+# Toolchain-level home for the aarch64 builtins (#135); the merge-stage self-heal
+# stays as the fail-open fallback - a GitHub blip must not kill the LLVM layer.
 function Install-TargetCompilerRt {
     param([Parameter(Mandatory)][string]$Prefix, [Parameter(Mandatory)][string]$Version)
     $existing = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue)
     if ($existing.Count -gt 0) { Write-Host "aarch64 compiler-rt already staged ($($existing[0].FullName))."; return }
     $hostLib = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
     if ($hostLib.Count -eq 0) { Write-Warning 'clang_rt.builtins-x86_64.lib not found - cannot place the aarch64 lib; merge-stage self-heal will cover the cross lane.'; return }
-    $tmp = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP }
-    $rtArchive = Join-Path $tmp "clang+llvm-$Version-aarch64-pc-windows-msvc.tar.xz"
-    $rtExtract = Join-Path $tmp 'llvm-aarch64-rt'
+    # Pin: baked env first, else the bind-mounted versions.env sibling (this RUN
+    # bakes no env for the key).
+    $rtSha = "$env:LLVM_WINDOWS_AARCH64_RT_SHA256".Trim()
+    if (-not $rtSha) {
+        $envFile = Join-Path $PSScriptRoot 'versions.env'
+        if (Test-Path $envFile) {
+            $m = [regex]::Match((Get-Content $envFile -Raw), '(?m)^LLVM_WINDOWS_AARCH64_RT_SHA256=(\S+)\s*$')
+            if ($m.Success) { $rtSha = $m.Groups[1].Value }
+        }
+    }
     try {
         Write-Host "Staging aarch64 compiler-rt from the LLVM $Version release archive..."
-        Invoke-DownloadWithRetry -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$Version/clang%2Bllvm-$Version-aarch64-pc-windows-msvc.tar.xz" -DestinationPath $rtArchive
-        $rtSha = "$env:LLVM_WINDOWS_AARCH64_RT_SHA256".Trim()
-        if (-not $rtSha) {
-            # The patched-llvm RUN bakes no env for this pin; it mounts versions.env
-            # as this script's SIBLING (container layout) - read the key from there.
-            $envFile = Join-Path $PSScriptRoot 'versions.env'
-            if (Test-Path $envFile) {
-                $m = [regex]::Match((Get-Content $envFile -Raw), '(?m)^LLVM_WINDOWS_AARCH64_RT_SHA256=(\S+)\s*$')
-                if ($m.Success) { $rtSha = $m.Groups[1].Value }
-            }
-        }
-        if ($rtSha) {
-            $actual = (Get-FileHash -Algorithm SHA256 -Path $rtArchive).Hash
-            if (-not [string]::Equals($actual, $rtSha, [StringComparison]::OrdinalIgnoreCase)) { throw "aarch64 compiler-rt archive SHA256 mismatch: expected $rtSha, got $actual" }
-            Write-Host 'aarch64 compiler-rt archive SHA256 verified (LLVM_WINDOWS_AARCH64_RT_SHA256).'
-        } else {
-            Write-Warning 'LLVM_WINDOWS_AARCH64_RT_SHA256 is empty - staging the aarch64 compiler-rt UNVERIFIED (pin it in versions.env, same contract as the QNN/TensorRT zips).'
-        }
-        # System32 bsdtar, never GNU tar: GNU parses C:\... as a remote-host spec.
-        $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-        if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
-        New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
-        & $rtTar -xf $rtArchive -C $rtExtract '*clang_rt.builtins-aarch64.lib'
-        $found = @(Get-ChildItem -Path $rtExtract -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($found.Count -eq 0) { throw "clang_rt.builtins-aarch64.lib not found inside $rtArchive - upstream archive layout changed." }
-        Copy-Item -Path $found[0].FullName -Destination $hostLib[0].Directory.FullName -Force
-        Write-Host "aarch64 compiler-rt staged -> $(Join-Path $hostLib[0].Directory.FullName 'clang_rt.builtins-aarch64.lib')"
+        $staged = Install-AArch64CompilerRt `
+            -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$Version/clang%2Bllvm-$Version-aarch64-pc-windows-msvc.tar.xz" `
+            -DestinationDir $hostLib[0].Directory.FullName -ExpectedSha256 $rtSha
+        Write-Host "aarch64 compiler-rt staged -> $staged"
     } catch {
         Write-Warning "aarch64 compiler-rt staging failed: $($_.Exception.Message) - the merge-stage self-heal still covers the cross lane."
-    } finally {
-        Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $rtExtract -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -170,9 +149,16 @@ $cmakeArgs = @(
     '-DCOMPILER_RT_BUILD_XRAY=OFF',
     '-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF'
 )
-if ($env:SCCACHE_DIR -or $env:SCCACHE_SERVE) {
+# Remote backend only -- a container-local cache dies with the layer. #164: the
+# old SCCACHE_DIR/SERVE test was never set by the toolchain stage, so every
+# re-key compiled LLVM cold.
+Start-SccacheServerSession
+if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
+    if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
     $cmakeArgs += '-DCMAKE_C_COMPILER_LAUNCHER=sccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache'
-    Write-Host 'sccache launcher enabled for the LLVM build'
+    Write-Host "sccache launcher enabled for the LLVM build (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
+} else {
+    Write-Host 'sccache disabled for the LLVM build (no remote backend configured or sccache.exe missing)'
 }
 
 Write-Host 'Configuring clang/LLVM...'
@@ -182,6 +168,9 @@ if ($LASTEXITCODE -ne 0) { throw "LLVM cmake configure failed ($LASTEXITCODE)" }
 Write-Host 'Building clang/LLVM (this is the expensive one; it caches as a layer)...'
 & cmake --build $buildDir --target install
 if ($LASTEXITCODE -ne 0) { throw "LLVM build/install failed ($LASTEXITCODE)" }
+# Hit-rate evidence on STDERR -- survives the step-log clip (repo priority 1).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
+Complete-SccacheServerSession
 
 if (-not (Test-Path $clangCl)) { throw "clang-cl.exe not found at $clangCl after install." }
 $banner = (& $clangCl --version | Select-Object -First 1)

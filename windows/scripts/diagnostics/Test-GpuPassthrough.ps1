@@ -65,6 +65,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsContainerImage.Common.psm1')
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windows }
 
 # The DirectX GPU device interface class GUID (Microsoft-documented). A wrong
@@ -73,8 +74,7 @@ if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windo
 $GpuDeviceClass = 'class/5B45201D-F2F2-4F3B-85BB-30FF1F953599'
 
 if ([string]::IsNullOrWhiteSpace($Docker)) {
-    $candidates = @(@('C:\Program Files\Stevedore\bin\docker.exe') | Where-Object { Test-Path $_ })
-    $Docker = if ($candidates.Count) { $candidates[0] } else { (Get-Command docker -ErrorAction Stop).Source }
+    $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") -Required
 }
 Write-Host "Using docker: $Docker"
 Write-Host "Image:        $Image`n"

@@ -189,6 +189,12 @@ def code_lines(lines):
     return out
 
 
+def _rel(path, root):
+    """Allowlist keys are posix-spelled; os.path.relpath spells backslashes on Windows,
+    which made every frozen row report twice there (miss + stale)."""
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
 def _walk_scan(root, tops, match):
     """Yield (path, relpath) for every file under `tops` whose name `match` accepts."""
     for top in tops:
@@ -197,7 +203,7 @@ def _walk_scan(root, tops, match):
             for fn in sorted(names):
                 if match(fn):
                     path = os.path.join(base, fn)
-                    yield path, os.path.relpath(path, root)
+                    yield path, _rel(path, root)
 
 
 def _flat_scan(root, tops, match):
@@ -207,7 +213,7 @@ def _flat_scan(root, tops, match):
         for fn in sorted(os.listdir(d) if os.path.isdir(d) else []):
             path = os.path.join(d, fn)
             if match(fn) and os.path.isfile(path):
-                yield path, os.path.relpath(path, root)
+                yield path, _rel(path, root)
 
 
 def _tracked_scan(root, match):

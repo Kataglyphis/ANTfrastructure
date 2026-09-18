@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# app_packaging_ensure_flatpak_runtime and
-# app_packaging_package_cmake_install_flatpak (lib/app-packaging.sh), both of
-# which were local forks in AccelerANTgine until 2026-09-15.
-#
-# What is pinned here is what a green run cannot show: the three conventions in
-# app-packaging.sh's header -- container-native staging, ostree and not the exit
-# code as the verdict, no success line without assert_artifact -- the
-# user-first/system-fallback install, and the tool check that must name ostree
-# because the verdict is its. Stubs record every call and can fail a chosen one.
+# app_packaging_ensure_flatpak_runtime, app_packaging_flatpak_ensure_refs,
+# app_packaging_setup_dependencies_for_container (CON2: probe both scopes),
+# app_packaging_flatpak_finish_args_block (CON6: append-only knob) and
+# app_packaging_package_cmake_install_flatpak (lib/app-packaging.sh).
+# What is pinned is what a green run cannot show: the header's three
+# conventions -- container-native staging, ostree and not the exit code as the
+# verdict, no success line without assert_artifact -- the scope probe, the
+# user-first/system-fallback install, and the tool check that names ostree.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -54,6 +53,24 @@ printf 'ostree %s\n' "$*" >> "${STUB_LOG}"
 printf 'app/%s/x86_64/master\n' "${STUB_APP_ID:-org.example.app}"
 STUB
 
+# The dependency-setup path probes these with `command -v`; the host running the
+# suite may or may not ship them, so the fixture owns the answer.
+cat > "${BIN}/dpkg" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+cat > "${BIN}/wget" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+cat > "${BIN}/dbus-run-session" <<'STUB'
+#!/usr/bin/env bash
+[ "${1:-}" = "--" ] && shift
+exec "$@"
+STUB
+
 # `cmake --install <dir> --prefix <p>` lays down the tree a real CMake install
 # would: the binary plus the three PROJECT-named files the packager has to
 # rename. STUB_CMAKE_NO_BIN=1 reproduces an install that succeeded with nothing
@@ -79,7 +96,8 @@ printf 'appdata\n'  > "${prefix}/share/metainfo/${STUB_PROJECT}.appdata.xml"
 exit 0
 STUB
 
-chmod +x "${BIN}/flatpak" "${BIN}/flatpak-builder" "${BIN}/ostree" "${BIN}/cmake"
+chmod +x "${BIN}/flatpak" "${BIN}/flatpak-builder" "${BIN}/ostree" "${BIN}/cmake" \
+  "${BIN}/dpkg" "${BIN}/wget" "${BIN}/dbus-run-session"
 
 APP_ID="org.kataglyphis.accelerantgine"
 PROJECT="KataglyphisCppProject"
@@ -161,6 +179,63 @@ t_case "require_flatpak_tools: ALL of them are reported, not just the first"
 _require
 t_assert_eq "3" "$(printf '%s
 ' "${OUT}" | grep -c 'not found')"
+
+# ── app_packaging_setup_dependencies_for_container (CON2) ────────────────────
+# The image installs flathub + the runtime pair SYSTEM-wide as root, and the
+# container runs as uid 1001. An unconditional --user install therefore pulled a
+# SECOND per-user copy of the two largest refs (~1.9 GB per run per arch). The
+# probe must ask both scopes, exactly like app_packaging_ensure_flatpak_runtime.
+_setup_deps() {
+  _call "$@" -- eval 'app_packaging_ensure_appimagetool_via_antfrastructure() { :; }; app_packaging_setup_dependencies_for_container x64'
+}
+
+t_case "setup_dependencies: a SYSTEM-installed ref is not pulled again as a per-user copy"
+_setup_deps STUB_SYSTEM_HAS_REF=0
+t_assert_eq "0" "${rc}" "output was: ${OUT}"
+t_assert_eq "" "$(grep -F -- '--user install' "${LOG}" || true)" \
+  "the refs the image already ships must not be fetched a second time"
+t_assert_contains "${OUT}" "already installed"
+
+t_case "setup_dependencies: a missing ref is still installed per-user"
+_setup_deps
+t_assert_eq "0" "${rc}" "output was: ${OUT}"
+t_assert_contains "$(cat "${LOG}")" \
+  "--user install -y --arch=x86_64 flathub org.freedesktop.Platform/x86_64/24.08"
+t_assert_contains "$(cat "${LOG}")" \
+  "--user install -y --arch=x86_64 flathub org.freedesktop.Sdk/x86_64/24.08"
+
+t_case "setup_dependencies: a known remote in EITHER scope skips remote-add"
+_setup_deps STUB_SYSTEM_REMOTE=0
+t_assert_eq "" "$(grep -F -- 'remote-add' "${LOG}" || true)" \
+  "a system remote with the refs present makes the user remote pointless"
+
+t_case "setup_dependencies: a failing per-user install is FATAL, not swallowed"
+_setup_deps STUB_USER_INSTALL_RC=1
+t_assert_eq "1" "${rc}" "a missing runtime makes flatpak-builder fail much later with a manifest message"
+
+# ── app_packaging_flatpak_finish_args_block (CON6) ───────────────────────────
+t_case "finish_args_block: the four generated args are always present"
+_call -- app_packaging_flatpak_finish_args_block
+t_assert_contains "${OUT}" "  - --share=network"
+t_assert_contains "${OUT}" "  - --socket=wayland"
+t_assert_contains "${OUT}" "  - --socket=fallback-x11"
+t_assert_contains "${OUT}" "  - --device=dri"
+
+t_case "finish_args_block: the knob APPENDS, it never replaces"
+_call KATAGLYPHIS_FLATPAK_FINISH_ARGS=--device=all -- app_packaging_flatpak_finish_args_block
+t_assert_contains "${OUT}" "  - --device=dri" "the generated args must survive the knob"
+t_assert_contains "${OUT}" "  - --device=all"
+t_assert_eq "5" "$(printf '%s\n' "${OUT}" | grep -c '^  - ')" "one line per arg, no duplicates"
+
+t_case "finish_args_block: a multi-arg knob adds one YAML line each"
+_call "KATAGLYPHIS_FLATPAK_FINISH_ARGS=--device=all --filesystem=home" -- app_packaging_flatpak_finish_args_block
+t_assert_contains "${OUT}" "  - --filesystem=home"
+t_assert_eq "6" "$(printf '%s\n' "${OUT}" | grep -c '^  - ')"
+
+t_case "package_linux_bundle_flatpak: the manifest is emitted with the appendable block"
+t_assert_contains "$(t_fn_src "${LIB}" app_packaging_package_linux_bundle_flatpak)" \
+  '$(app_packaging_flatpak_finish_args_block)' \
+  "the hook must reach the generated manifest, not just exist beside it"
 
 # ── app_packaging_ensure_flatpak_runtime ─────────────────────────────────────
 

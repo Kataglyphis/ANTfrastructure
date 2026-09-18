@@ -528,6 +528,34 @@ Plain text after the block.
         }
     }
 
+    # -- Failure-cap exit-code contract (#175) ------------------------------
+    #
+    # Neither failure-cap arm is reachable from Pester: the cap trips only on a
+    # real failing BUILD, and the suite runs the loop in dry-run, where
+    # Invoke-BuildCommand returns $true unconditionally. So the contract is
+    # pinned at the source level: each 'Too many consecutive build failures'
+    # arm must assign $script:AgenticExitCode = 1 before it stops, or a capped
+    # run reports exit 0 (the 2026-09-17 -ExecutorOnly regression).
+
+    Context 'failure-cap exit-code contract (#175)' {
+        BeforeAll {
+            $script:agenticModuleSource = Get-Content (Join-Path $PSScriptRoot '..\modules\WindowsAgenticLoop.Common.psm1') -Raw
+        }
+
+        It 'both failure-cap arms assign the exit code before stopping' {
+            $caps = [regex]::Matches($script:agenticModuleSource,
+                '(?s)Too many consecutive build failures.{0,200}?\$script:AgenticExitCode = 1')
+            $caps.Count | Should -Be 2
+        }
+
+        It 'the executor-only arm assigns it too' {
+            $execBranch = [regex]::Match($script:agenticModuleSource,
+                '(?s)if \(\$ExecutorOnly\) \{(.*?)return\r?\n    \}')
+            $execBranch.Success | Should -Be $true
+            $execBranch.Groups[1].Value | Should -Match '(?s)Too many consecutive build failures.{0,200}?\$script:AgenticExitCode = 1'
+        }
+    }
+
     # -- Get-AgenticDefaultPrompt -------------------------------------------
 
     Context 'Get-AgenticDefaultPrompt' {

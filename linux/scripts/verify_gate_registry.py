@@ -123,6 +123,12 @@ def resolve_script(tokens, cmd, defs, preflight_rel):
     return None, None, None
 
 
+def _rel(path):
+    """Repo-relative keys are posix-spelled; os.path.relpath uses backslashes on
+    Windows, where every mutation target then reported as off-convention."""
+    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
 def script_text(rel, extent):
     text = _read(os.path.join(ROOT, rel))
     if extent is None:
@@ -139,7 +145,7 @@ def allow_files(rel, text):
         for cand in ([os.path.join(ROOT, lit)] if "/" in lit else []) + [
                 os.path.join(script_dir, base), os.path.join(ROOT, "docs", "scripts", base)]:
             if os.path.isfile(cand):
-                out.add(os.path.relpath(cand, ROOT))
+                out.add(_rel(cand))
                 break
     return sorted(out)
 
@@ -150,7 +156,9 @@ def imported_modules(rel, text):
     script_dir = os.path.dirname(rel)
     out = []
     for mod in IMPORT.findall(text):
-        cand = os.path.join(script_dir, mod + ".py")
+        # Posix spelling kept: these keys are compared to mutations.json targets,
+        # and os.path.join spells backslashes on Windows.
+        cand = (script_dir + "/" + mod + ".py") if script_dir else mod + ".py"
         if os.path.isfile(os.path.join(ROOT, cand)):
             out.append(cand)
     return out
@@ -175,7 +183,7 @@ def shelled_out(rel, text):
         return []
     out = set()
     for cand in SHELLS_OUT.findall(text):
-        cand = os.path.normpath(cand)
+        cand = os.path.normpath(cand).replace(os.sep, "/")
         if cand != rel and os.path.isfile(os.path.join(ROOT, cand)):
             out.add(cand)
     return sorted(out)
@@ -248,7 +256,7 @@ def suites():
     for fn in sorted(os.listdir(TESTS_DIR)):
         if fn.startswith("test-") and fn.endswith(".sh") and fn != "test-harness.sh":
             path = os.path.join(TESTS_DIR, fn)
-            out[os.path.relpath(path, ROOT)] = _read(path)
+            out[_rel(path)] = _read(path)
     return out
 
 
@@ -312,7 +320,7 @@ def hook_tier(slug, needle, fast, texts):
 
 def rows():
     text = _read(PREFLIGHT)
-    preflight_rel = os.path.relpath(PREFLIGHT, ROOT)
+    preflight_rel = _rel(PREFLIGHT)
     order = known_slugs(text)
     checks = {c[0]: c for c in run_checks(text)}
     if set(order) != set(checks):
@@ -390,7 +398,7 @@ def main():
     args = ap.parse_args()
     table = rows()
     text = render(table)
-    reg_rel = os.path.relpath(REGISTRY, ROOT)
+    reg_rel = _rel(REGISTRY)
     print("=== gate registry gate ===")
     if args.write:
         with open(REGISTRY, "w", encoding="utf-8") as fh:

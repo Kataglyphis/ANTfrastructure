@@ -568,25 +568,28 @@ bootstrap_flutter_sdk() {
 # The web lane, measured in a consumer run: two `cargo install` from source per
 # invocation (wasm-pack 258 crates, flutter_rust_bridge_codegen 174), plus a
 # nightly rustup auto-install through a path rustup itself calls deprecated.
-# The dated pin install-rust.sh adds is not enough -- `wasm-pack -Z build-std`
-# invokes `cargo +nightly`, which resolves the CHANNEL name, not the pin.
-# Non-fatal throughout: a consumer that has to build its own tools is slow, one
-# that cannot build the image at all is worse.
+# CON1: install the DATED pin, not the floating channel -- a dated toolchain is
+# immutable, so `rustup toolchain install <pin>` is a no-op on a warm image; a
+# floating `nightly` is UPDATED, and the update renames files out of a read-only
+# image layer (EXDEV). A consumer that still names the channel auto-installs it
+# at runtime into the writable RUSTUP_HOME: works, pays the download per run.
+# Non-fatal throughout: a slow consumer beats an image that will not build.
 # docs/consumer-image-contract.md#the-web-lane-toolchain
 install_web_lane_toolchain() {
     local rustup="${CARGO_HOME:?}/bin/rustup" cargo="${CARGO_HOME:?}/bin/cargo"
     local name version
+    local nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-06-28}"
 
     if [ ! -x "${rustup}" ] || [ ! -x "${cargo}" ]; then
         echo "WARN: no rustup/cargo under ${CARGO_HOME}; skipping the web-lane toolchain"
         return 0
     fi
 
-    if "${rustup}" toolchain install nightly --profile minimal \
+    if "${rustup}" toolchain install "${nightly_toolchain}" --profile minimal \
          --component rust-src --target wasm32-unknown-unknown; then
-        echo "OK: nightly channel installed with rust-src + wasm32-unknown-unknown"
+        echo "OK: ${nightly_toolchain} installed with rust-src + wasm32-unknown-unknown"
     else
-        echo "WARN: the nightly channel is unavailable; the web lane will auto-install it per run"
+        echo "WARN: ${nightly_toolchain} is unavailable; the web lane will auto-install it per run"
     fi
 
     for name in "wasm-pack:${WASM_PACK_VERSION:-}" \

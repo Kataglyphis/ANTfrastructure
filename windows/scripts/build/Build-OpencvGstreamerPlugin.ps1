@@ -5,32 +5,9 @@
     installed OpenCV + the merge stage's GStreamer (backlog #93).
 
 .DESCRIPTION
-    Breaks the #93 circularity without a second OpenCV pass:
-
-      * OpenCV configures in media-core, BEFORE GStreamer exists, so its
-        videoio ships with `GStreamer: NO` compiled in — cv::VideoCapture(...,
-        CAP_GSTREAMER) has no backend.
-      * GStreamer builds in the MERGE stage and needs OpenCV for its own
-        gst-plugins-bad opencv elements (the other direction, which works).
-
-    OpenCV 5.0.0 ships modules/videoio/misc/plugin_gstreamer — a self-contained
-    CMake project that builds `opencv_videoio_gstreamer` as a RUNTIME-LOADED
-    DLL against an INSTALLED OpenCV, out of tree, from one source file
-    (cap_gstreamer.cpp). videoio's plugin loader (VIDEOIO_ENABLE_PLUGINS is ON
-    by default) picks it up from the directory of opencv_videoio*.dll.
-
-    CONSEQUENCE FOR VERIFICATION, do not "fix" this back: with the plugin
-    route, `cv2.getBuildInformation()` KEEPS saying `GStreamer: NO` — that
-    string reflects videoio's COMPILE-TIME configuration and this plugin is
-    loaded at runtime. The authoritative runtime check is
-    `cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER)` (it attempts the
-    plugin load). The #95 smoke assertions were updated accordingly.
-
-    GStreamer detection on WIN32 uses find_path/find_library against
-    GSTREAMER_DIR — OpenCV's detect_gstreamer.cmake does NOT use pkg-config on
-    Windows, so the merge prefix (C:\runtime: include\gstreamer-1.0,
-    include\glib-2.0, lib\*.lib) is handed over directly. No pkgconfig shim
-    needed here, unlike the #94 FFmpeg route.
+    Why the standalone plugin route exists, its runtime-load consequence for
+    verification and the WIN32 detection contract are owned by
+    docs/windows-builds.md § Build-OpencvGstreamerPlugin.ps1.
 
 .PARAMETER InstallDir
     Runtime prefix (default C:\runtime) — must already contain lib\opencv5 and

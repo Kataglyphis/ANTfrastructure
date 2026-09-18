@@ -659,10 +659,16 @@ def write_dockerfile_args(versions: dict[str, str]) -> int:
 
 _SCRIPT_DEFAULT_RE = re.compile(r"-DefaultValue '([^']*)'")
 _SCRIPT_ENVVARS_RE = re.compile(r"-EnvironmentVariables @\(([^)]*)\)")
+# A script may list a commit-hash override FIRST while its -DefaultValue is the
+# TAG fallback a host with no env uses. PinParity carries the same one-entry
+# exception (#134) and its note is the rationale; keep the two in step.
+_SCRIPT_DEFAULT_KEY_OVERRIDES = {"Build-TvmFromSource.ps1|TVM_COMMIT": "TVM_REF"}
 
 
 def script_default_target_files() -> list[Path]:
-    return sorted(REPO_ROOT.glob("windows/scripts/build-*-from-source.ps1"))
+    # The 2026-09-06 Verb-Noun rename moved these to windows/scripts/**/Build-*FromSource.ps1;
+    # the old flat lowercase glob matched nothing, so ten scripts were not gate subjects.
+    return sorted(REPO_ROOT.glob("windows/scripts/**/Build-*FromSource.ps1"))
 
 
 def _update_script_defaults_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
@@ -681,6 +687,7 @@ def _update_script_defaults_inner(file_path: Path, versions: dict[str, str], dry
         key = next((n for n in env_names if n in versions), None)
         if key is None:
             return None
+        key = _SCRIPT_DEFAULT_KEY_OVERRIDES.get(f"{file_path.name}|{key}", key)
         expected = _unquote(versions[key])
         # Mirror Get-SourceBuildVersion's -StripVPrefix (-replace '^v', '').
         if "-StripVPrefix" in line and expected.startswith("v"):

@@ -227,16 +227,7 @@ if ($VerifyPath) {
 
 # --- 5) services up -----------------------------------------------------------
 
-Write-Step '--- starting services ---'
-[array]::Reverse($stopped)
-foreach ($s in $stopped) {
-    try {
-        Start-Service $s -ErrorAction Stop
-        Write-Step ('{0} : {1}' -f $s, (Get-Service $s).Status)
-    } catch {
-        Write-Step ('{0} START ERROR: {1}' -f $s, $_.Exception.Message) 'Red'
-    }
-}
+Start-HostServices -Log $hostLog -Service $stopped
 
 Write-Step 'done' 'Green'
 Save-Transcript

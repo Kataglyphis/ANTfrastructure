@@ -187,7 +187,7 @@ The image now installs all three ahead of time:
 
 | what | pin | why it must be here |
 | --- | --- | --- |
-| `nightly` toolchain + `rust-src` + `wasm32-unknown-unknown` | channel | `wasm-pack -Z build-std` runs `cargo +nightly`, which resolves the **channel name**, not a dated pin — so `install-rust.sh`'s dated pin does not satisfy it |
+| `nightly` toolchain + `rust-src` + `wasm32-unknown-unknown` | `RUST_NIGHTLY_TOOLCHAIN` (`nightly-YYYY-MM-DD`) | `flutter_rust_bridge_codegen build-web` runs wasm-pack with `RUSTUP_TOOLCHAIN=nightly` and `-Z build-std`. A **dated** toolchain is immutable, so `rustup toolchain install <pin>` is a genuine no-op on a warm image; the floating channel is UPDATED by that command, and the update renames files out of the read-only image layer (`Invalid cross-device link`). Consumers that still name the channel get it auto-installed at runtime into the writable `RUSTUP_HOME` — works, but pays the download per run; FRB's `--wasm-pack-rustup-toolchain` names the pin instead. |
 | `wasm-pack` | `WASM_PACK_VERSION` | 258 crates per consumer run |
 | `flutter_rust_bridge_codegen` | `FLUTTER_RUST_BRIDGE_VERSION` | 174 crates per consumer run |
 
@@ -209,7 +209,7 @@ lane exists at all. The tools are installed uniformly because an arch-conditiona
 image is harder to reason about than a slower one, and because "we assumed nobody
 uses it" is how the Android layer ended up built for the wrong ABI.
 
-`install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly channel,
+`install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly pin,
 an unpinned version and a failed `cargo install` each `WARN` and continue. The
 trade is deliberate: a consumer that has to build its own tools is slow, a consumer
 that cannot build the image at all is worse.

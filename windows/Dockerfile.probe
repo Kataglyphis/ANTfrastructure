@@ -17,8 +17,7 @@
 # which #137 DELETED when both PRs merged upstream; the series survives nowhere in
 # this tree, so the mount could only be removed, not repaired. While it stood EVERY
 # -ProbeScript solve died at checksum, live probes included. Its three readers
-# (Test-Sccache2726Repro / -SccachePatchVerify / -SccachePrHygiene) are dead by
-# construction — backlog #159's subject; they now fail alone, not the whole lane.
+# were deleted with backlog #159 as dead by construction.
 # Whole-dir mounts are cache-irrelevant HERE ONLY: PROBE_NONCE busts the layer
 # by design. Never copy this idiom into a chain stage (see the per-file
 # buildmods rationale in Dockerfile.media-builder).
@@ -28,7 +27,7 @@ FROM ${BASE_IMAGE} AS probe
 
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
-ARG PROBE_SCRIPT="Test-SccacheOptionsStrict.ps1"
+ARG PROBE_SCRIPT="Test-OnnxTuReplay.ps1"
 # Pass-through for probes that read it (probe-onnx-tu-replay); an undeclared
 # ARG would silently discard a -BuildArg ORT_REF=... override.
 ARG ORT_REF=""

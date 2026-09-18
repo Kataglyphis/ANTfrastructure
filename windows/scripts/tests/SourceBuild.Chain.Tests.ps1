@@ -5,28 +5,28 @@
 # order, a swallowed non-zero stage exit, or a stage running after an earlier failure.
 # Invoke-InTestDir zeroes $LASTEXITCODE, isolating each case from prior native exits.
 
-Describe 'Invoke-SourceBuildChain' {
+# One owner for the plain stage tree seven cases built by hand, differing only in how many
+# stages the array had (3, 3, 4, 2 for -StartAt / -Until / split-layer / full-chain, and
+# 1 for the two unknown-name cases — those assert the log never appears, so what the fake
+# stage would have written is irrelevant). Writes $Count fake stage scripts a.ps1, b.ps1,
+# ... into $Dir — each appending only its own -SourceDir to $Log — and returns the
+# matching stage array (@{ Name='A'; Script='a.ps1'; SourceDir='src-a' } ...). The leading
+# comma is required: without it PowerShell unrolls a one-stage tree to a bare hashtable.
+# A case that needs one stage to misbehave appends to that stage's script rather than
+# taking a mode flag here (see the non-zero-exit case). The only hand-built tree left is
+# the order case: its scripts log "<SourceDir>|<InstallDir>" and its SourceDirs are
+# absolute, because InstallDir forwarding is what that case is about.
+$newStageTree = {
+    param([string]$Dir, [string]$Log, [int]$Count)
+    # $SourceDir/$InstallDir stay literal (the fake script's own params); $Log is
+    # interpolated into the Add-Content path.
+    $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$Log' -Value `$SourceDir"
+    $letters = @(0..($Count - 1) | ForEach-Object { [string][char](97 + $_) })
+    foreach ($s in $letters) { Set-Content -LiteralPath (Join-Path $Dir "$s.ps1") -Value $body -Encoding ASCII }
+    return , @($letters | ForEach-Object { @{ Name = $_.ToUpperInvariant(); Script = "$_.ps1"; SourceDir = "src-$_" } })
+}
 
-    # One owner for the plain stage tree seven cases built by hand, differing only in how many
-    # stages the array had (3, 3, 4, 2 for -StartAt / -Until / split-layer / full-chain, and
-    # 1 for the two unknown-name cases — those assert the log never appears, so what the fake
-    # stage would have written is irrelevant). Writes $Count fake stage scripts a.ps1, b.ps1,
-    # ... into $Dir — each appending only its own -SourceDir to $Log — and returns the
-    # matching stage array (@{ Name='A'; Script='a.ps1'; SourceDir='src-a' } ...). The leading
-    # comma is required: without it PowerShell unrolls a one-stage tree to a bare hashtable.
-    # A case that needs one stage to misbehave appends to that stage's script rather than
-    # taking a mode flag here (see the non-zero-exit case). The only hand-built tree left is
-    # the order case: its scripts log "<SourceDir>|<InstallDir>" and its SourceDirs are
-    # absolute, because InstallDir forwarding is what that case is about.
-    $newStageTree = {
-        param([string]$Dir, [string]$Log, [int]$Count)
-        # $SourceDir/$InstallDir stay literal (the fake script's own params); $Log is
-        # interpolated into the Add-Content path.
-        $body = "param([string]`$SourceDir,[string]`$InstallDir)`nAdd-Content -LiteralPath '$Log' -Value `$SourceDir"
-        $letters = @(0..($Count - 1) | ForEach-Object { [string][char](97 + $_) })
-        foreach ($s in $letters) { Set-Content -LiteralPath (Join-Path $Dir "$s.ps1") -Value $body -Encoding ASCII }
-        return , @($letters | ForEach-Object { @{ Name = $_.ToUpperInvariant(); Script = "$_.ps1"; SourceDir = "src-$_" } })
-    }
+Describe 'Invoke-SourceBuildChain' {
 
     It 'runs every stage in order, forwarding its SourceDir and the shared InstallDir' {
         Invoke-InTestDir { param($dir)

@@ -785,9 +785,11 @@ steps; the remaining work is the Dockerfile surgery):
   before making it the default. Two costs to know: (a) children run a single
   media branch, so the GStreamer merge is gated on all three branches being
   requested and runs only in the parent (children print `[bk:merge] skipped`);
-  (b) `MEMORY_LIMIT_GB` is baked as ENV in the media `common` stage, so
-  TOGGLING -ConcurrentAux (which halves the aux budget) changes that ENV and
-  invalidates the aux branches' compile RUNs — pick a mode and stay in it.
+  (b) `MEMORY_LIMIT_GB` is a scheduling knob, deliberately NOT an image
+  ARG/ENV (#51) — the driver publishes it per phase on the webdav and
+  `Get-BuildJobCount` reads it at RUN time (fail-open to CIM host RAM), so
+  toggling `-ConcurrentAux` no longer re-keys the aux branches' compile RUNs
+  (the old baked-ENV key was the #51 defect).
 - **Registry push**: available via `Build-Buildkit.ps1 -PushRef <ref>`
   (2026-08-04) — re-solves the final image from cache with a push exporter;
   needs a prior `docker login` in the invoking shell (buildctl forwards the

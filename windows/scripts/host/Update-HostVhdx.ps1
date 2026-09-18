@@ -75,10 +75,18 @@ function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 # Access errors are counted, not swallowed: a mismatch caused by an unreadable
 # file is a different problem than a short copy.
 function Measure-Tree {
-    param([string]$Root)
+    param([string]$Root, [string[]]$ExcludeDir = @())
     $bytes = [long]0; $files = 0; $errors = 0
     $ev = $null
     $items = Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable ev
+    # robocopy /XD skips these, so the verify must too: a fresh volume root
+    # carries its own $RECYCLE.BIN, which made the copy look short.
+    if ($ExcludeDir.Count -gt 0) {
+        $items = @($items | Where-Object {
+                $parts = $_.FullName.Split([char]'\')
+                -not ($ExcludeDir | Where-Object { $parts -contains $_ })
+            })
+    }
     foreach ($f in $items) { $bytes += $f.Length; $files++ }
     if ($ev) { $errors = @($ev).Count }
     return [pscustomobject]@{ Bytes = $bytes; Files = $files; Errors = $errors }
@@ -207,8 +215,8 @@ if (-not $SwapOnly) {
         if ($rcExit -ge 8) { throw "robocopy reported failures (exit $rcExit) — the copy is not trustworthy." }
 
         Write-Step '--- verifying the copy ---'
-        $srcStats = Measure-Tree -Root $sourceRoot
-        $dstStats = Measure-Tree -Root "${stageLetter}:\"
+        $srcStats = Measure-Tree -Root $sourceRoot -ExcludeDir $ExcludeDir
+        $dstStats = Measure-Tree -Root "${stageLetter}:\" -ExcludeDir $ExcludeDir
         Write-Step ('source : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $srcStats.Files, ($srcStats.Bytes / 1GB), $srcStats.Errors)
         Write-Step ('copy   : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $dstStats.Files, ($dstStats.Bytes / 1GB), $dstStats.Errors)
         if ($dstStats.Files -ne $srcStats.Files -or $dstStats.Bytes -ne $srcStats.Bytes) {
@@ -250,7 +258,9 @@ try {
     Write-Step 'Something still holds the volume — a shell whose current directory is on it,' 'Yellow'
     Write-Step 'an editor with the checkout open, or a background agent. Close them and re-run' 'Yellow'
     Write-Step 'with -SwapOnly; the verified replacement is kept and costs nothing to reuse.' 'Yellow'
-    foreach ($s in $stopped) { Start-Service $s -ErrorAction SilentlyContinue }
+    # Restore in reverse stop order; failures are red, never swallowed
+    # (measured 2026-09-01). Owner: Start-HostServices.
+    Start-HostServices -Log $hostLog -Service $stopped
     Save-Transcript
     throw
 }
@@ -279,7 +289,9 @@ try {
         Rename-Item -LiteralPath $oldVhdxPath -NewName (Split-Path $VhdxPath -Leaf) -ErrorAction SilentlyContinue
     }
     Mount-DiskImage -ImagePath $VhdxPath -ErrorAction SilentlyContinue | Out-Null
-    foreach ($s in $stopped) { Start-Service $s -ErrorAction SilentlyContinue }
+    # Same restore as the other rollback path and the final restart: owner is
+    # Start-HostServices.
+    Start-HostServices -Log $hostLog -Service $stopped
     Save-Transcript
     throw
 }
@@ -308,12 +320,7 @@ if ($RetireOld -and $verified) {
     if (-not $verified) { Write-Step 'verification FAILED — do not delete it, roll back instead.' 'Red' }
 }
 
-Write-Step '--- starting services ---'
-[array]::Reverse($stopped)
-foreach ($s in $stopped) {
-    try { Start-Service $s -ErrorAction Stop; Write-Step ('{0} : {1}' -f $s, (Get-Service $s).Status) }
-    catch { Write-Step ('{0} START ERROR: {1}' -f $s, $_.Exception.Message) 'Red' }
-}
+Start-HostServices -Log $hostLog -Service $stopped
 
 Write-Step 'done' 'Green'
 Save-Transcript

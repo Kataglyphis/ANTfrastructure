@@ -44,19 +44,16 @@ $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
 $cdb = Get-CdbPath
 Write-Host "cdb: $cdb"
 
-# Same silo detection as Get-LsmWaitstack.ps1: Win32_Process.ExecutablePath
-# and .CommandLine are EMPTY for silo processes even elevated, so go by tree.
-$baseWininit = Get-WininitProcessId
+# Silo detection is by process tree: ExecutablePath/.CommandLine are EMPTY for
+# silo processes even elevated, so only a new wininit.exe identifies one.
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
 Write-Host "Baseline: $($baseWininit.Count) wininit. Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
-$newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
+$newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
 if (-not $newWininit) { throw 'No new silo appeared - start a RUN-bearing build or probe and retry.' }
 
-$siloServices = Get-SiloServicesProcess -WininitProcessId $newWininit.ProcessId
-if (-not $siloServices) { throw "silo wininit $($newWininit.ProcessId) has no services.exe child" }
-
-$svchosts = @(Get-SiloSvchost -ServicesProcessId $siloServices.ProcessId)
-if (-not $svchosts) { throw "silo services $($siloServices.ProcessId) spawned no svchost" }
+$svchosts = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId)
+if (-not $svchosts) { throw "silo wininit $($newWininit.ProcessId) spawned no svchost yet" }
 Write-Host ("silo svchosts: {0}" -f (($svchosts.ProcessId) -join ', '))
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'

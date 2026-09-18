@@ -57,17 +57,22 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
             $bytes[1] = ($Machine -shr 8) -band 0xFF
             [IO.File]::WriteAllBytes($Path, $bytes)
         }
+        # The ar (COFF archive) member header, one owner: the widths are the ar
+        # spec, and one wrong PadRight makes the fixture silently unparseable.
+        $script:WriteArMemberHeader = {
+            param([System.IO.BinaryWriter]$Writer, [string]$MemberName)
+            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes($MemberName.PadRight(16).Substring(0, 16)))
+            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
+            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
+            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
+            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
+        }
         $script:NewArchive = {
             param([string]$Path, [int]$Machine, [switch]$ShortImport, [string]$MemberName = 'foo.obj')
             $ms = New-Object System.IO.MemoryStream
             $bw = New-Object System.IO.BinaryWriter($ms)
             $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
-            $name = $MemberName.PadRight(16).Substring(0, 16)
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes($name))
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
+            & $script:WriteArMemberHeader $bw $MemberName
             $payload = if ($ShortImport) {
                 $p = New-Object byte[] 20
                 $p[2] = 0xFF; $p[3] = 0xFF
@@ -187,20 +192,12 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         $bw = New-Object System.IO.BinaryWriter($ms)
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
         # First member: "/" (linker member), size 4
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('/'.PadRight(16)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
+        & $script:WriteArMemberHeader $bw '/'
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes('         4'))
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
         $bw.Write([byte[]](0, 0, 0, 0))  # 4-byte payload
         # Second member: real object, short-import, ARM64
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('foo.obj'.PadRight(16)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
+        & $script:WriteArMemberHeader $bw 'foo.obj'
         $payload = New-Object byte[] 20
         $payload[2] = 0xFF; $payload[3] = 0xFF
         $payload[6] = 0x64; $payload[7] = 0xAA  # 0xAA64 little-endian
@@ -244,11 +241,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         $ms = New-Object System.IO.MemoryStream
         $bw = New-Object System.IO.BinaryWriter($ms)
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('foo.obj'.PadRight(16)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
+        & $script:WriteArMemberHeader $bw 'foo.obj'
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes('NOTANUMBER'))  # 10 bytes, not a number
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
         $bw.Flush()

@@ -420,35 +420,19 @@ int _isatty(int);
     if ($script:GstCross) {
         if ($rtCandidates.Count -eq 0) {
             # SELF-HEAL: the source-built toolchain (#135) ships the host builtins
-            # only, so the arm64 GStreamer link would die on __udivti3. Mine the
-            # aarch64 counterpart from the LLVM release archive (same recipe as
-            # Install-ScoopTools.ps1); only the one .lib is kept.
+            # only (fallback; the toolchain stage normally stages the lib already).
             $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($rtHostLib.Count -gt 0) {
                 $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
-                $rtArchive = Join-Path $resolvedLogDir "clang+llvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
-                $rtExtract = Join-Path $resolvedLogDir 'llvm-aarch64-rt'
+                $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
                 try {
                     log "Fetching aarch64 compiler-rt (LLVM $rtVer) - the patched toolchain ships x86_64 builtins only"
-                    Invoke-DownloadWithRetry -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz" -DestinationPath $rtArchive
-                    # System32 bsdtar, never the GNU tar that may be on PATH: GNU
-                    # parses `C:\...` as a remote-host spec ("Cannot connect to C:").
-                    $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-                    if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
-                    New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
-                    & $rtTar -xf $rtArchive -C $rtExtract '*clang_rt.builtins-aarch64.lib'
-                    $rtFound = @(Get-ChildItem -Path $rtExtract -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-                    if ($rtFound.Count -gt 0) {
-                        Copy-Item -Path $rtFound[0].FullName -Destination $rtHostLib[0].Directory.FullName -Force
-                        log "Installed aarch64 compiler-rt -> $(Join-Path $rtHostLib[0].Directory.FullName 'clang_rt.builtins-aarch64.lib')"
-                    } else {
-                        Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
-                    }
+                    $rtStaged = Install-AArch64CompilerRt -Url $rtUrl -DestinationDir $rtHostLib[0].Directory.FullName `
+                        -LibName 'clang_rt.builtins-aarch64.lib' `
+                        -ExpectedSha256 ([string]$env:LLVM_WINDOWS_AARCH64_RT_SHA256) -WorkDir $resolvedLogDir
+                    log "Installed aarch64 compiler-rt -> $rtStaged"
                 } catch {
                     Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
-                } finally {
-                    Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
-                    Remove-Item -Path $rtExtract -Recurse -Force -ErrorAction SilentlyContinue
                 }
                 $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
             }

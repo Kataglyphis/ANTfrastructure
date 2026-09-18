@@ -29,48 +29,8 @@
 
 Set-StrictMode -Version Latest
 
-# meson 1.12.0 (master identical, checked 2026-08-26) mishandles "build-only"
-# subprojects -- the copy of a subproject meson configures for the BUILD machine
-# when a cross build asks for `native: true`. Nothing in this monorepo asks for
-# that explicitly; meson's own gnome module does (`gnome.mkenums_simple` ->
-# find_tool -> dependency('glib-2.0', native: true, required: false)), so under
-# forcefallback every cross configure runs glib's meson.build a second time for
-# the build machine. That copy is never needed (glib-mkenums/genmarshal are
-# python scripts resolved through the host glib's override), but three meson
-# bugs turn its mere ATTEMPT into missing plugins -- measured arm64 runs 25-27:
-#
-#  (1) Interpreter.summary is keyed by NAME and shared across interpreters, so
-#      the second glib configure throws "Summary section 'Build environment'
-#      already have key 'host cpu'" (glib meson.build:2777) and glib(build)
-#      fails. Left in place on purpose: a build-machine glib that configures
-#      is a build-machine glib that COMPILES (run 26/27: 5772 targets, then
-#      'glibconfig.h' file not found), and nothing consumes it.
-#  (2) do_subproject's failure paths call disabled_subproject(subp_name,
-#      exception=e) WITHOUT for_machine, whose default is HOST -- the failed
-#      build-machine holder overwrites the healthy HOST glib holder. That is
-#      the poison: libnice's anonymous dependency('', fallback: ['glib',
-#      'libglib_dep']) reaches glib by name and gets 'Subproject
-#      "subprojects/glib" required but not found' (the gio-2.0 lookup survives
-#      because overrides are a different table), webrtc/nice vanish, and every
-#      later native:true request re-runs the whole failing configure because
-#      the BUILD key never received the disabled entry (30+ times on run 25).
-#      PATCHED: pass for_machine at both sites.
-#  (3) Targets and include dirs of a build-only subproject live under
-#      `build.<subdir>` (build.py: BuildProject.prefix), but configure_file
-#      writes to the UNprefixed self.subdir -- the build machine's
-#      glibconfig.h/config.h/fficonfig.h land in, and overwrite, the HOST
-#      subproject's build dir (run 27: the build compile could not find them
-#      where its -I pointed; the host compile silently used x64 configs).
-#      PATCHED: configure_file's output path and returned File carry the
-#      project prefix, exactly like targets do.
-#
-# Net effect: glib(build) still dies at (1), is now recorded under BUILD only,
-# clobbers nothing, gnome.find_tool falls through to the host override as
-# designed, libnice and webrtc configure. Idempotent (one marker per fix);
-# throws when either site count is off -- load-bearing on the cross lane, a
-# silent miss reappears as the libnice error two hours later. Upstream draft:
-# out/upstream-issue-meson-summary-build-subproject.md (all three).
-# Fixture test: SourceBuild.MesonBuildSubprojectPatch.Tests.ps1.
+# meson 1.12.0 build-only-subproject bugs; the site-count throws are
+# load-bearing. Full failure chain: docs/failure-modes.md § meson cross.
 function Invoke-MesonBuildSubprojectPatch {
     param(
         [Parameter(Mandatory)]

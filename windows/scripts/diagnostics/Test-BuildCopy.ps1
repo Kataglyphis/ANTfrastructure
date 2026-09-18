@@ -138,8 +138,10 @@ if ($Docker) {
     # [switch]$Docker parameter itself, and assigning a string to the
     # switch-constrained variable throws "Cannot convert ... String to ...
     # SwitchParameter" - this lane had never run until 2026-08-10.
-    $dockerExe = @("$env:ProgramFiles\Stevedore\bin\docker.exe", 'D:\Stevedore\bin\docker.exe') |
-        Where-Object { Test-Path $_ } | Select-Object -First 1
+    # Shared candidate walk (backlog #101); imported only in this opt-in lane,
+    # so the default buildkit lane stays module-free on a bare host.
+    Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
+    $dockerExe = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe")
     $dockerBaseArgs = if ($probeBase) { @('--build-arg', "BASE=$probeBase") } else { @() }
     Invoke-ProbeLane -Name 'docker-classic' -Exe $dockerExe -Arguments (@('build') + $dockerBaseArgs + @('-t', 'local/test:diag-probe-build-copy', $probeDir))
 }

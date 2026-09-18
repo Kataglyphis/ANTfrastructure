@@ -14,6 +14,10 @@ if (-not (Get-Module -Name 'WindowsUv.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsUv.Common.psm1')
 }
 
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
+
 function Invoke-EarlyWebDavDownload {
   param(
     [Parameter(Mandatory)]
@@ -56,14 +60,9 @@ function Invoke-EarlyWebDavDownload {
 
   # Reuse a healthy venv, recreate a broken one (missing or non-runnable
   # python.exe) - routed through the shared WindowsUv.Common implementation.
-  $logInfo = {
-    param([string]$Message)
-    Write-BuildLog -Context $Context -Message $Message
-  }
-  $logWarning = {
-    param([string]$Message)
-    Write-BuildLogWarning -Context $Context -Message $Message
-  }
+  $uvDelegates = New-UvBuildDelegates -Context $Context
+  $logInfo = $uvDelegates.LogInfo
+  $logWarning = $uvDelegates.LogWarning
   # -IgnoreExitCode preserves this step's original best-effort behaviour:
   # WebDAV bootstrap failures degrade to warnings, never abort the build.
   $commandRunner = {

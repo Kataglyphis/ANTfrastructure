@@ -13,6 +13,7 @@
 #   APP_PACKAGING_ICON_FALLBACKS  probed after web/icons/Icon-512.png
 #   APP_PACKAGING_WORKDIR         staging root, container-native     (/tmp/packaging-work)
 #   KATAGLYPHIS_FLATPAK_WORKDIR   flatpak staging root               (/tmp/flatpak-work)
+#   KATAGLYPHIS_FLATPAK_FINISH_ARGS  extra finish-args, space-separated (appended)
 #
 # Three things here were learned the hard way and must not be "simplified":
 #
@@ -79,6 +80,55 @@ app_packaging_ensure_appimagetool_via_antfrastructure() {
   command -v appimagetool >/dev/null 2>&1
 }
 
+# The flatpak scope rule both entry points obey: a remote is added only when
+# NEITHER scope knows it, and a ref is installed only when neither scope has it
+# (a system-wide copy is not a reason to pull a per-user one -- ~1.9 GB/arch).
+# `container` mode wraps every flatpak call in dbus-run-session and installs
+# per-user only, because the CI container user cannot write the system
+# installation; `runtime` mode installs user-first with a system fallback. The
+# two ENTRY POINTS stay separate -- apt/privilege policy differs -- this is the
+# half they must not disagree about.
+# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+app_packaging_flatpak_ensure_refs() {
+  local mode="${1:?mode required (container|runtime)}" arch="${2:-}"
+  shift 2
+  local -a refs=("$@")
+  local -a wrap=()
+  local _ref
+
+  [ "${mode}" = "container" ] && wrap=(dbus-run-session --)
+
+  if ! flatpak remote-info --user flathub >/dev/null 2>&1 \
+     && ! flatpak remote-info --system flathub >/dev/null 2>&1; then
+    if [ "${mode}" = "runtime" ]; then
+      flatpak --user remote-add --if-not-exists flathub \
+        https://flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 \
+        || flatpak --system remote-add --if-not-exists flathub \
+          https://flathub.org/repo/flathub.flatpakrepo || return 1
+    else
+      "${wrap[@]}" flatpak --user remote-add --if-not-exists flathub \
+        https://flathub.org/repo/flathub.flatpakrepo
+    fi
+  fi
+
+  for _ref in "${refs[@]}"; do
+    if flatpak info --user "$_ref" >/dev/null 2>&1 \
+       || flatpak info --system "$_ref" >/dev/null 2>&1; then
+      echo "[Info] flatpak ref already installed: ${_ref}"
+      continue
+    fi
+    echo "[Info] Installing flatpak ref: ${_ref}"
+    if [ "${mode}" = "runtime" ]; then
+      flatpak --user install -y --noninteractive flathub "$_ref" \
+        || flatpak --system install -y --noninteractive flathub "$_ref" \
+        || return 1
+    else
+      "${wrap[@]}" flatpak --user install -y --arch="${arch}" flathub "$_ref" \
+        || return 1
+    fi
+  done
+}
+
 app_packaging_setup_dependencies_for_container() {
   local matrix_arch="${1:?matrix_arch required}"
 
@@ -125,10 +175,13 @@ app_packaging_setup_dependencies_for_container() {
       ;;
   esac
 
-  dbus-run-session -- flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-  dbus-run-session -- flatpak --user install -y --arch="$flatpak_arch" flathub \
-    "org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION}" \
-    "org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION}"
+  # Probe BOTH scopes first (CON2): the image installs flathub + the runtime
+  # pair SYSTEM-wide as root, and the container runs as uid 1001, so an
+  # unconditional --user install pulled a second per-user copy of the two
+  # largest refs (~1.9 GB per run per arch).
+  app_packaging_flatpak_ensure_refs container "$flatpak_arch" \
+    "org.freedesktop.Platform/${flatpak_arch}/${FLATPAK_RUNTIME_VERSION}" \
+    "org.freedesktop.Sdk/${flatpak_arch}/${FLATPAK_RUNTIME_VERSION}"
 }
 
 app_packaging_formats_include_flatpak() {
@@ -498,6 +551,29 @@ EOF
   app_packaging_assert_artifact "out/${output_name}"
 }
 
+# The manifest's finish-args block: the four args every bundle needs, plus
+# whatever KATAGLYPHIS_FLATPAK_FINISH_ARGS adds. APPENDED, never replaced -- a
+# camera needs --device=all (flatpak has no --device=video), a model loaded from
+# a user-chosen path needs a --filesystem=..., and the generated four are what
+# keep network/wayland/dri. Space-separated; each entry becomes one YAML line.
+# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+app_packaging_flatpak_finish_args_block() {
+  local -a finish_args=(
+    --share=network
+    --socket=wayland
+    --socket=fallback-x11
+    --device=dri
+  )
+  local -a extra=()
+  if [[ -n "${KATAGLYPHIS_FLATPAK_FINISH_ARGS:-}" ]]; then
+    IFS=' ' read -r -a extra <<< "${KATAGLYPHIS_FLATPAK_FINISH_ARGS}"
+  fi
+  local _arg
+  for _arg in "${finish_args[@]}" ${extra[@]+"${extra[@]}"}; do
+    printf '  - %s\n' "${_arg}"
+  done
+}
+
 app_packaging_package_linux_bundle_flatpak() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
@@ -542,10 +618,7 @@ runtime-version: '${FLATPAK_RUNTIME_VERSION}'
 sdk: org.freedesktop.Sdk
 command: ${package_name}
 finish-args:
-  - --share=network
-  - --socket=wayland
-  - --socket=fallback-x11
-  - --device=dri
+$(app_packaging_flatpak_finish_args_block)
 modules:
   - name: ${package_name}
     buildsystem: simple
@@ -615,8 +688,9 @@ app_packaging_resolve_flatpak_arch() {
 #
 # flathub plus the runtime+SDK pair, for a packaging run that is NOT inside the
 # family CI image. Deliberately not app_packaging_setup_dependencies_for_container
-# (apt, privilege helper, unconditional install); why the two must not be merged,
-# and why every step is user-first with a system fallback:
+# (apt, privilege helper); the scope probe they share is
+# app_packaging_flatpak_ensure_refs, and every step here stays user-first with a
+# system fallback:
 # docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
 app_packaging_ensure_flatpak_runtime() {
   local flatpak_arch="${1:-}"
@@ -631,29 +705,9 @@ app_packaging_ensure_flatpak_runtime() {
 
   flatpak_arch="$(app_packaging_resolve_flatpak_arch "$flatpak_arch")" || return 1
 
-  local runtime_ref="${runtime}/${flatpak_arch}/${runtime_version}"
-  local sdk_ref="${sdk}/${flatpak_arch}/${runtime_version}"
-
-  if ! flatpak remote-info --user flathub >/dev/null 2>&1 \
-     && ! flatpak remote-info --system flathub >/dev/null 2>&1; then
-    if ! flatpak --user remote-add --if-not-exists flathub \
-           https://flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1; then
-      flatpak --system remote-add --if-not-exists flathub \
-        https://flathub.org/repo/flathub.flatpakrepo || return 1
-    fi
-  fi
-
-  local _ref
-  for _ref in "$runtime_ref" "$sdk_ref"; do
-    if flatpak info --user "$_ref" >/dev/null 2>&1 || flatpak info --system "$_ref" >/dev/null 2>&1; then
-      echo "[Info] flatpak ref already installed: ${_ref}"
-      continue
-    fi
-    echo "[Info] Installing flatpak ref: ${_ref}"
-    flatpak --user install -y --noninteractive flathub "$_ref" \
-      || flatpak --system install -y --noninteractive flathub "$_ref" \
-      || return 1
-  done
+  app_packaging_flatpak_ensure_refs runtime "" \
+    "${runtime}/${flatpak_arch}/${runtime_version}" \
+    "${sdk}/${flatpak_arch}/${runtime_version}"
 }
 
 # CMake install rules name their files after the PROJECT; flatpak wants them

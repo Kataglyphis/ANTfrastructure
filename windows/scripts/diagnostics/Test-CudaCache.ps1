@@ -32,11 +32,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
 
 if (-not $Endpoint) { throw 'no WebDAV endpoint: pass -Endpoint or set SCCACHE_WEBDAV_ENDPOINT (Machine scope)' }
-if (-not $BuildCtl) {
-    # Shared candidate-list owner (backlog #2): candidates first, then PATH.
-    $BuildCtl = Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
-}
-if (-not $BuildCtl -or -not (Test-Path $BuildCtl)) { throw 'buildctl not found in any supported Stevedore layout' }
+# Shared candidate-list owner (backlog #2): candidates first, then PATH.
+$BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 
 $ctx = Join-Path ([System.IO.Path]::GetTempPath()) ("cudacache-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $ctx | Out-Null

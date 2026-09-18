@@ -266,13 +266,14 @@ SRC
 t_case "one table decides which archive an arch lives on -- AS1"
 # The HOST stanza and the TARGET stanza used to answer this question in two
 # different places, and Dockerfile.media answered it with a literal. Same table
-# now, so they cannot disagree about where an arch comes from.
+# now, so they cannot disagree about where an arch comes from. `386` is
+# arch_normalize's canonical spelling for i386, so it is the archive arm too.
 # shellcheck disable=SC1090
 . "${TESTS_DIR}/../01-core/ubuntu-mirror.sh"
 for _a in arm64 riscv64 ppc64el s390x armhf; do
   t_assert_ok ubuntu_arch_uses_ports "${_a}"
 done
-for _a in amd64 i386; do
+for _a in amd64 i386 386; do
   t_assert_fails ubuntu_arch_uses_ports "${_a}"
 done
 t_assert_fails ubuntu_arch_uses_ports ""
@@ -497,16 +498,21 @@ _CROSS_APT_SOURCES_DIR="${_ENSURE_DIR}"
 cross_build_arch() { printf 'amd64'; }
 cross_detect_distro_codename() { printf 'resolute'; }
 
-t_case "a ports source is written for every installed foreign arch that lacks one"
+t_case "a source is written for every installed foreign arch that lacks one"
 export FAKE_FOREIGN_ARCHS="arm64 riscv64 i386"
 rm -f "${_ENSURE_DIR}"/*
 t_assert_ok cross_ensure_installed_foreign_arch_sources
 t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-arm64.sources"
 t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-riscv64.sources"
+# AS1: i386 is an ARCHIVE arch. Skipping it left libc6:i386 with an
+# architecture and no source the moment archive/ports drifted apart.
+t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-archive-i386.sources"
 t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-i386.sources"
 t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-amd64.sources"
 t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-ports-arm64.sources")" "Architectures: arm64"
 t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-ports-arm64.sources")" "ports.ubuntu.com"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-archive-i386.sources")" "Architectures: i386"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-archive-i386.sources")" "archive.ubuntu.com"
 
 t_case "an existing ports source is left untouched"
 printf 'marker\n' > "${_ENSURE_DIR}/ubuntu-ports-arm64.sources"
@@ -524,5 +530,30 @@ t_case "android-sdk.sh actually calls the helper"
 # and a substring check over the whole file goes green with the CALL deleted.
 t_assert_ok grep -qx -e cross_ensure_installed_foreign_arch_sources \
   "${TESTS_DIR}/../02-toolchain/android-sdk.sh"
+
+# ---------------------------------------------------------------------------
+# AS1: the per-arch file and mirror are one table's answer for BOTH families.
+# An amd64/i386 target used to return early from the configure function: dpkg
+# gained an architecture and apt gained no source at all.
+t_case "cross_apt_sources_file_for_arch names the file after the archive family"
+t_assert_eq "${_ENSURE_DIR}/ubuntu-ports-arm64.sources" "$(cross_apt_sources_file_for_arch arm64)"
+t_assert_eq "${_ENSURE_DIR}/ubuntu-archive-amd64.sources" "$(cross_apt_sources_file_for_arch amd64)"
+t_assert_eq "${_ENSURE_DIR}/ubuntu-archive-i386.sources" "$(cross_apt_sources_file_for_arch i386)"
+t_assert_eq "${_ENSURE_DIR}/ubuntu-archive-386.sources" "$(cross_apt_sources_file_for_arch 386)"
+t_case "cross_apt_mirror_url_for_arch routes by the same table"
+t_assert_contains "$(cross_apt_mirror_url_for_arch amd64)" "archive.ubuntu.com"
+t_assert_contains "$(cross_apt_mirror_url_for_arch arm64)" "ports.ubuntu.com"
+
+t_case "cross_configure_foreign_arch_apt_sources writes an ARCHIVE stanza for an amd64 target"
+rm -f "${_ENSURE_DIR}"/*
+(
+  _CROSS_APT_SOURCES_DIR="${_ENSURE_DIR}"
+  cross_target_arch() { printf 'amd64'; }
+  cross_build_arch() { printf 'arm64'; }
+  cross_configure_foreign_arch_apt_sources
+)
+t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-archive-amd64.sources"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-archive-amd64.sources")" "Architectures: amd64"
+t_assert_contains "$(cat "${_ENSURE_DIR}/ubuntu-archive-amd64.sources")" "archive.ubuntu.com"
 
 t_summary

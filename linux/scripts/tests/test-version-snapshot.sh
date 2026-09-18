@@ -150,22 +150,20 @@ t_case "5/8 check_dockerfile_args — an ARG default drifting from versions.env"
 _red "Dockerfile ARG defaults are stale:" \
   linux/Dockerfile.base 's|^ARG CMAKE_VERSION=.*|ARG CMAKE_VERSION=0.0.0|'
 
-t_case "6/8 check_script_defaults is KNOWN-GAP: its glob matches nothing"
-# script_default_target_files() globs windows/scripts/build-*-from-source.ps1.
-# Those scripts live one directory deeper, in windows/scripts/build/, and are
-# named Build-*FromSource.ps1 since the Verb-Noun rename (19982134), so the
-# glob returns an EMPTY list and the sub-check prints its green line having
-# scanned zero files. It cannot be reddened by any fixture, which is why this
-# case pins the emptiness instead of faking a pass. Widening the glob turns ~10
-# PowerShell scripts into gate subjects and any fallout is Windows-lane work, so
-# it is the owner's call, not this suite's. The day the glob is fixed this case
-# goes red, which is the point of pinning it.
-t_assert_eq "0" "$(find "${REPO}/windows/scripts" -maxdepth 1 -name 'build-*-from-source.ps1' | wc -l)" \
-  "the glob's own directory"
-t_assert_eq "10" "$(find "${REPO}/windows/scripts/build" -maxdepth 1 -name 'Build-*FromSource.ps1' | wc -l)" \
-  "and where the scripts actually are"
-t_assert_contains "${_ok_out}" "Windows build-script -DefaultValue pins match versions.env." \
-  "a green line over an empty file list is the whole finding"
+t_case "6/8 check_script_defaults — a -DefaultValue drifting from versions.env"
+# The glob matched nothing between the 2026-09-06 Verb-Noun rename and 2026-09-17
+# (flat lowercase windows/scripts/build-*-from-source.ps1 vs the real
+# windows/scripts/**/Build-*FromSource.ps1), so ten scripts were not gate
+# subjects. It matches them now, which makes this sub-check reddenable -- and the
+# TVM_COMMIT/TVM_REF exception (PinParity carries the same one) must keep the
+# tag fallback from being rewritten to the commit hash.
+t_assert_eq "10" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
+  "the ten gate subjects the fixed glob must find"
+_red "Windows build-script -DefaultValue pins are stale:" \
+  windows/scripts/build/Build-TvmFromSource.ps1 "s|-DefaultValue 'v0.26.0'|-DefaultValue 'v0.0.0'|"
+t_assert_contains "$(cat "${REPO}/windows/scripts/build/Build-TvmFromSource.ps1")" \
+  "-DefaultValue 'v0.26.0'" \
+  "the commit override must leave the TAG fallback alone, not rewrite it to the hash"
 
 t_case "7/8 check_doc_literals — a /opt/gcc-<version> literal in prose"
 _red "stale gcc literal /opt/gcc-0.0.0" \

@@ -20,6 +20,10 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
 Import-Module $sharedModulePath -Force
+# Shared is one of the three modules COPY'd before this script in Dockerfile.base;
+# imported for Assert-FileSha256 (not in ContainerImage's re-export list).
+$sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
 
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
@@ -108,19 +112,10 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
     return
 }
 
-# Integrity pin: TENSORRT_ZIP_SHA256 (versions.env). Populated since 2026-08
-# (the staged zip is hashed when a new one lands — TensorRT-always-newest
-# directive); when set, the zip we are about to extract must match it
-# regardless of which lookup tier found it. Empty only on hosts that never
-# staged the EULA-gated download.
+# Integrity pin: TENSORRT_ZIP_SHA256 (versions.env); the zip must match it
+# whichever lookup tier found it. Empty (never staged) warns, mismatch throws.
 $trtSha = Resolve-ContainerImageValue -EnvironmentVariable 'TENSORRT_ZIP_SHA256' -DefaultValue ''
-if ($trtSha) {
-    $actual = (Get-FileHash -Algorithm SHA256 -Path $trtZip).Hash
-    if (-not [string]::Equals($actual, $trtSha, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "TensorRT zip SHA256 mismatch for ${trtZip}: expected $trtSha but got $actual"
-    }
-    Write-Host "TensorRT zip SHA256 verified."
-}
+Assert-FileSha256 -Path $trtZip -Expected $trtSha -Label 'TensorRT zip' -PinName 'TENSORRT_ZIP_SHA256'
 
 Write-Host "Extracting TensorRT to $TensorRtRoot..."
 # $null result = flat-layout zip (no TensorRT-* subdir), a legitimate NVIDIA packaging.

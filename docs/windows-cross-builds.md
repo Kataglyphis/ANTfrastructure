@@ -4,17 +4,19 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status — re-measured 2026-08-28 (arm64 acceptance run `bk-20260828-171914`).**
-> The current tree — module-closure refactor (#134), forced clang-cl 23.1.0,
+> **Status — re-measured 2026-09-02 after the #158-wave follow-ups: BOTH lanes
+> green** (`bk-20260828-171914` still supplies the gate numbers below; #135's
+> patched toolchain is the default, so the amd64 workarounds are gone; #167
+> moved the arm64 smoke floors 66→69 and the measured run stays 97/0/15). The
+> current tree — module-closure refactor (#134), forced clang-cl 23.1.0,
 > per-TU AArch64 codegen workarounds (#135) — built end to end and reached
 > RUNTIME PARITY with `:winamd64`. Every gate below hit its target on the
 > current HEAD. Nothing the lane produces has ever been *executed* — wheels
 > ship staged, not installed, and every verdict is a static check.
 >
-> **The amd64 lane had a TVM-vs-LLVM-23.1.0 blocker, now fixed (needs rebuild).**
-> The Windows build used the tag (`v0.26.0`) without the LLVM 23 guards; it now
-> uses `TVM_COMMIT=994e0216` (upstream main, with the guards). See
-> `docs/windows-refactor-backlog.md` #134.
+> **The amd64 lane's TVM-vs-LLVM-23.1.0 blocker is fixed and REBUILT** (since
+> 2026-09-02 both lanes are green; `TVM_COMMIT=994e0216`, upstream main, with
+> the guards). See `docs/windows-refactor-backlog.md` #134.
 >
 > Same media and inference surface: GStreamer with
 > an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
@@ -29,7 +31,7 @@ produce, and which gates keep it honest.
 > | Import walk (`-ImportWalk`, unpacks staged wheels) | **606 walked / 0 unresolved** (3 allowlisted, 6 device-OS) | report-only |
 > | Target python deps | **12 wheels / 0 unresolved requirement edges** | installed natively |
 > | Mandatory GStreamer plugins | **6 / 6** | 6 / 6 |
-> | Smoke | 97 passed / 0 failed / 15 skipped (floors 66/25) | 222 / 0 / 0 |
+> | Smoke | 97 passed / 0 failed / 15 skipped (floors 69/20) | 222 / 0 / 0 |
 >
 > **Absent by construction, each named inside the bundle** (`ABSENT-ON-ARM64.txt` /
 > `COMPILER-ABSENT-ON-ARM64.txt`): the TVM and IREE **compilers** and `iree.compiler` — they need
@@ -308,7 +310,7 @@ Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) whil
 
 ### `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)
 
-An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget feature the pass itself consults. It **disables the compression pass exactly as this flag does** — byte-identical output, verified 2026-08-27 — and is preferred only because a target feature is a supported spelling where `-mllvm` is a debug knob. The separate branch-range failure in `median_blur.dispatch.cpp` is handled per-TU with `/Ob1` and by no jump-table setting at all. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts. **ROOT CAUSE, corrected 2026-08-28 — the two failures are ONE defect, not two.** An earlier version of this paragraph claimed they were unrelated and that a toolchain move to LLVM `main` would retire `/Ob1`; **both halves were wrong**, and the correction is recorded rather than deleted because the wrong story was acted on. `AsmPrinter` emits a NOP after an `EH_LABEL` under async EH (`/EHa`, which OpenCV passes) while `getInstSizeInBytes` reports `EH_LABEL` as a zero-size meta-instruction, so every MIR-level block-size estimate is 4 bytes short per label. The two consumers of that estimate then each pick an encoding the assembler rejects: `AArch64CompressJumpTables` (`value evaluated as <N>`) and `BranchRelaxation` (`fixup value out of range`). That is the under-counted instruction this paragraph used to say was unidentified. Fixed by `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` (+ `002` for SEH pseudos) on the **pinned 23.1.0**, filed upstream as [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) and [llvm#219276](https://github.com/llvm/llvm-project/pull/219276). **Claimed but unlogged:** a `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1` on a compiler containing no llvm#202716 — but it ran by hand in the container and left no log, and no file in `out/windows-build-logs/` mentions either knob. Re-run it through the driver before acting on it. #202716 remains a real upstream defect either way; the evidence that it is not this lane's cause is the patch set that DID fix the lane, not this census. **Both settings stay until the patched toolchain is the DEFAULT** — `Dockerfile.toolchain-builder` still ships `ARG BUILD_PATCHED_LLVM=0`, so a stock image still needs them. Full evidence: [`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
+An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget feature the pass itself consults. It **disables the compression pass exactly as this flag does** — byte-identical output, verified 2026-08-27 — and is preferred only because a target feature is a supported spelling where `-mllvm` is a debug knob. The separate branch-range failure in `median_blur.dispatch.cpp` is handled per-TU with `/Ob1` and by no jump-table setting at all. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts. **ROOT CAUSE, corrected 2026-08-28 — the two failures are ONE defect, not two.** An earlier version of this paragraph claimed they were unrelated and that a toolchain move to LLVM `main` would retire `/Ob1`; **both halves were wrong**, and the correction is recorded rather than deleted because the wrong story was acted on. `AsmPrinter` emits a NOP after an `EH_LABEL` under async EH (`/EHa`, which OpenCV passes) while `getInstSizeInBytes` reports `EH_LABEL` as a zero-size meta-instruction, so every MIR-level block-size estimate is 4 bytes short per label. The two consumers of that estimate then each pick an encoding the assembler rejects: `AArch64CompressJumpTables` (`value evaluated as <N>`) and `BranchRelaxation` (`fixup value out of range`). That is the under-counted instruction this paragraph used to say was unidentified. Fixed by `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` (+ `002` for SEH pseudos) on the **pinned 23.1.0**, filed upstream as [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) (merged 2026-09-16, but not in `llvmorg-23.1.1`) and [llvm#219276](https://github.com/llvm/llvm-project/pull/219276) (still open). **Claimed but unlogged:** a `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1` on a compiler containing no llvm#202716 — but it ran by hand in the container and left no log, and no file in `out/windows-build-logs/` mentions either knob. Re-run it through the driver before acting on it. #202716 remains a real upstream defect either way; the evidence that it is not this lane's cause is the patch set that DID fix the lane, not this census. **The two workaround settings stay as the STOCK-toolchain fallback** — `Dockerfile.toolchain-builder` now ships `ARG BUILD_PATCHED_LLVM=1` (patched is the DEFAULT since #135; `-StockLlvm` is the opt-out), so a stock image still needs them. Full evidence: [`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
 
 ### MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)
 
@@ -726,7 +728,7 @@ entries come back in the same order.
 
 Eight of the nineteen blockers found in the merge/final audit were the same class: **code that executes
 arm64 binaries on the x64 build host.** The GStreamer post-install gate runs `gst-inspect-1.0.exe`; the
-smoke suite — 22 sections, ~100 assertions — is dominated by payload execution: `LoadLibraryW` over every
+smoke suite — 23 sections, ~100 assertions — is dominated by payload execution: `LoadLibraryW` over every
 shipped DLL, compile-and-run native probes, `ffmpeg -version` and its kin. None of those are checks that
 *fail* on arm64 — they are checks that **cannot exist** there, all failing for the same uninformative
 reason.
@@ -759,7 +761,7 @@ So on the cross lane:
 
 **The amd64 smoke floors are deliberately never lowered for arm64.** Since 2026-08-24 the arm64 lane
 carries its **own floor column** — a third column in the floor table, sized for the host-toolchain
-sections it actually runs (floors 66/25; the green run measured 97/0/15) — and the amd64 numbers
+sections it actually runs (floors 69/20; the green run measured 97/0/15) — and the amd64 numbers
 stay untouched. A shared, reduced `-SmokeMinPassed`
 would leave a number that a later amd64 change could quietly be measured against — which is exactly
 how the gate documented at backlog #44 became decorative once before.

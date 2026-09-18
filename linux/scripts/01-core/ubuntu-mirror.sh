@@ -79,11 +79,13 @@ ubuntu_ports_mirror_from_archive() {
 # Which archive an Ubuntu arch lives on. amd64 and i386 are on archive.ubuntu.com;
 # EVERY other arch is on ports.ubuntu.com. One table, so the HOST stanza and the
 # TARGET stanza can never disagree about where an arch comes from -- the class of
-# bug that already cost riscv64 its Qt6.
+# bug that already cost riscv64 its Qt6. `386` is arch_normalize's canonical
+# spelling for i386 (cross_target_arch answers `386`), so it must be listed too
+# or an i386 target silently takes the ports branch.
 # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
 ubuntu_arch_uses_ports() {
   case "${1:-}" in
-    amd64|i386) return 1 ;;
+    amd64|i386|386) return 1 ;;
     "") return 1 ;;
     *) return 0 ;;
   esac

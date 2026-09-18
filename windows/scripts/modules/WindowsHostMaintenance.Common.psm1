@@ -7,9 +7,9 @@
 # mutate a host artifact -> restore services -> write a transcript", and until
 # 2026-08-21 each carried its own byte-identical transcript preamble and
 # service stop-loop (~90 duplicated lines, already diverging in formatting).
-# The RESTORE halves stay in the scripts on purpose — each script's restore
-# semantics differ (best-effort mid-flow vs must-succeed final) and that
-# difference is load-bearing, not drift.
+# The start loop is shared too (Start-HostServices); WHAT a script restores and
+# whether it then throws stays in the script on purpose — best-effort mid-flow
+# vs must-succeed final is load-bearing, not drift.
 
 Set-StrictMode -Version Latest
 
@@ -90,9 +90,35 @@ function Stop-HostServices {
     return , $stopped.ToArray()
 }
 
+function Start-HostServices {
+    <#
+    .SYNOPSIS
+        Starts what Stop-HostServices stopped, in REVERSE stop order (dependents
+        first). A failure is a red line, never silence — the measured
+        2026-09-01 bug was buildkitd starting before containerd and dying on the
+        missing pipe while a swallowed error left the run looking green.
+    #>
+    param(
+        [Parameter(Mandatory)]$Log,
+        [Parameter(Mandatory)][string[]]$Service
+    )
+    Write-HostStep $Log '--- starting services ---'
+    $ordered = @($Service)
+    [array]::Reverse($ordered)
+    foreach ($s in $ordered) {
+        try {
+            Start-Service $s -ErrorAction Stop
+            Write-HostStep $Log ('{0} : {1}' -f $s, (Get-Service $s).Status)
+        } catch {
+            Write-HostStep $Log ('{0} START ERROR: {1}' -f $s, $_.Exception.Message) 'Red'
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'New-HostMaintenanceLog',
     'Write-HostStep',
     'Save-HostMaintenanceLog',
-    'Stop-HostServices'
+    'Stop-HostServices',
+    'Start-HostServices'
 )

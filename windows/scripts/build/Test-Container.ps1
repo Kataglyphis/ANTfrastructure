@@ -1490,6 +1490,42 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
 
 }
 # ============================================================================
+Write-TestHeader '23. Baked C:\temp\scripts surface (host-arch)'
+# ============================================================================
+# The gate bind-mounts windows/scripts, so nothing exercised the copies baked
+# into the image; a lying healthcheck shipped green once (#167).
+$bakedScriptsRoot = 'C:\temp\scripts'
+if (-not (Test-Path (Join-Path $bakedScriptsRoot 'Test-Container.ps1'))) {
+    Skip-Test "baked C:\temp\scripts surface ($bakedScriptsRoot predates the final-stage COPY)"
+} else {
+    # Four baked files; the torch-assembled one is default-dropped on the cross lane.
+    $bakedFiles = @('Test-Health.ps1', 'Test-Container.ps1', 'entrypoint.cmd')
+    if ($smokeCross) {
+        Skip-Test 'baked Build-TorchApp.ps1 (torch stage is dropped on the cross lane; see docs/windows-cross-builds.md)'
+    } else {
+        $bakedFiles += 'Build-TorchApp.ps1'
+    }
+    foreach ($bakedFile in $bakedFiles) {
+        Assert-FileExists -Path (Join-Path $bakedScriptsRoot $bakedFile) -Description "baked $bakedFile"
+    }
+
+    # The shipped module set must import from where the image puts it, not the mount.
+    $bakedModule = Join-Path $bakedScriptsRoot 'modules\WindowsTargetArch.Common.psm1'
+    Assert-Test -Name 'baked modules dir imports (WindowsTargetArch.Common.psm1)' -Condition {
+        Import-Module $bakedModule -Force -ErrorAction Stop
+        (Get-Module 'WindowsTargetArch.Common').Path -eq $bakedModule -and
+        [bool](Get-Command Get-WindowsTargetArch -ErrorAction SilentlyContinue)
+    } -FailMessage "Import-Module $bakedModule failed or resolved to a different file"
+
+    # Exit code only: the healthcheck's own [PASS]/[SKIP] lines would read as
+    # suite assertions if they were echoed into this run's log.
+    Assert-Test -Name 'baked healthcheck exits 0 (Test-Health.ps1)' -Condition {
+        $null = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bakedScriptsRoot 'Test-Health.ps1') 2>&1
+        $LASTEXITCODE -eq 0
+    } -FailMessage 'the baked Test-Health.ps1 exited non-zero (the shipped image healthcheck is genuinely broken)'
+}
+
+# ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
 # Read through the module, NOT $script:passed: the counters live in the harness module's scope,
@@ -1540,6 +1576,9 @@ $sectionFloors = @{
     '14' = @{ Gpu = 3; Cpu = 3; Arm64 = 2 };  '15' = @{ Gpu = 2; Cpu = 2; Arm64 = 2 };  '16' = @{ Gpu = 1; Cpu = 1; Arm64 = 1 }
     '17' = @{ Gpu = 5; Cpu = 5; Arm64 = 0 };  '18' = @{ Gpu = 8; Cpu = 6; Arm64 = 0 };  '19' = @{ Gpu = 30; Cpu = 26; Arm64 = 24 }
     '20' = @{ Gpu = 22; Cpu = 21; Arm64 = 0 }; '21' = @{ Gpu = 2; Cpu = 2; Arm64 = 0 }; '22' = @{ Gpu = 7; Cpu = 6; Arm64 = 0 }
+    # '23' arm64 is 5: three final-stage files + module import + healthcheck (the
+    # torch-baked Build-TorchApp.ps1 is cross-skipped; it is the amd64 sixth).
+    '23' = @{ Gpu = 6; Cpu = 6; Arm64 = 5 }
 }
 $floorLane = if ($ExpectGpu) { 'Gpu' } elseif ($smokeCross) { 'Arm64' } else { 'Cpu' }
 foreach ($sec in $sectionFloors.Keys) {
