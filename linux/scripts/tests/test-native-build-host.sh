@@ -180,7 +180,7 @@ t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
 _VERS="${_CORE}/versions.env"
 _vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
 t_assert_eq "23.1.1" "$(_vers_val LLVM_RELEASE)"
-t_assert_eq "e7ce3600b55034ddf819638f395e3c475fad5be2" "$(_vers_val LLVM_COMMIT)" \
+t_assert_eq "6dfe1677ab8dffbc6ec13d53a1e0215d75147689" "$(_vers_val LLVM_COMMIT)" \
   "refs/tags/llvmorg-23.1.1^{} — the PEELED sha, per the convention above the key"
 t_assert_eq "40" "$(printf '%s' "$(_vers_val LLVM_COMMIT)" | wc -c | tr -d ' ')"
 
