@@ -9,12 +9,12 @@ lives in [Windows Build Image](windows-builds.md); this page is the ordered
 path through it, not a replacement.
 
 > **Check yourself against the machine, not against this page.**
-> `windows/scripts/Test-HostSetup.ps1` asserts every claim below and prints
+> `windows/scripts/host/Test-HostSetup.ps1` asserts every claim below and prints
 > a fix for each failure. Run it **first** (to see what a fresh box still
 > needs), **last** (to confirm bring-up), and after any host change:
 >
 > ```pwsh
-> pwsh -File windows\scripts\Test-HostSetup.ps1 -SccacheEndpoint http://<lan-ip>:5000
+> pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://<lan-ip>:5000
 > ```
 >
 > It needs no admin (Defender exclusions are reported UNKNOWN rather than

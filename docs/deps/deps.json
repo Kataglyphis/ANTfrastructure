@@ -471,11 +471,10 @@
               "url": "https://github.com/mozilla/sccache",
               "license": "Apache 2.0",
               "spdx": "Apache-2.0",
-              "modified": {
-                "patches": [
-                  "windows/upstream/sccache-nvcc-quote-fix/"
-                ],
-                "note": "Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. The Windows lane builds its own patched sccache -- see that section."
               }
             },
             {
@@ -791,6 +790,19 @@
                 "kind": "bundle",
                 "url": "https://scoop.sh/",
                 "note": "Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source."
+              }
+            },
+            {
+              "name": "sccache (Windows lane)",
+              "var": "SCCACHE_GIT_REV",
+              "url": "https://github.com/mozilla/sccache",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0",
+              "modified": {
+                "patches": [
+                  "windows/upstream/sccache-nvcc-quote-fix/"
+                ],
+                "note": "Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
               }
             },
             {

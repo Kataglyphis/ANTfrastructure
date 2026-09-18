@@ -38,11 +38,11 @@ Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSilo
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
 $cdb = Get-CdbPath
 
-$baseWininit = Get-WininitProcessId
-Start-SiloBaitContainer -Tag 'silo' | Out-Null
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+Start-SiloBaitContainer -Tag 'silo'
 Write-Host 'bait started; waiting for its silo ...'
 
-$newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 2
+$newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 2
 if (-not $newWininit) { throw 'No new silo appeared.' }
 Write-Host "silo wininit: pid $($newWininit.ProcessId)"
 Start-Sleep -Seconds 15   # land inside the ~141 s stall

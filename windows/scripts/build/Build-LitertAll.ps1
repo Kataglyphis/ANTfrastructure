@@ -32,18 +32,8 @@ $ProgressPreference    = 'SilentlyContinue'
 
 Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -Force
 
-# Two phases, sequential (LiteRT-LM needs no LiteRT SDK install, but they share
-# the branch and export order):
-#   1. LiteRT — the C++ SDK (headers + .lib for C:\runtime\lib\litert). STILL
-#      CMake (Build-LitertFromSource.ps1): it works and is a separate concern.
-#   2. LiteRT-LM — the litert_lm_main.exe runner. MIGRATED TO BAZEL 2026-08-12
-#      (Build-LitertLmBazel.ps1): Google's CI-tested path builds it in ~9 min
-#      with zero patches, ending the CMake port's unbounded staleness-shell
-#      peeling (proto/absl/litert-pin/examples/ruy, ~2.5 h each). The CMake port
-#      (Build-LitertLmFromSource.ps1) + its export bridge stay in-tree as the
-#      documented frozen fallback. The bazel script has its OWN signature
-#      (-InstallDir/-RepositoryCache, no -SourceDir), so it runs OUTSIDE
-#      Invoke-SourceBuildChain.
+# Two phases, sequential: LiteRT (CMake) then LiteRT-LM (Bazel; skipped on the
+# cross lane). Rationale + frozen CMake fallback: docs/windows-builds.md.
 # ONE chain call for both phases (#128, 2026-08-21): the bazel script's own
 # signature (-RepositoryCache, no -SourceDir) used to force it OUTSIDE
 # Invoke-SourceBuildChain, and this wrapper reimplemented the whole

@@ -7,6 +7,112 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
+
+**Nothing in this entry was proven by an image rebuild.** The Linux chain was not
+rebuilt and no Windows image was rebuilt — the container-side files are cache
+inputs of the next window — so every verdict below is a static gate, a bash suite
+or a Pester assertion on an idle tree. The 2026-09-05 lesson is the standing
+warning: a full green battery preceded two build-killing bugs found in minutes.
+The full narratives live in
+[`refactoring-backlog-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md)
+and
+[`windows-backlog-archive-2026-09-17.md`](docs/windows-backlog-archive-2026-09-17.md);
+the two open backlogs keep only pointers and open work.
+
+**F4: all 27 PowerShell extractions applied.** Every row the 2026-09-09 review
+identified and left unapplied is done: `Get-CommandParameterArgumentMap` +
+`Get-AstDefaultValue` in the pin-parity suite (233 → 154), `WriteArMemberHeader`
+(85 → 74), the hoisted `$newFakeSccache` (28 → 26), `$newStageTree`,
+`Assert-ManualTestOutcome`, `Get-ProjectSourceFiles` (118 → 43), the uv-delegate
+repoint to `New-UvBuildDelegates` (a row retired), `Enable-SccacheCompilerWrapper`
+(30 → 20), the LSM module's five-function surface, the docker/buildctl candidate
+owners (`Get-PreferredToolPath`, `Resolve-BuildCtlPath`), `Show-Exclusions`,
+`Assert-FileSha256` at four call sites, `Install-AArch64CompilerRt` (with
+`Install-ScoopTools` keeping a forced copy the base-stage closure cannot call),
+`Assert-NoCacheStageMatched`, and the coordinator's `Start-HostServices`.
+`docs/scripts/code-dupes.allow` records **39 stale rows removed, 22 budgets
+re-trued, 2 added**; the finding arm is clean and the allowlist stands at **591**
+pairs. Honest residue, both in the archive: twelve rows survive because the
+overlap shrank without going under the threshold (eleven still say "NOT YET
+APPLIED" in their frozen reason, which only the allowlist writer may re-word),
+and one budget row measured 12 against a recorded 13 at this tip — a suppression
+flip the gate reports as a stale freeze, not a finding.
+
+**AS1 residual closed.** The compiler-stage host stanza derives from
+`build_arch_oci` instead of a literal `amd64`; `cross-apt.sh` gained
+`cross_apt_sources_file_for_arch` / `cross_apt_mirror_url_for_arch`, so an
+amd64/i386 cross target gets a real archive file and not just an added
+architecture; and `FAST_UBUNTU_REWRITE_SECURITY` flipped to default-true, so the
+host `-security` comes from the same archive as the target pocket (the explicit
+`false` opt-out stays, and so do the tests on both arms).
+
+**CON1, CON2, CON3, CON5, CON6 closed; CON4 blocked.** The web lane installs
+`RUST_NIGHTLY_TOOLCHAIN` (`nightly-2026-06-28`) — a dated pin is a no-op on a
+warm image, where the floating channel is updated and dies on EXDEV out of a
+read-only layer. The flatpak refs are probed in both scopes through one owner
+(`app_packaging_flatpak_ensure_refs`), deleting the ~1.9 GB per-user duplicate
+pull. `GSTREAMER_ROOT_ANDROID` was verified already exported (`Dockerfile.android`
+and `Dockerfile.package`) — no edit. API 37
+(`ANDROID_EXTRA_COMPILE_SDK=37.0`, build-tools 37.0.0) ships beside 36, so the
+consumer's `permission_handler_android` pin can be dropped once the image ships.
+`KATAGLYPHIS_FLATPAK_FINISH_ARGS` appends to the generated finish-args through
+`app_packaging_flatpak_finish_args_block`, registered in
+`lint-env-knobs.allow`. **CON4 stays open, blocked:** the Linux half measured
+Dart 3.13.3 / Flutter 3.47.3, and the Windows half needs the exact command now
+recorded in the backlog (the winamd64 image is not local to this host).
+
+**F1's two seams cut, F2's register gained one row.** `_agentic_planner_phase`
+(reporting `planner_ran` through a nameref, five new suite cases) and
+`_cross_build_drop_registry_cache_after_flake` (nameref-taken `build_cmd` and
+`_regcache_fails`); both `run_agentic_loop` allow rows deleted, and
+`_cross_stage_build_impl` fell under 80 with the same work. F2 has no split
+target; `lib/app-packaging.sh` crossed 800 with CON2 + CON6 and took a
+NOT-a-split row.
+
+**Windows: #158's thirteen audited defects landed in one closure window.**
+`Build-Buildkit.ps1` forwards `-TargetArch` to `-ConcurrentAux` children,
+registers child-forwarded `-NoCacheStage` entries as matched, exempts
+`final-tar`/`final-push` from cache-busting, refuses `-ConcurrentAux -NoSccache`,
+and owns the halving formula once. The `DEPS_MIN_*` ARG/ENV block moved above the
+RUN that reads it. The toolchain lane now calls `Disable-ContainerWindowsUpdate`,
+with the module mounts its `built` stage needs. `Invoke-GitClone` captures the
+submodule-update exit code. `Install-NewHost.ps1` builds the Kataglyphis hcsshim
+fork at a pinned commit and asserts the env-configurable teardown knob instead of
+patching constants; `-ServiceEnvironment …=5m` deploys it, and the buildkitd
+restart is guarded. `Update-HostVhdx.ps1`'s rollback paths and `Optimize-HostVhdx`
+/ `Publish-ShimPatch` start services through `Start-HostServices` (reverse order,
+failures red), and the copy verify skips what robocopy skips. The agentic loop's
+captured output became a `ConcurrentQueue`, and `-ExecutorOnly`'s failure cap now
+reports exit 1, pinned by two source-level Pester assertions (the cap is
+unreachable in dry-run; `mutations.json` carries no entry for it). A genai
+post-copy floor closes the last unverified major. **The 36-minor opportunistic
+sweep was NOT done** and is recorded as such in the archive.
+
+**Windows: the rest of the batch.** Eight settled sccache/CUDA probes deleted
+(714 lines) and `Dockerfile.probe` re-pointed to `Test-OnnxTuReplay.ps1`; the
+compiler-rt verify + System32-tar block ported into the base and merge copies
+with `Assert-FileSha256`; patched LLVM compiles through sccache (remote-only
+gate, session wrapper, stats on stderr, cache mounts in the Dockerfile);
+smoke section 23 covers the baked `C:\temp\scripts` surface, moving the arm64
+floor 66 → 69; the #168-#174 comment wave moved every essay to its owning page
+(plus a docs home for `Build-OpencvGstreamerPlugin.ps1`); and #175's remaining
+checks landed. The 2026-09-03 doc drift is fixed — paths, variable names instead
+of submodule version restatements, 23 categories, the `Dockerfile.toolchain-builder`
+name, the QNN contradiction, and `deps.json`'s Linux-sccache misattribution with
+every generator regenerated. The PascalCase doc anchors resolve; `doc-links` is
+green.
+
+**Blocked or left open, deliberately.** Windows #153 (the corpus is absent from
+this checkout), #157 and #163 (both need a chain run and/or measurement), #162
+(own re-key window), #155 (standing do-not-integrate) and #158's minors sweep;
+Linux CON4 (the Windows-side measurement above); and one host quirk found and
+recorded rather than fixed: `verify_code_size.py`, `verify_code_complexity.py`
+and `verify_comment_size.py` mis-resolve backslash-spelled allow paths under
+Windows Python and report every frozen row twice, while the same runs are green
+under WSL/Linux. No page owns that trap yet; the 2026-09-17 archive carries the
+measurement.
+
 ## 2026-09-16 — four hub defects the family pass isolated
 
 Each was measured in a consumer and fixed here, where the code lives.

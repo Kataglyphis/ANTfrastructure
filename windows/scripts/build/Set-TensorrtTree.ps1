@@ -2,31 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Renames the extracted TensorRT-<version>\ tree to a STABLE 'current\' so that
-# nothing downstream has to spell the version (backlog #38).
-#
-# WHY
-# ---
-# Dockerfile.nvidia built the runtime PATH out of the pin:
-#     ENV PATH=...;$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib;$PATH
-# while Install-Tensorrt.ps1 extracts whatever the staged archive contains and
-# resolves it with a GLOB. The two disagreed the moment the pin was bumped
-# without re-staging the zip (2026-08-14: pin 11.2.1.2 vs a staged
-# TensorRT-11.1.0.106 zip), putting a NONEXISTENT directory on PATH. Nothing
-# failed: ONNX compiled the EP against the real 11.1 headers (the glob resolved
-# correctly) and logged `onnxruntime_USE_TENSORRT=ON`, so the build was green
-# and the DLLs were merely unreachable at RUNTIME — ORT then dropped the
-# TensorRT EP with no error. versions.env already documents this exact incident
-# and the rule it broke ("Bump this WITH the staged zip, never alone"); it
-# recurred anyway, because nothing ENFORCED it.
-#
-# A Machine-PATH write cannot fix this: Dockerfile.base sets `ENV PATH=...`
-# explicitly, so the image config wins and a registry PATH written inside a RUN
-# is invisible to later stages. A stable DIRECTORY NAME is the fix that works
-# with the ENV, not against it.
-#
-# Runs in the `trt-extract` stage, so the rename costs nothing at image size:
-# only C:\tensorrt is carried forward by `COPY --from=trt-extract`.
+# Renames the extracted TensorRT-<version>\ tree to a stable 'current\' (backlog #38).
+# Why it exists, and the two silent defects it closes: docs/windows-builds.md.
 [CmdletBinding()]
 param(
     [string]$TensorRtRoot = 'C:\tensorrt',

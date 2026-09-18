@@ -47,13 +47,15 @@ linux/scripts/tests/test-harness.sh	command_not_found_handle
 # app-packaging.sh has NO caller in this repo by design: its header says a wrapper
 # in the consuming repo sets the APP_PACKAGING_* variables, sources it and calls the
 # step functions. These are that public API. flutter-pin.sh is the same shape.
+# app_packaging_package_linux_bundle_flatpak and
+# app_packaging_setup_dependencies_for_container left this list on 2026-09-17:
+# tests/test-app-packaging-flatpak.sh now names both (a t_fn_src extraction and
+# the CON2 case), which is a corpus link even though production still has none.
 linux/scripts/lib/app-packaging.sh	app_packaging_package_android_apk_outputs_tar
 linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_appimage
 linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_deb
-linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_flatpak
 linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
 linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
-linux/scripts/lib/app-packaging.sh	app_packaging_setup_dependencies_for_container
 linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin
 
 # Consumer-facing helpers landed 2026-09-15, each the upstream half of a copy

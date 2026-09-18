@@ -173,6 +173,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
 | Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
+| sccache (Windows lane) | 8ab39266246b26d736bee44dfa313ab0d5fceb1d | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
 | vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
 
@@ -439,9 +440,9 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 This project patches the following upstreams before redistributing them. Both the Apache-2.0 and the GPL families require that modification be stated.
 
-- **sccache — Linux Images** — Built from source at the pinned git rev with a local patch series, NOT installed from a package manager. Patches: `windows/upstream/sccache-nvcc-quote-fix/`.
 - **GStreamer — Windows Image** — The Windows build patches a GES symbol rename. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
 - **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
+- **sccache (Windows lane) — Windows Image** — Built from source at the pinned git rev with a local patch series, NOT installed from a package manager. Patches: `windows/upstream/sccache-nvcc-quote-fix/`.
 
 Each patch is in this repository at the path shown, and travels with the corresponding source above.
 

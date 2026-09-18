@@ -79,6 +79,41 @@ cross_target_uses_ubuntu_ports() {
   ubuntu_arch_uses_ports "$(cross_target_arch)"
 }
 
+# The per-arch sources file for an arch: ports for every arch the table claims,
+# the archive for amd64/i386 (AS1). The arch spelling is passed through
+# untouched -- it lands verbatim on the deb822 `Architectures:` line, where apt
+# wants dpkg's spelling (`i386`), not arch_normalize's (`386`).
+# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+cross_apt_sources_file_for_arch() {
+  local arch
+  arch="${1:-$(cross_target_arch)}" || return 1
+
+  if ubuntu_arch_uses_ports "${arch}"; then
+    printf '%s' "${_CROSS_APT_SOURCES_DIR}/ubuntu-ports-${arch}.sources"
+  else
+    printf '%s' "${_CROSS_APT_SOURCES_DIR}/ubuntu-archive-${arch}.sources"
+  fi
+}
+
+# The mirror URL that arch's packages come from. Ports arches take the ports
+# mirror (fast-mirror aware, like every other ports writer); amd64/i386 take the
+# archive mirror -- an amd64/i386 cross target used to get an architecture from
+# `dpkg --add-architecture` and NO source at all (AS1).
+cross_apt_mirror_url_for_arch() {
+  local arch
+  arch="${1:-$(cross_target_arch)}" || return 1
+
+  if ubuntu_arch_uses_ports "${arch}"; then
+    if command -v cross_foreign_arch_ports_mirror_url >/dev/null 2>&1; then
+      cross_foreign_arch_ports_mirror_url
+    else
+      ubuntu_effective_ports_mirror_url
+    fi
+    return 0
+  fi
+  ubuntu_mirror_normalize_url "${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}"
+}
+
 cross_detect_distro_codename() {
   local distro=""
 
@@ -132,34 +167,42 @@ _CROSS_APT_SOURCES_DIR=/etc/apt/sources.list.d
 # which is how binutils:amd64 replaced the native aarch64 assembler and made
 # gcc's `as -EL` fail in the media stage. amd64 hosts are unaffected: no
 # ubuntu-ports*.sources ever declares amd64.
+# The glob covers both per-arch prefixes: ubuntu-ports-<arch> for ports targets
+# and ubuntu-archive-<arch> for amd64/i386 targets (AS1).
 cross_prune_foreign_arch_apt_sources() {
   local keep_source="${1:-}"
-  local existing_ports_source host_arch
+  local existing_arch_source host_arch
 
   host_arch="$(cross_build_arch 2>/dev/null || printf 'amd64')"
 
   shopt -s nullglob
-  for existing_ports_source in "${_CROSS_APT_SOURCES_DIR}"/ubuntu-ports*.sources; do
-    [ -n "${keep_source}" ] && [ "${existing_ports_source}" = "${keep_source}" ] && continue
-    if apt_source_declares_arch "${existing_ports_source}" "${host_arch}"; then
+  for existing_arch_source in \
+    "${_CROSS_APT_SOURCES_DIR}"/ubuntu-ports*.sources \
+    "${_CROSS_APT_SOURCES_DIR}"/ubuntu-archive*.sources; do
+    [ -n "${keep_source}" ] && [ "${existing_arch_source}" = "${keep_source}" ] && continue
+    if apt_source_declares_arch "${existing_arch_source}" "${host_arch}"; then
       continue
     fi
-    rm -f "${existing_ports_source}"
+    rm -f "${existing_arch_source}"
   done
   shopt -u nullglob
 }
 
 cross_prepare_apt_sources_for_target() {
-  local target_arch ports_sources
+  local target_arch target_sources
 
   cross_mode_requested || return 0
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
   [ -n "${target_arch}" ] || return 0
+  # Canonicalized, so the keep-source below names the file
+  # cross_configure_foreign_arch_apt_sources will write (it uses
+  # cross_target_arch too).
+  target_arch="$(cross_target_arch)"
 
-  if cross_build_enabled && cross_target_uses_ubuntu_ports; then
-    ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
-    cross_prune_foreign_arch_apt_sources "${ports_sources}"
+  if cross_build_enabled; then
+    target_sources="$(cross_apt_sources_file_for_arch "${target_arch}")"
+    cross_prune_foreign_arch_apt_sources "${target_sources}"
     cross_configure_foreign_arch_apt_sources
   else
     cross_prune_foreign_arch_apt_sources
@@ -205,30 +248,33 @@ cross_align_host_apt_pockets() {
   _CROSS_ENV_APT_UPDATED=0
 }
 
+# Write the target's own per-arch sources file, whichever archive serves it.
+# There is deliberately no `cross_target_uses_ubuntu_ports || return 0` here:
+# returning early for an amd64/i386 target left `dpkg --add-architecture` with
+# an architecture and NO archive, and the pocket repair never fired (AS1).
 cross_configure_foreign_arch_apt_sources() {
-  local target_arch build_arch distro ports_url host_sources ports_sources existing_ports_source
+  local target_arch build_arch distro target_url target_sources host_sources
 
   cross_build_enabled || return 0
-  cross_target_uses_ubuntu_ports || return 0
 
   target_arch="$(cross_target_arch)"
   build_arch="$(cross_build_arch)"
   distro="$(cross_detect_distro_codename)"
-  ports_url="$(cross_foreign_arch_ports_mirror_url)"
-  host_sources="/etc/apt/sources.list.d/ubuntu.sources"
-  ports_sources="/etc/apt/sources.list.d/ubuntu-ports-${target_arch}.sources"
+  target_sources="$(cross_apt_sources_file_for_arch "${target_arch}")"
+  target_url="$(cross_apt_mirror_url_for_arch "${target_arch}")"
+  host_sources="${_CROSS_APT_SOURCES_DIR}/ubuntu.sources"
 
-  case "${ports_url}" in
+  case "${target_url}" in
     */) ;;
-    *) ports_url="${ports_url}/" ;;
+    *) target_url="${target_url}/" ;;
   esac
 
   apt_sources_set_architectures "${host_sources}" "${build_arch}"
   cross_align_host_apt_pockets "${host_sources}" "${distro}"
 
-  cross_prune_foreign_arch_apt_sources "${ports_sources}"
+  cross_prune_foreign_arch_apt_sources "${target_sources}"
 
-  ubuntu_write_deb822_source "${ports_sources}" "${ports_url}" "${distro}" "${target_arch}" 1
+  ubuntu_write_deb822_source "${target_sources}" "${target_url}" "${distro}" "${target_arch}" 1
 }
 
 # The compiler base installs libc6 for every cross target, but media's apt reset
@@ -237,7 +283,7 @@ cross_configure_foreign_arch_apt_sources() {
 # ("libc6:arm64 Breaks libc6:i386 (!= ...)").
 # docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 cross_ensure_installed_foreign_arch_sources() {
-  local build_arch arch file ports_url distro
+  local build_arch arch file url distro
 
   command -v ubuntu_write_deb822_source >/dev/null 2>&1 || return 0
   command -v ubuntu_arch_uses_ports >/dev/null 2>&1 || return 0
@@ -245,23 +291,21 @@ cross_ensure_installed_foreign_arch_sources() {
   build_arch="$(cross_build_arch 2>/dev/null || build_arch_oci 2>/dev/null || printf 'amd64')"
   distro="$(cross_detect_distro_codename 2>/dev/null || true)"
   [ -n "${distro}" ] || return 0
-  if command -v cross_foreign_arch_ports_mirror_url >/dev/null 2>&1; then
-    ports_url="$(cross_foreign_arch_ports_mirror_url)"
-  else
-    ports_url="$(ubuntu_effective_ports_mirror_url)"
-  fi
 
   while IFS= read -r arch; do
     [ -n "${arch}" ] || continue
     if [ "${arch}" = "${build_arch}" ]; then
       continue
     fi
-    ubuntu_arch_uses_ports "${arch}" || continue
-    file="${_CROSS_APT_SOURCES_DIR}/ubuntu-ports-${arch}.sources"
+    # An amd64/i386 foreign arch is served by the ARCHIVE, not by ports -- the
+    # old `ubuntu_arch_uses_ports || continue` skipped it entirely, so a fresh
+    # install from the other archive was unsatisfiable (AS1).
+    file="$(cross_apt_sources_file_for_arch "${arch}")"
     if [ -f "${file}" ]; then
       continue
     fi
-    ubuntu_write_deb822_source "${file}" "${ports_url}" "${distro}" "${arch}" 1
+    url="$(cross_apt_mirror_url_for_arch "${arch}")"
+    ubuntu_write_deb822_source "${file}" "${url}" "${distro}" "${arch}" 1
   done < <(dpkg --print-foreign-architectures 2>/dev/null || true)
   return 0
 }

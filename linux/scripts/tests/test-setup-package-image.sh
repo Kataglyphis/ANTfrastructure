@@ -348,11 +348,18 @@ VE
   rm -rf "${home}"
 }
 
-t_case "the nightly channel is installed with what wasm-pack -Z build-std needs"
+t_case "the DATED nightly pin is installed with what wasm-pack -Z build-std needs"
 _out="$(_web_run 0 0)"
-t_assert_contains "${_out}" "RUSTUP toolchain install nightly --profile minimal --component rust-src --target wasm32-unknown-unknown" \
-  "cargo +nightly resolves the CHANNEL name, so install-rust.sh's dated pin does not satisfy it"
-t_assert_contains "${_out}" "OK: nightly channel installed"
+t_assert_contains "${_out}" "RUSTUP toolchain install nightly-2026-06-28 --profile minimal --component rust-src --target wasm32-unknown-unknown" \
+  "a floating channel is UPDATED (and dies on EXDEV out of the read-only layer); the dated pin is immutable"
+t_assert_contains "${_out}" "OK: nightly-2026-06-28 installed with rust-src + wasm32-unknown-unknown"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e 'install nightly --profile' || true)" \
+  "the floating channel must not be installed beside the pin"
+
+t_case "the dated pin is read from the env, not a second literal"
+_out="$(RUST_NIGHTLY_TOOLCHAIN=nightly-2099-01-01 _web_run 0 0)"
+t_assert_contains "${_out}" "RUSTUP toolchain install nightly-2099-01-01 --profile minimal" \
+  "versions.env owns the date; a literal here would drift from it silently"
 
 t_case "both web-lane crates are installed at their pinned versions, --locked"
 t_assert_contains "${_out}" "CARGO install --locked wasm-pack --version 0.15.0" \
@@ -371,7 +378,7 @@ t_assert_contains "${_out}" "install --locked flutter_rust_bridge_codegen" \
 
 t_case "every arm is non-fatal: a slow consumer beats an image that will not build"
 _out="$(_web_run 1 1)"
-t_assert_contains "${_out}" "WARN: the nightly channel is unavailable"
+t_assert_contains "${_out}" "WARN: nightly-2026-06-28 is unavailable"
 t_assert_contains "${_out}" "WARN: cargo install wasm-pack 0.15.0 failed"
 t_assert_contains "${_out}" "EXIT 0" "a failed cargo install must not stop the package stage"
 

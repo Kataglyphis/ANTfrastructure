@@ -184,6 +184,7 @@ are documented in the module API reference,
 | `count_build_matrix <config_json> <platform>` | Count matrix entries for a platform |
 | `get_matrix_entry_name <config_json> <index> <platform>` | Get entry name by index (backward-compatible) |
 | `run_agentic_loop <config_json> <repo_root> <platform>` | Full loop with build matrix, sanitizer tests, quality gates |
+| `_agentic_planner_phase <repo_root> <force_planner> <planner_ran_nameref>` | Phase 1 of an iteration: skip while actionable tasks pend, starvation guard, refactor-cycle prompt; reports whether it ran |
 ### The two bash files
 
 `agentic-loop.sh` is the only file a consumer sources; it sources
@@ -194,7 +195,7 @@ run it on**.
 | File | Owns |
 |------|------|
 | `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
-| `lib/agentic-loop.sh` | `LOG_FILE` and `log`/`section`, `init_agentic_loop`/`complete_agentic_loop`, the BACKLOG helpers, the build/test/quality phases, the matrix readers, the `_AL` loop state and `run_agentic_loop` |
+| `lib/agentic-loop.sh` | `LOG_FILE` and `log`/`section`, `init_agentic_loop`/`complete_agentic_loop`, the BACKLOG helpers, the build/test/quality phases, `_agentic_planner_phase`, the matrix readers, the `_AL` loop state and `run_agentic_loop` |
 
 The dependency points one way only. The engine half calls `log` and appends to
 `LOG_FILE`, both defined by the loop half before it sources the engines — so

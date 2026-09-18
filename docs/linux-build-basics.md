@@ -172,7 +172,7 @@ sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleun
 
 - Add both `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=...` when the default Ubuntu archive mirror is slow.
 - Example German mirror override: `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/`.
-- The helper rewrites archive mirror entries only by default; `security.ubuntu.com` stays untouched unless you explicitly opt into rewriting it.
+- The helper rewrites archive **and** `security.ubuntu.com` entries to the mirror by default (AS1: a host `-security` on a different archive than the target pocket reproduces the Multi-Arch:same skew); `FAST_UBUNTU_REWRITE_SECURITY=false` is the explicit opt-out, and a mirror must carry `-security` for the arches you build.
 - Helper scripts expose the same behavior via `--fast-ubuntu-mirror` and `--fast-ubuntu-mirror-url`.
 
 Generic usage:

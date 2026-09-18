@@ -92,6 +92,11 @@ $installerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsInstaller.Comm
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
+# Shared is one of the three modules COPY'd before this script in Dockerfile.base;
+# imported for Assert-FileSha256/Get-PreferredToolPath (not in the others' re-exports).
+$sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
+
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through the Common modules' re-export.
 
 # CMake stable pin comes from versions.env's CMAKE_VERSION (baked in by
@@ -305,10 +310,16 @@ if ($rtTarget.Count -gt 0) {
     try {
         Write-Host "Fetching aarch64 compiler-rt from $rtUrl (large, one-time; only clang_rt.builtins-aarch64.lib is kept)"
         Invoke-DownloadWithRetry -Url $rtUrl -DestinationPath $rtArchive
+        # Verified-or-warn contract shared with the other two copies (#160). The
+        # key is empty here (base runs before versions.env is baked) -> it warns.
+        $rtSha = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_AARCH64_RT_SHA256' -DefaultValue ''
+        Assert-FileSha256 -Path $rtArchive -Expected $rtSha -Label 'aarch64 compiler-rt archive' -PinName 'LLVM_WINDOWS_AARCH64_RT_SHA256'
         New-Item -Path $rtExtractDir -ItemType Directory -Force | Out-Null
-        # bsdtar (Windows built-in tar.exe) matches member PATTERNS, so the whole
-        # 700+ MB archive is streamed but only the one member lands on disk.
-        & tar.exe -xf $rtArchive -C $rtExtractDir '*clang_rt.builtins-aarch64.lib'
+        # System32 bsdtar, never a GNU tar on PATH: GNU parses `C:\...` as a
+        # remote-host spec, and bsdtar is what matches member PATTERNS anyway.
+        $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+        if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+        & $rtTar -xf $rtArchive -C $rtExtractDir '*clang_rt.builtins-aarch64.lib'
         $global:LASTEXITCODE = 0
         $rtFound = @(Get-ChildItem -Path $rtExtractDir -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
         if ($rtFound.Count -gt 0) {

@@ -36,6 +36,13 @@ if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
+# Disable-ContainerWindowsUpdate lives here (#158); the Dockerfile `built` mount
+# list carries this module and its WindowsTargetArch dependency.
+$sourceBuildModulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
+if (-not (Get-Module -Name 'WindowsSourceBuild.Common')) { Import-Module $sourceBuildModulePath }
+# WU spool writes land in the layer and kill its finalize; no-op outside a container.
+Disable-ContainerWindowsUpdate
+
 # Re-read versions.env if a fresh copy is reachable: the NUGET_VERSION /
 # NUGET_EXE_SHA256 env vars below come from the BASE-BAKED Machine env, so a
 # versions.env nuget bump would silently lag until a base rebuild — a fresh

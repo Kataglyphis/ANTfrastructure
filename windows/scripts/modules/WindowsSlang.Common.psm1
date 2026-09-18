@@ -13,16 +13,8 @@
 # keeps only paths - manifest, Slang source root, the SPIR-V/WGSL output roots
 # and the repository root the manifest's wgslMap destinations resolve against.
 #
-# Manifest schema (keys starting with '_' are documentation and ignored):
-#   manifest[]              { file, entry, stage, targets[], disabled? }
-#                           one row per (entry point, target); 'file' is
-#                           relative to the source root, 'targets' is any mix of
-#                           "spirv" and "wgsl", and disabled rows are kept as
-#                           documentation without being compiled
-#   wgslMap[]               { src, out, dst } - combined (whole-module) WGSL emit
-#   depthTexturePatches     { "<out>": [ { pattern, replacement } ] } - post-emit
-#                           regex patches applied to that combined emit
-#   minSlangcVersionForWgsl "MAJOR.MINOR" toolchain floor for the combined emit
+# Manifest schema, staleness rule and exit-code contract:
+# docs/slang-shader-compilation.md.
 #
 # Staleness: an output is reused only when it is newer than its source AND every
 # .slang file under the source tree AND the manifest file itself (conservative -

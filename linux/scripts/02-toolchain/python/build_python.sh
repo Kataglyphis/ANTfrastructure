@@ -140,26 +140,39 @@ stage_host_python_payload() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
-# Enable the target architecture + ports.ubuntu.com apt sources. The base image
-# only carries the amd64 archive; arm64/riscv64 packages come from ports.
+# Enable the target architecture + its own apt source. The base image only
+# carries the build host's archive; arm64/riscv64 packages come from ports and
+# amd64/i386 from the archive -- ubuntu_arch_uses_ports answers which, for the
+# host stanza and the target stanza alike (AS1).
 _python_cross_enable_multiarch_apt() {
   local target_arch="$1"
+  local _codename _build_arch _host_url _target_url _target_file
   if ! dpkg --print-architecture 2>/dev/null | grep -qx "${target_arch}" && \
      ! dpkg --print-foreign-architectures 2>/dev/null | grep -qx "${target_arch}"; then
     dpkg --add-architecture "${target_arch}"
   fi
-  if [ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]; then
-    local _codename
-    _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
+  _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
+  _build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
+  # The reset runs once, on the first target through; later targets of the same
+  # cross build only add their own per-arch file (each target is staged in its
+  # own subshell, so a shell variable cannot carry the marker).
+  if [ ! -f /etc/apt/sources.list.d/ubuntu.sources ]; then
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+    _host_url="$(ubuntu_default_archive_mirror_url)"
+    ubuntu_arch_uses_ports "${_build_arch}" && _host_url="$(ubuntu_default_ports_mirror_url)"
     # 5th arg = add "-security", and host and ports MUST agree: a pocket the
     # other side lacks makes every Multi-Arch:same library uninstallable.
     # USE_FAST_UBUNTU_MIRROR is deliberately not honoured here (TS8).
     # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources \
-      "$(ubuntu_default_archive_mirror_url)" "${_codename}" amd64 1
-    ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu-ports.sources \
-      "$(ubuntu_default_ports_mirror_url)" "${_codename}" "arm64 riscv64" 1
+      "${_host_url}" "${_codename}" "${_build_arch}" 1
+  fi
+  _target_file="$(cross_apt_sources_file_for_arch "${target_arch}")"
+  if [ ! -f "${_target_file}" ]; then
+    _target_url="$(ubuntu_default_archive_mirror_url)"
+    ubuntu_arch_uses_ports "${target_arch}" && _target_url="$(ubuntu_default_ports_mirror_url)"
+    ubuntu_write_deb822_source "${_target_file}" \
+      "${_target_url}" "${_codename}" "${target_arch}" 1
     apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
   fi
 }

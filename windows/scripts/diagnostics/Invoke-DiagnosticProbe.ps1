@@ -21,7 +21,7 @@
         executing; without the marker check that reads as a clean run.
 
 .PARAMETER ProbeScript
-    Script under windows/scripts/diagnostics/ (e.g. Test-Sccache2726Repro.ps1).
+    Script under windows/scripts/diagnostics/ (e.g. Test-OnnxTuReplay.ps1).
     Runs it through the shared Dockerfile.probe — the normal way to run a probe
     since the 2026-08-21 consolidation. A subdirectory only works if the build
     context carries it: the retired archive/ was covered by `**/archive/` in
@@ -97,11 +97,7 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 # Central candidate walk instead of the pasted Stevedore-then-PATH block that
 # used to live in every runner (backlog #101).
-if (-not $BuildCtl) {
-    $BuildCtl = Get-PreferredToolPath -CommandName 'buildctl' -CandidatePaths @(
-        "$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
-}
-if (-not $BuildCtl) { throw 'buildctl.exe not found (Stevedore bin or PATH).' }
+$BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 
 if (-not $LogName) { $LogName = ($Dockerfile -replace '^Dockerfile\.', '') + '.log' }
 $logDir = Join-Path $repoRoot 'out\windows-build-logs'

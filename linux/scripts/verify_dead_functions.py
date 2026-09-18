@@ -64,8 +64,14 @@ SOURCED = re.compile(r"(?:^|[^\w.])(?:\.|source|source_module\w*)\s+\S", re.MULT
 GRADED = HUB
 
 
+def _rel(path):
+    """Allowlist/corpus keys are posix-spelled; os.path.relpath uses backslashes on
+    Windows, where every frozen row then reported as miss + stale."""
+    return os.path.relpath(path, GRADED).replace(os.sep, "/")
+
+
 def _kept(path):
-    return os.path.relpath(path, GRADED) not in SKIP_RELS
+    return _rel(path) not in SKIP_RELS
 
 
 def _code(text):
@@ -132,7 +138,7 @@ def _walk_corpus():
     for top in CORPUS:
         root = os.path.join(GRADED, top)
         if os.path.isfile(root):
-            yield root, os.path.relpath(root, GRADED)
+            yield root, _rel(root)
             continue
         for base, dirs, files in os.walk(root):
             dirs[:] = [d for d in dirs
@@ -140,7 +146,7 @@ def _walk_corpus():
             for fn in sorted(files):
                 path = os.path.join(base, fn)
                 if not fn.endswith(SKIP_SUFFIXES) and _kept(path):
-                    yield path, os.path.relpath(path, GRADED)
+                    yield path, _rel(path)
 
 
 def _tracked_corpus():

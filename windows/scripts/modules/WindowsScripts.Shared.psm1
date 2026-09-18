@@ -190,10 +190,7 @@ function Invoke-DownloadWithRetry {
                     if (-not $sigOk) { throw "expected a $ExpectSignature-signature file but got first bytes ${b0},${b1} (likely an HTML error page served in place of the binary)" }
                 }
                 if ($ExpectedSha256) {
-                    $actual = (Get-FileHash -Algorithm SHA256 -Path $DestinationPath).Hash
-                    if (-not [string]::Equals($actual, $ExpectedSha256, [StringComparison]::OrdinalIgnoreCase)) {
-                        throw "SHA256 mismatch: expected $ExpectedSha256 but got $actual (truncated/tampered download)"
-                    }
+                    Assert-FileSha256 -Path $DestinationPath -Expected $ExpectedSha256 -Label $label
                 }
                 if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
                 return
@@ -219,6 +216,47 @@ function Invoke-DownloadWithRetry {
             $delay = [Math]::Min($delay * 2, 30)
         }
     }
+}
+
+<#
+.SYNOPSIS
+    Verify a file against an optional SHA256 pin: a mismatch is FATAL, an
+    absent pin is a warning.
+.DESCRIPTION
+    The download-policy ladder that existed as four hand-written copies
+    (Build-LlvmFromSource's compiler-rt staging, Install-Tensorrt,
+    Resolve-QnnSdk, and the body of Invoke-DownloadWithRetry itself). Call it
+    only when a pin is optional; a caller that has already refused the empty
+    case can rely on the throw alone.
+.PARAMETER Path
+    File to hash.
+.PARAMETER Expected
+    Hex SHA256 pin (case-insensitive). Empty = unverified, with a warning.
+.PARAMETER Label
+    Human name for the file used in the messages (defaults to the path).
+.PARAMETER PinName
+    The versions.env key the pin belongs to, named in the messages.
+#>
+function Assert-FileSha256 {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string]$Expected = '',
+        [string]$Label = '',
+        [string]$PinName = ''
+    )
+
+    $what = if ($Label) { $Label } else { $Path }
+    $pinRef = if ($PinName) { " ($PinName)" } else { '' }
+    $expectedSha = "$Expected".Trim()
+    if (-not $expectedSha) {
+        Write-Warning "$what SHA256 is empty$pinRef - using it UNVERIFIED (pin it in versions.env)."
+        return
+    }
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $Path).Hash
+    if (-not [string]::Equals($actual, $expectedSha, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$what SHA256 mismatch: expected $expectedSha, got $actual"
+    }
+    Write-Host "$what SHA256 verified$pinRef."
 }
 
 <#
@@ -666,6 +704,24 @@ function Get-PreferredToolPath {
     return $null
 }
 
+function Resolve-BuildCtlPath {
+    <#
+    .SYNOPSIS
+        The one owner of the Stevedore buildctl CANDIDATE LIST. The walk was
+        extracted (backlog #101) but the list was left pasted in nine files, so
+        a host layout change still meant nine edits.
+    .PARAMETER BuildCtl
+        An already-resolved path to honour unchanged (empty = resolve).
+    #>
+    param([string]$BuildCtl = '')
+
+    if ($BuildCtl) { return $BuildCtl }
+    return (Get-PreferredToolPath -CommandName 'buildctl' -CandidatePaths @(
+            "$env:ProgramFiles\Stevedore\bin\buildctl.exe",
+            'D:\Stevedore\bin\buildctl.exe'
+        ) -Required)
+}
+
 function Test-Elevated {
     <#
     .SYNOPSIS
@@ -775,10 +831,12 @@ Export-ModuleMember -Function @(
     # throwing behaviour now lives on as Get-PreferredToolPath -Required.
     'Add-DirectoriesToPath',
     'Get-PreferredToolPath',
+    'Resolve-BuildCtlPath',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
+    'Assert-FileSha256',
     'ConvertFrom-VersionsEnv',
     'Expand-ArchiveSubdirectory',
     'Test-SccacheRemoteConfigured',

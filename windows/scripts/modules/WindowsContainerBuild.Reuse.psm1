@@ -644,30 +644,9 @@ function Get-ContainerEnvArgs {
 .SYNOPSIS
   Standard sccache environment for builds inside a Windows build container.
 .DESCRIPTION
-  Persistent compiler cache - in the CONTAINER filesystem, deliberately NOT on
-  a named volume.
-
-  The volume was the cause of the "every sccache write fails" mystery.
-  Diagnosed 2026-07-20 by running the server by hand with SCCACHE_LOG=trace:
-  every DiskCache::put_raw died with os error 3 ("The system cannot find the
-  path specified") when SCCACHE_DIR sat on the wcifs volume mount, while
-  PowerShell in the same container could write the same paths - including
-  \?\-prefixed ones - without error. Pointing SCCACHE_DIR at a
-  container-local directory made the very next compile pair go miss -> HIT
-  with zero write errors, so the failure is specific to how the sccache
-  server writes (tempfile + rename) on a wcifs volume, and no cache written
-  through that mount was ever going to persist anything.
-
-  Container-local means the cache dies with the container - which is fine,
-  because builds run in the PERSISTENT reusable container; the cache survives
-  exactly as long as the thing that uses it. A volume that takes 100% write
-  errors persisted nothing anyway.
-
-  NOTE: mounting the build directory as a named volume was TRIED and does not
-  work here - CMake's compiler test fails inside a mounted volume with
-  "ninja: error: loading 'build.ninja': The system cannot find the file
-  specified", both with a fresh volume and a populated one. See
-  docs/container-build-caching.md for the full measurement.
+  Persistent compiler cache in the CONTAINER filesystem, deliberately not on a
+  named volume. Diagnosis and A/B: docs/windows-container-build-performance.md
+  § sccache's cache directory on a Windows container volume.
 .OUTPUTS
   [ordered] dictionary of environment variables; merge caller-specific entries
   into it before handing it to Invoke-ContainerBuild -CacheEnv.
@@ -677,13 +656,9 @@ function Get-SccacheContainerEnv {
     param(
         [string]$CacheDir = 'C:\sccache-local',
         [string]$CacheSize = '20G',
-        # The error log must NOT live under $CacheDir: sccache's disk cache
-        # creates its own directory, but the server OPENS THE ERROR LOG FIRST
-        # and dies if its parent does not exist - and then every
-        # sccache-wrapped tool fails with "Timed out waiting for server
-        # startup". With RUSTC_WRAPPER=sccache that poisons even `cargo tree`,
-        # which corrosion reports as "Failed to find a dependency on
-        # cxxbridge-cmd" - three indirections from the cause. C:\ always exists.
+        # Must NOT live under $CacheDir: the server opens the log before it
+        # creates the cache dir and dies if its parent is missing. See
+        # docs/windows-container-build-performance.md § sccache's cache directory.
         [string]$ErrorLogPath = 'C:\sccache-error.log',
         [string]$LogLevel = 'warn'
     )
@@ -728,38 +703,11 @@ function Resolve-ContainerBuildCommand {
 .SYNOPSIS
   Builds a project inside a Windows build container, choosing the transport.
 .DESCRIPTION
-  The whole container build flow, minus anything project-specific: pick the
-  transport, get/reuse the container, stream sources (and existing build trees)
-  in, run the caller's command, stream artifacts back out, and prove they
-  actually arrived.
-
-  Two transport modes; the tar pipe is the default, -UseBindMount opts in:
-    1. Tar pipe (default): sources are streamed into a container-local
-       directory in the reusable build container, built there, and the build
-       trees + logs are streamed back out. Measured FASTER than the bind
-       mount on a Dev Drive host (the build tree stays off the bindFlt
-       filter).
-    2. Bind mount (-UseBindMount): the repo is mounted read/write into the
-       container and build directories land directly in the working tree -
-       the same flow CI uses. On a Dev Drive whose filters are not
-       allow-listed the mount cannot attach at all (error "Der
-       Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
-       werden"); to make it attachable, run once (elevated):
-         fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"
-       then remount the volume (or reboot).
-
-  -WorkspacePath is used as the mount target AND as the tar-pipe destination,
-  and that matters: CMake bakes absolute paths into CMakeCache.txt and refuses
-  to reuse a cache generated elsewhere ("The source C:/ws-mnt/CMakeLists.txt
-  does not match the source C:/ws/CMakeLists.txt used to generate cache").
-  Sharing one path means a tree built under either transport stays usable by
-  the other, so switching between them does not force a cold rebuild.
-
-  It must still be a path that is NOT baked into the image: mounting over a
-  directory that exists in the image (C:\workspace) fails at
-  CreateComputeSystem when the host OS build differs from the image base build.
-  C:\ws is absent from the ANTfrastructure image (verified) and is created by the
-  mount.
+  Tar-pipe by default, bind mount (the CI flow) via -UseBindMount. Setup,
+  measurements and path rules: docs/windows-container-build-performance.md.
+.PARAMETER WorkspacePath
+  Mount target AND tar-pipe destination, shared by both transports so a CMake
+  cache survives a switch; must not be a path baked into the image.
 .PARAMETER BuildCommand
   Scriptblock (receives the in-container workspace path) or string[] returning
   the argv to run inside the container.

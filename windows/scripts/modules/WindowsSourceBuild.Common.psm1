@@ -147,6 +147,10 @@ function Invoke-GitClone {
                 if ($Recursive -and $cloneExit -eq 0) {
                     $subOut = @(& git -C $SourceDir submodule update --init --recursive --depth 1 2>&1)
                     $cloneOut += $subOut
+                    # The submodule pass is part of the clone's success: without this
+                    # capture a failed init left an incomplete tree and a green clone
+                    # (the TVM commit-pin path is the real caller). #158.
+                    $cloneExit = $LASTEXITCODE
                 }
             }
         } else {
@@ -702,14 +706,9 @@ function Resolve-QnnSdk {
     if ($zips.Count -gt 1) { throw "QNN: exactly one SDK zip may sit in $DropDir (found $($zips.Count)): $($zips.Name -join ', ')" }
     if ($zips.Count -eq 0) { return $null }
     $zip = $zips[0].FullName
-    $sha = "$ExpectedSha256".Trim()
-    if ($sha) {
-        $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
-        if (-not [string]::Equals($actual, $sha, [StringComparison]::OrdinalIgnoreCase)) { throw "QNN: SDK zip SHA256 mismatch for ${zip}: expected $sha, got $actual" }
-        Write-Host 'QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256).'
-    } else {
-        Write-Warning 'QNN: QNN_SDK_ZIP_SHA256 is empty -- extracting the staged SDK zip UNVERIFIED (pin it in versions.env, same contract as TENSORRT_ZIP_SHA256)'
-    }
+    # Mismatch is FATAL, an empty pin is a warning -- Assert-FileSha256 owns that
+    # policy for every staged-zip consumer (QNN/TensorRT/compiler-rt). #158/F4.
+    Assert-FileSha256 -Path $zip -Expected $ExpectedSha256 -Label 'QNN SDK zip' -PinName 'QNN_SDK_ZIP_SHA256'
     if (-not $ExtractDir) { $ExtractDir = Join-Path $env:TEMP_DIR 'qnn-sdk-extract' }
     if (Test-Path $ExtractDir) { Remove-Item $ExtractDir -Recurse -Force }
     Expand-Archive -Path $zip -DestinationPath $ExtractDir -Force
@@ -1324,6 +1323,73 @@ function Get-LlvmSourceTarball {
         if (-not (Test-Path $srcDir)) { throw "LLVM source did not extract to $srcDir - upstream archive layout changed." }
     }
     return @{ Tarball = $tarball; SourceDir = $srcDir }
+}
+
+<#
+.SYNOPSIS
+    Mines clang_rt.builtins-aarch64.lib from the LLVM release archive into the
+    directory that already holds the x86_64 builtins.
+.DESCRIPTION
+    ONE owner for the aarch64 compiler-rt recipe the two source-build stages used
+    to paste (#135 follow-up): the patched-toolchain staging in
+    Build-LlvmFromSource.ps1 and the GStreamer merge-stage self-heal.
+    setup-scoop-tools keeps its own base-stage copy (this module is not mounted
+    before Dockerfile.base loads) with the same verify + System32-tar contract.
+    Download, verified-or-warn SHA256 (Assert-FileSha256), System32 bsdtar member
+    extraction, copy beside the host builtins. THROWS on any failure -- the
+    caller owns the fail-open/fail-closed policy.
+.PARAMETER Url
+    The clang+llvm-<ver>-aarch64-pc-windows-msvc.tar.xz release URL.
+.PARAMETER DestinationDir
+    The directory the x86_64 builtins live in -- the one clang and every consumer
+    already search, so no discovery logic needs to learn a new path.
+.PARAMETER LibName
+    Archive member to mine (default clang_rt.builtins-aarch64.lib).
+.PARAMETER ExpectedSha256
+    versions.env pin (LLVM_WINDOWS_AARCH64_RT_SHA256); empty warns, never fails.
+.PARAMETER PinName
+    The versions.env key, named in the verify messages.
+.PARAMETER WorkDir
+    Scratch dir for the archive + extraction (default TEMP_DIR, else TEMP).
+.OUTPUTS
+    [string] the staged lib's path.
+#>
+function Install-AArch64CompilerRt {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$DestinationDir,
+        [string]$LibName = 'clang_rt.builtins-aarch64.lib',
+        [string]$ExpectedSha256 = '',
+        [string]$PinName = 'LLVM_WINDOWS_AARCH64_RT_SHA256',
+        [string]$WorkDir = ''
+    )
+
+    if (-not (Test-Path $DestinationDir)) {
+        throw "aarch64 compiler-rt destination '$DestinationDir' does not exist - refusing a misplaced lib."
+    }
+    if (-not $WorkDir) { $WorkDir = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP } }
+    # %2B is GitHub's canonical spelling of '+' in the asset URL; the archive is
+    # read from a local copy, so decode it to the name the pin was measured on.
+    $archiveName = [IO.Path]::GetFileName($Url) -replace '%2B', '+'
+    $archive = Join-Path $WorkDir $archiveName
+    $extract = Join-Path $WorkDir 'llvm-aarch64-rt'
+    try {
+        Invoke-DownloadWithRetry -Url $Url -DestinationPath $archive -Description 'aarch64 compiler-rt archive'
+        Assert-FileSha256 -Path $archive -Expected $ExpectedSha256 -Label 'aarch64 compiler-rt archive' -PinName $PinName
+        # System32 bsdtar, never GNU tar: GNU parses `C:\...` as a remote-host spec.
+        $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+        if (-not $tarExe) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+        New-Item -ItemType Directory -Force -Path $extract | Out-Null
+        & $tarExe -xf $archive -C $extract "*$LibName"
+        $found = @(Get-ChildItem -Path $extract -Recurse -Filter $LibName -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($found.Count -eq 0) { throw "$LibName not found inside $archive - upstream archive layout changed." }
+        $dest = Join-Path $DestinationDir $LibName
+        Copy-Item -Path $found[0].FullName -Destination $dest -Force
+        return $dest
+    } finally {
+        Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $extract -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Initialize-PythonPlatformTag {
@@ -1991,6 +2057,9 @@ Export-ModuleMember -Function @(
     # patched-toolchain build and TVM's mini-LLVM heal call these directly.
     'Get-LlvmSourceSha256',
     'Get-LlvmSourceTarball',
+    # ONE owner for the aarch64 compiler-rt mining recipe (#135 follow-up):
+    # called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
+    'Install-AArch64CompilerRt',
     'Resolve-LlvmMasm',
     'Get-LlvmMasmCmakeArg',
     'Initialize-SourceBuildEnvironment',
@@ -2050,6 +2119,9 @@ Export-ModuleMember -Function @(
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
+    # Called directly by Build-LlvmFromSource.ps1's compiler-rt staging;
+    # re-exported so that script does not need a second module import.
+    'Assert-FileSha256',
     # Called directly by Build-LlvmFromSource.ps1's aarch64 compiler-rt staging and
     # Build-GstreamerFromSource.ps1 (it was Build-TvmFromSource.ps1's LLVM-source
     # fallback too, until that moved into Get-LlvmSourceTarball above).

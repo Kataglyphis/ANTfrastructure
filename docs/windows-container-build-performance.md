@@ -211,6 +211,42 @@ Reuse trades isolation for speed, so guard it:
 
 ## What does not work
 
+### sccache's cache directory on a Windows container volume
+
+An sccache server pointed at `SCCACHE_DIR` on a mounted volume reports a
+healthy server, compiles fine, and stores **nothing**: measured 2026-07-20,
+**66 write errors out of 66 misses** — every single write failing.
+
+The volume was the cause. Running the server by hand with `SCCACHE_LOG=trace`
+showed every `DiskCache::put_raw` dying with **os error 3** ("The system cannot
+find the path specified") while the mount was in place. PowerShell **in the
+same container** wrote the same paths — including `\\?\`-prefixed ones —
+without error, so it is not a permissions or path-shape problem from the
+container's side; it is specific to how the sccache server writes (tempfile +
+rename) on a `wcifs` volume. Pointing `SCCACHE_DIR` at a container-local
+directory made the very next compile pair go **miss → HIT with zero write
+errors**, which is the A/B that settles it.
+
+The cache dying with the container is **fine**: builds run in the persistent
+reusable container (above), so the cache lives exactly as long as the thing
+that uses it — and a volume that took 100% write errors persisted nothing
+anyway. **Why this stayed invisible:** without `SCCACHE_ERROR_LOG` +
+`SCCACHE_LOG`, sccache reports the write-error count and discards the reason,
+so "0 bytes cached" reads as a hit-rate problem rather than a volume one. The
+reusable-library helper (`Get-SccacheContainerEnv`,
+`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1`) sets both and
+defaults `SCCACHE_DIR` to `C:\sccache-local` for this reason.
+
+`SCCACHE_ERROR_LOG` must NOT live under `SCCACHE_DIR`: the server opens the log
+before it creates the cache directory and dies when the log's parent is missing,
+which surfaces three indirections later as `Timed out waiting for server
+startup` from every wrapped tool — with `RUSTC_WRAPPER=sccache` that poisons
+even `cargo tree`, reported by corrosion as a missing `cxxbridge-cmd`.
+
+Not to be confused with the module-build failure one section down: there every
+write succeeds and sccache still cannot store a result. This one is the disk
+backend never receiving a byte.
+
 ### sccache on a C++23 modules build
 
 `sccache` runs, reports the right cache location, and caches **nothing**:

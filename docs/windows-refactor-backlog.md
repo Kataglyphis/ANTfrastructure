@@ -124,68 +124,6 @@ this repo's cp314 pin).
   redundant copies is a straight image-size win, but it moves the arch-gate binary count
   (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
 
-- **#158 — the 2026-09-01 audit wave: 13 verified defects to land AFTER the
-  dual-lane run.** A 26-agent adversarially-verified audit (full narratives +
-  fix sketches: CHANGELOG 2026-09-01) confirmed 17 defects; the two that could
-  silently re-arm the 45 min teardown regression are already fixed
-  (`Set-ContainerdConfig.ps1` 45m default, host-setup § R1 recipe). The rest
-  is DEFERRED because the container-side files are cache inputs of the running
-  chain — apply them in **one closure window** so the re-key is paid once:
-  - CRITICAL `Build-Buildkit.ps1:577` — forward `-TargetArch` to the
-    `-ConcurrentAux` children (today: arm64+ConcurrentAux clobbers amd64 tags
-    or merges stale trees, chain green).
-  - `Dockerfile.media-merge-builder:301` — move the `DEPS_MIN_*` ARG/ENV block
-    above the RUN that reads it; the wheel floors have been dead since landing.
-  - `Build-Buildkit.ps1:751` — exempt `final-tar`/`final-push` labels from
-    `-NoCache(-Stage)` matching (post-smoke export re-solves must be cache hits).
-  - `Build-Buildkit.ps1:743` — register child-forwarded `-NoCacheStage` entries
-    as matched in the parent (correct runs currently end red).
-  - `Build-Buildkit.ps1:574` — refuse or re-plumb `-ConcurrentAux -NoSccache`
-    (memory budget halving only exists via the webdav publish).
-  - `Build-ToolchainAll.ps1:96` + `Build-LlvmFromSource.ps1:202` — actually
-    call `Disable-ContainerWindowsUpdate` (docs promise it; the toolchain lane
-    never runs it; a WU spool write kills the layer finalize).
-  - `WindowsSourceBuild.Common.psm1:148` — capture the submodule-update exit
-    code on the commit-pin path (TVM's real path).
-  - `Install-NewHost.ps1:214/249` — build from the PINNED fork branch with the
-    5m env (not unpinned HEAD + the retired 45min constant patch) and assert
-    the patched constant post-replace instead of failing open.
-  - `Update-HostVhdx.ps1:253/282` — both rollback paths start services in
-    stop order with swallowed errors (the measured 2026-09-01 bug, twice).
-  - `Dockerfile.probe:39` / `Dockerfile.sccache-write-probe:51` — the probe
-    lane mounts a deleted (#137) and an archived (9377c0ac) path; every
-    `-ProbeScript` solve dies at checksum (mind `**/archive/` in .dockerignore).
-  - `WindowsAgenticLoop.Common.psm1:418` — `ConcurrentBag` → `ConcurrentQueue`
-    (captured output is documented API and currently LIFO).
-  - Unverified majors to check while there: `Build-OnnxGenaiFromSource.ps1:189`
-    (no post-copy floor), `Update-HostVhdx.ps1:214` ($RECYCLE.BIN skews the
-    copy-verify), `Install-NewHost.ps1:351` (unguarded buildkitd restart).
-  - 36 minors, dominated by fail-open error paths (nuget/scoop/git-lfs class) —
-    sweep opportunistically, each with a mutate-the-guard test (standing rule).
-
-- **#159 — DELETE the eight settled sccache/CUDA probes (814 lines).** Three are
-  dead-by-construction (they mount the #137-deleted `sccache-nvcc-quote-fix`
-  tree); none is referenced by a live doc. **Was "move to `diagnostics/archive/`";
-  that destination is gone.** The archive facility was retired when its six
-  remaining probes were deleted and `Test-SccacheWrite.ps1` moved back out to
-  `diagnostics/` — it never worked as advertised, because `**/archive/` in
-  .dockerignore strips the directory from every build context, so the
-  `-ProbeScript archive/<name>.ps1` its README promised could not solve. So this
-  is a plain delete with git history as the record; re-point `Dockerfile.probe`'s
-  default `PROBE_SCRIPT` if it names one of the eight. Keep live: `Test-OnnxTuReplay.ps1`,
-  `Invoke-SccacheCudaLlmDeadlock.ps1`, `Test-BuildCopy.ps1` (plus its
-  `probe-build-copy/` asset dir, which keeps its name per 19982134), the
-  write/video trios.
-  Closure window — bundle with #158's probe-mount fixes.
-
-- **#160 — compiler-rt mining recipe: contract drift across its three copies.**
-  versions.env:478-483 promises verified-or-warn SHA for all three; only the
-  LLVM copy implements it, and `Install-ScoopTools.ps1:311` also calls bare
-  `tar.exe` (the documented GNU-tar `C:\`-as-hostname trap). Port the ~10-line
-  verify+System32-tar block into the scoop and gstreamer copies (placement of
-  the three copies itself is deliberate, #135 — not the finding). Closure
-  window (re-keys base + merge branch).
-
 - **#162 — versions.env full-copy couples the lanes: any Linux-only pin edit
   re-keys the ENTIRE Windows chain (~4 h machine time, measured).** base COPYs
   the whole 943-line file; toolchain consumes ~5 keys. Fix: base COPYs a
@@ -196,86 +134,23 @@ this repo's cp314 pin).
 - **#163 — `-ConcurrentAux` has never been used: ~24 min idle-capacity per full
   amd64 chain.** 43 manifests, zero concurrent runs; litert 3535 s + tvm
   1425 s always sequential; the 19 GB half-budget path works and no longer
-  re-keys. Land AFTER #158's three ConcurrentAux fixes, then default it for
-  full amd64 chains — owed measurement: litert at 19 GB must not exceed the
-  hidden 1425 s (its bazel half grew 18→59 min since July).
-
-- **#164 — patched-LLVM compile bypasses sccache (dead launcher gate).**
-  `Build-LlvmFromSource.ps1:192` tests SCCACHE_DIR/SERVE which the
-  toolchain stage never sets → every toolchain re-key pays LLVM cold
-  (617 s + 1157 s within three days) while media-tvm compiles the same pin
-  THROUGH sccache. Gate on `Test-SccacheRemoteConfigured`, add the
-  SCCACHE ARG/ENV + logs cache-mount to the patched-llvm stage, forward
-  `$sccache` from the driver. ~7-13 min per toolchain re-key. Closure window.
-
-- **#167 — smoke gate is blind to the baked `C:\temp\scripts` surface.** The
-  suite runs entirely from the bind mount; nothing exercises the shipped
-  modules dir, the baked `Test-Container.ps1` the docs tell consumers to
-  hand-run, or `Test-Health.ps1` (a lying healthcheck shipped green once,
-  archive 08-31). Add a host-arch section: four baked files exist, module
-  import from the in-container set works, healthcheck exits 0 (skip on
-  pre-layout images). Closure window (cheap final-tail COPY re-key).
-
-- **#168-#174 — comment-discipline wave (owner rule: 1-2 lines + doc link;
-  ~170 comment lines move to docs).** Safe now: `Reuse.psm1:535` (#169 — the
-  30-line transport essay in Get-Help serves consumers a fsutil form the docs
-  declare broken/machine-wide; same rot in `Test-LayerRename.ps1:142`),
-  `Reuse.psm1:455` (#170 — dead `container-build-caching.md` link; FIRST add
-  the 2026-07-20 os-error-3 diagnosis to the perf doc, THEN trim),
-  `Start-GeniexServers.ps1:9` (#171 — topology study duplicated and already
-  drifting), `WindowsSlang.Common.psm1:16` (#173 — manifest schema defined
-  twice). Closure window (cache inputs): `WindowsMeson.Common.psm1:32` (#168 —
-  42-line essay fully covered by failure-modes.md),
-  `Set-TensorrtTree.ps1:8` (#172), `Build-LitertAll.ps1:35` (#174 —
-  lines 44-46 actively false since #128; fix the backlog's :79 line-ref in the
-  same commit).
-
-- **#175 — check while in the neighbourhood (unverified by the audit):**
-  `Build-OpencvGstreamerPlugin.ps1:7` (only comment find with NO docs home —
-  needs a new subsection in windows-builds.md), `WindowsAgenticLoop.Common.psm1:1036`
-  (executor drain-loop duplicated with exit-code drift — `-ExecutorOnly`, a
-  consumer API, may report exit 0 on the build-failure cap: potential real
-  bug), `Build-Buildkit.ps1:437` (halving formula duplicated; prework for
-  #158's :574 fix). Plus the audit's low classes: driver-local structure
-  cleanups (land with #158), free host-comment trims, docs staleness
-  one-liners (build-lanes:789 stale ConcurrentAux deterrent, cross-builds
-  status header), the genai-as-fourth-branch trade-off (4-18 min vs fan-in on
-  the flakiest stage).
-
-### Doc drift found by the LINUX-side docs audit 2026-09-03 (routed here, NOT verified on a Windows host)
-
-A 14-agent currency audit ran over `README.md`, `AGENTS.md` and `docs/` from the
-Linux side. Six confirmed findings land in Windows-lane files, so they were left
-untouched there and are recorded here instead. **Each was verified only against
-the repo tree — no Windows host was involved**, so re-check before acting.
-
-- **`docs/windows-host-setup.md:12,17`** — points at
-  `windows/scripts/Test-HostSetup.ps1`, including a copy-pasteable
-  `pwsh -File` command. The script is at `windows/scripts/host/Test-HostSetup.ps1`.
-  A reader following the doc gets "file not found".
-- **`docs/project-info.md:46`** — locates the HEALTHCHECK script at
-  `windows/scripts/Test-Health.ps1`; it is `windows/scripts/build/Test-Health.ps1`.
-- **`docs/project-info.md:43`** — restates Windows media-stage versions (ORT
-  1.27.0, GenAI 0.14.0, LiteRT 2.1.6, LiteRT-LM 0.13.1, TVM 0.25.0). All five are
-  behind `versions.env`, and `AGENTS.md:681` says not to restate versions ahead of
-  it at all — so the fix is to drop the numbers, not to refresh them.
-- **`docs/project-info.md:40`** — "LLVM 22 via Scoop"; the pin is
-  `LLVM_WINDOWS_VERSION=23.1.0`. Same rule: name the variable, not the number.
-- **`docs/overview.md:23`** — lists `windows/Dockerfile.toolchain`; the file is
-  `windows/Dockerfile.toolchain-builder`.
-- **`README.md:202`** — "The Qualcomm QNN SDK (QAIRT 2.31.0)" while **the same
-  sentence** says "(QAIRT 2.44.0, QNN API 2.33.0)" two lines later. A tree-wide
-  grep finds `2.31.0` exactly once, here; `windows/qnn-sdk/README.md:44` and
-  `docs/windows-cross-builds.md:711` both say 2.44.0.260225. This one is in the
-  repo-wide README rather than a Windows file, but the fact is Windows-lane, so it
-  was deliberately not "fixed" from the Linux side.
-
-Also noted while checking: `docs/third-party-licenses.md` attributes the **Linux**
-sccache patch series to `windows/upstream/sccache-nvcc-quote-fix/`. That is a
-cross-lane attribution error in `docs/deps/deps.json`; the Linux sccache is the
-unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here too.
+  re-keys. The three ConcurrentAux fixes it was waiting on landed on 2026-09-17
+  (archive 2026-09-17), so it is unblocked: default it for full amd64 chains
+  after one owed measurement — litert at 19 GB must not exceed the hidden
+  1425 s (its bazel half grew 18→59 min since July).
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#158 / #159 / #160 / #164 / #167 / #168-#174 / #175 — the 2026-09-17
+  batch: the thirteen audited defects, the eight settled-probe deletions, the
+  compiler-rt verify+tar port, LLVM through sccache, smoke section 23, the
+  comment-discipline wave and the three neighbourhood checks. Landed, unbuilt.
+  Archive: [`windows-backlog-archive-2026-09-17.md`](windows-backlog-archive-2026-09-17.md).
+
+- **The 2026-09-03 doc-drift findings and the PascalCase anchors** — all six
+  doc defects fixed, `deps.json`'s sccache attribution corrected, and
+  `verify_doc_links.py` green over the renamed script headings. Archive: same
+  page.
 
 - **#152** — the 2026-08-31 wave: PROVEN BY BUILD 2026-09-01/02. The dual-lane
   rebuild ran it for real, and the gate did its job: the wave's compiler-rt
@@ -527,18 +402,3 @@ unmodified Ubuntu apt binary. It touches a Windows path, so it is parked here to
   analysed above predates this: 28 of those logs contain real clip events, the
   green reference run is 49 % blind in its merge step, and historical ONNX
   steps are 83 % blind. Re-run the forensics against a full captured chain.
-
-## The PowerShell PascalCase rename broke the doc anchors (2026-09-06)
-
-`19982134` + `9b819f28` renamed every PowerShell script to Verb-Noun PascalCase.
-`docs/windows-builds.md` still points at the old names, so `verify_doc_links.py`
-reports six dangling anchors — for example `#test-rdna4-layer-lockps1`,
-`#verify-cuda-cacheps1`, `#repro-sccache-cuda-llm-deadlockps1`.
-
-This is a REPO-WIDE gate, so it fails the pre-commit hook for Linux work too. It
-is left here rather than fixed, per the standing "no Windows topics" directive —
-but it is not free: until it is fixed, every commit in this repo has to be made
-with `--no-verify`, which skips the gates that are not broken as well.
-
-The fix is mechanical: point each anchor at the heading the renamed script now
-carries. Whoever does the Windows lane next should do it first.

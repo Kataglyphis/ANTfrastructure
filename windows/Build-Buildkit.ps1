@@ -146,15 +146,20 @@ function Set-BuildPhase {
     param([Parameter(Mandatory)][string]$Name)
     try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
 }
+function Assert-NoCacheStageMatched {
+    param([string[]]$Requested = $NoCacheStage)
+    $unmatchedNoCacheStage = @($Requested | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
+    if ($unmatchedNoCacheStage.Count -gt 0) {
+        throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
+               'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
+               'stage labels in the output above (they are the same labels used for the log filenames).')
+    }
+}
 # Retention (backlog #30): ~80 files is several full chains of forensics.
 Limit-DiagnosticLogs -Directory $script:LogDir -Keep 80
 
 # --- buildctl resolution (shared helper, #101; Shared.psm1 is imported above) -
-if (-not $BuildCtl) {
-    $BuildCtl = Get-PreferredToolPath -CommandName 'buildctl' -CandidatePaths @(
-        "$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
-}
-if (-not $BuildCtl) { throw 'buildctl.exe not found (Stevedore bin or PATH).' }
+$BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 & $BuildCtl debug info *> $null
 if ($LASTEXITCODE -ne 0) { throw 'buildkitd not reachable (service running? user in docker-users?)' }
 
@@ -186,6 +191,12 @@ $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
 Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
+# -ConcurrentAux halves the children's budget ONLY through the webdav publish
+# below; -NoSccache must not silently run both at the full host RAM instead.
+if ($ConcurrentAux -and $NoSccache) {
+    throw ('-ConcurrentAux relies on the WebDAV memory publish to halve the aux children''s budget, ' +
+           'which -NoSccache disables. Drop -NoSccache, or run the aux branches sequentially.')
+}
 
 # --- cross-target gates: refuse the combinations that cannot work, in
 # milliseconds rather than hours into a stage that cannot produce anything ----
@@ -313,12 +324,15 @@ function Invoke-BkStage {
     # Per-stage cache bust (backlog #64), the lever the determinism gate asks for.
     # Substring of the same $Label the logs and the disk gate use, so 'opencv'
     # catches 'Dockerfile.media-builder:media-core-built-opencv'.
-    $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" })
+    # final-tar/final-push re-export the post-smoke final solve and stay cache hits (#158).
+    $exportOnlyLabel = $Label -in @('final-tar', 'final-push')
+    $matched = @()
+    if (-not $exportOnlyLabel) { $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" }) }
     # Recorded so a typo fails at the END of the run: printing only on a match
     # would leave a misspelled entry silent and every stage cached (fail-open).
     foreach ($m in $matched) { $script:NoCacheStageMatched[$m] = $true }
     $stageNoCache = $matched.Count -gt 0
-    if ($NoCache -or $stageNoCache) { $bkArgs += @('--no-cache') }
+    if (($NoCache -or $stageNoCache) -and -not $exportOnlyLabel) { $bkArgs += @('--no-cache') }
     if ($stageNoCache -and -not $NoCache) { Write-Host "[bk:$Label] -NoCacheStage match -> --no-cache for THIS stage only" -ForegroundColor Yellow }
     if ($Target) { $bkArgs += @('--opt', "target=$Target") }
     # mode=max also caches non-exported intermediate stages.
@@ -517,12 +531,13 @@ if ($Stages -contains 'sdk') {
 }
 
 if ($Stages -contains 'toolchain') {
-    # No $sccache here: neither Dockerfile.toolchain-builder nor
-    # Build-ToolchainAll.ps1 has sccache wiring, so it is an unused build-arg.
+    # $sccache carries SCCACHE_WEBDAV_ENDPOINT; the patched-llvm stage gates its
+    # sccache wiring on Test-SccacheRemoteConfigured (#164), so without it the
+    # stage compiles LLVM cold.
     $toolchainArgs = @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
-    }
+    } + $sccache
     $toolchainTarget = if ($StockLlvm) { 'built' } else { 'patched-llvm' }
     if ($toolchainTarget -eq 'patched-llvm') {
         $toolchainArgs['BUILD_PATCHED_LLVM'] = '1'
@@ -542,6 +557,7 @@ if ($Stages -contains 'media') {
         # media-core (the long pole) stays sequential below; the child drivers
         # each build one aux branch on half the memory budget.
         $loopBranches = @($MediaBranches | Where-Object { $_ -notin @('media-litert', 'media-tvm') })
+        # Sole owner of the halved aux budget (#175); published below (#51).
         $auxMem = [Math]::Max(8, [int]($MediaMemoryGb / 2))
     }
     foreach ($branch in $loopBranches) {
@@ -571,11 +587,14 @@ if ($Stages -contains 'media') {
         Write-Host "`n==> [bk:aux] concurrent litert + tvm child drivers ($auxMem GB memory budget each)" -ForegroundColor Cyan
         # Parallel phase begins: halve the published budget for the children.
         if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
-            Publish-MemoryBudget -Gb ([Math]::Max(8, [int]($MediaMemoryGb / 2))) -Phase 'parallel aux phase'
+            Publish-MemoryBudget -Gb $auxMem -Phase 'parallel aux phase'
         }
         foreach ($aux in 'media-litert', 'media-tvm') {
             $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
                 '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
+            # The child resolves its tags from ITS arch: without this an arm64 parent
+            # builds aux images under amd64 tags and the merge fans in stale trees.
+            if ($TargetArch -ne 'amd64') { $auxArgs += @('-TargetArch', $TargetArch) }
             if ($Gpu) { $auxArgs += '-Gpu' }
             if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
             # Children inherit the cache/tooling knobs — without these a
@@ -586,7 +605,12 @@ if ($Stages -contains 'media') {
             # would trip the child's own matched-nothing gate. -File cannot
             # deliver arrays (see .NOTES), so entries go one per argument.
             $auxNoCache = @($NoCacheStage | Where-Object { $aux -match [regex]::Escape(($_ -replace '^media-', '')) -or $_ -match ($aux -replace '^media-', '') })
-            foreach ($ncs in $auxNoCache) { $auxArgs += @('-NoCacheStage', $ncs) }
+            foreach ($ncs in $auxNoCache) {
+                $auxArgs += @('-NoCacheStage', $ncs)
+                # The CHILD builds these branches, so mark them matched here too or a
+                # correct parent run ends red in the matched-nothing gate (#158).
+                $script:NoCacheStageMatched[$ncs] = $true
+            }
             if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
             if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
             if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
@@ -700,10 +724,10 @@ if ($Stages -contains 'final') {
     # because containerd's pipe is admin-only and this driver is non-admin.
     if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
         # CROSS LANE: the suite runs its host-toolchain sections and skips the
-        # payload ones itself. 66 sits just under the arm64 section-floor sum of
-        # 72 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
+        # payload ones itself. 69 sits just under the arm64 section-floor sum of
+        # 77 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
         # no gate here proves the payload RUNS.
-        $armMinPassed = 66
+        $armMinPassed = 69
         $armMaxSkipped = 20
         if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
         if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
@@ -740,12 +764,7 @@ if ($Stages -contains 'final') {
     }
     # FAIL LOUDLY, pre-export (audit #15), on a -NoCacheStage entry that matched
     # nothing: a typo would otherwise leave every stage cached and look green.
-    $unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
-    if ($unmatchedNoCacheStage.Count -gt 0) {
-        throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
-               'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
-               'stage labels in the output above (they are the same labels used for the log filenames).')
-    }
+    & Assert-NoCacheStageMatched
     # FinalTar / PushRef: the same final solve from cache, different exporter.
     # Push auth uses THIS shell's docker credential store (`docker login` first).
     if ($FinalTar) {
@@ -760,12 +779,7 @@ if ($Stages -contains 'final') {
 # The matched-nothing gate fires PRE-EXPORT inside the final block; this copy
 # covers runs WITHOUT 'final', where that site never executes.
 if ($Stages -notcontains 'final') {
-    $unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
-    if ($unmatchedNoCacheStage.Count -gt 0) {
-        throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
-               'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
-               'stage labels in the output above (they are the same labels used for the log filenames).')
-    }
+    & Assert-NoCacheStageMatched
 }
 
 $elapsed = (Get-Date) - $started

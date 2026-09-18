@@ -8,7 +8,7 @@
     sccache-wrapped and diffs the symbol tables.
 
 .DESCRIPTION
-    The synthetic probes (Test-SccacheNvccInstantiation.ps1) do NOT
+    The synthetic probes (settled and deleted; git history is the record) do NOT
     reproduce the 2026-08-18 dropped-instantiation miscompile - plain args,
     rsp (turns out: rsp = passthrough, no caching at all), -t4 and the expt
     flags all came back symbol-identical. So the trigger lives in the real

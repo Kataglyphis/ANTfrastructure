@@ -10,74 +10,28 @@ if (-not (Get-Module -Name 'WindowsUv.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsUv.Common.psm1')
 }
 
-function Get-ProjectCmakeFiles {
+if (-not (Get-Module -Name 'WindowsBuild.Common')) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+}
+
+$script:CppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ixx')
+
+# One enumeration policy for tracked sources: git ls-files fast path, else a
+# Get-ChildItem fallback. Private; the public wrappers pass pathspec + predicate.
+function Get-ProjectSourceFiles {
   param(
     [Parameter(Mandatory)]
     [string]$WorkspacePath,
-    # Extra regexes a project excludes on top of the built-in build/_deps/vendor
-    # set. A consumer whose tree has its own generated CMake (a packaging
-    # staging dir, a patch shim) had to re-implement the whole enumeration to
-    # drop it; now it passes a pattern.
-    [string[]]$ExcludePattern = @()
-  )
-
-  $keep = {
-    param([string]$Path)
-    foreach ($pattern in $ExcludePattern) {
-      if ($Path -match $pattern) { return $false }
-    }
-    return $true
-  }
-
-  $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
-  if ($gitCommand) {
-    try {
-      $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- 'CMakeLists.txt' '**/CMakeLists.txt' '*.cmake' 2>$null
-      if ($LASTEXITCODE -eq 0 -and $tracked) {
-        $trackedPaths = @($tracked |
-          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-          ForEach-Object { Join-Path $WorkspacePath $_ } |
-          Where-Object {
-            ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-            ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
-            ($_.ToString() -notmatch '\\_deps\\') -and
-            ($_.ToString() -notmatch '\\vcpkg_installed\\')
-          })
-        return @($trackedPaths | Where-Object { & $keep $_ } | Sort-Object -Unique)
-      }
-    } catch {
-      # Best-effort: fall through to the filesystem enumeration below.
-      Write-Verbose "git ls-files enumeration failed: $($_.Exception.Message)"
-    }
-  }
-
-  $cmakeFiles = Get-ChildItem -Path $WorkspacePath -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object {
-      ($_.Name -eq 'CMakeLists.txt' -or $_.Extension -eq '.cmake') -and
-      ($_.FullName -notmatch '\\build([\\-]|\\)') -and
-      ($_.FullName -notmatch '\\(ExternalLib|third_party)\\') -and
-      ($_.FullName -notmatch '\\_deps\\') -and
-      ($_.FullName -notmatch '\\.git\\modules\\') -and
-      ($_.FullName -notmatch '\\vcpkg_installed\\') -and
-      ($_.FullName -notmatch '\\\.venv') -and
-      ($_.FullName -notmatch '\\site-packages\\')
-    } |
-    Select-Object -ExpandProperty FullName
-
-  return @($cmakeFiles | Where-Object { & $keep $_ } | Sort-Object -Unique)
-}
-
-function Get-ProjectCppFiles {
-  param(
     [Parameter(Mandatory)]
-    [string]$WorkspacePath
+    [string[]]$GitPathspec,
+    [Parameter(Mandatory)]
+    [scriptblock]$FileFilter
   )
 
-  $cppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ixx')
   $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
   if ($gitCommand) {
     try {
-      $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.ixx' 2>$null
+      $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- @GitPathspec 2>$null
       if ($LASTEXITCODE -eq 0 -and $tracked) {
         $trackedPaths = @($tracked |
           Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
@@ -108,9 +62,9 @@ function Get-ProjectCppFiles {
   # what actually selects files during a containerized build. It must exclude
   # at least as much as the git path above - Python virtualenvs vendor C
   # headers (lxml, numpy) that are emphatically not our sources.
-  $cppFiles = Get-ChildItem -Path $WorkspacePath -Recurse -File -ErrorAction SilentlyContinue |
+  $files = Get-ChildItem -Path $WorkspacePath -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
-      ($cppExtensions -contains $_.Extension.ToLowerInvariant()) -and
+      (& $FileFilter $_) -and
       ($_.FullName -notmatch '\\build([\\-]|\\)') -and
       ($_.FullName -notmatch '\\(ExternalLib|third_party)\\') -and
       ($_.FullName -notmatch '\\_deps\\') -and
@@ -121,7 +75,39 @@ function Get-ProjectCppFiles {
     } |
     Select-Object -ExpandProperty FullName
 
-  return @($cppFiles | Sort-Object -Unique)
+  return @($files | Sort-Object -Unique)
+}
+
+function Get-ProjectCmakeFiles {
+  param(
+    [Parameter(Mandatory)]
+    [string]$WorkspacePath,
+    # Extra regexes a project excludes on top of the built-in build/_deps/vendor
+    # set. A consumer whose tree has its own generated CMake (a packaging
+    # staging dir, a patch shim) had to re-implement the whole enumeration to
+    # drop it; now it passes a pattern.
+    [string[]]$ExcludePattern = @()
+  )
+
+  $cmakeFiles = Get-ProjectSourceFiles -WorkspacePath $WorkspacePath `
+    -GitPathspec @('CMakeLists.txt', '**/CMakeLists.txt', '*.cmake') `
+    -FileFilter { param($f) $f.Name -eq 'CMakeLists.txt' -or $f.Extension -eq '.cmake' }
+
+  foreach ($pattern in $ExcludePattern) {
+    $cmakeFiles = @($cmakeFiles | Where-Object { $_ -notmatch $pattern })
+  }
+  return @($cmakeFiles | Sort-Object -Unique)
+}
+
+function Get-ProjectCppFiles {
+  param(
+    [Parameter(Mandatory)]
+    [string]$WorkspacePath
+  )
+
+  return @(Get-ProjectSourceFiles -WorkspacePath $WorkspacePath `
+    -GitPathspec @('*.c', '*.cc', '*.cpp', '*.cxx', '*.h', '*.hh', '*.hpp', '*.ixx') `
+    -FileFilter { param($f) $script:CppExtensions -contains $f.Extension.ToLowerInvariant() })
 }
 
 # Thin adapter kept for caller compatibility: the venv health-check/recreate
@@ -149,18 +135,10 @@ function Initialize-UvVenvPython {
     throw 'uv not found on PATH. Install Astral uv before running formatting steps.'
   }
 
-  $logInfo = {
-    param([string]$Message)
-    Write-BuildLog -Context $Context -Message $Message
-  }
-  $logWarning = {
-    param([string]$Message)
-    Write-BuildLogWarning -Context $Context -Message $Message
-  }
-  $commandRunner = {
-    param([string]$File, [string[]]$Parameters)
-    Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters | Out-Null
-  }
+  $uvDelegates = New-UvBuildDelegates -Context $Context
+  $logInfo = $uvDelegates.LogInfo
+  $logWarning = $uvDelegates.LogWarning
+  $commandRunner = $uvDelegates.CommandRunner
 
   $venvPython = Initialize-UvVenv -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $EnvName `
     -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning

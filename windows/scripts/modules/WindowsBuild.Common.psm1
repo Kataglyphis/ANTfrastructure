@@ -772,6 +772,23 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList'
 )
 
+function Enable-SccacheCompilerWrapper {
+    param(
+        [Parameter(Mandatory)]
+        [string]$SccacheExe
+    )
+
+    $env:CMAKE_C_COMPILER_LAUNCHER = $SccacheExe
+    $env:CMAKE_CXX_COMPILER_LAUNCHER = $SccacheExe
+    # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
+    # sccache-wrapped nvcc loses its per-arch intermediate .cubin files
+    # before `fatbinary` combines them, and ONNX builds four -gencode arches
+    # per TU. Full diagnosis in WindowsSourceBuild.Common.psm1.
+    $env:RUSTC_WRAPPER = $SccacheExe
+    $env:CC_WRAPPER = $SccacheExe
+    $env:CXX_WRAPPER = $SccacheExe
+}
+
 # --------------------------------------------------------------------------
 # Restored from 04e1e07 (pre-refactor): functions still consumed by downstream
 # Build-Windows.ps1 scripts (OmniAccelerANT,
@@ -829,15 +846,7 @@ function Initialize-BuildCacheEnvironment {
     if ($sccacheCmd) {
         $sccacheExe = $sccacheCmd.Source
         Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
-        $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
-        $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
-        # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
-        # sccache-wrapped nvcc loses its per-arch intermediate .cubin files
-        # before `fatbinary` combines them, and ONNX builds four -gencode arches
-        # per TU. Full diagnosis in WindowsSourceBuild.Common.psm1.
-        $env:RUSTC_WRAPPER = $sccacheExe
-        $env:CC_WRAPPER = $sccacheExe
-        $env:CXX_WRAPPER = $sccacheExe
+        Enable-SccacheCompilerWrapper -SccacheExe $sccacheExe
 
         if (-not $env:SCCACHE_MAX_JOBS) {
             $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
@@ -1059,6 +1068,6 @@ function Sync-BuildArtifacts {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
 
 

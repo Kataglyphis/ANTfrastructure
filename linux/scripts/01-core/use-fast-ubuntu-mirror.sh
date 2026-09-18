@@ -42,7 +42,14 @@ main() {
 
   archive_mirror_url="$(ubuntu_mirror_normalize_url "${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}")"
   ports_mirror_url="$(ubuntu_effective_ports_mirror_url "${archive_mirror_url}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}")"
-  rewrite_security="${FAST_UBUNTU_REWRITE_SECURITY:-false}"
+  # AS1: defaults TRUE, matching base-image.sh's bootstrap_ca. Leaving the host
+  # -security on security.ubuntu.com while the target pocket comes from the fast
+  # mirror is the same pocket from two archives, and a lagging mirror then
+  # reproduces the Multi-Arch:same skew that cost riscv64 its Qt6. A mirror that
+  # cannot serve -security already fails the media stage, so `false` bought no
+  # compatibility -- it stays the explicit opt-out.
+  # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+  rewrite_security="${FAST_UBUNTU_REWRITE_SECURITY:-true}"
   sources_root="${UBUNTU_SOURCES_ROOT:-/}"
   updated=0
 

@@ -204,6 +204,16 @@ if (Test-Path $altOutDir) {
     }
 }
 
+# Floor (#158): Copy-BuildArtifact reports counts but never throws, so an empty or
+# partial install used to ship green. Root-recursive, like Test-Container's check.
+$genaiHdrs = @(Get-ChildItem -Path $genaiInstallDir -Filter '*.h' -File -Recurse -ErrorAction SilentlyContinue)
+$genaiDlls = @(Get-ChildItem -Path $genaiInstallDir -Filter 'onnxruntime-genai*.dll' -File -Recurse -ErrorAction SilentlyContinue)
+$genaiLibs = @(Get-ChildItem -Path $genaiInstallDir -Filter 'onnxruntime-genai*.lib' -File -Recurse -ErrorAction SilentlyContinue)
+if ($genaiHdrs.Count -eq 0 -or $genaiDlls.Count -eq 0 -or $genaiLibs.Count -eq 0) {
+    throw ("genai install floor: expected headers plus onnxruntime-genai*.dll/.lib under $genaiInstallDir " +
+        "(headers=$($genaiHdrs.Count), dll=$($genaiDlls.Count), lib=$($genaiLibs.Count)) -- the copy staged an incomplete payload.")
+}
+
 # DML: onnxruntime-genai.dll loads D3D12Core.dll from its own module dir at runtime, and the
 # wheel's POST_BUILD copy is the only other one -- so stage it next to the genai DLL.
 # Pin the filter to the TARGET's nuget dir ('win-arm64' -> 'arm64'): an unqualified -Recurse

@@ -84,14 +84,14 @@ a competing PR. When it merges, drop the matching hunks from
 
 ## Already filed
 
-| Upstream | Item | Status (checked 2026-09-02) |
+| Upstream | Item | Status (checked 2026-09-18) |
 | --- | --- | --- |
-| llvm/llvm-project | [#219275](https://github.com/llvm/llvm-project/pull/219275) count the async-EH nop after an `EH_LABEL` | PR **open** — `llvm/001-aarch64-ehlabel-size.patch` |
+| llvm/llvm-project | [#219275](https://github.com/llvm/llvm-project/pull/219275) count the async-EH nop after an `EH_LABEL` | PR **merged 2026-09-16** (`4c9a33aa`), but **not in `llvmorg-23.1.1`** (cut 2026-09-07) and not on `release/23.x` — `llvm/001-aarch64-ehlabel-size.patch` stays until a release carries it |
 | llvm/llvm-project | [#219276](https://github.com/llvm/llvm-project/pull/219276) report SEH pseudos as zero-size | PR **open** — `llvm/002-aarch64-seh-pseudo-size.patch` |
-| llvm/llvm-project | [#219200](https://github.com/llvm/llvm-project/pull/219200) missing `:lo12:` on the catchret address pair | PR **open** |
+| llvm/llvm-project | [#219200](https://github.com/llvm/llvm-project/pull/219200) missing `:lo12:` on the catchret address pair | PR **merged 2026-09-04**; the `NINJA_KEEP_GOING` workaround it motivated is already gone (#135) |
 | microsoft/hcsshim | [#2855](https://github.com/microsoft/hcsshim/pull/2855) configurable teardown timeouts | PR **open** — package in `windows/upstream/hcsshim-teardown-timeout/` |
 | google-ai-edge/LiteRT-LM | [#3245](https://github.com/google-ai-edge/LiteRT-LM/issues/3245) the CMake lane is stale vs bazel | issue **open** — covers the ~30 inline LiteRT-LM edits |
-| mozilla/sccache | [#2808](https://github.com/mozilla/sccache/issues/2808) nvcc deadlock and miscompile | issue **closed**; fixed by #2722/#2811/#2816, `SCCACHE_GIT_REV` pins past them |
+| mozilla/sccache | [#2808](https://github.com/mozilla/sccache/issues/2808) nvcc deadlock and miscompile | issue **closed**; fixed by #2722/#2811/#2816 — all three ship in the **0.18.0** release (2026-09-14), so the `SCCACHE_GIT_REV` source build can retire on that bump (verify with the CUDA canary first) |
 | opencv/opencv | [#29788](https://github.com/opencv/opencv/issues/29788) dnn/ORT `char*` vs `ORTCHAR_T` | issue **closed** — see the next section |
 
 ## ✔ Upstream already fixed it — retire on a version bump

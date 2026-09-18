@@ -57,6 +57,8 @@ fi
 : "${ANDROID_NDK_VERSION:?ANDROID_NDK_VERSION must be set}"
 : "${ANDROID_COMPILE_SDK:?ANDROID_COMPILE_SDK must be set}"
 : "${ANDROID_BUILD_TOOLS:?ANDROID_BUILD_TOOLS must be set}"
+: "${ANDROID_EXTRA_COMPILE_SDK:?ANDROID_EXTRA_COMPILE_SDK must be set}"
+: "${ANDROID_EXTRA_BUILD_TOOLS:?ANDROID_EXTRA_BUILD_TOOLS must be set}"
 : "${ANDROID_CMAKE_VERSION:?ANDROID_CMAKE_VERSION must be set}"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -239,6 +241,11 @@ if [ "${sdk_restored}" -eq 0 ]; then
     "platform-tools"
     "platforms;android-${ANDROID_COMPILE_SDK}"
     "build-tools;${ANDROID_BUILD_TOOLS}"
+    # CON5: API 37 alongside 36, so a consumer can raise compileSdk without the
+    # image losing the level everything else builds against. 37.0 is the base
+    # platform package's name in Google's repository (see versions.env).
+    "platforms;android-${ANDROID_EXTRA_COMPILE_SDK}"
+    "build-tools;${ANDROID_EXTRA_BUILD_TOOLS}"
     "ndk;${ANDROID_NDK_VERSION}"
     "extras;android;m2repository"
     "extras;google;m2repository"

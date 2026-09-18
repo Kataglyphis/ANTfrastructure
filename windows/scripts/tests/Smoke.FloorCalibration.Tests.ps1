@@ -76,7 +76,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
         # would fail every arm64 run; a HOST section at 0 means coverage was
         # quietly forfeited.
         $payload = @('7', '8', '9', '10', '11', '12', '13', '17', '18', '20', '21', '22')
-        $hostSections = @('1', '2', '3', '4', '5', '6', '14', '15', '16', '19')
+        $hostSections = @('1', '2', '3', '4', '5', '6', '14', '15', '16', '19', '23')
         foreach ($t in $script:floorTriples) {
             $sec = $t.Groups[1].Value
             $arm = [int]$t.Groups[4].Value

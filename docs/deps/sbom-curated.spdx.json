@@ -627,14 +627,14 @@
       "SPDXID": "SPDXRef-Package-Linux-Images-sccache-146aae37",
       "name": "sccache",
       "versionInfo": "Ubuntu apt",
-      "downloadLocation": "https://github.com/mozilla/sccache",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
       "licenseDeclared": "Apache-2.0",
       "licenseConcluded": "Apache-2.0",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file | MODIFIED before redistribution: Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Meson-4142d77c",
@@ -1012,6 +1012,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Build Tooling (build-time only)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://scoop.sh/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-sccache-Windows-lane-16ab13cf",
+      "name": "sccache (Windows lane)",
+      "versionInfo": "8ab39266246b26d736bee44dfa313ab0d5fceb1d",
+      "downloadLocation": "https://github.com/mozilla/sccache",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file | MODIFIED before redistribution: Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-vcpkg-61e4fb57",
@@ -1706,6 +1719,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-scc-c8e9215b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-sccache-Windows-lane-16ab13cf"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

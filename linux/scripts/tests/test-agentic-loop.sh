@@ -209,4 +209,46 @@ t_assert_contains "${_out}" "jq required"
 t_assert_contains "${_out}" "rc=1" "no jq must stop the loop before it plans anything"
 t_assert_eq "1" "$(printf '%s\n' "${_out}" | grep -c 'jq required')" "the owner must state the reason exactly once"
 
+# ── 5. the F1 seam: the planner phase ───────────────────────────────────
+# _agentic_planner_phase owns the skip/starvation/refactor-cycle decision and
+# reports through a nameref whether it ran, which is the state run_agentic_loop
+# reads to tell "no actionable tasks left" from "planner was skipped".
+# $1 iteration, $2 skip_planner_when_pending, $3 force_planner.
+_planner() { _lib "
+_AL[repo_root]='${_work}'; _AL[iteration]=$1; _AL[skip_planner_when_pending]=$2
+_AL[refactor_every_n]=10
+invoke_agent() { echo \"agent:\$1:\$2\"; }
+_agentic_planner_phase '${_work}' '$3' ran; echo \"ran=\$ran\""; }
+
+t_case "planner phase: pending tasks SKIP the planner and report ran=false"
+printf -- '- [ ] one\n' > "${_work}/BACKLOG.md"
+_out="$(_planner 1 true false)"
+t_assert_contains "${_out}" "Skipping planner: 1 actionable task(s) pending"
+t_assert_contains "${_out}" "ran=false"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'agent:planner' || true)" \
+  "a skip that still invokes the agent is the bug the guard exists to prevent"
+
+t_case "planner phase: the starvation guard runs it despite pending tasks"
+_out="$(_planner 1 true true)"
+t_assert_contains "${_out}" "Starvation guard"
+t_assert_contains "${_out}" "ran=true"
+t_assert_contains "${_out}" "agent:planner"
+
+t_case "planner phase: a blocked-only backlog is an empty queue, so the planner runs"
+printf -- '- [b] blocked on the SDK\n' > "${_work}/BACKLOG.md"
+_out="$(_planner 1 true false)"
+t_assert_contains "${_out}" "agent:planner"
+t_assert_contains "${_out}" "ran=true"
+
+t_case "planner phase: the refactor cycle picks the refactor prompt"
+printf -- '- [ ] one\n' > "${_work}/BACKLOG.md"
+_out="$(_planner 10 false false)"
+t_assert_contains "${_out}" "Refactor-focused planning cycle"
+t_assert_contains "${_out}" "ran=true"
+
+t_case "run_agentic_loop delegates its planner phase to the seam"
+t_assert_contains "$(t_fn_src "${LIB}" run_agentic_loop)" \
+  '_agentic_planner_phase "$repo_root" "$force_planner" planner_ran' \
+  "an inlined copy would drift from the phase the suite exercises"
+
 t_summary

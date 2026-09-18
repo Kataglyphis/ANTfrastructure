@@ -185,7 +185,9 @@ def _walk_scan(root, tops):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for fn in sorted(files):
                 if fn.endswith(".sh"):
-                    yield os.path.relpath(os.path.join(base, fn), root)
+                    # Posix-spelled keys: os.path.relpath uses backslashes on Windows,
+                    # where every frozen row then reported as miss + stale.
+                    yield os.path.relpath(os.path.join(base, fn), root).replace(os.sep, "/")
 
 
 def scan_paths(root, scan):

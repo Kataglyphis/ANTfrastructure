@@ -389,8 +389,10 @@ function Invoke-AgentProcess {
         $stdin.Close()
 
         # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
-        $outLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-        $errLines = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+        # ConcurrentQueue, not ConcurrentBag: captured Output is documented API
+        # and the bag enumerates LIFO, reversing every consumer's transcript.
+        $outLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
+        $errLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $renderStream = [bool]$RenderClaudeStream
         $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines, $renderStream -ScriptBlock {
             param($p, $logFile, $outLines, $renderStream)
@@ -1273,7 +1275,13 @@ function Invoke-AgenticLoop {
                 $retries = 0; $tasksDone++; $u = $nu
                 $script:AgenticTasksCompleted = $tasksDone
                 if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
-                if (-not (Invoke-AfterTaskPhases)) { Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'; break }
+                if (-not (Invoke-AfterTaskPhases)) {
+                    Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'
+                    # Same failure-cap contract as the main loop below: without
+                    # this, -ExecutorOnly reported exit 0 on a capped run.
+                    $script:AgenticExitCode = 1
+                    break
+                }
             }
         }
         return

@@ -216,14 +216,26 @@ function Invoke-StepShim {
         Write-Step "shim       : would deploy $build"
         return
     }
-    # Hashtable splat (NOT an array) so -ShimPath/-Force bind by name.
-    $dsp = @{ ShimPath = $build; Force = $Force }
-    Write-Step 'shim       : deploying the patched runhcs shim (45min/100min teardown)'
+    # Hashtable splat (NOT an array) so -ShimPath/-Force bind by name. The shim
+    # is the fork's env-configurable build, so it needs the mandatory 5m knob:
+    # without it, defaults stay stock 30 s (docs/windows-host-setup.md § R1).
+    $dsp = @{
+        ShimPath           = $build
+        Force              = $Force
+        ServiceEnvironment = @('CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m')
+    }
+    Write-Step 'shim       : deploying the patched runhcs shim (env-configurable, TEARDOWN_TIMEOUT=5m)'
     & (Join-Path $scriptRoot 'Publish-ShimPatch.ps1') @dsp
 }
 
 function Invoke-BuildPatchedShim {
-    $work = Join-Path $env:TEMP 'kataglyphis-hcsshim'
+    # The fork branch carries the #2855 env-var patch; the old 45min constant
+    # patch is RETIRED, so this build asserts the patch is present instead of
+    # applying it. Fork/pin/5m facts: docs/windows-host-setup.md § R1.
+    $forkUrl = 'https://github.com/Kataglyphis/hcsshim.git'
+    $forkBranch = 'feature/configurable-teardown-timeout'
+    $forkPin = '192514290b9875a18481869f15b3649657237001'
+    $work = Join-Path $env:TEMP 'kataglyphis-hcsshim-fork'
     $src = Join-Path $work 'cmd\containerd-shim-runhcs-v1\task_hcs.go'
     $exeOut = Join-Path $work 'containerd-shim-runhcs-v1.exe'
 
@@ -238,27 +250,32 @@ function Invoke-BuildPatchedShim {
 
     if (-not (Test-Path (Join-Path $work '.git'))) {
         if ($ReportOnly) {
-            Write-Step 'shim       : would clone Microsoft/hcsshim (shallow) and raise teardown timeouts to 45min/100min'
+            Write-Step 'shim       : would clone the hcsshim fork and pin the env-configurable teardown commits'
             return $exeOut
         }
-        Write-Step 'shim       : cloning Microsoft/hcsshim (shallow, 1 commit)'
+        Write-Step 'shim       : cloning the hcsshim fork (shallow, branch pinned by commit)'
         $git = (Get-Command git -ErrorAction SilentlyContinue).Source
         if (-not $git) { throw 'git not found - install Git for Windows, or pass -ShimPath' }
-        New-Item -ItemType Directory -Force -Path $work | Out-Null
-        & $git clone --depth 1 https://github.com/Microsoft/hcsshim $work
-        if ($LASTEXITCODE -ne 0) { throw 'hcsshim clone failed' }
+        Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $work) { throw "cannot clear the shim work dir: $work" }
+        & $git clone --depth 1 --branch $forkBranch $forkUrl $work
+        if ($LASTEXITCODE -ne 0) { throw "hcsshim fork clone failed ($forkBranch)" }
+        # Clone-at-HEAD would drift with every push; the pin is what makes this
+        # build reproducible. Fetch by SHA so the tree stays one commit deep.
+        & $git -C $work fetch --depth 1 origin $forkPin
+        if ($LASTEXITCODE -ne 0) { throw "cannot fetch the pinned fork commit $forkPin (branch moved?)" }
+        & $git -C $work checkout --detach $forkPin
+        if ($LASTEXITCODE -ne 0) { throw "cannot check out the pinned fork commit $forkPin" }
     }
     if (-not (Test-Path $src)) { throw "task_hcs.go not found at $src - unexpected hcsshim layout?" }
 
+    # Fail loudly on a tree WITHOUT the knob: defaults are stock 30s, so a
+    # missing patch builds a green binary that silently keeps the defect.
     $raw = Get-Content -Raw $src
-    $rawNew = $raw.Replace('const tearDownTimeout = 30 * time.Second', 'const tearDownTimeout = 45 * time.Minute')
-    $rawNew = $rawNew.Replace('const timeout = 30 * time.Second', 'const timeout = 100 * time.Minute')
-    if ($rawNew -ne $raw) {
-        Set-Content -Path $src -Value $rawNew -Encoding utf8
-        Write-Step 'shim       : raised teardown timeouts in task_hcs.go to 45min/100min' 'Green'
-    } else {
-        Write-Step 'shim       : task_hcs.go already carries the long timeouts (idempotent)'
+    if ($raw -notmatch 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT') {
+        throw "the pinned fork tree lacks the CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT knob at $src - refusing to build a silently stock shim"
     }
+    Write-Step 'shim       : fork tree carries the env-configurable teardown knob (pin verified)' 'Green'
 
     Push-Location $work
     try {
@@ -352,11 +369,24 @@ if (-not $SkipShim)     { Invoke-StepShim }
 if (-not $SkipDufs)     { Invoke-StepDufs }
 
 # The steps above may leave buildkitd stopped or a fresh .conf on disk; one
-# restart finalises the CNI + step-log env.
+# restart finalises the CNI + step-log env. Guarded like the GC-policy restart:
+# it kills every in-flight solve.
 if (-not $ReportOnly) {
+    if (-not $Force) {
+        $live = @(Get-Process -Name 'buildctl' -ErrorAction SilentlyContinue)
+        if ($live.Count -gt 0) {
+            throw ("{0} live buildctl process(es) - restarting buildkitd kills their solves. " -f $live.Count) +
+                'Wait, or pass -Force if they are stale.'
+        }
+    }
     Write-Step 'buildkitd  : restarting to ensure the CNI .conf and step-log env are live'
-    Restart-Service buildkitd -Force
-    Write-Step ('buildkitd  : {0}' -f (Get-Service buildkitd).Status)
+    try {
+        Restart-Service buildkitd -Force -ErrorAction Stop
+        Write-Step ('buildkitd  : {0}' -f (Get-Service buildkitd).Status)
+    } catch {
+        Write-Step ('buildkitd  : RESTART ERROR: {0}' -f $_.Exception.Message) 'Red'
+        throw
+    }
 }
 
 $lan = Get-LanIpv4Address

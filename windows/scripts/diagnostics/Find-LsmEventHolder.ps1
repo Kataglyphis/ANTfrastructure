@@ -100,21 +100,18 @@ function Get-ProcLabel([long]$procId) {
 if (-not $LsmPid -or -not $Handle) {
     $cdb = Get-CdbPath
 
-    $baseWininit = Get-WininitProcessId
+    $baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
 
     if (-not $NoBait) {
-        $bait = Start-SiloBaitContainer -Tag 'lsmbait'
+        $bait = Start-SiloBaitContainer -Tag 'lsmbait' -PassThru
         Write-Host "bait solve started (buildctl pid $($bait.Id)); its container is the one we inspect"
     }
 
     Write-Host "Waiting for a NEW silo (max $WaitForSiloSec s)..."
-    $newWininit = Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
+    $newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
     if (-not $newWininit) { throw 'No new silo appeared - start a build/probe and retry.' }
 
-    $siloServices = Get-SiloServicesProcess -WininitProcessId $newWininit.ProcessId
-    if (-not $siloServices) { throw 'silo has no services.exe yet' }
-
-    $svchosts = @(Get-SiloSvchost -ServicesProcessId $siloServices.ProcessId)
+    $svchosts = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId)
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"

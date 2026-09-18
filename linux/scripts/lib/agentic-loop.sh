@@ -415,6 +415,38 @@ _agentic_drain_executor_queue() {
     return 0
 }
 
+# Phase 1 of an iteration: run the planner unless the queue still has
+# actionable (- [ ]) tasks. Blocked (- [b]) tasks do not count, and the
+# starvation guard forces a planner run after a zero-progress iteration, so a
+# backlog of blocked entries cannot stall the loop. Sets the caller's
+# planner_ran (nameref) so run_agentic_loop can tell "no tasks left" from
+# "planner was skipped". The seam F1 named.
+_agentic_planner_phase() {
+    local repo_root="$1" force_planner="$2"
+    local -n _app_ran="$3"
+    local pending blocked planner_msg
+
+    _app_ran=false
+    pending=$(unchecked_task_count "${repo_root}/BACKLOG.md")
+    blocked=$(blocked_task_count "${repo_root}/BACKLOG.md")
+    if [[ "${_AL[skip_planner_when_pending]}" == "true" && "$pending" -gt 0 && "$force_planner" != "true" ]]; then
+        log "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
+        return 0
+    fi
+    section "PLANNER PHASE"
+    if [[ "$force_planner" == "true" ]]; then
+        log "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" "WARN"
+    fi
+    if [[ $(( _AL[iteration] % _AL[refactor_every_n] )) -eq 0 ]]; then
+        log "Refactor-focused planning cycle"
+        planner_msg="$(default_refactor_planner_prompt)"
+    else
+        planner_msg="$(default_planner_prompt)"
+    fi
+    invoke_agent "planner" "$planner_msg" || true
+    _app_ran=true
+}
+
 run_agentic_loop() {
     local config_json="$1"
     local repo_root="${2:-$(pwd)}"
@@ -458,30 +490,10 @@ run_agentic_loop() {
         iterations_done=${_AL[iteration]}
         section "ITERATION ${_AL[iteration]}"
 
-        # Phase 1: Planner — skipped while the queue still has actionable
-        # (- [ ]) tasks.  Blocked (- [b]) tasks do not count, and the
-        # starvation guard forces a planner run after a zero-progress
-        # iteration, so a backlog of blocked entries cannot stall the loop.
-        local pending blocked planner_ran=false
-        pending=$(unchecked_task_count "${repo_root}/BACKLOG.md")
-        blocked=$(blocked_task_count "${repo_root}/BACKLOG.md")
-        if [[ "${_AL[skip_planner_when_pending]}" == "true" && "$pending" -gt 0 && "$force_planner" != "true" ]]; then
-            log "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
-        else
-            section "PLANNER PHASE"
-            if [[ "$force_planner" == "true" ]]; then
-                log "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" "WARN"
-            fi
-            local planner_msg
-            if [[ $(( _AL[iteration] % _AL[refactor_every_n] )) -eq 0 ]]; then
-                log "Refactor-focused planning cycle"
-                planner_msg="$(default_refactor_planner_prompt)"
-            else
-                planner_msg="$(default_planner_prompt)"
-            fi
-            invoke_agent "planner" "$planner_msg" || true
-            planner_ran=true
-        fi
+        # Phase 1: Planner — the skip/starvation/refactor-cycle decision lives
+        # in _agentic_planner_phase; it reports back whether it ran.
+        local planner_ran=false
+        _agentic_planner_phase "$repo_root" "$force_planner" planner_ran
 
         # Phase 2: Executor
         local tasks_before=${_AL[tasks_completed]}

@@ -1076,7 +1076,12 @@ different device.
 **all three** shipped `:latest-cross-<arch>` images — measured 2026-09-04, 3.6 GB
 and byte-identical on amd64/arm64/riscv64, with `build-tools/36.0.0`,
 `cmdline-tools/latest`, `licenses`, `ndk/29.0.14206865`, `platforms/android-36`
-and `platform-tools` all present. Nothing advertised it until then, so
+and `platform-tools` all present. Since 2026-09-17 `platforms/android-37.0` and
+`build-tools/37.0.0` are installed alongside them (CON5): API 37's base platform
+package is `platforms;android-37.0` in Google's repository — there is no
+`platforms;android-37`, and only API 36 kept the un-suffixed hash — so a consumer
+raising `compileSdk` to 37 finds the level without the image dropping 36.
+Nothing advertised it until then, so
 `flutter build apk` stopped at `[!] No Android SDK found`; under CodeQL's
 `database create --command=…` that exit aborts before the database is finalized
 and the lane finally reports a missing bundle directory, three steps from the

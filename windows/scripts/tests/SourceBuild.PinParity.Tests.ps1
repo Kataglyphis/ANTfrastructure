@@ -61,6 +61,36 @@ function Get-PinScanAst {
     }
 }
 
+# One owner for the CommandElements walk both scanners carried (F4): pure AST
+# mechanics. Argument is attached (-Name:value) or the next element.
+function Get-CommandParameterArgumentMap {
+    param([System.Management.Automation.Language.CommandAst]$Call)
+    $map = [ordered]@{}
+    $elems = $Call.CommandElements
+    for ($i = 0; $i -lt $elems.Count; $i++) {
+        $e = $elems[$i]
+        if ($e -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
+        # Abbreviated parameter names would surface via the unknown-site guard.
+        $argAst = $e.Argument
+        if ($null -eq $argAst -and ($i + 1) -lt $elems.Count -and
+            $elems[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
+            $argAst = $elems[$i + 1]
+        }
+        $map[$e.ParameterName] = $argAst
+    }
+    return $map
+}
+
+# Shared 'DefaultValue' arm: literal-valued when the AST is a string constant.
+function Get-AstDefaultValue {
+    param($ArgAst)
+    if ($ArgAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+        return @{ Value = $ArgAst.Value; IsLiteral = $true }
+    }
+    if ($null -ne $ArgAst) { return @{ Value = $ArgAst.Extent.Text; IsLiteral = $false } }
+    return @{ Value = $null; IsLiteral = $false }
+}
+
 # Both Describe blocks below read the same canonical pin file; they differed only
 # in the label on the throw, which the duplication gate counted as a copied block.
 function Get-CanonicalPins {
@@ -101,26 +131,13 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 $envVars = @()
                 $stripV = $false
 
-                $elems = $call.CommandElements
-                for ($i = 0; $i -lt $elems.Count; $i++) {
-                    $e = $elems[$i]
-                    if ($e -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
-                    # Argument is either attached (-Name:value) or the next element.
-                    # All in-repo sites spell parameter names out in full; an
-                    # abbreviated form would surface via the unknown-site guard.
-                    $argAst = $e.Argument
-                    if ($null -eq $argAst -and ($i + 1) -lt $elems.Count -and
-                        $elems[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
-                        $argAst = $elems[$i + 1]
-                    }
-                    switch ($e.ParameterName) {
+                foreach ($p in (Get-CommandParameterArgumentMap $call).GetEnumerator()) {
+                    $argAst = $p.Value
+                    switch ($p.Key) {
                         'DefaultValue' {
-                            if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
-                                $default = $argAst.Value
-                                $defaultIsLiteral = $true
-                            } elseif ($null -ne $argAst) {
-                                $default = $argAst.Extent.Text
-                            }
+                            $d = Get-AstDefaultValue $argAst
+                            $default = $d.Value
+                            $defaultIsLiteral = $d.IsLiteral
                         }
                         'EnvironmentVariables' {
                             if ($null -ne $argAst) {
@@ -368,26 +385,13 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
                 $envVar = '<none>'
                 $trimV = $false
 
-                $elems = $call.CommandElements
-                for ($i = 0; $i -lt $elems.Count; $i++) {
-                    $e = $elems[$i]
-                    if ($e -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
-                    # Argument is either attached (-Name:value) or the next element.
-                    # All in-repo sites spell parameter names out in full; an
-                    # abbreviated form would surface via the unknown-site guard.
-                    $argAst = $e.Argument
-                    if ($null -eq $argAst -and ($i + 1) -lt $elems.Count -and
-                        $elems[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
-                        $argAst = $elems[$i + 1]
-                    }
-                    switch ($e.ParameterName) {
+                foreach ($p in (Get-CommandParameterArgumentMap $call).GetEnumerator()) {
+                    $argAst = $p.Value
+                    switch ($p.Key) {
                         'DefaultValue' {
-                            if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
-                                $default = $argAst.Value
-                                $defaultIsLiteral = $true
-                            } elseif ($null -ne $argAst) {
-                                $default = $argAst.Extent.Text
-                            }
+                            $d = Get-AstDefaultValue $argAst
+                            $default = $d.Value
+                            $defaultIsLiteral = $d.IsLiteral
                         }
                         'EnvironmentVariable' {
                             # SINGLE string parameter: accept ONLY a direct string

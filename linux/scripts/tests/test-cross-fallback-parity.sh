@@ -156,6 +156,35 @@ _mirror_downgrade "${R}"
 t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/"
 t_assert_eq "URIs: https://mirror.invalid/ubuntu-ports/|" "$(_mirror_uris "${R}")"
 
+# -- AS1: -security comes from the SAME archive as the target pocket --------
+# Two archives serving one pocket is how a lagging mirror reproduced the
+# Multi-Arch:same skew that cost riscv64 its Qt6. The rewrite defaults ON, and
+# FAST_UBUNTU_REWRITE_SECURITY=false is the explicit opt-out.
+# $1 = fixture root, $2 = optional FAST_UBUNTU_REWRITE_SECURITY value.
+# `env` is load-bearing: with the bare assignment-prefix form, an empty
+# ${knob:+...} leaves the NEXT word as the command name (`D=3: command not
+# found`) -- the prefix parser recognises NAME=value before expansion.
+_mirror_fast() {
+  local root="$1" knob="${2:-}"
+  env USE_FAST_UBUNTU_MIRROR=true FAST_UBUNTU_MIRROR_URL=http://mirror.invalid/ubuntu/ \
+    ${knob:+FAST_UBUNTU_REWRITE_SECURITY="${knob}"} UBUNTU_SOURCES_ROOT="${root}" \
+    bash "${CORE_DIR}/use-fast-ubuntu-mirror.sh" >/dev/null 2>&1
+}
+
+R="${_MIRROR_TMP}/security-default"
+_mirror_fixture "${R}" "http://archive.ubuntu.com/ubuntu/"
+t_case "apt-http: the -security rewrite defaults ON (AS1)"
+_mirror_fast "${R}"
+t_assert_eq "URIs: http://mirror.invalid/ubuntu/|URIs: http://mirror.invalid/ubuntu/|" "$(_mirror_uris "${R}")" \
+  "the host -security must come from the archive mirror, not stay on security.ubuntu.com"
+
+R="${_MIRROR_TMP}/security-optout"
+_mirror_fixture "${R}" "http://archive.ubuntu.com/ubuntu/"
+t_case "apt-http: FAST_UBUNTU_REWRITE_SECURITY=false keeps the stock security host"
+_mirror_fast "${R}" false
+t_assert_eq "URIs: http://mirror.invalid/ubuntu/|URIs: http://security.ubuntu.com/ubuntu/|" "$(_mirror_uris "${R}")" \
+  "the opt-out must remain reachable, and it is the only way to get the stock security host"
+
 # -- no-op cases ------------------------------------------------------------
 R="${_MIRROR_TMP}/knoboff"
 _mirror_fixture "${R}" "http://mirror.invalid/ubuntu/"

@@ -397,9 +397,12 @@ APP_PACKAGING_COMMENT
 APP_PACKAGING_DESCRIPTION
 APP_PACKAGING_MAINTAINER
 # Operator switches for the same library: where it stages (a bind-mounted host
-# drive refuses the chmods flatpak-builder and dpkg-deb need) and how loud it is.
+# drive refuses the chmods flatpak-builder and dpkg-deb need), how loud it is,
+# and extra flatpak finish-args a consumer needs (--device=all for V4L2,
+# --filesystem=... for a user-chosen path) -- appended to the generated four.
 KATAGLYPHIS_FLATPAK_VERBOSE
 KATAGLYPHIS_FLATPAK_WORKDIR
+KATAGLYPHIS_FLATPAK_FINISH_ARGS
 KATAGLYPHIS_PACKAGING_WORKDIR
 # renovate-local.sh (1fef6f28) — two operator switches for the local dependency
 # CLI. Both are read-only fallbacks with sane defaults and are never assigned

@@ -124,7 +124,7 @@ report **0** compile requests, not another container's hundreds.
 |---|---|---|
 | AppImage runtime | `Staged AppImage runtime-<arch> (<n> bytes) from …`, once per arch | `appimagetool did not report --appimage-offset` — a WARN, non-fatal, but the runtime is not staged and consumers go back to fetching it from GitHub |
 | Flatpak runtimes | seven refs installed on amd64/arm64; **skipped outright** on riscv64 (Flathub builds x86_64 and aarch64 only) | a 404 retry loop on riscv64 means the arch guard stopped working |
-| web-lane toolchain | `OK: nightly channel installed with rust-src + wasm32-unknown-unknown` and two `OK: <crate> <version> installed` | `WARN: the nightly channel is unavailable` — non-fatal, but the web lane then auto-installs it per consumer run, which is the cost this exists to remove |
+| web-lane toolchain | `OK: nightly-<date> installed with rust-src + wasm32-unknown-unknown` (the `RUST_NIGHTLY_TOOLCHAIN` pin) and two `OK: <crate> <version> installed` | `WARN: nightly-<date> is unavailable` — non-fatal, but the web lane then auto-installs a nightly per consumer run, which is the cost this exists to remove |
 
 ## On the shipped bytes — after the run, not from the log
 

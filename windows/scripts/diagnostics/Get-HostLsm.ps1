@@ -87,13 +87,13 @@ function Invoke-HostLsmSnapshot([string]$tag) {
 Write-Host "snapshot A (idle) ..."
 $logA = Invoke-HostLsmSnapshot 'A-idle'
 
-$baseWininit = Get-WininitProcessId
-Start-SiloBaitContainer -Tag 'hostlsm' | Out-Null
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+Start-SiloBaitContainer -Tag 'hostlsm'
 Write-Host "bait started; waiting for its silo ..."
 
 # 180 s, not the 900 s the watch-only probes use: this bait was started three
 # lines ago, so a silo that has not appeared by then is not coming.
-if (-not (Wait-ForNewSilo -BaselineProcessId $baseWininit -TimeoutSec 180 -PollSec 2)) {
+if (-not (Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec 180 -PollSec 2)) {
     Write-Warning 'no silo appeared; snapshot B will be another idle sample'
 }
 Start-Sleep -Seconds 20   # land inside the ~141 s stall, past silo creation

@@ -261,18 +261,29 @@ The file's own header carries the three rules every packager in it obeys
 (container-native staging, flatpak-builder's exit code is not the verdict,
 nothing prints `Created:` without `app_packaging_assert_artifact`). Two entry
 points were added on 2026-09-15 for a consumer that packages a **CMake install
-tree** rather than a Flutter bundle:
+tree** rather than a Flutter bundle; the finish-args block and the CON2 probe
+landed on 2026-09-17:
 
 * **`app_packaging_ensure_flatpak_runtime [arch] [runtime] [sdk] [version]`** —
   flathub plus the runtime/SDK pair, for a run that is **not** inside the family
   CI image. Deliberately not `app_packaging_setup_dependencies_for_container`:
   that one assumes the image already ships flatpak, installs missing packages
-  through a privilege helper and installs unconditionally under
-  `dbus-run-session`. This one installs nothing with apt and asks first, so a
-  warm dev box is a no-op. User installation first, system as the fallback, for
-  the remote and for both refs — an unprivileged user cannot write the system
-  installation, and pulling a second copy of a ref the machine already has
-  system-wide costs 1-2 GB.
+  through a privilege helper and installs under `dbus-run-session`. This one
+  installs nothing with apt and asks first, so a warm dev box is a no-op. User
+  installation first, system as the fallback, for the remote and for both refs —
+  an unprivileged user cannot write the system installation, and pulling a
+  second copy of a ref the machine already has system-wide costs 1-2 GB.
+  `app_packaging_setup_dependencies_for_container` now probes **both scopes**
+  before installing too (CON2, 2026-09-17): the CI image installs the pair
+  system-wide as root while the container runs as uid 1001, so its unconditional
+  `--user install` was pulling that second copy on every flatpak-packaging run.
+* **`app_packaging_flatpak_finish_args_block`** — the manifest's `finish-args`
+  list: the four generated entries (network, the two display sockets, DRI) plus
+  whatever `KATAGLYPHIS_FLATPAK_FINISH_ARGS` adds, space-separated. **Appended,
+  never replaced** (CON6, 2026-09-17). V4L2 capture needs `--device=all` (there
+  is no per-device video grant in flatpak) and a user-chosen model path needs a
+  `--filesystem=`; the knob exists because the omission is invisible to every
+  gate — the bundle ships, the window opens, and only the camera stays silent.
 * **`app_packaging_package_cmake_install_flatpak <build_dir> <out_dir> <app_id>
   <project_name> <version_suffix> [runtime] [sdk] [version] [branch] [arch]`** —
   `cmake --install` into a container-native staging prefix, rename the
@@ -290,7 +301,7 @@ over an export that had succeeded. Each missing tool is reported with what the
 packaging step wanted it for, and all of them at once: one `apt-get` installs the
 set.
 
-`tests/test-app-packaging-flatpak.sh` pins both against stubbed
+`tests/test-app-packaging-flatpak.sh` pins all of them against stubbed
 flatpak/flatpak-builder/ostree/cmake, including the two cases the exit code
 cannot see: a non-zero `flatpak-builder` whose app **is** committed still ships,
 and a zero exit with an empty repo fails.

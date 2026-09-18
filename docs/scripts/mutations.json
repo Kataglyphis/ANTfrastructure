@@ -5264,12 +5264,12 @@
     "why": "off by default is what put ZERO refs in the shipped image; the default IS the fix, since no consumer sets this knob"
   },
   {
-    "id": "rust.web-lane-nightly-channel",
+    "id": "rust.web-lane-nightly-pin",
     "target": "linux/scripts/06-packaging/setup-package-image.sh",
-    "find": "    if \"${rustup}\" toolchain install nightly --profile minimal \\\n         --component rust-src --target wasm32-unknown-unknown; then",
+    "find": "    if \"${rustup}\" toolchain install \"${nightly_toolchain}\" --profile minimal \\\n         --component rust-src --target wasm32-unknown-unknown; then",
     "replace": "    if true; then",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
-    "why": "wasm-pack -Z build-std invokes `cargo +nightly`, which resolves the CHANNEL name and not install-rust.sh's dated pin; without the channel installed here every consumer run auto-installs it through a path rustup itself calls deprecated"
+    "why": "CON1: the dated pin is immutable, so `rustup toolchain install <pin>` is a genuine no-op on a warm image; without it every consumer run auto-installs nightly through a path rustup itself calls deprecated, and a floating channel would be UPDATED -- which renames files out of the read-only image layer (EXDEV)"
   },
   {
     "id": "rust.web-lane-crates-pinned",
@@ -5546,16 +5546,16 @@
   {
     "id": "cross-build.regcache-drop-after-two",
     "target": "linux/scripts/01-core/cross-stage-build.sh",
-    "find": "      if [ \"${_regcache_fails}\" -ge 2 ]; then",
-    "replace": "      if [ \"${_regcache_fails}\" -ge 99 ]; then",
+    "find": "  [ \"${_cbrc_fails}\" -ge 2 ] || return 0",
+    "replace": "  [ \"${_cbrc_fails}\" -ge 99 ] || return 0",
     "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
     "why": "the ghcr cache IMPORT is itself the failing read (2026-08-18), so a retry that keeps type=registry re-reads the same broken blob for the rest of the ladder"
   },
   {
     "id": "cross-build.regcache-drop-keeps-local",
     "target": "linux/scripts/01-core/cross-stage-build.sh",
-    "find": "            --cache-from:type=registry*|--cache-to:type=inline*)",
-    "replace": "            --cache-from:*|--cache-to:*)",
+    "find": "      --cache-from:type=registry*|--cache-to:type=inline*)",
+    "replace": "      --cache-from:*|--cache-to:*)",
     "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
     "why": "widening the drop to every cache tier takes the LOCAL export with it, and the local cache is exactly what still fast-forwards the retry"
   },
@@ -6109,10 +6109,10 @@
   {
     "id": "python.host-apt-source-keeps-security",
     "target": "linux/scripts/02-toolchain/python/build_python.sh",
-    "find": "\"$(ubuntu_default_archive_mirror_url)\" \"${_codename}\" amd64 1",
-    "replace": "\"$(ubuntu_default_archive_mirror_url)\" \"${_codename}\" amd64 0",
+    "find": "      \"${_host_url}\" \"${_codename}\" \"${_build_arch}\" 1",
+    "replace": "      \"${_host_url}\" \"${_codename}\" \"${_build_arch}\" 0",
     "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
-    "why": "this is the compiler-stage line that cost riscv64 its Qt6: amd64 without -security stranded libcurl3t64-gnutls one version behind ports and broke Multi-Arch:same co-installation"
+    "why": "this is the compiler-stage host stanza that cost riscv64 its Qt6: amd64 without -security stranded libcurl3t64-gnutls one version behind ports and broke Multi-Arch:same co-installation"
   },
   {
     "id": "cross-build.pocket-align-is-wired",
@@ -6277,7 +6277,7 @@
   {
     "id": "cross-build.arch-table-knows-ports",
     "target": "linux/scripts/01-core/ubuntu-mirror.sh",
-    "find": "    amd64|i386) return 1 ;;\n    \"\") return 1 ;;\n    *) return 0 ;;",
+    "find": "    amd64|i386|386) return 1 ;;\n    \"\") return 1 ;;\n    *) return 0 ;;",
     "replace": "    *) return 1 ;;",
     "test": "bash linux/scripts/tests/test-cross-apt.sh",
     "why": "AS1: every non-x86 Ubuntu arch lives on ports.ubuntu.com; answering 'archive' for arm64 routes the HOST stanza at a URL that 404s binary-arm64, and apt cannot skip a wrongly-routed arch because the Release file advertises all seven"
@@ -6613,7 +6613,7 @@
   {
     "id": "packaging.flatpak-runtime-skips-installed-refs",
     "target": "linux/scripts/lib/app-packaging.sh",
-    "find": "    if flatpak info --user \"$_ref\" >/dev/null 2>&1 || flatpak info --system \"$_ref\" >/dev/null 2>&1; then",
+    "find": "    if flatpak info --user \"$_ref\" >/dev/null 2>&1 \\\n       || flatpak info --system \"$_ref\" >/dev/null 2>&1; then",
     "replace": "    if false; then",
     "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
     "why": "a ref is 1-2 GB, and reinstalling one the machine already has system-wide creates a second copy"
@@ -6621,16 +6621,16 @@
   {
     "id": "packaging.flatpak-runtime-user-install-falls-back-to-system",
     "target": "linux/scripts/lib/app-packaging.sh",
-    "find": "    flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
-    "replace": "    flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
+    "find": "      flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n        || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n        || return 1",
+    "replace": "      flatpak --user install -y --noninteractive flathub \"$_ref\" \\\n        || return 1",
     "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
     "why": "an unprivileged user cannot always write the user installation either; without the fallback the runtime is simply absent"
   },
   {
     "id": "packaging.flatpak-runtime-install-failure-is-fatal",
     "target": "linux/scripts/lib/app-packaging.sh",
-    "find": "      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || return 1",
-    "replace": "      || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n      || true",
+    "find": "        || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n        || return 1",
+    "replace": "        || flatpak --system install -y --noninteractive flathub \"$_ref\" \\\n        || true",
     "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
     "why": "a missing runtime surfaces as a flatpak-builder manifest error much later, naming nothing the caller can act on"
   },
