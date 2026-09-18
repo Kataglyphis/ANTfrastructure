@@ -91,7 +91,7 @@ a competing PR. When it merges, drop the matching hunks from
 | llvm/llvm-project | [#219200](https://github.com/llvm/llvm-project/pull/219200) missing `:lo12:` on the catchret address pair | PR **merged 2026-09-04**; the `NINJA_KEEP_GOING` workaround it motivated is already gone (#135) |
 | microsoft/hcsshim | [#2855](https://github.com/microsoft/hcsshim/pull/2855) configurable teardown timeouts | PR **open** — package in `windows/upstream/hcsshim-teardown-timeout/` |
 | google-ai-edge/LiteRT-LM | [#3245](https://github.com/google-ai-edge/LiteRT-LM/issues/3245) the CMake lane is stale vs bazel | issue **open** — covers the ~30 inline LiteRT-LM edits |
-| mozilla/sccache | [#2808](https://github.com/mozilla/sccache/issues/2808) nvcc deadlock and miscompile | issue **closed**; fixed by #2722/#2811/#2816 — all three ship in the **0.18.0** release (2026-09-14), so the `SCCACHE_GIT_REV` source build can retire on that bump (verify with the CUDA canary first) |
+| mozilla/sccache | [#2808](https://github.com/mozilla/sccache/issues/2808) nvcc deadlock and miscompile | issue **closed**; fixed by #2722/#2811/#2816 — all three ship in the **0.18.0** release (2026-09-14). The Windows lane moved to that released zip on 2026-09-18, so the `SCCACHE_GIT_REV` source build and its patch series are retired |
 | opencv/opencv | [#29788](https://github.com/opencv/opencv/issues/29788) dnn/ORT `char*` vs `ORTCHAR_T` | issue **closed** — see the next section |
 
 ## ✔ Upstream already fixed it — retire on a version bump

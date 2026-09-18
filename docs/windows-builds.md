@@ -551,10 +551,15 @@ rebuild and a guarantee for every one after. **Bump deliberately**, then re-run
 `windows\scripts\tests\Test-PatchesApplyClean.ps1` against the rebuilt base.
 
 Everything else `Install-ScoopTools.ps1` installs (7zip, nano, cppcheck,
-sccache, nsis, uv, nuget, zlib, openssl, pkg-config, make, gawk) floats on
+nsis, uv, nuget, zlib, openssl, pkg-config, make, gawk) floats on
 purpose — the build only *invokes* those. Move a package into the pinned block
-the moment it starts linking into a shipped binary. Note `LLVM_RELEASE` is a
-SEPARATE pin for the Linux lane; the two lanes move independently.
+the moment it starts linking into a shipped binary. sccache is the exception
+in a different direction: it is pinned (for a cache FEATURE, not output) and
+installed by `Install-RustToolchain.ps1` from the official released 0.18.0 zip
+into `CARGO_BIN` — the source build is retired
+([`windows-build-resources.md`](windows-build-resources.md) § Persistent compile cache (sccache)).
+Note `LLVM_RELEASE` is a SEPARATE pin for the Linux lane; the two lanes move
+independently.
 
 Two things still float by design and cannot be pinned the same way: the **MSVC
 toolset** inside VS major 18 (Install-Vs.ps1 uses the `aka.ms/vs/18/release`

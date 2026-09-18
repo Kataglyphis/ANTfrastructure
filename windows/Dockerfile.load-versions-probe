@@ -11,13 +11,13 @@ ARG PROBE_NONCE="0"
 
 # Simulates the #50 base-bake shape: the key sits in the PROCESS env (here via
 # ENV, in base via ARG) while Machine is empty - the fixed script must BAKE it.
-ENV SCCACHE_GIT_REV="probe-override-value"
+ENV GIT_VERSION="probe-override-value"
 
 RUN --mount=type=bind,source=windows/scripts,target=C:\bkmnt `
-    Write-Host ('machine BEFORE: [' + [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine') + ']'); `
-    & C:\bkmnt\build\Import-Versions.ps1 2>&1 | Select-String 'SCCACHE_GIT_REV|loaded' | ForEach-Object { "$_" }; `
-    $m = [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine'); `
+    Write-Host ('machine BEFORE: [' + [Environment]::GetEnvironmentVariable('GIT_VERSION','Machine') + ']'); `
+    & C:\bkmnt\build\Import-Versions.ps1 2>&1 | Select-String 'GIT_VERSION|loaded' | ForEach-Object { "$_" }; `
+    $m = [Environment]::GetEnvironmentVariable('GIT_VERSION','Machine'); `
     Write-Host ('machine AFTER: [' + $m + ']'); `
     if ($m -ne 'probe-override-value') { throw 'override was NOT baked to Machine env' }; `
-    Write-Host ('control GIT_VERSION machine: [' + [Environment]::GetEnvironmentVariable('GIT_VERSION','Machine') + ']'); `
+    Write-Host ('control SCCACHE_WINDOWS_VERSION machine: [' + [Environment]::GetEnvironmentVariable('SCCACHE_WINDOWS_VERSION','Machine') + ']'); `
     Write-Host 'probe complete'

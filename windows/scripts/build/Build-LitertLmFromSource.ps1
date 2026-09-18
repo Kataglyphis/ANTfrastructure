@@ -22,7 +22,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.17.0'
+$LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.17.1'
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
 #region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)

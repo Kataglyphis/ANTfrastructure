@@ -19,9 +19,6 @@ param(
     [string]$LlvmVersion = '',
     [string]$NinjaVersion = '',
     [string]$NasmVersion = '',
-    # Pinned 2026-08-08 for a FEATURE, not for output determinism: multi-tier
-    # caching needs sccache >= v0.16.0 and degrades silently below it.
-    [string]$SccacheVersion = '',
     # '1' hard-gates the arm64 prerequisite checks below (default: warn-only). Must
     # arrive as a PARAMETER: a bare $env: read is unreachable from `docker build`.
     [string]$WindowsArm64Strict = ''
@@ -347,21 +344,10 @@ if ($rtTarget.Count -gt 0) {
         Write-Warning ($msg + ' Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
-# sccache is pinned for a DIFFERENT reason than the three above: it shapes no
-# compiled output whatsoever. It is here because multi-tier caching
-# (SCCACHE_MULTILEVEL_CHAIN, an ARG in Dockerfile.media-builder) requires
-# >= v0.16.0, and an older sccache ignores that variable SILENTLY -- the local
-# L0 tier would not exist, every compile would go back to a WebDAV round-trip,
-# and no gate anywhere would notice. A speed feature that can vanish without a
-# signal is exactly what this repo refuses to ship, so the version it needs is
-# asserted rather than assumed.
-#
-# NOTE 2026-08-16: the chain is currently DEFAULTED OFF (WebDAV is the only
-# cache) because BuildKit's Windows cache mounts lose writes into a directory an
-# earlier RUN populated -- docs/windows-builds.md #99. The pin stays exactly
-# because the two-tier layout is wanted back: dropping below 0.16 would make
-# re-enabling it fail silently instead of loudly.
-Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
+# sccache is NOT installed here since 2026-09-18: Install-RustToolchain.ps1
+# installs the released 0.18.0 zip into CARGO_BIN (version gates a FEATURE;
+# multi-tier caching needs >= v0.16.0 and degrades silently below). History:
+# docs/windows-build-resources.md § Persistent compile cache (sccache).
 
 # ── OpenSSL for aarch64 (2026-08-23) ─────────────────────────────────────────
 # scoop installs ONE architecture per app, and that is the host's: the image gets
@@ -471,8 +457,8 @@ if ($sslArm64Lib.Count -gt 0) {
 # the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
 # GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
 # `pkgconf` manifest; the package name is `pkg-config`.
-# sccache LEFT this list on 2026-08-08 -- see the pinned block above. It is the
-# one package here whose VERSION gates behaviour rather than output.
+# sccache is NOT here and no longer scoop-installed: Install-RustToolchain.ps1
+# puts the released zip in CARGO_BIN (docs/windows-build-resources.md § sccache).
 # Per-package via Install-ScoopPackage (2026-08-21): the former single
 # 8-package Invoke-ScoopStep bypassed the 3-attempt retry + cache purge, so
 # one transient SourceForge/GitHub blip on ANY of the 8 killed the whole base

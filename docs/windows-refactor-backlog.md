@@ -244,10 +244,11 @@ this repo's cp314 pin).
   `docs/windows-build-invariants.md`.
 - **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Archive: `windows-backlog-archive-2026-08-26.md` § #122.
 - **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md` § #136.
-- **#137** — sccache: DONE 2026-08-28, **LANDED**. `SCCACHE_GIT_REV=8ab39266` is in
-  `versions.env:557` and in the built base image (the `setup-rust-toolchain` RUN is a
-  cache hit at that rev from the 2026-08-30 solve on); the full arm64 chain rebuilt
-  green through it on 2026-08-31. No rebuild is owed.
+- **#137** — sccache: DONE 2026-08-28, **LANDED**, SUPERSEDED 2026-09-18. The
+  `SCCACHE_GIT_REV=8ab39266` source build landed and the full arm64 chain rebuilt
+  green through it on 2026-08-31; 0.18.0 (2026-09-14) ships everything that pin
+  carried, so the source build retired and the base now installs the released zip
+  (`Install-RustToolchain.ps1`). The next base build re-pays the rust layer once.
 - **#134 free follow-ups** — ALL DONE 2026-08-28: smoke floor recalibrated (85→66),
   §19 PROVISIONAL marker removed, pin parity updated for `TVM_COMMIT`, TVM
   fixtures fixed (single-quoted `` `n `` → real newlines), three merge-stage

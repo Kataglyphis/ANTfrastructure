@@ -88,7 +88,7 @@ $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
 if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif (-not $llvmConfig) {
-    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
+    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
     $llvmDevRoot = 'C:\temp\llvm-dev'
     # Banner BEFORE the fetch: an unknown version throws inside Get-LlvmSourceTarball
     # (the repo download policy -- never unpinned), and this line is the context that

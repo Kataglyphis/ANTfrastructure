@@ -91,7 +91,7 @@
 
 # Global Version Arguments (safety-net defaults; orchestrator passes canonical
 # values from linux/scripts/01-core/versions.env via append_version_build_args).
-ARG ONNXRUNTIME_VERSION="v1.29.0"
+ARG ONNXRUNTIME_VERSION="v1.30.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.15.2"
 ARG LITERT_VERSION="v2.2.0"
 ARG OPENCV_VERSION="5.0.0"

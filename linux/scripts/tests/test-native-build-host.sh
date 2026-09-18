@@ -163,7 +163,8 @@ t_assert_eq "linux/amd64"  "$(BUILDARCH=riscv64 cross_build_platform)" \
 # ---------------------------------------------------------------------------
 # LLVM_COMMIT turns the pin from a bookmark into a pin. Before 2026-09-10 the
 # key existed, was documented as OPT-IN, and NO consumer read it — while
-# apt.llvm.org silently shipped 23.1.1 against LLVM_RELEASE=23.1.0.
+# apt.llvm.org once silently shipped a 23.1.1 tree against LLVM_RELEASE=23.1.0,
+# the incident this pin exists for.
 t_case "llvm_assert_commit_pin has ONE owner and both clone sites call it"
 _CORE="${REPO_SCRIPTS}/01-core"
 t_assert_eq "1" "$(grep -c '^llvm_assert_commit_pin()' "${_CORE}/common.sh" || true)"
@@ -178,9 +179,9 @@ t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
 # ${OTHER:-} reference it happens to contain.
 _VERS="${_CORE}/versions.env"
 _vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
-t_assert_eq "23.1.0" "$(_vers_val LLVM_RELEASE)"
-t_assert_eq "ea7d852a70e8bdfaf601d6626a760f9771b2c4b4" "$(_vers_val LLVM_COMMIT)" \
-  "refs/tags/llvmorg-23.1.0^{} — the PEELED sha, per the convention above the key"
+t_assert_eq "23.1.1" "$(_vers_val LLVM_RELEASE)"
+t_assert_eq "e7ce3600b55034ddf819638f395e3c475fad5be2" "$(_vers_val LLVM_COMMIT)" \
+  "refs/tags/llvmorg-23.1.1^{} — the PEELED sha, per the convention above the key"
 t_assert_eq "40" "$(printf '%s' "$(_vers_val LLVM_COMMIT)" | wc -c | tr -d ' ')"
 
 t_case "llvm_assert_commit_pin fails on a mismatch and is quiet when unset"
@@ -199,7 +200,7 @@ rm -rf "${_TMPGIT}"
 t_case "the apt bootstrap can no longer become the shipped clang"
 _MAT="${REPO_SCRIPTS}/02-toolchain/materialize-llvm-target.sh"
 t_assert_eq "0" "$(grep -c '/usr/lib/llvm-\${_major}' "${_MAT}" || true)" \
-  "the apt tree was the fallback that shipped 23.1.1 against a 23.1.0 pin"
+  "the apt tree was the fallback that once shipped a 23.1.1 tree against a 23.1.0 pin"
 t_assert_contains "$(cat "${_MAT}")" '/opt/llvm-target-${_arch}' \
   "the pinned source tree must be the first host candidate"
 

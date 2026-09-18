@@ -474,7 +474,7 @@
               "source": {
                 "kind": "distro-archive",
                 "url": "https://archive.ubuntu.com/ubuntu/",
-                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. The Windows lane builds its own patched sccache -- see that section."
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. The Windows lane installs the official release zip instead -- see that section."
               }
             },
             {
@@ -780,7 +780,7 @@
               "spdx": "Unlicense OR MIT"
             },
             {
-              "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
+              "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
               "var": null,
               "version_fixed": "latest (scoop)",
               "url": "https://scoop.sh/",
@@ -789,21 +789,15 @@
               "source": {
                 "kind": "bundle",
                 "url": "https://scoop.sh/",
-                "note": "Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source."
+                "note": "Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is installed from the official release zip."
               }
             },
             {
               "name": "sccache (Windows lane)",
-              "var": "SCCACHE_GIT_REV",
+              "var": "SCCACHE_WINDOWS_VERSION",
               "url": "https://github.com/mozilla/sccache",
               "license": "Apache 2.0",
-              "spdx": "Apache-2.0",
-              "modified": {
-                "patches": [
-                  "windows/upstream/sccache-nvcc-quote-fix/"
-                ],
-                "note": "Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
-              }
+              "spdx": "Apache-2.0"
             },
             {
               "name": "vcpkg",

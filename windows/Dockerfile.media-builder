@@ -252,7 +252,7 @@ COPY windows\scripts\modules\WindowsTvm.Common.psm1 C:\bkmods\
 FROM common AS media-litert-env
 
 ARG LITERT_VERSION=v2.2.0
-ARG LITERT_LM_VERSION=0.17.0
+ARG LITERT_LM_VERSION=0.17.1
 # PROTOC_VERSION is NOT independent software: it must match the protobuf runtime
 # pinned inside LiteRT-LM (v0.14.0 -> 6.31.1 -> protoc 31.1). A stale value emits
 # gencode the pinned headers #error on (bit us 2026-08-03). JRE_VERSION feeds
@@ -285,7 +285,7 @@ ENV TVM_REF="${TVM_REF}" `
 # ffmpeg/opencv/genai. (media-core-env, the classic lane's single-stage
 # ancestor, was deleted with that lane on 2026-08-26 — #134.)
 FROM common AS media-core-built-onnx
-ARG ONNXRUNTIME_VERSION=v1.29.0
+ARG ONNXRUNTIME_VERSION=v1.30.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
 ARG PYTHON_VERSION=3.14.7
 # QNN SDK zip integrity pin (#121/#154): a SHARED key, declared in EVERY stage
@@ -369,7 +369,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # thing future readers must first prove is not load-bearing.)
 # #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
 # never the ONNX stage above.
-ARG FFMPEG_VERSION=n9.0
+ARG FFMPEG_VERSION=n9.0.1
 ARG PYAV_VERSION=18.1.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `

@@ -1770,7 +1770,7 @@ reason rather than an omission:
   keys, `WINDOWS_LTSC`, `WINDOWS_SDK_BUILD`, `VISUAL_STUDIO_VERSION`,
   `UBUNTU_CODENAME`.
 * **Checksums and raw SHAs** -- `SCCACHE_LINUX_X86_64_SHA256` /
-  `..._AARCH64_SHA256`, and `SCCACHE_GIT_REV`.
+  `..._AARCH64_SHA256`, and `SCCACHE_WINDOWS_ZIP_SHA256`.
 * **Artifact-gated** -- `TENSORFLOW_C_VERSION`: the git tag is not the
   tarball.
 * **Dated** -- `RUST_NIGHTLY_TOOLCHAIN` is a deliberate date.
