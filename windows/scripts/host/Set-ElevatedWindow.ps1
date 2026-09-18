@@ -45,7 +45,7 @@ if ($nerdctl) {
     $tagPatterns = 'copyprobe-', 'sweep-', 'rdna4ab-', 'flush-', 'mlchain-probe', 'verify-cuda-cache',
     'postboot-', 'nano-', 'gpuab-', 'diag-', 'probe-build-copy'
     $images = @(& $nerdctl --namespace buildkit images --format '{{.Repository}}:{{.Tag}}' 2>$null)
-    $victims = @($images | Where-Object { $img = $_; ($tagPatterns | Where-Object { $img -match [regex]::Escape($_) }).Count -gt 0 } | Sort-Object -Unique)
+    $victims = @($images | Where-Object { $img = $_; @($tagPatterns | Where-Object { $img -match [regex]::Escape($_) }).Count -gt 0 } | Sort-Object -Unique)
     if ($victims) {
         $victims | ForEach-Object { Write-Host "  rmi $_"; & $nerdctl --namespace buildkit rmi $_ 2>&1 | Select-Object -Last 1 }
     } else { Write-Host '  (no matching diagnostic tags found)' }
