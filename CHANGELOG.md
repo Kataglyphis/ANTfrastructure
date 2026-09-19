@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
+
+The first rebuild of the 2026-09-17/18 wave ran **green on BOTH Windows lanes** —
+amd64 6:29 (smoke 198/0/1), arm64 2:43 (smoke 102/0/16) — after the chain found
+two build-killers, both fixed and probe-verified:
+
+- **The VS stable channel stopped REGISTERING
+  `Microsoft.VisualStudio.Component.VC.Tools.x86.x64`** while its files stayed on
+  disk, so CPython's `find_msbuild.bat` (vswhere) died with `Failed to find
+  MSBuild` ~80 min in. `Install-Vs.ps1` now `--add`s the component explicitly
+  and the base asserts the **vswhere query** — a file check passes on the broken
+  shape, which is exactly how it escaped.
+- **The 3.9 GB CUDA 13.4.2 full installer dies in-container with `0xE0E00064`**
+  (self-extraction on the wcifs layer; silent, no logs; the network installer
+  succeeds with identical flags). `Install-Cuda.ps1` uses the **network
+  installer with a pinned 37-subpackage list** instead: 10 MB download, ~2 min
+  install, CCCL/Thrust included, and the SHA pin moved with it.
+
+Also landed the same day: the ghcr credential helper (`credsStore: wincred`)
+was replaced by a direct auth entry so `-PushRef` can publish; CUDA 13.4.2's
+renamed installer and the sccache 0.18 zip were proven by the runs; the sccache
+CUDA canary is still owed before `cuda_llm` is re-wrapped.
+
 ## 2026-09-18 - the dependency wave, and sccache 0.18 retires its source build
 
 **Reported by Renovate (local CLI, 35 updates), applied through the two tools

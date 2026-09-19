@@ -37,21 +37,35 @@ $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 # Use NVIDIA's full CUDA installer (not Scoop -- Scoop's portable install strips CCCL headers).
 # The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
 Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
-# 13.4 renamed the Windows installer to _windows_x86_64.exe; older pins keep
-# the un-suffixed name, so pick by version rather than probing the network.
-$cudaInstallerName = if ([version]$CudaVersion -ge [version]'13.4') {
-    "cuda_${CudaVersion}_windows_x86_64.exe"
+# 13.4+ uses the NETWORK installer with a pinned subpackage list: the 3.9 GB
+# full installer dies in-container with 0xE0E00064 (self-extraction on the
+# wcifs layer; reproduced 2026-09-19, silent, no logs), while the network
+# installer installs the same toolkit in ~2 min. Older pins keep the full
+# installer. `thrust_*` carries the CCCL headers (include\cccl).
+$cudaNetworkInstaller = [version]$CudaVersion -ge [version]'13.4'
+if ($cudaNetworkInstaller) {
+    $cudaPkgs = @(
+        'crt', 'ctadvisor', 'cublas', 'cublas_dev', 'cuda_profiler_api', 'cudart',
+        'cufft', 'cufft_dev', 'cuobjdump', 'cupti', 'curand', 'curand_dev',
+        'cusolver', 'cusolver_dev', 'cusparse', 'cusparse_dev', 'cuxxfilt',
+        'npp', 'npp_dev', 'nvcc', 'nvdisasm', 'nvfatbin', 'nvjitlink', 'nvjpeg',
+        'nvjpeg_dev', 'nvml_dev', 'nvprune', 'nvptxcompiler', 'nvrtc', 'nvrtc_dev',
+        'nvtx', 'nvvm', 'occupancy_calculator', 'opencl', 'sanitizer', 'thrust', 'tileiras'
+    ) | ForEach-Object { "${_}_$($CudaVersionMajorMinor)" }
+    $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/network_installers/cuda_${CudaVersion}_windows_x86_64_network.exe"
+    $cudaArgs = @('-s') + $cudaPkgs
 } else {
-    "cuda_${CudaVersion}_windows.exe"
+    $cudaInstallerName = "cuda_${CudaVersion}_windows.exe"
+    $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/$cudaInstallerName"
+    $cudaArgs = @('-s', '--no-download-driver')
 }
-$cudaUrl = "https://developer.download.nvidia.com/compute/cuda/$CudaVersion/local_installers/$cudaInstallerName"
 Write-Host "Download URL: $cudaUrl"
 $cudaInstaller = Join-Path $TempDir 'cuda_installer.exe'
 # SHA256 pin from versions.env (CUDA_INSTALLER_SHA256, baked env); empty skips.
 $cudaSha = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url $cudaUrl -DestinationPath $cudaInstaller -Description "CUDA Toolkit $CudaVersion installer" -ExpectSignature MZ -ExpectedSha256 $cudaSha
-Write-Host 'Installing CUDA Toolkit (full silent install, no driver)...'
-$proc = Start-Process -FilePath $cudaInstaller -ArgumentList '-s', '--no-download-driver' -Wait -PassThru
+Write-Host 'Installing CUDA Toolkit (silent install, no driver)...'
+$proc = Start-Process -FilePath $cudaInstaller -ArgumentList $cudaArgs -Wait -PassThru
 $proc.WaitForExit()
 $exitCode = $proc.ExitCode
 $proc.Dispose()

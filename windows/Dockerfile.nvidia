@@ -64,7 +64,7 @@ ARG CUDNN_VERSION=9.26.0.51
 # *_SHA256 values are STALE until base rebuilds — the ARG (forwarded by
 # Build-Buildkit.ps1 from the current versions.env) always matches the version ARGs
 # above. ARG-injected env wins over machine env inside the RUN.
-ARG CUDA_INSTALLER_SHA256=8ebe88f46466108838d97d1ec6f76bae0788424438bccd6514242cfa7d228088
+ARG CUDA_INSTALLER_SHA256=27a5fbbef89d64f9a948a94e1faa5eca26fed6d706e36e4559a7cfa3552128e6
 ARG CUDNN_ZIP_SHA256=f8610d403685c918e690de5b1ec68da0b4b1358a6be62627591362b7eb811644
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
