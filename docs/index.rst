@@ -62,6 +62,12 @@ documentation index, which maps every topic to the page that owns it.
 
       NVIDIA, AMD, and Torch variants on top of the standard Linux image chain.
 
+   .. grid-item-card:: Hailo Support
+      :link: hailo-support
+      :link-type: doc
+
+      Plan for bringing the Hailo runtime, Python bindings, and GStreamer element into the Linux image chain.
+
    .. grid-item-card:: Linux Host Setup
       :link: linux-host-setup
       :link-type: doc
@@ -157,6 +163,7 @@ Common development targets:
    upstream/README
    iree-two-stage-build
    linux-accelerator-images
+   hailo-support
    linux-host-setup
    runtime-services
    rancher-desktop-linux-containers

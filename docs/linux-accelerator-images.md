@@ -275,6 +275,8 @@ sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphi
 Neither of these has an image chain in this repo yet — they are host/device
 procedures for the boards the runtime artifacts get deployed to. Host-side
 driver and performance setup is [Linux Host Setup](linux-host-setup.md).
+Hailo's image-chain integration is planned separately in
+[`hailo-support.md`](hailo-support.md); Jetson stays host-only.
 
 ### Hailo-8: compiling an ONNX model to `.hef`
 
