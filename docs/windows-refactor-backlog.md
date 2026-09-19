@@ -48,8 +48,10 @@ families. Call sites: `Build-TvmFromSource.ps1:341`,
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
-or construction: **CUDA** (#122, no Windows-on-ARM CUDA) and the **torch app stage** (`uv sync` must
-execute the target interpreter). The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
+or construction: the **torch app stage** (`uv sync` must
+execute the target interpreter). **CUDA is no longer excluded by upstream facts:**
+NVIDIA now ships Windows-ARM64 CUDA 13.4.2 installers, so #122's premise is superseded —
+the real-ARM lane is tracked as **#176**. The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
 runtime execution still needs a Snapdragon host — see #121 below).
 
 **The honest caveat, unchanged:** nothing the arm64 lane produces has ever been *executed*. Its
@@ -125,6 +127,40 @@ this repo's cp314 pin).
   (archive 2026-09-17), so it is unblocked: default it for full amd64 chains
   after one owed measurement — litert at 19 GB must not exceed the hidden
   1425 s (its bazel half grew 18→59 min since July).
+
+- **#176 — the Windows-ARM64 CUDA lane. The OWNER will build it on real
+  Windows-ARM hardware; nothing here can prove it.** Opened 2026-09-19 on new
+  upstream facts that supersede #122: CUDA 13.4.2 ships Windows-ARM64 installers
+  — `cuda_13.4.2_windows_arm64_network.exe` and `cuda_13.4.2_windows_arm64.exe`
+  (both verified HTTP 200 on 2026-09-19; the release-notes component table lists
+  `arm64 (Windows)` as a supported platform). The x64 host CANNOT run this: the
+  arm64 toolkit is native ARM software (`nvcc.exe` is an arm64 binary), so the
+  lane is `native arm64`, not the existing cross bundle.
+  What is already green as of 2026-09-19 and reusable there: the amd64 CUDA
+  install path (`Install-Cuda.ps1` network installer + the pinned 37-subpackage
+  list, `CUDA_INSTALLER_SHA256`), the patched-LLVM/sccache toolchain, and the
+  arm64 cross lane's bundle/smoke/arch-gate machinery.
+  What the real-ARM build must settle, in order:
+  1. Install the arm64 toolkit natively (same network installer, `_13.4`
+     packages) and assert `nvcc -V`, `include\cccl` and the CUDA libs. The
+     amd64 `CUDA_INSTALLER_SHA256` will need an arm64 twin (new key + ARG).
+  2. cuDNN for Windows arm64 **exists** (verified 2026-09-19 in NVIDIA's redist
+     manifest): `redistrib_9.26.0.json` carries `windows-arm64` →
+     `cudnn-windows-arm64-9.26.0.51_cuda13.4-archive.zip`, sha256
+     `657743083b72885336321403522a5af80566d8347a1b7bef5563c018d602d0d0`, 448 MB.
+     The lane needs an arm64 twin of `CUDNN_ZIP_SHA256` (new key + ARG).
+     TensorRT's redist index is not public (EULA-gated), so its arm64 status is
+     unverified; the graceful-skip path stays.
+  3. ONNX Runtime's CUDA EP for `windows_arm64` — upstream support status and
+     whether `Build-OnnxFromSource.ps1`'s flags need an arm64 arm.
+  4. The driver's `-Gpu` on `-TargetArch arm64`: CUDA is OFF by construction
+     there today, and that branch has to change for a native ARM run — not by
+     flipping a flag, but by building the nvidia layer natively.
+  5. Smoke and arch gates: what `-ExpectGpu` asserts on an ARM device, and the
+     bundle manifest's DLL homes for the CUDA payload.
+  This is the first Windows-ARM CUDA build anyone will have done here; expect
+  upstream gaps. Do not re-derive #122's August reasoning — the archive entry
+  records what it rested on.
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
@@ -229,7 +265,7 @@ this repo's cp314 pin).
   toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, + 20 ENV + ~12 servercore
   = ~75). The ~108 figure was the pre-ENV-consolidation count. Updated in
   `docs/windows-build-invariants.md`.
-- **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Archive: `windows-backlog-archive-2026-08-26.md` § #122.
+- **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision — at the time NVIDIA shipped no Windows-on-ARM CUDA). **REOPENED as #176 on 2026-09-19:** CUDA 13.4.2 ships `windows_arm64` installers, and the owner will build the lane on real Windows-ARM hardware. Archive: `windows-backlog-archive-2026-08-26.md` § #122.
 - **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md` § #136.
 - **#137** — sccache: DONE 2026-08-28, **LANDED**, SUPERSEDED 2026-09-18. The
   `SCCACHE_GIT_REV=8ab39266` source build landed and the full arm64 chain rebuilt
