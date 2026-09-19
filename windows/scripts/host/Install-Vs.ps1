@@ -193,7 +193,12 @@ try {
         
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreBuildTools',       # C++ core build tools
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreIde',              # C++ core IDE features
-        # '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
+        # MUST stay explicit (2026-09-19): the VCTools workload alone stopped
+        # REGISTERING this component on the VS stable channel while its files
+        # stayed on disk, and CPython's find_msbuild.bat requires exactly this
+        # id via vswhere -- the toolchain died 80 min into the chain. The x64
+        # assertion below now gates it at base time.
+        '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
         # '--add', 'Microsoft.VisualStudio.Component.VC.Redist.14.Latest',   # C++ redistributable
         
         # VC++ Libraries
@@ -242,6 +247,28 @@ try {
     $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
     if ($vsBuildToolsRoot) {
         Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
+
+        # Hard gate on the x64 MSVC component REGISTRATION (2026-09-19).
+        # CPython's PCbuild\find_msbuild.bat requires
+        # Microsoft.VisualStudio.Component.VC.Tools.x86.x64 through vswhere;
+        # the VS stable channel stopped registering it while the files stayed
+        # on disk, so the toolchain stage died with "Failed to find MSBuild"
+        # ~80 minutes into the chain. Assert the QUERY, not the files: a file
+        # check passes on the broken shape. x64 is load-bearing on BOTH lanes
+        # (CPython is built x64 for the cross lane too), hence a throw.
+        $vswhereExe = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+        $x64Registered = ''
+        if (Test-Path $vswhereExe) {
+            $x64Registered = @(& $vswhereExe -property installationPath -latest -prerelease -products * `
+                    -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 2>$null | Select-Object -First 1)
+        }
+        if (-not $x64Registered) {
+            Write-InstallerLogDump -TempDir $TempDir
+            throw ('Microsoft.VisualStudio.Component.VC.Tools.x86.x64 is not registered in the VS installation ' +
+                "($vsBuildToolsRoot), so CPython's find_msbuild.bat cannot locate MSBuild. Re-add the component " +
+                'explicitly in this script''s --add list.')
+        }
+        Write-Host "MSVC x64 component registered ($x64Registered)."
 
         # Hard gate on the ARM64 cross-target LIBRARIES (2026-08-22).
         #
