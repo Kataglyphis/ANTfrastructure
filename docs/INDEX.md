@@ -106,6 +106,7 @@ The two halves of one topic often split:
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
+| **Hailo in the image chain** — plan, upstream matrix (device families and branches, licences, TAPPAS's GStreamer gap) and the stage/gate design | [`hailo-support.md`](hailo-support.md) |
 | Raw `gst-launch-1.0` pipelines, and building GStreamer from source on a device | [`runtime-services.md`](runtime-services.md#raw-gst-launch-10-pipelines-debugging-below-the-app) |
 | Removing a stale GStreamer source install; the prebuilt Android tarball | [`runtime-services.md`](runtime-services.md#removing-a-previous-source-install) |
 | Detached containers, tmux, and bind-mount file ownership | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#long-running-work-detached-containers--tmux) |

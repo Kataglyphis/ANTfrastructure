@@ -173,6 +173,15 @@ retries; plus the 2026-08-19 amend: SHARED stages get divisor 1):**
 build; observed 2-4, and an effective ×5 held through the android×3 recovery
 run). 3-way parallel → divisor 6. Parallel-archs only; the sequential path
 (bounded by max-parallelism alone) is empirically fine and unchanged.
+
+**Field note 2026-09-19 (3-way media on the 60 GB host): the collapse is real
+and expensive.** The arm64 wheelhouse's IREE host build ran `ninja -j1` for ~6 h
+while 32 cores sat idle — the wheelhouse builds in a tmpfs that eats
+`MemAvailable`, and `BUILD_MEM_DIVISOR` divided what was left. In the same round
+riscv64's media lane died on a transient IREE-clone TLS error (fatal, unlike the
+tolerated torch/TVM `cc1plus` OOM kills), and the retry for riscv64 alone
+reported `JOBS=28` and finished. On this host: serialize `media`, keep
+`sdk`/`android` parallel.
 Escalation if a lane still OOMs: `PAR_INTRA_STEP_BUDGET=3` or
 `PARALLEL_STAGES=sdk,android`. The stronger options (systemd-run MemoryHigh
 per build, a global compile-job governor) stay on the backlog as PAR4-hard.
