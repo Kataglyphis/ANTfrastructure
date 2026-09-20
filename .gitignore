@@ -53,6 +53,8 @@ windows/qnn-sdk/*
 !windows/qnn-sdk/README.md
 linux/qnn-sdk/*
 !linux/qnn-sdk/README.md
+linux/hailo-sdk/*
+!linux/hailo-sdk/README.md
 
 # ---------------------------------------------------------------------------
 # Scratch and one-shot helpers — never committed
