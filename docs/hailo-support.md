@@ -1,17 +1,19 @@
 # Hailo support — image-chain integration plan
 
-**Status: IMPLEMENTED and PROVEN on amd64 (2026-09-20); arm64 build pending.
-The standard `:latest-cross` is unchanged and carries no Hailo.** Host-side
-`.hef` compilation and the PCIe driver already have procedures —
-[`linux-accelerator-images.md` § Edge accelerators](linux-accelerator-images.md#edge-accelerators).
-This page owns the variant's design, the upstream facts it rests on, and what
-remains open.
+**Status: IMPLEMENTED and PROVEN on amd64 AND arm64 (2026-09-20), published as
+the multi-arch `:hailo` manifest. The standard `:latest-cross` is unchanged and
+carries no Hailo.** Host-side `.hef` compilation and the PCIe driver already
+have procedures — [`linux-accelerator-images.md` § Edge
+accelerators](linux-accelerator-images.md#edge-accelerators). This page owns the
+variant's design, the upstream facts it rests on, and what remains open.
 
-**Proven 2026-09-20 (amd64):** `:hailo-amd64` built and published; in the
-shipped image `hailortcli --version` reports `HailoRT-CLI version 4.24.0` and
-`gst-inspect-1.0 hailonet` resolves the element. The build-stage self-checks
-(`hailortcli --version`, `gst-inspect-1.0 hailonet`) run before the payload is
-copied, so a broken element fails the build rather than shipping.
+**Proven 2026-09-20:** `:hailo-amd64` and `:hailo-arm64` built and published,
+joined into the `:hailo` manifest; in both shipped images `hailortcli --version`
+reports `HailoRT-CLI version 4.24.0` and `gst-inspect-1.0 hailonet` resolves the
+element. The build-stage self-checks run before the payload is copied, so a
+broken element fails the build rather than shipping. riscv64 has no HailoRT
+support at any version — the script refuses it, and that is the documented
+exemption (not a gap).
 
 ## What exists (2026-09-20)
 
@@ -23,13 +25,16 @@ copied, so a broken element fails the build rather than shipping.
 | Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause, Apache-2.0) | `docs/deps/deps.json` |
 | Build commands | [`linux-accelerator-images.md` § Hailo variant](linux-accelerator-images.md#hailo-variant) |
 
-The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo`'s first stage runs
-`FROM cross-android-<arch>` (which carries the media GStreamer, dev files
-included), builds HailoRT offline against verified protobuf/gRPC sources, and
-the second stage copies the payload into `latest-cross-<arch>`. The plugin and
-`libhailort` are placed on the base image's existing `GST_PLUGIN_PATH` and
-`LD_LIBRARY_PATH` entries, so the variant's environment is the runtime's —
-no ENV surgery, one image shape.
+The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo` builds HailoRT in
+the **runtime image itself** (native GCC 16.2.0 + the GStreamer dev files are
+already there), then copies the payload into the same image — so the variant is
+`:latest-cross` plus `/opt/hailo`, and the plugin links against exactly the
+GStreamer the runtime ships. The first design built in `cross-android-<arch>`
+instead; it works for amd64 but dies for arm64, because those images are
+amd64-hosted cross toolchains and HailoRT's FetchContent externals invoke their
+own nested cmake, which a cross `CMAKE_C_COMPILER` cannot reach
+(`as: unrecognized option '-EL'`, then a Ninja/RPATH "not ELF-based" error from
+a stale cross cache). Native is slower on arm64 (QEMU) and correct.
 
 **Not implemented, deliberately:** `pyhailort`. The public Python package is not
 produced by the source build (the repo's bindings CMake only builds an internal
@@ -41,11 +46,11 @@ asks for `import hailort`.
 ## Why an image chain
 
 The runtime artifacts are deployed to boards with a Hailo-8/8L or Hailo-10H
-accelerator, but the software is installed on the host by hand today: HailoRT,
-its Python bindings and the GStreamer element are absent from every image, so a
-consumer either apt-installs them outside the container or skips the device.
-Bringing them into the chain gives consumers a pinned, verified, gated runtime
-the same way CUDA/ROCm and the QNN EP are handled.
+accelerator. Until 2026-09-20 the software was installed on the host by hand:
+HailoRT and the GStreamer element were absent from every image, so a consumer
+either apt-installed them outside the container or skipped the device.
+The `:hailo` variant ships them pinned, verified and gated, the same way
+CUDA/ROCm and the QNN EP are handled.
 
 ## Upstream facts (2026-09-19)
 
@@ -127,10 +132,10 @@ owns the existing variant mechanics; this is the Hailo instance of them.
 
 ### Layers (as implemented)
 
-- **`linux/Dockerfile.hailo`, stage 1** — `FROM cross-android-<arch>` (the
-  media GStreamer with its dev files is there); runs
-  `build-hailort.sh` with `HAILO_BUILD_GSTREAMER=ON` and
-  `HAILO_OFFLINE_COMPILATION=ON`, externals staged from verified sources.
+- **`linux/Dockerfile.hailo`, stage 1** — `FROM latest-cross-<arch>` (native
+  GCC 16.2.0 + the GStreamer dev files); runs `build-hailort.sh` with
+  `HAILO_BUILD_GSTREAMER=ON` and `HAILO_OFFLINE_COMPILATION=ON`, externals
+  staged from verified sources, `USER root` for the payload write.
 - **`linux/Dockerfile.hailo`, stage 2** — `FROM latest-cross-<arch>`; copies
   `/opt/hailo`, drops the plugin into the base image's
   `${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0` and `libhailort` into

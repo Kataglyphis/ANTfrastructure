@@ -46,7 +46,14 @@ info() { printf '[INFO] %s\n' "$*"; }
 # HailoRT ships no riscv64 support at any version; the variant is amd64/arm64.
 [ "${TARGET_ARCH:-amd64}" != "riscv64" ] || die "Hailo is not supported on riscv64"
 
-install_deps_preamble cmake ninja-build pkg-config git libssl-dev zlib1g-dev
+# The cross builder carries these; the runtime image (the native arm64 builder)
+# already has cmake/ninja/pkg-config/git and the ssl/zlib headers, and its apt
+# lists are not usable — install only what is genuinely missing.
+if ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1 \
+   || ! command -v pkg-config >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1 \
+   || [ ! -f /usr/include/openssl/ssl.h ] || [ ! -f /usr/include/zlib.h ]; then
+  install_deps_preamble cmake ninja-build pkg-config git libssl-dev zlib1g-dev
+fi
 
 # The media GStreamer is a multiarch install: .pc files live under
 # lib/<triple>/pkgconfig, not lib/pkgconfig.
@@ -153,9 +160,34 @@ build_hailort() {
     -DFETCHCONTENT_SOURCE_DIR_PROTOBUF="${HAILO_PROTOBUF_SRC}"
     -DFETCHCONTENT_SOURCE_DIR_GRPC="${HAILO_GRPC_SRC}"
   )
+
+  # The cross-android builder is an amd64 image carrying the TARGET cross
+  # toolchain (every cross stage is built on amd64). A bare `gcc` there is the
+  # HOST compiler: its driver then hands aarch64 flags to the x86 assembler
+  # (`as: unrecognized option '-EL'`), and the image ships no prefixed binutils
+  # for it to fall back on. The repo's own cross builds use the LLVM wrappers
+  # installed by 02-toolchain/llvm.sh — `clang-<arch>` execs clang with
+  # `--target=<triplet> --sysroot=... --gcc-toolchain=<prefix>`, so the
+  # integrated assembler needs no binutils at all.
+  local target_arch="${TARGET_ARCH:-amd64}" build_arch cc cxx
+  build_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
+  if [ "${target_arch}" != "${build_arch}" ]; then
+    cc="$(command -v "clang-${target_arch}")" \
+      || die "no clang-${target_arch} wrapper for cross target ${target_arch}"
+    cxx="$(command -v "clang++-${target_arch}")" \
+      || die "no clang++-${target_arch} wrapper for cross target ${target_arch}"
+    cmake_opts+=(-DCMAKE_C_COMPILER="${cc}" -DCMAKE_CXX_COMPILER="${cxx}")
+    info "cross toolchain: ${cc} (LLVM wrapper)"
+  fi
+
   append_cmake_cache_linker_args cmake_opts
 
   rm -rf "${build_dir}"
+  # The nested FetchContent builds live beside the sources and survive the
+  # top-level clean; a stale cache from an earlier attempt carries a DIFFERENT
+  # compiler and poisons the configure (observed as CMake's Ninja/RPATH
+  # "not ELF-based" error when a cross-attempt cache met the native build).
+  rm -rf "${HAILORT_SRC}/hailort/external"/*-build "${HAILORT_SRC}/hailort/external"/*-install
   info "configuring HailoRT (GStreamer element ON, offline externals)"
   PKG_CONFIG_PATH="$(gst_pkgconfig_dir):${PKG_CONFIG_PATH:-}" \
     cmake -S "${HAILORT_SRC}" -B "${build_dir}" -G Ninja "${cmake_opts[@]}"
