@@ -83,9 +83,10 @@ if ($gpuEnv.HasCuda -and -not $genaiCross) {
     Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
 } else {
     $genaiCudaArgs = @('-DUSE_CUDA=OFF')
-    # "not wired", not "impossible": CUDA 13.4 preview advertises Windows-on-ARM (incl.
-    # x64-hosted cross) and the arm64 cuDNN archive exists at our pin -- backlog #122.
-    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- the arm64 CUDA path is not wired up (CUDA 13.4 preview only; see backlog)" }
+    # "not wired for THIS component", not "impossible": the arm64 CUDA/cuDNN toolkit is
+    # staged by Install-Cuda.ps1 and ORT's CUDA EP uses it (#176, 2026-09-20); GenAI's
+    # arm64 CUDA build is phase 2 of that backlog item.
+    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- GenAI CUDA on arm64 is #176 phase 2 (the toolkit and the ORT CUDA EP are wired)" }
                     else { 'CPU-only lane -- no nvidia GPU detected' }
     Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
 }

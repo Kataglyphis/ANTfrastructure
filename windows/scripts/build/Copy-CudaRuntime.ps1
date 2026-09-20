@@ -33,12 +33,21 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # stack -- see (a) below for the corrected upstream picture), so this stage now
 # has a lane on which CUDA_ROOT is legitimately absent and the diagnostic is
 # the whole point.
-$cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
+#
+# Arch-aware since #176: the nvidia stage now stages the Windows-arm64 payload
+# into the SAME root (bin\arm64), so a cross GPU lane must flatten the ARM64
+# DLLs -- a plain bin\ walk would copy the x64 ones into an "arm64" bundle.
+# WINDOWS_TARGET_ARCH is an ENV of this stage (Dockerfile.media-merge-builder);
+# this script runs standalone from C:\ and imports no modules.
+$targetArch = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TARGET_ARCH)) { 'amd64' } else { $env:WINDOWS_TARGET_ARCH }
+$binSubdir = if ($targetArch -eq 'amd64') { 'bin' } else { 'bin\arm64' }
+$cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT $binSubdir } else { $null }
+$cudnnBin = if ($env:CUDNN_ROOT) { Join-Path $env:CUDNN_ROOT $binSubdir } else { $null }
 # Outer @() wraps the pipeline RESULT: zero roots (the arm64/CPU lane this stage
 # degrades cleanly for) and one root both make $roots.Count throw under StrictMode.
 $roots = @(@(
     $cudaBin,                             # cudart64_*, cublas64_*, cufft64_*, ...
-    $env:CUDNN_ROOT                       # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
+    $cudnnBin                             # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
 ) | Where-Object { $_ -and (Test-Path $_) })
 
 # Two DIFFERENT situations end up with no roots, and conflating them is what

@@ -369,8 +369,8 @@ $gpuEnv = Get-GpuEnvironment
 # Cross lane: NEVER take CUDA from a HOST probe. It answers "does this amd64 BUILD HOST have a
 # toolkit", which says nothing about the target -- a bare host probe would point nvcc at x64
 # device libs and link them into an "arm64" OpenCV. Enforced here as well as in the driver so a
-# direct script invocation cannot bypass it. (Windows-on-ARM CUDA/cuDNN exists; it is backlog
-# work, not the reason for this guard.)
+# direct script invocation cannot bypass it. #176 (2026-09-20) wires the arm64 CUDA/cuDNN
+# toolkit and the ORT CUDA EP; OpenCV's arm64 CUDA build is phase 2, so the guard stays.
 if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'

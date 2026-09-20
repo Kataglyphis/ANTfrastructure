@@ -202,9 +202,14 @@ if ($ConcurrentAux -and $NoSccache) {
 # milliseconds rather than hours into a stage that cannot produce anything ----
 if ($TargetArch -ne 'amd64') {
     if ($Gpu) {
-        throw ("-Gpu is not available for -TargetArch $TargetArch yet: the CUDA/cuDNN stack is not wired " +
-               'for the cross lane (cuDNN and TensorRT-RTX do ship Windows-on-ARM packages; classic ' +
-               'TensorRT does not). The arm64 lane is CPU + DirectML + Vulkan today.')
+        # #176 (2026-09-20): the cross GPU lane is WIRED. The nvidia stage installs
+        # the x64 toolkit (headers + nvcc, the host tools) and stages the arm64
+        # redist payload into the same root (lib\arm64, bin\arm64); ORT builds the
+        # CUDA EP for arm64 through the documented `vcvarsall x64_arm64` +
+        # `nvcc --use-local-env` flow. Output is an artifact bundle, statically
+        # verified only (no arm64 device on this host); OpenCV/GenAI/TVM stay
+        # CPU + DirectML on this lane in phase 1.
+        Write-Host ('[bk] GPU: arm64 cross CUDA/cuDNN (bundle only; OpenCV/GenAI/TVM stay CPU on this lane)') -ForegroundColor Yellow
     }
     # Asking for torch EXPLICITLY is an error; inheriting it from the $Stages
     # default just drops it — throwing there made plain -TargetArch arm64 fail.
@@ -512,6 +517,9 @@ if ($Stages -contains 'base') {
 
 if ($Stages -contains 'sdk') {
     if ($Gpu) {
+        # WINDOWS_TARGET_ARCH rides the nvidia stage only when GPU is on: on the
+        # cross lane Install-Cuda.ps1 switches to the arm64 redist payload, and the
+        # arm64 SHAs are inert on amd64 (the x64 installer path never reads them).
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag (Get-BkTag 'windows-sdk') -BuildArgs @{
             BASE_IMAGE               = Get-BkTag 'windows-base'
             CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
@@ -521,6 +529,18 @@ if ($Stages -contains 'sdk') {
             CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
             CUDNN_ZIP_SHA256         = Get-Ver 'CUDNN_ZIP_SHA256'
             TENSORRT_ZIP_SHA256      = Get-Ver 'TENSORRT_ZIP_SHA256'
+            WINDOWS_TARGET_ARCH      = $TargetArch
+            CUDA_WINDOWS_ARM64_CUDART_VERSION    = Get-Ver 'CUDA_WINDOWS_ARM64_CUDART_VERSION'
+            CUDA_WINDOWS_ARM64_CUDART_SHA256     = Get-Ver 'CUDA_WINDOWS_ARM64_CUDART_SHA256'
+            CUDA_WINDOWS_ARM64_CUBLAS_VERSION    = Get-Ver 'CUDA_WINDOWS_ARM64_CUBLAS_VERSION'
+            CUDA_WINDOWS_ARM64_CUBLAS_SHA256     = Get-Ver 'CUDA_WINDOWS_ARM64_CUBLAS_SHA256'
+            CUDA_WINDOWS_ARM64_CUFFT_VERSION     = Get-Ver 'CUDA_WINDOWS_ARM64_CUFFT_VERSION'
+            CUDA_WINDOWS_ARM64_CUFFT_SHA256      = Get-Ver 'CUDA_WINDOWS_ARM64_CUFFT_SHA256'
+            CUDA_WINDOWS_ARM64_CURAND_VERSION    = Get-Ver 'CUDA_WINDOWS_ARM64_CURAND_VERSION'
+            CUDA_WINDOWS_ARM64_CURAND_SHA256     = Get-Ver 'CUDA_WINDOWS_ARM64_CURAND_SHA256'
+            CUDA_WINDOWS_ARM64_NVJITLINK_VERSION = Get-Ver 'CUDA_WINDOWS_ARM64_NVJITLINK_VERSION'
+            CUDA_WINDOWS_ARM64_NVJITLINK_SHA256  = Get-Ver 'CUDA_WINDOWS_ARM64_NVJITLINK_SHA256'
+            CUDNN_WINDOWS_ARM64_ZIP_SHA256       = Get-Ver 'CUDNN_WINDOWS_ARM64_ZIP_SHA256'
         }
     } else {
         # CPU lane: containerd has no unprivileged `tag`; re-export base under
@@ -739,7 +759,10 @@ if ($Stages -contains 'final') {
             BASE_IMAGE  = Get-BkTag $script:FinalTagName
             MIN_PASSED  = "$armMinPassed"
             MAX_SKIPPED = "$armMaxSkipped"
-            EXPECT_GPU  = '0'
+            # #176: on the cross GPU lane -ExpectGpu makes a LOST CUDA env red instead
+            # of a silent skip; the payload sections still skip in-suite, so the
+            # floor lane stays Arm64 (Test-Container.ps1's selector checks cross first).
+            EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
         } -MaxAttempts 1
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow

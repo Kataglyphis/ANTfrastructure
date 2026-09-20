@@ -8,7 +8,8 @@ param(
     [string]$CudaVersion = '',
     [string]$CudaVersionMajorMinor = '',
     [string]$CudnnVersion = '',
-    [string]$CudnnRoot = ''
+    [string]$CudnnRoot = '',
+    [string]$TargetArch = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,6 +32,67 @@ $CudaVersion = Resolve-ContainerImageValue -Value $CudaVersion -EnvironmentVaria
 $CudaVersionMajorMinor = Resolve-ContainerImageValue -Value $CudaVersionMajorMinor -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR'
 $CudnnVersion = Resolve-ContainerImageValue -Value $CudnnVersion -EnvironmentVariable 'CUDNN_VERSION'
 $CudnnRoot = Resolve-ContainerImageValue -Value $CudnnRoot -EnvironmentVariable 'CUDNN_ROOT' -DefaultValue ('C:\Program Files\NVIDIA\CUDNN\v{0}' -f $CudnnVersion)
+$TargetArch = Resolve-ContainerImageValue -Value $TargetArch -EnvironmentVariable 'WINDOWS_TARGET_ARCH' -DefaultValue 'amd64'
+
+<#
+.SYNOPSIS
+    Stages the Windows-arm64 CUDA payload into an existing CUDA root.
+.DESCRIPTION
+    NVIDIA publishes the arm64 toolkit ONLY as per-component redist archives (no
+    runnable installer), so the cross lane downloads each component by SHA into
+    the SAME root the x64 toolkit uses: headers and nvcc stay x64 (host tools),
+    the arm64 libs/bin land in lib\arm64 / bin\arm64 -- exactly where
+    `nvcc -ccbin <arm64 cl>` and CMake's FindCUDAToolkit look. Probe-proven
+    2026-09-19 (out/probe-cuda-cross2: AA64 main.exe). The component set is the
+    ORT CUDA EP's link closure plus its runtime dlopens; docs/windows-cross-builds.md
+    owns the why, versions.env owns the pins.
+#>
+function Install-CudaWindowsArm64Redist {
+    param(
+        [Parameter(Mandatory)][string]$CudaRoot,
+        [Parameter(Mandatory)][string]$TempDir
+    )
+    $components = @(
+        @{ Key = 'CUDART'; Component = 'cuda_cudart' },
+        @{ Key = 'CUBLAS'; Component = 'libcublas' },
+        @{ Key = 'CUFFT'; Component = 'libcufft' },
+        @{ Key = 'CURAND'; Component = 'libcurand' },
+        @{ Key = 'NVJITLINK'; Component = 'libnvjitlink' }
+    )
+    foreach ($c in $components) {
+        $verKey = "CUDA_WINDOWS_ARM64_$($c.Key)_VERSION"
+        $shaKey = "CUDA_WINDOWS_ARM64_$($c.Key)_SHA256"
+        $ver = Resolve-ContainerImageValue -EnvironmentVariable $verKey -DefaultValue ''
+        $sha = Resolve-ContainerImageValue -EnvironmentVariable $shaKey -DefaultValue ''
+        if (-not $ver) { throw "$verKey is not set -- the arm64 CUDA payload cannot be pinned" }
+        $url = 'https://developer.download.nvidia.com/compute/cuda/redist/{0}/windows-arm64/{0}-windows-arm64-{1}-archive.zip' -f $c.Component, $ver
+        $zip = Join-Path $TempDir ("{0}-arm64.zip" -f $c.Component)
+        $extract = Join-Path $TempDir ("{0}-arm64" -f $c.Component)
+        Invoke-DownloadWithRetry -Url $url -DestinationPath $zip -Description ("CUDA arm64 {0}" -f $c.Component) -ExpectSignature PK -ExpectedSha256 $sha
+        $dir = Expand-ArchiveSubdirectory -ArchivePath $zip -DestinationPath $extract
+        if (-not $dir) { throw "Extracted arm64 component directory not found under $extract" }
+        # lib\arm64 + bin\arm64 only: the headers are arch-neutral and already come
+        # from the x64 toolkit install above (copying component headers over them
+        # could mix per-component versions with the toolkit's).
+        foreach ($pair in @(@{ From = 'lib\arm64'; To = 'lib\arm64' }, @{ From = 'bin\arm64'; To = 'bin\arm64' })) {
+            $from = Join-Path $dir $pair.From
+            if (-not (Test-Path $from)) { continue }
+            $to = Join-Path $CudaRoot $pair.To
+            New-Item -ItemType Directory -Force $to | Out-Null
+            Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
+        }
+        Remove-Item $zip -Force -ErrorAction SilentlyContinue
+        Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    # Assert the exact files the cross link needs: a silently empty copy would
+    # otherwise surface hours later as an ORT link error.
+    foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib')) {
+        if (-not (Test-Path (Join-Path $CudaRoot $must))) {
+            throw ("arm64 CUDA payload incomplete: {0} missing under {1}" -f $must, $CudaRoot)
+        }
+    }
+    Write-Host ("arm64 CUDA payload staged into {0} (lib\arm64, bin\arm64)" -f $CudaRoot)
+}
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
@@ -154,14 +216,31 @@ if (-not (Test-Path (Join-Path $cudaIncludeDir 'crt\host_config.h'))) {
     Write-Host 'Created stub: crt/host_config.h'
 }
 
+if ($TargetArch -ne 'amd64') {
+    if ($TargetArch -ne 'arm64') { throw "Install-Cuda: no CUDA payload mapping for -TargetArch $TargetArch (amd64 and arm64 only)" }
+    Write-Host 'Cross lane: staging the Windows-arm64 CUDA redist payload (lib\arm64, bin\arm64)...'
+    Install-CudaWindowsArm64Redist -CudaRoot $effectiveCudaRoot -TempDir $TempDir
+}
+
 Write-Host ('Downloading cuDNN {0}...' -f $CudnnVersion)
 $cudaMajorVersion = $CudaVersionMajorMinor -replace '[^0-9].*', ''
-$cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-{0}_cuda{1}-archive.zip' -f $CudnnVersion, $cudaMajorVersion
+# NVIDIA's redist naming is NOT uniform: x64 is `..._cuda13-archive.zip`, arm64 is
+# `..._cuda13.4-archive.zip` (verified in redistrib_9.26.0.json, 2026-09-20).
+if ($TargetArch -eq 'amd64') {
+    $cudnnPlatform = 'windows-x86_64'
+    $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/{0}/cudnn-{0}-{1}_cuda{2}-archive.zip' -f $cudnnPlatform, $CudnnVersion, $cudaMajorVersion
+    $cudnnShaKey = 'CUDNN_ZIP_SHA256'
+} else {
+    $cudnnPlatform = 'windows-arm64'
+    $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/{0}/cudnn-{0}-{1}_cuda{2}-archive.zip' -f $cudnnPlatform, $CudnnVersion, $CudaVersionMajorMinor
+    $cudnnShaKey = 'CUDNN_WINDOWS_ARM64_ZIP_SHA256'
+}
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-# SHA256 from NVIDIA's redist manifest, pinned in versions.env (CUDNN_ZIP_SHA256).
-$cudnnSha = Resolve-ContainerImageValue -EnvironmentVariable 'CUDNN_ZIP_SHA256' -DefaultValue ''
+# SHA256 from NVIDIA's redist manifest, pinned in versions.env (CUDNN_ZIP_SHA256,
+# CUDNN_WINDOWS_ARM64_ZIP_SHA256 on the cross lane).
+$cudnnSha = Resolve-ContainerImageValue -EnvironmentVariable $cudnnShaKey -DefaultValue ''
 Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK -ExpectedSha256 $cudnnSha
 Write-Host 'Extracting cuDNN...'
 $cudnnDir = Expand-ArchiveSubdirectory -ArchivePath $cudnnArchive -DestinationPath $cudnnExtracted

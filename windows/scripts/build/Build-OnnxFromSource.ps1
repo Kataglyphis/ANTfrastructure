@@ -104,9 +104,12 @@ $gpuArgs = @()
 # if/elseif rather than `switch ($gpuEnv.GpuType)`: the switch-on-property syntax can
 # trigger parser errors in Windows PowerShell 5.1.
 # Cross lane: NEVER take CUDA from a HOST probe. GPU_TYPE is IMAGE state and the toolchain
-# image is shared, so an arm64 build would link x64 device libs into an "arm64" artifact
-# (arm64 CUDA is backlog, not fiction: docs/windows-cross-builds.md § CUDA / cuDNN / TensorRT).
-if ($gpuEnv.HasCuda -and -not $onnxCross) {
+# image is shared, so an arm64 build would link x64 device libs into an "arm64" artifact.
+# #176 (2026-09-20): the POSITIVE cross signal is the image's arm64 payload -- lib\arm64
+# staged by Install-Cuda.ps1 -TargetArch arm64 -- so a cross image WITHOUT it stays
+# CPU + DirectML and one WITH it builds the CUDA EP for arm64.
+$cudaUsable = $gpuEnv.HasCuda -and ((-not $onnxCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+if ($cudaUsable) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
@@ -162,7 +165,11 @@ if ($gpuEnv.HasCuda -and -not $onnxCross) {
 
     # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
-    $trtRoot = $gpuEnv.TensorRtRoot
+    # Classic TensorRT is x64-only (docs/windows-cross-builds.md § CUDA / cuDNN /
+    # TensorRT): a zip staged for the amd64 lane must never enable the EP on a cross
+    # build -- it would link x64 import libs into the arm64 provider. TensorRT-RTX
+    # (which does ship arm64) is not wired.
+    $trtRoot = if ($onnxCross) { $null } else { $gpuEnv.TensorRtRoot }
     if ($trtRoot) {
         Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
@@ -171,10 +178,15 @@ if ($gpuEnv.HasCuda -and -not $onnxCross) {
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
-    # nvcc host = MSVC cl.exe (nvcc rejects clang-cl); C++17; /wd4067 is ORT-specific. Shared nvcc block.
+    # nvcc host = MSVC cl.exe (nvcc rejects clang-cl); C++17; /wd4067 is ORT-specific. Shared nvcc block
+    # (arch-aware since #176: the cross lane drives the Hostx64\arm64 cl + --use-local-env).
     $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
+    $cudnnLibDir = Get-CudnnLibraryDir -CudnnRoot $cudnnRoot
+    if (-not $cudnnLibDir) {
+        throw "ONNX: cuDNN import lib dir not found under $cudnnRoot (lib\x64 natively, lib\arm64 on the cross lane) -- refusing to configure a CUDA build with no cuDNN."
+    }
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
-    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
+    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnLibDir", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
 } elseif ($gpuEnv.GpuType -eq 'amd' -and -not $onnxCross) {
     # Same host-vs-target guard as the CUDA branch: a host GPU probe must never decide a
@@ -283,9 +295,9 @@ if (Test-Path $onnxScoped) {
 }
 
 # CUTLASS's fetched SHA follows ORT's ExternalProject pointer, so a static .patch would
-# silently rot -- hence the tree-walking helpers below. Cross guard as in the CUDA branch:
-# GPU_TYPE is IMAGE state, shared by both lanes.
-if ($env:GPU_TYPE -eq 'nvidia' -and -not $onnxCross) {
+# silently rot -- hence the tree-walking helpers below. Guarded on the SAME decision as
+# the CUDA branch above (native GPU lane, or the cross lane with the arm64 payload).
+if ($cudaUsable) {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {

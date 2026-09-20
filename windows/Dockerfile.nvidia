@@ -66,6 +66,23 @@ ARG CUDNN_VERSION=9.26.0.51
 # above. ARG-injected env wins over machine env inside the RUN.
 ARG CUDA_INSTALLER_SHA256=27a5fbbef89d64f9a948a94e1faa5eca26fed6d706e36e4559a7cfa3552128e6
 ARG CUDNN_ZIP_SHA256=f8610d403685c918e690de5b1ec68da0b4b1358a6be62627591362b7eb811644
+# Windows-arm64 cross payload (#176): the arm64 toolkit has no installer, so
+# Install-Cuda.ps1 -TargetArch arm64 downloads these per-component redist
+# archives into the same CUDA root (lib\arm64, bin\arm64). On the amd64 lane the
+# ARG defaults are inert -- the x64 installer path never reads them. Values and
+# provenance: versions.env (redistrib_13.4.2.json / redistrib_9.26.0.json).
+ARG WINDOWS_TARGET_ARCH=amd64
+ARG CUDA_WINDOWS_ARM64_CUDART_VERSION=13.4.92
+ARG CUDA_WINDOWS_ARM64_CUDART_SHA256=d3cec2717ba3c2c714c5869a5374365d087c698d87c0ddd3bd41715447112891
+ARG CUDA_WINDOWS_ARM64_CUBLAS_VERSION=13.8.0.4
+ARG CUDA_WINDOWS_ARM64_CUBLAS_SHA256=ec79698528f64361a370d1b0254a927e369b57525831fadcb2cdb7732d8ab621
+ARG CUDA_WINDOWS_ARM64_CUFFT_VERSION=12.4.0.43
+ARG CUDA_WINDOWS_ARM64_CUFFT_SHA256=166c034d030572365d34862aafd85a7b5ecf443518e0ddae855b6df1cd9e46cf
+ARG CUDA_WINDOWS_ARM64_CURAND_VERSION=10.4.4.72
+ARG CUDA_WINDOWS_ARM64_CURAND_SHA256=1e7ef9506c5021a1f9645bf70cfb7cf60021bb3ebc4e34d80b3f36d240bced9b
+ARG CUDA_WINDOWS_ARM64_NVJITLINK_VERSION=13.4.92
+ARG CUDA_WINDOWS_ARM64_NVJITLINK_SHA256=73451f44a7afb46cfbdc8d2ef8b6b1d321ad03cdf38242d7099f53c488c3ec24
+ARG CUDNN_WINDOWS_ARM64_ZIP_SHA256=657743083b72885336321403522a5af80566d8347a1b7bef5563c018d602d0d0
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
@@ -115,4 +132,8 @@ ENV GPU_TYPE="nvidia" `
 # the DLLs lived there. Set-TensorrtTree.ps1 fails closed if neither
 # carries DLLs. When no zip is staged the directories do not exist and the
 # entries are inert — the documented graceful-skip contract is unchanged.
-ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$PATH
+# bin\arm64 last (after the x64 dirs, before the inherited PATH): on the cross
+# lane the HOST still runs x64 tools, and cudart64_13.dll exists under BOTH
+# arches -- an arm64-first PATH would hand the x64 host an ARM64 DLL. The dirs
+# simply do not exist on the amd64 lane.
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$CUDA_ROOT\bin\arm64;$CUDNN_ROOT\bin\arm64;$PATH
