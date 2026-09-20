@@ -46,7 +46,10 @@ $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 $gpuEnv = Get-GpuEnvironment
-$useCuda = if ($gpuEnv.HasCuda) { 'ON' } else { 'OFF' }
+# Cross lane keeps TVM CUDA OFF in #176 phase 1: TVM's FindCUDA links the toolkit's
+# device libs into the target build, and its cmake has no arm64-host path -- the
+# NVPTX LLVM target above is what the CUDA lane needs from TVM. Native lane unchanged.
+$useCuda = if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 
 # cuBLAS ships inside the toolkit (no hint needed). cuDNN is a SEPARATE install, and TVM's legacy

@@ -153,6 +153,48 @@ Describe 'Get-CudnnLibrary' {
             Assert-Equal 'cudnn_graph.lib' (Split-Path (Get-CudnnLibrary -CudnnRoot $dir) -Leaf)
         }
     }
+
+    It 'picks lib\x64 natively and lib\arm64 for the cross target (#176)' {
+        Invoke-InTestDir { param($dir)
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\x64') | Out-Null
+            Set-Content -Path (Join-Path $dir 'lib\x64\cudnn.lib') -Value '' -NoNewline
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\arm64') | Out-Null
+            Set-Content -Path (Join-Path $dir 'lib\arm64\cudnn.lib') -Value '' -NoNewline
+            Assert-Equal (Join-Path $dir 'lib\x64') (Get-CudnnLibraryDir -CudnnRoot $dir -Arch 'amd64')
+            Assert-Equal (Join-Path $dir 'lib\arm64') (Get-CudnnLibraryDir -CudnnRoot $dir -Arch 'arm64')
+            Assert-Equal (Join-Path $dir 'lib\arm64\cudnn.lib') (Get-CudnnLibrary -CudnnRoot $dir -Arch 'arm64')
+        }
+    }
+
+    It 'returns $null when only the OTHER arch dir exists -- no silent x64 fallback on cross' {
+        Invoke-InTestDir { param($dir)
+            Initialize-CudnnRoot -Root $dir -Libs @('cudnn.lib')
+            Assert-Null (Get-CudnnLibrary -CudnnRoot $dir -Arch 'arm64')
+        }
+    }
+}
+
+Describe 'Test-CudaWindowsArm64Payload' {
+
+    It 'is false for a missing root and for a root without the full payload' {
+        Assert-False (Test-CudaWindowsArm64Payload -CudaRoot 'X:\no-such-cuda-root-xyzzy')
+        Invoke-InTestDir { param($dir)
+            Assert-False (Test-CudaWindowsArm64Payload -CudaRoot $dir)
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\arm64') | Out-Null
+            Set-Content -Path (Join-Path $dir 'lib\arm64\cudart.lib') -Value '' -NoNewline
+            Assert-False (Test-CudaWindowsArm64Payload -CudaRoot $dir)  # cudadevrt.lib still missing
+        }
+    }
+
+    It 'is true when cudart.lib AND cudadevrt.lib are staged' {
+        Invoke-InTestDir { param($dir)
+            $arm = Join-Path $dir 'lib\arm64'
+            New-Item -ItemType Directory -Force -Path $arm | Out-Null
+            Set-Content -Path (Join-Path $arm 'cudart.lib') -Value '' -NoNewline
+            Set-Content -Path (Join-Path $arm 'cudadevrt.lib') -Value '' -NoNewline
+            Assert-True (Test-CudaWindowsArm64Payload -CudaRoot $dir)
+        }
+    }
 }
 
 Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {

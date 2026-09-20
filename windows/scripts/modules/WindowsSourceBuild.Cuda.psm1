@@ -14,6 +14,11 @@ Set-StrictMode -Version Latest
 # caller's top-level import (the PS module-scoping trap).
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+# Arch facts (#176): the CUDA helpers below must resolve the TARGET arch (which
+# lib\ dir cuDNN lives in, which cl.exe nvcc drives), and this module must stay
+# usable when only it is imported (tests). Guarded, same rule as above.
+$targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
+if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
 
 function Get-CudaRoot {
     if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }
@@ -108,17 +113,48 @@ function Get-CudaToolkitRootArg {
     return @("-DCUDA_TOOLKIT_ROOT_DIR=$root")
 }
 
-function Get-CudnnLibrary {
+function Get-CudnnLibraryDir {
+    # cuDNN's redist lays the import libs under lib\<archdir>: x64 natively,
+    # arm64 on the cross lane (#176). Returned so -DCMAKE_LIBRARY_PATH can point
+    # at the SAME directory the import lib was found in.
     param(
-        [string]$CudnnRoot
+        [string]$CudnnRoot,
+        [string]$Arch = ''
     )
     if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $null }
-    $libDir = "$CudnnRoot\lib\x64"
+    $archDir = if ((Get-WindowsTargetArch -Arch $Arch) -eq 'amd64') { 'x64' } else { 'arm64' }
+    $libDir = Join-Path $CudnnRoot "lib\$archDir"
     if (-not (Test-Path -LiteralPath $libDir -ErrorAction SilentlyContinue)) { return $null }
+    return $libDir
+}
+
+function Get-CudnnLibrary {
+    param(
+        [string]$CudnnRoot,
+        [string]$Arch = ''
+    )
+    $libDir = Get-CudnnLibraryDir -CudnnRoot $CudnnRoot -Arch $Arch
+    if (-not $libDir) { return $null }
     $lib = Get-ChildItem -LiteralPath $libDir -Filter 'cudnn*.lib' -ErrorAction SilentlyContinue |
         Sort-Object { $_.Name -ne 'cudnn.lib' } | Select-Object -First 1
     if ($lib) { return $lib.FullName }
     return $null
+}
+
+function Test-CudaWindowsArm64Payload {
+    <#
+    .SYNOPSIS
+        True when the CUDA root carries the Windows-arm64 device payload.
+    .DESCRIPTION
+        The cross lane's POSITIVE signal (#176): Install-Cuda.ps1 -TargetArch arm64
+        stages lib\arm64 (cudart.lib + cudadevrt.lib). Its presence -- never a host
+        GPU probe -- is what may enable CUDA on an arm64 build; absent means the
+        arm64 lane stays CPU + DirectML.
+    #>
+    param([string]$CudaRoot = '')
+    if ([string]::IsNullOrWhiteSpace($CudaRoot)) { $CudaRoot = Get-CudaRoot }
+    if ([string]::IsNullOrWhiteSpace($CudaRoot)) { return $false }
+    return (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudart.lib')) -and (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudadevrt.lib'))
 }
 
 function Get-NvccCudaCmakeArgs {
@@ -127,10 +163,26 @@ function Get-NvccCudaCmakeArgs {
         [Parameter(Mandatory)][ValidateSet('17', '20')][string]$CudaStandard,
         [string]$ExtraCudaFlags = '',
         [switch]$IncludeToolkitRoot,
-        [string]$ArchDecoration = '-real'
+        [string]$ArchDecoration = '-real',
+        [string]$Arch = ''
     )
-    $clExe = (Get-Command cl.exe -ErrorAction Stop).Source
+    $targetArch = Get-WindowsTargetArch -Arch $Arch
+    # nvcc rejects clang-cl; the host compiler is MSVC cl.exe for the TARGET arch.
+    # Native lane: the VsDevCmd x64 cl. Cross lane (#176): the x64-HOSTED
+    # arm64-targeting cl (Hostx64\arm64) -- the one `vcvarsall x64_arm64` puts on
+    # PATH. Get-Command would hand us the x64 cl and nvcc would then emit x64
+    # host objects into an arm64 link.
+    $clExe = if ($targetArch -eq 'amd64') {
+        (Get-Command cl.exe -ErrorAction Stop).Source
+    } else {
+        $crossCl = Join-Path $env:VCToolsInstallDir "bin\Hostx64\$targetArch\cl.exe"
+        if (Test-Path $crossCl) { $crossCl } else { (Get-Command cl.exe -ErrorAction Stop).Source }
+    }
     $preamble = '-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING'
+    # Cross: NVIDIA's Windows-on-Arm porting guide documents `vcvarsall x64_arm64`
+    # + `nvcc --use-local-env`; without it nvcc bootstraps its own MSVC env and
+    # can pick the wrong arch (verified in out/probe-cuda-cross2, 2026-09-19).
+    if ($targetArch -ne 'amd64') { $preamble = "--use-local-env $preamble" }
     $cudaFlags = if ($ExtraCudaFlags) { "$ExtraCudaFlags $preamble" } else { $preamble }
     $nvccArgs = @(
         "-DCMAKE_CUDA_COMPILER:FILEPATH=$CudaRoot\bin\nvcc.exe"
@@ -149,7 +201,9 @@ Export-ModuleMember -Function @(
     'Get-GpuEnvironment',
     'Get-CudaArchitectureList',
     'Get-CudaToolkitRootArg',
+    'Get-CudnnLibraryDir',
     'Get-CudnnLibrary',
+    'Test-CudaWindowsArm64Payload',
     'Get-NvccCudaCmakeArgs',
     'Resolve-DirectoryPath',
     'New-Timestamp',

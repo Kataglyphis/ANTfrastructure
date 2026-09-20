@@ -38,13 +38,15 @@ FROM ${TVM_IMAGE} AS media-tvm
 # toolchain base means it re-runs only when the toolchain does.
 FROM ${BASE_IMAGE} AS cuda-runtime-stage
 # Target arch, REDECLARED (ARGs do not cross a FROM boundary). This stage flattens
-# the CUDA/cuDNN runtime DLLs, which do not exist on Windows-on-ARM at all -- so it
-# needs to know the lane in order to degrade cleanly instead of hunting for a CUDA
-# install that cannot be there. Copy-CudaRuntime.ps1 stages an EMPTY C:\cuda-rt
-# and exits 0 when neither CUDA_ROOT nor CUDNN_ROOT is set, so the COPY below still
-# succeeds; it throws only when one IS set but does not resolve (nvidia base
-# expected, layout broken). Until 2026-08-23 it threw in BOTH cases, which made
-# this stage a hard blocker for every non-GPU merge.
+# the CUDA/cuDNN runtime DLLs for the lane: bin\ natively, bin\arm64 on the cross
+# lane (#176 -- the arm64 payload exists as of 2026-09-20). The plain arm64 CPU
+# lane still has neither variable set, so it needs to know the lane in order to
+# degrade cleanly instead of hunting for a CUDA install that cannot be there.
+# Copy-CudaRuntime.ps1 stages an EMPTY C:\cuda-rt and exits 0 when neither
+# CUDA_ROOT nor CUDNN_ROOT is set, so the COPY below still succeeds; it throws
+# only when one IS set but does not resolve (nvidia base expected, layout
+# broken). Until 2026-08-23 it threw in BOTH cases, which made this stage a hard
+# blocker for every non-GPU merge.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 COPY windows\scripts\build\Copy-CudaRuntime.ps1 C:\Copy-CudaRuntime.ps1

@@ -1588,7 +1588,9 @@ $sectionFloors = @{
     '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 6; Cpu = 6; Arm64 = 6 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
     '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }
     # '7' is 13, counted against a real -ExpectGpu run: the section's only branch picks the
-    # cuDNN link+run OR a Skip, so there is no conditional fourteenth.
+    # cuDNN link+run OR a Skip, so there is no conditional fourteenth. The cross GPU lane
+    # (#176) also runs it (host tools; the Arm64 floor stays 0 because the cross CPU lane
+    # legitimately skips the section).
     '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }
     '10' = @{ Gpu = 7; Cpu = 4; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
     '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
@@ -1600,7 +1602,10 @@ $sectionFloors = @{
     # torch-baked Build-TorchApp.ps1 is cross-skipped; it is the amd64 sixth).
     '23' = @{ Gpu = 6; Cpu = 6; Arm64 = 5 }
 }
-$floorLane = if ($ExpectGpu) { 'Gpu' } elseif ($smokeCross) { 'Arm64' } else { 'Cpu' }
+# Cross FIRST: the arm64 lane skips the payload sections even with -ExpectGpu set (the
+# arm64 CUDA image runs the HOST-toolchain §7 but still cannot execute aarch64 payload),
+# so selecting the Gpu column there would demand ~190 passes a cross run cannot reach.
+$floorLane = if ($smokeCross) { 'Arm64' } elseif ($ExpectGpu) { 'Gpu' } else { 'Cpu' }
 foreach ($sec in $sectionFloors.Keys) {
     $floor = $sectionFloors[$sec][$floorLane]
     if ($floor -le 0) { continue }
