@@ -269,14 +269,16 @@ PY
 # upstream clones into core/open_source/ from BRANCHES (rapidjson: master). This
 # list pins every one to a commit, verified after checkout. dest = the
 # open_source/ subdir; subdir = the path inside the repo that holds the headers.
-# name|repository|commit|dest|subdir
+# name|repository|commit|dest|subdir|sentinel — the sentinel is a header only
+# this external provides, because xtensor and xtl SHARE xtensor_stack/base and
+# a dest-level "non-empty" guard skips the second one.
 TAPPAS_EXTERNALS=(
-  "xtensor|https://github.com/xtensor-stack/xtensor.git|825c0fd8a465049c06ad89fa3911b342dbffcabf|xtensor_stack/base|include"
-  "xtl|https://github.com/xtensor-stack/xtl.git|46f8a9390db2c52aaf41de8f93ed0dab97af012d|xtensor_stack/base|include"
-  "cxxopts|https://github.com/jarro2783/cxxopts.git|c74846a891b3cc3bfa992d588b1295f528d43039|cxxopts|include"
-  "pybind11|https://github.com/pybind/pybind11.git|a2e59f0e7065404b44dfe92a28aca47ba1378dc4|pybind11|include"
-  "rapidjson|https://github.com/Tencent/rapidjson.git|24b5e7a8b27f42fa16b96fc70aade9106cf7102f|rapidjson|include"
-  "catch2|https://github.com/catchorg/Catch2.git|c4e3767e265808590986d5db6ca1b5532a7f3d13|catch2|single_include/catch2"
+  "xtensor|https://github.com/xtensor-stack/xtensor.git|825c0fd8a465049c06ad89fa3911b342dbffcabf|xtensor_stack/base|include|xtensor/xarray.hpp"
+  "xtl|https://github.com/xtensor-stack/xtl.git|46f8a9390db2c52aaf41de8f93ed0dab97af012d|xtensor_stack/base|include|xtl/xsequence.hpp"
+  "cxxopts|https://github.com/jarro2783/cxxopts.git|c74846a891b3cc3bfa992d588b1295f528d43039|cxxopts|include|cxxopts.hpp"
+  "pybind11|https://github.com/pybind/pybind11.git|a2e59f0e7065404b44dfe92a28aca47ba1378dc4|pybind11|include|pybind11/pybind11.h"
+  "rapidjson|https://github.com/Tencent/rapidjson.git|24b5e7a8b27f42fa16b96fc70aade9106cf7102f|rapidjson|include|rapidjson/document.h"
+  "catch2|https://github.com/catchorg/Catch2.git|c4e3767e265808590986d5db6ca1b5532a7f3d13|catch2|single_include/catch2|catch2/catch.hpp"
 )
 
 fetch_tappas() {
@@ -289,11 +291,10 @@ fetch_tappas() {
     tar -xf "${WORK}/tappas.tar.gz" -C "${WORK}"
   fi
 
-  local spec name url commit dest subdir src
+  local spec name url commit dest subdir sentinel src
   for spec in "${TAPPAS_EXTERNALS[@]}"; do
-    IFS='|' read -r name url commit dest subdir <<<"${spec}"
-    if [ -d "${TAPPAS_SRC}/core/open_source/${dest}" ] && \
-       [ -n "$(ls -A "${TAPPAS_SRC}/core/open_source/${dest}" 2>/dev/null)" ]; then
+    IFS='|' read -r name url commit dest subdir sentinel <<<"${spec}"
+    if [ -f "${TAPPAS_SRC}/core/open_source/${dest}/${sentinel}" ]; then
       continue
     fi
     info "staging TAPPAS external ${name} @ ${commit:0:10}"
