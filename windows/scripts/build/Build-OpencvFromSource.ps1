@@ -78,6 +78,11 @@ endif()
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\004-dnn-ort-profiling-wchar.patch') -SourceDir $mainSrc -Description 'opencv: dnn ORT profiling wchar_t path' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
+    # Windows-ARM64 CUDA (#176 phase 2): cudafilters' wavelet_matrix_2d.cuh picks
+    # _mm_popcnt_u64 whenever _MSC_VER is defined -- an x86 intrinsic MSVC-on-ARM64
+    # does not have. The guard change falls through to __builtin_popcountll; it is a
+    # no-op on x64 and on non-MSVC compilers, so both lanes take the same path.
+    Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\002-arm64-cudafilters-popcount.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudafilters popcount for Windows ARM64'
 }
 
 # FFmpeg 9 compat (#94): a SCRIPT, not a .patch -- it matches two accessor expressions rather
