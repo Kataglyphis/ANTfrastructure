@@ -68,16 +68,21 @@ fetch_sources() {
     tar -xf "${WORK}/hailort.tar.gz" -C "${WORK}"
   fi
 
-  HAILO_PROTOBUF_SRC="${WORK}/protobuf-${HAILO_PROTOBUF_VERSION}"
+  # HailoRT's external cmake scripts build from the LITERAL
+  # <src>/hailort/external/{protobuf,grpc}-src paths — FetchContent's
+  # FETCHCONTENT_SOURCE_DIR_* override does not reach execute_cmake, so the
+  # sources must sit exactly there.
+  HAILO_PROTOBUF_SRC="${HAILORT_SRC}/hailort/external/protobuf-src"
   if [ ! -f "${HAILO_PROTOBUF_SRC}/CMakeLists.txt" ]; then
     info "fetching protobuf v${HAILO_PROTOBUF_VERSION}"
     download_verified_file \
       "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v${HAILO_PROTOBUF_VERSION}.tar.gz" \
       "${HAILO_PROTOBUF_SHA256}" "${WORK}/protobuf.tar.gz"
-    tar -xf "${WORK}/protobuf.tar.gz" -C "${WORK}"
+    mkdir -p "${HAILO_PROTOBUF_SRC}"
+    tar -xf "${WORK}/protobuf.tar.gz" -C "${HAILO_PROTOBUF_SRC}" --strip-components=1
   fi
 
-  HAILO_GRPC_SRC="${WORK}/grpc-${HAILO_GRPC_VERSION}"
+  HAILO_GRPC_SRC="${HAILORT_SRC}/hailort/external/grpc-src"
   if [ ! -f "${HAILO_GRPC_SRC}/CMakeLists.txt" ]; then
     # A tarball is unusable here: gRPC's C++ build needs its submodules
     # (abseil among them), which GitHub archives omit. Clone at the tag, verify
@@ -89,6 +94,51 @@ fetch_sources() {
       || die "grpc v${HAILO_GRPC_VERSION} is not ${HAILO_GRPC_COMMIT}"
     git -C "${HAILO_GRPC_SRC}" submodule update --init --recursive
   fi
+
+  stage_remaining_externals
+}
+
+# HailoRT declares 16 FetchContent externals in hailort/cmake/external/*.cmake,
+# each pinned to a commit. With HAILO_OFFLINE_COMPILATION=ON nothing is fetched
+# at configure time, so every source must already sit at the LITERAL path its
+# cmake builds from (<src>/hailort/external/<name>-src) — FetchContent's
+# FETCHCONTENT_SOURCE_DIR_* override does not reach the execute_cmake helpers.
+# The commits are verified after checkout, the same contract as the LLVM clone;
+# protobuf (verified tarball) and gRPC (tag + submodules) are staged above.
+# name|repository|commit — re-derive from the cmake files at a HailoRT bump.
+HAILO_EXTERNALS=(
+  "benchmark|https://github.com/google/benchmark.git|f91b6b42b1b9854772a90ae9501464a161707d1e"
+  "catch2|https://github.com/catchorg/Catch2.git|c4e3767e265808590986d5db6ca1b5532a7f3d13"
+  "cli11|https://github.com/hailo-ai/CLI11.git|ae78ac41cf225706e83f57da45117e3e90d4a5b4"
+  "cpp-httplib|https://github.com/yhirose/cpp-httplib.git|51dee793fec2fa70239f5cf190e165b54803880f"
+  "dotwriter|https://github.com/hailo-ai/DotWriter|e5fa8f281adca10dd342b1d32e981499b8681daf"
+  "eigen|https://gitlab.com/libeigen/eigen|3147391d946bb4b6c68edd901f2add6ac1f31f8c"
+  "json|https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent.git|391786c6c3abdd3eeb993a3154f1f2a4cfe137a0"
+  "libnpy|https://github.com/llohse/libnpy.git|890ea4fcda302a580e633c624c6a63e2a5d422f6"
+  "pevents|https://github.com/neosmart/pevents.git|1209b1fd1bd2e75daab4380cf43d280b90b45366"
+  "pybind11|https://github.com/pybind/pybind11.git|a2e59f0e7065404b44dfe92a28aca47ba1378dc4"
+  "readerwriterqueue|https://github.com/cameron314/readerwriterqueue|435e36540e306cac40fcfeab8cc0a22d48464509"
+  "spdlog|https://github.com/gabime/spdlog|27cb4c76708608465c413f6d0e6b8d99a4d84302"
+  "tokenizers|https://github.com/mlc-ai/tokenizers-cpp.git|125d072f52290fa6d2944b3d72ccc937786ec631"
+  "xxhash|https://github.com/Cyan4973/xxHash|bbb27a5efb85b92a0486cf361a8635715a53f6ba"
+)
+
+stage_remaining_externals() {
+  local spec name url commit dir
+  for spec in "${HAILO_EXTERNALS[@]}"; do
+    IFS='|' read -r name url commit <<<"${spec}"
+    dir="${HAILORT_SRC}/hailort/external/${name}-src"
+    if [ -d "${dir}" ] && [ -n "$(ls -A "${dir}" 2>/dev/null)" ]; then
+      continue
+    fi
+    info "staging external ${name} @ ${commit:0:10}"
+    git clone --quiet --filter=blob:none --no-checkout "${url}" "${dir}" \
+      || git clone --quiet --no-checkout "${url}" "${dir}"
+    git -C "${dir}" checkout --quiet "${commit}"
+    [ "$(git -C "${dir}" rev-parse HEAD)" = "${commit}" ] \
+      || die "external ${name} is not ${commit}"
+    git -C "${dir}" submodule update --init --recursive --quiet
+  done
 }
 
 build_hailort() {

@@ -61,7 +61,13 @@ is untouched — the variant builds after the runtime lane, like `:nvidia`/`:amd
 `pyhailort` is deliberately not built (the public package ships only in Hailo's
 `.deb`). Pins live in `versions.env`, licence rows in `docs/deps/deps.json`
 (MIT, and LGPL-2.1-or-later with a source pointer), and
-`sync_versions.py --check` is green. First build owed.
+`sync_versions.py --check` is green. **amd64 built, verified and published as
+`:hailo-amd64` the same day** — `hailortcli --version` reports 4.24.0 and
+`gst-inspect-1.0 hailonet` resolves the element in the shipped image; arm64 is
+the next build. The first two build attempts are what shaped the script: the
+offline externals must sit at the literal `<src>/hailort/external/<name>-src`
+paths (16 of them, commit-verified), and the base runtime runs as uid 1001, so
+the payload copy needs an explicit `USER root`.
 
 ## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
 

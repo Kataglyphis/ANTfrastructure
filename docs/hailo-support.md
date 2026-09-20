@@ -1,10 +1,17 @@
 # Hailo support — image-chain integration plan
 
-**Status: IMPLEMENTED as the opt-in `:hailo` variant (2026-09-20); the standard
-`:latest-cross` is unchanged and carries no Hailo.** Host-side `.hef` compilation
-and the PCIe driver already have procedures — [`linux-accelerator-images.md` §
-Edge accelerators](linux-accelerator-images.md#edge-accelerators). This page owns
-the variant's design, the upstream facts it rests on, and what remains open.
+**Status: IMPLEMENTED and PROVEN on amd64 (2026-09-20); arm64 build pending.
+The standard `:latest-cross` is unchanged and carries no Hailo.** Host-side
+`.hef` compilation and the PCIe driver already have procedures —
+[`linux-accelerator-images.md` § Edge accelerators](linux-accelerator-images.md#edge-accelerators).
+This page owns the variant's design, the upstream facts it rests on, and what
+remains open.
+
+**Proven 2026-09-20 (amd64):** `:hailo-amd64` built and published; in the
+shipped image `hailortcli --version` reports `HailoRT-CLI version 4.24.0` and
+`gst-inspect-1.0 hailonet` resolves the element. The build-stage self-checks
+(`hailortcli --version`, `gst-inspect-1.0 hailonet`) run before the payload is
+copied, so a broken element fails the build rather than shipping.
 
 ## What exists (2026-09-20)
 
@@ -168,9 +175,9 @@ externals: `HAILO_PROTOBUF_VERSION`/`_SHA256`,
 1. **Phase 0 — decisions.** Family: **Hailo-8L/8** (`hailo8`, HailoRT 4.24.x),
    the M.2 cards; Hailo-10H (`master`, 5.4.x) needs a second pin set. TAPPAS:
    **no** — `hailonet` only (option (a) below).
-2. **Phase 1 — HailoRT userspace + `hailonet`: implemented, build owed.** The
-   script and Dockerfile exist and are pinned; the first amd64 build is the
-   proof. arm64 follows once amd64 is green.
+2. **Phase 1 — HailoRT userspace + `hailonet`: amd64 DONE.** Built, verified
+   and published as `:hailo-amd64`; arm64 is the next build (QEMU, needs a disk
+   window).
 3. **Phase 2 — TAPPAS (optional, timeboxed).** Only if a consumer needs its
    pipelines; evaluate option (b) and stop if the patches grow.
 4. **Phase 3 — Windows HailoRT (optional).** Separate lane, separate gates.
@@ -180,10 +187,12 @@ externals: `HAILO_PROTOBUF_VERSION`/`_SHA256`,
 
 ## Open questions
 
-- Does `hailonet` configure and load against the image's GStreamer? The first
-  build answers it; the build-stage self-check fails loudly if not.
+- Does `hailonet` configure and load against the image's GStreamer? **Answered
+  2026-09-20: yes** — built and loaded on amd64 (see the status block).
 - Does the protobuf/gRPC offline staging configure cleanly, and how long does
-  the gRPC submodule clone take? The build reports both.
+  the gRPC submodule clone take? **Answered: yes**; all 16 commit-pinned
+  externals are staged by `stage_remaining_externals` (protobuf as a verified
+  tarball, gRPC as a tag clone with submodules).
 - Which device does the consumer actually run? That answer may add the
   Hailo-10H pin set.
 - `pyhailort`, if ever needed: it ships in Hailo's `.deb`, not the source build.
