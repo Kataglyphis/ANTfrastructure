@@ -3,7 +3,7 @@
 # ==============================================================================
 # Dockerfile.hailo — the opt-in Hailo variant image
 #
-#   :cross-android-<arch>  ->  hailo-build (this)  ->  copied into :latest-cross-<arch>
+#   :latest-cross-<arch>  ->  hailo-build (native, in the runtime image)  ->  copied in place
 #
 # HailoRT (libhailort, hailortcli, the hailonet GStreamer element) is built
 # against the media image's GStreamer and copied into the published runtime
@@ -22,13 +22,23 @@
 # ==============================================================================
 
 ARG TARGETARCH
-ARG BUILDER_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGETARCH:-amd64}
+# The builder is the runtime image itself: it carries a native GCC 16.2.0,
+# cmake/ninja/git and the GStreamer dev files, so the payload is built natively
+# for the target (amd64 native; arm64 under QEMU). The cross-android images were
+# the first attempt — they build on amd64 with cross tools, and HailoRT's
+# FetchContent externals invoke their own nested cmake, which a cross
+# CMAKE_C_COMPILER cannot reach (`as: unrecognized option '-EL'`).
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-${TARGETARCH:-amd64}
+ARG BUILDER_IMAGE=${BASE_IMAGE}
 
 # ------------------------------------------------------------------------------
 # Stage 1: build HailoRT against the media GStreamer
 # ------------------------------------------------------------------------------
 FROM ${BUILDER_IMAGE} AS hailo-build
+
+# The runtime image runs as uid 1001; the build writes /opt/hailo and its cache
+# mounts, so it needs root explicitly.
+USER root
 
 ARG TARGETARCH
 ARG HAILORT_VERSION=4.24.0
@@ -61,6 +71,10 @@ RUN --mount=type=cache,target=/var/cache/hailo-build,id=hailo-build-${TARGETARCH
     HAILO_PREFIX="${HAILO_PREFIX}" \
     GSTREAMER_PREFIX="${GSTREAMER_PREFIX}" \
     bash /opt/scripts/03-media/build/hailo/build-hailort.sh
+
+# Back to the runtime's user: hadolint refuses a stage whose last USER is root,
+# and nothing after this RUN needs the privilege.
+USER kataglyphis
 
 # ------------------------------------------------------------------------------
 # Stage 2: the runtime image + the Hailo payload
