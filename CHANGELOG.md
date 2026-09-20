@@ -27,6 +27,42 @@ asserts were the defect:
 - Pester coverage for the decision (unset, missing, empty, one entry); the
   Windows suite is green at 864/864.
 
+## 2026-09-20 — the torchvision pair fix, and the Hailo variant
+
+**The Linux rebuild's version-pin assertion caught a mismatched
+torch/torchvision pair.** The 2026-09-18 wave bumped `TORCHVISION_VERSION` to
+v0.29.0 while `PYTORCH_VERSION` stayed v2.13.0; pytorch/vision's compatibility
+table pairs torch 2.13 with torchvision **0.28** (0.29 needs torch 2.14), and
+both the wheelhouse's built-in fallback and OrchestrANT's lock install 0.28.0 —
+so the runtime image shipped 0.28.0 and `assert_pinned_versions` failed the
+amd64 smoke with `installed 0.28.0+cpu NOT in expected ['0.29.0']`. Reverted
+the pin to v0.28.0 with a `bump:hold` note that re-derives from the table at
+every torch bump. The wrappers were already built and pushed; the manifest was
+repaired with `build-runtime-manifest.sh --repair --push-manifest` (no image
+rebuilds) and the published index now carries this run's three wrappers.
+
+**A second gap the incident exposed, deliberately not fixed here.**
+`Dockerfile.media` never declares `PYTORCH_VERSION`/`TORCHVISION_VERSION` as
+ARGs, so the app-wheelhouse RUN cannot see them and falls back to the script's
+built-in defaults — which also means the layer cache does not re-key on a
+version bump. It stayed invisible only while the pin equalled the fallback.
+Wiring it re-keys the wheelhouse for all three arches (hours under QEMU); it
+needs a planned window, and it is tracked in
+[`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
+
+**Hailo support landed as the opt-in `:hailo` variant**
+([`docs/hailo-support.md`](docs/hailo-support.md)). `linux/Dockerfile.hailo`
+builds HailoRT 4.24.0 (the `hailo8` line — Hailo-8/8R/8L) plus `hailortcli` and
+the `hailonet` GStreamer element against the media image's GStreamer, offline
+against verified protobuf 21.12 and gRPC 1.54.0 sources, then copies the
+payload into the published runtime image. Run it with `--device=/dev/hailo0` on
+a host that loaded the GPL-2.0 `hailo_pci` driver. The standard `:latest-cross`
+is untouched — the variant builds after the runtime lane, like `:nvidia`/`:amd`.
+`pyhailort` is deliberately not built (the public package ships only in Hailo's
+`.deb`). Pins live in `versions.env`, licence rows in `docs/deps/deps.json`
+(MIT, and LGPL-2.1-or-later with a source pointer), and
+`sync_versions.py --check` is green. First build owed.
+
 ## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
 
 The first rebuild of the 2026-09-17/18 wave ran **green on BOTH Windows lanes** —

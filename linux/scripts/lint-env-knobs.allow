@@ -423,3 +423,7 @@ RENOVATE_LOG_LEVEL
 KATAGLYPHIS_REPO_ROOT
 MYPROJECT_GCC_TOOLCHAIN_PATH
 WEBDAV_VENV_DIR
+# Hailo variant build script: the work tree holding the verified HailoRT,
+# protobuf and gRPC sources (default /var/cache/hailo-build, which is a cache
+# mount in Dockerfile.hailo). An operator override for a pre-populated tree.
+HAILO_BUILD_ROOT

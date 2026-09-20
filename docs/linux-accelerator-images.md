@@ -270,6 +270,43 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd
 ```
 
+## Hailo variant
+
+HailoRT + the `hailonet` GStreamer element on top of the published runtime
+image, for hosts with a Hailo-8/8R/8L PCIe card. Design, upstream matrix and
+pins: [`hailo-support.md`](hailo-support.md). The PCIe kernel driver is
+host-only (GPL-2.0, DKMS) — the image needs `--device=/dev/hailo0`.
+
+**Files involved:**
+
+| File | Purpose |
+| --- | --- |
+| `linux/Dockerfile.hailo` | Stage 1 builds HailoRT against the media GStreamer; stage 2 copies the payload into `:latest-cross-<arch>` |
+| `linux/scripts/03-media/build/hailo/build-hailort.sh` | Verified sources → offline CMake build → self-checks (`hailortcli --version`, `gst-inspect-1.0 hailonet`) |
+| `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*`, `HAILO_GRPC_*` pins (also the Dockerfile ARG defaults) |
+
+**Build (per arch, after the runtime lane has published `:latest-cross-<arch>`):**
+
+```bash
+# amd64 — the builder is the cross-android artifact (GStreamer dev included),
+# the base is the published runtime image.
+nerdctl build --platform linux/amd64 \
+  -f linux/Dockerfile.hailo \
+  --build-arg TARGETARCH=amd64 \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:hailo-amd64 --push \
+  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-hailo-amd64,mode=max,oci-mediatypes=true \
+  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-hailo-amd64 \
+  .
+
+# arm64 — same command with TARGETARCH=arm64 (QEMU; no riscv64 build exists)
+```
+
+**Run:**
+
+```bash
+nerdctl run --rm -it --device=/dev/hailo0 ghcr.io/kataglyphis/kataglyphis_beschleuniger:hailo-amd64
+```
+
 ## Edge accelerators
 
 Neither of these has an image chain in this repo yet — they are host/device

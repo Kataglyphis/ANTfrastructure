@@ -1,11 +1,35 @@
 # Hailo support — image-chain integration plan
 
-**Status: PLAN (2026-09-19). Nothing on this page is implemented; no published
-image carries Hailo today.** Host-side `.hef` compilation and the PCIe driver
-already have procedures — [`linux-accelerator-images.md` § Edge
-accelerators](linux-accelerator-images.md#edge-accelerators). This page owns what
-would change in the Dockerfiles, what upstream facts the design rests on, and
-what must be proven before a first build.
+**Status: IMPLEMENTED as the opt-in `:hailo` variant (2026-09-20); the standard
+`:latest-cross` is unchanged and carries no Hailo.** Host-side `.hef` compilation
+and the PCIe driver already have procedures — [`linux-accelerator-images.md` §
+Edge accelerators](linux-accelerator-images.md#edge-accelerators). This page owns
+the variant's design, the upstream facts it rests on, and what remains open.
+
+## What exists (2026-09-20)
+
+| Piece | Where |
+| --- | --- |
+| Build script (HailoRT + `hailortcli` + `hailonet`) | `linux/scripts/03-media/build/hailo/build-hailort.sh` |
+| Variant Dockerfile (build stage + runtime stage) | `linux/Dockerfile.hailo` |
+| Pins (`HAILORT_*`, `HAILO_PROTOBUF_*`, `HAILO_GRPC_*`) | `linux/scripts/01-core/versions.env` |
+| Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause, Apache-2.0) | `docs/deps/deps.json` |
+| Build commands | [`linux-accelerator-images.md` § Hailo variant](linux-accelerator-images.md#hailo-variant) |
+
+The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo`'s first stage runs
+`FROM cross-android-<arch>` (which carries the media GStreamer, dev files
+included), builds HailoRT offline against verified protobuf/gRPC sources, and
+the second stage copies the payload into `latest-cross-<arch>`. The plugin and
+`libhailort` are placed on the base image's existing `GST_PLUGIN_PATH` and
+`LD_LIBRARY_PATH` entries, so the variant's environment is the runtime's —
+no ENV surgery, one image shape.
+
+**Not implemented, deliberately:** `pyhailort`. The public Python package is not
+produced by the source build (the repo's bindings CMake only builds an internal
+module under `HAILO_BUILD_PYHAILORT_INTERNAL`); it ships in Hailo's `.deb`. The
+GStreamer element is what this repo's pipelines need. Revisit only if a consumer
+asks for `import hailort`.
+
 
 ## Why an image chain
 
@@ -94,80 +118,72 @@ conditional consumers, and its own tag — the standard chain stays unchanged
 when the toggle is off. [`linux-accelerator-images.md`](linux-accelerator-images.md)
 owns the existing variant mechanics; this is the Hailo instance of them.
 
-### Toggle and layers
+### Layers (as implemented)
 
-- **`ENABLE_HAILO=true`** on `build-cross-chain.sh`, reaching the media stage
-  the way `ENABLE_NVIDIA` does.
-- **`linux/Dockerfile.hailo`** — `FROM :cross-sdk-<arch>`; builds `libhailort` +
-  `hailortcli` + `pyhailort` from the pinned commit with
-  `HAILO_BUILD_GSTREAMER=OFF`, installs under `/opt/hailo/<version>`, exports
-  `HAILO_PREFIX` and `LD_LIBRARY_PATH`. No GStreamer here, so it can sit where
-  `Dockerfile.nvidia` sits.
-- **`linux/Dockerfile.media`** — when `ENABLE_HAILO=true`, build the `hailonet`
-  element against the image's GStreamer and stage it into
-  `$GSTREAMER_PREFIX/lib/gstreamer-1.0`. (Alternative with a smaller blast
-  radius: one post-media `Dockerfile.hailo` layer built `FROM` the media image
-  that does both halves. Decide at the spike; the toggle and the gates are the
-  same either way.)
-- **`linux/Dockerfile.package`** — COPY the runtime, the CLI, the Python wheel
-  and the plugin; extend the media ENV block (`HAILO_PREFIX`, plugin path) in
-  step with `03-media/runtime/media-env.sh`.
-- **`Dockerfile.torch` / app wheelhouse** — carry the `pyhailort` wheel in
-  `/opt/app-wheels` so `/opt/venv` can import it without network.
-- **`Dockerfile.android`** — untouched.
+- **`linux/Dockerfile.hailo`, stage 1** — `FROM cross-android-<arch>` (the
+  media GStreamer with its dev files is there); runs
+  `build-hailort.sh` with `HAILO_BUILD_GSTREAMER=ON` and
+  `HAILO_OFFLINE_COMPILATION=ON`, externals staged from verified sources.
+- **`linux/Dockerfile.hailo`, stage 2** — `FROM latest-cross-<arch>`; copies
+  `/opt/hailo`, drops the plugin into the base image's
+  `${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0` and `libhailort` into
+  `/usr/local/lib`, and runs `ldconfig`. No ENV block changes: the variant's
+  environment IS the runtime's.
+- **No `ENABLE_HAILO` toggle in the chain, deliberately.** The variant builds
+  after the runtime lane has published `latest-cross-<arch>`, exactly like the
+  NVIDIA/AMD hand-run chains, so a Hailo experiment can never perturb the
+  standard chain's cache or gates. Folding it into `:latest-cross` itself would
+  re-key the media stage for every consumer and is not what the variant is for.
+- **`Dockerfile.media` / `Dockerfile.package` / `Dockerfile.android`** —
+  untouched.
 
 ### Pins (`versions.env`, single source)
 
-`HAILORT_BRANCH` (`hailo8` | `master`), `HAILORT_VERSION`, `HAILORT_COMMIT` —
-**the peeled commit, not the annotated tag object** (the LLVM_COMMIT incident:
-`git ls-remote` prints both lines, and the first one is the tag object),
-`HAILORT_DRIVER_VERSION` (documentation only — the host installs the driver),
-and the TAPPAS pair only if phase 2 happens. Source tarballs are
-`download_verified_file` with a SHA256 in the same file.
+`HAILORT_VERSION`, `HAILORT_COMMIT` (for the `hailo8` line the value is both
+the tag and the commit — a lightweight tag), `HAILORT_SOURCE_SHA256`, and the
+externals: `HAILO_PROTOBUF_VERSION`/`_SHA256`,
+`HAILO_GRPC_VERSION`/`_COMMIT`. The same values are the ARG defaults in
+`Dockerfile.hailo`, and `sync_versions.py --check` keeps the two in step.
 
-### Gates that must learn Hailo in the same commit
+### Gates
 
-| Gate | Change |
+| Gate | State |
 | --- | --- |
-| `03-media/runtime/verify-media-artifacts.sh` | a `hailo` stage row |
-| `06-packaging/smoke-runtime-image.sh` | presence checks (`hailortcli --version`, `gst-inspect-1.0 hailonet`), device-dependent checks gated on a device, riscv64 exemption in `_parity_exempt` |
-| `bundle-runtime-closure.sh` / `check-bundle-closure.sh` | Hailo libs and plugin in the allowlist with their own `$ORIGIN` rpath — RUNPATH is not transitive |
-| `docs/deps/deps.json` + `third-party-licenses.md` | MIT and LGPL-2.1-or-later rows, source pointers for the copyleft pair |
-| SBOM (`docs/deps/sbom-curated.spdx.json`) | the source-built components |
-| `lint-env-knobs` / env-knob prefixes | `ENABLE_HAILO` follows the `ENABLE_NVIDIA` spelling |
+| Build-stage self-check (`hailortcli --version`, `gst-inspect-1.0 hailonet`) | in `build-hailort.sh`, fails the build |
+| Runtime-stage self-check (`gst-inspect-1.0 hailonet` after the copy) | in `Dockerfile.hailo` stage 2 |
+| `docs/deps/deps.json` + `third-party-licenses.md` | MIT, LGPL-2.1-or-later (with source pointer), BSD-3-Clause, Apache-2.0 rows added |
+| `verify-media-artifacts.sh` / `smoke-runtime-image.sh` | **not wired** — those gates grade the standard chain, which carries no Hailo; a variant gate would run in the variant's own build |
+| Bundle closure | not applicable — the variant is a full image, not a bundle |
 
 ### Host and run contract
 
 - Host: PCIe driver (GPL-2.0, DKMS) and `modprobe hailo_pci` — already in the
   Edge accelerators section; link, do not restate.
-- Run: `--device=/dev/hailo0` (plus the `video` group where the board needs
-  it). The runtime image's run instructions gain one line.
-- Consumer contract: `import hailort` from `/opt/venv`, `hailonet` on
-  `GST_PLUGIN_PATH`, and the `.hef` path supplied by the app (a
-  `KATAGLYPHIS_HAILO_HEF`-style knob only if a consumer asks for one).
+- Run: `--device=/dev/hailo0` (plus the `video` group where the board needs it).
+- Consumer contract: the `hailonet` element on the image's `GST_PLUGIN_PATH`,
+  `hailortcli` on `PATH`, and the `.hef` path supplied by the app.
 
 ## Phased rollout
 
-1. **Phase 0 — decisions (owner).** Which family: Hailo-8/8L (`hailo8`,
-   HailoRT 4.24.x) or Hailo-10H (`master`, 5.4.x)? The default assumption here
-   is **Hailo-8L/8** — the M.2 cards. TAPPAS yes/no: default no (option (a)).
-2. **Phase 1 — HailoRT userspace.** Spike `hailonet` against the image's
-   GStreamer; then `Dockerfile.hailo` + media wiring + package/bundle + gates,
-   amd64 first, then arm64. One real build proves the phase.
+1. **Phase 0 — decisions.** Family: **Hailo-8L/8** (`hailo8`, HailoRT 4.24.x),
+   the M.2 cards; Hailo-10H (`master`, 5.4.x) needs a second pin set. TAPPAS:
+   **no** — `hailonet` only (option (a) below).
+2. **Phase 1 — HailoRT userspace + `hailonet`: implemented, build owed.** The
+   script and Dockerfile exist and are pinned; the first amd64 build is the
+   proof. arm64 follows once amd64 is green.
 3. **Phase 2 — TAPPAS (optional, timeboxed).** Only if a consumer needs its
    pipelines; evaluate option (b) and stop if the patches grow.
 4. **Phase 3 — Windows HailoRT (optional).** Separate lane, separate gates.
-5. **Phase 4 — consumer adoption.** The image ships the runtime; the consumer
-   repos document the device passthrough and model path, and the cat-detection
-   stream can move from ONNX CPU to `.hef` on the device.
+5. **Phase 4 — consumer adoption.** Consumer repos document the device
+   passthrough and model path, and the cat-detection stream can move from ONNX
+   CPU to `.hef` on the device.
 
 ## Open questions
 
-- Which device does the consumer actually run? That answer selects the branch
-  and every pin.
-- Does `hailonet` configure and load against the image's GStreamer? One build
-  answers it; nothing else should be designed before that.
-- pyhailort's build path (`hailort/libhailort/bindings/python`) and wheel name
-  under the repo's Python pins.
-- Does the protobuf/gRPC FetchContent pin cleanly, or do the externals need
-  vendoring?
+- Does `hailonet` configure and load against the image's GStreamer? The first
+  build answers it; the build-stage self-check fails loudly if not.
+- Does the protobuf/gRPC offline staging configure cleanly, and how long does
+  the gRPC submodule clone take? The build reports both.
+- Which device does the consumer actually run? That answer may add the
+  Hailo-10H pin set.
+- `pyhailort`, if ever needed: it ships in Hailo's `.deb`, not the source build.

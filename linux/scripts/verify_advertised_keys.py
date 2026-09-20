@@ -31,6 +31,11 @@ EXCUSED = {
     "MEDIAPIPE_GENAI_VERSION": "android/mediapipe lane, not the cross runtime image",
     "ANDROID_CMAKE_VERSION": "android lane image, not the cross runtime image",
     "ANDROID_NDK_VERSION": "android lane image, not the cross runtime image",
+    "HAILORT_VERSION": "Hailo variant image (Dockerfile.hailo), not the standard "
+                       "cross runtime image the smoke grades; the variant's build "
+                       "stage runs hailortcli --version and gst-inspect-1.0 hailonet",
+    "HAILO_PROTOBUF_VERSION": "Hailo variant build external, build-stage only",
+    "HAILO_GRPC_VERSION": "Hailo variant build external, build-stage only",
     "ANDROID_SDK_VERSION": "android lane image, not the cross runtime image",
     "CUDA_VERSION": "nvidia lane image, not the 3-arch cross runtime",
     "CUDNN_VERSION": "nvidia lane image, not the 3-arch cross runtime",

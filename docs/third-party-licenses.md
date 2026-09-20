@@ -182,12 +182,21 @@ halves fit together and why neither is sufficient alone.
 | ROCm | 10.0 | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | Apache 2.0 / MIT (varies by component) |
 | MIGraphX | 2.17.0 | [github.com/ROCm/AMDMIGraphX](https://github.com/ROCm/AMDMIGraphX) | MIT |
 
+### Optional Accelerator — Hailo (`Dockerfile.hailo`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| HailoRT (libhailort, hailortcli) | 4.24.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | MIT |
+| HailoRT hailonet GStreamer element | 4.24.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | LGPLv2.1+ |
+| protobuf (HailoRT build external) | 21.12 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause |
+| gRPC (HailoRT build external) | 1.54.0 | [github.com/grpc/grpc](https://github.com/grpc/grpc) | Apache 2.0 |
+
 ### Frameworks (`Dockerfile.torch`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.29.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
 | Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
@@ -417,6 +426,12 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 - **Licence:** Apache-2.0 AND MIT AND LGPL-2.0-or-later
 - **Source:** <https://gitlab.freedesktop.org/gstreamer/gstreamer>
 - **Revision:** same refs as the Media Layer rows above
+
+### HailoRT hailonet GStreamer element — Linux Images
+
+- **Licence:** LGPL-2.1-or-later
+- **Source:** <https://github.com/hailo-ai/hailort>
+- **Revision:** 4.24.0
 
 ### ccache — Linux Images
 
