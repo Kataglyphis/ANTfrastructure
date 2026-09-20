@@ -1414,6 +1414,8 @@ printf 'ADV UV_VERSION %s\n'                 "${UV_VERSION:-}"
 printf 'ADV OPENCV_VERSION %s\n'             "${OPENCV_VERSION:-}"
 printf 'ADV ONNXRUNTIME_VERSION %s\n'        "${ONNXRUNTIME_VERSION:-}"
 printf 'ADV ONNXRUNTIME_GENAI_VERSION %s\n'  "${ONNXRUNTIME_GENAI_VERSION:-}"
+printf 'ADV PYTORCH_VERSION %s\n'            "${PYTORCH_VERSION:-}"
+printf 'ADV TORCHVISION_VERSION %s\n'        "${TORCHVISION_VERSION:-}"
 printf 'ADV PYAV_VERSION %s\n'               "${PYAV_VERSION:-}"
 printf 'ADV IREE_VERSION %s\n'               "${IREE_VERSION:-}"
 printf 'ADV LITERT_VERSION %s\n'             "${LITERT_VERSION:-}"
@@ -1452,6 +1454,8 @@ printf 'HAVE UV_VERSION %s\n'       "$(uv --version 2>/dev/null | grep -oE '[0-9
 printf 'HAVE OPENCV_VERSION %s\n'   "$("$py" -c 'import cv2;print(cv2.__version__)' 2>/dev/null)"
 printf 'HAVE ONNXRUNTIME_VERSION %s\n' "$("$py" -c 'import onnxruntime;print(onnxruntime.__version__)' 2>/dev/null)"
 printf 'HAVE ONNXRUNTIME_GENAI_VERSION %s\n' "$("$py" -c 'import onnxruntime_genai as g;print(g.__version__)' 2>/dev/null)"
+printf 'HAVE PYTORCH_VERSION %s\n'    "$("$py" -c 'import torch;print(torch.__version__)' 2>/dev/null)"
+printf 'HAVE TORCHVISION_VERSION %s\n' "$("$py" -c 'import torchvision;print(torchvision.__version__)' 2>/dev/null)"
 printf 'HAVE PYAV_VERSION %s\n'     "$("$py" -c 'import av;print(av.__version__)' 2>/dev/null)"
 printf 'HAVE IREE_VERSION %s\n'     "$(_pyver iree-base-runtime)"
 printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
@@ -1566,7 +1570,8 @@ _shipped_truth_probe() {
 _ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
-LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION"
+LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION
+PYTORCH_VERSION TORCHVISION_VERSION"
 
 # Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
 # selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.

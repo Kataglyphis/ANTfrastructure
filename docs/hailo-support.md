@@ -1,19 +1,20 @@
 # Hailo support — image-chain integration plan
 
-**Status: IMPLEMENTED and PROVEN on amd64 AND arm64 (2026-09-20), published as
-the multi-arch `:hailo` manifest. The standard `:latest-cross` is unchanged and
-carries no Hailo.** Host-side `.hef` compilation and the PCIe driver already
-have procedures — [`linux-accelerator-images.md` § Edge
+**Status: IN THE STANDARD RUNTIME (2026-09-20). `:latest-cross` builds the
+Hailo payload by default on amd64 and arm64; riscv64 skips it (no HailoRT
+support at any version). The `:hailo` variant image remains published for
+consumers that want the tag.** Host-side `.hef` compilation and the PCIe driver
+already have procedures — [`linux-accelerator-images.md` § Edge
 accelerators](linux-accelerator-images.md#edge-accelerators). This page owns the
-variant's design, the upstream facts it rests on, and what remains open.
+design, the upstream facts it rests on, and what remains open.
 
-**Proven 2026-09-20:** `:hailo-amd64` and `:hailo-arm64` built and published,
-joined into the `:hailo` manifest; in both shipped images `hailortcli --version`
-reports `HailoRT-CLI version 4.24.0` and `gst-inspect-1.0 hailonet` resolves the
-element. The build-stage self-checks run before the payload is copied, so a
-broken element fails the build rather than shipping. riscv64 has no HailoRT
-support at any version — the script refuses it, and that is the documented
-exemption (not a gap).
+**Proven 2026-09-20:** the payload was first proven in `:hailo-amd64` /
+`:hailo-arm64` (joined into the `:hailo` manifest) and then folded into
+`Dockerfile.torch`, so every `:latest-cross` wrapper carries it. In the shipped
+images `hailortcli --version` reports `HailoRT-CLI version 4.24.0` and
+`gst-inspect-1.0 hailonet` resolves the element. The build's own checks run
+before the payload is accepted, so a broken element fails the build rather than
+shipping.
 
 ## What exists (2026-09-20)
 
@@ -125,29 +126,29 @@ LGPL-2.1-or-later and targets Ubuntu x86 24.04/22.04, Ubuntu aarch64 20.04
 
 ## Integration design (Linux lane)
 
-The shape mirrors the NVIDIA/AMD variants: an opt-in toggle, a vendor layer,
-conditional consumers, and its own tag — the standard chain stays unchanged
-when the toggle is off. [`linux-accelerator-images.md`](linux-accelerator-images.md)
-owns the existing variant mechanics; this is the Hailo instance of them.
+The standard runtime builds the payload itself, and the `:hailo` variant stays
+as a convenience tag. [`linux-accelerator-images.md`](linux-accelerator-images.md)
+owns the variant mechanics; this is the Hailo instance of them.
 
 ### Layers (as implemented)
 
-- **`linux/Dockerfile.hailo`, stage 1** — `FROM latest-cross-<arch>` (native
-  GCC 16.2.0 + the GStreamer dev files); runs `build-hailort.sh` with
-  `HAILO_BUILD_GSTREAMER=ON` and `HAILO_OFFLINE_COMPILATION=ON`, externals
-  staged from verified sources, `USER root` for the payload write.
-- **`linux/Dockerfile.hailo`, stage 2** — `FROM latest-cross-<arch>`; copies
-  `/opt/hailo`, drops the plugin into the base image's
-  `${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0` and `libhailort` into
-  `/usr/local/lib`, and runs `ldconfig`. No ENV block changes: the variant's
-  environment IS the runtime's.
-- **No `ENABLE_HAILO` toggle in the chain, deliberately.** The variant builds
-  after the runtime lane has published `latest-cross-<arch>`, exactly like the
-  NVIDIA/AMD hand-run chains, so a Hailo experiment can never perturb the
-  standard chain's cache or gates. Folding it into `:latest-cross` itself would
-  re-key the media stage for every consumer and is not what the variant is for.
+- **`linux/Dockerfile.torch`** (the standard wrapper, per arch) — before the
+  runtime user is created, it runs `build-hailort.sh` with
+  `HAILO_BUILD_GSTREAMER=ON` and `HAILO_OFFLINE_COMPILATION=ON` (externals
+  staged from verified sources), installs the plugin into
+  `${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0`, writes
+  `/etc/ld.so.conf.d/000-hailo.conf`, symlinks `hailortcli`, and self-checks
+  both. riscv64 prints a skip line and builds nothing. The image has GCC 16.2.0,
+  cmake, ninja and the GStreamer dev files, so the build is native.
+- **`linux/Dockerfile.hailo`** — the same payload as a standalone variant
+  (`:hailo-<arch>`, `:hailo`), for consumers that want the tag rather than the
+  standard one. It builds in `latest-cross-<arch>` and copies the payload in.
 - **`Dockerfile.media` / `Dockerfile.package` / `Dockerfile.android`** —
-  untouched.
+  untouched; the build lives where the compiler and GStreamer dev files already
+  are, so the media stage's fan-out is not re-keyed.
+- **riscv64 skips by construction** — HailoRT has no riscv64 support, the script
+  refuses it, and the Dockerfile branches around it. That is the documented
+  exemption, not a gap.
 
 ### Pins (`versions.env`, single source)
 
@@ -155,7 +156,8 @@ owns the existing variant mechanics; this is the Hailo instance of them.
 the tag and the commit — a lightweight tag), `HAILORT_SOURCE_SHA256`, and the
 externals: `HAILO_PROTOBUF_VERSION`/`_SHA256`,
 `HAILO_GRPC_VERSION`/`_COMMIT`. The same values are the ARG defaults in
-`Dockerfile.hailo`, and `sync_versions.py --check` keeps the two in step.
+`Dockerfile.torch` and `Dockerfile.hailo`, and `sync_versions.py --check` keeps
+them in step.
 
 ### Gates
 

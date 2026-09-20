@@ -86,7 +86,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | ROCm | 10.0 | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | Apache 2.0 / MIT (varies by component) |
 | MIGraphX | 2.17.0 | [github.com/ROCm/AMDMIGraphX](https://github.com/ROCm/AMDMIGraphX) | MIT |
 
-### Optional Accelerator — Hailo (`Dockerfile.hailo`)
+### Optional Accelerator — Hailo (`Dockerfile.torch`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
@@ -99,8 +99,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| PyTorch | v2.14.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
+| TorchVision | v0.29.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
 | Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)

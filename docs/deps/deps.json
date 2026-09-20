@@ -388,7 +388,7 @@
         },
         {
           "title": "Optional Accelerator \u2014 Hailo",
-          "dockerfile": "Dockerfile.hailo",
+          "dockerfile": "Dockerfile.torch",
           "entries": [
             {
               "name": "HailoRT (libhailort, hailortcli)",
