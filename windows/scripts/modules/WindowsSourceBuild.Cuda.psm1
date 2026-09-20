@@ -157,6 +157,26 @@ function Test-CudaWindowsArm64Payload {
     return (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudart.lib')) -and (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudadevrt.lib'))
 }
 
+function Get-NvccHostCompilerPath {
+    <#
+    .SYNOPSIS
+        The MSVC cl.exe nvcc must use as its host compiler for the TARGET arch.
+    .DESCRIPTION
+        nvcc rejects clang-cl, and the host compiler must TARGET the build's arch:
+        natively the VsDevCmd x64 cl; on the cross lane the x64-HOSTED
+        arm64-targeting cl (Hostx64\arm64) -- the one `vcvarsall x64_arm64` puts on
+        PATH. Get-Command would hand back the x64 one, and nvcc would then emit x64
+        host objects into an arm64 link. One owner for every nvcc-driven build
+        (ORT, GenAI, OpenCV, TVM).
+    #>
+    param([string]$Arch = '')
+    $targetArch = Get-WindowsTargetArch -Arch $Arch
+    if ($targetArch -eq 'amd64') { return (Get-Command cl.exe -ErrorAction Stop).Source }
+    $crossCl = Join-Path $env:VCToolsInstallDir "bin\Hostx64\$targetArch\cl.exe"
+    if (Test-Path $crossCl) { return $crossCl }
+    return (Get-Command cl.exe -ErrorAction Stop).Source
+}
+
 function Get-NvccCudaCmakeArgs {
     param(
         [Parameter(Mandatory)][string]$CudaRoot,
@@ -167,17 +187,7 @@ function Get-NvccCudaCmakeArgs {
         [string]$Arch = ''
     )
     $targetArch = Get-WindowsTargetArch -Arch $Arch
-    # nvcc rejects clang-cl; the host compiler is MSVC cl.exe for the TARGET arch.
-    # Native lane: the VsDevCmd x64 cl. Cross lane (#176): the x64-HOSTED
-    # arm64-targeting cl (Hostx64\arm64) -- the one `vcvarsall x64_arm64` puts on
-    # PATH. Get-Command would hand us the x64 cl and nvcc would then emit x64
-    # host objects into an arm64 link.
-    $clExe = if ($targetArch -eq 'amd64') {
-        (Get-Command cl.exe -ErrorAction Stop).Source
-    } else {
-        $crossCl = Join-Path $env:VCToolsInstallDir "bin\Hostx64\$targetArch\cl.exe"
-        if (Test-Path $crossCl) { $crossCl } else { (Get-Command cl.exe -ErrorAction Stop).Source }
-    }
+    $clExe = Get-NvccHostCompilerPath -Arch $targetArch
     $preamble = '-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING'
     # Cross: NVIDIA's Windows-on-Arm porting guide documents `vcvarsall x64_arm64`
     # + `nvcc --use-local-env`; without it nvcc bootstraps its own MSVC env and
@@ -204,6 +214,7 @@ Export-ModuleMember -Function @(
     'Get-CudnnLibraryDir',
     'Get-CudnnLibrary',
     'Test-CudaWindowsArm64Payload',
+    'Get-NvccHostCompilerPath',
     'Get-NvccCudaCmakeArgs',
     'Resolve-DirectoryPath',
     'New-Timestamp',

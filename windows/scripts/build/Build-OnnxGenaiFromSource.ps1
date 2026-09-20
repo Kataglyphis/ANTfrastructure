@@ -68,9 +68,12 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # fall back to ORT's CUDA EP. nvcc's host compiler must be cl.exe (it rejects clang-cl).
 # GENAI_FORCE_CPU=1 is a dev-only escape hatch (skips the slow nvcc kernels); media-core never sets it.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
-# Decided by the TARGET, never the host: Get-GpuEnvironment probes the x64 build host, and
-# there is no CUDA for Windows-on-ARM. Same guard as Build-OnnxFromSource.ps1.
-if ($gpuEnv.HasCuda -and -not $genaiCross) {
+# Decided by the TARGET, never the host: Get-GpuEnvironment probes the x64 build host.
+# #176 phase 2 (2026-09-20): the cross lane builds the CUDA kernels too when the IMAGE
+# carries the arm64 payload (lib\arm64) -- the same positive signal ORT uses; a cross
+# image without it stays CPU + DML.
+$genaiCudaUsable = $gpuEnv.HasCuda -and ((-not $genaiCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+if ($genaiCudaUsable) {
     $cudaRoot  = $gpuEnv.CudaRoot
     $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
     # C++20, not 17 (std::span in cuda_topk.cu); /wd4996 for the CUDA 13.x curand
@@ -83,10 +86,9 @@ if ($gpuEnv.HasCuda -and -not $genaiCross) {
     Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
 } else {
     $genaiCudaArgs = @('-DUSE_CUDA=OFF')
-    # "not wired for THIS component", not "impossible": the arm64 CUDA/cuDNN toolkit is
-    # staged by Install-Cuda.ps1 and ORT's CUDA EP uses it (#176, 2026-09-20); GenAI's
-    # arm64 CUDA build is phase 2 of that backlog item.
-    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- GenAI CUDA on arm64 is #176 phase 2 (the toolkit and the ORT CUDA EP are wired)" }
+    # "not wired for THIS component", not "impossible": phase 2 is in tree (2026-09-20),
+    # so a cross build reaching here means the image has no arm64 CUDA payload.
+    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- no arm64 CUDA payload staged in this image (Install-Cuda.ps1 -TargetArch arm64, #176)" }
                     else { 'CPU-only lane -- no nvidia GPU detected' }
     Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
 }

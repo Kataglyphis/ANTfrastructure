@@ -2054,6 +2054,7 @@ Export-ModuleMember -Function @(
     'Get-CudnnLibraryDir',
     'Get-CudnnLibrary',
     'Test-CudaWindowsArm64Payload',
+    'Get-NvccHostCompilerPath',
     'Get-LlvmArchiverCmakeArg',
     # The ONE llvm-project source pin table + its fetch (#47/#129): both the
     # patched-toolchain build and TVM's mini-LLVM heal call these directly.

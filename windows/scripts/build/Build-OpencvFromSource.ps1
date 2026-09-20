@@ -366,12 +366,11 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
 # Get-GpuEnvironment sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH; only CUDACXX is
 # needed on top, for CMake's enable_language(CUDA) probe.
 $gpuEnv = Get-GpuEnvironment
-# Cross lane: NEVER take CUDA from a HOST probe. It answers "does this amd64 BUILD HOST have a
-# toolkit", which says nothing about the target -- a bare host probe would point nvcc at x64
-# device libs and link them into an "arm64" OpenCV. Enforced here as well as in the driver so a
-# direct script invocation cannot bypass it. #176 (2026-09-20) wires the arm64 CUDA/cuDNN
-# toolkit and the ORT CUDA EP; OpenCV's arm64 CUDA build is phase 2, so the guard stays.
-if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
+# Cross lane: never take CUDA from a HOST probe -- but #176 phase 2 (2026-09-20) enables it
+# when the IMAGE carries the arm64 payload (lib\arm64, staged by Install-Cuda.ps1 -TargetArch
+# arm64). Same positive signal as ORT: a cross image without the payload stays CPU + DML.
+$ocvCudaUsable = $gpuEnv.HasCuda -and ((-not $ocvCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+if ($ocvCudaUsable) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
@@ -382,7 +381,19 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
     $cmakeExtra += "-DCUDAToolkit_ROOT=$cRootFwd"
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
     $cmakeExtra += "-DCMAKE_CUDA_COMPILER:FILEPATH=$($env:CUDACXX -replace '\\', '/')"
+    # Arch-aware host compiler (#176): the x64-hosted arm64 cl on the cross lane.
+    $cmakeExtra += "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$((Get-NvccHostCompilerPath -Arch $ocvTargetArch) -replace '\\', '/')"
     $cmakeExtra += "-DCMAKE_CUDA_ARCHITECTURES=$(Get-CudaArchitectureList -Decoration '-real')"
+    if ($ocvCross) {
+        # Documented x64->ARM64 flow; and OpenCV's find_package(CUDNN) must be pointed at the
+        # STAGED arm64 lib explicitly (its default search would find the x64 one).
+        $cmakeExtra += '-DCMAKE_CUDA_FLAGS:STRING=--use-local-env'
+        $cudnnLib = Get-CudnnLibrary -CudnnRoot $gpuEnv.CudnnRoot -Arch $ocvTargetArch
+        if ($cudnnLib) {
+            $cmakeExtra += "-DCUDNN_LIBRARY=$($cudnnLib -replace '\\', '/')"
+            $cmakeExtra += "-DCUDNN_INCLUDE_DIR=$((Join-Path $gpuEnv.CudnnRoot 'include') -replace '\\', '/')"
+        }
+    }
 } else {
     $cmakeExtra += '-DWITH_CUDA=OFF'
     Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)'
