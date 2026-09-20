@@ -1,17 +1,24 @@
 diff --git a/modules/cudafilters/src/cuda/wavelet_matrix_2d.cuh b/modules/cudafilters/src/cuda/wavelet_matrix_2d.cuh
-index 9c10c22..d6220f7 100644
+index 9c10c22..89afff0 100644
 --- a/modules/cudafilters/src/cuda/wavelet_matrix_2d.cuh
 +++ b/modules/cudafilters/src/cuda/wavelet_matrix_2d.cuh
-@@ -701,7 +701,11 @@ public:
-     size_t bv_block_len = 0;
-     size_t bv_chunk_len = 0;
+@@ -703,7 +703,19 @@ public:
  
--#if _MSC_VER >= 1920 || __INTEL_COMPILER
-+// PATCHED (Windows ARM64, #176 phase 2): _mm_popcnt_u64 is an x86 intrinsic and does not
-+// exist under MSVC on ARM64, yet _MSC_VER is defined there so the guard took this branch.
-+// Fall through to __builtin_popcountll (nvcc lowers it to the popc instruction), exactly
-+// as the non-MSVC branch does; upstream's guard is x86-only-aware.
-+#if (_MSC_VER >= 1920 && !defined(_M_ARM64)) || __INTEL_COMPILER
+ #if _MSC_VER >= 1920 || __INTEL_COMPILER
      inline static int bitCount64(uint64_t bits) {
++#if defined(_M_ARM64)
++        // PATCHED (Windows ARM64, #176 phase 2): _mm_popcnt_u64 is an x86 intrinsic, and
++        // __builtin_popcountll is rejected by nvcc's device front-end (both passes define
++        // _M_ARM64, so a guard tweak alone cannot route around it). A software popcount is
++        // pass-agnostic and get_bit_len is not a hot path in the wavelet median filter.
++        uint64_t v = bits;
++        v = v - ((v >> 1) & 0x5555555555555555ull);
++        v = (v & 0x3333333333333333ull) + ((v >> 2) & 0x3333333333333333ull);
++        v = (v + (v >> 4)) & 0x0F0F0F0F0F0F0F0Full;
++        return (int)((v * 0x0101010101010101ull) >> 56);
++#else
          return (int)_mm_popcnt_u64(bits);
++#endif
      }
+ #else
+     inline static int bitCount64(uint64_t bits) {
