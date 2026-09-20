@@ -57,7 +57,10 @@ function Install-CudaWindowsArm64Redist {
         @{ Key = 'CUBLAS'; Component = 'libcublas' },
         @{ Key = 'CUFFT'; Component = 'libcufft' },
         @{ Key = 'CURAND'; Component = 'libcurand' },
-        @{ Key = 'NVJITLINK'; Component = 'libnvjitlink' }
+        @{ Key = 'NVJITLINK'; Component = 'libnvjitlink' },
+        @{ Key = 'NPP'; Component = 'libnpp' },
+        @{ Key = 'CUSOLVER'; Component = 'libcusolver' },
+        @{ Key = 'CUSPARSE'; Component = 'libcusparse' }
     )
     foreach ($c in $components) {
         $verKey = "CUDA_WINDOWS_ARM64_$($c.Key)_VERSION"
@@ -86,7 +89,7 @@ function Install-CudaWindowsArm64Redist {
     }
     # Assert the exact files the cross link needs: a silently empty copy would
     # otherwise surface hours later as an ORT link error.
-    foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib')) {
+    foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib', 'lib\arm64\nppial.lib')) {
         if (-not (Test-Path (Join-Path $CudaRoot $must))) {
             throw ("arm64 CUDA payload incomplete: {0} missing under {1}" -f $must, $CudaRoot)
         }

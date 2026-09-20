@@ -202,14 +202,13 @@ if ($ConcurrentAux -and $NoSccache) {
 # milliseconds rather than hours into a stage that cannot produce anything ----
 if ($TargetArch -ne 'amd64') {
     if ($Gpu) {
-        # #176 (2026-09-20): the cross GPU lane is WIRED. The nvidia stage installs
-        # the x64 toolkit (headers + nvcc, the host tools) and stages the arm64
-        # redist payload into the same root (lib\arm64, bin\arm64); ORT builds the
-        # CUDA EP for arm64 through the documented `vcvarsall x64_arm64` +
-        # `nvcc --use-local-env` flow. Output is an artifact bundle, statically
-        # verified only (no arm64 device on this host); OpenCV/GenAI/TVM stay
-        # CPU + DirectML on this lane in phase 1.
-        Write-Host ('[bk] GPU: arm64 cross CUDA/cuDNN (bundle only; OpenCV/GenAI/TVM stay CPU on this lane)') -ForegroundColor Yellow
+        # #176: the nvidia stage installs the x64 toolkit (headers + nvcc, the host
+        # tools) and stages the arm64 redist payload into the same root (lib\arm64,
+        # bin\arm64); ORT, GenAI, OpenCV and TVM all build their CUDA paths for arm64
+        # through the documented `vcvarsall x64_arm64` + `nvcc --use-local-env` flow.
+        # Output is an artifact bundle, statically verified only (no arm64 device on
+        # this host).
+        Write-Host ('[bk] GPU: arm64 cross CUDA/cuDNN (bundle only; the arm64 payload is statically verified)') -ForegroundColor Yellow
     }
     # Asking for torch EXPLICITLY is an error; inheriting it from the $Stages
     # default just drops it — throwing there made plain -TargetArch arm64 fail.
@@ -540,6 +539,12 @@ if ($Stages -contains 'sdk') {
             CUDA_WINDOWS_ARM64_CURAND_SHA256     = Get-Ver 'CUDA_WINDOWS_ARM64_CURAND_SHA256'
             CUDA_WINDOWS_ARM64_NVJITLINK_VERSION = Get-Ver 'CUDA_WINDOWS_ARM64_NVJITLINK_VERSION'
             CUDA_WINDOWS_ARM64_NVJITLINK_SHA256  = Get-Ver 'CUDA_WINDOWS_ARM64_NVJITLINK_SHA256'
+            CUDA_WINDOWS_ARM64_NPP_VERSION       = Get-Ver 'CUDA_WINDOWS_ARM64_NPP_VERSION'
+            CUDA_WINDOWS_ARM64_NPP_SHA256        = Get-Ver 'CUDA_WINDOWS_ARM64_NPP_SHA256'
+            CUDA_WINDOWS_ARM64_CUSOLVER_VERSION  = Get-Ver 'CUDA_WINDOWS_ARM64_CUSOLVER_VERSION'
+            CUDA_WINDOWS_ARM64_CUSOLVER_SHA256   = Get-Ver 'CUDA_WINDOWS_ARM64_CUSOLVER_SHA256'
+            CUDA_WINDOWS_ARM64_CUSPARSE_VERSION  = Get-Ver 'CUDA_WINDOWS_ARM64_CUSPARSE_VERSION'
+            CUDA_WINDOWS_ARM64_CUSPARSE_SHA256   = Get-Ver 'CUDA_WINDOWS_ARM64_CUSPARSE_SHA256'
             CUDNN_WINDOWS_ARM64_ZIP_SHA256       = Get-Ver 'CUDNN_WINDOWS_ARM64_ZIP_SHA256'
         }
     } else {

@@ -174,6 +174,20 @@ Describe 'Get-CudnnLibrary' {
     }
 }
 
+Describe 'Get-NvccHostCompilerPath' {
+
+    It 'returns the x64-hosted arm64 cl for the cross target when VCToolsInstallDir has it' {
+        Invoke-InTestDir { param($dir)
+            $cl = Join-Path $dir 'bin\Hostx64\arm64\cl.exe'
+            New-Item -ItemType Directory -Force -Path (Split-Path $cl -Parent) | Out-Null
+            Set-Content -Path $cl -Value '' -NoNewline
+            Invoke-WithEnv @{ VCToolsInstallDir = $dir } {
+                Assert-Equal $cl (Get-NvccHostCompilerPath -Arch 'arm64')
+            }
+        }
+    }
+}
+
 Describe 'Test-CudaWindowsArm64Payload' {
 
     It 'is false for a missing root and for a root without the full payload' {

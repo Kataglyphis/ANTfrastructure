@@ -46,10 +46,13 @@ $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 $gpuEnv = Get-GpuEnvironment
-# Cross lane keeps TVM CUDA OFF in #176 phase 1: TVM's FindCUDA links the toolkit's
-# device libs into the target build, and its cmake has no arm64-host path -- the
-# NVPTX LLVM target above is what the CUDA lane needs from TVM. Native lane unchanged.
-$useCuda = if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) { 'ON' } else { 'OFF' }
+# #176 phase 2 (2026-09-20): CUDA is enabled on the cross lane too when the IMAGE carries
+# the arm64 payload -- the same positive signal ORT/GenAI/OpenCV use. TVM's legacy
+# FindCUDA hardcodes lib\x64 on WIN32, so the cross branch below passes the arm64 libs
+# explicitly plus the x64-hosted arm64 cl and --use-local-env.
+$tvmCross = Test-WindowsCrossTarget
+$tvmCudaUsable = $gpuEnv.HasCuda -and ((-not $tvmCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+$useCuda = if ($tvmCudaUsable) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 
 # cuBLAS ships inside the toolkit (no hint needed). cuDNN is a SEPARATE install, and TVM's legacy
@@ -183,6 +186,22 @@ $cmakeExtra = @(
 
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
 $cmakeExtra += $cudnnArgs
+
+if ($useCuda -eq 'ON' -and $tvmCross) {
+    # TVM's FindCUDA searches ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 on WIN32 (upstream, 0.26),
+    # so every lib it would pick must be named explicitly for the arm64 target. The
+    # cache vars win over its find_library calls; a wrong path fails the LINK loudly
+    # rather than shipping an x64 lib in an arm64 DLL.
+    $arm64Lib = Join-Path $gpuEnv.CudaRoot 'lib\arm64'
+    $cmakeExtra += @(
+        "-DCUDA_HOST_COMPILER=$((Get-NvccHostCompilerPath -Arch 'arm64') -replace '\\', '/')"
+        '-DCUDA_NVCC_FLAGS=--use-local-env'
+        "-DCUDA_ARCH_BIN=$((Get-CudaArchitectureList) -replace ';', ' ')"
+        "-DCUDA_CUDART_LIBRARY=$((Join-Path $arm64Lib 'cudart.lib') -replace '\\', '/')"
+        "-DCUDA_CUBLAS_LIBRARY=$((Join-Path $arm64Lib 'cublas.lib') -replace '\\', '/')"
+        "-DCUDA_CUDA_LIBRARY=$((Join-Path $arm64Lib 'cuda.lib') -replace '\\', '/')"
+    )
+}
 
 if ($useVulkan -eq 'ON') {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
