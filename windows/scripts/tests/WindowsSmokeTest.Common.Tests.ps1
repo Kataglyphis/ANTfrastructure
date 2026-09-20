@@ -189,3 +189,33 @@ Describe 'The native DLL probe type' {
         Assert-Equal 1 $s.Failed 'a missing export is a failure'
     }
 }
+
+Describe 'TensorRT staged-state detection' {
+
+    # The smoke's TensorRT EP asserts follow this decision (2026-09-20): required when a
+    # tree is staged, asserted ABSENT when not. A plain Test-Path would call the
+    # guaranteed-empty C:\tensorrt "staged" and demand an EP the ORT build compiled out
+    # (USE_TENSORRT=OFF) -- three false reds on the documented normal zip-less lane.
+
+    It 'is false for an unset, empty, or missing root' {
+        Invoke-WithEnv @{ TENSORRT_ROOT = '' } {
+            Assert-False (Test-TensorRtTreeStaged) 'empty root is not staged'
+        }
+        Invoke-WithEnv @{ TENSORRT_ROOT = (Join-Path $env:TEMP 'no-such-trt-root-xyzzy') } {
+            Assert-False (Test-TensorRtTreeStaged) 'a missing directory is not staged'
+        }
+    }
+
+    It 'is false for the guaranteed-empty directory the nvidia stage creates' {
+        Invoke-InTestDir { param($dir)
+            Assert-False (Test-TensorRtTreeStaged -Root $dir) 'empty dir is the zip-less normal state'
+        }
+    }
+
+    It 'is true once a TensorRT tree is staged' {
+        Invoke-InTestDir { param($dir)
+            New-Item -ItemType Directory -Path (Join-Path $dir 'TensorRT-11.3.0.99') | Out-Null
+            Assert-True (Test-TensorRtTreeStaged -Root $dir) 'a versioned tree counts as staged'
+        }
+    }
+}

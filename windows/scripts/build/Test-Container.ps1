@@ -55,6 +55,13 @@ Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
 # it is DX12-based and built unconditionally, so it is checked always.
 $script:gpuNvidia = (-not $SkipCudaTests) -and (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('CUDA_ROOT')))
 
+# TensorRT follows the STAGED state, not the lane: it is EULA-gated and optional, and a zip-less
+# GPU lane is the documented NORMAL case (docs/windows-builds.md § TensorRT setup). The EP asserts
+# in §8/§20 require the EP when a tree is staged and assert its absence when not -- so the lane
+# never reds on a payload nobody could stage, while a STAGED tree with a silently-disabled EP
+# still fails loudly.
+$script:tensorRtStaged = Test-TensorRtTreeStaged
+
 function Get-CommandVersion {
     param([string]$Name)
     try {
@@ -518,9 +525,18 @@ int main() {
         if ($script:gpuNvidia) {
             # Cheap backstop first: the provider shared libs must exist by exact name.
             Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
-            Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
-            # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
-            Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
+            if ($script:tensorRtStaged) {
+                Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
+                # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
+                Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
+            } else {
+                # Zip-less (the documented normal state): the EP must be ABSENT and the probe must
+                # say so -- USE_TENSORRT=OFF surviving a STAGED tree is the mismatch this pair
+                # catches, and CUDA stays hard in both branches.
+                $trtDllCount = @(Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Recurse -ErrorAction SilentlyContinue).Count
+                Assert-Test -Name 'ONNX TensorRT provider DLL absent (zip-less GPU lane -- no EULA zip staged)' -Condition { $trtDllCount -eq 0 }.GetNewClosure() -FailMessage "onnxruntime_providers_tensorrt.dll found under $onnxRoot although no TensorRT tree is staged -- the ORT build and the staged state disagree"
+                Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA EP available, TensorRT EP absent (GetAvailableProviders, zip-less lane)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=0' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider on a zip-less GPU lane (an absent TensorRT EP is expected here) -- build fell back to CPU?'
+            }
         }
 
         # USE_DML=ON on the clang-cl lane via the "[clang-cl DML fix]" header patch (llvm #57700).
@@ -1279,10 +1295,14 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
 
     if ($script:gpuNvidia) {
-        Assert-PythonSnippet -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" `
+        # The expectation follows the staged state (docs/windows-builds.md § TensorRT setup): a
+        # zip-less lane is a full pass with the CUDA EP alone, not three reds on an EULA payload.
+        $pyEpExpect = if ($script:tensorRtStaged) { @('CUDAExecutionProvider', 'TensorrtExecutionProvider') } else { @('CUDAExecutionProvider') }
+        $pyEpName = if ($script:tensorRtStaged) { 'python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)' } else { 'python onnxruntime exposes CUDA EP (GPU lane, zip-less: TensorRT EP absent by design)' }
+        Assert-PythonSnippet -Name $pyEpName `
             -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
-            -ExpectMatch @('CUDAExecutionProvider', 'TensorrtExecutionProvider') `
-            -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
+            -ExpectMatch $pyEpExpect `
+            -FailMessage "base-interpreter onnxruntime lacks the expected GPU EP(s) (TensorRT staged: $($script:tensorRtStaged))"
     }
 
     Assert-PythonSnippet -Name "python onnxruntime-genai imports" `

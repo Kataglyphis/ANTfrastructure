@@ -7,6 +7,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-20 - the GPU lane's smoke stops demanding an EULA payload nobody staged
+
+The `-Gpu` amd64 chain built green through `final` -- CUDA EP, cuDNN, OpenCV
+`WITH_CUDA`, GenAI-CUDA, the torch-app ORT+CUDA venv and the IREE CUDA-target
+compile all passed -- but the smoke gate returned 225/228: all three reds were
+the TensorRT asserts, on a host with no TensorRT zip, which is the documented
+NORMAL state. `windows-builds.md` § TensorRT setup already ruled that the
+zip-less lane must pass ("do NOT re-harden this into a fail-fast"), so the
+asserts were the defect:
+
+- `Test-TensorRtTreeStaged` (`WindowsSmokeTest.Common`) applies the same
+  presence rule as the build's `Resolve-TensorRtRoot`: root set, exists,
+  non-empty. The guaranteed-empty `C:\tensorrt` is NOT staged.
+- §8/§20 branch on it: staged -> `cuda=1 trt=1` + the provider DLL + the python
+  TRT EP; zip-less -> `cuda=1 trt=0` + no provider DLL + python CUDA-EP only.
+  CUDA stays hard in both branches, nothing is skipped, and a staged tree with a
+  silently-disabled EP still reds.
+- Pester coverage for the decision (unset, missing, empty, one entry); the
+  Windows suite is green at 864/864.
+
 ## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
 
 The first rebuild of the 2026-09-17/18 wave ran **green on BOTH Windows lanes** —
