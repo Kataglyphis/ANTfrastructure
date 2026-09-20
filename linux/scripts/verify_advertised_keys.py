@@ -37,6 +37,7 @@ EXCUSED = {
     "HAILO_PROTOBUF_VERSION": "Hailo variant build external, build-stage only",
     "TAPPAS_VERSION": "build-stage pin; presence is proven by the build's own gst-inspect-1.0 hailotools",
     "HAILO_LIBZMQ_VERSION": "build-stage pin for TAPPAS's zmq elements; presence is proven by pkg-config in the build",
+    "HAILO_CPPZMQ_VERSION": "build-stage pin for the C++ zmq header; presence is proven by the TAPPAS build",
     "ANDROID_SDK_VERSION": "android lane image, not the cross runtime image",
     "CUDA_VERSION": "nvidia lane image, not the 3-arch cross runtime",
     "CUDNN_VERSION": "nvidia lane image, not the 3-arch cross runtime",

@@ -611,6 +611,19 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-cppzmq-TAPPAS-zmq-elements-bf1b2609",
+      "name": "cppzmq (TAPPAS zmq elements)",
+      "versionInfo": "4.11.0",
+      "downloadLocation": "https://github.com/zeromq/cppzmq",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
       "name": "PyTorch",
       "versionInfo": "v2.14.0",
@@ -1642,6 +1655,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TAPPAS-build-externals-header-only-xtensor-xtl--d4ca214c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-cppzmq-TAPPAS-zmq-elements-bf1b2609"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
