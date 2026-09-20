@@ -74,17 +74,21 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 COPY --from=hailo-build ${HAILO_PREFIX} ${HAILO_PREFIX}
 
 # No ENV surgery: the base image's GST_PLUGIN_PATH already covers
-# ${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0, and /usr/local/lib is already
-# on its LD_LIBRARY_PATH. Putting the plugin and libhailort there keeps the
-# variant's environment identical to :latest-cross — the consumer contract stays
-# one image shape. The copies are cheap and make ldconfig the only resolution
-# mechanism the plugin needs.
+# ${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0, and the loader finds
+# libhailort through a 000-prefixed ld.so.conf.d entry (the priority rule for a
+# /opt tree, docs/linux-build-basics.md) rather than an LD_LIBRARY_PATH edit —
+# the variant's environment stays the runtime's. The base image runs as uid
+# 1001, so the copies need root explicitly.
+USER root
 RUN set -euo pipefail; \
-    cp -a "${HAILO_PREFIX}/lib/gstreamer-1.0/gsthailo.so" \
-          "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/gsthailo.so"; \
-    cp -a "${HAILO_PREFIX}"/lib/libhailort.so* /usr/local/lib/; \
+    install -D -m 0644 "${HAILO_PREFIX}/lib/gstreamer-1.0/gsthailo.so" \
+      "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/gsthailo.so"; \
+    printf '%s\n' "${HAILO_PREFIX}/lib" > /etc/ld.so.conf.d/000-hailo.conf; \
     ldconfig; \
+    ln -sf "${HAILO_PREFIX}/bin/hailortcli" /usr/local/bin/hailortcli; \
     test -x "${HAILO_PREFIX}/bin/hailortcli"; \
+    hailortcli --version >/dev/null; \
     gst-inspect-1.0 hailonet >/dev/null
+USER kataglyphis
 
 ENV HAILO_PREFIX=${HAILO_PREFIX}
