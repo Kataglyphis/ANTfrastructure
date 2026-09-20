@@ -535,7 +535,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-HailoRT-libhailort-hailortcli-6efa8649",
       "name": "HailoRT (libhailort, hailortcli)",
-      "versionInfo": "4.24.0",
+      "versionInfo": "5.4.0",
       "downloadLocation": "https://github.com/hailo-ai/hailort",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -548,7 +548,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-HailoRT-hailonet-GStreamer-element-e978ebee",
       "name": "HailoRT hailonet GStreamer element",
-      "versionInfo": "4.24.0",
+      "versionInfo": "5.4.0",
       "downloadLocation": "https://github.com/hailo-ai/hailort",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -556,7 +556,7 @@
       "licenseConcluded": "LGPL-2.1-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://github.com/hailo-ai/hailort at 4.24.0"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://github.com/hailo-ai/hailort at 5.4.0"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-protobuf-HailoRT-build-external-abf77797",
@@ -572,17 +572,43 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Linux-Images-gRPC-HailoRT-build-external-7e11e38a",
-      "name": "gRPC (HailoRT build external)",
-      "versionInfo": "1.54.0",
-      "downloadLocation": "https://github.com/grpc/grpc",
+      "SPDXID": "SPDXRef-Package-Linux-Images-TAPPAS-fbeed730",
+      "name": "TAPPAS",
+      "versionInfo": "5.4.0",
+      "downloadLocation": "https://github.com/hailo-ai/tappas",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0",
-      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "LGPL-2.1-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://github.com/hailo-ai/tappas at 5.4.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-libzmq-TAPPAS-zmq-elements-d71ca6e8",
+      "name": "libzmq (TAPPAS zmq elements)",
+      "versionInfo": "4.3.5",
+      "downloadLocation": "https://github.com/zeromq/libzmq",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0",
+      "licenseConcluded": "MPL-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes | Corresponding source required. Upstream: https://github.com/zeromq/libzmq at 4.3.5"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-TAPPAS-build-externals-header-only-xtensor-xtl--d4ca214c",
+      "name": "TAPPAS build externals (header-only: xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2)",
+      "versionInfo": "commit-pinned in build-hailort.sh",
+      "downloadLocation": "https://github.com/hailo-ai/tappas",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT AND BSL-1.0",
+      "licenseConcluded": "BSD-3-Clause AND MIT AND BSL-1.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
@@ -1605,7 +1631,17 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-gRPC-HailoRT-build-external-7e11e38a"
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TAPPAS-fbeed730"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-libzmq-TAPPAS-zmq-elements-d71ca6e8"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TAPPAS-build-externals-header-only-xtensor-xtl--d4ca214c"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

@@ -35,7 +35,8 @@ EXCUSED = {
                        "cross runtime image the smoke grades; the variant's build "
                        "stage runs hailortcli --version and gst-inspect-1.0 hailonet",
     "HAILO_PROTOBUF_VERSION": "Hailo variant build external, build-stage only",
-    "HAILO_GRPC_VERSION": "Hailo variant build external, build-stage only",
+    "TAPPAS_VERSION": "build-stage pin; presence is proven by the build's own gst-inspect-1.0 hailotools",
+    "HAILO_LIBZMQ_VERSION": "build-stage pin for TAPPAS's zmq elements; presence is proven by pkg-config in the build",
     "ANDROID_SDK_VERSION": "android lane image, not the cross runtime image",
     "CUDA_VERSION": "nvidia lane image, not the 3-arch cross runtime",
     "CUDNN_VERSION": "nvidia lane image, not the 3-arch cross runtime",

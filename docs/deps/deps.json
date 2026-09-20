@@ -417,11 +417,35 @@
               "spdx": "BSD-3-Clause"
             },
             {
-              "name": "gRPC (HailoRT build external)",
-              "var": "HAILO_GRPC_VERSION",
-              "url": "https://github.com/grpc/grpc",
-              "license": "Apache 2.0",
-              "spdx": "Apache-2.0"
+              "name": "TAPPAS",
+              "var": "TAPPAS_VERSION",
+              "url": "https://github.com/hailo-ai/tappas",
+              "license": "LGPL-2.1-or-later",
+              "spdx": "LGPL-2.1-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://github.com/hailo-ai/tappas",
+                "ref_var": "TAPPAS_VERSION"
+              }
+            },
+            {
+              "name": "libzmq (TAPPAS zmq elements)",
+              "var": "HAILO_LIBZMQ_VERSION",
+              "url": "https://github.com/zeromq/libzmq",
+              "license": "MPL-2.0",
+              "spdx": "MPL-2.0",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://github.com/zeromq/libzmq",
+                "ref_var": "HAILO_LIBZMQ_VERSION"
+              }
+            },
+            {
+              "name": "TAPPAS build externals (header-only: xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2)",
+              "version_fixed": "commit-pinned in build-hailort.sh",
+              "url": "https://github.com/hailo-ai/tappas",
+              "license": "BSD-3-Clause / MIT / BSL-1.0 (per project)",
+              "spdx": "BSD-3-Clause AND MIT AND BSL-1.0"
             }
           ]
         },

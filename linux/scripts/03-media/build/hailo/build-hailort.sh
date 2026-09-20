@@ -33,8 +33,10 @@ esac
 : "${HAILORT_SOURCE_SHA256:?HAILORT_SOURCE_SHA256 must be set (versions.env)}"
 : "${HAILO_PROTOBUF_VERSION:?HAILO_PROTOBUF_VERSION must be set (versions.env)}"
 : "${HAILO_PROTOBUF_SHA256:?HAILO_PROTOBUF_SHA256 must be set (versions.env)}"
-: "${HAILO_GRPC_VERSION:?HAILO_GRPC_VERSION must be set (versions.env)}"
-: "${HAILO_GRPC_COMMIT:?HAILO_GRPC_COMMIT must be set (versions.env)}"
+: "${TAPPAS_VERSION:?TAPPAS_VERSION must be set (versions.env)}"
+: "${TAPPAS_SOURCE_SHA256:?TAPPAS_SOURCE_SHA256 must be set (versions.env)}"
+: "${HAILO_LIBZMQ_VERSION:?HAILO_LIBZMQ_VERSION must be set (versions.env)}"
+: "${HAILO_LIBZMQ_SHA256:?HAILO_LIBZMQ_SHA256 must be set (versions.env)}"
 
 HAILO_PREFIX="${HAILO_PREFIX:-/opt/hailo}"
 WORK="${HAILO_BUILD_ROOT:-/var/cache/hailo-build}"
@@ -42,6 +44,7 @@ GSTREAMER_PREFIX="${GSTREAMER_PREFIX:-/opt/gstreamer}"
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '[INFO] %s\n' "$*"; }
+warn() { printf 'WARN: %s\n' "$*" >&2; }
 
 # HailoRT ships no riscv64 support at any version; the variant is amd64/arm64.
 [ "${TARGET_ARCH:-amd64}" != "riscv64" ] || die "Hailo is not supported on riscv64"
@@ -66,6 +69,7 @@ gst_pkgconfig_dir() {
 }
 
 fetch_sources() {
+  mkdir -p "${WORK}"
   HAILORT_SRC="${WORK}/hailort-${HAILORT_VERSION}"
   if [ ! -f "${HAILORT_SRC}/CMakeLists.txt" ]; then
     info "fetching hailo-ai/hailort v${HAILORT_VERSION}"
@@ -76,7 +80,7 @@ fetch_sources() {
   fi
 
   # HailoRT's external cmake scripts build from the LITERAL
-  # <src>/hailort/external/{protobuf,grpc}-src paths — FetchContent's
+  # <src>/hailort/external/protobuf-src path — FetchContent's
   # FETCHCONTENT_SOURCE_DIR_* override does not reach execute_cmake, so the
   # sources must sit exactly there.
   HAILO_PROTOBUF_SRC="${HAILORT_SRC}/hailort/external/protobuf-src"
@@ -89,44 +93,27 @@ fetch_sources() {
     tar -xf "${WORK}/protobuf.tar.gz" -C "${HAILO_PROTOBUF_SRC}" --strip-components=1
   fi
 
-  HAILO_GRPC_SRC="${HAILORT_SRC}/hailort/external/grpc-src"
-  if [ ! -f "${HAILO_GRPC_SRC}/CMakeLists.txt" ]; then
-    # A tarball is unusable here: gRPC's C++ build needs its submodules
-    # (abseil among them), which GitHub archives omit. Clone at the tag, verify
-    # the commit, then take the submodules at their gitlink-pinned commits.
-    info "cloning grpc v${HAILO_GRPC_VERSION}"
-    git clone --depth 1 --branch "v${HAILO_GRPC_VERSION}" \
-      https://github.com/grpc/grpc.git "${HAILO_GRPC_SRC}"
-    [ "$(git -C "${HAILO_GRPC_SRC}" rev-parse HEAD)" = "${HAILO_GRPC_COMMIT}" ] \
-      || die "grpc v${HAILO_GRPC_VERSION} is not ${HAILO_GRPC_COMMIT}"
-    git -C "${HAILO_GRPC_SRC}" submodule update --init --recursive
-  fi
-
   stage_remaining_externals
 }
 
-# HailoRT declares 16 FetchContent externals in hailort/cmake/external/*.cmake,
-# each pinned to a commit. With HAILO_OFFLINE_COMPILATION=ON nothing is fetched
-# at configure time, so every source must already sit at the LITERAL path its
-# cmake builds from (<src>/hailort/external/<name>-src) — FetchContent's
-# FETCHCONTENT_SOURCE_DIR_* override does not reach the execute_cmake helpers.
-# The commits are verified after checkout, the same contract as the LLVM clone;
-# protobuf (verified tarball) and gRPC (tag + submodules) are staged above.
-# name|repository|commit — re-derive from the cmake files at a HailoRT bump.
+# HailoRT (master, Hailo-10/15) FetchContent externals for a GSTREAMER build.
+# With HAILO_OFFLINE_COMPILATION=ON each source must already sit at the LITERAL
+# <src>/hailort/external/<name>-src path its cmake builds from; commits are
+# verified after checkout. protobuf (verified tarball) is staged above; libusb,
+# tokenizers, slint, montserrat, benchmark and catch2 stay unstaged (their
+# features are off). Re-derive from hailort/cmake/external/*.cmake at a bump.
+# docs/hailo-support.md
+# name|repository|commit
 HAILO_EXTERNALS=(
-  "benchmark|https://github.com/google/benchmark.git|f91b6b42b1b9854772a90ae9501464a161707d1e"
-  "catch2|https://github.com/catchorg/Catch2.git|c4e3767e265808590986d5db6ca1b5532a7f3d13"
-  "cli11|https://github.com/hailo-ai/CLI11.git|ae78ac41cf225706e83f57da45117e3e90d4a5b4"
+  "cli11|https://github.com/hailo-ai/CLI11.git|242adfdb23957d30e3e56831e474020d0ac6c86c"
   "cpp-httplib|https://github.com/yhirose/cpp-httplib.git|51dee793fec2fa70239f5cf190e165b54803880f"
   "dotwriter|https://github.com/hailo-ai/DotWriter|e5fa8f281adca10dd342b1d32e981499b8681daf"
   "eigen|https://gitlab.com/libeigen/eigen|3147391d946bb4b6c68edd901f2add6ac1f31f8c"
-  "json|https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent.git|391786c6c3abdd3eeb993a3154f1f2a4cfe137a0"
-  "libnpy|https://github.com/llohse/libnpy.git|890ea4fcda302a580e633c624c6a63e2a5d422f6"
-  "pevents|https://github.com/neosmart/pevents.git|1209b1fd1bd2e75daab4380cf43d280b90b45366"
-  "pybind11|https://github.com/pybind/pybind11.git|a2e59f0e7065404b44dfe92a28aca47ba1378dc4"
+  "json|https://github.com/nlohmann/json.git|9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03"
+  "minja|https://github.com/google/minja|58568621432715b0ed38efd16238b0e7ff36c3ba"
   "readerwriterqueue|https://github.com/cameron314/readerwriterqueue|435e36540e306cac40fcfeab8cc0a22d48464509"
   "spdlog|https://github.com/gabime/spdlog|27cb4c76708608465c413f6d0e6b8d99a4d84302"
-  "tokenizers|https://github.com/mlc-ai/tokenizers-cpp.git|125d072f52290fa6d2944b3d72ccc937786ec631"
+  "tl-expected|https://github.com/TartanLlama/expected.git|1770e3559f2f6ea4a5fb4f577ad22aeb30fbd8e4"
   "xxhash|https://github.com/Cyan4973/xxHash|bbb27a5efb85b92a0486cf361a8635715a53f6ba"
 )
 
@@ -154,11 +141,12 @@ build_hailort() {
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${HAILO_PREFIX}"
     -DHAILO_BUILD_GSTREAMER=ON
-    -DHAILO_BUILD_TOOLS=ON
+    # The public v5.4.0 tarball ships no tools/ dir (HAILO_BUILD_TOOLS=ON makes
+    # CMake add_subdirectory it and die); hailortcli is built unconditionally.
+    -DHAILO_BUILD_TOOLS=OFF
     -DHAILO_BUILD_EXAMPLES=OFF
     -DHAILO_OFFLINE_COMPILATION=ON
     -DFETCHCONTENT_SOURCE_DIR_PROTOBUF="${HAILO_PROTOBUF_SRC}"
-    -DFETCHCONTENT_SOURCE_DIR_GRPC="${HAILO_GRPC_SRC}"
   )
 
   # The cross-android builder is an amd64 image carrying the TARGET cross
@@ -222,8 +210,177 @@ verify_install() {
   info "hailortcli runs and the hailonet element loads"
 }
 
+# pyhailort ships from the platform/ directory as a scikit-build-core project
+# (distribution `hailort`, import `hailo_platform`), built against the HailoRT
+# just installed. Upstream declares requires-python <3.14 while the image runs
+# 3.14, so the install relaxes that metadata and PROVES the import — a failure
+# is reported, never hidden. docs/hailo-support.md
+build_pyhailort() {
+  local platform_dir="${HAILORT_SRC}/hailort/libhailort/bindings/python/platform"
+  [ -d "${platform_dir}" ] || { warn "pyhailort packaging dir absent; skipping"; return 0; }
+  local wheel_dir="${HAILO_PREFIX}/wheels"
+  mkdir -p "${wheel_dir}"
+  info "building the pyhailort wheel (scikit-build-core)"
+  # pip refuses to even BUILD a wheel whose project rejects the interpreter
+  # (upstream: <3.14; the image runs 3.14), so relax the cached source's
+  # metadata first; the built wheel's copy is relaxed again at install time.
+  sed -i 's/^requires-python = .*/requires-python = ">=3.10"/' "${platform_dir}/pyproject.toml"
+  python3 -m pip install --quiet --disable-pip-version-check \
+    "scikit-build-core>=0.10" "pybind11>=2.13.6,<3" \
+    || die "could not install the pyhailort build backend"
+  CMAKE_ARGS="-DLIBHAILORT_PATH=${HAILO_PREFIX}/lib/libhailort.so -DHAILORT_INCLUDE_DIR=${HAILO_PREFIX}/include" \
+    python3 -m pip wheel --no-build-isolation --no-deps \
+      --wheel-dir "${wheel_dir}" "${platform_dir}" \
+    || die "pyhailort wheel build failed"
+  local w; for w in "${wheel_dir}"/*.whl; do [ -e "${w}" ] && info "pyhailort wheel: $(basename "${w}")"; done
+}
+
+install_pyhailort() {
+  local wheel
+  wheel="$(ls -1 "${HAILO_PREFIX}/wheels"/hailort-*.whl 2>/dev/null | head -1)"
+  [ -n "${wheel}" ] || return 0
+  [ -x /opt/venv/bin/python ] || { info "no /opt/venv; pyhailort wheel stays staged at ${wheel}"; return 0; }
+
+  # Relax the wheel's Requires-Python (upstream: <3.14) so uv accepts it, then
+  # import-test under the image's 3.14.
+  local patched="${HAILO_PREFIX}/wheels/pyhailort-relaxed.whl"
+  python3 - "${wheel}" "${patched}" <<'PY'
+import sys, zipfile
+src, dst = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    for item in zin.infolist():
+        data = zin.read(item.filename)
+        if item.filename.endswith(".dist-info/METADATA"):
+            data = data.replace(b"Requires-Python: >=3.10,<3.14", b"Requires-Python: >=3.10")
+        zout.writestr(item, data)
+PY
+  if uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${patched}" >/dev/null 2>&1; then
+    if /opt/venv/bin/python -c 'import hailo_platform' >/dev/null 2>&1; then
+      info "pyhailort installed into /opt/venv and imports"
+    else
+      warn "pyhailort installed but 'import hailo_platform' fails on Python 3.14 (upstream declares <3.14)"
+    fi
+  else
+    warn "pyhailort wheel staged at ${wheel}; install into /opt/venv failed"
+  fi
+}
+
+# TAPPAS's core/hailo meson build compiles against header-only libraries that
+# upstream clones into core/open_source/ from BRANCHES (rapidjson: master). This
+# list pins every one to a commit, verified after checkout. dest = the
+# open_source/ subdir; subdir = the path inside the repo that holds the headers.
+# name|repository|commit|dest|subdir
+TAPPAS_EXTERNALS=(
+  "xtensor|https://github.com/xtensor-stack/xtensor.git|825c0fd8a465049c06ad89fa3911b342dbffcabf|xtensor_stack/base|include"
+  "xtl|https://github.com/xtensor-stack/xtl.git|46f8a9390db2c52aaf41de8f93ed0dab97af012d|xtensor_stack/base|include"
+  "cxxopts|https://github.com/jarro2783/cxxopts.git|c74846a891b3cc3bfa992d588b1295f528d43039|cxxopts|include"
+  "pybind11|https://github.com/pybind/pybind11.git|a2e59f0e7065404b44dfe92a28aca47ba1378dc4|pybind11|include"
+  "rapidjson|https://github.com/Tencent/rapidjson.git|24b5e7a8b27f42fa16b96fc70aade9106cf7102f|rapidjson|include"
+  "catch2|https://github.com/catchorg/Catch2.git|c4e3767e265808590986d5db6ca1b5532a7f3d13|catch2|single_include/catch2"
+)
+
+fetch_tappas() {
+  TAPPAS_SRC="${WORK}/tappas-${TAPPAS_VERSION}"
+  if [ ! -f "${TAPPAS_SRC}/core/hailo/meson.build" ]; then
+    info "fetching hailo-ai/tappas v${TAPPAS_VERSION}"
+    download_verified_file \
+      "https://github.com/hailo-ai/tappas/archive/refs/tags/v${TAPPAS_VERSION}.tar.gz" \
+      "${TAPPAS_SOURCE_SHA256}" "${WORK}/tappas.tar.gz"
+    tar -xf "${WORK}/tappas.tar.gz" -C "${WORK}"
+  fi
+
+  local spec name url commit dest subdir src
+  for spec in "${TAPPAS_EXTERNALS[@]}"; do
+    IFS='|' read -r name url commit dest subdir <<<"${spec}"
+    if [ -d "${TAPPAS_SRC}/core/open_source/${dest}" ] && \
+       [ -n "$(ls -A "${TAPPAS_SRC}/core/open_source/${dest}" 2>/dev/null)" ]; then
+      continue
+    fi
+    info "staging TAPPAS external ${name} @ ${commit:0:10}"
+    src="${WORK}/tappas-ext-${name}"
+    rm -rf "${src}"
+    git clone --quiet --filter=blob:none --no-checkout "${url}" "${src}" \
+      || git clone --quiet --no-checkout "${url}" "${src}"
+    git -C "${src}" checkout --quiet "${commit}"
+    [ "$(git -C "${src}" rev-parse HEAD)" = "${commit}" ] \
+      || die "TAPPAS external ${name} is not ${commit}"
+    mkdir -p "${TAPPAS_SRC}/core/open_source/${dest}"
+    cp -r "${src}/${subdir}/." "${TAPPAS_SRC}/core/open_source/${dest}/"
+  done
+}
+
+# TAPPAS's hailoexportzmq/hailoimportzmq elements need libzmq, and the runtime
+# image's apt lists are unusable — build it into the Hailo prefix (MPL-2.0).
+build_libzmq() {
+  local src="${WORK}/libzmq-${HAILO_LIBZMQ_VERSION}" build="${WORK}/libzmq-build"
+  if [ -f "${HAILO_PREFIX}/lib/pkgconfig/libzmq.pc" ]; then
+    info "libzmq already installed"
+    return 0
+  fi
+  if [ ! -f "${src}/CMakeLists.txt" ]; then
+    info "fetching libzmq v${HAILO_LIBZMQ_VERSION}"
+    download_verified_file \
+      "https://github.com/zeromq/libzmq/releases/download/v${HAILO_LIBZMQ_VERSION}/zeromq-${HAILO_LIBZMQ_VERSION}.tar.gz" \
+      "${HAILO_LIBZMQ_SHA256}" "${WORK}/zeromq.tar.gz"
+    mkdir -p "${src}"
+    tar -xf "${WORK}/zeromq.tar.gz" -C "${src}" --strip-components=1
+  fi
+  rm -rf "${build}"
+  info "building libzmq"
+  cmake -S "${src}" -B "${build}" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="${HAILO_PREFIX}" \
+    -DBUILD_TESTS=OFF -DWITH_DOCS=OFF -DENABLE_CPACK=OFF -DBUILD_SHARED=ON >/dev/null \
+    || die "libzmq configure failed"
+  cmake --build "${build}" -j "$(compute_cpp_heavy_jobs "")" || die "libzmq build failed"
+  cmake --install "${build}" || die "libzmq install failed"
+}
+
+# TAPPAS against the image's GStreamer. Its README's "1.16-1.20" is the TESTED
+# matrix; the meson constraint is >= 1.0 and 1.29.2 builds clean (proven
+# 2026-09-20). The two non-obvious build-args are load-bearing:
+#   - libargs is an ARRAY option: elements must be comma-separated, or only the
+#     last survives and every HailoRT header goes missing;
+#   - libxtensor/libcxxopts/librapidjson default to a repo-root open_source/,
+#     while the sources live under core/open_source/.
+build_tappas() {
+  local build="${WORK}/tappas-build" triple plugin_dir
+  rm -rf "${build}"
+  info "configuring TAPPAS v${TAPPAS_VERSION} (GStreamer, HailoRT ${HAILORT_VERSION})"
+  PKG_CONFIG_PATH="$(gst_pkgconfig_dir):${HAILO_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
+    meson setup "${build}" "${TAPPAS_SRC}/core/hailo" \
+      --prefix="${TAPPAS_PREFIX:-/opt/tappas}" --buildtype=release \
+      -Dlibargs="-I${HAILO_PREFIX}/include,-I${HAILO_PREFIX}/include/gstreamer-1.0/gst/hailo" \
+      -Dlibxtensor=../open_source/xtensor_stack/base \
+      -Dlibcxxopts=../open_source/cxxopts \
+      -Dlibrapidjson=../open_source/rapidjson \
+    || die "TAPPAS configure failed"
+  info "building TAPPAS"
+  ninja -C "${build}" -j "$(compute_cpp_heavy_jobs "")" || die "TAPPAS build failed"
+  ninja -C "${build}" install || die "TAPPAS install failed"
+
+  # TAPPAS installs its libraries into the system multiarch dirs (its meson
+  # hardcodes libdir) — already on the loader path. Its GStreamer plugin must
+  # join the image's GST_PLUGIN_PATH dir, exactly like hailonet.
+  triple="$(cross_target_triplet_for_arch "${TARGET_ARCH:-amd64}" 2>/dev/null || printf '%s-linux-gnu' "${TARGET_ARCH:-amd64}")"
+  plugin_dir="/usr/lib/${triple}/gstreamer-1.0"
+  compgen -G "${plugin_dir}/libgsthailotools.so*" >/dev/null \
+    || die "TAPPAS plugin not found under ${plugin_dir}"
+  cp -a "${plugin_dir}"/libgsthailotools.so* "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/"
+  ldconfig
+  GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${GST_PLUGIN_PATH:-}" \
+    gst-inspect-1.0 hailotools >/dev/null 2>&1 \
+    || die "gst-inspect-1.0 hailotools failed"
+  info "TAPPAS plugin loads (hailotools)"
+}
+
 fetch_sources
 build_hailort
+build_pyhailort
 normalize_layout
 verify_install
+install_pyhailort
+fetch_tappas
+build_libzmq
+build_tappas
 info "HailoRT ${HAILORT_VERSION} installed at ${HAILO_PREFIX}"

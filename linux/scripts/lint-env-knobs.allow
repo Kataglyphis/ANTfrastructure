@@ -427,3 +427,7 @@ WEBDAV_VENV_DIR
 # protobuf and gRPC sources (default /var/cache/hailo-build, which is a cache
 # mount in Dockerfile.hailo). An operator override for a pre-populated tree.
 HAILO_BUILD_ROOT
+# Hailo build script: TAPPAS's install prefix (default /opt/tappas). Only the
+# headers land there — TAPPAS's meson hardcodes libdir to the system multiarch
+# dirs — so this is a relocation knob for a development tree.
+TAPPAS_PREFIX

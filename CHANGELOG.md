@@ -113,6 +113,40 @@ in `Dockerfile.torch` for amd64 and arm64 (riscv64 skips), so every
 `:latest-cross` wrapper carries Hailo by default; the `:hailo` variant stays as
 a convenience tag.
 
+**Hailo switches to Hailo-10H, Hailo-8 is dropped, pyhailort is built, TAPPAS
+is declined, the Dataflow Compiler is staged.** `HAILORT_VERSION` moves to
+**5.4.0** (`master`, the Hailo-10/15 line) and the externals are re-derived for
+that tree — no gRPC (master has no `grpc.cmake`), with minja, tl-expected and
+the newer cli11/json pins; libusb/tokenizers/slint/montserrat stay unstaged
+because their features (USB, servers) are off. `build-hailort.sh` now also
+builds the **pyhailort** wheel from `bindings/python/platform/`
+(scikit-build-core) and installs it into `/opt/venv` with upstream's
+`requires-python <3.14` relaxed and an import test — the image runs 3.14, and a
+failed import is reported, not hidden. **TAPPAS stays out**: v5.4.0 supports
+GStreamer 1.16–1.20 while this image ships 1.29.2; the `hailonet` element is
+the pipeline integration the repo needs. The **Dataflow Compiler** is
+login-gated and x86_64-only, so it gets the QNN-style staged drop point
+`linux/hailo-sdk/` (the amd64 wrapper installs a staged wheel; the Model Zoo
+stays a host-side tool).
+
+**TAPPAS is built against GStreamer 1.29.2 — with build-args, not patches.**
+The plan had it as blocked (its README names 1.16-1.20 as the supported
+matrix), but that is the TESTED matrix: the meson constraint is `>= 1.0` and a
+spike proved a clean build. What actually had to change: `libargs` is a Meson
+ARRAY and its elements must be comma-separated (a space-joined value silently
+keeps only the last element, and every HailoRT header then goes missing);
+`libxtensor`/`libcxxopts`/`librapidjson` must point at `core/open_source/`;
+that tree's header-only dependencies (xtensor, xtl, cxxopts, pybind11,
+rapidjson, Catch2) are staged at pinned commits because upstream clones them
+from BRANCHES (rapidjson: master); and **libzmq** is built in (MPL-2.0) for
+the `hailoexportzmq`/`hailoimportzmq` elements, since the runtime image has no
+usable apt. `gst-inspect-1.0 hailotools` passes in the built image, and the
+plugin is staged into the same plugin dir as `hailonet`. Also fixed on the way:
+`HAILO_BUILD_TOOLS=OFF` (the v5.4.0 tarball ships no `tools/` dir, so ON makes
+CMake die), the missing `mkdir -p` that made the HailoRT download fail with
+curl error 23, and pyhailort's `requires-python <3.14` metadata (relaxed before
+the wheel build, import-tested after).
+
 ## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
 
 The first rebuild of the 2026-09-17/18 wave ran **green on BOTH Windows lanes** —

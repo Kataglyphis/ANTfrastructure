@@ -272,10 +272,14 @@ sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphi
 
 ## Hailo variant
 
-HailoRT + the `hailonet` GStreamer element on top of the published runtime
-image, for hosts with a Hailo-8/8R/8L PCIe card. Design, upstream matrix and
-pins: [`hailo-support.md`](hailo-support.md). The PCIe kernel driver is
-host-only (GPL-2.0, DKMS) — the image needs `--device=/dev/hailo0`.
+HailoRT + `hailortcli` + the `hailonet` element + **TAPPAS** (`hailofilter`,
+`hailocropper`, `hailooverlay`, `hailoaggregator`, `hailotracker`, ...) +
+pyhailort, built
+into the **standard runtime** (`:latest-cross`) for amd64 and arm64, for hosts
+with a Hailo-10H accelerator (Hailo-8 support was dropped 2026-09-20). Design,
+upstream matrix and pins: [`hailo-support.md`](hailo-support.md). The PCIe
+kernel driver is host-only (GPL-2.0, DKMS) — the image needs
+`--device=/dev/hailo0`.
 
 **Files involved:**
 
@@ -283,7 +287,7 @@ host-only (GPL-2.0, DKMS) — the image needs `--device=/dev/hailo0`.
 | --- | --- |
 | `linux/Dockerfile.hailo` | Stage 1 builds HailoRT against the media GStreamer; stage 2 copies the payload into `:latest-cross-<arch>` |
 | `linux/scripts/03-media/build/hailo/build-hailort.sh` | Verified sources → offline CMake build → self-checks (`hailortcli --version`, `gst-inspect-1.0 hailonet`) |
-| `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*`, `HAILO_GRPC_*` pins (also the Dockerfile ARG defaults) |
+| `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*` pins (also the Dockerfile ARG defaults) |
 
 **Build (per arch, after the runtime lane has published `:latest-cross-<arch>`):**
 
@@ -312,10 +316,10 @@ nerdctl run --rm -it --device=/dev/hailo0 ghcr.io/kataglyphis/kataglyphis_beschl
 Neither of these has an image chain in this repo yet — they are host/device
 procedures for the boards the runtime artifacts get deployed to. Host-side
 driver and performance setup is [Linux Host Setup](linux-host-setup.md).
-Hailo's image-chain integration is planned separately in
+Hailo's image-chain integration (Hailo-10H) is documented in
 [`hailo-support.md`](hailo-support.md); Jetson stays host-only.
 
-### Hailo-8: compiling an ONNX model to `.hef`
+### Hailo-10H: compiling an ONNX model to `.hef`
 
 The Hailo toolchain does not consume ONNX at runtime. A model goes through
 three stages — parse, quantize, compile — and each emits an intermediate `.har`.
@@ -323,7 +327,7 @@ three stages — parse, quantize, compile — and each emits an intermediate `.h
 **1. Parse.** Let the parser infer the graph boundaries first:
 
 ```bash
-hailo parser onnx /local/shared_with_docker/model.onnx --hw-arch hailo8
+hailo parser onnx /local/shared_with_docker/model.onnx --hw-arch hailo10h
 ```
 
 If it cannot resolve the ends of the graph, pin them explicitly. The node names
@@ -331,7 +335,7 @@ are model-specific — read them off the failure message or a Netron dump:
 
 ```bash
 hailo parser onnx /local/shared_with_docker/model.onnx \
-  --hw-arch hailo8 \
+  --hw-arch hailo10h \
   --start-node-names images \
   --end-node-names Conv_1058 Conv_1065 Conv_1088 \
   --tensor-shapes "[1,3,640,640]"
@@ -341,7 +345,7 @@ hailo parser onnx /local/shared_with_docker/model.onnx \
 
 ```bash
 hailo optimize /local/shared_with_docker/model.har \
-  --hw-arch hailo8 \
+  --hw-arch hailo10h \
   --output /local/shared_with_docker/model_quantized.har \
   --model-script /local/shared_with_docker/model.alls \
   --use-random-calib-set
@@ -400,7 +404,7 @@ For a model the Hailo Model Zoo already knows, the three steps collapse into one
 ```bash
 hailomz compile yolov9c \
   --ckpt /local/shared_with_docker/yolov9c.onnx \
-  --classes 80 --hw-arch hailo8 \
+  --classes 80 --hw-arch hailo10h \
   --calib-path /local/shared_with_docker/coco/val2017/val2017
 ```
 
@@ -417,7 +421,7 @@ python hailo_model_zoo/datasets/create_coco_tfrecord.py calib2017
 Format reference:
 [hailo_model_zoo DATA.rst](https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/DATA.rst).
 
-### Hailo-8: the driver
+### Hailo-10H: the driver
 
 The PCIe module is not loaded automatically — after every reboot:
 

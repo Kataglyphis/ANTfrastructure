@@ -80,6 +80,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "Zlib": (KEEP_NOTICE, INCLUDE_TEXT),
     "curl": (KEEP_NOTICE, INCLUDE_TEXT),
     "Unlicense": (),
+    "BSL-1.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "PSF-2.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "NCSA": (KEEP_NOTICE, INCLUDE_TEXT),
     "FTL": (KEEP_NOTICE, INCLUDE_TEXT),

@@ -90,10 +90,12 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| HailoRT (libhailort, hailortcli) | 4.24.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | MIT |
-| HailoRT hailonet GStreamer element | 4.24.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | LGPLv2.1+ |
+| HailoRT (libhailort, hailortcli) | 5.4.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | MIT |
+| HailoRT hailonet GStreamer element | 5.4.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | LGPLv2.1+ |
 | protobuf (HailoRT build external) | 21.12 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause |
-| gRPC (HailoRT build external) | 1.54.0 | [github.com/grpc/grpc](https://github.com/grpc/grpc) | Apache 2.0 |
+| TAPPAS | 5.4.0 | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later |
+| libzmq (TAPPAS zmq elements) | 4.3.5 | [github.com/zeromq/libzmq](https://github.com/zeromq/libzmq) | MPL-2.0 |
+| TAPPAS build externals (header-only: xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2) | commit-pinned in build-hailort.sh | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | BSD-3-Clause / MIT / BSL-1.0 (per project) |
 
 ### Frameworks (`Dockerfile.torch`)
 
@@ -335,7 +337,19 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** LGPL-2.1-or-later
 - **Source:** <https://github.com/hailo-ai/hailort>
-- **Revision:** 4.24.0
+- **Revision:** 5.4.0
+
+### TAPPAS — Linux Images
+
+- **Licence:** LGPL-2.1-or-later
+- **Source:** <https://github.com/hailo-ai/tappas>
+- **Revision:** 5.4.0
+
+### libzmq (TAPPAS zmq elements) — Linux Images
+
+- **Licence:** MPL-2.0
+- **Source:** <https://github.com/zeromq/libzmq>
+- **Revision:** 4.3.5
 
 ### ccache — Linux Images
 

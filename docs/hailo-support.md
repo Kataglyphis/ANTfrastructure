@@ -1,29 +1,44 @@
 # Hailo support — image-chain integration plan
 
-**Status: IN THE STANDARD RUNTIME (2026-09-20). `:latest-cross` builds the
-Hailo payload by default on amd64 and arm64; riscv64 skips it (no HailoRT
-support at any version). The `:hailo` variant image remains published for
-consumers that want the tag.** Host-side `.hef` compilation and the PCIe driver
-already have procedures — [`linux-accelerator-images.md` § Edge
+**Status: HAILO-10H IN THE STANDARD RUNTIME (2026-09-20). `:latest-cross`
+builds the Hailo payload by default on amd64 and arm64; riscv64 skips it (no
+HailoRT support at any version). Hailo-8/8R/8L support was DROPPED the same
+day — those devices need the `hailo8` branch (HailoRT 4.24.x), a different
+source tree.** Host-side `.hef` compilation and the PCIe driver already have
+procedures — [`linux-accelerator-images.md` § Edge
 accelerators](linux-accelerator-images.md#edge-accelerators). This page owns the
 design, the upstream facts it rests on, and what remains open.
 
-**Proven 2026-09-20:** the payload was first proven in `:hailo-amd64` /
-`:hailo-arm64` (joined into the `:hailo` manifest) and then folded into
-`Dockerfile.torch`, so every `:latest-cross` wrapper carries it. In the shipped
-images `hailortcli --version` reports `HailoRT-CLI version 4.24.0` and
-`gst-inspect-1.0 hailonet` resolves the element. The build's own checks run
-before the payload is accepted, so a broken element fails the build rather than
-shipping.
+**Proven 2026-09-20:** the payload was first proven as a variant
+(`:hailo-amd64` / `:hailo-arm64`) and then folded into `Dockerfile.torch`, so
+every `:latest-cross` wrapper carries it. The build's own checks run before the
+payload is accepted, so a broken element fails the build rather than shipping.
+**pyhailort is built from source** (scikit-build-core, the `platform/`
+directory) and installed into `/opt/venv` — with one caveat: upstream declares
+`requires-python <3.14` and the image runs 3.14, so the install relaxes that
+metadata and import-tests `hailo_platform`; a failure is reported, not hidden.
+**TAPPAS IS built** (2026-09-20). Its README names GStreamer 1.16–1.20 as the
+*tested* matrix, but the meson constraint is `>= 1.0` and it builds clean
+against this image's 1.29.2 — the two load-bearing fixes are build-args, not
+code patches: `libargs` is a Meson ARRAY (comma-separated elements, or only the
+last survives) and the `open_source` include paths are explicit. Its
+`hailofilter`/`hailocropper`/`hailooverlay`/`hailoaggregator`/`hailotracker` and
+the rest load in the shipped image; libzmq is built in for the two zmq
+elements. **The Dataflow
+Compiler is staged, not fetched** — it is login-gated and x86_64-only; drop the
+wheel into `linux/hailo-sdk/` and the amd64 wrapper installs it
+(`linux/hailo-sdk/README.md`). The Model Zoo stays a host-side tool.
 
 ## What exists (2026-09-20)
 
 | Piece | Where |
 | --- | --- |
-| Build script (HailoRT + `hailortcli` + `hailonet`) | `linux/scripts/03-media/build/hailo/build-hailort.sh` |
-| Variant Dockerfile (build stage + runtime stage) | `linux/Dockerfile.hailo` |
-| Pins (`HAILORT_*`, `HAILO_PROTOBUF_*`, `HAILO_GRPC_*`) | `linux/scripts/01-core/versions.env` |
-| Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause, Apache-2.0) | `docs/deps/deps.json` |
+| Build script (HailoRT + `hailortcli` + `hailonet` + pyhailort wheel + TAPPAS + libzmq) | `linux/scripts/03-media/build/hailo/build-hailort.sh` |
+| Standard runtime build (amd64/arm64, riscv64 skips) | `linux/Dockerfile.torch` |
+| Standalone variant | `linux/Dockerfile.hailo` |
+| Pins (`HAILORT_*`, `HAILO_PROTOBUF_*`, `TAPPAS_*`, `HAILO_LIBZMQ_*`) | `linux/scripts/01-core/versions.env` |
+| Dataflow Compiler drop point (login-gated, gitignored) | `linux/hailo-sdk/` |
+| Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause) | `docs/deps/deps.json` |
 | Build commands | [`linux-accelerator-images.md` § Hailo variant](linux-accelerator-images.md#hailo-variant) |
 
 The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo` builds HailoRT in
@@ -37,21 +52,22 @@ own nested cmake, which a cross `CMAKE_C_COMPILER` cannot reach
 (`as: unrecognized option '-EL'`, then a Ninja/RPATH "not ELF-based" error from
 a stale cross cache). Native is slower on arm64 (QEMU) and correct.
 
-**Not implemented, deliberately:** `pyhailort`. The public Python package is not
-produced by the source build (the repo's bindings CMake only builds an internal
-module under `HAILO_BUILD_PYHAILORT_INTERNAL`); it ships in Hailo's `.deb`. The
-GStreamer element is what this repo's pipelines need. Revisit only if a consumer
-asks for `import hailort`.
+**Build-args, not patches.** TAPPAS needed no GStreamer source changes: the
+Meson `libargs` array (comma-separated) carries the HailoRT include paths and
+`libxtensor`/`libcxxopts`/`librapidjson` point at `core/open_source/`, whose
+header-only dependencies (xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2)
+are staged at pinned commits — upstream clones them from branches, including
+`rapidjson: master`.
 
 
 ## Why an image chain
 
-The runtime artifacts are deployed to boards with a Hailo-8/8L or Hailo-10H
-accelerator. Until 2026-09-20 the software was installed on the host by hand:
-HailoRT and the GStreamer element were absent from every image, so a consumer
-either apt-installed them outside the container or skipped the device.
-The `:hailo` variant ships them pinned, verified and gated, the same way
-CUDA/ROCm and the QNN EP are handled.
+The runtime artifacts are deployed to boards with a Hailo-10H accelerator.
+Until 2026-09-20 the software was installed on the host by hand: HailoRT and
+the GStreamer element were absent from every image, so a consumer either
+apt-installed them outside the container or skipped the device. The standard
+runtime now ships them pinned, verified and gated, the same way CUDA/ROCm and
+the QNN EP are handled.
 
 ## Upstream facts (2026-09-19)
 
@@ -59,8 +75,9 @@ CUDA/ROCm and the QNN EP are handled.
 
 | Family | Branch | Latest release | Notes |
 | --- | --- | --- | --- |
-| Hailo-8, Hailo-8R, Hailo-8L | `hailo8` | **v4.24.0** (head `63adffec`, tag and head identical) | the M.2/PCIe cards; the line the Model Zoo targets |
-| Hailo-10, Hailo-15 | `master` | **v5.4.0** (`f5195903`) | 10H is PCIe; 15 is an SoC with its own apps repo — **out of scope** |
+| Hailo-8, Hailo-8R, Hailo-8L | `hailo8` | v4.24.0 | **DROPPED 2026-09-20.** These devices need this branch (HailoRT 4.24.x), a different source tree and pin set; restore it only by re-adding a second pin set |
+| Hailo-10 | `master` | **v5.4.0** (`f5195903`) | **the supported family**; 10H is PCIe |
+| Hailo-15 | `master` | v5.4.0 | an SoC with its own apps repo — **out of scope** |
 
 A single pin cannot serve both lines: the branch is part of the pin
 (`HAILORT_BRANCH` + `HAILORT_COMMIT`), and the version keys differ.
@@ -72,7 +89,7 @@ A single pin cannot serve both lines: the branch is part of the pin
 | `libhailort`, `hailortcli`, `pyhailort` | [`hailo-ai/hailort`](https://github.com/hailo-ai/hailort) | MIT | in the image |
 | `hailonet` GStreamer element | same repo, `hailort/libhailort/bindings/gstreamer` | LGPL-2.1-or-later | in the image (media) |
 | Hailo PCIe driver | [`hailo-ai/hailort-drivers`](https://github.com/hailo-ai/hailort-drivers) | GPL-2.0 | **host only** — out-of-tree DKMS, never in an image |
-| TAPPAS | [`hailo-ai/tappas`](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later | phase 2 (see the GStreamer blocker) |
+| TAPPAS | [`hailo-ai/tappas`](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later | **in the image** (with libzmq, MPL-2.0, for the zmq elements) |
 | Hailo Model Zoo | [`hailo-ai/hailo_model_zoo`](https://github.com/hailo-ai/hailo_model_zoo) | MIT | host-side, with the login-gated Dataflow Compiler |
 
 Both copyleft rows need a source pointer in
@@ -91,38 +108,23 @@ class this repo refuses everywhere else.
 
 ### TAPPAS pairing
 
-TAPPAS v5.4.0 supports HailoRT **v4.24.0 for Hailo-8** and **v5.4.0 for
-Hailo-10H**, and states its GStreamer support as **1.16 | 1.18 | 1.20**. It is
-LGPL-2.1-or-later and targets Ubuntu x86 24.04/22.04, Ubuntu aarch64 20.04
-(manual install), Raspberry Pi OS and Yocto — no Windows, no riscv64.
+TAPPAS v5.4.0 pairs with HailoRT **v5.4.0 for Hailo-10H** (the Hailo-8 line
+went with that family's drop). It is LGPL-2.1-or-later and targets Ubuntu x86
+24.04/22.04, Ubuntu aarch64 20.04 (manual install), Raspberry Pi OS and Yocto —
+no Windows, no riscv64. Its README's **1.16 | 1.18 | 1.20** is the *tested*
+matrix; the meson constraint is `>= 1.0`, and 1.29.2 builds clean (proven).
 
-## Compatibility findings (resolve before wiring anything)
+## Compatibility findings (resolved 2026-09-20)
 
-1. **GStreamer version gap — the one real blocker.** The image builds GStreamer
-   from source at `GSTREAMER_VERSION` (`versions.env`); TAPPAS's supported
-   matrix stops at 1.20. Three options, in order of preference:
-   - **(a) `hailonet` only** — HailoRT's own GStreamer element, built against
-     the image's GStreamer. Smallest surface, no TAPPAS dependency tree, and it
-     is the element a GStreamer pipeline actually needs for inference. The
-     default plan.
-   - **(b) Patch TAPPAS** to build against the image's GStreamer — unproven,
-     carries a fork, and TAPPAS is a large meson project. Timeboxed spike only.
-   - **(c) Ship a second GStreamer** (1.20) for TAPPAS — two GStreamer trees in
-     one image is the worst maintenance and disk option.
-   **Prove (a) with one build before designing around it**: configure HailoRT
-   with `HAILO_BUILD_GSTREAMER=ON` against the image's GStreamer and run
-   `gst-inspect-1.0 hailonet`.
-2. **Architecture.** HailoRT builds from source for x86_64 and aarch64; riscv64
-   is not supported. riscv64 therefore takes a parity exemption — recorded in
-   `_parity_exempt` (`06-packaging/smoke-runtime-image.sh`), the same mechanism
-   QNN's arm64-only and cmake's riscv64 exemptions use. Never in prose.
-3. **Windows.** HailoRT supports Windows; TAPPAS does not. A Windows HailoRT
-   layer is a separate lane and a separate phase — do not couple it to the
-   Linux work.
+1. **GStreamer: no gap in practice.** The image's 1.29.2 builds TAPPAS clean —
+   the only fixes are build-args (`libargs` comma-array, explicit `open_source`
+   paths). No GStreamer source patches, no second GStreamer tree.
+2. **Architecture.** amd64 + arm64; riscv64 unsupported (HailoRT and TAPPAS
+   both). The script refuses it.
+3. **Windows.** HailoRT supports Windows; TAPPAS does not — a separate phase.
 4. **Android.** PCIe/M.2 — not applicable.
-5. **The Dataflow Compiler stays off-image.** It is x86-only and login-gated;
-   compiling ONNX to `.hef` remains a host procedure (existing doc), and the
-   image only consumes `.hef` at runtime.
+5. **The Dataflow Compiler stays off-image** unless staged (login-gated,
+   x86_64-only; `linux/hailo-sdk/`).
 
 ## Integration design (Linux lane)
 
@@ -152,10 +154,12 @@ owns the variant mechanics; this is the Hailo instance of them.
 
 ### Pins (`versions.env`, single source)
 
-`HAILORT_VERSION`, `HAILORT_COMMIT` (for the `hailo8` line the value is both
-the tag and the commit — a lightweight tag), `HAILORT_SOURCE_SHA256`, and the
-externals: `HAILO_PROTOBUF_VERSION`/`_SHA256`,
-`HAILO_GRPC_VERSION`/`_COMMIT`. The same values are the ARG defaults in
+`HAILORT_VERSION`, `HAILORT_COMMIT` (for v5.4.0 the value is both the tag and
+the commit — a lightweight tag), `HAILORT_SOURCE_SHA256`, and the externals:
+`HAILO_PROTOBUF_VERSION`/`_SHA256`, plus `TAPPAS_VERSION`/`_SHA256` and
+`HAILO_LIBZMQ_VERSION`/`_SHA256` (TAPPAS's zmq elements). master has no
+`grpc.cmake` (the hailo8 branch did), so there are no gRPC keys; TAPPAS's own
+header-only externals are commit-pinned in the build script. The same values are the ARG defaults in
 `Dockerfile.torch` and `Dockerfile.hailo`, and `sync_versions.py --check` keeps
 them in step.
 
