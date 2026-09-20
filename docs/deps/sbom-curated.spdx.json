@@ -533,6 +533,58 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-HailoRT-libhailort-hailortcli-6efa8649",
+      "name": "HailoRT (libhailort, hailortcli)",
+      "versionInfo": "4.24.0",
+      "downloadLocation": "https://github.com/hailo-ai/hailort",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-HailoRT-hailonet-GStreamer-element-e978ebee",
+      "name": "HailoRT hailonet GStreamer element",
+      "versionInfo": "4.24.0",
+      "downloadLocation": "https://github.com/hailo-ai/hailort",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://github.com/hailo-ai/hailort at 4.24.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-protobuf-HailoRT-build-external-abf77797",
+      "name": "protobuf (HailoRT build external)",
+      "versionInfo": "21.12",
+      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-gRPC-HailoRT-build-external-7e11e38a",
+      "name": "gRPC (HailoRT build external)",
+      "versionInfo": "1.54.0",
+      "downloadLocation": "https://github.com/grpc/grpc",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
       "name": "PyTorch",
       "versionInfo": "v2.13.0",
@@ -548,7 +600,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TorchVision-f7194265",
       "name": "TorchVision",
-      "versionInfo": "v0.29.0",
+      "versionInfo": "v0.28.0",
       "downloadLocation": "https://github.com/pytorch/vision",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1534,6 +1586,26 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-HailoRT-libhailort-hailortcli-6efa8649"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-HailoRT-hailonet-GStreamer-element-e978ebee"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-protobuf-HailoRT-build-external-abf77797"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-gRPC-HailoRT-build-external-7e11e38a"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

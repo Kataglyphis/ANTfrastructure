@@ -387,6 +387,45 @@
           ]
         },
         {
+          "title": "Optional Accelerator \u2014 Hailo",
+          "dockerfile": "Dockerfile.hailo",
+          "entries": [
+            {
+              "name": "HailoRT (libhailort, hailortcli)",
+              "var": "HAILORT_VERSION",
+              "url": "https://github.com/hailo-ai/hailort",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "HailoRT hailonet GStreamer element",
+              "var": "HAILORT_VERSION",
+              "url": "https://github.com/hailo-ai/hailort",
+              "license": "LGPLv2.1+",
+              "spdx": "LGPL-2.1-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://github.com/hailo-ai/hailort",
+                "ref_var": "HAILORT_VERSION"
+              }
+            },
+            {
+              "name": "protobuf (HailoRT build external)",
+              "var": "HAILO_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD-3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "gRPC (HailoRT build external)",
+              "var": "HAILO_GRPC_VERSION",
+              "url": "https://github.com/grpc/grpc",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            }
+          ]
+        },
+        {
           "title": "Frameworks",
           "dockerfile": "Dockerfile.torch",
           "entries": [
