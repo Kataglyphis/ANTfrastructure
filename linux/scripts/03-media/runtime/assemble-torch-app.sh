@@ -481,6 +481,35 @@ reconcile_local_wheels() {
   fi
 }
 
+# The build pins the runtime smoke asserts. The app lock may lag them
+# (OrchestrANT pins torchvision 0.28 while versions.env pins 0.29), and on the
+# arches PyTorch publishes cp314 wheels for, the pinned pair is a binary
+# install from the CPU index — exact and fast. riscv64 has no wheels and keeps
+# its versions.env <KEY>_RISCV64 pair, which the wheelhouse source-builds.
+enforce_torch_version_pins() {
+  local target_arch="${TARGET_ARCH:-amd64}"
+  case "${target_arch}" in
+    amd64|arm64) ;;
+    *) return 0 ;;
+  esac
+  [ -n "${PYTORCH_VERSION:-}" ] && [ -n "${TORCHVISION_VERSION:-}" ] || return 0
+
+  local want_torch="${PYTORCH_VERSION#v}" want_tv="${TORCHVISION_VERSION#v}"
+  local have_torch have_tv
+  have_torch="$(python3 -c 'import torch; print(torch.__version__.split("+")[0])' 2>/dev/null || true)"
+  have_tv="$(python3 -c 'import torchvision; print(torchvision.__version__.split("+")[0])' 2>/dev/null || true)"
+
+  if [ "${have_torch}" = "${want_torch}" ] && [ "${have_tv}" = "${want_tv}" ]; then
+    echo "torch pins satisfied: ${have_torch} / ${have_tv}"
+    return 0
+  fi
+
+  echo "enforcing torch pins: ${have_torch:-absent}/${have_tv:-absent} -> ${want_torch}/${want_tv}"
+  uv pip install --force-reinstall --no-deps \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch==${want_torch}" "torchvision==${want_tv}"
+}
+
 install_project_environment() {
   activate_project_environment
   # The arrays below are populated/consumed by the helpers via nameref (SC2034
@@ -505,6 +534,7 @@ install_project_environment() {
   build_uv_sync_args sync_args locked_skip_packages locked_local_wheels
   run_uv_sync_with_fallback sync_args locked_local_wheels "${have_lock}"
   reconcile_local_wheels
+  enforce_torch_version_pins
 
   # If any dependency pulled in a PyPI opencv-python (4.x), remove it
   # so the source-built OpenCV5 bindings win.

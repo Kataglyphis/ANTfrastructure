@@ -542,7 +542,7 @@
       "licenseDeclared": "MIT",
       "licenseConcluded": "MIT",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -555,7 +555,7 @@
       "licenseDeclared": "LGPL-2.1-or-later",
       "licenseConcluded": "LGPL-2.1-or-later",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://github.com/hailo-ai/hailort at 4.24.0"
     },
     {
@@ -568,7 +568,7 @@
       "licenseDeclared": "BSD-3-Clause",
       "licenseConcluded": "BSD-3-Clause",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
@@ -581,13 +581,13 @@
       "licenseDeclared": "Apache-2.0",
       "licenseConcluded": "Apache-2.0",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.hailo)",
+      "comment": "Image section: Linux Images / Optional Accelerator — Hailo (Dockerfile.torch)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
       "name": "PyTorch",
-      "versionInfo": "v2.13.0",
+      "versionInfo": "v2.14.0",
       "downloadLocation": "https://pytorch.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -600,7 +600,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TorchVision-f7194265",
       "name": "TorchVision",
-      "versionInfo": "v0.28.0",
+      "versionInfo": "v0.29.0",
       "downloadLocation": "https://github.com/pytorch/vision",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
