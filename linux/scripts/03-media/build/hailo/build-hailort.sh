@@ -37,6 +37,8 @@ esac
 : "${TAPPAS_SOURCE_SHA256:?TAPPAS_SOURCE_SHA256 must be set (versions.env)}"
 : "${HAILO_LIBZMQ_VERSION:?HAILO_LIBZMQ_VERSION must be set (versions.env)}"
 : "${HAILO_LIBZMQ_SHA256:?HAILO_LIBZMQ_SHA256 must be set (versions.env)}"
+: "${HAILO_CPPZMQ_VERSION:?HAILO_CPPZMQ_VERSION must be set (versions.env)}"
+: "${HAILO_CPPZMQ_SHA256:?HAILO_CPPZMQ_SHA256 must be set (versions.env)}"
 
 HAILO_PREFIX="${HAILO_PREFIX:-/opt/hailo}"
 WORK="${HAILO_BUILD_ROOT:-/var/cache/hailo-build}"
@@ -335,6 +337,20 @@ build_libzmq() {
     || die "libzmq configure failed"
   cmake --build "${build}" -j "$(compute_cpp_heavy_jobs "")" || die "libzmq build failed"
   cmake --install "${build}" || die "libzmq install failed"
+
+  # libzmq ships the C API only; TAPPAS's zmq elements include the C++ header
+  # `zmq.hpp`, which lives in cppzmq (header-only, MIT).
+  info "installing cppzmq v${HAILO_CPPZMQ_VERSION}"
+  download_verified_file \
+    "https://github.com/zeromq/cppzmq/archive/refs/tags/v${HAILO_CPPZMQ_VERSION}.tar.gz" \
+    "${HAILO_CPPZMQ_SHA256}" "${WORK}/cppzmq.tar.gz"
+  local cppzmq_dir="${WORK}/cppzmq-${HAILO_CPPZMQ_VERSION}"
+  rm -rf "${cppzmq_dir}"
+  mkdir -p "${cppzmq_dir}"
+  tar -xf "${WORK}/cppzmq.tar.gz" -C "${cppzmq_dir}" --strip-components=1
+  install -D -m 0644 "${cppzmq_dir}/zmq.hpp" "${HAILO_PREFIX}/include/zmq.hpp"
+  [ -f "${cppzmq_dir}/zmq_addon.hpp" ] && install -D -m 0644 "${cppzmq_dir}/zmq_addon.hpp" "${HAILO_PREFIX}/include/zmq_addon.hpp"
+  return 0
 }
 
 # TAPPAS against the image's GStreamer. Its README's "1.16-1.20" is the TESTED

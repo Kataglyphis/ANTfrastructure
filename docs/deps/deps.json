@@ -446,6 +446,13 @@
               "url": "https://github.com/hailo-ai/tappas",
               "license": "BSD-3-Clause / MIT / BSL-1.0 (per project)",
               "spdx": "BSD-3-Clause AND MIT AND BSL-1.0"
+            },
+            {
+              "name": "cppzmq (TAPPAS zmq elements)",
+              "var": "HAILO_CPPZMQ_VERSION",
+              "url": "https://github.com/zeromq/cppzmq",
+              "license": "MIT",
+              "spdx": "MIT"
             }
           ]
         },

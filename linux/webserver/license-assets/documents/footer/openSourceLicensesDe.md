@@ -96,6 +96,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | TAPPAS | 5.4.0 | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later |
 | libzmq (TAPPAS zmq elements) | 4.3.5 | [github.com/zeromq/libzmq](https://github.com/zeromq/libzmq) | MPL-2.0 |
 | TAPPAS build externals (header-only: xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2) | commit-pinned in build-hailort.sh | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | BSD-3-Clause / MIT / BSL-1.0 (per project) |
+| cppzmq (TAPPAS zmq elements) | 4.11.0 | [github.com/zeromq/cppzmq](https://github.com/zeromq/cppzmq) | MIT |
 
 ### Frameworks (`Dockerfile.torch`)
 
