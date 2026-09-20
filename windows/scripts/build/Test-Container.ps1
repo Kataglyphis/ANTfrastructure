@@ -396,16 +396,30 @@ if ($script:gpuNvidia) {
     }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
 
     # Existence != loadable: link + call a HOST-only cuDNN API (cudnnGetVersion needs no GPU)
-    # to prove the cuDNN header/lib/DLL actually link + load together.
+    # to prove the cuDNN header/lib/DLL actually link + load together. Cross lane (#176):
+    # the staged cuDNN is ARM64 and cannot RUN here, so the run half becomes a PE-machine
+    # assert on the linked exe -- same 1:1 substitution as §14.
     $cudnnHdr = $cudnnHeaders | Where-Object { $_.Name -eq 'cudnn.h' } | Select-Object -First 1
     $cudnnMainLib = $cudnnLibs | Where-Object { $_.Name -eq 'cudnn.lib' } | Select-Object -First 1
     $cudnnMainDll = $cudnnDlls | Where-Object { $_.Name -like 'cudnn64_*.dll' } | Select-Object -First 1
     if ($cudnnHdr -and $cudnnMainLib -and $cudnnMainDll -and $env:CUDA_ROOT) {
-        Assert-NativeLinkRun -Name 'cuDNN links + host API works (cudnnGetVersion)' -WorkName 'cudnn' -Source @'
+        $cudnnProbe = @{
+            WorkName    = 'cudnn'
+            Source      = @'
 #include <cudnn.h>
 #include <cstdio>
 int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
-'@ -IncludeDirs @($cudnnHdr.DirectoryName, (Join-Path $env:CUDA_ROOT 'include')) -LibDir $cudnnMainLib.DirectoryName -LibName $cudnnMainLib.Name -DllDir $cudnnMainDll.DirectoryName -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
+'@
+            IncludeDirs = @($cudnnHdr.DirectoryName, (Join-Path $env:CUDA_ROOT 'include'))
+            LibDir      = $cudnnMainLib.DirectoryName
+            LibName     = $cudnnMainLib.Name
+            DllDir      = $cudnnMainDll.DirectoryName
+        }
+        if ($smokeCross) {
+            Assert-NativeLinkRun @cudnnProbe -CrossLinkOnly -Name "cuDNN links against the target-arch import lib ($($cudnnMainLib.DirectoryName))" -ExpectMatch 'cudnn' -FailMessage "cuDNN did not compile/link for the target arch -- header/lib mismatch in the arm64 payload (the run half is impossible on this x64 host; the linked exe's PE machine is asserted instead)"
+        } else {
+            Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
+        }
     } else {
         Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
     }

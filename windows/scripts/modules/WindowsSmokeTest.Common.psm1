@@ -227,10 +227,17 @@ function Assert-NativeLinkRun {
         [string]$LibName,
         [string]$DllDir,          # prepended to PATH so the DLL resolves at run
         [string]$ExpectMatch,     # regex the program's stdout must match
-        [string]$FailMessage
+        [string]$FailMessage,
+        # CROSS LANE (#176): compile+link FOR the target arch and assert the produced
+        # exe's PE machine instead of running it -- an aarch64 exe cannot execute on
+        # this x64 host. Same 1:1 run->PE-machine substitution §14 does.
+        [switch]$CrossLinkOnly
     )
     $work = $WorkName; $body = $Source; $incs = $IncludeDirs
     $ldir = $LibDir; $lname = $LibName; $ddir = $DllDir; $expect = $ExpectMatch
+    $cross = $CrossLinkOnly.IsPresent
+    $targetFlag = if ($cross) { "/clang:--target=$(Get-ClangTargetTriple)" } else { $null }
+    $expectMachine = if ($cross) { Get-PeMachineType } else { 0 }
     Assert-Test -Name $Name -Condition {
         $d = Join-Path $env:TEMP "kataglyphis-smoke-$work"
         New-Item -Path $d -ItemType Directory -Force | Out-Null
@@ -238,15 +245,20 @@ function Assert-NativeLinkRun {
         Set-Content -Path $src -Value $body -Encoding ASCII
         $exe = Join-Path $d 'main.exe'
         $clangArgs = @($src, '/std:c++17', '/EHsc', '/nologo')
+        if ($targetFlag) { $clangArgs += $targetFlag }
         foreach ($i in $incs) { $clangArgs += "/I$i" }
         $clangArgs += @("/Fe$exe", '/link', "/LIBPATH:$ldir", $lname)
         & clang-cl @clangArgs 2>&1 | Out-Null
         $ok = $false
         if (($LASTEXITCODE -eq 0) -and (Test-Path $exe)) {
-            $prev = $env:PATH
-            $env:PATH = "$ddir;$env:PATH"
-            try { $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE } finally { $env:PATH = $prev }
-            $ok = ($code -eq 0) -and ($out -match $expect)
+            if ($cross) {
+                try { $ok = ((Get-PeFileMachine -Path $exe) -eq $expectMachine) } catch { $ok = $false }
+            } else {
+                $prev = $env:PATH
+                $env:PATH = "$ddir;$env:PATH"
+                try { $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE } finally { $env:PATH = $prev }
+                $ok = ($code -eq 0) -and ($out -match $expect)
+            }
         }
         Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
         return $ok

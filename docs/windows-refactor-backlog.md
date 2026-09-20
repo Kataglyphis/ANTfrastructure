@@ -130,47 +130,31 @@ this repo's cp314 pin).
   after one owed measurement — litert at 19 GB must not exceed the hidden
   1425 s (its bazel half grew 18→59 min since July).
 
-- **#176 — CUDA for Windows ARM64: the cross path is documented and
-  probe-proven; wiring the lane is the work.** Opened 2026-09-19 on new upstream
-  facts that supersede #122, then narrowed the same day by a probe — the x64 host
-  **can** cross-compile CUDA to ARM64, so the device is needed to *run* the
-  result, not to build it.
-  * CUDA 13.4.2 ships windows_arm64 installers — `cuda_13.4.2_windows_arm64_network.exe`
-    and `cuda_13.4.2_windows_arm64.exe` (both verified HTTP 200 on 2026-09-19;
-    the release-notes component table lists `arm64 (Windows)`), plus 34
-    `windows-arm64` redist components in `redistrib_13.4.2.json`.
-  * NVIDIA's Windows on Arm Porting Guide documents cross-compilation from an
-    x86_64 host: `vcvarsall.bat x64_arm64` + `nvcc --use-local-env`, with CMake
-    picking `%CUDA_PATH%\lib\arm64`; ARM64EC (`/arm64EC`, x64 libs) is the
-    second documented shape.
-  * Probe-proven here on 2026-09-19 (`out/probe-cuda-cross2/`): with the arm64
-    `cuda_cudart` redist archive extracted into CUDA_PATH — supplying
-    `lib\arm64\cudadevrt.lib` and `bin\arm64\cudart64_13.dll`, which the x64
-    network-installer package list does **not** provide — `vcvarsall x64_arm64`
-    + `nvcc --use-local-env` compiled a CUDA kernel to `main.exe` with
-    `AA64 machine (ARM64)`.
-  * cuDNN for Windows arm64 **exists**: `cudnn-windows-arm64-9.26.0.51_cuda13.4-archive.zip`,
-    sha256 `657743083b72885336321403522a5af80566d8347a1b7bef5563c018d602d0d0`,
-    448 MB. TensorRT's redist index is not public (EULA-gated), so its arm64
-    status is unverified; the graceful-skip path stays.
-  Work to do in this repo, in order:
-  1. An arm64 CUDA payload step in the nvidia stage: fetch the arm64 library
-     components by SHA from `redistrib_13.4.2.json` (cudart 2.8 MB, nvrtc 318,
-     cublas 154, cufft 162, curand 65, cusolver 71, cusparse 185, npp 165,
-     nvjitlink 280, cupti 15, nvjpeg 3.4 — trimmed to what the build links) and
-     extract into CUDA_PATH so `lib\arm64` / `bin\arm64` exist. New keys + ARGs.
-  2. Compile CUDA TUs on the arm64 lane through the MSVC `x64_arm64` environment
-     + `nvcc --use-local-env` (the image already installs `VC.Tools.ARM64`),
-     while the rest of the lane stays clang-cl. The amd64 `CUDA_INSTALLER_SHA256`
-     and `CUDNN_ZIP_SHA256` will need arm64 twins if a native install path is
-     ever added.
-  3. ONNX Runtime's CUDA EP for `windows_arm64` — upstream support status and
-     whether `Build-OnnxFromSource.ps1`'s flags need an arm64 arm; then the
-     OpenCV/TVM CUDA arms.
-  4. The driver's `-Gpu` on `-TargetArch arm64` — CUDA is OFF by construction
-     there today; the branch has to change for the cross shape.
-  5. Smoke/arch gates and the bundle manifest's DLL homes for the arm64 CUDA
-     payload; running the result still needs an RTX Spark/N1x-class device.
+- **#176 — CUDA for Windows ARM64. PHASE 1 LANDED 2026-09-20 (built, smoke
+  adapted; running it still needs a device).** Opened 2026-09-19 on new upstream
+  facts that supersede #122; the x64 host **can** cross-compile CUDA to ARM64
+  (NVIDIA's Windows-on-Arm Porting Guide; probe-proven in `out/probe-cuda-cross2/`
+  the same day), so the device is needed to *run* the result, not to build it.
+  Phase 1, all in tree and built:
+  * `Install-Cuda.ps1 -TargetArch arm64` stages the arm64 redist payload
+    (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`; SHA pins
+    in `versions.env` from `redistrib_13.4.2.json`) into the x64 toolkit's root as
+    `lib\arm64` / `bin\arm64`, plus `cudnn-windows-arm64-<pin>_cuda13.4-archive.zip`
+    (NVIDIA names the arm64 archive `_cuda13.4`, the x64 one `_cuda13`).
+  * `Get-NvccCudaCmakeArgs` drives `Hostx64\arm64\cl.exe` + `nvcc --use-local-env`
+    on the cross lane; `Get-CudnnLibraryDir` picks `lib\arm64`;
+    `Test-CudaWindowsArm64Payload` is the cross POSITIVE signal — no host GPU probe
+    decides a target flag.
+  * `Build-OnnxFromSource.ps1` builds the ORT CUDA EP for arm64: the 2026-09-20 run
+    `bk-20260920-031232` produced `onnxruntime_providers_cuda.dll` **0xAA64** in the
+    `win_arm64` wheel (2065-object ORT build), merge arch gate 1011/0, smoke
+    119/1/15 → the one red was the cuDNN run-probe, now a link + PE-machine assert
+    (`Assert-NativeLinkRun -CrossLinkOnly`, same 1:1 substitution as §14).
+  * `-Gpu -TargetArch arm64` is a supported driver combination; `EXPECT_GPU` rides
+    the cross smoke so a lost CUDA env reds instead of skipping.
+  PHASE 2 (open): OpenCV / GenAI / TVM CUDA for arm64 (each needs its own arm64
+  CMake path — their cross guards stay), TensorRT-RTX (the arm64 successor to the
+  x64-only classic TensorRT), and the first RUN on an RTX Spark/N1x-class device.
   Do not re-derive #122's August reasoning — the archive entry records what it
   rested on.
 
