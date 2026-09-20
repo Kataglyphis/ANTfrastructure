@@ -7,30 +7,36 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
-## 2026-09-20 - Windows-on-ARM64 CUDA/cuDNN: the cross lane is wired (#176 phase 1)
+## 2026-09-20 - Windows-on-ARM64 CUDA/cuDNN: the cross lane is wired (#176)
 
-The arm64 lane built its **CUDA EP for the first time**, on the x64 host, with no
-arm64 device involved: `onnxruntime_providers_cuda.dll` came out **0xAA64** in the
-`win_arm64` wheel (2065-object ORT build), the merge arch gate passed 1011/0, and
-the smoke ran its host-toolchain CUDA section for the first time.
+The arm64 lane built its **CUDA stack for the first time**, on the x64 host, with no
+arm64 device involved. Final run `bk-20260920-203631` (2:45:53): smoke **120/0/15**,
+arch gate **1047/0**, and every CUDA artefact 0xAA64.
 
 - **Payload**: `Install-Cuda.ps1 -TargetArch arm64` keeps the x64 toolkit (headers
   + nvcc are the host tools) and stages the arm64 redist components
-  (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`) into the
-  same root as `lib\arm64` / `bin\arm64`, plus the arm64 cuDNN archive. NVIDIA
-  names the arm64 cuDNN archive `_cuda13.4` where the x64 one is `_cuda13` — the
-  URL builder is arch-aware now. Every archive SHA-pinned in `versions.env`
-  (`redistrib_13.4.2.json` / `redistrib_9.26.0.json`).
-- **Build**: `Get-NvccCudaCmakeArgs` drives `Hostx64\arm64\cl.exe` +
-  `nvcc --use-local-env` (the documented x64→ARM64 flow), `Get-CudnnLibraryDir`
-  picks `lib\arm64`, and `Build-OnnxFromSource.ps1` enables CUDA on the cross lane
-  only when `Test-CudaWindowsArm64Payload` finds the payload — a positive signal,
-  never a host GPU probe. Classic TensorRT stays OFF on cross (x64-only).
+  (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`, `libnpp`,
+  `libcusolver`, `libcusparse`) into the same root as `lib\arm64` / `bin\arm64`,
+  plus the arm64 cuDNN archive. NVIDIA names the arm64 cuDNN archive `_cuda13.4`
+  where the x64 one is `_cuda13` — the URL builder is arch-aware now. Every archive
+  SHA-pinned in `versions.env` (`redistrib_13.4.2.json` / `redistrib_9.26.0.json`).
+- **Build**: `Get-NvccHostCompilerPath` is the one owner of the nvcc host compiler
+  (native x64 cl, cross `Hostx64\arm64` cl) and `Get-NvccCudaCmakeArgs` adds
+  `nvcc --use-local-env` on cross — the documented x64→ARM64 flow. ORT, GenAI,
+  OpenCV and TVM each enable CUDA on the cross lane only when
+  `Test-CudaWindowsArm64Payload` finds the payload — a positive signal, never a host
+  GPU probe. Classic TensorRT stays OFF on cross (x64-only).
+- **OpenCV**: NPP was the missing link (`CUDA::nppial`/`nppif`), and cudafilters'
+  `wavelet_matrix_2d.cuh` used the x86-only `_mm_popcnt_u64`; the guard change alone
+  was not enough because nvcc's device pass rejects `__builtin_popcountll` too, so
+  the ARM64 branch is a software popcount (patch probe-proven in
+  `out/probe-arm64-popcount`). TVM's legacy FindCUDA hardcodes `lib\x64`, so the
+  cross branch names the arm64 `CUDA_CUDART/CUBLAS/CUDA_LIBRARY`, host compiler and
+  `--use-local-env` explicitly.
 - **Gates**: `-Gpu -TargetArch arm64` is a supported driver combination; the cross
   smoke gets `EXPECT_GPU` (a lost CUDA env reds instead of skipping) and its cuDNN
   run-probe became a link + PE-machine assert (`Assert-NativeLinkRun -CrossLinkOnly`),
-  because an aarch64 DLL cannot execute on the x64 host. 119/1/15 → green.
-- OpenCV/GenAI/TVM CUDA stay off on the cross lane (phase 2), as does TensorRT-RTX.
+  because an aarch64 DLL cannot execute on the x64 host.
 
 ## 2026-09-20 - the GPU lane's smoke stops demanding an EULA payload nobody staged
 

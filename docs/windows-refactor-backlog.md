@@ -152,9 +152,23 @@ this repo's cp314 pin).
     (`Assert-NativeLinkRun -CrossLinkOnly`, same 1:1 substitution as §14).
   * `-Gpu -TargetArch arm64` is a supported driver combination; `EXPECT_GPU` rides
     the cross smoke so a lost CUDA env reds instead of skipping.
-  PHASE 2 (open): OpenCV / GenAI / TVM CUDA for arm64 (each needs its own arm64
-  CMake path — their cross guards stay), TensorRT-RTX (the arm64 successor to the
-  x64-only classic TensorRT), and the first RUN on an RTX Spark/N1x-class device.
+  PHASE 2 LANDED 2026-09-20 (`bk-20260920-203631`, 2:45:53): OpenCV, GenAI and TVM
+  build their CUDA paths for arm64 too.
+  * Payload grew `libnpp`/`libcusolver`/`libcusparse` (OpenCV links CUDA::nppial/...;
+    the first phase-2 configure died on the missing NPP targets).
+  * OpenCV: arch-aware host compiler + `--use-local-env` + explicit arm64
+    `CUDNN_LIBRARY`; its one x86 intrinsic in the CUDA tree
+    (`_mm_popcnt_u64`, cudafilters `wavelet_matrix_2d.cuh`) is patched to a software
+    popcount (`patches/opencv_contrib/002-...`, probe-proven; nvcc's device pass
+    rejects `__builtin_popcountll`, so a guard tweak alone was not enough).
+  * GenAI: `onnxruntime-genai-cuda.dll` **0xAA64** in the `win_arm64` wheel.
+  * TVM: `USE_CUDA/CUBLAS/CUDNN=ON` with the arm64 libs named explicitly (its legacy
+    FindCUDA hardcodes `lib\x64`), `CUDA_HOST_COMPILER=Hostx64\arm64\cl`,
+    `CUDA_NVCC_FLAGS=--use-local-env`.
+  * Smoke 120/0/15; arch gate 1047/0; `opencv_cuda*500.dll` installed under
+    `lib\opencv5\arm64\vc18\bin`.
+  STILL OPEN: classic TensorRT (x64-only; TensorRT-RTX unwired) and the first RUN on
+  an RTX Spark/N1x-class device.
   Do not re-derive #122's August reasoning — the archive entry records what it
   rested on.
 
