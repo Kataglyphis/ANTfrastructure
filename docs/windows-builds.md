@@ -413,6 +413,15 @@ TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was
 reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT`
 and enables the TensorRT EP when available.
 
+**The smoke's TensorRT assertions follow the staged state (2026-09-20).** With a
+tree staged they require the EP (`cuda=1 trt=1`, the provider DLL, the python
+EP); zip-less they assert its ABSENCE (`cuda=1 trt=0`, no provider DLL, python
+CUDA-EP only), keyed on `Test-TensorRtTreeStaged` -- the same presence rule
+`Resolve-TensorRtRoot` applies at build time. So the zip-less lane reports zero
+skips and a STAGED tree with a silently-disabled EP still reds. Until this fix
+the asserts were unconditional and turned the documented normal zip-less state
+into three false reds on the 2026-09-20 `-Gpu` run.
+
 **A PRESENT zip is a different matter and now fails CLOSED.**
 `Set-TensorrtTree.ps1` (bind-mounted into the `trt-extract` stage)
 renames the extracted `TensorRT-<version>` tree to a stable **`current`** and
@@ -690,7 +699,7 @@ To run it by hand against an existing image:
   pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 23 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-08-26, `bk-20260826-130136`, via the automatic gate): 222 passed / 0 failed / 0 skipped** — matching the figure this page records in the arm64 parity table. It supersedes 184/0/1 (2026-08-14; the one skip was GPU device passthrough) and the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers). Section 23 (#167) is the baked `C:\temp\scripts` surface, which this hand-run invocation does not exercise.
+The smoke test validates 23 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-09-20, `bk-20260920-023139`, the GPU lane, zip-less): 228 passed / 0 failed / 0 skipped** — the TensorRT asserts are conditional on the staged state now (§ TensorRT setup), so the zip-less GPU run is a full pass; the CPU-lane figure remains 222/0/0 (2026-08-26, `bk-20260826-130136`, via the automatic gate), matching the arm64 parity table. It supersedes 184/0/1 (2026-08-14; the one skip was GPU device passthrough) and the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers). Section 23 (#167) is the baked `C:\temp\scripts` surface, which this hand-run invocation does not exercise.
 
 ### What is verified: native vs. Python
 

@@ -201,6 +201,17 @@ function Assert-ArtifactPresent {
     Assert-Test -Name $Description -Condition { $count -gt 0 }.GetNewClosure() -FailMessage "No file matching '$Filter' found under $searchRoot"
 }
 
+function Test-TensorRtTreeStaged {
+    # TensorRT is EULA-gated and OPTIONAL (docs/windows-builds.md § TensorRT setup): the zip-less
+    # GPU lane is the documented normal state. Presence must mean "root set AND non-empty", the
+    # same rule Resolve-TensorRtRoot applies at build time -- a plain Test-Path would call the
+    # guaranteed-empty C:\tensorrt "present" and demand an EP the ORT build compiled out.
+    param([string]$Root = $env:TENSORRT_ROOT)
+    if ([string]::IsNullOrWhiteSpace($Root)) { return $false }
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
+    return @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue).Count -gt 0
+}
+
 function Assert-NativeLinkRun {
     # Compile + link + RUN a tiny C++ TU against a native library to prove its
     # header + import lib + DLL actually work together at runtime. Existence checks
@@ -396,6 +407,7 @@ Export-ModuleMember -Function @(
     'Assert-FileExists'
     'Assert-DirectoryExists'
     'Assert-ArtifactPresent'
+    'Test-TensorRtTreeStaged'
     'Assert-NativeLinkRun'
     'Assert-DllLoads'
     'Assert-EnvVarSet'
