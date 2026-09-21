@@ -151,6 +151,21 @@ $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'p
             -WarnMessage 'filesystem.cpp: TempFile::~TempFile not found; the LockedFile destructor cannot be inserted and hailortcli will not link. Verify it.' | Out-Null
     }
 
+# Upstream defines _AMD64_=1 for ANY 64-bit Windows build, so an aarch64 cross
+# build makes winnt.h take the x86 intrinsic path (ReadAcquire8/WriteRelease
+# undeclared under clang-cl). The patch makes the macro follow the target arch.
+$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\hailo\004-cmake-target-arch-macro.patch') -SourceDir $sourceRoot `
+    -FallbackNote 'falling back to an inline arch-macro rewrite' `
+    -Fallback {
+        $top = Join-Path $sourceRoot 'hailort\CMakeLists.txt'
+        Invoke-InlineRegexPatch -Path $top `
+            -SkipIfMatch 'CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64"' `
+            -Pattern '(?m)^(    if \(CMAKE_SIZEOF_VOID_P EQUAL 8\)\r?\n        add_compile_definitions\(_AMD64_=1\))' `
+            -Replacement "    if (CMAKE_SYSTEM_PROCESSOR STREQUAL `"ARM64`" OR CMAKE_SYSTEM_PROCESSOR STREQUAL `"arm64`")`n        add_compile_definitions(_ARM64_=1)`n    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)`n        add_compile_definitions(_AMD64_=1)" `
+            -Description 'hailort CMakeLists: arch-aware Windows SDK macro' `
+            -WarnMessage 'hailort/CMakeLists.txt: the pointer-size guard was not found; the ARM64 build will define _AMD64_ and winnt.h will fail. Verify it.' | Out-Null
+    }
+
 if (-not $SkipExternals) {
     # protobuf: HailoRT's external cmake builds from the LITERAL
     # <src>/hailort/external/protobuf-src path - FETCHCONTENT_SOURCE_DIR_* does
