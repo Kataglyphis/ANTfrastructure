@@ -1,0 +1,19 @@
+diff --git a/hailort/CMakeLists.txt b/hailort/CMakeLists.txt
+index 0000000..0000000 100644
+--- a/hailort/CMakeLists.txt
++++ b/hailort/CMakeLists.txt
+@@ -23,7 +23,12 @@
+ # safety net for internal code that may include Windows SDK headers without platform.h.
+ if (WIN32)
+-    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+-        add_compile_definitions(_AMD64_=1)
++    # PATCHED (Windows ARM64 cross, 2026-09-21): the original keyed the macro on
++    # pointer size only, so an aarch64 build got _AMD64_=1 and winnt.h then took the
++    # x86 intrinsic path (ReadAcquire8/WriteRelease undeclared under clang-cl).
++    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
++        add_compile_definitions(_ARM64_=1)
++    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
++        add_compile_definitions(_AMD64_=1)
+     else()
+         add_compile_definitions(_X86_=1)
+     endif()
