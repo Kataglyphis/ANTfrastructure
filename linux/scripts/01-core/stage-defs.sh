@@ -262,6 +262,15 @@ cross_stage_build_args() {
       # Forward only when set, so the Dockerfile defaults stay authoritative.
       append_optional_build_arg _csba_out ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
       append_optional_build_arg _csba_out ENABLE_AMD "${ENABLE_AMD:-}"
+      # ENABLE_TENSORRT=false: build the ONNX Runtime CUDA EP without the TensorRT
+      # EP (a CUDA+cuDNN image with no TensorRT is legitimate -- the Jetson lane).
+      # TVM_USE_CUDA=1: the tvm stage inherits 0 from the sdk image otherwise, so
+      # TVM's CUDA backend could not be turned on from the lane at all.
+      append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
+      append_optional_build_arg _csba_out TVM_USE_CUDA "${TVM_USE_CUDA:-}"
+      # CUDA_MB_PER_CICC: peak RSS of one nvcc front-end, sizing the CUDA job
+      # count. Exported around this script it never reaches the container.
+      append_optional_build_arg _csba_out CUDA_MB_PER_CICC "${CUDA_MB_PER_CICC:-}"
       ;;
     android)
       append_cross_per_arch_build_args _csba_out "${arch}"

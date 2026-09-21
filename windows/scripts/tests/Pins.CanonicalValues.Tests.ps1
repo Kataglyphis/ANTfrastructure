@@ -2,7 +2,7 @@
 # Backlog #58 + #60: pin the values that a mechanical edit could quietly change.
 #
 # #58 — CUDA_ARCHITECTURES. The owner's standing directive is that
-# `80;86;89;90` is NEVER trimmed, in any build, including dev iterations. Three
+# `80;86;87;89;90` is NEVER trimmed, in any build, including dev iterations. Three
 # copies of that string exist: versions.env (source of truth),
 # Dockerfile.media-builder's ARG default, and a code fallback in
 # WindowsSourceBuild.Cuda.psm1. Only the CODE FALLBACK was asserted — and
@@ -40,9 +40,9 @@ Describe 'canonical pin values (backlog #58, #60)' {
     }
 
     It 'keeps CUDA_ARCHITECTURES at the full owner-mandated set (NEVER trim)' {
-        # Owner directive: keep 80;86;89;90 in ALL builds including dev
+        # Owner directive: keep 80;86;87;89;90 in ALL builds including dev
         # iterations; arch reduction is explicitly banned as a speed lever.
-        Assert-Equal '80;86;89;90' (Get-Pin 'CUDA_ARCHITECTURES') `
+        Assert-Equal '80;86;87;89;90' (Get-Pin 'CUDA_ARCHITECTURES') `
             'versions.env CUDA_ARCHITECTURES was trimmed — this is the SOURCE OF TRUTH the container actually builds with, and trimming it is silent (a green build with missing arch coverage).'
     }
 

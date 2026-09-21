@@ -512,7 +512,14 @@ build_cross_llvm_targets() {
   # to do the right thing; on arm64 it did not.
   local _host_arch _rest
   _host_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
-  _rest="$(printf '%s' "${targets_raw}" | tr ',' '\n' | grep -vx "${_host_arch}" | paste -sd, -)"
+  # `|| true` INSIDE a brace group, not after the pipeline: with a single-entry
+  # list that IS the host arch (--cross-targets arm64 on an arm64 host -- a
+  # native-only build), grep -vx matches nothing and exits 1, and `set -o
+  # pipefail` turns that into a silent death of the whole RUN with no message
+  # at all. The empty remainder is the CORRECT answer there, which is why
+  # ${_rest:+,${_rest}} below already handles it. Same class the `nm | grep -q`
+  # note in 01-core/platform.sh warns about.
+  _rest="$( { printf '%s' "${targets_raw}" | tr ',' '\n' | grep -vx "${_host_arch}" || true; } | paste -sd, - )"
   case ",${targets_raw}," in
     *",${_host_arch},"*) targets_raw="${_host_arch}${_rest:+,${_rest}}" ;;
   esac

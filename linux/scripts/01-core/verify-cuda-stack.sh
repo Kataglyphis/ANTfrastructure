@@ -43,12 +43,22 @@ else
   _cuda_warn "cuDNN version header not found"
 fi
 
+# TensorRT is OPTIONAL: a CUDA+cuDNN image is a legitimate configuration (the
+# Jetson lane ships one). Under CUDA_STACK_STRICT=1 a missing NvInferVersion.h
+# used to set _MISSING and exit 1, so "build without TensorRT" could not be
+# expressed at all -- the layer went red on its very last instruction.
+# CUDA_STACK_REQUIRE_TENSORRT=0 says "not expected here"; the default keeps the
+# historical contract for the lanes that do ship it.
 echo "--- TensorRT ---"
-trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1 || true)"
-if [ -n "${trt_hdr}" ]; then
-  grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" "${trt_hdr}" || true
+if [ "${CUDA_STACK_REQUIRE_TENSORRT:-1}" = "1" ]; then
+  trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1 || true)"
+  if [ -n "${trt_hdr}" ]; then
+    grep "NV_TENSORRT_MAJOR\|NV_TENSORRT_MINOR\|NV_TENSORRT_PATCH" "${trt_hdr}" || true
+  else
+    _cuda_warn "TensorRT version header not found"
+  fi
 else
-  _cuda_warn "TensorRT version header not found"
+  echo "not required here (CUDA_STACK_REQUIRE_TENSORRT=0)"
 fi
 
 echo "--- NCCL ---"

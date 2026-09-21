@@ -286,6 +286,22 @@ CROSS_RUNTIME_LANE_GB
 # 1 makes an incomplete CUDA stack fatal instead of advisory
 # (01-core/verify-cuda-stack.sh, default 0).
 CUDA_STACK_STRICT
+# 0 declares TensorRT out of scope for this image, so STRICT does not fail on a
+# missing NvInferVersion.h (01-core/verify-cuda-stack.sh, default 1). The Jetson
+# lane ships CUDA+cuDNN without TensorRT.
+CUDA_STACK_REQUIRE_TENSORRT
+# 0 skips cuda-compat-<ver>, the ~438 MB DATACENTER forward-compat driver
+# (01-core/install-cuda-stack.sh, default 1). Required on Tegra/Jetson, where the
+# CUDA driver comes from the L4T BSP and a second real libcuda would shadow it.
+CUDA_INSTALL_COMPAT
+# Peak RSS of ONE nvcc front-end (cicc) in MB, for sizing the ONNX GPU build's job
+# count (03-media/build/onnxruntime/build/30-build-native-nvidia.sh, default 3500).
+# Measured on an AGX Orin 2026-09-16: 3.5 GB each, and 23 concurrent drove a 61 GB
+# host to 1.1 GB free with swap exhausted.
+CUDA_MB_PER_CICC
+# nvcc --threads assumed when sizing that job count (same file, default 4).
+# Concurrent cicc is jobs x this, which is what actually bounds memory.
+ONNX_NVCC_THREADS
 # 0 skips the fail-fast disk preflight (build-cross-chain.sh, default 1).
 DISK_PREFLIGHT
 # 1 downgrades both disk gates to warnings and keeps the warm cache

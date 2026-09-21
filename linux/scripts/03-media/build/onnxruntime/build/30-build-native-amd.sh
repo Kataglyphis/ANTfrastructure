@@ -81,6 +81,12 @@ BUILD_ARGS+=(
   --migraphx_home "${MIGRAPHX_HOME}"
 )
 
+# Same reason as the CPU and NVIDIA builds: ORT 1.29 defaults telemetry ON for
+# native Linux, pulling in cpp_client_telemetry's vendored sqlite, which dies on
+# GCC 16's -Werror=stringop-overflow (sqlite3_retail.c:81192). Each native build
+# script owns its own arg list, so the 2026-08-19 CPU fix never reached this one.
+BUILD_ARGS+=(--no_telemetry)
+
 BUILD_ARGS+=(
   --cmake_extra_defines
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"

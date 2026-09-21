@@ -774,10 +774,11 @@ update-shell`) before deciding an install failed.
 
 ---
 
-### D5. `pwsh` and `pytest` — the two host tools preflight needs and never asked for
+### D5. The host tools preflight needs and never asked for
 
-`preflight.sh` fails on a correctly-set-up Linux host without these, and neither
-was declared here until 2026-09-07. Both are user-scope; neither needs sudo.
+`preflight.sh` fails on a correctly-set-up Linux host without these. `pwsh` and
+`pytest` were undeclared until 2026-09-07; `uv`, `shellcheck` and `uidmap` until
+2026-09-15. All but `uidmap` are user-scope and need no sudo.
 
 **PowerShell**, for the `shared-config` slug. The gate shells out to
 `shared/config/Sync-SharedConfig.ps1`, which is the *same* script the Windows
@@ -786,8 +787,11 @@ implementation that can drift from it. Without `pwsh` the slug fails with
 `pwsh: command not found`, which reads exactly like config drift and is not:
 
 ```bash
+# NOTE the arch in the asset name: linux-x64 on amd64, linux-arm64 on an ARM
+# host. This snippet said linux-x64 unconditionally until 2026-09-15, which on
+# a Jetson installs an x86-64 pwsh that cannot exec.
 curl -fsSL -o /tmp/ps.tar.gz \
-  https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-x64.tar.gz
+  "https://github.com/PowerShell/PowerShell/releases/download/v7.6.5/powershell-7.6.5-linux-$(case "$(uname -m)" in aarch64|arm64) echo arm64 ;; *) echo x64 ;; esac).tar.gz"
 mkdir -p ~/.local/powershell && tar -xzf /tmp/ps.tar.gz -C ~/.local/powershell
 chmod +x ~/.local/powershell/pwsh && ln -sfn ~/.local/powershell/pwsh ~/.local/bin/pwsh
 pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
@@ -805,6 +809,36 @@ pip3 install --user --break-system-packages pytest
 
 `--user` writes to `~/.local/lib/python3.*/site-packages` and touches no system
 package; `--break-system-packages` only waives the PEP 668 guard.
+
+**uv**, for three gate suites at once. `test-cmake-format`, `test-python-lint-gate`
+and the `cmake-format` / `ruff` gates all bootstrap their tool through `uv`/`uvx`.
+Without it all three fail with `Required tool not found: uv`, which names the
+missing tool but is easy to read as a broken gate rather than a missing
+prerequisite:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # installs uv + uvx to ~/.local/bin
+```
+
+**shellcheck on PATH**, for `test-shellcheck-warnings`. Note the asymmetry: the
+*gate* (`lint-shell.sh`) bootstraps its own SHA-pinned binary and needs nothing
+on PATH, but that *suite* asserts `command -v shellcheck` and fails without it.
+The bootstrap's cache lives under `$TMPDIR`, so copy it somewhere durable:
+
+```bash
+cp "$(bash linux/scripts/lint-shell.sh --print-bin)" ~/.local/bin/shellcheck
+```
+
+**uidmap** — the one that does need sudo, and the only hard blocker for a
+rootless stack. `newuidmap`/`newgidmap` must be setuid-root from the distro;
+the nerdctl-full bundle ships everything else (slirp4netns, fuse-overlayfs) but
+cannot ship these. Without them `containerd-rootless-setuptool.sh install`
+fails and [B3c](#b3c-install-rootless-into-homelocal-no-sudo) cannot proceed:
+
+```bash
+sudo apt install -y uidmap
+grep "^$(whoami):" /etc/subuid /etc/subgid   # ranges must exist (usually preallocated)
+```
 
 ## Phase E — Package sources and automatic updates
 

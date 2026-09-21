@@ -99,4 +99,48 @@ done
 t_assert_eq "" "${offenders}" \
   "artifact-common.sh / lib-orchestrator.sh are top-only aggregators; sourced by: ${offenders}"
 
+
+# ── A per-file mount must bring the leaf its script sources ───────────────────
+# The layer table proves the graph is clean ON DISK; inside a Dockerfile it can
+# still detonate. ubuntu-mirror.sh's defensive platform.sh source is a FILE TEST
+# against its own dir, which a PER-FILE mount leaves empty.
+# Deliberately NARROW (that one pair, per-file mounts only): a general
+# source-closure check reports ~140 false positives, because a whole-directory
+# mount already carries every leaf.
+# docs/linux-cross-builds.md#non-amd64-build-hosts
+t_case "a per-file ubuntu-mirror.sh mount also mounts its platform.sh leaf"
+_perfile_mount_violations=""
+for _df in "${TESTS_DIR}"/../../Dockerfile.*; do
+  [ -f "${_df}" ] || continue
+  while IFS= read -r _run; do
+    # per-file mount == the SOURCE path ends in the .sh itself
+    case "${_run}" in *"source=linux/scripts/01-core/ubuntu-mirror.sh"*) ;; *) continue ;; esac
+    case "${_run}" in
+      *"source=linux/scripts/01-core/platform.sh"*) ;;
+      *) _perfile_mount_violations="${_perfile_mount_violations}$(basename "${_df}") " ;;
+    esac
+  done < <(sed 's/\\$//' "${_df}" \
+            | awk '/^RUN/{if(b)print b; b=$0; next} b&&/^[[:space:]]/{b=b" "$0; next} b{print b; b=""} END{if(b)print b}')
+done
+t_assert_eq "" "${_perfile_mount_violations}" \
+  "ubuntu-mirror.sh per-file mount without platform.sh makes is_truthy undefined and the knob a silent no-op: ${_perfile_mount_violations}"
+
+
+# ── COPY --link into /tmp must restore /tmp's mode ───────────────────────────
+# `COPY --link` merges an INDEPENDENT layer, so the /tmp entry comes from that
+# layer's 0755 default instead of the base's 1777. A PLAIN COPY does not (both
+# measured 2026-09-16). apt then cannot write as _apt, its gpgv exits 111, and
+# the message blames a missing gnupg -- in that image and every one built FROM
+# it. docs/linux-cross-builds.md#non-amd64-build-hosts
+t_case "a COPY --link into /tmp restores /tmp's 1777 mode"
+_tmp_link_offenders=""
+for _df in "${TESTS_DIR}"/../../Dockerfile.*; do
+  [ -f "${_df}" ] || continue
+  grep -qE '^COPY[[:space:]]+--link[^#]*[[:space:]]/tmp/' "${_df}" || continue
+  grep -qE 'chmod[[:space:]]+1777[[:space:]]+/tmp' "${_df}" \
+    || _tmp_link_offenders="${_tmp_link_offenders}$(basename "${_df}") "
+done
+t_assert_eq "" "${_tmp_link_offenders}" \
+  "COPY --link into /tmp without a later chmod 1777 /tmp silently breaks apt for every descendant image: ${_tmp_link_offenders}"
+
 t_summary

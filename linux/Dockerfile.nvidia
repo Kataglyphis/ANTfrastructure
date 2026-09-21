@@ -40,6 +40,21 @@ FROM ${BASE_IMAGE}
 ARG CUDA_VERSION=13.4.2
 ARG CUDNN_VERSION=9.26.0.51
 ARG TENSORRT_VERSION=11.3.0.99
+# ENABLE_TENSORRT=false builds a CUDA+cuDNN layer with NO TensorRT. The Jetson
+# lane wants exactly that. It gates BOTH the install below and the strict
+# verification at the end -- verify-cuda-stack.sh counted a missing
+# NvInferVersion.h as a missing component, so under CUDA_STACK_STRICT=1 a
+# TensorRT-less image failed on the very last instruction and the configuration
+# could not be expressed at all.
+ARG ENABLE_TENSORRT=true
+# CUDA_INSTALL_COMPAT=0 skips cuda-compat-<ver>, the ~438 MB DATACENTER
+# forward-compat driver ("Used for TESLA cards only"). REQUIRED on Tegra/Jetson:
+# there the CUDA driver is welded to the L4T BSP and injected from the host, so a
+# second real libcuda.so.1 in /usr/local/cuda-*/compat would shadow it. Declared
+# HERE because install-cuda-stack.sh reads it as an env var, and a build-arg with
+# no matching ARG is silently dropped -- the knob would have looked wired and
+# done nothing. NVIDIA ships a separate cuda-compat-orin-* for Orin.
+ARG CUDA_INSTALL_COMPAT=1
 # Apt package-name forms derived from the shared semvers:
 #   13.3.0 → 13.3 (repo paths) → 13-3 (apt package suffix); 9.23.2.1 → 9 (cuDNN major)
 ARG CUDA_VERSION_DOT=${CUDA_VERSION%.*}
@@ -49,6 +64,11 @@ ARG CUDNN_MAJOR=${CUDNN_VERSION%%.*}
 ARG TARGETARCH
 ARG UBUNTU_CODENAME=resolute
 # UBUNTU_CODENAME is the official codename (resolute for 26.04). Update in lockstep.
+# UBUNTU_VERSION is what NVIDIA's apt paths are built from -- their component is the
+# VERSION DIGITS (ubuntu2604), never the codename. setup-cuda-repo.sh used to
+# interpolate the codename and fetched .../repos/ubunturesolute/, a 404 on every
+# arch, so the first RUN below could not succeed on the pinned 26.04 at all.
+ARG UBUNTU_VERSION=26.04
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -164,12 +184,26 @@ RUN set -euo pipefail; \
     if [ "${#_trt_staged[@]}" -gt "${#_trt_debs[@]}" ]; then \
         echo "WARNING: $(( ${#_trt_staged[@]} - ${#_trt_debs[@]} )) of ${#_trt_staged[@]} deb(s) in linux/nvidia-local-debs/ do NOT match tensorrt-local-repo*.deb and were IGNORED (staged: ${_trt_staged[*]##*/}). NVIDIA ships this artifact as nv-tensorrt-local-repo-<os>-<ver>_1.0-1_<arch>.deb — rename it to match, or widen the glob here." >&2; \
     fi; \
-    rm -rf /tmp/tensorrt-staging
+    rm -rf /tmp/tensorrt-staging; \
+    # RESTORE /tmp's MODE. `COPY --link ... /tmp/tensorrt-staging/` above rewrites
+    # the /tmp directory entry itself, dropping it from 1777 to 0755 -- sticky bit
+    # and world-write gone. apt then drops privileges to _apt, cannot create its
+    # temp files, and the gpgv it forks dies with status 111, which apt reports as
+    #   Could not execute 'gpgv' to verify signature (is gnupg installed?)
+    # gpgv is installed and runs fine; the message names the wrong thing entirely.
+    # Effect: EVERY apt-get update in this image and in ANY image built FROM it
+    # fails with "repository is not signed" -- on every arch. Measured 2026-09-16:
+    # sdk /tmp = drwxrwxrwt, this image before the fix = drwxr-xr-x.
+    chmod 1777 /tmp
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
-    bash /tmp/core-scripts/install-tensorrt.sh
+    if [ "${ENABLE_TENSORRT}" = "false" ]; then \
+        echo "ENABLE_TENSORRT=false — skipping TensorRT install (CUDA + cuDNN only)"; \
+    else \
+        bash /tmp/core-scripts/install-tensorrt.sh; \
+    fi
 
 # Repo hygiene, mirroring Dockerfile.amd (which rm's rocm.list after its last
 # ROCm apt install).  This is the LAST apt install against NVIDIA repos in this
@@ -215,6 +249,8 @@ ENV PATH="${CUDA_HOME}/bin:${PATH}" \
 # matching the AMD lane's contract (setup-rocm-repo.sh exits 1 on missing bits).
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     set -euo pipefail; \
-    CUDA_STACK_STRICT=1 bash /tmp/core-scripts/verify-cuda-stack.sh
+    CUDA_STACK_STRICT=1 \
+    CUDA_STACK_REQUIRE_TENSORRT="$([ "${ENABLE_TENSORRT}" = "false" ] && echo 0 || echo 1)" \
+    bash /tmp/core-scripts/verify-cuda-stack.sh
 LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
       org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

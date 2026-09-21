@@ -1166,11 +1166,60 @@ overwrite the amd64 lane's real android artifact under the same name. The infix
 is empty on amd64, so that lane's tags are byte-identical to before.
 
 **What this does not deliver.** android stops being the reason a non-amd64-hosted
-run fails; it does not make the chain finish. The runtime lane still pins
-`--platform linux/amd64` for its artifact source and asks binfmt for a handler
-name that does not exist, and on riscv64 the compiler stage is blocked earlier
-and harder: apt.llvm.org publishes no riscv64 packages at all. See
-[`refactoring-backlog.md`](refactoring-backlog.md).
+run fails; it does not make the chain finish. On riscv64 the compiler stage is
+blocked earlier and harder: apt.llvm.org publishes no riscv64 packages at all.
+See [`refactoring-backlog.md`](refactoring-backlog.md).
+
+> **Superseded, 2026-09-15.** This paragraph used to name two more blockers —
+> that the runtime lane "still pins `--platform linux/amd64` for its artifact
+> source" and "asks binfmt for a handler name that does not exist". Both were
+> fixed the SAME DAY this was written (14:16) and the sentence was never
+> updated: `ec69a976` (17:00) made `runtime_artifact_platform` ask
+> `cross_build_platform` instead of freezing the literal, and `d3566550`
+> (20:08) taught `_binfmt_qemu_name` that the amd64 handler is `qemu-x86_64`.
+> [`test-tag-naming.sh`](../linux/scripts/tests/test-tag-naming.sh) and
+> [`test-native-build-host.sh`](../linux/scripts/tests/test-native-build-host.sh)
+> pin both today.
+>
+> Two further arm64-host blockers were fixed on 2026-09-15 and are worth knowing
+> because each one failed BEFORE any build started:
+> * `lint-shell.sh`'s shellcheck bootstrap had no `Linux/aarch64` arm, so it
+>   err'd with "Unsupported platform" — `make preflight` and `make lint`, the
+>   repo's own entry gate, could not run at all on an ARM host.
+> * `setup-rootless-binfmt.sh` defaulted to the literal `arm64,riscv64`. Run by
+>   hand on an arm64 host — the exact command `verify_foreign_binfmt`'s error
+>   tells you to run — that registered a QEMU handler for the host's OWN arch
+>   (binfmt_misc is consulted for native ELF too) and left amd64, the one arch
+>   that host must emulate, unregistered. The default is derived from `uname -m`
+>   now; the amd64 lane's answer is unchanged.
+>
+> **Found only by RUNNING it (2026-09-15, Jetson AGX Orin).** The two fixes above
+> were unit-tested and still could not work. `setup-rootless-binfmt.sh` unpacks
+> its qemu-user emulators from `tonistiigi/binfmt`, and `extract_emulators`
+> asked for `--platform linux/amd64` unconditionally. A qemu-user binary is a
+> **host-arch executable that interprets foreign code**, so on arm64 that is
+> wrong twice over: every extracted binary is x86-64 ELF and cannot exec
+> (`readelf` reported `Advanced Micro Devices X86-64`), and the amd64 image
+> ships **no `qemu-x86_64` at all** — an x86_64-on-x86_64 emulator is pointless,
+> so upstream ships aarch64/arm/i386/riscv64 instead, and `qemu-x86_64` is
+> precisely the one an arm64 host needs. Two more surfaced behind it:
+>
+> * the cleanup `trap ... EXIT` dereferenced a function **`local`**, which is out
+>   of scope when the trap fires at script exit — under `set -u` that killed the
+>   trap with `tmp: unbound variable` and masked the real error;
+> * the pull was guarded by `nerdctl image inspect`, which answers "is this
+>   REFERENCE present", not "is this PLATFORM present". With a multi-arch index
+>   and one platform already cached it skipped the pull, and `image save` then
+>   died with `content digest sha256:…: not found`.
+>
+> All three are pinned by
+> [`test-native-build-host.sh`](../linux/scripts/tests/test-native-build-host.sh),
+> including tripwires that the frozen `linux/amd64` literal and the local-in-trap
+> cannot return. Verified afterwards on that host: `nerdctl run --platform`
+> linux/arm64 → `aarch64`, linux/amd64 → `x86_64`, linux/riscv64 → `riscv64`.
+>
+> **Still unproven:** the host builds and emulates all three arches, but nobody
+> has run the CHAIN end to end on an arm64 host.
 
 **No JDK ships in any arch.** `java`, `javac` and `keytool` are absent and
 `/usr/lib/jvm` does not exist, so the SDK's Java wrappers (`sdkmanager`,

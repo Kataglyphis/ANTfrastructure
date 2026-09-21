@@ -420,6 +420,44 @@ _cross_stage_run_resolve_parent() {
     return 0
   fi
 
+  # OPT-IN PARENT OVERRIDE (GPU lane). CROSS_<STAGE>_BASE_IMAGE pins this
+  # stage's FROM to a ref the operator names, bypassing pin resolution.
+  # It exists because every CUDA consumer -- onnxruntime, opencv, tvm and the
+  # torch wheelhouse -- builds inside Dockerfile.media, whose parent is :sdk
+  # and therefore has no nvcc. docs/linux-accelerator-images.md
+  # Split, not `local x=$(...)`: the declaration masks the substitution's exit
+  # status (verify_masked_assignments.py).
+  local _override_var _override
+  _override_var="CROSS_$(printf '%s' "${stage}" | tr '[:lower:]-' '[:upper:]_')_BASE_IMAGE"
+  _override="${!_override_var:-}"
+  if [ -n "${_override}" ]; then
+    log "${stage}: BASE_IMAGE overridden via ${_override_var} -> ${_override} (parent '${parent}' pin NOT resolved)"
+    _csrrp_out+=(--build-arg "BASE_IMAGE=${_override}")
+    _CROSS_STAGE_PARENT_PIN="${_override}"
+    # The override skips the OCI-layout handoff below, because the ref it names
+    # is NOT a chain stage and has no context dir. On a --no-push run that is a
+    # trap: buildkitd here runs --oci-worker=true --containerd-worker=false, so
+    # FROM resolves against the REGISTRY and a local-only tag is simply "not
+    # found" -- minutes in, with no hint that the override caused it.
+    # CROSS_<STAGE>_BASE_CONTEXT lets the operator hand over an exported layout
+    # (nerdctl image save <ref> | tar -x -C <dir>), which is the same mechanism
+    # the in-chain handoff uses.
+    local _ctx_var _ctx
+    _ctx_var="CROSS_$(printf '%s' "${stage}" | tr '[:lower:]-' '[:upper:]_')_BASE_CONTEXT"
+    _ctx="${!_ctx_var:-}"
+    if [ -n "${_ctx}" ]; then
+      if [ -f "${_ctx}/index.json" ]; then
+        _csrrp_out+=(--build-context "${_override}=oci-layout://${_ctx}")
+        log "${stage}: local OCI handoff for the override: ${_override} <- ${_ctx}"
+      else
+        err "${_ctx_var}=${_ctx} is not an OCI layout (no index.json). Export one with: nerdctl image save ${_override} | tar -x -C ${_ctx}"
+      fi
+    elif [ "${push_flag}" -ne 1 ]; then
+      warn "${stage}: ${_override_var} is set on a --no-push run and ${_ctx_var} is NOT. BuildKit's OCI worker resolves FROM against the registry, so this build needs ${_override} to be PUSHED, or set ${_ctx_var}=<dir> after: mkdir -p <dir> && nerdctl image save ${_override} | tar -x -C <dir>"
+    fi
+    return 0
+  fi
+
   if [ "${push_flag}" -eq 1 ]; then
     local parent_pin
     parent_pin="$(cross_stage_resolve_parent_pin "${stage}" "${arch}")" || {

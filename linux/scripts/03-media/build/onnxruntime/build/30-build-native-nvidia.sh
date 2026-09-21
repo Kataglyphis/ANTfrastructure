@@ -77,6 +77,24 @@ parse_nvidia_args() {
 }
 
 parse_nvidia_args "$@"
+
+# JOB COUNT FOR A *CUDA* BUILD. detect_jobs budgets 2000 MB/job -- the CPU
+# build's number. Here one TU fans out into one `cicc` per nvcc thread, and the
+# kernel OOM killer recorded those at 3.8 GB and 6.2 GB. Budget for the PEAK.
+# The arch list stays intact: trimming it is banned as a speed lever.
+# The multiplier is NVCC's THREAD count, not the arch count: nvcc walks the arch
+# list with up to --threads cicc processes at once, so concurrent cicc is
+# jobs x nvcc_threads. Measured here: 23 live cicc, which matches 12 jobs x 4
+# threads far better than anything keyed on the 5-arch list.
+if [ -z "${JOBS:-}" ] && declare -F mem_capped_jobs >/dev/null 2>&1; then
+  _cuda_peak_mb=$(( ${ONNX_NVCC_THREADS:-4} * ${CUDA_MB_PER_CICC:-3500} ))
+  JOBS="$(mem_capped_jobs "${_cuda_peak_mb}")"
+  # Floor of 2: a single-job ONNX build is measured in many hours, and the cap is
+  # a heuristic against a PEAK that is staggered in practice.
+  [ "${JOBS}" -ge 2 ] 2>/dev/null || JOBS=2
+  export JOBS
+  info "CUDA build: ${ONNX_NVCC_THREADS:-4} nvcc thread(s) x ${CUDA_MB_PER_CICC:-3500} MB => ${_cuda_peak_mb} MB/job, JOBS=${JOBS} (~$(( JOBS * ${ONNX_NVCC_THREADS:-4} )) concurrent cicc)"
+fi
 detect_jobs
 
 # --------------------------------------------------------------------------
@@ -88,12 +106,23 @@ fi
 CUDA_VERSION_FULL="$("${CUDA_HOME}/bin/nvcc" --version | awk '/release/ {gsub(/,/,""); print $5; exit}')"
 info "CUDA version: ${CUDA_VERSION_FULL}"
 
-# TensorRT check
-if [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
+# TensorRT: REQUIRED by default, but a CUDA+cuDNN image without it is a legitimate
+# configuration (the Jetson lane ships one, and Dockerfile.nvidia can now be built
+# with ENABLE_TENSORRT=false). This used to err() unconditionally, so the ONNX GPU
+# step could not complete on such an image at all -- ENABLE_TENSORRT was read by
+# nothing on the media path.
+#   ENABLE_TENSORRT=false  -> skip it deliberately
+#   ENABLE_TENSORRT unset  -> historical behaviour: absence is a hard error
+_ORT_USE_TENSORRT=1
+if [ "${ENABLE_TENSORRT:-true}" = "false" ]; then
+  _ORT_USE_TENSORRT=0
+  info "ENABLE_TENSORRT=false — building the ONNX Runtime CUDA EP WITHOUT TensorRT"
+elif [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
   err "TensorRT headers not found at ${TENSORRT_HOME}/include/NvInfer.h. \
-Set TENSORRT_HOME to your TensorRT installation."
+Set TENSORRT_HOME to your TensorRT installation, or pass ENABLE_TENSORRT=false to \
+build the CUDA EP without it."
 fi
-info "TensorRT home: ${TENSORRT_HOME}"
+[ "${_ORT_USE_TENSORRT}" = "1" ] && info "TensorRT home: ${TENSORRT_HOME}"
 
 # cuDNN check
 CUDNN_H=""
@@ -168,7 +197,7 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 # CUDA arch list from versions.env (CUDA_ARCHITECTURES); this build maps the
 # trailing 90 -> 90a to enable Hopper arch-specific kernels.
-ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-80;86;89;90}"
+ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-80;86;87;89;90}"
 ONNX_CUDA_ARCHS="${ONNX_CUDA_ARCHS/%90/90a}"
 
 BUILD_ARGS=()
@@ -176,17 +205,36 @@ append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIV
 BUILD_ARGS+=(
   --build_wheel
   --use_cuda
-  --use_tensorrt
-  --use_full_protobuf
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
-  --tensorrt_home      "${TENSORRT_HOME}"
   --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${ONNX_CUDA_ARCHS}"
-  --use_xnnpack
-  --enable_lto
-  --use_webgpu
-  --use_external_dawn
 )
+# --use_full_protobuf travels WITH the TensorRT EP: it is the TRT EP that needs it.
+if [ "${_ORT_USE_TENSORRT}" = "1" ]; then
+  BUILD_ARGS+=(
+    --use_tensorrt
+    --use_full_protobuf
+    --tensorrt_home    "${TENSORRT_HOME}"
+  )
+fi
+BUILD_ARGS+=(--use_xnnpack)
+
+# --no_telemetry: ORT 1.29 flipped telemetry to DEFAULT-ON for native Linux, which
+# drags in Microsoft's cpp_client_telemetry (1DS SDK) and its vendored sqlite. That
+# sqlite dies on GCC 16's -Werror=stringop-overflow (sqlite3_retail.c:81192), and
+# --compile_no_warning_as_error does NOT reach a sub-project's own -Werror. The CPU
+# build has carried this since 2026-08-19 ("killed the arm64 media lane 3x"); this
+# GPU build never got it and died the SAME way on 2026-09-16 -- same file, same
+# line. Neither the break nor a telemetry SDK in a shipped image is wanted.
+BUILD_ARGS+=(--no_telemetry)
+
+# LTO + WebGPU go through the SHARED helper, exactly as the CPU build does. Doing
+# it by hand here (--enable_lto --use_webgpu --use_external_dawn) skipped the
+# GCC-16 -Wno-invalid-constexpr flag the helper attaches, which is the only thing
+# that makes Dawn compile under GCC 16 -- and the GPU build uses its own build dir,
+# so it rebuilds Dawn from scratch rather than reusing the CPU build's objects.
+# It also ignored ORT_ENABLE_LTO/ORT_ENABLE_WEBGPU, forcing both on regardless.
+append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
 # CUDA compile caching — sccache wraps nvcc first-class (ccache cannot).
 # Resolve through compiler_cache_launcher() for the guarded launcher;

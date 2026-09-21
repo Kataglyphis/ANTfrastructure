@@ -369,7 +369,11 @@ _ffmpeg_hwaccel_args() {
         _ffha_out+=("--enable-nvdec")
         _ffha_out+=("--enable-cuvid")
         _ffha_out+=("--enable-ffnvcodec")
-        _ffha_out+=("--enable-cuda-nvcc")
+        # NO --enable-cuda-nvcc: FFmpeg classes cuda_nvcc as NONFREE and
+        # configure hard-fails without --enable-nonfree, which combined with the
+        # --enable-gpl below yields a non-redistributable binary. Only the CUDA
+        # FILTERS are lost; NVENC/NVDEC/CUVID stay. Pinned by
+        # tests/test-ffmpeg-dnn-contract.sh.
         _ffha_out+=("--extra-cflags=-I${CUDA_HOME}/include")
         _ffha_out+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
     elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then

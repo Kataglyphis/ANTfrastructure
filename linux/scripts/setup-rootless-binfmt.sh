@@ -9,7 +9,32 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-ARCHES="arm64,riscv64"
+# DEFAULT = every chain target EXCEPT this host's own arch. Registering a handler
+# for the native arch is actively wrong (binfmt_misc is consulted for native ELF
+# too), and the old literal "arm64,riscv64" also left amd64 unregistered on an
+# arm64 host. Orchestrated callers always pass --arches; this is the hand-run
+# path. docs/linux-cross-builds.md#non-amd64-build-hosts
+# This host's normalized arch ("" when unrecognized). One owner for the answer
+# that BOTH the default arch set and the emulator-image platform depend on.
+_binfmt_host_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)   printf '%s' amd64 ;;
+    aarch64|arm64)  printf '%s' arm64 ;;
+    riscv64)        printf '%s' riscv64 ;;
+    *)              printf '%s' "" ;;
+  esac
+}
+
+_binfmt_default_arches() {
+  local native chain_target out="" sep=""
+  native="$(_binfmt_host_arch)"
+  for chain_target in amd64 arm64 riscv64; do
+    [ "${chain_target}" = "${native}" ] && continue
+    out="${out}${sep}${chain_target}"; sep=","
+  done
+  printf '%s' "${out}"
+}
+ARCHES="$(_binfmt_default_arches)"
 QDIR="${BINFMT_QEMU_DIR:-${HOME}/.local/lib/binfmt}"
 BINFMT_IMAGE="${BINFMT_IMAGE:-tonistiigi/binfmt}"
 NERDCTL="${NERDCTL_BIN:-nerdctl}"
@@ -70,14 +95,34 @@ extract_emulators() {
     echo "[extract] emulators already present in ${QDIR} (use --force to refresh)"
     return 0
   fi
-  echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (amd64) to ${QDIR}"
-  local tmp; tmp="$(mktemp -d)"
-# Leak-on-error guard: host /tmp accumulates otherwise (EXIT-scoped trap).
-  trap 'rm -rf "${tmp}"' EXIT
-  # image save only reads the LOCAL store — pull first or a fresh host dies with 'image not found'.
-  "${NERDCTL}" image inspect "${BINFMT_IMAGE}" >/dev/null 2>&1 \
-    || "${NERDCTL}" pull --platform linux/amd64 "${BINFMT_IMAGE}"
-  "${NERDCTL}" image save --platform linux/amd64 "${BINFMT_IMAGE}" -o "${tmp}/img.tar"
+  # THE EMULATOR IMAGE MUST MATCH THE HOST, NOT A FROZEN amd64: a qemu-user
+  # binary is a HOST-arch executable interpreting FOREIGN code. A hardcoded
+  # linux/amd64 was wrong twice over on arm64 — x86-64 ELF that cannot exec,
+  # and no qemu-x86_64 in that image at all.
+  # docs/linux-cross-builds.md#non-amd64-build-hosts
+  local host_platform; host_platform="linux/$(_binfmt_host_arch)"
+  echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (${host_platform}) to ${QDIR}"
+  # NOT `local tmp`: this trap fires at SCRIPT EXIT, by which point a function
+  # local is out of scope and `set -u` kills the trap with "tmp: unbound
+  # variable" — masking whatever the real failure was.
+  _BINFMT_TMP="$(mktemp -d)"
+  # Leak-on-error guard: host /tmp accumulates otherwise (EXIT-scoped trap).
+  trap 'rm -rf "${_BINFMT_TMP:-}"' EXIT
+  local tmp="${_BINFMT_TMP}"
+  # image save only reads the LOCAL store — pull first or a fresh host dies with
+  # 'image not found'. The pull is NOT guarded by `image inspect` any more:
+  # inspect answers "is this REFERENCE present", not "is this PLATFORM present",
+  # and BINFMT_IMAGE is a multi-arch index. A host that had already pulled one
+  # platform therefore skipped the pull and then died in `image save` with
+  # `content digest sha256:…: not found` — a message that names a blob and
+  # nothing else. Pulling per-platform is idempotent and cheap (~30 MB, and a
+  # no-op once the content is local), so just always ask.
+  "${NERDCTL}" pull --platform "${host_platform}" "${BINFMT_IMAGE}" || {
+    # Offline host with the content already local: let `image save` be the real
+    # gate rather than failing here on a network error that may not matter.
+    echo "[extract] WARN: pull of ${BINFMT_IMAGE} (${host_platform}) failed; trying the local store" >&2
+  }
+  "${NERDCTL}" image save --platform "${host_platform}" "${BINFMT_IMAGE}" -o "${tmp}/img.tar"
   mkdir -p "${tmp}/img"; tar -xf "${tmp}/img.tar" -C "${tmp}/img"
   local blob
   for blob in "${tmp}"/img/blobs/sha256/*; do

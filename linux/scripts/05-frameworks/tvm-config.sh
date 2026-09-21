@@ -84,6 +84,26 @@ _tvm_emit_compiler_cache_args() {
 # For cross builds, point find_package(Vulkan) at the target-arch loader/
 # headers (resolve_tvm_vulkan); otherwise it resolves the host x86_64 loader
 # from the sourced SDK env and the target link fails "file in wrong format".
+# CUDA companion libraries. USE_CUDA alone leaves cuDNN/cuBLAS OFF, so TVM's
+# conv/gemm fall back to generated kernels instead of the vendor libraries.
+# Each is opt-OUT via its own knob, and only asked for when CUDA is ON --
+# requesting cuDNN without CUDA is a configure error, not a no-op.
+# docs/linux-accelerator-images.md
+_tvm_emit_cuda_companion_args() {
+  local -n _tvm_cuda_ref="$1"
+  local _cuda_on="$2"
+  if [ "${_cuda_on}" != "ON" ]; then
+    return 0
+  fi
+  local _cudnn="OFF" _cublas="OFF"
+  [ "${TVM_USE_CUDNN:-1}" -eq 1 ] && _cudnn="ON"
+  [ "${TVM_USE_CUBLAS:-1}" -eq 1 ] && _cublas="ON"
+  _tvm_cuda_ref+=(
+    -DUSE_CUDNN="${_cudnn}"
+    -DUSE_CUBLAS="${_cublas}"
+  )
+}
+
 _tvm_emit_vulkan_args() {
   local -n _tvm_emit_ref="$1"
   if [ "${2}" -eq 1 ]; then
@@ -189,6 +209,8 @@ append_tvm_cmake_args() {
     -DUSE_CUDA="${_tvm_cuda_flag}"
     "-DTVM_BUILD_PYTHON_MODULE=${_tvm_python_module}"
   )
+
+  _tvm_emit_cuda_companion_args "${_tvm_out_name}" "${_tvm_cuda_flag}"
 
   _tvm_emit_cross_args "${_tvm_out_name}" "${_tvm_cross_link_flags}"
   _tvm_emit_llvm_args "${_tvm_out_name}" "${_tvm_llvm_dir}" "${_tvm_llvm_ignore_paths}"

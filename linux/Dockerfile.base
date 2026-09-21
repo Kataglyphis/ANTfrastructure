@@ -67,8 +67,20 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
 # restore_mirror_https_scheme INSIDE bootstrap-ca (base-image.sh), right after
 # ca-certificates lands. Kept because it is still the mirror-configuration hook
 # for sources bootstrap-ca did not touch, and it is a harmless no-op otherwise.
+# platform.sh travels WITH ubuntu-mirror.sh. ubuntu-mirror.sh carries a
+# defensive `source "${_UBUNTU_MIRROR_SH_DIR}/platform.sh"` for exactly this
+# standalone case, but it is a FILE TEST against its own directory -- and a
+# per-file bind mount puts ubuntu-mirror.sh in /tmp/core-scripts with no
+# platform.sh beside it, so the fallback silently found nothing. Observed on the
+# first native arm64 base build (2026-09-15):
+#   ubuntu-mirror.sh: line 21: is_truthy: command not found
+# ubuntu_mirror_is_truthy then exits 127, which reads as FALSE, so
+# USE_FAST_UBUNTU_MIRROR could never take effect through this RUN -- a knob
+# silently stuck off, and the step still exits 0. Dockerfile.media's equivalent
+# RUN already mounts the pair; this was the one place in the tree that did not.
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core-scripts/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/core-scripts/use-fast-ubuntu-mirror.sh
 

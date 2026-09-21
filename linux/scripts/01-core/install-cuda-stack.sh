@@ -12,6 +12,22 @@
 set -euo pipefail
 
 CUDA_MAJOR="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | cut -d'-' -f1)"
+
+# cuda-compat is the DATACENTER forward-compatibility driver ("Used for TESLA
+# cards only" in its own Description): ~438 MB that drops a REAL libcuda.so.1
+# for a discrete-GPU driver into /usr/local/cuda-*/compat. On a Jetson the CUDA
+# driver is welded to the L4T BSP and injected from the host by
+# nvidia-container-toolkit, so this package is at best dead weight and at worst
+# shadows the real Tegra libcuda. NVIDIA ships a SEPARATE cuda-compat-orin-*
+# for Orin in the same sbsa repo; this is not it.
+# Default keeps the historical behaviour for the datacenter lanes.
+_cuda_compat_pkgs=()
+if [ "${CUDA_INSTALL_COMPAT:-1}" = "1" ]; then
+  _cuda_compat_pkgs+=("cuda-compat-${CUDA_VERSION_MAJOR_MINOR}")
+else
+  echo "CUDA_INSTALL_COMPAT=0 — skipping cuda-compat-${CUDA_VERSION_MAJOR_MINOR} (Tegra/Jetson: the driver comes from the L4T BSP)"
+fi
+
 apt-get install -y --no-install-recommends \
     cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
     cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \
@@ -27,7 +43,7 @@ apt-get install -y --no-install-recommends \
     libcufft-${CUDA_VERSION_MAJOR_MINOR} \
     libcufft-dev-${CUDA_VERSION_MAJOR_MINOR} \
     cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
-    cuda-compat-${CUDA_VERSION_MAJOR_MINOR}
+    "${_cuda_compat_pkgs[@]}"
 CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"
 # CUDNN_VERSION is optional (see header): when unset/empty, skip the pinned
 # tier and fall through to the unpinned fallbacks below.

@@ -124,4 +124,33 @@ t_case "ensure_tensorflow_c_sdk: gate does NOT fire when FFMPEG_ENABLE_TF=1 (dow
 _on="$(_run_ensure "1")"
 t_assert_ok bash -c "case '${_on}' in *'FFMPEG_ENABLE_TF is off'*) exit 1;; *) exit 0;; esac"
 
+
+# ── FFmpeg's NVIDIA flags must stay redistributable ──────────────────────────
+# FFmpeg classes cuda_nvcc as NONFREE: `--enable-cuda-nvcc` makes configure
+# hard-fail with "cuda_nvcc is nonfree and --enable-nonfree is not specified",
+# and supplying --enable-nonfree ALONGSIDE the --enable-gpl this script already
+# passes yields a binary that may not be redistributed at all.
+# The trap is that the whole NVIDIA block is gated on ${CUDA_HOME}/include/cuda.h
+# existing, so it fires ONLY inside a CUDA-bearing image -- the standard lane
+# never reaches it. It killed the NVIDIA media lane on 2026-09-18, the first run
+# that got as far as FFmpeg.
+# NVENC/NVDEC/CUVID need no such flag and stay; only CUDA-based FILTERS are lost.
+t_case "the NVIDIA FFmpeg flags stay redistributable (no nonfree pairing)"
+_FFB="${TESTS_DIR}/../03-media/build/ffmpeg/build-ffmpeg.sh"
+_ff_src="$(sed 's/#.*$//' "${_FFB}")"
+t_assert_eq "0" "$(printf '%s' "${_ff_src}" | grep -c -- '--enable-cuda-nvcc' || true)" \
+  "--enable-cuda-nvcc requires --enable-nonfree, which is incompatible with --enable-gpl here"
+t_assert_eq "0" "$(printf '%s' "${_ff_src}" | grep -c -- '--enable-nonfree' || true)" \
+  "--enable-nonfree would make the shipped FFmpeg non-redistributable"
+# ...and the hardware codecs that do NOT need it must still be there.
+# Counted from a comment-stripped copy on disk, not from a shell variable: a
+# `bash -c` subshell cannot see the caller's locals, and the assertion then
+# fails for a reason that has nothing to do with the flag.
+_ff_stripped="$(mktemp)"
+sed 's/#.*$//' "${_FFB}" > "${_ff_stripped}"
+for _flag in nvenc nvdec cuvid ffnvcodec; do
+  t_assert_ok grep -q -- "--enable-${_flag}" "${_ff_stripped}"
+done
+rm -f "${_ff_stripped}"
+
 t_summary

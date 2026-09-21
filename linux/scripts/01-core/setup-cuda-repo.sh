@@ -22,7 +22,16 @@ case "${ARCH}" in
   *)       echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}" ;;
 esac
 KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
-KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_CODENAME}/${CUDA_ARCH}/${KEYRING_PKG}"
+# NVIDIA's repo path component is the Ubuntu VERSION DIGITS (ubuntu2604), NOT the
+# codename. This used to interpolate UBUNTU_CODENAME, which produced
+# .../repos/ubunturesolute/ -- a 404 on every arch, so the FIRST RUN of
+# Dockerfile.nvidia died under `set -euo pipefail` and the whole GPU lane was
+# unbuildable on the pinned 26.04. Probed 2026-09-16: ubunturesolute/sbsa 404,
+# ubuntu2604/sbsa 200. UBUNTU_CODENAME stays correct for the UBUNTU archive
+# sources elsewhere; only NVIDIA's paths are numeric.
+: "${UBUNTU_VERSION:?UBUNTU_VERSION must be set (e.g. 26.04) to build the NVIDIA repo path}"
+NV_DISTRO="ubuntu${UBUNTU_VERSION//./}"
+KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/${NV_DISTRO}/${CUDA_ARCH}/${KEYRING_PKG}"
 # VERIFIED fetch (supply-chain audit #1): this .deb installs the apt TRUST
 # ANCHOR for every CUDA/cuDNN/TensorRT package — with an attacker-supplied
 # key, apt's own signature checking is defeated for the whole NVIDIA lane.
