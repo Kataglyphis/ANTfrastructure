@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-21 - HailoRT on Windows (Phase 3): library + CLI, both arches
+
+The Windows lane now builds HailoRT like the Linux lane does - from the
+SHA-pinned v5.4.0 tarball, with the same ten externals staged offline at the
+same commits - as a `media-core-built-hailo` branch between opencv and the core
+merge, installed to `C:\runtime\hailo`. Probe-proven on amd64
+(`out/build-logs/probe-hailo-amd64-*`: `libhailort.dll` PE 0x8664 +
+`hailortcli.exe`); the arm64 cross build rides the same branch.
+
+Three upstream Windows/clang-cl gaps had to be patched, each found live and
+documented in `docs/hailo-support.md` § Phase 3:
+
+- `quantization.hpp`'s `bankers_round` keys on `_MSC_VER` - which clang-cl
+  defines on every arch - so the x86 intrinsics fail on ARM64 and on a bare x64
+  clang-cl without `-msse4.1`.
+- `driver_os_specific.cpp` writes explicit-specialization members without
+  `template<>`, which clang-cl enforces.
+- `os/windows/filesystem.cpp` omits `LockedFile::~LockedFile()` while the header
+  declares it, so `hailortcli` cannot link.
+
+Not yet: TAPPAS (Linux-only), the pyhailort wheel, the GStreamer `hailonet`
+element on Windows, and device execution.
+
 ## 2026-09-20 - Windows-on-ARM64 CUDA/cuDNN: the cross lane is wired (#176)
 
 The arm64 lane built its **CUDA stack for the first time**, on the x64 host, with no

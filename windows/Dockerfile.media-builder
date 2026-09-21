@@ -23,6 +23,7 @@ ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 ARG MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
 ARG MEDIA_CORE_OPENCV_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-opencv
 ARG MEDIA_CORE_FFMPEG_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-ffmpeg
+ARG MEDIA_CORE_HAILO_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-hailo
 
 # ── Common base: shared boilerplate for all three builders ────────────────────
 FROM ${BASE_IMAGE} AS common
@@ -443,7 +444,34 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     $env:SCCACHE_CUDA_LAUNCHER = $env:OPENCV_CUDA_LAUNCHER; `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
+# HAILO (Phase 3, 2026-09-21; docs/hailo-support.md): HailoRT for Windows -
+# library + hailortcli, both arches. TAPPAS is Linux-only and pyhailort's
+# Windows wheel is a later phase. A DIRECT script call (no Build-MediaCoreAll
+# phase): it shares nothing with the ONNX/FFmpeg/OpenCV phases but the module
+# closure, and the payload installs under C:\runtime\hailo, which the merge
+# copies wholesale with C:\runtime.
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-hailo
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
+ARG HAILORT_VERSION=5.4.0
+ENV HAILORT_VERSION="${HAILORT_VERSION}"
+# Integrity pins, forwarded (not just baked): the base image bakes versions.env at
+# ITS build time, so a parent built before the Hailo pins existed would leave
+# HAILORT_SOURCE_SHA256/HAILO_PROTOBUF_* EMPTY -- and an empty -ExpectedSha256 is
+# "no check". The script throws on empty pins; these ARGs are how the current
+# versions.env reaches it.
+ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0
+ARG HAILO_PROTOBUF_VERSION=21.12
+ARG HAILO_PROTOBUF_SHA256=22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build/Build-HailortFromSource.ps1,target=C:\bkmnt\Build-HailortFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/hailo,target=C:\bkmnt\patches\hailo `
+    & 'C:\bkmnt\Build-HailortFromSource.ps1' -SourceDir 'C:\temp\hailort-src' -BuildDir 'C:\temp\hailort-build' -InstallDir 'C:\runtime\hailo'
+
+FROM ${MEDIA_CORE_HAILO_IMAGE} AS media-core-built
 # Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}

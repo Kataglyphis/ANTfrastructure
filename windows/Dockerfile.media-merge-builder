@@ -115,6 +115,7 @@ ARG LITERT_VERSION=v2.2.0
 ARG LITERT_LM_VERSION=0.17.1
 ARG TVM_REF=v0.26.0
 ARG IREE_VERSION=v3.11.0
+ARG HAILORT_VERSION=5.4.0
 
 # ONE ENV instruction for everything below PATH: the classic builder emits a
 # layer PER INSTRUCTION (even metadata), and windows-torch hit Docker's hard
@@ -162,6 +163,9 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     TVM_LIBRARY_PATH="C:\runtime\lib\tvm\lib" `
     IREE_ROOT="C:\runtime\iree" `
     IREE_BIN="C:\runtime\iree\bin" `
+    HAILORT_VERSION="${HAILORT_VERSION}" `
+    HAILO_ROOT="C:\runtime\hailo" `
+    HAILO_BIN="C:\runtime\hailo\bin" `
     PYTHON_WHEELS="C:\runtime\wheels"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
@@ -212,7 +216,7 @@ COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site
 # PATH references the vars above, and PKG_CONFIG_PATH lets GStreamer auto-detect
 # FFmpeg + OpenCV (libav*.pc enables gst-libav; LiteRT and ONNX Runtime ship no
 # .pc files). GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
+ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$HAILO_BIN;$PATH `
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).

@@ -44,6 +44,46 @@ wheel into `linux/hailo-sdk/` and the amd64 wrapper installs it
 | Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause) | `docs/deps/deps.json` |
 | Build commands | [`linux-accelerator-images.md` § Hailo variant](linux-accelerator-images.md#hailo-variant) |
 
+## Phase 3: Windows HailoRT (LANDED 2026-09-21)
+
+**The Windows lane builds HailoRT (library + `hailortcli`) on amd64 and arm64.**
+TAPPAS stays Linux-only and pyhailort's Windows wheel is still open; what ships
+today is the device runtime every Windows consumer needs.
+
+| Piece | Where |
+| --- | --- |
+| Build script | `windows/scripts/build/Build-HailortFromSource.ps1` |
+| Media branch (`media-core-built-hailo`, between opencv and the core merge) | `windows/Dockerfile.media-builder` |
+| Driver stage + pins forwarding | `windows/Build-Buildkit.ps1` (`Get-Ver 'HAILORT_*'`) |
+| Patches (three upstream Windows/clang-cl gaps) | `windows/scripts/patches/hailo/` |
+| Smoke section 24 + the `HAILO_ROOT`/`HAILO_BIN` pointers | `windows/scripts/build/Test-Container.ps1` |
+| Payload layout | `C:\runtime\hailo\{bin,lib,include}` (`libhailort.dll`, `hailopp.dll`, `hailortcli.exe`) |
+
+Same shape as the Linux lane, with two Windows-specific facts:
+
+- **Offline externals, pinned 1:1.** Upstream's `prepare_externals` clones ten
+  repositories at configure time, unpinned. The script stages each at the SAME
+  commits the Linux lane pins (plus protobuf 21.12 from its SHA-verified tarball)
+  and configures with `HAILO_OFFLINE_COMPILATION=ON`.
+- **Three upstream gaps, all patched** (probe-proven 2026-09-21,
+  `out/build-logs/probe-hailo-amd64-*`):
+  1. `quantization.hpp`'s `bankers_round` guard keys on `_MSC_VER`, which clang-cl
+     defines on EVERY arch → the x86 intrinsics fail on ARM64 and on a bare x64
+     clang-cl without `-msse4.1` (`__builtin_ia32_roundss needs target feature
+     sse4.1`). The guard is now `MSVC && !clang && (x64||x86)`.
+  2. `driver_os_specific.cpp` defines explicit-specialization members without
+     `template<>`; clang-cl enforces the prefix MSVC tolerates.
+  3. `os/windows/filesystem.cpp` is a stub that omits `LockedFile::~LockedFile()`
+     while the header declares it → `hailortcli` fails to link
+     (`undefined symbol: hailort::LockedFile::~LockedFile`). The destructor is
+     added (the stub's `create()` returns `HAILO_NOT_IMPLEMENTED`, so there is
+     nothing to release).
+
+**Not yet on Windows**: TAPPAS, the pyhailort wheel, the GStreamer `hailonet`
+element (`HAILO_BUILD_GSTREAMER` stays OFF — the binding exists upstream for
+Windows but is a separate gate), the Dataflow Compiler (host-side tool anyway)
+and any device execution (no Hailo device on the build host).
+
 The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo` builds HailoRT in
 the **runtime image itself** (native GCC 16.2.0 + the GStreamer dev files are
 already there), then copies the payload into the same image — so the variant is

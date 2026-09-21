@@ -1,0 +1,18 @@
+diff --git a/hailort/libhailort/include/hailo/quantization.hpp b/hailort/libhailort/include/hailo/quantization.hpp
+index 0000000..0000000 100644
+--- a/hailort/libhailort/include/hailo/quantization.hpp
++++ b/hailort/libhailort/include/hailo/quantization.hpp
+@@ -37,7 +37,12 @@
+ 
+ inline float bankers_round(float x)
+ {
+-#if defined(_MSC_VER)
++// PATCHED (Windows clang-cl, 2026-09-21): the comment below says it - these are x86
++// intrinsics. clang-cl defines _MSC_VER on EVERY arch, so an arm64 cross build (and a
++// bare x64 clang-cl without -msse4.1) hits them and dies with
++// '__builtin_ia32_roundss needs target feature sse4.1'. MSVC on x86/x64 keeps the
++// fast path; clang and MSVC-on-ARM64 take rintf.
++#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_IX86))
+     // These instructions are intrinsics that the Microsoft C/C++ compiler supports when x86 is targeted
+     __m128 xmm = _mm_set_ss(x);
+     xmm = _mm_round_ss(xmm, xmm, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
