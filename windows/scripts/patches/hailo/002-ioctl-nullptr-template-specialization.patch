@@ -1,0 +1,18 @@
+diff --git a/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp b/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
+index 0000000..0000000 100644
+--- a/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
++++ b/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
+@@ -310,11 +310,13 @@
+ 
+ // Special handle for nullptr_t. This case occurs when there is no parameters passed.
++template<>
+ tCompatibleHailoIoctlData WindowsIoctlParamCast<nullptr_t>::to_compatible(nullptr_t data)
+ {
+     (void) data;
+     return tCompatibleHailoIoctlData{};
+ }
+ 
++template<>
+ void WindowsIoctlParamCast<nullptr_t>::from_compatible(const tCompatibleHailoIoctlData &compatible, nullptr_t data)
+ {
+     (void) compatible;

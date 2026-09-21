@@ -1181,6 +1181,9 @@ $envPointerNames = @(
     'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
     'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
+    # Hailo Phase 3 (2026-09-21): the merge image declares these; section 24 asserts them too,
+    # but a pointer check here is what makes the layout a checked contract image-wide.
+    'HAILO_ROOT', 'HAILO_BIN',
     # Hard-assert TORCH_APP_DIR: section 21 SKIPs when it is unset, so without this pointer
     # check a lost env var would silently drop the whole app-env verification.
     'TORCH_APP_DIR'
@@ -1560,6 +1563,39 @@ if (-not (Test-Path (Join-Path $bakedScriptsRoot 'Test-Container.ps1'))) {
 }
 
 # ============================================================================
+Write-TestHeader '24. Hailo (source-built, Phase 3)'
+# ============================================================================
+# HailoRT for Windows (docs/hailo-support.md): library + hailortcli, both
+# arches. TAPPAS is Linux-only; pyhailort's Windows wheel is a later phase.
+# Cross lane: the arm64 payload cannot RUN here, so the CLI run-probe becomes a
+# PE-machine assert (same 1:1 substitution as sections 7 and 14); the arm64
+# floor stays 0 because this section is payload work.
+if ([string]::IsNullOrWhiteSpace($env:HAILO_ROOT)) {
+    Skip-Test 'Hailo section (HAILO_ROOT not set -- pre-Phase-3 image)'
+} else {
+    Assert-EnvVarSet -Name 'HAILO_ROOT'
+    Assert-DirectoryExists -Path $env:HAILO_ROOT -Description 'HAILO_ROOT directory'
+    $hailortCli = Get-ChildItem -Path $env:HAILO_ROOT -Filter 'hailortcli.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    # The Windows install names the library libhailort.dll (the Linux lane's libhailort.so).
+    $hailortDll = Get-ChildItem -Path $env:HAILO_ROOT -Filter 'libhailort.dll' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    Assert-Test -Name 'hailortcli.exe present' -Condition { $null -ne $hailortCli }.GetNewClosure() -FailMessage "hailortcli.exe not found under $env:HAILO_ROOT"
+    Assert-Test -Name 'libhailort.dll present' -Condition { $null -ne $hailortDll }.GetNewClosure() -FailMessage "libhailort.dll not found under $env:HAILO_ROOT"
+    if ($hailortCli -and $hailortDll) {
+        if ($smokeCross) {
+            Assert-Test -Name 'libhailort.dll is the target arch (PE machine)' -Condition {
+                try { (Get-PeFileMachine -Path $hailortDll.FullName) -eq (Get-PeMachineType) } catch { $false }
+            }.GetNewClosure() -FailMessage 'cross-built libhailort.dll has the wrong PE machine type'
+        } else {
+            Assert-DllLoads -Name 'libhailort.dll loads (WinUSB/PCIe stack resolves)' -DllPath $hailortDll.FullName
+            Assert-Test -Name 'hailortcli --version runs' -Condition {
+                $out = & $hailortCli.FullName --version 2>&1 | Out-String
+                ($LASTEXITCODE -eq 0) -and ($out -match 'HailoRT')
+            }.GetNewClosure() -FailMessage 'hailortcli --version failed (the CLI or its dependent DLLs are broken)'
+        }
+    }
+}
+
+# ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
 # Read through the module, NOT $script:passed: the counters live in the harness module's scope,
@@ -1615,6 +1651,10 @@ $sectionFloors = @{
     # '23' arm64 is 5: three final-stage files + module import + healthcheck (the
     # torch-baked Build-TorchApp.ps1 is cross-skipped; it is the amd64 sixth).
     '23' = @{ Gpu = 6; Cpu = 6; Arm64 = 5 }
+    # '24' Hailo (Phase 3, 2026-09-21): six host-runnable assertions on amd64
+    # (root, dir, cli, dll, dll-load, cli --version); arm64 runs the static
+    # subset only, so its floor stays 0 like the other payload sections.
+    '24' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
 }
 # Cross FIRST: the arm64 lane skips the payload sections even with -ExpectGpu set (the
 # arm64 CUDA image runs the HOST-toolchain §7 but still cannot execute aarch64 payload),

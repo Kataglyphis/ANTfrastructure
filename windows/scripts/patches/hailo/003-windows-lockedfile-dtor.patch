@@ -1,0 +1,21 @@
+diff --git a/hailort/common/os/windows/filesystem.cpp b/hailort/common/os/windows/filesystem.cpp
+index 0000000..0000000 100644
+--- a/hailort/common/os/windows/filesystem.cpp
++++ b/hailort/common/os/windows/filesystem.cpp
+@@ -22,7 +22,16 @@
+ {}
+ 
+ TempFile::~TempFile()
+ {
+ }
+ 
++// PATCHED (2026-09-21): upstream's Windows filesystem.cpp is a stub that omits this
++// definition while filesystem.hpp declares `virtual ~LockedFile();`. Every consumer
++// that destroys a LockedFile (hailortcli's integrated_monitor, and pyhailort) then
++// fails to link with `lld-link: undefined symbol: hailort::LockedFile::~LockedFile`.
++// The stub's create() returns HAILO_NOT_IMPLEMENTED, so there is nothing to release.
++LockedFile::~LockedFile()
++{
++}
++
+ std::string TempFile::path() const

@@ -599,12 +599,21 @@ if ($Stages -contains 'media') {
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
-            # ORDER onnx -> ffmpeg -> opencv -> genai (backlog #94): OpenCV must
-            # configure AFTER FFmpeg exists or it silently links its own
-            # downloaded prebuilt. Keep in step with Dockerfile.media-builder.
+            $hailoArg  = @{ MEDIA_CORE_HAILO_IMAGE = Get-BkTag 'windows-media-core-hailo' }
+            # ORDER onnx -> ffmpeg -> opencv -> hailo -> genai (backlog #94):
+            # OpenCV must configure AFTER FFmpeg exists or it silently links its
+            # own downloaded prebuilt. Keep in step with Dockerfile.media-builder.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $onnxArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $ffmpegArg)
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $opencvArg)
+            # HailoRT (Phase 3): between opencv and the media-core-built stage that
+            # carries GenAI + the core env; HAILORT_VERSION rides versions.env.
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-hailo' -Tag (Get-BkTag 'windows-media-core-hailo') -BuildArgs ($branchBuildArgs + $opencvArg + @{
+                HAILORT_VERSION        = Get-Ver 'HAILORT_VERSION'
+                HAILORT_SOURCE_SHA256  = Get-Ver 'HAILORT_SOURCE_SHA256'
+                HAILO_PROTOBUF_VERSION = Get-Ver 'HAILO_PROTOBUF_VERSION'
+                HAILO_PROTOBUF_SHA256  = Get-Ver 'HAILO_PROTOBUF_SHA256'
+            })
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $hailoArg)
         } else {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs $branchBuildArgs
         }
