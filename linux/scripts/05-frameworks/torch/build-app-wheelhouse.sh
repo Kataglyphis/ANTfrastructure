@@ -520,8 +520,12 @@ _torch_detect_system_sleef() {
     fi
 }
 
-# Run pytorch's setup.py bdist_wheel in a scrubbed subshell with the full cross
-# env. Reads src_dir/cmake_args_string/wheel_platform/python_sysconfig_export/
+# Run pytorch's PEP517 wheel build (pip) in a scrubbed subshell with the full
+# cross env. PyTorch 2.14 moved to scikit-build-core and DELETED the
+# `setup.py bdist_wheel` path ("2.14-2.15: install and develop forward to pip");
+# the old call died with that message, so this is a pip wheel with the build
+# backend's requires pre-installed (--no-build-isolation). Reads
+# src_dir/cmake_args_string/wheel_platform/python_sysconfig_export/
 # use_system_sleef/dist_dir + CROSS_HOST_PROTOC (via write_cross_cmake_toolchain_
 # file) through dynamic scope. Returns non-zero on build failure.
 _torch_run_setup_py() {
@@ -551,7 +555,10 @@ _torch_run_setup_py() {
         export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
-        "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
+        "${BUILD_PYTHON}" -m pip install --quiet --disable-pip-version-check \
+            "scikit-build-core>=1.0" "setuptools>=77.0.0,<82" numpy "packaging>=24.2" pyyaml && \
+        "${BUILD_PYTHON}" -m pip wheel --no-build-isolation --no-deps \
+            --wheel-dir "${dist_dir}" .
     )
 }
 
@@ -681,7 +688,10 @@ _torchvision_run_setup_py() {
         _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)" && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
-        "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
+        "${BUILD_PYTHON}" -m pip install --quiet --disable-pip-version-check \
+            "scikit-build-core>=1.0" "setuptools>=77.0.0,<82" numpy "packaging>=24.2" pyyaml && \
+        "${BUILD_PYTHON}" -m pip wheel --no-build-isolation --no-deps \
+            --wheel-dir "${dist_dir}" .
     )
 }
 
