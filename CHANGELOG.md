@@ -158,6 +158,15 @@ login-gated and x86_64-only, so it gets the QNN-style staged drop point
 `linux/hailo-sdk/` (the amd64 wrapper installs a staged wheel; the Model Zoo
 stays a host-side tool).
 
+**WH1 is closed: the app wheelhouse's refs are wired, and all three arches now
+carry torch 2.14 / torchvision 0.29.** `Dockerfile.media`'s `app-wheelhouse`
+stage gained `ARG PYTORCH_VERSION` / `TORCHVISION_VERSION` / `IREE_VERSION` and
+exports them to `build-app-wheelhouse.sh`, which previously fell back to its
+built-in `v2.13.0`/`v0.28.0`/`v3.11.0` defaults and did not even re-key on a
+pin bump. riscv64 has no upstream torch wheels, so its media stage SOURCE-BUILDS
+the same refs — the per-arch `PYTORCH_VERSION_RISCV64` overrides are gone, and
+with them the 2.13/0.28 split the first rebuild exposed.
+
 **TAPPAS is built against GStreamer 1.29.2 — with build-args, not patches.**
 The plan had it as blocked (its README names 1.16-1.20 as the supported
 matrix), but that is the TESTED matrix: the meson constraint is `>= 1.0` and a
