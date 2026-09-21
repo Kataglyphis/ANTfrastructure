@@ -14,9 +14,12 @@ design, the upstream facts it rests on, and what remains open.
 every `:latest-cross` wrapper carries it. The build's own checks run before the
 payload is accepted, so a broken element fails the build rather than shipping.
 **pyhailort is built from source** (scikit-build-core, the `platform/`
-directory) and installed into `/opt/venv` — with one caveat: upstream declares
-`requires-python <3.14` and the image runs 3.14, so the install relaxes that
-metadata and import-tests `hailo_platform`; a failure is reported, not hidden.
+directory) and installed into `/opt/venv`. One honest caveat: upstream declares
+`requires-python <3.14` and the image runs 3.14, so the wheel's metadata is
+relaxed before the build and the install is followed by an import test — a
+failure is REPORTED, never hidden. The wheel also stays staged at
+`/opt/hailo/wheels/` for a ≤3.13 environment. If `import hailo_platform` fails
+on 3.14, that is upstream's declared boundary, not a packaging accident.
 **TAPPAS IS built** (2026-09-20). Its README names GStreamer 1.16–1.20 as the
 *tested* matrix, but the meson constraint is `>= 1.0` and it builds clean
 against this image's 1.29.2 — the two load-bearing fixes are build-args, not
