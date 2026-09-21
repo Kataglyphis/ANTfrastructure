@@ -230,7 +230,13 @@ build_pyhailort() {
   python3 -m pip install --quiet --disable-pip-version-check \
     "scikit-build-core>=0.10" "pybind11>=2.13.6,<3" \
     || die "could not install the pyhailort build backend"
-  CMAKE_ARGS="-DLIBHAILORT_PATH=${HAILO_PREFIX}/lib/libhailort.so -DHAILORT_INCLUDE_DIR=${HAILO_PREFIX}/include" \
+  # pip-installed pybind11 lives in site-packages, which find_package() does not
+  # search — without the cmakedir the extension silently builds as a stub (a
+  # two-second wheel with no PyInit symbol).
+  local pybind_dir
+  pybind_dir="$(python3 -m pybind11 --cmakedir 2>/dev/null || true)"
+  [ -n "${pybind_dir}" ] || die "pybind11 --cmakedir produced nothing; the pyhailort wheel would be a stub"
+  CMAKE_ARGS="-DLIBHAILORT_PATH=${HAILO_PREFIX}/lib/libhailort.so -DHAILORT_INCLUDE_DIR=${HAILO_PREFIX}/include -Dpybind11_DIR=${pybind_dir}" \
     python3 -m pip wheel --no-build-isolation --no-deps \
       --wheel-dir "${wheel_dir}" "${platform_dir}" \
     || die "pyhailort wheel build failed"
