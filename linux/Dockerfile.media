@@ -698,6 +698,13 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM base AS app-wheelhouse
 
 ARG TARGET_ARCH
+# The wheelhouse builds torch/torchvision FROM SOURCE at these refs. Without the
+# ARGs it silently used its built-in fallbacks and ignored versions.env (WH1);
+# the runtime then had to force-install the pinned pair on the archs that have
+# wheels, and riscv64 (no wheels) could not follow a pin bump at all.
+ARG PYTORCH_VERSION=v2.14.0
+ARG TORCHVISION_VERSION=v0.29.0
+ARG IREE_VERSION=v3.11.0
 
 # NO cargo mount here, deliberately (verified 2026-08-23). This RUN executes
 # exactly one script, build-app-wheelhouse.sh, and that script never invokes
@@ -732,6 +739,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
       echo "WARNING: uv not found in app-wheelhouse stage; installing..."; \
       pip3 install uv 2>/dev/null || echo "WARNING: could not install uv"; \
     fi; \
+    export PYTORCH_VERSION="${PYTORCH_VERSION}" TORCHVISION_VERSION="${TORCHVISION_VERSION}" IREE_VERSION="${IREE_VERSION}"; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh; \
     if [ ! -d /opt/app-wheels ] || [ -z "$(ls -A /opt/app-wheels 2>/dev/null)" ]; then \
         mkdir -p /opt/app-wheels; \

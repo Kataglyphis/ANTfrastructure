@@ -28,7 +28,7 @@ Last groomed: **2026-09-18, after CON4's Windows half was measured, the
 dependency wave landed and the two owner questions were answered** — every closed
 narrative moved to
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md) and the
-CHANGELOG. What stays here is **two registers and one wiring gap**. Every
+CHANGELOG. What stays here is **two registers**. Every
 earlier grooming's warning still applies: **re-derive; do not trust a number
 here, including these.**
 
@@ -107,19 +107,6 @@ number growing is the gate succeeding.
 finish-args block, 797 → 851); the row carries the NOT-a-split reason and the seam
 that kept it that way. Record in
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
-
-### WH1. The app wheelhouse's torch refs are not wired to `versions.env` [S, ★★]
-
-`Dockerfile.media`'s `app-wheelhouse` stage declares only `TARGET_ARCH`, so
-`PYTORCH_VERSION`, `TORCHVISION_VERSION` and `IREE_VERSION` never reach
-`build-app-wheelhouse.sh` — it falls back to its built-in defaults
-(`v2.13.0` / `v0.28.0` / `v3.11.0`). Because the ARGs are undeclared, the
-stage's layer cache does not re-key when a pin moves either. It was invisible
-while pin and fallback agreed; the 2026-09-20 rebuild caught the first
-disagreement (torchvision v0.29.0 vs fallback v0.28.0) through the runtime
-version-pin assertion — see CHANGELOG 2026-09-20. Wiring the three ARGs into
-the stage and passing them into the RUN env re-keys the wheelhouse for all
-three arches (hours under QEMU); do it in a planned window, never as a drive-by.
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
 `gh auth setup-git` + HTTPS remotes, and ten of the thirteen files in
