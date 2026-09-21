@@ -273,7 +273,11 @@ run_cross_targets() {
 }
 
 main() {
-  local target_arches="${1:-amd64,arm64,riscv64}"
+  # Fall back to CROSS_TARGETS, not a frozen literal. Dockerfile.toolchain calls
+  # this with NO argument while setting CROSS_TARGETS as ENV, so a build narrowed
+  # with --cross-targets arm64 used to smoke-test amd64 and riscv64 toolchains it
+  # had deliberately never built -- the compiler stage failed its own smoke.
+  local target_arches="${1:-${CROSS_TARGETS:-amd64,arm64,riscv64}}"
   local host_arch
 
   host_arch="$(smoke_host_arch)"

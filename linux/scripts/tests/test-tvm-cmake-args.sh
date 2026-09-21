@@ -330,6 +330,8 @@ Ninja
 -DUSE_OPENCL=ON
 -DUSE_CUDA=ON
 -DTVM_BUILD_PYTHON_MODULE=ON
+-DUSE_CUDNN=ON
+-DUSE_CUBLAS=ON
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
@@ -337,6 +339,54 @@ Ninja
 EOF
 t_assert_eq "${_want}" "${_got}" "cuda-opencl: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "cuda-opencl: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+
+# ── cuda companions ──
+# USE_CUDA alone leaves cuDNN/cuBLAS OFF, so TVM targets the GPU but falls back
+# to generated kernels for conv/gemm. The companions are opt-OUT, and must be
+# asked for ONLY with CUDA on (requesting cuDNN without CUDA is a configure
+# error, not a no-op).
+t_case "the CUDA companions are ON by default, and only when CUDA is"
+_emit --out arr --python-module ON --build-type Debug \
+  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
+  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
+t_assert_contains "${_got}" "-DUSE_CUDNN=ON"  "cuDNN must default ON alongside CUDA"
+t_assert_contains "${_got}" "-DUSE_CUBLAS=ON" "cuBLAS must default ON alongside CUDA"
+
+t_case "CUDA OFF emits NO companion flags at all"
+_emit --out arr --python-module ON --build-type Debug \
+  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
+  --use-vulkan 0 --use-cuda 0 --use-opencl 0 >/dev/null
+t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUDNN' || true)" \
+  "cuDNN must not be requested without CUDA"
+t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUBLAS' || true)" \
+  "cuBLAS must not be requested without CUDA"
+
+# NO SUBSHELL. t_assert_* increments the harness counter, and a subshell cannot
+# mutate its parent: an earlier version of this block wrapped each knob in
+# `( ... )`, and a deliberately wrong assertion printed FAIL while the suite
+# still reported "50 passed" and exited 0. Set, call, unset instead.
+t_case "each companion has its own opt-out knob"
+# shellcheck disable=SC2034  # read by append_tvm_cmake_args (sourced), not visibly here
+TVM_USE_CUDNN=0
+_emit --out arr --python-module ON --build-type Debug \
+  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
+  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
+unset TVM_USE_CUDNN
+t_assert_contains "${_got}" "-DUSE_CUDNN=OFF" "TVM_USE_CUDNN=0 must turn cuDNN off"
+t_assert_contains "${_got}" "-DUSE_CUBLAS=ON" "and must NOT drag cuBLAS off with it"
+
+# shellcheck disable=SC2034  # read by append_tvm_cmake_args (sourced), not visibly here
+TVM_USE_CUBLAS=0
+_emit --out arr --python-module ON --build-type Debug \
+  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
+  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
+unset TVM_USE_CUBLAS
+t_assert_contains "${_got}" "-DUSE_CUBLAS=OFF" "TVM_USE_CUBLAS=0 must turn cuBLAS off"
+t_assert_contains "${_got}" "-DUSE_CUDNN=ON"  "and must NOT drag cuDNN off with it"
 
 # ── qnn-on ──
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN="/opt/qairt/2.0"

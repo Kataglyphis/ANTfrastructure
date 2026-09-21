@@ -31,7 +31,7 @@ Describe 'Get-CudaArchitectureList' {
 
     It 'returns the canonical default when CUDA_ARCHITECTURES is unset' {
         Invoke-WithEnv @{ CUDA_ARCHITECTURES = '' } {
-            Assert-Equal '80;86;89;90' (Get-CudaArchitectureList)
+            Assert-Equal '80;86;87;89;90' (Get-CudaArchitectureList)
         }
     }
 

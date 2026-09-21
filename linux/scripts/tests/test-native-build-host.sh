@@ -232,6 +232,58 @@ t_assert_eq "qemu-aarch64" "$(_reg_bin arm64)"
 t_assert_contains "$(sed -n '/^elf_magic_for()/,/^}/p' "${_REG}")" 'x3e' \
   "without the ELF magic the registrar cannot install the amd64 handler"
 
+# The registrar's DEFAULT arch set, for the hand-run path. ensure_foreign_binfmt
+# (build-runtime-manifest.sh) derives the set and always passes --arches, so it
+# never reaches this default -- but verify_foreign_binfmt's own err() tells the
+# operator to run `bash linux/scripts/setup-rootless-binfmt.sh` bare, and the
+# default was the literal "arm64,riscv64". On an arm64 host that registered a
+# qemu-aarch64 handler for the NATIVE arch (binfmt_misc is consulted for native
+# ELF too, so native binaries would route through QEMU) while leaving amd64 --
+# the only arch that host actually has to emulate -- unregistered.
+t_case "the registrar's default emulates every chain target EXCEPT the host's own"
+_reg_src() { sed -n '/^_binfmt_host_arch()/,/^}/p;/^_binfmt_default_arches()/,/^}/p' "${_REG}"; }
+# ONE runner for both helpers: <fn> under a pinned `uname -m`. Two copies that
+# differed only in the trailing function name tripped the code-dupes gate.
+_reg_call() {
+  bash -c "
+    uname() { [ \"\$1\" = -m ] && echo '$2' || command uname \"\$@\"; }
+    $(_reg_src)
+    $1"
+}
+_reg_default_for()   { _reg_call _binfmt_default_arches "$1"; }
+_reg_host_arch_for() { _reg_call _binfmt_host_arch      "$1"; }
+# THE REGRESSION TRIPWIRE: the amd64 lane's answer must not move a byte.
+t_assert_eq "arm64,riscv64"   "$(_reg_default_for x86_64)" \
+  "the historical default was correct FOR AMD64 and must stay byte-identical"
+t_assert_eq "amd64,riscv64"   "$(_reg_default_for aarch64)" \
+  "an arm64 host emulates amd64 and riscv64 -- never its own arch"
+t_assert_eq "amd64,arm64"     "$(_reg_default_for riscv64)"
+# Unknown host: emulate everything rather than silently registering nothing.
+t_assert_eq "amd64,arm64,riscv64" "$(_reg_default_for ppc64le)"
+
+# The qemu-user EMULATOR IMAGE platform. extract_emulators pulled
+# `--platform linux/amd64` unconditionally; a qemu-user binary is a HOST-arch
+# executable, so on an arm64 host that unpacked x86-64 ELF emulators that
+# cannot exec -- AND the amd64 image ships no qemu-x86_64 at all (an
+# x86_64-on-x86_64 emulator is pointless), which is the one an arm64 host
+# needs. Observed on a Jetson AGX Orin: every extracted binary reported
+# "Machine: Advanced Micro Devices X86-64".
+t_case "the emulator image platform follows the host, not a frozen amd64"
+t_assert_eq "amd64"   "$(_reg_host_arch_for x86_64)" \
+  "the amd64 lane must still pull the amd64 emulator image"
+t_assert_eq "arm64"   "$(_reg_host_arch_for aarch64)" \
+  "an arm64 host needs aarch64-ELF emulators, incl. the qemu-x86_64 amd64 lacks"
+t_assert_eq "riscv64" "$(_reg_host_arch_for riscv64)"
+t_assert_eq ""        "$(_reg_host_arch_for ppc64le)" \
+  "an unrecognized host must not silently claim to be amd64"
+# The frozen literal must not come back.
+t_assert_eq "0" "$(grep -cE -- '--platform linux/amd64' "${_REG}" || true)" \
+  "extract_emulators must ask for the host platform, not freeze amd64"
+# The EXIT trap fires after the function returns, so a `local` there dies under
+# set -u with "tmp: unbound variable" and masks the real failure.
+t_assert_eq "0" "$(grep -cE "trap 'rm -rf \"\\$\{tmp\}\"' EXIT" "${_REG}" || true)" \
+  "an EXIT trap must not dereference a function-local"
+
 # ---------------------------------------------------------------------------
 # When the LLVM target IS the build host, setup_linux_cross_env returns early
 # and exports no AS/LD/AR/... — the native tools already are the target's. The
@@ -267,5 +319,40 @@ _WD2="$(mktemp -d)"
 t_assert_eq "${_FAKE}/fake-as" "$(readlink "${_WD2}/as")" \
   "the cross path must keep using the target's assembler, not the host's"
 rm -rf "${_FAKE}" "${_WD2}" "${_FN_SRC}"
+
+
+# ── A single-entry target list that IS the host arch ─────────────────────────
+# build_cross_llvm_targets moves the BUILD HOST's arch to the front of
+# CROSS_TARGETS so its LLVM is built first. It did that with
+#   grep -vx "${_host_arch}"
+# which, for `--cross-targets arm64` on an arm64 host -- a NATIVE-ONLY build --
+# matches nothing, exits 1, and under `set -o pipefail` kills the whole
+# dockerfile-llvm RUN with NO message. Observed 2026-09-16: the compiler stage
+# died right after `apt-get install binutils-dev` and BuildKit reported only the
+# instruction. The empty remainder is the CORRECT answer, which is why the
+# ${_rest:+,${_rest}} join already handled it.
+t_case "the host-first reorder survives a target list that is ONLY the host arch"
+_LLVM_CROSS="${REPO_SCRIPTS}/02-toolchain/llvm-cross.sh"
+_reorder() {
+  bash -c '
+set -euo pipefail
+targets_raw="$1"; _host_arch="$2"
+'"$(sed -n '/^  # `|| true` INSIDE a brace group/,/^  esac$/p' "${_LLVM_CROSS}" | sed 's/^  //')"'
+printf "%s" "${targets_raw}"' _ "$1" "$2"
+}
+t_assert_eq "arm64" "$(_reorder arm64 arm64)" \
+  "a native-only list must not kill the RUN (this exited 1 before the fix)"
+t_assert_eq "riscv64" "$(_reorder riscv64 riscv64)"
+t_assert_eq "amd64"   "$(_reorder amd64 amd64)"
+# THE REORDER ITSELF still has to work -- the point of the code.
+t_assert_eq "arm64,amd64,riscv64" "$(_reorder amd64,arm64,riscv64 arm64)" \
+  "the build host must still be moved to the FRONT"
+t_assert_eq "amd64,arm64,riscv64" "$(_reorder amd64,arm64,riscv64 amd64)" \
+  "the amd64 lane's order must not move"
+# Host not in the list at all: unchanged.
+t_assert_eq "riscv64" "$(_reorder riscv64 arm64)"
+# The bare-pipeline form must not come back.
+t_assert_eq "0" "$(grep -cE 'grep -vx "\$\{_host_arch\}" \| paste' "${_LLVM_CROSS}" || true)" \
+  "an unguarded grep -vx in a pipefail pipeline is the bug this suite pins"
 
 t_summary

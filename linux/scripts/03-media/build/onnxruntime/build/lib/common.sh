@@ -412,6 +412,16 @@ append_onnx_native_base_build_args() {
     --compile_no_warning_as_error
     --skip_submodule_sync
     --skip_tests
+    # --skip_tests only skips RUNNING the tests. build.py never emits
+    # onnxruntime_BUILD_UNIT_TESTS=OFF, so onnxruntime_test_all and
+    # onnxruntime_shared_lib_test are still compiled and linked as part of `all`
+    # -- confirmed by grepping the emitted cmake line: the variable never appears.
+    # These images ship neither binary, so it is pure build time on every lane.
+    # On the CUDA lane it is also FATAL: onnxruntime_test_all fails to link with
+    #   undefined symbol: onnxruntime::CUDAExecutionProviderInfo::ToProviderOptions
+    # while every shipped library builds clean. The CUDA-EP-without-TensorRT
+    # combination is evidently not one upstream links that binary against.
+    --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
     --allow_running_as_root
     --use_mimalloc
     --use_lock_free_queue

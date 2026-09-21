@@ -58,4 +58,47 @@ for _s in 30-build-native.sh 30-build-native-amd.sh 30-build-native-nvidia.sh 60
   t_assert_ok grep -q "report_onnx_build_output " "${ORT}/${_s}"
 done
 
+
+# ── The native ORT builds must not drift apart on the GCC-16 workarounds ─────
+# Each native build owns its OWN arg list, so a fix in one silently misses the
+# others. --no_telemetry: ORT 1.29 defaults telemetry ON, pulling in a vendored
+# sqlite that dies on GCC 16's -Werror=stringop-overflow (the CPU build got this
+# 2026-08-19 after it "killed the arm64 media lane 3x"; the GPU build had not).
+# append_onnx_optional_lto_webgpu_args: the only place attaching
+# -Wno-invalid-constexpr, without which Dawn cannot build under GCC 16.
+t_case "every native ORT build disables telemetry (GCC-16 sqlite -Werror)"
+for _s in 30-build-native.sh 30-build-native-nvidia.sh 30-build-native-amd.sh; do
+  [ -f "${ORT}/${_s}" ] || continue
+  t_assert_ok grep -q -- "--no_telemetry" "${ORT}/${_s}"
+done
+
+t_case "every native ORT build gets WebGPU/LTO through the shared owner"
+for _s in 30-build-native.sh 30-build-native-nvidia.sh; do
+  [ -f "${ORT}/${_s}" ] || continue
+  t_assert_ok grep -q "append_onnx_optional_lto_webgpu_args" "${ORT}/${_s}"
+  # ...and NOT by hand, which is what skipped the Dawn workaround. Comments are
+  # stripped first: this very file explains the flag in prose, and a naive grep
+  # counts that explanation as the offence it warns about.
+  t_assert_eq "0" "$(sed 's/#.*$//' "${ORT}/${_s}" | grep -c -- "--use_external_dawn" || true)" \
+    "${_s} must not hand-roll --use_external_dawn; the helper owns it"
+done
+
+
+# ── CUDA builds use the IMAGE's compiler, not a side toolchain ───────────────
+# OWNER DIRECTIVE 2026-09-17: always build with the container's own compilers
+# (GCC 16). CUDA 13.3's crt/host_config.h refuses __GNUC__ > 15, and the tempting
+# fix is CUDAHOSTCXX=g++-15 -- which was tried and is worse: device code then
+# links against a different libstdc++ than the rest of the image, and anything
+# spanning both dies on `std::__format::…@GLIBCXX_3.4.36`. The supported route is
+# -allow-unsupported-compiler via NVCC_PREPEND_FLAGS, which nvcc honours on every
+# invocation, so ONE env reaches ORT, OpenCV and TVM alike. Turning warnings off
+# is explicitly allowed; switching compilers is not.
+t_case "no CUDA lane pins a host compiler other than the image's own"
+_DF_MEDIA="${TESTS_DIR}/../../Dockerfile.media"
+t_assert_eq "0" "$(sed 's/#.*$//' "${_DF_MEDIA}" | grep -cE 'CUDAHOSTCXX|CUDAHOSTCC' || true)" \
+  "Dockerfile.media must not pin nvcc to a side host compiler"
+t_assert_ok grep -q "NVCC_PREPEND_FLAGS" "${_DF_MEDIA}"
+t_assert_eq "0" "$(sed 's/#.*$//' "${ORT}/30-build-native-nvidia.sh" | grep -cE 'CUDAHOSTCXX|CUDAHOSTCC|ccbin' || true)" \
+  "30-build-native-nvidia.sh must not redirect nvcc to another host compiler"
+
 t_summary

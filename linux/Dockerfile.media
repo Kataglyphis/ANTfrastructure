@@ -131,6 +131,19 @@ ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
+# ENABLE_TENSORRT=false builds the ONNX Runtime CUDA EP WITHOUT the TensorRT EP.
+# 30-build-native-nvidia.sh used to err() on a missing NvInfer.h unconditionally,
+# so a CUDA+cuDNN image with no TensorRT (the Jetson lane) could not complete the
+# GPU step at all. The knob lives here because that script reads it as an env var.
+ARG ENABLE_TENSORRT=true
+# Peak RSS of ONE nvcc front-end, used by 30-build-native-nvidia.sh to size the
+# CUDA job count. It MUST be an ARG here: that script reads it as an env var
+# inside the build, and an env var exported around the orchestrator never
+# reaches the container -- set that way on 2026-09-17 it silently did nothing.
+# The value is a PEAK, not an average: ordinary kernels sit under 1 GB, but the
+# kernel OOM killer recorded moe_gemm/flash_attention cicc at 3.8 GB and 6.2 GB
+# on this host. Sizing from a snapshot of ordinary kernels is how two runs died.
+ARG CUDA_MB_PER_CICC=3500
 # Rust compile caching via sccache (media rust builds: gst-plugins-rs,
 # cargo-c consumers, the riscv64 wheelhouse). Default OFF pending a controlled
 # cross-arch validation — see 03-media/core/common.sh for the full story.
@@ -149,6 +162,8 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 ARG UBUNTU_CODENAME=resolute
 
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
+    ENABLE_TENSORRT=${ENABLE_TENSORRT} \
+    CUDA_MB_PER_CICC=${CUDA_MB_PER_CICC} \
     ENABLE_AMD=${ENABLE_AMD} \
     ENABLE_SCCACHE_RUST=${ENABLE_SCCACHE_RUST} \
     ENABLE_SCCACHE_CUDA=${ENABLE_SCCACHE_CUDA} \
@@ -179,7 +194,24 @@ COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/co
 COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh     /opt/scripts/core/cmake-cache-linker.sh
 COPY --chmod=755 linux/scripts/01-core/modules.sh                /opt/scripts/core/modules.sh
 
+# FAIL FAST ON A GPU BUILD WITH NO CUDA. ENABLE_NVIDIA=true used to be a trap:
+# stage-defs forwards it here, but this stage's parent is :sdk, which has no
+# nvcc -- so the build ran ~20 minutes of ONNX Runtime configure before dying in
+# 30-build-native-nvidia.sh with a bare "nvcc not found at /usr/local/cuda/bin/
+# nvcc", hours into a chain and nowhere near the actual cause. Every CUDA
+# consumer in this file (onnxruntime, opencv, tvm, the torch wheelhouse) has the
+# same prerequisite, so assert it ONCE, here, before any of them start.
+# The fix when this fires is to point this stage at the NVIDIA layer:
+#   CROSS_MEDIA_BASE_IMAGE=<repo>:cross-toolchain-nvidia-<arch>
+# docs/linux-accelerator-images.md
 RUN set -euo pipefail; \
+    if [ "${ENABLE_NVIDIA}" = "true" ] && [ ! -x "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" ]; then \
+        echo "ERROR: ENABLE_NVIDIA=true but no nvcc at ${CUDA_HOME:-/usr/local/cuda}/bin/nvcc." >&2; \
+        echo "       This stage's BASE_IMAGE has no CUDA toolkit, so every GPU build below would fail deep." >&2; \
+        echo "       Build the NVIDIA layer (linux/Dockerfile.nvidia) and point this stage at it:" >&2; \
+        echo "         CROSS_MEDIA_BASE_IMAGE=<repo>:cross-toolchain-nvidia-<arch> ..." >&2; \
+        exit 1; \
+    fi; \
     if [ "${ENABLE_NVIDIA}" = "true" ]; then \
         printf '%s\n' 'export NVIDIA_CODEC_HEADERS=yes' > /etc/profile.d/nvidia-codec-headers.sh; \
     fi; \
@@ -249,10 +281,25 @@ RUN --mount=type=bind,source=linux/scripts/01-core/register-gcc-alternatives.sh,
     set -euo pipefail; \
     bash /tmp/core-scripts/register-gcc-alternatives.sh
 
+# nvcc drives the image's OWN compiler -- GCC 16.2.0, the same CC/CXX everything
+# else uses. CUDA 13.3's crt/host_config.h:137 is `#if __GNUC__ > 15` and refuses
+# it, so -allow-unsupported-compiler goes in via NVCC_PREPEND_FLAGS, which nvcc
+# reads for EVERY invocation -- one place covers the ONNX Runtime CUDA EP, OpenCV
+# and TVM without touching their cmake lines.
+# The alternative (CUDAHOSTCXX=g++-15) was tried on 2026-09-17 and is WORSE: it
+# compiles device code against a different libstdc++ than the rest of the image,
+# and anything linking both worlds dies on
+#   undefined reference: std::__format::…@GLIBCXX_3.4.36
+# A single consistent toolchain is the point; the version gate is a policy check,
+# not an ABI boundary. Verified in-image: GCC 16.2.0 + this flag produces a real
+# sm_87 cubin.
+ARG NVCC_ALLOW_UNSUPPORTED_COMPILER=-allow-unsupported-compiler
+
 # Also export CC/CXX so CMake (which searches PATH) always gets GCC
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
+    NVCC_PREPEND_FLAGS=${NVCC_ALLOW_UNSUPPORTED_COMPILER} \
     CC=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/gcc \
     CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
 
@@ -521,6 +568,12 @@ ARG TVM_REF=v0.26.0
 # belt-and-braces so an explicit --build-arg also lands, not the thing that made
 # the pin work.
 ARG TVM_COMMIT=
+# TVM_USE_CUDA is baked into the base image ENV as 0 by Dockerfile.sdk and was not
+# an ARG anywhere in this file, so NOTHING in the media lane could turn TVM's CUDA
+# backend on -- -DUSE_CUDA stayed OFF and the USE_CUDNN/USE_CUBLAS companions in
+# tvm-config.sh never fired. Re-declaring it here lets the GPU lane pass 1.
+ARG TVM_USE_CUDA=0
+ENV TVM_USE_CUDA=${TVM_USE_CUDA}
 ARG TARGET_ARCH
 ARG TARGETARCH
 

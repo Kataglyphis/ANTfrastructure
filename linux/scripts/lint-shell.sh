@@ -83,6 +83,12 @@ shellcheck_asset_and_sha() {
   case "$(uname -s)/$(uname -m)" in
     Linux/x86_64|Linux/amd64)
       printf 'shellcheck-%s.linux.x86_64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_X86_64_SHA256:-}" ;;
+    Linux/aarch64|Linux/arm64)
+      # Upstream ships a real aarch64 asset. Without this arm the bootstrap
+      # returned 1 -> "Unsupported platform", so lint-shell.sh (and therefore
+      # preflight.sh, and therefore `make preflight` / `make lint`) could not
+      # run AT ALL on a native ARM build host.
+      printf 'shellcheck-%s.linux.aarch64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_AARCH64_SHA256:-}" ;;
     MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
       # The plain .zip release asset is the Windows binary (shellcheck.exe).
       printf 'shellcheck-%s.zip %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_WINDOWS_SHA256:-}" ;;
