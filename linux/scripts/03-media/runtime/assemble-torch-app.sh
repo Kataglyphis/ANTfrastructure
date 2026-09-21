@@ -487,7 +487,17 @@ reconcile_local_wheels() {
 # install from the CPU index — exact and fast. riscv64 has no wheels and keeps
 # its versions.env <KEY>_RISCV64 pair, which the wheelhouse source-builds.
 enforce_torch_version_pins() {
-  local target_arch="${TARGET_ARCH:-amd64}"
+  # The wrapper stage does not export TARGET_ARCH, so defaulting to amd64 made
+  # this run on riscv64 and fail against the CPU index (no riscv64 wheels).
+  # uname is the image's own arch, which is the target here.
+  local machine target_arch
+  machine="$(uname -m)"
+  case "${machine}" in
+    x86_64) target_arch=amd64 ;;
+    aarch64|arm64) target_arch=arm64 ;;
+    riscv64) target_arch=riscv64 ;;
+    *) target_arch="${machine}" ;;
+  esac
   case "${target_arch}" in
     amd64|arm64) ;;
     *) return 0 ;;
