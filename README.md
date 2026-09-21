@@ -126,7 +126,8 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:latest-cross-<arch>` | Per-architecture wrapper |
 | `:cross-media-<arch>` | Media libraries layer |
 | `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
-| `:winamd64` | Windows build image |
+| `:winamd64` | Windows build image (amd64) |
+| `:winarm64` | Windows **artifact bundle** for arm64 (labels a `windows/amd64` image — never publish it as `windows/arm64`) |
 
 Full matrix with platforms, tag hints and per-stage intermediates:
 [docs/overview.md](docs/overview.md).
@@ -204,14 +205,20 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > published with `--platform windows/arm64`. Current status, coverage and gates:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
-> **Re-measured 2026-08-29** — both lanes build green (amd64 smoke 192/0/1,
-> arch gate 1134/0; arm64 smoke 97/0/15, arch gate 992/0). The patched LLVM
-> toolchain (#135, `BUILD_PATCHED_LLVM=1`) is now the default — the AArch64
-> workarounds have been removed. The Qualcomm QNN SDK is staged in
-> `windows/qnn-sdk/` and wired into ONNX Runtime (QAIRT 2.44.0.260225, QNN API
-> 2.33.0 — compatible with ORT 1.29); the other frameworks' flags were dropped
-> when #154 proved upstream never defined them. See
-> [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
+> **Re-measured 2026-09-21** — both lanes build green. amd64: smoke 228/0/0
+> (GPU, zip-less) / 198/0/1 (CPU), arch gate 1134/0. arm64: smoke 120/0/15, arch
+> gate 1047/0. The patched LLVM toolchain (#135, `BUILD_PATCHED_LLVM=1`) is the
+> default. **CUDA/cuDNN is cross-built for arm64** (#176): the arm64 toolkit
+> payload (`lib\arm64`, SHA-pinned redist components + cuDNN) feeds the ORT CUDA
+> EP, GenAI CUDA, the OpenCV CUDA modules and TVM — all 0xAA64; running them
+> needs an arm64 device. **HailoRT (Phase 3, 2026-09-21)** builds for Windows on
+> both arches (`libhailort.dll` + `hailortcli`); TAPPAS stays Linux-only and the
+> pyhailort wheel is open. The Qualcomm QNN SDK is staged in `windows/qnn-sdk/`
+> and wired into ONNX Runtime (QAIRT 2.44.0.260225, QNN API 2.33.0 — compatible
+> with ORT 1.29); the other frameworks' flags were dropped when #154 proved
+> upstream never defined them. See
+> [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) and
+> [`docs/hailo-support.md`](docs/hailo-support.md).
 
 ## Engineering principles
 
