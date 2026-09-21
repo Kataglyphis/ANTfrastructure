@@ -243,20 +243,10 @@ install_pyhailort() {
   [ -n "${wheel}" ] || return 0
   [ -x /opt/venv/bin/python ] || { info "no /opt/venv; pyhailort wheel stays staged at ${wheel}"; return 0; }
 
-  # Relax the wheel's Requires-Python (upstream: <3.14) so uv accepts it, then
-  # import-test under the image's 3.14.
-  local patched="${HAILO_PREFIX}/wheels/pyhailort-relaxed.whl"
-  python3 - "${wheel}" "${patched}" <<'PY'
-import sys, zipfile
-src, dst = sys.argv[1], sys.argv[2]
-with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
-    for item in zin.infolist():
-        data = zin.read(item.filename)
-        if item.filename.endswith(".dist-info/METADATA"):
-            data = data.replace(b"Requires-Python: >=3.10,<3.14", b"Requires-Python: >=3.10")
-        zout.writestr(item, data)
-PY
-  if uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${patched}" >/dev/null 2>&1; then
+  # The pyproject sed above already relaxed Requires-Python before the build,
+  # so the wheel installs as-is — proven; a zip-rewrite of the metadata only
+  # corrupted it once. Then PROVE the import under the image's 3.14.
+  if uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${wheel}" >/dev/null 2>&1; then
     if /opt/venv/bin/python -c 'import hailo_platform' >/dev/null 2>&1; then
       info "pyhailort installed into /opt/venv and imports"
     else
