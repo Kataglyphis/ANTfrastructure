@@ -849,8 +849,14 @@ git checkout feature/configurable-teardown-timeout   # the fork branch: upstream
 go build -o containerd-shim-runhcs-v1.exe .\cmd\containerd-shim-runhcs-v1
 ```
 
-~15 s. The 2026-09-01 build was **25 998 336 bytes** with Go 1.27.0 against
-stock's 23 279 616 — the exact size drifts with the Go release and the branch
+An existing clone after the branch was rebased: `git fetch origin`, then
+`git checkout -B feature/configurable-teardown-timeout origin/feature/configurable-teardown-timeout`.
+A plain `git pull` stops on the diverged history.
+
+~15-21 s. The 2026-09-22 build of the rebased head `5e9df53c` was
+**25 890 304 bytes** with Go 1.27.1 (the 2026-09-01 build of `19251429`:
+25 998 336 with Go 1.27.0). Stock measured 23 279 616 until Stevedore's
+2026-09-21 update and 25 975 296 after it — the exact size drifts with the Go release and the branch
 head, which is why the gate keys on the SHA256 that `Publish-ShimPatch.ps1`
 records at install time and treats the size table only as a fallback. Then,
 elevated — **the `-ServiceEnvironment` part is NOT optional**: this build keeps

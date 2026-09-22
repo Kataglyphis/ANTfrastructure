@@ -884,7 +884,8 @@ steps; the remaining work is the Dockerfile surgery):
   **SUPERSEDED IN PART 2026-09-01:** the reference host now runs the
   **`upstream-env` build from the owner's fork**
   (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` = current
-  hcsshim main + the #2855 patch; sha256 `9ABF1C5F…`, 25 998 336 B) with
+  hcsshim main + the #2855 patch; since 2026-09-22 the rebased head `5e9df53c`,
+  sha256 `7A4BF6A3…`, 25 890 304 B — before that `19251429`, `9ABF1C5F…`) with
   `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` on the containerd service.
   Reason: under the 2026-08-31 lost-notification regression the fixed 45 min
   made EVERY RUN cost 2841.2 s; with the 5 min knob the same RUN measures

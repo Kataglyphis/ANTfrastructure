@@ -7,6 +7,43 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - hcsshim fork rebased: `Install-NewHost` builds `5e9df53c` and re-pins a reused work dir; `Invoke-WithEnv` really removes
+
+**`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` is rebased onto upstream
+`main` `0e1f18b7`.** The head moves from `19251429` to `5e9df53c`, and PR
+microsoft/hcsshim#2855 follows it. The patch is unchanged: same patch-id, and none of the
+26 new upstream commits touch `cmd/containerd-shim-runhcs-v1`, `internal/hcs`, `cow`,
+`jobcontainers` or `uvm`. The new build is 25 890 304 bytes with Go 1.27.1, sha256
+`7A4BF6A3…`, `vcs.modified=false`. `gofmt`, `go vet` and the shim package tests pass.
+
+- `Install-NewHost.ps1` pins `$forkPin = 5e9df53c…`. The old commit is on no branch any
+  more, so a fetch by its SHA works only as long as GitHub keeps the object.
+- `Sync-ShimForkCheckout` is new. It also re-pins a `%TEMP%\kataglyphis-hcsshim-fork`
+  left behind by an earlier run. Before this, a reused work dir skipped the fetch
+  entirely, so a pin bump could quietly rebuild the old tree.
+  - Tests: `NewHost.ShimFork.Tests.ps1` (3 cases).
+  - Mutation-checked by hand against three broken copies of the function: re-pin
+    skipped, always fetch, fetch error swallowed. Each one made a case fail.
+- **The test harness's `Invoke-WithEnv` now really removes a variable.** A PowerShell
+  `$null` reaches .NET's `SetEnvironmentVariable` as `''`. That leaves the variable set
+  to an EMPTY value, which child processes still see. It had two effects:
+  - `$null` in `-Vars` never removed a variable.
+  - A variable that was unset before the call was left behind as empty, although the
+    comment said "removing".
+  - Measured on PS 7.6.6 / .NET 10: git then reads `GIT_DIR=''` and stops with
+    `fatal: not a git repository: ''`. `cmd`'s `if defined` calls the same variable
+    undefined, which is why nothing noticed before.
+  - The fix passes `[NullString]::Value`. `Harness.WithEnv.Tests.ps1` (2 cases) and the
+    shim-fork suite fail against the old version.
+  - The budgets of two code-dupes pairs involving `TestHarness.psm1` shrank as a result
+    (47 → 34, 35 → 28).
+- Docs:
+  - `windows-host-setup.md` § R1 has the new build numbers, the new stock size after
+    Stevedore's 2026-09-21 update (25 975 296), and how to update an existing clone
+    after a rebase.
+  - `windows-build-lanes.md` and `failure-modes.md` name the new binary.
+  - The `hcsshim-teardown-timeout/README.md` status header now records the rebase.
+
 ## 2026-09-22 - Windows `-Variant rocm`: the driver builds `:winamd64-rocm`
 
 **`Build-Buildkit.ps1 -Variant rocm` builds the ROCm image.** It runs the default chain

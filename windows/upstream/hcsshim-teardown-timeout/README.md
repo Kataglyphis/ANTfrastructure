@@ -5,6 +5,9 @@
 > from `Kataglyphis/hcsshim:feature/configurable-teardown-timeout`.
 > The issue from `ISSUE.md` is NOT filed yet, and neither is the comment on
 > Windows-Containers#547.
+> **Rebased 2026-09-22** onto upstream `main` `0e1f18b7`: head `5e9df53c`
+> (was `19251429`), same patch-id. The PR is open, no longer a draft, and
+> GitHub reports it mergeable.
 
 Everything needed to file the `microsoft/hcsshim` issue and PR that would let
 this project retire its locally patched shim. Kept in-tree because the local
