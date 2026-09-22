@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **841 entries** over **91 distinct test commands**; both digits are
+manifest holds **843 entries** over **91 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -632,7 +632,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 28 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 29 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, and both halves of
@@ -669,6 +669,9 @@ neuters one of several copies, leaves the guarantee half-standing, and reports a
 the rule landed (2026-09-03).
 
 ### The pre-push hook
+
+Like pre-commit, it first clears the `GIT_DIR` family git exports to hooks; the
+gate's fixtures otherwise act on this repository ([failure-modes.md](failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)).
 
 The commit hook samples; CI runs every entry. Between the two there was nothing,
 so an entry that ROTTED — its target renamed, its `find` string reworded by a
@@ -1766,7 +1769,7 @@ workaround, not the fix: a shared `(count, reason)` reader belongs in
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 19 mutations (`shellcheck-warnings.*`), every one
+shellcheck cannot produce; 20 mutations (`shellcheck-warnings.*`), every one
 proven to bite. The suite's
 last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it —
 which is what every mutation `test` command sets, so no mutation can be recorded

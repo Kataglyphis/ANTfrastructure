@@ -7,6 +7,10 @@
 # definition. docs/code-quality-tooling.md#the-pre-push-hook
 set -euo pipefail
 
+# Git exports GIT_DIR (and friends) to hooks, so a fixture's `git -C <tmp> init` would
+# re-init THIS repository as bare. Same clear as pre-commit; docs/failure-modes.md.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
 # One owner for "is there a working Python here?", shared with preflight.sh and
 # the lint aggregator: plain `python3` on a Windows Git Bash host is the
 # Microsoft Store stub, which prints an install hint and exits non-zero -- every

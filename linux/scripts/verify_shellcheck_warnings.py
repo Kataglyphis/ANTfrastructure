@@ -28,6 +28,7 @@ import argparse
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -52,10 +53,23 @@ HEADER = (
 )
 
 
+def _bash():
+    # Windows' process search tries System32 before PATH, and System32\bash.exe is WSL's
+    # launcher, which cannot read a C:\ script path. PATH's bash is lint-shell.sh's.
+    return shutil.which("bash") or "bash"
+
+
+def _native(path):
+    # Under Git Bash, --print-bin answers in MSYS form (/tmp/...), which Windows cannot exec.
+    if os.name == "nt" and path.startswith("/") and shutil.which("cygpath"):
+        return subprocess.run(["cygpath", "-w", path], capture_output=True, text=True).stdout.strip() or path
+    return path
+
+
 def _lint(*args):
     # cwd and the script path stay anchored to THIS repo whatever the graded root
     # is: the shellcheck bootstrap, its cache and versions.env are the hub's.
-    return subprocess.run(["bash", LINT, *args], cwd=ROOT, capture_output=True, text=True)
+    return subprocess.run([_bash(), LINT, *args], cwd=ROOT, capture_output=True, text=True)
 
 
 def resolve(args):
@@ -117,7 +131,7 @@ def binary():
         sys.stderr.write("ERROR: `lint-shell.sh --print-bin` could not provide the pinned "
                          "shellcheck; set SHELLCHECK_BIN to a matching binary.\n%s\n" % proc.stderr)
         raise SystemExit(2)
-    return out[-1].strip()
+    return _native(out[-1].strip())
 
 
 def warnings(shellcheck, files, root, only=None):
@@ -203,7 +217,8 @@ def main():
     files, skipped, only = in_scope, set(), None
     frozen = load_counts(allow, 2, ALLOW_FMT)
     if args.files:
-        wanted = {_rel(f, root) for f in args.files}
+        # _rel answers with the OS separator; lint-shell.sh's scope is always '/'.
+        wanted = {_rel(f, root).replace(os.sep, "/") for f in args.files}
         files = [f for f in in_scope if f in wanted]
         skipped = wanted - set(in_scope)
         only = set(files)

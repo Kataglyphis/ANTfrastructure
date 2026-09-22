@@ -3344,6 +3344,22 @@
     "why": "staleness alone never asks whether a test can fail; without this call the push hook proves only that the edits still apply"
   },
   {
+    "id": "shellcheck-warnings.bash-from-path",
+    "target": "linux/scripts/verify_shellcheck_warnings.py",
+    "find": "    return shutil.which(\"bash\") or \"bash\"",
+    "replace": "    return \"bash\"",
+    "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+    "why": "on Windows a bare `bash` resolves to System32's WSL launcher before PATH; it mangles the C:\\ script path and the ratchet dies before grading anything"
+  },
+  {
+    "id": "mutations.push-clears-git-env",
+    "target": "linux/host-config/git-hooks/pre-push",
+    "find": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX",
+    "replace": ": unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX",
+    "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+    "why": "with GIT_DIR inherited from git, a fixture's `git -C <tmp> init` re-inits the real repository as bare (2026-09-22, the hub's submodule gitdir)"
+  },
+  {
     "id": "gate-registry.hooks-are-all-of-them",
     "target": "linux/scripts/verify_gate_registry.py",
     "find": "    paths = [os.path.join(HOOK_DIR, fn) for fn in sorted(os.listdir(HOOK_DIR))]",

@@ -58,6 +58,7 @@ Two neighbours, so you land on the right page:
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [A no-push wrapper build cannot find its own android image](#a-no-push-wrapper-build-cannot-find-its-own-android-image)
 - [A GPU venv ships two onnxruntime distributions](#a-gpu-venv-ships-two-onnxruntime-distributions)
+- [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
@@ -965,6 +966,27 @@ test's reach; that is stated rather than papered over.
 **Cause.** `CAP_PROP_BUFFERSIZE=1`: with one V4L2 buffer the camera cannot capture while the last frame is dequeued.
 
 **Fix.** Leave the buffer count alone and hand on only the newest frame from a capture thread, as [`linux/jetson-webcam/app.py`](../linux/jetson-webcam/app.py) does.
+
+### A push leaves the repo bare: `core.bare and core.worktree do not make sense`
+
+After a `git push`, every git command in the checkout prints
+`warning: core.bare and core.worktree do not make sense`, `git status` stops with
+`fatal: unable to set up work tree using invalid config`, and `git check-attr` finds
+nothing, so `Dockerfile.EolAttributes.Tests.ps1` fails and lists ~64 files that
+`.gitattributes` plainly covers. The gitdir's `[core]` section now ends in `bare = true`.
+
+**Cause.** Git exports `GIT_DIR` (and `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_PREFIX`)
+to hooks. The pre-push hook ran the mutation gate, whose fixtures call
+`git -C <tmp> init` with that variable still set, so each init re-initialised the REAL
+gitdir instead of the temp one. For a gitdir whose path does not end in `/.git` —
+every submodule's `.git/modules/<name>` — git guesses "bare" and writes
+`core.bare = true`. The pre-commit hook already cleared these variables; pre-push did
+not. Seen 2026-09-22 on this repo checked out as a submodule: the config changed
+mid-push, while the branches and the index stayed untouched.
+
+**Fix.** `git config --file <gitdir>/config core.bare false`, where `<gitdir>` is the
+path in the checkout's `.git` file. The pre-push hook now clears the same four
+variables as pre-commit, mutation-tested as `mutations.push-clears-git-env`.
 
 ## Windows: the layer store (hcsshim)
 
