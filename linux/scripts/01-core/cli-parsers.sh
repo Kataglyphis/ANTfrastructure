@@ -203,6 +203,17 @@ runtime_post_parse_setup() {
   raw_arches="$(normalize_target_arches "${raw_arches}")"
   printf -v "${arches_var_name}" '%s' "${raw_arches}"
 
+  # A variant's runtime lane reads the variant's android (the artifact prefix
+  # follows cross_variant_infix), so it must WRITE variant tags too: a plain
+  # :latest prefix here published CUDA/ROCm wrappers as the default :latest-<arch>.
+  local _variant; _variant="$(cross_variant)" || exit 1
+  if [ -n "${_variant}" ]; then
+    case "-${image_prefix##*:}-" in
+      *"-${_variant}-"*) ;;
+      *) err "the ${_variant} variant is active (CROSS_VARIANT / ENABLE_NVIDIA / ENABLE_AMD) but the runtime image prefix ${image_prefix} carries no -${_variant}: it would write the default chain's tags. Use $(cross_final_image_tag)." ;;
+    esac
+  fi
+
   export RUNTIME_IMAGE_PREFIX="${image_prefix}"
   runtime_prepare_local_context_chain
   runtime_install_local_context_cleanup_trap

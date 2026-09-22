@@ -1293,8 +1293,10 @@ _parity_exempt() {
 # 2026-08-21 version shadow shipped a PyPI onnxruntime beside the built one and broke
 # every import with a VERS_1.29.0 symbol error.
 # $2 = the image's ENABLE_NVIDIA: a GPU image ships the CUDA build on every arch.
+# $3 = its ENABLE_AMD: the rocm image ships the MIGraphX build (amd64 only).
 _parity_ort_flavor() {
   [ "${2:-false}" = "true" ] && { printf '%s' 'onnxruntime_gpu'; return 0; }
+  [ "${3:-false}" = "true" ] && { printf '%s' 'onnxruntime_migraphx'; return 0; }
   case "$1" in
     amd64)         printf '%s' 'onnxruntime_dnnl' ;;
     arm64|riscv64) printf '%s' 'onnxruntime_webgpu' ;;
@@ -1342,6 +1344,7 @@ check_arch_parity() {
     local probe
     if ! probe="$(_rt_run bash -lc 'set -uo pipefail
 printf "NVIDIA %s\n" "${ENABLE_NVIDIA:-false}"
+printf "AMD %s\n" "${ENABLE_AMD:-false}"
 for d in /opt/*/; do printf "PREFIX %s\n" "$(basename "$d")"; done
 for m in /opt/venv/lib/python*/site-packages/*.dist-info; do
   [ -d "$m" ] || continue
@@ -1396,7 +1399,8 @@ done' 2>/dev/null)"; then
     # ORT: exactly one distribution, and the one this arch is meant to have.
     local ort_have ort_want
     ort_have="$(printf '%s\n' "${wheels}" | grep -E '^onnxruntime(_[a-z0-9]+)?$' | grep -v '^onnxruntime_genai$' | tr '\n' ' ' || true)"
-    ort_want="$(_parity_ort_flavor "${target_arch}" "$(printf '%s\n' "${probe}" | sed -n 's/^NVIDIA //p')")"
+    ort_want="$(_parity_ort_flavor "${target_arch}" "$(printf '%s\n' "${probe}" | sed -n 's/^NVIDIA //p')" \
+      "$(printf '%s\n' "${probe}" | sed -n 's/^AMD //p')")"
     case "$(printf '%s' "${ort_have}" | wc -w)" in
       1) if [ "${ort_have% }" = "${ort_want}" ]; then
            pass "ARCH-PARITY: exactly one onnxruntime distribution, ${ort_want} as the table expects (${target_arch})"

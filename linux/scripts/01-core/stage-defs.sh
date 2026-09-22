@@ -47,6 +47,52 @@ if [ -n "${CROSS_GPU_VARIANT}" ]; then
   CROSS_STAGE_ORDER=(base compiler sdk gpu media android runtime)
   CROSS_PER_ARCH_STAGES=(sdk gpu media android)
 fi
+# The variant's implications for the BYTES, applied here — where every entry
+# point (build-cross-chain.sh, build-cross-stage.sh, the runtime helpers) builds
+# its graph — so no entry point writes -<variant> tags with CPU build args.
+# stage-defs forwards ENABLE_* only when set; unset, Dockerfile.media's
+# ENABLE_NVIDIA=false default built a CPU media under :cross-media-nvidia-*.
+# TensorRT is off on the nvidia variant (owner decision 2026-09-22): the runtime
+# payload carries no libnvinfer yet.
+case "${CROSS_GPU_VARIANT}" in
+  nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false; : "${ENABLE_TENSORRT:=false}"
+          export CROSS_VARIANT=nvidia ENABLE_NVIDIA ENABLE_AMD ENABLE_TENSORRT ;;
+  rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false
+          export CROSS_VARIANT=rocm ENABLE_NVIDIA ENABLE_AMD ;;
+esac
+
+# Why a variant run must not start: prints the reason (empty = allowed).
+# $1 = first stage built, $2 = target arches; shared by build-cross-chain.sh and
+# build-cross-stage.sh. base/compiler/sdk are the default chain's. A PUSHING
+# variant must build on amd64: :cross-sdk-<arch> (no host infix) is the amd64
+# lane's, so elsewhere it stays --no-push (the Jetson lane). CUDA/ROCm install
+# for the BUILD platform, so every target must be its arch (a foreign one would
+# ship build-platform GPU libraries). ROCm is amd64-only.
+# docs/linux-accelerator-images.md#nvidia-gpu-build-linux
+cross_variant_refusal() {
+  [ -n "${CROSS_GPU_VARIANT}" ] || return 0
+  local v="${CROSS_GPU_VARIANT}" first="$1" arches="$2" a plat plat_arch
+  case "${first}" in
+    base|compiler|sdk)
+      printf 'the %s variant cannot build %s: base, compiler and sdk are shared with the default chain. Rebuild them there, then start this one at gpu.' "${v}" "${first}"
+      return 0 ;;
+  esac
+  plat="$(cross_build_platform)"; plat_arch="${plat#linux/}"
+  if [ "${plat_arch}" != "amd64" ] && [ "${CROSS_NO_PUSH:-0}" != "1" ]; then
+    printf 'the %s variant can only PUSH from an amd64 build platform (CROSS_BUILD_PLATFORM is %s): the shared sdk it builds on is the amd64 lane'"'"'s. On an arm64 host build it --no-push (the Jetson lane, docs/linux-accelerator-images.md).' "${v}" "${plat}"
+    return 0
+  fi
+  for a in $(arch_list_to_words "${arches}"); do
+    if [ "${v}" = "rocm" ] && [ "${a}" != "amd64" ]; then
+      printf 'the rocm variant is amd64-only (ROCm ships no %s userspace); got %s' "${a}" "${arches}"
+      return 0
+    fi
+    if [ "${a}" != "${plat_arch}" ]; then
+      printf 'the %s variant cannot cross-build %s on the %s build platform: the GPU stack is installed for, and compiled against, the build platform. Build %s natively.' "${v}" "${a}" "${plat}" "${a}"
+      return 0
+    fi
+  done
+}
 
 # ── Runtime lane stage order ───────────────────────────────────────────────────
 # The runtime lane builds on the real target platform (via QEMU/binfmt for

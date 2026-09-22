@@ -62,7 +62,7 @@ t_assert_eq 1 "${_rc}" "a GPU build that lost its toolkit must not ship silently
 t_assert_contains "${_out}" "no /usr/local/cuda-X.Y" "and says what is missing"
 
 t_case "Dockerfile.package hands the switch and the environment to the image"
-t_assert_contains "$(cat "${PKG}")" 'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
+t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
   "the payload RUN receives ENABLE_NVIDIA (an undeclared ARG reaches no RUN)"
 t_assert_contains "$(cat "${PKG}")" ':/usr/local/cuda/bin:' "nvcc is on the shipped PATH"
 t_assert_contains "$(cat "${PKG}")" 'NVCC_PREPEND_FLAGS=-allow-unsupported-compiler' \
@@ -98,8 +98,10 @@ t_assert_contains "${_out}" "--index-url https://download.pytorch.org/whl/rocm7.
   "a ROCm torch comes from the PINNED line, not the app extra's rocm7.1 index (no torch 2.14 there)"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'whl/cpu')" \
   "and never falls through to the CPU index"
-_out="$(PYTORCH_EXTRA=pytorch-rocm71 _enforce)"
+_out="$(PYTORCH_EXTRA=pytorch-rocm71 _enforce; echo "rc=$?")"
 t_assert_contains "${_out}" "PYTORCH_ROCM_INDEX unset" "an unset pin fails loudly instead of guessing"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'uv pip install')" "and installs NOTHING (no quiet CPU fallback)"
+t_assert_contains "${_out}" "rc=1" "with a failing exit status"
 rm -rf "${_PB}"
 
 rm -rf "${_SRC}" "${_DST}" "${_DST2}" "${_EMPTY}" "${_DST3}"

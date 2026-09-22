@@ -4554,7 +4554,7 @@
   {
     "id": "packaging.vulkan-prune-host-arch-guard",
     "target": "linux/scripts/06-packaging/prune-vulkan-host-sdk.sh",
-    "find": "  [ \"${arch_dir}\" != \"${HOST_PREFIX}\" ] || return 1",
+    "find": "  [ \"${arch_dir}\" != \"${prefix}\" ] || return 1",
     "replace": "  :",
     "test": "bash linux/scripts/tests/test-vulkan-host-sdk-prune.sh",
     "why": "on amd64 the builder prefix IS the prefix the image runs; without this arm the prune deletes /opt/vulkan/<ver>/x86_64 out of the amd64 image and takes VULKAN_SDK, the loader and every host tool with it"

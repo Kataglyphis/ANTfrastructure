@@ -81,8 +81,10 @@ ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
 ARG RUNTIME_UID
-# Gates the CUDA/cuDNN/NCCL copy in copy-media-payloads.sh (GPU variant only).
+# Gate the CUDA/cuDNN/NCCL and the /opt/rocm copies in copy-media-payloads.sh
+# (GPU variants only). Both, or the rocm image shipped without ROCm.
 ARG ENABLE_NVIDIA
+ARG ENABLE_AMD
 
 SHELL ["bash", "-lc"]
 
@@ -152,7 +154,8 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     # repair belongs to the sdk stage alone (02-toolchain/materialize-llvm-target.sh);
     # a second copy here shipped five x86-64 libs into both foreign images.
     # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
-    ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
+    ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
+      SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
     rm -f /tmp/copy-media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package

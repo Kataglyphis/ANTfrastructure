@@ -288,16 +288,24 @@ append_wrapper_build_args() {
   # A GPU wrapper takes the GPU backend pair unless the operator pinned one: the
   # Dockerfile's CPU defaults failed the image's own torch.version.cuda and
   # CUDAExecutionProvider gates. Resolved HERE so the shipped ENV names it too.
-  local _onnx_pkg="${ONNX_PACKAGE:-}" _torch_extra="${PYTORCH_EXTRA:-}"
-  if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
-    : "${_onnx_pkg:=onnxruntime-gpu}" "${_torch_extra:=pytorch-cu130}"
-  elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    # The app's only ROCm extra; assemble-torch-app.sh then enforces the torch
-    # pin from PYTORCH_ROCM_INDEX (versions.env), which tracks ROCM_VERSION.
-    : "${_onnx_pkg:=onnxruntime-migraphx}" "${_torch_extra:=pytorch-rocm71}"
+  local _onnx_pkg="${ONNX_PACKAGE:-}" _torch_extra="${PYTORCH_EXTRA:-}" _pair
+  _pair="$(runtime_gpu_backend_pair)"
+  if [ -n "${_pair}" ]; then
+    : "${_onnx_pkg:=${_pair% *}}" "${_torch_extra:=${_pair#* }}"
   fi
   append_optional_build_arg _awba_out ONNX_PACKAGE "${_onnx_pkg}"
   append_optional_build_arg _awba_out PYTORCH_EXTRA "${_torch_extra}"
+}
+
+# The GPU wrapper's "<ONNX_PACKAGE> <PYTORCH_EXTRA>" pair, or empty for a CPU
+# image. rocm takes the app's only ROCm extra; assemble-torch-app.sh then
+# enforces the torch pin from PYTORCH_ROCM_INDEX (versions.env).
+runtime_gpu_backend_pair() {
+  if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+    printf '%s' 'onnxruntime-gpu pytorch-cu130'
+  elif [ "${ENABLE_AMD:-false}" = "true" ]; then
+    printf '%s' 'onnxruntime-migraphx pytorch-rocm71'
+  fi
 }
 
 runtime_build_package_image() {

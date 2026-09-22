@@ -81,6 +81,9 @@ main() {
   if [ -z "${STAGE}" ]; then
     err "--stage is required"
   fi
+  # A variant's single stage obeys the chain's refusals (shared stages, arches).
+  local _why; _why="$(cross_variant_refusal "${STAGE}" "${TARGET_ARCH:-amd64}")"
+  [ -z "${_why}" ] || err "${_why}"
 
   cd "${REPO_ROOT}"
 

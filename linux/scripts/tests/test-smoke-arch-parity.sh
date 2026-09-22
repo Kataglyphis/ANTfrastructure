@@ -124,6 +124,10 @@ for _arch in amd64 arm64; do
 done
 t_assert_eq onnxruntime_webgpu "$(_rt_table "_parity_ort_flavor arm64 false")" "a CPU arm64 image is unchanged"
 t_assert_eq onnxruntime_dnnl "$(_rt_table "_parity_ort_flavor amd64")" "and so is an image that says nothing"
+t_assert_eq onnxruntime_migraphx "$(_rt_table "_parity_ort_flavor amd64 false true")" \
+  "the rocm image ships the MIGraphX build (it was held to onnxruntime_dnnl and could never pass)"
+t_assert_contains "$(t_fn_src "${RT_SMOKE}" check_arch_parity)" 'printf "AMD %s\n" "${ENABLE_AMD:-false}"' \
+  "the probe reports ENABLE_AMD, which the table needs"
 t_assert_contains "$(t_fn_src "${RT_SMOKE}" check_arch_parity)" 'printf "NVIDIA %s\n" "${ENABLE_NVIDIA:-false}"' \
   "the in-image probe reports the image's own ENABLE_NVIDIA"
 

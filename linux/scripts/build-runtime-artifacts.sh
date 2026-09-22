@@ -9,7 +9,8 @@ runtime_flow_preamble
 
 # Script-specific defaults (override shared where needed)
 OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-runtime}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-${IMAGE_REGISTRY_PREFIX}:latest}"
+# The chain's own final tag: :latest, or :latest-<variant> for a GPU variant.
+IMAGE_PREFIX="${IMAGE_PREFIX:-$(cross_final_image_tag)}"
 
 usage() {
   cat <<'EOF'

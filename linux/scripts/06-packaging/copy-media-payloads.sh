@@ -124,34 +124,52 @@ copy_cuda_payload() {
   done
 }
 
+# Where an artifact path really lands, resolved as the SHIPPED image will see it:
+# every hop of a link is re-read under SRCPREFIX, because through the bind mount
+# an absolute target (/etc/alternatives/...) resolves in the BUILD container.
+_src_resolve() {
+  local p="$1" t hops=0
+  while [ -L "${SRCPREFIX}${p}" ]; do
+    hops=$((hops + 1)); [ "${hops}" -le 40 ] || return 1
+    t="$(readlink "${SRCPREFIX}${p}")"
+    case "${t}" in /*) p="${t}" ;; *) p="$(dirname "${p}")/${t}" ;; esac
+    p="$(realpath -m -s "${p}")"
+  done
+  printf '%s' "${p}"
+}
+
 # The rocm variant's ROCm/MIGraphX userspace (HIP, MIOpen, rocBLAS, MIGraphX),
 # the same gap copy_cuda_payload closes for CUDA: the ORT MIGraphX EP and a ROCm
 # torch load these at runtime, and nothing copied /opt/rocm past this boundary.
-# /opt/rocm is either the tree itself or a link to /opt/rocm-X.Y; a link is
-# re-made relatively, since through the bind mount it resolves in the BUILD
-# container. ENABLE_AMD=true with no ROCm in the artifact is fatal.
+# TheRock (Dockerfile.amd) makes /opt/rocm a real directory whose `core` is an
+# update-alternatives link (/etc/alternatives/... -> /opt/rocm/core-X.Y) and
+# whose bin/include/lib point at core/ (setup-rocm-repo.sh); older releases made
+# /opt/rocm itself such a link. cp -a keeps links verbatim, so every ABSOLUTE
+# link in the copied tree is re-made relative to its real artifact target, and
+# a target outside the tree is copied too. ENABLE_AMD=true without a usable
+# /opt/rocm/lib (libamdhip64) in the result is fatal.
 copy_rocm_payload() {
   [ "${ENABLE_AMD:-false}" = "true" ] || return 0
-  local src="${SRCPREFIX}/opt/rocm" target dir found=0
-  if [ -L "${src}" ]; then
-    target="$(readlink "${src}")"
-    target="${target#/opt/}"
-    copy_path "/opt/${target}"
-    ln -sfn "${target}" "$(_dest /opt/rocm)"
-    found=1
-  elif [ -d "${src}" ]; then
-    copy_path /opt/rocm
-    found=1
-  fi
-  shopt -s nullglob
-  for dir in "${SRCPREFIX}"/opt/rocm-[0-9]*; do
-    [ "${dir#"${SRCPREFIX}"}" = "/opt/${target:-}" ] && continue
-    copy_path "${dir#"${SRCPREFIX}"}"
-    found=1
-  done
-  shopt -u nullglob
-  if [ "${found}" -eq 0 ]; then
+  local root link img t real
+  root="$(_src_resolve /opt/rocm)" || { printf '[ERROR] /opt/rocm is a link loop in the artifact\n' >&2; return 1; }
+  if [ ! -d "${SRCPREFIX}${root}" ]; then
     printf '[ERROR] ENABLE_AMD=true but the artifact has no /opt/rocm\n' >&2
+    return 1
+  fi
+  copy_path "${root}"
+  [ "${root}" = /opt/rocm ] \
+    || ln -sfn "$(realpath -m -s --relative-to=/opt "${root}")" "$(_dest /opt/rocm)"
+  while IFS= read -r -d '' link; do
+    t="$(readlink "${link}")"
+    case "${t}" in /*) ;; *) continue ;; esac
+    img="${link#"$(_dest "")"}"
+    real="$(_src_resolve "${img}")" || continue
+    [ -e "${SRCPREFIX}${real}" ] || continue
+    case "${real}" in "${root}"|"${root}"/*) ;; *) copy_path "${real}" ;; esac
+    ln -sfn "$(realpath -m -s --relative-to="$(dirname "${img}")" "${real}")" "${link}"
+  done < <(find "$(_dest "${root}")" -type l -print0)
+  if ! compgen -G "$(_dest /opt/rocm)/lib/libamdhip64.so*" >/dev/null; then
+    printf '[ERROR] ENABLE_AMD=true but /opt/rocm/lib in the package has no libamdhip64 (links unresolved?)\n' >&2
     return 1
   fi
 }
@@ -167,8 +185,8 @@ publish_cuda_ld_path() {
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
-# ROCm's libraries live under /opt/rocm/lib (and lib/llvm/lib for the comgr
-# LLVM), which no default loader path reaches. No-op without /opt/rocm.
+# ROCm's libraries live under /opt/rocm/lib (-> core/lib -> core-X.Y/lib),
+# which no default loader path reaches. No-op without /opt/rocm.
 publish_rocm_ld_path() {
   local lib
   : > /etc/ld.so.conf.d/000-rocm.conf

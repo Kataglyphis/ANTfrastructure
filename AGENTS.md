@@ -428,10 +428,15 @@ which imply it) is an ENVIRONMENT knob, because `stage-defs.sh` builds the stage
 graph when it is sourced. It inserts the `gpu` stage, suffixes every tag from
 there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), starts at
 `gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.json`
-and `out/build-logs/<variant>/`, and refuses what it cannot build: rocm off
-amd64, nvidia on a foreign arch (CUDA is installed for the BUILD host, so a
-cross target would ship host-arch GPU libraries). **Chains run strictly one at a
-time**: a live pidfile makes a second chain refuse to start. Commands:
+and `out/build-logs/<variant>/`, and refuses what it cannot build
+(`stage-defs.sh` `cross_variant_refusal`, shared with `build-cross-stage.sh`):
+rocm off amd64; any target that is not the build platform's arch (CUDA/ROCm are
+installed for the BUILD platform, so a cross target would ship its GPU
+libraries); and a PUSHING run off `CROSS_BUILD_PLATFORM=linux/amd64` (the shared
+`:cross-sdk-<arch>` is the amd64 lane's). The runtime helpers refuse a default
+output tag under a variant. **Chains run strictly one at a time**: the pidfile
+is claimed atomically at start, and a live one makes a second chain refuse.
+Commands:
 [`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
 
 Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with `CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin, [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)). Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
@@ -696,8 +701,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
 - **The arm64 GPU lane is SBSA CUDA: one image for Arm servers and Jetson.**
   Build with the image's GCC 16 (`NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`),
   never a downgraded `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES`,
-  in ascending order. The chain has no NVIDIA stage yet, so the GPU layer is
-  inserted by hand:
+  in ascending order. The chain's `gpu` stage cannot push from an arm64 build
+  platform (the shared sdk is the amd64 lane's), so on the Jetson the lane stays
+  `--no-push`, with the layer handed on by hand:
   [`linux-accelerator-images.md` ยง NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
 - **Never give one nerdctl build two `oci-layout://` contexts.** nerdctl maps
   them onto one store id and one becomes unresolvable:
