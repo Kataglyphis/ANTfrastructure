@@ -135,12 +135,17 @@ qualifier (owner directive 2026-09-22).
   They are implementation detail; consumers resolve the manifest.
 - **`:latest-cross` is RETIRED** (owner decision 2026-09-22): the old name of
   `:latest`. Nothing composes or pushes it any more, and `verify_ci_image_refs.py`
-  rejects it under `.github/`. **The registry tags outlive the code**: the fleet
-  reaches its container ref through this repo's composite actions at `@main`, so
-  until develop is merged to main the old tag is what every consumer pulls.
-  Delete it only after that merge and a green Linux lane per consumer — and note
-  that `:latest` and `:latest-cross` are ONE GHCR version, so the tag must be
-  made its own version first.
+  rejects it under `.github/`. **The registry tags outlive the code,
+  deliberately** (owner, 2026-09-22): work stays on `develop`, and the fleet
+  reaches its container ref through this repo's composite actions at `@main`
+  (98 refs across six repos, none passing an explicit `image:`). `main` still
+  carries `CI_IMAGE_LINUX_TAG=latest-cross`, so `:latest-cross` is what every
+  consumer's CI pulls, now frozen at the last release that published it. **Do
+  not delete those tags.** They become deletable only once `main` carries
+  `:latest` (or the consumers leave `@main`), and even then not by version:
+  `:latest` and `:latest-cross` are ONE GHCR version, so the old name must
+  become a version of its own first. `ghcr-delete-tags.sh` already refuses the
+  unsafe form.
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
   published index (§ Push and Publish Rules), so a partial run cannot silently
   drop an architecture from one.

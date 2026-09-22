@@ -85,6 +85,8 @@ ARG RUNTIME_UID
 # (GPU variants only). Both, or the rocm image shipped without ROCm.
 ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
+# Drops /opt/rocm/core-asan-* from the payload unless the image is an ASAN one.
+ARG ENABLE_ROCM_ASAN
 
 SHELL ["bash", "-lc"]
 
@@ -155,6 +157,7 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     # a second copy here shipped five x86-64 libs into both foreign images.
     # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
+      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" \
       SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
     rm -f /tmp/copy-media-payloads.sh
 

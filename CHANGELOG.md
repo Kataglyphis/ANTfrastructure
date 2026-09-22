@@ -7,6 +7,39 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - ROCm ASAN is optional and OFF; the plan for the first `:latest-rocm` run
+
+The owner asked for AMD's AddressSanitizer packages alongside the normal ones,
+then decided against them as a default once the size was measured: >100 GiB in a
+container image is not acceptable. So `ENABLE_ROCM_ASAN` (`Dockerfile.amd`,
+default `false`) gates the parallel `packages-asan` repo stanza, the install of
+`amdrocm-asan${ROCM_VERSION}`, and whether `copy_rocm_payload` lets
+`/opt/rocm/core-asan-*` into the shipped image at all.
+
+Measured against the live repo index on 2026-09-22, which is why it is off:
+`amdrocm-llvm-dev-asan10.0` is **61.7 GiB** installed, the full ASAN set
+**134.8 GiB** (the normal image is ~19 GiB), all 30 gfx-specific ASAN packages
+are gfx942/gfx950 only, and there is no ASAN MIGraphX and no ASAN torch wheel —
+so the two things this image exists for stay uninstrumented either way.
+
+Co-installing also collides on `update-alternatives`: the ASAN debs register the
+same names at the same priority, so `/opt/rocm/{core,lib,bin}` and `hipcc` can
+resolve into the ASAN tree, and which one wins flips between rebuilds. The knob
+therefore re-`--set`s every hijacked alternative back and then ASSERTS the normal
+tree owns them, failing the build if not. None of this path has run yet.
+
+Ten non-ASAN items from the same sweep are written up in
+`docs/linux-accelerator-images.md` § ROCm, largest first: per-gfx metapackages
+(~18.4 GiB -> 9-13 GiB), `ROCM_PATH`/`PATH` missing in the shipped image,
+asserting the installed versions (`stable` is a ROLLING suite, so our
+`ROCM_VERSION` pin is a label, not a constraint), the resolved `ld.so.conf`
+path, `/dev/kfd` access for uid 1001, no `seccomp=unconfined` and no baked
+`HSA_OVERRIDE_GFX_VERSION`, writable MIOpen caches, a GPU-less build-time
+self-check (`amd-smi`, not the deprecated `rocm-smi`), AMD's CDI container
+toolkit, and a Renovate comment that watches a git tag instead of the apt
+package.
+
+
 ## 2026-09-22 - `:latest-cross` is retired, not deprecated
 
 The alias lived for one day. The owner decided against a deprecation window, so
@@ -15,14 +48,15 @@ the mechanism is gone rather than disabled: `CROSS_LEGACY_ALIAS_TAG`,
 `build-runtime-manifest.sh` are deleted. From here on a release publishes
 `:latest` and nothing else.
 
-**The registry tags are NOT deleted yet, and deleting them now would take the
-fleet's Linux CI down with them.** Every consumer resolves its container ref
+**The registry tags stay, and deleting them would take the fleet's Linux CI down
+with them.** Every consumer resolves its container ref
 through this repo's composite actions pinned at `@main` (98 `...@main` refs
 across six repos, none passing an explicit `image:`), and `main` is 56 commits
 behind: it still says `CI_IMAGE_LINUX_TAG=latest-cross` and both action defaults
 still name the old tag. So the tag the fleet actually pulls today is
-`:latest-cross`. The deletion is gated on: develop merged to main, then one
-green Linux lane per consumer against `:latest`.
+`:latest-cross`. The owner decided to stay on `develop`, so that merge is not scheduled:
+`:latest-cross` remains the fleet's CI ref, frozen at the last release that
+published it. It is documented as do-not-delete rather than pending.
 
 The deletion itself is also not a plain "delete the version": `:latest` and
 `:latest-cross` are ONE GHCR package version (`sha256:e0de6c95…`, and the same

@@ -326,6 +326,8 @@ cross_stage_build_args() {
       # Dockerfile.nvidia's knobs (Dockerfile.amd has none beyond the pins).
       append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
       append_optional_build_arg _csba_out CUDA_INSTALL_COMPAT "${CUDA_INSTALL_COMPAT:-}"
+      # rocm: the ASAN tree beside the normal one (off by default, 134.8 GiB).
+      append_optional_build_arg _csba_out ENABLE_ROCM_ASAN "${ENABLE_ROCM_ASAN:-}"
       ;;
     media)
       append_cross_per_arch_build_args _csba_out "${arch}"

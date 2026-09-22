@@ -346,17 +346,31 @@ They exist for ROCm 10.0 / Ubuntu 26.04, in a parallel repo path
    `/usr/bin/hipcc` can silently resolve into `/opt/rocm/core-asan-10.0`. The
    outcome is a coin flip between rebuilds, not a deterministic last-wins.
 
-**Plan:** ASAN is its own tag (`:latest-rocm-asan`, a variant of the variant) or
-nothing, gated behind `ENABLE_ROCM_ASAN` (default off). Prefer the **tarball**
-install the owner's URL selects (`i=tar`): it unpacks to a prefix we choose,
-registers no alternatives, and keeps the ASAN tree out of `/opt/rocm`, so
-`copy_rocm_payload` cannot drag it into the shipped image. If we ever take the
-deb route instead, `setup-rocm-repo.sh` must re-`--set` every alternative back
-to `core-${ROCM_VERSION}` and then assert `readlink -f /opt/rocm/lib` and
-`hipcc` resolve under it — an assert the build fails on, not a warning.
-Runtime is the consumer's business and stays documented, never baked:
-`HSA_XNACK=1`, `LD_LIBRARY_PATH`/`LD_PRELOAD` into the ASAN prefix. The ASAN
-directories must never enter `/etc/ld.so.conf.d/`.
+**Decided and implemented (owner, 2026-09-22): optional, and OFF.** A >100 GiB
+image is not acceptable as the default, so `ENABLE_ROCM_ASAN` (`Dockerfile.amd`,
+default `false`) gates the whole thing:
+
+- The parallel `packages-asan` repo stanza is only written when the knob is on,
+  and only `amdrocm-asan${ROCM_VERSION}` is installed — not the SDK metapackage
+  that drags in the 61.7 GiB `amdrocm-llvm-dev-asan10.0`.
+- After that install, `setup-rocm-repo.sh` re-`--set`s every alternative whose
+  value points into `core-asan-*` back to `core-${ROCM_VERSION}` and then
+  ASSERTS that `/opt/rocm/{core,lib,bin}` and `hipcc` resolve to the normal
+  tree. The build fails if they do not.
+- `copy_rocm_payload` deletes `/opt/rocm/core-asan-*` from the payload unless
+  the knob is on, so a default `:latest-rocm` cannot carry it even if a builder
+  installed it by hand.
+- Runtime stays the consumer's business and is never baked: `HSA_XNACK=1` and
+  `LD_LIBRARY_PATH`/`LD_PRELOAD` into the ASAN prefix, documented in the run
+  recipe. The ASAN directories never enter `/etc/ld.so.conf.d/`.
+
+The **tarball** install the owner's URL selects (`i=tar`) stays the better shape
+if the alternatives dance ever misbehaves: it unpacks to a prefix we choose and
+registers no alternatives at all. The apt route is what is wired, because it
+keeps the signed-repo supply chain we already pin.
+
+**Untested until someone flips it.** Nothing in this path has run: the knob is
+off, and the ASAN packages only do anything on gfx942/gfx950 hardware.
 
 ### The non-ASAN work the same sweep turned up
 

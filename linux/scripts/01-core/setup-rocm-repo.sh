@@ -76,6 +76,25 @@ Architectures: amd64
 Signed-By: /etc/apt/keyrings/rocm.gpg
 SOURCES
 
+# ENABLE_ROCM_ASAN=true adds the parallel ASAN repo (same key, same Origin).
+# OFF by default and that is a size decision, not caution: measured 2026-09-22,
+# amdrocm-llvm-dev-asan10.0 alone is 61.7 GiB installed and the full ASAN set is
+# 134.8 GiB, against ~19 GiB for the whole normal image. It also only exists for
+# gfx942/gfx950, and there is no ASAN MIGraphX and no ASAN torch wheel — so the
+# two things this image is FOR stay uninstrumented either way.
+# docs/linux-accelerator-images.md § ROCm
+if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
+  cat >> /etc/apt/sources.list.d/rocm.sources <<'ASAN_SOURCES'
+
+Types: deb
+URIs: https://stable.repo.amd.com/rocm/core/packages-asan/ubuntu2604/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/rocm.gpg
+ASAN_SOURCES
+fi
+
 # Pin: give the AMD repo priority over Ubuntu for its packages.
 echo 'Package: *' > /etc/apt/preferences.d/rocm-pin
 # shellcheck disable=SC2129
@@ -102,6 +121,30 @@ apt-get install -y --no-install-recommends \
     amdrocm-solver-dev \
     amdrocm-migraphx \
     amdrocm-migraphx-dev
+# The ASAN tree installs BESIDE the normal one, at /opt/rocm/core-asan-<ver>.
+# Its debs register the SAME update-alternatives names (core, rocm-lib, rocm-bin,
+# hipcc, ...) at the same priority, so /opt/rocm/lib, /opt/rocm/bin and hipcc can
+# end up resolving into the ASAN tree — a coin flip between rebuilds, not a
+# deterministic failure. Re-point every hijacked alternative, then ASSERT.
+if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
+  _rocm_asan_ver="${ROCM_VERSION:-$(sed -n 's/^ROCM_VERSION=//p' "${_SETUP_ROCM_DIR}/versions.env")}"
+  apt-get install -y --no-install-recommends "amdrocm-asan${_rocm_asan_ver}"
+  while read -r _alt_name _alt_status _alt_path; do
+    case "${_alt_path}" in
+      */core-asan-*) update-alternatives --set "${_alt_name}" "${_alt_path//\/core-asan-/\/core-}" >/dev/null 2>&1 || true ;;
+    esac
+  done < <(update-alternatives --get-selections)
+  for _rocm_p in /opt/rocm/core /opt/rocm/lib /opt/rocm/bin "$(command -v hipcc || true)"; do
+    [ -n "${_rocm_p}" ] && [ -e "${_rocm_p}" ] || continue
+    case "$(readlink -f "${_rocm_p}")" in
+      *core-asan-*)
+        echo "ERROR: ${_rocm_p} resolves into the ASAN tree; the normal ROCm must own every alternative" >&2
+        exit 1 ;;
+    esac
+  done
+  echo "rocm-asan: installed beside the normal tree; the normal one still owns /opt/rocm/{core,lib,bin} and hipcc"
+fi
+
 # GPU4 (2026-08-17): dropped the former `rm -rf /var/lib/apt/lists/*` — the
 # lists live in a shared cache MOUNT (not in the layer), so the rm only wiped
 # the cache for sibling RUNs (the GPU1 failure class). The repo-source removal

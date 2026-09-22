@@ -157,6 +157,11 @@ copy_rocm_payload() {
     return 1
   fi
   copy_path "${root}"
+  # The ASAN tree lives INSIDE /opt/rocm (core-asan-<ver>) and is ~135 GiB, so
+  # the default image drops it even when the builder installed it.
+  if [ "${ENABLE_ROCM_ASAN:-false}" != "true" ]; then
+    rm -rf "$(_dest "${root}")"/core-asan-* 2>/dev/null || true
+  fi
   [ "${root}" = /opt/rocm ] \
     || ln -sfn "$(realpath -m -s --relative-to=/opt "${root}")" "$(_dest /opt/rocm)"
   while IFS= read -r -d '' link; do
