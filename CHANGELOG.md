@@ -7,6 +7,33 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - Windows ROCm layer: `windows/Dockerfile.rocm` + `Install-Rocm.ps1` (not wired yet)
+
+**ROCm on Windows now has a build path.** It uses AMD's documented Windows tar
+install: the same TheRock 10.0.0 release, from the same `stable.repo.amd.com` host,
+that `setup-rocm-repo.sh` installs on Linux. The driver does not build it yet.
+`-Variant rocm` is the next step.
+
+- `windows/scripts/host/Install-Rocm.ps1`:
+  - refuses anything but amd64;
+  - downloads `therock-dist-windows-<family>-<release>.tar.gz` and verifies it
+    against the pinned SHA256, refusing an empty pin;
+  - extracts it with System32 `tar.exe` into `C:\TheRock\build`;
+  - asserts the layout (hipcc, hipconfig, hipInfo, `amdhip64_*.dll`, the HIP
+    headers, AMD's clang, the device bitcode, `.info\version` = the pin);
+  - runs `hipcc --version` inside the container.
+- `windows/Dockerfile.rocm` forks after media, right before torch, because nothing
+  in the Windows media chain can consume ROCm: MIGraphX is Linux-only. It sets
+  AMD's variables but never puts `lib\llvm\bin` (AMD's `clang-cl.exe`) on PATH, and
+  appends `bin\` last.
+- `versions.env`: `ROCM_WINDOWS_RELEASE=10.0.0`, `ROCM_WINDOWS_GFX_FAMILY=gfx120X-all`,
+  `ROCM_WINDOWS_TARBALL_SHA256`. AMD publishes no checksum, so it is self-measured
+  like `ROCM_GPG_KEY_SHA256`.
+- `Rocm.Install.Tests.ps1` covers the URL guard, the amd64 refusal, the layout gate
+  (each required file removed in turn must fail it) and the PATH rules.
+- Why, the measured hashes and sizes, and the licence inventory:
+  [`docs/windows-builds.md` § ROCm layer](docs/windows-builds.md#rocm-layer-dockerfilerocm).
+
 ## 2026-09-22 - ROCm ASAN is optional and OFF; the plan for the first `:latest-rocm` run
 
 The owner asked for AMD's AddressSanitizer packages alongside the normal ones,
@@ -39,7 +66,6 @@ self-check (`amd-smi`, not the deprecated `rocm-smi`), AMD's CDI container
 toolkit, and a Renovate comment that watches a git tag instead of the apt
 package.
 
-
 ## 2026-09-22 - `:latest-cross` is retired, not deprecated
 
 The alias lived for one day. The owner decided against a deprecation window, so
@@ -69,7 +95,6 @@ not a disaster (`docs/linux-host-setup.md` § B8).
 
 `test-tag-naming.sh` keeps a regression guard: no tag function may compose the
 old name again. Dated history keeps it, because the tag really was called that.
-
 
 ## 2026-09-22 - GPU variant chains: `CROSS_VARIANT=nvidia|rocm` builds `:latest-nvidia` / `:latest-rocm`
 

@@ -444,6 +444,64 @@ the 8.x/9.x layout. **Never derive that PATH from the pin again**, and note a
 Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
 `ENV PATH=` and the image config wins.
 
+### ROCm layer (`Dockerfile.rocm`)
+
+**Status (2026-09-22): the Dockerfile and its install script exist; the driver does
+not build them yet.** Nothing in `Build-Buildkit.ps1` names `Dockerfile.rocm`, so
+no chain image carries ROCm until a `-Variant rocm` lands.
+
+**Source.** AMD's Windows tar install (rocm.docs.amd.com, install → Windows → tar):
+`https://stable.repo.amd.com/rocm/core/tarball/therock-dist-windows-<family>-<release>.tar.gz`.
+That is the same TheRock release, from the same host, that
+`linux/scripts/01-core/setup-rocm-repo.sh` installs on Linux as apt packages, so one
+`ROCM_VERSION` bump moves both lanes. `windows/scripts/host/Install-Rocm.ps1`
+downloads it, verifies it, extracts it with System32 `tar.exe` into
+`C:\TheRock\build` (AMD's documented path), checks the layout and runs
+`hipcc --version` inside the container. amd64 only.
+
+**No checksum from AMD.** Measured 2026-09-22: no `.sha256`, `.sig` or `.asc`
+sidecar, no `SHA256SUMS`, and no hash fragments on the pip index
+(`stable.repo.amd.com/rocm/whl-next/`). The object metadata carries only a multipart
+CRC32, not a content hash. So `ROCM_WINDOWS_TARBALL_SHA256` is self-measured and
+pinned, the same trust model `ROCM_GPG_KEY_SHA256` already uses on Linux, and the
+script refuses an empty or malformed pin. Measured values:
+
+| Family | Covers | Bytes | SHA256 |
+| --- | --- | --- | --- |
+| `gfx120X-all` (pinned) | RDNA4, incl. RX 9070 XT (gfx1201) | 2,282,922,923 | `75da73c483cbc0456d9008f2079b333f4f9d3b7744705378ff8007e502ca38c5` |
+| `multiarch` | every supported GPU | 4,796,456,804 | `ebe454fe9ad663655177462187a4c86c72fd0537638f6cbea34660ddebf40056` |
+
+The `gfx120X-all` tree unpacks to **9.56 GB** in 10,544 files — size the disk floors
+from that, not from the download.
+
+**Why it forks after media, not before.** On Linux, `Dockerfile.amd` sits between
+sdk and media because ORT's MIGraphX EP (built in media) consumes it. On Windows
+nothing in media can: AMD's only MIGraphX tarball
+(`stable.repo.amd.com/rocm/migraphx/tarball/migraphx-2.17.0+rocm10.0.0.tar.gz`)
+holds Linux `.so` files, ORT removed its ROCm EP, and OpenCV has no HIP path. The
+first consumer is the torch stage (AMD's `torch-2.13.0+rocm10.0.0` cp314 win_amd64
+wheel), so the layer sits right before it and the chain shares every layer up to
+media with the default image. ORT on a ROCm image stays CPU + DirectML.
+
+**PATH.** `Dockerfile.rocm` sets the variables AMD documents (`HIP_PATH`,
+`ROCM_PATH`, `HIP_PLATFORM`, `HIP_DEVICE_LIB_PATH`, `LLVM_PATH`) with one deliberate
+exception: AMD's page also adds `lib\llvm\bin` to PATH. That directory holds AMD's
+own `clang-cl.exe`, `clang.exe` and linker, and every compile here must use the
+patched clang-cl. Only `bin\` is added, and **last**, because it also carries its
+own `flatc.exe`, `OpenCL.dll` and `amdocl64.dll`. `Rocm.Install.Tests.ps1` fails if
+either rule is broken.
+
+**Licences.** The tarball ships licence files for 26 components, all MIT or
+Apache-2.0, and no EULA or proprietary text. The HIP runtime (`amdhip64_7.dll`), the
+LLVM, OpenBLAS and a few libraries carry no licence file in the tarball; they are
+built from TheRock's open sources.
+
+**Not proven by anything here:** that HIP code runs. Windows containers get
+DirectX/DirectML only, so a GPU check needs the bare host (Windows 11 25H2, the RX
+9070 XT re-enabled outside any build window): `hipInfo`, the family's `-tests`
+tarball, and a torch matmul compared against the CPU — required, because upstream
+TheRock#8379 reports torch+ROCm returning zeros on exactly that card.
+
 ### Mandatory GStreamer plugins (the contract)
 
 `libav`, `opencv`, `onnx` and `tflite` are **required** in a shipped image. They
