@@ -144,10 +144,9 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |
 | `:winarm64` | Windows **artifact bundle** for arm64 — a `windows/amd64` image, its own tag, never a manifest entry and never `--platform windows/arm64` |
 
-**One published tag is one manifest, and the manifest carries every architecture
-its variant supports** (owner directive 2026-09-21). Adding an architecture adds
-an entry to the same tag; adding a variant adds a tag - and a variant exists only
-for a stack that cannot ship in `:latest` (owner directive 2026-09-22).
+**One published tag is one manifest, over every architecture of its variant** —
+the grammar, the variant policy and the Windows exception live in
+[`AGENTS.md` § Image and tag naming](AGENTS.md#image-and-tag-naming-published-tags).
 Accelerators whose runtime fits the default image are built into it instead:
 
 | Accelerator | In `:latest` | Arches |
