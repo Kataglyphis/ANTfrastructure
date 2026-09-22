@@ -208,6 +208,9 @@ Each flag answers one failure, in the order they appear:
 | `NvRmMemInitNvmap failed: error Permission denied`, then `No CUDA GPUs are available` | `/dev/nvmap` and `/dev/nvhost-*` belong to the host group `video`. A rootless container process cannot carry a host group, and `runc` cannot keep it. | `crun` with the `run.oci.keep_original_groups=1` annotation keeps the caller's groups. |
 | `OCI runtime create failed: unknown version specified` | Ubuntu's `crun` (1.14) predates the OCI spec containerd 2.x writes. | Install the static release binary into `~/.local/bin` and check its SHA256 against the release's `digest` field (1.29.1 worked). |
 
+[`linux/jetson-webcam/`](../linux/jetson-webcam/README.md) wraps this call
+around a USB-camera detection demo.
+
 The official PyTorch `cu130` wheels warn that they do not support
 compute capability 8.7 (Orin). A matmul and the elementwise kernels it needed
 still ran correctly, but a kernel that exists only as SASS for other

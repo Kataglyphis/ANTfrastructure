@@ -453,6 +453,7 @@ and `ls` answers faster than a stale number.
 | `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`). [Triggers](docs/ci-build-triggers.md) |
 | `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
+| `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](linux/jetson-webcam/README.md) |
 | `linux/webserver/` | The slim nginx image and the reusable Flutter-web helpers. [README](linux/webserver/README.md) |
 | `linux/host-config/` | Host configuration as code: `buildkitd.toml`, the systemd drop-in, the apply/verify pair, the ghcr tools, and this repo's OWN git hooks (not the consumer ones). [Host setup](docs/linux-host-setup.md) |
 | `linux/homeassistant/`, `linux/nextcloud-aio/` | The owner's personal operations stacks, deliberately carried here (README.md § Home-lab stacks). [HA](linux/homeassistant/README.md) · [Nextcloud](linux/nextcloud-aio/README.md) |
