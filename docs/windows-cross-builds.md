@@ -38,8 +38,9 @@ produce, and which gates keep it honest.
 > an LLVM cross-built for aarch64-windows, with no upstream precedent (PyPI ships `win_amd64`
 > only); **LiteRT-LM**, whose active Bazel path has no windows-arm64 config and default-links an
 > x86_64-only prebuilt (upstream's CMake path with its constraint-provider stub is an unattempted
-> port, backlog #133(d)); **CUDA/cuDNN/TensorRT**, which do not exist for Windows-on-ARM (#122);
-> and the **torch app stage**, because `uv sync` must execute the target interpreter. Two
+> port, backlog #133(d)); **classic TensorRT** (x64-only; TensorRT-RTX is the arm64 successor and
+> is not wired — CUDA/cuDNN **are** cross-built since #176); and the **torch app stage**, because
+> `uv sync` must execute the target interpreter. Two
 > GStreamer pieces are absent on BOTH lanes and so are not parity gaps: the optional `gdkpixbuf`
 > plugin (arm64: `glib-compile-resources`; amd64: `rst2man`) and anything needing `cargo-cbuild`.
 >
@@ -86,11 +87,11 @@ The whole Windows media chain already builds with **Ninja + clang-cl + lld-link*
 natively, so this lane is a **target-triple change, not a toolchain replacement**.
 
 The rule is absolute: **clang-cl for every compile, lld-link for every link**, plus `llvm-lib`,
-`llvm-rc`, `llvm-mt`, `llvm-readobj`. On arm64 that costs nothing extra, because the one place the
-amd64 lane deliberately falls back to `cl.exe` — as **nvcc's host compiler**, since nvcc rejects
-clang-cl — does not exist here: this lane ships no CUDA. (Windows-on-ARM CUDA is no longer
-fiction — see the exclusion table — but wiring it is backlog work, and until then nvcc never runs
-on this lane.)
+`llvm-rc`, `llvm-mt`, `llvm-readobj`. On arm64 that costs nothing extra for the C/C++ half; the
+one place the amd64 lane deliberately falls back to `cl.exe` — as **nvcc's host compiler**, since
+nvcc rejects clang-cl — has its cross twin since #176: the arm64 CUDA payload is compiled by the
+same x64 `nvcc` driving `Hostx64\arm64\cl.exe` with `--use-local-env` (see § CUDA / cuDNN /
+TensorRT).
 
 **The MSVC ARM64 component is still required, but not for its compiler.** clang-cl targets the
 MSVC ABI, so an aarch64 link needs Microsoft's ARM64 CRT and import libraries
@@ -282,7 +283,7 @@ intrinsic remap below never compiles, because patch `003`'s `WIN32`-gated `retur
 from the OpenCV build before that header is ever reached. Its row stays as a record of a real
 collision, flagged dead where it appears.
 
-- [`/D_USE_MATH_DEFINES` (OpenCV)](#d_use_math_defines-opencv) · [`softfloat.cpp` typedef → macro (OpenCV)](#softfloatcpp-typedef--macro-opencv) · [`WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV)](#with_ippoff-build_ipp_iwoff-opencv) · [`USE_DML=ON` (ONNX Runtime, and GenAI since #118), `WITH_DIRECTML=ON` (OpenCV) — all three initially OFF on this lane](#use_dmlon-onnx-runtime-and-genai-since-118-with_directmlon-opencv--all-three-initially-off-on-this-lane) · [`USE_CUDA=OFF` forced by **target**, not host (GenAI)](#use_cudaoff-forced-by-target-not-host-genai) · [Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported**](#python-bindings-on-everywhere-since-120-step-2-2026-08-24-evening-ort-wheel-genai-wheel-cv2-pyav--built-for-the-target-staged-never-imported) · [`-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)](#-mllvm--aarch64-enable-compress-jump-tablesfalse-opencv) · [MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)](#mlas-skip-re-gated-on-win32-alone-opencv-patch-003) · [`mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV)](#mlasih-msvc-intrinsic-remap-guarded-by-defined__clang__-opencv) · [`have_sse`/`have_sse2` gated on `cpu_family` (gst-plugins-base)](#have_ssehave_sse2-gated-on-cpu_family-gst-plugins-base) · [Vulkan lib dir follows `host_machine` (gst-plugins-bad)](#vulkan-lib-dir-follows-host_machine-gst-plugins-bad) · [`-FIio.h` → assembly-safe shim (GStreamer)](#-fiioh--assembly-safe-shim-gstreamer) · [`--as=clang --target=aarch64-pc-windows-msvc` (FFmpeg)](#--asclang---targetaarch64-pc-windows-msvc-ffmpeg)
+- [`/D_USE_MATH_DEFINES` (OpenCV)](#d_use_math_defines-opencv) · [`softfloat.cpp` typedef → macro (OpenCV)](#softfloatcpp-typedef--macro-opencv) · [`WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV)](#with_ippoff-build_ipp_iwoff-opencv) · [`USE_DML=ON` (ONNX Runtime, and GenAI since #118), `WITH_DIRECTML=ON` (OpenCV) — all three initially OFF on this lane](#use_dmlon-onnx-runtime-and-genai-since-118-with_directmlon-opencv--all-three-initially-off-on-this-lane) · [`USE_CUDA=OFF` forced by **target**, not host (GenAI, and every CUDA consumer)](#use_cudaoff-forced-by-target-not-host-genai-and-every-cuda-consumer) · [Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported**](#python-bindings-on-everywhere-since-120-step-2-2026-08-24-evening-ort-wheel-genai-wheel-cv2-pyav--built-for-the-target-staged-never-imported) · [`-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)](#-mllvm--aarch64-enable-compress-jump-tablesfalse-opencv) · [MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)](#mlas-skip-re-gated-on-win32-alone-opencv-patch-003) · [`mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV)](#mlasih-msvc-intrinsic-remap-guarded-by-defined__clang__-opencv) · [`have_sse`/`have_sse2` gated on `cpu_family` (gst-plugins-base)](#have_ssehave_sse2-gated-on-cpu_family-gst-plugins-base) · [Vulkan lib dir follows `host_machine` (gst-plugins-bad)](#vulkan-lib-dir-follows-host_machine-gst-plugins-bad) · [`-FIio.h` → assembly-safe shim (GStreamer)](#-fiioh--assembly-safe-shim-gstreamer) · [`--as=clang --target=aarch64-pc-windows-msvc` (FFmpeg)](#--asclang---targetaarch64-pc-windows-msvc-ffmpeg)
 
 ### `/D_USE_MATH_DEFINES` (OpenCV)
 
@@ -300,9 +301,9 @@ IPP is Intel's x86-only primitives library; no AArch64 build exists. OpenCV stil
 
 **The original justification was wrong and is retracted:** the nuget *does* ship an arm64 import library. `Microsoft.AI.DirectML` 1.15.4 contains `bin/arm64-win/DirectML.lib`, a COFF import archive whose machine field is `0xAA64`. The real defect was a **case mismatch inside ONNX Runtime's own CMake**: `cmake/external/dml.cmake` declares the download's outputs with a lower-case `bin/arm64-win`, while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` is the verbatim, upper-case `ARM64`. The two spellings never meet, so the arm64 lane failed with `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`, and that was misread as "no arm64 package". A cross-scoped inline patch lower-cases the redist directory once (`string(TOLOWER … onnxruntime_dml_redist_platform)`) and routes both consumers through it. The sequencing hold has since cleared: as of #118 (2026-08-24) GenAI builds `USE_DML=ON` on both lanes and stages `D3D12Core.dll` through a target-derived filter, and OpenCV's `WITH_DIRECTML` is ON on both lanes — it feeds contrib G-API's ONNX DirectML EP, not `cv::dnn`.
 
-### `USE_CUDA=OFF` forced by **target**, not host (GenAI)
+### `USE_CUDA=OFF` forced by **target**, not host (GenAI, and every CUDA consumer)
 
-`Get-GpuEnvironment` probes the x64 *build host*. On a GPU-equipped host it answers "yes" and would switch nvcc on for an aarch64 target. This lane ships no CUDA (wiring the Windows ARM64 CUDA preview is backlog work, see the exclusion table) — and even then the decision belongs to the target, never to a host GPU probe.
+`Get-GpuEnvironment` probes the x64 *build host*. On a GPU-equipped host it answers "yes" and would switch nvcc on for an aarch64 target. The decision therefore belongs to the target, never to a host GPU probe — and since #176 the cross lane enables CUDA when the IMAGE carries the arm64 payload (`Test-CudaWindowsArm64Payload`), which `Install-Cuda.ps1 -TargetArch arm64` stages. A cross image without it stays CPU + DirectML.
 
 ### Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported**
 
@@ -740,9 +741,10 @@ So on the cross lane:
   machinery section for its measured recalibration) — and still says explicitly (`cross lane - load
   probe impossible on an x64 host`) why it stops there. Whether it is the right machine is
   `Test-TargetArch.ps1`'s job.
-- Since 2026-08-24 the smoke gate's **host-toolchain sections (1-6, 14-16, and 19, arch-filtered:
-  `TORCH_APP_DIR` is dropped) run on this lane** against their own floors — measured **97 passed /
-  0 failed / 15 skipped** on the green run — and the payload sections are skipped **as sections**,
+- Since 2026-08-24 the smoke gate's **host-toolchain sections (1-6, 7, 14-16, and 19, arch-filtered:
+  `TORCH_APP_DIR` is dropped) run on this lane** against their own floors — measured **127 passed /
+  0 failed / 15 skipped** on the 2026-09-21 green run (97 before the CUDA/Hailo sections landed) —
+  and the payload sections are skipped **as sections**,
   reported **NOT APPLICABLE**, not "passed". (Until then the whole gate was NOT APPLICABLE.)
   Sections 14/15 were **not** "unchanged, they just run": the final image bakes
   `VSDEVCMD_ARCH=arm64`, so a bare `clang-cl` — x64 default target — fought the ARM64 environment
