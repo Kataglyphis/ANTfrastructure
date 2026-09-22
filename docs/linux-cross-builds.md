@@ -1218,8 +1218,12 @@ See [`refactoring-backlog.md`](refactoring-backlog.md).
 > cannot return. Verified afterwards on that host: `nerdctl run --platform`
 > linux/arm64 → `aarch64`, linux/amd64 → `x86_64`, linux/riscv64 → `riscv64`.
 >
-> **Still unproven:** the host builds and emulates all three arches, but nobody
-> has run the CHAIN end to end on an arm64 host.
+> **Run end to end, 2026-09-21/22 (Jetson AGX Orin).** The chain built natively
+> for arm64 only, base through runtime, with the NVIDIA layer inserted by hand,
+> and the runtime image ran on the Orin's GPU. The sequence, the knobs and what
+> is still open (no NVIDIA stage in the chain, no Android payloads on an arm64
+> host):
+> [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
 
 **No JDK ships in any arch.** `java`, `javac` and `keytool` are absent and
 `/usr/lib/jvm` does not exist, so the SDK's Java wrappers (`sdkmanager`,

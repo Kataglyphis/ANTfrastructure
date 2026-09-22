@@ -191,6 +191,8 @@ and [`windows-build-lanes.md`](docs/windows-build-lanes.md).
 
 ### Running Linux containers (Rancher Desktop)
 
+A GPU container on a Jetson needs three extra flags under rootless nerdctl:
+[`linux-host-setup.md` § B2b](docs/linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
 Use `nerdctl`, never `docker`, and never assume a tool is present because it is
 on your dev box (`jq` is NOT in the Linux image; `python3` is). The recipes, the
 mount traps and the one driver that answers all of them
@@ -397,7 +399,7 @@ Wrapper builds, manifest publishing and manifest repair:
 build-cross-chain.sh → base → compiler → sdk → media → android → runtime → manifest
 ```
 
-Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
+Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with `CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin, [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)). Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
 The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
@@ -655,6 +657,15 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   The same class bites package NAMES across an Ubuntu release, and it failed on
   one arch while passing on another in the same run — a green arch is not
   evidence for the others.
+- **The arm64 GPU lane is SBSA CUDA: one image for Arm servers and Jetson.**
+  Build with the image's GCC 16 (`NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`),
+  never a downgraded `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES`,
+  in ascending order. The chain has no NVIDIA stage yet, so the GPU layer is
+  inserted by hand:
+  [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
+- **Never give one nerdctl build two `oci-layout://` contexts.** nerdctl maps
+  them onto one store id and one becomes unresolvable:
+  [`failure-modes.md`](docs/failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image).
 - **riscv64 self-builds `onnxruntime-genai`** (GEN1) — do not re-add an arch
   guard. `GENAI_ALLOW_RISCV64=false` backs it out. What is proven, and the one
   caveat that is not (real silicon):

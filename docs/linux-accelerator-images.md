@@ -4,7 +4,7 @@
 
 Optional NVIDIA GPU image chain. Two ways to enable:
 
-- **Orchestrated (since 2026-08-08):** `ENABLE_NVIDIA=true bash linux/scripts/build-cross-chain.sh ...` — the env toggle now reaches the cross media stage (it used to be silently dropped by the cross lane while the runtime lane honored it, leaving a GPU-configured runtime on CPU-only media artifacts). **This is the recommended path.**
+- **Orchestrated (since 2026-08-08):** `ENABLE_NVIDIA=true bash linux/scripts/build-cross-chain.sh ...` — the env toggle reaches the cross media stage (it used to be silently dropped by the cross lane while the runtime lane honored it, leaving a GPU-configured runtime on CPU-only media artifacts). **It is not enough on its own:** the chain has no NVIDIA stage, so media's parent is still the CUDA-less sdk and `Dockerfile.media` stops at its nvcc check. Build `Dockerfile.nvidia` first and point media at it with `CROSS_MEDIA_BASE_IMAGE`; the sequence that ran is in [NVIDIA on arm64 (SBSA)](#building-it-on-an-arm64-host).
 - **Hand-run:** passing `--build-arg ENABLE_NVIDIA=true` to the standard Dockerfiles. Requires a pre-existing `:cross-sdk-amd64` image (the chain's sdk stage output; the old `:sdk` tag was deleted 2026-08-27).
 
 - `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.26.0.51<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:cross-sdk-amd64`)
@@ -144,6 +144,107 @@ owns the tag scheme). Plain `:latest` is not an older second option — it was d
 in the 2026-08-27 registry cleanup, and no orchestrator under `linux/scripts/` can
 republish it; details in
 [`rancher-desktop-linux-containers.md` § The image: always `:latest-cross`](rancher-desktop-linux-containers.md#the-image-always-latest-cross).
+
+## NVIDIA on arm64 (SBSA): one image for servers and Jetson
+
+The arm64 GPU chain uses NVIDIA's **SBSA** CUDA repository (the Arm-server
+build), not JetPack. The same image targets a Grace-class server GPU and a
+Jetson Orin, because newer L4T releases run SBSA CUDA against their Tegra
+driver. Built natively on a Jetson AGX Orin (L4T R39) on 2026-09-21/22, base to
+runtime, and run on its GPU: PyTorch, the ONNX Runtime CUDA EP, OpenCV CUDA and
+an `nvcc -arch=sm_87` kernel, each checked against a CPU result.
+
+### Building it on an arm64 host
+
+The chain has no NVIDIA stage: `build-cross-chain.sh` does not build
+`Dockerfile.nvidia`, so the GPU layer is inserted by hand between sdk and
+media. This is the sequence that ran on the Orin. `--no-push` keeps every
+stage local, so each child reads its parent from an OCI layout exported with
+`nerdctl save <tag> | tar -x -C <dir>`:
+
+```bash
+export CROSS_BUILD_PLATFORM=linux/arm64   # build on, and only for, this host
+A=(--target-arches arm64 --cross-targets arm64 --no-push)
+R=ghcr.io/kataglyphis/kataglyphis_beschleuniger
+
+# 1. base -> compiler -> sdk
+bash linux/scripts/build-cross-chain.sh --to-stage sdk "${A[@]}"
+
+# 2. the GPU layer on the sdk (export the sdk to an OCI layout first)
+nerdctl build --platform linux/arm64 -f linux/Dockerfile.nvidia \
+  -t "$R:cross-toolchain-nvidia-arm64" \
+  --build-context "$R:cross-sdk-arm64=oci-layout://$SDK_OCI" \
+  --build-arg BASE_IMAGE="$R:cross-sdk-arm64" --build-arg UBUNTU_VERSION=26.04 \
+  --build-arg ENABLE_TENSORRT=false --build-arg CUDA_INSTALL_COMPAT=0 .
+
+# 3. media and android, each FROM its parent's layout
+export ENABLE_NVIDIA=true ENABLE_TENSORRT=false TVM_USE_CUDA=1
+CROSS_MEDIA_BASE_IMAGE="$R:cross-toolchain-nvidia-arm64" CROSS_MEDIA_BASE_CONTEXT="$NVIDIA_OCI" \
+  bash linux/scripts/build-cross-chain.sh --only media "${A[@]}"
+CROSS_ANDROID_BASE_IMAGE="$R:cross-media-arm64" CROSS_ANDROID_BASE_CONTEXT="$MEDIA_OCI" \
+  bash linux/scripts/build-cross-chain.sh --only android "${A[@]}"
+
+# 4. runtime: call the helper directly, with the android layout as the artifact
+#    (the directory must be named <root>-arm64)
+CROSS_NO_PUSH=1 ARTIFACT_CONTEXT_ROOT="$ANDROID_OCI_ROOT" ARTIFACT_CONTEXT_MODE=oci \
+  bash linux/scripts/build-runtime-manifest.sh --image "$R:latest-cross-hostarm64" \
+  --target-arches arm64 --artifact-image-prefix "$R:cross-android-hostarm64" \
+  --artifact-build-mode cross --skip-manifest
+```
+
+Step 4 does not go through `build-cross-chain.sh --only runtime`: a runtime run
+whose android stage was not built in the same run PULLS the android image from
+the registry, and would package the published generation instead of this one.
+Every pin must match the one the lower stages were built with; the wrapper
+smoke refuses a toolchain whose `clang --version` differs from `LLVM_RELEASE`.
+
+The knobs that exist for this lane:
+
+| Knob | Default | What it does |
+|---|---|---|
+| `ENABLE_TENSORRT` | `true` | `false` builds CUDA + cuDNN with no TensorRT anywhere: there are no SBSA TensorRT packages for this pin, and GenAI then skips `--use_trt_rtx`. |
+| `CUDA_INSTALL_COMPAT` | `1` | `0` skips `cuda-compat`, the datacenter forward-compat driver. On a Jetson the driver comes from L4T and the compat `libcuda` can shadow it. |
+| `CUDA_MB_PER_CICC` | `3500` | Memory budget per `cicc` process for the ORT GPU job count. Heavy CUDA files peak at 3.5-6 GB; the average lies, because they are staggered. |
+| `NVCC_PREPEND_FLAGS` | `-allow-unsupported-compiler` | nvcc rejects the image's GCC 16 by version. Set in `Dockerfile.media` and `Dockerfile.package`. |
+
+`CUDA_ARCHITECTURES` carries `87` (Orin) and must stay in ascending order: ORT
+rewrites the list with a suffix match on `90`. OpenCV ignores
+`CMAKE_CUDA_ARCHITECTURES` on its default path and gets `CUDA_ARCH_BIN` in its
+own dotted form. Build with the image's GCC 16, never a downgraded
+`CUDAHOSTCXX`: a GCC 15 host compiler produced the `GLIBCXX` link failures it
+seemed to avoid.
+
+What does NOT build on an arm64 host: the Android payloads. Google ships the
+NDK and SDK build tools for x86_64 Linux only, so `Dockerfile.android` skips
+them there and the stage passes media through.
+
+### What the runtime lane adds for a GPU image
+
+With `ENABLE_NVIDIA=true` the package copies the CUDA toolkit, cuDNN and NCCL
+out of the media artifact (`copy-media-payloads.sh`), puts `nvcc` on `PATH`,
+and fails when the toolkit is missing. The wrapper then resolves
+`ONNX_PACKAGE=onnxruntime-gpu` and `PYTORCH_EXTRA=pytorch-cu130` unless an
+operator pinned them, and its own gates assert `torch.version.cuda` and
+`CUDAExecutionProvider`. A `--no-push` run hands the wrapper the android wheels
+as a directory context; why not an OCI one is in
+[`failure-modes.md`](failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image).
+
+### Running it on a Jetson
+
+Rootless nerdctl needs three extra flags, each answering one failure:
+[`linux-host-setup.md` § B2b](linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
+[`linux/jetson-webcam/`](../linux/jetson-webcam/README.md) is a working example:
+USB-camera object detection at 30 fps with 13 ms GPU inference.
+
+### Known limits
+
+- The official PyTorch `cu130` wheels warn that they do not target compute
+  capability 8.7. What was run worked; a kernel with no Orin code will fail.
+  ORT, OpenCV and TVM are built here with native `sm_87`.
+- No TensorRT on this lane (see `ENABLE_TENSORRT`).
+- Nothing is published yet. A `--no-push` build on a Jetson tags
+  `latest-cross-hostarm64-arm64` locally; the published name for a GPU variant
+  is `:latest-cross-nvidia` (see [`overview.md`](overview.md)).
 
 ## The media fan-out strategy, as AGENTS.md carried it
 
@@ -475,6 +576,10 @@ sudo apt-get install -y --allow-downgrades \
   docker-ce=5:27.5.1-1~ubuntu.22.04~jammy \
   docker-ce-cli=5:27.5.1-1~ubuntu.22.04~jammy
 ```
+
+The torchvision note below applies to NVIDIA's JetPack wheels installed on the
+board itself. The SBSA image above needs none of it:
+[NVIDIA on arm64 (SBSA)](#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
 
 **torchvision must be built from source.** The Jetson PyTorch wheels come from
 NVIDIA, not PyPI, and the matching torchvision is not published — installing it

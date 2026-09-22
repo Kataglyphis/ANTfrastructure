@@ -50,6 +50,18 @@ Build workflows: [Linux Build Basics](docs/linux-build-basics.md) ·
 container stack installs from the nerdctl-full bundle — rootless, into
 `$HOME/.local`, no sudo: [B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
 
+### NVIDIA on arm64: Arm GPU servers and Jetson 🟩
+
+The Linux chain also builds natively on an arm64 host with NVIDIA's **SBSA**
+CUDA, cuDNN and NCCL — one image for an Arm server GPU and a Jetson. Built
+end to end on a Jetson AGX Orin and run on its GPU: PyTorch, the ONNX Runtime
+CUDA EP, OpenCV CUDA, and a USB-camera detection demo at 30 fps
+([`linux/jetson-webcam/`](linux/jetson-webcam/README.md)). Not yet published
+to ghcr; how to build it and what is still open:
+[NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
+On a Jetson, rootless nerdctl needs three extra flags:
+[B2b](docs/linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
+
 ### Windows 🪟
 
 The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
