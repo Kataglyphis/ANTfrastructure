@@ -174,12 +174,12 @@ the failure.
 
 ## Which Linux image
 
-**`:latest-cross`, on every architecture.** It is a multi-arch index —
+**`:latest`, on every architecture.** It is a multi-arch index —
 `linux/amd64`, `linux/arm64` and `linux/riscv64`, all children present as of
 2026-08-12 — so docker resolves the right platform per runner and the tag does
 not have to be spelled per lane.
 
-The arch-suffixed tags (`:latest-cross-amd64`, `-arm64`, `-riscv64`) exist, but
+The arch-suffixed tags (`:latest-amd64`, `-arm64`, `-riscv64`) exist, but
 treat them as an implementation detail of the image build. A consumer that names
 one is pinning itself to a single architecture.
 
@@ -189,7 +189,6 @@ one is pinning itself to a single architecture.
 > entries". If you find such a workaround still in place, it is stale — remove
 > it rather than copying it.
 
-Do not use the plain `:latest`. Its per-platform children were deleted by a
-`ghcr-cleanup` bug (fixed 2026-08-11 in b70d3f4) and are **still missing**, so
-the index resolves, every child 404s, and `docker pull` reports only
-`manifest unknown`.
+The same index was named `:latest-cross` until 2026-09-22; that name survives
+only as a deprecated alias — see
+[`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).

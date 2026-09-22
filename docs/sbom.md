@@ -110,7 +110,7 @@ bash linux/scripts/scan-image-sbom.sh linux/amd64
 python3 docs/scripts/compare_sbom.py out/sbom/scanned-linux-amd64.spdx.json
 ```
 
-`:latest-cross` is a **manifest list** — a scan without `--platform` silently
+`:latest` is a **manifest list** — a scan without `--platform` silently
 picks one architecture. Scan each one you publish.
 
 CI runs the scan weekly in [`sbom.yml`](../.github/workflows/sbom.yml) — the

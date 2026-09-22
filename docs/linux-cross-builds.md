@@ -95,7 +95,7 @@ digest** and feeds it to the next stage as
 `--build-arg BASE_IMAGE=<repo>@sha256:<digest>`. The final `runtime` stage
 delegates to `build-runtime-manifest.sh` to build the per-arch
 `base -> package -> torch -> wrapper` images on the real target platform and
-publish the multi-arch `:latest-cross` manifest.
+publish the multi-arch `:latest` manifest.
 
 The cross-lane stage chain is defined declaratively in
 `linux/scripts/01-core/stage-defs.sh`.  Each stage entry (Dockerfile, parent
@@ -194,15 +194,15 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64 \
   --to-stage android --log-dir ./out/build-logs
 
 # Runtime lane: build+push+smoke the per-arch wrappers WITHOUT recreating the
-# multi-arch :latest-cross manifest (so a single-arch run cannot clobber it):
+# multi-arch :latest manifest (so a single-arch run cannot clobber it):
 bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
   --artifact-build-mode cross --push --skip-manifest
 
 # When ALL arches' wrappers exist, publish the manifest in one shot:
-bash linux/scripts/build-runtime-manifest.sh --image ...:latest-cross \
+bash linux/scripts/build-runtime-manifest.sh --image ...:latest \
   --target-arches amd64,arm64,riscv64 --manifest-only
 ```
 
@@ -555,8 +555,8 @@ target-native root filesystem. For foreign-architecture images, the package stag
 - A target-native `/opt/gcc-16.2.0` (cross-compiled from source via Canadian cross, swapped in by `Dockerfile.android`)
 - A hard-fail CC validation guard (dumpmachine, ELF type, cc1 smoke test)
 
-`linux/Dockerfile.torch` produces the final `:latest-cross-<arch>` wrapper images (torch venv, app, runtime scripts, entrypoint).
-The per-arch wrappers are assembled into the `:latest-cross` multi-arch manifest.
+`linux/Dockerfile.torch` produces the final `:latest-<arch>` wrapper images (torch venv, app, runtime scripts, entrypoint).
+The per-arch wrappers are assembled into the `:latest` multi-arch manifest.
 
 ### OpenCV 5.x GStreamer compatibility (applies to all architectures)
 
@@ -613,7 +613,7 @@ out/linux-sdk/riscv64/rootfs/
 out/linux-sdk/riscv64/artifact.env
 ```
 
-This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.2.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU end-to-end build, but it does not yet replace the full `:latest-cross` pipeline.
+This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.2.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU end-to-end build, but it does not yet replace the full `:latest` pipeline.
 
 `linux/Dockerfile.sdk` also forwards the checked-in `LLVM_RELEASE` pin into the `target-clang` step, so rebuilding an SDK artifact from an older `cross-compiler-amd64` base still refreshes `/opt/llvm-target` to the repository pin instead of inheriting a stale base-image environment value.
 
@@ -724,8 +724,13 @@ On a rootful Docker/containerd host the standard
 directly, because containers there share the host (init) user namespace. The
 rootless helper above is only needed when the daemon runs rootless.
 
-The per-arch `latest-cross-base-*`, `latest-cross-package-*`, and `latest-cross-*`
-tags are internal publish tags used to assemble the public `latest-cross` manifest.
+The per-arch `latest-base-*`, `latest-package-*`, and `latest-*`
+tags are internal publish tags used to assemble the public `latest` manifest.
+Variant manifests follow the same shape: `:latest-<variant>` (e.g. `nvidia`,
+`rocm`) over per-arch `:latest-<variant>-<arch>` wrappers. Hailo has no variant
+tag — it ships in the standard amd64/arm64 wrappers (`Dockerfile.torch`).
+`:latest-cross`, the manifest's name before 2026-09-22, remains a deprecated
+alias of `:latest` until 2026-10-31 (`CROSS_LEGACY_ALIAS_TAG` in `versions.env`).
 Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands).
 Run with `--dry-run` to print the commands without building.
 
@@ -746,7 +751,7 @@ The riscv64 app wheelhouse is built on the amd64 host for `torch`, `torchvision`
 - `ARTIFACT_CONTEXT_MODE=oci` resolves each `<arch>` within `ARTIFACT_CONTEXT_ROOT` as `oci-layout://...` (verified path for `out/local-oci/android/{arm64,riscv64}`).
 - One build still fails when consuming two named OCI contexts at once; the workaround is `runtime_artifact` as OCI layout + `runtime_base` as plain rootfs directory.
 - Each local stage context is deleted after the downstream build consumes it.
-- `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest-cross` from existing per-arch wrappers.
+- `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest` from existing per-arch wrappers.
 
 ### Verified local foreign-architecture rebuild
 
@@ -756,7 +761,7 @@ ARTIFACT_CONTEXT_MODE=oci \
 RUNTIME_CONTEXT_ROOT="$PWD/out/local-oci/runtime-contexts" \
 bash linux/scripts/build-runtime-artifacts.sh \
   --target-arches arm64,riscv64 \
-  --image-prefix docker.io/library/opencode-local:latest-cross \
+  --image-prefix docker.io/library/opencode-local:latest \
   --artifact-image-prefix docker.io/library/opencode-local:cross-android \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
@@ -773,7 +778,7 @@ RUNTIME_CONTEXT_ROOT="/tmp/opencode/runtime-contexts" \
 bash linux/scripts/build-runtime-artifacts.sh \
   --target-arches amd64 \
   --output-root /tmp/opencode/runtime-smoke \
-  --image-prefix docker.io/library/opencode-local:latest-cross-smoke \
+  --image-prefix docker.io/library/opencode-local:latest-smoke \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
   --artifact-build-mode cross \
   --fast-ubuntu-mirror \
@@ -788,7 +793,7 @@ Result at the time (previously, on the LLVM 22 pin): `gcc 16.2.0`, `clang 22.1.8
 ```bash
 mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
-  -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
+  -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
   --target wrapper-smoke \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
@@ -1302,37 +1307,37 @@ Building and publishing the per-arch wrappers and the multi-arch manifest, plus 
 ```bash
 # Build and push per-arch wrappers + manifest
 bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64,arm64,riscv64 \
   --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
   --push
 
 # Build local artifacts only (no push)
 bash linux/scripts/build-runtime-artifacts.sh \
-  --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64,arm64,riscv64
 
 # Dry-run: print what would be built without executing
 bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64,arm64,riscv64 --dry-run
 
 # Manifest repair (rebuild manifest from existing per-arch wrappers)
-nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
-nerdctl manifest create "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-amd64" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-riscv64"
-nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
+nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest" >/dev/null 2>&1 || true
+nerdctl manifest create "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-amd64" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-arm64" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-riscv64"
+nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest"
 
 # Or use the helper: rebuild just the manifest (no image rebuilds)
 bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
 
 # Shorthand: --repair is an alias for --manifest-only
 bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   --target-arches amd64,arm64,riscv64 --repair --push-manifest
 ```
 

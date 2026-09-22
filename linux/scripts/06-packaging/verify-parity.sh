@@ -49,8 +49,8 @@ Environment overrides:
 
 Examples:
   verify-parity.sh \
-    --native ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-amd64 \
-    --cross  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-amd64
+    --native kataglyphis:native-amd64 \
+    --cross  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-amd64
 
   verify-parity.sh --native kataglyphis:native-arm64 --cross kataglyphis:cross-arm64 \
     --checks packages,python,versions,imports

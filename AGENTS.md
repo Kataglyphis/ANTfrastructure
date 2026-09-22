@@ -103,20 +103,39 @@ must not drift are § Windows-Specific Naming below and
 
 **One published tag is one MANIFEST, and the manifest carries every architecture
 its variant supports** (owner directive 2026-09-21). The same rule for both
-lanes; only the lane qualifier differs, because the Linux and Windows lanes
-publish into the SAME registry repo and a bare `:latest` would collide.
+lanes. The Linux and Windows lanes publish into the SAME registry repo, so only
+one of them can own the bare `:latest`: Linux does, and Windows keeps its lane
+qualifier (owner directive 2026-09-22).
 
 | | Default manifest | Variant manifest | Per-arch wrapper (internal) | Cross bundle (NOT a platform) |
 | --- | --- | --- | --- | --- |
-| Linux | `:latest-cross` | `:latest-cross-<variant>` | `:latest-cross-<variant>-<arch>` | — |
+| Linux | `:latest` | `:latest-<variant>` | `:latest-<arch>`, `:latest-<variant>-<arch>` | — |
 | Windows | `:winamd64` | `:winamd64-<variant>` | — (one platform) | `:winarm64` |
 
-- `<variant>` names what makes the image different — `nvidia`, `amd`, `hailo`,
-  `qnn`, ... It is NEVER an architecture: adding an architecture to a variant
+- **The grammar is `<version>[-<variant>][-<arch>]`.** `latest` fills the
+  version slot, so a pinned release is `:2026.09` / `:2026.09-nvidia` with no
+  new rule. Tags are parsed by position, which is why the next bullet is a
+  hard rule and not a style note.
+- `<variant>` names what makes the image different — `nvidia`, `rocm`. It is
+  NEVER an architecture (`:latest-amd64` must stay unambiguous, and `amd` is
+  spelled `rocm` for exactly that reason): adding an architecture to a variant
   adds an ENTRY to the same manifest, and adding a variant adds a TAG.
-- The per-arch images (`:latest-cross-<arch>`, the stage tags) are the wrappers
-  the manifest is assembled from. They are implementation detail; consumers
-  resolve the manifest.
+- **A variant exists only for a stack that cannot ship in `:latest`** (owner
+  directive 2026-09-22) — CUDA and ROCm are multi-GB, driver-bound and mutually
+  exclusive. An accelerator whose runtime fits is built INTO the default image
+  instead: Hailo-10H (amd64/arm64, `Dockerfile.torch`) and QNN (arm64, when the
+  QAIRT zip is staged — `docs/qnn-linux.md`). There is no `:latest-hailo` or
+  `:latest-qnn`; the standalone `:hailo` variant and `Dockerfile.hailo` were
+  retired on 2026-09-22 as a duplicate of the standard build.
+- The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
+  `:latest-package-<arch>`) are the wrappers the manifest is assembled from.
+  They are implementation detail; consumers resolve the manifest.
+- **`:latest-cross` is the deprecated old name** of `:latest`.
+  `build-runtime-manifest.sh` pushes the same index under it
+  (`CROSS_LEGACY_ALIAS_TAG` in `versions.env`) so a consumer still on it keeps
+  getting current bytes. Remove the alias after 2026-10-31: empty the key and
+  delete the tag. Never write it anywhere new — `verify_ci_image_refs.py`
+  already rejects it under `.github/`.
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
   published index (§ Push and Publish Rules), so a partial run cannot silently
   drop an architecture from one.
@@ -164,7 +183,7 @@ Four things are RULES rather than reference, and stay here:
 - **Never edit a file in a running chain's closure**, and never restart
   buildkitd while a build solves. Both are § Caching discipline, rules 1 and 4.
 
-- **Verify the shipped BYTES, never the push.** `:latest-cross` shipped STALE
+- **Verify the shipped BYTES, never the push.** `:latest` (then `:latest-cross`) shipped STALE
   five times with every static gate and every smoke GREEN, because all of them
   checked the push rather than the content. `verify-shipped-wrapper.sh` gates
   this in `build-runtime-manifest.sh`, over every arch, BEFORE the boot smokes
@@ -698,14 +717,15 @@ Read the strategy before editing that Dockerfile:
 - `build-runtime-artifacts.sh --push` pushes only final per-arch wrapper images.
 - `build-runtime-manifest.sh --push` pushes wrappers + final manifest.
 - `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
-- Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
+- Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
+  (plus the deprecated `:latest-cross` alias of the same index until 2026-10-31).
 - Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
 - **The manifest lane REFUSES to shrink an already-published index.**
   `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the
   arch count of the live tag against the arches this run carries and stops.
   The older coherence gate only asks whether the arches AGREE on a generation,
   so a single-arch run assembled a perfectly coherent ONE-arch index and
-  published it — which is how `:latest-cross` was found reduced to riscv64
+  published it — which is how `:latest` (then `:latest-cross`) was found reduced to riscv64
   alone. Recover by re-running the runtime lane for the missing arches;
   `--force` / `RUNTIME_MANIFEST_COMPLETENESS=0` are for a deliberate shrink
   only. A partial-arch run should carry `--skip-manifest` and never reach here.

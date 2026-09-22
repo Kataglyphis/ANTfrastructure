@@ -283,7 +283,7 @@ jobs:
             echo "::error::submodules: 'recursive' left third_party/DocumANTation empty"
             exit 1
           fi
-          docker image inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross >/dev/null
+          docker image inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest >/dev/null
 
       # extra-args carries an env var, log-file tees, workdir is the mount
       # target, and the script reads all three back. ACTION_DIRS is counted

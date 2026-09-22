@@ -2,7 +2,7 @@
 # build-docs.sh — build docs/_build/html. One entry point, local and in CI.
 # Was five inline lines in .github/workflows/build-docs.yml, and that copy also
 # hand-rolled the venv, bypassing 01-core/python_uv.sh — whose --python pin is
-# what makes the install work as uid 1001 inside :latest-cross (uv otherwise
+# what makes the install work as uid 1001 inside :latest (uv otherwise
 # honours the image's root-owned UV_PYTHON over an activated .venv).
 # Usage: bash linux/scripts/build-docs.sh
 

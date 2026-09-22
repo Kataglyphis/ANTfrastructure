@@ -153,10 +153,10 @@ if [ "${_have_py}" -eq 1 ]; then
 
   t_case "a non-canonical image literal anywhere under .github/ FAILS"
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}
-      - run: docker run --rm ${_prefix}:latest true")"
+      - run: docker run --rm ${_prefix}:latest-cross true")"
   t_assert_eq "1" "$(t_rc _gate "${_d}")" \
-    "':latest' has no per-platform children any more; it must fail here, not at docker pull in someone else's lane"
-  t_assert_contains "$(t_out _gate "${_d}")" "non-canonical image tag ':latest'"
+    "':latest-cross' is the deprecated alias of the canonical ':latest'; a lane still on it must fail here, not when the alias is deleted under it"
+  t_assert_contains "$(t_out _gate "${_d}")" "non-canonical image tag ':latest-cross'"
 
   t_case "a CANONICAL tag for the wrong platform at a call site FAILS"
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}

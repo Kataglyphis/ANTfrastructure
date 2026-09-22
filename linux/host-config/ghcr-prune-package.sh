@@ -4,12 +4,12 @@
 #
 # WHY THIS EXISTS (2026-08-24): the kataglyphis_beschleuniger container package
 # holds 771 versions. Almost all are UNTAGGED digests left behind every time a
-# moving tag (latest-cross, cross-media-<arch>, …) is re-pushed. They are dead
+# moving tag (latest, cross-media-<arch>, …) is re-pushed. They are dead
 # weight — but a naive "delete everything untagged" is a REGISTRY-CORRUPTING
 # move, twice over:
 #
 #   1. The per-arch entries of a multi-arch manifest LIST are themselves
-#      untagged manifests. Delete them and every `nerdctl pull latest-cross`
+#      untagged manifests. Delete them and every `nerdctl pull latest`
 #      dies with MANIFEST_UNKNOWN while the index still looks fine.
 #   2. A build that is pushing RIGHT NOW creates untagged manifests seconds
 #      before it tags them. Deleting young digests races the chain's own push

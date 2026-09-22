@@ -3,7 +3,7 @@ Copyright (c) 2025 Kataglyphis
 SPDX-License-Identifier: MIT
 -->
 
-# What `:latest-cross` promises its consumers
+# What `:latest` promises its consumers
 
 This page is the **contract** side of the runtime image: the properties another
 repository's CI lane may build on, written down so they are a promise rather
@@ -274,7 +274,8 @@ These are paths, not versions, so they are outside the advertised-version-key ga
 
 ## Two things worth knowing before you configure a lane
 
-- `:latest-cross` is a proper multi-arch index. An arm64 runner gets arm64
+- `:latest` is a proper multi-arch index (the deprecated `:latest-cross` alias,
+  kept until 2026-10-31, resolves to the same index). An arm64 runner gets arm64
   binaries; there is no longer any reason to pin `-amd64` and no `rustc: 1: ELF:
   not found` to work around.
 - **The image ships Flutter at `/opt/flutter`.** A lane still passing

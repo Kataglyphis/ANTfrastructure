@@ -62,7 +62,7 @@ flutter_lane_prepare_env() {
   # nothing is written to a root-owned $HOME.
   export PUB_CACHE="${PUB_CACHE:-${repo_root}/.pub-cache}"
 
-  # The image tag is unpinned (:latest-cross), so the version is a measurement,
+  # The image tag is unpinned (:latest), so the version is a measurement,
   # not a constant: print the one THIS run got.
   flutter --version || return 1
 }

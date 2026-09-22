@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 1
 
       # curl + python3 only; no jq, no daemon, no image. That is why this job
-      # stays on the hosted runner rather than in :latest-cross - see the
+      # stays on the hosted runner rather than in :latest - see the
       # workflow header in sbom.yml for the same reasoning about registry-only
       # jobs.
       - name: Prune stale package versions

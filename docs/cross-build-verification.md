@@ -1,7 +1,7 @@
 # Cross-build verification & failure-class catalog
 
 This document catalogs the classes of failure hit during the base→`:latest-cross`
-rebuild campaigns and maps each to the fast check that catches it *before* a
+(now `:latest`) rebuild campaigns and maps each to the fast check that catches it *before* a
 multi-hour QEMU build. It is the reference for the pre-flight verification
 workflow (see "Pre-flight" below).
 
@@ -214,7 +214,7 @@ smokes and before the manifest is assembled —
 it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no
 emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env
 toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact).
-A mismatch aborts before `:latest-cross` goes live; `WRAPPER_CONTENT_GATE=0`
+A mismatch aborts before `:latest` goes live; `WRAPPER_CONTENT_GATE=0`
 makes it advisory. To spot-check by hand: pull the wrapper and grep for the
 expected lib set.
 
@@ -1361,7 +1361,7 @@ verified refactor, not a verified fix.
 A multi-arch index is only meaningful if its children came from one run.
 `_manifest_wrapper_gate` (`build-runtime-manifest.sh`) reads the recorded
 `run-id` off each per-arch wrapper tag through `ancestry_recorded_run_id` and
-refuses to assemble `:latest-cross` out of tags that span generations — the
+refuses to assemble `:latest` out of tags that span generations — the
 failure it exists for is an index that mixes a fresh arm64 wrapper with an
 amd64 one from last week, which every existence check passes.
 

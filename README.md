@@ -30,12 +30,12 @@ Pull an image and start working, or build the chain yourself — both are below.
 ### Linux 🐧
 
 ```bash
-nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 
 # The default CMD is a shell — nothing listens until you start a server.
 # Publishing 8443 only helps once one is running inside; the separate
 # :webserver image is the one that serves HTTP, on 80/443.
-nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 Rootful nerdctl needs `sudo`. The sudo-less route is the rootless
@@ -134,9 +134,10 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 | Tag | What |
 |-----|------|
-| `:latest-cross` | The default variant's **manifest** (linux amd64/arm64/riscv64) — the stable API |
-| `:latest-cross-<variant>` | A named variant's **manifest** over all its arches — `<variant>` describes the feature (`nvidia`, `amd`, `hailo`, `qnn`, …), never an architecture |
-| `:latest-cross-<variant>-<arch>` | Per-architecture wrapper the manifest is assembled from (internal) |
+| `:latest` | The default **manifest** (linux amd64/arm64/riscv64) — the stable API. Carries the Hailo runtime on amd64/arm64 (see below) |
+| `:latest-<variant>` | A variant's **manifest** over all its arches, for a stack that cannot go into `:latest`: `:latest-nvidia` (CUDA), `:latest-rocm` (ROCm). `<variant>` names the feature, never an architecture |
+| `:latest-<arch>`, `:latest-<variant>-<arch>` | Per-architecture wrappers the manifests are assembled from (internal) |
+| `:latest-cross` | **Deprecated** alias of `:latest` (the old name), pushed with every release until 2026-10-31, then deleted |
 | `:cross-media-<arch>` | Media libraries layer (internal) |
 | `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
 | `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |
@@ -144,7 +145,16 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 **One published tag is one manifest, and the manifest carries every architecture
 its variant supports** (owner directive 2026-09-21). Adding an architecture adds
-an entry to the same tag; adding a variant adds a tag. The Windows lane is the
+an entry to the same tag; adding a variant adds a tag — and a variant exists only
+for a stack that cannot ship in `:latest` (owner directive 2026-09-22).
+Accelerators whose runtime fits the default image are built into it instead:
+
+| Accelerator | In `:latest` | Arches |
+|---|---|---|
+| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS) | always | amd64, arm64 (riscv64: no upstream support) |
+| Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) — **the current release was built without it** | arm64 |
+| NVIDIA CUDA / AMD ROCm | no — `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
+ The Windows lane is the
 documented exception: `windows/arm64` is not a platform, so its arm64 output is a
 bundle that cannot share `:winamd64`'s manifest. Rules and rationale:
 [`AGENTS.md` § Image and tag naming](AGENTS.md#image-and-tag-naming-published-tags).
@@ -153,8 +163,8 @@ Full matrix with platforms, tag hints and per-stage intermediates:
 [docs/overview.md](docs/overview.md).
 
 **Check the live index before relying on its arch coverage** —
-`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
-On 2026-08-31 it carried **riscv64 only**: a single-arch run had replaced the
+`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`.
+On 2026-08-31 it (then `:latest-cross`) carried **riscv64 only**: a single-arch run had replaced the
 3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
 published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
 a partial run cannot do it again —

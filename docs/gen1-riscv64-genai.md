@@ -454,7 +454,7 @@ python -m onnxruntime_genai.models.builder -i ./smol-src -o ./smol-genai -p fp32
 bash -c 'source linux/scripts/06-packaging/smoke-common.sh; smoke_genai_py' > genai_smoke.py
 nerdctl run --rm -v $PWD/smol-genai:/model:ro -v $PWD/genai_smoke.py:/smoke.py:ro \
   -e GENAI_MODEL_DIR=/model -e GENAI_MAX_LENGTH=16 -e GENAI_EXPECT_ARCH=riscv64 \
-  --entrypoint /opt/venv/bin/python <image>:latest-cross-riscv64 /smoke.py
+  --entrypoint /opt/venv/bin/python <image>:latest-riscv64 /smoke.py
 ```
 
 The builder passes `token=True` to `huggingface_hub`, so `-m <repo-id>` fails

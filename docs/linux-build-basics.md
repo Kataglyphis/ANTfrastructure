@@ -21,10 +21,10 @@ ubuntu:26.04
     │       │   └── android             (:cross-android-<arch>)
     │       ├── nvidia (optional)       (:toolchain-nvidia)
     │       └── amd (optional)          (:toolchain-amd)
-    └── runtime-base                    (:latest-cross-base-<arch>)
-        └── package                     (:latest-cross-package-<arch>)
-            └── torch/wrapper           (:latest-cross-<arch>)
-                └── manifest            (:latest-cross)
+    └── runtime-base                    (:latest-base-<arch>)
+        └── package                     (:latest-package-<arch>)
+            └── torch/wrapper           (:latest-<arch>)
+                └── manifest            (:latest)
 ```
 
 **Two Build Lanes:**
@@ -32,15 +32,15 @@ ubuntu:26.04
 | Lane | Platform | Purpose | Tag prefix |
 |------|----------|---------|------------|
 | **Cross lane** | `linux/amd64` | Compile artifacts for all target arches | `:cross-*` |
-| **Runtime lane** | Target platform | Package cross artifacts into target-native images | `:latest-cross-*` |
+| **Runtime lane** | Target platform | Package cross artifacts into target-native images | `:latest-*` |
 
-The final release target is the multi-arch manifest `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`, assembled from per-arch wrappers `:latest-cross-{amd64,arm64,riscv64}`.
+The final release target is the multi-arch manifest `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`, assembled from per-arch wrappers `:latest-{amd64,arm64,riscv64}`.
 
 See `AGENTS.md` for the full container architecture documentation.
 
 ## Build Flow
 
-The full `:latest-cross` pipeline:
+The full `:latest` pipeline:
 
 1. **Cross lane** (stages 1-5, all `linux/amd64`):
    - `base` → `compiler` → `sdk` → `media` → `android`
@@ -160,12 +160,12 @@ local OCI-layout handoff; only runs RESUMED mid-chain are refused — see
 
 ```bash
 # Recommended: cross-lane digest-pinned release
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 # on Windows you must expose ports one by one
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 
 # Alternative: QEMU/binfmt multi-platform build:
-# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 ## Optional Ubuntu Apt Mirror Workaround
@@ -202,7 +202,7 @@ Local smoke validation for the shared package+wrapper flow (native mode):
 ```bash
 mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
-  -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
+  -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
   --target wrapper-smoke \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
@@ -218,7 +218,7 @@ Cross-mode variant (validates cross-assembled artifacts):
 ```bash
 mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/amd64 \
-  -t local/kataglyphis:latest-cross-wrapper-smoke-amd64 \
+  -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
   --target wrapper-smoke \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base \
@@ -270,7 +270,7 @@ nerdctl build --platform linux/amd64 \
   . 2>&1 | tee ./out/build-logs/media-smoke-amd64.log
 ```
 
-For a full hands-off cross build of `:latest-cross`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.
+For a full hands-off cross build of `:latest`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.
 
 ## Consumer bash libraries (`linux/scripts/lib/`)
 

@@ -142,7 +142,7 @@ def frozen_ref_re(refs: dict[str, str]) -> re.Pattern:
     """Matches a currently-canonical ref, and only when it is the WHOLE tag.
 
     The trailing guard is what keeps the per-arch children of the manifest out
-    of it: `...:latest-cross-arm64` in smoke-runtime-image.sh is a real tag the
+    of it: `...:latest-arm64` in smoke-runtime-image.sh is a real tag the
     build chain produces, not a copy of the CI ref that starts the same way.
 
     `.` is deliberately NOT in that guard, though a tag may contain one. Every

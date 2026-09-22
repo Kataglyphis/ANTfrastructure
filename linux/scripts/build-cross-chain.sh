@@ -83,7 +83,7 @@ Options:
   --cross-targets LIST     Compiler target list baked into the compiler image
                            (default: amd64,arm64,riscv64; must cover --target-arches)
   --image-repo REPO        Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
-  --final-image REF        Final multi-arch manifest ref (default: REPO:latest-cross)
+  --final-image REF        Final multi-arch manifest ref (default: REPO:latest)
   --from-stage STAGE       First stage to run: base|compiler|sdk|media|android|runtime
   --to-stage STAGE         Last stage to run (inclusive). Same value set.
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE

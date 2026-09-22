@@ -351,7 +351,7 @@ macro(kataglyphis_cpack_common)
 
         # A type-2 AppImage must READ its own appended squashfs (through
         # /proc/self/exe) to run - even with APPIMAGE_EXTRACT_AND_RUN=1, which
-        # only skips the FUSE mount. The :latest-cross image ships
+        # only skips the FUSE mount. The :latest image ships
         # /usr/local/bin/appimagetool as -rwx--x--x (execute-only for non-root),
         # so the CI user (uid 1001) can exec but not read it, and it dies with
         # "Cannot open /proc/self/exe: Permission denied". compare_files against

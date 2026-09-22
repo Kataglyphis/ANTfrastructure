@@ -161,7 +161,7 @@ cmake_build_prepare_env() {
     git config --global --add safe.directory "${safe_dir}" || true
   fi
 
-  # The :latest-cross image sets CCACHE_SECONDARY_STORAGE=true, but that variable
+  # The :latest image sets CCACHE_SECONDARY_STORAGE=true, but that variable
   # is ccache's remote_storage and must be a URL - ccache parses "true" as one and
   # dies with "URL scheme must not be empty: true" on EVERY compile. sccache
   # (clang presets) ignores it, so only the gcc presets are hit, which is why the

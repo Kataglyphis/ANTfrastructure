@@ -568,7 +568,9 @@ untouched. Six long-dangling legacy tags (`android`, `compiler`, `latest`,
 existed) were deleted the same day by operator decision. `:latest` is therefore
 gone and will not come back by itself: the cross lane's orchestrators tag
 `cross-*` and `latest-cross`, and `build-runtime-manifest.sh` publishes only the
-cross manifest, so the native lane has no build path any more.
+cross manifest, so the native lane has no build path any more. (Superseded
+2026-09-22: the cross manifest was renamed from `:latest-cross` to `:latest`,
+so `:latest` is live again as the default multi-arch index.)
 
 ## Phase C — Performance mode
 

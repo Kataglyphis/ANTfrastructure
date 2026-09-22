@@ -610,7 +610,7 @@ eval "$(sed -n '/^_chain_runtime_failure_report() {$/,/^}$/p' "${CHAIN_SH}")"
 _CHAIN_RUNTIME_GATES="$(sed -n 's/^_CHAIN_RUNTIME_GATES="\(.*\)"$/\1/p' "${CHAIN_SH}")"
 arch_list_to_words() { printf '%s' "${1//,/ }"; }
 warn() { printf '[WARN] %s\n' "$*"; }
-FINAL_IMAGE="repo/img:latest-cross"
+FINAL_IMAGE="repo/img:latest"
 TARGET_ARCHES="amd64,arm64,riscv64"
 CROSS_RUN_ID="20260901-000000-b3"
 # Stand-in for ancestry_recorded_run_id: amd64's wrapper was never produced.

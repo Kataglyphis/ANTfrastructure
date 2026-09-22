@@ -10,6 +10,8 @@ _TAG_NAMING_SH_LOADED=1
 #   cross_sdk_tag()               — :cross-sdk-<arch>
 #   cross_media_tag()             — :cross-media-<arch>
 #   cross_android_tag()           — :cross-android-<arch>
+#   cross_final_image_tag()       — :latest (+ -host<arch> off an amd64 build host)
+#   cross_final_image_legacy_alias() — deprecated :latest-cross alias of that index, or empty
 #   runtime_base_tag()            — <prefix>-base-<arch>
 #   runtime_package_tag()         — <prefix>-package-<arch>
 #   runtime_wrapper_tag()         — <prefix>-<arch>
@@ -56,10 +58,19 @@ cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREF
 cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }
 # The chain's final image. Same infix, same reason: the per-arch wrapper images
 # are PUSHED before the manifest gate runs, so without it a native arm64 run
-# would overwrite the amd64 lane's published :latest-cross-<arch> family.
-# Never _cross_shared_tag_suffix here — that yields :latest-cross-arm64, which
+# would overwrite the amd64 lane's published :latest-<arch> family.
+# Never _cross_shared_tag_suffix here — that yields :latest-arm64, which
 # IS the amd64 lane's arm64 wrapper tag.
-cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest-cross$(cross_build_host_infix)"; }
+cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest$(cross_build_host_infix)"; }
+# The deprecated name the SAME index is also pushed under (versions.env
+# CROSS_LEGACY_ALIAS_TAG). Empty when the alias is retired, and for every
+# non-default image: only the amd64 lane's :latest ever carried the old name.
+cross_final_image_legacy_alias() {
+  [ -n "${CROSS_LEGACY_ALIAS_TAG:-}" ] || return 0
+  [ "${1:-}" = "$(cross_final_image_tag)" ] || return 0
+  [ -z "$(cross_build_host_infix)" ] || return 0
+  printf '%s' "${1%:*}:${CROSS_LEGACY_ALIAS_TAG}"
+}
 
 # ==============================================================================
 # Runtime tag name functions.

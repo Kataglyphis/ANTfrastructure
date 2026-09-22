@@ -103,16 +103,26 @@ t_assert_eq "example.io/repo:cross-android-hostarm64-amd64" \
 
 t_case "the final image carries the build host, like the android tag"
 IMAGE_REPO="example.io/repo" IMAGE_REGISTRY_PREFIX="WRONG"
-t_assert_eq "example.io/repo:latest-cross" "$(BUILDARCH=amd64 cross_final_image_tag)"
-t_assert_eq "example.io/repo:latest-cross-hostarm64" "$(BUILDARCH=arm64 cross_final_image_tag)" \
-  "a native arm64 run must never write the amd64 lane's :latest-cross-<arch> children"
+t_assert_eq "example.io/repo:latest" "$(BUILDARCH=amd64 cross_final_image_tag)"
+t_assert_eq "example.io/repo:latest-hostarm64" "$(BUILDARCH=arm64 cross_final_image_tag)" \
+  "a native arm64 run must never write the amd64 lane's :latest-<arch> children"
+
+t_case "the deprecated :latest-cross alias names only the amd64 lane's default index"
+t_assert_eq "example.io/repo:latest-cross" \
+  "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest)"
+t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=arm64 cross_final_image_legacy_alias example.io/repo:latest-hostarm64)" \
+  "a native arm64 run's index is not the one :latest-cross ever named"
+t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest-nvidia)" \
+  "a variant manifest never gets the old name"
+t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG='' BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest)" \
+  "an empty CROSS_LEGACY_ALIAS_TAG retires the alias"
 
 t_case "the final image and the android prefix carry the SAME infix"
 # build-cross-chain.sh and cross-stage-build.sh must not drift apart about which
 # host they are on — one helper, asserted for every host.
 for _h in amd64 arm64 riscv64; do
   _inf="$(BUILDARCH="${_h}" cross_build_host_infix)"
-  t_assert_eq "example.io/repo:latest-cross${_inf}" "$(BUILDARCH="${_h}" cross_final_image_tag)"
+  t_assert_eq "example.io/repo:latest${_inf}" "$(BUILDARCH="${_h}" cross_final_image_tag)"
   t_assert_eq "example.io/repo:cross-android${_inf}" "$(BUILDARCH="${_h}" cross_android_tag_prefix)"
 done
 

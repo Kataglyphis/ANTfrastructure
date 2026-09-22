@@ -37,7 +37,7 @@ on:
       container-image:
         description: >-
           Override the per-architecture image chosen by the matrix below. Leave
-          empty (the default) to use the latest-cross family, which is what the
+          empty (the default) to use the :latest family, which is what the
           Linux lanes should be on. Setting this uses ONE image for every
           architecture, so only do it for a single-arch run.
         required: false
@@ -110,7 +110,7 @@ jobs:
       # the empty string does NOT - it arrives as an empty image reference.
       #
       # Both legs pull the SAME tag, so this used to be a per-arch matrix key
-      # and was simply the same string twice. `:latest-cross` is a multi-arch
+      # and was simply the same string twice. `:latest` is a multi-arch
       # index (linux/amd64, linux/arm64, linux/riscv64, all children present as
       # of 2026-08-12), so docker resolves the right platform per runner.
       #
@@ -123,7 +123,7 @@ jobs:
       # deleted by the ghcr-cleanup bug (fixed in b70d3f4) and are still gone -
       # the index resolves, every child 404s, and `docker pull` reports only
       # "manifest unknown".
-      CONTAINER_IMAGE: ${{ inputs.container-image || 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross' }}
+      CONTAINER_IMAGE: ${{ inputs.container-image || 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest' }}
     strategy:
       # One arch failing should not hide the other's result.
       fail-fast: false

@@ -7,6 +7,43 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - `:latest-cross` becomes `:latest`; variants are `:latest-<variant>`; the `:hailo` variant is retired
+
+**The Linux default manifest is `:latest`** (owner directive 2026-09-22). The
+old name was historical. `CI_IMAGE_LINUX_TAG=latest`, and every derived tag
+follows the prefix: wrappers `:latest-<arch>`, runtime stages
+`:latest-base-<arch>` / `:latest-package-<arch>`, host-infixed runs
+`:latest-hostarm64`. The registry was switched without a rebuild. The live
+3-arch index (`sha256:e0de6c95…`) and its three children were re-tagged
+`:latest` and `:latest-{amd64,arm64,riscv64}`, so `:latest` and `:latest-cross`
+resolve to identical bytes. The old dead `:latest` from the ghcr-cleanup bug
+was already gone (404), so nothing was overwritten.
+
+**`:latest-cross` stays as a deprecated alias until 2026-10-31.**
+`build-runtime-manifest.sh` now also pushes the same index under the name in
+`CROSS_LEGACY_ALIAS_TAG` (`cross_final_image_legacy_alias` in `tag-naming.sh`).
+That happens only for the amd64 lane's default image, and only after `:latest`
+passed every gate. After the date, empty the key and delete the tag. The
+freshness check now receives `--tag` for the index the run actually wrote,
+instead of always reading the default.
+
+**Variant grammar: `<version>[-<variant>][-<arch>]`.** Variants exist only for
+stacks that cannot ship in `:latest`, which today means `:latest-nvidia` and
+`:latest-rocm` (`rocm`, not `amd`, so a variant never reads like an arch).
+**Neither is published yet.** The registry's `:nvidia` / `:amd` tags are
+single-arch 2026-04 builds on the Ubuntu 24.04 base and were deliberately *not*
+promoted. Hailo and QNN are built into `:latest` instead. The current release
+carries HailoRT 5.4.0 + `hailonet` on amd64/arm64 (verified in the shipped
+wrappers). It carries no QNN, because no QAIRT zip was staged in
+`linux/qnn-sdk/` for that build.
+
+**The standalone Hailo variant is gone.** `linux/Dockerfile.hailo` is deleted,
+along with its two `code-dupes.allow` rows. The published `:hailo` (run
+`20260919-…`) was a generation older than the standard wrapper that already
+carried the same payload. The registry tags `:hailo`, `:hailo-<arch>` and
+`buildcache-hailo-*` are left for the prune pass.
+
+
 ## 2026-09-22 - The arm64 GPU runtime image runs on a Jetson
 
 The runtime lane (base -> package -> wrapper) had never carried a GPU. Built
