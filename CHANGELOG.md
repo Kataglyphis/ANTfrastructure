@@ -28,6 +28,10 @@ without TensorRT, the Vulkan prune left 1.8 GB of x86-64 in the arm64 image on
 a non-amd64 builder, and the arm64 gtk4 exception now follows the loader rather
 than the arch.
 
+A USB camera works too: `linux/jetson-webcam/run.sh` streams torchvision's
+SSDLite detections from the Orin's GPU to a browser (a person at 0.93, ~9 fps,
+CPU-bound at `MODE_50W`).
+
 Not yet: the image's media layer predates the 2026-09-18 pin wave (ORT 1.29,
 GenAI still `trt-rtx`), and the official PyTorch `cu130` wheels warn that they
 do not target compute capability 8.7.
