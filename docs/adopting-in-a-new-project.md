@@ -216,7 +216,7 @@ Three rules that cost real debugging time to learn:
 
 ## 3. Linux container builds (Rancher Desktop / CI)
 
-Image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
+Image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`.
 
 Local runs go through one driver, so the image tag, the mount layout, the git
 safe.directory and the Git Bash path-mangling escape are answered in one place

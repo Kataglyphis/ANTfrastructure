@@ -1,6 +1,6 @@
 # Hailo support — image-chain integration plan
 
-**Status: HAILO-10H IN THE STANDARD RUNTIME (2026-09-20). `:latest-cross`
+**Status: HAILO-10H IN THE STANDARD RUNTIME (2026-09-20). `:latest`
 builds the Hailo payload by default on amd64 and arm64; riscv64 skips it (no
 HailoRT support at any version). Hailo-8/8R/8L support was DROPPED the same
 day — those devices need the `hailo8` branch (HailoRT 4.24.x), a different
@@ -9,12 +9,15 @@ procedures — [`linux-accelerator-images.md` § Edge
 accelerators](linux-accelerator-images.md#edge-accelerators). This page owns the
 design, the upstream facts it rests on, and what remains open.
 
-**Proven 2026-09-20:** the payload was first proven as a variant
-(`:hailo-amd64` / `:hailo-arm64` — the per-arch **wrappers** of the variant
-manifest `:latest-cross-hailo`, per the tag convention in
-[`AGENTS.md`](../AGENTS.md#image-and-tag-naming-published-tags)) and then folded
-into `Dockerfile.torch`, so
-every `:latest-cross` wrapper carries it. The build's own checks run before the
+**Proven 2026-09-20:** the payload was first proven as a standalone variant
+(`:hailo-amd64` / `:hailo-arm64`, indexed as `:hailo`) and then folded into
+`Dockerfile.torch`, so every `:latest` wrapper carries it. **The variant was
+retired on 2026-09-22** (`Dockerfile.hailo` deleted, no `:latest-hailo`): it
+built the same payload a second time, and the published `:hailo` was already a
+generation behind `:latest`. Per
+[`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags),
+a variant exists only for a stack that cannot ship in the default image. The
+build's own checks run before the
 payload is accepted, so a broken element fails the build rather than shipping.
 **pyhailort is built from source** (scikit-build-core, the `platform/`
 directory) and installed into `/opt/venv`. One honest caveat: upstream declares
@@ -41,11 +44,10 @@ wheel into `linux/hailo-sdk/` and the amd64 wrapper installs it
 | --- | --- |
 | Build script (HailoRT + `hailortcli` + `hailonet` + pyhailort wheel + TAPPAS + libzmq) | `linux/scripts/03-media/build/hailo/build-hailort.sh` |
 | Standard runtime build (amd64/arm64, riscv64 skips) | `linux/Dockerfile.torch` |
-| Standalone variant | `linux/Dockerfile.hailo` |
 | Pins (`HAILORT_*`, `HAILO_PROTOBUF_*`, `TAPPAS_*`, `HAILO_LIBZMQ_*`) | `linux/scripts/01-core/versions.env` |
 | Dataflow Compiler drop point (login-gated, gitignored) | `linux/hailo-sdk/` |
 | Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause) | `docs/deps/deps.json` |
-| Build commands | [`linux-accelerator-images.md` § Hailo variant](linux-accelerator-images.md#hailo-variant) |
+| Build and run | [`linux-accelerator-images.md` § Hailo (in the standard image)](linux-accelerator-images.md#hailo-in-the-standard-image) |
 
 ## Phase 3: Windows HailoRT (LANDED 2026-09-21)
 
@@ -87,10 +89,8 @@ element (`HAILO_BUILD_GSTREAMER` stays OFF — the binding exists upstream for
 Windows but is a separate gate), the Dataflow Compiler (host-side tool anyway)
 and any device execution (no Hailo device on the build host).
 
-The shape mirrors the NVIDIA/AMD variants: `Dockerfile.hailo` builds HailoRT in
-the **runtime image itself** (native GCC 16.2.0 + the GStreamer dev files are
-already there), then copies the payload into the same image — so the variant is
-`:latest-cross` plus `/opt/hailo`, and the plugin links against exactly the
+The Linux build runs in the **runtime image itself** (native GCC 16.2.0 + the
+GStreamer dev files are already there), so the plugin links against exactly the
 GStreamer the runtime ships. The first design built in `cross-android-<arch>`
 instead; it works for amd64 but dies for arm64, because those images are
 amd64-hosted cross toolchains and HailoRT's FetchContent externals invoke their
@@ -174,9 +174,8 @@ matrix; the meson constraint is `>= 1.0`, and 1.29.2 builds clean (proven).
 
 ## Integration design (Linux lane)
 
-The standard runtime builds the payload itself, and the `:hailo` variant stays
-as a convenience tag. [`linux-accelerator-images.md`](linux-accelerator-images.md)
-owns the variant mechanics; this is the Hailo instance of them.
+The standard runtime builds the payload itself; there is no Hailo variant tag
+(retired 2026-09-22).
 
 ### Layers (as implemented)
 
@@ -188,9 +187,6 @@ owns the variant mechanics; this is the Hailo instance of them.
   `/etc/ld.so.conf.d/000-hailo.conf`, symlinks `hailortcli`, and self-checks
   both. riscv64 prints a skip line and builds nothing. The image has GCC 16.2.0,
   cmake, ninja and the GStreamer dev files, so the build is native.
-- **`linux/Dockerfile.hailo`** — the same payload as a standalone variant
-  (`:hailo-<arch>`, `:hailo`), for consumers that want the tag rather than the
-  standard one. It builds in `latest-cross-<arch>` and copies the payload in.
 - **`Dockerfile.media` / `Dockerfile.package` / `Dockerfile.android`** —
   untouched; the build lives where the compiler and GStreamer dev files already
   are, so the media stage's fan-out is not re-keyed.
@@ -206,7 +202,7 @@ the commit — a lightweight tag), `HAILORT_SOURCE_SHA256`, and the externals:
 `HAILO_LIBZMQ_VERSION`/`_SHA256` (TAPPAS's zmq elements). master has no
 `grpc.cmake` (the hailo8 branch did), so there are no gRPC keys; TAPPAS's own
 header-only externals are commit-pinned in the build script. The same values are the ARG defaults in
-`Dockerfile.torch` and `Dockerfile.hailo`, and `sync_versions.py --check` keeps
+`Dockerfile.torch`, and `sync_versions.py --check` keeps
 them in step.
 
 ### Gates
@@ -214,10 +210,10 @@ them in step.
 | Gate | State |
 | --- | --- |
 | Build-stage self-check (`hailortcli --version`, `gst-inspect-1.0 hailonet`) | in `build-hailort.sh`, fails the build |
-| Runtime-stage self-check (`gst-inspect-1.0 hailonet` after the copy) | in `Dockerfile.hailo` stage 2 |
+| Runtime-stage self-check (`hailortcli`, `gst-inspect-1.0 hailonet` after the install) | in the `Dockerfile.torch` Hailo `RUN` |
 | `docs/deps/deps.json` + `third-party-licenses.md` | MIT, LGPL-2.1-or-later (with source pointer), BSD-3-Clause, Apache-2.0 rows added |
-| `verify-media-artifacts.sh` / `smoke-runtime-image.sh` | **not wired** — those gates grade the standard chain, which carries no Hailo; a variant gate would run in the variant's own build |
-| Bundle closure | not applicable — the variant is a full image, not a bundle |
+| `verify-media-artifacts.sh` / `smoke-runtime-image.sh` | **not wired yet** — the standard chain now carries Hailo, so the runtime smoke is the natural next gate |
+| Bundle closure | not applicable — the payload ships in the full image, not a bundle |
 
 ### Host and run contract
 

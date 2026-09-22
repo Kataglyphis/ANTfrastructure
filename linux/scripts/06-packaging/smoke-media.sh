@@ -682,7 +682,7 @@ if [ -x /opt/venv/bin/python ]; then
     fail "/opt/venv exists but torch does not import and no .torch-missing sentinel"
   fi
 else
-  echo "  INFO: torch not installed (only in :latest-cross-<arch> wrappers)"
+  echo "  INFO: torch not installed (only in :latest-<arch> wrappers)"
 fi
 
 echo ""

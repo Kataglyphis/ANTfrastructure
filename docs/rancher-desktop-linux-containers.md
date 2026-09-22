@@ -54,32 +54,34 @@ targets Rancher and `nerdctl` stops being the entry point. Pick one and stay
 with it; mixing them is how you end up debugging a missing image that is sitting
 in the other engine's store.
 
-## The image: always `:latest-cross`
+## The image: always `:latest`
 
-**Use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross` for Linux
-builds, in CI and locally.** Not `:latest`.
+**Use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest` for Linux
+builds, in CI and locally.**
 
-`:latest-cross` is the only published 3-arch tag: `linux/amd64`, `linux/arm64`
+`:latest` is the default multi-arch manifest: `linux/amd64`, `linux/arm64`
 and `linux/riscv64`, re-shipped with fresh per-arch digests on every validating
-rebuild (see the CHANGELOG entries that name them).
+rebuild (see the CHANGELOG entries that name them). The per-arch wrappers
+behind it (`:latest-amd64`, `:latest-arm64`, `:latest-riscv64`) are internal
+build tags; variant manifests, when published, are `:latest-<variant>` (e.g.
+`nvidia`, `rocm`). The amd64/arm64 wrappers carry Hailo, so there is no
+separate Hailo tag.
 
-`:latest` is not a staler alternative — it is a dead tag, and pulling it fails
-outright. Its three per-platform children had 404'd for months while the index
-itself still resolved, so a pull reports only "manifest unknown"; that is why
-`.github/workflows/python-ci-linux.yml:118` spells out "Do NOT fall back to plain
-`:latest`". The dangling index was then deleted in the 2026-08-27 registry
-cleanup (81 -> 34 tags). It will not come back on its own: every orchestrator
-under `linux/scripts/` is a `build-cross-*` script, so the native lane has no
-build path that could republish it.
+Until 2026-09-22 this manifest was called `:latest-cross`; that name stays
+published as a **deprecated alias** of the same index until 2026-10-31. Move
+any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
+a different, dead native-lane index — its children had 404'd for months and it
+was deleted in the 2026-08-27 registry cleanup; the tag name was then reused
+for the cross-lane manifest.)
 
 `.github/workflows/python-ci-linux.yml` runs its containerized steps — static
-analysis, tests, docs, packaging — in `:latest-cross` on both the x64 and arm64
+analysis, tests, docs, packaging — in `:latest` on both the x64 and arm64
 runners (`CONTAINER_IMAGE` at :103, fed by the matrix at :126/:130 and consumed
 by the `run-in-linux-container` action; the permission-fix and upload steps run
 on the host). **Keep local runs on the same tag**, or reproducing a CI failure
 locally proves nothing.
 
-`:latest-cross` is not pinned by digest, so it still floats. Pinning would make
+`:latest` is not pinned by digest, so it still floats. Pinning would make
 CI properly reproducible and is worth doing; it is not done yet.
 
 ## Reproducing a CI step locally
@@ -179,12 +181,11 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
   pick one and stay with it.)
 - Pass `--namespace default` explicitly. containerd namespaces are real
   isolation, so an image pulled into another namespace is genuinely "not found".
-- **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`,
-  in CI *and* locally.** Not `:latest` — that tag went unrebuilt from 2026-04-16
-  while the cross lane was refreshed (2026-07-20). Both publish amd64/arm64/
-  riscv64. `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
-  uses a different tag, reproducing a CI failure proves nothing. Neither tag is
-  digest-pinned, so both still float.
+- **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`,
+  in CI *and* locally.** It publishes amd64/arm64/riscv64.
+  `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest`; if a local run
+  uses a different tag (including the deprecated `:latest-cross` alias), reproducing
+  a CI failure proves nothing. The tag is not digest-pinned, so it still floats.
 
 ## When to reach for this
 
@@ -197,7 +198,7 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 
 ## Persisting the cargo cache
 
-The `:latest-cross` image runs as uid 1001 with `/usr/local/cargo` owned by
+The `:latest` image runs as uid 1001 with `/usr/local/cargo` owned by
 root, so cargo falls back to a container-local `CARGO_HOME` and every fresh
 container rebuilds all Rust dependencies from scratch. Point it at a named
 volume instead:
@@ -208,7 +209,7 @@ nerdctl volume create cargo-cache        # once
 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user root \
   --mount type=volume,source=cargo-cache,target=/cargo-cache \
   -v /mnt/d/path/to/repo:/workspace -w /workspace \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   bash -c 'bash scripts/linux/cmake-configure-build.sh \
      --preset linux-debug-clang --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
 ```
@@ -313,7 +314,7 @@ both disconnects.
 ```bash
 nerdctl run -dit --gpus '"device=0"' -p 8501:8501 \
   -v "$PWD:/workspace" -w /workspace \
-  --name work ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+  --name work ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 | Flag | Why |

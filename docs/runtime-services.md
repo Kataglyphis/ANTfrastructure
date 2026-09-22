@@ -52,7 +52,7 @@ nerdctl run --rm -it \
   -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
   -v "$(pwd)":/workspace \
   --workdir /workspace \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 ## Raspberry Pi Camera

@@ -38,7 +38,7 @@ jobs:
       # This was the ONE Linux lane in this repository doing repo work outside
       # the family image: a bare checkout plus setup-uv on the hosted runner.
       # The docs build now has the same shape as every other containerised lane
-      # — prologue on the host, work inside `:latest-cross`, deploy back on the
+      # — prologue on the host, work inside `:latest`, deploy back on the
       # host — and it is the shape the shared helpers were written for
       # (01-core/python_uv.sh's `--python` pin exists precisely because uv
       # honours THIS image's UV_PYTHON over an activated .venv).

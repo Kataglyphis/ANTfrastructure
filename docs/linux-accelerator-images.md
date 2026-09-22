@@ -11,9 +11,17 @@ Optional NVIDIA GPU image chain. Two ways to enable:
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
-- `linux/Dockerfile.torch`: Final entrypoint image (`:nvidia` tag).
+- `linux/Dockerfile.torch`: Final entrypoint image (`:latest-nvidia-<arch>` wrapper, indexed as `:latest-nvidia`).
 
 ## NVIDIA GPU Build (Linux)
+
+> **Tag: `:latest-nvidia`** (a manifest; per-arch wrappers `:latest-nvidia-amd64`
+> and, from the SBSA lane below, `:latest-nvidia-arm64`),
+> per [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
+> **Not published yet.** The `:nvidia` tag in the registry is a 2026-04-22 build
+> on the old Ubuntu 24.04 base, predates the current chain, and is not
+> `:latest-nvidia` — do not use it. Steps 1–4 below keep their stage tags; step 5
+> and the manifest step publish the variant.
 
 > **Requirements:**
 > - Host driver >= 590.44 (for CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->).
@@ -81,24 +89,29 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-nvidia \
   . 2>&1 | tee "${LOG_DIR}/torch-nvidia.log"
 
-# Step 5: final nvidia image
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia --push \
+# Step 5: final nvidia wrapper (per arch)
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia-amd64 \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia-amd64 --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-nvidia \
   . 2>&1 | tee "${LOG_DIR}/nvidia.log"
+
+# Step 6: the variant manifest over every arch built (add :latest-nvidia-arm64
+# from the SBSA lane once it is pushed)
+sudo nerdctl manifest create ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia-amd64
+sudo nerdctl manifest push --purge ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia
 ```
 
 **Run with GPU access:**
 
 ```bash
-sudo nerdctl run --rm -it --gpus all ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia
+sudo nerdctl run --rm -it --gpus all ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia
 
 # or with nvidia runtime explicitly
-sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia
+sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia
 ```
 
 **Version overrides** (all have sensible defaults). The full semvers are
@@ -136,14 +149,13 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | ORT Python Package | `onnxruntime` (the `ONNX_PACKAGE` default, `linux/Dockerfile.torch:42`) | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
 | PyTorch Extra | `pytorch-cpu` | `pytorch-cu130` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
-| Image tag | `:latest-cross` (3-arch manifest) | `:nvidia` |
+| Image tag | `:latest` (3-arch manifest) | `:latest-nvidia` (manifest; not published yet) |
 
-The standard build's release target is the multi-arch manifest `:latest-cross`
+The standard build's release target is the multi-arch manifest `:latest`
 ([`linux-build-basics.md` § Image Hierarchy](linux-build-basics.md#image-hierarchy)
-owns the tag scheme). Plain `:latest` is not an older second option — it was deleted
-in the 2026-08-27 registry cleanup, and no orchestrator under `linux/scripts/` can
-republish it; details in
-[`rancher-desktop-linux-containers.md` § The image: always `:latest-cross`](rancher-desktop-linux-containers.md#the-image-always-latest-cross).
+owns the tag scheme). `:latest-cross` is its deprecated old name, pushed as an
+alias of the same index until 2026-10-31; details in
+[`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).
 
 ## NVIDIA on arm64 (SBSA): one image for servers and Jetson
 
@@ -187,7 +199,7 @@ CROSS_ANDROID_BASE_IMAGE="$R:cross-media-arm64" CROSS_ANDROID_BASE_CONTEXT="$MED
 # 4. runtime: call the helper directly, with the android layout as the artifact
 #    (the directory must be named <root>-arm64)
 CROSS_NO_PUSH=1 ARTIFACT_CONTEXT_ROOT="$ANDROID_OCI_ROOT" ARTIFACT_CONTEXT_MODE=oci \
-  bash linux/scripts/build-runtime-manifest.sh --image "$R:latest-cross-hostarm64" \
+  bash linux/scripts/build-runtime-manifest.sh --image "$R:latest-hostarm64" \
   --target-arches arm64 --artifact-image-prefix "$R:cross-android-hostarm64" \
   --artifact-build-mode cross --skip-manifest
 ```
@@ -243,8 +255,9 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
   ORT, OpenCV and TVM are built here with native `sm_87`.
 - No TensorRT on this lane (see `ENABLE_TENSORRT`).
 - Nothing is published yet. A `--no-push` build on a Jetson tags
-  `latest-cross-hostarm64-arm64` locally; the published name for a GPU variant
-  is `:latest-cross-nvidia` (see [`overview.md`](overview.md)).
+  `latest-hostarm64-arm64` locally; the published name is the variant
+  manifest `:latest-nvidia`, with this image as its arm64 wrapper
+  `:latest-nvidia-arm64` (see [`overview.md`](overview.md)).
 
 ## The media fan-out strategy, as AGENTS.md carried it
 
@@ -276,6 +289,12 @@ nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Do
 ```
 
 ## AMD GPU Build (Linux)
+
+> **Tag: `:latest-rocm`** (a manifest; per-arch wrapper `:latest-rocm-amd64`) —
+> spelled `rocm`, not `amd`, because a variant never reads like an architecture
+> (`:latest-amd-amd64`). **Not published yet.** The `:amd` tag in the registry is
+> a 2026-04-24 build on the old Ubuntu 24.04 base and is not `:latest-rocm` — do
+> not use it.
 
 > **Requirements:**
 > - Host driver compatible with ROCm 10.0 (see the [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)).
@@ -354,67 +373,55 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-torch-amd \
   . 2>&1 | tee "${LOG_DIR}/torch-amd.log"
 
-# Step 5: final amd image
-sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd --push \
+# Step 5: final rocm wrapper (per arch)
+sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm-amd64 \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm-amd64 --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-amd \
   . 2>&1 | tee "${LOG_DIR}/amd.log"
+
+# Step 6: the variant manifest (ROCm is amd64-only)
+sudo nerdctl manifest create ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm-amd64
+sudo nerdctl manifest push --purge ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
 ```
 
 **Run with GPU access:**
 
 ```bash
-sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd
+sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
 ```
 
-## Hailo variant
+## Hailo (in the standard image)
 
 HailoRT + `hailortcli` + the `hailonet` element + **TAPPAS** (`hailofilter`,
 `hailocropper`, `hailooverlay`, `hailoaggregator`, `hailotracker`, ...) +
-pyhailort, built
-into the **standard runtime** (`:latest-cross`) for amd64 and arm64, for hosts
-with a Hailo-10H accelerator (Hailo-8 support was dropped 2026-09-20). Design,
-upstream matrix and pins: [`hailo-support.md`](hailo-support.md). The PCIe
-kernel driver is host-only (GPL-2.0, DKMS) — the image needs
-`--device=/dev/hailo0`.
+pyhailort are built into the **standard runtime** (`:latest`) for amd64 and
+arm64, for hosts with a Hailo-10H accelerator (Hailo-8 support was dropped
+2026-09-20; riscv64 has no HailoRT support). There is **no separate Hailo tag**:
+the standalone `:hailo` variant and `linux/Dockerfile.hailo` were retired on
+2026-09-22 as a duplicate of this build (owner directive: a variant exists only
+for a stack that cannot ship in `:latest`). Design, upstream matrix and pins:
+[`hailo-support.md`](hailo-support.md). The PCIe kernel driver is host-only
+(GPL-2.0, DKMS) — the image needs `--device=/dev/hailo0`.
 
 **Files involved:**
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.hailo` | Stage 1 builds HailoRT against the media GStreamer; stage 2 copies the payload into `:latest-cross-<arch>` |
+| `linux/Dockerfile.torch` | The Hailo `RUN` in the standard wrapper: builds the payload natively in the runtime image (amd64/arm64; riscv64 skips) |
 | `linux/scripts/03-media/build/hailo/build-hailort.sh` | Verified sources → offline CMake build → self-checks (`hailortcli --version`, `gst-inspect-1.0 hailonet`) |
-| `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*` pins (also the Dockerfile ARG defaults) |
+| `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*`, `TAPPAS_*` pins (also the Dockerfile ARG defaults) |
 
-**Build (per arch, after the runtime lane has published `:latest-cross-<arch>`):**
-
-The per-arch tags below (`:hailo-amd64`, `:hailo-arm64`) are the variant's
-**wrappers**; the public tag is the variant **manifest** `:latest-cross-hailo`
-over every arch it builds for — one tag, one manifest, per the convention in
-[`AGENTS.md`](../AGENTS.md#image-and-tag-naming-published-tags).
-
-```bash
-# amd64 — the builder is the cross-android artifact (GStreamer dev included),
-# the base is the published runtime image.
-nerdctl build --platform linux/amd64 \
-  -f linux/Dockerfile.hailo \
-  --build-arg TARGETARCH=amd64 \
-  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:hailo-amd64 --push \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-hailo-amd64,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-hailo-amd64 \
-  .
-
-# arm64 — same command with TARGETARCH=arm64 (QEMU; no riscv64 build exists)
-```
+**Build:** the normal chain (`make cross-build`, or `build-cross-chain.sh`) —
+nothing Hailo-specific to run.
 
 **Run:**
 
 ```bash
-nerdctl run --rm -it --device=/dev/hailo0 ghcr.io/kataglyphis/kataglyphis_beschleuniger:hailo-amd64
+nerdctl run --rm -it --device=/dev/hailo0 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 ## Edge accelerators

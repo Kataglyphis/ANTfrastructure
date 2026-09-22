@@ -435,7 +435,7 @@ runtime_ancestry_assert_wrappers() {
 # The per-arch wrapper tags are mutable and go LIVE inside the build loop, before
 # the manifest is smoke-gated. A later --repair run indexes whatever those tags
 # currently hold; a 2-of-3 rebuild leaves one arch on an older generation, so
-# indexing them ships a mixed-generation :latest-cross. The run-id annotation
+# indexing them ships a mixed-generation :latest. The run-id annotation
 # (ancestry_run_id_annotation) is the coherence key: three tags from one run
 # share it.
 # ==============================================================================

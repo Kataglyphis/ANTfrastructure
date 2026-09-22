@@ -96,7 +96,7 @@ _manifest_wrapper_gate() {
 # Refuse to SHRINK an already-published index. The coherence gate above asks
 # whether the arches agree on a generation; it cannot ask whether they are ALL
 # there. A single-arch run therefore assembles a single-arch index that is
-# internally coherent, and the push replaces a 3-arch :latest-cross with a
+# internally coherent, and the push replaces a 3-arch :latest with a
 # 1-arch one. Observed live 2026-08-31: the published index had shrunk to
 # riscv64 alone. docs/refactoring-backlog.md
 _manifest_completeness_gate() {
@@ -167,6 +167,20 @@ create_manifest() {
     # Same transient registry/network class runtime_push_tag guards against.
     retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
       run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
+  fi
+
+  # The deprecated :latest-cross name, from the SAME refs and only after the real
+  # tag passed every gate above. Left un-pushed it would freeze at its last
+  # index while consumers kept pulling it. versions.env CROSS_LEGACY_ALIAS_TAG.
+  local alias
+  alias="$(cross_final_image_legacy_alias "${IMAGE_NAME}")"
+  if [ -n "${alias}" ]; then
+    "${NERDCTL_BIN:-nerdctl}" manifest rm "${alias}" >/dev/null 2>&1 || true
+    run "${NERDCTL_BIN:-nerdctl}" manifest create "${alias}" "${refs[@]}"
+    if [ "${PUSH_MANIFEST}" -eq 1 ]; then
+      retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${alias}" \
+        run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${alias}"
+    fi
   fi
 }
 
@@ -254,7 +268,7 @@ _manifest_build_and_smoke() {
   run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 
   # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
-  # can never ship as :latest-cross. RUNTIME_IMAGE_SMOKE=0 skips.
+  # can never ship as :latest. RUNTIME_IMAGE_SMOKE=0 skips.
   if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
@@ -325,8 +339,10 @@ main() {
     # Advisory by default (runs after push); MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
     if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
        && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
+      # --tag: the index THIS run wrote. The script's default is only :latest,
+      # which a host-infixed (:latest-hostarm64) run never touches.
       if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
-         bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh"; then
+         bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
         log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
       elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
         err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"

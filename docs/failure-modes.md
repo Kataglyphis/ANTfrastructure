@@ -381,7 +381,7 @@ with the daemon: `systemctl --user restart buildkit.service` (no build running),
 then `PRUNE_KEEP_GB=<N> linux/host-config/prune-safe.sh`. `--keep-storage` bounds
 the WHOLE store, and the non-candidates (cache mounts ~166G + `source.local` ~10G)
 count toward it, so N below ~180 prunes every regular record. Local
-`:latest-cross-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
+`:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
 
 ### A renamed or dropped distro package kills a stage hours in

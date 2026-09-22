@@ -13,7 +13,7 @@
 # building on the amd64-only cross :base tag (the orchestrator always overrides
 # BASE_IMAGE anyway). Same shape as Dockerfile.torch's BASE_IMAGE default.
 ARG TARGETARCH
-ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-base-${TARGETARCH}
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-base-${TARGETARCH}
 # TARGET_ARCH must be declared BEFORE ARTIFACT_IMAGE so a --build-arg TARGET_ARCH
 # influences the ARTIFACT_IMAGE default (ARG expansion only sees prior ARGs).
 ARG TARGET_ARCH

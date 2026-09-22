@@ -170,7 +170,7 @@ nerdctl image inspect … | jq .Config.Env                  # the ENV strings mu
 
 # CL1 / absl — 1 FAIL today, must be 0
 nerdctl run --rm --platform linux/<arch> -v <repo>:/repo:ro --entrypoint bash \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-<arch> \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-<arch> \
   /repo/linux/scripts/06-packaging/smoke-critical-fixes.sh
 #   expect: PASS absl/types/span.h found in /usr/local/include
 

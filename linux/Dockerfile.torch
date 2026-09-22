@@ -4,7 +4,7 @@
 # defaults to the CURRENT platform's package image instead of silently producing
 # a wrong-arch wrapper (the orchestrator always overrides BASE_IMAGE anyway).
 ARG TARGETARCH
-ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-package-${TARGETARCH}"
+ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-package-${TARGETARCH}"
 # AP3 (2026-08-18, correct re-implementation of the 2026-08-17 revert): the
 # cross wheelhouse is no longer BAKED into the package image — it is
 # bind-mounted here, in the ONE RUN that reads it (setup-torch-venv.sh
@@ -130,7 +130,8 @@ VOLUME ["${WORKDIR}"]
 # default. HailoRT + hailortcli + the hailonet GStreamer element; riscv64 has
 # no HailoRT support and skips. Plan and upstream matrix: docs/hailo-support.md.
 # The runtime image already has GCC/cmake/ninja and the GStreamer dev files, so
-# this is the same native build the :hailo variant does.
+# the build is native. This is the ONLY Hailo build: the standalone :hailo
+# variant (Dockerfile.hailo) was retired on 2026-09-22 as a duplicate of it.
 # ------------------------------------------------------------------------------
 ARG HAILORT_VERSION=5.4.0
 ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0

@@ -48,8 +48,8 @@ marker, so a consumer never has to guess.
 | `Dockerfile.sdk` | `:cross-compiler-amd64` | `:cross-sdk-<arch>` |
 | `Dockerfile.media` | `:cross-sdk-<arch>` | `:cross-media-<arch>` |
 | `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` |
-| `Dockerfile.package` | `:latest-cross-base-<arch>` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
-| `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` |
+| `Dockerfile.package` | `:latest-base-<arch>` + `:cross-android-<arch>` | `:latest-package-<arch>` |
+| `Dockerfile.torch` | `:latest-package-<arch>` | `:latest-<arch>` (incl. the Hailo payload on amd64/arm64) |
 | `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer (CUDA or MIGraphX) |
 | `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` (a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`), or `:winarm64` under `-TargetArch arm64` — the arm64 **artifact bundle**, still a `windows/amd64` image; **never publish it with `--platform windows/arm64`, and never as a manifest entry** ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)) |
 
@@ -71,8 +71,8 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 After a successful `build-cross-chain.sh` run:
 - All cross-lane intermediate images pushed to GHCR
-- Per-architecture wrapper images (`:latest-cross-<arch>`) pushed to GHCR
-- Multi-arch manifest (`:latest-cross`) pushed to GHCR
+- Per-architecture wrapper images (`:latest-<arch>`) pushed to GHCR
+- Multi-arch manifest (`:latest`, plus its deprecated `:latest-cross` alias until 2026-10-31) pushed to GHCR
 
 ---
 
@@ -80,10 +80,10 @@ After a successful `build-cross-chain.sh` run:
 
 | Image | Platforms | Tag examples | Description |
 | --- | --- | --- | --- |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross` | The default variant's **manifest** — the current cross-lane release. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross-<variant>` | A named variant's **manifest** over all its arches (`<variant>` = `nvidia`, `amd`, `hailo`, `qnn`, … — a feature, never an architecture). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | The default **manifest** — the current cross-lane release, Hailo and (when staged) QNN included. `latest-cross` is its deprecated alias until 2026-10-31. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | the variant's arches (nvidia: linux/amd64 + linux/arm64; rocm: linux/amd64) | `latest-nvidia`, `latest-rocm` | A variant's **manifest** over all its arches, only for a stack that cannot ship in `latest` (`<variant>` is a feature, never an architecture). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64 | `cross-compiler-amd64`, `cross-sdk-<arch>`, `cross-media-<arch>`, `cross-android-<arch>` | Cross-lane intermediate images (amd64-hosted, cross-compiled for target arches). |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-cross-base-<arch>`, `latest-cross-package-<arch>`, `latest-cross-<arch>` | Runtime lane per-arch **wrapper** images the manifests are assembled from (internal). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-base-<arch>`, `latest-package-<arch>`, `latest-<arch>`, `latest-<variant>-<arch>` | Runtime lane per-arch **wrapper** images the manifests are assembled from (internal). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | linux/amd64, linux/arm64 (as pushed) | `webserver`, `webserver-<git-sha>` | Minimal nginx static webserver image. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX — a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload. Not a platform, not a manifest entry — see [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags). |

@@ -21,7 +21,7 @@ _gate() {
     TARGET_ARCHES="${TARGET_ARCHES:-amd64,arm64,riscv64}"
     BUILD_IMAGES="${BUILD_IMAGES:-1}"
     FORCE_MANIFEST="${FORCE_MANIFEST:-0}"
-    IMAGE_NAME="${IMAGE_NAME:-img:latest-cross}"
+    IMAGE_NAME="${IMAGE_NAME:-img:latest}"
     eval "${_fn}"
     arch_list_to_words() { printf '%s' "${1//,/ }"; }
     runtime_wrapper_tag() { [ "${TAG_FAILS:-0}" = "1" ] && return 1; printf 'img:runtime-%s' "$1"; }

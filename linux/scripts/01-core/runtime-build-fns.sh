@@ -450,7 +450,7 @@ _runtime_build_wrapper() {
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
   # XC2/XC3: the wrapper is the tag that goes LIVE and is indexed into
-  # :latest-cross, so stamp it with the android parent-digest (its immutable
+  # :latest, so stamp it with the android parent-digest (its immutable
   # cross-lane ancestor) + the run-id when it will be pushed. base/package are
   # local intermediates in the normal flow, so android is the wrapper's nearest
   # registry-resident ancestor to record.

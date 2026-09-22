@@ -3,7 +3,7 @@
 # The three GPU flags and why each is needed: docs/linux-host-setup.md § B2b.
 set -euo pipefail
 
-IMAGE="${JETSON_WEBCAM_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-hostarm64-arm64}"
+IMAGE="${JETSON_WEBCAM_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-hostarm64-arm64}"
 CAMERA="${JETSON_WEBCAM_CAMERA:-/dev/video0}"
 PORT="${JETSON_WEBCAM_PORT:-8080}"
 CDI_DIR="${HOME}/.config/cdi"

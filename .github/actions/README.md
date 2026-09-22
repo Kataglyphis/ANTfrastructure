@@ -231,7 +231,7 @@ Inputs: `image` (optional — defaults to the family Linux image; see above),
 `script` (bash fragment, verbatim), `workdir`,
 `log-file` (tee target), `extra-args` (verbatim extra `docker run` args).
 Used by consumer repos to run their build/test steps inside the published
-`:latest-cross` images.
+`:latest` images.
 
 > **Warning — script injection surface:** `script`, `extra-args` and
 > `log-file` are substituted **verbatim** into the action's `run:` block.

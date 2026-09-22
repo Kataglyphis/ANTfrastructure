@@ -164,7 +164,7 @@ describe_cross_chain() {
     elif [ "${stage}" = "runtime" ]; then
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-N/A}"
       printf '  Delegates to: build-runtime-manifest.sh\n'
-      printf '  Produces:     :latest-cross multi-arch manifest\n'
+      printf '  Produces:     :latest multi-arch manifest\n'
     else
       tag="$(cross_stage_tag "${stage}")"
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-ubuntu:26.04}"

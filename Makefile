@@ -7,7 +7,7 @@
 #
 #   make help            list targets
 #   make preflight       fast, no-build gate (shellcheck + verify-* suite)
-#   make cross-build     full base -> :latest-cross for ARCHES
+#   make cross-build     full base -> :latest for ARCHES
 #   make cross-stage     rebuild one STAGE for ARCHES
 #   make verify-chain    resolve digests; exit 2 if any downstream image is STALE
 #   make lint            shellcheck the tree at -S error
@@ -76,7 +76,7 @@ lint-workflows: ## Lint GitHub workflows (actionlint)
 test-linux-scripts: ## Unit tests for linux/scripts (tag naming, forwarding, disk guard)
 	bash $(SCRIPTS)/tests/run-tests.sh
 
-cross-build: ## Full base -> :latest-cross for ARCHES
+cross-build: ## Full base -> :latest for ARCHES
 	bash $(SCRIPTS)/build-cross-chain.sh --target-arches $(ARCHES) --log-dir $(LOG_DIR)
 
 cross-stage: ## Rebuild a single STAGE for ARCHES
