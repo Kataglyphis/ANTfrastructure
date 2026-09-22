@@ -103,6 +103,7 @@ The two halves of one topic often split:
 | **riscv64 builds at RVA23 (with vector)** — why enabling RVV costs no compatibility, why `rva23u64_zifencei` and not `rv64gcv`, and the four consumers that need more than `-march` | [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md) |
 | **IREE's two-stage cross build** — why the host stage runs COMPILER=ON in the default (runtime-only target) configuration, the three tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
+| **NVIDIA on arm64 (SBSA)**: building natively on an arm64 host, and running the image on a Jetson | [`linux-accelerator-images.md`](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |

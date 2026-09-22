@@ -39,6 +39,24 @@ GenAI still `trt-rtx`), and the official PyTorch `cu130` wheels warn that they
 do not target compute capability 8.7.
 
 
+## 2026-09-21 - The arm64 CUDA/cuDNN lane builds natively on SBSA
+
+The GPU lane had never been built on arm64. Built on a Jetson AGX Orin, for
+arm64 only, base through media with NVIDIA's SBSA CUDA 13.3, cuDNN 9.26 and
+NCCL. ORT's CUDA provider, 11 OpenCV CUDA modules and TVM's CUDA runtime carry
+`sm_80 sm_86 sm_87 sm_89 sm_90`; ffmpeg links NVENC/NVDEC.
+
+Two defects blocked the GPU layer on EVERY arch: NVIDIA's repository path used
+the Ubuntu codename (a 404) and both keyring SHA pins were stale. The rest was
+arm64 enablement: `sm_87` in `CUDA_ARCHITECTURES`, `CUDA_ARCH_BIN` for OpenCV,
+`ENABLE_TENSORRT=false` and `CUDA_INSTALL_COMPAT=0` for a Jetson, the image's
+GCC 16 kept with `NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`, a
+`CUDA_MB_PER_CICC` job budget against `cicc` peaks, `/tmp` restored after
+`COPY --link`, and ffmpeg's nonfree `--enable-cuda-nvcc` dropped. The chain
+still has no NVIDIA stage; the layer is inserted by hand
+(`docs/linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)).
+
+
 ## 2026-09-21 - HailoRT on Windows (Phase 3): library + CLI, both arches
 
 The Windows lane now builds HailoRT like the Linux lane does - from the

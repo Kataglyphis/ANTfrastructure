@@ -52,6 +52,15 @@ Two neighbours, so you land on the right page:
 - [A callee invoked in an `if !` condition runs with errexit off](#a-callee-invoked-in-an-if--condition-runs-with-errexit-off)
 - [A checksum probe that cannot reach the server reads as "nothing to verify"](#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify)
 - [A soname with no map entry is resolved by an `apt-cache` prefix guess](#a-soname-with-no-map-entry-is-resolved-by-an-apt-cache-prefix-guess)
+- [The NVIDIA apt keyring 404s on `ubunturesolute`](#the-nvidia-apt-keyring-404s-on-ubunturesolute)
+- [apt `gpgv` exits 111 after a `COPY --link` into `/tmp`](#apt-gpgv-exits-111-after-a-copy---link-into-tmp)
+- [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
+- [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
+- [A no-push wrapper build cannot find its own android image](#a-no-push-wrapper-build-cannot-find-its-own-android-image)
+- [A GPU venv ships two onnxruntime distributions](#a-gpu-venv-ships-two-onnxruntime-distributions)
+- [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
+- [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
+- [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
 
 **Windows: the layer store (hcsshim)**
 
@@ -884,6 +893,78 @@ list — it records the divergence that already existed on 2026-08-24, because
 inventing map entries would mean inventing sonames, and it fails in both
 directions so the list can only shrink honestly. Truth (3) stays out of a static
 test's reach; that is stated rather than papered over.
+
+### The NVIDIA apt keyring 404s on `ubunturesolute`
+
+**Symptom.** `Dockerfile.nvidia` dies in its first RUN fetching `.../compute/cuda/repos/ubunturesolute/<arch>/cuda-keyring_1.1-1_all.deb` (404).
+
+**Cause.** NVIDIA's repository path is the Ubuntu version digits (`ubuntu2604`), not the codename.
+
+**Fix.** `setup-cuda-repo.sh` builds it from `UBUNTU_VERSION`. A keyring SHA in `versions.env` names one repository's file; move both pins together when the Ubuntu base moves.
+
+### apt `gpgv` exits 111 after a `COPY --link` into `/tmp`
+
+**Symptom.** apt reports `Could not execute 'gpgv' to verify signature` / `repository is not signed` in a stage that verified fine before.
+
+**Cause.** `COPY --link` into `/tmp` resets the directory to 0755 (a plain `COPY` does not). apt's `_apt` user can no longer write its temp files.
+
+**Fix.** Restore `chmod 1777 /tmp` after the copy, as `Dockerfile.nvidia` does; `test-layer-order.sh` asserts it for every `--link` copy into `/tmp`.
+
+### nvcc rejects the image's GCC 16
+
+**Symptom.** `#error -- unsupported GNU version!` from nvcc's `host_config.h`; or, after working around it with `CUDAHOSTCXX=g++-15`, `GLIBCXX_3.4.xx not found` at link time.
+
+**Cause.** nvcc checks the host compiler's version. Pairing CUDA objects built by GCC 15 with a GCC 16 libstdc++ is what produced the `GLIBCXX` errors.
+
+**Fix.** Keep GCC 16 and set `NVCC_PREPEND_FLAGS=-allow-unsupported-compiler` (`Dockerfile.media`, `Dockerfile.package`). Never downgrade the host compiler.
+
+### A CUDA compile is `Killed` though average memory looked fine
+
+**Symptom.** A bare `Killed` in the ONNX Runtime GPU step; the kernel log shows `cicc` at 3-6 GB.
+
+**Cause.** Heavy CUDA translation units are staggered, so the average RSS hides the peak.
+
+**Fix.** `CUDA_MB_PER_CICC` (default 3500) sizes the GPU job count against the peak. Raise it before adding swap.
+
+### A no-push wrapper build cannot find its own android image
+
+**Symptom.** In `Dockerfile.torch`'s `wheels-source` stage: `cross-android-...: not found`; with an OCI context added, `unable to get info about digest ... content sha256:...: not found`; extracting with `nerdctl cp`, `cannot use cp with stopped containers in rootless mode`.
+
+**Cause.** The android tag exists only in containerd's store, which BuildKit's OCI worker cannot see. nerdctl maps every `oci-layout://` context onto one store id (`parent-image-key`), so a second one beside `runtime_package` makes one of them unresolvable. Rootless nerdctl refuses `cp` from a stopped container.
+
+**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. Never pass two `oci-layout://` contexts to one nerdctl build.
+
+### A GPU venv ships two onnxruntime distributions
+
+**Symptom.** ARCH-PARITY: `MORE THAN ONE onnxruntime distribution` (`onnxruntime_gpu` and `onnxruntime_webgpu`); the build log has `rm: cannot remove '/opt/wheels/...': Read-only file system`.
+
+**Cause.** `/opt/wheels` is a bind mount, read-only by default, and the variant prune's `rm -f ... || true` swallowed the error.
+
+**Fix.** `Dockerfile.torch` mounts it `rw` (BuildKit discards the writes after the RUN) and the prune has no `|| true`. CPU images never showed this because they carry no `_gpu` wheel.
+
+### The wrapper smoke fails `clang --version` after a partial rebuild
+
+**Symptom.** `COMPILER FAIL [clang-version]: clang --version: 23.1.0 (expected 23.1.1)` when only the later stages were rebuilt.
+
+**Cause.** The lower stages were built before a pin wave; the runtime lane asserts today's `versions.env`.
+
+**Fix.** Rebuild from the stage the pin belongs to. To finish a chain on its own older pins, export the payload pins (`LLVM_RELEASE`, `ONNXRUNTIME_VERSION`, ...) for the runtime run only; the runtime base installs its own and needs today's.
+
+### A Jetson GPU container sees no GPU
+
+**Symptom.** `unresolvable CDI devices nvidia.com/gpu=all`; or `NvRmMemInitNvmap failed: error Permission denied` then `No CUDA GPUs are available`; or `OCI runtime create failed: unknown version specified`.
+
+**Cause.** Rootless nerdctl on Tegra: the CDI spec is hidden by rootlesskit's `/run`, the GPU nodes belong to the host `video` group a rootless process drops, and Ubuntu's `crun` is too old for containerd 2.x.
+
+**Fix.** The three flags and the crun install: [`linux-host-setup.md` § B2b](linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
+
+### A USB camera delivers half its frame rate
+
+**Symptom.** A V4L2 capture sits at exactly 15 fps while the camera advertises 30.
+
+**Cause.** `CAP_PROP_BUFFERSIZE=1`: with one V4L2 buffer the camera cannot capture while the last frame is dequeued.
+
+**Fix.** Leave the buffer count alone and hand on only the newest frame from a capture thread, as [`linux/jetson-webcam/app.py`](../linux/jetson-webcam/app.py) does.
 
 ## Windows: the layer store (hcsshim)
 
