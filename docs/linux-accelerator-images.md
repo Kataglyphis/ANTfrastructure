@@ -291,6 +291,11 @@ kernel driver is host-only (GPL-2.0, DKMS) — the image needs
 
 **Build (per arch, after the runtime lane has published `:latest-cross-<arch>`):**
 
+The per-arch tags below (`:hailo-amd64`, `:hailo-arm64`) are the variant's
+**wrappers**; the public tag is the variant **manifest** `:latest-cross-hailo`
+over every arch it builds for — one tag, one manifest, per the convention in
+[`AGENTS.md`](../AGENTS.md#image-and-tag-naming-published-tags).
+
 ```bash
 # amd64 — the builder is the cross-android artifact (GStreamer dev included),
 # the base is the published runtime image.

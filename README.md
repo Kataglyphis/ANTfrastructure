@@ -122,12 +122,20 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 | Tag | What |
 |-----|------|
-| `:latest-cross` | Multi-arch release index (amd64/arm64/riscv64) — the stable API |
-| `:latest-cross-<arch>` | Per-architecture wrapper |
-| `:cross-media-<arch>` | Media libraries layer |
+| `:latest-cross` | The default variant's **manifest** (linux amd64/arm64/riscv64) — the stable API |
+| `:latest-cross-<variant>` | A named variant's **manifest** over all its arches — `<variant>` describes the feature (`nvidia`, `amd`, `hailo`, `qnn`, …), never an architecture |
+| `:latest-cross-<variant>-<arch>` | Per-architecture wrapper the manifest is assembled from (internal) |
+| `:cross-media-<arch>` | Media libraries layer (internal) |
 | `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
-| `:winamd64` | Windows build image (amd64) |
-| `:winarm64` | Windows **artifact bundle** for arm64 (labels a `windows/amd64` image — never publish it as `windows/arm64`) |
+| `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |
+| `:winarm64` | Windows **artifact bundle** for arm64 — a `windows/amd64` image, its own tag, never a manifest entry and never `--platform windows/arm64` |
+
+**One published tag is one manifest, and the manifest carries every architecture
+its variant supports** (owner directive 2026-09-21). Adding an architecture adds
+an entry to the same tag; adding a variant adds a tag. The Windows lane is the
+documented exception: `windows/arm64` is not a platform, so its arm64 output is a
+bundle that cannot share `:winamd64`'s manifest. Rules and rationale:
+[`AGENTS.md` § Image and tag naming](AGENTS.md#image-and-tag-naming-published-tags).
 
 Full matrix with platforms, tag hints and per-stage intermediates:
 [docs/overview.md](docs/overview.md).

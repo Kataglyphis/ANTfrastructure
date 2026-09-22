@@ -10,7 +10,10 @@ accelerators](linux-accelerator-images.md#edge-accelerators). This page owns the
 design, the upstream facts it rests on, and what remains open.
 
 **Proven 2026-09-20:** the payload was first proven as a variant
-(`:hailo-amd64` / `:hailo-arm64`) and then folded into `Dockerfile.torch`, so
+(`:hailo-amd64` / `:hailo-arm64` — the per-arch **wrappers** of the variant
+manifest `:latest-cross-hailo`, per the tag convention in
+[`AGENTS.md`](../AGENTS.md#image-and-tag-naming-published-tags)) and then folded
+into `Dockerfile.torch`, so
 every `:latest-cross` wrapper carries it. The build's own checks run before the
 payload is accepted, so a broken element fails the build rather than shipping.
 **pyhailort is built from source** (scikit-build-core, the `platform/`
