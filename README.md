@@ -235,9 +235,10 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > published with `--platform windows/arm64`. Current status, coverage and gates:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
-> **Re-measured 2026-09-21** — both lanes build green. amd64: smoke 228/0/0
-> (GPU, zip-less) / 198/0/1 (CPU), arch gate 1134/0. arm64: smoke 120/0/15, arch
-> gate 1047/0. The patched LLVM toolchain (#135, `BUILD_PATCHED_LLVM=1`) is the
+> **Re-measured 2026-09-22** — both lanes build green and are published
+> (`:winamd64`, `:winarm64`). amd64: smoke **236/0/0** (GPU, with Hailo) /
+> 198/0/1 (CPU), arch gate **1201/0**. arm64: smoke **127/0/15**, arch gate
+> **1052/0**. The patched LLVM toolchain (#135, `BUILD_PATCHED_LLVM=1`) is the
 > default. **CUDA/cuDNN is cross-built for arm64** (#176): the arm64 toolkit
 > payload (`lib\arm64`, SHA-pinned redist components + cuDNN) feeds the ORT CUDA
 > EP, GenAI CUDA, the OpenCV CUDA modules and TVM — all 0xAA64; running them
