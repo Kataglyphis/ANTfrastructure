@@ -51,10 +51,6 @@ t_assert_eq "example.io/repo:latest-rocm" "$(SNIPPET='cross_final_image_tag' _gr
 t_assert_contains "$(SNIPPET='echo reached' _graph ENABLE_NVIDIA=true ENABLE_AMD=true)" "both true"
 t_assert_contains "$(SNIPPET='echo reached' _graph CROSS_VARIANT=cuda)" "unknown CROSS_VARIANT cuda"
 
-t_case "a variant never gets the deprecated :latest-cross alias"
-t_assert_eq "" \
-  "$(SNIPPET='CROSS_LEGACY_ALIAS_TAG=latest-cross cross_final_image_legacy_alias "$(cross_final_image_tag)"' _graph CROSS_VARIANT=nvidia)"
-
 t_case "the refusals, run through the REAL entry points (read-only modes)"
 CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cross-stage.sh"
 # Leading VAR=value words are the environment; the rest runs time-boxed.

@@ -72,7 +72,7 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 After a successful `build-cross-chain.sh` run:
 - All cross-lane intermediate images pushed to GHCR
 - Per-architecture wrapper images (`:latest-<arch>`) pushed to GHCR
-- Multi-arch manifest (`:latest`, plus its deprecated `:latest-cross` alias until 2026-10-31) pushed to GHCR
+- Multi-arch manifest (`:latest`) pushed to GHCR
 
 ---
 
@@ -80,7 +80,7 @@ After a successful `build-cross-chain.sh` run:
 
 | Image | Platforms | Tag examples | Description |
 | --- | --- | --- | --- |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | The default **manifest** — the current cross-lane release, Hailo and (when staged) QNN included. `latest-cross` is its deprecated alias until 2026-10-31. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | The default **manifest** — the current cross-lane release, Hailo and (when staged) QNN included. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | the variant's arches (nvidia: linux/amd64 + linux/arm64; rocm: linux/amd64) | `latest-nvidia`, `latest-rocm` | A variant's **manifest** over all its arches, only for a stack that cannot ship in `latest` (`<variant>` is a feature, never an architecture). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64 | `cross-compiler-amd64`, `cross-sdk-<arch>`, `cross-media-<arch>`, `cross-android-<arch>` | Cross-lane intermediate images (amd64-hosted, cross-compiled for target arches). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-base-<arch>`, `latest-package-<arch>`, `latest-<arch>`, `latest-<variant>-<arch>` | Runtime lane per-arch **wrapper** images the manifests are assembled from (internal). |

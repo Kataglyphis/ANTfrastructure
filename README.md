@@ -138,7 +138,6 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:latest` | The default **manifest** (linux amd64/arm64/riscv64) — the stable API. Carries the Hailo runtime on amd64/arm64 (see below) |
 | `:latest-<variant>` | A variant's **manifest** over all its arches, for a stack that cannot go into `:latest`: `:latest-nvidia` (CUDA), `:latest-rocm` (ROCm). `<variant>` names the feature, never an architecture |
 | `:latest-<arch>`, `:latest-<variant>-<arch>` | Per-architecture wrappers the manifests are assembled from (internal) |
-| `:latest-cross` | **Deprecated** alias of `:latest` (the old name), pushed with every release until 2026-10-31, then deleted |
 | `:cross-media-<arch>` | Media libraries layer (internal) |
 | `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
 | `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |

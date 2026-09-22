@@ -117,8 +117,7 @@ every stage as build-args. Change them there, not per command. The apt forms
 
 The standard build's release target is the multi-arch manifest `:latest`
 ([`linux-build-basics.md` § Image Hierarchy](linux-build-basics.md#image-hierarchy)
-owns the tag scheme). `:latest-cross` is its deprecated old name, pushed as an
-alias of the same index until 2026-10-31; details in
+owns the tag scheme). `:latest-cross` is its retired old name; details in
 [`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).
 
 ## NVIDIA on arm64 (SBSA): one image for servers and Jetson

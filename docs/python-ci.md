@@ -189,6 +189,6 @@ one is pinning itself to a single architecture.
 > entries". If you find such a workaround still in place, it is stale — remove
 > it rather than copying it.
 
-The same index was named `:latest-cross` until 2026-09-22; that name survives
-only as a deprecated alias — see
+The same index was named `:latest-cross` until 2026-09-22; that name is retired
+(no release publishes it; the tags go once `main` carries `:latest`) — see
 [`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).

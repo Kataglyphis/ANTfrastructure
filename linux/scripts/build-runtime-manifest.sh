@@ -168,20 +168,6 @@ create_manifest() {
     retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
       run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
   fi
-
-  # The deprecated :latest-cross name, from the SAME refs and only after the real
-  # tag passed every gate above. Left un-pushed it would freeze at its last
-  # index while consumers kept pulling it. versions.env CROSS_LEGACY_ALIAS_TAG.
-  local alias
-  alias="$(cross_final_image_legacy_alias "${IMAGE_NAME}")"
-  if [ -n "${alias}" ]; then
-    "${NERDCTL_BIN:-nerdctl}" manifest rm "${alias}" >/dev/null 2>&1 || true
-    run "${NERDCTL_BIN:-nerdctl}" manifest create "${alias}" "${refs[@]}"
-    if [ "${PUSH_MANIFEST}" -eq 1 ]; then
-      retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${alias}" \
-        run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${alias}"
-    fi
-  fi
 }
 
 _manifest_extra_arg() {

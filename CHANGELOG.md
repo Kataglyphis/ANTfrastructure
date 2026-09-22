@@ -7,6 +7,36 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - `:latest-cross` is retired, not deprecated
+
+The alias lived for one day. The owner decided against a deprecation window, so
+the mechanism is gone rather than disabled: `CROSS_LEGACY_ALIAS_TAG`,
+`cross_final_image_legacy_alias` and the second `manifest push` in
+`build-runtime-manifest.sh` are deleted. From here on a release publishes
+`:latest` and nothing else.
+
+**The registry tags are NOT deleted yet, and deleting them now would take the
+fleet's Linux CI down with them.** Every consumer resolves its container ref
+through this repo's composite actions pinned at `@main` (98 `...@main` refs
+across six repos, none passing an explicit `image:`), and `main` is 56 commits
+behind: it still says `CI_IMAGE_LINUX_TAG=latest-cross` and both action defaults
+still name the old tag. So the tag the fleet actually pulls today is
+`:latest-cross`. The deletion is gated on: develop merged to main, then one
+green Linux lane per consumer against `:latest`.
+
+The deletion itself is also not a plain "delete the version": `:latest` and
+`:latest-cross` are ONE GHCR package version (`sha256:e0de6c95…`, and the same
+for the arm64/riscv64 pairs), and GHCR deletes by version, not by tag. The old
+name has to be made a version of its own first, or the deletion has to wait for
+the release after which `:latest` has moved on and `:latest-cross` is frozen
+alone. `ghcr-delete-tags.sh` already refuses the unsafe form: it skips a version
+whose digest is shared with a tag being kept, so running it today is a no-op,
+not a disaster (`docs/linux-host-setup.md` § B8).
+
+`test-tag-naming.sh` keeps a regression guard: no tag function may compose the
+old name again. Dated history keeps it, because the tag really was called that.
+
+
 ## 2026-09-22 - GPU variant chains: `CROSS_VARIANT=nvidia|rocm` builds `:latest-nvidia` / `:latest-rocm`
 
 **A GPU image is now a variant CHAIN, not a toggle on the default one.**
