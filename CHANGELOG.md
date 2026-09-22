@@ -7,6 +7,32 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - The arm64 GPU runtime image runs on a Jetson
+
+The runtime lane (base -> package -> wrapper) had never carried a GPU. Built
+natively on a Jetson AGX Orin with `ENABLE_NVIDIA=true`, it now ships CUDA,
+cuDNN and NCCL into the package, and installs `pytorch-cu130` and
+`onnxruntime-gpu` in the wrapper. On the Orin's GPU (see
+`docs/linux-host-setup.md` § B2b for the rootless call):
+
+- PyTorch: `cuda available: True`, device `Orin (8, 7)`, a matmul matching the CPU.
+- ONNX Runtime 1.29: a MatMul served by `CUDAExecutionProvider`.
+- OpenCV 5.0 CUDA: one device, `cuda.threshold` bit-identical to the CPU.
+- `nvcc -arch=sm_87` in the image: a kernel over 1M elements, 0 wrong.
+
+Fixed on the way, each with a suite that goes red when the fix is removed:
+`--no-push` wrapper builds could not see the android wheels (now a directory
+context), the torch pin step swapped CUDA torch back to CPU, a read-only
+`/opt/wheels` made the ORT-variant prune fail silently, GenAI asked for TRT-RTX
+without TensorRT, the Vulkan prune left 1.8 GB of x86-64 in the arm64 image on
+a non-amd64 builder, and the arm64 gtk4 exception now follows the loader rather
+than the arch.
+
+Not yet: the image's media layer predates the 2026-09-18 pin wave (ORT 1.29,
+GenAI still `trt-rtx`), and the official PyTorch `cu130` wheels warn that they
+do not target compute capability 8.7.
+
+
 ## 2026-09-21 - HailoRT on Windows (Phase 3): library + CLI, both arches
 
 The Windows lane now builds HailoRT like the Linux lane does - from the
