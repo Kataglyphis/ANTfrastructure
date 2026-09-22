@@ -7,6 +7,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - Windows `-Variant rocm`: the driver builds `:winamd64-rocm`
+
+**`Build-Buildkit.ps1 -Variant rocm` builds the ROCm image.** It runs the default chain
+up to media, then `Dockerfile.rocm` → torch → final under its own tags
+(`bk-windows-rocm`, `bk-windows-torch-rocm`, `bk-winamd64-rocm`), so a rocm run never
+overwrites the default images. `-Variant rocm -Stages rocm,torch,final` reuses an
+existing default media.
+
+- `-Variant ''|nvidia|rocm`; `-Gpu` stays and means nvidia. `Resolve-BkVariant` refuses
+  before buildkitd is touched: rocm on arm64, `-Gpu` with rocm, `-Stages rocm` on another
+  variant, and a push tag that does not match the variant (only rocm may push to
+  `:winamd64-rocm`).
+- `Install-Rocm.ps1` refuses a media base that carries `GPU_TYPE`, `CUDA_ROOT` or
+  `CUDA_PATH`: the shared media tag can hold a leftover `-Gpu` build.
+- Smoke: `EXPECT_ROCM=1` runs `Test-RocmImage.ps1` after the CPU suite. It checks the env
+  contract, the absence of CUDA, that AMD's LLVM does not shadow `clang-cl`/`lld-link`,
+  `.info\version`, the device bitcode, and a `hipcc --offload-arch=gfx1201` compile.
+- Torch stays CPU until OrchestrANT has a Windows ROCm extra.
+- The nvidia and default runs are unchanged: same tags, same push behaviour.
+- Tests: `Driver.Variant.Tests.ps1` (8) and `Rocm.Install.Tests.ps1` (17).
+
 ## 2026-09-22 - Hooks on a Windows host: pre-push clears git's environment, the shellcheck ratchet grades again
 
 **Git exports `GIT_DIR` (and `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_PREFIX`) to hooks,

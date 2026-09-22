@@ -1,7 +1,7 @@
 #requires -Version 7.0
-# Windows ROCm (Install-Rocm.ps1 + Dockerfile.rocm). Covers the URL guard, the amd64
-# refusal, the layout gate (each required piece removed in turn must fail it) and the
-# PATH rule. NOT covered: the download, the extraction and hipcc itself — only a build can.
+# Windows ROCm (Install-Rocm.ps1, Dockerfile.rocm, Test-RocmImage.ps1): URL guard, amd64 and
+# fork-base refusals, layout gate, env contract, toolchain shadowing, PATH rule. NOT covered:
+# the download, the extraction, hipcc itself and the driver wiring (Driver.Variant.Tests.ps1).
 
 Describe 'Install-Rocm: tarball URL' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Get-RocmWindowsTarballUrl')
@@ -86,6 +86,68 @@ Describe 'Install-Rocm: layout gate' {
             New-FakeRocmTree -Root $dir -Version '9.9.9'
             Assert-Throws { Assert-RocmWindowsLayout -Root $dir -Release '10.0.0' } 'version mismatch' -MessagePattern "says '9\.9\.9'"
         }
+    }
+}
+
+Describe 'Install-Rocm: fork base (rocm forks from the DEFAULT media only)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Assert-RocmForkBase')
+
+    It 'accepts a default-media base (no GPU_TYPE, or GPU_TYPE=cpu, and no CUDA env)' {
+        Assert-RocmForkBase -GpuType '' -CudaRoot '' -CudaPath ''
+        Assert-RocmForkBase -GpuType 'cpu' -CudaRoot '' -CudaPath ''
+        Assert-True $true 'default bases passed'
+    }
+
+    It 'refuses a CUDA-lineage base, naming every leaked variable' {
+        Assert-Throws { Assert-RocmForkBase -GpuType 'nvidia' -CudaRoot '' -CudaPath '' } 'GPU_TYPE=nvidia' -MessagePattern 'GPU_TYPE=nvidia'
+        Assert-Throws { Assert-RocmForkBase -GpuType '' -CudaRoot 'C:\cuda' -CudaPath '' } 'CUDA_ROOT' -MessagePattern 'CUDA_ROOT=C:\\cuda'
+        Assert-Throws { Assert-RocmForkBase -GpuType 'nvidia' -CudaRoot 'C:\a' -CudaPath 'C:\b' } 'all three' -MessagePattern 'CUDA_PATH=C:\\b, CUDA_ROOT=C:\\a, GPU_TYPE=nvidia'
+    }
+}
+
+Describe 'Test-RocmImage: env contract' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-RocmImage.ps1' -FunctionName 'Get-RocmImageEnvFinding')
+    function New-RocmGoodEnv {
+        return @{ HIP_PATH = 'C:\TheRock\build'; ROCM_PATH = 'C:\TheRock\build'; HIP_PLATFORM = 'amd'; GPU_TYPE = 'rocm'
+            HIP_DEVICE_LIB_PATH = 'C:\TheRock\build\lib\llvm\amdgcn\bitcode'; ROCM_WINDOWS_RELEASE = '10.0.0' }
+    }
+
+    It 'has no finding for the env Dockerfile.rocm sets' {
+        Assert-Equal 0 @(Get-RocmImageEnvFinding -Environment (New-RocmGoodEnv)).Count 'good env'
+    }
+
+    It 'reports each broken piece of the contract' {
+        $cases = @(
+            @{ Key = 'HIP_PATH'; Value = $null; Pattern = 'HIP_PATH is not set' },
+            @{ Key = 'ROCM_WINDOWS_RELEASE'; Value = ''; Pattern = 'ROCM_WINDOWS_RELEASE is not set' },
+            @{ Key = 'GPU_TYPE'; Value = 'nvidia'; Pattern = "GPU_TYPE is 'nvidia'" },
+            @{ Key = 'HIP_PLATFORM'; Value = 'nvidia'; Pattern = "HIP_PLATFORM is 'nvidia'" },
+            @{ Key = 'ROCM_PATH'; Value = 'C:\elsewhere'; Pattern = 'differ' },
+            @{ Key = 'CUDA_PATH'; Value = 'C:\cuda'; Pattern = 'CUDA lineage leaked' }
+        )
+        foreach ($c in $cases) {
+            $e = New-RocmGoodEnv
+            $e[$c.Key] = $c.Value
+            $got = @(Get-RocmImageEnvFinding -Environment $e)
+            Assert-Equal 1 $got.Count "exactly one finding for $($c.Key)"
+            Assert-Match $c.Pattern $got[0] "finding for $($c.Key)"
+        }
+    }
+}
+
+Describe 'Test-RocmImage: AMD''s LLVM must not shadow the image toolchain' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-RocmImage.ps1' -FunctionName 'Get-RocmShadowFinding')
+
+    It 'passes when every tool resolves outside ROCm (or not at all)' {
+        $resolved = @{ 'clang-cl' = 'C:\Users\x\scoop\apps\llvm\current\bin\clang-cl.exe'; 'lld-link' = $null
+            'clang' = 'C:\TheRock\buildx\bin\clang.exe' }   # a sibling dir sharing the prefix is NOT inside
+        Assert-Equal 0 @(Get-RocmShadowFinding -Resolved $resolved -RocmRoot 'C:\TheRock\build').Count 'no shadow'
+    }
+
+    It 'flags a tool that resolves into ROCm''s tree, case-insensitively' {
+        $got = @(Get-RocmShadowFinding -Resolved @{ 'clang-cl' = 'c:\therock\BUILD\lib\llvm\bin\clang-cl.exe' } -RocmRoot 'C:\TheRock\build\')
+        Assert-Equal 1 $got.Count 'one shadowed tool'
+        Assert-Match 'clang-cl resolves into ROCm' $got[0] 'names the tool'
     }
 }
 
