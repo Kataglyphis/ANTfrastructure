@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # linux/jetson-webcam: run.sh refuses a missing prerequisite by name, passes the
 # three Jetson GPU flags, and app.py cannot stream on after inference died.
-# Does NOT cover: the camera, the GPU or the model -- that is the README's run.
+# Does NOT cover: the camera, the GPU, the model, or whether the CUDA graph is
+# actually replayed -- those are the README's measured run.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -31,5 +32,13 @@ t_case "a dead inference thread ends the process instead of streaming nothing"
 t_assert_contains "$(sed -n '/^def run_or_die/,/^def main/p' "${DIR}/app.py")" "os._exit(1)"
 t_assert_contains "$(sed -n '/^def main/,$p' "${DIR}/app.py")" "target=run_or_die"
 t_assert_ok python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${DIR}/app.py"
+
+t_case "the live path stays GPU-bound and at the camera's rate"
+_code="$(sed 's/#.*$//' "${DIR}/app.py")"
+t_assert_contains "${_code}" "torch.cuda.CUDAGraph()" "the network replays from one CUDA graph"
+t_assert_contains "${_code}" "batched_nms(" "one NMS over every class, not torchvision's per-class loop"
+t_assert_eq "" "$(printf '%s\n' "${_code}" | grep -F 'CAP_PROP_BUFFERSIZE')" \
+  "a single V4L2 buffer halved the camera to 15 fps"
+t_assert_contains "${_code}" "cap.set(cv2.CAP_PROP_FPS, 30)"
 
 t_summary
