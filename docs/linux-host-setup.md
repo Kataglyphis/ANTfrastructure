@@ -186,6 +186,34 @@ Verify:
 docker info | grep -i 'default runtime'
 ```
 
+### B2b. A GPU container on a Jetson, with rootless nerdctl
+
+Measured on a Jetson AGX Orin (L4T R39, `nvidia-container-toolkit` 1.20.1,
+2026-09-22): the arm64 GPU wrapper ran PyTorch, the ONNX Runtime CUDA EP,
+OpenCV CUDA and an `nvcc -arch=sm_87` kernel on the GPU with this call:
+
+```bash
+nerdctl --cdi-spec-dirs "$HOME/.config/cdi" run --rm \
+  --runtime "$HOME/.local/bin/crun" \
+  --annotation run.oci.keep_original_groups=1 \
+  --device nvidia.com/gpu=all <image> \
+  python -c "import torch; print(torch.cuda.get_device_name(0))"
+```
+
+Each flag answers one failure, in the order they appear:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `unresolvable CDI devices nvidia.com/gpu=all` | The toolkit writes its spec to `/var/run/cdi`, which rootlesskit's own `/run` hides from the daemon. | Copy it: `mkdir -p ~/.config/cdi && cp /var/run/cdi/nvidia.yaml ~/.config/cdi/`, and pass `--cdi-spec-dirs`. Copy again after a driver update, which regenerates the spec. |
+| `NvRmMemInitNvmap failed: error Permission denied`, then `No CUDA GPUs are available` | `/dev/nvmap` and `/dev/nvhost-*` belong to the host group `video`. A rootless container process cannot carry a host group, and `runc` cannot keep it. | `crun` with the `run.oci.keep_original_groups=1` annotation keeps the caller's groups. |
+| `OCI runtime create failed: unknown version specified` | Ubuntu's `crun` (1.14) predates the OCI spec containerd 2.x writes. | Install the static release binary into `~/.local/bin` and check its SHA256 against the release's `digest` field (1.29.1 worked). |
+
+The official PyTorch `cu130` wheels warn that they do not support
+compute capability 8.7 (Orin). A matmul and the elementwise kernels it needed
+still ran correctly, but a kernel that exists only as SASS for other
+architectures will fail. The libraries this repo builds (ORT, OpenCV, TVM)
+carry native `sm_87` code.
+
 ### B3. Cap container log growth
 
 A long build or a chatty service will fill the disk with JSON logs. Merge these
