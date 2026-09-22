@@ -40,8 +40,14 @@ wrappers). It carries no QNN, because no QAIRT zip was staged in
 **The standalone Hailo variant is gone.** `linux/Dockerfile.hailo` is deleted,
 along with its two `code-dupes.allow` rows. The published `:hailo` (run
 `20260919-…`) was a generation older than the standard wrapper that already
-carried the same payload. The registry tags `:hailo`, `:hailo-<arch>` and
-`buildcache-hailo-*` are left for the prune pass.
+carried the same payload.
+
+**Registry cleanup (same day):** 21 stale tagged versions deleted after
+proving no kept index referenced any of them: `:hailo`, `:hailo-amd64`,
+`:hailo-arm64`; the April GPU chains (`:nvidia`, `:amd`, `toolchain-`/`media-`/
+`android-`/`torch-` `nvidia`/`amd`, `toolchain-amd`, `latest-cross-nvidia-amd64`);
+the old-name runtime intermediates `latest-cross-{base,package}-{amd64,arm64,riscv64}`;
+and the pre-chain `:toolchain`. No `buildcache-*` tags existed.
 
 
 ## 2026-09-22 - The arm64 GPU runtime image runs on a Jetson

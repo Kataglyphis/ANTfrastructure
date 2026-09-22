@@ -18,9 +18,9 @@ Optional NVIDIA GPU image chain. Two ways to enable:
 > **Tag: `:latest-nvidia`** (a manifest; per-arch wrappers `:latest-nvidia-amd64`
 > and, from the SBSA lane below, `:latest-nvidia-arm64`),
 > per [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
-> **Not published yet.** The `:nvidia` tag in the registry is a 2026-04-22 build
-> on the old Ubuntu 24.04 base, predates the current chain, and is not
-> `:latest-nvidia` — do not use it. Steps 1–4 below keep their stage tags; step 5
+> **Not published yet.** The old single-arch `:nvidia` (a 2026-04-22 build on
+> the Ubuntu 24.04 base) and its stage tags were deleted from the registry on
+> 2026-09-22. Steps 1–4 below keep their stage tags; step 5
 > and the manifest step publish the variant.
 
 > **Requirements:**
@@ -292,9 +292,9 @@ nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Do
 
 > **Tag: `:latest-rocm`** (a manifest; per-arch wrapper `:latest-rocm-amd64`) —
 > spelled `rocm`, not `amd`, because a variant never reads like an architecture
-> (`:latest-amd-amd64`). **Not published yet.** The `:amd` tag in the registry is
-> a 2026-04-24 build on the old Ubuntu 24.04 base and is not `:latest-rocm` — do
-> not use it.
+> (`:latest-amd-amd64`). **Not published yet.** The old single-arch `:amd` (a
+> 2026-04-24 build on the Ubuntu 24.04 base) and its stage tags were deleted from
+> the registry on 2026-09-22.
 
 > **Requirements:**
 > - Host driver compatible with ROCm 10.0 (see the [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)).
