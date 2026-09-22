@@ -21,8 +21,8 @@ and `:latest`. The rules: [`AGENTS.md` § Image and tag naming](../AGENTS.md#ima
 
 ## NVIDIA GPU Build (Linux)
 
-> **Tag: `:latest-nvidia`** (a manifest; per-arch wrappers `:latest-nvidia-amd64`
-> and, from the SBSA lane below, `:latest-nvidia-arm64`),
+> **Tag: `:latest-nvidia`** (a manifest; today one per-arch wrapper,
+> `:latest-nvidia-amd64` — arm64 joins when the cross-sbsa lane exists),
 > per [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
 > **Not published yet.** The old single-arch `:nvidia` (a 2026-04-22 build on
 > the Ubuntu 24.04 base) and its stage tags were deleted from the registry on
@@ -59,18 +59,30 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
 - **`ENABLE_TENSORRT=false` by default** (owner decision 2026-09-22): the runtime
   payload carries no `libnvinfer` yet. Set `ENABLE_TENSORRT=true` only together
   with that copy.
-- **amd64 only on an amd64 host.** A foreign arch is refused: `Dockerfile.nvidia`
-  installs the BUILD host's CUDA, and the ORT/OpenCV/TVM CUDA builds compile for
-  it, so an arm64 target would get x86_64 GPU libraries under an arm64 tag. The
-  arm64 half is built natively on an arm64 host ([below](#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)).
+- **amd64 only, and it pushes only from `CROSS_BUILD_PLATFORM=linux/amd64`.**
+  Every target must BE the build platform's arch: `Dockerfile.nvidia` installs
+  the build platform's CUDA and the ORT/OpenCV/TVM CUDA builds compile for it,
+  so an arm64 target would get x86_64 GPU libraries under an arm64 tag. And the
+  shared `:cross-sdk-<arch>` it builds on is the amd64 lane's (no build-host
+  infix), so off linux/amd64 a variant may only run `--no-push` — the
+  [Jetson lane below](#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson),
+  which stays local. `build-cross-stage.sh` applies the same refusals.
 - **Its own state:** `chain-status-nvidia.json` and `out/build-logs/nvidia/`.
   Chains run **strictly one at a time**: a second chain refuses to start while
   the pidfile names a live one.
 - **The runtime lane budgets 180 GB** (`CROSS_RUNTIME_LANE_GB`), not 120.
 - The wrappers take `onnxruntime-gpu` + `pytorch-cu130` unless you pin
-  `ONNX_PACKAGE` / `PYTORCH_EXTRA`; the manifest is `:latest-nvidia` over every
-  `:latest-nvidia-<arch>` the run built. Adding the arm64 wrapper later grows
-  the same index (the completeness gate refuses only a shrink).
+  `ONNX_PACKAGE` / `PYTORCH_EXTRA`, and only that one onnxruntime flavour: the
+  amd64 CPU `onnxruntime_dnnl` wheel is pruned from a GPU venv. The manifest is
+  `:latest-nvidia` over the `:latest-nvidia-<arch>` the run built. There is no
+  route yet to add an arm64 entry: the Jetson lane's image is host-infixed and
+  local, and once the cross-sbsa lane exists it builds BOTH arches in one run —
+  after which an amd64-only run is refused by the completeness gate, as for
+  `:latest`.
+- **The standalone runtime helpers refuse a default output tag** under a
+  variant: `build-runtime-artifacts.sh` / `build-runtime-manifest.sh` read the
+  variant's android, so a prefix without `-nvidia` (a plain `:latest`) is an
+  error, and `build-runtime-artifacts.sh` defaults to `:latest-nvidia`.
 
 **Run with GPU access:**
 
@@ -208,11 +220,11 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
   capability 8.7. What was run worked; a kernel with no Orin code will fail.
   ORT, OpenCV and TVM are built here with native `sm_87`.
 - No TensorRT on this lane (see `ENABLE_TENSORRT`).
-- Nothing is published yet. A `--no-push` build on a Jetson tags
-  `latest-nvidia-hostarm64-arm64` locally; the published name is the variant
-  manifest `:latest-nvidia`, with this image as its arm64 wrapper
-  `:latest-nvidia-arm64` (see [`overview.md`](overview.md)). An image built
-  before the variant naming is tagged `latest-cross-hostarm64-arm64`.
+- Nothing from this lane is published. A `--no-push` build on a Jetson tags
+  `latest-nvidia-hostarm64-arm64` locally (an image built before the variant
+  naming is `latest-cross-hostarm64-arm64`). It does not become
+  `:latest-nvidia-arm64`: the published arm64 entry will come from the cross-sbsa
+  lane on the amd64 host (see [`overview.md`](overview.md)).
 
 ## The media fan-out strategy, as AGENTS.md carried it
 

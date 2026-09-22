@@ -175,7 +175,18 @@ prune_conflicting_onnx_wheels() {
             /opt/wheels/*genai_directml-*.whl
       ;;
     onnxruntime-gpu|onnxruntime-migraphx)
-      rm -f /opt/wheels/*webgpu*.whl
+      # Every OTHER flavour of the one onnxruntime distribution: the amd64 CPU
+      # step always builds onnxruntime_dnnl (and a plain onnxruntime can be
+      # staged), and both force-installed into the SAME site-packages/onnxruntime
+      # next to the GPU wheel -- whichever landed last owned capi/, and the
+      # smoke's ARCH-PARITY refused "MORE THAN ONE onnxruntime distribution".
+      rm -f /opt/wheels/*webgpu*.whl /opt/wheels/onnxruntime_dnnl-*.whl \
+            /opt/wheels/onnxruntime-[0-9]*.whl
+      if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then
+        rm -f /opt/wheels/onnxruntime_migraphx-*.whl
+      else
+        rm -f /opt/wheels/onnxruntime_gpu-*.whl
+      fi
       ;;
     *)
       printf 'Unsupported ONNX package: %s\n' "${ONNX_PACKAGE}" >&2
@@ -659,6 +670,12 @@ verify_project_environment() {
     rm -f /usr/local/tensorrt/lib/libstdc++.so* || true
     uv run --no-sync --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
     uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
+  elif [ "${ENABLE_AMD:-false}" = "true" ]; then
+    # The rocm twin: without it a ROCm-less wrapper (CPU torch, no MIGraphX EP)
+    # built and shipped green -- no gate knew what a rocm image must carry.
+    echo "Testing ROCm Support (Build checks only, not runtime)"
+    uv run --no-sync --active python -c "import torch; hip = torch.version.hip; print(f'PyTorch HIP Build Version: {hip}'); assert hip is not None, 'ERROR: PyTorch was NOT built with ROCm/HIP!'"
+    uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'MIGraphXExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have MIGraphXExecutionProvider!'"
   fi
 
   echo "Installed packages in the virtual environment:"

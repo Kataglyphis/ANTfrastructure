@@ -6,6 +6,10 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# These suites assert the DEFAULT chain: a variant inherited from the caller's
+# environment (the docs tell operators to export ENABLE_NVIDIA) would move
+# every tag. test-gpu-variant.sh owns the variant cases.
+unset CROSS_VARIANT ENABLE_NVIDIA ENABLE_AMD
 source "${TESTS_DIR}/../01-core/platform.sh"
 source "${TESTS_DIR}/../01-core/build-helpers.sh"
 source "${TESTS_DIR}/../01-core/tag-naming.sh"

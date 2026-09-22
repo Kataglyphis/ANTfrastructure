@@ -24,24 +24,53 @@ deleted from the registry this morning.
   `:latest-cross` alias.
 - **Stage graph.** `gpu` (`Dockerfile.nvidia` / `Dockerfile.amd`) goes between
   sdk and media when a variant is set. The default graph is unchanged.
-- **Refusals.** A variant starts at `gpu` and refuses `--from-stage` on the
-  shared stages. rocm refuses anything but amd64. nvidia refuses a foreign arch:
-  CUDA is installed for, and compiled against, the build host, so an arm64
-  target would ship x86_64 GPU libraries.
-- **Strictly serial** (owner decision). A live chain makes a second one refuse
-  to start. Chains share the buildkit store and the disk guard, and the guard
+- **Refusals** (`stage-defs.sh` `cross_variant_refusal`, shared by
+  `build-cross-chain.sh` and `build-cross-stage.sh`):
+  - A variant starts at `gpu` and refuses to build base, compiler or sdk.
+  - Every target must be the build platform's arch, because CUDA/ROCm are
+    installed for and compiled against it. rocm is amd64-only.
+  - A pushing variant must build on `linux/amd64`, because the shared
+    `:cross-sdk-<arch>` it builds on is the amd64 lane's.
+  - The Jetson lane (native, `--no-push`) stays allowed.
+  - The variant's `ENABLE_*` / `ENABLE_TENSORRT` are exported where the graph
+    is built. Otherwise a single-stage rebuild wrote CPU bytes under
+    `-nvidia` tags.
+- **Runtime helpers.** `build-runtime-artifacts.sh` and
+  `build-runtime-manifest.sh` refuse an output prefix without `-<variant>`, and
+  `build-runtime-artifacts.sh` defaults to `cross_final_image_tag`. Before
+  this, `ENABLE_NVIDIA=true build-runtime-artifacts.sh --push` published a
+  CUDA wrapper as `:latest-amd64`.
+- **Strictly serial** (owner decision). The pidfile is claimed atomically
+  (noclobber) at the check, and a live chain makes a second one refuse to
+  start. Chains share the buildkit store and the disk guard, and the guard
   evicts whatever the running chain does not protect. A variant keeps its own
-  `chain-status-<v>.json` and `out/build-logs/<v>/`. Its runtime lane budgets
-  180 GB.
+  `chain-status-<v>.json` and `out/build-logs/<v>/` (also when `make`
+  passes the default `--log-dir`). Its runtime lane budgets 180 GB.
 - **NVIDIA defaults.** `ENABLE_TENSORRT=false` (no `libnvinfer` in the runtime
   payload yet). The wrappers take `onnxruntime-gpu` + `pytorch-cu130`.
-- **ROCm runtime.** `copy_rocm_payload` copies `/opt/rocm` into the package, and
-  `000-rocm.conf` puts its libraries on the loader path. Before this, the
-  MIGraphX EP had nothing to load. The wrappers take `onnxruntime-migraphx` +
+- **ROCm runtime.** `copy_rocm_payload` copies `/opt/rocm` into the package,
+  and `000-rocm.conf` puts its libraries on the loader path. Before this, the
+  MIGraphX EP had nothing to load.
+  - TheRock's absolute `update-alternatives` links are resolved hop by hop
+    inside the artifact and re-made relative.
+  - A tree without `libamdhip64` is fatal.
+  - `Dockerfile.package` now passes `ENABLE_AMD` to the copy; without it the
+    copy never ran. The wrappers take `onnxruntime-migraphx` +
   the app's `pytorch-rocm71` extra. That index stops at torch 2.13, so the pin
   enforcement now re-installs the `PYTORCH_VERSION` pair from the new
   `PYTORCH_ROCM_INDEX=rocm7.14` (there is no rocm10 line). The old code's CPU
   fallback would have swapped a ROCm torch for a CPU one without a word.
+- **One onnxruntime flavour per GPU venv.** The amd64 CPU `onnxruntime_dnnl`
+  (and a plain `onnxruntime`) are pruned next to `onnxruntime_gpu` /
+  `onnxruntime_migraphx`. Before this, both force-installed into one
+  `site-packages/onnxruntime/`, and ARCH-PARITY refused the image. The parity
+  table knows `ENABLE_AMD` → `onnxruntime_migraphx`, and the rocm wrapper gets
+  the build-time twin of the CUDA check: `torch.version.hip` plus
+  `MIGraphXExecutionProvider`.
+- **Reviewed before merge.** An adversarial review (34 findings, 22 upheld by
+  two independent skeptics) produced the items above. It also raised
+  `test-gpu-variant.sh` (45 assertions, through the real entry points in
+  read-only modes) and env-isolated the default tag suites.
 - **The Jetson lane's names** follow the variant: the example image is
   `:latest-nvidia-hostarm64-arm64`.
 - **arm64 CUDA from an amd64 host is feasible but not built.** NVIDIA's

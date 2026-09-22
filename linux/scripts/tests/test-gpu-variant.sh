@@ -8,7 +8,6 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
-CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
 
 # Run <snippet> with the real modules sourced under the given environment.
 _graph() {
@@ -56,36 +55,107 @@ t_case "a variant never gets the deprecated :latest-cross alias"
 t_assert_eq "" \
   "$(SNIPPET='CROSS_LEGACY_ALIAS_TAG=latest-cross cross_final_image_legacy_alias "$(cross_final_image_tag)"' _graph CROSS_VARIANT=nvidia)"
 
-t_case "the orchestrator guards: shared stages, rocm arches, one chain at a time"
-_src="$(cat "${CHAIN_SH}")"
-t_assert_contains "${_src}" 'FROM_STAGE="gpu"' "a variant chain defaults to its gpu stage"
-t_assert_contains "${_src}" "cannot run --from-stage" "and refuses to re-push base/compiler/sdk"
-t_assert_contains "${_src}" "the rocm variant is amd64-only"
-t_assert_contains "${_src}" "the nvidia variant cannot cross-build" \
-  "a foreign-arch CUDA build would ship host-arch GPU libraries under the target's tag"
-t_assert_contains "${_src}" ': "${ENABLE_TENSORRT:=false}"' "TensorRT is off by default on the nvidia chain"
-t_assert_contains "${_src}" $'_chain_no_push_guard         # refuse --no-push multi-stage (stale parent)\n  _chain_refuse_live_sibling' \
-  "the serial lock runs before any log or state write"
-t_assert_contains "${_src}" 'chain-status${CROSS_GPU_VARIANT:+-${CROSS_GPU_VARIANT}}.json' \
-  "a variant keeps its own chain-status file"
-t_assert_contains "${_src}" 'out/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}' \
-  "and its own log dir"
+t_case "the refusals, run through the REAL entry points (read-only modes)"
+CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cross-stage.sh"
+# Leading VAR=value words are the environment; the rest runs time-boxed.
+_chain() {
+  local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
+    | grep -E '^\[(ERROR|INFO)\] (Cross chain|the |an? )' | head -1
+}
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64)" \
+  "stages=gpu..runtime" "a variant chain starts at its gpu stage"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64)" \
+  "final=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --from-stage sdk --target-arches amd64)" \
+  "cannot build sdk" "and refuses to re-push the shared stages"
+t_assert_contains "$(_chain CROSS_VARIANT=rocm bash "${CHAIN}" --describe-chain --target-arches amd64,arm64)" \
+  "the rocm variant is amd64-only"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64,arm64)" \
+  "cannot cross-build arm64" "a foreign-arch CUDA build would ship build-platform GPU libraries under its tag"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64 bash "${CHAIN}" --describe-chain --target-arches arm64)" \
+  "can only PUSH from an amd64 build platform" "off amd64 the shared sdk is the amd64 lane's"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NO_PUSH=1 CROSS_BUILD_PLATFORM=linux/arm64 bash "${CHAIN}" --describe-chain --only media --target-arches arm64)" \
+  "stages=media..media" "the local Jetson lane (native, --no-push) stays allowed"
+t_assert_contains "$(_chain bash "${CHAIN}" --describe-chain --target-arches amd64)" "stages=base..runtime" \
+  "the default chain is untouched"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${STAGE_SH}" --stage sdk --arch amd64 --dry-run)" \
+  "cannot build sdk" "build-cross-stage.sh obeys the same refusals"
 
-t_case "the rocm payload reaches the runtime, its /opt/rocm link re-made relatively"
+t_case "the variant's build args reach every entry point, not just the chain"
+_args() { SNIPPET='args=(); cross_stage_build_args args '"$1"' amd64; printf "%s " "${args[@]}"' _graph "${@:2}"; }
+t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_NVIDIA=true" \
+  "a variant media stage built through ANY entry point is a CUDA media stage"
+t_assert_contains "$(_args gpu CROSS_VARIANT=nvidia)" "ENABLE_TENSORRT=false" "TensorRT is off by default"
+t_assert_contains "$(_args media CROSS_VARIANT=rocm)" "ENABLE_AMD=true"
+t_assert_eq "" "$(_args media | grep -o 'ENABLE_[A-Z]*=')" "the default media stage forwards no accelerator toggle"
+
+t_case "the runtime lane refuses to write default tags under a variant"
+RFNS="${CORE}/runtime-build-fns.sh"
+t_assert_eq "onnxruntime-gpu pytorch-cu130" "$(ENABLE_NVIDIA=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
+t_assert_eq "onnxruntime-migraphx pytorch-rocm71" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
+t_assert_eq "" "$(bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')" "a CPU image keeps the Dockerfile defaults"
+# --dry-run is a FLAG here (DRY_RUN in the environment is not read), and every
+# call is time-boxed: a regression must fail the suite, never start a real build.
+_RT="${TESTS_DIR}/../build-runtime-artifacts.sh"
+t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${_RT}" --image-prefix example.io/r:latest --target-arches amd64 --dry-run 2>&1)" \
+  "carries no -nvidia" "a GPU wrapper can never land on the default :latest-<arch>"
+t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${_RT}" --target-arches amd64 --dry-run 2>&1)" \
+  "latest-nvidia-base-amd64" "and the helper's default prefix is the variant's own"
+
+t_case "one chain at a time: the pidfile is claimed atomically at the check"
+_LK="$(mktemp -d)"
+_lock_fns="$(t_fn_src "${CHAIN}" _chain_live_sibling_pid)"$'\n'"$(t_fn_src "${CHAIN}" _chain_refuse_live_sibling)"
+_lock() { CROSS_CHAIN_PIDFILE="${_LK}/pid" bash -c 'is_dry_run() { return 1; }; err() { echo "ERR $*"; exit 1; }
+cross_chain_pidfile_path() { printf "%s" "${CROSS_CHAIN_PIDFILE}"; }
+'"${_lock_fns}"'
+_chain_refuse_live_sibling; echo "claimed=${_CHAIN_PIDFILE:+yes} own=$([ "$(cat "${CROSS_CHAIN_PIDFILE}")" = "$$" ] && echo yes)"' 2>&1; }
+t_assert_contains "$(_lock)" "claimed=yes own=yes" "no pidfile: the check writes OUR pid"
+sleep 30 & _live=$!; printf '%s\n' "${_live}" > "${_LK}/pid"
+t_assert_contains "$(_lock)" "ERR another cross chain is running (pid ${_live}" "a live chain refuses the second one"
+kill "${_live}" 2>/dev/null; wait "${_live}" 2>/dev/null
+t_assert_contains "$(_lock)" "claimed=yes own=yes" "a stale pidfile is taken over"
+rm -rf "${_LK}"
+
+t_case "the rocm payload reaches the runtime in TheRock's layout, every absolute link re-made relative"
 PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 _FNS=""
-for _fn in _dest copy_path copy_rocm_payload; do _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n'; done
-_SRC="$(mktemp -d)"; _DST="$(mktemp -d)"
-mkdir -p "${_SRC}/opt/rocm-10.0/lib" && : > "${_SRC}/opt/rocm-10.0/lib/libmigraphx.so"
-ln -s /opt/rocm-10.0 "${_SRC}/opt/rocm"
+for _fn in _dest copy_path _src_resolve copy_rocm_payload; do _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n'; done
 _rocm() { SRCPREFIX="$1" COPY_TARGET_DIR="$2" ENABLE_AMD="${3:-true}" \
   bash -c "set -euo pipefail; warn() { :; }"$'\n'"${_FNS}"$'\ncopy_rocm_payload' 2>&1; }
-_rocm "${_SRC}" "${_DST}" >/dev/null
-t_assert_eq "rocm-10.0" "$(readlink "${_DST}/opt/rocm")" "a relative link, not the build container's absolute one"
-t_assert_eq "yes" "$([ -f "${_DST}/opt/rocm-10.0/lib/libmigraphx.so" ] && echo yes)"
-_EMPTY="$(mktemp -d)"; _DST2="$(mktemp -d)"
-t_assert_contains "$(_rocm "${_EMPTY}" "${_DST2}")" "ENABLE_AMD=true but the artifact has no /opt/rocm"
-t_assert_eq "" "$(_rocm "${_EMPTY}" "${_DST2}" false)" "a non-rocm image copies nothing and says nothing"
-rm -rf "${_SRC}" "${_DST}" "${_EMPTY}" "${_DST2}"
+# TheRock (setup-rocm-repo.sh): real /opt/rocm, core via update-alternatives,
+# lib -> core/lib. The alternatives link is ABSOLUTE and lives outside the tree.
+_SRC="$(mktemp -d)"; _DST="$(mktemp -d)"
+mkdir -p "${_SRC}/opt/rocm/core-10.0/lib" "${_SRC}/etc/alternatives"
+: > "${_SRC}/opt/rocm/core-10.0/lib/libamdhip64.so.7"
+ln -s /opt/rocm/core-10.0 "${_SRC}/etc/alternatives/amdrocm-core"
+ln -s /etc/alternatives/amdrocm-core "${_SRC}/opt/rocm/core"
+ln -s core/lib "${_SRC}/opt/rocm/lib"
+t_assert_eq "" "$(_rocm "${_SRC}" "${_DST}")" "a usable TheRock tree copies without a word"
+t_assert_eq "core-10.0" "$(readlink "${_DST}/opt/rocm/core")" \
+  "the update-alternatives link is re-made relative to its real target (it dangled in the image)"
+t_assert_eq "yes" "$([ -f "${_DST}/opt/rocm/lib/libamdhip64.so.7" ] && echo yes)" \
+  "so /opt/rocm/lib resolves, and publish_rocm_ld_path finds a directory"
+# The older layout: /opt/rocm itself is the alternatives link.
+_SRC2="$(mktemp -d)"; _DST2="$(mktemp -d)"
+mkdir -p "${_SRC2}/opt/rocm-7.2/lib" "${_SRC2}/etc/alternatives"
+: > "${_SRC2}/opt/rocm-7.2/lib/libamdhip64.so"
+ln -s /opt/rocm-7.2 "${_SRC2}/etc/alternatives/rocm"
+ln -s /etc/alternatives/rocm "${_SRC2}/opt/rocm"
+_rocm "${_SRC2}" "${_DST2}" >/dev/null
+t_assert_eq "rocm-7.2" "$(readlink "${_DST2}/opt/rocm")" "the top-level link resolves through /etc/alternatives too"
+t_assert_eq "yes" "$([ -f "${_DST2}/opt/rocm/lib/libamdhip64.so" ] && echo yes)"
+# Unusable trees are fatal, never a green build with a ROCm-less image.
+_EMPTY="$(mktemp -d)"; _DST3="$(mktemp -d)"
+t_assert_contains "$(_rocm "${_EMPTY}" "${_DST3}")" "ENABLE_AMD=true but the artifact has no /opt/rocm"
+_SRC4="$(mktemp -d)"; mkdir -p "${_SRC4}/opt/rocm/core-10.0/lib"; ln -s /etc/alternatives/missing "${_SRC4}/opt/rocm/core"; ln -s core/lib "${_SRC4}/opt/rocm/lib"
+t_assert_contains "$(_rocm "${_SRC4}" "$(mktemp -d)")" "no libamdhip64" "a dangling core link fails loudly"
+t_assert_eq "" "$(_rocm "${_EMPTY}" "${_DST3}" false)" "a non-rocm image copies nothing and says nothing"
+rm -rf "${_SRC}" "${_DST}" "${_SRC2}" "${_DST2}" "${_EMPTY}" "${_DST3}" "${_SRC4}"
+
+t_case "the package stage hands ENABLE_AMD to the payload copy (it never reached it)"
+_pkg="$(sed -n '/^FROM \${BASE_IMAGE} AS package-image/,/^FROM /p' "${TESTS_DIR}/../../Dockerfile.package")"
+t_assert_contains "${_pkg}" $'ARG ENABLE_AMD\n' "declared in the package-image stage, where the copy runs"
+t_assert_contains "${_pkg}" 'ENABLE_AMD="${ENABLE_AMD:-false}"' "and passed to copy-media-payloads.sh"
 
 t_summary

@@ -11,6 +11,7 @@ RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
 CTX="${TESTS_DIR}/../01-core/context-management.sh"
 
 _FNS="$(t_fn_src "${RBF}" append_wrapper_build_args)"$'\n' || exit 1
+_FNS+="$(t_fn_src "${RBF}" runtime_gpu_backend_pair)"$'\n' || exit 1
 for _fn in runtime_use_local_artifact_context _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir; do
   _FNS+="$(t_fn_src "${CTX}" "${_fn}")"$'\n' || exit 1
 done
@@ -71,6 +72,9 @@ t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime-gpu" \
   "the CPU ORT default pruned the _gpu wheel and failed the CUDA-EP gate"
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-cu130" \
   "the CPU torch default failed the torch.version.cuda gate"
+_out="$(ENABLE_AMD=true _args)"
+t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime-migraphx" "a rocm wrapper gets the MIGraphX ORT"
+t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-rocm71" "and the app's ROCm torch extra"
 _out="$(ENABLE_NVIDIA=true PYTORCH_EXTRA=pytorch-custom ONNX_PACKAGE=onnxruntime _args)"
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-custom" "a pinned torch extra is kept"
 t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime" "a pinned ORT package is kept"
@@ -92,6 +96,22 @@ t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.torch")" \
 _PRUNE_SRC="$(t_fn_src "${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh" prune_conflicting_onnx_wheels)" || exit 1
 t_assert_eq "" "$(printf '%s\n' "${_PRUNE_SRC}" | grep -F '|| true')" \
   "no rm in the prune may swallow its own failure"
+
+t_case "a GPU venv keeps exactly ONE onnxruntime flavour"
+_WH="$(mktemp -d)"
+_prune() {
+  rm -f "${_WH}"/*.whl
+  for w in onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime-1.30.0-cp314-cp314-linux_x86_64.whl \
+           onnxruntime_gpu-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime_migraphx-1.30.0-cp314-cp314-linux_x86_64.whl \
+           onnxruntime_webgpu-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime_genai-0.15.2-cp314-cp314-linux_x86_64.whl; do
+    : > "${_WH}/${w}"; done
+  ONNX_PACKAGE="$1" bash -c "${_PRUNE_SRC//\/opt\/wheels/${_WH}}"$'\nprune_conflicting_onnx_wheels'
+  (cd "${_WH}" && ls | sed 's/-[0-9].*//' | sort | tr '\n' ' ')
+}
+t_assert_eq "onnxruntime_genai onnxruntime_gpu " "$(_prune onnxruntime-gpu)" \
+  "the amd64 dnnl/CPU wheels went in beside the CUDA one (two dists, one onnxruntime/ dir)"
+t_assert_eq "onnxruntime_genai onnxruntime_migraphx " "$(_prune onnxruntime-migraphx)"
+rm -rf "${_WH}"
 
 rm -rf "${WORK}" "${_BIN}" "${_ROOTFS}"
 t_summary
