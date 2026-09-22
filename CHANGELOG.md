@@ -7,6 +7,40 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - Hooks on a Windows host: pre-push clears git's environment, the shellcheck ratchet grades again
+
+**Git exports `GIT_DIR` (and `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_PREFIX`) to hooks,
+and the pre-push hook passed them straight to the mutation gate.** Its fixtures run
+`git -C <tmp> init`. With `GIT_DIR` set, each init re-initialised the REAL gitdir
+instead of the temp one. For a submodule gitdir (`.git/modules/<name>`, a path that
+does not end in `/.git`) git guesses "bare" and writes `core.bare = true`. Seen on a
+push from this repo's checkout inside OmniAccelerANT: from then on every git command
+warned `core.bare and core.worktree do not make sense`, `git status` refused to run,
+and `git check-attr` found nothing, so the EOL-attribute suite failed on 64 files. The
+branches and the index stayed untouched.
+
+- `linux/host-config/git-hooks/pre-push` now runs `unset GIT_DIR GIT_WORK_TREE
+  GIT_INDEX_FILE GIT_PREFIX` first, exactly as pre-commit already did.
+- `test-prepush-hook.sh` runs the hook with all four variables exported and asserts that
+  none reaches a gate. Mutation `mutations.push-clears-git-env` turns the `unset` into a
+  no-op, and the test goes red.
+- Recovery and the symptom text:
+  [`docs/failure-modes.md`](docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense).
+
+**The shellcheck warning ratchet never graded a file on a Windows host.** Two bugs:
+- A bare `bash` in `subprocess` resolves to System32's WSL launcher before PATH. That
+  launcher mangles the `C:\` script path, so every staged `.sh` failed the pre-commit
+  ratchet.
+- `--files` paths came back with `\`, while lint-shell.sh's scope uses `/`, so each file
+  counted as "outside the scope" (0 of 394 graded).
+
+`verify_shellcheck_warnings.py` now takes PATH's `bash` (`_bash()`), converts the MSYS
+`--print-bin` answer with `cygpath -w`, and normalises `--files` to `/`. All three are
+no-ops on Linux. Mutation `shellcheck-warnings.bash-from-path` bites the new
+`test-shellcheck-warnings.sh` case. The suite itself still has 4 Linux-only assertions on
+Windows, where it runs fake `shellcheck` scripts through native Python; at HEAD, 51 of
+its 68 assertions failed there.
+
 ## 2026-09-22 - Windows ROCm layer: `windows/Dockerfile.rocm` + `Install-Rocm.ps1` (not wired yet)
 
 **ROCm on Windows now has a build path.** It uses AMD's documented Windows tar

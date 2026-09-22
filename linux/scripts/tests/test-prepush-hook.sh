@@ -72,6 +72,25 @@ PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" 
   HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 PREPUSH_MUTATION_JOBS=1 bash "${HOOK}" >/dev/null 2>&1
 t_assert_contains "$(_call 2)" "--jobs 1"
 
+t_case "git's hook environment never reaches a gate"
+# With GIT_DIR inherited, a fixture's `git -C <tmp> init` re-inits the REAL repository
+# as bare -- it did, to the hub's own submodule gitdir, on 2026-09-22.
+cat > "${_root}/docs/scripts/verify_mutations.py" <<'STUB'
+import os
+import pathlib
+
+leaked = [k for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX") if k in os.environ]
+record = pathlib.Path(os.environ["HOOK_TEST_ARGV"])
+record.write_text(record.read_text() + " ".join(leaked) + "|\n" if record.exists() else " ".join(leaked) + "|\n")
+STUB
+rm -f "${_ARGV}"
+PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
+  GIT_DIR=/nonexistent/gitdir GIT_WORK_TREE=/nonexistent GIT_INDEX_FILE=/nonexistent/index GIT_PREFIX=sub/ \
+  bash "${HOOK}" >/dev/null 2>&1
+t_assert_eq "2" "$(_calls)" "both gate calls ran"
+t_assert_eq "0" "$(grep -c 'GIT_' "${_ARGV}")" "a GIT_* variable reached a gate; its fixtures would act on the real repository"
+_stub_gate
+
 # --- the REAL gate: the verdict, not just the plumbing ------------------------
 # A stub proves the hook calls something. Only the real gate proves the hook
 # STOPS a push over a mutation entry that no longer applies.

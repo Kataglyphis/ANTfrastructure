@@ -285,6 +285,15 @@ t_assert_contains "$(bash "${LINT}" --list-files "${work}/crlfhook" 2>&1)" "crlf
 rm -rf "${work}"
 
 # ── the real tree ────────────────────────────────────────────────────────────
+t_case "the bash that runs lint-shell.sh comes from PATH (Windows' own search finds WSL's first)"
+_fake="$(mktemp -d)"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${_fake}/bash"
+cp "${_fake}/bash" "${_fake}/bash.exe"   # Windows' lookup only matches a PATHEXT name
+chmod +x "${_fake}/bash" "${_fake}/bash.exe"
+_got="$(cd "${TESTS_DIR}/.." && PATH="${_fake}:${PATH}" "${PY}" -c 'import verify_shellcheck_warnings as v; print(v._bash())' 2>&1)"
+t_assert_contains "${_got}" "$(basename "${_fake}")" "_bash() must resolve through PATH, not the process search order"
+rm -rf "${_fake}"
+
 if [ -z "${SKIP_REAL_TREE}" ]; then
   t_case "the REAL tree matches its baseline today"
   t_assert_eq "0" "$("${PY}" "${GATE}" >/dev/null 2>&1; echo $?)"
