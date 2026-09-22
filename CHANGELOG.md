@@ -131,9 +131,9 @@ correct. riscv64 has no HailoRT support at any version; the script refuses it.
 
 **Torch 2.14 + torchvision 0.29 land in `:latest-cross`, and Hailo becomes
 standard.** The pins move to the valid pair (`PYTORCH_VERSION=v2.14.0`,
-`TORCHVISION_VERSION=v0.29.0`); riscv64 keeps v2.13.0/v0.28.0 through the
-`<KEY>_RISCV64` overrides, because PyTorch publishes no riscv64 wheels and its
-truth is the wheelhouse source build. `assemble-torch-app.sh` gained
+`TORCHVISION_VERSION=v0.29.0`); riscv64 has no upstream wheels, so it
+source-builds the same pair (an interim `<KEY>_RISCV64` override keeping it at
+v2.13.0/v0.28.0 was removed when WH1 closed — see the entries below). `assemble-torch-app.sh` gained
 `enforce_torch_version_pins`: on the arches with cp314 wheels (amd64, arm64) the
 runtime force-installs the pinned pair from the CPU index after the lock-driven
 sync, so the shipped venv matches the build pins the smoke asserts — the app
