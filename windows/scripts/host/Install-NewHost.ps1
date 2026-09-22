@@ -228,13 +228,26 @@ function Invoke-StepShim {
     & (Join-Path $scriptRoot 'Publish-ShimPatch.ps1') @dsp
 }
 
+function Sync-ShimForkCheckout {
+    # Fetch-by-SHA keeps the build reproducible and the tree one commit deep; a reused
+    # work dir from an older pin is re-pinned too, so it cannot rebuild the old tree.
+    param([Parameter(Mandatory)][string]$Git, [Parameter(Mandatory)][string]$Work, [Parameter(Mandatory)][string]$Pin)
+    $head = & $Git -C $Work rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $head -eq $Pin) { return $false }
+    & $Git -C $Work fetch --depth 1 origin $Pin | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "cannot fetch the pinned fork commit $Pin (branch moved?)" }
+    & $Git -C $Work checkout --detach $Pin | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "cannot check out the pinned fork commit $Pin" }
+    return $true
+}
+
 function Invoke-BuildPatchedShim {
     # The fork branch carries the #2855 env-var patch; the old 45min constant
     # patch is RETIRED, so this build asserts the patch is present instead of
     # applying it. Fork/pin/5m facts: docs/windows-host-setup.md § R1.
     $forkUrl = 'https://github.com/Kataglyphis/hcsshim.git'
     $forkBranch = 'feature/configurable-teardown-timeout'
-    $forkPin = '192514290b9875a18481869f15b3649657237001'
+    $forkPin = '5e9df53c58f59d1282f18730acdea52689303bfe'
     $work = Join-Path $env:TEMP 'kataglyphis-hcsshim-fork'
     $src = Join-Path $work 'cmd\containerd-shim-runhcs-v1\task_hcs.go'
     $exeOut = Join-Path $work 'containerd-shim-runhcs-v1.exe'
@@ -248,24 +261,22 @@ function Invoke-BuildPatchedShim {
         if ($LASTEXITCODE -ne 0) { throw 'scoop install go failed' }
     }
 
+    $git = (Get-Command git -ErrorAction SilentlyContinue).Source
     if (-not (Test-Path (Join-Path $work '.git'))) {
         if ($ReportOnly) {
             Write-Step 'shim       : would clone the hcsshim fork and pin the env-configurable teardown commits'
             return $exeOut
         }
         Write-Step 'shim       : cloning the hcsshim fork (shallow, branch pinned by commit)'
-        $git = (Get-Command git -ErrorAction SilentlyContinue).Source
         if (-not $git) { throw 'git not found - install Git for Windows, or pass -ShimPath' }
         Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $work) { throw "cannot clear the shim work dir: $work" }
         & $git clone --depth 1 --branch $forkBranch $forkUrl $work
         if ($LASTEXITCODE -ne 0) { throw "hcsshim fork clone failed ($forkBranch)" }
-        # Clone-at-HEAD would drift with every push; the pin is what makes this
-        # build reproducible. Fetch by SHA so the tree stays one commit deep.
-        & $git -C $work fetch --depth 1 origin $forkPin
-        if ($LASTEXITCODE -ne 0) { throw "cannot fetch the pinned fork commit $forkPin (branch moved?)" }
-        & $git -C $work checkout --detach $forkPin
-        if ($LASTEXITCODE -ne 0) { throw "cannot check out the pinned fork commit $forkPin" }
+    }
+    if (-not $git) { throw 'git not found - install Git for Windows, or pass -ShimPath' }
+    if (Sync-ShimForkCheckout -Git $git -Work $work -Pin $forkPin) {
+        Write-Step "shim       : fork tree checked out at the pin $($forkPin.Substring(0, 12))"
     }
     if (-not (Test-Path $src)) { throw "task_hcs.go not found at $src - unexpected hcsshim layout?" }
 

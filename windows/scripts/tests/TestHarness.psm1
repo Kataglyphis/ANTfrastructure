@@ -106,17 +106,19 @@ function Assert-Throws {
     }
 }
 
-# Run $Body with the given env vars set, restoring (or removing) each afterwards.
+# Run $Body with the given env vars set ($null = removed), restoring (or removing) each afterwards.
+# [NullString] because a PowerShell $null reaches .NET as '', which leaves the var set EMPTY.
 function Invoke-WithEnv {
     param([Parameter(Mandatory)][hashtable]$Vars, [Parameter(Mandatory)][scriptblock]$Body)
+    $asEnv = { param($v) if ($null -eq $v) { [NullString]::Value } else { [string]$v } }
     $saved = @{}
     foreach ($k in $Vars.Keys) {
         $saved[$k] = [Environment]::GetEnvironmentVariable($k)
-        [Environment]::SetEnvironmentVariable($k, [string]$Vars[$k])
+        [Environment]::SetEnvironmentVariable($k, (& $asEnv $Vars[$k]))
     }
     try { & $Body }
     finally {
-        foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, (& $asEnv $saved[$k])) }
     }
 }
 
