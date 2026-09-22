@@ -149,6 +149,36 @@ t_assert_contains "$(_rocm "${_SRC4}" "$(mktemp -d)")" "no libamdhip64" "a dangl
 t_assert_eq "" "$(_rocm "${_EMPTY}" "${_DST3}" false)" "a non-rocm image copies nothing and says nothing"
 rm -rf "${_SRC}" "${_DST}" "${_SRC2}" "${_DST2}" "${_EMPTY}" "${_DST3}" "${_SRC4}"
 
+t_case "the ASAN tree is optional, off, and cannot reach the default rocm image"
+# 134.8 GiB installed, gfx942/gfx950 only, no ASAN MIGraphX and no ASAN torch
+# wheel (measured against the live repo index 2026-09-22): a default :latest-rocm
+# that carries it is not shippable.
+_asan_copy() {  # $1 = ENABLE_ROCM_ASAN -> prints "<asan-present> <normal-present>"
+  local src dst; src="$(mktemp -d)"; dst="$(mktemp -d)"
+  mkdir -p "${src}/opt/rocm/core-10.0/lib" "${src}/opt/rocm/core-asan-10.0/lib"
+  : > "${src}/opt/rocm/core-10.0/lib/libamdhip64.so"
+  ln -s core-10.0/lib "${src}/opt/rocm/lib"
+  SRCPREFIX="${src}" COPY_TARGET_DIR="${dst}" ENABLE_AMD=true ENABLE_ROCM_ASAN="$1" \
+    bash -c "set -euo pipefail; warn() { :; }"$'\n'"${_FNS}"$'\ncopy_rocm_payload' >/dev/null
+  printf '%s %s' "$([ -d "${dst}/opt/rocm/core-asan-10.0" ] && echo asan || echo none)" \
+                 "$([ -f "${dst}/opt/rocm/core-10.0/lib/libamdhip64.so" ] && echo normal || echo MISSING)"
+  rm -rf "${src}" "${dst}"
+}
+t_assert_eq "none normal" "$(_asan_copy false)" \
+  "the default image drops the ASAN tree even when the builder installed it"
+t_assert_eq "asan normal" "$(_asan_copy true)" "ENABLE_ROCM_ASAN=true is the only way it ships"
+_ROCM_SETUP="$(cat "${CORE}/setup-rocm-repo.sh")"
+t_assert_contains "${_ROCM_SETUP}" 'if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then' \
+  "the repo stanza and the install are both behind the knob"
+t_assert_contains "${_ROCM_SETUP}" 'core-asan-*) update-alternatives --set' \
+  "the ASAN debs hijack the same alternatives, so every one is re-pointed"
+t_assert_contains "${_ROCM_SETUP}" 'resolves into the ASAN tree' \
+  "and the build FAILS if /opt/rocm or hipcc still resolves there"
+t_assert_contains "$(_args gpu CROSS_VARIANT=rocm ENABLE_ROCM_ASAN=true)" "ENABLE_ROCM_ASAN=true" \
+  "the gpu stage forwards the knob when it is set"
+t_assert_eq "" "$(_args gpu CROSS_VARIANT=rocm | grep -o 'ENABLE_ROCM_ASAN')" \
+  "and forwards nothing by default, so the Dockerfile default (false) stands"
+
 t_case "the package stage hands ENABLE_AMD to the payload copy (it never reached it)"
 _pkg="$(sed -n '/^FROM \${BASE_IMAGE} AS package-image/,/^FROM /p' "${TESTS_DIR}/../../Dockerfile.package")"
 t_assert_contains "${_pkg}" $'ARG ENABLE_AMD\n' "declared in the package-image stage, where the copy runs"

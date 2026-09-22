@@ -62,7 +62,7 @@ t_assert_eq 1 "${_rc}" "a GPU build that lost its toolkit must not ship silently
 t_assert_contains "${_out}" "no /usr/local/cuda-X.Y" "and says what is missing"
 
 t_case "Dockerfile.package hands the switch and the environment to the image"
-t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
+t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" \\\n      SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
   "the payload RUN receives ENABLE_NVIDIA (an undeclared ARG reaches no RUN)"
 t_assert_contains "$(cat "${PKG}")" ':/usr/local/cuda/bin:' "nvcc is on the shipped PATH"
 t_assert_contains "$(cat "${PKG}")" 'NVCC_PREPEND_FLAGS=-allow-unsupported-compiler' \
