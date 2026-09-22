@@ -162,6 +162,9 @@ collect_locked_local_wheels() {
 }
 
 # Remove prebuilt wheels that conflict with the selected ONNX_PACKAGE variant.
+# /opt/wheels is a bind mount: Dockerfile.torch must mount it rw (BuildKit drops
+# the writes after the RUN). Read-only, `rm -f ... || true` failed SILENTLY and
+# a GPU venv shipped onnxruntime-gpu AND -webgpu, one shadowing the other.
 prune_conflicting_onnx_wheels() {
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
@@ -169,10 +172,10 @@ prune_conflicting_onnx_wheels() {
       # build_uv_sync_args needs. docs/failure-modes.md
       rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl \
             /opt/wheels/*genai_cuda-*.whl /opt/wheels/*genai_rocm-*.whl \
-            /opt/wheels/*genai_directml-*.whl || true
+            /opt/wheels/*genai_directml-*.whl
       ;;
     onnxruntime-gpu|onnxruntime-migraphx)
-      rm -f /opt/wheels/*webgpu*.whl || true
+      rm -f /opt/wheels/*webgpu*.whl
       ;;
     *)
       printf 'Unsupported ONNX package: %s\n' "${ONNX_PACKAGE}" >&2
@@ -515,9 +518,22 @@ enforce_torch_version_pins() {
   fi
 
   echo "enforcing torch pins: ${have_torch:-absent}/${have_tv:-absent} -> ${want_torch}/${want_tv}"
-  uv pip install --force-reinstall --no-deps \
-    --index-url https://download.pytorch.org/whl/cpu \
-    "torch==${want_torch}" "torchvision==${want_tv}"
+  case "${PYTORCH_EXTRA:-pytorch-cpu}" in
+    pytorch-cu*)
+      # From the extra's OWN index, and WITH deps: the CPU index swapped a CUDA
+      # torch back to CPU, and --no-deps would keep the old torch's pinned
+      # nvidia-cudnn/nccl and triton (they move between torch minors).
+      uv pip install \
+        --index-url "https://download.pytorch.org/whl/${PYTORCH_EXTRA#pytorch-}" \
+        --extra-index-url https://pypi.org/simple \
+        "torch==${want_torch}" "torchvision==${want_tv}"
+      ;;
+    *)
+      uv pip install --force-reinstall --no-deps \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==${want_torch}" "torchvision==${want_tv}"
+      ;;
+  esac
 }
 
 install_project_environment() {

@@ -3,7 +3,8 @@ set -euo pipefail
 
 # copy-media-payloads.sh
 # Shared helper to copy lightweight media library payloads (LiteRT, VVdec,
-# ONNX Runtime GenAI/GPU) from the artifact image into the package image.
+# ONNX Runtime GenAI/GPU, and CUDA/cuDNN/NCCL when ENABLE_NVIDIA=true) from the
+# artifact image into the package image.
 #
 # Usage:
 #   copy-media-payloads.sh              Copy onto the local filesystem.
@@ -82,11 +83,55 @@ copy_media_payloads() {
     '/usr/local/lib/libvvdec.so*' \
     '/usr/local/lib/libtvm.so*' \
     '/usr/local/lib/libtvm_runtime.so*' \
+    '/usr/local/lib/libtvm_runtime_cuda.so*' \
     '/usr/local/lib/libtvm_compiler.so*'; do
     copy_glob "${pattern}"
   done
 
+  copy_cuda_payload
+
   unset COPY_TARGET_DIR
+}
+
+# The GPU variant's CUDA toolkit, cuDNN and NCCL. The media image carries them,
+# but nothing copied them past this boundary: every CUDA-built library (OpenCV,
+# ORT's CUDA EP, TVM's CUDA runtime) shipped without libcudart/libcudnn and
+# could not load. ENABLE_NVIDIA=true with no toolkit in the artifact is fatal.
+copy_cuda_payload() {
+  [ "${ENABLE_NVIDIA:-false}" = "true" ] || return 0
+  local dir ver="" pattern
+  shopt -s nullglob
+  for dir in "${SRCPREFIX}"/usr/local/cuda-[0-9]*.[0-9]*; do
+    ver="${dir##*/cuda-}"
+    copy_path "/usr/local/cuda-${ver}"
+  done
+  shopt -u nullglob
+  if [ -z "${ver}" ]; then
+    printf '[ERROR] ENABLE_NVIDIA=true but the artifact has no /usr/local/cuda-X.Y\n' >&2
+    return 1
+  fi
+  # The artifact's cuda and cuda-MAJOR links go through /etc/alternatives, which
+  # through a bind mount resolves against the BUILD container. Relink relatively.
+  ln -sfn "cuda-${ver}" "$(_dest /usr/local/cuda)"
+  ln -sfn "cuda-${ver}" "$(_dest "/usr/local/cuda-${ver%%.*}")"
+  for pattern in \
+    '/usr/lib/*-linux-gnu/libcudnn*.so*' \
+    '/usr/lib/*-linux-gnu/libnccl.so*' \
+    '/usr/include/*-linux-gnu/cudnn*.h' \
+    '/usr/include/nccl*'; do
+    copy_glob "${pattern}"
+  done
+}
+
+# The toolkit's libs live under targets/<arch>-linux/lib, which no default
+# loader path reaches. No-op on a CPU image, where /usr/local/cuda is absent.
+publish_cuda_ld_path() {
+  local lib
+  : > /etc/ld.so.conf.d/000-cuda.conf
+  for lib in /usr/local/cuda/targets/*/lib; do
+    [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-cuda.conf
+  done
+  [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
 # Give /usr/local/llvm-target/lib loader priority over the distro multiarch dir:
@@ -100,6 +145,7 @@ publish_llvm_target_ld_path() {
 
 main() {
   copy_media_payloads "${1:-}"
+  publish_cuda_ld_path
   publish_llvm_target_ld_path
 }
 

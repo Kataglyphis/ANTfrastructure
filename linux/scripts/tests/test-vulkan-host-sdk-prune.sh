@@ -134,4 +134,27 @@ t_assert_ok test '!' -e "${ROOT}/1.4.357.0/aarch64"
 t_assert_ok test -e "${ROOT}/1.4.357.0/riscv64/lib/libvulkan.so.1"
 t_assert_contains "${_out}" "riscv64 runs riscv64/lib/libvulkan.so.1"
 
+# ---------------------------------------------------------------------------
+t_case "a native arm64 build drops the LunarG tarball's x86_64 prefix too"
+# Measured in cross-media-arm64 (2026-09-21): aarch64 (514 MB, the image's own)
+# next to the tarball's x86_64 (1.8 GB). Builder == target, so the builder rule
+# kept everything and the runtime image shipped 61 x86-64 objects.
+_fixture aarch64
+_out="$(_run arm64 arm64)"
+t_assert_eq "" "$(compgen -G "${ROOT}/1.4.357.0/x86_64")" "the x86_64 tarball prefix is gone"
+t_assert_eq yes "$([ -e "${ROOT}/1.4.357.0/aarch64/lib/libvulkan.so.1" ] && echo yes)" "the image's own prefix stays"
+t_assert_contains "${_out}" "removing ${ROOT}/1.4.357.0/x86_64 (LunarG tarball SDK; arm64 runs aarch64/lib/libvulkan.so.1)" \
+  "and the drop names what the image runs instead"
+
+t_case "an arm64 builder targeting amd64 keeps x86_64 -- it IS the target's"
+_fixture aarch64
+_out="$(_run amd64 arm64)"
+t_assert_eq yes "$([ -e "${ROOT}/1.4.357.0/x86_64/lib/libvulkan.so.1" ] && echo yes)" "x86_64 survives"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep 'LunarG tarball')" "and is never announced as dropped"
+
+t_case "a native arm64 build without its own loader keeps x86_64 rather than ship none"
+_fixture aarch64 none
+_run arm64 arm64 >/dev/null
+t_assert_eq yes "$([ -d "${ROOT}/1.4.357.0/x86_64" ] && echo yes)" "no loader for the target, no drop"
+
 t_summary

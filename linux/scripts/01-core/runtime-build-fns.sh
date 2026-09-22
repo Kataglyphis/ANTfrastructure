@@ -274,10 +274,25 @@ append_wrapper_build_args() {
     --build-arg "VCS_REF=${_prov_ref}"
   )
   [ -n "${_wheels_image}" ] && _awba_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
+  # That tag exists only in the containerd store, which BuildKit's OCI worker
+  # cannot see: wheels-source died "not found". Hand it the wheelhouse as a
+  # directory context (see runtime_wheels_context_dir for why not OCI).
+  if [ -n "${_wheels_image}" ] && runtime_use_local_artifact_context; then
+    local _wheels_ctx
+    _wheels_ctx="$(runtime_wheels_context_dir "${arch}" "${_wheels_image}")" || return 1
+    _awba_out+=(--build-context "${_wheels_image}=${_wheels_ctx}")
+  fi
   # Documented operator overrides (see runtime_shared_usage_env_overrides);
   # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
-  append_optional_build_arg _awba_out ONNX_PACKAGE "${ONNX_PACKAGE:-}"
-  append_optional_build_arg _awba_out PYTORCH_EXTRA "${PYTORCH_EXTRA:-}"
+  # A GPU wrapper takes the GPU backend pair unless the operator pinned one: the
+  # Dockerfile's CPU defaults failed the image's own torch.version.cuda and
+  # CUDAExecutionProvider gates. Resolved HERE so the shipped ENV names it too.
+  local _onnx_pkg="${ONNX_PACKAGE:-}" _torch_extra="${PYTORCH_EXTRA:-}"
+  if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+    : "${_onnx_pkg:=onnxruntime-gpu}" "${_torch_extra:=pytorch-cu130}"
+  fi
+  append_optional_build_arg _awba_out ONNX_PACKAGE "${_onnx_pkg}"
+  append_optional_build_arg _awba_out PYTORCH_EXTRA "${_torch_extra}"
 }
 
 runtime_build_package_image() {
@@ -430,7 +445,7 @@ _runtime_build_wrapper() {
     return 0
   fi
 
-  append_wrapper_build_args _wrapper_build_args_out "${arch}" "${_wrapper_parent_image_out}"
+  append_wrapper_build_args _wrapper_build_args_out "${arch}" "${_wrapper_parent_image_out}" || return 1
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"

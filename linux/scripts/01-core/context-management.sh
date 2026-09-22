@@ -2,6 +2,7 @@
 # context-management.sh — runtime build context, OCI export, and local stage handoff.
 #
 # Provides:
+#   _with_throwaway_container()
 #   _export_container_rootfs()
 #   export_rootfs_from_image()
 #   export_image_to_oci_layout()
@@ -16,6 +17,7 @@
 #   runtime_stage_context_dir()
 #   runtime_remove_stage_context()
 #   runtime_refresh_stage_context()
+#   runtime_wheels_context_dir()
 #   runtime_use_local_artifact_context()
 #   runtime_artifact_context_dir()
 #   runtime_artifact_context_ref()
@@ -32,28 +34,36 @@ if [ -z "${_BUILD_HELPERS_LOADED:-}" ] && [ -f "${_CM_DIR}/build-helpers.sh" ]; 
   source "${_CM_DIR}/build-helpers.sh"
 fi
 
+# <nerdctl> <tag> <cmd...>: run "<cmd...> <cid>" against a throwaway container
+# of <tag>, then remove it on BOTH paths and return the command's rc.
+# NO `trap ... RETURN` here (same leak as the one fixed in parallel-loop.sh):
+# a RETURN trap set inside a function stays armed after an error-path return
+# and fires again when the CALLER returns — where ${cid} is not in scope, so
+# under `set -u` the second firing aborts the caller instead of cleaning up.
+# `|| rc=$?` keeps set -e from returning before the cleanup.
+_with_throwaway_container() {
+  local nerdctl_bin="$1" tag="$2" cid rc=0
+  shift 2
+  cid="$("${nerdctl_bin}" create "${tag}" /bin/true)" || return 1
+  "$@" "${cid}" || rc=$?
+  "${nerdctl_bin}" rm -f "${cid}" >/dev/null 2>&1 || true
+  return "${rc}"
+}
+
+# <nerdctl> <rootfs_dir> <cid>
+_export_cid_rootfs() {
+  "$1" export "$3" | tar -xpf - -C "$2"
+}
+
 _export_container_rootfs() {
   local nerdctl_bin="$1"
   local tag="$2"
   local rootfs_dir="$3"
-  local cid=""
 
   rm -rf "${rootfs_dir}"
   mkdir -p "${rootfs_dir}"
-
-  cid="$("${nerdctl_bin}" create "${tag}" /bin/true)"
-
-  # NO `trap ... RETURN` here (same leak as the one fixed in parallel-loop.sh):
-  # a RETURN trap set inside a function stays armed after an error-path return
-  # and fires again when the CALLER returns — where ${cid} is not in scope, so
-  # under `set -u` the second firing aborts the caller instead of cleaning up.
-  # Capturing the rc with `|| rc=$?` keeps set -e from returning early, so the
-  # explicit cleanup below runs on both the happy and the failure path.
-  local rc=0
-  "${nerdctl_bin}" export "${cid}" | tar -xpf - -C "${rootfs_dir}" || rc=$?
-
-  "${nerdctl_bin}" rm -f "${cid}" >/dev/null 2>&1 || true
-  return "${rc}"
+  _with_throwaway_container "${nerdctl_bin}" "${tag}" \
+    _export_cid_rootfs "${nerdctl_bin}" "${rootfs_dir}"
 }
 
 export_rootfs_from_image() {
@@ -194,6 +204,27 @@ runtime_refresh_stage_context() {
   runtime_use_local_context_chain || return 0
   context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
   _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${image_ref}" "${context_dir}"
+}
+
+# The wrapper's wheels-source as a DIRECTORY holding only /opt/wheels. nerdctl
+# maps every oci-layout:// context onto ONE fixed store id (parent-image-key),
+# so a second OCI context beside runtime_package leaves one of them unresolvable
+# ("content sha256:...: not found"). Same reason runtime_base ships as a rootfs.
+# <nerdctl> <dir> <cid>. Not `nerdctl cp`: rootless nerdctl refuses cp from a
+# stopped container, and `run ... cp` would need QEMU for a foreign-arch image.
+_export_cid_wheels() {
+  "$1" export "$3" | tar -xpf - -C "$2" opt/wheels
+}
+
+runtime_wheels_context_dir() {
+  local arch="$1" image_ref="$2" dir
+  local nerdctl_bin="${NERDCTL_BIN:-nerdctl}"
+  dir="$(runtime_stage_context_dir wheels "${arch}")" || return 1
+  rm -rf "${dir}"
+  mkdir -p "${dir}"
+  _with_throwaway_container "${nerdctl_bin}" "${image_ref}" \
+    _export_cid_wheels "${nerdctl_bin}" "${dir}" || return 1
+  printf '%s' "${dir}"
 }
 
 runtime_use_local_artifact_context() {
