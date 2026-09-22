@@ -105,66 +105,70 @@ if (-not $sourceRoot) {
 }
 if (-not $sourceRoot) { throw "HailoRT source tree (hailort\CMakeLists.txt) not found under $SourceDir" }
 
+# One owner for the patch-with-inline-fallback shape (repo Source Patch Policy):
+# four call sites would otherwise repeat the same Invoke-SourcePatchWithFallback
+# skeleton, which the code-dupes gate counts as a copied block.
+function Invoke-HailortSourcePatch {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$FallbackNote,
+        [Parameter(Mandatory)][scriptblock]$Fallback
+    )
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot "patches\hailo\$Name") -SourceDir $sourceRoot `
+        -FallbackNote $FallbackNote -Fallback $Fallback
+}
+
 # Upstream's bankers_round keys on _MSC_VER, which clang-cl defines on EVERY arch,
 # so the x86 intrinsics compile on ARM64 (undefined) and on a bare x64 clang-cl
-# without -msse4.1 (error: needs target feature sse4.1). .patch first, inline
-# guard rewrite as the context-drift fallback (repo Source Patch Policy).
-$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\hailo\001-quantization-msvc-guard.patch') -SourceDir $sourceRoot `
-    -FallbackNote 'falling back to an inline guard rewrite' `
-    -Fallback {
-        Invoke-InlineRegexPatch -Path (Join-Path $sourceRoot 'hailort\libhailort\include\hailo\quantization.hpp') `
-            -SkipIfMatch '!defined\(__clang__\)' `
-            -Pattern '#if defined\(_MSC_VER\)' `
-            -Replacement '#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_IX86))' `
-            -Description 'hailort quantization: x86-only MSVC guard' `
-            -WarnMessage 'quantization.hpp: the _MSC_VER guard was not found; the x86 intrinsics will fail on ARM64 or a bare x64 clang-cl. Verify the file.' | Out-Null
-    }
+# without -msse4.1 (error: needs target feature sse4.1).
+Invoke-HailortSourcePatch -Name '001-quantization-msvc-guard.patch' -FallbackNote 'falling back to an inline guard rewrite' -Fallback {
+    Invoke-InlineRegexPatch -Path (Join-Path $sourceRoot 'hailort\libhailort\include\hailo\quantization.hpp') `
+        -SkipIfMatch '!defined\(__clang__\)' `
+        -Pattern '#if defined\(_MSC_VER\)' `
+        -Replacement '#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_IX86))' `
+        -Description 'hailort quantization: x86-only MSVC guard' `
+        -WarnMessage 'quantization.hpp: the _MSC_VER guard was not found; the x86 intrinsics will fail on ARM64 or a bare x64 clang-cl. Verify the file.' | Out-Null
+}
 
 # clang-cl enforces `template<>` on an explicit specialization's member definitions
 # (MSVC accepts the bare form); upstream's Windows driver code has two of them.
-$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\hailo\002-ioctl-nullptr-template-specialization.patch') -SourceDir $sourceRoot `
-    -FallbackNote 'falling back to inline template<> insertion' `
-    -Fallback {
-        $ioctl = Join-Path $sourceRoot 'hailort\libhailort\src\vdma\driver\os\windows\driver_os_specific.cpp'
-        foreach ($member in @('to_compatible', 'from_compatible')) {
-            Invoke-InlineRegexPatch -Path $ioctl `
-                -SkipIfMatch "(?m)^template<>`r?`n\S+ WindowsIoctlParamCast<nullptr_t>::$member" `
-                -Pattern "(?m)^((?:\S+ )?WindowsIoctlParamCast<nullptr_t>::$member)" `
-                -Replacement "template<>`n`$1" `
-                -Description "hailort ioctl cast ${member}: explicit-specialization prefix" `
-                -WarnMessage "driver_os_specific.cpp: $member definition not found; clang-cl will reject the file. Verify it." | Out-Null
-        }
+Invoke-HailortSourcePatch -Name '002-ioctl-nullptr-template-specialization.patch' -FallbackNote 'falling back to inline template<> insertion' -Fallback {
+    $ioctl = Join-Path $sourceRoot 'hailort\libhailort\src\vdma\driver\os\windows\driver_os_specific.cpp'
+    foreach ($member in @('to_compatible', 'from_compatible')) {
+        Invoke-InlineRegexPatch -Path $ioctl `
+            -SkipIfMatch "(?m)^template<>`r?`n\S+ WindowsIoctlParamCast<nullptr_t>::$member" `
+            -Pattern "(?m)^((?:\S+ )?WindowsIoctlParamCast<nullptr_t>::$member)" `
+            -Replacement "template<>`n`$1" `
+            -Description "hailort ioctl cast ${member}: explicit-specialization prefix" `
+            -WarnMessage "driver_os_specific.cpp: $member definition not found; clang-cl will reject the file. Verify it." | Out-Null
     }
+}
 
 # Upstream's Windows filesystem.cpp is a stub that omits LockedFile's virtual
 # destructor while the header declares it -- hailortcli then fails to link with
 # `undefined symbol: hailort::LockedFile::~LockedFile` (lld-link).
-$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\hailo\003-windows-lockedfile-dtor.patch') -SourceDir $sourceRoot `
-    -FallbackNote 'falling back to inline destructor insertion' `
-    -Fallback {
-        $fs = Join-Path $sourceRoot 'hailort\common\os\windows\filesystem.cpp'
-        Invoke-InlineRegexPatch -Path $fs `
-            -SkipIfMatch 'LockedFile::~LockedFile' `
-            -Pattern '(?m)^(TempFile::~TempFile\(\)\r?\n\{\r?\n\})' `
-            -Replacement "`$1`n`nLockedFile::~LockedFile()`n{`n}" `
-            -Description 'hailort windows filesystem: LockedFile destructor' `
-            -WarnMessage 'filesystem.cpp: TempFile::~TempFile not found; the LockedFile destructor cannot be inserted and hailortcli will not link. Verify it.' | Out-Null
-    }
+Invoke-HailortSourcePatch -Name '003-windows-lockedfile-dtor.patch' -FallbackNote 'falling back to inline destructor insertion' -Fallback {
+    $fs = Join-Path $sourceRoot 'hailort\common\os\windows\filesystem.cpp'
+    Invoke-InlineRegexPatch -Path $fs `
+        -SkipIfMatch 'LockedFile::~LockedFile' `
+        -Pattern '(?m)^(TempFile::~TempFile\(\)\r?\n\{\r?\n\})' `
+        -Replacement "`$1`n`nLockedFile::~LockedFile()`n{`n}" `
+        -Description 'hailort windows filesystem: LockedFile destructor' `
+        -WarnMessage 'filesystem.cpp: TempFile::~TempFile not found; the LockedFile destructor cannot be inserted and hailortcli will not link. Verify it.' | Out-Null
+}
 
 # Upstream defines _AMD64_=1 for ANY 64-bit Windows build, so an aarch64 cross
 # build makes winnt.h take the x86 intrinsic path (ReadAcquire8/WriteRelease
 # undeclared under clang-cl). The patch makes the macro follow the target arch.
-$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\hailo\004-cmake-target-arch-macro.patch') -SourceDir $sourceRoot `
-    -FallbackNote 'falling back to an inline arch-macro rewrite' `
-    -Fallback {
-        $top = Join-Path $sourceRoot 'hailort\CMakeLists.txt'
-        Invoke-InlineRegexPatch -Path $top `
-            -SkipIfMatch 'CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64"' `
-            -Pattern '(?m)^(    if \(CMAKE_SIZEOF_VOID_P EQUAL 8\)\r?\n        add_compile_definitions\(_AMD64_=1\))' `
-            -Replacement "    if (CMAKE_SYSTEM_PROCESSOR STREQUAL `"ARM64`" OR CMAKE_SYSTEM_PROCESSOR STREQUAL `"arm64`")`n        add_compile_definitions(_ARM64_=1)`n    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)`n        add_compile_definitions(_AMD64_=1)" `
-            -Description 'hailort CMakeLists: arch-aware Windows SDK macro' `
-            -WarnMessage 'hailort/CMakeLists.txt: the pointer-size guard was not found; the ARM64 build will define _AMD64_ and winnt.h will fail. Verify it.' | Out-Null
-    }
+Invoke-HailortSourcePatch -Name '004-cmake-target-arch-macro.patch' -FallbackNote 'falling back to an inline arch-macro rewrite' -Fallback {
+    $top = Join-Path $sourceRoot 'hailort\CMakeLists.txt'
+    Invoke-InlineRegexPatch -Path $top `
+        -SkipIfMatch 'CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64"' `
+        -Pattern '(?m)^(    if \(CMAKE_SIZEOF_VOID_P EQUAL 8\)\r?\n        add_compile_definitions\(_AMD64_=1\))' `
+        -Replacement "    if (CMAKE_SYSTEM_PROCESSOR STREQUAL `"ARM64`" OR CMAKE_SYSTEM_PROCESSOR STREQUAL `"arm64`")`n        add_compile_definitions(_ARM64_=1)`n    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)`n        add_compile_definitions(_AMD64_=1)" `
+        -Description 'hailort CMakeLists: arch-aware Windows SDK macro' `
+        -WarnMessage 'hailort/CMakeLists.txt: the pointer-size guard was not found; the ARM64 build will define _AMD64_ and winnt.h will fail. Verify it.' | Out-Null
+}
 
 if (-not $SkipExternals) {
     # protobuf: HailoRT's external cmake builds from the LITERAL

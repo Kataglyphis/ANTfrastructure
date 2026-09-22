@@ -20,8 +20,9 @@ Prebuilt container images and the build system that produces them: a multi-arch
 Linux stack (`amd64`/`arm64`/`riscv64`) carrying GCC, LLVM/Clang, Vulkan and a
 full media/inference layer (ONNX Runtime, OpenCV, FFmpeg, GStreamer, LiteRT,
 TVM, IREE — riscv64 carries two documented exemptions, listed in AGENTS.md's
-Linux build rules); a slim nginx webserver; and a Windows Server Core build image with
-MSVC, CUDA and the same media stack.
+Linux build rules); a slim nginx webserver; and a Windows Server Core build image
+with MSVC, CUDA and the same media stack, plus **HailoRT** and a **cross-built
+arm64 artifact bundle** (CUDA/cuDNN, GenAI, OpenCV CUDA, TVM, HailoRT).
 
 Pull an image and start working, or build the chain yourself — both are below.
 
@@ -145,15 +146,15 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 **One published tag is one manifest, and the manifest carries every architecture
 its variant supports** (owner directive 2026-09-21). Adding an architecture adds
-an entry to the same tag; adding a variant adds a tag — and a variant exists only
+an entry to the same tag; adding a variant adds a tag - and a variant exists only
 for a stack that cannot ship in `:latest` (owner directive 2026-09-22).
 Accelerators whose runtime fits the default image are built into it instead:
 
 | Accelerator | In `:latest` | Arches |
 |---|---|---|
 | Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS) | always | amd64, arm64 (riscv64: no upstream support) |
-| Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) — **the current release was built without it** | arm64 |
-| NVIDIA CUDA / AMD ROCm | no — `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
+| Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) - **the current release was built without it** | arm64 |
+| NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
  The Windows lane is the
 documented exception: `windows/arm64` is not a platform, so its arm64 output is a
 bundle that cannot share `:winamd64`'s manifest. Rules and rationale:
