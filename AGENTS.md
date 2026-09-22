@@ -99,6 +99,38 @@ The stage graph with its tags and platforms, and what each stage contains:
 must not drift are § Windows-Specific Naming below and
 [`consumer-image-contract.md`](docs/consumer-image-contract.md).
 
+### Image and tag naming (published tags)
+
+**One published tag is one MANIFEST, and the manifest carries every architecture
+its variant supports** (owner directive 2026-09-21). The same rule for both
+lanes; only the lane qualifier differs, because the Linux and Windows lanes
+publish into the SAME registry repo and a bare `:latest` would collide.
+
+| | Default manifest | Variant manifest | Per-arch wrapper (internal) | Cross bundle (NOT a platform) |
+| --- | --- | --- | --- | --- |
+| Linux | `:latest-cross` | `:latest-cross-<variant>` | `:latest-cross-<variant>-<arch>` | — |
+| Windows | `:winamd64` | `:winamd64-<variant>` | — (one platform) | `:winarm64` |
+
+- `<variant>` names what makes the image different — `nvidia`, `amd`, `hailo`,
+  `qnn`, ... It is NEVER an architecture: adding an architecture to a variant
+  adds an ENTRY to the same manifest, and adding a variant adds a TAG.
+- The per-arch images (`:latest-cross-<arch>`, the stage tags) are the wrappers
+  the manifest is assembled from. They are implementation detail; consumers
+  resolve the manifest.
+- A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
+  published index (§ Push and Publish Rules), so a partial run cannot silently
+  drop an architecture from one.
+- **Windows is the documented exception, and it is a platform fact, not a
+  convention:** `windows/arm64` does not exist as a platform — Microsoft
+  publishes no arm64 `servercore`/`nanoserver` base and Windows Server has no
+  arm64 release
+  ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586)).
+  The arm64 lane cross-compiles inside the `windows/amd64` container and emits an
+  **artifact bundle**, so BOTH Windows outputs are `windows/amd64` images: two
+  entries with the same platform cannot share a manifest, and the bundle must
+  never be published as `windows/arm64`. The bundle therefore keeps its own tag
+  (`:winarm64`, documented as a bundle) and never joins `:winamd64`.
+
 ### Windows-Specific Naming
 
 The Windows lane names its local intermediate tags with `Get-BkTag`
@@ -106,12 +138,13 @@ The Windows lane names its local intermediate tags with `Get-BkTag`
 `docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
 `bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches
 `bk-windows-media-core` / `-media-litert` / `-media-tvm` (media-core is itself
-split into `bk-windows-media-core-onnx` / `-ffmpeg` / `-opencv`), the merged
-`bk-windows-media`, and `bk-windows-torch` for the app stage. The arch suffix
-is omitted for `windows-base`/`-sdk`/`-toolchain` (shared across both lanes)
-and appended (`-arm64`) for everything downstream. It publishes the final image
-as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64` on the
-cross lane). The un-prefixed `local/kataglyphis:windows-*` names and
+split into `bk-windows-media-core-onnx` / `-ffmpeg` / `-opencv` / `-hailo`), the
+merged `bk-windows-media`, and `bk-windows-torch` for the app stage. The arch
+suffix is omitted for `windows-base`/`-sdk`/`-toolchain` (shared across both
+lanes) and appended (`-arm64`) for everything downstream. It publishes the final
+image as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64`
+on the cross lane) — see § Image and tag naming for what those two tags are
+allowed to be. The un-prefixed `local/kataglyphis:windows-*` names and
 `Get-MediaBranchTag` belonged to the classic driver `build.ps1`, **deleted
 2026-08-31** — neither the tags nor the helper exist any more. See
 `docs/windows-builds.md` § Build Commands for the full build sequence.
