@@ -313,6 +313,71 @@ so `triton-rocm` moves with it.
 sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
 ```
 
+## ROCm: what the first `:latest-rocm` run must carry (planned, 2026-09-22)
+
+Measured against AMD's current docs and the live repo indexes before the first
+rocm chain run. Everything here is verified against **TheRock** packages
+(`stable.repo.amd.com`, `amdrocm-*`) on **Ubuntu 26.04**, which is what
+`setup-rocm-repo.sh` installs — not the classic `repo.radeon.com` `rocm-*` set
+most AMD pages still describe.
+
+### ASAN: a separate image, never `:latest-rocm`
+
+The owner asked for the AddressSanitizer packages alongside the normal ones
+([install/asan.html](https://rocm.docs.amd.com/en/latest/install/asan.html?fam=all&os=ubuntu&ubuntu-ver=26.04&i=tar)).
+They exist for ROCm 10.0 / Ubuntu 26.04, in a parallel repo path
+(`.../core/packages-asan/ubuntu2604/`, same signing key), as
+`amdrocm-asan10.0`, `amdrocm-core-devel-asan10.0`,
+`amdrocm-developer-tools-asan10.0`, `amdrocm-opencl-asan10.0`,
+`amdrocm-core-sdk-asan10.0`. Four facts decide the shape:
+
+1. **Size.** Measured from that repo's `Packages.gz` on 2026-09-22: 143
+   packages, `amdrocm-llvm-dev-asan10.0` alone **61.7 GiB** installed,
+   `amdrocm-llvm-asan10.0` 29.3 GiB, **134.8 GiB** for the full set. A
+   `:latest-rocm` that carries this is not shippable.
+2. **GPU coverage.** Every one of the 30 gfx-specific ASAN packages is
+   gfx942 or gfx950 (MI300/MI350). On any other AMD GPU the instrumented
+   libraries do nothing.
+3. **Not the headline feature.** There is no ASAN MIGraphX and no ASAN PyTorch
+   wheel line, so the two things this image exists for stay uninstrumented.
+4. **Co-installing hijacks `update-alternatives`.** The ASAN debs register the
+   same alternatives as the normal packages (`core`, `rocm-lib`, `rocm-bin`,
+   `hipcc`, …) with the same priority, so `/opt/rocm/lib`, `/opt/rocm/bin` and
+   `/usr/bin/hipcc` can silently resolve into `/opt/rocm/core-asan-10.0`. The
+   outcome is a coin flip between rebuilds, not a deterministic last-wins.
+
+**Plan:** ASAN is its own tag (`:latest-rocm-asan`, a variant of the variant) or
+nothing, gated behind `ENABLE_ROCM_ASAN` (default off). Prefer the **tarball**
+install the owner's URL selects (`i=tar`): it unpacks to a prefix we choose,
+registers no alternatives, and keeps the ASAN tree out of `/opt/rocm`, so
+`copy_rocm_payload` cannot drag it into the shipped image. If we ever take the
+deb route instead, `setup-rocm-repo.sh` must re-`--set` every alternative back
+to `core-${ROCM_VERSION}` and then assert `readlink -f /opt/rocm/lib` and
+`hipcc` resolve under it — an assert the build fails on, not a warning.
+Runtime is the consumer's business and stays documented, never baked:
+`HSA_XNACK=1`, `LD_LIBRARY_PATH`/`LD_PRELOAD` into the ASAN prefix. The ASAN
+directories must never enter `/etc/ld.so.conf.d/`.
+
+### The non-ASAN work the same sweep turned up
+
+| # | Change | Why |
+| --- | --- | --- |
+| 1 | Install per-gfx metapackages instead of the all-architecture ones | `amdrocm-core-dev` pulls all 25 gfx targets (19.6 GiB). The single largest size win: ~18.4 GiB → 9-13 GiB. |
+| 2 | `ROCM_PATH`, `HIP_PATH` and `/opt/rocm/bin` on `PATH` in the shipped image | The wrapper has none of them today; every consumer recipe starts by setting them. |
+| 3 | Assert the installed ROCm and MIGraphX versions at the end of `Dockerfile.amd` | `stable` is a ROLLING suite and our package names carry no version, so the pin in `versions.env` is a label, not a constraint. A drifted repo must fail the build, not the run. |
+| 4 | Write the RESOLVED path into `/etc/ld.so.conf.d/000-rocm.conf` | It currently writes the literal `/opt/rocm/lib`, which re-resolves through alternatives in a derived image. |
+| 5 | `/dev/kfd` access for uid 1001, documented with numeric host GIDs (or the udev rule), plus `--device /dev/kfd --device /dev/dri --group-add`, `--ipc=host`, `--shm-size` | Our documented run line is incomplete; the image runs non-root and cannot open the device as shipped. |
+| 6 | Do NOT add `--security-opt seccomp=unconfined` to the documented run command, and never bake `HSA_OVERRIDE_GFX_VERSION` | Both are cargo-cult carried from old ROCm guides; the first weakens every consumer's sandbox, the second silently lies about the GPU. |
+| 7 | Writable MIOpen cache/db paths | The image is designed to run `--read-only`; MIOpen writes on first use. |
+| 8 | Build-time self-check that works with NO GPU | `hipconfig`, `rocm_agent_enumerator`, `migraphx-driver`, `ldd`, and ONNX Runtime listing `MIGraphXExecutionProvider` all work GPU-less; `rocminfo`/`amd-smi` need a device. Write `amd-smi`, not `rocm-smi` (deprecated in ROCm 10.0). |
+| 9 | Point consumers at AMD's Container Runtime Toolkit (CDI), which supports nerdctl | Cleaner than hand-rolled device flags, and it covers Ubuntu 26.04. |
+| 10 | Fix the Renovate comment on `ROCM_VERSION` | It watches a TheRock git tag, not the apt package we install. |
+
+Checked and NOT applicable: `PYTORCH_ROCM_ARCH` (a source-build knob; we install
+prebuilt wheels) and `GPU_TARGETS`/`AMDGPU_TARGETS` (no such knob for the
+MIGraphX EP build). The kernel driver stays on the HOST — the image ships
+userspace only, and that is correct.
+
 ## Hailo (in the standard image)
 
 HailoRT + `hailortcli` + the `hailonet` element + **TAPPAS** (`hailofilter`,
