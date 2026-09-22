@@ -17,7 +17,7 @@ time drawn in. The weights (13 MB) download once into `~/.cache/jetson-webcam`.
 |---|---|
 | `JETSON_WEBCAM_CAMERA` | `/dev/video0` |
 | `JETSON_WEBCAM_PORT` | `8080` |
-| `JETSON_WEBCAM_IMAGE` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-hostarm64-arm64` (a local tag; an image built before the 2026-09-22 rename is `:latest-cross-hostarm64-arm64` — `nerdctl tag` it or set this) |
+| `JETSON_WEBCAM_IMAGE` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia-hostarm64-arm64` (a local tag; an image built before the 2026-09-22 variant naming is `:latest-cross-hostarm64-arm64` — `nerdctl tag` it or set this) |
 | extra arguments | passed to `app.py`: `--threshold 0.5`, `--no-cuda-graph` |
 
 Stop it with Ctrl-C, or `nerdctl stop jetson-webcam` when it runs detached.

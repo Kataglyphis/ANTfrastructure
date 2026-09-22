@@ -518,21 +518,32 @@ enforce_torch_version_pins() {
   fi
 
   echo "enforcing torch pins: ${have_torch:-absent}/${have_tv:-absent} -> ${want_torch}/${want_tv}"
-  case "${PYTORCH_EXTRA:-pytorch-cpu}" in
-    pytorch-cu*)
-      # From the extra's OWN index, and WITH deps: the CPU index swapped a CUDA
-      # torch back to CPU, and --no-deps would keep the old torch's pinned
-      # nvidia-cudnn/nccl and triton (they move between torch minors).
-      uv pip install \
-        --index-url "https://download.pytorch.org/whl/${PYTORCH_EXTRA#pytorch-}" \
-        --extra-index-url https://pypi.org/simple \
-        "torch==${want_torch}" "torchvision==${want_tv}"
-      ;;
-    *)
-      uv pip install --force-reinstall --no-deps \
-        --index-url https://download.pytorch.org/whl/cpu \
-        "torch==${want_torch}" "torchvision==${want_tv}"
-      ;;
+  local gpu_index
+  gpu_index="$(_torch_pin_gpu_index "${PYTORCH_EXTRA:-pytorch-cpu}")" || return 1
+  if [ -n "${gpu_index}" ]; then
+    # From the GPU line's OWN index, and WITH deps: the CPU index swapped a CUDA
+    # torch back to CPU, and --no-deps would keep the old torch's pinned
+    # nvidia-cudnn/nccl and triton (they move between torch minors).
+    uv pip install \
+      --index-url "https://download.pytorch.org/whl/${gpu_index}" \
+      --extra-index-url https://pypi.org/simple \
+      "torch==${want_torch}" "torchvision==${want_tv}"
+  else
+    uv pip install --force-reinstall --no-deps \
+      --index-url https://download.pytorch.org/whl/cpu \
+      "torch==${want_torch}" "torchvision==${want_tv}"
+  fi
+}
+
+# The download.pytorch.org line a GPU extra's pinned torch comes from, or empty
+# for the CPU path. CUDA uses the extra's own index (pytorch-cu130 -> cu130).
+# ROCm uses the PINNED line: the app's pytorch-rocm71 index has no torch 2.14,
+# and the CPU path would swap the ROCm torch for a CPU one without a word.
+_torch_pin_gpu_index() {
+  case "$1" in
+    pytorch-cu*)   printf '%s' "${1#pytorch-}" ;;
+    pytorch-rocm*) printf '%s' "${PYTORCH_ROCM_INDEX:?PYTORCH_ROCM_INDEX unset}" ;;
+    *)             printf '' ;;
   esac
 }
 

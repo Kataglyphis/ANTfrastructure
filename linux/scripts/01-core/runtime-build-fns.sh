@@ -260,8 +260,9 @@ append_wrapper_build_args() {
   # a -host<arch> infix, Dockerfile.torch's un-infixed default would then name
   # the AMD box's artifact and bind-mount ITS /opt/wheels. Name this host's tag
   # instead, so a miss fails loudly rather than shipping the wrong generation.
-  # Structurally unreachable on amd64: the infix is empty there.
-  if [ -z "${_wheels_image}" ] && [ -n "$(cross_build_host_infix)" ]; then
+  # Structurally unreachable on amd64: the infix is empty there. A VARIANT is the
+  # same hazard on every host: the default names the default chain's android.
+  if [ -z "${_wheels_image}" ] && { [ -n "$(cross_build_host_infix)" ] || [ -n "$(cross_variant 2>/dev/null)" ]; }; then
     _wheels_image="$(cross_android_tag "${arch}" 2>/dev/null || true)"
   fi
   _awba_out+=(
@@ -290,6 +291,10 @@ append_wrapper_build_args() {
   local _onnx_pkg="${ONNX_PACKAGE:-}" _torch_extra="${PYTORCH_EXTRA:-}"
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     : "${_onnx_pkg:=onnxruntime-gpu}" "${_torch_extra:=pytorch-cu130}"
+  elif [ "${ENABLE_AMD:-false}" = "true" ]; then
+    # The app's only ROCm extra; assemble-torch-app.sh then enforces the torch
+    # pin from PYTORCH_ROCM_INDEX (versions.env), which tracks ROCM_VERSION.
+    : "${_onnx_pkg:=onnxruntime-migraphx}" "${_torch_extra:=pytorch-rocm71}"
   fi
   append_optional_build_arg _awba_out ONNX_PACKAGE "${_onnx_pkg}"
   append_optional_build_arg _awba_out PYTORCH_EXTRA "${_torch_extra}"

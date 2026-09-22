@@ -89,7 +89,8 @@ that owns the topic.
 ## Container Architecture
 
 One Dockerfile per stage, chained base → toolchain → sdk → media → android →
-package → torch, with optional `nvidia`/`amd` layers off sdk. Each stage is
+package → torch, with an optional `gpu` layer (`nvidia` or `amd`) between sdk
+and media in a variant chain. Each stage is
 built and pushed on its own and pinned into its child by digest, which is what
 makes a single-stage rebuild possible at all.
 
@@ -126,7 +127,9 @@ qualifier (owner directive 2026-09-22).
   instead: Hailo-10H (amd64/arm64, `Dockerfile.torch`) and QNN (arm64, when the
   QAIRT zip is staged — `docs/qnn-linux.md`). There is no `:latest-hailo` or
   `:latest-qnn`; the standalone `:hailo` variant and `Dockerfile.hailo` were
-  retired on 2026-09-22 as a duplicate of the standard build.
+  retired on 2026-09-22 as a duplicate of the standard build. A variant is
+  built by a variant chain (§ Build Workflow), never by flipping `ENABLE_*` on
+  the default one — that used to push GPU bytes under the default tags.
 - The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
   `:latest-package-<arch>`) are the wrappers the manifest is assembled from.
   They are implementation detail; consumers resolve the manifest.
@@ -416,7 +419,20 @@ Wrapper builds, manifest publishing and manifest repair:
 
 ```
 build-cross-chain.sh → base → compiler → sdk → media → android → runtime → manifest
+CROSS_VARIANT=nvidia|rocm       → (shared sdk) → gpu → media → android → runtime → manifest
 ```
+
+**A variant chain is the only way to build a GPU image** (2026-09-22).
+`CROSS_VARIANT=nvidia` / `rocm` (or `ENABLE_NVIDIA=true` / `ENABLE_AMD=true`,
+which imply it) is an ENVIRONMENT knob, because `stage-defs.sh` builds the stage
+graph when it is sourced. It inserts the `gpu` stage, suffixes every tag from
+there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), starts at
+`gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.json`
+and `out/build-logs/<variant>/`, and refuses what it cannot build: rocm off
+amd64, nvidia on a foreign arch (CUDA is installed for the BUILD host, so a
+cross target would ship host-arch GPU libraries). **Chains run strictly one at a
+time**: a live pidfile makes a second chain refuse to start. Commands:
+[`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
 
 Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with `CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin, [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)). Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 

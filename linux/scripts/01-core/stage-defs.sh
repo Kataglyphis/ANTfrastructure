@@ -37,6 +37,17 @@ CROSS_STAGE_ORDER=(base compiler sdk media android runtime)
 # (linux/amd64 by default; linux/arm64 on a native ARM build host).
 CROSS_PER_ARCH_STAGES=(sdk media android)
 
+# A VARIANT chain (CROSS_VARIANT / ENABLE_NVIDIA / ENABLE_AMD, tag-naming.sh
+# cross_variant) inserts its GPU library layer between sdk and media:
+#   base -> compiler -> sdk -> gpu -> media -> android -> runtime
+# Decided when this file is sourced, so the variant is an ENVIRONMENT knob:
+# every array below is read before the orchestrator parses its flags.
+CROSS_GPU_VARIANT="$(cross_variant)" || return 1
+if [ -n "${CROSS_GPU_VARIANT}" ]; then
+  CROSS_STAGE_ORDER=(base compiler sdk gpu media android runtime)
+  CROSS_PER_ARCH_STAGES=(sdk gpu media android)
+fi
+
 # ── Runtime lane stage order ───────────────────────────────────────────────────
 # The runtime lane builds on the real target platform (via QEMU/binfmt for
 # foreign arches) and produces the final wrapper images + multi-arch manifest.
@@ -112,6 +123,16 @@ declare -A CROSS_STAGE_PIN_VARNAME_MAP=(
   [media]="MEDIA_PIN"
   [android]="ANDROID_PIN"
 )
+# The variant's gpu stage: its Dockerfile, its edges, its pin.
+case "${CROSS_GPU_VARIANT}" in
+  nvidia) CROSS_STAGE_DOCKERFILE[gpu]="linux/Dockerfile.nvidia" ;;
+  rocm)   CROSS_STAGE_DOCKERFILE[gpu]="linux/Dockerfile.amd" ;;
+esac
+if [ -n "${CROSS_GPU_VARIANT}" ]; then
+  CROSS_STAGE_PARENT_MAP[gpu]="sdk"
+  CROSS_STAGE_PARENT_MAP[media]="gpu"
+  CROSS_STAGE_PIN_VARNAME_MAP[gpu]="GPU_PIN"
+fi
 
 # ── Dockerfile mapping ────────────────────────────────────────────────────────
 # Returns the Dockerfile path for a stage.  Runtime returns empty (delegates to
@@ -150,6 +171,7 @@ cross_stage_tag() {
     base)      cross_base_tag ;;
     compiler)  cross_compiler_tag ;;
     sdk)       cross_sdk_tag "${arch}" ;;
+    gpu)       [ -n "${CROSS_GPU_VARIANT}" ] || return 1; cross_gpu_tag "${arch}" ;;
     media)     cross_media_tag "${arch}" ;;
     android)   cross_android_tag "${arch}" ;;
     runtime)   printf '%s' "" ;;  # resolved in run_runtime_stage
@@ -252,6 +274,12 @@ cross_stage_build_args() {
       # (via append_common_build_args in _cross_stage_build_impl) auto-forwards
       # every non-noforward versions.env variable.
       append_cross_per_arch_build_args _csba_out "${arch}"
+      ;;
+    gpu)
+      append_cross_per_arch_build_args _csba_out "${arch}"
+      # Dockerfile.nvidia's knobs (Dockerfile.amd has none beyond the pins).
+      append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
+      append_optional_build_arg _csba_out CUDA_INSTALL_COMPAT "${CUDA_INSTALL_COMPAT:-}"
       ;;
     media)
       append_cross_per_arch_build_args _csba_out "${arch}"

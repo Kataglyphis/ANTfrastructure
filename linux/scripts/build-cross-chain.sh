@@ -16,10 +16,35 @@ FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
+# The image variant (tag-naming.sh cross_variant; stage-defs.sh already built
+# the variant's stage graph from it). Exported both ways so every consumer —
+# the Dockerfiles' ENABLE_* build-args and the runtime helper, which inherits
+# only exported vars — agrees with the tags this run writes.
+CROSS_GPU_VARIANT="$(cross_variant)" || exit 1
+case "${CROSS_GPU_VARIANT}" in
+  nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false ;;
+  rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false ;;
+esac
+[ -z "${CROSS_GPU_VARIANT}" ] || export CROSS_VARIANT="${CROSS_GPU_VARIANT}" ENABLE_NVIDIA ENABLE_AMD
+# A GPU wrapper carries the CUDA/ROCm runtime plus the GPU torch wheels: budget
+# the runtime lane for that instead of the CPU image's 120G.
+[ -z "${CROSS_GPU_VARIANT}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"
+# TensorRT off by default on the nvidia chain (owner decision 2026-09-22): the
+# runtime payload carries no libnvinfer yet, so a TensorRT EP could not load.
+if [ "${CROSS_GPU_VARIANT}" = "nvidia" ]; then
+  : "${ENABLE_TENSORRT:=false}"
+  export ENABLE_TENSORRT
+fi
 # --log-dir "" opts out of per-stage logs; chain-status.json is unaffected.
-LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs}"
+# A variant logs under its own directory: the stage log names (media-arm64.log)
+# are the same in every chain, and the per-run archiving would move the default
+# chain's history.
+LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
 
+# A variant chain starts at its gpu stage: base, compiler and sdk are SHARED
+# with the default chain and only that chain may re-push them.
 FROM_STAGE="base"
+[ -z "${CROSS_GPU_VARIANT}" ] || FROM_STAGE="gpu"
 TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
@@ -84,7 +109,8 @@ Options:
                            (default: amd64,arm64,riscv64; must cover --target-arches)
   --image-repo REPO        Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
   --final-image REF        Final multi-arch manifest ref (default: REPO:latest)
-  --from-stage STAGE       First stage to run: base|compiler|sdk|media|android|runtime
+  --from-stage STAGE       First stage to run: base|compiler|sdk|[gpu|]media|android|runtime
+                           (a variant chain defaults to, and must start at or after, gpu)
   --to-stage STAGE         Last stage to run (inclusive). Same value set.
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE
   --vulkan-version VER     Vulkan SDK version for the sdk stage
@@ -123,6 +149,11 @@ EOF
   orchestrator_usage_mirror_options
   cat <<'EOF'
   -h, --help               Show this help text
+
+Variant chains (an ENVIRONMENT knob; ENABLE_NVIDIA/ENABLE_AMD=true imply it):
+  CROSS_VARIANT=nvidia|rocm  gpu stage after the shared sdk, every later tag
+                             -<variant>, publishes :latest-<variant>. Starts at gpu;
+                             rocm amd64-only; nvidia the build host's arch only.
 
 Notes:
   * When resuming mid-chain (e.g. --from-stage media), the required upstream
@@ -228,6 +259,30 @@ _chain_resolve_final_image() {
   fi
 }
 
+# A variant chain's own refusals (see the messages): it never re-pushes the
+# stages it shares with the default chain, and it never builds GPU bytes for an
+# arch it cannot build them for.
+_chain_validate_variant() {
+  [ -n "${CROSS_GPU_VARIANT}" ] || return 0
+  local _gpu_idx; _gpu_idx="$(stage_index gpu)" || exit 1
+  [ "${FROM_STAGE_IDX}" -ge "${_gpu_idx}" ] \
+    || err "a ${CROSS_GPU_VARIANT} chain cannot run --from-stage ${FROM_STAGE}: base, compiler and sdk are shared with the default chain. Rebuild them there, then start this one at gpu."
+  if [ "${CROSS_GPU_VARIANT}" = "rocm" ] && [ "${TARGET_ARCHES}" != "amd64" ]; then
+    err "the rocm variant is amd64-only (ROCm ships no arm64/riscv64 userspace); got --target-arches ${TARGET_ARCHES}"
+  fi
+  # Cross-building CUDA is not implemented: Dockerfile.nvidia installs the
+  # BUILD host's CUDA and the ORT/OpenCV/TVM CUDA builds compile for it, so a
+  # foreign arch would ship x86_64 GPU libraries under an arm64 tag, caught
+  # only by the wrapper's CUDAExecutionProvider gate hours later. Native
+  # (a Jetson building arm64) is fine. docs/linux-accelerator-images.md
+  if [ "${CROSS_GPU_VARIANT}" = "nvidia" ]; then
+    local _host _a; _host="$(build_arch_oci 2>/dev/null || printf amd64)"
+    for _a in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      [ "${_a}" = "${_host}" ] || err "the nvidia variant cannot cross-build ${_a} on this ${_host} host yet (CUDA is installed for, and compiled against, the build host). Build ${_a} natively on an ${_a} build host."
+    done
+  fi
+}
+
 _chain_validate_stages() {
   FROM_STAGE_IDX="$(stage_index "${FROM_STAGE}")" || exit 1
   TO_STAGE_IDX="$(stage_index "${TO_STAGE}")" || exit 1
@@ -235,7 +290,9 @@ _chain_validate_stages() {
     err "--from-stage (${FROM_STAGE}) is after --to-stage (${TO_STAGE})"
   fi
 
-  log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}"
+  _chain_validate_variant
+
+  log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} final=${FINAL_IMAGE}"
 
   if [ "${DESCRIBE_CHAIN}" -eq 1 ]; then
     describe_cross_chain "${TARGET_ARCHES}"
@@ -303,7 +360,7 @@ declare -A _CHAIN_STATUS=()
 _chain_status_emit() {
   local stage="$1" status="$2"
   _CHAIN_STATUS["${stage}"]="${status}"
-  local out="${CROSS_CHAIN_STATUS_FILE:-${REPO_ROOT:-.}/chain-status.json}" tmp
+  local out="${CROSS_CHAIN_STATUS_FILE:-${REPO_ROOT:-.}/chain-status${CROSS_GPU_VARIANT:+-${CROSS_GPU_VARIANT}}.json}" tmp
   # A bare filename has no "/" to strip, so ${out%/*} would expand to the
   # filename itself and the -d test would silently reject every write. Treat a
   # path with no directory component as "the current directory".
@@ -396,7 +453,7 @@ _chain_disk_preflight() {
   [ -n "${free_gb}" ] || free_gb="$(_disk_guard_free_gb /)"
   [ -n "${free_gb}" ] || return 0
   n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"; [ "${n_arch}" -ge 1 ] || n_arch=1
-  case "${FROM_STAGE}" in base|compiler|sdk) per_arch=60 ;; *) per_arch=40 ;; esac
+  case "${FROM_STAGE}" in base|compiler|sdk|gpu) per_arch=60 ;; *) per_arch=40 ;; esac
   need_gb=$(( n_arch * per_arch )); [ "${need_gb}" -ge 60 ] || need_gb=60
   # `|| true`: `du` on a never-built host exits non-zero and pipefail + set -e
   # aborted the orchestrator here with no diagnostic. The size is advisory.
@@ -725,6 +782,18 @@ _chain_live_sibling_pid() {
   printf '%s' "${other}"
 }
 
+# ONE chain at a time (owner directive 2026-09-22, "strictly serial"). Chains
+# share the buildkit store, the cache-export dir and the disk guard, and the
+# guard evicts what the RUNNING chain does not protect — a second chain's caches
+# and images included. Read-only modes (--describe-chain / --verify-chain exit
+# in _chain_validate_stages, before this) and dry runs are exempt.
+_chain_refuse_live_sibling() {
+  is_dry_run && return 0
+  local sib; sib="$(_chain_live_sibling_pid)"
+  [ -z "${sib}" ] && return 0
+  err "another cross chain is running (pid ${sib}, $(cross_chain_pidfile_path)). Chains run strictly one at a time; wait for it, or stop it with linux/scripts/stop-cross-chain.sh."
+}
+
 _chain_write_pidfile() {
   _CHAIN_PIDFILE="$(cross_chain_pidfile_path)"
   # A live SIBLING chain already owns this pidfile: warn (do not clobber its
@@ -906,6 +975,7 @@ main() {
   _chain_warn_emulated_platform
   _chain_validate_stages       # may exit for --describe-chain / --verify-chain
   _chain_no_push_guard         # refuse --no-push multi-stage (stale parent)
+  _chain_refuse_live_sibling   # strictly serial: before any log/state write
   _chain_prepare_log_dir
   _chain_archive_prev_logs
   _chain_prune_archived_logs

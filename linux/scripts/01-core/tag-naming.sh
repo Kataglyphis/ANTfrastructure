@@ -7,9 +7,12 @@ _TAG_NAMING_SH_LOADED=1
 # Provides:
 #   cross_base_tag()              — :base (+ -<arch> off an amd64 build host)
 #   cross_compiler_tag()          — :cross-compiler-<build host arch>
+#   cross_variant()               — '' (default image) | nvidia | rocm
+#   cross_variant_infix()         — '' | -nvidia | -rocm
 #   cross_sdk_tag()               — :cross-sdk-<arch>
-#   cross_media_tag()             — :cross-media-<arch>
-#   cross_android_tag()           — :cross-android-<arch>
+#   cross_gpu_tag()               — :cross-toolchain-<variant>-<arch> (variant chains only)
+#   cross_media_tag()             — :cross-media[-<variant>]-<arch>
+#   cross_android_tag()           — :cross-android[-<variant>]-<arch>
 #   cross_final_image_tag()       — :latest (+ -host<arch> off an amd64 build host)
 #   cross_final_image_legacy_alias() — deprecated :latest-cross alias of that index, or empty
 #   runtime_base_tag()            — <prefix>-base-<arch>
@@ -24,6 +27,36 @@ _TAG_NAMING_SH_LOADED=1
 # Standard pattern: :cross-<stage>-<arch>
 # Exception: the two SHARED stages carry the BUILD HOST arch, not a target arch.
 # ==============================================================================
+
+# ==============================================================================
+# Image variant (owner directive 2026-09-22: a variant tag exists only for a
+# stack that cannot ship in :latest). A variant chain shares base, compiler and
+# sdk with the default chain and diverges from the GPU layer on: every tag it
+# writes from there carries -<variant>, so it can never overwrite the default
+# chain's cross-media-<arch>, cross-android-<arch>, :latest-<arch> or :latest.
+# CROSS_VARIANT names it; unset, ENABLE_NVIDIA=true / ENABLE_AMD=true imply it,
+# because those toggles alone used to build GPU bytes under the DEFAULT tags.
+# ==============================================================================
+cross_variant() {
+  local v="${CROSS_VARIANT:-}"
+  if [ -z "${v}" ]; then
+    if [ "${ENABLE_NVIDIA:-false}" = "true" ] && [ "${ENABLE_AMD:-false}" = "true" ]; then
+      printf '[ERROR] ENABLE_NVIDIA and ENABLE_AMD are both true; one chain builds one variant\n' >&2
+      return 1
+    fi
+    [ "${ENABLE_NVIDIA:-false}" = "true" ] && v=nvidia
+    [ "${ENABLE_AMD:-false}" = "true" ] && v=rocm
+  fi
+  case "${v}" in
+    ''|nvidia|rocm) printf '%s' "${v}" ;;
+    *) printf '[ERROR] unknown CROSS_VARIANT %s (nvidia|rocm, or unset for :latest)\n' "${v}" >&2
+       return 1 ;;
+  esac
+}
+cross_variant_infix() {
+  local v; v="$(cross_variant)" || return 1
+  [ -z "${v}" ] || printf -- '-%s' "${v}"
+}
 
 # The two SHARED stages carry the BUILD HOST arch — that is what the "amd64" in
 # :cross-compiler-amd64 always meant, merely frozen as a literal. On a non-amd64
@@ -40,7 +73,10 @@ _cross_shared_tag_suffix() {
 cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:base$(_cross_shared_tag_suffix)"; }
 cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-compiler-$(_cross_build_host_arch)"; }
 cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-sdk-${1}"; }
-cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-media-${1}"; }
+cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-media$(cross_variant_infix)-${1}"; }
+# The GPU library layer (Dockerfile.nvidia / Dockerfile.amd) between sdk and
+# media. Only a variant chain has it; the name is the one the docs always used.
+cross_gpu_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-toolchain$(cross_variant_infix)-${1}"; }
 # Android is the one per-arch stage whose IMAGE depends on the build host: on a
 # non-amd64 host the NDK payload is absent (platform.sh:354), and every cross
 # stage is ALWAYS pushed (build-cross-chain.sh:207). Without this infix a native
@@ -54,14 +90,14 @@ cross_build_host_infix() {
 }
 # Split so cross-stage-build.sh's --artifact-image-prefix and cross_android_tag
 # are two callers of ONE function instead of two spellings that can drift.
-cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(cross_build_host_infix)"; }
+cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(cross_variant_infix)$(cross_build_host_infix)"; }
 cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }
 # The chain's final image. Same infix, same reason: the per-arch wrapper images
 # are PUSHED before the manifest gate runs, so without it a native arm64 run
 # would overwrite the amd64 lane's published :latest-<arch> family.
 # Never _cross_shared_tag_suffix here — that yields :latest-arm64, which
 # IS the amd64 lane's arm64 wrapper tag.
-cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest$(cross_build_host_infix)"; }
+cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest$(cross_variant_infix)$(cross_build_host_infix)"; }
 # The deprecated name the SAME index is also pushed under (versions.env
 # CROSS_LEGACY_ALIAS_TAG). Empty when the alias is retired, and for every
 # non-default image: only the amd64 lane's :latest ever carried the old name.
@@ -69,6 +105,7 @@ cross_final_image_legacy_alias() {
   [ -n "${CROSS_LEGACY_ALIAS_TAG:-}" ] || return 0
   [ "${1:-}" = "$(cross_final_image_tag)" ] || return 0
   [ -z "$(cross_build_host_infix)" ] || return 0
+  [ -z "$(cross_variant 2>/dev/null)" ] || return 0
   printf '%s' "${1%:*}:${CROSS_LEGACY_ALIAS_TAG}"
 }
 
