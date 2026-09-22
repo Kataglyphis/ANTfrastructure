@@ -7,6 +7,51 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-22 - GPU variant chains: `CROSS_VARIANT=nvidia|rocm` builds `:latest-nvidia` / `:latest-rocm`
+
+**A GPU image is now a variant CHAIN, not a toggle on the default one.**
+Before this change `ENABLE_NVIDIA=true` / `ENABLE_AMD=true` changed only the
+build args. A GPU run would have pushed CUDA bytes under the default
+`cross-media-<arch>`, `cross-android-<arch>`, `:latest-<arch>` and `:latest`. The
+NVIDIA/AMD layers were not stages at all, only hand-run commands whose tags were
+deleted from the registry this morning.
+
+- **Tags.** `CROSS_VARIANT` (implied by `ENABLE_NVIDIA`/`ENABLE_AMD`; both is an
+  error) adds `-<variant>` to every tag from the new `gpu` stage on:
+  `:cross-toolchain-<v>-<arch>`, `:cross-media-<v>-<arch>`,
+  `:cross-android-<v>-<arch>`, `:latest-<v>-<arch>` and the manifest
+  `:latest-<v>`. Base, compiler and sdk stay shared. A variant never gets the
+  `:latest-cross` alias.
+- **Stage graph.** `gpu` (`Dockerfile.nvidia` / `Dockerfile.amd`) goes between
+  sdk and media when a variant is set. The default graph is unchanged.
+- **Refusals.** A variant starts at `gpu` and refuses `--from-stage` on the
+  shared stages. rocm refuses anything but amd64. nvidia refuses a foreign arch:
+  CUDA is installed for, and compiled against, the build host, so an arm64
+  target would ship x86_64 GPU libraries.
+- **Strictly serial** (owner decision). A live chain makes a second one refuse
+  to start. Chains share the buildkit store and the disk guard, and the guard
+  evicts whatever the running chain does not protect. A variant keeps its own
+  `chain-status-<v>.json` and `out/build-logs/<v>/`. Its runtime lane budgets
+  180 GB.
+- **NVIDIA defaults.** `ENABLE_TENSORRT=false` (no `libnvinfer` in the runtime
+  payload yet). The wrappers take `onnxruntime-gpu` + `pytorch-cu130`.
+- **ROCm runtime.** `copy_rocm_payload` copies `/opt/rocm` into the package, and
+  `000-rocm.conf` puts its libraries on the loader path. Before this, the
+  MIGraphX EP had nothing to load. The wrappers take `onnxruntime-migraphx` +
+  the app's `pytorch-rocm71` extra. That index stops at torch 2.13, so the pin
+  enforcement now re-installs the `PYTORCH_VERSION` pair from the new
+  `PYTORCH_ROCM_INDEX=rocm7.14` (there is no rocm10 line). The old code's CPU
+  fallback would have swapped a ROCm torch for a CPU one without a word.
+- **The Jetson lane's names** follow the variant: the example image is
+  `:latest-nvidia-hostarm64-arm64`.
+- **arm64 CUDA from an amd64 host is feasible but not built.** NVIDIA's
+  `ubuntu2604/cross-linux-sbsa` repo carries `cuda-cross-sbsa-13-4`, the cross
+  cuBLAS/cuFFT/cuSPARSE/cuRAND and `libcudnn9-cross-sbsa-cuda-13`. NCCL exists
+  only as a native sbsa `.deb` (unpack it into the target tree). Wiring it needs
+  the ORT/OpenCV/TVM CUDA cross flags and an ELF-machine gate. Until then, the
+  arm64 half of `:latest-nvidia` is built natively.
+
+
 ## 2026-09-22 - `:latest-cross` becomes `:latest`; variants are `:latest-<variant>`; the `:hailo` variant is retired
 
 **The Linux default manifest is `:latest`** (owner directive 2026-09-22). The

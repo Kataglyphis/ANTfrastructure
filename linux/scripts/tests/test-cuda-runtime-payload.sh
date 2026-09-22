@@ -80,6 +80,7 @@ printf '#!/usr/bin/env bash\necho aarch64\n' > "${_PB}/uname"
 printf '#!/usr/bin/env bash\necho "uv $*"\n' > "${_PB}/uv"
 chmod +x "${_PB}"/*
 _ENF="$(t_fn_src "${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh" enforce_torch_version_pins)" || exit 1
+_ENF+=$'\n'"$(t_fn_src "${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh" _torch_pin_gpu_index)" || exit 1
 _enforce() {
   PATH="${_PB}:${PATH}" PYTORCH_VERSION=v2.14.0 TORCHVISION_VERSION=v0.29.0 \
     bash -c "${_ENF}"$'\nenforce_torch_version_pins' 2>&1
@@ -92,6 +93,13 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '--no-deps')" \
 _out="$(PYTORCH_EXTRA=pytorch-cpu _enforce)"
 t_assert_contains "${_out}" "--force-reinstall --no-deps --index-url https://download.pytorch.org/whl/cpu" \
   "the CPU path is unchanged"
+_out="$(PYTORCH_EXTRA=pytorch-rocm71 PYTORCH_ROCM_INDEX=rocm7.14 _enforce)"
+t_assert_contains "${_out}" "--index-url https://download.pytorch.org/whl/rocm7.14" \
+  "a ROCm torch comes from the PINNED line, not the app extra's rocm7.1 index (no torch 2.14 there)"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'whl/cpu')" \
+  "and never falls through to the CPU index"
+_out="$(PYTORCH_EXTRA=pytorch-rocm71 _enforce)"
+t_assert_contains "${_out}" "PYTORCH_ROCM_INDEX unset" "an unset pin fails loudly instead of guessing"
 rm -rf "${_PB}"
 
 rm -rf "${_SRC}" "${_DST}" "${_DST2}" "${_EMPTY}" "${_DST3}"

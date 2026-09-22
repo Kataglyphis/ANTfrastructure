@@ -89,6 +89,7 @@ copy_media_payloads() {
   done
 
   copy_cuda_payload
+  copy_rocm_payload
 
   unset COPY_TARGET_DIR
 }
@@ -123,6 +124,38 @@ copy_cuda_payload() {
   done
 }
 
+# The rocm variant's ROCm/MIGraphX userspace (HIP, MIOpen, rocBLAS, MIGraphX),
+# the same gap copy_cuda_payload closes for CUDA: the ORT MIGraphX EP and a ROCm
+# torch load these at runtime, and nothing copied /opt/rocm past this boundary.
+# /opt/rocm is either the tree itself or a link to /opt/rocm-X.Y; a link is
+# re-made relatively, since through the bind mount it resolves in the BUILD
+# container. ENABLE_AMD=true with no ROCm in the artifact is fatal.
+copy_rocm_payload() {
+  [ "${ENABLE_AMD:-false}" = "true" ] || return 0
+  local src="${SRCPREFIX}/opt/rocm" target dir found=0
+  if [ -L "${src}" ]; then
+    target="$(readlink "${src}")"
+    target="${target#/opt/}"
+    copy_path "/opt/${target}"
+    ln -sfn "${target}" "$(_dest /opt/rocm)"
+    found=1
+  elif [ -d "${src}" ]; then
+    copy_path /opt/rocm
+    found=1
+  fi
+  shopt -s nullglob
+  for dir in "${SRCPREFIX}"/opt/rocm-[0-9]*; do
+    [ "${dir#"${SRCPREFIX}"}" = "/opt/${target:-}" ] && continue
+    copy_path "${dir#"${SRCPREFIX}"}"
+    found=1
+  done
+  shopt -u nullglob
+  if [ "${found}" -eq 0 ]; then
+    printf '[ERROR] ENABLE_AMD=true but the artifact has no /opt/rocm\n' >&2
+    return 1
+  fi
+}
+
 # The toolkit's libs live under targets/<arch>-linux/lib, which no default
 # loader path reaches. No-op on a CPU image, where /usr/local/cuda is absent.
 publish_cuda_ld_path() {
@@ -132,6 +165,17 @@ publish_cuda_ld_path() {
     [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-cuda.conf
   done
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
+}
+
+# ROCm's libraries live under /opt/rocm/lib (and lib/llvm/lib for the comgr
+# LLVM), which no default loader path reaches. No-op without /opt/rocm.
+publish_rocm_ld_path() {
+  local lib
+  : > /etc/ld.so.conf.d/000-rocm.conf
+  for lib in /opt/rocm/lib /opt/rocm/lib64; do
+    [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf
+  done
+  [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
 }
 
 # Give /usr/local/llvm-target/lib loader priority over the distro multiarch dir:
@@ -146,6 +190,7 @@ publish_llvm_target_ld_path() {
 main() {
   copy_media_payloads "${1:-}"
   publish_cuda_ld_path
+  publish_rocm_ld_path
   publish_llvm_target_ld_path
 }
 

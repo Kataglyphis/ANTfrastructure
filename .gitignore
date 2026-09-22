@@ -28,6 +28,7 @@ linux/webserver/dist/
 # build-cross-chain.sh:_chain_status_emit. It was tracked until 2026-09-15, which
 # made every chain run dirty the working tree and every pull need a stash.
 /chain-status.json
+/chain-status-*.json
 .claude/*
 # ...except the safety gate. A guard that only exists on one machine is not a
 # guard: a fresh clone, or a `git clean -xdf`, would silently disarm it

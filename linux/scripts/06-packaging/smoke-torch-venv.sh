@@ -186,7 +186,7 @@ SPECS = [
 
 extra = os.environ.get("PYTORCH_EXTRA", "")
 want_variant = {"pytorch-cpu": "cpu", "pytorch-cu130": "cu130",
-                "pytorch-rocm71": "rocm7.1"}.get(extra, "")
+                "pytorch-rocm71": os.environ.get("PYTORCH_ROCM_INDEX", "rocm7.1")}.get(extra, "")
 
 def installed_version(import_name, dist_name):
     try:
