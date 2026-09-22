@@ -155,7 +155,7 @@ if [ "${_have_py}" -eq 1 ]; then
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}
       - run: docker run --rm ${_prefix}:latest-cross true")"
   t_assert_eq "1" "$(t_rc _gate "${_d}")" \
-    "':latest-cross' is the deprecated alias of the canonical ':latest'; a lane still on it must fail here, not when the alias is deleted under it"
+    "':latest-cross' is the RETIRED old name of ':latest' (deleted 2026-09-22); a lane still on it must fail here, not at docker pull"
   t_assert_contains "$(t_out _gate "${_d}")" "non-canonical image tag ':latest-cross'"
 
   t_case "a CANONICAL tag for the wrong platform at a call site FAILS"

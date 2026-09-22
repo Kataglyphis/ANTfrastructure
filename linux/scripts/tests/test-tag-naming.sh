@@ -111,15 +111,13 @@ t_assert_eq "example.io/repo:latest" "$(BUILDARCH=amd64 cross_final_image_tag)"
 t_assert_eq "example.io/repo:latest-hostarm64" "$(BUILDARCH=arm64 cross_final_image_tag)" \
   "a native arm64 run must never write the amd64 lane's :latest-<arch> children"
 
-t_case "the deprecated :latest-cross alias names only the amd64 lane's default index"
-t_assert_eq "example.io/repo:latest-cross" \
-  "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest)"
-t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=arm64 cross_final_image_legacy_alias example.io/repo:latest-hostarm64)" \
-  "a native arm64 run's index is not the one :latest-cross ever named"
-t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG=latest-cross BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest-nvidia)" \
-  "a variant manifest never gets the old name"
-t_assert_eq "" "$(CROSS_LEGACY_ALIAS_TAG='' BUILDARCH=amd64 cross_final_image_legacy_alias example.io/repo:latest)" \
-  "an empty CROSS_LEGACY_ALIAS_TAG retires the alias"
+t_case "the retired :latest-cross alias is gone, and nothing resurrects it"
+# Retired 2026-09-22 (owner decision): nothing publishes it again. The tag
+# functions are the only place that could compose the old name.
+t_assert_eq "" "$(declare -F cross_final_image_legacy_alias || true)" \
+  "no tag function may compose the old name"
+t_assert_eq "" "$(grep -n 'latest-cross' "${TESTS_DIR}/../01-core/tag-naming.sh" || true)" \
+  "nor may the module mention it as a live tag"
 
 t_case "the final image and the android prefix carry the SAME infix"
 # build-cross-chain.sh and cross-stage-build.sh must not drift apart about which

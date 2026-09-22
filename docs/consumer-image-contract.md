@@ -274,8 +274,8 @@ These are paths, not versions, so they are outside the advertised-version-key ga
 
 ## Two things worth knowing before you configure a lane
 
-- `:latest` is a proper multi-arch index (the deprecated `:latest-cross` alias,
-  kept until 2026-10-31, resolves to the same index). An arm64 runner gets arm64
+- `:latest` is a proper multi-arch index (it was called `:latest-cross` until
+  2026-09-22; that name is retired). An arm64 runner gets arm64
   binaries; there is no longer any reason to pin `-amd64` and no `rustc: 1: ELF:
   not found` to work around.
 - **The image ships Flutter at `/opt/flutter`.** A lane still passing

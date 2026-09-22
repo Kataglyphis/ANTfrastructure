@@ -729,8 +729,8 @@ tags are internal publish tags used to assemble the public `latest` manifest.
 Variant manifests follow the same shape: `:latest-<variant>` (e.g. `nvidia`,
 `rocm`) over per-arch `:latest-<variant>-<arch>` wrappers. Hailo has no variant
 tag — it ships in the standard amd64/arm64 wrappers (`Dockerfile.torch`).
-`:latest-cross`, the manifest's name before 2026-09-22, remains a deprecated
-alias of `:latest` until 2026-10-31 (`CROSS_LEGACY_ALIAS_TAG` in `versions.env`).
+`:latest-cross`, the manifest's name before 2026-09-22, is retired: nothing
+publishes it again, and the tags are deleted once `main` carries `:latest`.
 Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands).
 Run with `--dry-run` to print the commands without building.
 

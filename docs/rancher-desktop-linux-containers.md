@@ -67,9 +67,10 @@ build tags; variant manifests, when published, are `:latest-<variant>` (e.g.
 `nvidia`, `rocm`). The amd64/arm64 wrappers carry Hailo, so there is no
 separate Hailo tag.
 
-Until 2026-09-22 this manifest was called `:latest-cross`; that name stays
-published as a **deprecated alias** of the same index until 2026-10-31. Move
-any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
+Until 2026-09-22 this manifest was called `:latest-cross`; that name is
+**retired**: no release publishes it any more, and its tags are removed once
+this repo's `main` carries `:latest` (the fleet resolves the ref through
+`@main`). Move any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
 a different, dead native-lane index — its children had 404'd for months and it
 was deleted in the 2026-08-27 registry cleanup; the tag name was then reused
 for the cross-lane manifest.)
@@ -184,7 +185,7 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 - **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`,
   in CI *and* locally.** It publishes amd64/arm64/riscv64.
   `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest`; if a local run
-  uses a different tag (including the deprecated `:latest-cross` alias), reproducing
+  uses a different tag, reproducing
   a CI failure proves nothing. The tag is not digest-pinned, so it still floats.
 
 ## When to reach for this

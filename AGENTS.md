@@ -133,12 +133,14 @@ qualifier (owner directive 2026-09-22).
 - The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
   `:latest-package-<arch>`) are the wrappers the manifest is assembled from.
   They are implementation detail; consumers resolve the manifest.
-- **`:latest-cross` is the deprecated old name** of `:latest`.
-  `build-runtime-manifest.sh` pushes the same index under it
-  (`CROSS_LEGACY_ALIAS_TAG` in `versions.env`) so a consumer still on it keeps
-  getting current bytes. Remove the alias after 2026-10-31: empty the key and
-  delete the tag. Never write it anywhere new — `verify_ci_image_refs.py`
-  already rejects it under `.github/`.
+- **`:latest-cross` is RETIRED** (owner decision 2026-09-22): the old name of
+  `:latest`. Nothing composes or pushes it any more, and `verify_ci_image_refs.py`
+  rejects it under `.github/`. **The registry tags outlive the code**: the fleet
+  reaches its container ref through this repo's composite actions at `@main`, so
+  until develop is merged to main the old tag is what every consumer pulls.
+  Delete it only after that merge and a green Linux lane per consumer — and note
+  that `:latest` and `:latest-cross` are ONE GHCR version, so the tag must be
+  made its own version first.
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
   published index (§ Push and Publish Rules), so a partial run cannot silently
   drop an architecture from one.
@@ -741,7 +743,7 @@ Read the strategy before editing that Dockerfile:
 - `build-runtime-manifest.sh --push` pushes wrappers + final manifest.
 - `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
 - Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
-  (plus the deprecated `:latest-cross` alias of the same index until 2026-10-31).
+  (the old `:latest-cross` name is retired and deleted, § Image and tag naming).
 - Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
 - **The manifest lane REFUSES to shrink an already-published index.**
   `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the
