@@ -333,7 +333,13 @@ fallbacks), builds the stages in order, and applies the correct tags:
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
 # Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
-.\windows\Build-Buildkit.ps1 -Gpu
+.\windows\Build-Buildkit.ps1 -Gpu            # same as -Variant nvidia
+
+# ROCm variant (amd64 only): the default chain up to media, then rocm -> torch -> final
+# under its own tags (bk-winamd64-rocm); see § ROCm layer below.
+.\windows\Build-Buildkit.ps1 -Variant rocm
+# ...or as an add-on after a default amd64 run, reusing its media:
+.\windows\Build-Buildkit.ps1 -Variant rocm -Stages rocm,torch,final
 
 # Iterate on a single stage (layer cache makes this cheap):
 .\windows\Build-Buildkit.ps1 -Gpu -Stages media,final
@@ -446,9 +452,19 @@ Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
 
 ### ROCm layer (`Dockerfile.rocm`)
 
-**Status (2026-09-22): the Dockerfile and its install script exist; the driver does
-not build them yet.** Nothing in `Build-Buildkit.ps1` names `Dockerfile.rocm`, so
-no chain image carries ROCm until a `-Variant rocm` lands.
+**Built by `Build-Buildkit.ps1 -Variant rocm`** (2026-09-22). It runs the default chain
+up to media, then `rocm` → torch → final under its own tags (`bk-windows-rocm`,
+`bk-windows-torch-rocm`, `bk-winamd64-rocm`), so it never overwrites the default
+images. `-Stages rocm,torch,final` reuses an existing default media.
+
+- **Refused at launch:** arm64, `-Gpu` together with rocm, and a push tag other than
+  `:winamd64-rocm` (a non-rocm run may not push to it either).
+- **Refused in the stage:** `Install-Rocm.ps1` stops when the media carries CUDA
+  (`GPU_TYPE`, `CUDA_ROOT`, `CUDA_PATH`) — a leftover `-Gpu` media under the shared tag.
+- **Smoke gate:** the CPU suite and floor, then `Test-RocmImage.ps1`: the env contract,
+  no CUDA, AMD's LLVM not shadowing `clang-cl`, and a `hipcc` compile for gfx1201.
+- **Torch is still CPU.** OrchestrANT has no Windows ROCm extra yet. AMD publishes
+  `torch-2.13.0+rocm10.0.0` (cp314, win_amd64) on `stable.repo.amd.com/rocm/whl-next/`.
 
 **Source.** AMD's Windows tar install (rocm.docs.amd.com, install → Windows → tar):
 `https://stable.repo.amd.com/rocm/core/tarball/therock-dist-windows-<family>-<release>.tar.gz`.

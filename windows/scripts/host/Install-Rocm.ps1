@@ -47,6 +47,25 @@ function Assert-RocmTargetArch {
 
 <#
 .SYNOPSIS
+    Refuses a base from a CUDA chain: the rocm variant forks from the DEFAULT media.
+#>
+function Assert-RocmForkBase {
+    param(
+        [AllowEmptyString()][string]$GpuType,
+        [AllowEmptyString()][string]$CudaRoot,
+        [AllowEmptyString()][string]$CudaPath
+    )
+    $leaked = @(@{ GPU_TYPE = $GpuType; CUDA_ROOT = $CudaRoot; CUDA_PATH = $CudaPath }.GetEnumerator() |
+        Where-Object { $_.Value -and -not ($_.Key -eq 'GPU_TYPE' -and $_.Value -eq 'cpu') } |
+        Sort-Object Key | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value })
+    if ($leaked.Count -gt 0) {
+        throw (("Install-Rocm: the base image is not the default media ({0}). A rocm run must fork from a DEFAULT " +
+                "chain's media -- rebuild media without -Gpu, then run -Variant rocm.") -f ($leaked -join ', '))
+    }
+}
+
+<#
+.SYNOPSIS
     Builds the tarball URL, refusing anything that is not a release and a GPU family name.
 #>
 function Get-RocmWindowsTarballUrl {
@@ -97,6 +116,7 @@ $TarballSha256 = Resolve-ContainerImageValue -Value $TarballSha256 -EnvironmentV
 $TargetArch = Resolve-ContainerImageValue -Value $TargetArch -EnvironmentVariable 'WINDOWS_TARGET_ARCH' -DefaultValue 'amd64'
 
 Assert-RocmTargetArch -TargetArch $TargetArch
+Assert-RocmForkBase -GpuType $env:GPU_TYPE -CudaRoot $env:CUDA_ROOT -CudaPath $env:CUDA_PATH
 # The pin is the only integrity check AMD's tarball has, so an empty one fails closed.
 if ($TarballSha256 -notmatch '^[0-9a-fA-F]{64}$') {
     throw "Install-Rocm: ROCM_WINDOWS_TARBALL_SHA256 must be a 64-hex SHA256 (AMD publishes none; see versions.env); got '$TarballSha256'"

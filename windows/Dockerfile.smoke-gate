@@ -40,6 +40,8 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 ARG MIN_PASSED=40
 ARG MAX_SKIPPED=24
 ARG EXPECT_GPU=0
+# 1 on the rocm variant: Test-RocmImage.ps1 runs after the main suite, through the same entrypoint.
+ARG EXPECT_ROCM=0
 
 # BIND-MOUNT the current script + harness rather than running the copy baked
 # into the image. Two reasons, both load-bearing:
@@ -68,7 +70,11 @@ RUN --mount=type=bind,source=windows/scripts,target=C:\gate\scripts `
     $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\scripts\build\Test-Container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
     if ($env:EXPECT_GPU -eq '1') { $cmdline = $cmdline + ' -ExpectGpu' }; `
     & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
-    if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }
+    if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }; `
+    if ($env:EXPECT_ROCM -eq '1') { `
+        & cmd /S /C 'C:\temp\scripts\entrypoint.cmd pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\scripts\build\Test-RocmImage.ps1'; `
+        if ($LASTEXITCODE -ne 0) { throw ('ROCm smoke checks FAILED (exit ' + $LASTEXITCODE + ') - see the output above') } `
+    }
 
 # No marker RUN. An earlier version wrote C:\temp\smoke-gate.ok "so docker
 # history shows the gate ran" — but the driver solves this with -NoOutput, so

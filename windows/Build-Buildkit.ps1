@@ -6,7 +6,7 @@
 <#
 .SYNOPSIS
     EXPERIMENTAL BuildKit/containerd driver for the Windows image chain:
-    base -> [nvidia] -> toolchain -> media -> torch -> final — every stage a
+    base -> [nvidia] -> toolchain -> media -> [rocm] -> torch -> final — every stage a
     plain build under PROCESS isolation with ALL host CPUs.
 
 .DESCRIPTION
@@ -32,6 +32,10 @@
 .EXAMPLE
     .\windows\Build-Buildkit.ps1 -Gpu
 .EXAMPLE
+    .\windows\Build-Buildkit.ps1 -Variant rocm                          # default chain + ROCm, :winamd64-rocm
+.EXAMPLE
+    .\windows\Build-Buildkit.ps1 -Variant rocm -Stages rocm,torch,final # add-on after a default amd64 run
+.EXAMPLE
     .\windows\Build-Buildkit.ps1 -Stages toolchain -Verbose   # one stage
 .NOTES
     INVOCATION TRAP: `pwsh -File ... -Stages sdk,toolchain,media` passes the
@@ -43,7 +47,12 @@
 #>
 [CmdletBinding()]
 param(
+    # The nvidia variant's original spelling; -Variant nvidia means the same.
     [switch]$Gpu,
+    # Empty = the default (CPU + DirectML) image. rocm is amd64-only and forks after
+    # media (docs/windows-builds.md § ROCm layer).
+    [ValidateSet('', 'nvidia', 'rocm')]
+    [string]$Variant = '',
     # #135: the patched clang (AArch64 getInstSizeInBytes fix, llvm#219275 +
     # #219276) is now the DEFAULT toolchain. The workarounds in
     # Build-OpencvFromSource.ps1 have been removed in the same change.
@@ -56,8 +65,8 @@ param(
     # shared host tooling; only media onward forks on the target arch.
     [ValidateSet('amd64', 'arm64')]
     [string]$TargetArch = 'amd64',
-    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'torch', 'final')]
-    [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'torch', 'final'),
+    [ValidateSet('base', 'sdk', 'toolchain', 'media', 'rocm', 'torch', 'final')]
+    [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'rocm', 'torch', 'final'),
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
     [string]$BuildCtl = '',
@@ -127,6 +136,52 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Share
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 # Shared transient-failure engine; the BK lane passes its own pattern below.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
+
+<#
+.SYNOPSIS
+    Normalizes -Gpu/-Variant and refuses what a variant cannot build or push.
+.DESCRIPTION
+    -Gpu is the nvidia variant. rocm is amd64-only, its stage is dropped from
+    the default -Stages on other variants (and refused when asked for by name),
+    and a push tag must match the variant. Returns @{ Variant; Stages }.
+#>
+function Resolve-BkVariant {
+    param(
+        [AllowEmptyString()][string]$Variant,
+        [bool]$Gpu,
+        [string]$TargetArch,
+        [string[]]$Stages,
+        [bool]$StagesBound,
+        [AllowEmptyString()][string]$PushRef
+    )
+    if ($Gpu -and $Variant -eq 'rocm') { throw '-Gpu selects the nvidia variant; it cannot be combined with -Variant rocm' }
+    if ($Gpu) { $Variant = 'nvidia' }
+    if ($Variant -eq 'rocm' -and $TargetArch -ne 'amd64') {
+        throw "-Variant rocm is amd64-only (AMD publishes no Windows arm64 ROCm); got -TargetArch $TargetArch"
+    }
+    if ($Variant -ne 'rocm' -and $Stages -contains 'rocm') {
+        if ($StagesBound) { throw "-Stages rocm needs -Variant rocm (this run's variant: '$Variant')" }
+        $Stages = @($Stages | Where-Object { $_ -ne 'rocm' })
+    }
+    if ($PushRef) {
+        $lastSegment = ($PushRef -split '/')[-1]
+        $pushTag = if ($lastSegment -match ':') { ($lastSegment -split ':')[-1] } else { '' }
+        if ($Variant -eq 'rocm' -and $pushTag -ne 'winamd64-rocm') {
+            throw "-Variant rocm pushes only to a ':winamd64-rocm' tag; got -PushRef '$PushRef'"
+        }
+        if ($Variant -ne 'rocm' -and $pushTag -like '*-rocm') {
+            throw "-PushRef '$PushRef' names a rocm tag, but this run is not -Variant rocm"
+        }
+    }
+    return @{ Variant = $Variant; Stages = $Stages }
+}
+
+$variantPlan = Resolve-BkVariant -Variant $Variant -Gpu ([bool]$Gpu) -TargetArch $TargetArch -Stages $Stages `
+    -StagesBound $PSBoundParameters.ContainsKey('Stages') -PushRef $PushRef
+$Variant = $variantPlan.Variant
+$Stages = $variantPlan.Stages
+# Every nvidia code path below reads this, so -Gpu and -Variant nvidia are one lane.
+$isNvidia = $Variant -eq 'nvidia'
 
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
@@ -201,7 +256,7 @@ if ($ConcurrentAux -and $NoSccache) {
 # --- cross-target gates: refuse the combinations that cannot work, in
 # milliseconds rather than hours into a stage that cannot produce anything ----
 if ($TargetArch -ne 'amd64') {
-    if ($Gpu) {
+    if ($isNvidia) {
         # #176: the nvidia stage installs the x64 toolkit (headers + nvcc, the host
         # tools) and stages the arm64 redist payload into the same root (lib\arm64,
         # bin\arm64); ORT, GenAI, OpenCV and TVM all build their CUDA paths for arm64
@@ -269,7 +324,7 @@ Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 # amd64 keeps the historical unsuffixed names, a cross target appends its arch —
 # except the shared pre-fork stages (suffixing would fork the chain's most
 # expensive layers) and the final tags, which already spell their arch.
-$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64')
+$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64', 'winamd64-rocm')
 function Get-BkTag([string]$Name) {
     $suffix = if ($TargetArch -eq 'amd64' -or $script:NoSuffixTags -contains $Name) { '' } else { "-$TargetArch" }
     return "docker.io/local/kataglyphis:bk-$Name$suffix"
@@ -277,7 +332,7 @@ function Get-BkTag([string]$Name) {
 
 # NB winarm64 labels a windows/amd64 image carrying an aarch64 payload - never
 # publish it with --platform windows/arm64, that yields a manifest nothing runs.
-$script:FinalTagName = if ($TargetArch -eq 'arm64') { 'winarm64' } else { 'winamd64' }
+$script:FinalTagName = if ($TargetArch -eq 'arm64') { 'winarm64' } elseif ($Variant -eq 'rocm') { 'winamd64-rocm' } else { 'winamd64' }
 
 # Which -NoCacheStage entries matched a stage label; checked at the end of the
 # run so a typo fails LOUDLY instead of building everything from cache (#64).
@@ -515,7 +570,7 @@ if ($Stages -contains 'base') {
 }
 
 if ($Stages -contains 'sdk') {
-    if ($Gpu) {
+    if ($isNvidia) {
         # WINDOWS_TARGET_ARCH rides the nvidia stage only when GPU is on: on the
         # cross lane Install-Cuda.ps1 switches to the arm64 redist payload, and the
         # arm64 SHAs are inert on amd64 (the x64 installer path never reads them).
@@ -630,7 +685,7 @@ if ($Stages -contains 'media') {
             # The child resolves its tags from ITS arch: without this an arm64 parent
             # builds aux images under amd64 tags and the merge fans in stale trees.
             if ($TargetArch -ne 'amd64') { $auxArgs += @('-TargetArch', $TargetArch) }
-            if ($Gpu) { $auxArgs += '-Gpu' }
+            if ($isNvidia) { $auxArgs += '-Gpu' }
             if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
             # Children inherit the cache/tooling knobs — without these a
             # -NoCache parent quietly built its aux branches FROM cache.
@@ -720,7 +775,7 @@ if ($Stages -contains 'media') {
         # FAIL CLOSED (backlog #39): skipping the merge is fine alone, but
         # torch/final resolve BASE_IMAGE from the 'windows-media' tag, so they
         # would silently ship the PREVIOUS run's media image with a zero exit.
-        $downstream = @('torch', 'final') | Where-Object { $Stages -contains $_ }
+        $downstream = @('rocm', 'torch', 'final') | Where-Object { $Stages -contains $_ }
         if ($downstream) {
             throw ("[bk:merge] REFUSING to build $($downstream -join '+') from a STALE '$(Get-BkTag 'windows-media')': " +
                    "the merge was skipped because -MediaBranches is a subset (got: $($MediaBranches -join ', '); " +
@@ -731,6 +786,19 @@ if ($Stages -contains 'media') {
     }
 }
 
+if ($Stages -contains 'rocm') {
+    # Forks from the DEFAULT media; Install-Rocm.ps1 refuses a base that carries CUDA.
+    $rocmArgs = @{
+        BASE_IMAGE                  = Get-BkTag 'windows-media'
+        ROCM_WINDOWS_RELEASE        = Get-Ver 'ROCM_WINDOWS_RELEASE'
+        ROCM_WINDOWS_GFX_FAMILY     = Get-Ver 'ROCM_WINDOWS_GFX_FAMILY'
+        ROCM_WINDOWS_TARBALL_SHA256 = Get-Ver 'ROCM_WINDOWS_TARBALL_SHA256'
+    }
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm' -Tag (Get-BkTag 'windows-rocm') -BuildArgs $rocmArgs
+}
+# A rocm run keeps its own torch/final tags, so it never overwrites the default images.
+$torchTag = if ($Variant -eq 'rocm') { Get-BkTag 'windows-torch-rocm' } else { Get-BkTag 'windows-torch' }
+
 # Provenance stamps computed ONCE, so the FinalTar/PushRef re-solves stay cache
 # hits of the final solve instead of regenerating LABEL with empty values.
 $stampArgs = @{
@@ -739,18 +807,19 @@ $stampArgs = @{
 }
 
 if ($Stages -contains 'torch') {
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag (Get-BkTag 'windows-torch') -BuildArgs ($stampArgs + @{
-        BASE_IMAGE = Get-BkTag 'windows-media'
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTag -BuildArgs ($stampArgs + @{
+        BASE_IMAGE = $(if ($Variant -eq 'rocm') { Get-BkTag 'windows-rocm' } else { Get-BkTag 'windows-media' })
         APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
-        # Without this a -Gpu chain ships CPU torch (Dockerfile default).
-        PYTORCH_EXTRA = $(if ($Gpu) { 'pytorch-cu130' } else { 'pytorch-cpu' })
+        # Without this a -Gpu chain ships CPU torch (Dockerfile default). rocm stays
+        # CPU until the app defines a Windows ROCm extra (docs/windows-builds.md § ROCm layer).
+        PYTORCH_EXTRA = $(if ($isNvidia) { 'pytorch-cu130' } else { 'pytorch-cpu' })
     })
 }
 
 if ($Stages -contains 'final') {
     # The arm64 lane skips the torch stage (guarded at launch), so its final
     # image is based on the merged media stage directly.
-    $finalBase = if ($TargetArch -eq 'amd64') { Get-BkTag 'windows-torch' } else { Get-BkTag 'windows-media' }
+    $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
     $finalArgs = $stampArgs + @{ BASE_IMAGE = $finalBase } + $archArgs
     # -Label 'final': the default label is the filename ('Dockerfile'), so
     # -NoCacheStage final matched only the re-exports, not this stage.
@@ -776,7 +845,7 @@ if ($Stages -contains 'final') {
             # #176: on the cross GPU lane -ExpectGpu makes a LOST CUDA env red instead
             # of a silent skip; the payload sections still skip in-suite, so the
             # floor lane stays Arm64 (Test-Container.ps1's selector checks cross first).
-            EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
+            EXPECT_GPU  = $(if ($isNvidia) { '1' } else { '0' })
         } -MaxAttempts 1
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow
@@ -786,7 +855,7 @@ if ($Stages -contains 'final') {
         # assertions a green run executes. 190 is the GPU column's sum in
         # Test-Container.ps1. An explicit -SmokeMinPassed always wins.
         $effectiveMinPassed = $SmokeMinPassed
-        if ($Gpu -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
+        if ($isNvidia -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
             $effectiveMinPassed = 190
             Write-Host "smoke gate: GPU lane floor $effectiveMinPassed (CPU default is $SmokeMinPassed)"
         }
@@ -794,7 +863,9 @@ if ($Stages -contains 'final') {
             BASE_IMAGE  = Get-BkTag $script:FinalTagName
             MIN_PASSED  = "$effectiveMinPassed"
             MAX_SKIPPED = "$SmokeMaxSkipped"
-            EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
+            EXPECT_GPU  = $(if ($isNvidia) { '1' } else { '0' })
+            # rocm carries the default stack, so the CPU floor stands; Test-RocmImage.ps1 adds the ROCm checks.
+            EXPECT_ROCM = $(if ($Variant -eq 'rocm') { '1' } else { '0' })
         } -MaxAttempts 1
         Write-Host '[bk:smoke-gate] image verified' -ForegroundColor Green
     } else {
@@ -827,14 +898,14 @@ if ($script:StageTimings.Count -gt 0) {
     $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
     # arch= added 2026-08-31: with two lanes at gpu=False the header could not
     # attribute a run to amd64 vs arm64, which is exactly what #152's A/B needs.
-    $lines = @("run=$($script:RunId) arch=$TargetArch stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
+    $lines = @("run=$($script:RunId) arch=$TargetArch variant=$(if ($Variant) { $Variant } else { 'default' }) stages=$($Stages -join ',') gpu=$($isNvidia) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
     foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
     Set-Content -Path $manifest -Value $lines -Encoding utf8
     Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan
     foreach ($k in $script:StageTimings.Keys) { Write-Host ("  {0,8:N1}s  {1}" -f $script:StageTimings[$k], $k) }
     Write-Host "[bk] manifest: $manifest"
 }
-Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU)' } else { ' (CPU)' })) -ForegroundColor Green
+Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Variant) { " ($Variant)" } else { ' (CPU)' })) -ForegroundColor Green
 
 } finally {
     # Stop the resource sampler and print the per-phase exhaustion summary —
