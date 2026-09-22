@@ -31,10 +31,10 @@ _prune_load_platform() {
 # The builder-arch prefix goes only when a REAL own-arch prefix carries the loader
 # the image will load; on amd64 the two are the same directory and nothing goes.
 vulkan_host_prefix_prunable() {
-  local version_dir="$1" arch_dir="$2"
+  local version_dir="$1" arch_dir="$2" prefix="${3:-${HOST_PREFIX}}"
 
-  [ "${arch_dir}" != "${HOST_PREFIX}" ] || return 1
-  [ -d "${version_dir}/${HOST_PREFIX}" ] && [ ! -L "${version_dir}/${HOST_PREFIX}" ] || return 1
+  [ "${arch_dir}" != "${prefix}" ] || return 1
+  [ -d "${version_dir}/${prefix}" ] && [ ! -L "${version_dir}/${prefix}" ] || return 1
   [ -d "${version_dir}/${arch_dir}" ] && [ ! -L "${version_dir}/${arch_dir}" ] || return 1
   [ -e "${version_dir}/${arch_dir}/lib/libvulkan.so.1" ] || return 1
   return 0
@@ -54,6 +54,13 @@ _prune_version_dir() {
     echo "vulkan-prune: keeping ${version_dir}/${HOST_PREFIX} (it is the prefix ${target_arch} runs)"
   else
     echo "vulkan-prune: WARNING keeping ${version_dir}/${HOST_PREFIX} — ${version_dir}/${arch_dir}/lib/libvulkan.so.1 is missing, so the cross Vulkan build did not land for ${target_arch}" >&2
+  fi
+  # The LunarG tarball is ALWAYS x86_64, so on a non-amd64 builder its prefix is
+  # not the builder's and survived: 1.8 GB of x86-64 in the native arm64 image.
+  if [ "${HOST_PREFIX}" != x86_64 ] \
+     && vulkan_host_prefix_prunable "${version_dir}" "${arch_dir}" x86_64; then
+    echo "vulkan-prune: removing ${version_dir}/x86_64 (LunarG tarball SDK; ${target_arch} runs ${arch_dir}/lib/libvulkan.so.1)"
+    rm -rf "${version_dir:?}/x86_64"
   fi
 }
 

@@ -85,7 +85,7 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/pac
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    --mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels \
+    --mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels,rw \
     set -euo pipefail; \
     export UV_LOCK_TIMEOUT=14400 UV_HTTP_TIMEOUT=1200 PIP_DEFAULT_TIMEOUT=1200; \
     rm -rf /root/.cache/uv/git-v0/locks/ 2>/dev/null || true; \

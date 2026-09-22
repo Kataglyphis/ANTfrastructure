@@ -116,6 +116,17 @@ for _arch in amd64 arm64 riscv64; do
   t_assert_contains "$(_rt_table "_parity_ort_flavor ${_arch}")" "onnxruntime_"
 done
 
+t_case "a GPU image expects the CUDA onnxruntime on every arch"
+# The ENABLE_NVIDIA=true arm64 wrapper failed "flavour is 'onnxruntime_gpu' but
+# the table says 'onnxruntime_webgpu'" (2026-09-22): the table knew arches only.
+for _arch in amd64 arm64; do
+  t_assert_eq onnxruntime_gpu "$(_rt_table "_parity_ort_flavor ${_arch} true")" "GPU ${_arch}"
+done
+t_assert_eq onnxruntime_webgpu "$(_rt_table "_parity_ort_flavor arm64 false")" "a CPU arm64 image is unchanged"
+t_assert_eq onnxruntime_dnnl "$(_rt_table "_parity_ort_flavor amd64")" "and so is an image that says nothing"
+t_assert_contains "$(t_fn_src "${RT_SMOKE}" check_arch_parity)" 'printf "NVIDIA %s\n" "${ENABLE_NVIDIA:-false}"' \
+  "the in-image probe reports the image's own ENABLE_NVIDIA"
+
 t_case "the gtk4 arm64 load failure is documented, and only for arm64"
 t_assert_ok    _rt_table '_parity_gst_plugin_known arm64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known amd64 libgstgtk4.so'
@@ -355,6 +366,31 @@ t_case "a scan that never completed reports UNKNOWN, not a healthy 0"
 _gst_out="$(_gst_drive "")"
 t_assert_contains "${_gst_out}" "UNKNOWN, not 0"
 t_assert_ok test -z "$(printf '%s\n' "${_gst_out}" | grep -F 'cannot load: 0' || true)"
+
+# ── gtk4: the arm64 exception follows the loader, not the arch ─────────────
+# The native arm64 image (2026-09-22) loads libgstgtk4.so: its entrypoint puts
+# a VulkanLoader first that exports vkCreateWaylandSurfaceKHR. The gate called
+# the entry stale; it is stale only where the loader has the symbol.
+# The stub answers every _rt_run with the same text, so WAYLAND rides in it.
+_GST_CLEAN='GST_SCAN_DONE'
+_GST_GTK4_FAILS="$(printf '%s\n' "${_GST_SCAN}" | head -1)"$'\nGST_SCAN_DONE'
+
+t_case "a gtk4 that loads because its loader exports the symbol is OK, not a stale entry"
+_gst_out="$(_gst_drive "${_GST_CLEAN}"$'\nWAYLAND yes')"
+t_assert_contains "${_gst_out}" "libgstgtk4.so loads: this image's libvulkan exports vkCreateWaylandSurfaceKHR"
+t_assert_contains "${_gst_out}" "FAILURES=0"
+
+t_case "a gtk4 that loads WITHOUT the symbol still falsifies the entry"
+_gst_out="$(_gst_drive "${_GST_CLEAN}"$'\nWAYLAND no')"
+t_assert_contains "${_gst_out}" "NO LONGER APPLIES"
+t_assert_contains "${_gst_out}" "FAILURES=1"
+
+t_case "a gtk4 failure is documented only while the loader lacks the symbol"
+_gst_out="$(_gst_drive "${_GST_GTK4_FAILS}"$'\nWAYLAND no')"
+t_assert_contains "${_gst_out}" "1 documented, 0 undocumented"
+_gst_out="$(_gst_drive "${_GST_GTK4_FAILS}"$'\nWAYLAND yes')"
+t_assert_contains "${_gst_out}" "the documented cause is gone, so this is new drift"
+t_assert_contains "${_gst_out}" "0 documented, 1 undocumented"
 
 # ── GENAI-DRIFT: the tolerance must be EXACTLY one reviewed case ────────────
 # assert_pinned_versions now lets a versions.env build pin overrule the app

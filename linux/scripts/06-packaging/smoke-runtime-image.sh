@@ -1292,7 +1292,9 @@ _parity_exempt() {
 # Which onnxruntime flavour each arch is SUPPOSED to carry, and only one of them: the
 # 2026-08-21 version shadow shipped a PyPI onnxruntime beside the built one and broke
 # every import with a VERS_1.29.0 symbol error.
+# $2 = the image's ENABLE_NVIDIA: a GPU image ships the CUDA build on every arch.
 _parity_ort_flavor() {
+  [ "${2:-false}" = "true" ] && { printf '%s' 'onnxruntime_gpu'; return 0; }
   case "$1" in
     amd64)         printf '%s' 'onnxruntime_dnnl' ;;
     arm64|riscv64) printf '%s' 'onnxruntime_webgpu' ;;
@@ -1305,10 +1307,26 @@ _parity_ort_flavor() {
 # rather than case arms because check_gstreamer_plugin_health needs both directions of
 # the same fact - is this failure documented, and which documented failures stopped
 # happening - and a predicate cannot be enumerated.
-# arm64:libgstgtk4.so - the distro libgtk-4.so.1 wants vkCreateWaylandSurfaceKHR, which
-# the shipped /opt/vulkan loader does not export. A display sink has no role in a
-# headless wrapper, so it is accepted rather than fixed.
+# arm64:libgstgtk4.so - libgtk-4.so.1 wants vkCreateWaylandSurfaceKHR, which the
+# amd64-hosted cross build's /opt/vulkan loader does not export. Only there: where
+# the resolved loader exports it, gtk4 loads (_rt_gtk4_vulkan_wayland). A display
+# sink has no role in a headless wrapper, so it is accepted rather than fixed.
 _PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
+
+# libgstgtk4.so's entry holds only where the libvulkan the plugin RESOLVES lacks
+# vkCreateWaylandSurfaceKHR. The native arm64 image's entrypoint puts the
+# SDK's VulkanLoader first, which exports it, and there gtk4 loads: the fixed
+# state, not a stale entry. Probed through the entrypoint like every _rt_run.
+_rt_gtk4_vulkan_wayland() {
+  _rt_run bash -lc 'p=""
+for d in $(printf "%s" "${GST_PLUGIN_PATH:-}" | tr ":" " "); do
+  [ -f "${d}/libgstgtk4.so" ] && { p="${d}/libgstgtk4.so"; break; }
+done
+v="$([ -n "${p}" ] && ldd "${p}" 2>/dev/null | awk "/libvulkan\.so/{print \$3; exit}")"
+if [ -z "${v}" ] || ! command -v nm >/dev/null 2>&1; then echo "WAYLAND unknown"; exit 0; fi
+syms="$(nm -D --defined-only "${v}" 2>/dev/null)"
+case "${syms}" in *" vkCreateWaylandSurfaceKHR"*) echo "WAYLAND yes" ;; *) echo "WAYLAND no" ;; esac' 2>/dev/null | sed -n 's/^WAYLAND //p' | head -1
+}
 
 _parity_gst_plugin_known() {
   case " ${_PARITY_GST_KNOWN_BROKEN} " in
@@ -1323,6 +1341,7 @@ check_arch_parity() {
     echo "--- ARCH-PARITY: /opt prefixes + component wheels (${target_arch}) ---"
     local probe
     if ! probe="$(_rt_run bash -lc 'set -uo pipefail
+printf "NVIDIA %s\n" "${ENABLE_NVIDIA:-false}"
 for d in /opt/*/; do printf "PREFIX %s\n" "$(basename "$d")"; done
 for m in /opt/venv/lib/python*/site-packages/*.dist-info; do
   [ -d "$m" ] || continue
@@ -1377,7 +1396,7 @@ done' 2>/dev/null)"; then
     # ORT: exactly one distribution, and the one this arch is meant to have.
     local ort_have ort_want
     ort_have="$(printf '%s\n' "${wheels}" | grep -E '^onnxruntime(_[a-z0-9]+)?$' | grep -v '^onnxruntime_genai$' | tr '\n' ' ' || true)"
-    ort_want="$(_parity_ort_flavor "${target_arch}")"
+    ort_want="$(_parity_ort_flavor "${target_arch}" "$(printf '%s\n' "${probe}" | sed -n 's/^NVIDIA //p')")"
     case "$(printf '%s' "${ort_have}" | wc -w)" in
       1) if [ "${ort_have% }" = "${ort_want}" ]; then
            pass "ARCH-PARITY: exactly one onnxruntime distribution, ${ort_want} as the table expects (${target_arch})"
@@ -1863,6 +1882,59 @@ check_venv_package_set() {
 # .so is absent degrades gracefully (the element is just unavailable), so it must not
 # fail the gate - but it must stay visible. The functional pipeline check below is the
 # fail-loud gate for GStreamer CORE.
+# One scanner failure: prints its verdict, returns 0 when it is documented.
+_gst_classify_failure() {
+  local target_arch="$1" p="$2" gtk4_wl="$3"
+  if [ "${p}" = libgstgtk4.so ] && [ "${gtk4_wl}" = yes ]; then
+    echo "  WARN ${p} cannot load although its libvulkan exports vkCreateWaylandSurfaceKHR -- the documented cause is gone, so this is new drift (non-fatal)"
+    return 1
+  fi
+  if _parity_gst_plugin_known "${target_arch}" "${p}"; then
+    echo "  ~~   ${p} cannot load -- documented ${target_arch} exception (_parity_gst_plugin_known)"
+    return 0
+  fi
+  echo "  WARN ${p} cannot load on ${target_arch} and is NOT in the parity table -- new drift; fix it or record it (non-fatal)"
+  return 1
+}
+
+# <arch> <failed basenames, newline-separated> <gtk4 wayland verdict>
+_gst_check_stale_exceptions() {
+  local target_arch="$1" failed="$2" _gtk4_wl="$3"
+  # The OTHER direction, and why the table is a list: a documented failure that
+  # stopped failing. _gst_classify_failure only sees plugins that DID fail, so
+  # walk the table's own claims for this arch instead. POSITIVE EVIDENCE ONLY, two
+  # signals that must agree - absent from the scanner's failure list AND
+  # gst-inspect-1.0 loads the plugin file directly. Absence alone proves nothing (it
+  # may simply not be shipped); only both together falsify the entry, which is a
+  # defect of the same kind as a stale _parity_exempt arm.
+  local _kb_entry _kb_plugin
+  for _kb_entry in ${_PARITY_GST_KNOWN_BROKEN}; do
+    [ "${_kb_entry%%:*}" = "${target_arch}" ] || continue
+    _kb_plugin="${_kb_entry#*:}"
+    # `failed` is NEWLINE-separated, so a `case " ${failed} " in *" plugin "*` guard
+    # only matched while exactly ONE plugin failed. Match the delimiter the list uses.
+    if printf '%s\n' "${failed}" | grep -qxF -- "${_kb_plugin}"; then
+      continue   # still failing = entry still true
+    fi
+    if [ "${_kb_plugin}" = libgstgtk4.so ] && [ "${_gtk4_wl}" = yes ]; then
+      echo "  OK   ${_kb_plugin} loads: this image's libvulkan exports vkCreateWaylandSurfaceKHR, so the ${target_arch} exception does not apply here (it still covers loaders without it)"
+      continue
+    fi
+    if _rt_run bash -lc '
+p="$1"
+command -v gst-inspect-1.0 >/dev/null 2>&1 || exit 1
+for d in $(printf "%s" "${GST_PLUGIN_PATH:-}" | tr ":" " ") /usr/lib/*/gstreamer-1.0 /usr/local/lib/gstreamer-1.0; do
+[ -f "${d}/${p}" ] || continue
+gst-inspect-1.0 "${d}/${p}" >/dev/null 2>&1 && exit 0
+done
+exit 1' _ "${_kb_plugin}" >/dev/null 2>&1; then
+      fail "ARCH-PARITY: the documented ${target_arch} exception for ${_kb_plugin} NO LONGER APPLIES -- it is absent from the scanner's failure list AND gst-inspect-1.0 loads the plugin file directly. Delete '${target_arch}:${_kb_plugin}' from _PARITY_GST_KNOWN_BROKEN in linux/scripts/06-packaging/smoke-runtime-image.sh."
+    else
+      echo "  INFO ${_kb_plugin}: not in this run's failure list and not directly loadable either (not shipped, or unloadable without a scanner message) -- ${target_arch} exception retained"
+    fi
+  done
+}
+
 check_gstreamer_plugin_health() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1893,12 +1965,12 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     named="$(printf '%s\n' "${scan}" | grep "Failed to load plugin" \
                | grep -cE 'libgst[A-Za-z0-9_+-]+\.so' || true)"
     unnamed=$((total - named))
+    local _gtk4_wl=""
+    _parity_gst_plugin_known "${target_arch}" libgstgtk4.so && _gtk4_wl="$(_rt_gtk4_vulkan_wayland)"
     for p in ${failed}; do
-      if _parity_gst_plugin_known "${target_arch}" "${p}"; then
-        echo "  ~~   ${p} cannot load -- documented ${target_arch} exception (_parity_gst_plugin_known)"
+      if _gst_classify_failure "${target_arch}" "${p}" "${_gtk4_wl}"; then
         known=$((known + 1))
       else
-        echo "  WARN ${p} cannot load on ${target_arch} and is NOT in the parity table -- new drift; fix it or record it (non-fatal)"
         unknown=$((unknown + 1))
       fi
     done
@@ -1911,35 +1983,7 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     fi
     echo "  ... of those, by unique libgst*.so basename: ${known} documented, ${unknown} undocumented${unnamed_note}"
 
-    # The OTHER direction, and why the table is a list: a documented failure that
-    # stopped failing. The loop above can only speak about plugins that DID fail, so
-    # walk the table's own claims for this arch instead. POSITIVE EVIDENCE ONLY, two
-    # signals that must agree - absent from the scanner's failure list AND
-    # gst-inspect-1.0 loads the plugin file directly. Absence alone proves nothing (it
-    # may simply not be shipped); only both together falsify the entry, which is a
-    # defect of the same kind as a stale _parity_exempt arm.
-    local _kb_entry _kb_plugin
-    for _kb_entry in ${_PARITY_GST_KNOWN_BROKEN}; do
-      [ "${_kb_entry%%:*}" = "${target_arch}" ] || continue
-      _kb_plugin="${_kb_entry#*:}"
-      # `failed` is NEWLINE-separated, so a `case " ${failed} " in *" plugin "*` guard
-      # only matched while exactly ONE plugin failed. Match the delimiter the list uses.
-      if printf '%s\n' "${failed}" | grep -qxF -- "${_kb_plugin}"; then
-        continue   # still failing = entry still true
-      fi
-      if _rt_run bash -lc '
-p="$1"
-command -v gst-inspect-1.0 >/dev/null 2>&1 || exit 1
-for d in $(printf "%s" "${GST_PLUGIN_PATH:-}" | tr ":" " ") /usr/lib/*/gstreamer-1.0 /usr/local/lib/gstreamer-1.0; do
-  [ -f "${d}/${p}" ] || continue
-  gst-inspect-1.0 "${d}/${p}" >/dev/null 2>&1 && exit 0
-done
-exit 1' _ "${_kb_plugin}" >/dev/null 2>&1; then
-        fail "ARCH-PARITY: the documented ${target_arch} exception for ${_kb_plugin} NO LONGER APPLIES -- it is absent from the scanner's failure list AND gst-inspect-1.0 loads the plugin file directly. Delete '${target_arch}:${_kb_plugin}' from _PARITY_GST_KNOWN_BROKEN in linux/scripts/06-packaging/smoke-runtime-image.sh."
-      else
-        echo "  INFO ${_kb_plugin}: not in this run's failure list and not directly loadable either (not shipped, or unloadable without a scanner message) -- ${target_arch} exception retained"
-      fi
-    done
+    _gst_check_stale_exceptions "${target_arch}" "${failed}" "${_gtk4_wl}"
     echo ""
 }
 
