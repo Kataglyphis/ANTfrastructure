@@ -1,0 +1,34 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+# AMD ROCm layer — TheRock for Windows (HIP SDK, math and DNN libraries). amd64 only.
+# Lineage: ... media -> THIS -> torch -> final. It forks right before its first
+# consumer, so everything up to media is shared with the default chain.
+# Why here and not before media, and why lib\llvm\bin stays off PATH:
+# docs/windows-builds.md § ROCm layer. Build context: the repo root.
+
+ARG BASE_IMAGE=local/kataglyphis:windows-media
+FROM ${BASE_IMAGE}
+
+# Values: versions.env (self-measured SHA256 — AMD publishes none).
+ARG ROCM_WINDOWS_RELEASE=10.0.0
+ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
+ARG ROCM_WINDOWS_TARBALL_SHA256=75da73c483cbc0456d9008f2079b333f4f9d3b7744705378ff8007e502ca38c5
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
+
+# Narrow COPY: only the script this stage runs. Modules come from the base stage.
+COPY windows\scripts\host\Install-Rocm.ps1 C:\temp\scripts\
+
+RUN & 'C:\temp\scripts\Install-Rocm.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\TheRock\build'
+
+# AMD's documented variables, in one layer. ROCm's bin goes LAST on PATH: it carries
+# its own flatc.exe and OpenCL.dll, and lib\llvm\bin (AMD's clang-cl) is never added.
+ENV GPU_TYPE="rocm" `
+    ROCM_PATH="C:\TheRock\build" `
+    HIP_PATH="C:\TheRock\build" `
+    HIP_PLATFORM="amd" `
+    HIP_DEVICE_LIB_PATH="C:\TheRock\build\lib\llvm\amdgcn\bitcode" `
+    LLVM_PATH="C:\TheRock\build\lib\llvm" `
+    ROCM_WINDOWS_RELEASE="${ROCM_WINDOWS_RELEASE}" `
+    PATH="${PATH};C:\TheRock\build\bin"
