@@ -445,9 +445,10 @@ Apply the post-install fixes documented in `docs/windows-stevedore-and-docker.md
 ### Supported Platforms
 
 `linux/amd64`, `linux/arm64`, `linux/riscv64` on the Linux lane;
-`windows/amd64` and `windows/arm64` on the Windows one. riscv64 carries two
-documented exemptions, and a platform that is not on this list is not "probably
-fine": [`overview.md`](docs/overview.md).
+`windows/amd64` on the Windows one — `windows/arm64` is NOT a platform (the
+arm64 output is a cross-built artifact bundle in a `windows/amd64` image; § Image
+and tag naming). riscv64 carries two documented exemptions, and a platform that
+is not on this list is not "probably fine": [`overview.md`](docs/overview.md).
 
 ### Expected Outputs
 
@@ -654,7 +655,7 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
 - Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.0), not the Ubuntu distro clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.1), not the Ubuntu distro clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - **Supply-chain discipline.** Every network fetch is verified:
   `download_verified_file` is the default and `download_file` needs a reason,
   with the sha256 in `versions.env`. Python BUILD EXECUTORS — anything that runs
