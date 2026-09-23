@@ -62,6 +62,7 @@ Two neighbours, so you land on the right page:
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
+- [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
 
@@ -992,6 +993,23 @@ It comes from Linux `assemble-torch-app.sh`, from Windows `Build-TorchApp.ps1` (
 **Cause.** The lower stages were built before a pin wave; the runtime lane asserts today's `versions.env`.
 
 **Fix.** Rebuild from the stage the pin belongs to. To finish a chain on its own older pins, export the payload pins (`LLVM_RELEASE`, `ONNXRUNTIME_VERSION`, ...) for the runtime run only; the runtime base installs its own and needs today's.
+
+### `fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64
+
+**Symptom.** A `-fsanitize=address` build in the arm64 or riscv64 image stops on that
+header (abseil's `dynamic_annotations.h` includes it). Past it, the link cannot find
+`libasan`/`libubsan`. The same build passes in the amd64 image. Since 2026-09-23 the
+chain stops earlier instead, with one of `libsanitizer installed no headers/libasan
+for <triplet>` (compiler stage), `ERROR: /opt/gcc-16.2.0 lacks the sanitizer
+runtime: ...` (android swap) or `COMPILER FAIL [gcc-sanitizers]` (wrapper smoke).
+
+**Cause.** The arm64 and riscv64 `cc` is the Canadian-native GCC, and `build-gcc.sh`
+built only libgcc, libstdc++ and libatomic for any `--target` build.
+
+**Fix.** Rebuild the chain from the compiler stage; `build-gcc.sh` now builds
+libsanitizer when host == target. A `--from-stage` run on an older compiler image
+fails the android swap on purpose. Mechanism, gates and cost:
+[`cross-build-verification.md#the-native-gcc-ships-libsanitizer`](cross-build-verification.md#the-native-gcc-ships-libsanitizer).
 
 ### A Jetson GPU container sees no GPU
 

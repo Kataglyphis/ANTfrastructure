@@ -746,6 +746,10 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
 - Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.1), not the Ubuntu distro clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- **The Canadian native GCC builds libsanitizer (host == target); do not trim
+  `build-gcc.sh`'s target list back to libgcc/libstdc++/libatomic.** The swap and
+  the wrapper smoke fail an image without it:
+  [`cross-build-verification.md`](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer).
 - **Supply-chain discipline.** Every network fetch is verified:
   `download_verified_file` is the default and `download_file` needs a reason,
   with the sha256 in `versions.env`. Python BUILD EXECUTORS â€” anything that runs

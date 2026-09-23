@@ -164,6 +164,22 @@ _smoke_native_gcc() {
   rm -f /tmp/gcc_smoke.c /tmp/gcc_smoke /tmp/gcc_smoke.err
 }
 
+# The sanitizer runtime a -fsanitize build needs; hwasan only where GCC's
+# configure.tgt builds it. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+_assert_native_gcc_sanitizers() {
+  local prefix="$1" arch="$2" lib hit missing=""
+  local -a libs=(asan ubsan lsan tsan)
+  case "${arch}" in amd64|arm64) libs+=(hwasan) ;; esac
+  compgen -G "${prefix}/lib/gcc/*/${GCC_VERSION}/include/sanitizer/common_interface_defs.h" >/dev/null \
+    || missing+=" sanitizer/common_interface_defs.h"
+  for lib in "${libs[@]}"; do
+    hit="$(compgen -G "${prefix}/lib64/lib${lib}.so.*.*" || compgen -G "${prefix}/lib/lib${lib}.so.*.*" || true)"
+    if [ -z "${hit}" ]; then missing+=" lib${lib}.so"; else assert_elf_arch "${hit%%$'\n'*}" "${arch}"; fi
+  done
+  [ -z "${missing}" ] || { echo "ERROR: ${prefix} lacks the sanitizer runtime:${missing} (rebuild the toolchain image)" >&2; exit 1; }
+  echo "Sanitizer runtime present in ${prefix}: ${libs[*]}"
+}
+
 main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"
   : "${GCC_VERSION:?GCC_VERSION is required}"
@@ -179,6 +195,7 @@ main() {
   build_arch="$(build_arch_oci)"
   if [ "${TARGET_ARCH}" = "${build_arch}" ]; then
     assert_elf_arch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${TARGET_ARCH}"
+    _assert_native_gcc_sanitizers "/opt/gcc-${GCC_VERSION}" "${TARGET_ARCH}"
     echo "Using host-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"
     return 0
   fi
@@ -197,6 +214,7 @@ main() {
     _write_native_gcc_profile_d "${triplet}"
     _wrap_native_gcc_drivers "${triplet}"
   fi
+  _assert_native_gcc_sanitizers "/opt/gcc-${GCC_VERSION}" "${TARGET_ARCH}"
 
   _smoke_native_gcc
 }

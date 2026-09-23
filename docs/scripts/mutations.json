@@ -9489,5 +9489,109 @@
     "replace": "for name in needed:",
     "test": "bash linux/scripts/tests/test-ort-census.sh",
     "why": "a dlopen-only importer is resolved too"
+  },
+  {
+    "id": "native-gcc-san.scope",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": "[ \"${HOST_TRIPLET}\" = \"${TARGET_TRIPLET}\" ]",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a Canadian with host != target must not ask for libsanitizer"
+  },
+  {
+    "id": "native-gcc-san.build",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": " ${_gcc_san:+\"all-${_gcc_san}\"}",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the Canadian native must build libsanitizer"
+  },
+  {
+    "id": "native-gcc-san.install",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": " ${_gcc_san:+\"install-${_gcc_san}\"}",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "built but never installed ships nothing"
+  },
+  {
+    "id": "native-gcc-san.producer-assert",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": "[ -z \"${_gcc_san}\" ] || _gcc_assert_sanitizer_installed",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the silent SANITIZER_SUPPORTED=no path must fail the GCC build, not ship green"
+  },
+  {
+    "id": "native-gcc-san.hwasan-arch",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "amd64|arm64) libs+=(hwasan) ;;",
+    "replace": "none) ;;",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "an arm64 image without libhwasan must fail"
+  },
+  {
+    "id": "native-gcc-san.libdir",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": " || compgen -G \"${prefix}/lib/lib${lib}.so.*.*\"",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "riscv64 installs its runtime in lib/, which must pass"
+  },
+  {
+    "id": "native-gcc-san.header-glob",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "\"${prefix}/lib/gcc/*/${GCC_VERSION}",
+    "replace": "\"${prefix}/lib/gcc/${arch}/${GCC_VERSION}",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the header sits under the GCC triplet (Debian- or config.guess-shaped), not the OCI arch"
+  },
+  {
+    "id": "native-gcc-san.elf",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": " else assert_elf_arch \"${hit%%$'\\n'*}\" \"${arch}\";",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a builder-arch libasan in a target image must fail"
+  },
+  {
+    "id": "native-gcc-san.wiring",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "    _assert_native_gcc_sanitizers \"/opt/gcc-${GCC_VERSION}\" \"${TARGET_ARCH}\"\n    echo \"Using host-native",
+    "replace": "    echo \"Using host-native",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the host-native GCC (amd64, Jetson, X100 build hosts) must be checked too"
+  },
+  {
+    "id": "native-gcc-san.cross-wiring",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "  fi\n  _assert_native_gcc_sanitizers \"/opt/gcc-${GCC_VERSION}\" \"${TARGET_ARCH}\"\n",
+    "replace": "  fi\n",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the relocated Canadian GCC -- the arm64/riscv64 image's cc -- must be checked"
+  },
+  {
+    "id": "native-gcc-san.smoke-fatal",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "    validate_fail \"gcc-sanitizers\"",
+    "replace": "    echo \"gcc-sanitizers\"",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a -fsanitize compile or link failure must fail the wrapper smoke"
+  },
+  {
+    "id": "native-gcc-san.smoke-wiring",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "  _smoke_optimization_level\n  _smoke_gcc_sanitizers\n",
+    "replace": "  _smoke_optimization_level\n",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "validate_smoke must call the sanitizer smoke"
+  },
+  {
+    "id": "native-gcc-san.native-only-run",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "if [ \"${target_arch}\" = \"$(smoke_host_arch)\" ]; then _san_run=1; fi",
+    "replace": "if [ \"${target_arch}\" != \"$(smoke_host_arch)\" ]; then _san_run=1; fi",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "ASan must run natively only, never under qemu"
   }
 ]

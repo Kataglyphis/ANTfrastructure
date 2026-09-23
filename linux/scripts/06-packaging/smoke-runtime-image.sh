@@ -2440,7 +2440,9 @@ check_native_compiler_battery() {
       # guards the -idirafter WRAPPER fix in swap-native-gcc.sh, where an installed
       # specs file made throw/catch terminate at runtime. Sources use only double
       # quotes / return codes so they stay clean inside bash -lc.
-      if _rt_run \
+      local _san_run=0
+      if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
+      if _rt_run -e "SAN_RUN=${_san_run}" \
            bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
@@ -2472,10 +2474,15 @@ if [ -n "$cxx" ]; then
   # C++: link-time optimization
   printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
   { "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
+  # C++: the header abseil includes under -fsanitize, and libasan+libubsan at link; RUN only natively
+  printf "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c,char**){__sanitizer_annotate_contiguous_container(b,b+8,b+8,b+8);return (c<<3)==8?0:1;}\n" > "$d/s.cpp"
+  { "$cxx" -O1 -fsanitize=address,undefined "$d/s.cpp" -o "$d/s" 2>"$d/e" && readelf -d "$d/s" > "$d/dyn" && grep -q "NEEDED.*libasan" "$d/dyn" && grep -q "NEEDED.*libubsan" "$d/dyn"; }; report "C++ -fsanitize=address,undefined compile+link" $?
+  if [ "$SAN_RUN" = 1 ]; then { ASAN_OPTIONS=detect_leaks=0 "$d/s" 2>"$d/e"; }; report "C++ sanitizer RUN (native)" $?
+  else echo "  --  sanitizer RUN skipped: emulated arch (qemu-user cannot host ASan/LSan reliably)"; fi
 fi
 echo "  gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)]"
 exit $rc'; then
-        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO) all pass on ${target_arch}"
+        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO/sanitizers) all pass on ${target_arch}"
       else
         fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
       fi

@@ -418,10 +418,13 @@ These validate a built/pulled image and also run during the build to fail fast:
   - **onnxruntime inference** (fail) — runs a tiny embedded Add model and asserts the
     output (proves the CPU EP executes, not just imports). **cv2 encode/decode**
     roundtrip. **Application import** — the shipped venv must `import orchestrant`.
-  - **Native compiler battery compile+link+RUN** — an 8-case battery with the image's
-    `gcc`/`g++`, each running the resulting binary on-target: C hello (stdout),
-    pthreads, libm, libatomic; C++ hello (libstdc++), **exceptions+STL** (throw/catch +
-    `std::sort`), std::thread, and `-flto`. This is what upgrades class 4 from a static
+  - **Native compiler battery compile+link+RUN** — a 9-case battery with the image's
+    `gcc`/`g++`: C hello (stdout), pthreads, libm, libatomic; C++ hello (libstdc++),
+    **exceptions+STL** (throw/catch + `std::sort`), std::thread, `-flto`, and
+    `-fsanitize=address,undefined`. The first eight run their binary on-target. The
+    sanitizer case runs its binary only where the build host's arch is the image's
+    ([§ The native GCC ships libsanitizer](#the-native-gcc-ships-libsanitizer)).
+    This is what upgrades class 4 from a static
     ELF/machine check to genuine **execution** proof: a cross arch's binary can't run
     on the x86_64 build host, so the shipped native GCC (esp. the riscv64
     `--with-isa-spec` toolchain) was previously never actually executed — under qemu
@@ -1167,6 +1170,86 @@ specs by hand is whack-a-mole and fragile under QEMU. Command-line
 bare `gcc hello.c`, simple C++, AND exception-throwing C++ (throw/catch,
 STL sort) all compile, link, and run correctly. amd64 never reaches this
 block (host GCC, no swap).
+
+### The native GCC ships libsanitizer
+
+**Symptom.** In the arm64 or riscv64 image, a `-fsanitize=address` build stops with
+`fatal error: sanitizer/common_interface_defs.h: No such file or directory`. abseil's
+`dynamic_annotations.h` includes that header. With the header in place, the link still
+cannot find `libasan`/`libubsan`. The amd64 image is fine. Found on 2026-09-23 through
+AccelerANTgine's `linux-debug-GNU` preset, on the published `:latest` (index `ec4bb68b`,
+arm64 manifest `b867d353`, GCC layer `e95f585a`).
+
+**Cause.** Only amd64's `/opt/gcc-16.2.0` is a full `make` build. On arm64 and riscv64
+it is the Canadian-native GCC (`gcc.sh` `build_canadian_native_gcc_for`: build is the
+build host, host and target are the image's arch), which `swap-native-gcc.sh` copies
+over the prefix in the android stage. `build-gcc.sh` built and installed only libgcc,
+libstdc++-v3 and libatomic whenever `--target` was set. So that GCC had no
+`include/sanitizer/` and no `libasan`, `libubsan`, `liblsan` or `libtsan`.
+
+**Fix.** When `--host` equals `--target`, `build-gcc.sh` adds `target-libsanitizer` to
+the `make` and `make install` targets (`_gcc_extra_target_libs`). No configure flag
+changes, and `gcc.sh` and the Dockerfiles are untouched. Which GCC takes which path:
+
+| GCC | `--target` / `--host` | libsanitizer |
+| --- | --- | --- |
+| Build-arch host GCC (`build_host_gcc`) | neither | already built by the full `make` |
+| Plain cross (`build_cross_gcc_for`), `<triplet>-gcc` in the shared prefix | target only | not built, unchanged |
+| Canadian native (`build_canadian_native_gcc_for`), the arm64/riscv64 image's `cc` | both, equal | **built** |
+| A Canadian with host != target | both, different | not built; nothing in the tree produces one |
+
+In a Canadian cross the target libraries are compiled by the already-installed cross
+`<triplet>-g++` (`CC_FOR_TARGET`/`CXX_FOR_TARGET`), not by the in-tree `xgcc`.
+libsanitizer is a raw-C++ target module like libstdc++-v3, which already builds this
+way here, and it uses the same `libc6-dev-<arch>-cross` sysroot. Its runtime lands next
+to libstdc++: `lib64` on arm64 and amd64, `lib` on riscv64. Do not pass
+`--enable-libsanitizer`: it skips GCC's per-target support check.
+
+What GCC 16.2.0 builds per target (`libsanitizer/configure.tgt`):
+
+| Target | asan | ubsan | lsan | tsan | hwasan |
+| --- | --- | --- | --- | --- | --- |
+| x86_64 | yes | yes | yes | yes | yes |
+| aarch64 | yes | yes | yes | yes | yes |
+| riscv64 | yes | yes | yes | yes | no: GCC has no riscv memory tagging, so `-fsanitize=hwaddress` is rejected |
+
+**Three gates, and what each sees:**
+
+- `build-gcc.sh` fails the GCC build when the install left no
+  `sanitizer/common_interface_defs.h` or no `libasan.so.*`. libsanitizer's own
+  configure switches itself off without an error when a probe fails
+  (`SANITIZER_SUPPORTED=no`), and then installs only `libsanitizer.spec`.
+- `swap-native-gcc.sh` checks the shipped `/opt/gcc-<ver>` on every build-host shape:
+  the header, and `libasan`, `libubsan`, `liblsan` and `libtsan` (plus `libhwasan` on
+  amd64 and arm64), each with the image's ELF machine. That includes the native
+  Jetson and X100 lanes, whose own full-make GCC builds libsanitizer by default. It
+  looks for the header under any triplet, because the full make's is
+  config.guess-shaped (`x86_64-pc-linux-gnu`) and the Canadian one is not
+  (`aarch64-linux-gnu`). It accepts the libraries in `lib64` or `lib`.
+- The wrapper smoke (`validate-compilers.sh`) compiles and links a TU that includes
+  the header, with `-fsanitize=address,undefined`, and requires `libasan` and
+  `libubsan` in `NEEDED`. It never runs the binary. `smoke-runtime-image.sh`'s compiler
+  battery does, with `ASAN_OPTIONS=detect_leaks=0`, but only where the build host's
+  arch is the image's. ASan and LSan are unreliable under qemu-user (LSan needs ptrace,
+  and the shadow reservation can fail), so an emulated arch prints a skip line, never
+  a pass.
+
+`linux/scripts/tests/test-native-gcc-sanitizers.sh` covers all of them, and the
+`native-gcc-san.*` mutations prove each can fail.
+
+**Cost.** `build-gcc.sh` is in the compiler image's closure, so the change re-keys the
+whole Linux chain from the compiler stage down, on every arch. Base is untouched. The
+GCC RUN gains two libsanitizer builds, about 190 source files each (171 on riscv64),
+each compiled twice by libtool. Its time is not measured. The shipped
+`/opt/gcc-16.2.0` grows by about 79 MB uncompressed on arm64 and 67 MB on riscv64,
+mostly the unstripped static archives. amd64 already ships the same set (79.3 MB in
+layer `236e40c6`). A `--from-stage` run on a compiler image from before the change
+stops at the android swap by design, instead of shipping without the runtime.
+
+**Not covered.** The amd64 image's plain cross compilers still have no target
+`libasan`, so `aarch64-linux-gnu-g++ -fsanitize=address` from amd64 still fails. The
+arm64 and riscv64 GCCs still lack libgomp (`omp.h`), libitm and gfortran. TSan on
+riscv64 needs an sv39 or sv48 VMA, which is unverified on the X100.
 
 ### Runtime stage context and ancestry annotations
 

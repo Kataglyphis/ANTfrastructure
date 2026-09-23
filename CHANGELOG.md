@@ -7,6 +7,65 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - The arm64 and riscv64 GCC ship libsanitizer
+
+**What was broken.** In the published `:latest` (index `ec4bb68b`), the arm64
+(`b867d353`) and riscv64 (`66f4dea1`) images' `/opt/gcc-16.2.0` had no
+`include/sanitizer/` and no `libasan`, `libubsan`, `liblsan` or `libtsan`. Any
+`-fsanitize=address` build there failed with `fatal error:
+sanitizer/common_interface_defs.h: No such file or directory`. It was found through
+AccelerANTgine's `linux-debug-GNU` preset, where abseil's `dynamic_annotations.h`
+includes that header. amd64 was not affected. Mechanism, gates and cost:
+[`docs/cross-build-verification.md` § The native GCC ships libsanitizer](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer).
+
+- **Cause.** Those images' `cc` is the Canadian-native GCC (host == target), and
+  `build-gcc.sh` built and installed only libgcc, libstdc++-v3 and libatomic for every
+  `--target` build.
+- **Fix.** `build-gcc.sh` adds `target-libsanitizer` to the make and install targets
+  when `--host` equals `--target`. The plain cross compilers and the full-make host GCC
+  are unchanged. No configure flag, `gcc.sh` or Dockerfile changed.
+- **Gates.** `build-gcc.sh` fails when libsanitizer installed no header or `libasan`,
+  because its configure can switch itself off silently. `swap-native-gcc.sh` checks the
+  header and `libasan`/`libubsan`/`liblsan`/`libtsan` (plus `libhwasan` on amd64 and
+  arm64), each with the image's ELF machine, on every build-host shape. The native
+  Jetson and X100 lanes' own full-make GCC is checked too. The wrapper smoke compiles
+  and links `-fsanitize=address,undefined` against the header and requires both
+  runtimes in `NEEDED`. The runtime-image battery runs that binary only where the build
+  host's arch is the image's, since qemu-user cannot host ASan/LSan reliably. New suite
+  `test-native-gcc-sanitizers.sh`; 13 mutations `native-gcc-san.*`.
+- **What re-keys.** `build-gcc.sh` is in the compiler image's closure (Dockerfile.toolchain
+  RUN 1, the LLVM RUN, RUN 3c and the `/opt/scripts/toolchain` COPY). The next Linux
+  chain therefore rebuilds the one compiler image: the host GCC, both plain crosses,
+  both Canadian natives (now with libsanitizer), then LLVM, Rust and CPython on the new
+  digest. Every stage below it rebuilds on all three arches: sdk, media, android,
+  runtime package, wrapper-smoke, wrapper and the manifest. Three more edits land in
+  stages that re-run anyway on their new parents: `swap-native-gcc.sh` (the android
+  final COPY), `validate-compilers.sh` (Dockerfile.package's artifact-source bind and
+  its COPY) and `build-gcc.sh` again (Dockerfile.package's `02-toolchain/` COPY). Base
+  is untouched. `smoke-runtime-image.sh` runs on the host and is in no image. The
+  compile caches survive the re-key, because the sccache/ccache mounts are outside the
+  image digest. The host and plain-cross GCC configure lines are unchanged, so their
+  compiles should hit; the run's sccache stats will show whether they do. The nvidia
+  and rocm variant images get the fix only after their own chain runs on the new
+  shared sdk. Consumers that still pull `:latest-cross` through the hub's actions at
+  `@main` keep the frozen image.
+- **The next run must include the compiler stage.** A `--from-stage sdk|media|android`
+  run on the old compiler digest now stops at the android swap on arm64 and riscv64,
+  on purpose, instead of shipping without the runtime.
+- **Size.** About +79 MB uncompressed in the arm64 `/opt/gcc-16.2.0` and +67 MB on
+  riscv64 (no hwasan), mostly unstripped `lib*san.a`. amd64 already ships the same set
+  (79.3 MB). The compressed delta is not measured. The compiler, sdk, media and android
+  images carry both native prefixes (about +146 MB), but those images are not shipped.
+- **Unverified until the Linux chain runs on the build host:** that libsanitizer
+  configures and builds in the Canadian cross at all (libstdc++-v3 builds the same way,
+  which is the main evidence it will); how much time the two libsanitizer builds add
+  (not measured); the compressed size; and the sanitizer RUN on amd64. The arm64 and
+  riscv64 RUNs happen only on a Jetson or X100 build host. TSan on riscv64 needs an
+  sv39 or sv48 VMA, unverified on the X100. Only the static and stubbed tests ran for
+  this change (on a Windows host).
+- **Still missing on arm64 and riscv64, out of scope:** libgomp (`omp.h`), libitm and
+  gfortran, and a target `libasan` for the amd64 image's plain cross compilers.
+
 ## 2026-09-24 - ORT census: a consumer that names the chain directory is not an ORT build
 
 **Fixes G6 failing OmniAccelerANT's Linux lane** (run 35928030957, x64 and arm64):

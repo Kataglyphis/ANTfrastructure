@@ -119,3 +119,4 @@ mutation-family:renovate
 # Anchoring it on the script instead was tried and rejected: --check never reaches
 # the mode validation, so that proof would have been vacuous.
 mutation-id:shared-config.exact-mode-is-declared-in-the-manifest
+mutation-family:native-gcc-san
