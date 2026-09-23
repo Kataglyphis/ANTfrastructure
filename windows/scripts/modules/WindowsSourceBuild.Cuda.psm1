@@ -74,7 +74,7 @@ function Get-GpuEnvironment {
     $rocmRoot = $null
     if ($gpuType -eq 'rocm') {
         $rocmRoot = @($env:HIP_PATH, $env:ROCM_PATH) | Where-Object { $_ } | Select-Object -First 1
-        if (-not $rocmRoot -or -not (Test-Path (Join-Path $rocmRoot 'lib\cmake\hip'))) {
+        if (-not $rocmRoot -or -not (Test-Path -LiteralPath "$rocmRoot\lib\cmake\hip")) {
             throw ("GPU_TYPE=rocm but no ROCm tree with lib\cmake\hip (HIP_PATH='$env:HIP_PATH', ROCM_PATH='$env:ROCM_PATH') - " +
                 'a mis-plumbed rocm layer would silently build the CPU flags. ' +
                 'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
@@ -138,7 +138,9 @@ function Get-CudnnLibraryDir {
     )
     if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $null }
     $archDir = if ((Get-WindowsTargetArch -Arch $Arch) -eq 'amd64') { 'x64' } else { 'arm64' }
-    $libDir = Join-Path $CudnnRoot "lib\$archDir"
+    # Not Join-Path: it resolves the root's drive and THROWS on an unmounted one,
+    # where this contract is $null (SourceBuild.Resolve's X:\ case).
+    $libDir = "$($CudnnRoot.TrimEnd('\', '/'))\lib\$archDir"
     if (-not (Test-Path -LiteralPath $libDir -ErrorAction SilentlyContinue)) { return $null }
     return $libDir
 }
@@ -169,7 +171,8 @@ function Test-CudaWindowsArm64Payload {
     param([string]$CudaRoot = '')
     if ([string]::IsNullOrWhiteSpace($CudaRoot)) { $CudaRoot = Get-CudaRoot }
     if ([string]::IsNullOrWhiteSpace($CudaRoot)) { return $false }
-    return (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudart.lib')) -and (Test-Path (Join-Path $CudaRoot 'lib\arm64\cudadevrt.lib'))
+    $arm = "$($CudaRoot.TrimEnd('\', '/'))\lib\arm64"   # not Join-Path: an unmounted drive must read as absent, not throw
+    return (Test-Path -LiteralPath "$arm\cudart.lib") -and (Test-Path -LiteralPath "$arm\cudadevrt.lib")
 }
 
 function Get-NvccHostCompilerPath {
