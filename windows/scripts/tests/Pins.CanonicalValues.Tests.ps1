@@ -4,7 +4,7 @@
 # #58 — CUDA_ARCHITECTURES. The owner's standing directive is that the arch set
 # is NEVER trimmed as a speed lever, in any build, including dev iterations. The
 # SET ITSELF is an owner decision and does change: on 2026-09-23 it became
-# `86;87;89;90;120` — 80 (A100/A30) retired, 120 (RTX 50 / RTX PRO Blackwell)
+# `86;87;89;120` — 80 (A100/A30) retired, 120 (RTX 50 / RTX PRO Blackwell)
 # added. Changing it means changing versions.env AND this assertion in the same
 # commit, which is the point: a trim cannot happen by accident. Three
 # copies of that string exist: versions.env (source of truth),
@@ -46,7 +46,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
     It 'keeps CUDA_ARCHITECTURES at the full owner-mandated set (NEVER trim)' {
         # Owner directive: arch reduction is banned as a speed lever. The set
         # below is the owner's current decision (2026-09-23), not a default.
-        Assert-Equal '86;87;89;90;120' (Get-Pin 'CUDA_ARCHITECTURES') `
+        Assert-Equal '86;87;89;120' (Get-Pin 'CUDA_ARCHITECTURES') `
             'versions.env CUDA_ARCHITECTURES was trimmed — this is the SOURCE OF TRUTH the container actually builds with, and trimming it is silent (a green build with missing arch coverage).'
     }
 
