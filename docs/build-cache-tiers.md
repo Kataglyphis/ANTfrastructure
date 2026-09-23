@@ -116,6 +116,30 @@ host-side act, e.g. a duration-bounded
 ccache/sccache mounts a live build keeps warm stay above the cutoff — check what
 it would remove before running it.
 
+### 1.2 The web-lane tool binaries (riscv-tools, 2026-09-23)
+
+Three T1 ids hold the from-source `wasm-pack` and `flutter_rust_bridge_codegen`
+([contract](consumer-image-contract.md#building-the-web-lane-tools-from-source)):
+
+| id | Stage | Holds |
+| --- | --- | --- |
+| `web-lane-tools-cross-<target>` | android, `web-lane-tools` | cross-built binaries, one entry per key |
+| `cargo-registry-web-lane-tools-<target>` | android, `web-lane-tools` | crate sources for that producer only, `sharing=locked`: cargo's `.package-cache` lock sits outside the mount, as for the media lanes above |
+| `web-lane-tools-bin-<arch>` | package, the setup RUN | native builds, so a pin reaches QEMU once per key |
+
+An entry is `<tool>-<version>_rust-<rustc>_<triple>_<key12>/` holding the binary
+and a manifest whose first eight lines are the key text. A read accepts it only
+when that text equals this build's exactly, the sha256 matches, and the binary
+passes the same gate a fresh build must pass; anything else is deleted with a
+`WARN` and rebuilt. Writes go to `.tmp.<pid>.<tool>` and are renamed into place,
+and each tool keeps its newest three entries, so a pin bump replaces an entry
+rather than orphaning one. The ids themselves are fixed.
+
+The trust boundary is the one every cachemount here has: a binary and manifest
+forged consistently by someone who can write the buildkitd store pass. Since
+`RUNTIME_NO_CACHE=1` does not touch a cachemount, `WEB_LANE_TOOLS_CACHE=refresh`
+is the way to rebuild past a good entry; `off` neither reads nor writes.
+
 ---
 
 ## 2. The blind spot: what `type=inline` cannot carry
@@ -1015,6 +1039,7 @@ The rules an agent must never violate:
 | `ENABLE_SCCACHE_RUST` | `0` | **not** the monorepo's Rust switch any more — it only adds `setup_sccache` to `media_common_init`, i.e. it caches `install-rice-proto.sh`'s `cargo cinstall` (§ 5.3 item 1) |
 | `ENABLE_SCCACHE_CUDA` | `0` | sccache as the CUDA/HIP compiler launcher (§ 5.4) |
 | `USE_CCACHE` / `USE_SCCACHE` / `USE_LLD` | `true` | per-tool switches in `compiler-cache.sh`; note § 5.3 item 3 |
+| `WEB_LANE_TOOLS_CACHE` | `on` | `refresh` rebuilds past the web-lane tool cache and re-stores; `off` bypasses it (§ 1.2) |
 
 `CROSS_REGISTRY_CACHE` is deliberately **not** in this table. The T4 pilot knob
 was written and reverted, nothing in `cross-stage-build.sh` reads it, and

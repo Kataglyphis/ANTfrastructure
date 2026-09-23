@@ -270,6 +270,21 @@ _web="${_web}
 $(t_fn_src "${SUBJECT}" _web_lane_asset_url)" || exit 1
 _web="${_web}
 $(t_fn_src "${SUBJECT}" _web_lane_asset_sha)" || exit 1
+# The from-source leg is the real web-lane-tools.sh, driven through the shared fixtures.
+_web="${_web}
+source $(printf '%q' "${TESTS_DIR}/../01-core/platform.sh")
+source $(printf '%q' "${TESTS_DIR}/web-lane-fixtures.sh")
+source $(printf '%q' "${TESTS_DIR}/../06-packaging/web-lane-tools.sh")"
+
+# web-lane-tools.sh's cache, artifact and provenance inside <home>, recording
+# rustup/cargo in its bin/, and TARGET_ARCH matching the stubbed uname.
+_web_sandbox() {
+  wlt_fx_home "$1"
+  # shellcheck disable=SC2034  # read by the eval'd web-lane-tools.sh
+  CARGO_HOME="$1" WLT_CACHE_DIR="$1/cache" WLT_ARTIFACT_DIR="$1/artifact" WLT_PROVENANCE="$1/provenance"
+  case "${FAKE_MACHINE:-x86_64}" in x86_64) TARGET_ARCH=amd64 ;; aarch64) TARGET_ARCH=arm64 ;; *) TARGET_ARCH=riscv64 ;; esac
+  export TARGET_ARCH
+}
 
 # uname and the verified download are the only two things standing between this
 # function and the network; both are stubbed, nothing here fetches anything.
@@ -292,28 +307,20 @@ download_verified_file() {
 }
 '
 
-# Drive the real function with rustup/cargo as recorders under a fake CARGO_HOME.
+# Drive the real function with rustup/cargo as recorders under a fake CARGO_HOME;
+# $1/$2 are their exit codes.
 _web_run() {
-  local rc_rustup="$1" rc_cargo="$2" home
-  home="$(mktemp -d)"; mkdir -p "${home}/bin"
-  cat > "${home}/bin/rustup" <<RS
-#!/usr/bin/env bash
-printf 'RUSTUP %s\n' "\$*"; exit ${rc_rustup}
-RS
-  cat > "${home}/bin/cargo" <<CG
-#!/usr/bin/env bash
-printf 'CARGO %s\n' "\$*"; exit ${rc_cargo}
-CG
-  chmod +x "${home}/bin/rustup" "${home}/bin/cargo"
-  # shellcheck disable=SC2034  # all three are read by the eval'd function body
+  local home
+  home="$(mktemp -d)"
+  # shellcheck disable=SC2034  # both are read by the eval'd function body
   (
     set -uo pipefail
     eval "${_WEB_STUBS}"
     eval "${_web}"
-    CARGO_HOME="${home}"
+    _web_sandbox "${home}"
     WASM_PACK_VERSION="0.15.0"
     FLUTTER_RUST_BRIDGE_VERSION="2.13.0"
-    install_web_lane_toolchain
+    FAKE_RUSTUP_RC="$1" FAKE_CARGO_RC="$2" install_web_lane_toolchain
     printf 'EXIT %s\n' "$?"
   ) 2>&1
   rm -rf "${home}"
@@ -324,10 +331,7 @@ CG
 # "$@" is VAR=VALUE overrides applied after the healthy defaults.
 _web_env_run() {
   local home ve kv
-  home="$(mktemp -d)"; mkdir -p "${home}/bin"
-  printf '#!/usr/bin/env bash\nprintf "RUSTUP %%s\\n" "$*"\n' > "${home}/bin/rustup"
-  printf '#!/usr/bin/env bash\nprintf "CARGO %%s\\n" "$*"\n' > "${home}/bin/cargo"
-  chmod +x "${home}/bin/rustup" "${home}/bin/cargo"
+  home="$(mktemp -d)"
   ve="${home}/versions.env"
   cat > "${ve}" <<'VE'
 WASM_PACK_LINUX_X86_64_SHA256=aaaa
@@ -339,7 +343,8 @@ VE
     set -uo pipefail
     eval "${_WEB_STUBS}"
     eval "${_web}"
-    export CARGO_HOME="${home}" VERSIONS_ENV="${ve}"
+    _web_sandbox "${home}"
+    export VERSIONS_ENV="${ve}"
     export WASM_PACK_VERSION="0.15.0" FLUTTER_RUST_BRIDGE_VERSION="2.13.0"
     for kv in "$@"; do export "${kv?}"; done
     install_web_lane_toolchain

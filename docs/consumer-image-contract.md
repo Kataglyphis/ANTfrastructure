@@ -200,19 +200,98 @@ emulation rather than a defect. `install_web_lane_prebuilt` downloads the
 per-arch `*_SHA256` pin in `versions.env`, the way sccache and binaryen are
 already fetched. Anything else — riscv64, which upstream publishes no asset for,
 a missing pin, a failed or mismatching download, a tarball without the binary in
-it — falls back to `cargo install --locked`, so a consumer still gets the pinned
-build rather than whatever the index resolves to that day, and nothing
-unverified is ever installed. **The four hashes bump with the two versions.**
+it — falls back to the from-source leg
+([below](#building-the-web-lane-tools-from-source)), so a consumer still gets the
+pinned `--locked` build rather than whatever the index resolves to that day, and
+nothing unverified is ever installed. **The four hashes bump with the two
+versions.**
 
 That leaves one open question rather than an assumption: whether a riscv64 web
 lane exists at all. The tools are installed uniformly because an arch-conditional
 image is harder to reason about than a slower one, and because "we assumed nobody
 uses it" is how the Android layer ended up built for the wrong ABI.
 
-`install_web_lane_toolchain` is **non-fatal throughout** — a missing nightly pin,
-an unpinned version and a failed `cargo install` each `WARN` and continue. The
+`install_web_lane_toolchain` is **non-fatal for availability** — a missing nightly
+pin, an unpinned version and a failed `cargo install` each `WARN` and continue. The
 trade is deliberate: a consumer that has to build its own tools is slow, a consumer
-that cannot build the image at all is worse.
+that cannot build the image at all is worse. What it does fail on — a bad knob, or
+a binary that claims to be good and is not — is in the next section.
+
+### Building the web-lane tools from source
+
+riscv64 has no upstream binary, so its package stage used to compile both tools
+under QEMU on every chain: 960 s + 1,665 s of a 3,384 s RUN (riscv64 layer file
+times, 2026-09-22). That compile now has two replacements, and the old path stays
+one switch away. Owner decision 2026-09-23: both options, cross the default.
+
+| Path | Where it compiles | When |
+| --- | --- | --- |
+| cross | `Dockerfile.android`, stage `web-lane-tools`: `cargo install --target <triple>` under the hub's own `setup_linux_cross_env`, before `final` swaps the amd64-hosted cross GCC out | the target is in `WEB_LANE_TOOLS_CROSS_ARCHES` and is not the build platform's own arch |
+| native | the package stage, with today's `cargo install --locked <tool> --version <pin>`: under QEMU on the amd64 host, natively on a riscv64 or arm64 build host | `WEB_LANE_TOOLS_SOURCE=native`, or when `auto` finds no usable cross artifact |
+| cache | the package stage's cachemount `web-lane-tools-bin-<arch>` | a native build whose exact key was built before |
+
+amd64 and arm64 are untouched: they install upstream's sha-pinned musl binary
+first and reach this code only if that download fails.
+
+**Picking a path.** Export `WEB_LANE_TOOLS_SOURCE` before `build-cross-chain.sh` or
+the runtime helpers:
+
+- `auto` (default) takes the cross artifact when its manifest says `status=ok`, it
+  was built for this exact key, and it passes the gate. Anything else builds
+  natively, with a `WARN` that ends `the cross fast path was not taken`.
+- `cross` requires the artifact: absent, `failed` or another key is an ERROR. A
+  `skipped` manifest is not, because the producer was never asked to build that
+  arch; the package builds natively.
+- `native` never reads the artifact. It still reads the cache, so add
+  `WEB_LANE_TOOLS_CACHE=refresh` for a guaranteed fresh compile.
+
+`WEB_LANE_TOOLS_CACHE` is `on` (default), `refresh` (never read an entry, store the
+new build) or `off` (neither). `RUNTIME_NO_CACHE=1` does not empty a cachemount;
+`refresh` is its equivalent here. `WEB_LANE_TOOLS_CROSS_ARCHES` (default `riscv64`,
+a comma list, or `none`) is the arches android cross-builds for. A build host whose
+own arch is the target — the riscv64 X100, an arm64 Jetson on
+`CROSS_BUILD_PLATFORM=linux/arm64` — always gets `skipped: native-build-platform`,
+so `auto` builds natively there with nothing set.
+
+All three are Dockerfile ARGs that `lib-orchestrator.sh` forwards only when they are
+set, so leaving them unset moves no cache key. They are deliberately not in
+`versions.env`: a line there re-keys the whole chain from base.
+
+**The key.** Eight fields: schema, tool, version, target triple, rustc release,
+RUSTFLAGS, the C environment and `--locked`. Who built it (`built_by=cross:amd64`,
+`native:riscv64`) is recorded, never keyed. The cross key carries cross-env.sh's
+RVV flags (`-C target-feature=+v,+zvl128b`; a test pins the copy); the native key
+carries none, as the native build always did. Both force vendored static bzip2,
+xz and zstd, because under `PKG_CONFIG_ALLOW_CROSS` those `-sys` crates link the
+build host's library
+([failure-modes.md](failure-modes.md#a-cross-built-rust-tool-links-the-build-hosts-libbz2)).
+
+**The gate** (`wlt_assert_binary`) reads the staged bytes before anything is
+installed: ELF64, the arch's machine, lp64d on riscv64, glibc's own loader as
+`PT_INTERP`, `NEEDED` only from libc's family, no `GLIBC_` version above the
+image's glibc, and `--version` printing exactly `<tool> <pin>`. No readelf is a
+refusal, not a skip. Artifact and cache entries must also match their recorded
+sha256.
+
+**Fatal or not.** Availability still only WARNs: a failed `cargo install`, a
+producer that could not build (it records `status=failed` and android stays
+green), an unusable artifact under `auto`. Three things fail the package stage: a
+bad knob value; a binary that claims to be good and is not — a `status=ok` artifact
+failing its sha or its gate, in `auto` and `cross` alike, or a native build cargo
+reported as a success that fails the gate; and `cross` with no usable artifact. A
+cache entry that fails its checks is deleted with a `WARN` and rebuilt.
+
+**Provenance.** Each from-source install appends `tool= version= source=cross|cache|native
+sha256= key=` to `/usr/local/share/web-lane-tools/provenance`. The cross and cache
+routes install a bare binary with no `.crates.toml`, which is what amd64 and arm64
+already ship.
+
+**Not covered.** Behaviour beyond `--version`: no automated riscv64 `build-web`
+consumer exists. A binary and manifest forged consistently by someone who can write
+the build host's cachemounts, the same trust boundary as the cargo, uv and apt
+mounts. The Jetson → riscv64 cross leg is untested; it records `failed` and falls
+back. The cross build ran in a probe (about 73 s at 32 vCPU, 2026-09-22), never yet
+in a chain.
 
 ### The AppImage runtime ships with the tool
 
@@ -360,8 +439,9 @@ registry cachemount.
 
 `WASM_PACK_VERSION` and `FLUTTER_RUST_BRIDGE_VERSION` are advertised as image ENV
 and compared against what the binaries report, which is also the proof that they
-are installed. Every step is non-fatal: a consumer that has to build its own tools
-is slow, an image that cannot be built at all is worse.
+are installed. A slow consumer beats an image that cannot be built, so only a
+defect fails the stage; riscv64's from-source leg is
+[above](#building-the-web-lane-tools-from-source).
 
 ## The ort crate links the chain ONNX Runtime
 

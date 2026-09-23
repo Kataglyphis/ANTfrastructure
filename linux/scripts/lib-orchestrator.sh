@@ -41,6 +41,10 @@ _LIB_ORCHESTRATOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/01-core/artifact-common.sh
 source "${_LIB_ORCHESTRATOR_DIR}/01-core/artifact-common.sh"
 
+# Operator toggles forwarded like a versions.env key (only when set) without sitting in
+# one, which would re-key the whole chain. docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
+_VERSION_BUILD_ARG_VARS+=(WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES)
+
 # ── cross-lane preamble ────────────────────────────────────────────────────────
 # Shared invariant scalar defaults for the cross orchestrators
 # (build-cross-chain.sh, build-cross-compiler.sh, build-cross-stage.sh,

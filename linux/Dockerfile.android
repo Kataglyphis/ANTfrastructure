@@ -342,6 +342,34 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
 # ==============================================================================
+# web-lane-tools — wasm-pack + flutter_rust_bridge_codegen cross-built with the
+# amd64-hosted cross GCC, which only exists before final's native GCC swap.
+# docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+# ==============================================================================
+FROM android-sdk AS web-lane-tools
+
+ARG TARGET_ARCH
+# The pins are part of the key, so the package stage refuses a producer that built others.
+ARG WASM_PACK_VERSION=0.15.0
+ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
+ARG WEB_LANE_TOOLS_CROSS_ARCHES=riscv64
+
+# 01-core per file (WLT_CORE_FILES): android-sdk's /opt/scripts/core is an older copy.
+RUN --mount=type=bind,source=linux/scripts/06-packaging/web-lane-tools.sh,target=/tmp/wlt/06-packaging/web-lane-tools.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/tmp/wlt/01-core/cross-env.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/wlt/01-core/platform.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/wlt/01-core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/tmp/wlt/01-core/cross-gcc.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/tmp/wlt/01-core/cross-python.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/tmp/wlt/01-core/cross-apt.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/tmp/wlt/01-core/cross-meson.sh,ro \
+    --mount=type=cache,target=/root/.cache/web-lane-tools,id=web-lane-tools-cross-${TARGET_ARCH},sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-web-lane-tools-${TARGET_ARCH},sharing=locked \
+    --mount=type=tmpfs,target=/tmp/wlt-build \
+    set -euo pipefail; \
+    TMPDIR=/tmp/wlt-build bash /tmp/wlt/06-packaging/web-lane-tools.sh produce /opt/web-lane-tools
+
+# ==============================================================================
 # Final stage — aggregate parallel stage outputs + native GCC swap
 # ==============================================================================
 FROM android-sdk AS final
@@ -383,6 +411,10 @@ RUN set -euo pipefail; \
 
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)
 RUN mkdir -p /opt/llvm-target
+
+# LAST on purpose: above the GCC swap, a changed producer output would re-run that
+# prefix-sized copy. Dockerfile.package bind-mounts it; nothing ships it twice.
+COPY --link --from=web-lane-tools /opt/web-lane-tools /opt/web-lane-tools
 
 LABEL org.opencontainers.image.title="Kataglyphis Android" \
       org.opencontainers.image.description="Android SDK/NDK and cross-compiled Android artifacts layer"

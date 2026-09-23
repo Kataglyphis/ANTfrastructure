@@ -125,6 +125,7 @@ report **0** compile requests, not another container's hundreds.
 | AppImage runtime | `Staged AppImage runtime-<arch> (<n> bytes) from …`, once per arch | `appimagetool did not report --appimage-offset` — a WARN, non-fatal, but the runtime is not staged and consumers go back to fetching it from GitHub |
 | Flatpak runtimes | seven refs installed on amd64/arm64; **skipped outright** on riscv64 (Flathub builds x86_64 and aarch64 only) | a 404 retry loop on riscv64 means the arch guard stopped working |
 | web-lane toolchain | `OK: nightly-<date> installed with rust-src + wasm32-unknown-unknown` (the `RUST_NIGHTLY_TOOLCHAIN` pin) and two `OK: <crate> <version> installed` | `WARN: nightly-<date> is unavailable` — non-fatal, but the web lane then auto-installs a nightly per consumer run, which is the cost this exists to remove |
+| web-lane tools from source (riscv64, new 2026-09-23) | android `web-lane-tools`: `OK: web-lane producer: <crate> <version> built for riscv64gc-unknown-linux-gnu in <n> s`, or `cache HIT`; amd64/arm64 android: `skipped: not in WEB_LANE_TOOLS_CROSS_ARCHES` / `native-build-platform`. riscv64 package: `installed from the cross-built artifact`, twice | `WARN: web-lane <crate>: … the cross fast path was not taken` — non-fatal, but that RUN pays the QEMU compile (~44 min) once per key; the line carries the producer's reason. Any `ERROR: web-lane` stops the package stage on purpose ([contract](consumer-image-contract.md#building-the-web-lane-tools-from-source)) |
 
 ## On the shipped bytes — after the run, not from the log
 

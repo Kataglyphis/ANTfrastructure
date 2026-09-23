@@ -65,6 +65,7 @@ Two neighbours, so you land on the right page:
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
+- [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 
 **Windows: the layer store (hcsshim)**
 
@@ -1048,6 +1049,25 @@ mid-push, while the branches and the index stayed untouched.
 **Fix.** `git config --file <gitdir>/config core.bare false`, where `<gitdir>` is the
 path in the checkout's `.git` file. The pre-push hook now clears the same four
 variables as pre-commit, mutation-tested as `mutations.push-clears-git-env`.
+
+### A cross-built Rust tool links the build host's libbz2
+
+**Symptom.** A `cargo install --target riscv64gc-unknown-linux-gnu` of wasm-pack dies
+at the link: `riscv64-linux-gnu-ld.bfd: cannot find -lbz2`, after `skipping
+incompatible /usr/lib/x86_64-linux-gnu/libbz2.so`. Reproduced in the 2026-09-22
+probe for the cross-built web-lane tools; `lzma-sys` fails the same way.
+
+**Cause.** `setup_linux_cross_env` exports `PKG_CONFIG_ALLOW_CROSS=1`. The build
+scripts of `bzip2-sys` and `lzma-sys` probe pkg-config (`bzip2`, `liblzma`) first,
+find the build host's `.pc` file, and hand its x86-64 library to the target link.
+Natively the same probe is deterministic but depends on which `-dev` packages the
+stage happens to carry.
+
+**Fix.** Force the vendored static C for both paths: `BZIP2_NO_PKG_CONFIG=1`,
+`LZMA_API_STATIC=1`, and `ZSTD_SYS_USE_PKG_CONFIG` unset (`wlt_c_env` in
+`06-packaging/web-lane-tools.sh`). The C environment is part of the tools' cache
+key, and their gate refuses any `NEEDED` outside libc's own family, so a regression
+fails the build instead of shipping. docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 
 ## Windows: the layer store (hcsshim)
 

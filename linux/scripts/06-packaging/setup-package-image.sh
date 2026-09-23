@@ -573,12 +573,19 @@ bootstrap_flutter_sdk() {
 # floating `nightly` is UPDATED, and the update renames files out of a read-only
 # image layer (EXDEV). A consumer that still names the channel auto-installs it
 # at runtime into the writable RUSTUP_HOME: works, pays the download per run.
-# Non-fatal throughout: a slow consumer beats an image that will not build.
+# Availability failures WARN; a bad knob or a binary that fails its gate is fatal.
 # docs/consumer-image-contract.md#the-web-lane-toolchain
 install_web_lane_toolchain() {
     local rustup="${CARGO_HOME:?}/bin/rustup" cargo="${CARGO_HOME:?}/bin/cargo"
     local name version
     local nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN:-nightly-2026-06-28}"
+
+    # The from-source leg; Dockerfile.package bind-mounts it for this RUN only.
+    if ! declare -F wlt_install_from_source >/dev/null 2>&1; then
+        # shellcheck source=linux/scripts/06-packaging/web-lane-tools.sh
+        source /tmp/wlt/web-lane-tools.sh || { echo "ERROR: /tmp/wlt/web-lane-tools.sh is not mounted" >&2; return 1; }
+    fi
+    wlt_validate_knobs || return 1
 
     if [ ! -x "${rustup}" ] || [ ! -x "${cargo}" ]; then
         echo "WARN: no rustup/cargo under ${CARGO_HOME}; skipping the web-lane toolchain"
@@ -600,17 +607,12 @@ install_web_lane_toolchain() {
         if install_web_lane_prebuilt "${name}" "${version}"; then
             continue
         fi
-        if "${cargo}" install --locked "${name}" --version "${version}"; then
-            echo "OK: ${name} ${version} installed"
-        else
-            echo "WARN: cargo install ${name} ${version} failed; the web lane will build it per run"
-        fi
+        wlt_install_from_source "${name}" "${version}" || return 1
     done
 }
 
-# Upstream's own release asset for this machine, or empty when there is none.
-# Both projects publish linux-musl for x86_64 and aarch64 and nothing for
-# riscv64. docs/consumer-image-contract.md#the-web-lane-toolchain
+# Upstream's own release asset for this machine, or empty when there is none (riscv64:
+# web-lane-tools.sh). docs/consumer-image-contract.md#the-web-lane-toolchain
 _web_lane_asset_url() {
     local name="$1" version="$2" target="$3"
 
