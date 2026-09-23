@@ -67,15 +67,24 @@ t_assert_eq "3" "${_count}" "the 16 latent for-loop sites are safe only if this 
 RT_SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
 # Load the table + its helpers WITHOUT running main(): copy the script minus
-# its last line (`main "$@"`) next to the smoke-common.sh it sources, then run
+# its last line (`main "$@"`) next to every sibling it sources, then run
 # expressions against it in a clean shell.
 _RT_SANDBOX="$(mktemp -d)"
 trap 'rm -rf "${_RT_SANDBOX}"' EXIT
 sed '$d' "${RT_SMOKE}" > "${_RT_SANDBOX}/rt.sh"
-cp "${TESTS_DIR}/../06-packaging/smoke-common.sh" "${_RT_SANDBOX}/"
+_RT_DEPS="$(sed -n 's|^source "${_SCRIPT_DIR}/\([^"]*\)"$|\1|p' "${RT_SMOKE}")"
+for _dep in ${_RT_DEPS}; do
+  cp "${TESTS_DIR}/../06-packaging/${_dep}" "${_RT_SANDBOX}/"
+done
 _rt_table() {
   bash -c "source '${_RT_SANDBOX}/rt.sh' >/dev/null 2>&1; $1"
 }
+
+t_case "the sandbox loads: rt.sh and every sibling it sources"
+# rt.sh runs under set -e, so one missing sibling ends the shell before the
+# expression runs and every case below reads empty (39 of them did on 2026-09-23).
+t_assert_contains "${_RT_DEPS}" "smoke-common.sh" "the source-line scan found the siblings"
+t_assert_eq "loaded" "$(_rt_table 'echo loaded')" "the sandboxed script must source cleanly"
 
 t_case "the sandbox trick still holds: main() is invoked on the LAST line"
 # `sed '$d'` above only strips the entry point if it is the final line; if the

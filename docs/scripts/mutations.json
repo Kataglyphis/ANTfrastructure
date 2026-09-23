@@ -2682,16 +2682,16 @@
   {
     "id": "pre-commit.doc-span-fast-slugs",
     "target": "docs/cross-build-verification.md",
-    "find": "`_FAST_SLUGS` (`:87-90`)",
-    "replace": "`_FAST_SLUGS` (`:87-91`)",
+    "find": "`_FAST_SLUGS` (`:88-91`)",
+    "replace": "`_FAST_SLUGS` (`:88-92`)",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "the _FAST_SLUGS offset quoted in prose is re-derived from the hook, not trusted"
   },
   {
     "id": "pre-commit.doc-span-staged-shell",
     "target": "docs/cross-build-verification.md",
-    "find": "(`:101-118`, the binary resolved",
-    "replace": "(`:101-117`, the binary resolved",
+    "find": "(`:102-119`, the binary resolved",
+    "replace": "(`:102-118`, the binary resolved",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "the staged-shell block offset quoted in prose is re-derived from the hook, not trusted"
   },
