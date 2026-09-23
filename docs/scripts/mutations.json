@@ -6097,9 +6097,9 @@
   },
   {
     "id": "rust.web-lane-crates-pinned",
-    "target": "linux/scripts/06-packaging/setup-package-image.sh",
-    "find": "        if \"${cargo}\" install --locked \"${name}\" --version \"${version}\"; then",
-    "replace": "        if \"${cargo}\" install \"${name}\"; then",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install --locked \"$1\" --version \"$2\" --root \"$3\"",
+    "replace": "    \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install \"$1\" --root \"$3\"",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "--locked plus an explicit version is what makes the consumer get the build this image was tested with; resolving the index at build time reintroduces the drift the pins exist to stop"
   },
@@ -6113,9 +6113,9 @@
   },
   {
     "id": "rust.web-lane-non-fatal",
-    "target": "linux/scripts/06-packaging/setup-package-image.sh",
-    "find": "            echo \"WARN: cargo install ${name} ${version} failed; the web lane will build it per run\"",
-    "replace": "            echo \"ERROR: cargo install ${name} ${version} failed\" >&2; return 1",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    echo \"WARN: cargo install ${tool} ${version} failed; the web lane will build it per run\"\n    return 0",
+    "replace": "    echo \"ERROR: cargo install ${tool} ${version} failed\" >&2\n    return 1",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "the whole step is a build-time convenience: a consumer that has to build its own tools is slow, one that cannot build the image at all is worse, so a crates.io hiccup must never fail the package stage"
   },
@@ -9673,5 +9673,245 @@
     "replace": "{ \"$d/s\" 2>\"$d/e\"; }",
     "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
     "why": "the RUN must turn LSan off: it needs ptrace, which a container may not allow"
+  },
+  {
+    "id": "rust.web-lane-gate-machine",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    *\"${machine}\"*) ;;",
+    "replace": "    *) ;;",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the ELF machine check is what refuses an x86-64 (or any foreign) binary presented as the image's own arch"
+  },
+  {
+    "id": "rust.web-lane-gate-readelf-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  command -v readelf >/dev/null 2>&1 || { _wlt_why \"readelf\" \"\" \"binutils on PATH\"; return 1; }",
+    "replace": "  command -v readelf >/dev/null 2>&1 || return 0",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "platform.sh's assert_elf_arch WARNs and passes without readelf; this gate must refuse instead, or every check below it passes vacuously"
+  },
+  {
+    "id": "rust.web-lane-gate-lp64d",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    *\"double-float ABI\"*) return 0 ;;",
+    "replace": "    *) return 0 ;;",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a soft-float riscv64 binary cannot call the image's lp64d glibc; the e_flags check is the only thing that sees it"
+  },
+  {
+    "id": "rust.web-lane-gate-interp",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  [ \"${interp}\" = \"${loader}\" ] || { _wlt_why \"PT_INTERP\" \"${interp}\" \"${loader}\"; return 1; }",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a musl or foreign interpreter execs nowhere in the image; PT_INTERP must be glibc's own loader"
+  },
+  {
+    "id": "rust.web-lane-gate-needed-allowlist",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    case \" ${WLT_NEEDED_OK} ${loader##*/} \" in",
+    "replace": "    case \" ${WLT_NEEDED_OK} ${loader##*/} ${so} \" in",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "NEEDED outside libc's family (libbz2 from the build host, libstdc++) is the host-library leak the vendored C env exists to prevent"
+  },
+  {
+    "id": "rust.web-lane-gate-max-glibc",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    _wlt_gate_glibc \"${file}\" \"${ceiling}\" || return 1",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a GLIBC_ symbol version above the image's glibc loads nowhere; the ceiling check is what bounds the sysroot"
+  },
+  {
+    "id": "rust.web-lane-gate-version-exec",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    _wlt_gate_exec \"${tool}\" \"${file}\" \"${version}\" || return 1",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "running --version is the one check that the bytes are the pinned tool and execute on this arch"
+  },
+  {
+    "id": "rust.web-lane-key-rustc",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "\"${WLT_KEY_SCHEMA}\" \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"${WLT_C_ENV_KEY}\"",
+    "replace": "\"${WLT_KEY_SCHEMA}\" \"$1\" \"$2\" \"$3\" \"\" \"$5\" \"${WLT_C_ENV_KEY}\"",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "without the rustc release in the key, a toolchain bump reuses binaries built by the old one, and pin skew goes unseen"
+  },
+  {
+    "id": "rust.web-lane-sha",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    [ \"${got}\" = \"${want}\" ] || { _wlt_why \"sha256\" \"${got}\" \"${want:-a recorded sha256}\"; return 1; }",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a cache entry or cross artifact whose bytes differ from its manifest must never be installed"
+  },
+  {
+    "id": "rust.web-lane-cache-stale-rejected",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"$(_wlt_manifest_key_text \"${entry}/manifest\")\" != \"${keytext}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "an entry is trusted only for the exact key text it was stored under"
+  },
+  {
+    "id": "rust.web-lane-cache-store-cleanup",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  rm -rf \"${tmp}\"\n  echo \"WARN: web-lane ${tool}: the cache store failed",
+    "replace": "  echo \"WARN: web-lane ${tool}: the cache store failed",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a store that fails must leave nothing behind in the cachemount"
+  },
+  {
+    "id": "rust.web-lane-cache-trim",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    if [ \"${n}\" -gt 3 ]; then rm -rf \"${d}\"; fi",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the ids are fixed, so without the trim every pin bump grows the cachemount for good"
+  },
+  {
+    "id": "rust.web-lane-cache-refresh-no-read",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"${cache}\" = on ] \\",
+    "replace": "  if [ \"${cache}\" != off ] \\",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "refresh is the only way past a good entry (RUNTIME_NO_CACHE does not empty a cachemount); it must not read"
+  },
+  {
+    "id": "rust.web-lane-cache-off-no-write",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"${cache}\" != off ]; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "off means the cache is neither read nor written"
+  },
+  {
+    "id": "rust.web-lane-claimed-good-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    echo \"ERROR: web-lane ${tool}: the cross artifact claims status=ok, but ${_WLT_WHY}\" >&2\n    return 1",
+    "replace": "    return 2",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "owner rule: a binary that claims to be good and fails integrity is a defect, fatal in auto as in cross, never a quiet fallback"
+  },
+  {
+    "id": "rust.web-lane-cross-required",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"$1\" = cross ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "WEB_LANE_TOOLS_SOURCE=cross exists to prove the cross path; an absent or failed artifact must stop it"
+  },
+  {
+    "id": "rust.web-lane-native-ignores-artifact",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"${mode}\" != native ]; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the owner's native switch: WEB_LANE_TOOLS_SOURCE=native must never take the cross-built binary"
+  },
+  {
+    "id": "rust.web-lane-knob-validated",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    auto|cross|native) ;;",
+    "replace": "    *) ;;",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a typo'd WEB_LANE_TOOLS_SOURCE would silently mean auto; a bad knob must stop the build"
+  },
+  {
+    "id": "rust.web-lane-producer-target-dir",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  CARGO_TARGET_DIR=\"$(mktemp -d \"${TMPDIR:-/tmp}/wlt-target.XXXXXX\")\" || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "cross-env.sh defaults CARGO_TARGET_DIR to /opt/cargo-target, which would land ~390 MB of target tree in the producer stage"
+  },
+  {
+    "id": "rust.web-lane-producer-vendored-c",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  export CARGO_TARGET_DIR RUSTC_WRAPPER=\"\" CARGO_NET_RETRY=5\n  wlt_c_env",
+    "replace": "  export CARGO_TARGET_DIR RUSTC_WRAPPER=\"\" CARGO_NET_RETRY=5",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "under PKG_CONFIG_ALLOW_CROSS bzip2-sys/lzma-sys link the build host's .so; the vendored static C is what keeps the cross link target-only"
+  },
+  {
+    "id": "rust.web-lane-native-vendored-c",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    wlt_c_env\n    \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install --locked",
+    "replace": "    \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install --locked",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the native key claims the vendored C env; the build must actually have it"
+  },
+  {
+    "id": "rust.web-lane-producer-skip-native-host",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"${target}\" = \"${build}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "on a native build host (X100, Jetson) the target is the host's own arch: there is nothing to cross-build and auto must go native"
+  },
+  {
+    "id": "rust.web-lane-producer-rustflags-drift",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  [ \"${RUSTFLAGS:-}\" = \"${want}\" ] || { _wlt_why \"RUSTFLAGS drift\" \"${RUSTFLAGS:-}\" \"${want}\"; return 1; }",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the producer keys its output with the flags it really used; drift from wlt_rustflags would make every consumer key mismatch"
+  },
+  {
+    "id": "rust.web-lane-rustflags-copy",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    riscv64) printf '%s' '-C target-feature=+v,+zvl128b' ;;",
+    "replace": "    riscv64) printf '%s' '-C target-feature=+v' ;;",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "wlt_rustflags copies cross-env.sh's riscv64 RUSTFLAGS; the drift test must catch the two parting"
+  },
+  {
+    "id": "rust.web-lane-producer-core-mounted",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    [ -f \"$1/${f}\" ] || { echo \"ERROR: web-lane producer: $1/${f} is not mounted\" >&2; return 1; }",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a missing per-file mount must fail android loudly, never degrade into a half-sourced cross env"
+  },
+  {
+    "id": "rust.web-lane-producer-non-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "      _wlt_mark \"${out}/${triple}\" \"${tool}\" failed \"${_WLT_WHY:-unexpected error}\"",
+    "replace": "      return 1",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a crates.io outage or a failed cross build records status=failed and leaves android green; the package stage decides"
+  },
+  {
+    "id": "rust.web-lane-producer-mount-closure",
+    "target": "linux/Dockerfile.android",
+    "find": "    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/tmp/wlt/01-core/cross-apt.sh,ro \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "android-sdk's /opt/scripts/core is an older 01-core; every file cross-env.sh sources must be mounted fresh"
+  },
+  {
+    "id": "rust.web-lane-producer-copy-last",
+    "target": "linux/Dockerfile.android",
+    "find": "\nCOPY --link --from=web-lane-tools /opt/web-lane-tools /opt/web-lane-tools\n",
+    "replace": "\n",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "final must carry the producer's output, and last: above the GCC swap it re-runs a prefix-sized copy"
+  },
+  {
+    "id": "rust.web-lane-package-artifact-mount",
+    "target": "linux/Dockerfile.package",
+    "find": "    --mount=type=bind,from=web-lane-tools-src,source=/opt/web-lane-tools,target=/tmp/wlt/artifact,ro \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "without the artifact mount the package stage never sees the cross build and silently compiles under QEMU"
+  },
+  {
+    "id": "rust.web-lane-switch-forwarded",
+    "target": "linux/scripts/lib-orchestrator.sh",
+    "find": "_VERSION_BUILD_ARG_VARS+=(WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES)",
+    "replace": "_VERSION_BUILD_ARG_VARS+=()",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "an exported WEB_LANE_TOOLS_SOURCE=native must reach BuildKit, or the owner's native switch is a no-op"
   }
 ]

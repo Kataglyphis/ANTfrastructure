@@ -7,6 +7,62 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - riscv64 web-lane tools: cross-built in android, cached, native one switch away
+
+riscv64's package stage compiled `wasm-pack` and `flutter_rust_bridge_codegen` under
+QEMU on every chain: 960 s + 1,665 s of a 3,384 s RUN (riscv64 layer file times,
+2026-09-22). **Owner decision: both options.** A cross build on the build host is
+the default; the native build stays, one switch away. Speedup item `riscv-tools`,
+with its challenge's corrections. How to pick a path:
+[`consumer-image-contract.md` § Building the web-lane tools from source](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source).
+
+- **Producer.** New stage `web-lane-tools` in `Dockerfile.android`, FROM
+  `android-sdk`, i.e. before `final` swaps the amd64-hosted cross GCC out. It runs
+  `06-packaging/web-lane-tools.sh produce`: `cargo install --target <triple>` under
+  the hub's own `setup_linux_cross_env`, a 30-minute bound, vendored static C, its
+  own cachemounts. It writes a manifest per tool. A failed cargo or gate records
+  `status=failed` and android stays green. `final` COPYs the output as its LAST
+  instruction, so a producer change re-keys nothing above it.
+- **Package side.** `install_web_lane_toolchain` keeps the prebuilt-first path, so
+  amd64 and arm64 install the same bytes as before. Its from-source leg is now
+  `wlt_install_from_source`: the cross artifact or today's native `cargo install
+  --locked`, chosen by `WEB_LANE_TOOLS_SOURCE=auto|cross|native` (default `auto`),
+  through a version-keyed binary cache (`WEB_LANE_TOOLS_CACHE=on|refresh|off`).
+- **Fail loud on a claim.** Every from-source binary passes `wlt_assert_binary` on
+  its staged bytes before install: ELF64, machine, lp64d, loader, a `NEEDED`
+  allowlist, the image's GLIBC ceiling, `--version`. Artifacts and cache entries
+  must also match their sha256. A binary that claims to be good and fails is fatal
+  in every mode, and so is a bad knob or `cross` without an artifact. Availability
+  misses still only WARN (`rust.web-lane-non-fatal`, retargeted to the new file).
+- **Native hosts.** A build host whose arch is the target (the X100, a Jetson on
+  `CROSS_BUILD_PLATFORM=linux/arm64`) gets `skipped: native-build-platform`, so
+  `auto` builds natively there with nothing set.
+- **Where it deviates from the design, and why.** The COPY sits after the GCC swap,
+  not before it (the challenge: above the swap, every producer change re-ran a
+  prefix-sized copy). The producer loads 01-core by explicit path from per-file
+  mounts, never `source_module`, which would find `android-sdk`'s older copy.
+  `cross` builds natively on a `skipped` manifest, so amd64 and arm64 do not turn a
+  failed prebuilt download into an error. The native leg keeps today's rv64gc
+  RUSTFLAGS and command. The knobs are forwarded by `lib-orchestrator.sh`, not by
+  new `versions.env` lines (Phase 2 of the design), and the library is bind-mounted
+  into the setup RUN rather than COPYed, so no image gains a file. The producer
+  keys on the rustc it actually runs, and its registry cache id is per target.
+- **What re-keys on the next chain.** base, compiler, sdk and media: nothing. No
+  `versions.env` or `01-core` edit, and `lib-orchestrator.sh` is in no Docker
+  closure. android, per arch: the new producer vertex (seconds for amd64/arm64,
+  which only write skip manifests; the cross compile for riscv64) and `final`'s new
+  last layer; the five library stages and the GCC swap hit the cache. package, per
+  arch: the setup RUN and what follows it, which re-run on every chain anyway. New
+  cachemount ids: `web-lane-tools-cross-<target>`,
+  `cargo-registry-web-lane-tools-<target>`, `web-lane-tools-bin-<arch>`.
+- **Verified here:** `tests/test-web-lane-tools.sh` (new, off-target, stubbed
+  readelf/cargo plus real-readelf cases), `tests/test-setup-package-image.sh`
+  (now drives the real library), 30 new `rust.web-lane-*` mutations, the preflight
+  gates. **Not verified:** no chain has run it. The producer has never run inside
+  `android-sdk`; the design's probe ran the cross build in the amd64 runtime image
+  with apt cross binutils. What to watch for on the first run is in
+  `docs/build-watch-list.md`.
+
 ## 2026-09-23 - The arm64 and riscv64 GCC ship libsanitizer
 
 **What was broken.** In the published `:latest` (index `ec4bb68b`), the arm64

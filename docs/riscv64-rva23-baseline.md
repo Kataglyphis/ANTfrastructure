@@ -63,6 +63,14 @@ their own switches:
 | Rust | `RUSTFLAGS -C target-feature=+v,+zvl128b` (no `gcv` triple exists) | `01-core/cross-env.sh` |
 | gst-plugins-rs | its `cargo_wrapper.py` **overwrote** `RUSTFLAGS`; patched to merge | `patches/gstreamer/003-cargo-wrapper-cross-rust-target.patch` |
 
+The cross-built web-lane tools (`wasm-pack`, `flutter_rust_bridge_codegen`, since
+2026-09-23) take the Rust row's flags from `setup_linux_cross_env`.
+`06-packaging/web-lane-tools.sh` keeps a copy for its cache key, and
+`tests/test-web-lane-tools.sh` pins that copy to cross-env.sh's value. Their native
+fallback keeps its rv64gc Rust; neither adds a hardware floor the image's glibc
+does not already set.
+[Contract](consumer-image-contract.md#building-the-web-lane-tools-from-source).
+
 Android riscv64 keeps RVV **off** (`03-media/build/opencv/android/build-android.sh`):
 that disable works around an NDK-clang bug with sizeless RVV types, not a
 platform choice.
