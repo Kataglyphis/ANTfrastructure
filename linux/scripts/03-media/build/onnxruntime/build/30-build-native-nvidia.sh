@@ -196,9 +196,11 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 #   --tensorrt_home       – path to TensorRT headers/libs
 
 # CUDA arch list from versions.env (CUDA_ARCHITECTURES); this build maps the
-# trailing 90 -> 90a to enable Hopper arch-specific kernels.
-ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-80;86;87;89;90}"
-ONNX_CUDA_ARCHS="${ONNX_CUDA_ARCHS/%90/90a}"
+# ORT normalises EVERY entry to sm_<cc>a-real itself (v1.30.0
+# cmake/external/cuda_configuration.cmake), so a rewrite here is redundant -- and
+# a trailing-suffix one was worse than redundant: it silently did nothing as soon
+# as the list stopped ending in 90, which is exactly what adding Blackwell did.
+ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-86;87;89;90;120}"
 
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"

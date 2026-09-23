@@ -153,6 +153,27 @@ Accelerators whose runtime fits the default image are built into it instead:
 | Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS) | always | amd64, arm64 (riscv64: no upstream support) |
 | Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) - **the current release was built without it** | arm64 |
 | NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
+
+### Which GPUs `:latest-nvidia` runs on
+
+The image carries compiled kernels for the compute capabilities below and
+**nothing else** — there is no PTX to fall back on, so a card outside this list
+fails at session creation rather than running slowly.
+
+| CC | Hardware |
+| --- | --- |
+| 86 | RTX 3060-3090, A10, A40 |
+| 87 | Jetson AGX Orin |
+| 89 | RTX 4060-4090, L40/L40S |
+| 90 | H100, H200 |
+| 120 | GeForce RTX 5050-5090, RTX PRO Blackwell |
+
+**Not included**, each a one-token change in `versions.env`: Turing (75),
+A100/A30 (80 — retired 2026-09-23), B100/B200 (100), B300/GB300 (103), Jetson
+Thor (110), GB10/DGX Spark (121). Note that neighbouring numbers do NOT cover
+each other: 120 is not 121, and 100 is not 103. How to change the set, and the
+four rules that decide which number you need:
+[`AGENTS.md` § GPU architecture coverage](AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).
  The Windows lane is the
 documented exception: `windows/arm64` is not a platform, so its arm64 output is a
 bundle that cannot share `:winamd64`'s manifest. Rules and rationale:

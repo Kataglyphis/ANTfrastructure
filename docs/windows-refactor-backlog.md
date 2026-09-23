@@ -302,8 +302,9 @@ this repo's cp314 pin).
   relocation. The ~4 h re-key a Linux-only pin edit costs is accepted. Do not
   re-propose either without new facts (a measured cost that changes the trade-off,
   or an upstream that ships WebNN where it matters).
-- **NEVER trim CUDA_ARCHITECTURES** (80;86;87;89;90 in ALL builds, incl. dev
-  iterations; pinned by Pins.CanonicalValues).
+- **NEVER trim CUDA_ARCHITECTURES as a speed lever** (the current set is
+  `86;87;89;90;120`, owner decision 2026-09-23 — 80/A100 retired, 120/Blackwell
+  added; in ALL builds, incl. dev iterations; pinned by Pins.CanonicalValues).
 - **CUDA compiles go THROUGH sccache** — `SCCACHE_CUDA_LAUNCHER` is DEFAULT ON
   since 2026-08-18 (`Dockerfile.media-builder:327`; the OpenCV stage via
   `OPENCV_CUDA_LAUNCHER:421`). **Do not flip it off silently** — the onnx stage

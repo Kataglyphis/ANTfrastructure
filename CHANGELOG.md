@@ -7,6 +7,42 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - CUDA_ARCHITECTURES: 80 retired, Blackwell (120) added
+
+Owner decision. The set is now `86;87;89;90;120` — RTX 30xx/A10/A40, Jetson
+Orin, Ada, Hopper, and GeForce RTX 50 / RTX PRO Blackwell. 80 (Ampere GA100)
+is retired and kept as a commented line in `versions.env`, because its absence
+is a HARD edge: ORT embeds no PTX, so an A100 or A30 now fails at session
+creation rather than running a slow path.
+
+Three facts, verified against NVIDIA's docs and a real nvcc before the edit,
+decide why the value is spelled exactly this way:
+
+- **Neighbours cover nothing.** A cubin runs on its own major at an
+  equal-or-higher minor: 86 does not reach 87, 90 does not reach 120.
+- **ONNX Runtime narrows it further.** v1.30.0 rewrites every entry to
+  `sm_<cc>a-real` — arch-specific, cubin-only. In the ORT artefact `120` covers
+  12.0 and NOT 12.1 (GB10/DGX Spark); `100` would cover B100/B200 but not B300
+  (10.3). The owner's hardware is RTX-50-class, hence 120 alone.
+- **Jetson Thor is 110**, its own major, reachable from nothing else — the same
+  shape as Orin's 87, and a deliberate not-yet for the arm64 lane.
+
+The trailing-`90`→`90a` rewrite in `30-build-native-nvidia.sh` is GONE. ORT
+appends the `a` itself, so it was redundant — and being a suffix match it would
+have silently stopped firing the moment the list no longer ended in 90, which
+is exactly what this change does. Its removal also retires the "keep this list
+ascending" constraint that `versions.env` warned about.
+
+Thirteen places carried the literal list; all moved together, including the
+Windows Pester pin whose comment stated a standing owner directive ("NEVER
+trim") that this decision supersedes. The directive survives in its real
+meaning — no trimming as a speed lever — with the set named as a decision.
+
+How to turn an arch on or off, with the four rules and the cost, is now in
+`AGENTS.md` § GPU architecture coverage; the user-facing card list is in
+README.md § Which GPUs `:latest-nvidia` runs on.
+
+
 ## 2026-09-22 - hcsshim fork rebased: `Install-NewHost` builds `5e9df53c` and re-pins a reused work dir; `Invoke-WithEnv` really removes
 
 **`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` is rebased onto upstream
