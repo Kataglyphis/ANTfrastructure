@@ -269,6 +269,62 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
             Assert-Equal 'cpu' (Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU').GpuType
         }
     }
+
+    It 'GPU_TYPE=rocm with a HIP tree: HasRocm, RocmRoot set, HasCuda false' {
+        Invoke-InTestDir { param($dir)
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\cmake\hip') | Out-Null
+            Invoke-WithEnv @{ GPU_TYPE = 'rocm'; HIP_PATH = $dir; ROCM_PATH = $null; TENSORRT_ROOT = '' } {
+                $r = Get-GpuEnvironment
+                Assert-True $r.HasRocm 'HasRocm'
+                Assert-Equal $dir $r.RocmRoot 'RocmRoot'
+                Assert-False $r.HasCuda 'HasCuda'
+            }
+        }
+    }
+
+    It 'THROWS on GPU_TYPE=rocm without a HIP tree (the rocm twin of #45)' {
+        Invoke-WithEnv @{ GPU_TYPE = 'rocm'; HIP_PATH = 'C:\does\not\exist-rocm'; ROCM_PATH = $null; TENSORRT_ROOT = '' } {
+            Assert-Throws { Get-GpuEnvironment } -MessagePattern 'GPU_TYPE=rocm but no ROCm tree' 'rocm without HIP must fail closed'
+        }
+    }
+
+    It 'HasRocm is false on the cpu and nvidia lanes and under FORCE_CPU' {
+        Invoke-WithEnv @{ GPU_TYPE = ''; TENSORRT_ROOT = '' } { Assert-False (Get-GpuEnvironment).HasRocm 'cpu lane' }
+        Invoke-WithEnv @{ GPU_TYPE = 'rocm'; HIP_PATH = 'C:\does\not\exist-rocm'; ONNX_FORCE_CPU = '1' } {
+            $r = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
+            Assert-False $r.HasRocm 'FORCE_CPU beats the rocm gate'
+            Assert-Null $r.RocmRoot 'no RocmRoot under FORCE_CPU'
+        }
+    }
+}
+
+Describe 'Get-CMakeRocmIsolationArgs (rocm lane keeps TheRock out of package search)' {
+
+    It 'is empty on the cpu and nvidia lanes, whatever ROCM_PATH says' {
+        Invoke-InTestDir { param($dir)
+            foreach ($t in '', 'cpu', 'nvidia') {
+                Invoke-WithEnv @{ GPU_TYPE = $t; ROCM_PATH = $dir; HIP_PATH = $dir } {
+                    Assert-Equal 0 @(Get-CMakeRocmIsolationArgs).Count "GPU_TYPE='$t'"
+                }
+            }
+        }
+    }
+
+    It 'ignores the ROCm prefix on the rocm lane, with forward slashes' {
+        Invoke-InTestDir { param($dir)
+            Invoke-WithEnv @{ GPU_TYPE = 'rocm'; ROCM_PATH = $dir; HIP_PATH = $null } {
+                $got = @(Get-CMakeRocmIsolationArgs)
+                Assert-Equal 1 $got.Count 'one arg'
+                Assert-Equal "-DCMAKE_IGNORE_PREFIX_PATH=$($dir -replace '\\', '/')" $got[0] 'the ignore arg'
+            }
+        }
+    }
+
+    It 'is empty on the rocm lane when no ROCm tree exists (nothing to hide)' {
+        Invoke-WithEnv @{ GPU_TYPE = 'rocm'; ROCM_PATH = 'C:\does\not\exist-rocm'; HIP_PATH = $null } {
+            Assert-Equal 0 @(Get-CMakeRocmIsolationArgs).Count 'no tree'
+        }
+    }
 }
 
 Describe 'Test-SccacheRemoteConfigured' {

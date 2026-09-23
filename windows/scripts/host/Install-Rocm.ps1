@@ -11,8 +11,8 @@
     release, from the same stable.repo.amd.com host, as AMD documents it under
     install -> Windows -> tar. amd64 only. AMD publishes no checksum, so the
     tarball is verified against the self-measured SHA256 pinned in versions.env.
-    Why the stage sits where it does and what it does NOT put on PATH:
-    docs/windows-builds.md § ROCm layer.
+    It runs in the sdk slot, FROM the plain base; why there, and what it does NOT put
+    on PATH: docs/windows-builds.md § ROCm layer.
 #>
 param(
     [string]$TempDir = 'C:\temp',
@@ -47,7 +47,7 @@ function Assert-RocmTargetArch {
 
 <#
 .SYNOPSIS
-    Refuses a base from a CUDA chain: the rocm variant forks from the DEFAULT media.
+    Refuses a base from a CUDA chain: the rocm sdk builds FROM the plain base.
 #>
 function Assert-RocmForkBase {
     param(
@@ -59,8 +59,8 @@ function Assert-RocmForkBase {
         Where-Object { $_.Value -and -not ($_.Key -eq 'GPU_TYPE' -and $_.Value -eq 'cpu') } |
         Sort-Object Key | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value })
     if ($leaked.Count -gt 0) {
-        throw (("Install-Rocm: the base image is not the default media ({0}). A rocm run must fork from a DEFAULT " +
-                "chain's media -- rebuild media without -Gpu, then run -Variant rocm.") -f ($leaked -join ', '))
+        throw (("Install-Rocm: the base image is not the plain base ({0}). The rocm sdk builds FROM the plain " +
+                "base (bk-windows-base), never FROM an nvidia sdk -- check the BASE_IMAGE this stage was given.") -f ($leaked -join ', '))
     }
 }
 

@@ -107,6 +107,85 @@ function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
 }
 
+# rocm lane only (cpu/nvidia get @(), same command line). amfcodec/d3d11/d3d12 `enabled` fail setup on a lost
+# dependency; hip's cannot at 1.29.2 (no enabled() branch), so Get-GstRocmMissingArtifact backs all four.
+function Get-GstRocmMesonArgs {
+    param([Parameter(Mandatory)][hashtable]$GpuEnv)
+    if (-not $GpuEnv.HasRocm) { return @() }
+    return @('-Dgst-plugins-bad:hip=enabled', '-Dgst-plugins-bad:amfcodec=enabled',
+        '-Dgst-plugins-bad:d3d11=enabled', '-Dgst-plugins-bad:d3d12=enabled')
+}
+
+# Entries under the ROCm root, per search-path variable meson or its cmake probe reads (cmake maps a
+# PATH ...\bin to a package prefix). Returns only the variables that change: Name -> {Value, Removed}.
+function Get-GstRocmScrubbedSearchPath {
+    param(
+        [Parameter(Mandatory)][string]$RocmRoot,
+        [hashtable]$Environment = $null,
+        [string[]]$Name = @('PATH', 'PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR', 'CMAKE_PREFIX_PATH', 'CMAKE_INCLUDE_PATH',
+            'CMAKE_LIBRARY_PATH', 'CMAKE_PROGRAM_PATH', 'INCLUDE', 'LIB')
+    )
+    if ($null -eq $Environment) {
+        $Environment = @{}
+        Get-ChildItem Env: | Where-Object Name -In $Name | ForEach-Object { $Environment[$_.Name] = $_.Value }
+    }
+    # A trailing '\' on both sides makes "is the root or under it" one prefix test.
+    $prefix = ($RocmRoot.Trim('"') -replace '/', '\').TrimEnd('\') + '\'
+    $result = [ordered]@{}
+    foreach ($var in @($Environment.Keys | Sort-Object)) {
+        $entries = "$($Environment[$var])".Split(';', [StringSplitOptions]::RemoveEmptyEntries)
+        $removed = @($entries | Where-Object { (($_.Trim('"') -replace '/', '\').TrimEnd('\') + '\').StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })
+        if ($removed.Count -eq 0) { continue }
+        $result[$var] = [pscustomobject]@{ Value = (@($entries | Where-Object { $removed -notcontains $_ }) -join ';'); Removed = $removed }
+    }
+    return $result
+}
+
+# The proof for the scrub above: any mention of the ROCm tree in the configured build is a finding.
+function Get-GstRocmLeakFinding {
+    param(
+        [Parameter(Mandatory)][string]$RocmRoot,
+        [Parameter(Mandatory)][string[]]$Path
+    )
+    $root = ($RocmRoot.Trim('"') -replace '/', '\').TrimEnd('\')
+    $needles = @($root, ($root -replace '\\', '/'), ($root -replace '\\', '\\'))
+    foreach ($file in $Path) {
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { "$file is missing, so nothing proves the ROCm tree stayed out"; continue }
+        foreach ($hit in @(Select-String -LiteralPath $file -SimpleMatch -Pattern $needles | Select-Object -First 3)) {
+            $line = $hit.Line.Trim()
+            "$($hit.Filename):$($hit.LineNumber) names the ROCm tree: $($line.Substring(0, [Math]::Min(240, $line.Length)))"
+        }
+    }
+}
+
+# Applies the scrub to this process and returns it. An emptied variable is REMOVED: pkg-config reads a
+# set-but-empty PKG_CONFIG_LIBDIR as "no default dirs", and .NET 9+ keeps "" as a value.
+function Set-GstRocmIsolation {
+    param([Parameter(Mandatory)][string]$RocmRoot)
+    $scrub = Get-GstRocmScrubbedSearchPath -RocmRoot $RocmRoot
+    foreach ($name in @($scrub.Keys)) {
+        if ($scrub[$name].Value) { [Environment]::SetEnvironmentVariable($name, $scrub[$name].Value) }
+        else { [Environment]::SetEnvironmentVariable($name, [NullString]::Value) }
+    }
+    return $scrub
+}
+
+# Gives PATH its ROCm entries back, LAST as in the image; an empty scrub (cpu/nvidia) changes nothing.
+function Restore-GstRocmPath {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Scrub)
+    if (-not $Scrub.Contains('PATH')) { return }
+    $env:PATH = (@($env:PATH -split ';' | Where-Object { $_ }) + @($Scrub['PATH'].Removed)) -join ';'
+}
+
+# rocm lane, after install: what a lost AMD path left out (bin\gsthip-0.dll is the library gsthip.dll imports).
+function Get-GstRocmMissingArtifact {
+    param([Parameter(Mandatory)][string]$InstallDir)
+    $plugins = foreach ($p in 'gsthip', 'gstamfcodec', 'gstd3d11', 'gstd3d12') { "lib\gstreamer-1.0\$p.dll" }
+    foreach ($rel in @('bin\gsthip-0.dll') + $plugins) {
+        if (-not [System.IO.File]::Exists((Join-Path $InstallDir $rel))) { $rel }
+    }
+}
+
 # Load canonical versions from linux/scripts/01-core/versions.env if available.
 Import-CanonicalVersions -ScriptRoot $PSScriptRoot
 
@@ -402,6 +481,13 @@ int _isatty(int);
         log "CUDA detected at: $($gpuEnv.CudaRoot)"
     } else {
         log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
+    }
+    # rocm lane: TheRock stays invisible to pre-flight, setup, compile and install; phase 9 gets PATH back.
+    $rocmScrub = [ordered]@{}
+    if ($gpuEnv.HasRocm) {
+        $rocmScrub = Set-GstRocmIsolation -RocmRoot $gpuEnv.RocmRoot
+        foreach ($name in @($rocmScrub.Keys)) { log "ROCm isolation: $name no longer lists $($rocmScrub[$name].Removed -join ';')" }
+        log "ROCm lane ($($gpuEnv.RocmRoot)): meson pins $((Get-GstRocmMesonArgs -GpuEnv $gpuEnv) -join ' ')"
     }
 
     # ---- 5d. find compiler-rt for lld-link (__udivti3, etc.) ----
@@ -1086,7 +1172,7 @@ cpp_link_args = [$buildLinkArgs]
         # glib's own test suite: 562 targets that ship nothing. The top-level
         # -Dtests=disabled covers the GStreamer modules only; glib is a wrap.
         '-Dglib:tests=false'
-    ) + $mesonCrossArgs + $MesonSetupArgs
+    ) + @(Get-GstRocmMesonArgs -GpuEnv $gpuEnv) + $mesonCrossArgs + $MesonSetupArgs
 
     $setupArgsString = "meson $($setupArgs -join ' ')"
     $mesonSucceeded = $false
@@ -1149,6 +1235,12 @@ cpp_link_args = [$buildLinkArgs]
     }
     if (-not $mesonSucceeded) { throw 'meson setup failed after 2 attempts' }
     log 'meson setup completed.'
+    if ($gpuEnv.HasRocm) {
+        $rocmLeaks = @(Get-GstRocmLeakFinding -RocmRoot $gpuEnv.RocmRoot -Path @(
+                (Join-Path $resolvedBuildDir 'build.ninja'), (Join-Path $resolvedBuildDir 'meson-info\intro-dependencies.json')))
+        if ($rocmLeaks.Count -gt 0) { throw "ROCm tree leaked into the GStreamer configure: $($rocmLeaks -join ' | ')" }
+        log 'ROCm isolation proven: build.ninja and intro-dependencies.json never name the ROCm tree.'
+    }
 
     # Inline patch, NOT a .patch file: the webrtc-audio-processing wrap version
     # floats with the GStreamer release, so a static patch would rot. Its SIMD
@@ -1294,6 +1386,14 @@ cpp_link_args = [$buildLinkArgs]
         }
         log ("OpenSSL ($($script:GstTargetArch)): staged {0} runtime DLL(s) into {1} ({2} candidate file(s) in the package): {3}" -f $sslByName.Count, $sslBinDir, $sslDlls.Count, (@($sslByName.Values | Sort-Object Name | ForEach-Object { "$($_.Name) <- $($_.DirectoryName)" }) -join '; '))
     }
+
+    if ($gpuEnv.HasRocm) {
+        $rocmMissing = @(Get-GstRocmMissingArtifact -InstallDir $resolvedInstallDir)
+        if ($rocmMissing.Count -gt 0) { throw "rocm lane: meson install left out $($rocmMissing -join ', ') under $resolvedInstallDir" }
+        log 'ROCm lane: gsthip (+ gsthip-0.dll), amfcodec, d3d11 and d3d12 are installed.'
+    }
+    # The gate scans plugins the way the image loads them, so it gets TheRock's bin back (last, as in the image).
+    Restore-GstRocmPath -Scrub $rocmScrub
 
     Switch-BuildPhase '9. verify (plugin + pc gates)'
     # ---- 9. verify ----

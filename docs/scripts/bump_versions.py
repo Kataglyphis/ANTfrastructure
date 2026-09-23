@@ -323,6 +323,40 @@ def derive_protoc_from_litert_lm(litert_lm_version: str) -> str | None:
     return f"{m.group(2)}.{m.group(3)}"
 
 
+# The Windows rocm lane's LiteRT-LM GPU payload (Build-LitertLmBazel.ps1): key -> DLL.
+_LITERT_LM_GPU_DLL_PINS = (
+    ("LITERT_LM_WEBGPU_ACCELERATOR_SHA256", "libLiteRtWebGpuAccelerator.dll"),
+    ("LITERT_LM_WEBGPU_SAMPLER_SHA256", "libLiteRtTopKWebGpuSampler.dll"),
+    ("LITERT_LM_WEBGPU_DAWN_SHA256", "libwebgpu_dawn.dll"),
+)
+
+
+def litert_lm_gpu_pins(tag_text) -> dict[str, str]:
+    """The rocm lane's LiteRT-LM GPU pins at one tag. `tag_text(path)` returns a repo file's
+    text: each DLL's git-LFS pointer oid IS its sha256, and WORKSPACE pins the DXC zip."""
+    pins = {}
+    for key, dll in _LITERT_LM_GPU_DLL_PINS:
+        m = re.search(r"^oid sha256:([0-9a-f]{64})$", tag_text(f"prebuilt/windows_x86_64/{dll}"), re.MULTILINE)
+        if not m:
+            raise RuntimeError(f"no git-LFS pointer for prebuilt/windows_x86_64/{dll}")
+        pins[key] = m.group(1)
+    m = re.search(r'name\s*=\s*"directx_shader_compiler"[^)]*?sha256\s*=\s*"([0-9a-fA-F]{64})"', tag_text("WORKSPACE"))
+    if not m:
+        raise RuntimeError("WORKSPACE has no sha256-pinned directx_shader_compiler http_archive")
+    pins["LITERT_LM_DXC_ZIP_SHA256"] = m.group(1).lower()
+    return pins
+
+
+def spec_litert_lm(cur):
+    """LITERT_LM_VERSION drags the four rocm-lane GPU payload pins with it (versions.env)."""
+    v = gh_latest("google-ai-edge/LiteRT-LM").lstrip("v")
+    extras = {}
+    if v != cur and WRITE_MODE:
+        base = f"https://raw.githubusercontent.com/google-ai-edge/LiteRT-LM/v{v}/"
+        extras = litert_lm_gpu_pins(lambda path: http_text(base + path))
+    return v, extras
+
+
 def renovate_owned() -> set[str]:
     """Keys whose detection Renovate owns: the KEY= line under a `# renovate:`
     hint. The coverage audit counts them as classified, so a key can leave a
@@ -534,6 +568,16 @@ def spec_hadolint(cur):
     return v, extras
 
 
+def spec_amf_headers(cur):
+    # Only vX.Y.Z tags carry the AMF-headers-<tag>.tar.gz asset; the env stores the tag.
+    tag = gh_latest("GPUOpen-LibrariesAndSDKs/AMF", pattern=r"^v\d+\.\d+\.\d+$")
+    extras = {}
+    if tag != cur and WRITE_MODE:
+        extras["AMF_HEADERS_SHA256"] = asset_sha256(
+            "GPUOpen-LibrariesAndSDKs/AMF", tag, f"AMF-headers-{tag}.tar.gz")
+    return tag, extras
+
+
 def spec_actionlint(cur):
     tag = gh_latest("rhysd/actionlint")
     v = tag.lstrip("v")
@@ -739,6 +783,28 @@ def spec_cudnn(cur):
     return full_version, extras
 
 
+def spec_llama_cpp_hip(cur):
+    """llama.cpp's Windows ROCm zip (windows/Dockerfile.rocm-llama): the newest
+    bNNNN tag that publishes a win-rocm-<ROCM_WINDOWS_RELEASE major.minor> zip.
+    The asset name, its SHA256 and the tag's LICENSE SHA256 move with the build."""
+    rocm = ".".join(read_env()["ROCM_WINDOWS_RELEASE"].split(".")[:2])
+    tags = sorted((t for t in ls_remote_tags("ggml-org/llama.cpp") if re.fullmatch(r"b\d+", t)),
+                  key=_vkey, reverse=True)
+    for tag in tags[:30]:
+        asset = f"llama-{tag}-bin-win-rocm-{rocm}-x64.zip"
+        if not artifact_exists(f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/{asset}"):
+            continue
+        v = tag[1:]
+        extras = {}
+        if v != cur and WRITE_MODE:
+            extras["LLAMA_CPP_HIP_ASSET"] = asset
+            extras["LLAMA_CPP_HIP_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, asset)
+            extras["LLAMA_CPP_HIP_LICENSE_SHA256"] = sha256_of_url(
+                f"https://raw.githubusercontent.com/ggml-org/llama.cpp/{tag}/LICENSE")
+        return v, extras
+    raise RuntimeError(f"none of the newest 30 ggml-org/llama.cpp builds publishes a win-rocm-{rocm} zip")
+
+
 # --- report-only latest lookups (high-risk stack pins) ---
 def _r(repo, strip_v=True, pattern=None, prefix=""):
     def fn(cur):
@@ -786,7 +852,7 @@ REPORT: list[tuple[str, Callable]] = [
     #
     # LiteRT-LM drives that derivation -- the loop below reads its
     # protobuf.cmake for the slaved PROTOC_VERSION, which is why both stay.
-    ("LITERT_LM_VERSION", _r("google-ai-edge/LiteRT-LM")),
+    ("LITERT_LM_VERSION", spec_litert_lm),
     ("PROTOC_VERSION", _r("protocolbuffers/protobuf")),
     # BT2: TF stopped publishing the libtensorflow C tarball after 2.18.1 --
     # gate the report on the ARTIFACT existing, not the git tag.
@@ -802,6 +868,10 @@ REPORT: list[tuple[str, Callable]] = [
     # APPIMAGETOOL_VERSION: report-only until its consumer reads the key (TS1
     # rider); spec_appimagetool refreshes all four per-arch SHAs.
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
+    # Windows rocm lane's FFmpeg AMF headers; the header asset's SHA moves with the tag.
+    ("AMF_HEADERS_VERSION", spec_amf_headers),
+    # Windows rocm lane's llama.cpp zip; the asset name and its SHA move with the build.
+    ("LLAMA_CPP_HIP_BUILD", spec_llama_cpp_hip),
 ]
 
 
@@ -822,6 +892,9 @@ MANUAL = [
     # cmdline-tools/NDK (repository XML is a moving matrix), host/base platform
     # pins, the deliberately-dated Rust nightly, and the branch trackers.
     "TENSORRT_VERSION", "MIGRAPHX_VERSION",
+    # Windows rocm lane: slaved to MIGRAPHX_WINDOWS_COMMIT's requirements.txt, re-derived with it.
+    "MIGRAPHX_WINDOWS_ABSEIL_VERSION", "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
+    "MIGRAPHX_WINDOWS_MSGPACK_VERSION", "MIGRAPHX_WINDOWS_SQLITE_VERSION", "MIGRAPHX_WINDOWS_SQLITE_YEAR",
     "ANDROID_SDK_VERSION", "ANDROID_NDK_VERSION", "ANDROID_COMPILE_SDK",
     "ANDROID_BUILD_TOOLS", "ANDROID_EXTRA_COMPILE_SDK", "ANDROID_EXTRA_BUILD_TOOLS",
     "ANDROID_CMAKE_VERSION", "ANDROID_API_LEVEL",
@@ -845,6 +918,18 @@ MANUAL = [
     # The released-zip checksum (SCCACHE_WINDOWS_VERSION's pair): refreshed by
     # hand off the release asset, which is why it is registered here.
     "SCCACHE_WINDOWS_ZIP_SHA256",
+    # AMD's Windows ROCm torch wheels: no feed and no published hashes; re-measured by hand
+    # with ROCM_WINDOWS_RELEASE, which Install-TorchRocm.ps1 asserts every URL carries.
+    "TORCH_ROCM_WINDOWS_TORCH_URL", "TORCH_ROCM_WINDOWS_TORCH_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCHVISION_URL", "TORCH_ROCM_WINDOWS_TORCHVISION_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCH_DEVICE_URL", "TORCH_ROCM_WINDOWS_TORCH_DEVICE_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_URL", "TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_URL", "TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_SHA256",
+    "TORCH_ROCM_WINDOWS_ROCM_URL", "TORCH_ROCM_WINDOWS_ROCM_SHA256",
+    "TORCH_ROCM_WINDOWS_BOOTSTRAP_URL", "TORCH_ROCM_WINDOWS_BOOTSTRAP_SHA256",
+    "TORCH_ROCM_WINDOWS_SDK_CORE_URL", "TORCH_ROCM_WINDOWS_SDK_CORE_SHA256",
+    "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL", "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256",
+    "TORCH_ROCM_WINDOWS_SDK_DEVICE_URL", "TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256",
 ]
 
 
@@ -886,6 +971,14 @@ def audit_sha_pairs() -> int:
         # via the Windows backlog, "Bump BOTH lines together" per the
         # versions.env comment; an unknown version without a sha throws).
         "LLVM_WINDOWS_SRC_SHA256",
+        # Windows rocm lane MIGraphX spike: slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT
+        # (requirements.txt, the EP's FetchContent URLs); re-measured BY HAND with that commit bump.
+        "MIGRAPHX_WINDOWS_SOURCE_SHA256", "MIGRAPHX_WINDOWS_ABSEIL_SHA256", "MIGRAPHX_WINDOWS_PROTOBUF_SHA256",
+        "MIGRAPHX_WINDOWS_MSGPACK_SHA256", "MIGRAPHX_WINDOWS_SQLITE_SHA256",
+        "ORT_AMDGPU_EP_SOURCE_SHA256", "ORT_AMDGPU_EP_FMT_SHA256", "ORT_AMDGPU_EP_GSL_SHA256",
+        "ORT_AMDGPU_EP_JSON_SHA256", "ORT_AMDGPU_EP_ZLIB_SHA256", "ORT_AMDGPU_EP_PROTOBUF_SHA256",
+        "ORT_AMDGPU_EP_ABSEIL_SHA256", "ORT_AMDGPU_EP_ONNX_SHA256", "ORT_AMDGPU_EP_FLATBUFFERS_SHA256",
+        "ORT_AMDGPU_EP_RANGE_V3_SHA256",
     }
     src = Path(__file__).read_text(encoding="utf-8")
     stray: list[str] = []
@@ -1035,7 +1128,7 @@ def _print_unclassified(env):
     nonversion = re.compile(
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
         r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
-        r"|_COMMIT$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
+        r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
         r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^JDK_PACKAGE$)"
     )
     unclassified = sorted(k for k in env if k not in covered and not nonversion.search(k))

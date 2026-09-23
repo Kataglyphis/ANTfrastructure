@@ -1,0 +1,36 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+# rocm lane only: llama.cpp's official Windows ROCm/HIP release (ggml-hip + llama-server), prebuilt.
+# Lineage: sdk(rocm) -> toolchain -> media -> [migraphx] -> THIS (target built) -> torch -> final.
+# Build context: the repo root. Why a prebuilt, and why its directory stays off PATH:
+# docs/windows-builds.md § ROCm layer.
+
+ARG BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-media-migraphx-rocm
+
+FROM ${BASE_IMAGE} AS built
+
+# Values: versions.env (the driver forwards them; bump all four together).
+ARG LLAMA_CPP_HIP_BUILD=11115
+ARG LLAMA_CPP_HIP_ASSET=llama-b11115-bin-win-rocm-10.0-x64.zip
+ARG LLAMA_CPP_HIP_SHA256=8d80e3570c03dcb9033b59e5a41d0d101ba363f3d1b0b7334f7dcd7bbb9d2633
+ARG LLAMA_CPP_HIP_LICENSE_SHA256=94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
+
+# Set BEFORE the RUN, so its in-stage check reads the same contract the smoke gate does.
+# Deliberately no PATH entry: its amdhip64_7.dll would shadow ROCm's for every process.
+ENV LLAMA_CPP_HIP_HOME="C:\runtime\opt\llama.cpp-hip" `
+    LLAMA_CPP_HIP_BUILD="${LLAMA_CPP_HIP_BUILD}"
+
+# Mounted, not COPYed: nothing of the scripts ships. The rocm-check runs here too, so a
+# broken pin fails this stage rather than the smoke gate two stages later.
+RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCppHip.ps1,target=C:\bkmnt\Install-LlamaCppHip.ps1 `
+    --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\bkmnt\modules\WindowsContainerImage.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
+    & 'C:\bkmnt\Install-LlamaCppHip.ps1' -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME; `
+    $findings = @(& 'C:\bkmnt\LlamaCpp.ps1'); `
+    if ($findings.Count -gt 0) { throw ('llama.cpp HIP check failed: ' + ($findings -join ' | ')) }

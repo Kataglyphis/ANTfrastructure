@@ -20,7 +20,9 @@
 # (e.g. the published image) is safe and total.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-media
-FROM ${BASE_IMAGE}
+# '1' on the rocm lane only (Build-Buildkit.ps1): the last FROM then takes rocm-1, else rocm-0 = app.
+ARG TORCH_ROCM=0
+FROM ${BASE_IMAGE} AS app
 
 # Kept in sync with versions.env by sync_versions.py; Build-Buildkit.ps1 overrides it
 # (versions.env pin, or the latest release tag with -LatestApp).
@@ -66,6 +68,46 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     & 'C:\temp\scripts\Build-TorchApp.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 
 ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
+
+# cpu/nvidia: rocm-0 IS app, byte for byte. rocm-1 swaps the app venv's CPU torch for AMD's
+# ROCm torch and re-verifies the app on it. docs/windows-builds.md § ROCm layer.
+FROM app AS rocm-0
+
+FROM app AS rocm-1
+# Pins: versions.env TORCH_ROCM_WINDOWS_* (self-measured SHA256s: AMD publishes none).
+ARG TORCH_ROCM_WINDOWS_TORCH_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/torch/torch-2.13.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCH_SHA256=9a01e2a7f89ea89383f6cd5ae884ac4875edefa387c4d8c77f207ba6efd178b0
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/torchvision/torchvision-0.28.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_SHA256=2508a18eead7fb70ba35da6fcbc45bdc9b953d4ba44bb979a7fafebabebaa8b2
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/amd-torch-device-gfx1201/amd_torch_device_gfx1201-2.13.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_SHA256=22f2de7ce0f50428fa5f7e309418d433cdd4aeb47834ec7bff6840d34dff6fa2
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/amd-torch-device-gfx12-0/amd_torch_device_gfx12_0-2.13.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_SHA256=d441c197769d657e88c8a122ab87e25a8e47aaa65751c6006cce733f3283d8a9
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/amd-torchvision-device-gfx1201/amd_torchvision_device_gfx1201-0.28.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_SHA256=f74692cef1e1abeaa651644af7ea192c02d86d4aa2c55c01325cd18be712bf53
+ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz
+ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
+ARG TORCH_ROCM_WINDOWS_BOOTSTRAP_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-bootstrap/rocm_bootstrap-0.1.0-py3-none-any.whl
+ARG TORCH_ROCM_WINDOWS_BOOTSTRAP_SHA256=33e3d4dad086b1f0e06bc049a618ca874d4fb72f758fff00676e23d2a644b652
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_SHA256=066195cb0f7df02e6009facb17652dd992d13fae44d87652e5ab928d5b4f0851
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=bfc7a1bd3b6050fb4d36d8ac2eea80d3afd70c5604a29142463d6cb890fc73bf
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256=c6e4c5a0da941230bed975765e644597570081c9a41654d5a052c277167f4576
+# Same uv cache mount as app: the 1.5 GB of wheels are cached by SHA256 under C:\uvcache\torch-rocm.
+# -TorchRocm 1 is literal: only TORCH_ROCM=1 selects this stage, and an env read could fail open to CPU torch.
+RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build/Install-TorchRocm.ps1,target=C:\bkmnt\Install-TorchRocm.ps1 `
+    --mount=type=bind,source=windows/scripts/build/rocm-checks/Torch.ps1,target=C:\bkmnt\rocm-checks\Torch.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    & 'C:\bkmnt\Install-TorchRocm.ps1' -TorchRocm 1 -WheelCache 'C:\uvcache\torch-rocm'; `
+    & 'C:\temp\scripts\Build-TorchApp.ps1' -Mode verify
+
+FROM rocm-${TORCH_ROCM}
+# ARGs stop at FROM: the LABEL reads APP_REF, so redeclare it (sync_versions.py syncs both).
+ARG APP_REF=v0.0.28
 
 # Provenance stamps DELIBERATELY declared below the assembly RUN: ARGs enter
 # the env (and thus the cache key) of every later instruction, and the drivers

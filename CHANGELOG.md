@@ -7,6 +7,66 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - Windows `-Variant rocm`: the ROCm layer moves into the sdk slot, and media turns on AMD GPU features
+
+**The ROCm layer now sits where `Dockerfile.nvidia` sits** (owner directive), so toolchain
+and media build on `GPU_TYPE=rocm`: base → sdk=rocm → toolchain → media → migraphx → llama
+→ torch → final. This supersedes the 2026-09-22 "forks after media" entry. Every feature is
+gated on the new `(Get-GpuEnvironment).HasRocm`; the cpu and nvidia lanes keep their flags
+and outputs, locked by tests in every touched suite. What each component enables, with
+evidence: [`docs/windows-rocm.md`](docs/windows-rocm.md).
+
+- **Driver.** Every rocm tag after `bk-windows-base` carries a `-rocm` infix
+  (`bk-windows-sdk-rocm` … `bk-winamd64-rocm`), so a rocm run never overwrites a default
+  image (golden test for cpu/nvidia on amd64 and arm64). New rocm-only stages `migraphx` and
+  `llama`; `-Stages rocm` is refused. New `-NoRocmSpikes` (drops migraphx, passes
+  `TVM_ROCM=0`). `TVM_ROCM` and `TORCH_ROCM` + pins go to the rocm lane only
+  (`Get-BkRocmStageArg`), also through the `-ConcurrentAux` children. A rocm `-Stages` list
+  with a gap in the post-media chain is refused as a stale parent (backlog #39).
+  `Dockerfile.rocm` gets a 45 GB disk floor. `bk-windows-rocm` is orphaned: remove it by hand.
+- **Contract.** `Get-GpuEnvironment` returns `HasRocm`/`RocmRoot` and throws on
+  `GPU_TYPE=rocm` without `lib\cmake\hip` (the rocm twin of #45). `Invoke-CmakeConfigure`
+  appends `-DCMAKE_IGNORE_PREFIX_PATH=<ROCm tree>` on the rocm lane so TheRock's
+  flatbuffers/nlohmann_json/zlib never reach a non-HIP build; HIP consumers pass
+  `-AllowRocmPrefix`. Meson (GStreamer), Bazel (LiteRT-LM), FFmpeg and TVM scrub the tree
+  themselves and prove it with a post-configure gate. HIP device code compiles only with
+  TheRock's clang++ by absolute path.
+- **Media, rocm lane only.**
+  - GStreamer: `hip`, `amfcodec`, `d3d11`, `d3d12` pinned `enabled` (meson `auto` already
+    built them everywhere).
+  - FFmpeg: AMD AMF (`--enable-amf`, header-only `AMF_HEADERS_*` pin): h264/hevc/av1 encoders,
+    h264/hevc/av1/vp9 decoders, vpp/sr/frc filters, `amf` hwdevice. A generic H.264/HEVC
+    encoder lookup now resolves to `*_amf` on this lane.
+  - OpenCV: OpenCL T-API was already on everywhere; the clBLAS/clFFT probes are pinned off and
+    a configure gate proves no ROCm leak.
+  - IREE: HIP HAL driver and `rocm` compiler target, with a carried patch so the driver finds
+    `amdhip64_7.dll`; `IREE_ROCM_DEVICE_BC_SHA256` mirrors IREE's bitcode pin.
+  - TVM: OpenCL runtime; ROCm codegen + runtime as a spike. Fixed on the way: TVM's
+    `find_rocm` read `ROCM_PATH` even with `USE_ROCM=OFF`.
+  - LiteRT-LM: GPU backend (WebGPU over Dawn on D3D12) with four `LITERT_LM_*_SHA256` pins.
+- **New rocm stages.** `Dockerfile.rocm-llama` installs llama.cpp's official Windows ROCm
+  build b11115 (SHA256-pinned, off PATH, `LLAMA_CPP_HIP_HOME`). `Dockerfile.rocm-migraphx`
+  (spike) builds MIGraphX 2.17.0 from source (`MLIR=OFF`, a configuration no upstream CI
+  builds) and AMD's ORT plugin EP `migraphx-ep.dll`; all 17 archives SHA256-pinned, the EP's
+  hash-less FetchContent pre-seeded and disconnected.
+- **Torch.** `Dockerfile.torch` ends `FROM rocm-${TORCH_ROCM}`: cpu/nvidia build the
+  unchanged `app` stage; the rocm lane installs torch 2.13.0+rocm10.0.0 and torchvision
+  0.28.0+rocm10.0.0 offline from 10 URL+SHA256 pins (`Install-TorchRocm.ps1`).
+- **ONNX Runtime** stays CPU + DirectML; the dead `onnxruntime_USE_ROCM` branch is gone.
+- **Smoke.** `Test-RocmImage.ps1` runs every `windows/scripts/build/rocm-checks/*.ps1`
+  (GStreamer, FFmpeg, OpenCV, IREE, TVM, LiteRtLm, Torch, LlamaCpp, MIGraphX), all GPU-less.
+- **Test harness.** `Get-GpuEnvironment` rocm cases and `Get-CMakeRocmIsolationArgs` in
+  `SourceBuild.Resolve`; new suites per component, each mutation-checked.
+- **Licences.** `deps.json` gains TheRock, the AMF headers, the AMD PyTorch wheels, the
+  llama.cpp and MIGraphX/EP closures and the LiteRT-LM GPU payload. The HIP/OpenCL runtime
+  has no licence file: a public push of `:winamd64-rocm` is an owner decision.
+- **Cost.** The touched modules and scripts are bind-mounted into the toolchain and media
+  RUNs, so every lane rebuilds patched LLVM and media once with unchanged flags.
+- **Found, not fixed (every lane, owner decision):** OpenCV's dnn module downloads
+  `onnxruntime-win-x64-1.25.1.zip` unpinned at configure time; LiteRT-LM is cloned by tag.
+- **Nothing here has been seen running on a GPU yet**; see the open points in
+  `docs/windows-rocm.md`.
+
 ## 2026-09-23 - CUDA_ARCHITECTURES: Hopper (90) retired too
 
 Same day, same owner, one entry lighter: `86;87;89;120`. 90 (H100/H200) joins

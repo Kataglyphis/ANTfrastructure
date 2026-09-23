@@ -94,7 +94,7 @@ function Get-MediaBranchVersionArg {
     # The version build-args of one media branch — VERSIONS ONLY (callers add
     # BASE_IMAGE / MEMORY_LIMIT_GB / sccache themselves; those are lane-shaped).
     param(
-        [Parameter(Mandatory)][ValidateSet('media-core', 'media-litert', 'media-tvm')][string]$Branch,
+        [Parameter(Mandatory)][ValidateSet('media-core', 'media-litert', 'media-tvm', 'rocm-migraphx')][string]$Branch,
         [Parameter(Mandatory)][hashtable]$VersionTable
     )
     switch ($Branch) {
@@ -117,6 +117,9 @@ function Get-MediaBranchVersionArg {
                 # by default (no zip = EP off), same contract as TENSORRT_ZIP_SHA256.
                 QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
+                # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
+                AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
+                AMF_HEADERS_SHA256        = Get-VersionTableValue $VersionTable 'AMF_HEADERS_SHA256'
                 CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
                 # build-opencv resolves the CPython it builds bindings against.
                 PYTHON_VERSION            = Get-VersionTableValue $VersionTable 'PYTHON_VERSION'
@@ -134,6 +137,11 @@ function Get-MediaBranchVersionArg {
                 # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
                 # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
+                # rocm lane's LiteRT-LM GPU payload pins (Build-LitertLmBazel.ps1); unused on cpu/nvidia.
+                LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_ACCELERATOR_SHA256'
+                LITERT_LM_WEBGPU_SAMPLER_SHA256     = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_SAMPLER_SHA256'
+                LITERT_LM_WEBGPU_DAWN_SHA256        = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_DAWN_SHA256'
+                LITERT_LM_DXC_ZIP_SHA256            = Get-VersionTableValue $VersionTable 'LITERT_LM_DXC_ZIP_SHA256'
             }
         }
         'media-tvm' {
@@ -143,7 +151,18 @@ function Get-MediaBranchVersionArg {
                 # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
                 # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
+                # rocm lane: IREE's device-bitcode download pin (Build-IreeFromSource.ps1); unused on cpu/nvidia.
+                IREE_ROCM_DEVICE_BC_SHA256 = Get-VersionTableValue $VersionTable 'IREE_ROCM_DEVICE_BC_SHA256'
             }
+        }
+        'rocm-migraphx' {
+            # Not a media branch: windows/Dockerfile.rocm-migraphx, rocm lane only. Every pin of its
+            # two scripts by prefix; ARG parity with that Dockerfile is Rocm.Migraphx.Tests.ps1.
+            $keys = @('MIGRAPHX_VERSION', 'ROCM_WINDOWS_GFX_FAMILY') +
+                @($VersionTable.Keys | Where-Object { $_ -match '^(MIGRAPHX_WINDOWS|ORT_AMDGPU_EP)_' } | Sort-Object)
+            $out = @{}
+            foreach ($k in $keys) { $out[$k] = Get-VersionTableValue $VersionTable $k }
+            return $out
         }
     }
 }
@@ -157,9 +176,14 @@ function Get-MediaMergeVersionArg {
     # them only produces "unused build-arg" warnings and pollutes the merge stage's cache key.
     $branchOnly = @(
         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
+        'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers (rocm lane)
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'QNN_SDK_ZIP_SHA256',                 # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
-        'PROTOC_VERSION', 'JRE_VERSION'       # media-litert: litert-lm toolchain pins
+        'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
+        # media-litert: the rocm lane's LiteRT-LM GPU payload pins, checked in-branch only.
+        'LITERT_LM_WEBGPU_ACCELERATOR_SHA256', 'LITERT_LM_WEBGPU_SAMPLER_SHA256',
+        'LITERT_LM_WEBGPU_DAWN_SHA256', 'LITERT_LM_DXC_ZIP_SHA256',
+        'IREE_ROCM_DEVICE_BC_SHA256'          # media-tvm: IREE rocm target's device-bitcode pin
     )
     $merge = @{}
     foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
@@ -434,6 +458,7 @@ function Get-StageDiskFloorGb {
     # must not be caught by the generic media rule below it.
     switch -Regex ($Label) {
         'nvidia|sdk'                { return 60 }   # CUDA ~36 GB + export headroom
+        'Dockerfile\.rocm$'         { return 45 }   # rocm sdk: 2.3 GB tarball + 9.56 GB tree at peak, + export
         'media-core-built-onnx'     { return 55 }   # the 25 GB image, the one that really needs room
         'media-core-built-opencv'   { return 45 }
         'media-core-built-ffmpeg'   { return 40 }

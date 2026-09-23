@@ -1,7 +1,8 @@
 #requires -Version 7.0
 # Windows ROCm (Install-Rocm.ps1, Dockerfile.rocm, Test-RocmImage.ps1): URL guard, amd64 and
-# fork-base refusals, layout gate, env contract, toolchain shadowing, PATH rule. NOT covered:
-# the download, the extraction, hipcc itself and the driver wiring (Driver.Variant.Tests.ps1).
+# plain-base refusals, layout gate, env contract, toolchain shadowing, rocm-checks aggregation,
+# PATH rule. NOT covered: the download, the extraction, hipcc itself and the driver wiring
+# (Driver.Variant.Tests.ps1).
 
 Describe 'Install-Rocm: tarball URL' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Get-RocmWindowsTarballUrl')
@@ -89,19 +90,127 @@ Describe 'Install-Rocm: layout gate' {
     }
 }
 
-Describe 'Install-Rocm: fork base (rocm forks from the DEFAULT media only)' {
+Describe 'Install-Rocm: the rocm sdk builds FROM the plain base' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Assert-RocmForkBase')
 
-    It 'accepts a default-media base (no GPU_TYPE, or GPU_TYPE=cpu, and no CUDA env)' {
+    It 'accepts the plain base (no GPU_TYPE, or GPU_TYPE=cpu, and no CUDA env)' {
         Assert-RocmForkBase -GpuType '' -CudaRoot '' -CudaPath ''
         Assert-RocmForkBase -GpuType 'cpu' -CudaRoot '' -CudaPath ''
-        Assert-True $true 'default bases passed'
+        Assert-True $true 'plain bases passed'
     }
 
     It 'refuses a CUDA-lineage base, naming every leaked variable' {
         Assert-Throws { Assert-RocmForkBase -GpuType 'nvidia' -CudaRoot '' -CudaPath '' } 'GPU_TYPE=nvidia' -MessagePattern 'GPU_TYPE=nvidia'
         Assert-Throws { Assert-RocmForkBase -GpuType '' -CudaRoot 'C:\cuda' -CudaPath '' } 'CUDA_ROOT' -MessagePattern 'CUDA_ROOT=C:\\cuda'
         Assert-Throws { Assert-RocmForkBase -GpuType 'nvidia' -CudaRoot 'C:\a' -CudaPath 'C:\b' } 'all three' -MessagePattern 'CUDA_PATH=C:\\b, CUDA_ROOT=C:\\a, GPU_TYPE=nvidia'
+        Assert-Throws { Assert-RocmForkBase -GpuType 'nvidia' -CudaRoot '' -CudaPath '' } 'message' -MessagePattern 'builds FROM the plain base'
+    }
+
+    It 'refuses a base that already carries ROCm (no stacking a second layer)' {
+        Assert-Throws { Assert-RocmForkBase -GpuType 'rocm' -CudaRoot '' -CudaPath '' } 'GPU_TYPE=rocm' -MessagePattern 'GPU_TYPE=rocm'
+    }
+
+    It 'Dockerfile.rocm defaults its BASE_IMAGE to the plain base, not media' {
+        $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.rocm')
+        Assert-Match '(?m)^ARG BASE_IMAGE=local/kataglyphis:windows-base\s*$' $df 'ARG BASE_IMAGE default'
+        Assert-False ($df -match 'windows-media') 'no media lineage left in Dockerfile.rocm'
+    }
+}
+
+Describe 'Test-RocmImage: rocm-checks aggregation' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-RocmImage.ps1' -FunctionName 'Get-RocmCheckFinding')
+    function New-FakeCheck([string]$Dir, [string]$Name, [string]$Body) {
+        Set-Content -LiteralPath (Join-Path $Dir $Name) -Value "#requires -Version 7.0`n$Body" -Encoding utf8
+    }
+
+    It 'passes when every check writes nothing, and ignores non-ps1 files' {
+        Invoke-InTestDir { param($dir)
+            New-FakeCheck $dir 'A-Quiet.ps1' '$null = 1'
+            New-FakeCheck $dir 'B-Empty.ps1' "Write-Output ''"
+            Set-Content -LiteralPath (Join-Path $dir 'notes.txt') -Value 'Write-Output nope'
+            Assert-Equal 0 @(Get-RocmCheckFinding -ChecksDir $dir).Count 'no findings'
+        }
+    }
+
+    It 'collects each finding with its file name, sorted by file; a throw is a finding and the later checks still run' {
+        Invoke-InTestDir { param($dir)
+            # Written out of order on purpose: the verdict must not depend on directory order.
+            New-FakeCheck $dir 'C-Two.ps1' "Write-Output 'first gap'; Write-Output 'second gap'"
+            New-FakeCheck $dir 'A-Throws.ps1' "throw 'boom'"
+            New-FakeCheck $dir 'B-Pass.ps1' '$null = 1'
+            $got = @(Get-RocmCheckFinding -ChecksDir $dir)
+            Assert-Equal 'A-Throws.ps1 threw: boom|C-Two.ps1: first gap|C-Two.ps1: second gap' ($got -join '|') 'findings in file order'
+        }
+    }
+
+    It 'reports a missing folder and a folder with no checks' {
+        $missing = Join-Path ([System.IO.Path]::GetTempPath()) ('no-rocm-checks-' + [guid]::NewGuid().ToString('N'))
+        $got = @(Get-RocmCheckFinding -ChecksDir $missing)
+        Assert-Equal 1 $got.Count 'missing folder'
+        Assert-Match 'rocm-checks folder missing' $got[0] 'missing folder message'
+        Invoke-InTestDir { param($dir)
+            $got = @(Get-RocmCheckFinding -ChecksDir $dir)
+            Assert-Equal 1 $got.Count 'empty folder'
+            Assert-Match 'no \*\.ps1 checks' $got[0] 'empty folder message'
+        }
+    }
+
+    It 'runs after the built-in checks, from the folder beside the script, and feeds the same verdict' {
+        $src = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-RocmImage.ps1')
+        Assert-Match "\[string\]\`$ChecksDir = \(Join-Path \`$PSScriptRoot 'rocm-checks'\)" $src 'default folder'
+        Assert-Match "(?s)Get-RocmKernelCompileFinding -Hipcc.+\`$failures \+= @\(Get-RocmCheckFinding -ChecksDir \`$ChecksDir\).+if \(\`$failures\.Count -gt 0\)" $src 'aggregated before the verdict'
+    }
+}
+
+Describe 'Test-RocmImage: the image carries the spike mode the run asked for' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-RocmImage.ps1' -FunctionName 'Get-RocmSpikeFinding')
+    # One case = expected mode, MIGRAPHX_ROOT, the marker's TVM_ROCM ($null = no marker file); Want = finding patterns, in order.
+    function Invoke-SpikeCase([string]$Expect, [string]$Migraphx, $TvmRocm) {
+        return Invoke-InTestDir { param($dir)
+            $marker = Join-Path $dir 'ROCM-FEATURES.txt'
+            if ($null -ne $TvmRocm) { Set-Content -LiteralPath $marker -Value @('# marker', "TVM_ROCM=$TvmRocm", 'USE_OPENCL=ON') -Encoding ascii }
+            @(Get-RocmSpikeFinding -Expect $Expect -MigraphxRoot $Migraphx -TvmMarker $marker)
+        }
+    }
+
+    It 'passes a matching image either way, and fails a parent from the other mode, an unset mode or a missing marker' {
+        $mgx = 'C:\runtime\lib\migraphx'
+        $cases = @(
+            @{ Label = 'spikes on'; Args = @('1', $mgx, '1'); Want = @() }
+            @{ Label = '-NoRocmSpikes'; Args = @('0', '', '0'); Want = @() }
+            # The reviewed hole: a spikes-on torch,final run on top of -NoRocmSpikes parents.
+            @{ Label = 'spikes on, no-spike parents'; Args = @('1', '', '0'); Want = @('MIGraphX present=False', 'TVM_ROCM=0 in .+EXPECT_ROCM_SPIKES=1') }
+            @{ Label = '-NoRocmSpikes, spike parents'; Args = @('0', $mgx, '1'); Want = @('MIGraphX present=True', 'TVM_ROCM=1 in .+EXPECT_ROCM_SPIKES=0') }
+            @{ Label = 'no marker'; Args = @('1', $mgx, $null); Want = @('TVM_ROCM=unknown .+ is missing') }
+            @{ Label = 'unset mode'; Args = @('', $mgx, '1'); Want = @('not 0 or 1') }
+            @{ Label = 'bogus mode'; Args = @('yes', $mgx, '1'); Want = @('not 0 or 1') }
+        )
+        foreach ($c in $cases) {
+            $positional = $c.Args
+            $got = @(Invoke-SpikeCase @positional)
+            Assert-Equal $c.Want.Count $got.Count "$($c.Label): finding count ($($got -join ' | '))"
+            for ($i = 0; $i -lt [Math]::Min($got.Count, $c.Want.Count); $i++) { Assert-Match $c.Want[$i] $got[$i] "$($c.Label): finding $i" }
+        }
+    }
+
+    It 'grades the mode from the driver''s env before the verdict' {
+        $src = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-RocmImage.ps1')
+        Assert-Match "\[string\]\`$ExpectSpikes = \`$env:EXPECT_ROCM_SPIKES" $src 'param default from the env'
+        Assert-Match "(?s)\`$failures \+= @\(Get-RocmSpikeFinding -Expect \`$ExpectSpikes -MigraphxRoot `"\`$env:MIGRAPHX_ROOT`".+if \(\`$failures\.Count -gt 0\)" $src 'graded before the verdict'
+    }
+}
+
+Describe 'Build-OnnxFromSource: the rocm lane builds the cpu flags' {
+    It 'has no ROCm EP request left (ORT >= 1.23 dropped onnxruntime_USE_ROCM), logs the lane and adds no flag' {
+        $ort = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-OnnxFromSource.ps1')
+        foreach ($dead in 'onnxruntime_USE_ROCM=ON', "GpuType -eq 'amd'") {
+            Assert-False $ort.Contains($dead) "dead branch text '$dead' is back"
+        }
+        $at = $ort.IndexOf('} elseif ($gpuEnv.HasRocm) {')
+        Assert-True ($at -ge 0) 'the HasRocm branch is gone'
+        $rocmBranch = $ort.Substring($at, $ort.IndexOf('} else {', $at + 1) - $at)
+        Assert-True $rocmBranch.Contains("Write-Host 'ROCm layer present: CPU+DML ORT'") 'rocm log line'
+        Assert-False $rocmBranch.Contains('$gpuArgs') 'no GPU flag on the rocm lane'
     }
 }
 

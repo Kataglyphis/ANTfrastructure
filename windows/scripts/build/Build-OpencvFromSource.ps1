@@ -368,6 +368,37 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
     Write-Host "ONNX Runtime found at $ortRoot"
 }
 
+# rocm lane only (empty elsewhere): OpenCL is already ON on every lane, and OpenCV 5.0.0 has no HIP
+# path, so this only pins the dormant clBLAS/clFFT probes OFF. docs/windows-builds.md § ROCm layer
+function Get-OpencvRocmCmakeArgs {
+    param([bool]$Cross, [Parameter(Mandatory)][hashtable]$GpuEnv)
+    if ($GpuEnv.ContainsKey('HasRocm') -and $GpuEnv.HasRocm) {
+        if ($Cross) { throw 'OpenCV: the rocm lane is amd64-only (AMD ships no Windows arm64 ROCm), but this is a cross build' }
+        '-DWITH_OPENCLAMDFFT=OFF'
+        '-DWITH_OPENCLAMDBLAS=OFF'
+    }
+}
+
+# rocm-lane configure gate: the T-API is compiled in, and neither a printed configure line nor a
+# CMakeCache.txt entry (where QUIET finds land without printing) resolves into the ROCm tree.
+function Get-OpencvRocmConfigureFinding {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ConfigureLog,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$CMakeCache,
+        [Parameter(Mandatory)][string]$RocmRoot
+    )
+    $lines = @($ConfigureLog -split '\r?\n')
+    $root = $RocmRoot.TrimEnd('\', '/').Replace('\', '/')
+    $inRoot = { param([string]$Text) $Text.Replace('\', '/').IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+    if (-not ($lines -match '(?<![\w/])OpenCL:\s+YES\b')) { 'the configure summary lacks "OpenCL: YES" (the OpenCL T-API is off)' }
+    $lines | Where-Object { & $inRoot $_ } | ForEach-Object { "a configure line resolves into the ROCm tree: $($_.Trim())" }
+    # Entries only ('//' and '#' are comments); CMAKE_IGNORE_PREFIX_PATH is Invoke-CmakeConfigure's own isolation arg.
+    $entries = @($CMakeCache -split '\r?\n' | Where-Object { $_ -match '^[^/#\s][^=]*=' })
+    if ($entries.Count -eq 0) { 'CMakeCache.txt is missing or has no entries, so the silent find results cannot be checked' }
+    $entries | Where-Object { $_ -notmatch '^CMAKE_IGNORE_PREFIX_PATH:' -and (& $inRoot $_) } |
+        ForEach-Object { "a CMake cache entry resolves into the ROCm tree: $($_.Trim())" }
+}
+
 # Get-GpuEnvironment sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH; only CUDACXX is
 # needed on top, for CMake's enable_language(CUDA) probe.
 $gpuEnv = Get-GpuEnvironment
@@ -401,7 +432,13 @@ if ($ocvCudaUsable) {
     }
 } else {
     $cmakeExtra += '-DWITH_CUDA=OFF'
-    Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)'
+    if ($gpuEnv.HasRocm) { Write-Host 'OpenCV: rocm lane -> WITH_CUDA=OFF; the AMD GPU path is the OpenCL T-API (ON on every lane)' }
+    else { Write-Host 'OpenCV: no CUDA toolkit detected -> building CPU-only (WITH_CUDA=OFF)' }
+}
+$ocvRocmArgs = @(Get-OpencvRocmCmakeArgs -GpuEnv $gpuEnv -Cross $ocvCross)
+if ($ocvRocmArgs.Count -gt 0) {
+    $cmakeExtra += $ocvRocmArgs
+    Write-Host "OpenCV rocm lane: $($ocvRocmArgs -join ' ')"
 }
 
 # CMAKE_AR: find llvm-lib on PATH and pass full path
@@ -452,6 +489,12 @@ $cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $
 Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1 |
     Tee-Object -FilePath $cfgLog
 Write-Host "CMake configure log: $cfgLog"
+if ($gpuEnv.HasRocm) {
+    $ocvRocmCfg = @(Get-OpencvRocmConfigureFinding -ConfigureLog "$(Get-Content -LiteralPath $cfgLog -Raw)" `
+            -CMakeCache "$(Get-Content -LiteralPath (Join-Path $buildDir 'CMakeCache.txt') -Raw -ErrorAction SilentlyContinue)" -RocmRoot $gpuEnv.RocmRoot)
+    if ($ocvRocmCfg.Count -gt 0) { throw "OpenCV rocm-lane configure gate ($cfgLog): $($ocvRocmCfg -join '; ')" }
+    Write-Host 'OpenCV rocm-lane configure gate OK: OpenCL T-API YES, no configure line or CMake cache entry resolves into the ROCm tree'
+}
 
 # GATE (#129): an empty dispatch line is a build that "succeeds" with every optional kernel
 # silently dropped. Cross must name NEON_FP16; amd64 may never regress to nothing.

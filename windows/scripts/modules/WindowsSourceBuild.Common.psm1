@@ -182,6 +182,15 @@ function Invoke-GitClone {
     }
 }
 
+function Get-CMakeRocmIsolationArgs {
+    # On the rocm lane TheRock's bin is on PATH, so CMake would treat the ROCm tree as a package
+    # prefix (its flatbuffers, nlohmann_json, zlib ...). Non-HIP builds must never see it.
+    if ($env:GPU_TYPE -ne 'rocm') { return @() }
+    $root = @($env:ROCM_PATH, $env:HIP_PATH) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if (-not $root) { return @() }
+    return @("-DCMAKE_IGNORE_PREFIX_PATH=$($root -replace '\\', '/')")
+}
+
 function Invoke-CmakeConfigure {
     param(
         [Parameter(Mandatory)]
@@ -206,6 +215,8 @@ function Invoke-CmakeConfigure {
         # lane is unchanged. It exists for the HOST-TOOL configure, which also needs
         # Invoke-WithHostArchLibraryEnvironment -- this parameter alone is not enough.
         [string]$TargetArch = '',
+        # A HIP consumer (find_package(hip) from TheRock) opts out of the rocm-lane prefix isolation.
+        [switch]$AllowRocmPrefix,
         [switch]$SkipOnFailure
     )
 
@@ -254,6 +265,13 @@ function Invoke-CmakeConfigure {
     if ($crossArgs.Count -gt 0) {
         $cmakeArgs += $crossArgs
         Write-Host "CMake cross-compiling for $(Get-WindowsTargetArch -Arch $TargetArch): $($crossArgs -join ' ')"
+    }
+    if (-not $AllowRocmPrefix) {
+        $rocmIsolation = @(Get-CMakeRocmIsolationArgs)
+        if ($rocmIsolation.Count -gt 0) {
+            $cmakeArgs += $rocmIsolation
+            Write-Host "CMake: ROCm tree isolated from package search ($($rocmIsolation -join ' '))"
+        }
     }
 
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
@@ -2006,6 +2024,7 @@ Export-ModuleMember -Function @(
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
     'Test-SccacheRemoteConfigured',
     # Re-exported from nested WindowsScripts.Shared for SCRIPT-scope callers:

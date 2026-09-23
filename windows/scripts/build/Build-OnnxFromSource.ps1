@@ -188,11 +188,9 @@ if ($cudaUsable) {
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnLibDir", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
-} elseif ($gpuEnv.GpuType -eq 'amd' -and -not $onnxCross) {
-    # Same host-vs-target guard as the CUDA branch: a host GPU probe must never decide a
-    # TARGET flag. The branch is dead today (GPU_TYPE=amd is never set).
-    Write-Host 'AMD GPU detected: enabling ROCm'
-    $gpuArgs += '-Donnxruntime_USE_ROCM=ON'
+} elseif ($gpuEnv.HasRocm) {
+    # ORT >= 1.23 has no ROCm EP (onnxruntime_USE_ROCM is gone), so the rocm lane builds the same flags as cpu.
+    Write-Host 'ROCm layer present: CPU+DML ORT'
 } else {
     Write-Host 'No GPU layer detected: CPU-only build'
 }

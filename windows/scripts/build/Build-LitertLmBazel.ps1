@@ -69,6 +69,104 @@ function Get-UrlWithRetry {
     }
 }
 
+# rocm lane only: the WebGPU (Dawn -> D3D12) GPU backend, docs/windows-builds.md § ROCm layer.
+# Module-free like the rest of this script; `$GpuType -eq 'rocm'` is Get-GpuEnvironment's HasRocm.
+
+function Get-LitertLmBazelArg {
+    # The bazel command after the startup options. cpu/nvidia get exactly the pre-rocm command.
+    param([string]$GpuType)
+    $targets = @('//runtime/engine:litert_lm_main')
+    if ($GpuType -eq 'rocm') { $targets += '@directx_shader_compiler//:dxc_dlls' }
+    return @('build') + $targets + @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=')
+}
+
+function Get-LitertLmRocmEnvScrub {
+    # rocm lane: name -> value ($null = unset) for each env entry pointing into the ROCm tree, plus
+    # HIP_PLATFORM, so no bazel repository rule or action can reach TheRock. Empty off the rocm lane.
+    param([string]$GpuType, [Parameter(Mandatory)][System.Collections.IDictionary]$Environment)
+    $scrub = @{}
+    if ($GpuType -ne 'rocm') { return $scrub }
+    $norm = { param([string]$p) $p.Trim().Replace('/', '\').TrimEnd('\') }
+    $roots = @(foreach ($name in @($Environment.Keys)) {
+            $value = [string]$Environment[$name]
+            if ($name -in 'ROCM_PATH', 'HIP_PATH' -and $value.Trim()) { & $norm $value }
+        })
+    $inRocm = { param([string]$entry)
+        $e = & $norm $entry
+        foreach ($r in $roots) { if ($e -ieq $r -or $e.StartsWith("$r\", [StringComparison]::OrdinalIgnoreCase)) { return $true } }
+        return $false
+    }
+    foreach ($name in @($Environment.Keys)) {
+        if ($name -ieq 'HIP_PLATFORM') { $scrub[$name] = $null; continue }
+        $entries = @(([string]$Environment[$name]) -split ';')
+        $kept = @($entries | Where-Object { -not (& $inRocm $_) })
+        if ($kept.Count -eq $entries.Count) { continue }
+        $scrub[$name] = if (@($kept | Where-Object { $_.Trim() }).Count -eq 0) { $null } else { $kept -join ';' }
+    }
+    return $scrub
+}
+
+function Set-LitertLmProcessEnv {
+    # Sets name -> value in this process ($null removes it) and returns the previous values for the restore.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Values)
+    $previous = @{}
+    foreach ($name in @($Values.Keys)) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+        if ($null -eq $Values[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+        else { Set-Item -LiteralPath "Env:$name" -Value $Values[$name] }
+    }
+    return $previous
+}
+
+function Assert-LitertLmDxcPin {
+    # Bazel verifies the DXC zip against upstream's WORKSPACE sha256; this ties that sha to versions.env.
+    param([Parameter(Mandatory)][string]$Workspace, [string]$Expected)
+    if (-not $Expected) { throw 'LITERT_LM_DXC_ZIP_SHA256 is not set: refusing an unpinned DirectX Shader Compiler download' }
+    $m = [regex]::Match($Workspace, 'name\s*=\s*"directx_shader_compiler"[^)]*?sha256\s*=\s*"([0-9a-fA-F]{64})"')
+    if (-not $m.Success) { throw 'LiteRT-LM WORKSPACE has no sha256-pinned directx_shader_compiler http_archive' }
+    if ($m.Groups[1].Value -ne $Expected) {
+        throw "LiteRT-LM WORKSPACE pins the DXC zip at $($m.Groups[1].Value), versions.env LITERT_LM_DXC_ZIP_SHA256 says $Expected"
+    }
+}
+
+function Get-LitertLmGpuPayload {
+    # rocm lane only: what litert_lm_main loads by bare name from its own dir for --backend=gpu,
+    # with the versions.env key that pins it (the DXC files ride on the zip pin). Empty elsewhere.
+    param([string]$GpuType, [Parameter(Mandatory)][string]$PrebuiltDir, [Parameter(Mandatory)][string]$DxcDir)
+    if ($GpuType -ne 'rocm') { return @() }
+    $dxcLicenses = 'licenses\directx-shader-compiler'
+    return @(
+        @{ Source = Join-Path $PrebuiltDir 'libLiteRtWebGpuAccelerator.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_ACCELERATOR_SHA256' }
+        @{ Source = Join-Path $PrebuiltDir 'libLiteRtTopKWebGpuSampler.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_SAMPLER_SHA256' }
+        @{ Source = Join-Path $PrebuiltDir 'libwebgpu_dawn.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_DAWN_SHA256' }
+        @{ Source = Join-Path $DxcDir 'bin\x64\dxcompiler.dll'; Dir = 'bin'; PinKey = '' }
+        @{ Source = Join-Path $DxcDir 'bin\x64\dxil.dll'; Dir = 'bin'; PinKey = '' }
+        @{ Source = Join-Path $DxcDir 'LICENSE-MS.txt'; Dir = $dxcLicenses; PinKey = '' }
+        @{ Source = Join-Path $DxcDir 'LICENSE-LLVM.txt'; Dir = $dxcLicenses; PinKey = '' }
+        @{ Source = Join-Path $DxcDir 'LICENSE-MIT.txt'; Dir = $dxcLicenses; PinKey = '' }
+    )
+}
+
+function Install-LitertLmGpuPayload {
+    # Copies each payload file under $Root\<Dir>; a pinned file must match its versions.env SHA256 first.
+    param([Parameter(Mandatory)][object[]]$Payload, [Parameter(Mandatory)][string]$Root)
+    foreach ($item in $Payload) {
+        $name = Split-Path -Leaf $item.Source
+        if (-not (Test-Path -LiteralPath $item.Source -PathType Leaf)) { throw "LiteRT-LM GPU payload missing: $($item.Source)" }
+        if ($item.PinKey) {
+            $want = [Environment]::GetEnvironmentVariable($item.PinKey)
+            if ($want -notmatch '^[0-9a-fA-F]{64}$') { throw "$($item.PinKey) is not a SHA256 ('$want'): refusing an unpinned $name" }
+            $got = (Get-FileHash -LiteralPath $item.Source -Algorithm SHA256).Hash
+            if ($got -ne $want) { throw "$name has SHA256 $got, versions.env $($item.PinKey) pins $want" }
+        }
+        $dest = Join-Path $Root $item.Dir
+        New-Item -ItemType Directory -Force -Path $dest | Out-Null
+        Copy-Item -LiteralPath $item.Source -Destination $dest -Force
+    }
+}
+
+$gpuType = [string]$env:GPU_TYPE
+
 Write-Host "=== [1/6] prerequisites: long paths + bazelisk + JDK (LiteRT-LM $tag) ==="
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
 New-Item -ItemType Directory -Force -Path C:\bzl-tools | Out-Null
@@ -103,11 +201,13 @@ if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) { & scoop install 
 & git lfs install --skip-repo 2>&1 | Out-Null
 & git clone --depth 1 --branch $tag https://github.com/google-ai-edge/LiteRT-LM.git C:\llm 2>&1 | Select-Object -Last 2
 Push-Location C:\llm
+$restoreEnv = $null
 try {
     & git lfs pull 2>&1 | Select-Object -Last 2
 
     Write-Host '=== [3/6] neutralize the WORKSPACE Android repository rules ==='
     $ws = Get-Content C:\llm\WORKSPACE -Raw
+    if ($gpuType -eq 'rocm') { Assert-LitertLmDxcPin -Workspace $ws -Expected $env:LITERT_LM_DXC_ZIP_SHA256 }
     $ws = $ws.Replace('android_ndk_repository(name = "androidndk")', '# [bazel-port] android_ndk_repository disabled (no android targets)')
     $ws = $ws.Replace('android_sdk_repository(name = "androidsdk")', '# [bazel-port] android_sdk_repository disabled (no android targets)')
     # zlib.net/fossils is a notoriously flaky host (8/8 bazel download retries
@@ -124,8 +224,15 @@ try {
     # leaves the variable defined-empty from PowerShell, which a native child
     # (bazel here) still sees as set.
     Remove-Item -Path Env:ANDROID_NDK_VERSION -ErrorAction SilentlyContinue
-    $bazelArgs = @('--output_base=C:\bzl')
-    $buildArgs = @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=')
+    # The bazel server inherits this env at start, so hide the ROCm tree before the first bazelisk call.
+    $envScrub = Get-LitertLmRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())
+    if ($envScrub.Count -gt 0) {
+        $restoreEnv = Set-LitertLmProcessEnv -Values $envScrub
+        Write-Host "  rocm lane: ROCm tree hidden from bazel ($(@($envScrub.Keys | Sort-Object) -join ', ')); + DXC target"
+    }
+    $outputBase = 'C:\bzl'
+    $bazelArgs = @("--output_base=$outputBase")
+    $bazelCmd = Get-LitertLmBazelArg -GpuType $gpuType
     # DELIBERATELY NO --repository_cache on the mount: bazel's
     # content_addressable cache writes temp files and RENAMES them into place,
     # and the BuildKit cache mount is wcifs rename-hostile - run 27 died
@@ -142,7 +249,7 @@ try {
     $env:PATH = "C:\bzl-tools;$env:JAVA_HOME\bin;$env:PATH"
 
     Write-Host '=== [5/6] bazelisk build //runtime/engine:litert_lm_main --config=windows ==='
-    & C:\bzl-tools\bazelisk.exe @bazelArgs build //runtime/engine:litert_lm_main @buildArgs 2>&1 |
+    & C:\bzl-tools\bazelisk.exe @bazelArgs @bazelCmd 2>&1 |
         Tee-Object -FilePath C:\bazel-build.log | Select-Object -Last 20
     $bexit = $LASTEXITCODE
     if ($bexit -ne 0) {
@@ -169,6 +276,12 @@ try {
                 Copy-Item $_.FullName $binOut -Force -ErrorAction SilentlyContinue
             }
         }
+    }
+    $gpuPayload = @(Get-LitertLmGpuPayload -GpuType $gpuType -PrebuiltDir 'C:\llm\prebuilt\windows_x86_64' `
+            -DxcDir (Join-Path $outputBase 'external\directx_shader_compiler'))
+    if ($gpuPayload.Count -gt 0) {
+        Install-LitertLmGpuPayload -Payload $gpuPayload -Root (Join-Path $InstallDir 'lib\litert-lm')
+        Write-Host "  rocm lane: GPU backend staged ($($gpuPayload.Count) files: WebGPU accelerator, sampler, Dawn, DXC + licences)"
     }
     # Count what LANDED, not what was attempted (2026-08-22). The old counter
     # incremented once per source file found and never looked at the result:
@@ -229,5 +342,7 @@ try {
             'but never leave the image promising a path it does not ship.')
     }
 } finally {
+    # The caller's later steps (Get-GpuEnvironment) need the rocm env back.
+    if ($restoreEnv) { $null = Set-LitertLmProcessEnv -Values $restoreEnv }
     Pop-Location
 }
