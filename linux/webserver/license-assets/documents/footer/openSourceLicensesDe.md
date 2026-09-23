@@ -164,6 +164,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | CUDA | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
+| PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; rocm variant only) | torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
 
 ### Media Layer
 
@@ -178,6 +180,42 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | LiteRT-LM | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.2 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |
+
+### LiteRT-LM GPU Backend (rocm variant only)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll) | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 (the LiteRT-LM repository's licence; closed-source Google binaries, no source published) + BSD 3-Clause (statically linked protobuf) |
+| Dawn WebGPU (prebuilt libwebgpu_dawn.dll) | as prebuilt in LiteRT-LM (sha256-pinned) | [dawn.googlesource.com/dawn](https://dawn.googlesource.com/dawn) | BSD 3-Clause (Dawn/Tint) + Apache 2.0 (statically linked abseil, SPIRV-Tools) |
+| DirectX Shader Compiler (dxcompiler.dll, dxil.dll) | per LiteRT-LM WORKSPACE (sha256-pinned) | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM; the package's ReleaseNotes apply it to every file but d3d12shader.h, which is MIT and not shipped) + Microsoft Software License Terms (LICENSE-MS.txt is in the zip without naming the files it covers, so it is read as applying until reviewed); all three texts ship in C:\runtime\lib\litert-lm\licenses |
+
+### llama.cpp HIP (rocm variant only)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| LLVM OpenMP runtime (libomp.dll, bundled in the llama.cpp zip) | as bundled in the pinned llama.cpp zip (sha256-pinned) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside it in C:\runtime\opt\llama.cpp-hip |
+| AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | MIT (HIP runtime, ROCm/clr; rocm_kpack, ROCm/rocm-kpack) + Apache 2.0 with LLVM Exceptions (amd_comgr, ROCm/llvm-project); byte-identical to the ROCm layer's own copies, which the rocm-check enforces |
+
+### MIGraphX + ORT plugin EP (rocm variant only)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| AMD MIGraphX (source-built against TheRock, C:\runtime\lib\migraphx) | 2.17.0 | [github.com/ROCm/AMDMIGraphX](https://github.com/ROCm/AMDMIGraphX) | MIT; the texts of everything linked into it ship in C:\runtime\lib\migraphx\licenses |
+| abseil-cpp (static, in MIGraphX through protobuf) | 20250512.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
+| Protocol Buffers + utf8_range (static, in migraphx_onnx.dll) | 30.0 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD 3-Clause + MIT (the bundled utf8_range) |
+| msgpack-c (header-only, in migraphx.dll) | 3.3.0 | [github.com/msgpack/msgpack-c](https://github.com/msgpack/msgpack-c) | Boost 1.0 (its bundled Boost Predef/Preprocessor too) |
+| SQLite amalgamation (static, in migraphx.dll) | 3500400 | [www.sqlite.org](https://www.sqlite.org/) | Public domain (the SQLite blessing; no text to ship) |
+| nlohmann/json (header-only, in migraphx.dll; TheRock's copy) | as shipped in TheRock | [github.com/nlohmann/json](https://github.com/nlohmann/json) | MIT (TheRock ships no licence file for it, so the header's own copyright + SPDX notice is staged instead) |
+| ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\runtime\lib\onnxruntime-ep-amdgpu) | 99ab5cb43caa421e0b19870fa4ce9323117e5e56 | [github.com/onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu) | MIT; the texts of everything linked into it ship in C:\runtime\lib\onnxruntime-ep-amdgpu\licenses |
+| fmt (static, in migraphx-ep.dll) | 12.1.0 | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | MIT |
+| Microsoft GSL (header-only, in migraphx-ep.dll) | 4.2.1 | [github.com/microsoft/GSL](https://github.com/microsoft/GSL) | MIT |
+| range-v3 (header-only, in migraphx-ep.dll) | 0.12.0 | [github.com/ericniebler/range-v3](https://github.com/ericniebler/range-v3) | Boost 1.0 (its LICENSE.txt also carries the libc++ and SGI/HP notices of adapted code) |
+| ONNX (static, in migraphx-ep.dll) | 1.21.0 | [github.com/onnx/onnx](https://github.com/onnx/onnx) | Apache 2.0 |
+| FlatBuffers (static, in migraphx-ep.dll) | 25.12.19 | [github.com/google/flatbuffers](https://github.com/google/flatbuffers) | Apache 2.0 |
+| Protocol Buffers + utf8_range (static, in migraphx-ep.dll) | 34.1 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD 3-Clause + MIT (the bundled utf8_range) |
+| abseil-cpp (static, in migraphx-ep.dll through protobuf) | 20250512.1 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 
 ### Build Tooling (build-time only)
 

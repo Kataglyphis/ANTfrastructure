@@ -80,6 +80,8 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "Zlib": (KEEP_NOTICE, INCLUDE_TEXT),
     "curl": (KEEP_NOTICE, INCLUDE_TEXT),
     "Unlicense": (),
+    # SQLite's public-domain dedication: it asks for nothing, not even a notice.
+    "blessing": (),
     "BSL-1.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "PSF-2.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "NCSA": (KEEP_NOTICE, INCLUDE_TEXT),

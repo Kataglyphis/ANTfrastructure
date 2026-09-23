@@ -260,11 +260,20 @@ ARG LITERT_LM_VERSION=0.17.1
 # Bazel. Both are here because the versions.env COPY is gone — see `common`.
 ARG PROTOC_VERSION=35.1
 ARG JRE_VERSION=21
+# rocm lane only: Build-LitertLmBazel.ps1 verifies LiteRT-LM's GPU payload against these.
+ARG LITERT_LM_WEBGPU_ACCELERATOR_SHA256=8a2c4d5700ac34cfbef96548e1096a4532e9bbe20ee827e80a38439766c81644
+ARG LITERT_LM_WEBGPU_SAMPLER_SHA256=5ddbb93b4192efd5aafed2ec23d98091b12e467ea0c0daa65d1abac5f2529532
+ARG LITERT_LM_WEBGPU_DAWN_SHA256=4f98d05a333cf980776ae5382c39ce19638cf71d1fd60133d1c849b55551895e
+ARG LITERT_LM_DXC_ZIP_SHA256=a1e89031421cf3c1fca6627766ab3020ca4f962ac7e2caa7fab2b33a8436151e
 
 ENV LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
     PROTOC_VERSION="${PROTOC_VERSION}" `
-    JRE_VERSION="${JRE_VERSION}"
+    JRE_VERSION="${JRE_VERSION}" `
+    LITERT_LM_WEBGPU_ACCELERATOR_SHA256="${LITERT_LM_WEBGPU_ACCELERATOR_SHA256}" `
+    LITERT_LM_WEBGPU_SAMPLER_SHA256="${LITERT_LM_WEBGPU_SAMPLER_SHA256}" `
+    LITERT_LM_WEBGPU_DAWN_SHA256="${LITERT_LM_WEBGPU_DAWN_SHA256}" `
+    LITERT_LM_DXC_ZIP_SHA256="${LITERT_LM_DXC_ZIP_SHA256}"
 
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-tvm-env
@@ -272,10 +281,13 @@ FROM common AS media-tvm-env
 ARG TVM_REF=v0.26.0
 ARG TVM_COMMIT=994e0216d734bf3e02806d8ebf383dafa80e41b9
 ARG IREE_VERSION=v3.11.0
+# rocm lane: IREE's rocm target fetches ocml/ockl bitcode; Build-IreeFromSource.ps1 asserts upstream pins this hash.
+ARG IREE_ROCM_DEVICE_BC_SHA256=336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9
 
 ENV TVM_REF="${TVM_REF}" `
     TVM_COMMIT="${TVM_COMMIT}" `
-    IREE_VERSION="${IREE_VERSION}"
+    IREE_VERSION="${IREE_VERSION}" `
+    IREE_ROCM_DEVICE_BC_SHA256="${IREE_ROCM_DEVICE_BC_SHA256}"
 
 # #49 (2026-08-19): the BK compile stages NO LONGER descend from the shared
 # media-core-env ancestor - each stage declares exactly the version keys its
@@ -373,9 +385,14 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG FFMPEG_VERSION=n9.0.2
 ARG PYAV_VERSION=18.1.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
+# AMF headers: every lane carries the pin, only the rocm lane fetches them (GPU_TYPE=rocm).
+ARG AMF_HEADERS_VERSION=v1.5.2
+ARG AMF_HEADERS_SHA256=d3c12eb324edf05e214608b6a395a51dd95770ed9d45520185d6c3a206811c99
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     PYAV_VERSION="${PYAV_VERSION}" `
-    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
+    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
+    AMF_HEADERS_VERSION="${AMF_HEADERS_VERSION}" `
+    AMF_HEADERS_SHA256="${AMF_HEADERS_SHA256}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
@@ -531,6 +548,9 @@ FROM media-tvm-env AS media-tvm-built
 # staged zip with no SHA check at all.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+# The TVM ROCm spike switch: the driver passes 1 on the rocm lane (0 under -NoRocmSpikes).
+# ARG only, no ENV mirror: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
+ARG TVM_ROCM=0
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaTvmAll.ps1,target=C:\bkmnt\Build-MediaTvmAll.ps1 `

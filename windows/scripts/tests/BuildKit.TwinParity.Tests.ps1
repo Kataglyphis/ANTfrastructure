@@ -72,7 +72,8 @@ BeforeAll {
     # instead of the full ~75-min ONNX build.
     $script:coreComponentKeys = @{
         'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
-        'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF')
+        'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
+                                      'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256')
         'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
         'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')
     }
@@ -189,7 +190,8 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
         $table = @{}
         foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'QNN_SDK_ZIP_SHA256',
-                         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
+                         'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
+                         'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
         $driverKeys = @((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $table).Keys) | Sort-Object -Unique
         # Shared keys count toward the union: they have a home in a stage, just in
         # more than one of them (#154).

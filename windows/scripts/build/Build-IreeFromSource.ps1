@@ -21,6 +21,51 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
+# rocm lane only: HIP HAL driver + rocm compiler target. @() on cpu/nvidia/cross keeps their configure unchanged.
+function Get-IreeRocmCmakeArgs {
+    param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross)
+    if (-not $GpuEnv.HasRocm -or $Cross) { return @() }
+    # The empty chip skips upstream's configure-time rocminfo probe (Windows ROCm has no rocminfo).
+    return @('-DIREE_HAL_DRIVER_HIP=ON', '-DIREE_ROCM_TEST_TARGET_CHIP=', '-DIREE_TARGET_BACKEND_ROCM=ON')
+}
+
+# The Windows HIP driver dlopens only "amdhip64.dll"; TheRock 10 and Adrenalin ship amdhip64_7/_6.dll.
+# A second name trips upstream's --hip_dylib_path loop, which never resets its path per name: reset it.
+function Invoke-IreeHipDylibNamePatch {
+    param([Parameter(Mandatory)][string]$Path)
+    [void](Invoke-InlineRegexPatch -Path $Path -Require -SkipIfMatch '"amdhip64_7\.dll",' `
+            -Pattern '(?m)^([ \t]*)"amdhip64\.dll",(\r?\n)' `
+            -Replacement '$1"amdhip64_7.dll",$2$1"amdhip64_6.dll",$2$1"amdhip64.dll",$2' `
+            -Description 'IREE HIP driver: try amdhip64_7.dll / amdhip64_6.dll before amdhip64.dll')
+    if ([System.IO.File]::ReadAllText($Path) -notmatch '"amdhip64_7\.dll",') {
+        throw "IREE HIP dylib name list not patched in $Path (upstream layout changed?) -- the hip driver would find no HIP runtime on Windows"
+    }
+    $resetDone = 'iree_string_builder_reset\(&path_builder\);\r?\n[ \t]*// Join the directory with a system specific library name\.'
+    [void](Invoke-InlineRegexPatch -Path $Path -Require -SkipIfMatch $resetDone `
+            -Pattern '(?m)^([ \t]*)(// Join the directory with a system specific library name\.)(\r?\n)' `
+            -Replacement '${1}iree_string_builder_reset(&path_builder);${3}${1}${2}${3}' `
+            -Description 'IREE HIP driver: one --hip_dylib_path candidate per name (reset the path builder)')
+    if ([System.IO.File]::ReadAllText($Path) -notmatch $resetDone) {
+        throw "IREE HIP dylib search-path loop not patched in $Path (upstream layout changed?) -- every name after the first would be tried as concatenated paths"
+    }
+}
+
+# The rocm target downloads ocml/ockl bitcode at configure time; upstream's pin must equal versions.env's.
+function Assert-IreeRocmDeviceBitcodePin {
+    param([Parameter(Mandatory)][string]$CMakeListsPath, [string]$ExpectedSha256)
+    if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "IREE_ROCM_DEVICE_BC_SHA256 is '$ExpectedSha256' -- the rocm lane needs the versions.env pin of IREE's device-bitcode download"
+    }
+    $text = [System.IO.File]::ReadAllText($CMakeListsPath)
+    $pin = [regex]::Match($text, 'set\(_amd_device_bc_sha256\s+"([0-9a-fA-F]{64})"\)')
+    if (-not $pin.Success -or $text -notmatch 'EXPECTED_HASH\s+SHA256=\$\{_amd_device_bc_sha256\}') {
+        throw "IREE's rocm plugin no longer hash-pins its device-bitcode download ($CMakeListsPath) -- refusing an unverified fetch"
+    }
+    if ($pin.Groups[1].Value -ne $ExpectedSha256) {
+        throw "IREE pins device bitcode sha256 $($pin.Groups[1].Value) but versions.env IREE_ROCM_DEVICE_BC_SHA256 is $ExpectedSha256 -- an IREE bump moved it; verify the new archive, then update the pin"
+    }
+}
+
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $IreeVersion = Get-SourceBuildVersion -Value $IreeVersion -EnvironmentVariables @('IREE_VERSION') -DefaultValue 'v3.11.0'
@@ -171,6 +216,13 @@ if ($ireeCross -and -not $SkipPython) {
 $gpuEnv = Get-GpuEnvironment
 $cudaFlag = if ($gpuEnv.HasCuda) { 'ON' } else { 'OFF' }
 if ($cudaFlag -eq 'ON') { Write-Host 'NVIDIA lane -> enabling IREE CUDA HAL driver + CUDA target backend (PTX via NVPTX, no nvcc)' }
+$ireeRocmArgs = @(Get-IreeRocmCmakeArgs -GpuEnv $gpuEnv -Cross $ireeCross)
+$ireeRocm = $ireeRocmArgs.Count -gt 0
+if ($ireeRocm) {
+    Write-Host 'ROCm lane -> enabling IREE HIP HAL driver + rocm target backend (vendored HIP headers; no TheRock at build time)'
+    Invoke-IreeHipDylibNamePatch -Path (Join-Path $SourceDir 'runtime\src\iree\hal\drivers\hip\dynamic_symbols.c')
+    Assert-IreeRocmDeviceBitcodePin -CMakeListsPath (Join-Path $SourceDir 'compiler\plugins\target\ROCM\CMakeLists.txt') -ExpectedSha256 $env:IREE_ROCM_DEVICE_BC_SHA256
+}
 
 $ireeEhscInclude = (Join-Path $scriptAssetRoot 'patches\iree\enable-ehsc.cmake') -replace '\\', '/'
 $ireeHostBinDir = $null
@@ -260,6 +312,7 @@ $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK
 # the ARM64 branch never reaches the custom command, the value is merely unused.
 $cmakeExtra += "-DIREE_MASM_COMPILER=$ireeMasm"
 if ($ireeHostBinDir) { $cmakeExtra += "-DIREE_HOST_BIN_DIR=$($ireeHostBinDir -replace '\\', '/')" }
+$cmakeExtra += $ireeRocmArgs
 
 # Phase B (or the only phase on amd64): the TARGET configure. Cross args come
 # from Invoke-CmakeConfigure's choke point.
@@ -350,6 +403,19 @@ $gateMlir | Set-Content -Path $mlirPath -Encoding ascii
 $runOut = (Invoke-ShieldedNative -Label 'iree-run-module gate' -CommandLine """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5") | Out-String
 if ($runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
 Write-Host 'iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)'
+if ($ireeRocm) {
+    # Compile and list only: no GPU in the build container. rocm-checks\IREE.ps1 re-checks the image.
+    $hipVmfb = Join-Path $env:TEMP 'iree-gate-hip.vmfb'
+    [void](Invoke-ShieldedNative -Label 'iree-compile rocm gate' -CommandLine """$ireeCompile"" --iree-hal-target-device=hip --iree-rocm-target=gfx1201 ""$mlirPath"" -o ""$hipVmfb""")
+    if (-not (Test-Path $hipVmfb) -or (Get-Item $hipVmfb).Length -eq 0) { throw 'iree rocm gate: iree-compile produced no gfx1201 vmfb' }
+    $driverList = (Invoke-ShieldedNative -Label 'iree-run-module --list_drivers' -CommandLine """$ireeRun"" --list_drivers") | Out-String
+    if ($driverList -notmatch '(?m)^\s*hip:') { throw 'iree rocm gate: the hip HAL driver is not compiled into iree-run-module' }
+    if (-not [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($ireeRun)).Contains('amdhip64_7.dll')) {
+        throw 'iree rocm gate: iree-run-module does not carry the amdhip64_7.dll name -- the dylib-name patch did not reach the build'
+    }
+    Write-Host 'iree rocm gate OK (hip->gfx1201 vmfb, hip driver listed, amdhip64_7.dll lookup compiled in)'
+    Remove-Item $hipVmfb -Force -ErrorAction SilentlyContinue
+}
 Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
 }
 
@@ -423,6 +489,17 @@ value = float(module.abs(np.asarray(-5.0, dtype=np.float32)).to_host())
 assert value == 5.0, value
 print("iree python gate OK: abs(-5) =", value)
 "@ | Set-Content -Path $pyGate -Encoding ascii
+    if ($ireeRocm) {
+        # Appended, so the cpu/nvidia gate file stays byte-identical: the wheels carry hip + the rocm plugin.
+        Add-Content -Path $pyGate -Encoding ascii -Value @'
+drivers = sorted(rt.query_available_drivers())
+assert "hip" in drivers, drivers
+hip = tools.compile_str(MLIR, target_backends=["rocm"], extra_args=["--iree-rocm-target=gfx1201"])
+at = hip.find(b"\x7fELF")
+assert at >= 0 and int.from_bytes(hip[at + 18:at + 20], "little") == 224, "no AMDGPU code object in the rocm vmfb"
+print("iree python rocm gate OK: hip driver + gfx1201 code object")
+'@
+    }
     [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($py.Exe)"" ""$pyGate""")
     Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
     }

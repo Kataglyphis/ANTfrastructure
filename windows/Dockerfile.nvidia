@@ -6,7 +6,7 @@
 # GPU image, or skip it and tag windows-base as windows-sdk for a CPU-only image
 # (windows/Build-Buildkit.ps1 does this automatically; the former Dockerfile.sdk no-op shim
 # was removed). Lineage: base → [nvidia] → toolchain → media → final.
-# ROCm on Windows is windows/Dockerfile.rocm, which forks later (after media).
+# ROCm on Windows is windows/Dockerfile.rocm, in this same sdk slot (-Variant rocm).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
 

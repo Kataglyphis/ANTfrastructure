@@ -174,6 +174,7 @@ Common development targets:
    :caption: Windows:
 
    windows-builds
+   windows-rocm
    windows-build-lanes
    windows-build-invariants
    windows-build-resources

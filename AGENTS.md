@@ -170,7 +170,7 @@ The Windows lane names its local intermediate tags with `Get-BkTag`
 split into `bk-windows-media-core-onnx` / `-ffmpeg` / `-opencv` / `-hailo`), the
 merged `bk-windows-media`, and `bk-windows-torch` for the app stage. The arch
 suffix is omitted for `windows-base`/`-sdk`/`-toolchain` (shared across both
-lanes) and appended (`-arm64`) for everything downstream. It publishes the final
+lanes) and appended (`-arm64`) for everything downstream. `-Variant rocm` adds a `-rocm` infix to every tag after `bk-windows-base` (`bk-windows-sdk-rocm` … `bk-winamd64-rocm`), so a rocm run never overwrites a default image; nvidia still writes the default names. It publishes the final
 image as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64`
 on the cross lane) — see § Image and tag naming for what those two tags are
 allowed to be. The un-prefixed `local/kataglyphis:windows-*` names and
@@ -510,7 +510,7 @@ Commands:
 
 Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with `CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin, [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)). Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → [rocm] → torch → final`; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image. `-Variant rocm` (amd64 only) forks after media into `Dockerfile.rocm` under its own tags, never the default ones (`docs/windows-builds.md` § ROCm layer). See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia|rocm] → toolchain → media → [migraphx → llama] → torch → final`, the bracketed rocm stages on `-Variant rocm` only; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image. `-Variant rocm` (amd64 only) puts `Dockerfile.rocm` in that same sdk slot, under `-rocm` tags that never overwrite the default ones; every media feature it enables is gated on `(Get-GpuEnvironment).HasRocm` ([`windows-rocm.md`](docs/windows-rocm.md)). See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 

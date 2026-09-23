@@ -48,7 +48,8 @@ function Get-GpuEnvironment {
     param([string]$ForceCpuEnvVar)
     if ($ForceCpuEnvVar -and ([Environment]::GetEnvironmentVariable($ForceCpuEnvVar) -eq '1')) {
         Write-Host "$ForceCpuEnvVar=1 -> CPU-only build (GPU detection overridden; CUDA/TensorRT/cuDNN skipped)"
-        return @{ GpuType = 'cpu'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null; CudaBin = $null; HasCuda = $false }
+        return @{ GpuType = 'cpu'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null; CudaBin = $null; HasCuda = $false
+            RocmRoot = $null; HasRocm = $false }
     }
     $gpuType = if ($env:GPU_TYPE) { $env:GPU_TYPE.ToLowerInvariant() } else { 'cpu' }
     $cudaRoot = Get-CudaRoot
@@ -67,6 +68,17 @@ function Get-GpuEnvironment {
         throw ("GPU_TYPE=nvidia but no CUDA toolkit found (CudaRoot='$cudaRoot') - " +
             'a mis-plumbed CUDA path would silently produce a CPU-only image (backlog #45). ' +
             'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
+    }
+
+    # Same fail-closed rule for the rocm lane: Dockerfile.rocm bakes GPU_TYPE=rocm and HIP_PATH.
+    $rocmRoot = $null
+    if ($gpuType -eq 'rocm') {
+        $rocmRoot = @($env:HIP_PATH, $env:ROCM_PATH) | Where-Object { $_ } | Select-Object -First 1
+        if (-not $rocmRoot -or -not (Test-Path (Join-Path $rocmRoot 'lib\cmake\hip'))) {
+            throw ("GPU_TYPE=rocm but no ROCm tree with lib\cmake\hip (HIP_PATH='$env:HIP_PATH', ROCM_PATH='$env:ROCM_PATH') - " +
+                'a mis-plumbed rocm layer would silently build the CPU flags. ' +
+                'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
+        }
     }
 
     if ($gpuType -eq 'nvidia' -and $cudaRoot -and (Test-Path $cudaRoot)) {
@@ -88,6 +100,9 @@ function Get-GpuEnvironment {
         # need no defensive '-and CudaRoot -and Test-Path' tails — six
         # divergent spellings of this condition existed before 2026-08-21.
         HasCuda       = ($gpuType -eq 'nvidia')
+        # The rocm twin: the gate above guarantees RocmRoot holds lib\cmake\hip whenever it is true.
+        RocmRoot      = $rocmRoot
+        HasRocm       = ($gpuType -eq 'rocm')
     }
 }
 

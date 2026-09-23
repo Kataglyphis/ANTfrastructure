@@ -962,6 +962,32 @@
       "licenseComments": "Obligations: eula-review"
     },
     {
+      "SPDXID": "SPDXRef-Package-Windows-Image-AMD-ROCm-for-Windows-TheRock-tarball-C-TheRock-f2cf0040",
+      "name": "AMD ROCm for Windows (TheRock tarball, C:\\TheRock\\build; rocm variant only)",
+      "versionInfo": "10.0.0",
+      "downloadLocation": "https://github.com/ROCm/TheRock",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-22b17812",
+      "name": "PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; rocm variant only)",
+      "versionInfo": "torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+      "downloadLocation": "https://rocm.docs.amd.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-63679160",
       "name": "GStreamer",
       "versionInfo": "1.29.2",
@@ -1076,6 +1102,279 @@
       "licenseConcluded": "Apache-2.0",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-AMD-AMF-SDK-headers-FFmpeg---enable-amf-rocm-v-dac4575c",
+      "name": "AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only)",
+      "versionInfo": "v1.5.2",
+      "downloadLocation": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-LM-WebGPU-accelerator-TopK-sampler-preb-381634be",
+      "name": "LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll)",
+      "versionInfo": "0.17.1",
+      "downloadLocation": "https://github.com/google-ai-edge/LiteRT-LM",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND BSD-3-Clause",
+      "licenseConcluded": "Apache-2.0 AND BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / LiteRT-LM GPU Backend (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Dawn-WebGPU-prebuilt-libwebgpu-dawn.dll-937955f2",
+      "name": "Dawn WebGPU (prebuilt libwebgpu_dawn.dll)",
+      "versionInfo": "as prebuilt in LiteRT-LM (sha256-pinned)",
+      "downloadLocation": "https://dawn.googlesource.com/dawn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND Apache-2.0",
+      "licenseConcluded": "BSD-3-Clause AND Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / LiteRT-LM GPU Backend (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-dxcompiler.dll-dxil.dl-190147dc",
+      "name": "DirectX Shader Compiler (dxcompiler.dll, dxil.dll)",
+      "versionInfo": "per LiteRT-LM WORKSPACE (sha256-pinned)",
+      "downloadLocation": "https://github.com/microsoft/DirectXShaderCompiler",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "NCSA AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "NCSA AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / LiteRT-LM GPU Backend (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048",
+      "name": "llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools)",
+      "versionInfo": "11115",
+      "downloadLocation": "https://github.com/ggml-org/llama.cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-the--63b2aec4",
+      "name": "LLVM OpenMP runtime (libomp.dll, bundled in the llama.cpp zip)",
+      "versionInfo": "as bundled in the pinned llama.cpp zip (sha256-pinned)",
+      "downloadLocation": "https://github.com/llvm/llvm-project/tree/main/openmp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 WITH LLVM-exception",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-AMD-HIP-runtime-copies-beside-llama-server-amd-80f7a29b",
+      "name": "AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll)",
+      "versionInfo": "10.0.0",
+      "downloadLocation": "https://github.com/ROCm/TheRock",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT AND Apache-2.0 WITH LLVM-exception",
+      "licenseConcluded": "MIT AND Apache-2.0 WITH LLVM-exception",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-AMD-MIGraphX-source-built-against-TheRock-C-ru-5600a1c7",
+      "name": "AMD MIGraphX (source-built against TheRock, C:\\runtime\\lib\\migraphx)",
+      "versionInfo": "2.17.0",
+      "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-abseil-cpp-static-in-MIGraphX-through-protobuf-c767bd08",
+      "name": "abseil-cpp (static, in MIGraphX through protobuf)",
+      "versionInfo": "20250512.0",
+      "downloadLocation": "https://github.com/abseil/abseil-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-migraphx-48552f79",
+      "name": "Protocol Buffers + utf8_range (static, in migraphx_onnx.dll)",
+      "versionInfo": "30.0",
+      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT",
+      "licenseConcluded": "BSD-3-Clause AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-msgpack-c-header-only-in-migraphx.dll-7c5d2a7e",
+      "name": "msgpack-c (header-only, in migraphx.dll)",
+      "versionInfo": "3.3.0",
+      "downloadLocation": "https://github.com/msgpack/msgpack-c",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSL-1.0",
+      "licenseConcluded": "BSL-1.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-SQLite-amalgamation-static-in-migraphx.dll-6e29cb40",
+      "name": "SQLite amalgamation (static, in migraphx.dll)",
+      "versionInfo": "3500400",
+      "downloadLocation": "https://www.sqlite.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "blessing",
+      "licenseConcluded": "blessing",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: none"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-nlohmann-json-header-only-in-migraphx.dll-TheR-917c8a89",
+      "name": "nlohmann/json (header-only, in migraphx.dll; TheRock's copy)",
+      "versionInfo": "as shipped in TheRock",
+      "downloadLocation": "https://github.com/nlohmann/json",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-plugin-EP-for-AMD-GPUs-migraphx-e-ae93c3a3",
+      "name": "ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\\runtime\\lib\\onnxruntime-ep-amdgpu)",
+      "versionInfo": "99ab5cb43caa421e0b19870fa4ce9323117e5e56",
+      "downloadLocation": "https://github.com/onnxruntime/onnxruntime-ep-amdgpu",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-fmt-static-in-migraphx-ep.dll-ebb66b29",
+      "name": "fmt (static, in migraphx-ep.dll)",
+      "versionInfo": "12.1.0",
+      "downloadLocation": "https://github.com/fmtlib/fmt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Microsoft-GSL-header-only-in-migraphx-ep.dll-5f5ce8a5",
+      "name": "Microsoft GSL (header-only, in migraphx-ep.dll)",
+      "versionInfo": "4.2.1",
+      "downloadLocation": "https://github.com/microsoft/GSL",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-range-v3-header-only-in-migraphx-ep.dll-138588e1",
+      "name": "range-v3 (header-only, in migraphx-ep.dll)",
+      "versionInfo": "0.12.0",
+      "downloadLocation": "https://github.com/ericniebler/range-v3",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSL-1.0",
+      "licenseConcluded": "BSL-1.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-static-in-migraphx-ep.dll-ac544511",
+      "name": "ONNX (static, in migraphx-ep.dll)",
+      "versionInfo": "1.21.0",
+      "downloadLocation": "https://github.com/onnx/onnx",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-FlatBuffers-static-in-migraphx-ep.dll-d07ecb85",
+      "name": "FlatBuffers (static, in migraphx-ep.dll)",
+      "versionInfo": "25.12.19",
+      "downloadLocation": "https://github.com/google/flatbuffers",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-migraphx-70cc07cf",
+      "name": "Protocol Buffers + utf8_range (static, in migraphx-ep.dll)",
+      "versionInfo": "34.1",
+      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT",
+      "licenseConcluded": "BSD-3-Clause AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-abseil-cpp-static-in-migraphx-ep.dll-through-p-adbaf2e4",
+      "name": "abseil-cpp (static, in migraphx-ep.dll through protobuf)",
+      "versionInfo": "20250512.1",
+      "downloadLocation": "https://github.com/abseil/abseil-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / MIGraphX + ORT plugin EP (rocm variant only)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
@@ -1794,6 +2093,16 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-AMD-ROCm-for-Windows-TheRock-tarball-C-TheRock-f2cf0040"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-22b17812"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-63679160"
     },
     {
@@ -1835,6 +2144,111 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Apache-TVM-fdf9f6ec"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-AMD-AMF-SDK-headers-FFmpeg---enable-amf-rocm-v-dac4575c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-LM-WebGPU-accelerator-TopK-sampler-preb-381634be"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Dawn-WebGPU-prebuilt-libwebgpu-dawn.dll-937955f2"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-dxcompiler.dll-dxil.dl-190147dc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-the--63b2aec4"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-AMD-HIP-runtime-copies-beside-llama-server-amd-80f7a29b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-AMD-MIGraphX-source-built-against-TheRock-C-ru-5600a1c7"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-abseil-cpp-static-in-MIGraphX-through-protobuf-c767bd08"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-migraphx-48552f79"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-msgpack-c-header-only-in-migraphx.dll-7c5d2a7e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-SQLite-amalgamation-static-in-migraphx.dll-6e29cb40"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-nlohmann-json-header-only-in-migraphx.dll-TheR-917c8a89"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-Runtime-plugin-EP-for-AMD-GPUs-migraphx-e-ae93c3a3"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-fmt-static-in-migraphx-ep.dll-ebb66b29"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Microsoft-GSL-header-only-in-migraphx-ep.dll-5f5ce8a5"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-range-v3-header-only-in-migraphx-ep.dll-138588e1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-static-in-migraphx-ep.dll-ac544511"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-FlatBuffers-static-in-migraphx-ep.dll-d07ecb85"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-migraphx-70cc07cf"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-abseil-cpp-static-in-migraphx-ep.dll-through-p-adbaf2e4"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

@@ -728,6 +728,21 @@
               "url": "https://developer.nvidia.com/tensorrt",
               "license": "NVIDIA TensorRT EULA",
               "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "AMD ROCm for Windows (TheRock tarball, C:\\TheRock\\build; rocm variant only)",
+              "var": "ROCM_WINDOWS_RELEASE",
+              "url": "https://github.com/ROCm/TheRock",
+              "license": "per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision",
+              "spdx": "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; rocm variant only)",
+              "var": null,
+              "version_fixed": "torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+              "url": "https://rocm.docs.amd.com/",
+              "license": "BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file)",
+              "spdx": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             }
           ]
         },
@@ -832,6 +847,175 @@
               "name": "Apache TVM",
               "var": "TVM_REF",
               "url": "https://tvm.apache.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only)",
+              "var": "AMF_HEADERS_VERSION",
+              "url": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF",
+              "license": "MIT",
+              "spdx": "MIT"
+            }
+          ]
+        },
+        {
+          "title": "LiteRT-LM GPU Backend (rocm variant only)",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll)",
+              "var": "LITERT_LM_VERSION",
+              "url": "https://github.com/google-ai-edge/LiteRT-LM",
+              "license": "Apache 2.0 (the LiteRT-LM repository's licence; closed-source Google binaries, no source published) + BSD 3-Clause (statically linked protobuf)",
+              "spdx": "Apache-2.0 AND BSD-3-Clause"
+            },
+            {
+              "name": "Dawn WebGPU (prebuilt libwebgpu_dawn.dll)",
+              "var": null,
+              "version_fixed": "as prebuilt in LiteRT-LM (sha256-pinned)",
+              "url": "https://dawn.googlesource.com/dawn",
+              "license": "BSD 3-Clause (Dawn/Tint) + Apache 2.0 (statically linked abseil, SPIRV-Tools)",
+              "spdx": "BSD-3-Clause AND Apache-2.0"
+            },
+            {
+              "name": "DirectX Shader Compiler (dxcompiler.dll, dxil.dll)",
+              "var": null,
+              "version_fixed": "per LiteRT-LM WORKSPACE (sha256-pinned)",
+              "url": "https://github.com/microsoft/DirectXShaderCompiler",
+              "license": "NCSA (LLVM; the package's ReleaseNotes apply it to every file but d3d12shader.h, which is MIT and not shipped) + Microsoft Software License Terms (LICENSE-MS.txt is in the zip without naming the files it covers, so it is read as applying until reviewed); all three texts ship in C:\\runtime\\lib\\litert-lm\\licenses",
+              "spdx": "NCSA AND LicenseRef-Proprietary-EULA"
+            }
+          ]
+        },
+        {
+          "title": "llama.cpp HIP (rocm variant only)",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools)",
+              "var": "LLAMA_CPP_HIP_BUILD",
+              "url": "https://github.com/ggml-org/llama.cpp",
+              "license": "MIT; the zip carries no licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\\runtime\\opt\\llama.cpp-hip\\licenses\\llama.cpp",
+              "spdx": "MIT"
+            },
+            {
+              "name": "LLVM OpenMP runtime (libomp.dll, bundled in the llama.cpp zip)",
+              "var": null,
+              "version_fixed": "as bundled in the pinned llama.cpp zip (sha256-pinned)",
+              "url": "https://github.com/llvm/llvm-project/tree/main/openmp",
+              "license": "Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside it in C:\\runtime\\opt\\llama.cpp-hip",
+              "spdx": "Apache-2.0 WITH LLVM-exception"
+            },
+            {
+              "name": "AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll)",
+              "var": "ROCM_WINDOWS_RELEASE",
+              "url": "https://github.com/ROCm/TheRock",
+              "license": "MIT (HIP runtime, ROCm/clr; rocm_kpack, ROCm/rocm-kpack) + Apache 2.0 with LLVM Exceptions (amd_comgr, ROCm/llvm-project); byte-identical to the ROCm layer's own copies, which the rocm-check enforces",
+              "spdx": "MIT AND Apache-2.0 WITH LLVM-exception"
+            }
+          ]
+        },
+        {
+          "title": "MIGraphX + ORT plugin EP (rocm variant only)",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "AMD MIGraphX (source-built against TheRock, C:\\runtime\\lib\\migraphx)",
+              "var": "MIGRAPHX_VERSION",
+              "url": "https://github.com/ROCm/AMDMIGraphX",
+              "license": "MIT; the texts of everything linked into it ship in C:\\runtime\\lib\\migraphx\\licenses",
+              "spdx": "MIT"
+            },
+            {
+              "name": "abseil-cpp (static, in MIGraphX through protobuf)",
+              "var": "MIGRAPHX_WINDOWS_ABSEIL_VERSION",
+              "url": "https://github.com/abseil/abseil-cpp",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Protocol Buffers + utf8_range (static, in migraphx_onnx.dll)",
+              "var": "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD 3-Clause + MIT (the bundled utf8_range)",
+              "spdx": "BSD-3-Clause AND MIT"
+            },
+            {
+              "name": "msgpack-c (header-only, in migraphx.dll)",
+              "var": "MIGRAPHX_WINDOWS_MSGPACK_VERSION",
+              "url": "https://github.com/msgpack/msgpack-c",
+              "license": "Boost 1.0 (its bundled Boost Predef/Preprocessor too)",
+              "spdx": "BSL-1.0"
+            },
+            {
+              "name": "SQLite amalgamation (static, in migraphx.dll)",
+              "var": "MIGRAPHX_WINDOWS_SQLITE_VERSION",
+              "url": "https://www.sqlite.org/",
+              "license": "Public domain (the SQLite blessing; no text to ship)",
+              "spdx": "blessing"
+            },
+            {
+              "name": "nlohmann/json (header-only, in migraphx.dll; TheRock's copy)",
+              "var": null,
+              "version_fixed": "as shipped in TheRock",
+              "url": "https://github.com/nlohmann/json",
+              "license": "MIT (TheRock ships no licence file for it, so the header's own copyright + SPDX notice is staged instead)",
+              "spdx": "MIT"
+            },
+            {
+              "name": "ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\\runtime\\lib\\onnxruntime-ep-amdgpu)",
+              "var": "ORT_AMDGPU_EP_COMMIT",
+              "url": "https://github.com/onnxruntime/onnxruntime-ep-amdgpu",
+              "license": "MIT; the texts of everything linked into it ship in C:\\runtime\\lib\\onnxruntime-ep-amdgpu\\licenses",
+              "spdx": "MIT"
+            },
+            {
+              "name": "fmt (static, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_FMT_VERSION",
+              "url": "https://github.com/fmtlib/fmt",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "Microsoft GSL (header-only, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_GSL_VERSION",
+              "url": "https://github.com/microsoft/GSL",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "range-v3 (header-only, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_RANGE_V3_VERSION",
+              "url": "https://github.com/ericniebler/range-v3",
+              "license": "Boost 1.0 (its LICENSE.txt also carries the libc++ and SGI/HP notices of adapted code)",
+              "spdx": "BSL-1.0"
+            },
+            {
+              "name": "ONNX (static, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_ONNX_VERSION",
+              "url": "https://github.com/onnx/onnx",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "FlatBuffers (static, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_FLATBUFFERS_VERSION",
+              "url": "https://github.com/google/flatbuffers",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Protocol Buffers + utf8_range (static, in migraphx-ep.dll)",
+              "var": "ORT_AMDGPU_EP_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD 3-Clause + MIT (the bundled utf8_range)",
+              "spdx": "BSD-3-Clause AND MIT"
+            },
+            {
+              "name": "abseil-cpp (static, in migraphx-ep.dll through protobuf)",
+              "var": "ORT_AMDGPU_EP_ABSEIL_VERSION",
+              "url": "https://github.com/abseil/abseil-cpp",
               "license": "Apache 2.0",
               "spdx": "Apache-2.0"
             }

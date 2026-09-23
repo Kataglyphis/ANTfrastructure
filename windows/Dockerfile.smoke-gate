@@ -42,6 +42,9 @@ ARG MAX_SKIPPED=24
 ARG EXPECT_GPU=0
 # 1 on the rocm variant: Test-RocmImage.ps1 runs after the main suite, through the same entrypoint.
 ARG EXPECT_ROCM=0
+# rocm only, read by Test-RocmImage.ps1 from the env: 1 = MIGraphX + TVM ROCm expected, 0 = -NoRocmSpikes.
+# No default on purpose: the other lanes' RUN env stays as it was, and an unset value fails the rocm gate.
+ARG EXPECT_ROCM_SPIKES
 
 # BIND-MOUNT the current script + harness rather than running the copy baked
 # into the image. Two reasons, both load-bearing:

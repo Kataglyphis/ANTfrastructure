@@ -109,6 +109,100 @@ function Remove-MakefileShowIncludes {
     [System.IO.File]::WriteAllText($Path, $c)
 }
 
+# rocm lane only (owner decision): the AMD AMF plan, $null on every other lane. The header fetch,
+# configure args, config.mak gates and header install all key on it. docs/windows-builds.md § ROCm layer
+function Get-FfmpegAmfPlan {
+    param(
+        [Parameter(Mandatory)][hashtable]$GpuEnvironment,
+        [bool]$IsCross = $false,
+        [Parameter(Mandatory)][string]$SourceDir
+    )
+    if (-not $GpuEnvironment.HasRocm) { return $null }
+    if ($IsCross) { throw 'GPU_TYPE=rocm on a cross build: the rocm lane is amd64-only, so this environment is mis-plumbed.' }
+    $compat = Join-Path $SourceDir 'compat\amf'
+    return @{ CompatDir = $compat; IncludeDir = (ConvertTo-MsysPath $compat); RocmRoot = $GpuEnvironment.RocmRoot }
+}
+
+# Emits nothing without a plan, so the cpu/nvidia configure line stays byte-identical.
+function Get-FfmpegRocmConfigureArg {
+    param([Parameter(Mandatory)][AllowNull()][hashtable]$AmfPlan)
+    if (-not $AmfPlan) { return @() }
+    if (-not (Test-Path (Join-Path $AmfPlan.CompatDir 'AMF\core\Version.h') -PathType Leaf)) {
+        throw "rocm lane: no AMF headers under $($AmfPlan.CompatDir) -- Install-FfmpegAmfHeader must run before configure."
+    }
+    # Explicit, not autodetect: a missing header then dies in configure ("amf requested but not found").
+    return @('--enable-amf', "--extra-cflags=-I$($AmfPlan.IncludeDir)")
+}
+
+# The configure symbols --enable-amf must turn on at n9.0.2; rocm-checks/FFmpeg.ps1 lists the same set.
+function Get-FfmpegAmfConfigSymbol {
+    return @('AMF',
+        'H264_AMF_ENCODER', 'HEVC_AMF_ENCODER', 'AV1_AMF_ENCODER',
+        'H264_AMF_DECODER', 'HEVC_AMF_DECODER', 'AV1_AMF_DECODER', 'VP9_AMF_DECODER',
+        'VPP_AMF_FILTER', 'SR_AMF_FILTER', 'FRC_AMF_FILTER', 'AMF_CAPTURE_FILTER')
+}
+
+# Symbols ffbuild/config.mak leaves off (configure writes a disabled one as '!CONFIG_X=yes').
+function Get-FfmpegAmfConfigGap {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$ConfigMakText)
+    foreach ($symbol in Get-FfmpegAmfConfigSymbol) {
+        if ($ConfigMakText -notmatch "(?m)^CONFIG_$symbol=yes\r?$") { "CONFIG_$symbol" }
+    }
+}
+
+# config.mak lines naming the ROCm tree in any spelling (C:\, C:/, /c/): FFmpeg needs nothing from TheRock.
+function Get-FfmpegRocmLeak {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ConfigMakText,
+        [Parameter(Mandatory)][string]$RocmRoot
+    )
+    $fwd = $RocmRoot.TrimEnd('\', '/') -replace '\\', '/'
+    $forms = @($fwd, ($fwd -replace '/', '\'), ('/' + $fwd.Substring(0, 1) + $fwd.Substring(2)))
+    $tree = '(?i)(?:' + (($forms | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?=[\\/\s;''"]|$)'
+    foreach ($line in $ConfigMakText -split '\r?\n') { if ($line -match $tree) { $line } }
+}
+
+# Replaces <Destination>\AMF with <IncludeRoot>\AMF; refuses a tree without core\Version.h.
+function Copy-FfmpegAmfHeaderTree {
+    param(
+        [Parameter(Mandatory)][string]$IncludeRoot,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    $source = Join-Path $IncludeRoot 'AMF'
+    if (-not (Test-Path (Join-Path $source 'core\Version.h') -PathType Leaf)) {
+        throw "no AMF\core\Version.h under $IncludeRoot (did the AMF header asset change its layout?)"
+    }
+    $target = Join-Path $Destination 'AMF'
+    Reset-SourceBuildDirectory -Path $target
+    $null = [System.IO.Directory]::CreateDirectory($target)
+    # The CONTENTS: copying the folder onto an existing one would nest AMF\AMF.
+    Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+    return $target
+}
+
+# Fetches ONLY the release's header asset (SHA256-pinned; never the 1.2 GB repo) into <Destination>\AMF.
+function Install-FfmpegAmfHeader {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Version,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Sha256,
+        [Parameter(Mandatory)][string]$Destination,
+        [string]$WorkDir = 'C:\temp\amf-headers',
+        [string]$BaseUrl = 'https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download',
+        [int]$MaxAttempts = 4
+    )
+    if ([string]::IsNullOrWhiteSpace($Version) -or [string]::IsNullOrWhiteSpace($Sha256)) {
+        throw 'AMF_HEADERS_VERSION/AMF_HEADERS_SHA256 are not set (build arg not plumbed?) -- refusing an unverified AMF header download'
+    }
+    Reset-SourceBuildDirectory -Path $WorkDir
+    $archive = Join-Path $WorkDir "AMF-headers-$Version.tar.gz"
+    Invoke-DownloadWithRetry -Url "$BaseUrl/$Version/AMF-headers-$Version.tar.gz" -DestinationPath $archive `
+        -ExpectedSha256 $Sha256 -Description "AMF headers $Version" -MaxAttempts $MaxAttempts
+    $root = Expand-SourceTarball -Archive $archive -Destination (Join-Path $WorkDir 'extract')
+    $headerDir = Copy-FfmpegAmfHeaderTree -IncludeRoot $root -Destination $Destination
+    Reset-SourceBuildDirectory -Path $WorkDir
+    return $headerDir
+}
+
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
@@ -247,6 +341,7 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 # and no CUDA libs are needed. --enable-cuda-nvcc (which COMPILES CUDA filters) stays off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
+$ffAmfPlan = Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir
 # No cross-lane exclusion: upstream configure has NO arch guard on nvenc/nvdec/cuvid (detection
 # is a check_pkg_config on the headers), so the cross lane is gated on the toolkit check alone.
 if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
@@ -280,6 +375,8 @@ if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))
     } else {
         Write-Warning 'nv-codec-headers install produced no ffnvcodec.pc -- FFmpeg will build without NVIDIA video accel.'
     }
+} elseif ($ffAmfPlan) {
+    Write-Host 'FFmpeg: rocm lane -> no NVENC/NVDEC; AMD AMF is enabled below'
 } elseif ($ffCross) {
     Write-Host "FFmpeg: no nvidia CUDA toolkit -> cross build for $ffTargetArch without NVENC/NVDEC (CPU-only FFmpeg; FFmpeg has no Vulkan hwaccel on either lane)"
 } else {
@@ -308,6 +405,15 @@ if (Test-Path $onnxRuntimeDir) {
         Write-Warning "ONNX Runtime header onnxruntime_c_api.h not found under $onnxRuntimeDir"
     }
 }
+
+# AMD AMF headers into compat/ like the ONNX ones above; only the rocm lane fetches them.
+if ($ffAmfPlan) {
+    $amfVersion = Get-SourceBuildVersion -EnvironmentVariables @('AMF_HEADERS_VERSION')
+    $amfSha = Get-SourceBuildVersion -EnvironmentVariables @('AMF_HEADERS_SHA256')
+    $amfDir = Install-FfmpegAmfHeader -Version $amfVersion -Sha256 $amfSha -Destination $ffAmfPlan.CompatDir
+    Write-Host "FFmpeg (rocm lane): AMF headers $amfVersion -> $amfDir"
+}
+$ffRocmFlags = @(Get-FfmpegRocmConfigureArg -AmfPlan $ffAmfPlan)
 
 $confFlags = @()
 $confFlags += "--prefix=$cygPrefix"
@@ -436,6 +542,8 @@ if ($ffCross) {
 $confFlags += '--disable-indev=vfwcap'
 # NVIDIA hardware video accel: empty on the CPU-only lane, populated above when CUDA is present.
 $confFlags += $nvencFlags
+# AMD AMF: rocm lane only; an empty array everywhere else, which leaves this line untouched.
+$confFlags += $ffRocmFlags
 
 # Shell-quote flags carrying spaces: the wrapper line is parsed by bash, and an unquoted space
 # would split the flag in two.
@@ -490,6 +598,15 @@ if (Test-Path $configMak) {
         if (-not $haveDotprod) { Write-Warning 'FFmpeg cross: HAVE_DOTPROD=no — aarch64 dotprod optimized paths are DISABLED (configure did not detect the feature; this costs decode/encode performance on Snapdragon)' }
         if (-not $haveI8mm) { Write-Warning 'FFmpeg cross: HAVE_I8MM=no — aarch64 i8mm optimized paths are DISABLED (configure did not detect the feature; this costs color conversion and scaling performance on Snapdragon)' }
     }
+}
+# rocm lane: fail now, not at the smoke gate hours later, if configure left an AMF component off.
+if ($ffAmfPlan) {
+    $configMakText = [string](Get-Content -LiteralPath $configMak -Raw)
+    $amfGap = @(Get-FfmpegAmfConfigGap -ConfigMakText $configMakText)
+    if ($amfGap.Count -gt 0) { throw "FFmpeg (rocm lane): configure left AMF component(s) disabled: $($amfGap -join ', ')" }
+    $rocmLeak = @(Get-FfmpegRocmLeak -ConfigMakText $configMakText -RocmRoot $ffAmfPlan.RocmRoot)
+    if ($rocmLeak.Count -gt 0) { throw "FFmpeg (rocm lane): configure picked up the ROCm tree: $($rocmLeak -join ' | ')" }
+    Write-Host "FFmpeg (rocm lane): config.mak enables all $(@(Get-FfmpegAmfConfigSymbol).Count) AMF symbols"
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
@@ -624,6 +741,11 @@ if (Test-Path $ffPkgConfigDir) {
         $rewritten++
     }
     Write-Host "Rewrote MSYS prefixes to Windows form in $rewritten .pc file(s) under $ffPkgConfigDir"
+}
+# Every lane installs libavutil/hwcontext_amf.h, which includes <AMF/...>; the rocm lane ships those headers.
+if ($ffAmfPlan -and $env:FFMPEG_SOURCE_BUILD -eq '1') {
+    $amfInstalled = Copy-FfmpegAmfHeaderTree -IncludeRoot $ffAmfPlan.CompatDir -Destination (Join-Path $prefix 'include')
+    Write-Host "FFmpeg (rocm lane): AMF headers installed to $amfInstalled"
 }
 
 # OUTSIDE the Test-Path guard on purpose: with the gate inside it, a missing lib\pkgconfig -- the

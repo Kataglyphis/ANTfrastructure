@@ -229,4 +229,89 @@ _unverified="$(_bv boom-nowrite "${_fx}" --write)"
 t_assert_eq "1" "$(_rc_of "${_unverified}")" "a lookup failure under --write is not a clean 'already at latest'"
 t_assert_contains "${_unverified}" "is unverified for those keys." "the warning names what could not be checked"
 
+t_case "litert_lm_gpu_pins: the rocm-lane LiteRT-LM pins come from a tag's LFS pointers + WORKSPACE (offline)"
+_pins="$(python3 - "${REPO}" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
+import bump_versions as bv
+files = {f"prebuilt/windows_x86_64/{dll}": f"version https://git-lfs.github.com/spec/v1\noid sha256:{c * 64}\nsize 1\n"
+         for (_, dll), c in zip(bv._LITERT_LM_GPU_DLL_PINS, "abc")}
+files["WORKSPACE"] = ('http_archive(\n    name = "directx_shader_compiler",\n'
+                      '    build_file = "@//:BUILD.directx_shader_compiler",\n'
+                      f'    sha256 = "{"D" * 64}",\n    url = "https://x/dxc.zip",\n)\n')
+for k, v in sorted(bv.litert_lm_gpu_pins(files.__getitem__).items()):
+    print(f"{k}={v}")
+files["prebuilt/windows_x86_64/libwebgpu_dawn.dll"] = "a real DLL, not a git-LFS pointer"
+try:
+    bv.litert_lm_gpu_pins(files.__getitem__)
+    print("NO-RAISE")
+except RuntimeError as exc:
+    print(f"RAISED {exc}")
+PY
+)"
+_a64="$(printf 'a%.0s' {1..64})"; _d64="$(printf 'd%.0s' {1..64})"
+t_assert_contains "${_pins}" "LITERT_LM_WEBGPU_ACCELERATOR_SHA256=${_a64}" "the accelerator pin is its pointer's oid"
+t_assert_contains "${_pins}" "LITERT_LM_DXC_ZIP_SHA256=${_d64}" "the DXC pin is WORKSPACE's sha256, lower-cased"
+t_assert_contains "${_pins}" "RAISED no git-LFS pointer for prebuilt/windows_x86_64/libwebgpu_dawn.dll" \
+  "a file that is not an LFS pointer must fail loudly, never pin a guess"
+
+t_case "spec_llama_cpp_hip: newest bNNNN with a win-rocm-<ROCm X.Y> zip wins, asset + SHA move with it, none = raise"
+_fx="$(_fixture llama <<'ENV'
+ROCM_WINDOWS_RELEASE=10.0.0
+LLAMA_CPP_HIP_BUILD=100
+ENV
+)"
+# Upstream faked: b102's only zip is for another ROCm, v0.4.1 is the other tag family.
+_out="$(python3 - "${REPO}" "${_fx}" <<'PY'
+import os, sys
+from pathlib import Path
+sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
+import bump_versions as bv
+bv.VERSIONS_ENV = Path(sys.argv[2])
+bv.ls_remote_tags = lambda repo: ["b99", "b100", "b101", "b102", "v0.4.1"]
+bv.artifact_exists = lambda url: url.rsplit("/", 1)[1] in (
+    "llama-b100-bin-win-rocm-10.0-x64.zip", "llama-b101-bin-win-rocm-10.0-x64.zip", "llama-b102-bin-win-rocm-7.14-x64.zip")
+bv.asset_sha256 = lambda repo, tag, asset, sums=(): "f" * 64
+bv.sha256_of_url = lambda url: "e" * 64 if url == "https://raw.githubusercontent.com/ggml-org/llama.cpp/b101/LICENSE" else url
+bv.WRITE_MODE = True
+print("bump", bv.spec_llama_cpp_hip("100"))
+print("same", bv.spec_llama_cpp_hip("101"))
+bv.artifact_exists = lambda url: False
+try:
+    bv.spec_llama_cpp_hip("100")
+except RuntimeError as e:
+    print("raised", e)
+PY
+)"
+t_assert_contains "${_out}" "bump ('101', {'LLAMA_CPP_HIP_ASSET': 'llama-b101-bin-win-rocm-10.0-x64.zip', 'LLAMA_CPP_HIP_SHA256': 'ffffffff" \
+  "the newest build with a zip for THIS ROCm wins (not b102's rocm-7.14 one), and its asset and SHA come along"
+t_assert_contains "${_out}" "'LLAMA_CPP_HIP_LICENSE_SHA256': 'eeeeeeee" \
+  "the LICENSE pin is re-hashed at the NEW build's tag (b101), never left at the old one"
+t_assert_contains "${_out}" "same ('101', {})" "an up-to-date build drags no extras"
+t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes a win-rocm-10.0 zip" \
+  "no matching zip is a lookup failure, never a silent 'up to date'"
+
+t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"
+# AMF's real tag shapes (1.4.14, 1.4.16.1, v.1.4.21, v1.4.7.0), faked NEWER than v1.5.3 in each shape.
+_out="$(python3 - "${REPO}" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
+import bump_versions as bv
+bv.ls_remote_tags = lambda repo: ["1.4.14", "v1.4.36", "v1.5.2", "v1.5.3", "1.6.0", "1.6.0.1", "v.1.6.1", "v1.5.3.1"]
+hashed = []
+bv.asset_sha256 = lambda repo, tag, asset, sums=(): hashed.append((repo, tag, asset)) or "e" * 64
+bv.WRITE_MODE = False
+print("report", bv.spec_amf_headers("v1.5.2"), hashed)
+bv.WRITE_MODE = True
+print("bump", bv.spec_amf_headers("v1.5.2"), hashed)
+hashed.clear()
+print("same", bv.spec_amf_headers("v1.5.3"), hashed)
+PY
+)"
+_e64="$(printf 'e%.0s' {1..64})"
+t_assert_contains "${_out}" "report ('v1.5.3', {}) []" "a report run names the newest vX.Y.Z tag and downloads nothing"
+t_assert_contains "${_out}" "bump ('v1.5.3', {'AMF_HEADERS_SHA256': '${_e64}'}) [('GPUOpen-LibrariesAndSDKs/AMF', 'v1.5.3', 'AMF-headers-v1.5.3.tar.gz')]" \
+  "--write takes v1.5.3 (not 1.6.0, v.1.6.1 or v1.5.3.1) and re-hashes exactly its header asset"
+t_assert_contains "${_out}" "same ('v1.5.3', {}) []" "an up-to-date tag drags no SHA and hashes nothing"
+
 t_summary

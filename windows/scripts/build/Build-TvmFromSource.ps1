@@ -27,6 +27,106 @@ $tvmLeafModule = Join-Path $scriptAssetRoot 'modules\WindowsTvm.Common.psm1'
 if (-not (Test-Path $tvmLeafModule)) { throw "Required module not found: $tvmLeafModule -- the media-tvm RUN must mount the tvmmods stage (Dockerfile.media-builder)" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($tvmLeafModule)))) { Import-Module $tvmLeafModule }
 
+# rocm lane: the OpenCL runtime always; ROCm codegen + runtime only with the TVM_ROCM=1 spike switch.
+function Get-TvmRocmPlan {
+    param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross, [string]$SpikeFlag)
+    $onLane = [bool]($GpuEnv.HasRocm -and -not $Cross)
+    $rocm = $onLane -and $SpikeFlag -eq '1'
+    return [pscustomobject]@{
+        OnLane       = $onLane
+        Rocm         = $rocm
+        RocmRoot     = if ($onLane) { $GpuEnv.RocmRoot } else { $null }
+        # find_rocm reads $env:ROCM_PATH even with USE_ROCM=OFF: TheRock's include dir + HIP defines on every TU.
+        HideRocmPath = $onLane -and -not $rocm
+    }
+}
+
+# Off the spike this is byte-for-byte the cpu/nvidia list.
+function Get-TvmLlvmTargetList {
+    param([bool]$Rocm)
+    if ($Rocm) { return 'X86;AArch64;NVPTX;AMDGPU' }
+    return 'X86;AArch64;NVPTX'
+}
+
+# Appended after the shared list (cmake keeps the last -D), so @() leaves cpu/nvidia untouched.
+function Get-TvmRocmCmakeArgs {
+    param([Parameter(Mandatory)]$Plan)
+    if (-not $Plan.OnLane) { return @() }
+    $rocmArgs = @('-DUSE_OPENCL=ON')
+    if ($Plan.Rocm) {
+        $root = $Plan.RocmRoot -replace '\\', '/'
+        # Pre-seeded, so FindROCM does not depend on the rocm-lane package-prefix isolation.
+        $rocmArgs += "-DUSE_ROCM=$root", "-DROCM_HIPHCC_LIBRARY=$root/lib/amdhip64.lib"
+    }
+    return $rocmArgs
+}
+
+# The patches the ROCm spike carries: no HSA on Windows, and rocm.py's Linux-only lookups.
+function Get-TvmRocmPatchSpec {
+    return @(
+        @{ File = 'src\backend\rocm\runtime\rocm_device_api.cc'; Description = 'TVM ROCm: drop <hsa/hsa.h> (Windows ROCm ships no HSA)'
+            Pattern = '#include <hsa/hsa\.h>\r?\n'; Replacement = ''; Done = '\A(?![\s\S]*hsa/hsa\.h)'; Gone = '<hsa/hsa\.h>' }
+        @{ File = 'src\backend\rocm\runtime\rocm_device_api.cc'; Description = 'TVM ROCm: kExist asks HIP, not hsa_init'
+            Pattern = 'if \(hsa_init\(\) == HSA_STATUS_SUCCESS\) \{\s*int dev;\s*ROCM_CALL\(hipGetDeviceCount\(&dev\)\);\s*value = dev > device\.device_id \? 1 : 0;\s*hsa_shut_down\(\);\s*\} else \{\s*value = 0;\s*\}'
+            Replacement = 'int dev = 0;  /* kataglyphis: HIP kExist */ value = (hipGetDeviceCount(&dev) == hipSuccess && dev > device.device_id) ? 1 : 0;'
+            Done = 'kataglyphis: HIP kExist'; Gone = 'hsa_init|hsa_shut_down|HSA_STATUS' }
+        @{ File = 'python\tvm\support\rocm.py'; Description = 'TVM rocm.py: import shutil'
+            Pattern = '(?m)^import subprocess(\r?\n)'; Replacement = 'import shutil$1import subprocess$1'; Done = '(?m)^import shutil\r?$'; Gone = '' }
+        @{ File = 'python\tvm\support\rocm.py'; Description = 'TVM rocm.py: ld.lld via PATHEXT, then TheRock lib\llvm\bin'
+            Pattern = '(?m)^([ \t]*)valid_list = \[utils\.which\(x\) for x in lld_list\](\r?\n)'
+            Replacement = '$1lld_list += [os.path.join(os.environ["ROCM_PATH"], "lib", "llvm", "bin", "ld.lld")] if os.environ.get("ROCM_PATH") else []$2$1valid_list = [utils.which(x) or shutil.which(x) for x in lld_list]$2'
+            Done = 'utils\.which\(x\) or shutil\.which\(x\)'; Gone = 'valid_list = \[utils\.which\(x\) for x in lld_list\]' }
+        @{ File = 'python\tvm\support\rocm.py'; Description = 'TVM rocm.py: device bitcode from HIP_DEVICE_LIB_PATH'
+            Pattern = '(?m)^([ \t]*)if rocdl_dir is None:(\r?\n)([ \t]*)rocm_path = find_rocm_path\(\)'
+            Replacement = '$1if rocdl_dir is None and os.path.isdir(os.environ.get("HIP_DEVICE_LIB_PATH", "")):$2$3rocdl_dir = os.environ["HIP_DEVICE_LIB_PATH"]$2$1if rocdl_dir is None:$2$3rocm_path = find_rocm_path()'
+            Done = 'rocdl_dir = os\.environ\["HIP_DEVICE_LIB_PATH"\]'; Gone = '' }
+        @{ File = 'python\tvm\support\rocm.py'; Description = 'TVM rocm.py: pre-2023 oclc control bitcode optional'
+            Pattern = 'n not in \{"irif"\}'
+            Replacement = 'n not in {"irif", "oclc_daz_opt_on", "oclc_daz_opt_off", "oclc_correctly_rounded_sqrt_on", "oclc_correctly_rounded_sqrt_off"}'
+            Done = '"oclc_correctly_rounded_sqrt_off"\}'; Gone = 'n not in \{"irif"\}' }
+        @{ File = 'python\tvm\support\rocm.py'; Description = 'TVM rocm.py: no rocminfo on Windows falls back to the default arch'
+            Pattern = 'except subprocess\.CalledProcessError:'; Replacement = 'except (subprocess.CalledProcessError, OSError):'
+            Done = 'except \(subprocess\.CalledProcessError, OSError\):'; Gone = 'except subprocess\.CalledProcessError:' }
+    )
+}
+
+function Invoke-TvmRocmSourcePatch {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    foreach ($spec in Get-TvmRocmPatchSpec) {
+        $path = Join-Path $SourceDir $spec.File
+        [void](Invoke-InlineRegexPatch -Path $path -Require -Pattern $spec.Pattern -Replacement $spec.Replacement `
+                -SkipIfMatch $spec.Done -AssertGone $spec.Gone -Description $spec.Description)
+        if ([System.IO.File]::ReadAllText($path) -notmatch $spec.Done) { throw "$($spec.Description): did not land in $path -- upstream layout changed" }
+    }
+}
+
+function Assert-TvmLlvmConfigNotRocm {
+    param([string]$LlvmConfig, [string]$RocmRoot)
+    if (-not $LlvmConfig -or -not $RocmRoot) { return }
+    if ($LlvmConfig.StartsWith($RocmRoot.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "TVM: llvm-config resolves into the ROCm tree ($LlvmConfig) -- AMD's LLVM fork must never reach PATH; TVM would bind to it instead of the pinned LLVM"
+    }
+}
+
+function Assert-TvmLlvmHasAmdgpu {
+    param([string]$TargetsBuilt, [string]$LlvmConfig)
+    if ($TargetsBuilt -notmatch '\bAMDGPU\b') {
+        throw "TVM ROCm spike: $LlvmConfig has no AMDGPU target (targets-built: '$($TargetsBuilt.Trim())') -- the rocm codegen cannot emit hsaco"
+    }
+}
+
+# Read by windows\scripts\build\rocm-checks\TVM.ps1: what the rocm-lane TVM build enabled.
+function Get-TvmRocmFeatureMarker {
+    param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)][string]$LlvmTargets)
+    return @(
+        '# Written by Build-TvmFromSource.ps1 on the rocm lane; read by rocm-checks\TVM.ps1.'
+        "TVM_ROCM=$(if ($Plan.Rocm) { '1' } else { '0' })"
+        'USE_OPENCL=ON'
+        "USE_ROCM=$(if ($Plan.Rocm) { $Plan.RocmRoot -replace '\\', '/' } else { 'OFF' })"
+        "LLVM_TARGETS=$LlvmTargets"
+    )
+}
+
 # TVM_COMMIT wins over TVM_REF: v0.26.0 does not compile against LLVM 23.1.0
 # (Intrinsic::matchIntrinsicSignature + MatchIntrinsicTypes_* removed, ORC JIT
 # lambda signature changed, SubtargetSubTypeKV::Key -> key()). Upstream main
@@ -54,6 +154,22 @@ $tvmCross = Test-WindowsCrossTarget
 $tvmCudaUsable = $gpuEnv.HasCuda -and ((-not $tvmCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
 $useCuda = if ($tvmCudaUsable) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
+
+$tvmRocmPlan = Get-TvmRocmPlan -GpuEnv $gpuEnv -Cross $tvmCross -SpikeFlag $env:TVM_ROCM
+if ($tvmRocmPlan.OnLane) {
+    Write-Host "ROCm lane -> TVM OpenCL runtime ON; ROCm codegen + runtime $(if ($tvmRocmPlan.Rocm) { "ON (TVM_ROCM=1, $($tvmRocmPlan.RocmRoot))" } else { 'OFF (TVM_ROCM is not 1)' })"
+    if ($tvmRocmPlan.Rocm) {
+        if (-not (Test-Path (Join-Path $tvmRocmPlan.RocmRoot 'lib\amdhip64.lib'))) { throw "TVM ROCm spike: $($tvmRocmPlan.RocmRoot)\lib\amdhip64.lib missing -- the rocm layer is incomplete" }
+        Invoke-TvmRocmSourcePatch -SourceDir $SourceDir
+    }
+} elseif ($env:TVM_ROCM -eq '1') {
+    Write-Warning "TVM_ROCM=1 ignored: GPU_TYPE is '$($gpuEnv.GpuType)'$(if ($tvmCross) { ' on the cross lane' }) -- the TVM ROCm spike runs on the rocm lane only"
+}
+$savedRocmPath = $env:ROCM_PATH
+if ($tvmRocmPlan.HideRocmPath -and $env:ROCM_PATH) {
+    Write-Host 'TVM: ROCM_PATH hidden for this build (TVM_ROCM is not 1) -- find_rocm would inject TheRock headers and HIP defines'
+    Remove-Item Env:\ROCM_PATH
+}
 
 # cuBLAS ships inside the toolkit (no hint needed). cuDNN is a SEPARATE install, and TVM's legacy
 # cmake/utils/FindCUDA.cmake reads CUDA_CUDNN_LIBRARY -- the standard CUDNN_* vars are ignored.
@@ -91,6 +207,8 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 $tvmCross = Test-WindowsCrossTarget
 $llvmCmd = if ($tvmCross) { $null } else { Get-Command llvm-config.exe -ErrorAction SilentlyContinue }
 $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
+if ($tvmRocmPlan.OnLane) { Assert-TvmLlvmConfigNotRocm -LlvmConfig $llvmConfig -RocmRoot $tvmRocmPlan.RocmRoot }
+$tvmLlvmTargets = Get-TvmLlvmTargetList -Rocm $tvmRocmPlan.Rocm
 if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif (-not $llvmConfig) {
@@ -108,12 +226,12 @@ if ($tvmCross) {
     # -ErrorAction'd: the helper leaves an already-extracted tree (and no tarball) alone.
     if (Test-Path $llvmSrc.Tarball) { Remove-Item $llvmSrc.Tarball -Force }
     $llvmInstall = Join-Path $llvmDevRoot 'install'
-    Write-Host 'Building minimal LLVM (X86+AArch64+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
+    Write-Host "Building minimal LLVM ($tvmLlvmTargets, Release, /MD) - ~20-40 min cold, sccache-cached after"
     # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument position does not
     # concatenate -- the parser fed `+` to -Generator ("Could not create named generator +").
     $llvmCmakeArgs = @(
-            # X86 for host codegen, NVPTX for the CUDA lane, AArch64 for #116.
-            '-DLLVM_TARGETS_TO_BUILD=X86;AArch64;NVPTX'
+            # X86 for host codegen, NVPTX for the CUDA lane, AArch64 for #116; AMDGPU on the ROCm spike only.
+            "-DLLVM_TARGETS_TO_BUILD=$tvmLlvmTargets"
             # No xml2/zlib/zstd: nothing here needs them, and each is another /MD-vs-/MT import risk.
             '-DLLVM_ENABLE_LIBXML2=OFF', '-DLLVM_ENABLE_ZLIB=OFF', '-DLLVM_ENABLE_ZSTD=OFF'
             '-DLLVM_INCLUDE_TESTS=OFF', '-DLLVM_INCLUDE_BENCHMARKS=OFF'
@@ -147,6 +265,11 @@ $useLLVM = if ($tvmCross) { 'OFF' } else {
     Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
     # A PATH (forward slashes) is TVM's USE_LLVM form; plain ON needs llvm-config already on PATH.
     $llvmConfig -replace '\\', '/'
+}
+if ($tvmRocmPlan.Rocm) {
+    # A llvm-config found on PATH skips the minimal build above, so its target list is not ours to assume.
+    $targetsBuilt = (Invoke-ShieldedNative -Label 'llvm-config --targets-built' -CommandLine """$llvmConfig"" --targets-built" -Quiet) | Out-String
+    Assert-TvmLlvmHasAmdgpu -TargetsBuilt $targetsBuilt -LlvmConfig $llvmConfig
 }
 
 # Python OFF on the cross lane too: the tvm package drives tvm_compiler.dll, absent there.
@@ -228,6 +351,7 @@ $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK
 # (#133) NO python knobs here: tvm-ffi's CMakeLists `return()`s as a subproject, so
 # TVM_FFI_BUILD_PYTHON_MODULE is never read. The Cython module gets its own configure below.
 
+$cmakeExtra += @(Get-TvmRocmCmakeArgs -Plan $tvmRocmPlan)
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
@@ -427,6 +551,31 @@ if ($pythonModule -eq 'ON') {
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', 'ml_dtypes', 'cloudpickle', 'psutil') -Optional
     Test-PythonImport -Python $py -ModuleName 'tvm'
 }
+
+if ($tvmRocmPlan.OnLane) {
+    # The sidecars install beside tvm_runtime.dll (TVM's RUNTIME_MODULE rule); a miss here is a packaging break.
+    $tvmSidecars = @('tvm_runtime_opencl.dll') + @(if ($tvmRocmPlan.Rocm) { 'tvm_runtime_rocm.dll' })
+    foreach ($sidecar in $tvmSidecars) {
+        if (-not (Test-Path (Join-Path $tvmInstallDir "lib\$sidecar"))) { throw "TVM rocm lane: $sidecar missing from $tvmInstallDir\lib" }
+    }
+    if ($pythonModule -eq 'ON') {
+        # The wheel must load the sidecars too. TheRock's bin stands in for the driver's System32 amdhip64_7.dll.
+        $rocmGate = Join-Path $env:TEMP 'tvm-rocm-gate.py'
+        @'
+import os, sys
+os.add_dll_directory(sys.argv[1])
+import tvm
+for kind in sys.argv[2].split(","):
+    assert tvm.runtime.enabled(kind), kind + " runtime sidecar did not load from the tvm wheel"
+print("tvm rocm-lane runtime gate OK:", sys.argv[2])
+'@ | Set-Content -Path $rocmGate -Encoding ascii
+        $gateKinds = if ($tvmRocmPlan.Rocm) { 'opencl,rocm' } else { 'opencl' }
+        [void](Invoke-ShieldedNative -Label 'TVM rocm-lane runtime gate' -CommandLine """$($py.Exe)"" ""$rocmGate"" ""$(Join-Path $tvmRocmPlan.RocmRoot 'bin')"" ""$gateKinds""")
+        Remove-Item $rocmGate -Force -ErrorAction SilentlyContinue
+    }
+    Set-Content -Path (Join-Path $tvmInstallDir 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan $tvmRocmPlan -LlvmTargets $tvmLlvmTargets)
+}
+if ($tvmRocmPlan.HideRocmPath -and $null -ne $savedRocmPath) { $env:ROCM_PATH = $savedRocmPath }
 
 Remove-SourceBuildTree -Path $SourceDir
 

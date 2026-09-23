@@ -335,11 +335,13 @@ fallbacks), builds the stages in order, and applies the correct tags:
 # Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
 .\windows\Build-Buildkit.ps1 -Gpu            # same as -Variant nvidia
 
-# ROCm variant (amd64 only): the default chain up to media, then rocm -> torch -> final
-# under its own tags (bk-winamd64-rocm); see § ROCm layer below.
+# ROCm variant (amd64 only): base -> rocm (tagged sdk) -> toolchain -> media -> migraphx
+# -> llama -> torch -> final, every tag after base with a -rocm infix; see § ROCm layer below.
 .\windows\Build-Buildkit.ps1 -Variant rocm
-# ...or as an add-on after a default amd64 run, reusing its media:
-.\windows\Build-Buildkit.ps1 -Variant rocm -Stages rocm,torch,final
+# ...without the two spikes (MIGraphX stage, TVM ROCm):
+.\windows\Build-Buildkit.ps1 -Variant rocm -NoRocmSpikes
+# ...only the app tail, reusing the rocm lane's llama image:
+.\windows\Build-Buildkit.ps1 -Variant rocm -Stages torch,final
 
 # Iterate on a single stage (layer cache makes this cheap):
 .\windows\Build-Buildkit.ps1 -Gpu -Stages media,final
@@ -360,7 +362,8 @@ fallbacks), builds the stages in order, and applies the correct tags:
 ```
 
 Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<stage>`
-(torch -> `bk-windows-torch`, final -> `bk-winamd64` / `bk-winarm64`), invisible to
+(torch -> `bk-windows-torch`, final -> `bk-winamd64` / `bk-winarm64`; the rocm lane adds a
+`-rocm` infix to every tag after base, e.g. `bk-windows-toolchain-rocm`), invisible to
 `docker` — use `-FinalTar` for a docker-loadable tarball. There is **no**
 `-TorchBaseImage` equivalent: the torch stage's `BASE_IMAGE` is pinned to the local
 `windows-media` tag, so `-Stages torch,final` needs the local chain images and cannot
@@ -452,71 +455,16 @@ Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
 
 ### ROCm layer (`Dockerfile.rocm`)
 
-**Built by `Build-Buildkit.ps1 -Variant rocm`** (2026-09-22). It runs the default chain
-up to media, then `rocm` → torch → final under its own tags (`bk-windows-rocm`,
-`bk-windows-torch-rocm`, `bk-winamd64-rocm`), so it never overwrites the default
-images. `-Stages rocm,torch,final` reuses an existing default media.
+`-Variant rocm` (amd64 only) installs AMD's TheRock ROCm for Windows tarball in the **sdk
+slot**, like `Dockerfile.nvidia` on the GPU lane (since 2026-09-23). Toolchain and media
+build on top of it and turn on ROCm and AMD-GPU features behind
+`(Get-GpuEnvironment).HasRocm`; the cpu and nvidia lanes keep their flags and outputs.
+Every rocm tag after `bk-windows-base` carries a `-rocm` infix, so a rocm run never
+overwrites a default image.
 
-- **Refused at launch:** arm64, `-Gpu` together with rocm, and a push tag other than
-  `:winamd64-rocm` (a non-rocm run may not push to it either).
-- **Refused in the stage:** `Install-Rocm.ps1` stops when the media carries CUDA
-  (`GPU_TYPE`, `CUDA_ROOT`, `CUDA_PATH`) — a leftover `-Gpu` media under the shared tag.
-- **Smoke gate:** the CPU suite and floor, then `Test-RocmImage.ps1`: the env contract,
-  no CUDA, AMD's LLVM not shadowing `clang-cl`, and a `hipcc` compile for gfx1201.
-- **Torch is still CPU.** OrchestrANT has no Windows ROCm extra yet. AMD publishes
-  `torch-2.13.0+rocm10.0.0` (cp314, win_amd64) on `stable.repo.amd.com/rocm/whl-next/`.
-
-**Source.** AMD's Windows tar install (rocm.docs.amd.com, install → Windows → tar):
-`https://stable.repo.amd.com/rocm/core/tarball/therock-dist-windows-<family>-<release>.tar.gz`.
-That is the same TheRock release, from the same host, that
-`linux/scripts/01-core/setup-rocm-repo.sh` installs on Linux as apt packages, so one
-`ROCM_VERSION` bump moves both lanes. `windows/scripts/host/Install-Rocm.ps1`
-downloads it, verifies it, extracts it with System32 `tar.exe` into
-`C:\TheRock\build` (AMD's documented path), checks the layout and runs
-`hipcc --version` inside the container. amd64 only.
-
-**No checksum from AMD.** Measured 2026-09-22: no `.sha256`, `.sig` or `.asc`
-sidecar, no `SHA256SUMS`, and no hash fragments on the pip index
-(`stable.repo.amd.com/rocm/whl-next/`). The object metadata carries only a multipart
-CRC32, not a content hash. So `ROCM_WINDOWS_TARBALL_SHA256` is self-measured and
-pinned, the same trust model `ROCM_GPG_KEY_SHA256` already uses on Linux, and the
-script refuses an empty or malformed pin. Measured values:
-
-| Family | Covers | Bytes | SHA256 |
-| --- | --- | --- | --- |
-| `gfx120X-all` (pinned) | RDNA4, incl. RX 9070 XT (gfx1201) | 2,282,922,923 | `75da73c483cbc0456d9008f2079b333f4f9d3b7744705378ff8007e502ca38c5` |
-| `multiarch` | every supported GPU | 4,796,456,804 | `ebe454fe9ad663655177462187a4c86c72fd0537638f6cbea34660ddebf40056` |
-
-The `gfx120X-all` tree unpacks to **9.56 GB** in 10,544 files — size the disk floors
-from that, not from the download.
-
-**Why it forks after media, not before.** On Linux, `Dockerfile.amd` sits between
-sdk and media because ORT's MIGraphX EP (built in media) consumes it. On Windows
-nothing in media can: AMD's only MIGraphX tarball
-(`stable.repo.amd.com/rocm/migraphx/tarball/migraphx-2.17.0+rocm10.0.0.tar.gz`)
-holds Linux `.so` files, ORT removed its ROCm EP, and OpenCV has no HIP path. The
-first consumer is the torch stage (AMD's `torch-2.13.0+rocm10.0.0` cp314 win_amd64
-wheel), so the layer sits right before it and the chain shares every layer up to
-media with the default image. ORT on a ROCm image stays CPU + DirectML.
-
-**PATH.** `Dockerfile.rocm` sets the variables AMD documents (`HIP_PATH`,
-`ROCM_PATH`, `HIP_PLATFORM`, `HIP_DEVICE_LIB_PATH`, `LLVM_PATH`) with one deliberate
-exception: AMD's page also adds `lib\llvm\bin` to PATH. That directory holds AMD's
-own `clang-cl.exe`, `clang.exe` and linker, and every compile here must use the
-patched clang-cl. Only `bin\` is added, and **last**, because it also carries its
-own `flatc.exe`, `OpenCL.dll` and `amdocl64.dll`. `Rocm.Install.Tests.ps1` fails if
-either rule is broken.
-
-**Licences.** The tarball ships licence files for 26 components, all MIT or
-Apache-2.0, and no EULA or proprietary text. The HIP runtime (`amdhip64_7.dll`), the
-LLVM, OpenBLAS and a few libraries carry no licence file in the tarball; they are
-built from TheRock's open sources.
-
-**Not proven by anything here:** that HIP code runs. Windows containers get
-DirectX/DirectML only, so a GPU check needs the bare host (Windows 11 25H2, the RX
-9070 XT re-enabled outside any build window): `hipInfo`, the family's `-tests`
-tarball, and a torch matmul compared against the CPU — required, because upstream
-TheRock#8379 reports torch+ROCm returning zeros on exactly that card.
+The lineage, tags, stages (`migraphx`, `llama`), `-NoRocmSpikes`, the CMake isolation of
+the ROCm tree, the smoke checks and what each media component enables are on their own
+page: [windows-rocm.md](windows-rocm.md).
 
 ### Mandatory GStreamer plugins (the contract)
 

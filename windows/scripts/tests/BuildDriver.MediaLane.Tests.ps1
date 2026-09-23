@@ -20,6 +20,8 @@ function New-WbtFakeMediaVersionTable {
         FFMPEG_VERSION            = 'ff-4'
         PYAV_VERSION              = 'av-5'
         NV_CODEC_HEADERS_REF      = 'nv-6'
+        AMF_HEADERS_VERSION       = 'amf-15'
+        AMF_HEADERS_SHA256        = 'amfsha-16'
         CUDA_ARCHITECTURES        = '89-fake'
         QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
         LITERT_VERSION            = 'lrt-7'
@@ -36,6 +38,13 @@ function New-WbtFakeMediaVersionTable {
         PYTHON_VERSION            = 'py-12'
         PROTOC_VERSION            = 'protoc-13'
         JRE_VERSION               = 'jre-14'
+        # The rocm lane's LiteRT-LM GPU payload pins (media-litert only, never the merge).
+        LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = 'lmacc-15'
+        LITERT_LM_WEBGPU_SAMPLER_SHA256     = 'lmsmp-16'
+        LITERT_LM_WEBGPU_DAWN_SHA256        = 'lmdawn-17'
+        LITERT_LM_DXC_ZIP_SHA256            = 'lmdxc-18'
+        # The rocm lane's IREE device-bitcode pin (media-tvm only, never the merge).
+        IREE_ROCM_DEVICE_BC_SHA256          = 'ireebc-19'
     }
 }
 
@@ -58,6 +67,8 @@ Describe 'Get-MediaBranchVersionArg' {
                     CUDA_ARCHITECTURES        = '89-fake'
                     PYTHON_VERSION            = 'py-12'
                     QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
+                    AMF_HEADERS_VERSION       = 'amf-15'
+                    AMF_HEADERS_SHA256        = 'amfsha-16'
                 }
             }
             @{ Branch = 'media-litert'; Expected = @{
@@ -68,6 +79,10 @@ Describe 'Get-MediaBranchVersionArg' {
                     # #154: this branch MOUNTS windows/qnn-sdk, so it needs the same
                     # integrity pin as media-core or Resolve-QnnSdk extracts unverified.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
+                    LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = 'lmacc-15'
+                    LITERT_LM_WEBGPU_SAMPLER_SHA256     = 'lmsmp-16'
+                    LITERT_LM_WEBGPU_DAWN_SHA256        = 'lmdawn-17'
+                    LITERT_LM_DXC_ZIP_SHA256            = 'lmdxc-18'
                 }
             }
             @{ Branch = 'media-tvm'; Expected = @{
@@ -75,6 +90,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     IREE_VERSION = 'iree-10'
                     # #154: mounts windows/qnn-sdk, same integrity pin as the others.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
+                    IREE_ROCM_DEVICE_BC_SHA256 = 'ireebc-19'
                 }
             }
         )
@@ -121,6 +137,8 @@ Describe 'Get-MediaMergeVersionArg' {
         # Compile-only core inputs the merge Dockerfile declares no ARG for:
         Assert-False ($merge.Contains('NV_CODEC_HEADERS_REF')) 'NV_CODEC_HEADERS_REF is excluded from the merge env'
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
+        Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'
+        Assert-False ($merge.Contains('AMF_HEADERS_SHA256')) 'AMF_HEADERS_SHA256 is excluded from the merge env'
         # No lane-shaped leakage:
         Assert-False ($merge.Contains('MEMORY_LIMIT_GB')) 'MEMORY_LIMIT_GB must not leak into the merge env'
         Assert-False ($merge.Contains('BASE_IMAGE')) 'BASE_IMAGE must not leak into the merge env'

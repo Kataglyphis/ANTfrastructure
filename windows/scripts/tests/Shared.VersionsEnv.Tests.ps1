@@ -146,6 +146,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
         $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
         foreach ($k in 'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION',
                        'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
+                       'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                        'CUDA_ARCHITECTURES', 'PYTHON_VERSION') {
             Assert-True ($args_.ContainsKey($k)) "media-core must forward $k"
             Assert-True ([bool]$args_[$k]) "$k must not be empty"
