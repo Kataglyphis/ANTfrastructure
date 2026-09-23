@@ -73,7 +73,7 @@ Describe 'Install-LlamaCpp: pin parity (one build pin for both zips; asset and R
     It 'keeps Dockerfile.rocm-llama''s ARG defaults equal to versions.env' {
         $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.rocm-llama')
         foreach ($key in $script:LlamaPinKeys) {
-            Assert-Equal $pins[$key] ([regex]::Match($df, "(?m)^ARG $key=(\S+)$").Groups[1].Value) "ARG $key"
+            Assert-Equal $pins[$key] ([regex]::Match($df, "(?m)^ARG $key=(\S+)\r?$").Groups[1].Value) "ARG $key"
         }
     }
 }
