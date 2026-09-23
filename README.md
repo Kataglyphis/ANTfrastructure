@@ -165,12 +165,11 @@ fails at session creation rather than running slowly.
 | 86 | RTX 3060-3090, A10, A40 |
 | 87 | Jetson AGX Orin |
 | 89 | RTX 4060-4090, L40/L40S |
-| 90 | H100, H200 |
 | 120 | GeForce RTX 5050-5090, RTX PRO Blackwell |
 
 **Not included**, each a one-token change in `versions.env`: Turing (75),
-A100/A30 (80 — retired 2026-09-23), B100/B200 (100), B300/GB300 (103), Jetson
-Thor (110), GB10/DGX Spark (121). Note that neighbouring numbers do NOT cover
+A100/A30 (80) and Hopper H100/H200 (90) — both retired 2026-09-23 —, B100/B200
+(100), B300/GB300 (103), Jetson Thor (110), GB10/DGX Spark (121). Note that neighbouring numbers do NOT cover
 each other: 120 is not 121, and 100 is not 103. How to change the set, and the
 four rules that decide which number you need:
 [`AGENTS.md` § GPU architecture coverage](AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).

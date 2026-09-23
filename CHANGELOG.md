@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - CUDA_ARCHITECTURES: Hopper (90) retired too
+
+Same day, same owner, one entry lighter: `86;87;89;120`. 90 (H100/H200) joins
+80 (A100/A30) on the commented line in `versions.env`; re-adding either is
+inserting the number in ascending order. The CUDA compile now runs four cubins
+per source file instead of five, and the image supports exactly the hardware
+the owner has: RTX 30xx/A10/A40, Jetson Orin, Ada, and RTX 50 / RTX PRO
+Blackwell. The absence stays a HARD edge -- no PTX, so an H100 would fail at
+session creation, which is why both retired numbers are documented rather than
+deleted.
+
+
 ## 2026-09-23 - CUDA_ARCHITECTURES: 80 retired, Blackwell (120) added
 
 Owner decision. The set is now `86;87;89;90;120` — RTX 30xx/A10/A40, Jetson

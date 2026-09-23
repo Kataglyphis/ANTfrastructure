@@ -637,14 +637,14 @@ _opencv_cmake_cuda_opts() {
             _ocmcd_out+=("-DWITH_TENSORRT=ON")
         fi
         # Target GPU arch list from versions.env (CUDA_ARCHITECTURES).
-        _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-86;87;89;90;120}")
+        _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-86;87;89;120}")
         # ...AND CUDA_ARCH_BIN, which is the knob OpenCV's own CUDA detection reads.
         # CMAKE_CUDA_ARCHITECTURES only reaches OpenCV through its first-class-CUDA-
         # language path, which is OFF by default, so on its own the arch list can be
         # silently ignored and OpenCV falls back to its built-in guess. OpenCV wants
         # the DOTTED form (8.7), versions.env stores the compute-capability form (87):
         # insert a dot before the final digit of each entry.
-        _ocv_arch_bin="$(printf '%s' "${CUDA_ARCHITECTURES:-86;87;89;90;120}" \
+        _ocv_arch_bin="$(printf '%s' "${CUDA_ARCHITECTURES:-86;87;89;120}" \
             | tr ';' '\n' | sed -E 's/^([0-9]+)([0-9])$/\1.\2/' | paste -sd';' -)"
         _ocmcd_out+=("-DCUDA_ARCH_BIN=${_ocv_arch_bin}")
         echo "OpenCV CUDA arches: CUDA_ARCH_BIN=${_ocv_arch_bin}"
