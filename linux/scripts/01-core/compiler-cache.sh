@@ -266,10 +266,16 @@ setup_lld_linker() {
 dump_compiler_cache_stats() {
   if command -v sccache >/dev/null 2>&1; then
     local _req _hits
-    _req="$(sccache --show-stats 2>/dev/null | sed -n 's/^Compile requests *\([0-9]*\)/\1/p' || true)"
-    _hits="$(sccache --show-stats 2>/dev/null | sed -n 's/^Cache hits *\([0-9]*\)/\1/p' || true)"
-    _req="${_req:-0}"
-    _hits="${_hits:-0}"
+    # ANCHORED, and one line only: sccache prints BOTH "Compile requests" and
+    # "Compile requests executed", and the old unanchored sed matched the second
+    # too -- with [0-9]* landing on the empty string before "executed", so the
+    # variable became "executed<TAB>559" and the test below died with
+    # "[: 559\nexecuted: integer expected" on every media build. "Cache hits"
+    # has the same shape ("Cache hits (C/C++)").
+    _req="$(sccache --show-stats 2>/dev/null | awk '/^Compile requests[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
+    _hits="$(sccache --show-stats 2>/dev/null | awk '/^Cache hits[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
+    case "${_req}" in ''|*[!0-9]*) _req=0 ;; esac
+    case "${_hits}" in ''|*[!0-9]*) _hits=0 ;; esac
     sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' >&2 || true
     if [ "${_req}" -gt 0 ] && [ "${_hits}" -eq 0 ]; then
       _cc_warn "sccache: ${_req} compile requests, 0 cache hits — cache may be dead"

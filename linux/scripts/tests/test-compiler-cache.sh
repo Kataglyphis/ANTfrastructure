@@ -285,4 +285,36 @@ t_case "setup_sccache prints the same field, spelled the same way"
 t_assert_contains "$(cat "${CCSH}")" '[server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]' \
   "the media-side setter must carry the identical field"
 
+t_case "the stats dump reads sccache's REAL two-line shape, not the first match"
+# sccache prints "Compile requests" AND "Compile requests executed" (and "Cache
+# hits (C/C++)" beside "Cache hits"). The unanchored sed took the second line
+# too, put "executed<TAB>559" in the counter, and every media build ended with
+# "[: 559\nexecuted: integer expected" on stderr.
+_SC_BIN="$(mktemp -d)"
+cat > "${_SC_BIN}/sccache" <<'STATS'
+#!/usr/bin/env bash
+cat <<'OUT'
+Compile requests                    559
+Compile requests executed           521
+Cache hits                          318
+Cache hits (C/C++)                  318
+Cache misses                        203
+Errors                                0
+OUT
+STATS
+chmod +x "${_SC_BIN}/sccache"
+_dump() {  # $1 = hits to report; prints stderr only
+  sed "s/^Cache hits  \+318/Cache hits                          $1/" -i "${_SC_BIN}/sccache" 2>/dev/null || true
+  PATH="${_SC_BIN}:${PATH}" bash -c "$(t_fn_src "${CCSH}" dump_compiler_cache_stats)"$'\n''_cc_warn() { echo "WARN $*"; }'$'\n''dump_compiler_cache_stats' 2>&1
+}
+_out="$(_dump 318)"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -i 'integer expected')" \
+  "the counter must be a number, not 'executed<TAB>559'"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep '^WARN')" "a warm cache warns about nothing"
+t_assert_contains "${_out}" "Compile requests" "and the human-readable dump still reaches stderr"
+_out="$(_dump 0)"
+t_assert_contains "${_out}" "WARN sccache: 559 compile requests, 0 cache hits" \
+  "a DEAD cache still warns, with the requests count read off the right line"
+rm -rf "${_SC_BIN}"
+
 t_summary

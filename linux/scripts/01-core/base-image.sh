@@ -423,7 +423,15 @@ install_nodejs() {
       if ! apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1"; then
         warn "Exact Node.js pin nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1 unavailable on riscv64; falling back to the distro default version"
         apt_install nodejs
-        warn "Installed Node.js $(node --version) instead of pinned ${BASE_IMAGE_NODE_VERSION}"
+        # `node --version` prints v-prefixed; comparing it to the bare pin
+        # warned about a version EQUAL to the pin on every riscv64 build. Only
+        # the package revision differs there, which is what the fallback is for.
+        _node_have="$(node --version 2>/dev/null)"; _node_have="${_node_have#v}"
+        if [ "${_node_have}" = "${BASE_IMAGE_NODE_VERSION}" ]; then
+          log "Distro Node.js ${_node_have} matches the pin; only the package revision differed"
+        else
+          warn "Installed Node.js ${_node_have} instead of pinned ${BASE_IMAGE_NODE_VERSION}"
+        fi
       fi
       # npm is REQUIRED here: `npm --version` below asserts it under set -e,
       # so swallowing a failed install (the old `|| true`) only deferred and
