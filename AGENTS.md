@@ -803,8 +803,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   2026-09-23). By default android cross-builds `wasm-pack` and
   `flutter_rust_bridge_codegen` and the package stage installs them after a
   fail-loud gate; `WEB_LANE_TOOLS_SOURCE=native` (plus `WEB_LANE_TOOLS_CACHE=refresh`
-  for a fresh compile) is the in-stage native build. Never remove the native path,
-  and never soften the gate on a binary that claims to be good:
+  for a fresh compile) is the gated in-stage native build, and `legacy` is the
+  pre-2026-09-23 build verbatim. Never remove either, never let `legacy` drift
+  from the old command, and never soften the gate on a binary that claims to be good:
   [`consumer-image-contract.md`](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`

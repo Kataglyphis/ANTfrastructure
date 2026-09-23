@@ -1063,11 +1063,13 @@ find the build host's `.pc` file, and hand its x86-64 library to the target link
 Natively the same probe is deterministic but depends on which `-dev` packages the
 stage happens to carry.
 
-**Fix.** Force the vendored static C for both paths: `BZIP2_NO_PKG_CONFIG=1`,
+**Fix.** Force the vendored static C for the cross and native paths: `BZIP2_NO_PKG_CONFIG=1`,
 `LZMA_API_STATIC=1`, and `ZSTD_SYS_USE_PKG_CONFIG` unset (`wlt_c_env` in
 `06-packaging/web-lane-tools.sh`). The C environment is part of the tools' cache
 key, and their gate refuses any `NEEDED` outside libc's own family, so a regression
-fails the build instead of shipping. docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+fails the build instead of shipping. `WEB_LANE_TOOLS_SOURCE=legacy` is exempt on
+purpose: it is the old build verbatim, pkg-config probe and all.
+docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 
 ## Windows: the layer store (hcsshim)
 

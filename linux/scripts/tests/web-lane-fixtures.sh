@@ -6,7 +6,8 @@ _WLT_FX_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/web-lane-fixtures.sh
 
 # wlt_fx_bin <path> <tool> <version> [fact=value...]: a fake built tool. It answers
 # --version, and carries the ELF facts the readelf stub reports for its bytes, so a
-# copy keeps them. Facts: arch class machine flags interp needed glibc (default: healthy).
+# copy keeps them. Facts: arch class machine flags interp needed glibc (default: healthy;
+# glibc=none: no GLIBC_ version needs at all).
 wlt_fx_bin() {
   local path="$1" tool="$2" version="$3" kv
   shift 3
@@ -45,10 +46,18 @@ readelf() {
     -d) for so in $(_wlt_fx_fact "${f}" needed "libc.so.6 libm.so.6 libgcc_s.so.1"); do
           printf ' 0x0000000000000001 (NEEDED)             Shared library: [%s]\n' "${so}"
         done ;;
-    -V) printf '  0x0010:   Name: GLIBC_2.17  Flags: none  Version: 3\n'
+    -V) [ "$(_wlt_fx_fact "${f}" glibc 2.39)" != none ] || return 0
+        printf '  0x0010:   Name: GLIBC_2.17  Flags: none  Version: 3\n'
         printf '  0x0020:   Name: GLIBC_%s  Flags: none  Version: 4\n' "$(_wlt_fx_fact "${f}" glibc 2.39)" ;;
   esac
   return 0
+}
+
+# timeout as the library calls it: "<seconds> <command basename>" is appended to
+# FAKE_TIMEOUT_LOG, then the real timeout runs the command.
+timeout() {
+  printf 'TIMEOUT %s %s\n' "$1" "${2##*/}" >> "${FAKE_TIMEOUT_LOG:-/dev/null}"
+  command timeout "$@"
 }
 
 getconf() { printf 'glibc %s\n' "${FAKE_GLIBC-2.43}"; }
@@ -56,7 +65,8 @@ dpkg() { printf '%s\n' "${FAKE_BUILD_ARCH-amd64}"; }
 dpkg-query() { printf '%s' "${FAKE_SYSROOT_GLIBC-2.43-2ubuntu2cross1}"; }
 
 # The cargo a fake CARGO_HOME runs: records argv and the build env, then (FAKE_CARGO_RC=0)
-# leaves <--root>/bin/<tool> for TARGET_ARCH, with FAKE_BUILD_FACTS (';'-separated facts).
+# leaves <root>/bin/<tool> for TARGET_ARCH, with FAKE_BUILD_FACTS (';'-separated facts),
+# and records it in <root>/.crates.toml as cargo does. <root> is --root, else CARGO_HOME.
 _wlt_fx_cargo() {
   local root="" tool="" ver="" rc="${FAKE_CARGO_RC-0}"
   local -a facts=()
@@ -74,9 +84,13 @@ _wlt_fx_cargo() {
       *) tool="$1"; shift ;;
     esac
   done
+  root="${root:-${CARGO_HOME:-}}"
+  [ -n "${root}" ] || { echo "fake cargo: no --root and no exported CARGO_HOME" >&2; return 1; }
   IFS=';' read -r -a facts <<< "${FAKE_BUILD_FACTS-}"
   wlt_fx_bin "${root}/bin/${tool}" "${tool}" "${FAKE_BIN_VERSION-${ver}}" \
     "arch=${TARGET_ARCH:-riscv64}" "${facts[@]}"
+  printf '"%s %s (registry+https://github.com/rust-lang/crates.io-index)" = ["%s"]\n' \
+    "${tool}" "${ver}" "${tool}" >> "${root}/.crates.toml"
 }
 
 # wlt_fx_home <dir>: a CARGO_HOME whose rustup/rustc/cargo are recorders (FAKE_RUSTUP_RC,

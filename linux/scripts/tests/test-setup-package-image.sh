@@ -277,13 +277,18 @@ source $(printf '%q' "${TESTS_DIR}/web-lane-fixtures.sh")
 source $(printf '%q' "${TESTS_DIR}/../06-packaging/web-lane-tools.sh")"
 
 # web-lane-tools.sh's cache, artifact and provenance inside <home>, recording
-# rustup/cargo in its bin/, and TARGET_ARCH matching the stubbed uname.
+# rustup/cargo in its bin/, and TARGET_ARCH matching the stubbed uname. Hermetic: an
+# operator's WEB_LANE_TOOLS_* switch, and the CI image's own versions.env and *_SHA256
+# pins (which turn every from-source case into a prebuilt one), are cleared.
 _web_sandbox() {
   wlt_fx_home "$1"
   # shellcheck disable=SC2034  # read by the eval'd web-lane-tools.sh
   CARGO_HOME="$1" WLT_CACHE_DIR="$1/cache" WLT_ARTIFACT_DIR="$1/artifact" WLT_PROVENANCE="$1/provenance"
   case "${FAKE_MACHINE:-x86_64}" in x86_64) TARGET_ARCH=amd64 ;; aarch64) TARGET_ARCH=arm64 ;; *) TARGET_ARCH=riscv64 ;; esac
-  export TARGET_ARCH
+  export TARGET_ARCH CARGO_HOME VERSIONS_ENV=/nonexistent
+  unset WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES \
+    WASM_PACK_LINUX_X86_64_SHA256 WASM_PACK_LINUX_AARCH64_SHA256 \
+    FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256
 }
 
 # uname and the verified download are the only two things standing between this
@@ -411,6 +416,22 @@ _out="$( FAKE_MACHINE=riscv64 _web_env_run )"
 t_assert_contains "${_out}" "NOTE: no wasm-pack release binary for riscv64; building it from source"
 t_assert_contains "${_out}" "CARGO install --locked wasm-pack --version 0.15.0" \
   "the one arch with no prebuilt must keep the route it had"
+
+t_case "WEB_LANE_TOOLS_SOURCE=legacy is the from-source leg this function had before 2026-09-23"
+_out="$( FAKE_MACHINE=riscv64 _web_env_run WEB_LANE_TOOLS_SOURCE=legacy )"
+t_assert_eq "1" "$(printf '%s\n' "${_out}" | grep -c '^CARGO install --locked wasm-pack --version 0.15.0$')" \
+  "cargo's own install into CARGO_HOME: no scratch --root, no --target"
+t_assert_contains "${_out}" "OK: wasm-pack 0.15.0 installed"
+t_assert_contains "${_out}" "OK: flutter_rust_bridge_codegen 2.13.0 installed"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "a bad knob stops the stage even on an arch whose prebuilt would have succeeded"
+for _kv in WEB_LANE_TOOLS_SOURCE=qemu WEB_LANE_TOOLS_CACHE=yes; do
+  _out="$( _web_env_run "${_kv}" )"
+  t_assert_contains "${_out}" "ERROR: ${_kv%%=*}='${_kv#*=}'" "a typo'd switch must not pass silently on amd64/arm64"
+  t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '^DL ')" "checked before anything is fetched"
+  t_assert_contains "${_out}" "EXIT 1"
+done
 
 t_case "a download that fails or mismatches falls back, it does not fail the stage"
 _out="$( FAKE_DL_RC=1 _web_env_run )"

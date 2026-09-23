@@ -256,8 +256,8 @@ wlt_cache_store() {
 
 wlt_validate_knobs() {
   case "${WEB_LANE_TOOLS_SOURCE:-auto}" in
-    auto|cross|native) ;;
-    *) echo "ERROR: WEB_LANE_TOOLS_SOURCE='${WEB_LANE_TOOLS_SOURCE}' (want auto, cross or native)" >&2; return 1 ;;
+    auto|cross|native|legacy) ;;
+    *) echo "ERROR: WEB_LANE_TOOLS_SOURCE='${WEB_LANE_TOOLS_SOURCE}' (want auto, cross, native or legacy)" >&2; return 1 ;;
   esac
   case "${WEB_LANE_TOOLS_CACHE:-on}" in
     on|refresh|off) ;;
@@ -320,7 +320,7 @@ _wlt_from_artifact() {  # <mode> <keytext> <arch> <ceiling> <work>
   _wlt_install "${tool}" "${version}" cross "${work}/${tool}" "$(wlt_key "${keytext}")"
 }
 
-# Today's native command, into a scratch root so the binary is gated before it is installed.
+# The native build: rv64gc Rust and vendored C, into a scratch root so the gate sees it first.
 _wlt_cargo_native() {  # <tool> <version> <root>
   (
     unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_RUSTFLAGS
@@ -329,7 +329,7 @@ _wlt_cargo_native() {  # <tool> <version> <root>
   )
 }
 
-# <keytext> is the native key: today's flags, so a native build stays rv64gc Rust.
+# <keytext> is the native key: no RUSTFLAGS, so a native build stays rv64gc Rust.
 _wlt_native() {  # <keytext> <arch> <ceiling> <work>
   local keytext="$1" arch="$2" ceiling="$3" work="$4" cache="${WEB_LANE_TOOLS_CACHE:-on}" tool version key entry
   tool="$(_wlt_kt "${keytext}" tool)"
@@ -355,11 +355,27 @@ _wlt_native() {  # <keytext> <arch> <ceiling> <work>
   _wlt_install "${tool}" "${version}" native "${work}/${tool}" "${key}"
 }
 
+# legacy: the pre-2026-09-23 leg, verbatim. cargo installs into CARGO_HOME itself (.crates.toml
+# kept) in the stage's own env: no gate, cache or provenance, and a failure only WARNs.
+_wlt_legacy() {  # <tool> <version>
+  if "${CARGO_HOME:-/usr/local/cargo}/bin/cargo" install --locked "$1" --version "$2"; then
+    echo "OK: $1 $2 installed"
+    return 0
+  fi
+  echo "WARN: cargo install $1 $2 failed; the web lane will build it per run"
+  return 0
+}
+
 # wlt_install_from_source <tool> <version>: install_web_lane_toolchain's from-source leg.
-# Returns 1 only for a defect: a bad knob, or a binary that claims to be good and is not.
+# Returns 1 only for a defect (a bad knob, a binary that claims to be good and is not, an
+# image that cannot bound or install it) or for cross without a provable artifact.
 wlt_install_from_source() {
   local tool="$1" version="$2" mode="${WEB_LANE_TOOLS_SOURCE:-auto}" arch triple rustc ceiling work rc=2
   wlt_validate_knobs || return 1
+  if [ "${mode}" = legacy ]; then
+    _wlt_legacy "${tool}" "${version}"
+    return
+  fi
   arch="$(arch_oci)"
   if ! triple="$(rust_target_triple_for_arch "${arch}")"; then
     echo "ERROR: web-lane ${tool}: no Rust triple for this image's arch '${arch}'" >&2
@@ -367,6 +383,11 @@ wlt_install_from_source() {
   fi
   rustc="$(wlt_rustc_release)"
   if [ -z "${rustc}" ]; then
+    # Under cross an expected artifact cannot be keyed, so it cannot be proven.
+    if [ "${mode}" = cross ] && [ "$(wlt_manifest_get "${WLT_ARTIFACT_DIR}/${triple}/${tool}.manifest" status)" != skipped ]; then
+      echo "ERROR: web-lane ${tool}: WEB_LANE_TOOLS_SOURCE=cross, but rustc -V reports no release to key the artifact by" >&2
+      return 1
+    fi
     echo "WARN: web-lane ${tool}: rustc -V reports no release; the web lane will build it per run"
     return 0
   fi
