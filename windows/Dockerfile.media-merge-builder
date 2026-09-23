@@ -244,8 +244,9 @@ ARG DEPS_MIN_BUNDLE_WHEELS=0
 ARG DEPS_MIN_FIRST_TOUCH_REQS=0
 ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
     DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
-# ARGs do not cross stage boundaries — redeclare for sccache.
-ARG SCCACHE_WEBDAV_ENDPOINT=""
+# ARGs do not cross stage boundaries — redeclare for sccache. Build-host settings
+# are ARGs only, never ENV: docs/windows-build-resources.md#what-the-published-image-carries
+ARG SCCACHE_WEBDAV_ENDPOINT
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
@@ -254,23 +255,20 @@ ARG SCCACHE_LOG="warn"
 # a descendant of it, so the variables have to be repeated -- ENV does not cross a
 # FROM boundary any more than ARG does.
 #
-# SCCACHE_MULTILEVEL_CHAIN is EMPTY on purpose since 2026-08-16: the local L0 tier
+# SCCACHE_MULTILEVEL_CHAIN is UNSET on purpose since 2026-08-16: the local L0 tier
 # sits on a BuildKit cache mount, and on Windows those lose writes once the
 # directory holds objects an EARLIER RUN wrote (158 of 250 vs 0 of 250 into a
 # plain directory, same program, same moment). Restore `disk,webdav` here AND in
 # Dockerfile.media-builder together, once WCOW cache mounts are proven — see
 # backlog #99 for the measurement and the re-verification recipe.
-ARG SCCACHE_MULTILEVEL_CHAIN=""
+ARG SCCACHE_MULTILEVEL_CHAIN
 # ARG-backed like the media builder's block (2026-08-21 parity fix): the
 # hardcoded SCCACHE_DIR here could not be overridden the way media-builder's
 # ARG documents as necessary for experiments, and SCCACHE_FORCE_LOCAL was
 # missing entirely — the two production ENV blocks are now literally identical.
 ARG SCCACHE_DIR="C:\sccache\v2"
-ARG SCCACHE_FORCE_LOCAL=""
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="${SCCACHE_DIR}" `
-    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
+ARG SCCACHE_FORCE_LOCAL
+ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

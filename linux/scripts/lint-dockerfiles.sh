@@ -95,6 +95,11 @@ FAILED=0
 printf '== ENV instruction ordering on %d Dockerfile(s) ==\n' "${#DOCKERFILES[@]}"
 python3 linux/scripts/verify_dockerfile_env_order.py "${DOCKERFILES[@]}" || FAILED=1
 
+# Pass 0b: no build-host setting (sccache endpoint, LAN address) in any ENV.
+# docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
+printf '== image env: no build-host setting on %d Dockerfile(s) ==\n' "${#DOCKERFILES[@]}"
+python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES[@]}" || FAILED=1
+
 # ---------------------------------------------------------------------------
 # hadolint bootstrap (PATH copy preferred; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------

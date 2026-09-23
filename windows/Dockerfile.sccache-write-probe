@@ -21,15 +21,15 @@
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
 
-ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Endpoint and chain are ARGs (RUN env only), like the real stages since 2026-09-23.
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN="disk,webdav"
 # debug by default: this is a diagnostic, and `Error executing cache write` is
 # logged at DEBUG level - at `warn` the decisive line is simply absent (that
 # cost one otherwise-clean measurement on 2026-08-15).
 ARG SCCACHE_LOG="debug"
 
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
-    SCCACHE_DIR="C:\sccache" `
+ENV SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

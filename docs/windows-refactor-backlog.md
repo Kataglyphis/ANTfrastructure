@@ -71,6 +71,18 @@ this repo's cp314 pin).
 
 ### Open items
 
+- **#177 — the image history still names the build host's endpoint (opened 2026-09-23).**
+  Since 2026-09-23 `SCCACHE_WEBDAV_ENDPOINT` reaches the compiling RUNs as an ARG, so
+  no published ENV carries it and the publish gate refuses one that does. But BuildKit
+  writes a RUN's build args into that layer's history `created_by`
+  (`|3 SCCACHE_WEBDAV_ENDPOINT=http://… RUN …`), and the final image inherits every
+  one. Nothing reads history at run time, so consumers are unaffected; it still
+  publishes an RFC1918 address. The fix is to pass the endpoint as a secret
+  (`RUN --mount=type=secret,id=sccache_endpoint,env=SCCACHE_WEBDAV_ENDPOINT`, with
+  `buildctl --secret`), which records nothing. Untested on WCOW: verify first that
+  this host's buildkitd supports secret mounts with `env=` in a Windows RUN, then
+  change all ten compiling stages at one planned re-key. Context:
+  [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 - **#153 — the clipped-log forensics can never be re-audited; the corpus is gone.**
   INVESTIGATED 2026-08-31, and the premise I wrote was wrong. `out/windows-build-logs/`
   holds 92 `.log` files and **every one of them is from 2026-08-30/31** — 100 % post-fix.

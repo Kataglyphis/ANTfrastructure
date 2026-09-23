@@ -772,12 +772,76 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList'
 )
 
+# $true when a TCP connect to Host:Port completes within TimeoutMs (refused and timed out are both $false).
+function Test-TcpEndpointReachable {
+    param(
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutMs = 2000
+    )
+
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $connect = $client.ConnectAsync($HostName, $Port)
+        return ($connect.Wait($TimeoutMs) -and $client.Connected)
+    } catch {
+        return $false
+    } finally {
+        $client.Dispose()
+    }
+}
+
+<#
+.SYNOPSIS
+    Removes an SCCACHE_WEBDAV_ENDPOINT this process cannot reach, so sccache falls back to its disk cache.
+.DESCRIPTION
+    sccache 0.18 checks its storage when the server starts and EXITS when the check fails, so
+    every compile behind the launcher dies instead of running uncached. Images published before
+    2026-09-23 carry the build host's LAN endpoint. A reachable endpoint is left alone, and
+    SCCACHE_MULTILEVEL_CHAIN goes too when it names webdav. One WARN per removal.
+    docs/windows-build-resources.md#the-consumer-side-probe
+.OUTPUTS
+    [bool] - $true when the endpoint was removed.
+#>
+function Clear-UnreachableSccacheEndpoint {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([ValidateRange(100, 60000)][int]$TimeoutMs = 2000)
+
+    $endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT')
+    # sccache ignores an empty value, so there is nothing to probe.
+    if ([string]::IsNullOrEmpty($endpoint)) { return $false }
+
+    $uri = $null
+    $why = ''
+    if (-not [Uri]::TryCreate($endpoint.Trim(), [UriKind]::Absolute, [ref]$uri) -or -not $uri.DnsSafeHost) {
+        $why = 'is not an absolute URL with a host'
+    } elseif (-not (Test-TcpEndpointReachable -HostName $uri.DnsSafeHost -Port $uri.Port -TimeoutMs $TimeoutMs)) {
+        $why = "is unreachable (TCP $($uri.DnsSafeHost):$($uri.Port), no connection within $TimeoutMs ms)"
+    }
+    if (-not $why) { return $false }
+
+    Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
+    $chainNote = ''
+    if ("$env:SCCACHE_MULTILEVEL_CHAIN" -match 'webdav') {
+        Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue
+        $chainNote = ' SCCACHE_MULTILEVEL_CHAIN named webdav and was removed too.'
+    }
+    $cacheDir = if ($env:SCCACHE_DIR) { $env:SCCACHE_DIR } else { "sccache's default directory" }
+    Write-Warning ("sccache: SCCACHE_WEBDAV_ENDPOINT=$endpoint $why - removed for this process, so sccache " +
+        "caches on local disk ($cacheDir) instead of failing every compile.$chainNote An image that " +
+        "publishes its build host's endpoint is the usual cause: docs/windows-build-resources.md#the-consumer-side-probe")
+    return $true
+}
+
 function Enable-SccacheCompilerWrapper {
     param(
         [Parameter(Mandatory)]
         [string]$SccacheExe
     )
 
+    # Before any launcher is wired: an endpoint this host cannot reach kills sccache's server.
+    $null = Clear-UnreachableSccacheEndpoint
     $env:CMAKE_C_COMPILER_LAUNCHER = $SccacheExe
     $env:CMAKE_CXX_COMPILER_LAUNCHER = $SccacheExe
     # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
@@ -1068,6 +1132,6 @@ function Sync-BuildArtifacts {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
 
 

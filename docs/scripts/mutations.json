@@ -9257,5 +9257,125 @@
     "replace": "<<'PY'",
     "test": "bash linux/scripts/tests/test-precommit-hook.sh",
     "why": "on Windows python prints CRLF; a kept \\r makes every sampled id unknown and the commit aborts"
+  },
+  {
+    "id": "dockerfile-lint.image-env-name-rule",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "    if BUILD_HOST_NAME.match(name):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a build-host sccache variable fails whatever its value"
+  },
+  {
+    "id": "dockerfile-lint.image-env-address-rule",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "if any(addr in net for net in PRIVATE_V4) and _host_position(",
+    "replace": "if False and _host_position(",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an RFC1918/link-local address in a host position fails"
+  },
+  {
+    "id": "dockerfile-lint.image-env-url-authority",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "if AUTHORITY.search(before) or",
+    "replace": "if False or",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an address after scheme:// is a host, never a path fragment"
+  },
+  {
+    "id": "dockerfile-lint.image-env-version-exemption",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "return \"VERSION\" not in name.upper()",
+    "replace": "return True",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a version that parses as 10/8 (CURAND 10.4.4.72, baked into the Windows Machine env) passes"
+  },
+  {
+    "id": "dockerfile-lint.image-env-path-fragment",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "    if before and before[-1] not in LEAD:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a version inside a directory name (/opt/TensorRT-10.13.3.9/lib) passes"
+  },
+  {
+    "id": "dockerfile-lint.image-env-env-expansion",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "if BUILD_HOST_NAME.match(ref)]",
+    "replace": "if False]",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an ENV that expands the endpoint ARG under another name fails"
+  },
+  {
+    "id": "dockerfile-lint.image-env-compile-run-arg",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "and ENDPOINT_ARG not in stage_args:",
+    "replace": "and False:",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a compiling RUN whose stage lacks ARG SCCACHE_WEBDAV_ENDPOINT fails"
+  },
+  {
+    "id": "dockerfile-lint.image-env-arg-scope-resets",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "        if head == \"FROM\":\n            stage_args = set()",
+    "replace": "        if head == \"FROM\":\n            pass",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an endpoint ARG in an earlier stage does not excuse a later stage's RUN"
+  },
+  {
+    "id": "dockerfile-lint.image-env-escape-directive",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "            return m.group(1)",
+    "replace": "            return \"\\\\\"",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a Windows Dockerfile's backtick continuation is joined, or its continued ENV lines go unread"
+  },
+  {
+    "id": "dockerfile-lint.image-env-env-file-floor",
+    "target": "linux/scripts/verify_image_env.py",
+    "find": "        if checked < args.min_vars:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an image environment that was never read fails instead of passing"
+  },
+  {
+    "id": "dockerfile-lint.image-env-lint-wired",
+    "target": "linux/scripts/lint-dockerfiles.sh",
+    "find": "python3 linux/scripts/verify_image_env.py --dockerfile \"${DOCKERFILES[@]}\" || FAILED=1",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "lint-dockerfiles.sh runs the static pass"
+  },
+  {
+    "id": "image-env.wrapper-reads-config",
+    "target": "linux/scripts/verify-shipped-wrapper.sh",
+    "find": "&& python3 \"${_here}/verify_image_env.py\" --env-file \"${_env_lines}\" --label \"${_ref}\"; then",
+    "replace": "; then",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "the wrapper gate grades the config ENV it read, not merely that it could read one"
+  },
+  {
+    "id": "image-env.wrapper-hard",
+    "target": "linux/scripts/verify-shipped-wrapper.sh",
+    "find": "[ \"${_env_fail}\" -eq 0 ] || exit 1",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an ENV leak fails the wrapper gate, even under WRAPPER_CONTENT_GATE=0"
+  },
+  {
+    "id": "image-env.windows-endpoint-env",
+    "target": "windows/Dockerfile.media-builder",
+    "find": "ENV SCCACHE_DIR=\"${SCCACHE_DIR}\" `",
+    "replace": "ENV SCCACHE_WEBDAV_ENDPOINT=\"${SCCACHE_WEBDAV_ENDPOINT}\" `\n    SCCACHE_DIR=\"${SCCACHE_DIR}\" `",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "re-adding the 2026-09-23 ENV line to the media common stage fails the shipped tree"
+  },
+  {
+    "id": "image-env.windows-stage-arg",
+    "target": "windows/Dockerfile.media-merge-builder",
+    "find": "ARG SCCACHE_WEBDAV_ENDPOINT\n# Overridable",
+    "replace": "# Overridable",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "a compiling stage that loses its endpoint ARG (it would compile uncached) fails the shipped tree"
   }
 ]

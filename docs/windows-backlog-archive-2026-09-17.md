@@ -151,6 +151,15 @@ ARG/ENV block and the two cache mounts, and `Build-Buildkit.ps1` forwards
 `$sccache` into the toolchain stage's build args. `Test-SccacheRemoteConfigured`
 is the remote-only gate because a container-local cache dies with the layer.
 
+**Follow-up, 2026-09-23: that ENV block published the endpoint.** It copied the
+media builder's block, and like it put `SCCACHE_WEBDAV_ENDPOINT` (and the chain and
+force-local switches) into the image ENV, where the published `:winamd64` carried
+the build host's LAN address to every consumer. The block is now split: the three
+build-host names are ARGs only (RUN environment, never the image), and the ENV keeps
+the container-local defaults. The mounts, the gate and the forwarding above are
+unchanged. The account, the ARG/ENV table and the gates that hold it:
+[`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+
 ---
 
 ## #167 — the baked `C:\temp\scripts` surface is smoked

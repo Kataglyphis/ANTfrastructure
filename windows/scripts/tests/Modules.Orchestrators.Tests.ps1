@@ -336,7 +336,8 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
             # --rm marks Test-ContainerBindMount's probe run, which is allowed
             # to use it (it inspects nothing afterwards).
             if ($args[0] -eq 'run' -and $joined -match '--rm') { $global:LASTEXITCODE = 0; return }
-            if ($args[0] -eq 'run') { $global:LASTEXITCODE = [int]$env:WBT_B_RUN_EXIT; return }
+            # The build's own stdout, which must reach the host and never the result.
+            if ($args[0] -eq 'run') { 'BUILD-STDOUT'; $global:LASTEXITCODE = [int]$env:WBT_B_RUN_EXIT; return }
             $global:LASTEXITCODE = 0
         }
     }
@@ -368,6 +369,14 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
             $r = Invoke-ContainerBuild @common -RepoRoot $dir
             Assert-Equal 'bindmount' $r.Transport
             Assert-Match '(?m)^DOCKER run --name wbt-reusable-bindmount' ((Get-Content $log) -join "`n")
+        }
+    }
+
+    It 'returns its result object ALONE: the build''s stdout goes to the host (callers write $null = ...)' {
+        & $build '0' 'exited' '0' { param($log, $dir)
+            $r = @(Invoke-ContainerBuild @common -RepoRoot $dir 6>$null)
+            Assert-Equal 1 $r.Count "the result carried docker output: $(($r | ForEach-Object { "$_" }) -join ' | ')"
+            Assert-Equal 'bindmount' $r[0].Transport
         }
     }
 

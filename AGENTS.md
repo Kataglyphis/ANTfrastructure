@@ -11,7 +11,7 @@ what you are about to do:
 
 | Before you… | Read |
 |---|---|
-| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 48 load-bearing rules |
+| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 49 load-bearing rules |
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
@@ -375,7 +375,7 @@ optional on this host. What to mount where, and the measured envelope:
 
 ### Windows Build Invariants (do not regress)
 
-48 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
+49 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
 and log discipline, layer/scratch rules, lane and CNI rules, and the
 build-input invariants — live in
 [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md),
@@ -838,6 +838,15 @@ Read the strategy before editing that Dockerfile:
   alone. Recover by re-running the runtime lane for the missing arches;
   `--force` / `RUNTIME_MANIFEST_COMPLETENESS=0` are for a deliberate shrink
   only. A partial-arch run should carry `--skip-manifest` and never reach here.
+- **A published image's environment names nothing outside the container**
+  (2026-09-23, both lanes). A build-host setting — the sccache endpoint, a LAN
+  mirror, a proxy — reaches a RUN as an ARG and never lands in an ENV: `:winamd64`
+  shipped the owner's LAN WebDAV and broke every consumer's sccache. Three gates hold
+  it and none has a skip switch: the static pass in `lint-dockerfiles.sh`, Windows'
+  `Dockerfile.publish-gate` (before any export or push, not skipped by
+  `-SkipSmokeGate`) and check 6 of `verify-shipped-wrapper.sh` (hard even under
+  `WRAPPER_CONTENT_GATE=0`). Why, and what they cannot see:
+  [`windows-build-resources.md` § What the published image carries](docs/windows-build-resources.md#what-the-published-image-carries).
 
 ## Validation
 

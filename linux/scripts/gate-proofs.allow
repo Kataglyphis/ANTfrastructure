@@ -68,6 +68,9 @@ mutation-family:ort-chain
 mutation-family:uv-chain-ort
 # The ORT census (G1 runtime smoke, G6 consumer bundles): 06-packaging/check-ort-provenance.sh + its probe.
 mutation-family:ort-census
+# No build-host setting in a published image's ENV (2026-09-23): the Linux wrapper gate's check and the
+# Windows Dockerfiles it protects. The static pass's ids sit under dockerfile-lint.image-env-*.
+mutation-family:image-env
 
 # Arrived 2026-09-08 with the mutation coverage for this batch's new hub entry
 # points. Each names the subject its ids describe, over files no preflight slug

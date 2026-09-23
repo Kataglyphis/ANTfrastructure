@@ -376,4 +376,105 @@ after a decision history worth keeping:
 - Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the
   default off silently.**
 
+### What the published image carries
+
+**The build host's sccache settings are ARGs, never ENV (2026-09-23).** Until then
+four Dockerfiles ENV'd them: the `patched-llvm` stage (#164), media-builder's
+`common` stage, the merge stage and `Dockerfile.rocm-migraphx`. `:winamd64`
+(digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`) shipped
+`SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000`, the owner's LAN WebDAV. On
+a GitHub runner that address is unreachable. sccache 0.18.0 checks its storage
+when the server starts and exits when the check fails (`tcp connect error`).
+Every client then times out after 10-12 s with exit 2, CMake reports clang-cl as
+"not able to compile a simple test program", and the AccelerANTgine and
+OmniAccelerANT Windows lanes went red (runs 35921977157, 35912798986).
+
+| Variable | Where it lives | Why |
+| --- | --- | --- |
+| `SCCACHE_WEBDAV_ENDPOINT` | ARG, no default, redeclared in every compiling stage | a LAN address; nothing outside the build host reaches it |
+| `SCCACHE_MULTILEVEL_CHAIN` | ARG, no default | the build host's cache layout (#99); it names a remote only the build host has |
+| `SCCACHE_FORCE_LOCAL` | ARG, no default | the hub's own diagnostic switch, read only by `Test-SccacheRemoteConfigured` |
+| `SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_ERROR_LOG`, `SCCACHE_LOG`, `SCCACHE_IDLE_TIMEOUT` | ENV, the runtime defaults | container-local: a path, a size, a log file and level, a timeout. None names a host, so they behave the same on the build host, a runner and a laptop, and the Linux image ships the same set ([`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-images-cache-dirs)) |
+
+The runtime defaults keep their values, so a consumer sees no change beyond the
+removed variables. `Initialize-BuildCacheEnvironment` and `Get-SccacheContainerEnv`
+already override `SCCACHE_DIR` for consumer builds. `SCCACHE_LOG=warn` stays beside
+`SCCACHE_ERROR_LOG` because without a level the error log is never written (#90).
+
+**Why every compiling stage redeclares the ARG.** An ARG is in the environment of
+the RUNs of the stage that declares it, and only that stage. The media-core chain
+crosses solves: `media-core-built-ffmpeg` is `FROM ${MEDIA_CORE_ONNX_IMAGE}`, an
+image, so nothing declared in `common` reaches it. Each of the seven compiling
+stages in `Dockerfile.media-builder` therefore declares `SCCACHE_WEBDAV_ENDPOINT`,
+`SCCACHE_MULTILEVEL_CHAIN` and `SCCACHE_FORCE_LOCAL` right above its RUN, as do
+`patched-llvm`, the merge `built` stage and `rocm-migraphx`. With no default an
+ARG is simply absent when the driver does not pass it, which is what the old empty
+ENV meant too (sccache 0.18 ignores an empty value, and `Test-SccacheRemoteConfigured`
+treats one as unset). A missed stage would compile uncached without a word, so the
+static lint refuses it: a RUN that mounts both `C:\sccache` and `C:\sccache-logs`
+must see `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage.
+
+**Three gates hold it:**
+
+- **Static, in preflight:** `linux/scripts/verify_image_env.py --dockerfile`, run by
+  `lint-dockerfiles.sh` over both lanes' Dockerfiles. It refuses an ENV of a
+  build-host sccache name, an ENV that expands one, a LAN literal in an ENV or ARG
+  default, and the missing per-stage ARG above.
+- **Publish, Windows:** `Build-Buildkit.ps1` solves `windows/Dockerfile.publish-gate`
+  against the final tag after the smoke gate and before `-FinalTar`/`-PushRef`.
+  `-SkipSmokeGate` does not skip it. Its one RUN mounts `WindowsImageEnv.Common.psm1`
+  and runs `Assert-ImageEnvPublishable` over the Process, Machine and User scopes.
+  The Process scope is the config's ENV; a RUN that set a Machine variable publishes
+  that too. No ARG follows its FROM, because an ARG would join the environment under
+  test, and it does not run the entrypoint, because VsDevCmd adds variables the image
+  does not carry.
+- **Publish, Linux:** `verify-shipped-wrapper.sh` check 6 reads each wrapper's config
+  ENV (`nerdctl image inspect --platform linux/<arch>`) and runs the same Python
+  matcher; see [`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting).
+
+What counts as a leak, identically on both lanes (one case file,
+`linux/scripts/tests/image-env-cases.json`, grades the PowerShell and the Python
+matcher): any sccache remote-backend name or the two layout names above, whatever the
+value; and an RFC1918 (`10/8`, `172.16/12`, `192.168/16`) or link-local (`169.254/16`,
+`fe80::/10`) address in a host position — after `scheme://`, `@` or `\\`, as a whole
+value or list item, or followed by `:port` or `/`. A dotted quad inside a path
+(`C:\TensorRT-10.13.3.9\lib`) is not a host, and a whole value under a `*VERSION*` name
+is a version: the base bakes every `versions.env` key into the Machine environment,
+`CUDA_WINDOWS_ARM64_CURAND_VERSION=10.4.4.72` among them.
+
+**What the gates do not cover.** Hostnames and loopback (`http://buildhost:5000`,
+`127.0.0.1`), files inside the image, and the image **history**: BuildKit records a
+RUN's build args in its `created_by`, so the final image's history still names the
+endpoint for every compiling RUN. That is metadata, not configuration, and nothing
+reads it at run time. Moving the endpoint into a secret mount would remove it; that
+is open as backlog #177.
+
+**Cache impact of the change:** the `patched-llvm` stage and every media stage re-key
+(and, on the rocm lane, `rocm-migraphx`); the toolchain's `built` (CPython) stage,
+base and the sdk slot do not. The full re-key set is in `CHANGELOG.md`, 2026-09-23.
+
+### The consumer-side probe
+
+Images published before 2026-09-23 still carry the endpoint, so the consumer side
+defends itself. `Enable-SccacheCompilerWrapper` (`WindowsBuild.Common.psm1`) is the
+one place both consumer wiring sites go through — `Initialize-BuildCacheEnvironment`
+and `Invoke-CmakeConfigureAndBuild` — and before it sets a launcher it calls
+`Clear-UnreachableSccacheEndpoint`. That function TCP-probes the endpoint's
+host:port with a 2 s timeout. Reachable: nothing changes, so the build host keeps
+its cache. Unreachable or not a URL: it removes `SCCACHE_WEBDAV_ENDPOINT` from the
+process environment (and `SCCACHE_MULTILEVEL_CHAIN` when that names webdav), writes
+one WARN naming the endpoint, and sccache caches on local disk instead of failing
+every compile:
+
+```text
+WARNING: sccache: SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000 is unreachable
+(TCP 192.168.188.116:5000, no connection within 2000 ms) - removed for this process, ...
+```
+
+The image build does NOT use this path. Its compile stages wire sccache through
+`WindowsSourceBuild.Common`, gated on `Test-SccacheRemoteConfigured`, where an
+unreachable endpoint must stay a loud failure rather than quietly become an uncached
+multi-hour build. Tests: `windows/scripts/tests/Build.SccacheEndpointProbe.Tests.ps1`
+(a loopback port bound but never listening, and a listening one).
+
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
