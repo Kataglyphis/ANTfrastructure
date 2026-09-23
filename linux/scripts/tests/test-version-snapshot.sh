@@ -157,8 +157,8 @@ t_case "6/8 check_script_defaults — a -DefaultValue drifting from versions.env
 # subjects. It matches them now, which makes this sub-check reddenable -- and the
 # TVM_COMMIT/TVM_REF exception (PinParity carries the same one) must keep the
 # tag fallback from being rewritten to the commit hash.
-t_assert_eq "11" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
-  "the eleven gate subjects the fixed glob must find (Build-HailortFromSource.ps1 joined 2026-09-21)"
+t_assert_eq "13" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
+  "the thirteen gate subjects the fixed glob must find (Build-MigraphxFromSource.ps1 and Build-OrtAmdgpuEpFromSource.ps1 joined 2026-09-23)"
 _red "Windows build-script -DefaultValue pins are stale:" \
   windows/scripts/build/Build-TvmFromSource.ps1 "s|-DefaultValue 'v0.26.0'|-DefaultValue 'v0.0.0'|"
 t_assert_contains "$(cat "${REPO}/windows/scripts/build/Build-TvmFromSource.ps1")" \
