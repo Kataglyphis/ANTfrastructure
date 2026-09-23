@@ -147,10 +147,10 @@ t_assert_eq "" "$(bash -c '. "$1"' _ "${_VE}" 2>&1 >/dev/null)" \
   "an unquoted value runs its own tail as commands on every hook run"
 
 t_case "the loader exports the bare value, and forwarding does not re-quote it"
-t_assert_eq "80;86;87;89;90" \
+t_assert_eq "86;87;89;90;120" \
   "$(bash -c 'set -u; source "$2"; load_versions_env "$1"; printf "%s" "${CUDA_ARCHITECTURES}"' \
      _ "${_VE}" "${_LVE}")" "quotes in the file are syntax, never data"
-t_assert_eq "CUDA_ARCHITECTURES=80;86;87;89;90" \
+t_assert_eq "CUDA_ARCHITECTURES=86;87;89;90;120" \
   "$(bash -c 'set -u; source "$2"; load_versions_env "$1"; source "$3"
               _a=(); append_version_build_args _a
               printf "%s\n" "${_a[@]}" | grep -e "^CUDA_ARCHITECTURES="' \

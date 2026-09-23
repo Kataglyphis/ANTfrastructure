@@ -95,7 +95,7 @@ function Get-CudaArchitectureList {
     param(
         [string]$Decoration = ''
     )
-    $archs = if (-not [string]::IsNullOrWhiteSpace($env:CUDA_ARCHITECTURES)) { $env:CUDA_ARCHITECTURES } else { '80;86;87;89;90' }
+    $archs = if (-not [string]::IsNullOrWhiteSpace($env:CUDA_ARCHITECTURES)) { $env:CUDA_ARCHITECTURES } else { '86;87;89;90;120' }
     if ($Decoration) {
         return (($archs -split ';' | Where-Object { $_ } | ForEach-Object { "$_$Decoration" }) -join ';')
     }

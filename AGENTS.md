@@ -422,6 +422,69 @@ Wrapper builds, manifest publishing and manifest repair:
 
 ---
 
+### GPU architecture coverage (how to turn an arch on or off)
+
+**One source of truth: `CUDA_ARCHITECTURES` in `versions.env`.** Everything else
+is a fallback default or an assertion that must move WITH it — that is the point,
+so a trim cannot happen by accident. Changing the set is a deliberate owner
+decision, never a speed lever on a dev iteration.
+
+Today (owner decision 2026-09-23): **`86;87;89;90;120`**.
+
+| CC | Architecture | Hardware |
+| --- | --- | --- |
+| 86 | Ampere GA10x | RTX 3060-3090, A10, A40 |
+| 87 | Ampere GA10B | Jetson AGX Orin |
+| 89 | Ada Lovelace | RTX 4060-4090, L40/L40S |
+| 90 | Hopper | H100, H200 |
+| 120 | Blackwell | GeForce RTX 5050-5090, RTX PRO Blackwell |
+
+Not built, one token each: `75` Turing (T4, RTX 20xx) · `80` Ampere GA100
+(A100, A30 — **retired 2026-09-23**, the line is kept commented in
+`versions.env`) · `100` B100/B200 · `103` B300/GB300 · `110` Jetson Thor ·
+`121` GB10/DGX Spark. CUDA 13 floors at **75**: Maxwell, Pascal and Volta were
+removed from the toolkit, so nothing below it can ever be added back while
+`CUDA_VERSION` is 13.x.
+
+**To add or remove one**, edit these together (a gate fails otherwise, which is
+the design):
+
+1. `linux/scripts/01-core/versions.env` — the value.
+2. `windows/scripts/tests/Pins.CanonicalValues.Tests.ps1` — the pinned assertion.
+3. `linux/scripts/tests/test-version-forwarding.sh` — forwards the literal twice.
+4. `docs/scripts/mutations.json` — the mutation's find/replace text.
+5. The `${CUDA_ARCHITECTURES:-…}` fallbacks (ORT, OpenCV) and
+   `windows/Dockerfile.media-builder`'s ARG default + the psm1 fallback:
+   `sync_versions.py --check` grades the Dockerfile, the rest are plain copies.
+
+**Four facts that decide WHICH number you need** — they are not interchangeable:
+
+- **A cubin runs on its own major only, at an equal-or-higher minor.** 86 does
+  not reach 87; 90 does not reach 120. Neighbours buy nothing.
+- **ONNX Runtime narrows it further.** It rewrites every entry to
+  `sm_<cc>a-real` (arch-specific, `-real` = cubin only). So in the ORT artefact
+  `120` covers 12.0 and NOT 12.1 (GB10), and `100` would cover B100/B200 but not
+  B300 (10.3). Spell out the exact hardware you own.
+- **There is no PTX to fall back on.** ORT embeds none and OpenCV leaves
+  `CUDA_ARCH_PTX` empty, so a missing arch is a hard failure at session
+  creation (`no kernel image is available`), not a slow path. That is what
+  retiring 80 costs an A100.
+- **Do not write letter suffixes here** (`90a`, `100f`). ORT appends the `a`
+  itself, and OpenCV's dotted-form conversion mangles a suffixed entry. Digits
+  only, and the list stays ascending for readability — since 2026-09-23 nothing
+  depends on the order any more (the trailing-`90`→`90a` rewrite is gone,
+  because it silently did nothing as soon as the list stopped ending in 90).
+
+**Cost:** each entry is a full cubin per CUDA source file. Five arches means
+every ONNX Runtime and OpenCV CUDA kernel compiles five times — the single
+biggest lever on GPU build time. `CUDA_ARCHITECTURES=120` alone cuts the CUDA
+compile to roughly a fifth for a local iteration.
+
+**ROCm has the same question, unanswered.** `amdrocm-core-dev` pulls all 25 gfx
+targets (~19.6 GiB) because nothing selects. Per-gfx metapackages are the
+largest single size win on that side:
+[`linux-accelerator-images.md` § ROCm](docs/linux-accelerator-images.md).
+
 ## Build Workflow
 
 ```

@@ -287,7 +287,7 @@ ENV TVM_REF="${TVM_REF}" `
 # ancestor, was deleted with that lane on 2026-08-26 — #134.)
 FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.30.0
-ARG CUDA_ARCHITECTURES="80;86;87;89;90"
+ARG CUDA_ARCHITECTURES="86;87;89;90;120"
 ARG PYTHON_VERSION=3.14.7
 # QNN SDK zip integrity pin (#121/#154): a SHARED key, declared in EVERY stage
 # that mounts windows/qnn-sdk -- "onnx-only" was the belief that left three stages
