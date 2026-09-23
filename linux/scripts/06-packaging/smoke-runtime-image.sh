@@ -14,6 +14,7 @@ set -euo pipefail
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
+source "${_SCRIPT_DIR}/check-ort-provenance.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
@@ -536,7 +537,7 @@ check_rust_toolchain() {
 # image: caches outside the bind-mounted checkout, a writable Rust home, a set
 # ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
 # docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env"
 
 # Rows whose entire contract is "this is staged in the image, or every consumer run
 # pays for it again". One owner for all three: the verdict has the same shape, and
@@ -566,6 +567,7 @@ _consumer_contract_symptom() {
     flatpak-runtimes) printf '%s' 'flatpak list --runtime returns 0 refs, so every run re-downloads seven org.freedesktop refs (~1.9 GB) -- the single largest download in a consumer build' ;;
     appimage-runtime) printf '%s' 'appimagetool refetches runtime-<arch> from the type2-runtime continuous release on every build, so packaging hangs on GitHub being reachable' ;;
     web-lane-tools) printf '%s' 'flutter_rust_bridge_codegen build-web cargo-installs wasm-pack (258 crates) and itself (174) from source in every run' ;;
+    ort-crate-env) printf '%s' 'an ort-sys build (OxidANT'"'"'s onnxruntime feature) statically links pyke'"'"'s ORT 1.28.0 from pyke'"'"'s CDN instead of the chain ORT, and ort load-dynamic opens whichever libonnxruntime.so the loader finds first' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -683,7 +685,21 @@ if command -v wasm-pack >/dev/null 2>&1 && command -v flutter_rust_bridge_codege
 else
   printf 'FACT web-lane-tools no\n'
 fi
-echo CCPROBE_DONE
+PROBE
+  _consumer_ort_env_probe; printf '%s\n' 'echo CCPROBE_DONE'
+}
+
+# The ort-crate-env row's facts, spliced into the contract probe ahead of its sentinel; '<unset>' is not ''
+# (ort-sys reads a set-but-empty variable). docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+_consumer_ort_env_probe() {
+  cat <<'PROBE'
+printf 'ENV ort-lib-location %s\nENV ort-dylib-path %s\n' "${ORT_LIB_LOCATION:-}" "${ORT_DYLIB_PATH:-}"
+printf 'ENV ort-prefer-dynamic %s\nENV ort-skip-download %s\n' "${ORT_PREFER_DYNAMIC_LINK:-}" "${ORT_SKIP_DOWNLOAD:-}"
+printf 'ENV ort-lib-path %s\nENV cargo-net-offline %s\n' "${ORT_LIB_PATH-<unset>}" "${CARGO_NET_OFFLINE-<unset>}"
+printf 'FACT ort-lib-real %s\n' "$(readlink -e -- "${ORT_LIB_LOCATION:-/nonexistent}" 2>/dev/null || true)"
+printf 'FACT ort-dylib-real %s\n' "$(readlink -e -- "${ORT_DYLIB_PATH:-/nonexistent}" 2>/dev/null || true)"
+printf 'FACT ort-link-lib %s\n' "$(if [ -e "${ORT_LIB_LOCATION:-/nonexistent}/libonnxruntime.so" ]; then echo yes; else echo no; fi)"
+printf 'FACT ort-probe yes\n'
 PROBE
 }
 
@@ -810,6 +826,58 @@ _consumer_owner_verdict() {
   fi
 }
 
+# G3: ort-sys links the chain ORT dynamically with its download disarmed, and ort load-dynamic opens
+# the chain file. EMPTY when it holds. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+_consumer_ort_env_problem() {
+  local p="$1" lreal dreal v
+  lreal="$(_consumer_contract_fact "${p}" FACT ort-lib-real)"
+  dreal="$(_consumer_contract_fact "${p}" FACT ort-dylib-real)"
+  case "${lreal}" in
+    /usr/local/lib/onnxruntime-cpu/lib|/usr/local/lib/onnxruntime-gpu/lib) ;;
+    *) printf 'ORT_LIB_LOCATION (%s) resolves to %s, not the chain ORT lib dir' \
+         "$(_consumer_contract_fact "${p}" ENV ort-lib-location)" "${lreal:-nothing}"; return 0 ;;
+  esac
+  if [ "$(_consumer_contract_fact "${p}" FACT ort-link-lib)" != yes ]; then
+    printf '%s has no libonnxruntime.so for ort-sys to link' "${lreal}"
+    return 0
+  fi
+  case "${dreal}" in
+    "${lreal}"/libonnxruntime.so*) ;;
+    *) printf 'ORT_DYLIB_PATH (%s) resolves to %s, not a chain libonnxruntime.so' \
+         "$(_consumer_contract_fact "${p}" ENV ort-dylib-path)" "${dreal:-nothing}"; return 0 ;;
+  esac
+  for v in ort-prefer-dynamic ort-skip-download; do
+    case "$(_consumer_contract_fact "${p}" ENV "${v}" | tr '[:upper:]' '[:lower:]')" in
+      1|true) ;;
+      *) printf 'ENV %s is "%s", not 1' "${v}" "$(_consumer_contract_fact "${p}" ENV "${v}")"; return 0 ;;
+    esac
+  done
+  v="$(_consumer_contract_fact "${p}" ENV ort-lib-path)"
+  if [ "${v}" != '<unset>' ]; then
+    printf 'ORT_LIB_PATH is set (%s), and ort-sys reads it before ORT_LIB_LOCATION, even empty' "${v}"
+    return 0
+  fi
+  case "$(_consumer_contract_fact "${p}" ENV cargo-net-offline | tr '[:upper:]' '[:lower:]')" in
+    '<unset>'|1|true) ;;
+    *) printf 'CARGO_NET_OFFLINE is falsy (set, and not 1/true), and ort-sys reads it before ORT_SKIP_DOWNLOAD' ;;
+  esac
+}
+
+_consumer_ort_env_verdict() {
+  local row="$1" problem
+  if [ "$(_consumer_contract_fact "$2" FACT ort-probe)" != yes ]; then
+    printf 'NOFACT %s no FACT ort-probe line' "${row}"
+    return 0
+  fi
+  problem="$(_consumer_ort_env_problem "$2")"
+  if [ -n "${problem}" ]; then
+    printf 'BAD %s %s' "${row}" "${problem}"
+  else
+    printf 'OK %s ORT_LIB_LOCATION -> %s, dynamic link, download disarmed' "${row}" \
+      "$(_consumer_contract_fact "$2" FACT ort-lib-real)"
+  fi
+}
+
 # Pure verdict function: arch + probe text in, one "OK|BAD|EXEMPT|STALE|NOFACT <row>
 # <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
 # path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
@@ -826,6 +894,7 @@ _consumer_contract_verdicts() {
         jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
         appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
+        ort-crate-env) line="$(_consumer_ort_env_verdict "${row}" "${probe}")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;
@@ -1269,6 +1338,16 @@ _PARITY_PREFIXES="OrchestrANT android android-sdk cmake ffmpeg gcc gstreamer lib
 # Wheel names in dist-info form ('-' and '.' normalised to '_').
 _PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"
 
+# How many names in $2 are package $1, '_' and '-' alike. A GPU GenAI ships under its flavour
+# name (onnxruntime-genai-cuda / -trt-rtx), so every flavour counts as onnxruntime-genai.
+_pkg_count() {
+  local want="${1//_/-}" names="${2//_/-}"
+  case "${want}" in
+    onnxruntime-genai) grep -cE '^onnxruntime-genai(-[a-z0-9-]+)?$' <<<"${names}" || true ;;
+    *)                 grep -cxF -- "${want}" <<<"${names}" || true ;;
+  esac
+}
+
 # Documented per-arch absences; anything absent and NOT listed here is drift and fails.
 # EVERY ARM IS A DELETION CANDIDATE - the moment its component appears, check_arch_parity
 # fails and names the line to delete. So an arm may only encode a reason that is true
@@ -1362,7 +1441,7 @@ done' 2>/dev/null)"; then
     for want in ${_PARITY_PREFIXES} ${_PARITY_WHEELS}; do
       case " ${_PARITY_PREFIXES} " in
         *" ${want} "*) present="$(printf '%s\n' "${prefixes}" | grep -cxF -- "${want}" || true)" ;;
-        *)             present="$(printf '%s\n' "${wheels}"   | grep -cxF -- "${want}" || true)" ;;
+        *)             present="$(_pkg_count "${want}" "${wheels}")" ;;
       esac
       if [ "${present}" != "0" ]; then
         if _parity_exempt "${target_arch}" "${want}"; then
@@ -1669,7 +1748,7 @@ _venv_set_verdicts() {
       continue
     fi
     for r in ${reqs}; do
-      if printf '%s\n' "${pkgs}" | grep -qxF -- "${r}"; then
+      if [ "$(_pkg_count "${r}" "${pkgs}")" -gt 0 ]; then
         if _venv_pkg_exempt "${arch}" "${extra}" "${r}"; then
           printf 'STALE %s %s\n' "${extra}" "${r}"
         else
@@ -1796,6 +1875,29 @@ check_soname_precedence() {
     esac
   done < <(_soname_verdicts "${_SHIPPED_TRUTH_PROBE}")
   [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "SONAME: all ${ok} shipped library(ies) win their lookup"
+  echo ""
+}
+
+# E (G1): every ONNX Runtime binary in the image is the chain build and every importer resolves to it.
+# The probe runs in the image (ld.so and LD_LIBRARY_PATH are its own); check-ort-provenance.sh decides.
+check_ort_census() {
+  local image_tag="$1" target_arch="$2" probe armed verb path detail bad=0
+  local -a args=()
+  echo "--- SHIPPED-TRUTH E: one ONNX Runtime, the chain's (${target_arch}) ---"
+  mapfile -t args < <(ort_census_image_args)
+  probe="$(_rt_run -e "ORT_CENSUS_PY=$(cat "${_SCRIPT_DIR}/ort_census_probe.py")" bash -lc \
+    'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"; f="$(mktemp)"; printf "%s\n" "$ORT_CENSUS_PY" > "$f"; exec "$p" "$f" "$@"' \
+    ort-census "${args[@]}" 2>/dev/null)" || true
+  armed="$(ort_census_stamps_armed)"
+  [ "${armed}" = 1 ] || echo "  ~~   STAMP arm unarmed: no ort_assert_chain_only (G2) in this hub, so no consumer writes a stamp yet"
+  while IFS=$'\t' read -r verb path detail; do
+    case "${verb}" in
+      "") ;;
+      EXEMPT) echo "  ~~   ORT census: ${path} -- ${detail}" ;;
+      *) bad=$((bad + 1)); fail "ORT census: ${verb} ${path} -- ${detail}" ;;
+    esac
+  done < <(ort_census_verdicts "${probe}" "${armed}" "${target_arch}" ${_ORT_CENSUS_IMAGE_EXEMPT[@]+"${_ORT_CENSUS_IMAGE_EXEMPT[@]}"})
+  [ "${bad}" -ne 0 ] || pass "ORT census: every ONNX Runtime binary in the ${target_arch} image is the chain build"
   echo ""
 }
 
@@ -2480,6 +2582,7 @@ main() {
     check_venv_package_set "${image_tag}" "${target_arch}"
     check_riscv64_isa "${image_tag}" "${target_arch}"
     check_soname_precedence "${image_tag}" "${target_arch}"
+    check_ort_census "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

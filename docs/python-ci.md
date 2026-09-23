@@ -3,7 +3,7 @@ Copyright (c) 2025 Kataglyphis
 SPDX-License-Identifier: MIT
 -->
 
-# Python CI: the drivers, and the two traps in `uv`
+# Python CI: the drivers, and the three traps in `uv`
 
 The Python consumers (OrchestrANT, WebDavClient)
 share their whole CI surface with this repository:
@@ -14,6 +14,7 @@ share their whole CI surface with this repository:
 | Windows lane | [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml) (`workflow_call`) |
 | Step drivers | `linux/scripts/02-toolchain/python/ci_{tests,static_analysis,build_docs,packaging}.sh` |
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
+| Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
 
 A consumer's workflow is configuration, not steps. Its `scripts/linux/ci_*.sh`
 are wrappers that `antfrastructure_exec` into the drivers above — see
@@ -166,11 +167,97 @@ error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
 
 Both `uv_sync_project()` and `uv_pip_install_requirements()` therefore pin
 `--python <venv>/bin/python`. That pin is load-bearing, not tidiness. If you add
-another uv entry point, pin it too.
+another uv entry point, pin it too, and end it in `uv_reconcile_chain_ort`
+(Trap 3).
 
 The two traps stack: the extras error hides the venv error, because the resolve
 never gets far enough to write anything. Fixing only the first one just moves
 the failure.
+
+## Trap 3 — ONNX Runtime comes from the chain, not PyPI
+
+The owner rule of 2026-09-23 says every component that uses ONNX Runtime loads the
+ORT this repository builds
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md)). A consumer's test
+venv inside our images is such a component. Before the rule, `uv sync --all-extras`
+installed whatever the lock named, so OrchestrANT's CI tested on PyPI `onnxruntime`,
+`onnxruntime-gpu` and `onnxruntime-genai` (plus the `-directml` pair on Windows), all
+overlapping in one `site-packages/onnxruntime`.
+
+Every `uv_sync_project` (Linux) and `Sync-UvProjectDependencies` (Windows) now ends by
+reconciling the venv it synced:
+
+1. **Inside our images?** The chain wheel store says so. Linux: `ORT_CHAIN_WHEEL_DIR`,
+   which `linux/Dockerfile.torch` sets to `/opt/onnxruntime-wheels`. Windows:
+   `ORT_CHAIN_WHEEL_DIR`, else the image's `PYTHON_WHEELS` (`C:\runtime\wheels`), else
+   `C:\runtime\wheels` if it exists.
+2. **The census names the ORT distributions.** The venv's own interpreter runs
+   `ort-venv-census.py --purge-list` with `-I`: every distribution named `onnxruntime`
+   or `onnxruntime-*`, and every owner of the `onnxruntime`, `onnxruntime_genai` or
+   `onnxruntime_extensions` package.
+3. **No ORT distribution:** inside our images the venv's interpreter still checks that
+   none of those three packages imports. An ORT package no distribution owns (copied
+   files, a `pip --target` leftover) fails the sync. **Outside our images:** a loud
+   `NOTICE` that names the distributions, and the venv stays as uv resolved it.
+4. **The ABI check comes first.** The chain wheels are built for the image interpreter
+   (cp314 today), and uv installs a path wheel of another ABI tag without complaint.
+   So before the venv is touched, each store ORT wheel's tag must fit the venv's own
+   (`abi3` and `none` fit any), or the sync fails naming the misfits.
+5. **The replacement:** `uv pip uninstall` every listed distribution, then
+   `uv pip install --no-index --no-deps --force-reinstall` every `onnxruntime[-_]*.whl`
+   in the store. Then two proofs, and **either one failing fails the sync**:
+   `--check --store` (each ORT distribution byte-identical to a store wheel,
+   `onnxruntime` owned once), and `import onnxruntime` in that venv, which catches a
+   load failure on a fitting tag.
+6. **`UV_NO_SYNC=1` is exported on success**, only when it was unset, and released by
+   the next sync of a venv without ORT. `uv run` re-syncs to the lock by default and
+   would put PyPI ORT back; `uv sync` itself ignores the variable.
+
+A failed `uv sync` keeps its own exit status; the reconcile never runs after it.
+
+**Where the Linux store comes from.** `/opt/wheels` is only a bind mount inside the torch
+RUN, so `setup-torch-venv.sh stage_chain_ort_wheels` copies exactly the wheels the census
+matched `/opt/venv` against (the installed flavour only) into `ORT_CHAIN_WHEEL_DIR` and
+proves `/opt/venv` against the store. Any failure stops the image build; a venv without
+ORT leaves the store empty.
+
+**A leg on another interpreter.** Inside our images an ORT project's legs run on the image
+interpreter. Two remedies work on both lanes: drop the other legs (`test-python-versions`,
+or the consumer's `$PythonVersions`), or list them in `EXPERIMENTAL_PYTHON_VERSIONS`, so a
+failed sync warns instead of failing the matrix. The reusable workflows pass no env into
+the container, so the consumer's `scripts/linux/ci_tests.sh` wrapper must export it.
+`UV_SYNC_EXTRAS` is NOT a remedy: every sync of the run reads it, so leaving ORT out of
+one leg leaves it out of all of them. The hub defaults are the image interpreter (owner
+decision 2026-09-23; the images carry CPython 3.14 only): `ci_tests.sh` `PY_VERSIONS='3.14'`
+and `ci_build_docs.sh` `COVERAGE_VERSION=3.14`, like the static-analysis and packaging
+drivers. `tests/test-python-ci-defaults.sh` holds them to `versions.env`'s `PYTHON_VERSION`.
+OrchestrANT dropped its 3.13 legs. A project that needs another interpreter names it for every
+driver, docs included. WebDavClient (no ORT; atheris has no cp314 wheel) pins 3.13 for its tests,
+static analysis and packaging, and needs `docs-python-version: '3.13'` as well: nothing sets it
+for it, and without it the first hub bump past this default fails its docs job on atheris.
+
+| Message | Cause | Fix |
+|---|---|---|
+| `chain ORT: need the store … the interpreter … and the census …` | the store is declared but missing (an image regression), or the venv interpreter or the census is missing | the census comes from the hub checkout (`linux/scripts/03-media/runtime/`) or, for the Windows image's module copy, from `C:\temp\scripts\ort-venv-census.py`; an image built before `windows/Dockerfile` COPYed it there has none, so import the module from the hub checkout |
+| `the store … holds no onnxruntime wheel` | the store is empty, for example a venv built without ORT | build the store with ORT, or keep ORT out of that venv |
+| `… is a cp313 venv, and the chain wheels are built for the image interpreter: …` | the leg's interpreter is not the image's; the venv was not touched | drop the leg or list it in `EXPERIMENTAL_PYTHON_VERSIONS` |
+| `… imports ONNX Runtime with no distribution to purge (…)` plus census `FAIL` lines | an ORT package no distribution owns | remove the files the `FAIL` lines name |
+| `the chain onnxruntime does not import in …` | the tag fits but the load fails (a DLL or `.so` the venv cannot find) | the import error follows the message |
+| `still carries a non-chain ONNX Runtime` | the census found a foreign distribution | read the `FAIL` lines that follow |
+
+`onnxruntime-extensions` and prebuilt plugin-EP wheels have no chain counterpart. They are
+purged and not replaced, which is what the rule asks for.
+
+**Not covered:** tool venvs built from requirement files (`uv_pip_install_requirements` /
+`Install-UvRequirements`: cmake-format, docs), `uvx` / `uv tool`, pip calls outside these
+helpers, ORT vendored under another import name, and runners that are not our images (they
+get the notice only). The Windows chain wheel importing in a plain consumer venv, without
+the app venv's DLL-directory shim, has not been run inside `:winamd64` yet.
+
+**Tests:** `linux/scripts/tests/test-uv-chain-ort.sh` (a real venv plus the real census,
+with a uv stand-in), `windows/scripts/tests/Uv.ChainOrt.Tests.ps1` (including the image's
+module copy in the layout `windows/Dockerfile` builds), and the mutation family
+`uv-chain-ort` in `docs/scripts/mutations.json`.
 
 ## Which Linux image
 

@@ -261,7 +261,9 @@ halves fit together and why neither is sufficient alone.
 | cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
-| PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; rocm variant only) | torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
+| Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32, the pinned copy and its licence in C:\vulkan-loader; rocm variant only) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
+| PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; device kernels for gfx1201 and gfx1200; rocm variant only) | torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0, rocm-sdk/amd-torch/amd-torchvision device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [rocm.docs.amd.com](https://rocm.docs.amd.com/) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
+| LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv; rocm variant only) | 2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*) | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA; the wheel carries no licence or NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
 
 ### Media Layer
 
@@ -277,6 +279,7 @@ halves fit together and why neither is sufficient alone.
 | LiteRT-LM | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 | AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.2 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |
+| Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache-2.0 OR MIT (Vulkan-Headers; no election recorded, so both are listed) and MIT (SPIRV-Headers); glslc is build-time only |
 
 ### LiteRT-LM GPU Backend (rocm variant only)
 
@@ -286,12 +289,20 @@ halves fit together and why neither is sufficient alone.
 | Dawn WebGPU (prebuilt libwebgpu_dawn.dll) | as prebuilt in LiteRT-LM (sha256-pinned) | [dawn.googlesource.com/dawn](https://dawn.googlesource.com/dawn) | BSD 3-Clause (Dawn/Tint) + Apache 2.0 (statically linked abseil, SPIRV-Tools) |
 | DirectX Shader Compiler (dxcompiler.dll, dxil.dll) | per LiteRT-LM WORKSPACE (sha256-pinned) | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM; the package's ReleaseNotes apply it to every file but d3d12shader.h, which is MIT and not shipped) + Microsoft Software License Terms (LICENSE-MS.txt is in the zip without naming the files it covers, so it is read as applying until reviewed); all three texts ship in C:\runtime\lib\litert-lm\licenses |
 
-### llama.cpp HIP (rocm variant only)
+### ONNX Runtime WebGPU EP (rocm variant only)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| LLVM OpenMP runtime (libomp.dll, bundled in the llama.cpp zip) | as bundled in the pinned llama.cpp zip (sha256-pinned) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside it in C:\runtime\opt\llama.cpp-hip |
+| Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\runtime\lib\onnxruntime-source and every chain onnxruntime wheel) | v20260818.211311 | [github.com/google/dawn](https://github.com/google/dawn) | BSD 3-Clause (Dawn/Tint; the text ships in the wheel's onnxruntime\ThirdPartyNotices.txt as ORT's own 'dawn' entry) + Apache 2.0 (SPIRV-Tools: Dawn configures it, and the header-only SPIRV-Headers, whenever DAWN_USE_BUILT_DXC is ON; listed until a link map shows the D3D12-only, SPIR-V-off build leaves it out). jinja2 and markupsafe (BSD 3-Clause) run at build time only, as Dawn's code generator, and are not shipped |
+| DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\capi of every chain wheel) | v1.9.2607 | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\runtime\lib\onnxruntime-source\licenses\directx-shader-compiler and are appended to the wheel's onnxruntime\ThirdPartyNotices.txt |
+
+### llama.cpp HIP and Vulkan (rocm variant only)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 | AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | MIT (HIP runtime, ROCm/clr; rocm_kpack, ROCm/rocm-kpack) + Apache 2.0 with LLVM Exceptions (amd_comgr, ROCm/llvm-project); byte-identical to the ROCm layer's own copies, which the rocm-check enforces |
 
 ### MIGraphX + ORT plugin EP (rocm variant only)

@@ -523,6 +523,21 @@ ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
 
 proven, unproven, fails = [], [], []
 
+
+def genai_dist_version():
+    # Any GenAI flavour is the GenAI: an nvidia image ships onnxruntime-genai-cuda / -trt-rtx.
+    import importlib.metadata as M
+    import re
+    for d in M.distributions():
+        try:
+            name = re.sub(r"[-_.]+", "-", d.metadata["Name"] or "").lower()
+        except Exception:
+            continue
+        if re.fullmatch(r"onnxruntime-genai(-[a-z0-9-]+)?", name):
+            return d.version
+    return None
+
+
 try:
     import onnxruntime_genai as og
 except Exception as exc:
@@ -530,8 +545,7 @@ except Exception as exc:
     # asking whether the DISTRIBUTION is present. docs/failure-modes.md
     _dist = None
     try:
-        import importlib.metadata as M
-        _dist = M.version("onnxruntime-genai")
+        _dist = genai_dist_version()
     except Exception:
         _dist = None
     if _dist is not None:
@@ -556,8 +570,7 @@ _smoke_genai_py_tier1_version() {
 version = getattr(og, "__version__", None)
 if not version:
     try:
-        import importlib.metadata as M
-        version = M.version("onnxruntime-genai")
+        version = genai_dist_version()
     except Exception:
         version = None
 if not version:

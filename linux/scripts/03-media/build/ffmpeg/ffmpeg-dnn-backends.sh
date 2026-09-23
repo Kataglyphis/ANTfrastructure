@@ -3,41 +3,133 @@
 # Source-only helper; sourced by build-ffmpeg.sh — expects its set -euo pipefail and IFS.
 
 ffmpeg_probe_libonnxruntime() {
-    # The vendor libonnxruntime.pc resolves via --exists but its -I does not find the
-    # header, and a spurious pass here HARD-ABORTS FFmpeg's own require. When the known
-    # install is present, go STRAIGHT to the synthesized .pc — never the vendor one.
-    local onnx_base="/usr/local/lib/onnxruntime-cpu"
+    # FFmpeg links the chain ORT or is not built (owner rule 2026-09-23): a missing chain or a probe
+    # that cannot use it exits; ffmpeg_ort_link_findings then proves what the link resolves.
+    local onnx_base="${1:-/usr/local/lib/onnxruntime-cpu}"
     # ONNXRUNTIME_VERSION may be unset (set -u); the callee defaults an empty version.
     local onnx_ver="${ONNXRUNTIME_VERSION:-}"
     onnx_ver="${onnx_ver#v}"
-    if [ -f "${onnx_base}/lib/libonnxruntime.so" ] && [ -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
-        if ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
-            "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
-            "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
-            "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${onnx_ver}"; then
-            # FFmpeg checks libonnxruntime with a BARE `require`, which never sees the
-            # .pc's -I; export the paths for --extra-cflags/-ldflags/-libs instead.
-            # -lstdc++ is required because libonnxruntime.so is C++.
-            _FFMPEG_ONNX_EXTRA_CFLAGS="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session"
-            _FFMPEG_ONNX_EXTRA_LDFLAGS="-L${onnx_base}/lib"
-            _FFMPEG_ONNX_EXTRA_LIBS="-lstdc++"
-            echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
-            return 0
+    if [ ! -f "${onnx_base}/lib/libonnxruntime.so" ] || [ ! -f "${onnx_base}/include/onnxruntime_c_api.h" ]; then
+        echo "ERROR: chain ONNX Runtime missing at ${onnx_base}; FFmpeg links no other libonnxruntime" >&2
+        exit 1
+    fi
+    if ! ffmpeg_enable_via_synth_pkgconfig "libonnxruntime" "libonnxruntime" \
+        "onnxruntime_c_api.h" "OrtGetApiBase" "${onnx_base}" \
+        "-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session" \
+        "-L${onnx_base}/lib -lonnxruntime -lstdc++ -lpthread -lm -ldl" "${onnx_ver}"; then
+        echo "ERROR: the chain ONNX Runtime at ${onnx_base} does not compile and link for this target (probe detail above)" >&2
+        exit 1
+    fi
+    # FFmpeg checks libonnxruntime with a BARE `require` (check_lib), which never reads the .pc:
+    # the chain goes in through --extra-cflags/-ldflags; -lstdc++ because ORT is C++.
+    _FFMPEG_ONNX_ROOT="${onnx_base}"
+    _FFMPEG_ONNX_EXTRA_CFLAGS="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session"
+    _FFMPEG_ONNX_EXTRA_LDFLAGS="-L${onnx_base}/lib"
+    _FFMPEG_ONNX_EXTRA_LIBS="-lstdc++"
+    echo "ONNX Runtime enabled via synthesized pkg-config at ${onnx_base}."
+    return 0
+}
+
+# ffmpeg_ort_ldflags_first <opts-array-name>: the chain's --extra-ldflags goes ahead of every other one,
+# so -lonnxruntime meets the chain before the cross multiarch -L (ld walks -L dirs in order).
+ffmpeg_ort_ldflags_first() {
+    # _fol_ locals only: a plain name would shadow the caller's array behind the nameref.
+    local -n _fol_opts="$1"
+    local _fol_ort="--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" _fol_o _fol_placed=0
+    local -a _fol_out=()
+    [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] || return 1
+    for _fol_o in "${_fol_opts[@]}"; do
+        [ "${_fol_o}" != "${_fol_ort}" ] || continue
+        if [ "${_fol_placed}" = 0 ] && [[ "${_fol_o}" == --extra-ldflags=* ]]; then
+            _fol_out+=("${_fol_ort}")
+            _fol_placed=1
         fi
-        # Do NOT fall through to the vendor .pc: it would spuriously enable the
-        # backend and hard-abort FFmpeg configure.
-        echo "Skipping libonnxruntime: install present but synthesized pkg-config probe failed."
-        return 1
-    fi
+        _fol_out+=("${_fol_o}")
+    done
+    [ "${_fol_placed}" = 1 ] || _fol_out+=("${_fol_ort}")
+    _fol_opts=("${_fol_out[@]}")
+}
 
-    # No known install — try a vendor-provided working pkg-config module, if any.
-    if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime" \
-        "onnxruntime_c_api.h" "OrtGetApiBase"; then
-        return 0
-    fi
+# _ffmpeg_ort_link_tokens <config.mak>: one token per line of the variables FFmpeg's link lines
+# expand (ffbuild/library.mak), in link-line order.
+_ffmpeg_ort_link_tokens() {
+    sed -n -E 's/^(SHFLAGS|LDFLAGS|LDSOFLAGS|LDEXEFLAGS|EXTRALIBS(-[A-Za-z0-9_]+)?)=//p' "$1" \
+        | tr ' \t' '\n\n' | grep -v -e '^$' || true
+}
 
-    echo "Skipping libonnxruntime: no usable pkg-config module (ONNX Runtime absent or its headers do not compile)."
-    return 1
+# _ffmpeg_ort_link_dirs <top> <tokens>: the -L dirs in order, then LIBRARY_PATH, one per line and
+# absolute (a relative one is read against FFmpeg's source top, where make links).
+_ffmpeg_ort_link_dirs() {
+    local t d prev=""
+    local -a lpath=()
+    while IFS= read -r t; do
+        d=""
+        case "${prev}" in -L) d="${t}" ;; esac
+        case "${t}" in -L?*) d="${t#-L}" ;; esac
+        prev="${t}"
+        d="${d#=}"
+        case "${d}" in "") ;; /*) printf '%s\n' "${d}" ;; *) printf '%s\n' "$1/${d}" ;; esac
+    done <<< "$2"
+    IFS=':' read -r -a lpath <<< "${LIBRARY_PATH:-}"
+    for d in "${lpath[@]}"; do
+        [ -z "${d}" ] || printf '%s\n' "${d}"
+    done
+}
+
+# _ffmpeg_ort_ld_pick <names> <dir>...: what ld takes -- the first dir holding one of <names> (space-
+# separated, tried in order per dir, as ld tries .so then .a), resolved; nothing when no dir does.
+_ffmpeg_ort_ld_pick() {
+    local d n
+    local -a names=()
+    IFS=' ' read -r -a names <<< "$1"
+    shift
+    for d in "$@"; do
+        for n in "${names[@]}"; do
+            [ -e "${d}/${n}" ] || continue
+            readlink -f -- "${d}/${n}"
+            return 0
+        done
+    done
+    return 0
+}
+
+# _ffmpeg_ort_resolve <token> <top> <dir>...: when <token> names ORT (-lonnxruntime, -l:libonnxruntime*,
+# a path), the file ld takes for it (empty = unresolved); 1 for any other token.
+_ffmpeg_ort_resolve() {
+    local t="$1" top="$2"
+    shift 2
+    case "${t}" in
+        -lonnxruntime) _ffmpeg_ort_ld_pick 'libonnxruntime.so libonnxruntime.a' "$@" ;;
+        -l:libonnxruntime*) _ffmpeg_ort_ld_pick "${t#-l:}" "$@" ;;
+        -*) return 1 ;;
+        /*libonnxruntime*.so*|/*libonnxruntime*.a) readlink -f -- "${t}" 2>/dev/null || true ;;
+        *libonnxruntime*.so*|*libonnxruntime*.a) readlink -f -- "${top}/${t}" 2>/dev/null || true ;;
+        *) return 1 ;;
+    esac
+}
+
+# ffmpeg_ort_link_findings <config.mak> <chain-root>: one line per way FFmpeg's link takes an ORT other
+# than the chain's shared one; none = chain only. NOT covered: headers, the Makefiles' own -L, -Wl, spellings.
+ffmpeg_ort_link_findings() {
+    local mak="$1" lib top toks t real refs=0
+    local -a dirs=()
+    lib="$(readlink -f -- "$2/lib" 2>/dev/null || true)"
+    [ -f "${mak}" ] || { echo "no ${mak}"; return 0; }
+    { [ -n "$2" ] && [ -d "${lib}" ]; } || { echo "no chain lib dir at '$2/lib'"; return 0; }
+    grep -qx -e 'CONFIG_LIBONNXRUNTIME=yes' "${mak}" || echo "${mak}: FFmpeg did not enable libonnxruntime"
+    top="$(cd "$(dirname "${mak}")/.." && pwd)"
+    toks="$(_ffmpeg_ort_link_tokens "${mak}")"
+    mapfile -t dirs < <(_ffmpeg_ort_link_dirs "${top}" "${toks}")
+    while IFS= read -r t; do
+        real="$(_ffmpeg_ort_resolve "${t}" "${top}" "${dirs[@]}")" || continue
+        refs=$((refs + 1))
+        case "${real}" in
+            "${lib}"/*.a) echo "LIB ${t} -> '${real}' is a static ORT, not the chain's shared one" ;;
+            "${lib}"/*) ;;
+            *) echo "LIB ${t} -> '${real:-unresolved}' is not in the chain lib dir ${lib}" ;;
+        esac
+    done <<< "${toks}"
+    [ "${refs}" -gt 0 ] || echo "${mak}: no link variable names libonnxruntime"
 }
 
 # Cache the TensorFlow C API SDK (libtensorflow.so + headers) across rebuilds.

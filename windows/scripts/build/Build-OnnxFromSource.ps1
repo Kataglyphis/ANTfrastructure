@@ -6,7 +6,9 @@
 param(
     [string]$SourceDir = 'C:\temp\onnx-src',
     [string]$InstallDir = '',
-    [string]$OnnxVersion = ''
+    [string]$OnnxVersion = '',
+    # rocm-lane WebGPU spike only: the Dawn tree and the DXC release, removed after the wheel.
+    [string]$WebGpuWorkDir = 'C:\temp\ort-webgpu'
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +19,352 @@ $ErrorActionPreference = 'Stop'  # fail-fast before module import
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
+
+# ── rocm-lane WebGPU EP spike (ORT_WEBGPU=1): the in-tree EP over Dawn/D3D12 with a pinned DXC.
+#    Inputs, fetches and the clang-cl notes: docs/windows-rocm.md § ONNX Runtime WebGPU EP.
+function Get-OrtWebGpuPlan {
+    param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross, [AllowEmptyString()][string]$SpikeFlag)
+    if ($SpikeFlag -notin @('', '0', '1')) { throw "ORT_WEBGPU must be '0' or '1', got '$SpikeFlag'" }
+    $onLane = [bool]($GpuEnv.HasRocm -and -not $Cross)
+    if ($SpikeFlag -eq '1' -and -not $onLane) {
+        throw "ORT_WEBGPU=1 but GPU_TYPE is '$($GpuEnv.GpuType)'$(if ($Cross) { ' on the cross lane' }): the WebGPU EP spike is rocm-lane only"
+    }
+    return [pscustomobject]@{ OnLane = $onLane; WebGpu = ($onLane -and $SpikeFlag -eq '1') }
+}
+
+# The ORT_WEBGPU_WINDOWS_* pins, each shape-checked: the Dockerfile ARGs are valueless, so a
+# stage solved without the driver sees them empty and must refuse, not fetch unpinned.
+function Get-OrtWebGpuPin {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Source)
+    $shape = [ordered]@{
+        DAWN_VERSION = '^v\d{8}\.\d{6}$'; DAWN_SHA256 = '^[0-9a-fA-F]{64}$'
+        DXC_VERSION = '^v\d+\.\d+\.\d+(\.\d+)?$'; DXC_ASSET = '^dxc_\d{4}_\d{2}_\d{2}\.zip$'; DXC_SHA256 = '^[0-9a-fA-F]{64}$'
+    }
+    $pin = [ordered]@{}
+    foreach ($name in $shape.Keys) {
+        $value = "$($Source["ORT_WEBGPU_WINDOWS_$name"])".Trim()
+        if ($value -notmatch $shape[$name]) {
+            throw "ORT_WEBGPU_WINDOWS_$name is '$value' (want $($shape[$name])): the driver forwards the pins on -Variant rocm (Get-BkRocmStageArg)"
+        }
+        $pin[$name] = $value
+    }
+    return [pscustomobject]$pin
+}
+
+# ORT's cmake/deps.txt dawn row: it must fetch exactly the pinned tag, and its SHA1 is ORT's own pin.
+function Get-OrtDawnDepsEntry {
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$DepsLine, [Parameter(Mandatory)][string]$DawnVersion)
+    $rows = @($DepsLine | Where-Object { $_ -match '^dawn;' })
+    if ($rows.Count -ne 1) { throw "ORT's cmake/deps.txt has $($rows.Count) 'dawn;' rows, expected exactly one" }
+    $null, $url, $sha1 = $rows[0].Trim() -split ';'
+    $want = "https://github.com/google/dawn/archive/refs/tags/$DawnVersion.zip"
+    if ($url -ne $want) { throw "ORT's cmake/deps.txt fetches Dawn from '$url', not '$want': re-derive ORT_WEBGPU_WINDOWS_DAWN_* for this ORT" }
+    if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw "ORT's cmake/deps.txt pins Dawn by '$sha1', not a SHA1" }
+    return [pscustomobject]@{ Url = $url; Sha1 = $sha1 }
+}
+
+# ORT's own Dawn patches in its PATCH_COMMAND order, read from the pinned ORT rather than restated.
+function Get-OrtDawnPatchName {
+    param([Parameter(Mandatory)][string]$ExternalDepsText)
+    $names = @([regex]::Matches($ExternalDepsText, '\$\{PROJECT_SOURCE_DIR\}/patches/dawn/([A-Za-z0-9_.-]+\.patch)') | ForEach-Object { $_.Groups[1].Value })
+    if ($names.Count -eq 0) { throw 'onnxruntime_external_deps.cmake names no patches/dawn/*.patch: ORT''s Dawn PATCH_COMMAND moved' }
+    return $names
+}
+
+# The Dawn DEPS entries a D3D12-only, prebuilt-DXC configure reads; Dawn's own fetcher would take 19.
+function Get-OrtDawnRequiredDep {
+    return @('third_party/jinja2', 'third_party/markupsafe', 'third_party/spirv-headers/src', 'third_party/spirv-tools/src')
+}
+
+# DEPS is Python: evaluated exactly as Dawn's tools/fetch_dawn_dependencies.py does, prints {path: url@commit}.
+function Get-OrtDawnDepsProbeSource {
+    return @'
+import json, sys
+class Var:
+    def __init__(self, name): self.name = name
+    def __add__(self, text): return self.name + text
+    def __radd__(self, text): return text + self.name
+scope = {}
+with open(sys.argv[1], encoding="utf-8") as f:
+    exec(f.read(), {"Var": Var, "Str": str}, scope)
+deps, variables = scope.get("deps") or {}, scope.get("vars") or {}
+out = {}
+for path in sys.argv[2:]:
+    entry = deps.get(path)
+    url = entry.get("url") if isinstance(entry, dict) else entry
+    out[path] = url.format(**variables) if isinstance(url, str) else ""
+print(json.dumps(out))
+'@
+}
+
+# Dawn DEPS -> {path: url@commit} for $Path: the probe above, fed to the build's Python on stdin.
+function Invoke-OrtDawnDepsProbe {
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$DepsFile, [Parameter(Mandatory)][string[]]$Path)
+    $json = @(Get-OrtDawnDepsProbeSource | & $Python - $DepsFile @Path) | Select-Object -Last 1
+    if ($LASTEXITCODE -ne 0 -or -not "$json".StartsWith('{')) { throw "the Dawn DEPS probe exited $LASTEXITCODE without a report: $json" }
+    return ConvertFrom-Json -InputObject $json -AsHashtable
+}
+
+# $Resolved is the probe's {path: url@commit}; each named path must resolve to an https URL and a full commit.
+function ConvertTo-OrtDawnDepPin {
+    param([Parameter(Mandatory)][AllowNull()][System.Collections.IDictionary]$Resolved, [Parameter(Mandatory)][string[]]$Path)
+    $pins = [ordered]@{}
+    foreach ($p in $Path) {
+        $spec = if ($null -ne $Resolved) { "$($Resolved[$p])" } else { '' }
+        if ($spec -notmatch '^(?<url>https://[^@\s]+)@(?<commit>[0-9a-f]{40})$') { throw "Dawn DEPS pins $p as '$spec', not https-url@40-hex-commit" }
+        $pins[$p] = [pscustomobject]@{ Url = $Matches.url; Commit = $Matches.commit }
+    }
+    return $pins
+}
+
+# One DEPS entry, shallow-fetched by commit; the checkout must BE that commit, or the build stops.
+function Save-OrtDawnDep {
+    param(
+        [Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{40}$')][string]$Commit,
+        [int]$MaxAttempts = 3, [int]$DelaySeconds = 10
+    )
+    $git = "git -C ""$Dir"""
+    $head = ''
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Reset-SourceBuildDirectory -Path $Dir
+        [void](New-Item -ItemType Directory -Force -Path $Dir)
+        [void](Invoke-ShieldedNative -Optional -Quiet -Label "fetch $Url" -CommandLine "$git init -q 2>&1 && $git fetch -q --depth 1 ""$Url"" $Commit 2>&1 && $git checkout -q --detach FETCH_HEAD")
+        $head = "$(Invoke-ShieldedNative -Optional -Quiet -Label 'rev-parse' -CommandLine "$git rev-parse HEAD" | Select-Object -Last 1)".Trim()
+        if ($head -eq $Commit) { Write-Host "  [dawn dep] $Url @ $Commit"; return }
+        if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) { Start-Sleep -Seconds $DelaySeconds }
+    }
+    throw "Dawn dependency $Url@$Commit is at '$head' after $MaxAttempts attempt(s)"
+}
+
+# Zip members to files; $Map turns an entry name ('/'-separated) into a relative path, or $null to skip.
+# No member may land outside $Destination.
+function Expand-OrtZipMember {
+    param([Parameter(Mandatory)][string]$Zip, [Parameter(Mandatory)][string]$Destination, [Parameter(Mandatory)][scriptblock]$Map)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $root = [System.IO.Path]::GetFullPath($Destination).TrimEnd('\') + '\'
+    $written = [System.Collections.Generic.List[string]]::new()
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($Zip)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $name = $entry.FullName -replace '\\', '/'
+            if ($name.EndsWith('/')) { continue }
+            $rel = & $Map $name
+            if (-not $rel) { continue }
+            $out = [System.IO.Path]::GetFullPath((Join-Path $root $rel))
+            if (-not $out.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { throw "zip member '$name' of $Zip would land outside $Destination" }
+            [void](New-Item -ItemType Directory -Force -Path ([System.IO.Path]::GetDirectoryName($out)))
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $out, $true)
+            $written.Add($name)
+        }
+    } finally { $archive.Dispose() }
+    return @($written)
+}
+
+# The DXC release's x64 pair, the import lib Dawn's target links and the licence texts; all six must exist.
+function Expand-OrtWebGpuDxc {
+    param([Parameter(Mandatory)][string]$Zip, [Parameter(Mandatory)][string]$Destination)
+    $members = [ordered]@{
+        'bin/x64/dxcompiler.dll' = 'dxcompiler.dll'; 'bin/x64/dxil.dll' = 'dxil.dll'; 'lib/x64/dxcompiler.lib' = 'dxcompiler.lib'
+        'LICENSE-LLVM.txt' = 'licenses\LICENSE-LLVM.txt'; 'LICENSE-MS.txt' = 'licenses\LICENSE-MS.txt'; 'LICENCE-MIT.txt' = 'licenses\LICENCE-MIT.txt'
+    }
+    $got = @(Expand-OrtZipMember -Zip $Zip -Destination $Destination -Map { param($n) $members[$n] }.GetNewClosure())
+    $missing = @($members.Keys | Where-Object { $got -notcontains $_ })
+    if ($missing.Count -gt 0) { throw "the DXC zip $Zip lacks $($missing -join ', ')" }
+}
+
+# The Dawn archive minus its top directory and test/ (70k files ORT also deletes).
+function Expand-OrtDawnArchive {
+    param([Parameter(Mandatory)][string]$Zip, [Parameter(Mandatory)][string]$Destination)
+    $got = @(Expand-OrtZipMember -Zip $Zip -Destination $Destination -Map {
+            param($n)
+            $rel = ($n -split '/', 2)[1]
+            if ($rel -and $rel -notmatch '^test/') { $rel }
+        })
+    if (@($got | Where-Object { $_ -match '^[^/]+/CMakeLists\.txt$' }).Count -eq 0) { throw "the Dawn archive $Zip has no top-level CMakeLists.txt" }
+}
+
+# Dawn's DXC targets become the pinned release: DXC's WinIncludes.h includes atlbase.h and the image has
+# no ATL. DAWN_USE_BUILT_DXC stays ON, so Dawn keeps its DXC path (ShaderF16, subgroups).
+function Invoke-DawnPrebuiltDxcPatch {
+    param([Parameter(Mandatory)][string]$DawnSrc)
+    $cmake = @'
+if (DAWN_USE_BUILT_DXC AND DAWN_PREBUILT_DXC_DIR)
+    # [ANTfrastructure prebuilt DXC] the pinned release's DLLs stand in for a DXC build.
+    message(STATUS "Dawn: prebuilt DXC from ${DAWN_PREBUILT_DXC_DIR}")
+    add_library(dxcompiler SHARED IMPORTED GLOBAL)
+    set_target_properties(dxcompiler PROPERTIES
+        IMPORTED_LOCATION "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.dll"
+        IMPORTED_IMPLIB "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.lib")
+    add_custom_target(copy_dxil_dll COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${DAWN_PREBUILT_DXC_DIR}/dxil.dll" "${CMAKE_BINARY_DIR}/dxil.dll")
+elseif (DAWN_USE_BUILT_DXC)
+    AddSubdirectoryDXC()
+endif()
+'@
+    $path = Join-Path $DawnSrc 'third_party\CMakeLists.txt'
+    $applied = Invoke-InlineRegexPatch -Path $path -Require -Description 'Dawn: prebuilt DXC targets' `
+        -SkipIfMatch 'ANTfrastructure prebuilt DXC' `
+        -Pattern '(?m)^if \(DAWN_USE_BUILT_DXC\)\r?\n[ \t]+AddSubdirectoryDXC\(\)\r?\nendif\(\)' `
+        -Replacement $cmake.TrimEnd() `
+        -AssertGone '(?m)^if \(DAWN_USE_BUILT_DXC\)\r?\n[ \t]+AddSubdirectoryDXC\(\)'
+    if (-not $applied) { throw "$path : the 'if (DAWN_USE_BUILT_DXC) AddSubdirectoryDXC() endif()' block moved; re-derive Invoke-DawnPrebuiltDxcPatch" }
+}
+
+# ORT applies its Dawn patches with GNU patch, fuzz included (git apply rejects three at v1.30.0).
+function Resolve-GnuPatchExe {
+    $onPath = Get-Command patch.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($onPath) { return $onPath.Source }
+    $core = "$(& git --exec-path 2>$null)".Trim()
+    if ($core) {
+        $candidate = Join-Path (Split-Path (Split-Path (Split-Path $core -Parent) -Parent) -Parent) 'usr\bin\patch.exe'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    throw 'GNU patch.exe is neither on PATH nor in <git>\usr\bin: ORT''s Dawn patches need it'
+}
+
+# Every WebGPU input, each pinned: the Dawn archive (SHA256 + ORT's SHA1), ORT's Dawn patches, four
+# DEPS commits and the DXC zip (SHA256). Nothing else is fetched. Returns @{ Pin; DawnSrc; DxcDir }.
+function Initialize-OrtWebGpuInput {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 only matches ORT''s deps.txt; the SHA256 pin verifies')]
+    param([Parameter(Mandatory)][string]$OrtSourceDir, [Parameter(Mandatory)][string]$WorkDir, [Parameter(Mandatory)][string]$Python)
+    $pin = Get-OrtWebGpuPin -Source ([Environment]::GetEnvironmentVariables())
+    $entry = Get-OrtDawnDepsEntry -DepsLine @(Get-Content -LiteralPath (Join-Path $OrtSourceDir 'cmake\deps.txt')) -DawnVersion $pin.DAWN_VERSION
+    Reset-SourceBuildDirectory -Path $WorkDir
+    [void](New-Item -ItemType Directory -Force -Path $WorkDir)
+    $zip = Join-Path $WorkDir 'dawn.zip'
+    Invoke-DownloadWithRetry -Url $entry.Url -DestinationPath $zip -ExpectedSha256 $pin.DAWN_SHA256 -ExpectSignature 'PK' -Description "Dawn $($pin.DAWN_VERSION)"
+    $sha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $zip).Hash.ToLowerInvariant()
+    if ($sha1 -ne $entry.Sha1) { throw "Dawn archive SHA1 $sha1 is not ORT's deps.txt $($entry.Sha1), yet its SHA256 matched: re-measure ORT_WEBGPU_WINDOWS_DAWN_SHA256" }
+    $dawnSrc = Join-Path $WorkDir 'dawn'
+    Expand-OrtDawnArchive -Zip $zip -Destination $dawnSrc
+    $patchExe = Resolve-GnuPatchExe
+    $depsCmake = [System.IO.File]::ReadAllText((Join-Path $OrtSourceDir 'cmake\external\onnxruntime_external_deps.cmake'))
+    foreach ($name in (Get-OrtDawnPatchName -ExternalDepsText $depsCmake)) {
+        $patch = Join-Path $OrtSourceDir "cmake\patches\dawn\$name"
+        [void](Invoke-ShieldedNative -Label "ORT Dawn patch $name" -CommandLine "cd /d ""$dawnSrc"" && ""$patchExe"" --batch --binary --ignore-whitespace -p1 -i ""$patch""")
+    }
+    Invoke-DawnPrebuiltDxcPatch -DawnSrc $dawnSrc
+    $required = Get-OrtDawnRequiredDep
+    $deps = ConvertTo-OrtDawnDepPin -Resolved (Invoke-OrtDawnDepsProbe -Python $Python -DepsFile (Join-Path $dawnSrc 'DEPS') -Path $required) -Path $required
+    foreach ($p in $deps.Keys) { Save-OrtDawnDep -Dir (Join-Path $dawnSrc ($p -replace '/', '\')) -Url $deps[$p].Url -Commit $deps[$p].Commit }
+    $dxcZip = Join-Path $WorkDir $pin.DXC_ASSET
+    Invoke-DownloadWithRetry -Url "https://github.com/microsoft/DirectXShaderCompiler/releases/download/$($pin.DXC_VERSION)/$($pin.DXC_ASSET)" `
+        -DestinationPath $dxcZip -ExpectedSha256 $pin.DXC_SHA256 -ExpectSignature 'PK' -Description "DXC $($pin.DXC_VERSION)"
+    $dxcDir = Join-Path $WorkDir 'dxc'
+    Expand-OrtWebGpuDxc -Zip $dxcZip -Destination $dxcDir
+    Remove-Item -LiteralPath $zip, $dxcZip -Force
+    return [pscustomobject]@{ Pin = $pin; DawnSrc = $dawnSrc; DxcDir = $dxcDir }
+}
+
+# Appended only on the spike: @() leaves every other lane's configure line untouched.
+function Get-OrtWebGpuCmakeArgs {
+    param([Parameter(Mandatory)]$Plan, [string]$DawnSrc = '', [string]$DxcDir = '')
+    if (-not $Plan.WebGpu) { return @() }
+    return @('-Donnxruntime_USE_WEBGPU=ON', '-Donnxruntime_ENABLE_DAWN_BACKEND_D3D12=ON', '-Donnxruntime_ENABLE_DAWN_BACKEND_VULKAN=OFF',
+        "-Donnxruntime_CUSTOM_DAWN_SRC_PATH=$($DawnSrc -replace '\\', '/')", "-DDAWN_PREBUILT_DXC_DIR:PATH=$($DxcDir -replace '\\', '/')")
+}
+
+# After configure: the spike's switches took, the prebuilt-DXC branch ran, and Dawn fetched nothing itself.
+function Get-OrtWebGpuConfigureFinding {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$CacheText, [Parameter(Mandatory)][AllowEmptyString()][string]$LogText)
+    $want = [ordered]@{ onnxruntime_USE_WEBGPU = 'ON'; DAWN_FETCH_DEPENDENCIES = 'OFF'; DAWN_USE_BUILT_DXC = 'ON'; DAWN_ENABLE_D3D12 = 'ON'; DAWN_ENABLE_VULKAN = 'OFF' }
+    foreach ($k in $want.Keys) {
+        $m = [regex]::Match($CacheText, "(?m)^$k(?::[A-Z]+)?=(.*?)\r?$")
+        $got = if ($m.Success) { $m.Groups[1].Value.Trim() } else { '<unset>' }
+        if ($got -ne $want[$k]) { "WebGPU EP: CMakeCache has $k=$got, want $($want[$k])" }
+    }
+    if ($LogText -notmatch 'Dawn: prebuilt DXC from ') { 'WebGPU EP: the configure never took the prebuilt-DXC branch (Dawn would build DXC, which needs ATL)' }
+    if ($LogText -match 'Running fetch_dawn_dependencies') { 'WebGPU EP: Dawn ran fetch_dawn_dependencies, a fetch this build does not pin' }
+}
+
+# cmake --install skips Dawn's DXC pair: stage it beside onnxruntime.dll with DXC's licences.
+# Returns @{ dll = sha256 }. onnxruntime.dll must load DXC at run time, as upstream does.
+function Install-OrtWebGpuRuntime {
+    param([Parameter(Mandatory)][string]$DxcDir, [Parameter(Mandatory)][string]$OrtInstallDir)
+    $bin = Join-Path $OrtInstallDir 'bin'
+    $ortDll = Join-Path $bin 'onnxruntime.dll'
+    if (-not (Test-Path -LiteralPath $ortDll -PathType Leaf)) { throw "WebGPU EP: $ortDll missing after the install" }
+    $linked = @(Get-PeImportNames -Path $ortDll -IncludeDelayLoad | Where-Object { $_ -in @('dxcompiler.dll', 'dxil.dll') })
+    if ($linked.Count -gt 0) { throw "onnxruntime.dll imports $($linked -join ', '): Dawn must open DXC at run time, not at load time" }
+    $sha = @{}
+    foreach ($dll in 'dxcompiler.dll', 'dxil.dll') {
+        Copy-Item -LiteralPath (Join-Path $DxcDir $dll) -Destination $bin -Force
+        $sha[$dll] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $bin $dll)).Hash.ToLowerInvariant()
+    }
+    $licences = Join-Path $OrtInstallDir 'licenses\directx-shader-compiler'
+    [void](New-Item -ItemType Directory -Force -Path $licences)
+    Copy-Item -Path (Join-Path $DxcDir 'licenses\*') -Destination $licences -Force
+    return $sha
+}
+
+# The installed wheel (native lane): does it list the EP, do its capi DXC bytes equal the staged pair, does it carry DXC's notice?
+function Get-OrtWebGpuWheelFinding {
+    param([AllowNull()][hashtable]$Report, [Parameter(Mandatory)][AllowEmptyCollection()][hashtable]$DllSha256)
+    if ($null -eq $Report) { return 'WebGPU EP: the wheel probe printed no report' }
+    if ($Report['error']) { return "WebGPU EP: the installed wheel does not import: $($Report['error'])" }
+    if (@($Report['providers']) -notcontains 'WebGpuExecutionProvider') { "WebGPU EP: the wheel lists [$(@($Report['providers']) -join ', ')], no WebGpuExecutionProvider" }
+    $capi = if ($Report['dlls'] -is [System.Collections.IDictionary]) { $Report['dlls'] } else { @{} }
+    foreach ($dll in 'dxcompiler.dll', 'dxil.dll') {
+        $want = "$($DllSha256[$dll])"
+        if ($want -cnotmatch '^[0-9a-f]{64}$') { "WebGPU EP: the staged $dll hash is '$want', not a SHA256: nothing to hold capi's copy to"; continue }
+        if ("$($capi[$dll])" -cne $want) { "WebGPU EP: onnxruntime\capi\$dll is '$($capi[$dll])', the staged $dll is $want" }
+    }
+    if ($Report['dxc_notice'] -ne $true) { "WebGPU EP: the wheel's ThirdPartyNotices.txt lacks '$(Get-OrtDxcNoticeTitle)'" }
+}
+
+# The ThirdPartyNotices.txt entry title for the DXC pair: ORT's own notices cover Dawn/Tint, not DXC.
+function Get-OrtDxcNoticeTitle { return 'DirectXShaderCompiler (onnxruntime/capi/dxcompiler.dll, dxil.dll)' }
+
+# Appends DXC's licence texts to the notices file the wheel packs, so a wheel copied out keeps them. Idempotent.
+function Add-OrtWebGpuWheelNotice {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$DxcDir, [Parameter(Mandatory)][string]$DxcVersion)
+    $notices = Join-Path $BuildDir 'onnxruntime\ThirdPartyNotices.txt'
+    if (-not (Test-Path -LiteralPath $notices -PathType Leaf)) { throw "WebGPU EP: $notices missing: ORT's POST_BUILD copy moved, the wheel would ship DXC without its licence" }
+    $title = Get-OrtDxcNoticeTitle
+    if ([System.IO.File]::ReadAllText($notices).Contains($title)) { return }
+    $texts = @(Get-ChildItem -LiteralPath (Join-Path $DxcDir 'licenses') -File | Sort-Object Name)
+    if ($texts.Count -eq 0) { throw "WebGPU EP: no DXC licence texts under $DxcDir\licenses" }
+    $body = ($texts | ForEach-Object { "--- $($_.Name) ---`n`n$([System.IO.File]::ReadAllText($_.FullName).TrimEnd())" }) -join "`n`n"
+    [System.IO.File]::AppendAllText($notices, "`n_____`n`n$title $DxcVersion`n`nhttps://github.com/microsoft/DirectXShaderCompiler`n`n$body`n")
+}
+
+# The installed wheel's own view, one JSON line on stdout: providers, the SHA256 of capi's DXC pair, DXC's notice.
+function Get-OrtWebGpuWheelReport {
+    param([Parameter(Mandatory)][string]$Python)
+    $probe = @'
+import hashlib, json, os, sys
+try:
+    import onnxruntime
+    capi = os.path.join(os.path.dirname(onnxruntime.__file__), "capi")
+    report = {"providers": onnxruntime.get_available_providers(), "dlls": {}, "dxc_notice": False}
+    for name in ("dxcompiler.dll", "dxil.dll"):
+        if os.path.isfile(os.path.join(capi, name)):
+            with open(os.path.join(capi, name), "rb") as f:
+                report["dlls"][name] = hashlib.sha256(f.read()).hexdigest()
+    notices = os.path.join(os.path.dirname(capi), "ThirdPartyNotices.txt")
+    if os.path.isfile(notices):
+        with open(notices, encoding="utf-8", errors="replace") as f:
+            report["dxc_notice"] = sys.argv[1] in f.read()
+except Exception as exc:
+    report = {"error": "%s: %s" % (type(exc).__name__, exc)}
+print(json.dumps(report))
+'@
+    $line = @($probe | & $Python - (Get-OrtDxcNoticeTitle) 2>$null) | Select-Object -Last 1
+    if ("$line".StartsWith('{')) { return ConvertFrom-Json -InputObject $line -AsHashtable }
+}
+
+# Read by windows\scripts\build\rocm-checks\OrtWebGpu.ps1: what this rocm-lane ORT build shipped.
+function Get-OrtWebGpuFeatureMarker {
+    param([Parameter(Mandatory)]$Plan, $Pin = $null, [hashtable]$DllSha256 = @{})
+    $lines = @('# Written by Build-OnnxFromSource.ps1 on the rocm lane; read by rocm-checks\OrtWebGpu.ps1.'
+        "ORT_WEBGPU=$(if ($Plan.WebGpu) { '1' } else { '0' })")
+    if ($Plan.WebGpu) {
+        $lines += "DAWN_VERSION=$($Pin.DAWN_VERSION)", "DXC_VERSION=$($Pin.DXC_VERSION)",
+            "DXCOMPILER_SHA256=$($DllSha256['dxcompiler.dll'])", "DXIL_SHA256=$($DllSha256['dxil.dll'])"
+    }
+    return $lines
+}
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
@@ -189,7 +537,7 @@ if ($cudaUsable) {
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnLibDir", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
 } elseif ($gpuEnv.HasRocm) {
-    # ORT >= 1.23 has no ROCm EP (onnxruntime_USE_ROCM is gone), so the rocm lane builds the same flags as cpu.
+    # ORT >= 1.23 has no ROCm EP (onnxruntime_USE_ROCM is gone): cpu flags, plus the WebGPU spike below.
     Write-Host 'ROCm layer present: CPU+DML ORT'
 } else {
     Write-Host 'No GPU layer detected: CPU-only build'
@@ -232,6 +580,16 @@ $cmakeArgs = @(
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs + $qnnArgs
+# rocm lane: ORT_WEBGPU=1 adds the WebGPU EP (the driver sends it; cpu/nvidia never see it).
+$webgpuPlan = Get-OrtWebGpuPlan -GpuEnv $gpuEnv -Cross $onnxCross -SpikeFlag "$env:ORT_WEBGPU"
+$webgpu = $null
+if ($webgpuPlan.WebGpu) {
+    Switch-BuildPhase '2b. WebGPU EP inputs: Dawn + DXC (rocm spike)'
+    $webgpu = Initialize-OrtWebGpuInput -OrtSourceDir $SourceDir -WorkDir $WebGpuWorkDir -Python $py.Exe
+    $cmakeArgs += Get-OrtWebGpuCmakeArgs -Plan $webgpuPlan -DawnSrc $webgpu.DawnSrc -DxcDir $webgpu.DxcDir
+} elseif ($webgpuPlan.OnLane) {
+    Write-Host 'ROCm lane: WebGPU EP spike off (ORT_WEBGPU is not 1)'
+}
 # #123: MLAS's amd64 kernels are MASM and stay on MSVC's ml64 BY MEASUREMENT -- llvm-ml 22
 # cannot assemble them (no listing directives, no includer-relative INCLUDE, no SDK macro
 # layer). Full record: docs/windows-backlog-archive-2026-08-26.md, #123.
@@ -249,6 +607,10 @@ if (-not $onnxCross) {
         throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
     }
     Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
+}
+if ($webgpuPlan.WebGpu) {
+    $webgpuCfg = @(Get-OrtWebGpuConfigureFinding -CacheText ([System.IO.File]::ReadAllText((Join-Path $buildDir 'CMakeCache.txt'))) -LogText ([System.IO.File]::ReadAllText($ortCfgLog)))
+    if ($webgpuCfg.Count -gt 0) { throw "WebGPU EP configure check:`n  $($webgpuCfg -join "`n  ")" }
 }
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
@@ -391,6 +753,8 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # QNN EP runtime (#121): cmake installs the provider DLL but not the SDK's backend DLLs
 # (redist, like DirectML.dll) -- stage them beside onnxruntime.dll for the DLL search path.
 if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
+$webgpuDllSha = if ($webgpuPlan.WebGpu) { Install-OrtWebGpuRuntime -DxcDir $webgpu.DxcDir -OrtInstallDir $ortInstallDir } else { @{} }
+if ($webgpuPlan.WebGpu) { Add-OrtWebGpuWheelNotice -BuildDir $buildDir -DxcDir $webgpu.DxcDir -DxcVersion $webgpu.Pin.DXC_VERSION }
 
 # -- Python wheel (onnxruntime) -- setup.py bdist_wheel FROM the build dir, where cmake
 # assembled the package tree. No --wheel_name_suffix (our CUDA+TensorRT+DML combo matches no
@@ -410,6 +774,15 @@ if ($onnxCross -and -not $tpy.Available) {
         -Arguments """$SourceDir\setup.py"" bdist_wheel" `
         -ModuleName 'onnxruntime' -CrossStage | Out-Null
 }
+if ($webgpuPlan.WebGpu) {
+    $wheelFindings = @(Get-OrtWebGpuWheelFinding -Report (Get-OrtWebGpuWheelReport -Python $py.Exe) -DllSha256 $webgpuDllSha)
+    if ($wheelFindings.Count -gt 0) { throw "WebGPU EP wheel check:`n  $($wheelFindings -join "`n  ")" }
+}
+if ($webgpuPlan.OnLane) {
+    $marker = Get-OrtWebGpuFeatureMarker -Plan $webgpuPlan -Pin $(if ($webgpu) { $webgpu.Pin }) -DllSha256 $webgpuDllSha
+    [System.IO.File]::WriteAllLines((Join-Path $ortInstallDir 'ROCM-FEATURES.txt'), [string[]]$marker)
+}
+if ($webgpu) { Remove-SourceBuildTree -Path $WebGpuWorkDir }
 
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'onnx'

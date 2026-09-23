@@ -284,6 +284,13 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
+# ort-sys links (and ort load-dynamic loads) the chain ORT, never pyke's download. One ENV
+# per name. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+ENV ORT_LIB_LOCATION=${ONNXRUNTIME_OUTPUT_DIR}/lib
+ENV ORT_PREFER_DYNAMIC_LINK=1
+ENV ORT_SKIP_DOWNLOAD=1
+ENV ORT_DYLIB_PATH=${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so
+
 # The SDK ships on all three arches (the COPY above is unconditional) but nothing
 # advertised it, so `flutter build apk` reported "[!] No Android SDK found".
 # Its host tools are linux-x86_64 only, which is why /opt/android-sdk is already

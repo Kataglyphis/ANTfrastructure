@@ -5,12 +5,13 @@
 
 <#
 .SYNOPSIS
-    rocm lane only: replaces the app venv's CPU torch with AMD's pinned ROCm torch wheels.
+    rocm lane only: replaces the app venv's CPU torch with AMD's pinned ROCm torch wheels, and adds ai-edge-litert.
 .DESCRIPTION
     Dockerfile.torch's rocm-1 stage runs it on the venv Build-TorchApp.ps1 built. Every file is
     pinned by URL + SHA256 (versions.env TORCH_ROCM_WINDOWS_*, forwarded as build-args), cached
-    by hash and installed offline. TORCH_ROCM '0' or empty is a no-op, and the cpu/nvidia image
-    never builds that stage. docs/windows-builds.md § ROCm layer.
+    by hash and installed offline. The device wheels must cover every GPU ROCm's rocBLAS serves.
+    TORCH_ROCM '0' or empty is a no-op, and the cpu/nvidia image never builds that stage.
+    docs/windows-rocm.md § PyTorch on the rocm lane.
 #>
 param(
     [AllowEmptyString()][string]$TorchRocm = "$env:TORCH_ROCM",
@@ -28,19 +29,35 @@ $ProgressPreference = 'SilentlyContinue'
 <#
 .SYNOPSIS
     Pin name -> the distribution its URL must carry; '*' marks a device wheel (checked per GPU).
+.DESCRIPTION
+    One GPU per SDK_DEVICE[_<GFX>]; its TORCH_DEVICE/TORCHVISION_DEVICE carry the same suffix. The first
+    (unsuffixed) GPU is the one ROCM_SDK_TARGET_FAMILY names; AMD's rocm sdist takes one there.
 #>
 function Get-TorchRocmPinMap {
     return [ordered]@{
-        TORCH               = 'torch'
-        TORCHVISION         = 'torchvision'
-        TORCH_DEVICE        = '*'
-        TORCH_DEVICE_FAMILY = '*'
-        TORCHVISION_DEVICE  = '*'
-        ROCM                = 'rocm'
-        BOOTSTRAP           = 'rocm-bootstrap'
-        SDK_CORE            = 'rocm-sdk-core'
-        SDK_LIBRARIES       = 'rocm-sdk-libraries'
-        SDK_DEVICE          = '*'
+        TORCH                      = 'torch'
+        TORCHVISION                = 'torchvision'
+        TORCH_DEVICE               = '*'
+        TORCH_DEVICE_FAMILY        = '*'
+        TORCHVISION_DEVICE         = '*'
+        ROCM                       = 'rocm'
+        BOOTSTRAP                  = 'rocm-bootstrap'
+        SDK_CORE                   = 'rocm-sdk-core'
+        SDK_LIBRARIES              = 'rocm-sdk-libraries'
+        SDK_DEVICE                 = '*'
+        TORCH_DEVICE_GFX1200       = '*'
+        TORCHVISION_DEVICE_GFX1200 = '*'
+        SDK_DEVICE_GFX1200         = '*'
+    }
+}
+
+<#
+.SYNOPSIS
+    Pin name -> distribution of the venv's PyPI extras: not AMD's, not tied to ROCM_WINDOWS_RELEASE.
+#>
+function Get-TorchRocmExtraPinMap {
+    return [ordered]@{
+        AI_EDGE_LITERT = 'ai-edge-litert'
     }
 }
 
@@ -87,7 +104,75 @@ function ConvertFrom-TorchRocmFileName {
 
 <#
 .SYNOPSIS
-    TORCH_ROCM_WINDOWS_* pins -> the checked file set and its GPU target.
+    One TORCH_ROCM_WINDOWS_<Name>_URL/_SHA256 pair -> its parsed file; throws on a malformed pin or another host.
+#>
+function Get-TorchRocmPinnedFile {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Pins,
+        [Parameter(Mandatory)][string]$Name,
+        # '*' accepts any distribution (device wheels are checked per GPU afterwards).
+        [Parameter(Mandatory)][string]$Distribution,
+        [Parameter(Mandatory)][string]$UrlPrefix
+    )
+    $urlKey = "TORCH_ROCM_WINDOWS_${Name}_URL"
+    $shaKey = "TORCH_ROCM_WINDOWS_${Name}_SHA256"
+    $url = "$($Pins[$urlKey])".Trim()
+    $sha = "$($Pins[$shaKey])".Trim()
+    if (-not $url.StartsWith($UrlPrefix)) { throw "$urlKey must be an $UrlPrefix URL, got '$url'" }
+    if ($sha -notmatch '^[0-9a-fA-F]{64}$') { throw "$shaKey must be a 64-hex SHA256, got '$sha'" }
+    $file = ConvertFrom-TorchRocmFileName -Url $url
+    if ($Distribution -ne '*' -and $file.Distribution -ne $Distribution) { throw "$urlKey names $($file.Distribution), expected $Distribution" }
+    if ($file.Platform -and $file.Platform -notin @('win_amd64', 'any')) { throw "$urlKey is a $($file.Platform) wheel, the image is win_amd64" }
+    return ($file | Add-Member -NotePropertyMembers @{ Name = $Name; Url = $url; Sha256 = $sha.ToLowerInvariant() } -PassThru)
+}
+
+<#
+.SYNOPSIS
+    The GPUs the device pins cover, in pin order; throws on a device wheel for another GPU, family or version.
+.DESCRIPTION
+    Each SDK_DEVICE[_<GFX>] names one GPU, and TORCH_DEVICE/TORCHVISION_DEVICE with the same suffix must extend
+    torch/torchvision at their exact version for it. The one family wheel (AOTriton images) must serve every GPU.
+#>
+function Get-TorchRocmGpuTarget {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$ByName)
+    $targets = [System.Collections.Generic.List[string]]::new()
+    $used = [System.Collections.Generic.List[string]]::new()
+    foreach ($sdkName in @($ByName.Keys | Where-Object { $_ -match '^SDK_DEVICE(_GFX[0-9A-Z]+)?$' })) {
+        $suffix = $sdkName.Substring('SDK_DEVICE'.Length)
+        $sdk = $ByName[$sdkName]
+        if ($sdk.Distribution -notmatch '^rocm-sdk-device-(?<gfx>gfx[0-9a-z]+)$') { throw "TORCH_ROCM_WINDOWS_${sdkName}_URL names no GPU target: $($sdk.FileName)" }
+        $gfx = $Matches.gfx
+        if ($suffix -and $suffix -ne "_$($gfx.ToUpperInvariant())") {
+            throw "TORCH_ROCM_WINDOWS_${sdkName}_URL names $($sdk.Distribution), expected rocm-sdk-device-$($suffix.Substring(1).ToLowerInvariant())"
+        }
+        if ($targets.Contains($gfx)) { throw "TORCH_ROCM_WINDOWS_${sdkName}_URL pins $gfx a second time" }
+        $targets.Add($gfx); $used.Add($sdkName)
+        foreach ($d in @(@{ Name = "TORCH_DEVICE$suffix"; Dist = "amd-torch-device-$gfx"; Base = 'TORCH' }
+                @{ Name = "TORCHVISION_DEVICE$suffix"; Dist = "amd-torchvision-device-$gfx"; Base = 'TORCHVISION' })) {
+            $w = $ByName[$d.Name]
+            if ($null -eq $w) { throw "TORCH_ROCM_WINDOWS_$($d.Name)_URL is not in the pin map, and $gfx needs it" }
+            if ($w.Distribution -ne $d.Dist) { throw "TORCH_ROCM_WINDOWS_$($d.Name)_URL names $($w.Distribution), expected $($d.Dist) for $gfx" }
+            if ($w.Version -ne $ByName[$d.Base].Version) { throw "TORCH_ROCM_WINDOWS_$($d.Name)_URL is $($w.Version), $($d.Base) is $($ByName[$d.Base].Version)" }
+            $used.Add($d.Name)
+        }
+    }
+    $family = $ByName['TORCH_DEVICE_FAMILY']
+    # AMD names families gfx12-0 or gfx110x; without '-' and a trailing 'x' that stem prefixes every GPU served.
+    if ($family.Distribution -notmatch '^amd-torch-device-(?<fam>gfx[0-9a-z-]+)$') { throw "TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_URL names no GPU family: $($family.FileName)" }
+    $stem = ($Matches.fam -replace '-', '') -replace 'x$', ''
+    foreach ($gfx in $targets) {
+        if (-not $gfx.StartsWith($stem)) { throw "TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_URL names $($family.Distribution), which does not serve $gfx" }
+    }
+    if ($family.Version -ne $ByName['TORCH'].Version) { throw "TORCH_ROCM_WINDOWS_TORCH_DEVICE_FAMILY_URL is $($family.Version), TORCH is $($ByName['TORCH'].Version)" }
+    $used.Add('TORCH_DEVICE_FAMILY')
+    $orphan = @($ByName.Keys | Where-Object { $_ -match 'DEVICE' -and -not $used.Contains($_) })
+    if ($orphan.Count -gt 0) { throw "device pins with no SDK_DEVICE pin for their GPU: $($orphan -join ', ')" }
+    return @($targets)
+}
+
+<#
+.SYNOPSIS
+    TORCH_ROCM_WINDOWS_* pins -> the checked file set and its GPU targets (GfxTarget = the first).
 .DESCRIPTION
     Throws on a missing or malformed pin, a URL off AMD's repo, a file built for another ROCm than
     ROCM_WINDOWS_RELEASE (rocm-bootstrap excepted), and device wheels that disagree on the GPU.
@@ -103,36 +188,49 @@ function Get-TorchRocmWheelSet {
     $map = Get-TorchRocmPinMap
     $byName = [ordered]@{}
     foreach ($name in $map.Keys) {
-        $urlKey = "TORCH_ROCM_WINDOWS_${name}_URL"
-        $shaKey = "TORCH_ROCM_WINDOWS_${name}_SHA256"
-        $url = "$($Pins[$urlKey])".Trim()
-        $sha = "$($Pins[$shaKey])".Trim()
-        if (-not $url.StartsWith('https://stable.repo.amd.com/rocm/')) { throw "$urlKey must be an https://stable.repo.amd.com/rocm/ URL, got '$url'" }
-        if ($sha -notmatch '^[0-9a-fA-F]{64}$') { throw "$shaKey must be a 64-hex SHA256, got '$sha'" }
-        $file = ConvertFrom-TorchRocmFileName -Url $url
-        if ($map[$name] -ne '*' -and $file.Distribution -ne $map[$name]) { throw "$urlKey names $($file.Distribution), expected $($map[$name])" }
-        if ($file.Platform -and $file.Platform -notin @('win_amd64', 'any')) { throw "$urlKey is a $($file.Platform) wheel, the image is win_amd64" }
+        $file = Get-TorchRocmPinnedFile -Pins $Pins -Name $name -Distribution $map[$name] -UrlPrefix 'https://stable.repo.amd.com/rocm/'
         if ($name -ne 'BOOTSTRAP' -and $file.Version -ne $Release -and -not $file.Version.EndsWith("+rocm$Release")) {
-            throw "$urlKey ($($file.FileName)) is not built for ROCM_WINDOWS_RELEASE=$Release - bump the TORCH_ROCM_WINDOWS_* block with it"
+            throw "TORCH_ROCM_WINDOWS_${name}_URL ($($file.FileName)) is not built for ROCM_WINDOWS_RELEASE=$Release - bump the TORCH_ROCM_WINDOWS_* block with it"
         }
-        $byName[$name] = $file | Add-Member -NotePropertyMembers @{ Name = $name; Url = $url; Sha256 = $sha.ToLowerInvariant() } -PassThru
+        $byName[$name] = $file
     }
-    if ($byName.SDK_DEVICE.Distribution -notmatch '^rocm-sdk-device-(?<gfx>gfx[0-9a-z]+)$') {
-        throw "TORCH_ROCM_WINDOWS_SDK_DEVICE_URL names no GPU target: $($byName.SDK_DEVICE.FileName)"
+    $targets = @(Get-TorchRocmGpuTarget -ByName $byName)
+    return [pscustomobject]@{ Wheels = @($byName.Values); GfxTarget = $targets[0]; GfxTargets = $targets }
+}
+
+<#
+.SYNOPSIS
+    The venv's PyPI extras (TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*) -> checked files, PyPI only.
+#>
+function Get-TorchRocmExtraWheel {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Pins)
+    $map = Get-TorchRocmExtraPinMap
+    foreach ($name in $map.Keys) {
+        Get-TorchRocmPinnedFile -Pins $Pins -Name $name -Distribution $map[$name] -UrlPrefix 'https://files.pythonhosted.org/packages/'
     }
-    $gfx = $Matches.gfx
-    # A device wheel extends one package at its exact version; the family wheel carries no gfx name.
-    $devices = @(
-        @{ Name = 'TORCH_DEVICE'; Dist = "amd-torch-device-$gfx"; Base = 'TORCH' }
-        @{ Name = 'TORCH_DEVICE_FAMILY'; Dist = 'amd-torch-device-*'; Base = 'TORCH' }
-        @{ Name = 'TORCHVISION_DEVICE'; Dist = "amd-torchvision-device-$gfx"; Base = 'TORCHVISION' }
-    )
-    foreach ($d in $devices) {
-        $w = $byName[$d.Name]
-        if ($w.Distribution -notlike $d.Dist) { throw "TORCH_ROCM_WINDOWS_$($d.Name)_URL names $($w.Distribution), expected $($d.Dist) for $gfx" }
-        if ($w.Version -ne $byName[$d.Base].Version) { throw "TORCH_ROCM_WINDOWS_$($d.Name)_URL is $($w.Version), $($d.Base) is $($byName[$d.Base].Version)" }
+}
+
+<#
+.SYNOPSIS
+    Every GPU ROCm's rocBLAS serves (rocm-checks\Torch.ps1 reads that set) must have its device wheels pinned.
+#>
+function Assert-TorchRocmGpuCoverage {
+    param([string[]]$GfxTarget = @(), [string[]]$RocmGpu = @())
+    if (-not $RocmGpu) { throw "ROCm's rocBLAS names no GPU (no TensileLibrary_lazy_gfx*.dat): cannot tell which device wheels torch needs" }
+    $uncovered = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Except($RocmGpu, [string[]]@($GfxTarget)))
+    if ($uncovered) {
+        throw "ROCm's rocBLAS serves $($uncovered -join ', '), the device pins cover only $($GfxTarget -join ', ') - add TORCH_ROCM_WINDOWS_*_DEVICE_<GFX> pins"
     }
-    return [pscustomobject]@{ Wheels = @($byName.Values); GfxTarget = $gfx }
+}
+
+<#
+.SYNOPSIS
+    The install must leave the chain's onnxruntime alone (same RECORD digest before and after): owner rule, chain ORT only.
+#>
+function Assert-TorchRocmOrtUnchanged {
+    param([AllowEmptyString()][string]$Before, [AllowEmptyString()][string]$After)
+    if (-not $Before) { throw 'the app venv has no onnxruntime: Build-TorchApp.ps1 installs the chain wheel before this stage' }
+    if ($After -ne $Before) { throw "the install replaced the venv's onnxruntime (RECORD $Before -> $After): the chain's CPU+DML wheel must stay" }
 }
 
 <#
@@ -185,8 +283,8 @@ function Get-TorchRocmRequirement {
 .SYNOPSIS
     Offline and exact: no index, no resolver, and the rocm sdist builds on the venv's setuptools.
 .DESCRIPTION
-    cmd's own `set` scopes the env to uv, so nothing leaks into the RUN's later verify. ROCM_SDK_TARGET_FAMILY
-    stops the rocm sdist probing offload-arch (no GPU in the build); UV_NO_CACHE keeps uv's unpack off the mount.
+    cmd's own `set` scopes the env to uv, so nothing leaks into the RUN's later verify. ROCM_SDK_TARGET_FAMILY (one GPU:
+    it only fills the sdist's generic `device` extra) stops it probing offload-arch; UV_NO_CACHE keeps uv's unpack off the mount.
 #>
 function Get-TorchRocmInstallCommand {
     param(
@@ -242,36 +340,42 @@ foreach ($module in 'WindowsScripts.Shared.psm1', 'WindowsNative.Common.psm1') {
 
 $release = "$env:ROCM_WINDOWS_RELEASE"
 $pins = @{}
-foreach ($name in (Get-TorchRocmPinMap).Keys) {
+foreach ($name in @((Get-TorchRocmPinMap).Keys) + @((Get-TorchRocmExtraPinMap).Keys)) {
     foreach ($kind in 'URL', 'SHA256') {
         $key = "TORCH_ROCM_WINDOWS_${name}_$kind"
         $pins[$key] = [Environment]::GetEnvironmentVariable($key)
     }
 }
 $set = Get-TorchRocmWheelSet -Pins $pins -Release $release
-Write-Host "=== torch app: ROCm $release torch for $($set.GfxTarget) ($($set.Wheels.Count) pinned files) ==="
+$wheels = @($set.Wheels) + @(Get-TorchRocmExtraWheel -Pins $pins)
+Write-Host "=== torch app: ROCm $release torch for $($set.GfxTargets -join ', ') + LiteRT ($($wheels.Count) pinned files) ==="
 
 $venvPython = Join-Path $AppDir '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) { throw "venv python missing at $venvPython - Build-TorchApp.ps1 builds it first" }
-# Definitions only (Get-TorchRocmVenvReport, Get-TorchRocmFinding): the check guards its own body.
+# Definitions only (Get-TorchRocmVenvReport, Get-TorchRocmFinding, Get-TorchRocmRocblasGpu): the check guards its own body.
 . $CheckScript
 $venvReport = Get-TorchRocmVenvReport -Python $venvPython
-Assert-TorchRocmVenvMatch -Wheels $set.Wheels -Venv $venvReport['venv']
+Assert-TorchRocmVenvMatch -Wheels $wheels -Venv $venvReport['venv']
+$rocmRoot = if ($env:HIP_PATH) { $env:HIP_PATH } else { "$env:ROCM_PATH" }
+if (-not $rocmRoot) { throw 'neither HIP_PATH nor ROCM_PATH is set - the rocm sdk layer (Dockerfile.rocm) must be beneath this stage' }
+$rocmGpu = @(Get-TorchRocmRocblasGpu -RocblasLibraryDir (Join-Path $rocmRoot 'bin\rocblas\library'))
+Assert-TorchRocmGpuCoverage -GfxTarget $set.GfxTargets -RocmGpu $rocmGpu
 
 New-Item -ItemType Directory -Force -Path $WheelCache | Out-Null
-foreach ($wheel in $set.Wheels) { [void](Save-TorchRocmWheel -Wheel $wheel -CacheDir $WheelCache) }
+foreach ($wheel in $wheels) { [void](Save-TorchRocmWheel -Wheel $wheel -CacheDir $WheelCache) }
 
 $requirements = Join-Path ([System.IO.Path]::GetTempPath()) "torch-rocm-$([guid]::NewGuid().ToString('N')).txt"
 try {
-    Set-Content -LiteralPath $requirements -Value @(Get-TorchRocmRequirement -Wheels $set.Wheels -CacheDir $WheelCache) -Encoding utf8
-    [void](Invoke-ShieldedNative -Label 'uv pip install (ROCm torch)' `
+    Set-Content -LiteralPath $requirements -Value @(Get-TorchRocmRequirement -Wheels $wheels -CacheDir $WheelCache) -Encoding utf8
+    [void](Invoke-ShieldedNative -Label 'uv pip install (ROCm torch + LiteRT)' `
             -CommandLine (Get-TorchRocmInstallCommand -VenvPython $venvPython -RequirementsFile $requirements -GfxTarget $set.GfxTarget))
 } finally {
     Remove-Item -LiteralPath $requirements -Force -ErrorAction SilentlyContinue
 }
 # The image's smoke check, on this venv: a bad install fails the build, not the smoke gate.
 $installed = Get-TorchRocmVenvReport -Python $venvPython
-$findings = @(Get-TorchRocmFinding -Report $installed -Release $release)
+Assert-TorchRocmOrtUnchanged -Before "$($venvReport['venv']['onnxruntime_record'])" -After "$($installed['venv']['onnxruntime_record'])"
+$findings = @(Get-TorchRocmFinding -Report $installed -Release $release -RocmGpu $rocmGpu)
 if ($findings.Count -gt 0) { throw "ROCm torch install check failed:`n  $($findings -join "`n  ")" }
-Write-Host "=== torch app: ROCm torch $($installed['torch']) (hip $($installed['hip'])) installed and checked ($($set.GfxTarget), ROCm $release) ==="
+Write-Host "=== torch app: ROCm torch $($installed['torch']) (hip $($installed['hip'])) installed and checked ($($set.GfxTargets -join ', '), ROCm $release) ==="
 exit 0

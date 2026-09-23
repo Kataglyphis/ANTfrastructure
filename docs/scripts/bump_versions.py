@@ -685,7 +685,19 @@ def spec_vulkan(cur):
     if v != cur and WRITE_MODE:
         url = f"https://sdk.lunarg.com/sdk/download/{v}/linux/vulkansdk-linux-x86_64-{v}.tar.xz"
         extras["VULKAN_SDK_SHA256"] = sha256_of_url(url)
+        extras["VULKAN_RT_WINDOWS_ZIP_SHA256"] = vulkan_rt_windows_zip_sha256(v)
     return v, extras
+
+
+def vulkan_rt_windows_zip_sha256(v):
+    """The rocm lane's Windows loader zip (Dockerfile.rocm): LunarG's published digest, else a stream-hash."""
+    name = f"VulkanRT-X64-{v}-Components.zip"
+    try:
+        text = http_text(f"https://sdk.lunarg.com/sdk/sha/{v}/windows/{name}.txt")
+    except Exception:  # noqa: BLE001 — fall back to hashing the zip itself
+        text = ""
+    m = re.search(rf"^([0-9a-fA-F]{{64}})\s+{re.escape(name)}\s*$", text, re.M)
+    return m.group(1).lower() if m else sha256_of_url(f"https://sdk.lunarg.com/sdk/download/{v}/windows/{name}")
 
 
 def spec_abseil(cur):
@@ -784,25 +796,44 @@ def spec_cudnn(cur):
 
 
 def spec_llama_cpp_hip(cur):
-    """llama.cpp's Windows ROCm zip (windows/Dockerfile.rocm-llama): the newest
-    bNNNN tag that publishes a win-rocm-<ROCM_WINDOWS_RELEASE major.minor> zip.
-    The asset name, its SHA256 and the tag's LICENSE SHA256 move with the build."""
+    """llama.cpp's Windows ROCm and Vulkan zips (windows/Dockerfile.rocm-llama): the
+    newest bNNNN tag that publishes a win-rocm-<ROCM_WINDOWS_RELEASE major.minor> zip
+    AND a win-vulkan-x64 zip, since both share the one build pin. The asset name,
+    both SHA256s and the tag's LICENSE SHA256 move with the build."""
     rocm = ".".join(read_env()["ROCM_WINDOWS_RELEASE"].split(".")[:2])
     tags = sorted((t for t in ls_remote_tags("ggml-org/llama.cpp") if re.fullmatch(r"b\d+", t)),
                   key=_vkey, reverse=True)
     for tag in tags[:30]:
         asset = f"llama-{tag}-bin-win-rocm-{rocm}-x64.zip"
-        if not artifact_exists(f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}/{asset}"):
+        vulkan = f"llama-{tag}-bin-win-vulkan-x64.zip"
+        base = f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}"
+        if not (artifact_exists(f"{base}/{asset}") and artifact_exists(f"{base}/{vulkan}")):
             continue
         v = tag[1:]
         extras = {}
         if v != cur and WRITE_MODE:
             extras["LLAMA_CPP_HIP_ASSET"] = asset
             extras["LLAMA_CPP_HIP_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, asset)
+            extras["LLAMA_CPP_VULKAN_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, vulkan)
             extras["LLAMA_CPP_HIP_LICENSE_SHA256"] = sha256_of_url(
                 f"https://raw.githubusercontent.com/ggml-org/llama.cpp/{tag}/LICENSE")
         return v, extras
-    raise RuntimeError(f"none of the newest 30 ggml-org/llama.cpp builds publishes a win-rocm-{rocm} zip")
+    raise RuntimeError(f"none of the newest 30 ggml-org/llama.cpp builds publishes both a win-rocm-{rocm} and a win-vulkan-x64 zip")
+
+
+def spec_ort_webgpu_dxc(cur):
+    """DXC's newest non-prerelease release (windows Build-OnnxFromSource.ps1, rocm WebGPU spike):
+    its one dxc_<date>.zip carries the dxcompiler.dll/dxil.dll pair; name and SHA move with the tag."""
+    rel = http_json("https://api.github.com/repos/microsoft/DirectXShaderCompiler/releases/latest")
+    tag = rel["tag_name"]
+    zips = [a["name"] for a in rel.get("assets", []) if re.fullmatch(r"dxc_\d{4}_\d{2}_\d{2}\.zip", a["name"])]
+    if len(zips) != 1:
+        raise RuntimeError(f"DXC {tag}: expected one dxc_<date>.zip asset, found {zips}")
+    extras = {}
+    if tag != cur and WRITE_MODE:
+        extras["ORT_WEBGPU_WINDOWS_DXC_ASSET"] = zips[0]
+        extras["ORT_WEBGPU_WINDOWS_DXC_SHA256"] = asset_sha256("microsoft/DirectXShaderCompiler", tag, zips[0])
+    return tag, extras
 
 
 # --- report-only latest lookups (high-risk stack pins) ---
@@ -837,7 +868,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
     ("PYTHON_VERSION", spec_python, "linux+windows toolchain CPython builds (same-minor only)"),
-    ("VULKAN_VERSION", spec_vulkan, "linux base/sdk + windows scoop layer"),
+    ("VULKAN_VERSION", spec_vulkan, "linux base/sdk + windows scoop layer + windows rocm sdk loader"),
     ("GSTREAMER_VERSION", spec_gstreamer, "linux media gstreamer stage (+ android universal)"),
     ("UBUNTU_DIGEST", spec_ubuntu_digest, "linux base (full chain)"),
     ("WINDOWS_BASE_DIGEST", spec_windows_digest, "windows base (full chain)"),
@@ -870,8 +901,10 @@ REPORT: list[tuple[str, Callable]] = [
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
     # Windows rocm lane's FFmpeg AMF headers; the header asset's SHA moves with the tag.
     ("AMF_HEADERS_VERSION", spec_amf_headers),
-    # Windows rocm lane's llama.cpp zip; the asset name and its SHA move with the build.
+    # Windows rocm lane's llama.cpp ROCm + Vulkan zips; the asset name and both SHAs move with the build.
     ("LLAMA_CPP_HIP_BUILD", spec_llama_cpp_hip),
+    # Windows rocm lane's WebGPU ORT runtime: DXC's zip; the dated asset name and its SHA move with the tag.
+    ("ORT_WEBGPU_WINDOWS_DXC_VERSION", spec_ort_webgpu_dxc),
 ]
 
 
@@ -930,6 +963,11 @@ MANUAL = [
     "TORCH_ROCM_WINDOWS_SDK_CORE_URL", "TORCH_ROCM_WINDOWS_SDK_CORE_SHA256",
     "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL", "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256",
     "TORCH_ROCM_WINDOWS_SDK_DEVICE_URL", "TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCH_DEVICE_GFX1200_URL", "TORCH_ROCM_WINDOWS_TORCH_DEVICE_GFX1200_SHA256",
+    "TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_GFX1200_URL", "TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_GFX1200_SHA256",
+    "TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL", "TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256",
+    # The rocm venv's PyPI extra: URL + PyPI's own digest, re-derived by hand (recipe in versions.env).
+    "TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL", "TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256",
 ]
 
 

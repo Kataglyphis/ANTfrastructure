@@ -26,7 +26,7 @@
 #          (known_so_packages_load is last-wins, so a conflicting duplicate is
 #          a SILENT override). Byte-identical duplicate lines are ratcheted.
 #          The SONAME field may carry `*` — a family key such as
-#          `libonnxruntime.so.*`, matched as a glob after the exact keys.
+#          `libonnxruntime.so*`, matched as a glob after the exact keys.
 #   INV-2  every versioned runtime lib package hardcoded in the codec baseline
 #          appears as a mapping target in so-package-map.txt — both hand lists
 #          must agree which Ubuntu package provides each media library. When a

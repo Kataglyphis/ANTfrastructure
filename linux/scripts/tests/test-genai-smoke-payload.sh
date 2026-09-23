@@ -102,6 +102,15 @@ printf 'raise ImportError("libonnxruntime-genai.so: undefined symbol: Oga_stub")
   > "${BROKEN}/onnxruntime_genai/__init__.py"
 printf 'Metadata-Version: 2.1\nName: onnxruntime-genai\nVersion: 0.15.2\n' \
   > "${BROKEN}/onnxruntime_genai-0.15.2.dist-info/METADATA"
+# The nvidia shape: $1's package, installed under the flavour name $3 only, into the new site $2.
+_flavoured_site() {
+  mkdir -p "$2/onnxruntime_genai_$3-0.15.2.dist-info"; cp -r "$1/onnxruntime_genai" "$2/"
+  printf 'Metadata-Version: 2.1\nName: onnxruntime-genai-%s\nVersion: 0.15.2\n' "${3//_/-}" \
+    > "$2/onnxruntime_genai_$3-0.15.2.dist-info/METADATA"
+}
+BROKEN_FLAVOUR="${_WORK}/broken-flavour"; _flavoured_site "${BROKEN}" "${BROKEN_FLAVOUR}" trt_rtx
+STUB_FLAVOUR="${_WORK}/stub-flavour"; _flavoured_site "${STUB}" "${STUB_FLAVOUR}" cuda
+cp -r "${STUB}/numpy" "${STUB_FLAVOUR}/"
 
 # Run the payload the way the image does: piped into `python -`.
 # -S keeps host site-packages out, so PYTHONPATH is the whole world here.
@@ -125,6 +134,16 @@ _run "${BROKEN}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI-BIND FAIL: onnxruntime_genai 0.15.2 is INSTALLED but not importable"
 t_assert_ok test -z "$(printf '%s' "${_OUT}" | grep -c 'GENAI-BIND SKIP' | grep -v '^0$')"
+
+t_case "a flavoured GenAI (nvidia's -trt-rtx) that will not import is a FAIL too, never a SKIP"
+_run "${BROKEN_FLAVOUR}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64
+t_assert_eq "1" "${_RC}" "the lock's plain onnxruntime-genai is purged on nvidia; the flavour is the GenAI"
+t_assert_contains "${_OUT}" "GENAI-BIND FAIL: onnxruntime_genai 0.15.2 is INSTALLED but not importable"
+
+t_case "tier 1 reads a flavoured GenAI's version when the module carries no __version__"
+_run "${STUB_FLAVOUR}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 STUB_GENAI_VERSION= \
+     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+t_assert_contains "${_OUT}" "__version__ 0.15.2 matches the build pin" "the version comes from onnxruntime-genai-cuda's metadata"
 
 t_case "a correct binding -> GENAI-BIND OK, rc=0, with all four tiers reported"
 _run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \

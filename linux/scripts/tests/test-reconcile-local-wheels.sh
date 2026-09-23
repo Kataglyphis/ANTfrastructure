@@ -16,7 +16,7 @@ _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 # Extract the function and its wheel_family helper: assemble-torch-app.sh is a
 # top-level script and sourcing it would run the whole assembly.
 _lib="${_work}/lib.sh"
-for _fn in wheel_family _purge_shadowing_pypi_builds _wheel_families_present \
+for _fn in wheel_family _ort_purge_names _purge_shadowing_pypi_builds _wheel_families_present \
           _partition_wheels_by_install_group _install_wheel_groups \
           _backfill_torch_runtime_deps reconcile_local_wheels; do
   awk -v f="${_fn}" '$0 ~ "^"f"\\(\\) \\{" {p=1} p {print} p && /^\}/ {exit}' "${SUBJECT}" >> "${_lib}"
@@ -41,6 +41,7 @@ _uv_calls_env() {
     log() { :; }; warn() { :; }; echo() { :; }
     uname() { printf "%s\n" "${_T_ARCH}"; }
     uv() { printf "uv %s\n" "$*"; }
+    run_ort_census() { printf "%s\n" "${_T_CENSUS_OUT-}"; return "${_T_CENSUS_RC:-0}"; }
     uv_uninstall_pip_opencv() { printf "uninstall-pip-opencv\n"; }
     staged_opencv_python_available() { return 1; }
     source "'"${_lib}"'"
@@ -112,6 +113,18 @@ _out="$(_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl" \
         "tvm-0.26.0-cp314-cp314-linux_x86_64.whl" \
         "iree_base_runtime-3.11.0-cp312-abi3-linux_x86_64.whl")"
 t_assert_eq "numpy tvm iree" "$(printf '%s\n' "${_out}" | grep -oE -e 'numpy|tvm|iree' | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
+
+t_case "an ORT wheel uninstalls exactly the distributions the census names"
+_out="$(_T_CENSUS_OUT=$'ORT-CENSUS PURGE onnxruntime\nORT-CENSUS PURGE onnxruntime-ep-webgpu' \
+        _uv_calls "onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl")"
+t_assert_contains "${_out}" "uv pip uninstall onnxruntime onnxruntime-ep-webgpu" \
+  "a name no fixed list carried is purged (the census, not a list, decides)"
+_out="$(_T_CENSUS_OUT='' _uv_calls "onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl")"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'uv pip uninstall' || true)" "no ORT installed yet: nothing to uninstall"
+
+t_case "a census that cannot list the venv stops the reconcile"
+_rc=0; _T_CENSUS_RC=1 _uv_calls "onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl" >/dev/null || _rc=$?
+t_assert_eq 1 "${_rc}" "reconcile_local_wheels must fail, not install over an unknown venv"
 
 t_case "a torch wheel triggers the shadowing purge"
 _out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions" \

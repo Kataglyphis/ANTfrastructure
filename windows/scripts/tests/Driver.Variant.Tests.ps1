@@ -112,9 +112,25 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
         Assert-Equal 'TVM_ROCM=1' (Format-StageArg 'rocm' 'media-tvm' -Pins $script:FakePins) 'media-tvm'
         Assert-Equal 'TVM_ROCM=0' (Format-StageArg 'rocm' 'media-tvm' $true) 'media-tvm -NoRocmSpikes'
         Assert-Equal 'TORCH_ROCM=1,TORCH_ROCM_WINDOWS_TORCH_SHA256=s,TORCH_ROCM_WINDOWS_TORCH_URL=u' (Format-StageArg 'rocm' 'torch' -Pins $script:FakePins) 'torch'
-        foreach ($s in 'media-core', 'media-litert', 'sdk', 'final') {
+        foreach ($s in 'media-litert', 'sdk', 'final') {
             Assert-Equal '' (Format-StageArg 'rocm' $s -Pins $script:FakePins) "rocm stage $s"
         }
+    }
+
+    It 'passes ORT_WEBGPU (0 under -NoRocmSpikes) and only the ORT_WEBGPU_WINDOWS_* pins to media-core on the rocm lane' {
+        # ORT_WEBGPU_ALLOW_CROSS is the Linux lane's toggle: a looser prefix would forward it too.
+        $pins = $script:FakePins + @{ ORT_WEBGPU_WINDOWS_DAWN_SHA256 = 'd'; ORT_WEBGPU_ALLOW_CROSS = 'true'; ORT_ENABLE_WEBGPU = 'true' }
+        Assert-Equal 'ORT_WEBGPU=1,ORT_WEBGPU_WINDOWS_DAWN_SHA256=d' (Format-StageArg 'rocm' 'media-core' -Pins $pins) 'media-core'
+        Assert-Equal 'ORT_WEBGPU=0,ORT_WEBGPU_WINDOWS_DAWN_SHA256=d' (Format-StageArg 'rocm' 'media-core' $true $pins) 'media-core -NoRocmSpikes'
+        foreach ($v in '', 'nvidia') { Assert-Equal '' (Format-StageArg $v 'media-core' -Pins $pins) "variant '$v' media-core" }
+    }
+
+    It 'the onnx stage''s ORT_WEBGPU* ARGs are valueless and only in media-core-built-onnx (cpu/nvidia RUN env unchanged)' {
+        $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder')
+        $stage = [regex]::Match($df, '(?s)FROM common AS media-core-built-onnx\r?\n(.*?)\r?\nRUN ')
+        Assert-True $stage.Success 'the media-core-built-onnx stage and its RUN'
+        Assert-Equal 6 ([regex]::Matches($stage.Groups[1].Value, '(?m)^ARG ORT_WEBGPU\w*\r?$')).Count 'six valueless ARGs before the ORT RUN'
+        Assert-Equal 6 ([regex]::Matches($df, '(?m)^ARG ORT_WEBGPU')).Count 'and no other stage (or default) declares one'
     }
 
     It 'tells the rocm smoke gate which spike mode the image must carry (both modes share their tags)' {
@@ -122,21 +138,25 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
         Assert-Equal 'EXPECT_ROCM_SPIKES=0' (Format-StageArg 'rocm' 'smoke-gate' $true) '-NoRocmSpikes'
     }
 
-    It 'sends Dockerfile.torch exactly the TORCH_ROCM_WINDOWS_* pins it declares' {
-        $sent = @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'torch' -VersionTable (Get-DriverVariantPin)).Keys | Where-Object { $_ -ne 'TORCH_ROCM' })
-        $declared = @(Get-DriverVariantDeclaredArg 'windows\Dockerfile.torch' 'TORCH_ROCM_WINDOWS_\w+')
-        Assert-True ($declared.Count -gt 0) 'Dockerfile.torch declares no TORCH_ROCM_WINDOWS_* pin'
-        Assert-Equal (($declared | Sort-Object) -join ',') (($sent | Sort-Object) -join ',') 'declared vs sent torch pins'
+    It 'sends Dockerfile.torch and the onnx stage exactly the pins each declares' {
+        foreach ($c in @(@{ Stage = 'torch'; Df = 'windows\Dockerfile.torch'; Pin = 'TORCH_ROCM_WINDOWS_\w+'; Switch = 'TORCH_ROCM' }
+                @{ Stage = 'media-core'; Df = 'windows\Dockerfile.media-builder'; Pin = 'ORT_WEBGPU_WINDOWS_\w+'; Switch = 'ORT_WEBGPU' })) {
+            $sent = @((Get-BkRocmStageArg -Variant 'rocm' -Stage $c.Stage -VersionTable (Get-DriverVariantPin)).Keys | Where-Object { $_ -ne $c.Switch })
+            $declared = @(Get-DriverVariantDeclaredArg $c.Df $c.Pin)
+            Assert-True ($declared.Count -gt 0) "$($c.Df) declares no $($c.Pin) pin"
+            Assert-Equal (($declared | Sort-Object) -join ',') (($sent | Sort-Object) -join ',') "declared vs sent, $($c.Stage)"
+        }
     }
 
-    It 'every rocm-only build-arg is declared by its consumer with the inert default 0' {
+    It 'every rocm-only build-arg is declared by its consumer, inert: default 0 or valueless' {
         # buildctl silently DROPS a build-arg no ARG declares, so an undeclared key is a no-op, not an error.
-        $consumers = @{ TVM_ROCM = 'windows\Dockerfile.media-builder'; TORCH_ROCM = 'windows\Dockerfile.torch' }
-        $keys = @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'media-tvm').Keys) + @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'torch').Keys)
+        $consumers = @{ TVM_ROCM = 'windows\Dockerfile.media-builder'; TORCH_ROCM = 'windows\Dockerfile.torch'; ORT_WEBGPU = 'windows\Dockerfile.media-builder' }
+        $keys = @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'media-tvm').Keys) + @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'torch').Keys) +
+            @((Get-BkRocmStageArg -Variant 'rocm' -Stage 'media-core').Keys)
         foreach ($k in $keys) {
             Assert-True $consumers.ContainsKey($k) "no consumer Dockerfile recorded for $k"
             $df = Get-Content -Raw (Join-Path (Get-RepoRoot) $consumers[$k])
-            Assert-Match "(?m)^ARG $k=`"?0`"?\s*$" $df "$($consumers[$k]) must declare ARG $k=0"
+            Assert-Match "(?m)^ARG $k(=`"?0`"?)?\s*$" $df "$($consumers[$k]) must declare ARG $k=0 or a valueless ARG $k"
         }
     }
 }
@@ -284,8 +304,8 @@ Describe 'Build-Buildkit.ps1: rocm chain wiring' {
         Assert-Match "\} \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage 'torch' -VersionTable \`$versions\)\)" $src 'TORCH_ROCM only through the rocm helper'
     }
 
-    It 'sends TVM_ROCM through the media branch loop, and forwards the lane to the -ConcurrentAux children' {
-        Assert-Match "\+ \`$archArgs \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage \`$branch -NoRocmSpikes \(\[bool\]\`$NoRocmSpikes\)\)" $src 'branch args'
+    It 'sends TVM_ROCM and ORT_WEBGPU through the media branch loop, and forwards the lane to the -ConcurrentAux children' {
+        Assert-Match "\+ \`$archArgs \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage \`$branch -NoRocmSpikes \(\[bool\]\`$NoRocmSpikes\) -VersionTable \`$versions\)" $src 'branch args (with the pins)'
         Assert-Match "if \(\`$isNvidia\) \{ \`$auxArgs \+= '-Gpu' \}" $src 'nvidia children keep -Gpu'
         Assert-Match "if \(\`$Variant -eq 'rocm'\) \{ \`$auxArgs \+= @\('-Variant', 'rocm'\) \+ @\(if \(\`$NoRocmSpikes\) \{ '-NoRocmSpikes' \}\) \}" $src 'rocm children get -Variant rocm and -NoRocmSpikes'
     }

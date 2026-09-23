@@ -81,6 +81,9 @@ known_so_packages_load() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ORT is chain-only (owner rule 2026-09-23): the resolver may never reach apt for it.
+# shellcheck source=ort-runtime-gate.sh
+source "${SCRIPT_DIR}/ort-runtime-gate.sh"
 declare -A KNOWN_SO_PACKAGES=()
 declare -a KNOWN_SO_GLOBS=()
 # Reserved map target: the library comes from this repo's OWN build, so a miss
@@ -115,6 +118,8 @@ resolve_package_for_so() {
   local so_name="$1"
   local pkg="" glob
 
+  # Denied in code, not only in the map: a missing map must not reopen the 2026-08-27 path.
+  ort_is_denied_soname "${so_name}" && return 2
   pkg="${KNOWN_SO_PACKAGES[${so_name}]:-}"
 
   if [ -z "${pkg}" ] && [ ${#KNOWN_SO_GLOBS[@]} -gt 0 ]; then
@@ -251,6 +256,8 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
   else
     apt-get update
   fi
+
+  ort_apt_plan_gate "${UNIQ_PKGS[@]}" || exit 1
 
   if command -v install_target_packages >/dev/null 2>&1; then
     DEBIAN_FRONTEND=noninteractive install_target_packages "${UNIQ_PKGS[@]}" || true
@@ -429,6 +436,9 @@ fi
 
 echo ""
 echo "=== Validation complete ==="
+
+# Whatever the repair or an earlier install pulled in: no distro ONNX Runtime ships.
+ort_dpkg_gate || exit 1
 
 # DENIED class (source-built SONAME missing) is meant to be empty by
 # construction; a non-zero count is a builder bug, not a tolerance case.

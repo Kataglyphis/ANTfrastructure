@@ -975,9 +975,22 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-22b17812",
-      "name": "PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; rocm variant only)",
-      "versionInfo": "torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-75c18a6a",
+      "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32, the pinned copy and its licence in C:\\vulkan-loader; rocm variant only)",
+      "versionInfo": "1.4.357.0",
+      "downloadLocation": "https://vulkan.lunarg.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND MIT",
+      "licenseConcluded": "Apache-2.0 AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-ac7623f6",
+      "name": "PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; device kernels for gfx1201 and gfx1200; rocm variant only)",
+      "versionInfo": "torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0, rocm-sdk/amd-torch/amd-torchvision device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
       "downloadLocation": "https://rocm.docs.amd.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -986,6 +999,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / GPU Layer",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-ddee6c4d",
+      "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv; rocm variant only)",
+      "versionInfo": "2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*)",
+      "downloadLocation": "https://github.com/google-ai-edge/LiteRT",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND BSD-3-Clause",
+      "licenseConcluded": "Apache-2.0 AND BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-63679160",
@@ -1118,6 +1144,19 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Vulkan-SDK-headers-glslc-FFmpeg---enable-vulka-3990d53f",
+      "name": "Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only)",
+      "versionInfo": "1.4.357.0",
+      "downloadLocation": "https://vulkan.lunarg.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND MIT",
+      "licenseConcluded": "Apache-2.0 AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-LM-WebGPU-accelerator-TopK-sampler-preb-381634be",
       "name": "LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll)",
       "versionInfo": "0.17.1",
@@ -1157,6 +1196,32 @@
       "licenseComments": "Obligations: keep-notice, include-text, eula-review"
     },
     {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Dawn-WebGPU-Tint-statically-linked-into-the-ch-eb2d4171",
+      "name": "Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\\runtime\\lib\\onnxruntime-source and every chain onnxruntime wheel)",
+      "versionInfo": "v20260818.211311",
+      "downloadLocation": "https://github.com/google/dawn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND Apache-2.0",
+      "licenseConcluded": "BSD-3-Clause AND Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / ONNX Runtime WebGPU EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--bea204b8",
+      "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
+      "versionInfo": "v1.9.2607",
+      "downloadLocation": "https://github.com/microsoft/DirectXShaderCompiler",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "NCSA AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "NCSA AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / ONNX Runtime WebGPU EP (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text, eula-review"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048",
       "name": "llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools)",
       "versionInfo": "11115",
@@ -1166,20 +1231,33 @@
       "licenseDeclared": "MIT",
       "licenseConcluded": "MIT",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "comment": "Image section: Windows Image / llama.cpp HIP and Vulkan (rocm variant only)",
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-the--63b2aec4",
-      "name": "LLVM OpenMP runtime (libomp.dll, bundled in the llama.cpp zip)",
-      "versionInfo": "as bundled in the pinned llama.cpp zip (sha256-pinned)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
+      "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
+      "versionInfo": "11115",
+      "downloadLocation": "https://github.com/ggml-org/llama.cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / llama.cpp HIP and Vulkan (rocm variant only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-913642f0",
+      "name": "LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips)",
+      "versionInfo": "as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical)",
       "downloadLocation": "https://github.com/llvm/llvm-project/tree/main/openmp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
       "licenseDeclared": "Apache-2.0 WITH LLVM-exception",
       "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "comment": "Image section: Windows Image / llama.cpp HIP and Vulkan (rocm variant only)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
@@ -1192,7 +1270,7 @@
       "licenseDeclared": "MIT AND Apache-2.0 WITH LLVM-exception",
       "licenseConcluded": "MIT AND Apache-2.0 WITH LLVM-exception",
       "copyrightText": "NOASSERTION",
-      "comment": "Image section: Windows Image / llama.cpp HIP (rocm variant only)",
+      "comment": "Image section: Windows Image / llama.cpp HIP and Vulkan (rocm variant only)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
@@ -2098,7 +2176,17 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-22b17812"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-75c18a6a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-AMD-Windows-wheel-ac7623f6"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-ddee6c4d"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
@@ -2153,6 +2241,11 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Vulkan-SDK-headers-glslc-FFmpeg---enable-vulka-3990d53f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-LM-WebGPU-accelerator-TopK-sampler-preb-381634be"
     },
     {
@@ -2168,12 +2261,27 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Dawn-WebGPU-Tint-statically-linked-into-the-ch-eb2d4171"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--bea204b8"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-the--63b2aec4"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-913642f0"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

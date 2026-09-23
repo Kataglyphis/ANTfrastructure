@@ -58,6 +58,8 @@ Two neighbours, so you land on the right page:
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [A no-push wrapper build cannot find its own android image](#a-no-push-wrapper-build-cannot-find-its-own-android-image)
 - [A GPU venv ships two onnxruntime distributions](#a-gpu-venv-ships-two-onnxruntime-distributions)
+- [The torch stage fails with `ORT-CENSUS FAIL`](#the-torch-stage-fails-with-ort-census-fail)
+- [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
@@ -105,6 +107,7 @@ Two neighbours, so you land on the right page:
 - [Rust smoke test: "rustup could not choose a version of cargo/rustc"](#rust-smoke-test-rustup-could-not-choose-a-version-of-cargorustc)
 - [A GitLab download "succeeds" with HTTP 200 but is a few KB](#a-gitlab-download-succeeds-with-http-200-but-is-a-few-kb)
 - [`TVM: llvm-config.exe not found on PATH`](#tvm-llvm-configexe-not-found-on-path)
+- [`TVM ROCm spike: C:\llvm-patched\bin\llvm-config.exe has no AMDGPU target`](#tvm-rocm-spike-cllvm-patchedbinllvm-configexe-has-no-amdgpu-target)
 - [`TVM: no member named 'matchIntrinsicSignature' in namespace 'llvm::Intrinsic'`](#tvm-no-member-named-matchintrinsicsignature-in-namespace-llvmintrinsic)
 - [`lld-link: error: undefined symbol` for template instantiations after a green compile](#lld-link-error-undefined-symbol-for-template-instantiations-after-a-green-compile)
 - [meson cross: `Summary section 'Build environment' already have key 'host cpu'`, then `Subproject "subprojects/glib" required but not found`](#meson-cross-summary-section-build-environment-already-have-key-host-cpu-then-subproject-subprojectsglib-required-but-not-found)
@@ -893,7 +896,10 @@ appears as a mapping target. `KNOWN_UNMAPPED` is a **ratchet**, not an excuse
 list — it records the divergence that already existed on 2026-08-24, because
 inventing map entries would mean inventing sonames, and it fails in both
 directions so the list can only shrink honestly. Truth (3) stays out of a static
-test's reach; that is stated rather than papered over.
+test's reach; that is stated rather than papered over. ONNX Runtime is denied in
+code (`ort_is_denied_soname`, `ort-runtime-gate.sh`), so a missing or edited map
+cannot reopen the 2026-08-27 path, where the guess pulled a distro
+`libonnxruntime1.x`.
 
 ### The NVIDIA apt keyring 404s on `ubunturesolute`
 
@@ -941,7 +947,41 @@ test's reach; that is stated rather than papered over.
 
 **Cause.** `/opt/wheels` is a bind mount, read-only by default, and the variant prune's `rm -f ... || true` swallowed the error.
 
-**Fix.** `Dockerfile.torch` mounts it `rw` (BuildKit discards the writes after the RUN) and the prune has no `|| true`. CPU images never showed this because they carry no `_gpu` wheel.
+**Fix.** `Dockerfile.torch` mounts it `rw` (BuildKit discards the writes after the RUN) and the prune has no `|| true`. CPU images never showed this because they carry no `_gpu` wheel. Since 2026-09-23 the ORT census at the end of `install_project_environment` fails the torch stage on two owners, before any smoke runs.
+
+### The torch stage fails with `ORT-CENSUS FAIL`
+
+**Symptom.** The torch stage stops with lines like these:
+- `ORT-CENSUS FAIL onnxruntime-ep-webgpu 0.4.0 at C:\opt\OrchestrANT\.venv\Lib\site-packages is not a chain wheel: the store C:\runtime\wheels has no wheel of that name and version`
+- `... 52 file(s) differ from the chain wheel's bytes, e.g. ...`
+- `the onnxruntime import package has 2 owners (...), expected exactly one`
+- on Linux, before `uv sync`: `ERROR: no chain ONNX Runtime wheel in /opt/wheels for ONNX_PACKAGE=...`
+- on Windows, before `uv sync`: `uv.lock pins onnxruntime-genai, ... and C:\runtime\wheels has no chain wheel of that family`
+
+It comes from Linux `assemble-torch-app.sh`, from Windows `Build-TorchApp.ps1` (install or verify, including the rocm-1 stage), or from smoke section 21's app-verify assertion.
+
+**Cause.** Every ONNX Runtime in the app venv must be a chain wheel ([`onnxruntime-single-source.md`](onnxruntime-single-source.md)). `linux/scripts/03-media/runtime/ort-venv-census.py` runs in the venv's own interpreter (`python -I`); `Build-TorchApp.ps1` embeds the same program. It treats as ORT every distribution named `onnxruntime` or `onnxruntime-*` and every one that ships files into `onnxruntime`, `onnxruntime_genai` or `onnxruntime_extensions`, so `ort-nightly` counts. Each must be byte-identical to the store wheel of its name and version: every payload file with the same SHA256, and nothing installed that the wheel lacks. Name and version are not enough, because PyPI publishes onnxruntime 1.30.0 for cp314 too. It also requires one owner of `onnxruntime`, the import resolving to that owner, no unowned file in those package directories, and a `ORT-CENSUS PASS` line: exit 0 without one is a failure.
+
+**Fix.** Put the flavour into the chain store; never install it from PyPI and never exempt it.
+- The reconcile already uninstalls every candidate `--purge-list` names before it force-installs the store, so a foreign one was installed after the reconcile. The rocm lane's PyPI `onnxruntime-ep-webgpu` was exactly that, until the WebGPU EP moved into the chain ORT.
+- A missing chain wheel is a media-stage problem. On Linux the cross ORT wheel is built only when `cross_target_python_dev_ready`.
+- On nvidia the chain GenAI is `onnxruntime-genai-cuda` or `-trt-rtx`, not `onnxruntime-genai`. ARCH-PARITY, VENV-SET and the GEN1 binding check count any `onnxruntime-genai(-<flavour>)` as the GenAI (`_pkg_count`, `genai_dist_version`); do not add an `onnxruntime-genai` arm to `_venv_pkg_exempt`, which would read STALE on every image that ships the plain name.
+
+**Not covered here:** whether the store wheel itself was compiled by the chain (the image census), files installed outside site-packages, and ORT vendored under another distribution and package name.
+
+### A build or smoke stops on an ONNX Runtime that is not the chain's
+
+**Symptom.** One of:
+- Windows, at the end of a consumer build: `ORT gate (<consumer>): N finding(s), the build reached an ONNX Runtime other than the chain's`, after `FAIL:` lines naming a file, a record path or a log line.
+- Linux, the same place: `ORT-GATE FAIL (<consumer>): ...` lines, then `ORT-GATE FAILED`.
+- `no build record names the chain ONNX Runtime ...`: the consumer built without ORT at all. On Windows FFmpeg that is a missing chain header.
+- The smoke: `ORT census: STAMP ...\ort-provenance\<consumer>.json -- missing, or not naming this image's chain core lib`.
+- Linux OpenCV after cmake: `configure log: ... DNN: Downloading ONNX Runtime`, `ONNXRT_ROOT_DIR=...3rdparty/onnxruntime...`, or `no 'ONNX Runtime: YES (ver X)'`; before cmake, `OpenCV must build against the chain ONNX Runtime at /usr/local/lib/onnxruntime-cpu`.
+- Linux apt or loader: `FAIL: this apt install would pull a distro ONNX Runtime`, `FAIL: a distro ONNX Runtime is installed beside the chain build`, `FAIL: a loader path reaches an ONNX Runtime that is not the chain build`.
+
+**Cause.** A consumer compiled, linked, fetched or loaded an ORT that is not the chain build. An upstream bump that re-enabled a download is the usual source. The STAMP case means the consumer's layer predates the build gate or ran against another ORT build. On Linux, Ubuntu's `gstreamer1.0-plugins-bad` depends on `libonnxruntime1.x`, which is how apt pulled a distro ORT on 2026-08-27 (12 packages, 62.9 MB).
+
+**Fix.** Remove the source, never loosen the gate: restore the pre-set, `ORT_HOME` or fetch block the consumer lost; drop the package that drags a distro ORT in; replace a stray copy with a link to the chain file. For STAMP, rebuild that consumer's stage. Which gate sits where, and what each message means: [`onnxruntime-single-source.md` § Failure messages](onnxruntime-single-source.md#failure-messages).
 
 ### The wrapper smoke fails `clang --version` after a partial rebuild
 
@@ -1244,6 +1284,14 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 **Cause.** Scoop LLVM never ships llvm-config or dev libs — TVM was silently USE_LLVM=OFF (no CPU codegen) until 2026-08-17. NOT a broken PATH.
 
 **Fix.** The self-heal in `Build-TvmFromSource.ps1` builds a pinned minimal LLVM from source ([`windows-build-invariants.md`](windows-build-invariants.md) § Windows Build Invariants). If the gate throws, check the heal's download/SHA pin for the current `LLVM_WINDOWS_VERSION` — do NOT fall back to the official /MT dev tarball or USE_LLVM=OFF.
+
+### `TVM ROCm spike: C:\llvm-patched\bin\llvm-config.exe has no AMDGPU target`
+
+**Symptom.** A `-Variant rocm` run, media-tvm RUN: `TVM ROCm spike: C:\llvm-patched\bin\llvm-config.exe has no AMDGPU target (targets-built: 'AArch64 X86') -- the rocm codegen cannot emit hsaco`, thrown before TVM configures. IREE, in the same RUN, never runs.
+
+**Cause.** Until 2026-09-23 TVM built its own AMDGPU-capable LLVM only when PATH had no llvm-config, and on amd64 the patched toolchain LLVM (`AArch64;X86`) is always on PATH.
+
+**Fix.** Fixed in `Build-TvmFromSource.ps1` (`Get-TvmLlvmChoice`): on the spike a PATH llvm-config without AMDGPU counts as absent, and TVM builds a minimal LLVM with AMDGPU ([`windows-rocm.md` § IREE and TVM](windows-rocm.md#iree-and-tvm-on-the-rocm-lane)). If the message names `C:\llvm-patched`, the choice was bypassed; if it names `C:\temp\llvm-dev\install\bin\llvm-config.exe`, the minimal build ignored its target list. `-NoRocmSpikes` is the workaround.
 
 ### `TVM: no member named 'matchIntrinsicSignature' in namespace 'llvm::Intrinsic'`
 

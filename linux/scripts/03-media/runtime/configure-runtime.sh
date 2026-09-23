@@ -105,7 +105,9 @@ write_conf /etc/ld.so.conf.d/000-libcamera.conf "/opt/libcamera/lib" "/opt/libca
 write_conf /etc/ld.so.conf.d/000-ffmpeg.conf "/opt/ffmpeg/lib"
 write_conf /etc/ld.so.conf.d/000-opencv.conf "/opt/opencv5/lib"
 write_conf /etc/ld.so.conf.d/000-armnn.conf "/opt/armnn/lib" "/opt/acl/lib"
-write_conf /etc/ld.so.conf.d/onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
+# 000- like the rest: the chain ORT is ours too, and sorts ahead of /opt/opencv5's forwarding links.
+rm -f /etc/ld.so.conf.d/onnxruntime.conf
+write_conf /etc/ld.so.conf.d/000-onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
 write_conf /etc/ld.so.conf.d/litert.conf "/usr/local/lib"
 write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.2.0}/lib64" "/opt/gcc-${GCC_VERSION:-16.2.0}/lib"
 
@@ -117,3 +119,8 @@ elif [ "${ENABLE_AMD:-false}" = "true" ]; then
 fi
 
 ldconfig
+
+# Owner rule 2026-09-23: the chain is the only ONNX Runtime -- no apt copy, no stray file on a loader path.
+# shellcheck source=ort-runtime-gate.sh
+source "$(dirname "${BASH_SOURCE[0]}")/ort-runtime-gate.sh"
+ort_runtime_gate "/usr/local/lib/onnxruntime-cpu/lib:/usr/local/lib/onnxruntime-gpu/lib"

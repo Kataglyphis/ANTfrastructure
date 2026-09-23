@@ -57,7 +57,8 @@ function Get-TvmRocmSidecarFinding {
 
 <#
 .SYNOPSIS
-    Probe 1: which runtime sidecars `import tvm` loaded. argv[1] = a DLL dir standing in for System32.
+    Probe 1: which runtime sidecars `import tvm` loaded, and the LLVM targets tvm_compiler links (null
+    without LLVM). argv[1] = a DLL dir standing in for System32.
 #>
 function Get-TvmRocmRuntimeProbe {
     return @'
@@ -65,8 +66,43 @@ import json, os, sys
 if os.path.isdir(sys.argv[1]):
     os.add_dll_directory(sys.argv[1])
 import tvm
-print(json.dumps({"opencl": bool(tvm.runtime.enabled("opencl")), "rocm": bool(tvm.runtime.enabled("rocm"))}))
+targets = tvm.get_global_func("target.llvm_get_targets", allow_missing=True)
+print(json.dumps({"opencl": bool(tvm.runtime.enabled("opencl")), "rocm": bool(tvm.runtime.enabled("rocm")),
+                  "llvm_targets": None if targets is None else sorted(str(t) for t in targets())}))
 '@
+}
+
+<#
+.SYNOPSIS
+    The marker's own promise: a TVM_ROCM=1 build recorded an LLVM with AMDGPU.
+#>
+function Get-TvmRocmMarkerFinding {
+    param([Parameter(Mandatory)][hashtable]$Features)
+    $targets = @("$($Features['LLVM_TARGETS'])" -split ';' | Where-Object { $_ })
+    if ($targets.Count -eq 0) { return 'TVM: the marker records no LLVM_TARGETS -- the build did not read back llvm-config --targets-built' }
+    if ($Features['TVM_ROCM'] -eq '1' -and $targets -cnotcontains 'AMDGPU') {
+        "TVM: the marker says TVM_ROCM=1 but LLVM_TARGETS=$($Features['LLVM_TARGETS']) has no AMDGPU -- the rocm codegen cannot emit hsaco"
+    }
+}
+
+<#
+.SYNOPSIS
+    The marker's LLVM_TARGETS against the arches tvm_compiler links (llvm_get_targets, probe 1).
+#>
+function Get-TvmRocmLlvmTargetFinding {
+    param([Parameter(Mandatory)][hashtable]$Report, [Parameter(Mandatory)][hashtable]$Features)
+    if (-not $Report.ContainsKey('llvm_targets')) { return 'TVM: the runtime probe did not report llvm_targets' }
+    if ($null -eq $Report['llvm_targets']) { return 'TVM: tvm_compiler registers no target.llvm_get_targets -- it was built without LLVM' }
+    $linked = @($Report['llvm_targets'])
+    $marker = @("$($Features['LLVM_TARGETS'])" -split ';' | Where-Object { $_ })
+    # LLVM target -> the Triple::getArchTypeName TVM lists for it; LLVM 23 renamed amdgcn to amdgpu.
+    $archOf = [ordered]@{ X86 = 'x86_64'; AArch64 = 'aarch64'; NVPTX = 'nvptx64'; AMDGPU = 'amdgpu|amdgcn' }
+    foreach ($target in $archOf.Keys) {
+        $inMarker = $marker -ccontains $target
+        if ($inMarker -ne (@($linked -cmatch "^($($archOf[$target]))$").Count -gt 0)) {
+            "TVM: the marker's LLVM_TARGETS $(if ($inMarker) { 'lists' } else { 'omits' }) $target, but tvm_compiler $(if ($inMarker) { 'has no' } else { 'links the' }) $($archOf[$target]) target (llvm_get_targets: $($linked -join ', '))"
+        }
+    }
 }
 
 function Get-TvmRocmRuntimeFinding {
@@ -170,6 +206,7 @@ if ($null -eq $features) {
     return
 }
 Write-Host "  TVM rocm features: TVM_ROCM=$($features['TVM_ROCM']) LLVM_TARGETS=$($features['LLVM_TARGETS'])"
+Get-TvmRocmMarkerFinding -Features $features
 
 $modules = @((Join-Path $PSScriptRoot '..\..\modules'), (Join-Path $PSScriptRoot '..\modules')) |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'WindowsTargetArch.Common.psm1') } | Select-Object -First 1
@@ -187,7 +224,10 @@ try {
     [System.IO.File]::WriteAllText($runtimePy, (Get-TvmRocmRuntimeProbe))
     $out = @(& $python.Source $runtimePy $hipBin 2>&1 | ForEach-Object { "$_" })
     $runtime = ConvertFrom-TvmRocmProbeOutput -Probe 'runtime' -ExitCode $LASTEXITCODE -Lines $out
-    if ($runtime -is [string]) { $runtime } else { Get-TvmRocmRuntimeFinding -Report $runtime -Features $features }
+    if ($runtime -is [string]) { $runtime } else {
+        Get-TvmRocmRuntimeFinding -Report $runtime -Features $features
+        Get-TvmRocmLlvmTargetFinding -Report $runtime -Features $features
+    }
 
     if ($features['TVM_ROCM'] -eq '1') {
         $codegenPy = Join-Path $probes 'tvm_rocm_codegen.py'

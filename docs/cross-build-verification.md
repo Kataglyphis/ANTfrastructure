@@ -18,7 +18,8 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 > equivalent of the per-arch ELF/machine check is `windows/scripts/build/Test-TargetArch.ps1`
 > (PE `Machine` field over the whole install prefix, with a minimum-inspected floor so a
 > lane that staged nothing cannot pass green), and its smoke gate runs the host-toolchain
-> sections against an arm64-specific floor column (69/20, measured green 97/0/15), reporting
+> sections against an arm64-specific floor column (76/20; the green 97/0/15 was measured
+> under 69/20, before sections 19 and 25 grew), reporting
 > only the payload-execution sections NOT APPLICABLE (since 2026-08-24 — before that the whole
 > gate was reported NOT APPLICABLE).
 
@@ -195,6 +196,11 @@ deliberately reduced image, never to "get the build green":
 | Every artifact tree in `runtime-artifacts.manifest` carries THIS image's ELF machine — `artifact-source` is the builder's image, so a tree installed on the host (rustup, Flutter) ships x86-64 into a foreign one | `smoke-runtime-image.sh` `check_manifest_tree_arch` | none. Exemptions name the TREE (`/opt/android`, `/opt/android-sdk`), never an arch, so a new host-installed tree fails by default — docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch |
 | Vulkan cross-components (loader / SPIRV-Tools / glslang) — all three failing at once is an env-shaped toolchain cause | `vulkan.sh` | default is advisory (WARN); `VULKAN_CROSS_STRICT=1` is the OPT-IN promotion to fatal |
 | Vendored-wheel SOABI vs target triple — a native `.cpython-*.so` carrying a SOABI for a different arch than the target triple is a host-SOABI leak that only fails at `import` | `verify-wheels.sh` (triple derived from `TARGET_ARCH`, **not** the running interpreter) | default is advisory (WARN); `WHEEL_SOABI_STRICT=1` is the OPT-IN promotion to fatal |
+| OpenCV configured and installed against the chain ORT: no dnn download, the summary at the chain version, the library in the chain, no ORT file of its own under `/opt/opencv5` | `build-opencv.sh` via `opencv-ort.sh` (both passes) | none |
+| FFmpeg links the chain ORT: its `-L` first, every ORT reference in `ffbuild/config.mak` resolving into the chain; a missing chain or a probe that cannot link it is fatal | `ffmpeg-dnn-backends.sh` `ffmpeg_ort_link_findings`, called by `configure_ffmpeg` | none |
+| `libgstonnx.so` links and includes the chain ORT only (read from `build.ninja`) | `build-gstreamer-monorepo.sh` `_gst_monorepo_onnx_ort_gate` | none |
+| No apt ORT package, and every loader-path `libonnxruntime*` resolves into the chain | `validate-media-runtime.sh` (apt plan + dpkg), `configure-runtime.sh` `ort_runtime_gate` | none |
+| Every ORT consumer build ends in the ORT build gate, which writes the stamp the census requires | `ort_assert_chain_only` in `build-opencv.sh`, `build-ffmpeg.sh`, `build-gstreamer-monorepo.sh`, `verify-genai-ort.sh` | none |
 | Clean stop of a running chain — reaps the orphaned nerdctl/buildctl child subtree; **never `pkill` the orchestrator, that orphans them** | `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep) | n/a — operational tool, not a gate |
 
 <a id="verify-the-shipped-bytes"></a>
@@ -265,7 +271,7 @@ drift if a slug is added without touching it.
 | `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `context-paths` | `verify_dockerfile_context_paths.py` | class 1's other half — a COPY/`--mount=type=bind` source that no longer exists in that Dockerfile's build context, which BuildKit fails at context checksum before instruction one |
-| `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 — the host half (fix5-fix10); the /opt-probing half is [`smoke-critical-fixes.sh`](#the-in-image-half-of-critical-fixes), which no build stage runs |
+| `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 — the host half (fix5-fix11; fix11 is the ONNX Runtime single-source denylist, which reads `windows/` too); the /opt-probing half is [`smoke-critical-fixes.sh`](#the-in-image-half-of-critical-fixes), which no build stage runs |
 | `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |
 | `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
 | `arg-consistency` | `01-core/verify-arg-consistency.sh` | class 8 — ARG names/values vs `versions.env`, plus their forwarding |
@@ -303,7 +309,7 @@ Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
 whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 18 fast slugs in
-`_FAST_SLUGS` (`:87-90`), 6.4 s combined — and then three blocks scoped to the
+`_FAST_SLUGS` (`:88-91`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
 plus the warning ratchet on staged `.sh` files (`:101-118`, the binary resolved
 through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
@@ -525,11 +531,72 @@ locally-built `latest-cross-arm64`/`-riscv64` wrappers:
 | recorded probe, `REQ docs …` removed | B **fails**: refuses to assert an empty extra |
 | recorded probe, `VENV ABSENT` injected | B prints a loud `SKIP` (never a pass) |
 
+##### E. ORT single source
+
+**What it checks** (`check_ort_census`, fail). This is the ORT census, G1 of the
+ONNX Runtime single-source rule
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md)). Every ORT
+binary in the image must be the chain build, byte for byte, and every importer
+must resolve to it through the image's own loader order.
+
+**How.** `06-packaging/ort_census_probe.py` runs INSIDE the image as one process,
+so the loader facts are the image's own and nothing needs `readelf` under QEMU. It
+finds ORT by name (`libonnxruntime*.so*`, `onnxruntime_pybind11_state*`) and by
+content: the `onnxruntime/(core|contrib_ops)/` source paths every ORT build embeds,
+plus the ABI markers `OrtGetApiBase`, `CreateEpFactories` and `RegisterCustomOps`.
+It reads every ELF or wasm file of at least 1 KiB and every archive member, and
+emulates `ld.so` per importer: RPATH, `LD_LIBRARY_PATH`, RUNPATH with `$ORIGIN`,
+`ld.so.conf`, then the default dirs. `ort_census_verdicts` in
+`06-packaging/check-ort-provenance.sh` is pure: probe text in, verdict lines out.
+
+**The reference set** is read from the image, never hard-coded: the prefixes
+`/usr/local/lib/onnxruntime-{cpu,gpu,web}` and `/opt/android/onnxruntime`, plus
+`<prefix>/ort-provenance.sha256`, the chain wheel's native members, which
+`03-media/runtime/collect-artifacts.sh` writes because the runtime image never
+holds the wheel. On cross media `03-media/runtime/repair-wheels.sh` strips and
+retags those wheels, so it re-points each row at the wheel it ships
+(`ort_manifest_rows check` before, `follow` after); without that the census
+called our own stripped ORT STALE. That writer lists only wheels of the build's
+`ONNXRUNTIME_VERSION` and fails when it cannot resolve one. The chain build roots
+are `/opt/onnxruntime` and `/opt/onnxruntime-android`. A manifest row carries no
+build roots, so the census grades the installed bytes that match it: a manifest
+sha whose bytes name a non-chain root is FOREIGN.
+
+| Verdict | Meaning (every one fatal except EXEMPT) |
+| --- | --- |
+| `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths |
+| `STALE` | the chain's root, but not this chain's bytes |
+| `UNPROVEN` | an ORT name with no fingerprint and foreign bytes, or an unreadable ORT file or archive |
+| `ELSEWHERE` | a chain-identical copy outside the chain prefixes and `*/site-packages/onnxruntime/capi` |
+| `UNRESOLVED` | an importer's `ld.so` order lands on nothing, or on a non-reference file |
+| `UNREGISTERED` | an ORT-ABI user outside `ort_census_contract` |
+| `STAMP` | a present consumer without a G2 stamp naming this image's chain core library |
+| `DIST` | two distributions own `onnxruntime/` |
+| `NONE` | no probe marker, an empty reference set, or no ORT found |
+| `EXEMPT-STALE` | an `_ORT_CENSUS_IMAGE_EXEMPT` entry (`<arch>:<path>:<reason>`) that no longer matches |
+
+STAMP is armed while `linux/scripts/03-media/ort-provenance.sh` defines
+`ort_assert_chain_only`. The four Linux consumers write
+`<prefix>/ort-provenance/<consumer>.json` at build time, and the prefixes travel
+whole into the runtime image, so an image built before G2 fails STAMP until its
+consumer stages are rebuilt.
+
+**What it does NOT cover.** Header-only provenance: a consumer compiled against
+foreign headers or import libraries ships no foreign bytes, which is G2's job.
+Files the image user cannot read (`/root` is not scanned). Which copy a `dlopen`
+by absolute path picks at run time. The call sits inside the
+`RUNTIME_FUNCTIONAL_SMOKE=1` branch of `main()`.
+
+**Consumer use (G6).** Inside the image the app was built in, run
+`bash third_party/ANTfrastructure/linux/scripts/06-packaging/check-ort-provenance.sh <bundle-dir>`
+(`--reference DIR`, `--manifest FILE`, `--exempt ARCH:PATH:WHY`). Exit 0 is clean,
+1 is findings, 2 is usage; `--image` grades the system it runs on.
+
 ### The in-image half of critical-fixes
 
 The `critical-fixes` battery was two scripts wearing one name, and the split is
 what let its preflight slug leave `gate-proofs.allow`. `verify-critical-fixes.sh`
-now holds fix5–fix10, every one of them a grep over the REPO TREE, so preflight
+now holds fix5–fix11, every one of them a grep over the REPO TREE, so preflight
 can run it off-target and `test-critical-fixes.sh` can drive the real gate in a
 fixture tree and knock out one guarded line at a time.
 `06-packaging/smoke-critical-fixes.sh` holds fix1–fix4, the probes that only mean
@@ -1260,8 +1327,20 @@ plugins were 1.29.2. A core/plugin version split fails at runtime in confusing
 ways.
 
 `configure-runtime.sh` therefore writes `000-gstreamer.conf`,
-`000-ffmpeg.conf`, `000-opencv.conf` and `000-libcamera.conf`, the same
-convention `000-llvm-target.conf` already used. Verify after any change with
+`000-ffmpeg.conf`, `000-opencv.conf`, `000-libcamera.conf`, `000-armnn.conf` and
+`000-onnxruntime.conf`, the same convention `000-llvm-target.conf` already used.
+
+ONNX Runtime needed one more step. OpenCV's dnn install rule (opencv 5.0.0
+`modules/dnn/CMakeLists.txt:363-377`) copies the ORT it linked into
+`/opt/opencv5/lib`, which is first on `LD_LIBRARY_PATH` and dnn's RUNPATH, so
+that copy used to win every lookup. `opencv-ort.sh` now replaces each copy with an
+absolute link to the chain file of the same name and refuses bytes that differ
+from the chain's, so every lookup opens the one file under
+`/usr/local/lib/onnxruntime-cpu/lib`. `ort_runtime_gate`, at the end of
+`configure-runtime.sh`, fails the media and package builds when a
+`libonnxruntime.so*` or `libonnxruntime_providers_*.so*` in a loader directory
+resolves anywhere else, or when a distro ORT package is installed. It reads the
+build RUN's `LD_LIBRARY_PATH`, not the image's final ENV. Verify after any change with
 `ldconfig -p | grep -e <soname>` **in the shipped image** — the build log cannot
 show this.
 

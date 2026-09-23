@@ -40,6 +40,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [The mandatory GStreamer plugin set is a contract, never `auto`](#the-mandatory-gstreamer-plugin-set-is-a-contract-never-auto)
 - [A missing stage artifact is a THROW, not a warning](#a-missing-stage-artifact-is-a-throw-not-a-warning)
 - [The host gets artifacts, never CMake state](#the-host-gets-artifacts-never-cmake-state)
+- [ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)](#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23)
 
 **Diagnosing: probes and evidence**
 
@@ -309,6 +310,46 @@ non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
 ### The host gets artifacts, never CMake state
 
 **`Sync-FastLocalArtifactsToHost` must keep `CMakeCache.txt` in `/XF` and `CMakeFiles` in `/XD` (2026-09-06).** The Flutter lane builds in a container-local fast root and robocopies the result back onto the bind-mounted host build tree (`Sync-FastLocalArtifactsToHost` in `windows/scripts/modules/WindowsFlutter.Common.psm1` — consumer API, no in-repo caller). A `CMakeCache.txt` is bound to the directory and the generator that wrote it, so copying one back poisons the NEXT run: `flutter build windows --config-only` reconfigures the host tree with the Visual Studio generator, finds the scratch cache and aborts — *"The current CMakeCache.txt directory C:/ws-mnt/build/windows/x64/CMakeCache.txt is different than the directory c:/kataglyphis_fast_build/build/windows/x64 where CMakeCache.txt was created"*, followed by *"Does not match the generator used previously: Ninja"*. `CMakeFiles` is excluded for the same reason. It hid for weeks because the consumer swallowed the exit code and still reported every step green, so the step failed on **every** run without anyone seeing it. Widen the copy with artifacts whenever a consumer needs one; never let build STATE cross back.
+
+### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)
+
+**Every ONNX Runtime consumer uses the ORT this chain builds: `Build-OnnxFromSource.ps1` →
+`ONNX_ROOT`, plus its wheel in `C:\runtime\wheels`. Never a NuGet package, a PyPI wheel, a
+release zip, a plugin-EP wheel, a pyke build or Windows ML's System32 copy — no exceptions.**
+Two consumers broke this unseen until 2026-09-23. OpenCV's dnn fetched
+`onnxruntime-win-x64-1.25.1.zip` at configure time, and GenAI's `ortlib.cmake` restored
+`Microsoft.ML.OnnxRuntime.DirectML` 1.24.4 from a feed; neither was hash-pinned. The image
+looked clean both times, because neither copy's DLLs shipped. That is why a gate on the
+shipped bytes alone is not enough.
+
+Do not regress any of these:
+
+- **OpenCV** keeps `-DHAVE_ONNXRUNTIME=ON`, the nested-header shim and its CMake hook
+  directory. **GenAI** keeps `ORT_HOME` and both `FETCHCONTENT_SOURCE_DIR_*` pointed at the
+  empty dir, and never sets `USE_WINML` (it replaces `ORT_HOME` with a Windows ML NuGet ORT).
+- **Every consumer build ends in `Assert-ChainOrtOnly`** (G2), with at least one log, before
+  its tree is removed: OpenCV, GenAI, FFmpeg, GStreamer and the AMD GPU EP.
+  `WindowsOrtProvenance.Build.psm1` reaches those five RUNs as a per-file mount at
+  `C:\bkmnt\ortmods\` only. Never put it in `buildmods`, `migraphxmods`,
+  `WindowsSourceBuild.Common` or `Build-MediaCoreAll.ps1`, and never merge it into the
+  census module: one edit would re-key five compile RUNs.
+- **Smoke section 25 (the ORT census) and its STAMP assertion stay armed** on every lane,
+  the arm64 bundle included. An exemption goes into `$ortCensusExemption` with a reason, and
+  an in-box Windows ML ORT is never exempted (`INBOX` refuses it). Never delete or patch
+  files under `C:\Windows` in a layer (fix11 refuses a line doing so to an ORT or Windows
+  ML file); a base that ships one keeps the previous `WINDOWS_BASE_DIGEST`:
+  [§ The in-box ONNX Runtime](onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml).
+- **Section 19's crate-env row and section 21's DirectML and chain-wheel checks** run on
+  every amd64 lane, with no lane condition above them.
+- **`WindowsOnnx.Common` refuses NuGet ORT**, and the WebGPU EP is built in-tree, never
+  installed as a plugin wheel.
+- **Renaming a gate function** means updating `F11_GATE_CALLS` in
+  `linux/scripts/verify-critical-fixes.sh` in the same change. fix11 also greps this
+  heading verbatim, so do not reword it.
+
+The six guards, every consumer, the stamp contract and what each guard does NOT cover:
+[`onnxruntime-single-source.md`](onnxruntime-single-source.md). The Linux side of the rule
+is in `AGENTS.md` § Linux Build Rules.
 
 ---
 
@@ -633,9 +674,15 @@ at runtime. The official `clang+llvm-*-windows-msvc` dev tarball is NOT the
 fix: its static libs are /MT and want `xml2s.lib`, fatally mismatched
 against this /MD chain (verified by one link attempt). The heal in
 `Build-TvmFromSource.ps1` builds a SHA-pinned llvm-project from source
-(X86+NVPTX, no xml2/zlib/tests, `LLVM_ENABLE_DIA_SDK=OFF` — no ATL in these
+(targets from `Get-TvmLlvmTargetList`: `X86;AArch64;NVPTX`, plus `AMDGPU` on the
+ROCm spike; no xml2/zlib/tests, `LLVM_ENABLE_DIA_SDK=OFF` — no ATL in these
 Build Tools, RTTI ON, full-`:FILEPATH` archiver) and passes
-`USE_LLVM=<path>/llvm-config.exe`. sccache makes it a one-time ~6 min cost.
+`USE_LLVM=<path>/llvm-config.exe`. Since the patched toolchain LLVM
+(`C:\llvm-patched`, `AArch64;X86`) sits first on PATH on amd64, TVM links that one,
+and the heal runs only under `-StockLlvm` and on the rocm lane's `TVM_ROCM=1`
+spike, where `Get-TvmLlvmChoice` treats a PATH llvm-config without AMDGPU as absent.
+Keep the heal: it is the spike's only AMDGPU-capable LLVM. The ~6 min sccache-warm
+figure is for the `X86;AArch64;NVPTX` build; with AMDGPU it is unmeasured.
 
 ### freedesktop/videolan GitLab downloads must go through `Invoke-WrapDownload`
 
@@ -708,6 +755,28 @@ whole-directory `modules` mount puts EVERY module in the cache key).
 `Get-LlvmMasmCmakeArg` (zero in-repo callers) and four
 `WindowsSourceBuild.Common` re-exports on this rule alone — the audit that
 flags them next will be the same audit, not new evidence.
+
+**`WindowsOnnx.Common` and `WindowsMediaRuntime.Common` stay exported but are
+chain-only (2026-09-23).** AccelerANTgine imports both by name and calls
+`Copy-MediaRuntimeBundle`, so neither is deleted; neither can reach a NuGet ONNX
+Runtime any more:
+- `Install-OptionalNuGetPackage` refuses any id matching `onnxruntime` or
+  `Microsoft.(Windows.)AI.MachineLearning` before nuget runs. After any other
+  install it fails when a package directory in the output holds ORT: as a
+  dependency, bundled under another id, or left by an earlier run.
+- `Get-OnnxPackageLayout` keeps its parameters and throws, pointing at
+  `Get-OnnxChainLayout`. That function describes the chain install:
+  `ONNX_ROOT\bin\onnxruntime.dll` for the target machine, and `ONNX_GENAI_ROOT` with
+  `lib\` (or `bin\`) `onnxruntime-genai.dll` and no ORT file of its own. A NuGet tree
+  or a release zip throws on both halves.
+- `Copy-MediaRuntimeBundle` stages the chain directories last, so the chain's
+  `onnxruntime.dll` and `DirectML.dll` win every name collision, never walks
+  `runtimes\<rid>\native`, throws on an ORT DLL in any other directory, and then
+  requires every staged ORT or GenAI DLL to carry the chain's bytes.
+
+Whether the bytes under `ONNX_ROOT` really are the chain build is the ORT census's
+question, not these modules'
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
 
 ### Rust: rustup WITH a default toolchain is the sole provider
 

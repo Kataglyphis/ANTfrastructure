@@ -713,6 +713,7 @@ _cc_gate() {
     _rt_run() { printf "%s\n" "${CC_PROBE}"; }
     '"${_CC_PARTS}"'
     '"$(_extract _consumer_contract_probe)"'
+    '"$(_extract _consumer_ort_env_probe)"'
     '"$(_extract _consumer_contract_symptom)"'
     '"$(_extract check_consumer_contract)"'
     [ -z "${CC_ROWS}" ] || _CONSUMER_CONTRACT_ROWS="${CC_ROWS}"
@@ -726,10 +727,12 @@ t_case "the probe is one program and reports every verb the verdicts read"
 _CC_TMP="$(mktemp -d)"
 # The fixture creates them: a probe that mkdir'd its own targets would answer
 # "writable" for a directory the consumer's `[ -w ]` calls false.
-mkdir -p "${_CC_TMP}"/{cc,sc,ru/tmp,ca,sdk/platform-tools}
+mkdir -p "${_CC_TMP}"/{cc,sc,ru/tmp,ca,sdk/platform-tools,ort}
+: > "${_CC_TMP}/ort/libonnxruntime.so"
 _CC_RAW="$(CCACHE_DIR="${_CC_TMP}/cc" SCCACHE_DIR="${_CC_TMP}/sc" RUSTUP_HOME="${_CC_TMP}/ru" \
   CARGO_HOME="${_CC_TMP}/ca" ANDROID_HOME="${_CC_TMP}/sdk" ANDROID_SDK_ROOT="${_CC_TMP}/sdk" \
-  bash -c "$(_extract _consumer_contract_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)"
+  ORT_LIB_LOCATION="${_CC_TMP}/ort" ORT_DYLIB_PATH="${_CC_TMP}/ort/libonnxruntime.so" ORT_SKIP_DOWNLOAD=1 CARGO_NET_OFFLINE='' \
+  env -u ORT_LIB_PATH bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)"
 t_assert_contains "${_CC_RAW}" "CCPROBE_DONE" "exit status is not evidence; the sentinel is"
 t_assert_contains "${_CC_RAW}" "WHO " "the gate refuses to judge a probe that did not say who it ran as"
 for _r in ccache-dir sccache-dir rustup-tmp cargo-home dart-tool; do
@@ -740,14 +743,20 @@ t_assert_contains "${_CC_RAW}" "DIR android-platform-tools " "the android row re
 t_assert_contains "${_CC_RAW}" "FACT android-path " "the android row also reads PATH, where adb and sdkmanager are found"
 t_assert_contains "${_CC_RAW}" "FACT flutter-sdk " "the exemption rot signal must be emitted"
 t_assert_contains "${_CC_RAW}" "FACT flutter-foreign " "the ownership count must be emitted"
+# G3: the ort crate env as set, where it resolves, the linker name, and the completion fact.
+for _f in "ENV ort-lib-location ${_CC_TMP}/ort" "FACT ort-lib-real $(readlink -e -- "${_CC_TMP}/ort")" \
+          "FACT ort-link-lib yes" "ENV ort-skip-download 1" "ENV ort-lib-path <unset>" "FACT ort-probe yes"; do
+  t_assert_contains "${_CC_RAW}" "${_f}" "the ort-crate-env row reads it"
+done
+t_assert_eq 1 "$(printf '%s\n' "${_CC_RAW}" | grep -cx -e 'ENV cargo-net-offline ' || true)" "set-but-empty is set: ort-sys reads it"
 
 t_case "the probe answers YES only where it really wrote"
 t_assert_contains "${_CC_RAW}" "WRITE ccache-dir yes" "a writable directory must read as writable"
 t_assert_eq "" "$(ls -A "${_CC_TMP}/cc")" "and the probe must leave nothing behind in it"
 : > "${_CC_TMP}/notadir"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" bash -c "$(_extract _consumer_contract_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
   "WRITE cargo-home no" "a path the probe cannot create a file in must read as unwritable, for root too"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" bash -c "$(_extract _consumer_contract_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
   "WRITE cargo-home no" "a MISSING directory is what the consumer's [ -w ] calls false; a probe that creates it reports green where they fail"
 rm -rf "${_CC_TMP}"
 
@@ -871,7 +880,7 @@ done
 t_case "the contract asserts every promise the consuming lane depends on"
 # The row list IS the contract. A row quietly dropped here takes its guarantee
 # with it and every suite below still passes, because they iterate the list.
-for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner; do
+for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner ort-crate-env; do
   t_assert_contains " ${_CONSUMER_CONTRACT_ROWS} " " ${_r} " \
     "${_r} is a promise the consumer's acceptance check makes; it must stay in the table"
 done
@@ -890,6 +899,59 @@ t_case "every per-arch exemption names a row that still exists"
 _CC_EX="$(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) return 0 ;;/\1/p' | tr '|' '\n' | sed 's/^[a-z0-9]*://')"
 _t_all_present " ${_CONSUMER_CONTRACT_ROWS} " "${_CC_EX}" "-" \
   "every per-arch exemption must name a row the gate still asserts"
+
+# ── G3: the ort crate env row (docs/consumer-image-contract.md) ─────────────
+# What Dockerfile.package bakes, as the probe reports it; each case below edits one line.
+_CC_ORT_OK='ENV ort-lib-location /usr/local/lib/onnxruntime-cpu/lib
+ENV ort-dylib-path /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so
+ENV ort-prefer-dynamic 1
+ENV ort-skip-download 1
+ENV ort-lib-path <unset>
+ENV cargo-net-offline <unset>
+FACT ort-lib-real /usr/local/lib/onnxruntime-cpu/lib
+FACT ort-dylib-real /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1.30.0
+FACT ort-link-lib yes
+FACT ort-probe yes'
+_CC_ORT_PARTS="$(_extract _consumer_contract_fact)
+$(_extract _consumer_ort_env_problem)
+$(_extract _consumer_ort_env_verdict)"
+_ortv() { bash -c "${_CC_ORT_PARTS}"$'\n''_consumer_ort_env_verdict ort-crate-env "$1"' _ "$1" 2>&1; }
+_ort_edit() { printf '%s\n' "${_CC_ORT_OK}" | sed -e "$1"; }
+
+t_case "G3: the chain lib dir, a dynamic link and a disarmed download hold the row"
+t_assert_contains "$(_ortv "${_CC_ORT_OK}")" "OK ort-crate-env ORT_LIB_LOCATION -> /usr/local/lib/onnxruntime-cpu/lib" \
+  "what Dockerfile.package bakes"
+t_assert_contains "$(_ortv "$(_ort_edit 's/^ENV ort-skip-download 1/ENV ort-skip-download TRUE/')")" "OK ort-crate-env" \
+  "ort-sys reads 'true' case-insensitively"
+t_assert_contains "$(_ortv "$(_ort_edit 's#^ENV cargo-net-offline .*#ENV cargo-net-offline true#')")" "OK ort-crate-env" \
+  "a truthy CARGO_NET_OFFLINE only disarms the download harder"
+t_assert_contains "$(CC_PROBE="${_CC_ORT_OK}" bash -c "${_CC_PARTS}"$'\n'"${_CC_ORT_PARTS}"$'\n''_consumer_contract_verdicts amd64 "${CC_PROBE}"' 2>&1 \
+  | grep -e '^OK ort-crate-env' || true)" "OK ort-crate-env" "the verdict table routes the row to its own verdict"
+
+t_case "G3: every way back to pyke's ORT, or to a non-chain one, is BAD (mutation)"
+while IFS="$(printf '\t')" read -r _sed _want; do
+  [ -n "${_sed}" ] || continue
+  t_assert_contains "$(_ortv "$(_ort_edit "${_sed}")")" "BAD ort-crate-env ${_want}" "${_sed}"
+done <<'ROWS'
+s#^ENV ort-lib-location .*#ENV ort-lib-location#;s#^FACT ort-lib-real .*#FACT ort-lib-real#	ORT_LIB_LOCATION () resolves to nothing
+s#^FACT ort-lib-real .*#FACT ort-lib-real /opt/opencv5/lib#	ORT_LIB_LOCATION (/usr/local/lib/onnxruntime-cpu/lib) resolves to /opt/opencv5/lib
+s#^FACT ort-link-lib yes#FACT ort-link-lib no#	/usr/local/lib/onnxruntime-cpu/lib has no libonnxruntime.so
+s#^FACT ort-dylib-real .*#FACT ort-dylib-real /opt/opencv5/lib/libonnxruntime.so.1.25.1#	ORT_DYLIB_PATH (/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so) resolves to /opt/opencv5/lib
+s#^FACT ort-dylib-real .*#FACT ort-dylib-real#	ORT_DYLIB_PATH (/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so) resolves to nothing
+s#^ENV ort-prefer-dynamic 1#ENV ort-prefer-dynamic 0#	ENV ort-prefer-dynamic is "0"
+/^ENV ort-skip-download/d	ENV ort-skip-download is ""
+s#^ENV ort-skip-download 1#ENV ort-skip-download yes#	ENV ort-skip-download is "yes"
+s#^ENV ort-lib-path .*#ENV ort-lib-path /root/.cache/ort.pyke.io#	ORT_LIB_PATH is set (/root/.cache/ort.pyke.io)
+s#^ENV ort-lib-path .*#ENV ort-lib-path #	ORT_LIB_PATH is set ()
+/^ENV ort-lib-path/d	ORT_LIB_PATH is set ()
+s#^ENV cargo-net-offline .*#ENV cargo-net-offline false#	CARGO_NET_OFFLINE is falsy
+s#^ENV cargo-net-offline .*#ENV cargo-net-offline #	CARGO_NET_OFFLINE is falsy
+s#^ENV cargo-net-offline .*#ENV cargo-net-offline yes#	CARGO_NET_OFFLINE is falsy
+ROWS
+
+t_case "G3: a probe without its completion fact is NOFACT, never an empty-but-healthy env"
+t_assert_contains "$(_ortv "$(_ort_edit '/^FACT ort-probe/d')")" "NOFACT ort-crate-env" \
+  "a probe that never finished proves nothing, whatever lines it printed"
 
 # ── the Vulkan SDK toolset gate ─────────────────────────────────────────────
 # VK_OUT is the inventory the probe prints for ${VULKAN_SDK}: one TOOL line per

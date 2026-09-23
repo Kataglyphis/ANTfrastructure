@@ -120,12 +120,14 @@ MESON_RUST_TOOLCHAIN_DIR
 NO_CACHE
 NO_COLOR
 NPM_REGISTRY
+NUGET_PACKAGES  # NuGet's own: its package folder, a fetch cache G2 (03-media/ort-provenance.sh) grades
 NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
 ORT_PKGCONFIG_DIR
 PACKAGE_DOCKERFILE_TARGET
 PACKAGE_TYPES
+PIP_CACHE_DIR  # pip's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
 PKG_CONFIG_LIBDIR_ORIG
 PLANNER_ONLY
 PLATFORM
@@ -153,6 +155,8 @@ TVM_MB_PER_JOB
 TVM_PREFIX
 TVM_WORKDIR
 UBUNTU_SOURCES_ROOT
+UV_CACHE_DIR  # uv's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
+UV_PROJECT_ENVIRONMENT  # uv's own: where an unpinned uv sync installs, so uv_sync_project reconciles chain ORT there
 UV_SYNC_EXTRAS
 VERSION_CODENAME
 VULKAN_ENV_STRICT

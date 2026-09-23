@@ -27,6 +27,81 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/media-env.sh"
 
+# ort_manifest_rows <check|follow> <wheels-dir> <manifest>...: the ORT census manifests hash the chain wheels as built
+# (collect-artifacts.sh); check proves each row's bytes before the strip/repair below, follow re-points it at the result.
+ort_manifest_rows() {
+  python3 - "$@" <<'PY'
+import hashlib
+import os
+import re
+import sys
+import zipfile
+
+mode, wheels = sys.argv[1], sys.argv[2]
+present = sorted(n for n in os.listdir(wheels) if n.endswith(".whl"))
+cache = {}
+
+
+def members(name):
+    if name not in cache:
+        with zipfile.ZipFile(os.path.join(wheels, name)) as zf:
+            cache[name] = {i.filename: hashlib.sha256(zf.read(i)).hexdigest()
+                           for i in zf.infolist() if re.search(r"\.so(?:\.[0-9]+)*$", i.filename)}
+    return cache[name]
+
+
+def stem(name):  # a retag or an auditwheel repair rewrites only the platform tag
+    return name[:-4].rsplit("-", 1)[0].lower()
+
+
+def check(sha, wheel, member):  # a twin of the chain wheel's name could land on it in the retag or repair
+    twins = [n for n in present if n != wheel and stem(n) == stem(wheel)]
+    if twins:
+        return None, "%s!%s: other wheels share its name, platform tag aside (%s)" % (wheel, member, ", ".join(twins))
+    if wheel not in present or members(wheel).get(member) != sha:
+        return None, "%s!%s: no wheel in %s holds these bytes any more" % (wheel, member, wheels)
+    return "%s  %s!%s\n" % (sha, wheel, member), None
+
+
+def follow(sha, wheel, member):
+    hits = [n for n in present if stem(n) == stem(wheel)]
+    got = members(hits[0]).get(member) if len(hits) == 1 else None
+    if got is None:
+        return None, "%s!%s: not exactly one rewritten wheel of that name carries it (%s)" % (
+            wheel, member, ", ".join(hits) or "none")
+    return "%s  %s!%s\n" % (got, hits[0], member), None
+
+
+out, bad = {}, []
+for manifest in (m for m in sys.argv[3:] if os.path.isfile(m)):
+    with open(manifest, encoding="utf-8") as fh:
+        rows = [ln.split(None, 1) for ln in fh if ln.strip()]
+    out[manifest] = []
+    for sha, label in rows:
+        wheel, _, member = label.strip().partition("!")
+        try:
+            line, err = {"check": check, "follow": follow}[mode](sha, wheel, member)
+        except (OSError, zipfile.BadZipFile) as exc:
+            line, err = None, "%s: %s" % (wheel, exc)
+        if err:
+            bad.append("%s: %s" % (manifest, err))
+        else:
+            out[manifest].append(line)
+for msg in bad:
+    print("ERROR: ORT wheel manifest " + msg, file=sys.stderr)
+if bad:
+    sys.exit(1)
+for manifest, lines in out.items():
+    if mode == "follow":
+        with open(manifest + ".tmp", "w", encoding="utf-8") as fh:
+            fh.writelines(lines)
+        os.replace(manifest + ".tmp", manifest)
+    print("ORT wheel manifest %s: %d chain wheel member(s) %s" % (manifest, len(lines), mode))
+PY
+}
+_ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)
+ort_manifest_rows check "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"
+
 # AP1: cross wheels ship UNSTRIPPED — `cmake --install --strip` runs the HOST
 # strip, a no-op on foreign-arch ELFs (~50-300 MB/arch of dead symbols). Strip
 # the .so inside each cross wheel with the target <triplet>-strip. Python wheels
@@ -81,6 +156,7 @@ if cross_build_is_active; then
     fi
   fi
   echo "Cross-build wheel retagging complete"
+  ort_manifest_rows follow "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"
   exit 0
 fi
 
@@ -145,3 +221,4 @@ else
   echo "WARNING: no repaired wheels produced in ${REPAIRED_WHEELS_DIR}" >&2
 fi
 rmdir "${REPAIRED_WHEELS_DIR}" 2>/dev/null || true
+ort_manifest_rows follow "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"

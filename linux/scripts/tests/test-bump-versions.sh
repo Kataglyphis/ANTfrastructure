@@ -255,23 +255,25 @@ t_assert_contains "${_pins}" "LITERT_LM_DXC_ZIP_SHA256=${_d64}" "the DXC pin is 
 t_assert_contains "${_pins}" "RAISED no git-LFS pointer for prebuilt/windows_x86_64/libwebgpu_dawn.dll" \
   "a file that is not an LFS pointer must fail loudly, never pin a guess"
 
-t_case "spec_llama_cpp_hip: newest bNNNN with a win-rocm-<ROCm X.Y> zip wins, asset + SHA move with it, none = raise"
+t_case "spec_llama_cpp_hip: newest bNNNN with a win-rocm-<ROCm X.Y> AND a win-vulkan zip wins, both SHAs move, none = raise"
 _fx="$(_fixture llama <<'ENV'
 ROCM_WINDOWS_RELEASE=10.0.0
 LLAMA_CPP_HIP_BUILD=100
 ENV
 )"
-# Upstream faked: b102's only zip is for another ROCm, v0.4.1 is the other tag family.
+# Upstream faked: b103 has no Vulkan zip, b102's ROCm zip is for another ROCm, v0.4.1 is the other tag family.
 _out="$(python3 - "${REPO}" "${_fx}" <<'PY'
 import os, sys
 from pathlib import Path
 sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
 import bump_versions as bv
 bv.VERSIONS_ENV = Path(sys.argv[2])
-bv.ls_remote_tags = lambda repo: ["b99", "b100", "b101", "b102", "v0.4.1"]
+bv.ls_remote_tags = lambda repo: ["b99", "b100", "b101", "b102", "b103", "v0.4.1"]
 bv.artifact_exists = lambda url: url.rsplit("/", 1)[1] in (
-    "llama-b100-bin-win-rocm-10.0-x64.zip", "llama-b101-bin-win-rocm-10.0-x64.zip", "llama-b102-bin-win-rocm-7.14-x64.zip")
-bv.asset_sha256 = lambda repo, tag, asset, sums=(): "f" * 64
+    "llama-b100-bin-win-rocm-10.0-x64.zip", "llama-b101-bin-win-rocm-10.0-x64.zip", "llama-b102-bin-win-rocm-7.14-x64.zip",
+    "llama-b103-bin-win-rocm-10.0-x64.zip", "llama-b100-bin-win-vulkan-x64.zip", "llama-b101-bin-win-vulkan-x64.zip",
+    "llama-b102-bin-win-vulkan-x64.zip")
+bv.asset_sha256 = lambda repo, tag, asset, sums=(): ("a" if "-vulkan-" in asset else "f") * 64
 bv.sha256_of_url = lambda url: "e" * 64 if url == "https://raw.githubusercontent.com/ggml-org/llama.cpp/b101/LICENSE" else url
 bv.WRITE_MODE = True
 print("bump", bv.spec_llama_cpp_hip("100"))
@@ -284,12 +286,14 @@ except RuntimeError as e:
 PY
 )"
 t_assert_contains "${_out}" "bump ('101', {'LLAMA_CPP_HIP_ASSET': 'llama-b101-bin-win-rocm-10.0-x64.zip', 'LLAMA_CPP_HIP_SHA256': 'ffffffff" \
-  "the newest build with a zip for THIS ROCm wins (not b102's rocm-7.14 one), and its asset and SHA come along"
+  "the newest build with zips for THIS ROCm and Vulkan wins (not b103 without Vulkan, not b102's rocm-7.14), asset and SHA along"
+t_assert_contains "${_out}" "'LLAMA_CPP_VULKAN_SHA256': 'aaaaaaaa" \
+  "the Vulkan pin is its own asset's digest, moved with the one build pin"
 t_assert_contains "${_out}" "'LLAMA_CPP_HIP_LICENSE_SHA256': 'eeeeeeee" \
   "the LICENSE pin is re-hashed at the NEW build's tag (b101), never left at the old one"
 t_assert_contains "${_out}" "same ('101', {})" "an up-to-date build drags no extras"
-t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes a win-rocm-10.0 zip" \
-  "no matching zip is a lookup failure, never a silent 'up to date'"
+t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes both a win-rocm-10.0 and a win-vulkan-x64 zip" \
+  "no matching pair of zips is a lookup failure, never a silent 'up to date'"
 
 t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"
 # AMF's real tag shapes (1.4.14, 1.4.16.1, v.1.4.21, v1.4.7.0), faked NEWER than v1.5.3 in each shape.
@@ -313,5 +317,73 @@ t_assert_contains "${_out}" "report ('v1.5.3', {}) []" "a report run names the n
 t_assert_contains "${_out}" "bump ('v1.5.3', {'AMF_HEADERS_SHA256': '${_e64}'}) [('GPUOpen-LibrariesAndSDKs/AMF', 'v1.5.3', 'AMF-headers-v1.5.3.tar.gz')]" \
   "--write takes v1.5.3 (not 1.6.0, v.1.6.1 or v1.5.3.1) and re-hashes exactly its header asset"
 t_assert_contains "${_out}" "same ('v1.5.3', {}) []" "an up-to-date tag drags no SHA and hashes nothing"
+
+# _bv_offline <<'PY' ... PY -- a snippet run against the real module, imported as bv; nothing else is set up.
+_bv_offline() {
+  { printf 'import os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))\nimport bump_versions as bv\n'; cat; } \
+    | python3 - "${REPO}"
+}
+
+t_case "spec_vulkan: the Windows loader zip's SHA moves with VULKAN_VERSION, LunarG's digest first (offline)"
+_out="$(_bv_offline <<'PY'
+zip_name = "VulkanRT-X64-1.4.400.0-Components.zip"
+sums = {"ok": "ABCD" * 16 + "  " + zip_name + "\n", "other": ("c" * 64) + "  other.zip\n", "boom": None}
+mode = {"sums": "ok"}
+fetched = []
+def http_text(url):
+    fetched.append(url)
+    if url.endswith("latest.json"):
+        return '{"linux": "1.4.400.0", "windows": "1.4.400.0"}'
+    if sums[mode["sums"]] is None:
+        raise OSError("404")
+    return sums[mode["sums"]]
+bv.http_text = http_text
+bv.sha256_of_url = lambda url: ("f" * 64) if url.endswith(zip_name) else ("e" * 64)
+bv.WRITE_MODE = False
+print("report", bv.spec_vulkan("1.4.357.0"))
+bv.WRITE_MODE = True
+for m in ("ok", "other", "boom"):
+    mode["sums"] = m
+    print(m, bv.spec_vulkan("1.4.357.0")[1]["VULKAN_RT_WINDOWS_ZIP_SHA256"])
+print("sums-url", [u for u in fetched if "/sdk/sha/" in u][0])
+PY
+)"
+t_assert_contains "${_out}" "report ('1.4.400.0', {})" "a report run downloads and hashes nothing"
+t_assert_contains "${_out}" "ok abcdabcd" "--write takes LunarG's published digest for the zip, lower-cased"
+t_assert_contains "${_out}" "other $(printf 'f%.0s' {1..64})" "a digest file that does not name the zip falls back to hashing the zip"
+t_assert_contains "${_out}" "boom $(printf 'f%.0s' {1..64})" "an unreachable digest file falls back to hashing the zip"
+t_assert_contains "${_out}" "sums-url https://sdk.lunarg.com/sdk/sha/1.4.400.0/windows/VulkanRT-X64-1.4.400.0-Components.zip.txt" \
+  "the digest comes from LunarG's sha endpoint for exactly that file"
+
+t_case "spec_ort_webgpu_dxc: DXC's latest release, its one dxc_<date>.zip, and that zip's SHA move together (offline)"
+_out="$(_bv_offline <<'PY'
+release = {"tag_name": "v1.9.2609", "assets": [{"name": n} for n in (
+    "dxc_2026_09_01.zip", "linux_dxc_2026_09_01.x86_64.tar.gz", "pdb_2026_09_01.zip")]}
+seen = []
+bv.http_json = lambda url: seen.append(url) or release
+bv.asset_sha256 = lambda *what, **_: seen.append(what) or "d" * 64
+for write, pinned in ((False, "v1.9.2607"), (True, "v1.9.2607"), (True, "v1.9.2609")):
+    bv.WRITE_MODE = write
+    seen.clear()
+    tag, extras = bv.spec_ort_webgpu_dxc(pinned)
+    print("write=%s pinned=%s -> %s %s hashed=%s" % (write, pinned, tag, sorted(extras.items()), seen[1:]))
+print("asked", seen[0])
+for assets in ([], [{"name": "dxc_2026_09_01.zip"}, {"name": "dxc_2026_09_02.zip"}]):
+    release["assets"] = assets
+    try:
+        bv.spec_ort_webgpu_dxc("v1.9.2607")
+    except RuntimeError as e:
+        print("refused:", e)
+PY
+)"
+_d64="$(printf 'd%.0s' {1..64})"
+t_assert_contains "${_out}" "write=False pinned=v1.9.2607 -> v1.9.2609 [] hashed=[]" "a report run names the release and downloads nothing"
+t_assert_contains "${_out}" "write=True pinned=v1.9.2607 -> v1.9.2609 [('ORT_WEBGPU_WINDOWS_DXC_ASSET', 'dxc_2026_09_01.zip'), ('ORT_WEBGPU_WINDOWS_DXC_SHA256', '${_d64}')] hashed=[('microsoft/DirectXShaderCompiler', 'v1.9.2609', 'dxc_2026_09_01.zip')]" \
+  "--write moves the dated asset name and re-hashes exactly that zip (not the linux tarball or the pdb zip)"
+t_assert_contains "${_out}" "write=True pinned=v1.9.2609 -> v1.9.2609 [] hashed=[]" "an up-to-date tag drags no extras"
+t_assert_contains "${_out}" "asked https://api.github.com/repos/microsoft/DirectXShaderCompiler/releases/latest" \
+  "releases/latest: GitHub's newest NON-prerelease (the v1.10 previews are prereleases)"
+t_assert_contains "${_out}" "refused: DXC v1.9.2609: expected one dxc_<date>.zip asset, found []" "no zip is a lookup failure"
+t_assert_contains "${_out}" "found ['dxc_2026_09_01.zip', 'dxc_2026_09_02.zip']" "two zips are ambiguous, never a guess"
 
 t_summary

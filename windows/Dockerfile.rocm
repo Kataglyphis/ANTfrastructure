@@ -22,7 +22,14 @@ COPY windows\scripts\host\Install-Rocm.ps1 C:\temp\scripts\
 
 RUN & 'C:\temp\scripts\Install-Rocm.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\TheRock\build'
 
-# AMD's documented variables, in one layer, inherited by every toolchain and media compile.
+# The Khronos Vulkan loader into System32 (Server Core has none; FFmpeg's dlopen and Python never read PATH),
+# its verified copy and licence into C:\vulkan-loader. After the ROCm RUN: a Vulkan bump keeps the tarball layer.
+ARG VULKAN_VERSION=1.4.357.0
+ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
+COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
+RUN & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader'
+
+# AMD's documented variables in one layer, inherited by every toolchain and media compile.
 # ROCm's bin goes LAST on PATH (its own flatc.exe, OpenCL.dll); lib\llvm\bin never goes on it.
 ENV GPU_TYPE="rocm" `
     ROCM_PATH="C:\TheRock\build" `
@@ -31,4 +38,5 @@ ENV GPU_TYPE="rocm" `
     HIP_DEVICE_LIB_PATH="C:\TheRock\build\lib\llvm\amdgcn\bitcode" `
     LLVM_PATH="C:\TheRock\build\lib\llvm" `
     ROCM_WINDOWS_RELEASE="${ROCM_WINDOWS_RELEASE}" `
+    VULKAN_LOADER_DIR="C:\vulkan-loader" `
     PATH="${PATH};C:\TheRock\build\bin"

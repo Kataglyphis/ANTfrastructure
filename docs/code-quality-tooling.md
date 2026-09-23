@@ -482,7 +482,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **843 entries** over **91 distinct test commands**; both digits are
+manifest holds **1157 entries** over **101 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1546,7 +1546,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 486 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 497 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2624,7 +2624,8 @@ one trench coat — half greps over the repo tree, half probes of
 `/opt/python-cross`, `/opt/litert` and friends that exist only inside a built
 image. Proving the tree half alone would have credited the slug for a suite that
 never touches the checks whose findings gate a rebuild, so the script was cut in
-two instead: `verify-critical-fixes.sh` keeps fix5–fix10 and stays the slug,
+two instead: `verify-critical-fixes.sh` keeps fix5–fix10 (fix11, the ONNX Runtime
+single-source denylist, joined on 2026-09-23) and stays the slug,
 `06-packaging/smoke-critical-fixes.sh` takes fix1–fix4 and is run against a
 shipped image by hand. `test-critical-fixes.sh` then proves BOTH halves — the
 host gate in a fixture tree, the image probes under `CF_SMOKE_ROOT`.

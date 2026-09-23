@@ -7,6 +7,143 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - ONNX Runtime has one source: the chain
+
+**Owner rule: every component that compiles against, links or loads ONNX Runtime uses
+the ORT this repo builds from source**, on both lanes and in the consumer repos. No
+NuGet, PyPI, release-zip, apt, bundled or pyke copy, and no exceptions; a plugin EP
+counts as ORT. Every consumer, the six guards and what each cannot see:
+[`docs/onnxruntime-single-source.md`](docs/onnxruntime-single-source.md) (new). The rule
+itself: `docs/windows-build-invariants.md` (48 rules now) and `AGENTS.md` § Linux Build
+Rules.
+
+- **What was broken.** Windows OpenCV downloaded `onnxruntime-win-x64-1.25.1.zip` at
+  configure time (arm64 zip on the cross lane) and linked it, unpinned. Windows GenAI
+  compiled against NuGet `Microsoft.ML.OnnxRuntime.DirectML` 1.24.4 from a feed, unhashed.
+  The rocm venv carried PyPI `onnxruntime-ep-webgpu`. Neither the OpenCV nor the GenAI
+  download showed in the shipped image. Correction to the 2026-09-23 `-Variant rocm`
+  sdk-slot entry below: its "Found, not fixed (every lane)" OpenCV line was true of the
+  Windows lanes only; Linux pre-set `HAVE_ONNXRUNTIME` all along.
+- **Windows OpenCV** (every lane): a nested-header shim over the chain ORT,
+  `-DHAVE_ONNXRUNTIME=ON`, both CMake packages disabled, and a configure gate. G-API's
+  DirectML EP is compiled in for the first time, delay-loading dxcore/d3d12/dxgi/DirectML
+  through an OpenCV CMake hook. dnn and G-API now need `onnxruntime.dll` 1.30 or later.
+- **Windows GenAI**: an `ORT_HOME` shim; the `ortlib`/`onnxruntime` FetchContent names point
+  at an empty dir, so a fallback fails configure. Configure and tree gates; the configure
+  log is kept. `DirectML.h`/`D3D12Core.dll` and a DXC restore are still unhashed NuGet
+  fetches (not ORT), recorded as follow-ups.
+- **WebGPU EP**: the rocm spike builds ORT's in-tree WebGPU EP (Dawn on D3D12) into the
+  chain `onnxruntime.dll`, with a pinned DXC release beside it. The PyPI plugin and its
+  `TORCH_ROCM_WINDOWS_ORT_EP_WEBGPU_*` pins are gone; five `ORT_WEBGPU_WINDOWS_*` pins are
+  new. `-NoRocmSpikes` builds without it.
+- **G2, the build gate + stamp**: `Assert-ChainOrtOnly` (`WindowsOrtProvenance.Build.psm1`)
+  and `ort_assert_chain_only` (`linux/scripts/03-media/ort-provenance.sh`) end every
+  consumer build: OpenCV, GenAI, FFmpeg, GStreamer, and the AMD GPU EP. They grade the
+  tree, fetch caches, build records and logs, and a pass writes the stamp G1 requires.
+  Placed outside the census module and `03-media/core/`, per-file mounted, for the cache.
+- **G1, the ORT census on the shipped image**: Windows smoke section 25; Linux
+  SHIPPED-TRUTH E (`check-ort-provenance.sh`, `ort_census_probe.py`). Byte identity with
+  the image's own chain ORT, the loader order per importer, the consumer contract, stamps.
+- **G3**: both final images set `ORT_LIB_LOCATION`, `ORT_PREFER_DYNAMIC_LINK=1`,
+  `ORT_SKIP_DOWNLOAD=1` and `ORT_DYLIB_PATH`, so an `ort-sys` build there cannot fetch
+  pyke's ORT. Asserted by section 19 and the new contract row `ort-crate-env`.
+- **G4**: `verify-critical-fixes.sh` fix11, a static denylist over both lanes' scripts,
+  plus the G1/G2/G3 wiring. **G6**: `Test-OrtProvenanceTree` / `check-ort-provenance.sh
+  <dir>` for consumer bundles.
+- **App venv**: one census, `ort-venv-census.py`, purges by name pattern and package
+  ownership (no fixed lists) and fails the torch stage unless every ORT distribution is a
+  chain wheel byte for byte. A missing Linux chain wheel is fatal (it used to fall back to
+  PyPI 1.27.0). Smoke section 21 adds DirectML and chain-wheel checks on every amd64 lane
+  (floor 2 → 4). The nvidia smoke counts any GenAI flavour as the GenAI. The Windows app
+  `uv sync` no longer installs the lock's PyPI ORT and GenAI before the purge: each
+  `onnxruntime*` name in `uv.lock` is `--no-install-package`, and one without a chain
+  wheel of its family stops the stage.
+- **Consumer CI venvs** (`python-ci-*`): inside our images, `uv_sync_project` /
+  `Sync-UvProjectDependencies` reconcile onto the chain wheels and fail unless the census
+  and an import prove it. Linux gains `ORT_CHAIN_WHEEL_DIR=/opt/onnxruntime-wheels`.
+  Owner decision: the 3.13 legs go (the chain wheels are cp314, the images carry 3.14
+  only). `ci_tests.sh` `PY_VERSIONS` and `ci_build_docs.sh` `COVERAGE_VERSION` default to
+  3.14 and OrchestrANT drops its 3.13 legs. WebDavClient (no ORT) needs
+  `docs-python-version: '3.13'` in its workflow no later than the commit that moves its hub
+  pin past this, or its docs job syncs atheris on 3.14 and fails. The Windows image COPYs
+  the census to `C:\temp\scripts\`, beside its module copy, which failed every sync without it.
+- **Linux**: a missing chain ORT stops OpenCV (no more silent build without it); dnn's
+  copies in `/opt/opencv5/lib` become links to the chain; `000-onnxruntime.conf`; FFmpeg's
+  chain `-L` goes first, a chain its probe cannot link stops FFmpeg (it used to skip the
+  backend), and a link gate reads `config.mak`; a gate over the gst `onnx` plugin's
+  `build.ninja`; apt ORT denied in code, by an apt-plan gate and a dpkg gate. The chain
+  wheel manifest G1 reads follows the wheel through `repair-wheels.sh`'s cross strip and
+  retag, and a twin of its name stops the stage. G2's default fetch caches match Windows
+  (pyke, pip, uv, NuGet) plus cargo and the FFmpeg SDK cache; uv counts only wheels it
+  downloaded, since its mount keeps old chain wheels. GenAI's G2 RUN mounts its build's caches.
+- **Hub consumer API**: `WindowsOnnx.Common` refuses NuGet ORT, `Get-OnnxPackageLayout`
+  throws, `Get-OnnxChainLayout` is new, and `WindowsMediaRuntime.Common` stages the chain only.
+- **Consumer repos** (working trees; gitlinks not moved): OxidANT drops
+  `download-binaries` for `load-dynamic`, loads only fingerprinted chain files, gates its
+  lock, and ships the chain DLLs in its zip/MSIX/MSI; AccelerANTgine's CMake requires the
+  fingerprinted chain prefix; OmniAccelerANT stages and stamps the chain ORT beside its
+  runner, refuses anything else at launch, and drops the System32 fallback.
+- **No in-box ORT in the images, now asserted.** A one-`RUN` probe over `bk-windows-base`
+  (servercore:ltsc2025, OS 26100.33438) found no `onnxruntime*`, Windows ML or DirectML
+  DLL anywhere on `C:\`. Smoke § 25 gains `ORT in-box` on every amd64 lane (verdict
+  `INBOX`, floor 4 → 5; the cross lane skips it), and no exemption can waive an in-box path.
+  A base that ships one keeps the previous `WINDOWS_BASE_DIGEST`: app-local chain copies
+  cannot clear the census today, and fix11 refuses a script line that deletes or patches
+  an in-box ORT under `C:\Windows`.
+- **Re-keys: the full chain, on both lanes.** `versions.env` changed. Windows imports it
+  in `Dockerfile.base`'s last layers, so every stage after base rebuilds on every lane.
+  Linux mounts it into its base, so everything after base rebuilds on every arch. The
+  script edits alone would re-key most of the Linux media build too: `Dockerfile.media`
+  mounts `01-core` (`python_uv.sh` changed) whole into most of its RUNs, and the
+  `onnxruntime` script dir (`60-build-genai.sh` changed) whole into the GPU ORT, GenAI,
+  wasm and js/pkgconfig RUNs. Images built before this fail the STAMP check until rebuilt.
+- **Not proven by a build.** Nothing but that probe ran in a container. Likeliest first
+  reds, all fail-closed: GenAI and G-API's DirectML EP against the 1.30 headers under
+  clang-cl; Dawn under clang-cl; a Linux package depending on `libonnxruntime1.x`; a G2
+  false positive on a real record path.
+
+## 2026-09-23 - Windows rocm lane: remaining AMD GPU paths
+
+**The rocm lane fills its AMD GPU gaps: OpenCL, Vulkan, FFmpeg Vulkan, llama.cpp Vulkan,
+gfx1200 and LiteRT, and the TVM ROCm spike builds again.** All of it is gated on
+`HasRocm`; cpu and nvidia keep their flags. Details: [`docs/windows-rocm.md`](docs/windows-rocm.md).
+
+- **TVM ROCm spike.** It had failed the whole media-tvm RUN (IREE included): the
+  minimal-LLVM branch never ran on amd64, because the patched toolchain LLVM
+  (`AArch64;X86`) is always on PATH. `Get-TvmLlvmChoice` now treats a PATH llvm-config
+  without AMDGPU as absent on the spike and builds `X86;AArch64;NVPTX;AMDGPU`.
+  `ROCM-FEATURES.txt` records the read-back target list, and `TVM.ps1` compares it with
+  what TVM links (`amdgpu`, or `amdgcn` before LLVM 23).
+- **OpenCL ICD.** `Install-Rocm.ps1` registers TheRock's `amdocl64.dll` under
+  `HKLM\SOFTWARE\Khronos\OpenCL\Vendors`. Before, nothing did, and the loader found no
+  platform.
+- **Vulkan loader.** New `Install-VulkanLoader.ps1` puts LunarG's signed `vulkan-1.dll`
+  into System32 (FFmpeg's `dlopen` and Python never read PATH), with the pinned copy and
+  its licence in `C:\vulkan-loader`. New pin `VULKAN_RT_WINDOWS_ZIP_SHA256`, refreshed by
+  `spec_vulkan`. New smoke `rocm-checks/GpuLoaders.ps1`; amfcodec is now load-probed.
+- **FFmpeg** gets `--enable-vulkan` against the SDK's headers and glslc: the vulkan
+  hwdevice, 9 hwaccels, 5 encoders, 18 filters, swscale's SPIR-V backend. A 35-symbol
+  `config.mak` gate and new smoke listings. libplacebo stays off.
+- **llama.cpp Vulkan.** The same build's official Vulkan zip in
+  `C:\runtime\opt\llama.cpp-vulkan`, its own layer, off PATH. `Install-LlamaCppHip.ps1`
+  is now `Install-LlamaCpp.ps1 -Backend hip|vulkan`, and `LlamaCpp.ps1` grades both. New
+  pin `LLAMA_CPP_VULKAN_SHA256`; the bump spec takes the newest build with both zips.
+- **Torch venv.** Device wheels for gfx1200 next to gfx1201 (six new pins), and a gate that
+  refuses a rocBLAS GPU without device pins. `ai-edge-litert` 2.2.0 with its WebGPU
+  accelerator. The PyPI WebGPU plugin EP added here the same morning was replaced by the
+  chain's own WebGPU EP (entry above).
+- **Licences.** `deps.json` rows for the Vulkan loader, the llama.cpp Vulkan build (libomp
+  in both zips), `ai-edge-litert`, and gfx1200 in the PyTorch row.
+- **Re-keys: the full chain, on both lanes.** The new pins live in `versions.env`, which
+  Windows imports in `Dockerfile.base`'s last layers and Linux mounts into its base. So
+  every Windows stage after base rebuilds on every lane, and every Linux stage after base
+  on every arch. cpu/nvidia output is unchanged. The media-tvm script edit alone would
+  re-key that RUN on every lane (the script is bind-mounted).
+- **Nothing here ran in a container or on a GPU.** Likeliest first breaks: AMD's PAL
+  initialising in a GPU-less Server Core (every OpenCV T-API check now loads it); the
+  AMDGPU minimal LLVM's time and memory; FFmpeg's Vulkan sources under clang-cl. Windows
+  Defender flags `llama-gguf-split.exe` as `Wacatac.B!ml` on this host.
+
 ## 2026-09-23 - Windows `-Variant rocm`: the ROCm layer moves into the sdk slot, and media turns on AMD GPU features
 
 **The ROCm layer now sits where `Dockerfile.nvidia` sits** (owner directive), so toolchain
@@ -113,7 +250,6 @@ meaning — no trimming as a speed lever — with the set named as a decision.
 How to turn an arch on or off, with the four rules and the cost, is now in
 `AGENTS.md` § GPU architecture coverage; the user-facing card list is in
 README.md § Which GPUs `:latest-nvidia` runs on.
-
 
 ## 2026-09-22 - hcsshim fork rebased: `Install-NewHost` builds `5e9df53c` and re-pins a reused work dir; `Invoke-WithEnv` really removes
 

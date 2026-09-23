@@ -95,7 +95,16 @@ ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/w
 ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=bfc7a1bd3b6050fb4d36d8ac2eea80d3afd70c5604a29142463d6cb890fc73bf
 ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-win_amd64.whl
 ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256=c6e4c5a0da941230bed975765e644597570081c9a41654d5a052c277167f4576
-# Same uv cache mount as app: the 1.5 GB of wheels are cached by SHA256 under C:\uvcache\torch-rocm.
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/amd-torch-device-gfx1200/amd_torch_device_gfx1200-2.13.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCH_DEVICE_GFX1200_SHA256=4a42e9937c09862bb7c48a2644f9c634ac090970e30d0c240b3aa9cd51fb9421
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/pytorch/whl-next/amd-torchvision-device-gfx1200/amd_torchvision_device_gfx1200-0.28.0%2Brocm10.0.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_DEVICE_GFX1200_SHA256=f2676ebde675908067fc6709e36098892c34aa687cda38dac3b4ccca6207a2f1
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1200/rocm_sdk_device_gfx1200-10.0.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256=f33226078932ee2200f5595c521895edf5d7abf3170975d8c6f72a2a3949f516
+# The venv's ai-edge-litert (PyPI, published SHA256), installed --no-deps in the same offline step.
+ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL=https://files.pythonhosted.org/packages/3c/33/1e7b4ac36d983aa6153b10f1e8686d7f6ff47bda1216d6d8f047a19f3cc6/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256=4e5e35da364495fdf0abefd6ef32d299133619df4cbab757941b0462066e93bc
+# Same uv cache mount as app: the ~2 GB of wheels are cached by SHA256 under C:\uvcache\torch-rocm.
 # -TorchRocm 1 is literal: only TORCH_ROCM=1 selects this stage, and an env read could fail open to CPU torch.
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/Install-TorchRocm.ps1,target=C:\bkmnt\Install-TorchRocm.ps1 `

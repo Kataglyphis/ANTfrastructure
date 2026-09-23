@@ -17,6 +17,9 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
+# G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
+$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
@@ -123,15 +126,39 @@ function Get-FfmpegAmfPlan {
     return @{ CompatDir = $compat; IncludeDir = (ConvertTo-MsysPath $compat); RocmRoot = $GpuEnvironment.RocmRoot }
 }
 
+# rocm lane only, keyed on the AMF plan: the base image's Vulkan SDK headers and its glslc (SPIR-V at
+# build time; vulkan-1.dll is dlopened at run time). $null on every other lane. docs/windows-rocm.md
+function Get-FfmpegVulkanPlan {
+    param(
+        [AllowNull()][hashtable]$AmfPlan,
+        [AllowEmptyString()][string]$VulkanSdk = ''
+    )
+    if (-not $AmfPlan) { return $null }
+    if ([string]::IsNullOrWhiteSpace($VulkanSdk)) { throw 'rocm lane: VULKAN_SDK is not set (the base image installs the Vulkan SDK and exports it).' }
+    $sdk = $VulkanSdk.TrimEnd('\', '/')
+    # configure runs `$glslc_probe -v` unquoted, so a spaced path would split into two words.
+    if ($sdk -match '\s') { throw "rocm lane: VULKAN_SDK '$sdk' contains whitespace; FFmpeg's glslc probe cannot run it." }
+    foreach ($rel in 'Include\vulkan\vulkan.h', 'Include\spirv-headers\spirv.h', 'Bin\glslc.exe') {
+        if (-not (Test-Path -LiteralPath (Join-Path $sdk $rel) -PathType Leaf)) { throw "rocm lane: no $rel under VULKAN_SDK=$sdk" }
+    }
+    return @{ SdkRoot = $sdk; IncludeDir = (ConvertTo-MsysPath (Join-Path $sdk 'Include')); Glslc = ((Join-Path $sdk 'Bin\glslc.exe') -replace '\\', '/') }
+}
+
 # Emits nothing without a plan, so the cpu/nvidia configure line stays byte-identical.
 function Get-FfmpegRocmConfigureArg {
-    param([Parameter(Mandatory)][AllowNull()][hashtable]$AmfPlan)
+    param(
+        [Parameter(Mandatory)][AllowNull()][hashtable]$AmfPlan,
+        [AllowNull()][hashtable]$VulkanPlan = $null
+    )
     if (-not $AmfPlan) { return @() }
     if (-not (Test-Path (Join-Path $AmfPlan.CompatDir 'AMF\core\Version.h') -PathType Leaf)) {
         throw "rocm lane: no AMF headers under $($AmfPlan.CompatDir) -- Install-FfmpegAmfHeader must run before configure."
     }
     # Explicit, not autodetect: a missing header then dies in configure ("amf requested but not found").
-    return @('--enable-amf', "--extra-cflags=-I$($AmfPlan.IncludeDir)")
+    $rocmArgs = @('--enable-amf', "--extra-cflags=-I$($AmfPlan.IncludeDir)")
+    # Explicit --glslc: configure would otherwise take the first glslc/glslang it meets on PATH.
+    if ($VulkanPlan) { $rocmArgs += '--enable-vulkan', "--extra-cflags=-I$($VulkanPlan.IncludeDir)", "--glslc=$($VulkanPlan.Glslc)" }
+    return $rocmArgs
 }
 
 # The configure symbols --enable-amf must turn on at n9.0.2; rocm-checks/FFmpeg.ps1 lists the same set.
@@ -148,6 +175,31 @@ function Get-FfmpegAmfConfigGap {
     foreach ($symbol in Get-FfmpegAmfConfigSymbol) {
         if ($ConfigMakText -notmatch "(?m)^CONFIG_$symbol=yes\r?$") { "CONFIG_$symbol" }
     }
+}
+
+# config.mak names --enable-vulkan turns on at n9.0.2 (spirv_compiler is in no config list, so the
+# glslc-built components stand in for it); rocm-checks/FFmpeg.ps1 lists the same components.
+function Get-FfmpegVulkanConfigSymbol {
+    $hwaccels = 'AV1', 'H264', 'HEVC', 'VP9', 'APV', 'DPX', 'FFV1', 'PRORES', 'PRORES_RAW'
+    $encoders = 'H264', 'HEVC', 'AV1', 'FFV1', 'PRORES_KS'
+    $filters = 'AVGBLUR', 'BLACKDETECT', 'BLEND', 'BWDIF', 'CHROMABER', 'COLOR', 'FLIP', 'GBLUR', 'HFLIP',
+        'INTERLACE', 'NLMEANS', 'OVERLAY', 'SCALE', 'SCDET', 'TRANSPOSE', 'V360', 'VFLIP', 'XFADE'
+    return @('CONFIG_VULKAN', 'CONFIG_VULKAN_1_4', 'HAVE_SPIRV_HEADERS_SPIRV_H') +
+        @($hwaccels | ForEach-Object { "CONFIG_${_}_VULKAN_HWACCEL" }) +
+        @($encoders | ForEach-Object { "CONFIG_${_}_VULKAN_ENCODER" }) +
+        @($filters | ForEach-Object { "CONFIG_${_}_VULKAN_FILTER" })
+}
+
+# Symbols config.mak leaves off, plus a GLSLC line that is not the plan's compiler.
+function Get-FfmpegVulkanConfigGap {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ConfigMakText,
+        [Parameter(Mandatory)][string]$Glslc
+    )
+    foreach ($symbol in Get-FfmpegVulkanConfigSymbol) {
+        if ($ConfigMakText -notmatch "(?m)^$symbol=yes\r?$") { $symbol }
+    }
+    if ($ConfigMakText -notmatch "(?m)^GLSLC=$([regex]::Escape($Glslc))\r?$") { "GLSLC=$Glslc" }
 }
 
 # config.mak lines naming the ROCm tree in any spelling (C:\, C:/, /c/): FFmpeg needs nothing from TheRock.
@@ -342,6 +394,7 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
 $ffAmfPlan = Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir
+$ffVulkanPlan = Get-FfmpegVulkanPlan -AmfPlan $ffAmfPlan -VulkanSdk ([string]$env:VULKAN_SDK)
 # No cross-lane exclusion: upstream configure has NO arch guard on nvenc/nvdec/cuvid (detection
 # is a check_pkg_config on the headers), so the cross lane is gated on the toolkit check alone.
 if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
@@ -376,9 +429,9 @@ if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))
         Write-Warning 'nv-codec-headers install produced no ffnvcodec.pc -- FFmpeg will build without NVIDIA video accel.'
     }
 } elseif ($ffAmfPlan) {
-    Write-Host 'FFmpeg: rocm lane -> no NVENC/NVDEC; AMD AMF is enabled below'
+    Write-Host "FFmpeg: rocm lane -> no NVENC/NVDEC; AMD AMF and Vulkan (SDK $($ffVulkanPlan.SdkRoot)) are enabled below"
 } elseif ($ffCross) {
-    Write-Host "FFmpeg: no nvidia CUDA toolkit -> cross build for $ffTargetArch without NVENC/NVDEC (CPU-only FFmpeg; FFmpeg has no Vulkan hwaccel on either lane)"
+    Write-Host "FFmpeg: no nvidia CUDA toolkit -> cross build for $ffTargetArch without NVENC/NVDEC (CPU-only FFmpeg; Vulkan is enabled on the rocm lane only)"
 } else {
     Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
 }
@@ -386,8 +439,8 @@ if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))
 $cygPrefix = ConvertTo-MsysPath $prefix
 $cygSrc = ConvertTo-MsysPath $srcDir
 
-# Copy the ONNX headers into compat/ so configure's test_cc probes find them without
-# --extra-cflags, which is not passed to test compilations under the msvc-preset conventions.
+# Copy the ONNX headers into compat/, which the -I below names; --extra-cflags lands in configure's
+# CFLAGS, so its test_cc probes see it too (the AMF and Vulkan -I rely on that).
 $onnxRuntimeDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 $onnxHeaderCopied = $false
 if (Test-Path $onnxRuntimeDir) {
@@ -413,7 +466,7 @@ if ($ffAmfPlan) {
     $amfDir = Install-FfmpegAmfHeader -Version $amfVersion -Sha256 $amfSha -Destination $ffAmfPlan.CompatDir
     Write-Host "FFmpeg (rocm lane): AMF headers $amfVersion -> $amfDir"
 }
-$ffRocmFlags = @(Get-FfmpegRocmConfigureArg -AmfPlan $ffAmfPlan)
+$ffRocmFlags = @(Get-FfmpegRocmConfigureArg -AmfPlan $ffAmfPlan -VulkanPlan $ffVulkanPlan)
 
 $confFlags = @()
 $confFlags += "--prefix=$cygPrefix"
@@ -542,7 +595,7 @@ if ($ffCross) {
 $confFlags += '--disable-indev=vfwcap'
 # NVIDIA hardware video accel: empty on the CPU-only lane, populated above when CUDA is present.
 $confFlags += $nvencFlags
-# AMD AMF: rocm lane only; an empty array everywhere else, which leaves this line untouched.
+# AMD AMF + Vulkan: rocm lane only; an empty array everywhere else, which leaves this line untouched.
 $confFlags += $ffRocmFlags
 
 # Shell-quote flags carrying spaces: the wrapper line is parsed by bash, and an unquoted space
@@ -607,6 +660,14 @@ if ($ffAmfPlan) {
     $rocmLeak = @(Get-FfmpegRocmLeak -ConfigMakText $configMakText -RocmRoot $ffAmfPlan.RocmRoot)
     if ($rocmLeak.Count -gt 0) { throw "FFmpeg (rocm lane): configure picked up the ROCm tree: $($rocmLeak -join ' | ')" }
     Write-Host "FFmpeg (rocm lane): config.mak enables all $(@(Get-FfmpegAmfConfigSymbol).Count) AMF symbols"
+}
+# rocm lane: the same fail-now gate for Vulkan (headers, vulkan_1_4, glslc-built components, SPIR-V headers).
+if ($ffVulkanPlan) {
+    $vulkanGap = @(Get-FfmpegVulkanConfigGap -ConfigMakText ([string](Get-Content -LiteralPath $configMak -Raw)) -Glslc $ffVulkanPlan.Glslc)
+    if ($vulkanGap.Count -gt 0) { throw "FFmpeg (rocm lane): configure left Vulkan component(s) off: $($vulkanGap -join ', ')" }
+    Write-Host "FFmpeg (rocm lane): config.mak enables all $(@(Get-FfmpegVulkanConfigSymbol).Count) Vulkan symbols, GLSLC=$($ffVulkanPlan.Glslc)"
+    # Log-only: zlib+gzip autodetection (configure:7285) picks the gzip'd or the plain SPIR-V embed rule.
+    Write-Host "config.mak: shader compression $(if (Select-String -LiteralPath $configMak -Pattern '^CONFIG_SHADER_COMPRESSION=yes' -Quiet) { 'ON' } else { 'OFF' })"
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
@@ -802,6 +863,10 @@ if (Test-Path "$ffmpegDir\ffmpeg.exe") {
         throw "ffmpeg install has no avformat.lib in $ffLibDir -- master drift broke import-lib generation"
     }
 }
+
+# G2: the tree (compat\onnx is the chain's headers), config.mak and config.log hold the chain ORT only; a pass stamps it for G1.
+Assert-ChainOrtOnly -Consumer 'ffmpeg' -OrtRoot $onnxRuntimeDir -TreeRoot $SourceDir -Shim (Join-Path $srcDir 'compat\onnx') `
+    -Record (Join-Path $srcDir 'ffbuild\config.mak') -Log (Join-Path $srcDir 'ffbuild\config.log')
 
 Remove-SourceBuildTree -Path $SourceDir
 

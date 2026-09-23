@@ -31,7 +31,7 @@ produce, and which gates keep it honest.
 > | Import walk (`-ImportWalk`, unpacks staged wheels) | **606 walked / 0 unresolved** (3 allowlisted, 6 device-OS) | report-only |
 > | Target python deps | **12 wheels / 0 unresolved requirement edges** | installed natively |
 > | Mandatory GStreamer plugins | **6 / 6** | 6 / 6 |
-> | Smoke | 97 passed / 0 failed / 15 skipped (floors 69/20) | 222 / 0 / 0 |
+> | Smoke | 97 passed / 0 failed / 15 skipped (floors then 69/20, now 76/20) | 222 / 0 / 0 |
 >
 > **Absent by construction, each named inside the bundle** (`ABSENT-ON-ARM64.txt` /
 > `COMPILER-ABSENT-ON-ARM64.txt`): the TVM and IREE **compilers** and `iree.compiler` — they need
@@ -299,7 +299,7 @@ IPP is Intel's x86-only primitives library; no AArch64 build exists. OpenCV stil
 
 ### `USE_DML=ON` (ONNX Runtime, and GenAI since #118), `WITH_DIRECTML=ON` (OpenCV) — all three initially OFF on this lane
 
-**The original justification was wrong and is retracted:** the nuget *does* ship an arm64 import library. `Microsoft.AI.DirectML` 1.15.4 contains `bin/arm64-win/DirectML.lib`, a COFF import archive whose machine field is `0xAA64`. The real defect was a **case mismatch inside ONNX Runtime's own CMake**: `cmake/external/dml.cmake` declares the download's outputs with a lower-case `bin/arm64-win`, while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` is the verbatim, upper-case `ARM64`. The two spellings never meet, so the arm64 lane failed with `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`, and that was misread as "no arm64 package". A cross-scoped inline patch lower-cases the redist directory once (`string(TOLOWER … onnxruntime_dml_redist_platform)`) and routes both consumers through it. The sequencing hold has since cleared: as of #118 (2026-08-24) GenAI builds `USE_DML=ON` on both lanes and stages `D3D12Core.dll` through a target-derived filter, and OpenCV's `WITH_DIRECTML` is ON on both lanes — it feeds contrib G-API's ONNX DirectML EP, not `cv::dnn`.
+**The original justification was wrong and is retracted:** the nuget *does* ship an arm64 import library. `Microsoft.AI.DirectML` 1.15.4 contains `bin/arm64-win/DirectML.lib`, a COFF import archive whose machine field is `0xAA64`. The real defect was a **case mismatch inside ONNX Runtime's own CMake**: `cmake/external/dml.cmake` declares the download's outputs with a lower-case `bin/arm64-win`, while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` is the verbatim, upper-case `ARM64`. The two spellings never meet, so the arm64 lane failed with `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`, and that was misread as "no arm64 package". A cross-scoped inline patch lower-cases the redist directory once (`string(TOLOWER … onnxruntime_dml_redist_platform)`) and routes both consumers through it. The sequencing hold has since cleared: as of #118 (2026-08-24) GenAI builds `USE_DML=ON` on both lanes and stages `D3D12Core.dll` through a target-derived filter, and OpenCV's `WITH_DIRECTML` is ON on both lanes — it feeds contrib G-API's ONNX DirectML EP, not `cv::dnn`. That EP was a stub that throws until 2026-09-23, when OpenCV started building against the chain ORT; its `opencv_gapi500.dll` now delay-imports `dxcore.dll`, a new edge for this lane's import walk that servercore:ltsc2025 resolves ([`onnxruntime-single-source.md`](onnxruntime-single-source.md#opencv-on-windows-the-shim-the-hook-and-the-gate)).
 
 ### `USE_CUDA=OFF` forced by **target**, not host (GenAI, and every CUDA consumer)
 
@@ -763,7 +763,8 @@ So on the cross lane:
 
 **The amd64 smoke floors are deliberately never lowered for arm64.** Since 2026-08-24 the arm64 lane
 carries its **own floor column** — a third column in the floor table, sized for the host-toolchain
-sections it actually runs (floors 69/20; the green run measured 97/0/15) — and the amd64 numbers
+sections it actually runs (floors 76/20; the green 97/0/15 was measured under 69/20, before
+sections 19 and 25 grew) — and the amd64 numbers
 stay untouched. A shared, reduced `-SmokeMinPassed`
 would leave a number that a later amd64 change could quietly be measured against — which is exactly
 how the gate documented at backlog #44 became decorative once before.

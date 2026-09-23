@@ -35,6 +35,9 @@ source "${SCRIPT_DIR}/ffmpeg-probe-framework.sh"
 source "${SCRIPT_DIR}/ffmpeg-probes-codecs.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/ffmpeg-dnn-backends.sh"
+# G2 lives beside 03-media/, mounted per file (never inside the ffmpeg dir mount).
+# shellcheck source=../../ort-provenance.sh
+source "${SCRIPT_DIR}/../../ort-provenance.sh"
 
 case "${1:-}" in
   -h|--help)
@@ -260,7 +263,7 @@ _ffmpeg_probe_dnn_backends() {
         # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
         # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
         [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && _ffpdb_out+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
-        [ -n "${_FFMPEG_ONNX_EXTRA_LDFLAGS:-}" ] && _ffpdb_out+=("--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}")
+        ffmpeg_ort_ldflags_first _ffpdb_out || die "chain ORT -L missing (ffmpeg_probe_libonnxruntime set none)"
         [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
@@ -457,6 +460,10 @@ configure_ffmpeg() {
         fi
         exit 1
     fi
+    # What FFmpeg's link resolves for -lonnxruntime, read off config.mak as ld does (owner rule 2026-09-23).
+    local ort_findings
+    ort_findings="$(ffmpeg_ort_link_findings ffbuild/config.mak "${_FFMPEG_ONNX_ROOT:-}")"
+    [ -z "${ort_findings}" ] || die "FFmpeg links an ONNX Runtime other than the chain: ${ort_findings}"
 }
 
 # ------------------------------------------------------------------------------
@@ -745,6 +752,10 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
+    # G2: the tree, config.mak and config.log hold the chain ORT only; a pass stamps the prefix for G1.
+    ort_assert_chain_only ffmpeg --stamp "${FFMPEG_PREFIX}/ort-provenance/ffmpeg.json" --chain "${_FFMPEG_ONNX_ROOT:-}" \
+        --tree "${FFMPEG_SRC}" --record "${FFMPEG_SRC}/ffbuild/config.mak" --log "${FFMPEG_SRC}/ffbuild/config.log" \
+        || die "FFmpeg's build inputs reach an ONNX Runtime other than the chain's"
     # SDK-cache-only NEEDED libs (today: libtensorflow.so.2 + its framework
     # lib) live only in the SDK cache mount; copy them into the ffmpeg payload
     # so the shipped binary can load them (see the function header). `|| true`

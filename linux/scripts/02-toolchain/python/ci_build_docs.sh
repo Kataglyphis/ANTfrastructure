@@ -5,7 +5,8 @@
 #   ci_build_docs.sh [coverage_version]
 #
 # Environment variables:
-#   COVERAGE_VERSION - Python version for coverage (default: 3.13)
+#   COVERAGE_VERSION - Python version for coverage (default: 3.14, the image
+#                      interpreter and ci_tests.sh's default leg)
 #   WORKSPACE_ROOT - Workspace root directory
 
 set -euo pipefail
@@ -15,7 +16,7 @@ source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.s
 
 detect_workspace
 
-COVERAGE_VERSION="${1:-${COVERAGE_VERSION:-3.13}}"
+COVERAGE_VERSION="${1:-${COVERAGE_VERSION:-3.14}}"
 
 prepare_ci_workspace
 

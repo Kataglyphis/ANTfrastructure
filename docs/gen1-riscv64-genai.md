@@ -49,6 +49,7 @@ effort was far below that estimate, for the reason in the next section.
 | `…/03-media/build/onnxruntime/build/60-build-genai.sh` | Producer: escape hatch, patch apply, `--use_guidance` preflight, cross allowlist `arm64\|riscv64`, cross-wheel ELF/`EXT_SUFFIX` assert |
 | `linux/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch` | The one upstream blocker, one hunk |
 | `…/03-media/runtime/verify-media-artifacts.sh` (`onnxruntime-genai`) | Build-time artifact gate; reads the producer's `.gen1-lane-off` marker |
+| `…/03-media/verify-genai-ort.sh` | ORT provenance, in the same verify RUN: `ORT_HOME` in the top-level CMakeCache is a chain root, no `_deps/ortlib-*`/`onnxruntime-*`, no ORT archive, chain bytes under every chain ORT name, then the ORT build gate and its stamp. SKIP when the lane is off |
 | `…/03-media/runtime/validate-media-runtime.sh` | `LIB_DIRS` root + unresolved-`NEEDED` scan over the genai lib dir |
 | `…/03-media/runtime/assemble-torch-app.sh` | `prune_conflicting_onnx_wheels` — no longer deletes the CPU genai wheel |
 | `…/06-packaging/smoke-common.sh` (`smoke_genai_py`) | The four-tier binding / `generate()` smoke payload |
@@ -168,7 +169,10 @@ The genai `RUN` in `Dockerfile.media` gained
 `apply-patch.sh` itself already arrived via the whole-`01-core` mount; only the
 patch tree was missing. amd64/arm64 never read it. It does move that layer's
 cache key — but so does any edit to `60-build-genai.sh`, since the whole
-onnxruntime script dir is already mounted there.
+onnxruntime script dir is already mounted there. That dir is also mounted whole
+into the GPU ORT RUN, so an edit to `60-build-genai.sh` re-keys the GPU ORT build
+on nvidia/amd too; that is why `verify-genai-ort.sh` sits at the `03-media` root,
+mounted per file, and not beside it.
 
 The producer hard-errors if the patch file is not found, naming the mount as the
 likely cause.

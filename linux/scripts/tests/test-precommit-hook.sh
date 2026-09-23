@@ -166,4 +166,16 @@ t_case "a surviving mutation aborts the commit, it does not just print"
 t_assert_fails _run_hook 3 "${_work}/both.txt" 1
 t_assert_contains "$(_run_hook 3 "${_work}/both.txt" 1)" "a recorded mutation SURVIVED"
 
+t_case "a CRLF-printing python (Windows) still yields bare ids, in the plan and at the gate"
+cat > "${_work}/crlf-python" <<'STUB'
+#!/usr/bin/env bash
+python3 "$@" | sed 's/$/\r/'
+STUB
+chmod +x "${_work}/crlf-python"
+_crlf_plan="$(PREFLIGHT_PYTHON="${_work}/crlf-python" _plan 3 "${_work}/both.txt")"
+t_assert_eq "0" "$(printf '%s' "${_crlf_plan}" | tr -cd '\r' | wc -c | tr -d ' ')" "no carriage return survives the plan"
+t_assert_eq "plan 3 11" "$(printf '%s\n' "${_crlf_plan}" | head -1)"
+PREFLIGHT_PYTHON="${_work}/crlf-python" _run_hook 3 "${_work}/both.txt" >/dev/null
+t_assert_eq "0" "$(tr -cd '\r' < "${_ARGV}" | wc -c | tr -d ' ')" "the gate receives ids without \r"
+
 t_summary

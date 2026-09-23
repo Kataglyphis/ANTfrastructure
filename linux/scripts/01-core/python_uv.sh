@@ -10,6 +10,7 @@
 #   uv_venv_deactivate                          - Deactivate current venv
 #   uv_venv_remove <path>                       - Remove a virtual environment
 #   uv_sync_project [--locked] [--no-wxpython]  - Sync dependencies with uv
+#   uv_reconcile_chain_ort <venv>               - Put a venv's ONNX Runtime on the image's chain wheels
 #   uv_run <args...>                            - Run command with uv
 #   uv_ensure_installed                         - Ensure uv is installed
 #   timestamp                                   - Get timestamp for logs
@@ -34,6 +35,10 @@ declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
 # (itself derived from PYTHON_VERSION by common.sh).
 declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-${PYTHON_MAJOR_MINOR:-3.14}}"
 declare -g _CURRENT_VENV_PATH=""
+# The ORT census: the checkout's copy, else the torch image's (Dockerfile.torch COPYs it into final/).
+declare -g _UV_ORT_CENSUS
+_UV_ORT_CENSUS="$(cd "$_MODULE_DIR/.." && pwd)/03-media/runtime/ort-venv-census.py"
+[ -f "${_UV_ORT_CENSUS}" ] || _UV_ORT_CENSUS="${_UV_ORT_CENSUS%/runtime/*}/final/ort-venv-census.py"
 
 timestamp() {
   date +%Y%m%d-%H%M%S
@@ -399,10 +404,12 @@ uv_sync_project() {
     info "uv sync target environment: ${_venv}"
   else
     warn "uv sync is UNPINNED; dropping --active and VIRTUAL_ENV so it cannot target a system venv."
+    _venv="${UV_PROJECT_ENVIRONMENT:-${PWD}/.venv}"
   fi
 
   info "uv ${sync_args[*]}"
-  env "${_env_clear[@]}" uv "${sync_args[@]}"
+  env "${_env_clear[@]}" uv "${sync_args[@]}" || return
+  uv_reconcile_chain_ort "${_venv}"
 }
 
 # `uv run` with the image's redirections out of scope, which uv_sync_project
@@ -422,6 +429,131 @@ uv_run() {
   else
     env -u UV_PYTHON -u VIRTUAL_ENV uv run "$@"
   fi
+}
+
+# `uv run` re-syncs to the lock, which would put PyPI ORT back: hold it off while a
+# reconciled venv is live, release only what this module set.
+_uv_chain_ort_hold_sync() {
+  if [ "$1" = hold ] && [ -z "${UV_NO_SYNC:-}" ]; then
+    export UV_NO_SYNC=1
+    _UV_CHAIN_ORT_NO_SYNC=1
+  elif [ "$1" = release ] && [ "${_UV_CHAIN_ORT_NO_SYNC:-0}" = 1 ]; then
+    unset UV_NO_SYNC
+    _UV_CHAIN_ORT_NO_SYNC=0
+  fi
+  return 0
+}
+
+# The ORT distributions in a venv, one name per line, from the census assemble-torch-app.sh
+# uses on the image's own venv. $1 = the venv's interpreter.
+_uv_chain_ort_names() {
+  local out
+  out="$("$1" -I "${_UV_ORT_CENSUS}" --purge-list 2>&1)" || { printf '%s\n' "${out}"; return 1; }
+  printf '%s\n' "${out}" | sed -n 's/^ORT-CENSUS PURGE \([a-z0-9][a-z0-9-]*\)$/\1/p'
+}
+
+# Moves a synced venv's ONNX Runtime onto the image's chain wheels (ORT_CHAIN_WHEEL_DIR) and
+# proves it, or fails; outside our images only warns. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+uv_reconcile_chain_ort() {
+  local venv="$1" store="${ORT_CHAIN_WHEEL_DIR:-}" py names
+  local -a drop=() wheels=()
+  py="${venv}/bin/python"
+  [ -x "${py}" ] || py="${venv}/Scripts/python.exe"
+  _uv_chain_ort_preflight "${store}" "${py}" || return 1
+  if ! names="$(_uv_chain_ort_names "${py}")"; then
+    [ -z "${store}" ] || { printf 'ERROR: chain ORT: cannot list %s: %s\n' "${venv}" "${names}" >&2; return 1; }
+    warn "chain ORT: ${venv} not inspected; ONNX Runtime provenance unchecked (${names})"
+    return 0
+  fi
+  [ -z "${names}" ] || mapfile -t drop <<< "${names}"
+  if [ "${#drop[@]}" -eq 0 ] || [ -z "${store}" ]; then
+    _uv_chain_ort_notice "${venv}" "${py}" "${store}" "${drop[@]}"
+    return
+  fi
+  mapfile -t wheels < <(compgen -G "${store}/onnxruntime[-_]*.whl" || true)
+  if [ "${#wheels[@]}" -eq 0 ]; then
+    printf 'ERROR: chain ORT: the store %s holds no onnxruntime wheel for %s\n' "${store}" "${drop[*]}" >&2
+    return 1
+  fi
+  _uv_chain_ort_abi_fits "${venv}" "${py}" "${wheels[@]}" || return 1
+  info "chain ORT: replacing ${drop[*]} in ${venv} with ${wheels[*]##*/}"
+  uv pip uninstall --python "${py}" "${drop[@]}" || return 1
+  uv pip install --python "${py}" --no-index --no-deps --force-reinstall "${wheels[@]}" || {
+    printf 'ERROR: chain ORT: %s does not take the chain wheels [%s]\n' "${venv}" "${wheels[*]##*/}" >&2
+    return 1
+  }
+  _uv_chain_ort_prove "${venv}" "${py}" "${store}" || return 1
+  _uv_chain_ort_hold_sync hold
+}
+
+# Inside our images (a store is declared) the store, the interpreter and the census must all exist.
+_uv_chain_ort_preflight() {
+  if [ -n "$1" ] && { [ ! -d "$1" ] || [ ! -x "$2" ] || [ ! -f "${_UV_ORT_CENSUS}" ]; }; then
+    printf 'ERROR: chain ORT: need the store %s, the interpreter %s and the census %s\n' "$1" "$2" "${_UV_ORT_CENSUS}" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Before uv: every store ORT wheel must fit this venv's ABI tag (cp313, cp314t), or the leg cannot
+# carry ORT inside our images. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+_uv_chain_ort_abi_fits() {
+  local venv="$1" py="$2" abi w tag bad=""
+  shift 2
+  abi="$("${py}" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))' 2>&1)" || {
+    printf 'ERROR: chain ORT: cannot read the ABI tag of %s: %s\n' "${py}" "${abi}" >&2
+    return 1
+  }
+  abi="${abi//$'\r'/}"; abi="${abi##*$'\n'}"
+  for w in "$@"; do
+    tag="${w##*/}"; tag="${tag%.whl}"; tag="${tag%-*}"; tag="${tag##*-}"
+    case "${tag}" in "${abi}"|abi3|none) ;; *) bad+=" ${w##*/}" ;; esac
+  done
+  if [ -z "${bad}" ]; then return 0; fi
+  printf 'ERROR: chain ORT: %s is a %s venv, and the chain wheels are built for the image interpreter:%s\n' "${venv}" "${abi}" "${bad}" >&2
+  printf '  An ORT project runs its in-image legs on that interpreter: drop this leg or list it in EXPERIMENTAL_PYTHON_VERSIONS.\n' >&2
+  return 1
+}
+
+# No ORT distribution to purge: inside our images nothing may import as ORT either (an unowned
+# copy, a dist without a Name); the census --check output is the evidence.
+_uv_chain_ort_unowned() {
+  local venv="$1" py="$2" store="$3" out
+  out="$("${py}" -I -c 'import importlib.util as u, sys; hits = [p for p in ("onnxruntime", "onnxruntime_genai", "onnxruntime_extensions") if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)' 2>&1)" && return 0
+  printf 'ERROR: chain ORT: %s imports ONNX Runtime with no distribution to purge (%s):\n%s\n' "${venv}" "${out//$'\r'/}" \
+    "$("${py}" -I "${_UV_ORT_CENSUS}" --check --store "${store}" 2>&1)" >&2
+  return 1
+}
+
+# After uv: the census proves every ORT dist is a chain wheel byte for byte; the import proves it
+# loads here (a DLL the venv lacks passes the byte census and the ABI-tag check alike).
+_uv_chain_ort_prove() {
+  local venv="$1" py="$2" store="$3" out
+  out="$("${py}" -I "${_UV_ORT_CENSUS}" --check --store "${store}" 2>&1)" || {
+    printf 'ERROR: chain ORT: %s still carries a non-chain ONNX Runtime:\n%s\n' "${venv}" "${out}" >&2
+    return 1
+  }
+  info "${out}"
+  out="$("${py}" -I -c 'import sys; print(sys.version); import onnxruntime' 2>&1)" || {
+    printf 'ERROR: chain ORT: the chain onnxruntime does not import in %s (the store is built for the image interpreter):\n%s\n' "${venv}" "${out}" >&2
+    return 1
+  }
+  return 0
+}
+
+# Nothing to replace. No ORT dist: no hold (inside our images, no unowned ORT either). Outside our
+# images: say loudly what uv resolved and change nothing. $1 venv, $2 interpreter, $3 store, then the dists.
+_uv_chain_ort_notice() {
+  local venv="$1" py="$2" store="$3"
+  shift 3
+  if [ "$#" -eq 0 ]; then
+    [ -z "${store}" ] || _uv_chain_ort_unowned "${venv}" "${py}" "${store}" || return 1
+    _uv_chain_ort_hold_sync release
+    return 0
+  fi
+  warn "==== NOTICE: ${venv} runs ONNX Runtime from outside the chain: $* ===="
+  warn "  No chain wheel store here (ORT_CHAIN_WHEEL_DIR unset), so it stays as uv resolved it;"
+  warn "  inside our images it is reconciled onto the chain wheels or the sync fails."
 }
 
 fi

@@ -504,11 +504,33 @@ bytecompile_venv() {
     || echo "  (compileall best-effort — some modules skipped; non-fatal)"
 }
 
+# Keeps the chain ORT wheels /opt/venv was installed from (the /opt/wheels mount is ephemeral) for
+# consumer CI venvs, proved by the check they get. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+stage_chain_ort_wheels() {
+  cross_skip "chain ORT wheel store" && return 0
+  local store="${ORT_CHAIN_WHEEL_DIR:?ORT_CHAIN_WHEEL_DIR is unset (Dockerfile.torch ENV)}"
+  local census=/opt/scripts/03-media/final/ort-venv-census.py out wheel
+  mkdir -p "${store}"
+  out="$("${VENV}/bin/python" -I "${census}" --purge-list)" || { echo "ERROR: the ORT census cannot read ${VENV}" >&2; exit 1; }
+  if [ -z "${out}" ]; then
+    echo "${VENV} carries no ONNX Runtime; ${store} stays empty"
+    return 0
+  fi
+  out="$("${VENV}/bin/python" -I "${census}" --check --store /opt/wheels 2>&1)" \
+    || { printf '%s\n' "${out}" >&2; echo "ERROR: ${VENV}'s ONNX Runtime is not the chain's" >&2; exit 1; }
+  while IFS= read -r wheel; do
+    cp -f "/opt/wheels/${wheel}" "${store}/"
+  done < <(printf '%s\n' "${out}" | sed -n 's/^ORT-CENSUS chain .* = \([^/]*\.whl\)$/\1/p')
+  "${VENV}/bin/python" -I "${census}" --check --store "${store}" \
+    || { echo "ERROR: ${store} does not hold exactly the chain wheels ${VENV} was installed from" >&2; exit 1; }
+}
+
 main() {
   setup_torch_venv
   seed_opencv5_bindings
   setup_torch_deps
   setup_torch_app
+  stage_chain_ort_wheels
   bytecompile_venv
   cleanup_wheelhouse
 }

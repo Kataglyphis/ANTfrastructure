@@ -12,6 +12,11 @@ $script:CpuEnv = @{ GpuType = 'cpu'; HasCuda = $false; HasRocm = $false; RocmRoo
 $script:NvidiaEnv = @{ GpuType = 'nvidia'; HasCuda = $true; HasRocm = $false; RocmRoot = $null }
 $script:RocmEnv = @{ GpuType = 'rocm'; HasCuda = $false; HasRocm = $true; RocmRoot = 'C:\TheRock\build' }
 $script:DeviceBcSha = '336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9'
+# C:\llvm-patched is first on PATH on every amd64 lane (AArch64;X86, Build-LlvmFromSource.ps1).
+$script:PatchedLlvm = 'C:\llvm-patched\bin\llvm-config.exe'
+$script:NeverAsked = { param($c) throw "llvm-config --targets-built of $c was queried off the ROCm spike" }
+# tvm.target.codegen.llvm_get_targets() against LLVM 23.1.1 (X86;AArch64;NVPTX;AMDGPU): Triple::getArchTypeName.
+$script:Llvm23Arches = @('aarch64', 'aarch64_32', 'aarch64_be', 'amdgpu', 'i386', 'nvptx', 'nvptx64', 'r600', 'x86_64')
 
 # Excerpts of the pinned upstream files, verbatim (LF); the suite also runs them as CRLF.
 $script:IreeDynamicSymbols = @'
@@ -85,6 +90,7 @@ from os.path import exists, join
 '@
 
 function ConvertTo-TestCrlf([string]$Text) { return ($Text -replace '\r?\n', "`r`n") }
+function Format-TvmLlvmChoice($c) { return '{0}|{1}|{2}' -f $c.BuildMinimal, $c.LlvmConfig, $c.Targets }
 
 # A 64-byte ELF header: class, e_type, e_machine and the e_flags low byte (EF_AMDGPU_MACH) set.
 function New-TestElfHeader {
@@ -212,16 +218,20 @@ Describe 'Build-IreeFromSource: device-bitcode pin' {
 }
 
 Describe 'Build-TvmFromSource: rocm-lane plan and configure args' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Get-TvmLlvmTargetList', 'Get-TvmRocmCmakeArgs')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Get-TvmLlvmTargetList', 'Get-TvmRocmCmakeArgs', 'Test-TvmLlvmHasAmdgpu', 'Get-TvmLlvmChoice')
 
-    It 'changes nothing on cpu and nvidia: same LLVM targets, no appended args, ROCM_PATH left alone' {
+    It 'changes nothing on cpu and nvidia: same LLVM and targets, no appended args, ROCM_PATH left alone' {
         foreach ($case in @(@{ N = 'cpu'; E = $script:CpuEnv }, @{ N = 'nvidia'; E = $script:NvidiaEnv })) {
             foreach ($flag in @($null, '', '0', '1')) {
                 $plan = Get-TvmRocmPlan -GpuEnv $case.E -Cross $false -SpikeFlag $flag
                 Assert-False $plan.OnLane "$($case.N)/TVM_ROCM=$flag on lane"
                 Assert-False $plan.HideRocmPath "$($case.N)/TVM_ROCM=$flag hides ROCM_PATH"
-                Assert-Equal 'X86;AArch64;NVPTX' (Get-TvmLlvmTargetList -Rocm $plan.Rocm) "$($case.N)/TVM_ROCM=$flag LLVM targets"
                 Assert-Equal 0 @(Get-TvmRocmCmakeArgs -Plan $plan).Count "$($case.N)/TVM_ROCM=$flag args"
+                # PATH's llvm-config is linked unasked; without one (-StockLlvm) the historic list and log line.
+                $onPath = Get-TvmLlvmChoice -PathLlvmConfig $script:PatchedLlvm -Rocm $plan.Rocm -Cross $false -GetTargetsBuilt $script:NeverAsked
+                Assert-Equal "False|$($script:PatchedLlvm)|" (Format-TvmLlvmChoice $onPath) "$($case.N)/TVM_ROCM=$flag PATH llvm-config"
+                $stock = Get-TvmLlvmChoice -PathLlvmConfig $null -Rocm $plan.Rocm -Cross $false -GetTargetsBuilt $script:NeverAsked
+                Assert-Equal 'True||X86;AArch64;NVPTX|llvm-config.exe not on PATH (scoop LLVM never ships it)' "$(Format-TvmLlvmChoice $stock)|$($stock.Why)" "$($case.N)/TVM_ROCM=$flag -StockLlvm"
             }
         }
     }
@@ -251,10 +261,64 @@ Describe 'Build-TvmFromSource: rocm-lane plan and configure args' {
     It 'keeps the shared list byte-identical and routes the rocm args and LLVM targets through the helpers' {
         $src = Get-Content -Raw (Join-Path (Get-RepoRoot) $script:TvmScript)
         Assert-Match "(?m)^\s+'-DUSE_OPENCL=OFF'\s*$" $src 'shared list keeps USE_OPENCL=OFF'
-        Assert-Match '"-DLLVM_TARGETS_TO_BUILD=\$tvmLlvmTargets"' $src 'minimal LLVM takes the helper list'
+        Assert-Match '"-DLLVM_TARGETS_TO_BUILD=\$\(\$tvmLlvm\.Targets\)"' $src 'minimal LLVM takes the chosen list'
         Assert-Match '(?m)^\$cmakeExtra \+= @\(Get-TvmRocmCmakeArgs -Plan \$tvmRocmPlan\)\r?\nInvoke-CmakeConfigure -SourceDir \$SourceDir' $src 'appended last'
         Assert-Match '(?m)^if \(\$tvmRocmPlan\.HideRocmPath -and \$env:ROCM_PATH\)' $src 'ROCM_PATH hidden only by the plan'
         Assert-Match '(?m)^if \(\$tvmRocmPlan\.HideRocmPath -and \$null -ne \$savedRocmPath\) \{ \$env:ROCM_PATH = \$savedRocmPath \}' $src 'and restored'
+    }
+}
+
+Describe 'Build-TvmFromSource: which LLVM TVM links (the toolchain LLVM has no AMDGPU)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Get-TvmLlvmTargetList', 'Test-TvmLlvmHasAmdgpu', 'Assert-TvmLlvmHasAmdgpu', 'Get-TvmLlvmTargetsBuilt', 'Get-TvmLlvmChoice')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmMarkerFinding')
+
+    # The toolchain LLVM's target list, from the script that builds it (cpu/nvidia: the plan Describe above).
+    $script:ToolchainTargetLists = @([regex]::Matches((Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-LlvmFromSource.ps1')), '-DLLVM_TARGETS_TO_BUILD=([A-Za-z0-9_;]+)'))
+    function New-TargetsBuiltProbe([string]$Printed) { return { param($c) $Printed }.GetNewClosure() }
+
+    It 'asks PATH''s llvm-config on the spike only, and builds a minimal LLVM with AMDGPU when it has none' {
+        $minimal = 'True||X86;AArch64;NVPTX;AMDGPU'
+        $onPath = "False|$($script:PatchedLlvm)|"
+        foreach ($c in @(
+                @{ Flag = '0'; Path = $script:PatchedLlvm; Printed = $null; Want = $onPath }
+                @{ Flag = '1'; Path = $script:PatchedLlvm; Printed = "AArch64 X86`r`n"; Want = $minimal }
+                @{ Flag = '1'; Path = $script:PatchedLlvm; Printed = 'AArch64 NVPTX X86'; Want = $minimal }
+                @{ Flag = '1'; Path = $script:PatchedLlvm; Printed = ''; Want = $minimal }
+                @{ Flag = '1'; Path = $script:PatchedLlvm; Printed = 'AArch64 AMDGPU X86'; Want = $onPath }
+                @{ Flag = '1'; Path = $null; Printed = $null; Want = $minimal })) {
+            $plan = Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag $c.Flag
+            $ask = if ($null -eq $c.Printed) { $script:NeverAsked } else { New-TargetsBuiltProbe $c.Printed }
+            $got = Get-TvmLlvmChoice -PathLlvmConfig $c.Path -Rocm $plan.Rocm -Cross $false -GetTargetsBuilt $ask
+            $printed = "$($c.Printed)".Trim()
+            Assert-Equal $c.Want (Format-TvmLlvmChoice $got) "TVM_ROCM=$($c.Flag), PATH '$($c.Path)' prints '$printed'"
+            if ($c.Path -and $got.BuildMinimal) { Assert-Match "llvm-patched\\bin\\llvm-config\.exe has no AMDGPU target \(targets-built: '$([regex]::Escape($printed))'\)" $got.Why "reason for '$printed'" }
+        }
+        Assert-Equal 'False||' (Format-TvmLlvmChoice (Get-TvmLlvmChoice -PathLlvmConfig $null -Rocm $true -Cross $true -GetTargetsBuilt $script:NeverAsked)) 'cross'
+    }
+
+    It 'ends the spike on an LLVM with AMDGPU against the real toolchain''s target list' {
+        Assert-Equal 1 $script:ToolchainTargetLists.Count 'Build-LlvmFromSource.ps1 has one LLVM_TARGETS_TO_BUILD'
+        $printed = ($script:ToolchainTargetLists[0].Groups[1].Value -split ';') -join ' '
+        $c = Get-TvmLlvmChoice -PathLlvmConfig $script:PatchedLlvm -Rocm $true -Cross $false -GetTargetsBuilt (New-TargetsBuiltProbe $printed)
+        $linked = if ($c.BuildMinimal) { $c.Targets } else { $printed }
+        Assert-True (Test-TvmLlvmHasAmdgpu -TargetsBuilt $linked) "toolchain prints '$printed'; TVM links '$linked'"
+        Assert-TvmLlvmHasAmdgpu -TargetsBuilt $linked -LlvmConfig 'the chosen llvm-config'
+    }
+
+    It 'asks a real llvm-config through the script''s own query (cmd, quoting, trim)' {
+        Invoke-InTestDir {
+            param($d)
+            $cfg = Join-Path $d 'llvm config.cmd'
+            [System.IO.File]::WriteAllText($cfg, "@echo off`r`nif ""%~1""==""--targets-built"" (echo AArch64 X86) else (exit /b 2)`r`n")
+            Assert-Equal 'AArch64 X86' (Get-TvmLlvmTargetsBuilt -LlvmConfig $cfg) 'targets-built line'
+            $c = Get-TvmLlvmChoice -PathLlvmConfig $cfg -Rocm $true -Cross $false -GetTargetsBuilt ${function:Get-TvmLlvmTargetsBuilt}
+            Assert-Equal 'True||X86;AArch64;NVPTX;AMDGPU' (Format-TvmLlvmChoice $c) 'spike routes to the minimal build'
+        }
+    }
+
+    It 'refuses the pre-fix outcome in the build and flags it in the image' {
+        Assert-Throws { Assert-TvmLlvmHasAmdgpu -TargetsBuilt 'AArch64;X86' -LlvmConfig $script:PatchedLlvm } 'spike on the toolchain LLVM' -MessagePattern 'no AMDGPU target'
+        Assert-Match 'TVM_ROCM=1 but LLVM_TARGETS=AArch64;X86 has no AMDGPU' "$(Get-TvmRocmMarkerFinding -Features @{ TVM_ROCM = '1'; LLVM_TARGETS = 'AArch64;X86' })" 'marker'
     }
 }
 
@@ -309,7 +373,7 @@ Describe 'Build-TvmFromSource: ROCm spike source patches (TVM 994e0216)' {
 }
 
 Describe 'Build-TvmFromSource: guards and the feature marker' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Assert-TvmLlvmConfigNotRocm', 'Assert-TvmLlvmHasAmdgpu', 'Get-TvmRocmFeatureMarker')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Assert-TvmLlvmConfigNotRocm', 'Test-TvmLlvmHasAmdgpu', 'Assert-TvmLlvmHasAmdgpu', 'ConvertTo-TvmLlvmTargetString', 'Get-TvmRocmFeatureMarker')
     . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Read-TvmRocmFeatureMarker')
 
     It 'refuses an llvm-config that resolves into the ROCm tree, and nothing else' {
@@ -322,20 +386,32 @@ Describe 'Build-TvmFromSource: guards and the feature marker' {
 
     It 'needs AMDGPU in llvm-config --targets-built for the spike' {
         Assert-TvmLlvmHasAmdgpu -TargetsBuilt "AArch64 AMDGPU NVPTX X86`r`n" -LlvmConfig 'llvm-config'
-        Assert-Throws { Assert-TvmLlvmHasAmdgpu -TargetsBuilt 'AArch64 NVPTX X86' -LlvmConfig 'llvm-config' } 'no AMDGPU' -MessagePattern 'no AMDGPU target'
+        Assert-TvmLlvmHasAmdgpu -TargetsBuilt 'X86;AMDGPU' -LlvmConfig 'llvm-config'
+        foreach ($no in 'AArch64 NVPTX X86', 'AMDGPUX86', 'amdgpu', '') {
+            Assert-Throws { Assert-TvmLlvmHasAmdgpu -TargetsBuilt $no -LlvmConfig 'llvm-config' } "no AMDGPU in '$no'" -MessagePattern 'no AMDGPU target'
+        }
     }
 
-    It 'writes a marker the smoke check reads back (spike on and off)' {
-        foreach ($flag in '1', '0') {
+    It 'turns a --targets-built line into the marker list' {
+        Assert-Equal 'AArch64;X86' (ConvertTo-TvmLlvmTargetString -TargetsBuilt " AArch64  X86`r`n") 'spaces and CRLF'
+        Assert-Equal 'X86;AMDGPU' (ConvertTo-TvmLlvmTargetString -TargetsBuilt 'X86;AMDGPU') 'already a list'
+        Assert-Equal '' (ConvertTo-TvmLlvmTargetString -TargetsBuilt '') 'empty'
+    }
+
+    It 'writes the read-back targets into a marker the smoke check reads and accepts (spike on and off)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmMarkerFinding', 'Get-TvmRocmLlvmTargetFinding')
+        foreach ($case in @(
+                @{ Flag = '1'; Printed = "X86 AArch64 NVPTX AMDGPU`r`n"; Want = '1|ON|C:/TheRock/build|X86;AArch64;NVPTX;AMDGPU'; Archs = $script:Llvm23Arches }
+                @{ Flag = '0'; Printed = 'AArch64 X86'; Want = '0|ON|OFF|AArch64;X86'; Archs = @($script:Llvm23Arches -notmatch '^(amdgpu|r600|nvptx)') })) {
             Invoke-InTestDir {
                 param($d)
-                $plan = Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag $flag
+                $plan = Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag $case.Flag
                 $f = Join-Path $d 'ROCM-FEATURES.txt'
-                Set-Content -Path $f -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan $plan -LlvmTargets 'X86;AArch64;NVPTX')
+                Set-Content -Path $f -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan $plan -LlvmTargets (ConvertTo-TvmLlvmTargetString -TargetsBuilt $case.Printed))
                 $read = Read-TvmRocmFeatureMarker -Path $f
-                Assert-Equal $flag $read['TVM_ROCM'] "TVM_ROCM=$flag round trip"
-                Assert-Equal 'ON' $read['USE_OPENCL'] 'OpenCL always on the rocm lane'
-                Assert-Equal $(if ($flag -eq '1') { 'C:/TheRock/build' } else { 'OFF' }) $read['USE_ROCM'] 'USE_ROCM'
+                Assert-Equal $case.Want ('{0}|{1}|{2}|{3}' -f $read['TVM_ROCM'], $read['USE_OPENCL'], $read['USE_ROCM'], $read['LLVM_TARGETS']) "TVM_ROCM=$($case.Flag) round trip"
+                $findings = @(Get-TvmRocmMarkerFinding -Features $read) + @(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = $case.Archs } -Features $read)
+                Assert-Equal '' ($findings -join ' / ') "TVM_ROCM=$($case.Flag) accepted by the smoke check"
                 Assert-Null (Read-TvmRocmFeatureMarker -Path (Join-Path $d 'absent.txt')) 'absent marker'
             }
         }
@@ -365,34 +441,40 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
                 $body = @($up.Clauses | Where-Object { [object]::ReferenceEquals($_.Item2, $below) })
                 $guards.Add($(if ($body) { $body[0].Item1.Extent.Text } elseif ([object]::ReferenceEquals($up.ElseClause, $below)) { 'else' } else { 'condition' }))
             }
-            if (-not $inFunction) { [pscustomobject]@{ Line = $hit.Extent.StartLineNumber; Guards = $guards.ToArray() } }
+            if (-not $inFunction) { [pscustomobject]@{ Line = $hit.Extent.StartLineNumber; Guards = $guards.ToArray(); Text = $hit.Extent.Text } }
         }
     }
 
-    It 'decides the lane once per script, from the helpers the plan tests cover' {
+    It 'derives the lane, the LLVM TVM links and the targets it records from the helpers the tests cover' {
         foreach ($c in @(
                 @{ S = $script:IreeScript; V = '$ireeRocmArgs'; R = '@(Get-IreeRocmCmakeArgs -GpuEnv $gpuEnv -Cross $ireeCross)' }
                 @{ S = $script:IreeScript; V = '$ireeRocm'; R = '$ireeRocmArgs.Count -gt 0' }
-                @{ S = $script:TvmScript; V = '$tvmRocmPlan'; R = 'Get-TvmRocmPlan -GpuEnv $gpuEnv -Cross $tvmCross -SpikeFlag $env:TVM_ROCM' })) {
-            $sets = @($script:RocmStepTree[$c.S].FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $c.V }, $true))
-            Assert-Equal 1 $sets.Count "$($c.V) assigned once"
-            Assert-Equal $c.R $sets[0].Right.Extent.Text "$($c.V) derivation"
+                @{ S = $script:TvmScript; V = '$tvmRocmPlan'; R = 'Get-TvmRocmPlan -GpuEnv $gpuEnv -Cross $tvmCross -SpikeFlag $env:TVM_ROCM' }
+                @{ S = $script:TvmScript; V = '$tvmLlvm'; R = 'Get-TvmLlvmChoice -PathLlvmConfig $pathLlvmConfig -Rocm $tvmRocmPlan.Rocm -Cross $tvmCross -GetTargetsBuilt ${function:Get-TvmLlvmTargetsBuilt}' }
+                @{ S = $script:TvmScript; V = '$llvmConfig'; R = '$tvmLlvm.LlvmConfig|Join-Path $llvmInstall ''bin\llvm-config.exe''' }
+                @{ S = $script:TvmScript; V = '$tvmLlvmTargetsBuilt'; R = 'ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $llvmConfig)' })) {
+            $sets = $script:RocmStepTree[$c.S].FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $c.V }, $true)
+            Assert-Equal $c.R (@($sets | ForEach-Object { $_.Right.Extent.Text }) -join '|') "$($c.V): every assignment, in order"
         }
     }
 
-    It 'patches TVM sources, checks LLVM and writes the marker only under the rocm plan, so the cpu/nvidia wheel is unchanged' {
+    It 'patches TVM sources, checks LLVM and writes the marker only under the rocm plan, and builds LLVM only when chosen' {
         # rocm.py ships in every lane's tvm wheel: an unguarded source patch would change cpu/nvidia bytes.
         foreach ($c in @(
                 @{ Command = 'Invoke-TvmRocmSourcePatch'; Want = '$tvmRocmPlan.Rocm' }
-                @{ Command = 'Assert-TvmLlvmHasAmdgpu'; Want = '$tvmRocmPlan.Rocm' }
+                @{ Command = 'Assert-TvmLlvmHasAmdgpu'; Want = '$tvmRocmPlan.Rocm'; Call = 'Assert-TvmLlvmHasAmdgpu -TargetsBuilt $tvmLlvmTargetsBuilt -LlvmConfig $llvmConfig' }
                 @{ Command = 'Assert-TvmLlvmConfigNotRocm'; Want = '$tvmRocmPlan.OnLane' }
-                @{ Command = 'Get-TvmRocmFeatureMarker'; Want = '$tvmRocmPlan.OnLane' }
+                @{ Command = 'Get-TvmLlvmTargetsBuilt'; Want = '$tvmRocmPlan.OnLane' }
+                @{ Command = 'Get-TvmRocmFeatureMarker'; Want = '$tvmRocmPlan.OnLane'; Call = 'Get-TvmRocmFeatureMarker -Plan $tvmRocmPlan -LlvmTargets $tvmLlvmTargetsBuilt' }
+                @{ Command = 'Get-LlvmSourceTarball'; Want = '$tvmLlvm.BuildMinimal' }
                 @{ Literal = 'ROCM-FEATURES.txt'; Want = '$tvmRocmPlan.OnLane' })) {
             $what = "$($c['Command'])$($c['Literal'])"
             $sites = @(Get-RocmStepSite -RelPath $script:TvmScript -Command $c['Command'] -Literal $c['Literal'])
             Assert-Equal 1 $sites.Count "$what has one script-level site"
             Assert-Equal $c.Want "$($sites[0].Guards | Select-Object -First 1)" "$what innermost guard (line $($sites[0].Line))"
             Assert-Equal 0 @($sites[0].Guards -match '^(else|condition)$').Count "$what is not in an else body or a condition"
+            # The gate and the marker take the list read back from the llvm-config TVM links.
+            if ($c['Call']) { Assert-Equal $c['Call'] $sites[0].Text "$what arguments" }
         }
     }
 
@@ -556,7 +638,7 @@ Describe 'rocm-checks\IREE.ps1' {
 }
 
 Describe 'rocm-checks\TVM.ps1' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmSidecarFinding', 'Get-TvmRocmRuntimeFinding', 'Get-TvmRocmCodegenFinding', 'Get-TvmRocmCodegenProbe', 'ConvertFrom-TvmRocmProbeOutput')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmSidecarFinding', 'Get-TvmRocmRuntimeFinding', 'Get-TvmRocmCodegenFinding', 'Get-TvmRocmCodegenProbe', 'ConvertFrom-TvmRocmProbeOutput', 'Get-TvmRocmRuntimeProbe', 'Get-TvmRocmMarkerFinding', 'Get-TvmRocmLlvmTargetFinding')
 
     It 'reads the last JSON report of a probe and names a probe that gave none' {
         $r = ConvertFrom-TvmRocmProbeOutput -Probe 'runtime' -ExitCode 0 -Lines @('Unable to detect ROCm version', '{"opencl": false}', '{"opencl": true, "rocm": true}')
@@ -612,6 +694,48 @@ Describe 'rocm-checks\TVM.ps1' {
         Assert-Match 'opencl"\) is False' "$(Get-TvmRocmRuntimeFinding -Report @{ opencl = $false; rocm = $false } -Features @{ TVM_ROCM = '0' })" 'opencl missing'
         Assert-Match 'rocm"\) is False but the marker says TVM_ROCM=1' "$(Get-TvmRocmRuntimeFinding -Report @{ opencl = $true; rocm = $false } -Features @{ TVM_ROCM = '1' })" 'rocm missing'
         Assert-Match 'rocm"\) is True but the marker says TVM_ROCM=0' "$(Get-TvmRocmRuntimeFinding -Report @{ opencl = $true; rocm = $true } -Features @{ TVM_ROCM = '0' })" 'rocm unexpected'
+    }
+
+    It 'wants AMDGPU in the marker''s LLVM_TARGETS for a spike build, and some targets always' {
+        Assert-Equal 0 @(Get-TvmRocmMarkerFinding -Features @{ TVM_ROCM = '1'; LLVM_TARGETS = 'X86;AArch64;NVPTX;AMDGPU' }).Count 'spike'
+        Assert-Equal 0 @(Get-TvmRocmMarkerFinding -Features @{ TVM_ROCM = '0'; LLVM_TARGETS = 'AArch64;X86' }).Count 'opencl only'
+        Assert-Match 'TVM_ROCM=1 but LLVM_TARGETS=X86;amdgpu has no AMDGPU' "$(Get-TvmRocmMarkerFinding -Features @{ TVM_ROCM = '1'; LLVM_TARGETS = 'X86;amdgpu' })" 'case-sensitive'
+        Assert-Match 'records no LLVM_TARGETS' "$(Get-TvmRocmMarkerFinding -Features @{ TVM_ROCM = '0' })" 'absent key'
+    }
+
+    It 'compares the marker with the LLVM arches tvm_compiler links, by LLVM 23''s names and the legacy amdgcn' {
+        $spike = @{ TVM_ROCM = '1'; LLVM_TARGETS = 'X86;AArch64;NVPTX;AMDGPU' }
+        Assert-Equal 0 @(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = $script:Llvm23Arches } -Features $spike).Count 'agree at LLVM 23.1.1'
+        Assert-Equal 0 @(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = @($script:Llvm23Arches -replace '^amdgpu$', 'amdgcn') } -Features $spike).Count 'agree before the rename'
+        $got = @(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = @('aarch64', 'x86_64') } -Features $spike)
+        Assert-Equal 2 $got.Count "marker overstates NVPTX and AMDGPU ($($got -join ' / '))"
+        Assert-Match "lists AMDGPU, but tvm_compiler has no amdgpu\|amdgcn target \(llvm_get_targets: aarch64, x86_64\)" $got[1] 'AMDGPU missing'
+        Assert-Match 'omits NVPTX, but tvm_compiler links the nvptx64 target' "$(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = $script:Llvm23Arches } -Features @{ LLVM_TARGETS = 'X86;AArch64;AMDGPU' })" 'understated'
+        Assert-Match 'registers no target\.llvm_get_targets' "$(Get-TvmRocmLlvmTargetFinding -Report @{ llvm_targets = $null } -Features $spike)" 'no LLVM'
+        Assert-Match 'did not report llvm_targets' "$(Get-TvmRocmLlvmTargetFinding -Report @{ opencl = $true } -Features $spike)" 'old probe'
+        Assert-Match 'get_global_func\("target\.llvm_get_targets", allow_missing=True\)' (Get-TvmRocmRuntimeProbe) 'the runtime probe asks the compiler'
+    }
+
+    It 'runs the marker and linked-target checks end to end, python answering each probe from <probe>.json' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmPlan', 'Get-TvmRocmFeatureMarker')
+        $hsaco = '{"size": 4096, "magic": true, "elf_class": 2, "type": 3, "machine": 224, "mach": 78}'
+        $noSidecars = @('tvm_runtime_opencl\.dll missing', 'tvm_runtime_rocm\.dll missing although')
+        foreach ($case in @(
+                @{ N = 'healthy'; Targets = 'X86;AArch64;NVPTX;AMDGPU'; Linked = $script:Llvm23Arches; Marker = @(); Link = @() }
+                @{ N = 'requested list'; Targets = 'X86;AArch64;NVPTX;AMDGPU'; Linked = @('aarch64', 'x86_64'); Marker = @(); Link = @('lists NVPTX, but', 'lists AMDGPU, but') }
+                @{ N = 'no AMDGPU'; Targets = 'AArch64;X86'; Linked = @('aarch64', 'x86_64'); Marker = @('LLVM_TARGETS=AArch64;X86 has no AMDGPU'); Link = @() })) {
+            Invoke-InTestDir {
+                param($d)
+                Set-Content -Path (Join-Path $d 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan (Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag '1') -LlvmTargets $case.Targets)
+                [System.IO.File]::WriteAllText((Join-Path $d 'python.cmd'), "@type ""%~dp0%~n1.json""`r`n")
+                [System.IO.File]::WriteAllText((Join-Path $d 'tvm_rocm_runtime.json'), (@{ opencl = $true; rocm = $true; llvm_targets = $case.Linked } | ConvertTo-Json -Compress))
+                [System.IO.File]::WriteAllText((Join-Path $d 'tvm_rocm_codegen.json'), $hsaco)
+                $out = @(Invoke-WithEnv @{ PATH = $d; TVM_ROOT = $d; TVM_LIBRARY_PATH = $null; HIP_PATH = $null } { & (Join-Path (Get-RepoRoot) $script:TvmCheck) 6>$null })
+                # One line per finding, in the check's order: the marker, the sidecars, the linked targets.
+                $want = '^' + ((@($case.Marker) + $noSidecars + @($case.Link) | ForEach-Object { "TVM: [^\n]*$_[^\n]*" }) -join '\n') + '$'
+                Assert-Match $want ($out -join "`n") $case.N
+            }
+        }
     }
 
     It 'accepts only a linked ELF64 AMDGPU hsaco for gfx1201' {

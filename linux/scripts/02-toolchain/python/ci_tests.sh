@@ -6,7 +6,8 @@
 #
 # Environment variables:
 #   PACKAGE_NAME - Package name (default: derived from pyproject.toml or current dir)
-#   PY_VERSIONS - Space-separated Python versions (default: "3.13 3.14")
+#   PY_VERSIONS - Space-separated Python versions (default: "3.14", the image
+#                 interpreter; docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)
 #   EXPERIMENTAL_PYTHON_VERSIONS - Experimental versions that don't block
 #                          (default: "3.14t"; declared by 01-core/python_uv.sh)
 #   CI_TESTS_LOG_FILE - Log file path (default: docs/test_results/ci_tests-<timestamp>.log)
@@ -22,14 +23,14 @@ detect_workspace
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "Usage: ci_tests.sh [package_name] [py_versions_string]"
   echo "  package_name defaults to \$PACKAGE_NAME or derived from pyproject.toml"
-  echo "  py_versions_string defaults to \$PY_VERSIONS or '3.13 3.14'"
+  echo "  py_versions_string defaults to \$PY_VERSIONS or '3.14'"
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
   exit 0
 fi
 
 PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
-PY_VERSIONS="${2:-${PY_VERSIONS:-3.13 3.14}}"
+PY_VERSIONS="${2:-${PY_VERSIONS:-3.14}}"
 # EXPERIMENTAL_PYTHON_VERSIONS is declared, defaulted and READ by
 # 01-core/python_uv.sh (is_experimental_python loops over it), sourced above via
 # ci-common.sh — so there is nothing to set here. This script used to assign

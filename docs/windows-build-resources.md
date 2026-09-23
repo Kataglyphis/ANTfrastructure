@@ -67,8 +67,10 @@ attaches the GPU device, compiles + runs a DXGI adapter enumerator inside the
 container, and gives a verdict: **PASSTHROUGH WORKS** (a HARDWARE adapter is visible),
 **BLOCKED** (build-skew `CreateComputeSystem` failure), or **DEVICE-NOT-INJECTED**
 (started but only WARP). Note the DML probes in `Test-Container.ps1` validate
-that the provider is *built and registered* (`GetAvailableProviders` → `dml=1`, plus
-the x64 `D3D12Core.dll` PE-machine check); they do **not** create a device, so they
+that the provider is *built and registered* (`GetAvailableProviders` → `dml=1` natively,
+`get_available_providers()` / `onnxruntime_genai.is_dml_available()` in the base
+interpreter and the app venv, plus the x64 `D3D12Core.dll` PE-machine check); they do
+**not** create a device, so they
 pass under either isolation regardless of whether a hardware adapter is present.
 
 ## Media fan-out and memory budgeting
