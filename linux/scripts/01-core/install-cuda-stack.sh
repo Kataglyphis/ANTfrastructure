@@ -45,6 +45,45 @@ apt-get install -y --no-install-recommends \
     cuda-cudart-dev-${CUDA_VERSION_MAJOR_MINOR} \
     "${_cuda_compat_pkgs[@]}"
 CUDA_VER_DOT="$(echo "${CUDA_VERSION_MAJOR_MINOR}" | tr '-' '.')"
+
+# ── cross target (arm64 on an amd64 host) ───────────────────────────────────
+# The host packages above stay — nvcc, ptxas and cicc must EXECUTE here. A
+# foreign target adds only its own libraries, as Architecture: all debs that
+# unpack into /usr/local/cuda-<ver>/targets/sbsa-linux (cuda-nvcc-cross-sbsa
+# carries no binary at all, verified 2026-09-23). NCCL has NO cross package at
+# any version, so an arm64 GPU image ships without it — said loudly below
+# rather than discovered at import time.
+# docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson
+cuda_cross_packages() {
+  local mm="$1" cuda_major="$2"
+  [ -n "${mm}" ] && [ -n "${cuda_major}" ] || return 1
+  printf '%s\n' \
+    "cuda-cross-sbsa-${mm}" \
+    "libcublas-cross-sbsa-${mm}" \
+    "libcufft-cross-sbsa-${mm}" \
+    "libcusparse-cross-sbsa-${mm}" \
+    "libcurand-cross-sbsa-${mm}" \
+    "libcusolver-cross-sbsa-${mm}" \
+    "libnpp-cross-sbsa-${mm}" \
+    "libcudnn9-cross-sbsa-cuda-${cuda_major}"
+}
+
+if [ -n "${CUDA_CROSS_TARGET_DIR:-}" ]; then
+  mapfile -t _cuda_cross_pkgs < <(cuda_cross_packages "${CUDA_VERSION_MAJOR_MINOR}" "${CUDA_MAJOR}")
+  echo "Installing the CUDA cross target set for ${CUDA_CROSS_TARGET_DIR}: ${_cuda_cross_pkgs[*]}"
+  apt-get install -y --no-install-recommends "${_cuda_cross_pkgs[@]}"
+  echo "NOTE: NCCL has no cross package; this target ships without libnccl (single-GPU CUDA EP and torch are unaffected)"
+  # The target tree must exist AND be foreign: a silently host-arch lib here is
+  # the failure this whole path exists to prevent, and it would otherwise
+  # surface hours later as an x86-64 .so inside the arm64 image.
+  _cuda_cross_probe="$(find "/usr/local/cuda-${CUDA_VER_DOT}/targets/${CUDA_CROSS_TARGET_DIR}/lib" \
+      "/usr/local/cuda/targets/${CUDA_CROSS_TARGET_DIR}/lib" -name 'libcudart.so*' -type f 2>/dev/null | head -1)"
+  [ -n "${_cuda_cross_probe}" ] || { echo "ERROR: no libcudart under targets/${CUDA_CROSS_TARGET_DIR} after the cross install" >&2; exit 1; }
+  case "$(readelf -h "${_cuda_cross_probe}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')" in
+    *AArch64*) echo "cross CUDA verified: $(basename "${_cuda_cross_probe}") is AArch64" ;;
+    *) echo "ERROR: ${_cuda_cross_probe} is not AArch64 — the cross repo served host packages" >&2; exit 1 ;;
+  esac
+fi
 # CUDNN_VERSION is optional (see header): when unset/empty, skip the pinned
 # tier and fall through to the unpinned fallbacks below.
 { [ -n "${CUDNN_VERSION:-}" ] && \

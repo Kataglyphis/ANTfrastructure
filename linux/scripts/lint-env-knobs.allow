@@ -447,3 +447,7 @@ HAILO_BUILD_ROOT
 # headers land there — TAPPAS's meson hardcodes libdir to the system multiarch
 # dirs — so this is a relocation knob for a development tree.
 TAPPAS_PREFIX
+# Dockerfile.nvidia hands install-cuda-stack.sh the CUDA multi-target directory
+# for a CROSS build (sbsa-linux), empty on a native one. Not an operator switch:
+# the stage derives it from TARGET_ARCH. docs/linux-accelerator-images.md
+CUDA_CROSS_TARGET_DIR
