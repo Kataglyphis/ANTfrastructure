@@ -135,6 +135,21 @@ _out="$(_san_check "${_P}" arm64)"
 t_assert_eq "1" "$(_rc_of "${_out}")"
 t_assert_contains "${_out}" "sanitizer/common_interface_defs.h" "the header abseil includes"
 
+t_case "libubsan, liblsan and libtsan are each required on their own (arm64 lib64, riscv64 lib/)"
+_without() { local x; for x in "${@:2}"; do [ "${x}" = "$1" ] || printf '%s\n' "${x}"; done; }
+for _lib in ubsan lsan tsan; do
+  mapfile -t _rest < <(_without "${_lib}" "${ARM64_LIBS[@]}")
+  _tree "${_P}" aarch64-linux-gnu lib64 183 "${_rest[@]}"
+  _out="$(_san_check "${_P}" arm64)"
+  t_assert_eq "1" "$(_rc_of "${_out}")" "arm64 without lib${_lib}"
+  t_assert_contains "${_out}" "lacks the sanitizer runtime: lib${_lib}.so (" "arm64 names lib${_lib} alone"
+  mapfile -t _rest < <(_without "${_lib}" asan ubsan lsan tsan)
+  _tree "${_P}" riscv64-linux-gnu lib 243 "${_rest[@]}"
+  _out="$(_san_check "${_P}" riscv64)"
+  t_assert_eq "1" "$(_rc_of "${_out}")" "riscv64 without lib${_lib}"
+  t_assert_contains "${_out}" "lacks the sanitizer runtime: lib${_lib}.so (" "riscv64 names lib${_lib} alone"
+done
+
 t_case "a builder-arch libasan in a target tree is an ELF MISMATCH"
 _tree "${_P}" aarch64-linux-gnu lib64 183 ubsan lsan tsan hwasan
 t_fake_elf "${_P}/lib64/libasan.so.8.0.0" 62
@@ -162,34 +177,72 @@ _tree "${_P}" aarch64-linux-gnu lib64 183
 _out="$(_swap_main arm64 amd64)"
 t_assert_eq "1" "$(_rc_of "${_out}")" "the arm64 image's cc ships without libasan: the defect itself"
 
-# ── validate-compilers.sh: the wrapper-smoke compile+link ──────────────────
-_vc_fns="$(t_fn_src "${VALIDATE}" validate_fail; t_fn_src "${VALIDATE}" _smoke_gcc_sanitizers)"
-mkdir -p "${_work}/bin"
-cat > "${_work}/bin/g++" <<'EOF'
+# ── A modelled GCC for both smokes: its "link" writes a script whose NEEDED lines readelf prints
+# STUB_NO_SAN_HEADER/_LIBS are the defect's halves; STUB_AS_NEEDED keeps libubsan only for a UBSan call.
+_STUB="${_work}/bin"
+mkdir -p "${_STUB}" "${_work}/bt"
+cat > "${_STUB}/g++" <<'EOF'
 #!/usr/bin/env bash
-[ "$GXX_RC" = 0 ] || echo "stub g++: forced failure" >&2
-exit "$GXX_RC"
+out="" src="" san="" prev=""
+for a in "$@"; do
+  case "${prev}" in -o) out="${a}" ;; esac
+  case "${a}" in
+    -dumpversion) echo 16.2.0; exit 0 ;;
+    -dumpmachine) echo x86_64-linux-gnu; exit 0 ;;
+    -fsanitize=*) san="${a#-fsanitize=}" ;;
+    *.c|*.cpp) src="${a}" ;;
+  esac
+  prev="${a}"
+done
+if [ "${STUB_NO_SAN_HEADER:-0}" = 1 ] && grep -q '#include <sanitizer/common_interface_defs.h>' "${src}"; then
+  echo "${src}:1:10: fatal error: sanitizer/common_interface_defs.h: No such file or directory" >&2; exit 1
+fi
+if [ -n "${san}" ] && [ "${STUB_NO_SAN_LIBS:-0}" = 1 ]; then echo "ld: cannot find -lasan" >&2; exit 1; fi
+{
+  echo '#!/bin/sh'
+  case "${san}" in *address*) echo '# NEEDED libasan.so.8' ;; esac
+  case "${san}" in *undefined*)
+    # C++20 instruments no shift base, so only a variable exponent leaves a UBSan call.
+    if [ "${STUB_AS_NEEDED:-0}" != 1 ] || grep -Eq '(<<|>>) *[A-Za-z_]' "${src}"; then echo '# NEEDED libubsan.so.1'; fi ;;
+  esac
+  if grep -q 'cxx-ok' "${src}"; then echo 'echo cxx-ok'; elif grep -q 'c-ok' "${src}"; then echo 'echo c-ok'; fi
+  if [ -n "${san}" ]; then
+    echo 'case "${ASAN_OPTIONS:-}" in *detect_leaks=0*) ;; *) echo "LeakSanitizer has encountered a fatal error" >&2; exit 1 ;; esac'
+    echo 'exit "${SAN_BIN_RC:-0}"'
+  fi
+} > "${out}"
+chmod +x "${out}"
 EOF
-cat > "${_work}/bin/readelf" <<'EOF'
+cp "${_STUB}/g++" "${_STUB}/gcc"
+cat > "${_STUB}/readelf" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$READELF_OUT"
+if [ -n "${READELF_OUT+set}" ]; then printf '%s\n' "${READELF_OUT}"; exit 0; fi
+sed -n 's/^# NEEDED \(.*\)$/ 0x0000000000000001 (NEEDED)             Shared library: [\1]/p' "${@: -1}"
 EOF
-chmod +x "${_work}/bin/g++" "${_work}/bin/readelf"
-_vc_run() {  # the real _smoke_gcc_sanitizers against whatever g++/readelf PATH finds
-  bash -c 'set -euo pipefail; _VALIDATE_ERRORS=0; eval "$1"; _smoke_gcc_sanitizers
-    echo "ERRORS=${_VALIDATE_ERRORS}"' _ "${_vc_fns}" 2>&1
-}
-_vc_smoke() { PATH="${_work}/bin:${PATH}" GXX_RC="$1" READELF_OUT="$2" _vc_run; }  # <g++ rc> <readelf -d output>
+chmod +x "${_STUB}/g++" "${_STUB}/gcc" "${_STUB}/readelf"
 _N_ASAN=' 0x0000000000000001 (NEEDED)             Shared library: [libasan.so.8]'
 _N_UBSAN=' 0x0000000000000001 (NEEDED)             Shared library: [libubsan.so.1]'
 
-t_case "the smoke passes only when both runtimes are NEEDED"
-t_assert_contains "$(_vc_smoke 0 "${_N_ASAN}
-${_N_UBSAN}")" "ERRORS=0"
-t_assert_contains "$(_vc_smoke 1 "")" "COMPILER FAIL [gcc-sanitizers]" "a g++ that cannot compile it"
-t_assert_contains "$(_vc_smoke 1 "")" "ERRORS=1"
-t_assert_contains "$(_vc_smoke 0 "${_N_UBSAN}")" "ERRORS=1" "linked, but not against libasan"
-t_assert_contains "$(_vc_smoke 0 "${_N_ASAN}")" "ERRORS=1" "linked, but not against libubsan"
+# ── validate-compilers.sh: the wrapper-smoke compile+link ──────────────────
+_vc_fns="$(t_fn_src "${VALIDATE}" validate_fail; t_fn_src "${VALIDATE}" _smoke_gcc_sanitizers)"
+_vc_run() {  # [VAR=val...] -> the real _smoke_gcc_sanitizers against whatever g++/readelf PATH finds
+  env "$@" bash -c 'set -euo pipefail; _VALIDATE_ERRORS=0; eval "$1"; _smoke_gcc_sanitizers
+    echo "ERRORS=${_VALIDATE_ERRORS}"' _ "${_vc_fns}" 2>&1
+}
+_vc_smoke() { _vc_run PATH="${_STUB}:${PATH}" "$@"; }  # the same, on the modelled GCC
+
+t_case "the smoke passes on a GCC that ships the runtime, --as-needed or not"
+t_assert_contains "$(_vc_smoke)" "ERRORS=0"
+t_assert_contains "$(_vc_smoke STUB_AS_NEEDED=1)" "ERRORS=0" "the TU must call UBSan, or --as-needed drops libubsan"
+
+t_case "the smoke fails on each half of the defect, and when a runtime is not NEEDED"
+_out="$(_vc_smoke STUB_NO_SAN_HEADER=1)"
+t_assert_contains "${_out}" "COMPILER FAIL [gcc-sanitizers]" "the TU must include the header abseil includes"
+t_assert_contains "${_out}" "fatal error: sanitizer/common_interface_defs.h" "and the log must say why"
+t_assert_contains "${_out}" "ERRORS=1"
+t_assert_contains "$(_vc_smoke STUB_NO_SAN_LIBS=1)" "ERRORS=1" "a header without libasan is not a runtime"
+t_assert_contains "$(_vc_smoke READELF_OUT="${_N_UBSAN}")" "ERRORS=1" "linked, but not against libasan"
+t_assert_contains "$(_vc_smoke READELF_OUT="${_N_ASAN}")" "ERRORS=1" "linked, but not against libubsan"
 
 t_case "validate_smoke calls it -- a gate nothing invokes is not a gate"
 t_assert_contains "$(t_fn_src "${VALIDATE}" validate_smoke)" "_smoke_gcc_sanitizers"
@@ -208,28 +261,47 @@ fi
 # Here, not in test-runtime-image-gates.sh: that suite is red on a Windows host, where
 # neither a mutation proof nor the hook could run against it.
 _bat_fn="$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh" check_native_compiler_battery)" || exit 1
-_battery() {  # <target-arch> <host-arch> -> the args _rt_run received, one per line
-  HOST_STUB="$2" bash -c 'set -u
+_battery() {  # <target-arch> <host-arch> [VAR=val...] -> its report, the bash -lc body RUN on the modelled GCC
+  local target="$1" host="$2"; shift 2
+  env "$@" HOST_STUB="${host}" STUB_PATH="${_STUB}:${PATH}" TMPDIR="${_work}/bt" bash -c 'set -u
     pass() { echo "PASS $*"; }; fail() { echo "FAIL $*"; }
     RUNTIME_COMPILER_SMOKE=1
     smoke_host_arch() { printf "%s" "${HOST_STUB}"; }
-    _rt_run() { printf "ARG %s\n" "$@"; }
-    eval "$1"; check_native_compiler_battery img "$2"' _ "${_bat_fn}" "$1" 2>&1
+    _rt_run() {
+      local -a envs=()
+      while [ "$1" = -e ]; do envs+=("$2"); shift 2; done
+      [ "$1 $2" = "bash -lc" ] || { echo "STUB: _rt_run got $1 $2"; return 99; }
+      env "${envs[@]}" PATH="${STUB_PATH}" bash -c "$3"
+    }
+    eval "$1"; check_native_compiler_battery img "$2"' _ "${_bat_fn}" "${target}" 2>&1
 }
+_RUN="C++ sanitizer RUN (native)"
+_CL="C++ -fsanitize=address,undefined compile+link"
+_SKIP="sanitizer RUN skipped: emulated arch"
 
-t_case "the sanitizer binary RUNs only on the build host's own arch"
-t_assert_contains "$(_battery amd64 amd64)" "ARG SAN_RUN=1" "amd64 on the amd64 host runs natively"
-t_assert_contains "$(_battery riscv64 riscv64)" "ARG SAN_RUN=1" "the X100 runs its own riscv64 image"
-t_assert_contains "$(_battery arm64 amd64)" "ARG SAN_RUN=0" "an emulated arm64 image must not run ASan"
-t_assert_contains "$(_battery amd64 arm64)" "ARG SAN_RUN=0" "nor an amd64 image under qemu on a Jetson"
+t_case "the sanitizer binary RUNs on the build host's own arch, and only there"
+_out="$(_battery amd64 amd64)"
+t_assert_contains "${_out}" "  OK  ${_RUN}" "amd64 on the amd64 host runs natively"
+t_assert_contains "${_out}" "PASS native compiler battery" "the whole battery runs on the modelled GCC"
+t_assert_contains "$(_battery riscv64 riscv64)" "  OK  ${_RUN}" "the X100 runs its own riscv64 image"
+_emu="$(_battery arm64 amd64)"
+t_assert_contains "${_emu}" "${_SKIP}" "an emulated arm64 image must not run ASan, and says so"
+t_assert_eq "0" "$(printf '%s\n' "${_emu}" | grep -cF "${_RUN}")" "no RUN verdict under qemu"
+t_assert_contains "$(_battery amd64 arm64)" "${_SKIP}" "nor an amd64 image under qemu on a Jetson"
+
+t_case "a failing sanitized binary fails the battery natively; under qemu it is never run"
+_out="$(_battery amd64 amd64 SAN_BIN_RC=1)"
+t_assert_contains "${_out}" "  XX  ${_RUN}"
+t_assert_contains "${_out}" "FAIL native compiler battery"
+t_assert_contains "$(_battery arm64 amd64 SAN_BIN_RC=1)" "PASS native compiler battery"
 
 t_case "the battery compiles the header abseil includes and links both runtimes"
-_bat="$(_battery arm64 amd64)"
-t_assert_contains "${_bat}" "-fsanitize=address,undefined"
-t_assert_contains "${_bat}" "#include <sanitizer/common_interface_defs.h>"
-t_assert_contains "${_bat}" 'grep -q "NEEDED.*libasan"'
-t_assert_contains "${_bat}" 'grep -q "NEEDED.*libubsan"'
-t_assert_contains "${_bat}" "ASAN_OPTIONS=detect_leaks=0" "LSan needs ptrace, which a container RUN may not allow"
-t_assert_contains "${_bat}" "sanitizer RUN skipped: emulated arch" "a skip must say so, never read as a pass"
+t_assert_contains "${_emu}" "  OK  ${_CL}"
+t_assert_contains "$(_battery arm64 amd64 STUB_AS_NEEDED=1)" "  OK  ${_CL}" "the TU must call UBSan, or --as-needed drops libubsan"
+_out="$(_battery arm64 amd64 STUB_NO_SAN_HEADER=1)"
+t_assert_contains "${_out}" "  XX  ${_CL}" "the header half of the arm64 defect"
+t_assert_contains "${_out}" "FAIL native compiler battery"
+t_assert_contains "$(_battery arm64 amd64 STUB_NO_SAN_LIBS=1)" "  XX  ${_CL}" "the libasan half"
+t_assert_contains "$(_battery arm64 amd64 READELF_OUT="${_N_ASAN}")" "  XX  ${_CL}" "linked, but not against libubsan"
 
 t_summary

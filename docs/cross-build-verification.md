@@ -1234,17 +1234,49 @@ What GCC 16.2.0 builds per target (`libsanitizer/configure.tgt`):
   and the shadow reservation can fail), so an emulated arch prints a skip line, never
   a pass.
 
+**Why the smoke TU shifts by a variable.** Both smokes return `(8 >> c) == 4`. The
+variable shift exponent is the one UBSan check that TU keeps. GCC 16 compiles C++ as
+C++20 by default (`c-opts.cc`), and C++20 defines a left shift of a signed value, so
+`c-ubsan.cc` emits no shift-base check; a constant exponent folds away as well. A TU
+with no UBSan call has `libubsan` in `NEEDED` only because the image's GCC links
+without `--as-needed`. Under `--as-needed` the linker drops it, and the smoke fails
+although the runtime is there. Measured on 2026-09-24 with the GCC 16.2.0 of a local
+amd64 `:latest-cross`: the first version's `(c << 3)` TU has no `__ubsan_`
+reference, and its smoke fails under `-Wl,--as-needed`; the `(8 >> c)` TU passes.
+
 `linux/scripts/tests/test-native-gcc-sanitizers.sh` covers all of them, and the
-`native-gcc-san.*` mutations prove each can fail.
+`native-gcc-san.*` mutations prove each can fail. The two smokes run against a
+modelled GCC: its `g++` writes a script whose `NEEDED` lines the `readelf` stub
+prints, and knobs give the defect's two halves (no header, no `libasan`) and an
+`--as-needed` link. The battery's container body runs on that model, so its RUN gate
+and its report are tested by behaviour, not by text. Where the host's `g++` links
+`-fsanitize`, the wrapper smoke also runs against the real compiler.
 
 **Cost.** `build-gcc.sh` is in the compiler image's closure, so the change re-keys the
 whole Linux chain from the compiler stage down, on every arch. Base is untouched. The
-GCC RUN gains two libsanitizer builds, about 190 source files each (171 on riscv64),
-each compiled twice by libtool. Its time is not measured. The shipped
-`/opt/gcc-16.2.0` grows by about 79 MB uncompressed on arm64 and 67 MB on riscv64,
-mostly the unstripped static archives. amd64 already ships the same set (79.3 MB in
-layer `236e40c6`). A `--from-stage` run on a compiler image from before the change
-stops at the android swap by design, instead of shipping without the runtime.
+nvidia and rocm variants were never affected: each builds for its build host's own
+arch, whose GCC is the full make. Their chains re-key on their next run, because they
+build on the new shared sdk, with no change in their GCC. The GCC RUN gains two
+libsanitizer builds, about 190 source files each (171 on riscv64), each compiled
+twice by libtool. Its time is not measured. The shipped
+`/opt/gcc-16.2.0` grows by about 79 MB uncompressed on arm64, the size of amd64's
+set (79.3 MB in layer `236e40c6`, 62.7 MB of it the unstripped `lib*san.a` without
+hwasan). riscv64 has no hwasan, but its static archives are about 3x amd64's
+(`libstdc++.a` 171 MB against 55 MB, every archive in the prefix 269 MB against
+arm64's 90 MB), so expect roughly 190-200 MB there. The compiler, sdk, media and
+android images carry both Canadian prefixes, so they grow by roughly 270-280 MB, but
+they are not shipped. None of these figures is measured on a built image, and the
+compressed delta is not known.
+
+A partial rebuild on an image from before the change fails, by design, instead of
+shipping without the runtime. On arm64 and riscv64 that is two places: a
+`--from-stage sdk|media|android` run on the old compiler digest stops at the android
+swap, and a runtime-lane run on the published android images (`--from-stage runtime`,
+or `build-runtime-artifacts.sh` / `build-runtime-manifest.sh` directly) stops at the
+wrapper smoke with `COMPILER FAIL [gcc-sanitizers]`. So no arm64 or riscv64 wrapper
+can be rebuilt from a partial stage until a chain from the compiler stage down has
+run. `WRAPPER_SMOKE_GATE=0` gets past the second, and ships the defect. amd64 is not
+affected.
 
 **Not covered.** The amd64 image's plain cross compilers still have no target
 `libasan`, so `aarch64-linux-gnu-g++ -fsanitize=address` from amd64 still fails. The

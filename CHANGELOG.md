@@ -31,8 +31,12 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
   Jetson and X100 lanes' own full-make GCC is checked too. The wrapper smoke compiles
   and links `-fsanitize=address,undefined` against the header and requires both
   runtimes in `NEEDED`. The runtime-image battery runs that binary only where the build
-  host's arch is the image's, since qemu-user cannot host ASan/LSan reliably. New suite
-  `test-native-gcc-sanitizers.sh`; 13 mutations `native-gcc-san.*`.
+  host's arch is the image's, since qemu-user cannot host ASan/LSan reliably. Both
+  smokes' TU shifts by a variable (`(8 >> c)`): GCC 16 defaults to C++20, which drops
+  the shift-base check, and a TU with no UBSan call loses `libubsan` under
+  `--as-needed`. New suite `test-native-gcc-sanitizers.sh`, which runs both smokes
+  against a modelled GCC and executes the battery's container body; 23 mutations
+  `native-gcc-san.*`.
 - **What re-keys.** `build-gcc.sh` is in the compiler image's closure (Dockerfile.toolchain
   RUN 1, the LLVM RUN, RUN 3c and the `/opt/scripts/toolchain` COPY). The next Linux
   chain therefore rebuilds the one compiler image: the host GCC, both plain crosses,
@@ -46,23 +50,33 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
   compile caches survive the re-key, because the sccache/ccache mounts are outside the
   image digest. The host and plain-cross GCC configure lines are unchanged, so their
   compiles should hit; the run's sccache stats will show whether they do. The nvidia
-  and rocm variant images get the fix only after their own chain runs on the new
-  shared sdk. Consumers that still pull `:latest-cross` through the hub's actions at
-  `@main` keep the frozen image.
-- **The next run must include the compiler stage.** A `--from-stage sdk|media|android`
-  run on the old compiler digest now stops at the android swap on arm64 and riscv64,
-  on purpose, instead of shipping without the runtime.
-- **Size.** About +79 MB uncompressed in the arm64 `/opt/gcc-16.2.0` and +67 MB on
-  riscv64 (no hwasan), mostly unstripped `lib*san.a`. amd64 already ships the same set
-  (79.3 MB). The compressed delta is not measured. The compiler, sdk, media and android
-  images carry both native prefixes (about +146 MB), but those images are not shipped.
+  and rocm variant images were never affected (their GCC is the build host's full
+  make). Their chains re-key on the next run because they build on the new shared sdk,
+  with no change in their GCC. Consumers that still pull `:latest-cross` through the
+  hub's actions at `@main` keep the frozen image.
+- **The next run must include the compiler stage.** On arm64 and riscv64 a partial
+  rebuild on the old images now fails on purpose, instead of shipping without the
+  runtime: a `--from-stage sdk|media|android` run on the old compiler digest stops at
+  the android swap, and a `--from-stage runtime` run (or `build-runtime-artifacts.sh` /
+  `build-runtime-manifest.sh`) on the published android images stops at the wrapper
+  smoke with `COMPILER FAIL [gcc-sanitizers]`. No arm64 or riscv64 wrapper can be
+  rebuilt from a partial stage until a chain from the compiler stage down has run.
+  amd64 is unaffected.
+- **Size.** About +79 MB uncompressed in the arm64 `/opt/gcc-16.2.0`, the size of
+  amd64's set (79.3 MB, mostly unstripped `lib*san.a`). riscv64 has no hwasan, but its
+  static archives are about 3x amd64's (`libstdc++.a` 171 MB against 55 MB), so expect
+  roughly +190-200 MB there. The compiler, sdk, media and android images carry both
+  native prefixes (roughly +270-280 MB), but those images are not shipped. None of this
+  is measured on a built image; the compressed delta is not known.
 - **Unverified until the Linux chain runs on the build host:** that libsanitizer
   configures and builds in the Canadian cross at all (libstdc++-v3 builds the same way,
   which is the main evidence it will); how much time the two libsanitizer builds add
   (not measured); the compressed size; and the sanitizer RUN on amd64. The arm64 and
   riscv64 RUNs happen only on a Jetson or X100 build host. TSan on riscv64 needs an
-  sv39 or sv48 VMA, unverified on the X100. Only the static and stubbed tests ran for
-  this change (on a Windows host).
+  sv39 or sv48 VMA, unverified on the X100. The static and stubbed tests ran on a
+  Windows host. The suite also ran in a local amd64 `:latest-cross`, where the wrapper
+  smoke compiled, linked and passed with the real GCC 16.2.0, and the smoke TU ran
+  natively under ASan+UBSan.
 - **Still missing on arm64 and riscv64, out of scope:** libgomp (`omp.h`), libitm and
   gfortran, and a target `libasan` for the amd64 image's plain cross compilers.
 
