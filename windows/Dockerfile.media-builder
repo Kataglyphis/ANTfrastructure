@@ -41,12 +41,13 @@ FROM ${BASE_IMAGE} AS common
 # in every derived stage.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Build-host settings (endpoint, chain, force-local) are ARGs redeclared in every compiling
+# stage, never ENV. docs/windows-build-resources.md#what-the-published-image-carries
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
 
-# THE CACHE LAYOUT. Empty (the default) = NO chain: the WebDAV remote is the one
+# THE CACHE LAYOUT. Unset (the default) = NO chain: the WebDAV remote is the one
 # and only cache. To restore the two-level layout later:
 #   Build-Buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
 #
@@ -62,13 +63,12 @@ ARG SCCACHE_LOG="warn"
 # media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
 # genai reports 0 write errors — not by assuming a newer buildkit fixed it.
 # `windows/scripts/diagnostics/Test-SccacheWrite.ps1` answers it in ~2 minutes.
-ARG SCCACHE_MULTILEVEL_CHAIN=""
 #
 # THE C:\sccache CACHE MOUNTS BELOW USE sharing=shared, NOT locked (#134,
 # 2026-08-26). `locked` serialises every RUN that mounts the same id — and
 # -ConcurrentAux runs media-litert and media-tvm as CONCURRENT child solves, so
 # the lock made two parallel branches take turns. It bought nothing in exchange:
-# with the chain empty (the default above) sccache runs remote-only and never
+# with the chain unset (the default above) sccache runs remote-only and never
 # touches this mount at all — SCCACHE_DIR alone does nothing, see the note below.
 # IF YOU RE-ENABLE THE DISK LEVEL (`-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`),
 # re-examine this: `shared` then means two concurrent sccache servers on one
@@ -94,7 +94,6 @@ ARG SCCACHE_DIR="C:\sccache\v2"
 # Never for production builds: without a remote the cache is only as persistent
 # as SCCACHE_DIR's mount, and the whole point of the gate is to stop that
 # happening by accident.
-ARG SCCACHE_FORCE_LOCAL=""
 
 # NB: OPENCV_LINK_CHAIN_FFMPEG deliberately does NOT live in this common block.
 # It sat here for one day (2026-08-16→17) and a single flip of the value re-ran
@@ -168,10 +167,7 @@ ARG SCCACHE_FORCE_LOCAL=""
 # FRESH server and reported all-zero counters (runs 12+13) - measurement
 # poison, and the async webdav write-through tail dies with the server too.
 # The RUN step's process tree ends with the step, so 0 leaks nothing.
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="${SCCACHE_DIR}" `
-    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
+ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
@@ -348,6 +344,10 @@ ARG ORT_WEBGPU_WINDOWS_DAWN_SHA256
 ARG ORT_WEBGPU_WINDOWS_DXC_VERSION
 ARG ORT_WEBGPU_WINDOWS_DXC_ASSET
 ARG ORT_WEBGPU_WINDOWS_DXC_SHA256
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
@@ -401,6 +401,10 @@ ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
     AMF_HEADERS_VERSION="${AMF_HEADERS_VERSION}" `
     AMF_HEADERS_SHA256="${AMF_HEADERS_SHA256}"
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
@@ -459,6 +463,10 @@ ARG OPENCV_VERSION=5.0.0
 ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     OPENCV_VERSION="${OPENCV_VERSION}"
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
@@ -490,6 +498,10 @@ ENV HAILORT_VERSION="${HAILORT_VERSION}"
 ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0
 ARG HAILO_PROTOBUF_VERSION=21.12
 ARG HAILO_PROTOBUF_SHA256=22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-HailortFromSource.ps1,target=C:\bkmnt\Build-HailortFromSource.ps1 `
@@ -511,6 +523,10 @@ ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 # staged zip with no SHA check at all.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
@@ -529,6 +545,10 @@ FROM media-litert-env AS media-litert-built
 # staged zip with no SHA check at all.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 # LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
 # mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
 # - it is rename-heavy and this cache mount is wcifs rename-hostile). The
@@ -562,6 +582,10 @@ ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # The TVM ROCm spike switch: the driver passes 1 on the rocm lane (0 under -NoRocmSpikes).
 # ARG only, no ENV mirror: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
 ARG TVM_ROCM=0
+# Build-host sccache settings: RUN env only, never image ENV (see `common`).
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaTvmAll.ps1,target=C:\bkmnt\Build-MediaTvmAll.ps1 `

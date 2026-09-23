@@ -21,17 +21,14 @@ FROM ${BASE_IMAGE} AS built
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# The base image bakes the media run's sccache ENV; re-ENV so this run's endpoint wins.
-# Same values and reasons as Dockerfile.media-merge-builder's `built` stage.
-ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Same sccache values and reasons as Dockerfile.media-merge-builder's `built` stage; the
+# build-host settings are ARGs only. docs/windows-build-resources.md#what-the-published-image-carries
+ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_LOG="warn"
-ARG SCCACHE_MULTILEVEL_CHAIN=""
+ARG SCCACHE_MULTILEVEL_CHAIN
 ARG SCCACHE_DIR="C:\sccache\v2"
-ARG SCCACHE_FORCE_LOCAL=""
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="${SCCACHE_DIR}" `
-    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
+ARG SCCACHE_FORCE_LOCAL
+ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

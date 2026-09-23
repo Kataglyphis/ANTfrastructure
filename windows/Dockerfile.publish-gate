@@ -1,0 +1,17 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# The publish gate: the final image's environment carries no build-host setting. Solved
+# -NoOutput before any export or push. docs/windows-build-resources.md#what-the-published-image-carries
+
+ARG BASE_IMAGE=local/kataglyphis:winamd64
+FROM ${BASE_IMAGE}
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
+
+# No ARG after FROM (it would join the environment under test) and no entrypoint (the
+# config's ENV is what ships). One module, mounted, so the gate never alters the image.
+RUN --mount=type=bind,source=windows/scripts/modules/WindowsImageEnv.Common.psm1,target=C:\gate\WindowsImageEnv.Common.psm1 `
+    Import-Module C:\gate\WindowsImageEnv.Common.psm1; `
+    Assert-ImageEnvPublishable

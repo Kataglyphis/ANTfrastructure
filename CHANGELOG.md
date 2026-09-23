@@ -7,6 +7,68 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - The published image no longer carries the build host's sccache endpoint
+
+**What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`)
+shipped `SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000` — the owner's LAN WebDAV — plus
+the build host's chain, force-local and cache settings, from the ENV blocks of four
+Dockerfiles (`patched-llvm` from #164, media-builder's `common`, the merge `built` stage,
+`rocm-migraphx`). The consumer wiring turns the sccache launchers on whenever sccache is on
+PATH; on a GitHub runner sccache 0.18's server fails its storage check (`tcp connect error`)
+and exits, every client times out after 10-12 s, and CMake calls clang-cl broken. That turned
+AccelerANTgine and OmniAccelerANT red (runs 35921977157, 35912798986), and nobody could see
+why, because `$null = Invoke-ContainerBuild` discarded the build's stdout. Account and table:
+[`docs/windows-build-resources.md` § What the published image carries](docs/windows-build-resources.md#what-the-published-image-carries).
+
+- **(1) ARGs, not ENV.** `SCCACHE_WEBDAV_ENDPOINT`, `SCCACHE_MULTILEVEL_CHAIN` and
+  `SCCACHE_FORCE_LOCAL` are ARGs with no default, redeclared in every stage whose RUN
+  compiles through sccache: `patched-llvm`; media-core-built-onnx/-ffmpeg/-opencv/-hailo,
+  media-core-built, media-litert-built and media-tvm-built; the merge `built` stage;
+  `rocm-migraphx`. An ARG does not cross a FROM, and the media-core chain crosses solves. The
+  ENV blocks keep only the container-local runtime defaults (`SCCACHE_DIR`,
+  `SCCACHE_CACHE_SIZE`, `SCCACHE_ERROR_LOG`, `SCCACHE_LOG`, `SCCACHE_IDLE_TIMEOUT`), with
+  unchanged values. `Dockerfile.sccache-write-probe` follows (it ships nothing).
+- **(2) Publish gates.** Windows: `windows/Dockerfile.publish-gate` + `WindowsImageEnv.Common.psm1`,
+  solved by `Build-Buildkit.ps1` after the smoke gate and before `-FinalTar`/`-PushRef`, not
+  skippable by `-SkipSmokeGate`; it grades the Process, Machine and User scopes. Linux: check 6
+  of `verify-shipped-wrapper.sh` reads each wrapper's config ENV, hard even under
+  `WRAPPER_CONTENT_GATE=0`. Static, both lanes: `linux/scripts/verify_image_env.py --dockerfile`
+  as pass 0b of `lint-dockerfiles.sh`, which also refuses a compiling Windows RUN whose stage
+  lacks the endpoint ARG. A leak is a build-host sccache name or an RFC1918/link-local address
+  in a host position; `linux/scripts/tests/image-env-cases.json` grades the PowerShell and the
+  Python matcher alike.
+- **(3) Consumer defense for images already published.** `Enable-SccacheCompilerWrapper`, the
+  choke point of `Initialize-BuildCacheEnvironment` and `Invoke-CmakeConfigureAndBuild`, now
+  calls `Clear-UnreachableSccacheEndpoint` (exported): a 2 s TCP probe of the endpoint; if it
+  fails, the variable (and a chain naming webdav) is removed for the process with one WARN, and
+  sccache falls back to local disk. A reachable endpoint is untouched.
+- **(4) Container output is visible.** Every unconsumed docker call in
+  `WindowsContainerBuild.Reuse.psm1` ends in `| Out-Host` — the tar-pipe `docker exec`, the
+  bind-mount `docker run`, the stale-cache cleanups, the output-directory probe and the source
+  prune — so `$null = Invoke-ContainerBuild` no longer swallows the build. `$LASTEXITCODE` and
+  the returned object are unchanged.
+- **Re-key set.** Windows: the `patched-llvm` stage (so `bk-windows-toolchain`), every
+  media-builder stage below `common` plus `buildmods`/`tvmmods`, the whole merge Dockerfile, and
+  on the rocm lane `rocm-migraphx`; everything after them re-keys because its parent does
+  (llama, torch, final; final also COPYs the modules dir). NOT re-keyed: `Dockerfile.base`, the
+  sdk slot (CPU alias, `Dockerfile.nvidia`, `Dockerfile.rocm`) and the toolchain's `builder`
+  and `built` (CPython) stages — no file they COPY or mount changed. Linux: no Dockerfile
+  changed, nothing re-keys.
+- **Not covered, recorded.** BuildKit writes a RUN's build args into the layer history, so the
+  final image's history still names the endpoint; nothing reads it at run time. Backlog #177
+  (a secret mount) owns it. Hostnames, loopback and files inside the image are out of the
+  matchers' scope.
+- **Tests.** Windows: `ImageEnv.PublishGate.Tests.ps1` (fixture parity, one in-suite mutant
+  per rule, the driver's call order and two driver mutants), `Build.SccacheEndpointProbe.Tests.ps1`
+  (closed and listening loopback ports, both wiring sites, one WARN, a mutant),
+  `ContainerBuild.Output.Tests.ps1` (child-session visibility, an AST guard with two mutants)
+  and a new case in `Modules.Orchestrators.Tests.ps1`. Linux: `test-image-env.sh` (a
+  fake-nerdctl run of the wrapper gate included). Fifteen new `mutations.json` entries
+  (`dockerfile-lint.image-env-*`, `image-env.*`), each proven to bite. Docs:
+  `windows-build-resources.md`, `build-cache-tiers.md`, `windows-builds.md`,
+  `windows-build-invariants.md` (49 rules now), `failure-modes.md`, `code-quality-tooling.md`,
+  the #164 archive entry, backlog #177 and `AGENTS.md` § Push And Publish Rules.
+
 ## 2026-09-23 - Windows Scripts CI is green again: an unmounted CUDA root reads as absent, and the Hailo patches are checked
 
 - **`WindowsSourceBuild.Cuda.psm1`.** `ad5b7d8f` (#176) built `Get-CudnnLibraryDir`'s and

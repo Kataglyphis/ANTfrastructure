@@ -41,6 +41,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [A missing stage artifact is a THROW, not a warning](#a-missing-stage-artifact-is-a-throw-not-a-warning)
 - [The host gets artifacts, never CMake state](#the-host-gets-artifacts-never-cmake-state)
 - [ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)](#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23)
+- [A build-host setting is an ARG, never ENV — the publish gate refuses one](#a-build-host-setting-is-an-arg-never-env--the-publish-gate-refuses-one)
 
 **Diagnosing: probes and evidence**
 
@@ -350,6 +351,32 @@ Do not regress any of these:
 The six guards, every consumer, the stamp contract and what each guard does NOT cover:
 [`onnxruntime-single-source.md`](onnxruntime-single-source.md). The Linux side of the rule
 is in `AGENTS.md` § Linux Build Rules.
+
+### A build-host setting is an ARG, never ENV — the publish gate refuses one
+
+**Anything that describes the BUILD HOST reaches a RUN as an ARG and never lands in an
+ENV (2026-09-23).** `:winamd64` shipped `SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000`
+from four ENV blocks, and on every consumer runner sccache 0.18 died on the unreachable
+endpoint, so CMake reported clang-cl broken. Do not regress any of these:
+
+- **The three build-host sccache names** (`SCCACHE_WEBDAV_ENDPOINT`,
+  `SCCACHE_MULTILEVEL_CHAIN`, `SCCACHE_FORCE_LOCAL`) are ARGs with no default, declared
+  in EVERY compiling stage above its RUN. An ARG does not cross a FROM, and the
+  media-core chain crosses solves (`FROM ${MEDIA_CORE_*_IMAGE}`). Never "restore" one
+  as an empty ENV: that is the shape that leaked.
+- **A new compiling stage** (a RUN mounting both `C:\sccache` and `C:\sccache-logs`)
+  declares `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage, or the static lint fails it —
+  without the ARG it compiles uncached and says nothing.
+- **The publish gate stays armed**: `Dockerfile.publish-gate` runs after the smoke gate
+  and before any export or push, and `-SkipSmokeGate` does not skip it. Never give it
+  an ARG after FROM or route it through the entrypoint; either changes the environment
+  it grades.
+- **The same holds for any future build-host knob** — a LAN mirror, a proxy, a cache
+  server: ARG, never ENV. The gates refuse a LAN address in any ENV value.
+
+The table of which sccache variables ship and why, the three gates and what they cannot
+see (hostnames, image history — backlog #177):
+[`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 
 ---
 

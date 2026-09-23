@@ -1272,3 +1272,39 @@ use, which is how a consumer's `-e CCACHE_DIR=/some/mount` keeps working.
 
 Layer cost: none. This is an ENV change, so nothing is copied up and no file
 metadata is rewritten.
+
+## The shipped image carries no build-host setting
+
+**A published image's environment names nothing outside the container** (both lanes,
+2026-09-23). The Windows image shipped the owner's LAN WebDAV as
+`SCCACHE_WEBDAV_ENDPOINT`, and every consumer's sccache 0.18 server died on its
+storage check — the full account, the Windows split of ARG versus ENV and the
+consumer-side probe are in
+[`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+
+The Linux lane never had the leak: its cache is BuildKit cache mounts, with no
+remote tier (§ 5.4, the cross-machine tier), and the mirror URLs
+(`FAST_UBUNTU_MIRROR_URL`, …) are ARGs. The four runtime defaults above
+(`SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_IDLE_TIMEOUT`, `SCCACHE_ERROR_LOG`)
+plus `SCCACHE_CONF` are container-local and stay. What keeps a leak from ever
+reaching `:latest`:
+
+- **The static pass**, `linux/scripts/verify_image_env.py --dockerfile`, runs in
+  `lint-dockerfiles.sh` (preflight slug `dockerfile-lint`) over both lanes'
+  Dockerfiles. It refuses an ENV of an sccache remote-backend or layout name
+  (`SCCACHE_WEBDAV_*`, `SCCACHE_REDIS*`, `SCCACHE_BUCKET`, `SCCACHE_MULTILEVEL_CHAIN`,
+  `SCCACHE_FORCE_LOCAL`, …), an ENV that expands one under another name, and an
+  RFC1918 or link-local literal in an ENV or an ARG default. On Windows it also
+  refuses a compiling RUN whose stage never declares `ARG SCCACHE_WEBDAV_ENDPOINT`.
+- **Check 6 of `verify-shipped-wrapper.sh`** reads each wrapper's config ENV with
+  `nerdctl image inspect --platform linux/<arch> --format '{{range .Config.Env}}…'`
+  and runs the same script with `--env-file`. It is HARD even under
+  `WRAPPER_CONTENT_GATE=0`, which waives content mismatches and nothing else, and an
+  unreadable config fails it too. It runs where the content gate runs: per arch, in
+  `build-runtime-manifest.sh`, before the manifest is assembled.
+
+The address rule, the version exemption and what neither pass covers (hostnames,
+loopback, files, image history) are the same on both lanes, because one case file,
+`linux/scripts/tests/image-env-cases.json`, grades this script and the Windows
+PowerShell twin alike. Tests: `linux/scripts/tests/test-image-env.sh`; mutations
+`dockerfile-lint.image-env-*` and `image-env.*`.

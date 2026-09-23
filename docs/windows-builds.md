@@ -881,7 +881,7 @@ nobody can read.
 - **Host setup and maintenance — `windows/scripts/host/`**: [`Install-Vs.ps1`](#install-vsps1) · [`Install-ScoopTools.ps1`](#install-scooptoolsps1) · [`Install-Vcpkg.ps1`](#install-vcpkgps1) · [`Install-RustToolchain.ps1`](#install-rusttoolchainps1) · [`Install-Cuda.ps1`](#install-cudaps1) · [`Install-Tensorrt.ps1`](#install-tensorrtps1) · [`Publish-ShimPatch.ps1`](#publish-shimpatchps1) · [`Install-NewHost.ps1`](#install-newhostps1) · [`Set-Rdna4Gpu.ps1`](#set-rdna4gpups1) · [`Get-HostDockerState.ps1`](#get-hostdockerstateps1) · [`Reset-ContainerStores.ps1`](#reset-containerstoresps1) · [`Sync-DefenderExclusions.ps1`](#sync-defenderexclusionsps1) · [`Repair-WindowsComponentstore.ps1`](#repair-windowscomponentstoreps1) · [`Test-HostSetup.ps1`](#test-hostsetupps1) · [`Set-ContainerdConfig.ps1`](#set-containerdconfigps1) · [`Optimize-HostVhdx.ps1`](#optimize-hostvhdxps1) · [`Initialize-Pwsh.ps1`](#initialize-pwshps1) · [`Update-HostVhdx.ps1`](#update-hostvhdxps1) · [`Clear-DiskSpace.ps1`](#clear-diskspaceps1)
 - **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`Test-BuildCopy.ps1`](#test-buildcopyps1) · [`Test-Rdna4LayerLock.ps1`](#test-rdna4layerlockps1) · [`Test-CudaCache.ps1`](#test-cudacacheps1) · [`Invoke-SccacheCudaLlmDeadlock.ps1`](#invoke-sccachecudallmdeadlockps1) · [`Test-GeniexNpuDriver.ps1`](#test-geniexnpudriverps1)
 - **Reusable modules — `windows/scripts/modules/`**: [`WindowsSourceBuild.Common.psm1`](#windowssourcebuildcommonpsm1) · [`WindowsSmokeTest.Common.psm1`](#windowssmoketestcommonpsm1) · [`WindowsGstPlugins.Common.psm1`](#windowsgstpluginscommonpsm1)
-- **Drivers and entry points**: [`Dockerfile.smoke-gate`](#dockerfilesmoke-gate) · [`patches/litert-lm/patch-assert.cmake`](#patcheslitert-lmpatch-assertcmake) · [`Test-SccacheWrite.ps1` + `Invoke-SccacheWriteProbe.ps1` + `Dockerfile.sccache-write-probe`](#test-sccachewriteps1--invoke-sccachewriteprobeps1--dockerfilesccache-write-probe) · [`Test-OpencvVideoBackends.ps1` + `Invoke-OpencvVideoProbe.ps1` + `Dockerfile.opencv-video-probe`](#test-opencvvideobackendsps1--invoke-opencvvideoprobeps1--dockerfileopencv-video-probe)
+- **Drivers and entry points**: [`Dockerfile.smoke-gate`](#dockerfilesmoke-gate) · [`Dockerfile.publish-gate`](#dockerfilepublish-gate) · [`patches/litert-lm/patch-assert.cmake`](#patcheslitert-lmpatch-assertcmake) · [`Test-SccacheWrite.ps1` + `Invoke-SccacheWriteProbe.ps1` + `Dockerfile.sccache-write-probe`](#test-sccachewriteps1--invoke-sccachewriteprobeps1--dockerfilesccache-write-probe) · [`Test-OpencvVideoBackends.ps1` + `Invoke-OpencvVideoProbe.ps1` + `Dockerfile.opencv-video-probe`](#test-opencvvideobackendsps1--invoke-opencvvideoprobeps1--dockerfileopencv-video-probe)
 
 
 ### Chain components — `windows/scripts/build/`
@@ -1098,6 +1098,12 @@ The top-level scripts a human or CI actually invokes.
 
 Not a script — the automatic verification stage (backlog #44). Solved against the finished image as the last step of every BK chain — **both lanes** since 2026-08-24 (this row said "NOT run on arm64" until then, contradicting § Smoke Testing): on arm64 the suite runs its host-toolchain sections against the lane's own floors (76/20) while the aarch64 payload stays verified by `Test-TargetArch.ps1` in the merge stage. Runs a buildctl solve rather than `nerdctl run` because containerd's pipe is admin-only while the driver is non-admin, invokes the test **through `entrypoint.cmd`** (a bare RUN bypasses ENTRYPOINT and loses VsDevCmd + the ASAN runtime dir), and **bind-mounts** the current script + modules so a smoke-test fix needs no image rebuild to re-verify. Knobs: `-SkipSmokeGate`, `-SmokeMinPassed`, `-SmokeMaxSkipped`.
 
+#### `Dockerfile.publish-gate`
+
+*`windows/`*
+
+Not a script — the publish gate (2026-09-23). Solved `-NoOutput` against the final tag right after the smoke gate and before `-FinalTar`/`-PushRef`, on every lane, and **`-SkipSmokeGate` does not skip it**. Its one RUN bind-mounts `WindowsImageEnv.Common.psm1` and runs `Assert-ImageEnvPublishable`, which fails when the image's environment (the config ENV plus the Machine and User registry scopes) carries a build-host sccache variable or an RFC1918/link-local address. No ARG after FROM and no entrypoint, so the environment it grades is the one that ships. Why it exists and what it cannot see: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries). Tests: `ImageEnv.PublishGate.Tests.ps1` (the matcher against `linux/scripts/tests/image-env-cases.json`, one mutant per rule, and the driver's call order).
+
 #### `patches/litert-lm/patch-assert.cmake`
 
 *`windows/scripts/`*
@@ -1108,7 +1114,7 @@ Not a script — the automatic verification stage (backlog #44). Solved against 
 
 *`windows/scripts/`, `windows/`*
 
-Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min media build (backlog #99): same cache-mount ids, same ENV, then a configuration matrix (`disk-only`, `disk-mounted-subdir`, `disk-plaindir`, `multilevel-mounted`, `multilevel-plaindir`, `webdav-only`), raw filesystem tests, a process-spawn matrix, a bisect of the cache root, serial-vs-parallel and path-length sections. **Run it against the REAL base image** (`-BaseImage local/kataglyphis:bk-windows-media-core-ffmpeg`), not the toolchain default. **Health warning:** it reproduces the ENVIRONMENT but not the FAILURE — every configuration it blessed then failed in a real build, so treat its verdicts as hypotheses to test in a build, never as clearance. `PROBE_NONCE` + a `probe complete` marker check exist because an unchanged script gives `#6 CACHED` and silently replays an old verdict; `--no-cache` is not the alternative (it empties cache mounts, #96).
+Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min media build (backlog #99): same cache-mount ids, same sccache settings (the endpoint and chain as ARGs since 2026-09-23, like the real stages — [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries)), then a configuration matrix (`disk-only`, `disk-mounted-subdir`, `disk-plaindir`, `multilevel-mounted`, `multilevel-plaindir`, `webdav-only`), raw filesystem tests, a process-spawn matrix, a bisect of the cache root, serial-vs-parallel and path-length sections. **Run it against the REAL base image** (`-BaseImage local/kataglyphis:bk-windows-media-core-ffmpeg`), not the toolchain default. **Health warning:** it reproduces the ENVIRONMENT but not the FAILURE — every configuration it blessed then failed in a real build, so treat its verdicts as hypotheses to test in a build, never as clearance. `PROBE_NONCE` + a `probe complete` marker check exist because an unchanged script gives `#6 CACHED` and silently replays an old verdict; `--no-cache` is not the alternative (it empties cache mounts, #96).
 
 #### `Test-OpencvVideoBackends.ps1` + `Invoke-OpencvVideoProbe.ps1` + `Dockerfile.opencv-video-probe`
 
@@ -1187,6 +1193,17 @@ main process is a 7-day `ping`, so `State.Status` reads `running` whatever an
 exec'd build did. There, a non-zero `docker exec` is instead classified against
 the container's state, so "the container died under the build" stops being
 reported as a build error to hunt in the log.
+
+**Docker's output goes to the host, never into a function's result (2026-09-23).**
+Consumers call `$null = Invoke-ContainerBuild ...`, and the build's `docker exec` (tar
+pipe) and `docker run` (bind mount) wrote their stdout into the function's output, so
+that one `$null =` swallowed every line of a failing CI build — including the sccache
+failure that made CMake call clang-cl broken. Every docker call whose output nothing
+consumes now ends in `| Out-Host`; `$LASTEXITCODE` still reads the docker client's
+exit code after the pipe, and the function returns its result object alone.
+`ContainerBuild.Output.Tests.ps1` holds the class guard (an AST scan for any
+unconsumed `& $DockerExe` pipeline in the module) and a child-session check that a
+discarded result still prints the build.
 
 Consumers resolve it ANTfrastructure-first with a vendored fallback (see
 BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).

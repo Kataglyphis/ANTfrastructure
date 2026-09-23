@@ -244,7 +244,7 @@ function Remove-StaleContainerSources {
         Set-Content -Path $pruneTmp -Value $pruneLines -Encoding UTF8 -NoNewline
         # pwsh 7 everywhere (host policy 2026-08-04) — every image in this
         # chain carries pwsh from the base layer on.
-        Get-Content $pruneTmp -Raw | & $DockerExe exec -i $Container pwsh -NoProfile -Command -
+        Get-Content $pruneTmp -Raw | & $DockerExe exec -i $Container pwsh -NoProfile -Command - | Out-Host
         $pruneExit = $LASTEXITCODE
     } finally {
         if (Test-Path $pruneTmp) { Remove-Item $pruneTmp -Force }
@@ -815,9 +815,11 @@ function Invoke-ContainerBuild {
         $keep = $false
         $created = $false
         try {
+            # Out-Host: the build's stdout is for the operator, never part of this function's
+            # result (callers do `$null = Invoke-ContainerBuild`); $LASTEXITCODE survives the pipe.
             & $DockerExe run --name $runContainer @IsolationArgs @cacheArgs `
                 --mount "type=bind,source=$RepoRoot,target=$WorkspacePath" `
-                -w $WorkspacePath $Image @buildArgs
+                -w $WorkspacePath $Image @buildArgs | Out-Host
             $clientExit = $LASTEXITCODE
             $created = $true
             if ($clientExit -ne 0) {
@@ -924,20 +926,21 @@ function Invoke-ContainerBuild {
         foreach ($buildDirName in $streamedIn) {
             Write-Host "Deleting stale CMakeCache.txt in $buildDirName (container paths differ from host)..."
             $stale = "$WorkspacePath\$buildDirName"
-            & $DockerExe exec $container cmd /c "if exist $stale\CMakeCache.txt del /q $stale\CMakeCache.txt 2>nul"
+            & $DockerExe exec $container cmd /c "if exist $stale\CMakeCache.txt del /q $stale\CMakeCache.txt 2>nul" | Out-Host
             # Also remove any stale CMakeFiles directory that could interfere
-            & $DockerExe exec $container cmd /c "if exist $stale\CMakeFiles rmdir /s /q $stale\CMakeFiles 2>nul"
+            & $DockerExe exec $container cmd /c "if exist $stale\CMakeFiles rmdir /s /q $stale\CMakeFiles 2>nul" | Out-Host
         }
 
         # docker exec bypasses the image entrypoint, so invoke it explicitly to
         # get the VS developer environment and the clang-cl ASAN runtime on PATH.
-        & $DockerExe exec -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs
+        # Out-Host for the same reason as the bind-mount run above.
+        & $DockerExe exec -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs | Out-Host
         $buildExit = $LASTEXITCODE
 
         Write-Host 'Streaming build trees and logs back to the working tree...'
         $existing = @()
         foreach ($dir in $OutputDirs) {
-            & $DockerExe exec $container cmd /c "if exist $WorkspacePath\$dir (exit 0) else (exit 1)"
+            & $DockerExe exec $container cmd /c "if exist $WorkspacePath\$dir (exit 0) else (exit 1)" | Out-Host
             if ($LASTEXITCODE -eq 0) { $existing += $dir }
         }
         if ($existing.Count -gt 0) {

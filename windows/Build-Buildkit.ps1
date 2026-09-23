@@ -974,6 +974,12 @@ if ($Stages -contains 'final') {
     } else {
         Write-Host '[bk:smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
     }
+    # PUBLISH GATE, never skipped (not even by -SkipSmokeGate): no build-host setting in the
+    # final image's environment. docs/windows-build-resources.md#what-the-published-image-carries
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.publish-gate' -Label 'publish-gate' -NoOutput -BuildArgs @{
+        BASE_IMAGE = Get-BkTag $script:FinalTagName
+    } -MaxAttempts 1
+    Write-Host '[bk:publish-gate] the image environment carries no build-host setting' -ForegroundColor Green
     # FAIL LOUDLY, pre-export (audit #15), on a -NoCacheStage entry that matched
     # nothing: a typo would otherwise leave every stage cached and look green.
     & Assert-NoCacheStageMatched

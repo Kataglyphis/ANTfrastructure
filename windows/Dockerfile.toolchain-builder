@@ -64,17 +64,14 @@ RUN --mount=type=bind,source=windows/scripts/build/Build-ToolchainAll.ps1,target
 # snapshot.
 FROM built AS patched-llvm
 ARG BUILD_PATCHED_LLVM=1
-# sccache for the patched-LLVM compile (#164). Mirrors the media-merge-builder
-# block (ARGs/ENV do not cross a FROM boundary) -- read its comments for why.
-ARG SCCACHE_WEBDAV_ENDPOINT=""
+# sccache for the patched-LLVM compile (#164). Build-host settings are ARGs (RUN env only,
+# never the image); ENV carries only local defaults. docs/windows-build-resources.md#what-the-published-image-carries
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_FORCE_LOCAL
 ARG SCCACHE_LOG="warn"
-ARG SCCACHE_MULTILEVEL_CHAIN=""
 ARG SCCACHE_DIR="C:\sccache\v2"
-ARG SCCACHE_FORCE_LOCAL=""
-ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="${SCCACHE_DIR}" `
-    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
+ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

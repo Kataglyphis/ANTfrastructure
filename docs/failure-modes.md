@@ -116,6 +116,7 @@ Two neighbours, so you land on the right page:
 - [A source build produces UNPATCHED sources and says `SKIP: ... (already applied)`](#a-source-build-produces-unpatched-sources-and-says-skip--already-applied)
 - [`atlbase.h` not found when building LLVM in the container](#atlbaseh-not-found-when-building-llvm-in-the-container)
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
+- [A consumer's CMake says clang-cl "is not able to compile a simple test program"](#a-consumers-cmake-says-clang-cl-is-not-able-to-compile-a-simple-test-program)
 
 
 ---
@@ -1574,6 +1575,26 @@ in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` prove
 importing only what the script itself imports — that every module function a build script CALLS
 resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
 the check takes seconds where the build takes hours.
+
+### A consumer's CMake says clang-cl "is not able to compile a simple test program"
+
+**Symptom.** A consumer's Windows CI lane, building inside `:winamd64`, stops at CMake's compiler
+check: `The C compiler "clang-cl.exe" is not able to compile a simple test program`. Each
+`sccache` client in the check's log waits 10-12 s and exits 2; the sccache server log (if you
+can find it) says `tcp connect error`. The lane's own output may show none of this: consumer
+wrappers ran `$null = Invoke-ContainerBuild`, which discarded the build's stdout until
+2026-09-23. Seen on AccelerANTgine and OmniAccelerANT (runs 35921977157, 35912798986).
+
+**Cause.** The published image carried the build host's `SCCACHE_WEBDAV_ENDPOINT` (a LAN address)
+in its ENV. The consumer's wiring turns the sccache launchers on whenever sccache is on PATH;
+sccache 0.18 checks its storage when the server starts, cannot reach the endpoint from a runner,
+and exits, so every compile behind the launcher fails.
+
+**Fix.** A hub at or after 2026-09-23 removes an unreachable endpoint before it wires the
+launchers (`Clear-UnreachableSccacheEndpoint`, one WARN), so bumping the hub pin is enough on an
+old image. Images built from that hub no longer carry the variable, and three gates refuse one
+that does: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+By hand on an old hub: clear `SCCACHE_WEBDAV_ENDPOINT` in the container before the build.
 
 ### A declaration that masks its command's exit status
 

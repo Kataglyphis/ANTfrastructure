@@ -23,7 +23,8 @@
 # Env:
 #   NERDCTL_BIN                nerdctl executable (default: nerdctl)
 #   VERSIONS_ENV               path to versions.env (default: alongside this script)
-#   WRAPPER_CONTENT_GATE=0     make every mismatch advisory (warn, exit 0)
+#   WRAPPER_CONTENT_GATE=0     make every CONTENT mismatch advisory (warn, exit 0);
+#                              the image-ENV check (6) stays hard
 #
 # Exit: 0 = all HARD assertions pass; 1 = a HARD assertion failed (or the image
 # could not be listed). Advisory checks (x265, AP4 extraction-failed) only warn.
@@ -141,6 +142,22 @@ if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
   fi
   rm -rf "${_xdir}"
 fi
+
+# 6) The image config's ENV carries no build-host setting. HARD even under
+#    WRAPPER_CONTENT_GATE=0. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
+_env_lines="$(mktemp)"
+_platform=()
+case "${_arch}" in amd64|arm64|riscv64) _platform=(--platform "linux/${_arch}") ;; esac
+if "${_nerdctl}" image inspect ${_platform[@]+"${_platform[@]}"} \
+     --format '{{range .Config.Env}}{{println .}}{{end}}' "${_ref}" > "${_env_lines}" 2>/dev/null \
+   && python3 "${_here}/verify_image_env.py" --env-file "${_env_lines}" --label "${_ref}"; then
+  _env_fail=0
+else
+  echo "[wrapper-gate] FAIL (${_arch}): the image ENV carries a build-host setting, or could not be read — see above." >&2
+  _env_fail=1
+fi
+rm -f "${_env_lines}"
+[ "${_env_fail}" -eq 0 ] || exit 1
 
 if [ "${_hard_fail}" -ne 0 ]; then
   if is_truthy "${_soft}"; then
