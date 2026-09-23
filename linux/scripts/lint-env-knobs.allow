@@ -393,6 +393,12 @@ TRANSIENT
 # Not an operator switch: the sentinel test-module-resolution.sh printf-writes
 # into a fixture lib/common.sh to prove the wrong module was sourced.
 MODRES_POISON_SOURCED
+# Not operator switches: fixture knobs of the modelled GCC that
+# test-native-gcc-sanitizers.sh writes (no libasan, an --as-needed link, the
+# sanitized binary's exit code), passed as NAME=value words.
+SAN_BIN_RC
+STUB_AS_NEEDED
+STUB_NO_SAN_LIBS
 # Not operator switches: generated probe scripts injected into the smoke
 # container as -e NAME="$(...)" by 06-packaging/smoke-runtime-image.sh and read
 # by the in-container bash -lc probe.

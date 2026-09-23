@@ -1007,8 +1007,9 @@ runtime: ...` (android swap) or `COMPILER FAIL [gcc-sanitizers]` (wrapper smoke)
 built only libgcc, libstdc++ and libatomic for any `--target` build.
 
 **Fix.** Rebuild the chain from the compiler stage; `build-gcc.sh` now builds
-libsanitizer when host == target. A `--from-stage` run on an older compiler image
-fails the android swap on purpose. Mechanism, gates and cost:
+libsanitizer when host == target. A partial rebuild on older images fails on
+purpose: `--from-stage sdk|media|android` at the android swap, and a runtime-lane run
+on the published android images at the wrapper smoke. Mechanism, gates and cost:
 [`cross-build-verification.md#the-native-gcc-ships-libsanitizer`](cross-build-verification.md#the-native-gcc-ships-libsanitizer).
 
 ### A Jetson GPU container sees no GPU

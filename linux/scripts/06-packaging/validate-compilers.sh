@@ -624,7 +624,8 @@ _smoke_optimization_level() {
 # smoke-runtime-image.sh's (native only). docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 _smoke_gcc_sanitizers() {
   local d dyn=""; d="$(mktemp -d)"
-  printf '#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (c << 3) == 8 ? 0 : 1;\n}\n' > "${d}/s.cpp"
+  # (8 >> c): a variable shift exponent keeps a UBSan call under GCC 16's C++20 default.
+  printf '#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\n' > "${d}/s.cpp"
   if g++ -O1 -fsanitize=address,undefined "${d}/s.cpp" -o "${d}/s" 2>"${d}/e"; then
     dyn="$(readelf -d "${d}/s" 2>/dev/null || true)"
   fi

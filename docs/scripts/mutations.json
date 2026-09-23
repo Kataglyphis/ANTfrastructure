@@ -9593,5 +9593,85 @@
     "replace": "if [ \"${target_arch}\" != \"$(smoke_host_arch)\" ]; then _san_run=1; fi",
     "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
     "why": "ASan must run natively only, never under qemu"
+  },
+  {
+    "id": "native-gcc-san.core-libs",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "local -a libs=(asan ubsan lsan tsan)",
+    "replace": "local -a libs=(asan)",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "libubsan, liblsan and libtsan are each required, not only libasan"
+  },
+  {
+    "id": "native-gcc-san.smoke-flags",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "if g++ -O1 -fsanitize=address,undefined \"${d}/s.cpp\"",
+    "replace": "if g++ -O1 \"${d}/s.cpp\"",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the wrapper smoke must compile and link with -fsanitize=address,undefined"
+  },
+  {
+    "id": "native-gcc-san.smoke-program",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "  printf '#include <sanitizer/common_interface_defs.h>\\nalignas(8) static char b[8];\\nint main(int c, char **) {\\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\\n  return (8 >> c) == 4 ? 0 : 1;\\n}\\n' > \"${d}/s.cpp\"",
+    "replace": "  printf 'int main(){return 0;}\\n' > \"${d}/s.cpp\"",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the smoke TU must include the header the arm64 image lacked, and call UBSan"
+  },
+  {
+    "id": "native-gcc-san.smoke-ubsan-call",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "return (8 >> c) == 4 ? 0 : 1;",
+    "replace": "return (c << 3) == 8 ? 0 : 1;",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a constant shift exponent makes no UBSan call under C++20, so an --as-needed link drops libubsan"
+  },
+  {
+    "id": "native-gcc-san.battery-run-gate",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "if [ \"$SAN_RUN\" = 1 ]; then",
+    "replace": "if [ \"$SAN_RUN\" = 0 ]; then",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the in-container RUN follows SAN_RUN: natively always, under qemu never"
+  },
+  {
+    "id": "native-gcc-san.battery-run-report",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "report \"C++ sanitizer RUN (native)\" $?",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a failing sanitized RUN must fail the battery"
+  },
+  {
+    "id": "native-gcc-san.battery-flags",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "{ \"$cxx\" -O1 -fsanitize=address,undefined \"$d/s.cpp\"",
+    "replace": "{ \"$cxx\" -O1 \"$d/s.cpp\"",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the battery must compile and link with -fsanitize=address,undefined"
+  },
+  {
+    "id": "native-gcc-san.battery-header",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "printf \"#include <sanitizer/common_interface_defs.h>\\nalignas(8)",
+    "replace": "printf \"alignas(8)",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the battery TU must include the header the arm64 image lacked"
+  },
+  {
+    "id": "native-gcc-san.battery-ubsan-call",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "return (8>>c)==4?0:1;",
+    "replace": "return (c<<3)==8?0:1;",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "a constant shift exponent makes no UBSan call under C++20, so an --as-needed link drops libubsan"
+  },
+  {
+    "id": "native-gcc-san.battery-leaks",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "{ ASAN_OPTIONS=detect_leaks=0 \"$d/s\" 2>\"$d/e\"; }",
+    "replace": "{ \"$d/s\" 2>\"$d/e\"; }",
+    "test": "bash linux/scripts/tests/test-native-gcc-sanitizers.sh",
+    "why": "the RUN must turn LSan off: it needs ptrace, which a container may not allow"
   }
 ]
