@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # 06-packaging/web-lane-tools.sh off-target: the key, the fail-loud gate, the binary cache,
-# the auto|cross|native selection, the android-side producer and the Dockerfile wiring.
+# the auto|cross|native|legacy selection, the android-side producer and the Dockerfile wiring.
 # docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# An operator's exported switch must not decide a case; each case sets its own.
+unset WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 LIB="${SCRIPTS}/06-packaging/web-lane-tools.sh"
 FX="${TESTS_DIR}/web-lane-fixtures.sh"
@@ -16,13 +18,18 @@ trap 'rm -rf "${_SB_ROOT}"' EXIT
 
 # _wlt <snippet>: <snippet> in a child bash with platform.sh, the fixtures and the library
 # loaded, CARGO_HOME/cache/artifact/provenance in a fresh sandbox ($SB); then "rc=<n>".
+# Hermetic: the caller's arch and Rust build env never reach it (the CI image exports
+# TARGET_ARCH=amd64); WLT_T_ARCH (default riscv64) is the fixture's target arch.
 _wlt() {
   local sb
   sb="$(mktemp -d "${_SB_ROOT}/sb.XXXXXX")"
   mkdir -p "${sb}/home" "${sb}/cache" "${sb}/artifact"
-  SB="${sb}" CARGO_HOME="${sb}/home" WLT_CACHE_DIR="${sb}/cache" WLT_ARTIFACT_DIR="${sb}/artifact" \
-    WLT_PROVENANCE="${sb}/provenance" TARGET_ARCH="${TARGET_ARCH:-riscv64}" \
-    WASM_PACK_VERSION=0.15.0 FLUTTER_RUST_BRIDGE_VERSION=2.13.0 \
+  env -u TARGETARCH -u TARGETPLATFORM -u BUILDARCH -u BUILDPLATFORM -u BUILD_MODE \
+    -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_DIR \
+    -u RUSTC_WRAPPER -u BZIP2_NO_PKG_CONFIG -u LZMA_API_STATIC -u ZSTD_SYS_USE_PKG_CONFIG \
+    SB="${sb}" CARGO_HOME="${sb}/home" WLT_CACHE_DIR="${sb}/cache" WLT_ARTIFACT_DIR="${sb}/artifact" \
+    WLT_PROVENANCE="${sb}/provenance" TARGET_ARCH="${WLT_T_ARCH:-riscv64}" \
+    FAKE_TIMEOUT_LOG="${sb}/timeout.log" WASM_PACK_VERSION=0.15.0 FLUTTER_RUST_BRIDGE_VERSION=2.13.0 \
     bash -c 'set -uo pipefail
       source "$1"; source "$2"; source "$3"
       wlt_fx_home "${CARGO_HOME}"
@@ -34,8 +41,8 @@ _assert_no_build() {  # <out> <rc> <why>: nothing was compiled, and the snippet 
   t_assert_eq 0 "$(_count "$1" '^CARGO ')" "$3"
   t_assert_contains "$1" "rc=$2"
 }
-_assert_native() {  # <out> <rc>: wasm-pack was compiled natively, today's argv, then <rc>
-  t_assert_contains "$1" "CARGO install --locked wasm-pack --version 0.15.0"
+_assert_native() {  # <out> <rc>: wasm-pack was compiled natively, into a scratch root, then <rc>
+  t_assert_contains "$1" "CARGO install --locked wasm-pack --version 0.15.0 --root "
   t_assert_contains "$1" "rc=$2"
 }
 
@@ -85,7 +92,8 @@ for _bad in \
   "flags=0x1, RVC, soft-float ABI|riscv64 float ABI" \
   "interp=/lib/ld-musl-riscv64.so.1|PT_INTERP (/lib/ld-musl-riscv64.so.1 vs /lib/ld-linux-riscv64-lp64d.so.1)" \
   "needed=libc.so.6 libbz2.so.1|NEEDED (libbz2.so.1 vs" \
-  "glibc=2.44|max GLIBC (2.44 vs <= 2.43)"; do
+  "glibc=2.44|max GLIBC (2.44 vs <= 2.43)" \
+  "glibc=none|GLIBC version needs (none vs at least one GLIBC_ entry)"; do
   t_case "the gate refuses ${_bad%%|*}"
   _out="$(_gate "'${_bad%%|*}'")"
   t_assert_contains "${_out}" "WHY=${_bad#*|}" "the failure must say what and why"
@@ -178,7 +186,7 @@ t_assert_contains "${_out}" "wasm-pack-0.1.5_rust-1_t_5"
 t_assert_contains "${_out}" "wasm-pack-0.1.4_rust-1_t_4"
 t_assert_eq 0 "$(_count "${_out}" 'wasm-pack-0.1.3_')" "a pin bump must not grow the cache without bound"
 
-# ---- 5. auto | cross | native ----------------------------------------------------------
+# ---- 5. auto | cross | native | legacy -------------------------------------------------
 _install() { _wlt "$1"'
   wlt_install_from_source wasm-pack 0.15.0; r=$?; cat "${WLT_PROVENANCE}" 2>/dev/null; (exit "${r}")'; }
 _SKIP='_wlt_mark "${WLT_ARTIFACT_DIR}/riscv64gc-unknown-linux-gnu" wasm-pack skipped "native-build-platform: x"'
@@ -231,9 +239,15 @@ _assert_native "${_out}" 0
 t_assert_eq 0 "$(_count "${_out}" 'cross-built artifact')"
 t_assert_contains "${_out}" "source=native"
 
-t_case "the native build keeps today's command and flags, with vendored C"
-t_assert_contains "${_out}" "rustflags=[]" "native stays rv64gc Rust, as it always was"
+t_case "native compiles in the package stage with rv64gc Rust and vendored static C"
+t_assert_contains "${_out}" "rustflags=[]" "native stays rv64gc Rust"
 t_assert_contains "${_out}" "bzip2=1 lzma=1 zstd=unset"
+
+t_case "native installs a bare binary: cargo's .crates.toml stays in the scratch root"
+_out="$(WEB_LANE_TOOLS_SOURCE=native _wlt 'wlt_install_from_source wasm-pack 0.15.0; r=$?
+  [ -x "${CARGO_HOME}/bin/wasm-pack" ] && echo INSTALLED; [ -e "${CARGO_HOME}/.crates.toml" ] && echo CRATES-TOML; (exit "${r}")')"
+t_assert_contains "${_out}" "INSTALLED"
+t_assert_eq 0 "$(_count "${_out}" '^CRATES-TOML$')" "the docs say native ships no crates metadata; legacy is the leg that does"
 
 t_case "a native build that fails its gate is fatal; a failed cargo is not"
 _out="$(WEB_LANE_TOOLS_SOURCE=native FAKE_BUILD_FACTS='needed=libc.so.6 libbz2.so.1' _install '')"
@@ -243,20 +257,74 @@ _out="$(WEB_LANE_TOOLS_SOURCE=native FAKE_CARGO_RC=101 _install '')"
 t_assert_contains "${_out}" "WARN: cargo install wasm-pack 0.15.0 failed; the web lane will build it per run"
 t_assert_contains "${_out}" "rc=0"
 
+t_case "legacy is the pre-2026-09-23 leg verbatim: cargo's own install, the stage's own env"
+_out="$(WEB_LANE_TOOLS_SOURCE=legacy _wlt "${_OK}; ${_SEED}"'
+  export RUSTFLAGS="-C inherited" ZSTD_SYS_USE_PKG_CONFIG=1
+  wlt_install_from_source wasm-pack 0.15.0; r=$?
+  [ -x "${CARGO_HOME}/bin/wasm-pack" ] && echo INSTALLED
+  grep -q "^\"wasm-pack 0.15.0 " "${CARGO_HOME}/.crates.toml" && echo CRATES-TOML
+  [ -e "${WLT_PROVENANCE}" ] && echo PROVENANCE
+  echo "entries=$(ls "${WLT_CACHE_DIR}" | wc -l | tr -d " ")"; (exit "${r}")')"
+t_assert_eq 1 "$(_count "${_out}" '^CARGO install --locked wasm-pack --version 0.15.0$')" \
+  "no --root and no --target: the command the package stage ran before this file existed"
+t_assert_contains "${_out}" "bzip2=unset lzma=unset zstd=1 wrapper=[unset] rustflags=[-C inherited]" \
+  "legacy forces no C env and no flags: whatever the stage has, as before"
+t_assert_contains "${_out}" "OK: wasm-pack 0.15.0 installed"
+t_assert_contains "${_out}" "INSTALLED"
+t_assert_contains "${_out}" "CRATES-TOML" "cargo records it, so a consumer's cargo install says 'already installed'"
+t_assert_eq 0 "$(_count "${_out}" 'cross-built artifact\|cache HIT\|^PROVENANCE$')" \
+  "legacy reads neither the artifact nor the cache, and writes no provenance"
+t_assert_contains "${_out}" "entries=1" "and stores nothing: the seeded entry is all there is"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "legacy is ungated and non-fatal, and needs neither rustc -V nor getconf"
+_out="$(WEB_LANE_TOOLS_SOURCE=legacy FAKE_BUILD_FACTS='needed=libc.so.6 libbz2.so.1' FAKE_GLIBC='' \
+  _install 'rm -f "${CARGO_HOME}/bin/rustc"')"
+t_assert_contains "${_out}" "OK: wasm-pack 0.15.0 installed" "the old leg installed whatever cargo built"
+t_assert_contains "${_out}" "rc=0"
+_out="$(WEB_LANE_TOOLS_SOURCE=legacy FAKE_CARGO_RC=101 _install '')"
+t_assert_contains "${_out}" "WARN: cargo install wasm-pack 0.15.0 failed; the web lane will build it per run"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "no rustc release: auto WARNs and skips; cross ERRORs where an artifact was expected"
+_out="$(_install "${_OK}"'; rm -f "${CARGO_HOME}/bin/rustc"')"
+t_assert_contains "${_out}" "WARN: web-lane wasm-pack: rustc -V reports no release; the web lane will build it per run"
+t_assert_eq 0 "$(_count "${_out}" 'installed from')" "nothing can be keyed, so nothing is installed"
+_assert_no_build "${_out}" 0 "and nothing is built"
+_out="$(WEB_LANE_TOOLS_SOURCE=cross _install "${_OK}"'; rm -f "${CARGO_HOME}/bin/rustc"')"
+t_assert_contains "${_out}" "ERROR: web-lane wasm-pack: WEB_LANE_TOOLS_SOURCE=cross, but rustc -V reports no release to key the artifact by"
+_assert_no_build "${_out}" 1 "cross must not quietly skip the artifact it was asked to prove"
+_out="$(WEB_LANE_TOOLS_SOURCE=cross _install "${_SKIP}"'; rm -f "${CARGO_HOME}/bin/rustc"')"
+t_assert_contains "${_out}" "WARN: web-lane wasm-pack: rustc -V reports no release"
+_assert_no_build "${_out}" 0 "a skipped arch expected no artifact: availability, as for amd64/arm64"
+
+t_case "an image whose glibc cannot be read installs nothing: no binary can be bounded"
+_out="$(FAKE_GLIBC='' _install "${_OK}")"
+t_assert_contains "${_out}" "ERROR: web-lane: getconf GNU_LIBC_VERSION reports nothing"
+t_assert_eq 0 "$(_count "${_out}" 'installed from')"
+_assert_no_build "${_out}" 1 "an unbounded GLIBC check is a skipped check"
+
+t_case "a failed install is fatal and records no provenance"
+_out="$(_install "${_OK}"'; install() { return 1; }')"
+t_assert_contains "${_out}" "ERROR: web-lane wasm-pack: install into "
+t_assert_eq 0 "$(_count "${_out}" '^tool=wasm-pack')" "provenance must not claim an install that did not happen"
+t_assert_contains "${_out}" "rc=1"
+
 t_case "a bad knob is fatal, before anything is built"
 _out="$(WEB_LANE_TOOLS_SOURCE=qemu _install '')"
-t_assert_contains "${_out}" "ERROR: WEB_LANE_TOOLS_SOURCE='qemu' (want auto, cross or native)"
+t_assert_contains "${_out}" "ERROR: WEB_LANE_TOOLS_SOURCE='qemu' (want auto, cross, native or legacy)"
 t_assert_contains "${_out}" "rc=1"
 _out="$(WEB_LANE_TOOLS_CACHE=yes _install '')"
 t_assert_contains "${_out}" "ERROR: WEB_LANE_TOOLS_CACHE='yes' (want on, refresh or off)"
 t_assert_contains "${_out}" "rc=1"
 
 # ---- 6. the producer ---------------------------------------------------------------
-# $1 = the snippet's prelude; runs wlt_produce into $SB/out against a fixture 01-core.
+# $1 = the snippet's prelude; runs wlt_produce into $SB/out against a fixture 01-core,
+# then prints the manifests, the emitted binaries and every timeout the run went through.
 _produce() {
   _wlt 'wlt_fx_core "${SB}/core"; WLT_CORE_DIR="${SB}/core"; '"$1"'
     wlt_produce "${SB}/out"; r=$?; for m in "${SB}"/out/*/*.manifest; do echo "== ${m##*/}"; cat "${m}"; done
-    ls "${SB}"/out/*/bin 2>/dev/null; (exit "${r}")'
+    ls "${SB}"/out/*/bin 2>/dev/null; cat "${FAKE_TIMEOUT_LOG}" 2>/dev/null; (exit "${r}")'
 }
 
 for _c in "riscv64|FAKE_BUILD_ARCH=riscv64|native-build-platform: this riscv64 builder" \
@@ -264,7 +332,7 @@ for _c in "riscv64|FAKE_BUILD_ARCH=riscv64|native-build-platform: this riscv64 b
           "riscv64|WEB_LANE_TOOLS_CROSS_ARCHES=none|disabled: WEB_LANE_TOOLS_CROSS_ARCHES=none"; do
   IFS='|' read -r _arch _env _why <<< "${_c}"
   t_case "the producer skips ${_arch} (${_why%%:*})"
-  _out="$(TARGET_ARCH="${_arch}" _produce "${_env:+export ${_env}}")"
+  _out="$(WLT_T_ARCH="${_arch}" _produce "${_env:+export ${_env}}")"
   t_assert_eq 2 "$(_count "${_out}" "^reason=${_why}")" "both tools carry the reason the package stage prints"
   t_assert_eq 2 "$(_count "${_out}" '^status=skipped')"
   _assert_no_build "${_out}" 0 "a skip compiles nothing"
@@ -286,6 +354,16 @@ t_assert_contains "${_out}" "bzip2=1 lzma=1 zstd=unset wrapper=[] rustflags=[-C 
 t_assert_eq 2 "$(_count "${_out}" '^status=ok')"
 t_assert_eq 2 "$(_count "${_out}" '^built_by=cross:amd64')"
 t_assert_eq 1 "$(_count "${_out}" '^wasm-pack$')" "the binary is emitted beside its manifest"
+t_assert_eq 2 "$(_count "${_out}" '^TIMEOUT 1800 cargo$')" \
+  "every cross cargo runs under the 30-minute bound: a hung crates.io fetch must not stall android"
+
+for _v in BUILDARCH=arm64 BUILDPLATFORM=linux/arm64; do
+  t_case "the build arch is the one the RUN executes on, not an inherited ${_v%%=*}"
+  _out="$(_produce "export ${_v}")"
+  t_assert_eq 2 "$(_count "${_out}" '^built_by=cross:amd64')" \
+    "android-sdk's ENV names the builder node (a Jetson, arm64) while the RUN executes amd64 under QEMU"
+  t_assert_eq 0 "$(_count "${_out}" 'cross:arm64')"
+done
 
 t_case "the producer's output is what the consumer accepts (one key, two sides)"
 _out="$(_wlt 'wlt_fx_core "${SB}/core"; WLT_CORE_DIR="${SB}/core"; ( wlt_produce "${WLT_ARTIFACT_DIR}" ) >/dev/null
@@ -300,6 +378,7 @@ _assert_no_build "${_out}" 0 "a warm producer cache replaces the compile"
 
 for _c in "FAKE_CARGO_RC=101|cargo install exited 101: error: could not compile (fake)" \
           "FAKE_BUILD_FACTS=\"needed=libc.so.6 libbz2.so.1\"|NEEDED (libbz2.so.1" \
+          "FAKE_BUILD_FACTS=\"glibc=2.44\"|max GLIBC (2.44 vs <= 2.43)" \
           "FAKE_CROSS_ENV_RC=1|setup_linux_cross_env failed: no cross toolchain for riscv64" \
           "FAKE_CROSS_RUSTFLAGS=\"-C target-feature=+v\"|RUSTFLAGS drift (-C target-feature=+v vs -C target-feature=+v,+zvl128b)" \
           "WASM_PACK_VERSION=|no wasm-pack version build-arg reached the android stage"; do

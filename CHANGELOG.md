@@ -7,6 +7,50 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - riscv64 web-lane tools: `legacy` is the old build verbatim; review fixes
+
+A review of the entry below found that `WEB_LANE_TOOLS_SOURCE=native` is not the
+build riscv64 had before, as that entry and the docs claimed, and that no knob
+combination reached it. How to pick a path:
+[`consumer-image-contract.md` § Building the web-lane tools from source](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source).
+
+- **`WEB_LANE_TOOLS_SOURCE=legacy`** (new): the package stage's pre-2026-09-23
+  from-source leg, verbatim. `cargo install --locked <tool> --version <pin>` into
+  `CARGO_HOME` (so cargo records it in `.crates.toml`), in the stage's own env: no
+  forced C env, no gate, no cache, no provenance line, and a failed install only
+  WARNs. It reads neither the cross artifact nor `WEB_LANE_TOOLS_CACHE`.
+- **What `native` is, said plainly** in the contract, the knob table, AGENTS.md and
+  the failure-mode entry: the package stage with rv64gc Rust, plus four differences
+  from the old build. It forces vendored static C. It installs a bare binary, so a
+  consumer's `cargo install <tool>` stops on `binary already exists` without
+  `--force`, as it already does on amd64 and arm64. Its gate is fatal. It reads the
+  cache first.
+- **Every guard now has a test and a mutation.** Twelve new `rust.web-lane-*`
+  entries: the producer's 30-minute `timeout` (a recording stub), `unset BUILDARCH
+  BUILDPLATFORM` (an inherited `BUILDARCH=arm64` must still record `cross:amd64`),
+  the "at least one GLIBC_ entry" refusal, a fatal empty `getconf`, a fatal failed
+  `install`, the producer's sysroot GLIBC ceiling, the up-front knob check in
+  `setup-package-image.sh` (a typo stops amd64 even when its prebuilt succeeds),
+  both no-`rustc` branches and three for `legacy`. With no `rustc -V` release,
+  `cross` is now an ERROR wherever an artifact was expected; a `skipped` arch still
+  WARNs.
+- **Both suites are hermetic.** `test-web-lane-tools.sh` took `TARGET_ARCH` from the
+  caller: in the CI image (`TARGET_ARCH=amd64`) it failed 39 of 194 assertions, and
+  an exported `WEB_LANE_TOOLS_SOURCE=native` failed 11. `_wlt` now clears the arch
+  and Rust build env (the fixture arch is `WLT_T_ARCH`). `test-setup-package-image.sh`
+  read the image's own `versions.env` and failed 3 there; its sandbox now clears
+  that, the `*_SHA256` pins and the `WEB_LANE_TOOLS_*` switches.
+- **What re-keys**, against the entry below: android's `web-lane-tools` producer RUN
+  and package's setup RUN, per arch, because both bind-mount the edited library. No
+  `versions.env`, `01-core` or other Dockerfile instruction changed; the
+  `Dockerfile.package` edit is a comment.
+- **Verified here:** both suites on the Windows host (the two JAVA_HOME symlink
+  failures in `test-setup-package-image.sh` are host-only and predate this) and in
+  the `:latest-cross` image with its own env, all green there; every mutation tied
+  to either suite bites in that image. **Not verified:** no chain has run either
+  entry. `legacy`'s command is the one the 2026-09-22 riscv64 chain ran, but no
+  chain has reached it through the switch.
+
 ## 2026-09-23 - riscv64 web-lane tools: cross-built in android, cached, native one switch away
 
 riscv64's package stage compiled `wasm-pack` and `flutter_rust_bridge_codegen` under
@@ -25,9 +69,11 @@ with its challenge's corrections. How to pick a path:
   instruction, so a producer change re-keys nothing above it.
 - **Package side.** `install_web_lane_toolchain` keeps the prebuilt-first path, so
   amd64 and arm64 install the same bytes as before. Its from-source leg is now
-  `wlt_install_from_source`: the cross artifact or today's native `cargo install
-  --locked`, chosen by `WEB_LANE_TOOLS_SOURCE=auto|cross|native` (default `auto`),
-  through a version-keyed binary cache (`WEB_LANE_TOOLS_CACHE=on|refresh|off`).
+  `wlt_install_from_source`: the cross artifact or a gated native `cargo install
+  --locked` in the package stage, chosen by `WEB_LANE_TOOLS_SOURCE=auto|cross|native`
+  (default `auto`), through a version-keyed binary cache
+  (`WEB_LANE_TOOLS_CACHE=on|refresh|off`). `legacy`, the old build verbatim, came
+  a day later (2026-09-24 entry).
 - **Fail loud on a claim.** Every from-source binary passes `wlt_assert_binary` on
   its staged bytes before install: ELF64, machine, lp64d, loader, a `NEEDED`
   allowlist, the image's GLIBC ceiling, `--version`. Artifacts and cache entries
@@ -42,8 +88,9 @@ with its challenge's corrections. How to pick a path:
   prefix-sized copy). The producer loads 01-core by explicit path from per-file
   mounts, never `source_module`, which would find `android-sdk`'s older copy.
   `cross` builds natively on a `skipped` manifest, so amd64 and arm64 do not turn a
-  failed prebuilt download into an error. The native leg keeps today's rv64gc
-  RUSTFLAGS and command. The knobs are forwarded by `lib-orchestrator.sh`, not by
+  failed prebuilt download into an error. The native leg keeps the old build's
+  rv64gc Rust, but not its command, its C env or its failure policy (corrected in
+  the 2026-09-24 entry). The knobs are forwarded by `lib-orchestrator.sh`, not by
   new `versions.env` lines (Phase 2 of the design), and the library is bind-mounted
   into the setup RUN rather than COPYed, so no image gains a file. The producer
   keys on the rustc it actually runs, and its registry cache id is per target.

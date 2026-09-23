@@ -9813,7 +9813,7 @@
   {
     "id": "rust.web-lane-knob-validated",
     "target": "linux/scripts/06-packaging/web-lane-tools.sh",
-    "find": "    auto|cross|native) ;;",
+    "find": "    auto|cross|native|legacy) ;;",
     "replace": "    *) ;;",
     "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
     "why": "a typo'd WEB_LANE_TOOLS_SOURCE would silently mean auto; a bad knob must stop the build"
@@ -9913,5 +9913,101 @@
     "replace": "_VERSION_BUILD_ARG_VARS+=()",
     "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
     "why": "an exported WEB_LANE_TOOLS_SOURCE=native must reach BuildKit, or the owner's native switch is a no-op"
+  },
+  {
+    "id": "rust.web-lane-legacy-dispatch",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  if [ \"${mode}\" = legacy ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "WEB_LANE_TOOLS_SOURCE=legacy is the owner's way back to the pre-2026-09-23 build; it must never reach the artifact, the cache or the gate"
+  },
+  {
+    "id": "rust.web-lane-legacy-verbatim-env",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "_wlt_legacy() {  # <tool> <version>\n  if \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install",
+    "replace": "_wlt_legacy() {  # <tool> <version>\n  wlt_c_env\n  if \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "legacy runs cargo in the stage's own env, as before; a forced C env is the native leg, not the old one"
+  },
+  {
+    "id": "rust.web-lane-legacy-non-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  echo \"WARN: cargo install $1 $2 failed; the web lane will build it per run\"\n  return 0",
+    "replace": "  return 1",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the old leg only WARNed on a failed cargo install; legacy must keep that trade"
+  },
+  {
+    "id": "rust.web-lane-no-rustc-cross-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    if [ \"${mode}\" = cross ] && [ \"$(wlt_manifest_get \"${WLT_ARTIFACT_DIR}/${triple}/${tool}.manifest\" status)\" != skipped ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "cross exists to prove the artifact; with no rustc release there is no key to prove it by, so it must stop rather than quietly skip"
+  },
+  {
+    "id": "rust.web-lane-no-rustc-skips",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    echo \"WARN: web-lane ${tool}: rustc -V reports no release; the web lane will build it per run\"\n    return 0",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "with no rustc release every key is wrong; auto must skip loudly, never build or install under an empty key"
+  },
+  {
+    "id": "rust.web-lane-glibc-ceiling-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  ceiling=\"$(wlt_glibc_ceiling)\" || return 1",
+    "replace": "  ceiling=\"$(wlt_glibc_ceiling)\" || true",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "an empty ceiling skips the GLIBC check inside the gate; an image whose glibc cannot be read must install nothing"
+  },
+  {
+    "id": "rust.web-lane-gate-glibc-needs-present",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    _wlt_why \"GLIBC version needs\" \"\" \"at least one GLIBC_ entry\"\n    return 1",
+    "replace": "    return 0",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a glibc-loader binary with no GLIBC_ version needs means readelf could not read it; the ceiling would pass vacuously"
+  },
+  {
+    "id": "rust.web-lane-install-failure-fatal",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "    echo \"ERROR: web-lane ${tool}: install into ${CARGO_HOME:-/usr/local/cargo}/bin failed\" >&2\n    return 1",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "a failed install must stop the stage, not print OK and write provenance for a binary that is not there"
+  },
+  {
+    "id": "rust.web-lane-producer-timeout",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  timeout 1800 \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install --locked --root \"$4\" \\",
+    "replace": "  \"${CARGO_HOME:-/usr/local/cargo}/bin/cargo\" install --locked --root \"$4\" \\",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the producer adds a crates.io fetch to android; without the 30-minute bound a hung fetch stalls the whole stage"
+  },
+  {
+    "id": "rust.web-lane-producer-build-arch",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  unset BUILDARCH BUILDPLATFORM   # the arch this RUN executes on, not the builder node's",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "android-sdk's ENV BUILDARCH names the builder node; on a Jetson building under QEMU that is not the arch the RUN executes on"
+  },
+  {
+    "id": "rust.web-lane-producer-sysroot-ceiling",
+    "target": "linux/scripts/06-packaging/web-lane-tools.sh",
+    "find": "  ceiling=\"$(_wlt_sysroot_glibc \"${target}\")\"",
+    "replace": "  ceiling=\"\"",
+    "test": "bash linux/scripts/tests/test-web-lane-tools.sh",
+    "why": "the producer bounds GLIBC by its cross sysroot, so a binary above it is recorded failed instead of cached and shipped"
+  },
+  {
+    "id": "rust.web-lane-knob-validated-upfront",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    wlt_validate_knobs || return 1",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "on amd64/arm64 the prebuilt usually succeeds and the from-source leg never runs; only the up-front check stops a typo'd switch there"
   }
 ]

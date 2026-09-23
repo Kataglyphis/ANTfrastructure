@@ -221,14 +221,27 @@ a binary that claims to be good and is not — is in the next section.
 
 riscv64 has no upstream binary, so its package stage used to compile both tools
 under QEMU on every chain: 960 s + 1,665 s of a 3,384 s RUN (riscv64 layer file
-times, 2026-09-22). That compile now has two replacements, and the old path stays
-one switch away. Owner decision 2026-09-23: both options, cross the default.
+times, 2026-09-22). That compile now has two replacements, and the old build stays
+one switch away, verbatim. Owner decision 2026-09-23: both options, cross the default.
 
 | Path | Where it compiles | When |
 | --- | --- | --- |
 | cross | `Dockerfile.android`, stage `web-lane-tools`: `cargo install --target <triple>` under the hub's own `setup_linux_cross_env`, before `final` swaps the amd64-hosted cross GCC out | the target is in `WEB_LANE_TOOLS_CROSS_ARCHES` and is not the build platform's own arch |
-| native | the package stage, with today's `cargo install --locked <tool> --version <pin>`: under QEMU on the amd64 host, natively on a riscv64 or arm64 build host | `WEB_LANE_TOOLS_SOURCE=native`, or when `auto` finds no usable cross artifact |
+| native | the package stage, with rv64gc Rust: `cargo install --locked <tool> --version <pin> --root <scratch>` under QEMU on the amd64 host, natively on a riscv64 or arm64 build host | `WEB_LANE_TOOLS_SOURCE=native`, or when `auto` finds no usable cross artifact |
 | cache | the package stage's cachemount `web-lane-tools-bin-<arch>` | a native build whose exact key was built before |
+| legacy | the package stage, exactly as before 2026-09-23: `cargo install --locked <tool> --version <pin>` into `CARGO_HOME` | `WEB_LANE_TOOLS_SOURCE=legacy` only |
+
+**native is not the old build.** It compiles where the old build did, with the same
+rv64gc Rust, but four things differ: it forces vendored static bzip2, xz and zstd
+(the old build linked whatever pkg-config found in the stage); it installs a bare
+binary copied out of a scratch `--root`, so `CARGO_HOME` has no `.crates.toml` /
+`.crates2.json` entry for it; a binary that fails the gate stops the build (the old
+build installed anything cargo produced); and it reads the cache first, so it may
+not compile at all (`WEB_LANE_TOOLS_CACHE=refresh` or `off` forces a compile).
+**legacy** is the old build, verbatim: cargo installs into `CARGO_HOME` itself (and
+records it there), in the stage's own environment, with no gate, no cache, no
+provenance line, and a failed `cargo install` only WARNs. It ignores
+`WEB_LANE_TOOLS_CACHE` and never reads the cross artifact.
 
 amd64 and arm64 are untouched: they install upstream's sha-pinned musl binary
 first and reach this code only if that download fails.
@@ -244,6 +257,8 @@ the runtime helpers:
   arch; the package builds natively.
 - `native` never reads the artifact. It still reads the cache, so add
   `WEB_LANE_TOOLS_CACHE=refresh` for a guaranteed fresh compile.
+- `legacy` is the build the package stage ran before 2026-09-23, unchanged (above).
+  Use it to rule the new paths out, or when a consumer needs cargo's install record.
 
 `WEB_LANE_TOOLS_CACHE` is `on` (default), `refresh` (never read an entry, store the
 new build) or `off` (neither). `RUNTIME_NO_CACHE=1` does not empty a cachemount;
@@ -261,10 +276,11 @@ set, so leaving them unset moves no cache key. They are deliberately not in
 RUSTFLAGS, the C environment and `--locked`. Who built it (`built_by=cross:amd64`,
 `native:riscv64`) is recorded, never keyed. The cross key carries cross-env.sh's
 RVV flags (`-C target-feature=+v,+zvl128b`; a test pins the copy); the native key
-carries none, as the native build always did. Both force vendored static bzip2,
+carries none, as the old build never set any. Both force vendored static bzip2,
 xz and zstd, because under `PKG_CONFIG_ALLOW_CROSS` those `-sys` crates link the
 build host's library
 ([failure-modes.md](failure-modes.md#a-cross-built-rust-tool-links-the-build-hosts-libbz2)).
+`legacy` has no key: it caches nothing.
 
 **The gate** (`wlt_assert_binary`) reads the staged bytes before anything is
 installed: ELF64, the arch's machine, lp64d on riscv64, glibc's own loader as
@@ -275,16 +291,22 @@ sha256.
 
 **Fatal or not.** Availability still only WARNs: a failed `cargo install`, a
 producer that could not build (it records `status=failed` and android stays
-green), an unusable artifact under `auto`. Three things fail the package stage: a
-bad knob value; a binary that claims to be good and is not — a `status=ok` artifact
-failing its sha or its gate, in `auto` and `cross` alike, or a native build cargo
-reported as a success that fails the gate; and `cross` with no usable artifact. A
-cache entry that fails its checks is deleted with a `WARN` and rebuilt.
+green), an unusable artifact under `auto`, no `rustc -V` release under `auto` or
+`native`. These fail the package stage: a bad knob value, checked before anything
+else, so a typo stops amd64 and arm64 too; a binary that claims to be good and is
+not — a `status=ok` artifact failing its sha or its gate, in `auto` and `cross`
+alike, or a native build cargo reported as a success that fails the gate; an image
+whose glibc `getconf` cannot report, or an `install` into `CARGO_HOME/bin` that
+fails; and `cross` with no usable artifact, including no `rustc -V` release to key
+an expected one by. A cache entry that fails its checks is deleted with a `WARN`
+and rebuilt. `legacy` fails on nothing but a bad knob.
 
-**Provenance.** Each from-source install appends `tool= version= source=cross|cache|native
-sha256= key=` to `/usr/local/share/web-lane-tools/provenance`. The cross and cache
-routes install a bare binary with no `.crates.toml`, which is what amd64 and arm64
-already ship.
+**Provenance.** Each cross, cache or native install appends `tool= version=
+source=cross|cache|native sha256= key=` to `/usr/local/share/web-lane-tools/provenance`.
+All three install a bare binary with no `.crates.toml`, which is what amd64 and arm64
+already ship from upstream: a consumer's own `cargo install <tool>` then stops on
+`binary already exists` unless it passes `--force`. `legacy` writes no provenance
+line, and cargo records its install, as before.
 
 **Not covered.** Behaviour beyond `--version`: no automated riscv64 `build-web`
 consumer exists. A binary and manifest forged consistently by someone who can write
