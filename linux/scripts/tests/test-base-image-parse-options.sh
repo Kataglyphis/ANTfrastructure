@@ -225,4 +225,21 @@ t_assert_ok bi_remaining install-os-packages
 t_assert_ok bi_remaining bogus-command
 t_assert_fails bi_remaining bogus-command extra
 
+t_case "the riscv64 Node fallback compares versions, not the v-prefix"
+# `node --version` prints v22.22.1; the pin is 22.22.1. The old line compared
+# them raw and warned "Installed Node.js v22.22.1 instead of pinned 22.22.1" on
+# every riscv64 build -- about a version EQUAL to the pin. Only the package
+# revision differs there, which is exactly what the fallback is for.
+_BI_SRC="$(cat "${BASE_IMAGE_SH}")"
+t_assert_contains "${_BI_SRC}" '_node_have="${_node_have#v}"' \
+  "the v-prefix is stripped before the comparison"
+t_assert_eq "" "$(printf '%s\n' "${_BI_SRC}" | grep 'instead of pinned' | grep '(node --version)')" \
+  "no comparison may use the raw v-prefixed output"
+_node_cmp() {  # $1 = what node reports, $2 = the pin
+  local have="$1"; have="${have#v}"
+  [ "${have}" = "$2" ] && echo match || echo differ
+}
+t_assert_eq "match"  "$(_node_cmp v22.22.1 22.22.1)" "equal versions are equal, prefix or not"
+t_assert_eq "differ" "$(_node_cmp v22.21.0 22.22.1)" "a REAL mismatch must still warn"
+
 t_summary
