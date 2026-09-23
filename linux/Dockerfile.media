@@ -413,11 +413,19 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
 
+# GenAI's ORT proof runs HERE over the build RUN's tree, mounted per file from 03-media/: build/onnxruntime/ is mounted
+# whole into the GPU ORT RUN, and runtime/ is copied whole into final and Dockerfile.package, so either dir re-keys them.
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/verify-genai-ort.sh,target=/opt/scripts/03-media/verify-genai-ort.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     set -euo pipefail; \
     if [ "${BUILD_GENAI:-true}" = "true" ]; then \
       bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-genai; \
+      bash /opt/scripts/03-media/verify-genai-ort.sh --src-dir /opt/onnxruntime-genai \
+        --output-dir "${ONNXRUNTIME_GENAI_OUTPUT_DIR}" --ort-root "${ONNXRUNTIME_OUTPUT_DIR}" --ort-root /usr/local/lib/onnxruntime-gpu; \
     else \
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
@@ -672,6 +680,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scr
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/opencv,target=/opt/scripts/patches/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -831,6 +840,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scr
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -984,6 +994,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/gstreamer,target=/opt/scripts/patches/gstreamer,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -1090,6 +1101,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scr
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/opencv,target=/opt/scripts/patches/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \

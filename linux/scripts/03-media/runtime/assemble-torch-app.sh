@@ -102,7 +102,9 @@ wheel_family() {
     iree-*.whl)               printf 'iree' ;;
     opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
                               printf 'opencv' ;;
-    onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl|onnxruntime_dnnl-*.whl)
+    # Any ORT runtime flavour by pattern; GenAI, extensions and plugin EPs are not the runtime.
+    onnxruntime_genai*.whl|onnxruntime_extensions*.whl|onnxruntime_ep_*.whl) printf 'other' ;;
+    onnxruntime-*.whl|onnxruntime_*.whl)
                               printf 'onnx' ;;
     apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
                               printf 'tvm' ;;
@@ -159,6 +161,42 @@ collect_locked_local_wheels() {
     esac
   done
   shopt -u nullglob
+}
+
+# A missing chain ORT wheel is fatal: the app lock's PyPI onnxruntime would ship in its place.
+assert_chain_ort_wheel_staged() {
+  local _w _dir="${LOCAL_WHEELS_DIR:-/opt/wheels}"
+  for _w in "${_dir}"/*.whl; do
+    [ "$(wheel_family "${_w##*/}")" = "onnx" ] && return 0
+  done
+  echo "ERROR: no chain ONNX Runtime wheel in ${_dir} for ONNX_PACKAGE=${ONNX_PACKAGE}; refusing to fall back to the app lock's PyPI build" >&2
+  return 1
+}
+
+# $1 = check|purge-list. The census ships beside this script; Build-TorchApp.ps1 embeds the same file.
+run_ort_census() {
+  local _census
+  _census="$(dirname "${BASH_SOURCE[0]}")/ort-venv-census.py"
+  "${VENV}/bin/python" -I "${_census}" "--$1" --store "${LOCAL_WHEELS_DIR:-/opt/wheels}"
+}
+
+# Every installed ORT distribution by name pattern or import-package ownership, one per line.
+_ort_purge_names() {
+  local _out
+  _out="$(run_ort_census purge-list)" || return 1
+  printf '%s\n' "${_out}" | sed -n 's/^ORT-CENSUS PURGE \([a-z0-9][a-z0-9-]*\)$/\1/p'
+}
+
+# Fail-closed: every ORT distribution in the venv must be byte-identical to a chain wheel.
+assert_ort_chain_only() {
+  local _out _rc=0
+  _out="$(run_ort_census check 2>&1)" || _rc=$?
+  printf '%s\n' "${_out}"
+  if [ "${_rc}" -ne 0 ] || [[ $'\n'"${_out}" != *$'\n'"ORT-CENSUS PASS"* ]]; then
+    echo "ERROR: the venv carries ONNX Runtime that is not the chain's (census rc=${_rc}); see the ORT-CENSUS lines above" >&2
+    return 1
+  fi
+  return 0
 }
 
 # Remove prebuilt wheels that conflict with the selected ONNX_PACKAGE variant.
@@ -236,10 +274,10 @@ build_uv_sync_args() {
     fi
   fi
 
-  # --find-links only OFFERS /opt/wheels, so the app lock's pinned genai would win over
-  # the freshly built wheel. Same pre-install + --no-install-package idiom as above.
+  # --find-links only OFFERS /opt/wheels, so the lock's PyPI genai would install; skip it for any
+  # chain GenAI flavour (nvidia's onnxruntime_genai_cuda / _trt_rtx too). Same idiom as above.
   local _genai_wheel
-  _genai_wheel="$(ls /opt/wheels/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
+  _genai_wheel="$(ls /opt/wheels/onnxruntime_genai*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${_genai_wheel}" ]; then
     printf 'Pinning local onnxruntime-genai wheel over the app lock: %s\n' "${_genai_wheel##*/}"
     uv pip install --no-deps --force-reinstall "${_genai_wheel}"
@@ -329,7 +367,13 @@ _purge_shadowing_pypi_builds() {
   local have_onnx_family="$1" have_opencv_family="$2"
   local have_torch_family="$3" have_litert_family="$4"
   if [ "${have_onnx_family}" = "true" ]; then
-    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu onnxruntime-dnnl 2>/dev/null || true
+    local _names
+    local -a _ort_dists=()
+    _names="$(_ort_purge_names)" || { echo "ERROR: the ORT census could not list the venv's ONNX Runtime distributions" >&2; return 1; }
+    [ -z "${_names}" ] || mapfile -t _ort_dists <<<"${_names}"
+    if [ "${#_ort_dists[@]}" -gt 0 ]; then
+      uv pip uninstall "${_ort_dists[@]}" || echo "WARNING: uv could not uninstall ${_ort_dists[*]}; the ORT census decides" >&2
+    fi
   fi
   if [ "${have_opencv_family}" = "true" ]; then
     uv_uninstall_pip_opencv
@@ -571,6 +615,7 @@ install_project_environment() {
   local have_lock=false
 
   prune_conflicting_onnx_wheels
+  assert_chain_ort_wheel_staged
 
   cd "${APP_DIR}"
   collect_locked_local_skip_packages locked_skip_packages
@@ -597,6 +642,7 @@ install_project_environment() {
   fi
 
   ensure_project_package_installed
+  assert_ort_chain_only
 }
 
 # `uv sync` installs the app project itself (OrchestrANT -> orchestrant)

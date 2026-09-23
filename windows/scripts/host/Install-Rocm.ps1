@@ -12,7 +12,8 @@
     install -> Windows -> tar. amd64 only. AMD publishes no checksum, so the
     tarball is verified against the self-measured SHA256 pinned in versions.env.
     It runs in the sdk slot, FROM the plain base; why there, and what it does NOT put
-    on PATH: docs/windows-builds.md § ROCm layer.
+    on PATH: docs/windows-builds.md § ROCm layer. It also registers TheRock's
+    amdocl64.dll as an OpenCL ICD for TheRock's Khronos loader (docs/windows-rocm.md).
 #>
 param(
     [string]$TempDir = 'C:\temp',
@@ -93,7 +94,8 @@ function Assert-RocmWindowsLayout {
         [Parameter(Mandatory)][string]$Root,
         [Parameter(Mandatory)][string]$Release
     )
-    $files = 'bin\hipcc.exe', 'bin\hipconfig.exe', 'bin\hipInfo.exe', 'include\hip\hip_runtime.h', 'lib\llvm\bin\clang.exe'
+    $files = 'bin\hipcc.exe', 'bin\hipconfig.exe', 'bin\hipInfo.exe', 'bin\OpenCL.dll', 'bin\amdocl64.dll',
+        'include\hip\hip_runtime.h', 'lib\llvm\bin\clang.exe'
     $missing = @($files | Where-Object { -not [System.IO.File]::Exists([System.IO.Path]::Combine($Root, $_)) })
     # Globs, because the file names carry versions (amdhip64_7.dll) or vary by family.
     $globs = [ordered]@{ 'bin\amdhip64_*.dll (HIP runtime)' = 'bin|amdhip64_*.dll'; 'lib\llvm\amdgcn\bitcode\*.bc (HIP_DEVICE_LIB_PATH)' = 'lib\llvm\amdgcn\bitcode|*.bc' }
@@ -108,6 +110,26 @@ function Assert-RocmWindowsLayout {
     if ($missing.Count -gt 0) {
         throw ("Install-Rocm: the ROCm tree under {0} is incomplete:`n  {1}" -f $Root, ($missing -join "`n  "))
     }
+}
+
+<#
+.SYNOPSIS
+    Registers an OpenCL ICD as the Khronos loader reads it: value name = the DLL's full path, REG_DWORD 0.
+.DESCRIPTION
+    64-bit registry view only: amdocl64.dll is a 64-bit ICD, and a 32-bit loader reads WOW6432Node.
+    OCL_ICD_FILENAMES is no substitute: the loader ignores it in a high-integrity (elevated admin) process.
+#>
+function Register-OpenClIcd {
+    param(
+        [Parameter(Mandatory)][string]$IcdPath,
+        [Microsoft.Win32.RegistryKey]$BaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64'),
+        [string]$SubKey = 'SOFTWARE\Khronos\OpenCL\Vendors'
+    )
+    if (-not [System.IO.Path]::IsPathFullyQualified($IcdPath) -or -not [System.IO.File]::Exists($IcdPath)) {
+        throw "Install-Rocm: OpenCL ICD '$IcdPath' is not an existing absolute path; the loader LoadLibrary's the value name as is"
+    }
+    $key = $BaseKey.CreateSubKey($SubKey, $true)
+    try { $key.SetValue($IcdPath, 0, [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $key.Dispose() }
 }
 
 $RocmRelease = Resolve-ContainerImageValue -Value $RocmRelease -EnvironmentVariable 'ROCM_WINDOWS_RELEASE'
@@ -141,6 +163,9 @@ Remove-Item -LiteralPath $tarball -Force -ErrorAction SilentlyContinue
 Clear-PendingFileHandle
 
 Assert-RocmWindowsLayout -Root $InstallDir -Release $RocmRelease
+$icd = Join-Path $InstallDir 'bin\amdocl64.dll'
+Register-OpenClIcd -IcdPath $icd
+Write-Host "Registered $icd as an OpenCL ICD (HKLM\SOFTWARE\Khronos\OpenCL\Vendors)"
 
 # The one thing only this container can prove: AMD's hipcc runs on Server Core.
 $env:HIP_PATH = $InstallDir

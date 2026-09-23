@@ -179,10 +179,11 @@ libdc1394.so.26	libdc1394-26
 # libonnxruntime1.23 is three releases behind the pinned ORT, and apt-installing
 # it shadows our build: media-arm64 2026-08-27 resolved "libonnxruntime.so.1 ->
 # libonnxruntime1.23" and pulled 12 packages / 62.9 MB into the image (riscv64
-# identical). The whole .so.* family is denied, not just .so.1, because the
+# identical). The whole .so* family is denied, not just .so.1, because the
 # apt-cache prefix guess in resolve_package_for_so (`^libonnxruntime[0-9]`)
 # ignores the requested version and would grab 1.23 for any future SONAME too.
-libonnxruntime.so.*	source-built
+# resolve_package_for_so also denies every libonnxruntime* in code (ort-runtime-gate.sh).
+libonnxruntime.so*	source-built
 
 # TVM is source-built into /usr/local/lib. Like ONNX Runtime, apt has no TVM
 # package, but the deny-list entry prevents validate-media-runtime.sh from

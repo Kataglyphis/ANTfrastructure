@@ -45,7 +45,7 @@ on:
         default: ''
       test-python-versions:
         description: >-
-          Space-separated interpreter list for ci_tests.sh, e.g. "3.13 3.14 3.14t".
+          Space-separated interpreter list for ci_tests.sh, e.g. "3.14 3.14t".
           Empty keeps the driver's default.
         required: false
         type: string

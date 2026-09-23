@@ -108,11 +108,45 @@ function Assert-TvmLlvmConfigNotRocm {
     }
 }
 
+function Test-TvmLlvmHasAmdgpu {
+    param([AllowEmptyString()][string]$TargetsBuilt)
+    return @("$TargetsBuilt".Trim() -split '[\s;]+') -ccontains 'AMDGPU'
+}
+
 function Assert-TvmLlvmHasAmdgpu {
     param([string]$TargetsBuilt, [string]$LlvmConfig)
-    if ($TargetsBuilt -notmatch '\bAMDGPU\b') {
-        throw "TVM ROCm spike: $LlvmConfig has no AMDGPU target (targets-built: '$($TargetsBuilt.Trim())') -- the rocm codegen cannot emit hsaco"
+    if (-not (Test-TvmLlvmHasAmdgpu -TargetsBuilt $TargetsBuilt)) {
+        throw "TVM ROCm spike: $LlvmConfig has no AMDGPU target (targets-built: '$("$TargetsBuilt".Trim())') -- the rocm codegen cannot emit hsaco"
     }
+}
+
+# `llvm-config --targets-built` ("AArch64 X86"), trimmed.
+function Get-TvmLlvmTargetsBuilt {
+    param([Parameter(Mandatory)][string]$LlvmConfig)
+    return ((Invoke-ShieldedNative -Label 'llvm-config --targets-built' -CommandLine """$LlvmConfig"" --targets-built" -Quiet) | Out-String).Trim()
+}
+
+# The marker's form of a --targets-built line: 'AArch64 X86' -> 'AArch64;X86'.
+function ConvertTo-TvmLlvmTargetString {
+    param([AllowEmptyString()][string]$TargetsBuilt)
+    return (@("$TargetsBuilt".Trim() -split '[\s;]+' | Where-Object { $_ }) -join ';')
+}
+
+# PATH's llvm-config, else a minimal LLVM build. On the spike a PATH one without AMDGPU counts as
+# absent: the toolchain's patched LLVM is AArch64;X86 only (Build-LlvmFromSource.ps1).
+function Get-TvmLlvmChoice {
+    param([string]$PathLlvmConfig, [bool]$Rocm, [bool]$Cross, [Parameter(Mandatory)][scriptblock]$GetTargetsBuilt)
+    if ($Cross) { return [pscustomobject]@{ BuildMinimal = $false; LlvmConfig = $null; Targets = ''; Why = 'cross lane: runtime-only, no LLVM' } }
+    $minimal = [pscustomobject]@{ BuildMinimal = $true; LlvmConfig = $null; Targets = (Get-TvmLlvmTargetList -Rocm $Rocm); Why = 'llvm-config.exe not on PATH (scoop LLVM never ships it)' }
+    if (-not $PathLlvmConfig) { return $minimal }
+    if ($Rocm) {
+        $built = "$(& $GetTargetsBuilt $PathLlvmConfig)".Trim()
+        if (-not (Test-TvmLlvmHasAmdgpu -TargetsBuilt $built)) {
+            $minimal.Why = "TVM ROCm spike: $PathLlvmConfig has no AMDGPU target (targets-built: '$built')"
+            return $minimal
+        }
+    }
+    return [pscustomobject]@{ BuildMinimal = $false; LlvmConfig = $PathLlvmConfig; Targets = ''; Why = 'llvm-config.exe on PATH' }
 }
 
 # Read by windows\scripts\build\rocm-checks\TVM.ps1: what the rocm-lane TVM build enabled.
@@ -202,16 +236,17 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     Write-Warning "TVM: Vulkan SDK NOT found (VULKAN_SDK='$vulkanSdk') - building WITHOUT the Vulkan runtime; base images bake it via scoop, so an OFF here usually means a broken image, not a policy choice (#47)."
 }
 
-# amd64: scoop LLVM ships no llvm-config and no dev libs, so build a minimal LLVM from pinned
-# source (#47, docs/windows-build-invariants.md). Cross: runtime-only, no compiler at all (#116).
+# amd64: PATH's llvm-config (the patched toolchain), else a minimal LLVM from pinned source (#47,
+# docs/windows-build-invariants.md) -- also on the ROCm spike, for AMDGPU. Cross: no compiler (#116).
 $tvmCross = Test-WindowsCrossTarget
 $llvmCmd = if ($tvmCross) { $null } else { Get-Command llvm-config.exe -ErrorAction SilentlyContinue }
-$llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
-if ($tvmRocmPlan.OnLane) { Assert-TvmLlvmConfigNotRocm -LlvmConfig $llvmConfig -RocmRoot $tvmRocmPlan.RocmRoot }
-$tvmLlvmTargets = Get-TvmLlvmTargetList -Rocm $tvmRocmPlan.Rocm
+$pathLlvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
+if ($tvmRocmPlan.OnLane) { Assert-TvmLlvmConfigNotRocm -LlvmConfig $pathLlvmConfig -RocmRoot $tvmRocmPlan.RocmRoot }
+$tvmLlvm = Get-TvmLlvmChoice -PathLlvmConfig $pathLlvmConfig -Rocm $tvmRocmPlan.Rocm -Cross $tvmCross -GetTargetsBuilt ${function:Get-TvmLlvmTargetsBuilt}
+$llvmConfig = $tvmLlvm.LlvmConfig
 if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
-} elseif (-not $llvmConfig) {
+} elseif ($tvmLlvm.BuildMinimal) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
     $llvmDevRoot = 'C:\temp\llvm-dev'
     # Banner BEFORE the fetch: an unknown version throws inside Get-LlvmSourceTarball
@@ -220,18 +255,18 @@ if ($tvmCross) {
     # Get-LlvmSourceSha256 (WindowsSourceBuild.Common.psm1), shared with
     # Build-LlvmFromSource.ps1; versions.env can still pre-seed the current version
     # via LLVM_WINDOWS_SRC_SHA256 (#129).
-    Write-Host "TVM: llvm-config.exe not on PATH (scoop LLVM never ships it) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
+    Write-Host "TVM: $($tvmLlvm.Why) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
     $llvmSrc = Get-LlvmSourceTarball -Version $llvmDevVersion -DestinationRoot $llvmDevRoot
     # Keep the scratch tier lean; the tree is scrubbed post-build anyway. Guarded, not
     # -ErrorAction'd: the helper leaves an already-extracted tree (and no tarball) alone.
     if (Test-Path $llvmSrc.Tarball) { Remove-Item $llvmSrc.Tarball -Force }
     $llvmInstall = Join-Path $llvmDevRoot 'install'
-    Write-Host "Building minimal LLVM ($tvmLlvmTargets, Release, /MD) - ~20-40 min cold, sccache-cached after"
+    Write-Host "Building minimal LLVM ($($tvmLlvm.Targets), Release, /MD) - ~20-40 min cold, sccache-cached after"
     # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument position does not
     # concatenate -- the parser fed `+` to -Generator ("Could not create named generator +").
     $llvmCmakeArgs = @(
             # X86 for host codegen, NVPTX for the CUDA lane, AArch64 for #116; AMDGPU on the ROCm spike only.
-            "-DLLVM_TARGETS_TO_BUILD=$tvmLlvmTargets"
+            "-DLLVM_TARGETS_TO_BUILD=$($tvmLlvm.Targets)"
             # No xml2/zlib/zstd: nothing here needs them, and each is another /MD-vs-/MT import risk.
             '-DLLVM_ENABLE_LIBXML2=OFF', '-DLLVM_ENABLE_ZLIB=OFF', '-DLLVM_ENABLE_ZSTD=OFF'
             '-DLLVM_INCLUDE_TESTS=OFF', '-DLLVM_INCLUDE_BENCHMARKS=OFF'
@@ -266,10 +301,11 @@ $useLLVM = if ($tvmCross) { 'OFF' } else {
     # A PATH (forward slashes) is TVM's USE_LLVM form; plain ON needs llvm-config already on PATH.
     $llvmConfig -replace '\\', '/'
 }
-if ($tvmRocmPlan.Rocm) {
-    # A llvm-config found on PATH skips the minimal build above, so its target list is not ours to assume.
-    $targetsBuilt = (Invoke-ShieldedNative -Label 'llvm-config --targets-built' -CommandLine """$llvmConfig"" --targets-built" -Quiet) | Out-String
-    Assert-TvmLlvmHasAmdgpu -TargetsBuilt $targetsBuilt -LlvmConfig $llvmConfig
+if ($tvmRocmPlan.OnLane) {
+    # Read back, never assumed: the AMDGPU gate and the marker describe the LLVM TVM really links.
+    $tvmLlvmTargetsBuilt = ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $llvmConfig)
+    Write-Host "TVM rocm lane: $llvmConfig targets-built $tvmLlvmTargetsBuilt"
+    if ($tvmRocmPlan.Rocm) { Assert-TvmLlvmHasAmdgpu -TargetsBuilt $tvmLlvmTargetsBuilt -LlvmConfig $llvmConfig }
 }
 
 # Python OFF on the cross lane too: the tvm package drives tvm_compiler.dll, absent there.
@@ -573,7 +609,7 @@ print("tvm rocm-lane runtime gate OK:", sys.argv[2])
         [void](Invoke-ShieldedNative -Label 'TVM rocm-lane runtime gate' -CommandLine """$($py.Exe)"" ""$rocmGate"" ""$(Join-Path $tvmRocmPlan.RocmRoot 'bin')"" ""$gateKinds""")
         Remove-Item $rocmGate -Force -ErrorAction SilentlyContinue
     }
-    Set-Content -Path (Join-Path $tvmInstallDir 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan $tvmRocmPlan -LlvmTargets $tvmLlvmTargets)
+    Set-Content -Path (Join-Path $tvmInstallDir 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan $tvmRocmPlan -LlvmTargets $tvmLlvmTargetsBuilt)
 }
 if ($tvmRocmPlan.HideRocmPath -and $null -ne $savedRocmPath) { $env:ROCM_PATH = $savedRocmPath }
 

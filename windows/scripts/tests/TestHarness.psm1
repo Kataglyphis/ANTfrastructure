@@ -144,6 +144,14 @@ function Invoke-InTestDir {
     finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+# The smallest file Get-PeFileMachine accepts (MZ, e_lfanew, 'PE', machine), plus a tag so no two fixtures share bytes.
+function New-TestPeFile {
+    param([Parameter(Mandatory)][string]$Path, [uint16]$Machine = 0x8664, [string]$Tag = 'x')
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent)
+    [System.IO.File]::WriteAllBytes($Path, [byte[]](@(0x4D, 0x5A) + @(0) * 0x3A + @(0x40, 0, 0, 0, 0x50, 0x45, 0, 0) +
+            [BitConverter]::GetBytes($Machine) + [System.Text.Encoding]::ASCII.GetBytes($Tag)))
+}
+
 function Get-TestResult { return $script:Results }
 
 # One owner for "where is the repo root" (#126): the suites spelled the
@@ -206,4 +214,4 @@ function Get-ScriptFunctionDefinition {
 
 Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ScriptFunctionDefinition, `
     Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir, Invoke-InTestDir
+    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile

@@ -1024,6 +1024,26 @@ one gives a green TVM stage and then a throw in the `patched-llvm` stage, hours
 later. A bump also invalidates `windows/scripts/patches/llvm/*.patch`, which are
 written against 23.1.0's `AArch64InstrInfo.cpp`.
 
+ONNX Runtime bump note (2026-09-23): three things follow `ONNXRUNTIME_VERSION`.
+- `ORT_WEBGPU_WINDOWS_DAWN_VERSION` and its SHA256 (`bump:hold`) are the Dawn tag
+  ORT's own `cmake/deps.txt` names. Re-derive both from that `dawn` row; the rocm
+  onnx stage refuses a deps.txt that names another tag, so a forgotten pair fails
+  loudly, never silently.
+- `Build-OpencvFromSource.ps1` carries a second `1.30.0` default next to
+  `Build-OnnxFromSource.ps1`'s. An ORT bump changes both, and
+  `SourceBuild.PinParity` flags the one left behind.
+- Consumers built against the chain now need an ORT at least as new as the one
+  they compiled against: GenAI's Windows DLL refuses an older `onnxruntime.dll`.
+
+Vulkan and llama.cpp coupled pins (2026-09-23): `bump_versions.py` `spec_vulkan`
+refreshes `VULKAN_RT_WINDOWS_ZIP_SHA256` whenever `VULKAN_VERSION` moves (LunarG's
+published digest first, the SHA256 of the downloaded zip as the fallback), and a
+`VULKAN_VERSION` bump now also recompiles the rocm lane's FFmpeg against the new
+headers.
+`spec_llama_cpp_hip` picks the newest build that publishes both a win-rocm and a
+win-vulkan zip and refreshes `LLAMA_CPP_VULKAN_SHA256` with the rest.
+`ORT_WEBGPU_WINDOWS_DXC_*` is a report row (`spec_ort_webgpu_dxc`).
+
 Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
 `CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them
 re-runs scoop, never the hours-long VS Build Tools layer. Keep new version ARGs

@@ -42,8 +42,9 @@ _MUTATION_MANIFEST="${PRECOMMIT_MUTATION_MANIFEST:-docs/scripts/mutations.json}"
 # pre-commit hook, so --print-mutation-plan is a test entry point only.
 # docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 _mutation_plan() {
+  # A Windows python prints CRLF; a kept \r makes every id unknown to verify_mutations.py.
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
-  ${_PY} - "$1" "$2" "$3" <<'PY'
+  ${_PY} - "$1" "$2" "$3" <<'PY' | tr -d '\r'
 import json
 import sys
 

@@ -91,7 +91,131 @@ F
   _write "${d}/linux/Dockerfile.torch" <<'F'
 RUN chown -R kataglyphis:kataglyphis ${WORKDIR}
 F
+  _tree_ort_windows "${d}"
+  _tree_ort_linux "${d}"
   printf '%s' "${d}"
+}
+
+# _tree_ort_windows <root> -- fix11's Windows inputs, healthy: G2/G3/G1 wired, nothing fetched.
+_tree_ort_windows() {
+  local d="$1" s="$1/windows/scripts/build" f
+  _write "${d}/windows/Dockerfile" <<'F'
+# escape=`
+ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
+    ORT_PREFER_DYNAMIC_LINK=1 `
+    ORT_SKIP_DOWNLOAD=1 `
+    ORT_DYLIB_PATH=$ONNX_ROOT\bin\onnxruntime.dll
+F
+  _write "${d}/windows/Dockerfile.media-merge-builder" <<'F'
+# escape=`
+ENV ONNX_ROOT="C:\runtime\lib\onnxruntime-source" `
+    PYTHON_WHEELS="C:\runtime\wheels"
+RUN --mount=type=bind,source=windows/scripts/build/Build-GstreamerFromSource.ps1,target=C:\bkmnt\Build-GstreamerFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
+    & 'C:\bkmnt\Build-GstreamerFromSource.ps1'
+F
+  _write "${d}/windows/Dockerfile.media-builder" <<'F'
+# escape=`
+FROM base AS buildmods
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     C:\bkmods\
+RUN --mount=type=bind,source=windows/scripts/build/Build-OpencvFromSource.ps1,target=C:\bkmnt\Build-OpencvFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'OpenCV'
+F
+  _write "${s}/Build-OnnxFromSource.ps1" <<'F'
+    [string]$SourceDir = 'C:\temp\onnx-src',
+$ortInstallDir = "$InstallDir\lib\onnxruntime-source"
+F
+  _write "${s}/Build-OpencvFromSource.ps1" <<'F'
+    '-DWITH_ONNXRUNTIME=ON',
+    '-DHAVE_ONNXRUNTIME=ON'
+function Get-OpencvOrtConfigureFinding { param($Log) }
+$cfg = @(Get-OpencvOrtConfigureFinding -Log $log)
+Assert-ChainOrtOnly -Consumer 'opencv' -BuildDir $buildDir
+F
+  _write "${s}/Build-OnnxGenaiFromSource.ps1" <<'F'
+    "-DORT_HOME:PATH=$shim"
+$cfg = @(Get-GenaiOrtConfigureFinding -ConfigureLog $log)
+Assert-ChainOrtOnly -Consumer 'genai' -BuildDir $buildDir
+F
+  for f in Ffmpeg Gstreamer OrtAmdgpuEp; do
+    printf 'Assert-ChainOrtOnly -Consumer %s\n' "${f}" | _write "${s}/Build-${f}FromSource.ps1"
+  done
+  printf '%s\n' "Import-Module 'WindowsSourceBuild.Common.psm1'" | _write "${s}/Build-MediaCoreAll.ps1"
+  _write "${s}/Test-Container.ps1" <<'F'
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsOrtProvenance.Common.psm1') -Force
+$ortCensus = @(Invoke-OrtImageCensus -Root 'C:\')
+$ortCrateFindings = @(Get-OrtCrateEnvFinding -OnnxRoot $env:ONNX_ROOT)
+F
+  printf '%s\n' "Import-Module 'WindowsScripts.Shared.psm1'" | _write "${d}/windows/scripts/modules/WindowsSourceBuild.Common.psm1"
+  _write "${d}/windows/scripts/modules/WindowsOrtProvenance.Common.psm1" <<'F'
+function Get-OrtChainSourceRoot { return @('C:\temp\onnx-src') }
+$inboxFile = @(foreach ($d in 'System32', 'SysWOW64') { "$winDir\$d\onnxruntime.dll"; "$winDir\$d\Windows.AI.MachineLearning.dll" })
+F
+  _write "${d}/windows/scripts/modules/WindowsOrtProvenance.Build.psm1" <<'F'
+function Assert-ChainOrtOnly { param($Consumer, $TreeRoot) }
+F
+  _write "${d}/windows/scripts/modules/WindowsOnnx.Common.psm1" <<'F'
+$script:OrtNuGetIdPattern = '(?i)onnxruntime|^Microsoft\.(Windows\.)?AI\.MachineLearning(\.|$)'
+function Install-OptionalNuGetPackage {
+    param([string]$PackageId)
+    if ($PackageId -match $script:OrtNuGetIdPattern) {
+        throw "$PackageId is an ONNX Runtime package and is refused"
+    }
+    nuget install $PackageId
+}
+Export-ModuleMember -Function @('Install-OptionalNuGetPackage')
+F
+}
+
+# _tree_ort_linux <root> -- fix11's Linux inputs, healthy, plus the G5 invariant heading.
+_tree_ort_linux() {
+  local d="$1" m="$1/linux/scripts/03-media" r
+  _write "${d}/linux/Dockerfile.package" <<'F'
+ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
+ENV ORT_LIB_LOCATION=${ONNXRUNTIME_OUTPUT_DIR}/lib
+ENV ORT_PREFER_DYNAMIC_LINK=1
+ENV ORT_SKIP_DOWNLOAD=1
+ENV ORT_DYLIB_PATH=${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so
+F
+  for r in build/opencv/build-opencv.sh build/ffmpeg/build-ffmpeg.sh build/gstreamer/common/build-gstreamer-stage.sh \
+           "verify-genai-ort.sh --src-dir /opt/onnxruntime-genai"; do
+    printf 'RUN --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \\\n    bash /opt/scripts/03-media/%s\n' "${r}"
+  done | _write "${d}/linux/Dockerfile.media"
+  printf 'ORT_CHAIN_SOURCE_ROOTS=(/opt/onnxruntime)\nort_assert_chain_only() { :; }\n' | _write "${m}/ort-provenance.sh"
+  printf '  ort_assert_chain_only genai --stamp "${out}/ort-provenance/genai.json" --tree "${src}" "${g2[@]}"\n' \
+    | _write "${m}/verify-genai-ort.sh"
+  printf '        "-DWITH_ONNXRUNTIME=ON"\n        "-DHAVE_ONNXRUNTIME=1"\n        "-DDOWNLOAD_ONNXRUNTIME=OFF"\n' \
+    | _write "${m}/build/opencv/opencv-ort.sh"
+  _write "${m}/build/opencv/build-opencv.sh" <<'F'
+opencv_ort_assert_configure "${build_dir}" "${compat}" "${ver}" || die "configure gate"
+ort_assert_chain_only opencv "${build_dir}"
+opencv_ort_assert_installed "${OPENCV_PREFIX}" || die "install gate"
+F
+  printf 'ort_assert_chain_only ffmpeg "${build_dir}"\n    ort_findings="$(ffmpeg_ort_link_findings ffbuild/config.mak "${_FFMPEG_ONNX_ROOT:-}")"\n' \
+    | _write "${m}/build/ffmpeg/build-ffmpeg.sh"
+  printf 'ffmpeg_ort_link_findings() {\n  :\n}\n' | _write "${m}/build/ffmpeg/ffmpeg-dnn-backends.sh"
+  printf '  findings="$(gst_onnx_ort_findings builddir/build.ninja)"\nort_assert_chain_only gstreamer builddir\n' \
+    | _write "${m}/build/gstreamer/common/build-gstreamer-monorepo.sh"
+  _write "${m}/build/onnxruntime/build/60-build-genai.sh" <<'F'
+  retry 3 10 "GenAI GPU build" "${HOST_PYTHON}" build.py \
+    --ort_home "${ORT_HOME}" \
+  retry 3 10 "GenAI CPU build" "${HOST_PYTHON}" build.py \
+    --ort_home "${ORT_HOME}"
+F
+  printf '  ORT_SRC_DIR="${ORT_SRC_DIR:-/opt/onnxruntime}"\n' | _write "${m}/build/onnxruntime/build/lib/common.sh"
+  _write "${m}/runtime/validate-media-runtime.sh" <<'F'
+  ort_is_denied_soname "${so_name}" && return 2
+  ort_apt_plan_gate "${UNIQ_PKGS[@]}" || exit 1
+ort_dpkg_gate || exit 1
+F
+  printf 'libonnxruntime.so*\tsource-built\nlibtvm.so.*\tsource-built\n' | _write "${m}/runtime/so-package-map.txt"
+  printf 'ort_census_verdicts "$@"\n' | _write "${d}/linux/scripts/06-packaging/check-ort-provenance.sh"
+  printf '_CONSUMER_CONTRACT_ROWS="ccache-dir web-lane-tools ort-crate-env"\n    check_ort_census "${image_tag}" "${target_arch}"\n' \
+    | _write "${d}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+  printf '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)\n' | _write "${d}/docs/windows-build-invariants.md"
+  printf 'env:\n  ORT_SKIP_DOWNLOAD: "1"\n' | _write "${d}/.github/workflows/ci.yml"
 }
 
 _gate() { bash "$1/linux/scripts/verify-critical-fixes.sh"; }
@@ -165,6 +289,149 @@ fix10 — the PR100017 c++23 -nostdinc++ patch, its loud die and its self-retiri
 fix10 — the PR100017 c++23 -nostdinc++ patch, its loud die and its self-retiring guard	linux/scripts/02-toolchain/build-gcc.sh	s|AM_CXXFLAGS layout changed|patch failed|	lost its loud-failure die
 fix10 — the PR100017 c++23 -nostdinc++ patch, its loud die and its self-retiring guard	linux/scripts/02-toolchain/build-gcc.sh	s|if ! grep -q -- '-nostdinc++' src/c++23/Makefile.in; then|if true; then|	lost its idempotence gate
 ROWS
+
+# fix11's rows run the gate ONCE each: its fixture is large and fix11 spawns more than the rest.
+_red_once() {
+  local d out rc=0
+  d="$(_tree)"
+  sed -i -e "$2" "${d}/$1"
+  out="$(_gate "${d}" 2>&1)" || rc=$?
+  t_assert_eq "1" "${rc}" "knocking out $1 must fail the gate"
+  t_assert_contains "$(printf '%s\n' "${out}" | grep -e 'FAIL' || true)" "$3" "wrong finding for $1 / $2"
+}
+
+t_case "fix11 — ORT has one source: the denylist, the G1/G2/G3 wiring, the census roots, the invariant"
+while IFS="$(printf '\t')" read -r _f _e _m; do
+  [ -n "${_f}" ] || continue
+  _red_once "${_f}" "${_e}" "${_m}"
+done <<'ROWS11'
+linux/scripts/03-media/build/opencv/opencv-ort.sh	/HAVE_ONNXRUNTIME=1/d	pre-sets HAVE_ONNXRUNTIME
+linux/scripts/03-media/build/opencv/opencv-ort.sh	s|DOWNLOAD_ONNXRUNTIME=OFF|DOWNLOAD_ONNXRUNTIME=ON|	no OpenCV DOWNLOAD_ONNXRUNTIME
+linux/scripts/03-media/build/opencv/build-opencv.sh	1i cmake_opts+=("-DWITH_ONNXRUNTIME=OFF")	never falls back to building WITHOUT
+windows/scripts/build/Build-OpencvFromSource.ps1	1i $env:ORT_LIB_LOCATION = 'C:\onnxruntime\lib'	set only by the two final images
+windows/scripts/build/Build-OpencvFromSource.ps1	1i & uv pip install onnxruntime-directml==1.24.4	no pip/uv install of an onnxruntime
+windows/scripts/build/Build-OnnxGenaiFromSource.ps1	/-DORT_HOME/d	Windows GenAI configures against ORT_HOME
+windows/scripts/build/Build-OnnxGenaiFromSource.ps1	1i "-DUSE_WINML=ON"	never turns on USE_WINML
+linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh	0,/--ort_home/{/--ort_home/d}	build.py call(s) but 1 --ort_home
+windows/scripts/build/Build-FfmpegFromSource.ps1	1i Install-OptionalNuGetPackage -PackageId 'Microsoft.ML.OnnxRuntime.DirectML' -Version 1.24.4	no Microsoft.ML.OnnxRuntime
+windows/scripts/modules/WindowsOnnx.Common.psm1	/throw/d	lost the ORT refusal
+windows/scripts/build/Build-OpencvFromSource.ps1	$a Copy-Item "$env:ONNX_ROOT\\bin\\onnxruntime.dll" "$env:windir\\System32\\" -Force	nothing deletes or patches an in-box ORT
+windows/Dockerfile	$a RUN icacls C:/Windows/System32/Windows.AI.MachineLearning.dll /grant Administrators:F	nothing deletes or patches an in-box ORT
+linux/scripts/01-core/versions.env	$a X_URL=https://files.pythonhosted.org/packages/d7/a4/onnxruntime_ep_webgpu-0.4.0-py3-none-win_amd64.whl	no ORT binary URL
+linux/scripts/01-core/versions.env	$a ORT_LIB_PATH=/root/.cache/ort.pyke.io	nothing re-arms the ort crate download
+linux/scripts/01-core/versions.env	$a CARGO_NET_OFFLINE=false	nothing re-arms the ort crate download
+linux/scripts/03-media/runtime/install-deps.sh	$a apt-get install -y libonnxruntime1.23	no apt libonnxruntime
+linux/scripts/03-media/runtime/install-deps.sh	s|^  libjpeg-dev$|apt-get install -y --no-install-recommends \\\n  libjpeg-dev \\\n  libonnxruntime-dev \\\n  libpng-dev|	no apt libonnxruntime
+linux/scripts/03-media/runtime/install-deps.sh	s|^  libjpeg-dev$|  libjpeg-dev python3-onnxruntime\\|	no apt libonnxruntime
+linux/scripts/03-media/runtime/install-deps.sh	$a PKGS+=(libonnxruntime1.23)	no apt libonnxruntime
+linux/scripts/01-core/versions.env	$a ORT_SKIP_DOWNLOAD=yes	nothing re-arms the ort crate download
+linux/scripts/01-core/versions.env	$a CARGO_NET_OFFLINE=	nothing re-arms the ort crate download
+.github/workflows/ci.yml	s|"1"|"on"|	nothing re-arms the ort crate download
+.github/workflows/ci.yml	$a \  ORT_LIB_PATH: /opt/pyke	nothing re-arms the ort crate download
+.github/workflows/ci.yml	$a \  ORT_DYLIB_PATH: /opt/pyke/libonnxruntime.so	set only by the two final images
+linux/Dockerfile.package	$a ENV ORT_LIB_PATH /root/.cache/ort.pyke.io	nothing re-arms the ort crate download
+windows/scripts/build/Build-OpencvFromSource.ps1	$a [Environment]::SetEnvironmentVariable('ORT_LIB_PATH', 'C:/pyke', 'Machine')	nothing re-arms the ort crate download
+linux/scripts/03-media/runtime/so-package-map.txt	1s|source-built|libonnxruntime1.23|	so-package-map.txt denies libonnxruntime.so
+linux/scripts/03-media/runtime/so-package-map.txt	/^libonnxruntime/d	no libonnxruntime.so* -> source-built deny row
+linux/scripts/03-media/runtime/so-package-map.txt	$a libonnxruntime_providers.so\tlibonnxruntime-providers1.23	maps libonnxruntime_providers.so to libonnxruntime-providers1.23
+linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh	$a if ffmpeg_probe_pkg_config_feature "libonnxruntime" "libonnxruntime"; then return 0; fi	no vendor libonnxruntime.pc fallback
+windows/Dockerfile	/ORT_SKIP_DOWNLOAD=1/d	windows/Dockerfile sets ORT_SKIP_DOWNLOAD=1
+windows/Dockerfile	s|\$ONNX_ROOT\\lib|C:\\onnxruntime\\lib|	windows/Dockerfile sets ORT_LIB_LOCATION to the chain lib dir
+windows/Dockerfile.media-merge-builder	s|onnxruntime-source|onnxruntime|	ONNX_ROOT is the chain install
+linux/Dockerfile.package	/ORT_DYLIB_PATH/d	sets ORT_DYLIB_PATH to the chain library
+linux/Dockerfile.package	s|ORT_PREFER_DYNAMIC_LINK=1|ORT_PREFER_DYNAMIC_LINK=0|	sets ORT_PREFER_DYNAMIC_LINK=1
+windows/scripts/build/Test-Container.ps1	/Get-OrtCrateEnvFinding/d	the Windows smoke asserts the ort crate env
+linux/scripts/06-packaging/smoke-runtime-image.sh	s| ort-crate-env||	the Linux consumer contract asserts the ort crate env
+windows/scripts/build/Build-OpencvFromSource.ps1	/Assert-ChainOrtOnly/d	Build-OpencvFromSource.ps1 calls Assert-ChainOrtOnly exactly once
+windows/scripts/build/Build-OnnxGenaiFromSource.ps1	/Assert-ChainOrtOnly/d	Build-OnnxGenaiFromSource.ps1 calls Assert-ChainOrtOnly exactly once
+windows/scripts/build/Build-FfmpegFromSource.ps1	$a Assert-ChainOrtOnly -Consumer ffmpeg	Build-FfmpegFromSource.ps1 calls Assert-ChainOrtOnly exactly once
+windows/scripts/build/Build-OpencvFromSource.ps1	/Get-OpencvOrtConfigureFinding -Log/d	calls Get-OpencvOrtConfigureFinding exactly once
+linux/scripts/03-media/build/opencv/build-opencv.sh	/ort_assert_chain_only/d	build-opencv.sh calls ort_assert_chain_only exactly once
+linux/scripts/03-media/verify-genai-ort.sh	/ort_assert_chain_only/d	verify-genai-ort.sh calls ort_assert_chain_only exactly once
+linux/scripts/03-media/build/opencv/build-opencv.sh	/opencv_ort_assert_configure/d	calls opencv_ort_assert_configure exactly once
+linux/scripts/03-media/runtime/validate-media-runtime.sh	/ort_dpkg_gate/d	calls ort_dpkg_gate exactly once
+windows/Dockerfile.media-builder	/WindowsOrtProvenance/d	every consumer RUN mounts its G2 helper
+windows/Dockerfile.media-builder	$a COPY windows/scripts/modules/WindowsOrtProvenance.Build.psm1 C:/bkmods/	only as per-file bind mounts
+windows/scripts/modules/WindowsSourceBuild.Common.psm1	$a Import-Module (Join-Path $PSScriptRoot 'WindowsOrtProvenance.Build.psm1')	is not pulled in by WindowsSourceBuild.Common
+linux/Dockerfile.media	1s|03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh|03-media/core/common.sh,target=/opt/scripts/03-media/core/common.sh|	every consumer RUN mounts its G2 helper
+linux/Dockerfile.media	$a COPY linux/scripts/03-media/ort-provenance.sh /opt/scripts/03-media/ort-provenance.sh	only as per-file bind mounts
+windows/scripts/build/Test-Container.ps1	/Invoke-OrtImageCensus/d	the Windows smoke runs the ORT census (G1)
+linux/scripts/06-packaging/smoke-runtime-image.sh	/check_ort_census/d	G1 unwired
+docs/windows-build-invariants.md	s|^### |## |	lost '### ONNX Runtime has exactly one source
+windows/scripts/build/Build-OnnxFromSource.ps1	s|onnx-src|ort-src|	SourceDir ('C:\temp\ort-src') is not the root
+linux/scripts/03-media/build/onnxruntime/build/lib/common.sh	s|/opt/onnxruntime|/opt/ort|	ORT_SRC_DIR ('/opt/ort') is not the root
+ROWS11
+
+t_case "fix11 — an ort dependency with its default features is pyke's download, in every Cargo shape (mutation)"
+_fix="$(_tree)"
+printf '[dependencies]\nort = "=2.0.0-rc.13"\n' | _write "${_fix}/linux/scripts/x/Cargo.toml"
+t_assert_eq "1" "$(t_rc _gate "${_fix}")" "the gate runs the Cargo rule: ort's default features carry download-binaries"
+_cargo_verdict="$(t_fn_src "${GATE}" _f11_verdict)" || exit 1
+_cargo_rule="$(t_fn_src "${GATE}" fix11_ort_cargo)" || exit 1
+# _cargo <toml, \n-escaped>: the Cargo rule's one verdict line over a tree holding just that Cargo.toml.
+_cargo() {
+  local d
+  d="$(mktemp -d "${_work}/cargo.XXXXXX")"
+  printf '%b' "$1" | _write "${d}/x/Cargo.toml"
+  REPO_ROOT="${d}" bash -c 'pass() { echo "PASS $*"; }; fail() { echo "FAIL $*"; }'$'\n'"${_cargo_verdict}"$'\n'"${_cargo_rule}"$'\n''fix11_ort_cargo' 2>&1
+}
+while IFS="$(printf '\t')" read -r _want _toml; do
+  [ -n "${_want}" ] || continue
+  t_assert_contains "$(_cargo "${_toml}")" "${_want} fix11: no Cargo.toml" "${_toml}"
+done <<'CARGO'
+PASS	[dependencies]\nort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }\n
+FAIL	[dependencies]\nort-sys = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }\n
+FAIL	[dependencies.ort]\nversion = "=2.0.0-rc.13"\n
+FAIL	[dependencies.ort] # a later table ends it\nversion = "=2.0.0-rc.13"\n[dependencies]\nserde = "1"\n
+PASS	[dependencies.ort]\nversion = "=2.0.0-rc.13"\ndefault-features = false\n
+FAIL	[target.'cfg(windows)'.dependencies.onnx]\npackage = "ort"\nversion = "=2.0.0-rc.13"\n
+PASS	[target.'cfg(windows)'.dependencies.onnx]\npackage = "ort"\ndefault_features = false\n
+FAIL	[dependencies]\nonnx = { version = "=2.0.0-rc.13", package = "ort" }\n
+PASS	[dependencies]\nonnx = { package = "ort-sys", default-features = false }\n
+FAIL	[workspace.dependencies]\n"ort" = "=2.0.0-rc.13"\n
+FAIL	[dependencies]\nort.version = "=2.0.0-rc.13"\n
+PASS	[dependencies]\nort.version = "=2.0.0-rc.13"\nort.default-features = false\n
+FAIL	[dev-dependencies]\nonnx.package = "ort-sys"\nonnx.version = "=2.0.0-rc.13"\n
+PASS	[dev-dependencies]\nonnx.package = "ort-sys"\nonnx.default-features = false\n
+PASS	[features]\nort = ["dep:ort"]\n[dependencies]\nort = { version = "=2.0.0-rc.13", optional = true, default-features = false }\n
+CARGO
+
+t_case "fix11 — every way to SET an ort-sys variable is read, and a READ is not a write (mutation)"
+_envw="$(t_fn_src "${GATE}" _f11_env_writes)" || exit 1
+while IFS="$(printf '\t')" read -r _line _want; do
+  [ -n "${_line}" ] || continue
+  printf '%s\n' "${_line}" > "${_work}/corpus"
+  t_assert_eq "${_want#-}" "$(bash -c "${_envw}"$'\n''_f11_env_writes "$1"' _ "${_work}/corpus" 2>&1)" "${_line}"
+done <<'WRITES'
+.github/workflows/ci.yml:3:  ORT_LIB_PATH: /opt/pyke	.github/workflows/ci.yml:3: ort_lib_path=/opt/pyke
+.github/workflows/ci.yml:4:  CARGO_NET_OFFLINE:	.github/workflows/ci.yml:4: cargo_net_offline=
+l/x.py:1:run(env={"PATH": p, "ORT_OFFLINE": "0"})	l/x.py:1: ort_offline=0
+l/x.py:2:os.environ["CARGO_NET_OFFLINE"] = "false"	l/x.py:2: cargo_net_offline=false
+linux/Dockerfile.package:9:ENV ORT_LIB_PATH /root/.cache/ort.pyke.io	linux/Dockerfile.package:9: ort_lib_path=/root/.cache/ort.pyke.io
+linux/Dockerfile.media:9:ARG ORT_LIB_LOCATION	linux/Dockerfile.media:9: ort_lib_location=
+windows/Dockerfile:42:    ORT_SKIP_DOWNLOAD=1 `	windows/Dockerfile:42: ort_skip_download=1
+w/B.ps1:1:[Environment]::SetEnvironmentVariable('ORT_LIB_PATH', 'C:/pyke', 'Machine')	w/B.ps1:1: ort_lib_path=c:/pyke
+w/B.ps1:2:${env:ORT_STRATEGY} = 'download'	w/B.ps1:2: ort_strategy=download
+w/B.ps1:3:Set-Item -Path Env:ORT_LIB_PATH -Value C:/pyke	w/B.ps1:3: ort_lib_path=c:/pyke
+w/B.ps1:4:setx /M ORT_SKIP_DOWNLOAD 0	w/B.ps1:4: ort_skip_download=0
+l/x.sh:1:ORT_SKIP_DOWNLOAD=Yes cargo build	l/x.sh:1: ort_skip_download=yes
+w/T.ps1:1:    if ($v['ORT_LIB_PATH']) { "ORT_LIB_PATH is set" }	-
+w/T.ps1:2:    foreach ($n in 'ORT_LIB_LOCATION', 'ORT_LIB_PATH') {	-
+w/T.ps1:3:New-Item -ItemType Directory -Path $env:ORT_LIB_LOCATION	-
+l/s.sh:1:printf '%s' "${ORT_LIB_PATH-<unset>}" "${ORT_DYLIB_PATH:-}"	-
+l/s.sh:2:[[ "${CARGO_NET_OFFLINE}" == 1 ]] || [ $ORT_SKIP_DOWNLOAD == 1 ]	-
+l/s.yml:1:  run: echo "ORT_LIB_PATH: ${ORT_LIB_PATH}"	-
+WRITES
+
+t_case "fix11 — the healthy fixture passes every fix11 check it has, and no G2 row is vacuous"
+_out="$(t_out _gate "$(_tree)")"
+t_assert_contains "${_out}" "PASS fix11: every consumer RUN mounts its G2 helper"
+t_assert_contains "${_out}" "PASS fix11: Build-OrtAmdgpuEpFromSource.ps1 calls Assert-ChainOrtOnly exactly once"
+t_assert_contains "${_out}" "PASS fix11: the Linux census fingerprints the ORT source root /opt/onnxruntime"
+t_assert_contains "${_out}" "PASS fix11: nothing re-arms the ort crate download" "a 1 in ci.yml and both images is not a re-arm"
+t_assert_contains "${_out}" "PASS fix11: no Cargo.toml here enables" "the Cargo rule is wired"
+t_assert_contains "${_out}" "PASS fix11: nothing deletes or patches an in-box ORT" "the census READING System32's ORT is not a patch"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e 'FAIL fix11' || true)" "no fix11 check is red on the healthy tree"
 
 # ── the in-image half ───────────────────────────────────────────────────────
 # CF_SMOKE_ROOT is what makes these provable off-target: the probes read a

@@ -142,6 +142,169 @@ function Get-ExpectedVersion {
     return Resolve-ContainerImageValue -EnvironmentVariable $Key -DefaultValue $default -TrimVPrefix
 }
 
+# §21 probe, run by the app venv's python: its onnxruntime/GenAI facts, plus every .pyd/.dll of the
+# chain wheel (argv[1]) hashed in the wheel and where the venv imports it. One JSON line, never raises.
+function Get-TorchAppOrtProbeSource {
+    return @'
+import hashlib, importlib.metadata as md, json, os, re, sys, zipfile
+def sha256(stream):
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1 << 20), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+try:
+    dist = md.version("onnxruntime")
+except md.PackageNotFoundError:
+    dist = ""
+report = {"dist": dist, "binaries": []}
+try:
+    owners = md.packages_distributions().get("onnxruntime", [])
+    report["owners"] = sorted({re.sub(r"[-_.]+", "-", o).lower() for o in owners if o})
+except Exception as exc:
+    report["owners"] = ["unreadable (%s: %s)" % (type(exc).__name__, exc)]
+try:
+    import onnxruntime
+    report["providers"] = list(onnxruntime.get_available_providers())
+    report["package"] = os.path.dirname(os.path.abspath(onnxruntime.__file__))
+except Exception as exc:
+    report["error"] = "%s: %s" % (type(exc).__name__, exc)
+try:
+    import onnxruntime_genai
+    report["genaiDml"] = bool(onnxruntime_genai.is_dml_available())
+except Exception as exc:
+    report["genaiError"] = "%s: %s" % (type(exc).__name__, exc)
+if len(sys.argv) > 1 and "package" in report:
+    root = os.path.dirname(report["package"])
+    try:
+        with zipfile.ZipFile(sys.argv[1]) as wheel:
+            for name in wheel.namelist():
+                if name.startswith("onnxruntime/") and name.lower().endswith((".pyd", ".dll")):
+                    path = os.path.join(root, *name.split("/"))
+                    installed = ""
+                    if os.path.isfile(path):
+                        with open(path, "rb") as f:
+                            installed = sha256(f)
+                    with wheel.open(name) as f:
+                        report["binaries"].append({"name": name, "wheel": sha256(f), "installed": installed})
+    except Exception as exc:
+        report["wheelError"] = "%s: %s" % (type(exc).__name__, exc)
+print(json.dumps(report))
+'@
+}
+
+# The one chain ORT wheel Build-TorchApp.ps1 force-installs into the venv: its PEP 503 name and version
+# from the file name, or a Problem. onnxruntime_genai-*.whl does not match the filter.
+function Resolve-ChainOrtWheel {
+    param([AllowEmptyString()][string]$WheelDir)
+    $found = @()
+    if ($WheelDir -and (Test-Path -LiteralPath $WheelDir -PathType Container)) {
+        $found = @(Get-ChildItem -LiteralPath $WheelDir -Filter 'onnxruntime-*.whl' -File -ErrorAction SilentlyContinue)
+    }
+    $wheel = [pscustomobject]@{ Path = ''; Name = ''; Version = ''; Problem = '' }
+    if ($found.Count -ne 1) {
+        $wheel.Problem = "$($found.Count) onnxruntime-*.whl in '$WheelDir', expected exactly 1"
+    } elseif ($found[0].Name -notmatch '^(?<name>[^-]+)-(?<version>[^-]+)-') {
+        $wheel.Problem = "cannot read name and version from $($found[0].Name)"
+    } else {
+        $wheel.Path = $found[0].FullName
+        $wheel.Name = ($Matches['name'] -replace '[-_.]+', '-').ToLowerInvariant()
+        $wheel.Version = $Matches['version']
+    }
+    return $wheel
+}
+
+# Findings for the probe report (ConvertFrom-Json -AsHashtable); empty = pass. No lane input on purpose:
+# USE_DML=ON is unconditional in ORT and GenAI, so every amd64 lane must pass both aspects.
+function Get-TorchAppOrtFinding {
+    param(
+        [AllowNull()][hashtable]$Report,
+        [Parameter(Mandatory)][ValidateSet('Dml', 'Provenance')][string]$Aspect,
+        [AllowNull()][pscustomobject]$Wheel,
+        [AllowEmptyString()][string]$VenvSitePackages = '',
+        [AllowEmptyString()][string]$ProbeError = ''
+    )
+    if ($ProbeError) { return "the venv probe failed: $ProbeError" }
+    if ($null -eq $Report) { return 'the venv probe printed no report' }
+    if ($Report['error']) { return "import onnxruntime failed in the venv: $($Report['error'])" }
+    if ($Aspect -eq 'Dml') {
+        $providers = @($Report['providers'])
+        if ($providers -notcontains 'DmlExecutionProvider') {
+            "the venv's onnxruntime lacks DmlExecutionProvider (providers: $($providers -join ', ')) - not the chain wheel"
+        }
+        if ($Report['genaiError']) { "import onnxruntime_genai failed in the venv: $($Report['genaiError'])" }
+        elseif ($Report['genaiDml'] -ne $true) { "the venv's onnxruntime_genai.is_dml_available() is not True - a no-DML GenAI shadows the chain wheel" }
+        return
+    }
+    if ($null -eq $Wheel -or $Wheel.Problem) { return "no chain wheel to compare against: $(if ($Wheel) { $Wheel.Problem } else { 'none resolved' })" }
+    if ($Report['wheelError']) { return "cannot read the chain wheel $($Wheel.Path): $($Report['wheelError'])" }
+    $owners = @($Report['owners'])
+    if (($owners -join ', ') -ne $Wheel.Name) {
+        "the onnxruntime import package belongs to [$($owners -join ', ')], expected only $($Wheel.Name) - a PyPI variant is installed over the chain wheel"
+    }
+    if ("$($Report['dist'])" -ne $Wheel.Version) { "dist onnxruntime is '$($Report['dist'])', the chain wheel is $($Wheel.Version)" }
+    $site = "$VenvSitePackages".Replace('/', '\').TrimEnd('\')
+    $parent = (Split-Path "$($Report['package'])".Replace('/', '\') -Parent)
+    if (-not $site -or $parent -ne $site) { "onnxruntime imports from '$($Report['package'])', not from the venv's '$VenvSitePackages'" }
+    $binaries = @($Report['binaries'])
+    if (-not @($binaries | Where-Object { "$($_['name'])".EndsWith('.pyd') })) { 'no onnxruntime/*.pyd was compared - the chain wheel has no extension module?' }
+    foreach ($b in $binaries) {
+        if (-not $b['installed']) { "$($b['name']) is missing from the venv" }
+        elseif ($b['installed'] -ne $b['wheel']) { "$($b['name']) in the venv differs from the chain wheel's copy" }
+    }
+}
+
+# Runs the probe with the venv interpreter (-I: no PYTHONPATH, no script dir on sys.path); throws
+# without a report.
+function Invoke-TorchAppOrtProbe {
+    param([Parameter(Mandatory)][string]$Python, [AllowEmptyString()][string]$WheelPath = '')
+    if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw "venv python missing at $Python" }
+    $probe = Join-Path ([System.IO.Path]::GetTempPath()) "smoke-venv-ort-$([guid]::NewGuid().ToString('N')).py"
+    try {
+        [System.IO.File]::WriteAllText($probe, (Get-TorchAppOrtProbeSource))
+        $probeArgs = @('-I', $probe) + @(@($WheelPath) | Where-Object { $_ })
+        $lines = @(& $Python @probeArgs 2>&1 | ForEach-Object { "$_" })
+        $rc = $LASTEXITCODE
+    } finally {
+        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+    }
+    $json = $lines | Where-Object { $_.StartsWith('{') } | Select-Object -Last 1
+    if ($rc -ne 0 -or -not $json) { throw "exit $rc without a report: $(($lines | Select-Object -Last 3) -join ' | ')" }
+    return ($json | ConvertFrom-Json -AsHashtable)
+}
+
+# §19: the ort-sys/ort crate env windows/Dockerfile bakes must name the chain ORT under ONNX_ROOT.
+# Findings; empty = pass. -Environment defaults to this process's env (tests pass a hashtable).
+function Get-OrtCrateEnvFinding {
+    param([AllowEmptyString()][string]$OnnxRoot, [AllowNull()][hashtable]$Environment = $null)
+    if ([string]::IsNullOrWhiteSpace($OnnxRoot)) { return 'ONNX_ROOT is unset, so nothing names the chain ORT' }
+    $v = @{}
+    $set = @{}
+    # Untrimmed and set-vs-null kept apart: ort-sys compares exactly and reads a set-but-empty variable.
+    foreach ($n in 'ORT_LIB_LOCATION', 'ORT_LIB_PATH', 'ORT_DYLIB_PATH', 'ORT_PREFER_DYNAMIC_LINK', 'ORT_SKIP_DOWNLOAD', 'CARGO_NET_OFFLINE') {
+        $raw = if ($null -ne $Environment) { $Environment[$n] } else { [Environment]::GetEnvironmentVariable($n) }
+        $set[$n] = $null -ne $raw
+        $v[$n] = "$raw"
+    }
+    $lib = Join-Path $OnnxRoot.TrimEnd('\') 'lib'
+    $dll = Join-Path $OnnxRoot.TrimEnd('\') 'bin\onnxruntime.dll'
+    if ($v['ORT_LIB_LOCATION'].TrimEnd('\') -ne $lib) {
+        "ORT_LIB_LOCATION is '$($v['ORT_LIB_LOCATION'])', not the chain's $lib - without it ort-sys downloads pyke's ORT"
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $lib 'onnxruntime.lib') -PathType Leaf)) {
+        "$lib has no onnxruntime.lib for ort-sys to link"
+    }
+    if ($v['ORT_DYLIB_PATH'] -ne $dll) {
+        "ORT_DYLIB_PATH is '$($v['ORT_DYLIB_PATH'])', not $dll - load-dynamic then loads a bare onnxruntime.dll, and System32's wins"
+    } elseif (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+        "$dll does not exist"
+    }
+    if ($v['ORT_PREFER_DYNAMIC_LINK'] -notin '1', 'true') { "ORT_PREFER_DYNAMIC_LINK is '$($v['ORT_PREFER_DYNAMIC_LINK'])' - ort-sys would try a static ORT the chain does not ship" }
+    if ($v['ORT_SKIP_DOWNLOAD'] -notin '1', 'true') { "ORT_SKIP_DOWNLOAD is '$($v['ORT_SKIP_DOWNLOAD'])' - an unset location would fetch from pyke's CDN instead of failing" }
+    if ($set['ORT_LIB_PATH']) { "ORT_LIB_PATH is set ('$($v['ORT_LIB_PATH'])') and ort-sys reads it BEFORE ORT_LIB_LOCATION" }
+    if ($set['CARGO_NET_OFFLINE'] -and $v['CARGO_NET_OFFLINE'] -notin '1', 'true') {
+        "CARGO_NET_OFFLINE is '$($v['CARGO_NET_OFFLINE'])' - ort-sys reads it before ORT_SKIP_DOWNLOAD, so it re-enables the download"
+    }
+}
+
 # ============================================================================
 Write-TestHeader '1. Build Tools'
 # ============================================================================
@@ -1228,6 +1391,10 @@ Assert-Test -Name 'C:\runtime\cuda-runtime\bin is on PATH' -Condition {
 if ($script:gpuNvidia) {
     Assert-FileExists -Path 'C:\runtime\cuda-runtime\bin\cudnn64_9.dll' -Description 'staged cuDNN runtime (ORT CUDA EP dlopens it)'
 }
+# Every lane (static; the arm64 bundle's chain ORT is what an aarch64 Rust target must link).
+$ortCrateFindings = @(Get-OrtCrateEnvFinding -OnnxRoot $env:ONNX_ROOT)
+Assert-Test -Name 'ort crate env names the chain ORT (ORT_LIB_LOCATION, ORT_DYLIB_PATH, dynamic link, no download)' `
+    -Condition { $ortCrateFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortCrateFindings -join '; ')
 
 # flutter is installed --global, so scoop creates C:\ProgramData\scoop\shims -- which was on NO
 # PATH entry between 2026-07-14 and 2026-08-08. Skip, don't fail, on images from that window.
@@ -1457,10 +1624,28 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
 }
 if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
-    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
-        $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'torch-app-env OK')
-    } -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken or local wheels lost)"
+    # The verify re-runs Build-TorchApp's ORT census (every ORT dist a chain wheel); its FAIL lines are the message.
+    $torchAppVerify = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
+    $torchAppVerifyOk = ($LASTEXITCODE -eq 0) -and ($torchAppVerify -match 'torch-app-env OK') -and ($torchAppVerify -match '(?m)^ORT-CENSUS PASS')
+    $torchAppCensusFails = @([regex]::Matches($torchAppVerify, '(?m)^ORT-CENSUS FAIL (.+?)\r?$') | ForEach-Object { $_.Groups[1].Value })
+    Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree, chain-only ORT)" `
+        -Condition { $torchAppVerifyOk }.GetNewClosure() `
+        -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppCensusFails) { ': ' + ($torchAppCensusFails -join '; ') })"
+    # Every amd64 lane, no device. PyPI's onnxruntime has no DML EP but ships 1.30.0 too, so only
+    # the bytes prove the venv got the chain wheel. The verify above asserts CUDA alone.
+    $ortWheel = Resolve-ChainOrtWheel -WheelDir $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
+    $ortReport = $null
+    $ortProbeError = ''
+    try {
+        $ortReport = Invoke-TorchAppOrtProbe -Python (Join-Path $torchAppDir '.venv\Scripts\python.exe') -WheelPath $ortWheel.Path
+    } catch { $ortProbeError = $_.Exception.Message }
+    $ortDmlFindings = @(Get-TorchAppOrtFinding -Report $ortReport -Aspect Dml -ProbeError $ortProbeError)
+    Assert-Test -Name 'torch-app venv: onnxruntime + GenAI built with DirectML (every amd64 lane, no device)' `
+        -Condition { $ortDmlFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortDmlFindings -join '; ')
+    $ortWheelFindings = @(Get-TorchAppOrtFinding -Report $ortReport -Aspect Provenance -Wheel $ortWheel -ProbeError $ortProbeError `
+            -VenvSitePackages (Join-Path $torchAppDir '.venv\Lib\site-packages'))
+    Assert-Test -Name 'torch-app venv: onnxruntime is the chain wheel (sole owner, same version, same binaries)' `
+        -Condition { $ortWheelFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortWheelFindings -join '; ')
 } else {
     Skip-Test 'OrchestrANT app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
 }
@@ -1596,6 +1781,60 @@ if ([string]::IsNullOrWhiteSpace($env:HAILO_ROOT)) {
 }
 
 # ============================================================================
+Write-TestHeader '25. ONNX Runtime single source'
+# ============================================================================
+# Owner rule 2026-09-23 (G1): every ORT byte in the image is the chain build. Static (hashes, strings,
+# PE imports), so the arm64 bundle runs it too. Arms and limits: docs/windows-build-invariants.md.
+$ortCensusExemption = @()   # '<arch>:<path>:<reason>'; an entry that stops matching fails, one naming an in-box ORT too
+$ortStampArmed = $false
+$ortCensus = $null
+$ortCensusError = ''
+try {
+    Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsOrtProvenance.Common.psm1') -Force -DisableNameChecking -ErrorAction Stop
+    Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking -ErrorAction Stop
+    # STAMP arms itself with G2: stamps exist only once Assert-ChainOrtOnly writes them.
+    $ortStampArmed = [bool](Get-Command -Name 'Assert-ChainOrtOnly' -ErrorAction SilentlyContinue)
+    $ortCensus = Invoke-OrtImageCensus -Arch (Get-WindowsTargetArch) -CrossTarget:$smokeCross `
+        -OrtVersion (Get-ExpectedVersion 'ONNXRUNTIME_VERSION' '') -RequireStamp:$ortStampArmed -Exemption $ortCensusExemption
+    Write-OrtCensusReport -Census $ortCensus -Title 'ORT census'
+} catch { $ortCensusError = $_.Exception.Message }
+$ortGroups = [ordered]@{
+    run = @('NONE', 'EXEMPT-STALE'); bytes = @('FOREIGN', 'STALE', 'UNPROVEN'); placement = @('ELSEWHERE', 'UNRESOLVED')
+    consumers = @('UNREGISTERED', 'DIST'); stamp = @('STAMP'); inbox = @('INBOX')
+}
+$ortFail = @{}
+foreach ($g in $ortGroups.Keys) { $ortFail[$g] = @($(if (-not $ortCensus) { "the census did not run: $ortCensusError" })) }
+foreach ($f in @(if ($ortCensus) { $ortCensus.Findings | Where-Object Fatal })) {
+    # An unknown fatal verdict lands in 'run', so it can never pass unasserted.
+    $g = @($ortGroups.Keys | Where-Object { $ortGroups[$_] -contains $f.Verdict }) + @('run') | Select-Object -First 1
+    $ortFail[$g] += "$($f.Verdict) $($f.Path): $($f.Detail)"
+}
+foreach ($a in @(
+        @{ G = 'run'; Name = 'ORT census ran: chain reference from this image, ORT binaries found, exemptions current' }
+        @{ G = 'bytes'; Name = 'ORT bytes: no foreign, stale or unproven ONNX Runtime anywhere in the image' }
+        @{ G = 'placement'; Name = 'ORT placement: chain copies only in their homes, every importer resolves to the chain' }
+        @{ G = 'consumers'; Name = 'ORT consumers: every one registered, one onnxruntime distribution per interpreter' })) {
+    $ortLines = @($ortFail[$a.G])
+    Assert-Test -Name $a.Name -Condition { $ortLines.Count -eq 0 }.GetNewClosure() -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
+}
+# servercore:ltsc2025 ships no in-box ORT (probed 2026-09-23, OS 26100.33438); one would beat PATH for every importer.
+# Cross: the image's Windows dir is not the device's. docs/onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml
+$ortLines = @($ortFail['inbox'])
+if (-not $smokeCross) {
+    Assert-Test -Name 'ORT in-box: the Windows dir holds no ONNX Runtime or Windows ML (servercore ships none)' -Condition { $ortLines.Count -eq 0 }.GetNewClosure() `
+        -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
+} else {
+    Skip-Test 'ORT in-box (cross lane: the base image''s Windows dir is not the device''s; Test-OrtProvenanceTree assumes a client System32 ORT)'
+}
+if ($ortStampArmed) {
+    $ortLines = @($ortFail['stamp'])
+    Assert-Test -Name 'ORT stamps: every present consumer was gated against this chain ORT (G2)' -Condition { $ortLines.Count -eq 0 }.GetNewClosure() `
+        -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
+} else {
+    Skip-Test 'ORT stamps (unarmed: no Assert-ChainOrtOnly in this hub, so no consumer writes one yet)'
+}
+
+# ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
 # Read through the module, NOT $script:passed: the counters live in the harness module's scope,
@@ -1646,8 +1885,9 @@ $sectionFloors = @{
     '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
     # '14' arm64 is 2: the run-assert becomes a PE-machine assert 1:1, but ASAN is a SKIP there.
     '14' = @{ Gpu = 3; Cpu = 3; Arm64 = 2 };  '15' = @{ Gpu = 2; Cpu = 2; Arm64 = 2 };  '16' = @{ Gpu = 1; Cpu = 1; Arm64 = 1 }
-    '17' = @{ Gpu = 5; Cpu = 5; Arm64 = 0 };  '18' = @{ Gpu = 8; Cpu = 6; Arm64 = 0 };  '19' = @{ Gpu = 30; Cpu = 26; Arm64 = 24 }
-    '20' = @{ Gpu = 22; Cpu = 21; Arm64 = 0 }; '21' = @{ Gpu = 2; Cpu = 2; Arm64 = 0 }; '22' = @{ Gpu = 7; Cpu = 6; Arm64 = 0 }
+    '17' = @{ Gpu = 5; Cpu = 5; Arm64 = 0 };  '18' = @{ Gpu = 8; Cpu = 6; Arm64 = 0 };  '19' = @{ Gpu = 31; Cpu = 27; Arm64 = 25 }
+    # '21' is 4 on every amd64 lane: venv dir, app verify, venv DML, chain-wheel provenance.
+    '20' = @{ Gpu = 22; Cpu = 21; Arm64 = 0 }; '21' = @{ Gpu = 4; Cpu = 4; Arm64 = 0 }; '22' = @{ Gpu = 7; Cpu = 6; Arm64 = 0 }
     # '23' arm64 is 5: three final-stage files + module import + healthcheck (the
     # torch-baked Build-TorchApp.ps1 is cross-skipped; it is the amd64 sixth).
     '23' = @{ Gpu = 6; Cpu = 6; Arm64 = 5 }
@@ -1655,6 +1895,8 @@ $sectionFloors = @{
     # (root, dir, cli, dll, dll-load, cli --version); arm64 runs the static
     # subset only, so its floor stays 0 like the other payload sections.
     '24' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
+    # '25' ORT census: four static assertions on every lane, the in-box one on amd64 (+1 STAMP once G2 arms it).
+    '25' = @{ Gpu = 5; Cpu = 5; Arm64 = 4 }
 }
 # Cross FIRST: the arm64 lane skips the payload sections even with -ExpectGpu set (the
 # arm64 CUDA image runs the HOST-toolchain §7 but still cannot execute aarch64 payload),

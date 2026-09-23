@@ -90,7 +90,7 @@ documentation index, which maps every topic to the page that owns it.
       :link: windows-build-invariants
       :link-type: doc
 
-      47 load-bearing rules, each with the incident that produced it. Read before editing ``windows/``.
+      48 load-bearing rules, each with the incident that produced it. Read before editing ``windows/``.
 
    .. grid-item-card:: Windows Host Setup
       :link: windows-host-setup
@@ -145,6 +145,7 @@ Common development targets:
    failure-modes
    adopting-in-a-new-project
    overview
+   onnxruntime-single-source
 
 .. toctree::
    :maxdepth: 2

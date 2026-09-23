@@ -1,7 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# rocm lane only: llama.cpp's official Windows ROCm/HIP release (ggml-hip + llama-server), prebuilt.
+# rocm lane only: llama.cpp's official Windows ROCm/HIP and Vulkan releases of one build, prebuilt, one dir each.
 # Lineage: sdk(rocm) -> toolchain -> media -> [migraphx] -> THIS (target built) -> torch -> final.
 # Build context: the repo root. Why a prebuilt, and why its directory stays off PATH:
 # docs/windows-builds.md § ROCm layer.
@@ -10,7 +10,7 @@ ARG BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-media-migraphx-rocm
 
 FROM ${BASE_IMAGE} AS built
 
-# Values: versions.env (the driver forwards them; bump all four together).
+# Values: versions.env (the driver forwards them; bump all five LLAMA_CPP_* together).
 ARG LLAMA_CPP_HIP_BUILD=11115
 ARG LLAMA_CPP_HIP_ASSET=llama-b11115-bin-win-rocm-10.0-x64.zip
 ARG LLAMA_CPP_HIP_SHA256=8d80e3570c03dcb9033b59e5a41d0d101ba363f3d1b0b7334f7dcd7bbb9d2633
@@ -25,12 +25,26 @@ ENV LLAMA_CPP_HIP_HOME="C:\runtime\opt\llama.cpp-hip" `
 
 # Mounted, not COPYed: nothing of the scripts ships. The rocm-check runs here too, so a
 # broken pin fails this stage rather than the smoke gate two stages later.
-RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCppHip.ps1,target=C:\bkmnt\Install-LlamaCppHip.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\bkmnt\modules\WindowsContainerImage.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
-    & 'C:\bkmnt\Install-LlamaCppHip.ps1' -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME; `
-    $findings = @(& 'C:\bkmnt\LlamaCpp.ps1'); `
+    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend hip -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME; `
+    $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend hip); `
     if ($findings.Count -gt 0) { throw ('llama.cpp HIP check failed: ' + ($findings -join ' | ')) }
+
+# The same build's Vulkan zip, its own layer: declared after the HIP RUN, a Vulkan pin moves only this one.
+# Also off PATH; vulkan-1.dll is the sdk layer's loader (PATH), which the check below loads against.
+ARG LLAMA_CPP_VULKAN_SHA256=a9ffe9b9a97a3303f75a7ac56e2da76902981846dfdfa4b54d7fca7b89f2b0fc
+ENV LLAMA_CPP_VULKAN_HOME="C:\runtime\opt\llama.cpp-vulkan"
+RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
+    --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\bkmnt\modules\WindowsContainerImage.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
+    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend vulkan -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_VULKAN_HOME; `
+    $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend vulkan); `
+    if ($findings.Count -gt 0) { throw ('llama.cpp Vulkan check failed: ' + ($findings -join ' | ')) }

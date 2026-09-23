@@ -17,6 +17,9 @@ $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceB
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
+# G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
+$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
@@ -212,8 +215,8 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
 # (MSVC/SDK INCLUDE+LIB env vars were loaded by the toolchain preamble above.)
 
-# Pre-create bin/ so OpenCV's file(COPY) for the bundled ONNX Runtime download has a valid
-# destination -- on Windows a missing one fails configure with "Invalid argument".
+# Pre-created for dnn's bundled ORT download (a missing bin/ once failed configure with "Invalid argument"). That
+# download is pre-empted now (Get-OpencvOrtCmakeArgs); the empty dir stays because it costs nothing.
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
 # The amd64 SIMD string is pinned byte-for-byte by TargetArch.Common.Tests; arm64 returns none on
@@ -278,7 +281,7 @@ $cmakeExtra = $cudaRspArgs + @(
     # lacks -> every OpenCV DLL fails to load (0xC0000135). A headless container needs no GL.
     '-DWITH_OPENGL=OFF', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
-    # Our source-built ORT is auto-detected via PKG_CONFIG_PATH; otherwise OpenCV downloads its own.
+    # The chain's ORT is wired in by Get-OpencvOrtCmakeArgs below, which also stops dnn downloading its own.
                          '-DWITH_ONNXRUNTIME=ON',
     # WITH_MSMF=OFF *and* WITH_OBSENSOR=OFF: Server Core ships no Media Foundation, and obsensor
     # (default ON) hard-imports it INDEPENDENTLY of WITH_MSMF via its UVC path -- MSMF=OFF alone
@@ -360,13 +363,53 @@ $cmakeExtra += "-DPYTHON3_PACKAGES_PATH=$pySitePackagesFwd"
 $cmakeExtra += "-DPYTHON3_NUMPY_INCLUDE_DIRS=$numpyInclude"
 $cmakeExtra += "-DPYTHON3_NUMPY_VERSION=$numpyVersion"
 
-# Provide our source-built ONNX Runtime root so FindONNX.cmake finds it
-# (derived from $InstallDir -- forward slashes for the cmake arg).
-$ortRoot = (Join-Path $InstallDir 'lib\onnxruntime-source') -replace '\\', '/'
-if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
-    $cmakeExtra += "-DONNXRT_ROOT_DIR=$ortRoot"
-    Write-Host "ONNX Runtime found at $ortRoot"
+# Every lane: dnn and G-API build against the CHAIN's ORT (USE_DML=ON). ORT installs its headers flat, but FindONNX's
+# DirectML probe and G-API's dml_ep.cpp want the source-tree layout, so a nested copy of them stands in as the root.
+function New-OpencvOrtNestedInclude {
+    param([Parameter(Mandatory)][string]$OrtRoot, [Parameter(Mandatory)][string]$ShimRoot)
+    $flat = Join-Path $OrtRoot 'include\onnxruntime'
+    foreach ($header in 'onnxruntime_cxx_api.h', 'dml_provider_factory.h') {
+        if (-not (Test-Path -LiteralPath (Join-Path $flat $header) -PathType Leaf)) {
+            throw "OpenCV: the chain ONNX Runtime has no $(Join-Path $flat $header); ORT is built before OpenCV, with USE_DML=ON on every lane"
+        }
+    }
+    $session = Join-Path $ShimRoot 'include\onnxruntime\core\session'
+    $dml = Join-Path $ShimRoot 'include\onnxruntime\core\providers\dml'
+    $null = New-Item -ItemType Directory -Force -Path $session, $dml
+    Get-ChildItem -LiteralPath $flat -File | Copy-Item -Destination $session -Force
+    Copy-Item -LiteralPath (Join-Path $flat 'dml_provider_factory.h') -Destination $dml -Force
+    $ShimRoot.Replace('\', '/').TrimEnd('/')
 }
+
+# HAVE_ONNXRUNTIME pre-empts dnn's download, the import library comes from the chain, the hooks dir delay-loads G-API's
+# DirectX DLLs, and ORT's config package stays off (FindONNX would take the DLL it exports as the link library).
+function Get-OpencvOrtCmakeArgs {
+    param(
+        [Parameter(Mandatory)][string]$OrtRoot,
+        [Parameter(Mandatory)][string]$ShimRoot,
+        [Parameter(Mandatory)][string]$OrtVersion,
+        [Parameter(Mandatory)][string]$HooksDir
+    )
+    $fwd = { param([string]$Path) $Path.Replace('\', '/').TrimEnd('/') }
+    "-DONNXRT_ROOT_DIR=$(& $fwd $ShimRoot)"
+    "-DCMAKE_LIBRARY_PATH:PATH=$(& $fwd $OrtRoot)/lib"
+    '-DHAVE_ONNXRUNTIME=ON'
+    "-DONNXRUNTIME_VERSION=$OrtVersion"
+    '-DCMAKE_DISABLE_FIND_PACKAGE_onnxruntime:BOOL=ON'
+    '-DCMAKE_DISABLE_FIND_PACKAGE_ONNXRuntime:BOOL=ON'
+    "-DOPENCV_CMAKE_HOOKS_DIR:PATH=$(& $fwd $HooksDir)"
+}
+
+$ortRoot = Join-Path $InstallDir 'lib\onnxruntime-source'
+$ortVersion = Get-SourceBuildVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
+$ortShimRoot = New-OpencvOrtNestedInclude -OrtRoot $ortRoot -ShimRoot (Join-Path $SourceDir 'ort-nested')
+$ocvHooksDir = Join-Path $scriptAssetRoot 'patches\opencv\cmake-hooks'
+if (-not (Test-Path -LiteralPath (Join-Path $ocvHooksDir 'POST_CREATE_MODULE_LIBRARY_opencv_gapi.cmake') -PathType Leaf)) {
+    throw "OpenCV: the G-API delay-load hook is missing from $ocvHooksDir (patches\opencv not mounted?)"
+}
+$ocvOrtArgs = @(Get-OpencvOrtCmakeArgs -OrtRoot $ortRoot -ShimRoot $ortShimRoot -OrtVersion $ortVersion -HooksDir $ocvHooksDir)
+$cmakeExtra += $ocvOrtArgs
+Write-Host "OpenCV ONNX Runtime: the chain's $ortVersion at $ortRoot, nested headers at $ortShimRoot, no configure-time download"
 
 # rocm lane only (empty elsewhere): OpenCL is already ON on every lane, and OpenCV 5.0.0 has no HIP
 # path, so this only pins the dormant clBLAS/clFFT probes OFF. docs/windows-builds.md § ROCm layer
@@ -397,6 +440,90 @@ function Get-OpencvRocmConfigureFinding {
     if ($entries.Count -eq 0) { 'CMakeCache.txt is missing or has no entries, so the silent find results cannot be checked' }
     $entries | Where-Object { $_ -notmatch '^CMAKE_IGNORE_PREFIX_PATH:' -and (& $inRoot $_) } |
         ForEach-Object { "a CMake cache entry resolves into the ROCm tree: $($_.Trim())" }
+}
+
+# One variable of the first non-phony build.ninja statement whose outputs match: $null when none matches, '' when it
+# lacks the variable. The outputs end at the first ':' that ninja did not escape as '$:'.
+function Get-NinjaBuildVariable {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BuildNinja,
+        [Parameter(Mandatory)][string]$OutputPattern,
+        [Parameter(Mandatory)][string]$Variable
+    )
+    $inStatement = $false
+    foreach ($line in ($BuildNinja -split '\r?\n')) {
+        if ($inStatement) {
+            if ($line -match "^\s+$([regex]::Escape($Variable))\s*=\s*(.*)$") { return $Matches[1] }
+            if ($line -notmatch '^\s') { return '' }
+        } elseif ($line -match '^build\s+(.*?)(?<!\$):\s*(\S+)') {
+            $outputs = $Matches[1]
+            if ($Matches[2] -ne 'phony' -and $outputs -match $OutputPattern) { $inStatement = $true }
+        }
+    }
+    if ($inStatement) { '' } else { $null }
+}
+
+# Every-lane ORT gate: no configure-time ORT download, dnn and G-API on the chain's ORT through the nested headers, and
+# G-API's DirectML EP compiled in (HAVE_ONNX_DML, DirectX DLLs delay-loaded) with no TU defining HAVE_ONNX_COREML.
+function Get-OpencvOrtConfigureFinding {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ConfigureLog,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$CMakeCache,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BuildNinja,
+        [Parameter(Mandatory)][string]$OrtRoot,
+        [Parameter(Mandatory)][string]$ShimRoot,
+        [Parameter(Mandatory)][string]$OrtVersion
+    )
+    $norm = { param([string]$Path) $Path.Trim().Replace('\', '/').TrimEnd('/') }
+    $same = { param([string]$A, [string]$B) [string]::Equals((& $norm $A), (& $norm $B), [StringComparison]::OrdinalIgnoreCase) }
+    $chain = & $norm $OrtRoot
+    $shim = & $norm $ShimRoot
+    $lines = [string[]]@($ConfigureLog -split '\r?\n')
+    $lines | Where-Object { $_ -match 'DNN: ONNX Runtime (download mode|package|was not found)|(Downloading|Extracting) ONNX Runtime|onnxruntime/releases/download/' } |
+        ForEach-Object { "dnn fetched its own ONNX Runtime at configure time: $($_.Trim())" }
+    $head = [Array]::FindLastIndex($lines, [Predicate[string]] { param($l) $l -match '(?<![\w/])ONNX Runtime:\s' })
+    $state = if ($head -ge 0) { ($lines[$head] -replace '^.*?ONNX Runtime:\s*', '').Trim() } else { '' }
+    if ($head -lt 0) {
+        "the configure summary has no 'ONNX Runtime:' line, so dnn and G-API may have no ONNX Runtime at all"
+    } elseif ($state -notmatch '^YES\b') {
+        "the configure summary reads 'ONNX Runtime: $state', not YES (ver $OrtVersion)"
+    } else {
+        if ($state -ne "YES (ver $OrtVersion)") { "the configure summary reads 'ONNX Runtime: $state', not YES (ver $OrtVersion)" }
+        $sub = @($lines | Select-Object -Skip ($head + 1) -First 3)
+        $inc = "$(@($sub | ForEach-Object { if ($_ -match 'Include path:\s*(.*?)\s*$') { $Matches[1] } }) | Select-Object -First 1)"
+        $lib = "$(@($sub | ForEach-Object { if ($_ -match 'Link libraries:\s*(.*?)\s*$') { $Matches[1] } }) | Select-Object -First 1)"
+        if (-not (& $same $inc "$shim/include/onnxruntime/core/session")) { "ONNX Runtime's include path is '$inc', not the nested chain headers $shim/include/onnxruntime/core/session" }
+        if (-not (& $same $lib "$chain/lib/onnxruntime.lib")) { "ONNX Runtime links '$lib', not the chain's import library $chain/lib/onnxruntime.lib" }
+    }
+    $entries = @($CMakeCache -split '\r?\n' | Where-Object { $_ -match '^[^/#\s][^=]*=' })
+    if ($entries.Count -eq 0) {
+        'CMakeCache.txt is missing or has no entries, so the DirectML probe cannot be checked'
+    } else {
+        $ep = "$(@($entries | Where-Object { $_ -match '^ORT_EP_INCLUDE:' } | ForEach-Object { $_ -replace '^[^=]*=', '' }) | Select-Object -First 1)"
+        if (-not (& $same $ep "$shim/include/onnxruntime/core/providers/dml")) {
+            "FindONNX's DirectML probe resolved to '$ep', not the nested dml_provider_factory.h, so HAVE_ONNX_DML is off"
+        }
+        $entries | Where-Object { $_ -match '3rdparty[\\/]onnxruntime' } |
+            ForEach-Object { "a CMake cache entry names dnn's ORT download dir: $($_.Trim())" }
+    }
+    if ([string]::IsNullOrWhiteSpace($BuildNinja)) { return 'build.ninja is missing or empty, so the G-API compile and link lines cannot be checked' }
+    $defines = Get-NinjaBuildVariable -BuildNinja $BuildNinja -OutputPattern '[\\/]opencv_gapi\.dir[\\/](.*[\\/])?dml_ep\.cpp\.obj(\s|$)' -Variable 'DEFINES'
+    if ($null -eq $defines) {
+        "build.ninja has no compile statement for G-API's dml_ep.cpp"
+    } else {
+        foreach ($def in 'HAVE_ONNX', 'HAVE_ONNX_DML', 'HAVE_DIRECTML') {
+            if ($defines -notmatch "(^|\s)[-/]D$def=1(\s|$)") { "dml_ep.cpp compiles without $def=1, so G-API's DirectML EP is the throwing stub" }
+        }
+    }
+    if ($BuildNinja -match '[-/]DHAVE_ONNX_COREML\b') { 'a compile statement defines HAVE_ONNX_COREML (FindONNX shares ORT_EP_INCLUDE between its DirectML and CoreML probes)' }
+    $linkFlags = Get-NinjaBuildVariable -BuildNinja $BuildNinja -OutputPattern '(^|[\\/\s])opencv_gapi\d*\.dll(\s|$)' -Variable 'LINK_FLAGS'
+    if ($null -eq $linkFlags) {
+        'build.ninja has no link statement for opencv_gapi*.dll'
+    } else {
+        foreach ($dll in 'dxcore.dll', 'd3d12.dll', 'dxgi.dll', 'DirectML.dll') {
+            if ($linkFlags -notmatch "/DELAYLOAD:$([regex]::Escape($dll))(?=[`"\s]|$)") { "opencv_gapi hard-imports ${dll}: the cmake-hooks delay-load did not reach its link line" }
+        }
+    }
 }
 
 # Get-GpuEnvironment sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH; only CUDACXX is
@@ -489,6 +616,12 @@ $cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $
 Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1 |
     Tee-Object -FilePath $cfgLog
 Write-Host "CMake configure log: $cfgLog"
+$ocvOrtCfg = @(Get-OpencvOrtConfigureFinding -ConfigureLog "$(Get-Content -LiteralPath $cfgLog -Raw)" `
+        -CMakeCache "$(Get-Content -LiteralPath (Join-Path $buildDir 'CMakeCache.txt') -Raw -ErrorAction SilentlyContinue)" `
+        -BuildNinja "$(Get-Content -LiteralPath (Join-Path $buildDir 'build.ninja') -Raw -ErrorAction SilentlyContinue)" `
+        -OrtRoot $ortRoot -ShimRoot $ortShimRoot -OrtVersion $ortVersion)
+if ($ocvOrtCfg.Count -gt 0) { throw "OpenCV ONNX Runtime configure gate ($cfgLog): $($ocvOrtCfg -join '; ')" }
+Write-Host "OpenCV ONNX Runtime gate OK: chain ORT $ortVersion, no download, G-API DirectML EP compiled in with its DirectX DLLs delay-loaded"
 if ($gpuEnv.HasRocm) {
     $ocvRocmCfg = @(Get-OpencvRocmConfigureFinding -ConfigureLog "$(Get-Content -LiteralPath $cfgLog -Raw)" `
             -CMakeCache "$(Get-Content -LiteralPath (Join-Path $buildDir 'CMakeCache.txt') -Raw -ErrorAction SilentlyContinue)" -RocmRoot $gpuEnv.RocmRoot)
@@ -644,6 +777,10 @@ if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
 } else {
     Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
 }
+
+# G2: the whole tree, both records and the configure log hold the chain ORT only; a pass stamps it for G1.
+Assert-ChainOrtOnly -Consumer 'opencv' -OrtRoot $ortRoot -TreeRoot $SourceDir -Shim $ortShimRoot -Log $cfgLog `
+    -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
 
 Remove-SourceBuildTree -Path $SourceDir
 

@@ -347,6 +347,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             'Install-Cuda.ps1|CUDNN_ROOT',               # install root path, default derived from $CudnnVersion - not a version
             'Install-Cuda.ps1|WINDOWS_TARGET_ARCH',      # arch selector, not a version: amd64/arm64 decides the CUDA payload branch (#176)
             'Install-Rocm.ps1|WINDOWS_TARGET_ARCH',      # arch selector, not a version: anything but amd64 is refused (no Windows arm64 ROCm)
+            'Install-VulkanLoader.ps1|WINDOWS_TARGET_ARCH', # arch selector, not a version: the pinned zip is x64-only, anything else is refused
             'Install-Tensorrt.ps1|TENSORRT_ROOT',        # install root path literal - not a version
             'Install-ScoopTools.ps1|GIT_INSTALLER_URL', # URL default derived from $gitVer; GIT_VERSION parity is asserted at ITS site
             'Test-Container.ps1|<dynamic>'       # Get-ExpectedVersion wrapper: env name AND default are pass-through variables

@@ -11,7 +11,7 @@ what you are about to do:
 
 | Before you… | Read |
 |---|---|
-| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 47 load-bearing rules |
+| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 48 load-bearing rules |
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
@@ -375,7 +375,7 @@ optional on this host. What to mount where, and the measured envelope:
 
 ### Windows Build Invariants (do not regress)
 
-47 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
+48 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
 and log discipline, layer/scratch rules, lane and CNI rules, and the
 build-input invariants — live in
 [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md),
@@ -795,6 +795,23 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   this image regardless, and changing it invalidates the warm riscv64 compiler
   cache. The ISA string and why the profile NAME does not work:
   [`riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
+- **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
+  rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`
+  on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and
+  its wheel:
+  - OpenCV, FFmpeg, gst-plugins-bad's `onnx` plugin and GenAI fail their build
+    unless they resolve the chain, and each ends in `ort_assert_chain_only`
+    (`03-media/ort-provenance.sh`, mounted per file, never under `core/` or
+    `runtime/`).
+  - `/opt/opencv5/lib/libonnxruntime*` are links into the chain, never copies. The
+    chain's conf is `000-onnxruntime.conf`. No apt package may provide ORT, and the
+    soname deny is in code: never map a `libonnxruntime*` soname to a distro package.
+  - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a
+    missing chain wheel fails the torch stage, with no PyPI fallback.
+  - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce
+    it. Every consumer, guard and gap:
+    [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md); the Windows
+    rule: [`windows-build-invariants.md`](docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23).
 
 ## Dockerfile.media BuildKit Strategy
 

@@ -310,7 +310,8 @@ function Sync-UvProjectDependencies {
     <#
     .SYNOPSIS
         `uv sync --dev --all-extras`, optionally pinned to the lockfile, with the
-        extras that declared conflicts forbid excluded (see Get-UvExtrasToExclude).
+        extras that declared conflicts forbid excluded (see Get-UvExtrasToExclude);
+        then Sync-UvChainOnnxRuntime on the synced environment.
     .PARAMETER RetryWithoutLocked
         With -UseLocked, retry once WITHOUT --locked when uv reports the
         lockfile is out of date. Upstreamed from OrchestrANT
@@ -379,6 +380,168 @@ function Sync-UvProjectDependencies {
         if ($LogWarning) { & $LogWarning 'uv.lock is out of date; retrying dependency sync without --locked.' }
         Invoke-UvCommand -Arguments (& $buildArgs $false) -CommandRunner $CommandRunner -LogInfo $LogInfo
     }
+
+    $projectEnv = if ($env:UV_PROJECT_ENVIRONMENT) { $env:UV_PROJECT_ENVIRONMENT } else { Join-Path (Split-Path -Parent $PyprojectPath) '.venv' }
+    Sync-UvChainOnnxRuntime -VenvPath $projectEnv -CommandRunner $CommandRunner -LogInfo $LogInfo -LogWarning $LogWarning
+}
+
+<#
+.SYNOPSIS
+    The chain ONNX Runtime wheel store of our images: ORT_CHAIN_WHEEL_DIR, PYTHON_WHEELS, then
+    -DefaultStore if it exists; $null outside our images.
+#>
+function Get-ChainOrtWheelStore {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowEmptyString()][string]$DefaultStore = 'C:\runtime\wheels')
+
+    foreach ($name in 'ORT_CHAIN_WHEEL_DIR', 'PYTHON_WHEELS') {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    }
+    if ($DefaultStore -and (Test-Path -LiteralPath $DefaultStore -PathType Container)) { return $DefaultStore }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    The ORT census: the hub checkout's linux\scripts copy, else the image's, which windows/Dockerfile
+    COPYs into C:\temp\scripts beside the modules dir. Neither: the checkout path, so the error names it.
+#>
+function Get-UvOrtCensusPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$ModuleDir = $PSScriptRoot)
+
+    $candidates = @(
+        [IO.Path]::GetFullPath((Join-Path $ModuleDir '..\..\..\linux\scripts\03-media\runtime\ort-venv-census.py')),
+        [IO.Path]::GetFullPath((Join-Path $ModuleDir '..\ort-venv-census.py')))
+    foreach ($candidate in $candidates) { if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate } }
+    return $candidates[0]
+}
+
+# `uv run` re-syncs to the lock, which would put PyPI ORT back: hold it off while a reconciled
+# venv is live, and release only a hold this module took.
+$script:ChainOrtHoldsNoSync = $false
+function Set-UvChainOrtSyncHold {
+    param([Parameter(Mandatory)][bool]$Hold)
+    if ($Hold -and -not $env:UV_NO_SYNC) {
+        $env:UV_NO_SYNC = '1'
+        $script:ChainOrtHoldsNoSync = $true
+    } elseif (-not $Hold -and $script:ChainOrtHoldsNoSync) {
+        $env:UV_NO_SYNC = $null
+        $script:ChainOrtHoldsNoSync = $false
+    }
+}
+
+# The interpreter's wheel ABI tag (cp313, cp314t), and which ORT import packages it can find.
+$script:ChainOrtAbiCode = 'import sys, sysconfig; print(''cp%d%d%s'' % (*sys.version_info[:2], ''t'' if sysconfig.get_config_var(''Py_GIL_DISABLED'') else ''''))'
+$script:ChainOrtFindCode = 'import importlib.util as u, sys; hits = [p for p in (''onnxruntime'', ''onnxruntime_genai'', ''onnxruntime_extensions'') if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)'
+
+# Before uv: every store ORT wheel must fit the venv's ABI tag, or this leg cannot carry ORT inside our images.
+function Assert-UvChainOrtAbiFit {
+    param([string]$VenvPath, [string]$Python, [string[]]$Wheels, [scriptblock]$Runner)
+    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
+    if ($probe.ExitCode -ne 0) { throw "chain ORT: cannot read the ABI tag of ${Python}: $(@($probe.Output) -join ' | ')" }
+    $abi = "$(@($probe.Output) | Select-Object -Last 1)".Trim()
+    $misfit = @($Wheels | ForEach-Object { Split-Path $_ -Leaf } | Where-Object { ($_ -replace '\.whl$', '').Split('-')[-2] -notin @($abi, 'abi3', 'none') })
+    if ($misfit.Count -gt 0) {
+        throw "chain ORT: $VenvPath is a $abi venv, and the chain wheels are built for the image interpreter: $($misfit -join ' '). An ORT project runs its in-image legs on that interpreter: drop this leg or list it in EXPERIMENTAL_PYTHON_VERSIONS."
+    }
+}
+
+# No ORT distribution to purge: inside our images nothing may import as ORT either (an unowned copy,
+# a dist without a Name); the census --check output is the evidence.
+function Assert-UvChainOrtNoUnownedImport {
+    param([string]$VenvPath, [string]$Python, [string]$WheelStore, [string]$CensusPath, [scriptblock]$Runner)
+    $found = & $Runner $Python @('-I', '-c', $script:ChainOrtFindCode)
+    if ($found.ExitCode -eq 0) { return }
+    $census = & $Runner $Python @('-I', $CensusPath, '--check', '--store', $WheelStore)
+    throw "chain ORT: $VenvPath imports ONNX Runtime with no distribution to purge ($(@($found.Output) -join ' ')):`n$(@($census.Output) -join "`n")"
+}
+
+<#
+.SYNOPSIS
+    Moves a synced venv's ONNX Runtime onto the image's chain wheels and proves it with the ORT
+    census, or throws; outside our images only warns. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+.PARAMETER PythonRunner
+    Test seam: { param($python, $arguments) } returning @{ ExitCode; Output }. Default runs the interpreter.
+#>
+function Sync-UvChainOnnxRuntime {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$VenvPath,
+        [AllowEmptyString()][string]$WheelStore = (Get-ChainOrtWheelStore),
+        [string]$CensusPath = '',
+        [scriptblock]$CommandRunner,
+        [scriptblock]$PythonRunner,
+        [scriptblock]$LogInfo,
+        [scriptblock]$LogWarning
+    )
+
+    if (-not $CensusPath) { $CensusPath = Get-UvOrtCensusPath }
+    $say = if ($LogInfo) { $LogInfo } else { { param($m) Write-Host $m } }
+    $warn = if ($LogWarning) { $LogWarning } else { { param($m) Write-Warning $m } }
+    $run = if ($PythonRunner) { $PythonRunner } else {
+        {
+            param($exe, $arguments)
+            $PSNativeCommandUseErrorActionPreference = $false
+            try { $out = @(& $exe @arguments 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+            catch { $out = @("$($_.Exception.Message)"); $code = 127 }
+            [pscustomobject]@{ ExitCode = $code; Output = $out }
+        }
+    }
+    $python = Join-Path $VenvPath 'Scripts\python.exe'
+    $inImage = -not [string]::IsNullOrWhiteSpace($WheelStore)
+    $missing = @(@($WheelStore, $python, $CensusPath) | Where-Object { $_ -and -not (Test-Path -LiteralPath $_) })
+    if ($inImage -and ($missing.Count -gt 0 -or -not (Test-Path -LiteralPath $WheelStore -PathType Container))) {
+        throw "chain ORT: need the store $WheelStore, the interpreter $python and the census $CensusPath (missing: $($missing -join ', '))"
+    }
+    if ($missing.Count -gt 0) {
+        $why = "chain ORT: $VenvPath not inspected (missing: $($missing -join ', ')); ONNX Runtime provenance unchecked"
+        if ($LogInfo) { & $LogInfo $why } else { Write-Verbose $why }
+        return
+    }
+
+    $listed = & $run $python @('-I', $CensusPath, '--purge-list')
+    if ($listed.ExitCode -ne 0) {
+        $why = "chain ORT: cannot list ${VenvPath}: $(@($listed.Output) -join ' | ')"
+        if ($inImage) { throw $why }
+        & $warn $why
+        return
+    }
+    $names = @(@($listed.Output) | ForEach-Object { if ("$_" -match '^ORT-CENSUS PURGE ([a-z0-9][a-z0-9-]*)$') { $Matches[1] } })
+    if ($names.Count -eq 0) {
+        if ($inImage) { Assert-UvChainOrtNoUnownedImport -VenvPath $VenvPath -Python $python -WheelStore $WheelStore -CensusPath $CensusPath -Runner $run }
+        Set-UvChainOrtSyncHold -Hold $false
+        return
+    }
+    if (-not $inImage) {
+        & $warn "==== NOTICE: $VenvPath runs ONNX Runtime from outside the chain: $($names -join ' ') ===="
+        & $warn '  No chain wheel store here (ORT_CHAIN_WHEEL_DIR/PYTHON_WHEELS unset, no C:\runtime\wheels), so it stays as uv resolved it;'
+        & $warn '  inside our images it is reconciled onto the chain wheels or the sync fails.'
+        return
+    }
+
+    $wheels = @(Get-ChildItem -LiteralPath $WheelStore -File | Where-Object { $_.Name -match '^onnxruntime[-_].*\.whl$' } | ForEach-Object { $_.FullName })
+    if ($wheels.Count -eq 0) { throw "chain ORT: the store $WheelStore holds no onnxruntime wheel for $($names -join ' ')" }
+    Assert-UvChainOrtAbiFit -VenvPath $VenvPath -Python $python -Wheels $wheels -Runner $run
+    & $say "chain ORT: replacing $($names -join ' ') in $VenvPath with $(($wheels | ForEach-Object { Split-Path $_ -Leaf }) -join ' ')"
+    Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $python) + $names) -CommandRunner $CommandRunner -LogInfo $LogInfo
+    try {
+        Invoke-UvCommand -Arguments (@('pip', 'install', '--python', $python, '--no-index', '--no-deps', '--force-reinstall') + $wheels) `
+            -CommandRunner $CommandRunner -LogInfo $LogInfo
+    } catch {
+        throw "chain ORT: $VenvPath does not take the chain wheels: $($_.Exception.Message)"
+    }
+    $check = & $run $python @('-I', $CensusPath, '--check', '--store', $WheelStore)
+    if ($check.ExitCode -ne 0) { throw "chain ORT: $VenvPath still carries a non-chain ONNX Runtime:`n$(@($check.Output) -join "`n")" }
+    & $say (@($check.Output) -join "`n")
+    $import = & $run $python @('-I', '-c', 'import sys; print(sys.version); import onnxruntime')
+    if ($import.ExitCode -ne 0) {
+        throw "chain ORT: the chain onnxruntime does not import in $VenvPath (the store is built for the image interpreter):`n$(@($import.Output) -join "`n")"
+    }
+    Set-UvChainOrtSyncHold -Hold $true
 }
 
 <#
@@ -490,6 +653,9 @@ Export-ModuleMember -Function @(    'New-UvProjectEnvironment',
     'Remove-TrackedUvEnvironment',
     'Test-ExperimentalPython',
     'Sync-UvProjectDependencies',
+    'Sync-UvChainOnnxRuntime',
+    'Get-ChainOrtWheelStore',
+    'Get-UvOrtCensusPath',
     'Get-UvConflictGroups',
     'Get-UvExtrasToExclude',
     'Test-UvVenvHealthy',

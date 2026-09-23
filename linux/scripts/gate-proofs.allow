@@ -62,6 +62,12 @@ mutation-family:tree-arch
 mutation-family:vulkan
 mutation-family:wheels
 mutation-family:trailing-return
+# ORT single source on Linux (owner rule 2026-09-23): the OpenCV/FFmpeg/gst onnx build gates and the runtime gate.
+mutation-family:ort-chain
+# Consumer CI venvs inside our images end on the chain ORT wheels (python_uv.sh uv_reconcile_chain_ort).
+mutation-family:uv-chain-ort
+# The ORT census (G1 runtime smoke, G6 consumer bundles): 06-packaging/check-ort-provenance.sh + its probe.
+mutation-family:ort-census
 
 # Arrived 2026-09-08 with the mutation coverage for this batch's new hub entry
 # points. Each names the subject its ids describe, over files no preflight slug

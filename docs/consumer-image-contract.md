@@ -362,3 +362,87 @@ registry cachemount.
 and compared against what the binaries report, which is also the proof that they
 are installed. Every step is non-fatal: a consumer that has to build its own tools
 is slow, an image that cannot be built at all is worse.
+
+## The ort crate links the chain ONNX Runtime
+
+Both published images set the environment of the Rust `ort` / `ort-sys` crates,
+so a Rust build inside them links the chain ONNX Runtime and can never fetch
+pyke's prebuilt one (G3 of the
+[ONNX Runtime single-source rule](onnxruntime-single-source.md)).
+
+| Variable | Windows (`windows/Dockerfile`, final) | Linux (`linux/Dockerfile.package`, every variant) |
+|---|---|---|
+| `ORT_LIB_LOCATION` | `$ONNX_ROOT\lib` (holds `onnxruntime.lib`) | `${ONNXRUNTIME_OUTPUT_DIR}/lib` = `/usr/local/lib/onnxruntime-cpu/lib` |
+| `ORT_PREFER_DYNAMIC_LINK` | `1` | `1` |
+| `ORT_SKIP_DOWNLOAD` | `1` | `1` |
+| `ORT_DYLIB_PATH` | `$ONNX_ROOT\bin\onnxruntime.dll` | `${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so` |
+
+Why these four, read from `ort-sys` 2.0.0-rc.13 (the checksum OxidANT's
+`Cargo.lock` pins) and `ort` 2.0.0-rc.13:
+- `build/main.rs:47-68` reads `ORT_LIB_PATH`, then `ORT_LIB_LOCATION`, before the
+  download branch. With `ORT_PREFER_DYNAMIC_LINK` set to `1` or `true` the build
+  script emits `rustc-link-lib=onnxruntime` from that directory; without it,
+  ort-sys tries a static link the chain does not ship.
+- The first SET one of `CARGO_NET_OFFLINE`, `ORT_SKIP_DOWNLOAD` and `ORT_OFFLINE`
+  decides, and only exactly `1` or `true` skips the download. An empty value is
+  set, so an empty `CARGO_NET_OFFLINE` re-arms the download, and an empty
+  `ORT_LIB_PATH` still outranks `ORT_LIB_LOCATION`.
+- `ort`'s load-dynamic opens `ORT_DYLIB_PATH`, otherwise a bare file name, which on
+  Windows reaches `System32\onnxruntime.dll` (Windows ML 1.17) before PATH.
+- `ort`'s default features include `download-binaries`.
+
+**What it means for a consumer.**
+- An `ort-sys` build in the image links the chain import library, so a shipped
+  bundle must carry the chain DLL or `.so` beside the app.
+- Keep `ORT_LIB_PATH` unset and never export a falsy `CARGO_NET_OFFLINE`.
+- On the Linux GPU variants the variables name the CPU chain build, which is what
+  `ld.so` resolves. A GPU consumer points both at `onnxruntime-gpu/lib`, which is
+  chain-built too. On `:winarm64` they name the aarch64 chain ORT.
+- `ORT_DYLIB_PATH` is baked in, so inside the image a program that honours it loads
+  the image's copy, not one staged beside its exe. A bundle smoke run inside the
+  image should unset it to exercise the staged copy.
+
+**How it is proven on the shipped image.** Windows: Test-Container section 19,
+`Get-OrtCrateEnvFinding`, on every lane. Linux: the contract row `ort-crate-env`.
+Its probe reports `ORT_LIB_PATH` and `CARGO_NET_OFFLINE` as `<unset>` when they
+are not set, and the row passes only with `ORT_LIB_PATH` unset and
+`CARGO_NET_OFFLINE` unset, `1` or `true`; a missing line reads as set-but-empty and
+fails. Both compare values untrimmed, as ort-sys does. The static half is
+`verify-critical-fixes.sh` fix11. Not covered: Rust builds outside the images, and
+the live in-image `cargo build -vv` of a scratch ort-sys crate, which is still to
+run at the next image build.
+
+### The chain ONNX Runtime wheels
+
+- **Linux:** `/opt/onnxruntime-wheels`, advertised as `ORT_CHAIN_WHEEL_DIR`, holds
+  exactly the ORT and GenAI wheels `/opt/venv` was installed from.
+  `setup-torch-venv.sh stage_chain_ort_wheels` proves the venv against it at build
+  time. The census that proof runs ships at
+  `/opt/scripts/03-media/final/ort-venv-census.py`; its command line and output
+  lines are a contract that `python_uv.sh` and `setup-torch-venv.sh` read.
+- **Windows:** the same wheels sit in `C:\runtime\wheels` (`PYTHON_WHEELS`). The
+  census ships at `C:\temp\scripts\ort-venv-census.py`, beside the module copy whose
+  `Sync-UvChainOnnxRuntime` runs it; `Build-TorchApp.ps1` embeds its own copy.
+- **Who gets them:** a consumer on the hub's Python CI has its venvs reconciled onto
+  them inside our images
+  ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).
+  Anyone else calls `uv_reconcile_chain_ort <venv>` or
+  `Sync-UvChainOnnxRuntime -VenvPath <venv>`.
+
+### Prove your bundle ships the image's ONNX Runtime
+
+Run the ORT census (G6) inside the image you built in, after staging the runtime
+DLLs or `.so` files. The reference is that image's chain ORT.
+- Windows: `Import-Module C:\temp\scripts\modules\WindowsOrtProvenance.Common.psm1`,
+  then `if (-not (Test-OrtProvenanceTree -Root <bundle>)) { exit 1 }`. `-PassThru`
+  returns the census object.
+- Linux: `bash third_party/ANTfrastructure/linux/scripts/06-packaging/check-ort-provenance.sh <bundle>`.
+
+Tree mode models a client loader. A DLL's imports resolve from the directory of
+the exe that loads it, then System32 (assumed to hold Windows ML's
+`onnxruntime.dll`), then PATH, never from the DLL's own directory; a `.pyd` also
+searches its own directory first. So ship `onnxruntime.dll` beside the exe, not
+beside a plugin. A bundle fails as STALE with an older chain DLL, FOREIGN with a
+NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when an
+importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
+one.

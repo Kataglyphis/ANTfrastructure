@@ -33,6 +33,9 @@ $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 $migraphxModulePath = Join-Path $scriptAssetRoot 'modules\WindowsMigraphx.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($migraphxModulePath)))) { Import-Module $migraphxModulePath }
+# G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
+$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
 
 function Get-OrtAmdgpuEpCmakeArgs {
     # USE_MIGRAPHX alone; the no-fetch pair and the seeds make every download a pinned, verified one.
@@ -121,8 +124,10 @@ try {
     $epArgs = @(Get-OrtAmdgpuEpCmakeArgs -MigraphxDir $MigraphxDir -RocmRoot $rocmRoot -OrtCmakeDir $ortCmakeDir `
             -GpuTargets $gpuTargets -Python $python -SeedArgs $seedArgs) + @(Get-LlvmArchiverCmakeArg)
     # -AllowRocmPrefix: find_package(hip) and migraphx's MIOpen/rocBLAS/hipBLASLt dependencies live in TheRock.
+    # Teed to a log that outlives the solve; G2 reads it for ORT fetch traces in phase 5.
+    $epCfgLog = Get-PersistentBuildLogPath -Name 'ort-amdgpu-ep-configure.log' -FallbackDir $WorkDir
     Invoke-CmakeConfigure -SourceDir $epRoot -BuildDir $buildDir -InstallPrefix $InstallDir -BuildType $BuildType `
-        -ExtraArgs $epArgs -AllowRocmPrefix
+        -ExtraArgs $epArgs -AllowRocmPrefix 2>&1 | Tee-Object -FilePath $epCfgLog
 
     Switch-BuildPhase '3. EP build'
     # No `cmake --install`: upstream packages from the build tree, where POST_BUILD copies the MIGraphX closure.
@@ -151,6 +156,9 @@ try {
     $static = @(Get-PeImportNames -Path $epStaged)
     if ($static -match '^amdhip64') { throw 'migraphx-ep.dll imports amdhip64 statically: /DELAYLOAD did not reach the linker' }
     if ($static -notcontains 'migraphx_c.dll') { throw "migraphx-ep.dll does not import migraphx_c.dll (imports: $($static -join ', '))" }
+    # G2: the EP source, its seeds and build tree name no ORT but the chain's CMake package; a pass stamps it for G1.
+    Assert-ChainOrtOnly -Consumer 'amdgpu-ep' -OrtRoot $OnnxRuntimeDir -TreeRoot $WorkDir -Log $epCfgLog `
+        -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
     Complete-CurrentBuildPhase
 } catch {
     Complete-CurrentBuildPhase -ErrorRecord $_

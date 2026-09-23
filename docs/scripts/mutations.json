@@ -248,6 +248,238 @@
     "why": "the shared walker dispatches on an emitter NAME; the suite never calls these functions directly, so pin that its end-to-end JSON check still catches a wrong emitter"
   },
   {
+    "id": "wheels.ort-census-bytes",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "                if sha256(want) != sha256(have):",
+    "replace": "                if False:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "PyPI ships the chain's own version too; a same-version foreign build differs only in its bytes"
+  },
+  {
+    "id": "wheels.ort-census-missing",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "                missing.append(rel)",
+    "replace": "                pass",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a chain file the venv lacks (PyPI's build has no DirectML.dll) must fail, not be skipped"
+  },
+  {
+    "id": "wheels.ort-census-extra",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "    extra = listed(dist) - members",
+    "replace": "    extra = set()",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a file only the installed copy carries is foreign payload under the chain wheel's name"
+  },
+  {
+    "id": "wheels.ort-census-owner-count",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "        if len(owners) > 1 or (pkg == \"onnxruntime\" and not owners):",
+    "replace": "        if len(owners) > 2 or (pkg == \"onnxruntime\" and not owners):",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "two distributions in one import package is the version-shadow class; exactly one may own it"
+  },
+  {
+    "id": "wheels.ort-census-owner-required",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "        if len(owners) > 1 or (pkg == \"onnxruntime\" and not owners):",
+    "replace": "        if len(owners) > 1:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a venv with no onnxruntime at all is not chain-only; an empty census must fail"
+  },
+  {
+    "id": "wheels.ort-census-name-pattern",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "        if (ORT_DIST.match(name) or owns) and key not in found:",
+    "replace": "        if owns and key not in found:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "an onnxruntime-* dist with its own import package (the PyPI onnxruntime-ep-webgpu) is caught by its name alone"
+  },
+  {
+    "id": "wheels.ort-census-owner-candidacy",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "        if (ORT_DIST.match(name) or owns) and key not in found:",
+    "replace": "        if ORT_DIST.match(name) and key not in found:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "ORT under an unrelated dist name (ort-nightly) is caught by the import package it writes into"
+  },
+  {
+    "id": "wheels.ort-census-stray",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "    if stray:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a DLL dropped into onnxruntime/capi by no distribution loads with the package all the same"
+  },
+  {
+    "id": "wheels.ort-census-import-origin",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "    if spec.origin and real(spec.origin) not in owned:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "what `import onnxruntime` actually loads must be the owner's file, not a dist-less copy earlier on sys.path"
+  },
+  {
+    "id": "wheels.ort-census-store-has-ort",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "    if not any(ORT_RUNTIME.match(name) for name, _ in index):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a store without the chain ORT wheel is the silent-PyPI-fallback precondition; name it"
+  },
+  {
+    "id": "wheels.ort-census-crash-fails",
+    "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+    "find": "        findings, chain = [\"the census could not complete: %s: %s\" % (type(exc).__name__, exc)], []",
+    "replace": "        findings, chain = [], []",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a census that could not look must never print PASS"
+  },
+  {
+    "id": "wheels.ort-chain-wheel-fatal",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "refusing to fall back to the app lock's PyPI build\" >&2\n  return 1",
+    "replace": "refusing to fall back to the app lock's PyPI build\" >&2\n  return 0",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "without the chain ORT wheel the lock's PyPI onnxruntime 1.27.0 used to ship silently (the cross wheel is conditional)"
+  },
+  {
+    "id": "wheels.ort-family-pattern",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "    onnxruntime-*.whl|onnxruntime_*.whl)",
+    "replace": "    onnxruntime-*.whl|onnxruntime_dnnl-*.whl)",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a flavour list misses the next flavour (onnxruntime_qnn), and the staged check then reads a chain wheel as none"
+  },
+  {
+    "id": "wheels.ort-family-not-runtime",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "    onnxruntime_genai*.whl|onnxruntime_extensions*.whl|onnxruntime_ep_*.whl) printf 'other' ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a plugin EP or extensions wheel staged alone is not a chain ORT runtime"
+  },
+  {
+    "id": "wheels.ort-chain-wheel-check-called",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  prune_conflicting_onnx_wheels\n  assert_chain_ort_wheel_staged\n",
+    "replace": "  prune_conflicting_onnx_wheels\n",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "a staged-wheel check nothing calls is no check"
+  },
+  {
+    "id": "wheels.ort-census-pass-line",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  if [ \"${_rc}\" -ne 0 ] || [[ $'\\n'\"${_out}\" != *$'\\n'\"ORT-CENSUS PASS\"* ]]; then",
+    "replace": "  if [ \"${_rc}\" -ne 0 ]; then",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "exit 0 with no PASS line (an interpreter that ran nothing) must not pass the stage"
+  },
+  {
+    "id": "wheels.ort-census-last-step",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  ensure_project_package_installed\n  assert_ort_chain_only\n}",
+    "replace": "  ensure_project_package_installed\n}",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "the census must see the finished venv: every uv call before it can pull an ORT from PyPI"
+  },
+  {
+    "id": "wheels.ort-census-isolated",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  \"${VENV}/bin/python\" -I \"${_census}\"",
+    "replace": "  \"${VENV}/bin/python\" \"${_census}\"",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "without -I a PYTHONPATH entry is part of the census's sys.path and of its verdict"
+  },
+  {
+    "id": "wheels.ort-purge-name-filter",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "sed -n 's/^ORT-CENSUS PURGE \\([a-z0-9][a-z0-9-]*\\)$/\\1/p'",
+    "replace": "sed -n 's/^ORT-CENSUS PURGE //p'",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "only a normalised dist name may reach the uv command line"
+  },
+  {
+    "id": "wheels.ort-purge-from-census",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "      uv pip uninstall \"${_ort_dists[@]}\" ||",
+    "replace": "      uv pip uninstall onnxruntime onnxruntime-gpu ||",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "a fixed name list missed every variant it did not carry; the census names what is installed"
+  },
+  {
+    "id": "wheels.ort-purge-failure-stops",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "_names=\"$(_ort_purge_names)\" || { echo \"ERROR: the ORT census could not list the venv's ONNX Runtime distributions\" >&2; return 1; }",
+    "replace": "_names=\"$(_ort_purge_names)\" || true",
+    "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
+    "why": "a census that cannot list the venv must stop the reconcile, not purge nothing"
+  },
+  {
+    "id": "wheels.ort-genai-sync-skip-flavour",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  _genai_wheel=\"$(ls /opt/wheels/onnxruntime_genai*.whl 2>/dev/null | head -1 || true)\"",
+    "replace": "  _genai_wheel=\"$(ls /opt/wheels/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)\"",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "nvidia's chain GenAI is onnxruntime_genai_cuda / _trt_rtx; a plain-name glob let uv sync download and install the lock's PyPI onnxruntime-genai at build time"
+  },
+  {
+    "id": "probe.genai-flavour-count",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    onnxruntime-genai) grep -cE '^onnxruntime-genai(-[a-z0-9-]+)?$' <<<\"${names}\" || true ;;",
+    "replace": "    onnxruntime-genai) grep -cxF -- \"${want}\" <<<\"${names}\" || true ;;",
+    "test": "bash linux/scripts/tests/test-smoke-genai-flavour.sh",
+    "why": "the census purges the lock's PyPI onnxruntime-genai, so an nvidia image carries only the flavoured chain GenAI; an exact name fails ARCH-PARITY and VENV-SET there"
+  },
+  {
+    "id": "probe.genai-flavour-anchored",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    onnxruntime-genai) grep -cE '^onnxruntime-genai(-[a-z0-9-]+)?$' <<<\"${names}\" || true ;;",
+    "replace": "    onnxruntime-genai) grep -cE '^onnxruntime-genai' <<<\"${names}\" || true ;;",
+    "test": "bash linux/scripts/tests/test-smoke-genai-flavour.sh",
+    "why": "a lookalike name (onnxruntime-genaix) is not a GenAI flavour and must not satisfy the gate"
+  },
+  {
+    "id": "probe.pkg-count-exact-elsewhere",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    *)                 grep -cxF -- \"${want}\" <<<\"${names}\" || true ;;",
+    "replace": "    *)                 grep -cF -- \"${want}\" <<<\"${names}\" || true ;;",
+    "test": "bash linux/scripts/tests/test-smoke-genai-flavour.sh",
+    "why": "only GenAI has flavours: torch_tensorrt is not torch and pandas-stubs is not pandas"
+  },
+  {
+    "id": "probe.parity-uses-pkg-count",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "        *)             present=\"$(_pkg_count \"${want}\" \"${wheels}\")\" ;;",
+    "replace": "        *)             present=\"$(printf '%s\n' \"${wheels}\"   | grep -cxF -- \"${want}\" || true)\" ;;",
+    "test": "bash linux/scripts/tests/test-smoke-genai-flavour.sh",
+    "why": "ARCH-PARITY must use the flavour-aware match, or every nvidia image reports onnxruntime_genai missing"
+  },
+  {
+    "id": "probe.venvset-uses-pkg-count",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      if [ \"$(_pkg_count \"${r}\" \"${pkgs}\")\" -gt 0 ]; then",
+    "replace": "      if printf '%s\n' \"${pkgs}\" | grep -qxF -- \"${r}\"; then",
+    "test": "bash linux/scripts/tests/test-smoke-genai-flavour.sh",
+    "why": "VENV-SET must use the flavour-aware match, or every nvidia image reports MISS ml-ai onnxruntime-genai"
+  },
+  {
+    "id": "probe.genai-bind-flavour",
+    "target": "linux/scripts/06-packaging/smoke-common.sh",
+    "find": "        if re.fullmatch(r\"onnxruntime-genai(-[a-z0-9-]+)?\", name):",
+    "replace": "        if name == \"onnxruntime-genai\":",
+    "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+    "why": "on nvidia the GenAI dist is onnxruntime-genai-cuda / -trt-rtx; asking only for the plain name turns a broken binding into a SKIP"
+  },
+  {
+    "id": "probe.genai-tier1-flavour",
+    "target": "linux/scripts/06-packaging/smoke-common.sh",
+    "find": "        version = genai_dist_version()",
+    "replace": "        version = None",
+    "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+    "why": "tier 1's metadata fallback must read a flavoured GenAI's version too"
+  },
+  {
     "id": "wheels.partition-arg-order",
     "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
     "find": "  _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels \"${local_wheels[@]}\"",
@@ -3066,8 +3298,8 @@
   {
     "id": "probe.jdk-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
   },
@@ -3106,16 +3338,16 @@
   {
     "id": "probe.appimagetool-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
   },
   {
     "id": "probe.flatpak-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
   },
@@ -5056,6 +5288,582 @@
     "why": "a whole-tree scripts bind mount folds every script's checksum into the base cache key and busts the base layer on every edit"
   },
   {
+    "id": "critical-fixes.ort-is-called",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "fix10_libstdcxx_nostdinc_2026_08 fix11_ort_single_source_2026_09)",
+    "replace": "fix10_libstdcxx_nostdinc_2026_08)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "fix11 is the only fast check that ORT stays chain-only; dropped from FIX_FUNCS every row below goes green unseen"
+  },
+  {
+    "id": "critical-fixes.ort-opencv-download-switch",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "download_onnxruntime(_gpu)?(:bool)?=",
+    "replace": "never_matches(_gpu)?(:bool)?=",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "DOWNLOAD_ONNXRUNTIME=ON forces OpenCV dnn to fetch a prebuilt 1.25.1 even with HAVE_ONNXRUNTIME pre-set"
+  },
+  {
+    "id": "critical-fixes.ort-binary-url",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'(pythonhosted\\.org|pypi\\.org|nuget\\.org)/[^[:space:]]*onnxruntime|",
+    "replace": "'(never_matches)/x|",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a pinned SHA256 does not make a PyPI/NuGet ORT binary chain-built (the onnxruntime-ep-webgpu wheel was exactly that)"
+  },
+  {
+    "id": "critical-fixes.ort-nuget-id",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'microsoft\\.ml\\.onnxruntime|microsoft",
+    "replace": "'never_matches|microsoft",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a NuGet Microsoft.ML.OnnxRuntime* install is how GenAI linked DirectML ORT 1.24.4"
+  },
+  {
+    "id": "critical-fixes.ort-inbox-untouched",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'(system32|syswow64|winsxs|windir|systemroot|c:.windows)'",
+    "replace": "'(never_matches)'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "deleting or patching the OS's in-box ORT in a layer silences smoke section 25's INBOX instead of keeping the base digest"
+  },
+  {
+    "id": "critical-fixes.ort-nuget-refusal-order",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "(g && t && n && t < n)",
+    "replace": "(n)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the hub facility must throw on an ORT id BEFORE nuget install runs, or consumers can still pull NuGet ORT through it"
+  },
+  {
+    "id": "critical-fixes.ort-pypi-install",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"${tok}\" '--no-index'",
+    "replace": "\"${tok}\" '.'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a pip/uv install of an onnxruntime* name without --no-index reaches PyPI"
+  },
+  {
+    "id": "critical-fixes.ort-apt",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "_f11_verdict \"$(_f11_grep \"${c}\" \"${tok}\")\" \\",
+    "replace": "_f11_verdict \"$(_f11_grep \"${c}\" \"never_matches${tok}\")\" \\",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "apt libonnxruntime1.23 was pulled into media-arm64 on 2026-08-27 and shadowed the chain build"
+  },
+  {
+    "id": "critical-fixes.ort-so-map-package",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "tolower($2) ~ /onnxruntime/ { print",
+    "replace": "0 { print",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a SONAME map row naming a distro ORT package is the resolver path that pulled libonnxruntime1.23"
+  },
+  {
+    "id": "critical-fixes.ort-so-map-deny-row",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "END { if (!d) print \"no libonnxruntime.so* -> source-built deny row\" }",
+    "replace": "END { }",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "without the deny row the resolver guesses ^libonnxruntime[0-9] from apt-cache again"
+  },
+  {
+    "id": "critical-fixes.ort-ffmpeg-vendor-pc",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'ffmpeg_probe_pkg_config_feature[[:space:]]+\"?libonnxruntime'",
+    "replace": "'never_matches'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "FFmpeg's vendor pkg-config fallback accepts ANY libonnxruntime.pc first on PKG_CONFIG_PATH"
+  },
+  {
+    "id": "critical-fixes.ort-rearm-download",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "grep -E -e ': (ort_lib_path|ort_strategy|ort_skip_download|cargo_net_offline|ort_offline)=' \\",
+    "replace": "grep -E -e ': (never_matches)=' \\",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ort-sys reads ORT_LIB_PATH before ORT_LIB_LOCATION and CARGO_NET_OFFLINE before ORT_SKIP_DOWNLOAD"
+  },
+  {
+    "id": "critical-fixes.ort-env-owners",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "grep -E -e ': (ort_lib_location|ort_dylib_path)=' \\",
+    "replace": "grep -E -e ': (never_matches)=' \\",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a second writer of ORT_LIB_LOCATION/ORT_DYLIB_PATH can point the ort crate at a non-chain ORT"
+  },
+  {
+    "id": "critical-fixes.ort-opencv-have-preset",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "([^a-z0-9_]|$)')\" -eq 0 ]; then",
+    "replace": "([^a-z0-9_]|$)')\" -lt 0 ]; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "OpenCV 5.0 dnn downloads ORT whenever HAVE_ONNXRUNTIME is not pre-set (dnn/CMakeLists.txt:141)"
+  },
+  {
+    "id": "critical-fixes.ort-opencv-silent-off",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"-dwith_onnxruntime(:bool)?=[\\\"${q}]?(off|0|false)",
+    "replace": "\"never_matches(:bool)?=[\\\"${q}]?(off|0|false)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the silent WITH_ONNXRUNTIME=OFF fallback shipped OpenCV without the chain ORT instead of failing"
+  },
+  {
+    "id": "critical-fixes.ort-genai-ort-home",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'-dort_home[:=]' 1+",
+    "replace": "'-dort_home[:=]' 0+",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "without ORT_HOME, GenAI ortlib.cmake FetchContents Microsoft.ML.OnnxRuntime.DirectML from the aiinfra feed"
+  },
+  {
+    "id": "critical-fixes.ort-genai-winml",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'use_winml' '' '' ''",
+    "replace": "'never_matches' '' '' ''",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "USE_WINML overrides ORT_HOME with a Windows ML NuGet ORT"
+  },
+  {
+    "id": "critical-fixes.ort-genai-linux-ort-home",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "[ \"${no}\" -ge \"${nb}\" ]",
+    "replace": "[ \"${no}\" -ge 0 ]",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "one build.py call without --ort_home is one GenAI build that fetches ORT"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-windows",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "1 \"${w} sets ORT_SKIP_DOWNLOAD=1\"",
+    "replace": "0+ \"${w} sets ORT_SKIP_DOWNLOAD=1\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3: without ORT_SKIP_DOWNLOAD an unset location lets ort-sys fetch pyke's ORT"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-windows-location",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "1 \"${w} sets ORT_LIB_LOCATION to the chain lib dir\"",
+    "replace": "0+ \"${w} sets ORT_LIB_LOCATION to the chain lib dir\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3: ORT_LIB_LOCATION is what makes ort-sys link the chain instead of downloading"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-linux-dylib",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "1 \"${l} sets ORT_DYLIB_PATH to the chain library\"",
+    "replace": "0+ \"${l} sets ORT_DYLIB_PATH to the chain library\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3: without ORT_DYLIB_PATH ort load-dynamic opens whichever libonnxruntime.so the loader finds first"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-custody",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "1 \"ONNX_ROOT is the chain install\"",
+    "replace": "0+ \"ONNX_ROOT is the chain install\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3 names ONNX_ROOT; ONNX_ROOT must be where Build-OnnxFromSource.ps1 installs"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-smokes",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'get-ortcrateenvfinding -onnxroot \\$env:onnx_root\\)' 1 \\",
+    "replace": "'get-ortcrateenvfinding -onnxroot \\$env:onnx_root\\)' 0+ \\",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3 is asserted on the shipped image by smoke section 19; unwired, the ENV can rot"
+  },
+  {
+    "id": "critical-fixes.ort-crate-env-linux-row",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'^_consumer_contract_rows=.*[\" ]ort-crate-env[\" ]' 1 \\",
+    "replace": "'^_consumer_contract_rows=.*[\" ]ort-crate-env[\" ]' 0+ \\",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G3 is asserted on the Linux image by the consumer contract; a dropped row asserts nothing"
+  },
+  {
+    "id": "critical-fixes.ort-gate-calls-present",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"(^|[^a-z0-9_-])${call}([^a-z0-9_-]|\\$)\" 1 \"${f##*/} calls",
+    "replace": "\"(^|[^a-z0-9_-])${call}([^a-z0-9_-]|\\$)\" 0+ \"${f##*/} calls",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G2 and the consumer configure gates only protect a build that calls them"
+  },
+  {
+    "id": "critical-fixes.ort-gate-calls-once",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"(^|[^a-z0-9_-])${call}([^a-z0-9_-]|\\$)\" 1 \"${f##*/} calls",
+    "replace": "\"(^|[^a-z0-9_-])${call}([^a-z0-9_-]|\\$)\" 1+ \"${f##*/} calls",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a second call is a copy that drifts; exactly once, after configure"
+  },
+  {
+    "id": "critical-fixes.ort-gate-calls-definition",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"function[[:space:]]+${call}([^a-z0-9_-]|\\$)|(^|[[:space:]])${call}\\\\(\\\\)\"",
+    "replace": "\"\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a gate DEFINED in the consumer script must not count as its call"
+  },
+  {
+    "id": "critical-fixes.ort-g2-per-file-mount-windows",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"--mount=type=bind,source=${F11_WIN_G2_MODULE,,},\" '^windows/Dockerfile'",
+    "replace": "\".\" '^windows/Dockerfile'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the G2 module in a buildmods COPY re-keys the ~75-min ONNX branch"
+  },
+  {
+    "id": "critical-fixes.ort-g2-per-file-mount-linux",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"--mount=type=bind,source=${F11_LINUX_G2_HELPER},\" '^linux/Dockerfile'",
+    "replace": "\".\" '^linux/Dockerfile'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the G2 helper in the base COPY re-keys every media stage"
+  },
+  {
+    "id": "critical-fixes.ort-g2-closure",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'^windows/scripts/(modules/WindowsSourceBuild\\.Common\\.psm1|build/Build-MediaCoreAll\\.ps1)$'",
+    "replace": "'^never$'",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "WindowsSourceBuild.Common and Build-MediaCoreAll are mounted by the ONNX branch; importing G2 there re-keys it"
+  },
+  {
+    "id": "critical-fixes.ort-g2-run-mount-windows",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "&& !index($0, wm) {",
+    "replace": "&& 0 {",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a consumer RUN without the G2 module fails with CommandNotFound hours into the chain"
+  },
+  {
+    "id": "critical-fixes.ort-g2-run-mount-linux",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "index($0, r[i]) && !index($0, lm)",
+    "replace": "index($0, r[i]) && 0",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a Linux consumer RUN without the G2 helper cannot source it"
+  },
+  {
+    "id": "critical-fixes.ort-g1-windows",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "'(get-ortcensusfinding|invoke-ort(image)?census|test-ortprovenancetree)' 1+",
+    "replace": "'(get-ortcensusfinding|invoke-ort(image)?census|test-ortprovenancetree)' 0+",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "G1 is the only check on the shipped bytes; unwired from the smoke it proves nothing"
+  },
+  {
+    "id": "critical-fixes.ort-g1-linux",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if [ -n \"$(_f11_grep \"${c}\" '^[[:space:]]+check_ort_census",
+    "replace": "  if true || [ -n \"$(_f11_grep \"${c}\" '^[[:space:]]+check_ort_census",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the Linux census must be CALLED by a runtime smoke, not merely sourced"
+  },
+  {
+    "id": "critical-fixes.ort-g5-heading",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if grep -qxF -e '### ONNX Runtime has exactly one source",
+    "replace": "  if true || grep -qxF -e '### ONNX Runtime has exactly one source",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the invariant is what stops the next agent simplifying a pre-set or a shim away"
+  },
+  {
+    "id": "critical-fixes.ort-census-root-windows",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if [ -n \"${win}\" ] && grep -qiF",
+    "replace": "  if true || grep -qiF",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a renamed SourceDir turns every chain build into FOREIGN for the census, hours later"
+  },
+  {
+    "id": "critical-fixes.ort-census-root-linux",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if [ -n \"${lin}\" ] && [ \"${lc}\" != \"${lc#*\"${lin}\"}\" ]; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a renamed ORT_SRC_DIR turns every chain build into FOREIGN for the Linux census"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-default-features",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "deps && (l ~ (\"^[[:space:]]*\" Q \"?ort(-sys)?\" Q \"?[[:space:]]*=\") ||",
+    "replace": "deps && (0 ||",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ort's DEFAULT features include download-binaries: a bare ort dependency is pyke's ORT"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-download-binaries",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "/download-binaries/ { print",
+    "replace": "/never_matches/ { print",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "download-binaries spelled out is the same pyke fetch"
+  },
+  {
+    "id": "critical-fixes.ort-apt-context-free",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "\"$(_f11_grep \"${c}\" \"${tok}\")\"",
+    "replace": "\"$(_f11_grep \"${c}\" \"${tok}\" 'apt-get|dpkg')\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the hub's apt lists put package names on continuation lines with no apt-get on them; an apt-context rule never sees them"
+  },
+  {
+    "id": "critical-fixes.ort-apt-backslash-terminator",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "),;|]|\\\\\\\\|\\$)\"",
+    "replace": "),;|]|\\$)\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a package name glued to its line continuation (libonnxruntime-dev\\) is still that package"
+  },
+  {
+    "id": "critical-fixes.ort-rearm-skip-value",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "=(1|true)$' || true)\"",
+    "replace": "=.*$' || true)\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ort-sys skips the download only on exactly 1/true; yes, on or an empty value re-arm pyke's fetch"
+  },
+  {
+    "id": "critical-fixes.ort-env-not-a-comparison",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if (s !~ /^[=~]/) emit(m, s)",
+    "replace": "emit(m, s)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a == or =~ test READS the variable; counting it as a write would refuse every smoke that checks it"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-brace",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "N \"[}]?[[:space:]]*:?=\"",
+    "replace": "N \"[[:space:]]*:?=\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "${env:ORT_LIB_PATH} = ... is PowerShell's other assignment spelling"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-environ-index",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "each(Q N Q \"[[:space:]]*[]][[:space:]]*=\", t)",
+    "replace": "each(\"never_matches\", t)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "os.environ[\"CARGO_NET_OFFLINE\"] = \"false\" sets the variable for every cargo the script starts"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-setenv",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "each(\"(setenvironmentvariable|setdefault|putenv|setenv)",
+    "replace": "each(\"(never_matches)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "[Environment]::SetEnvironmentVariable('ORT_LIB_PATH', ...) sets it for the machine without an = in sight"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-set-item",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "each(\"(set-item|new-item)",
+    "replace": "each(\"(never_matches)",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "Set-Item -Path Env:ORT_LIB_PATH is PowerShell's provider spelling of the same write"
+  },
+  {
+    "id": "critical-fixes.ort-env-set-item-not-a-read",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "[^$a-z0-9_{])?env:",
+    "replace": ".)?env:",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "New-Item -Path $env:ORT_LIB_LOCATION READS the variable; only an Env: provider path writes it"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-setx",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "each(\"(^|[^a-z0-9_-])setx",
+    "replace": "each(\"(never_matches)setx",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "setx /M ORT_SKIP_DOWNLOAD 0 re-arms the download machine-wide"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-yaml",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if (p ~ /\\.(ya?ml|py|json)$/) each(",
+    "replace": "if (0) each(",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a workflow env: mapping (ORT_LIB_PATH: /opt/pyke) is how CI sets it, and it has no ="
+  },
+  {
+    "id": "critical-fixes.ort-env-yaml-key-position",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "each(\"(^[[:space:]]*(-[[:space:]]+)?|[{,][[:space:]]*)\" Q",
+    "replace": "each(\"(^|[^a-z0-9_])\" Q",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "echo \"ORT_LIB_PATH: $ORT_LIB_PATH\" in a run: step is a read; only a mapping KEY is a write"
+  },
+  {
+    "id": "critical-fixes.ort-env-form-legacy-dockerfile",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if (p ~ /(^|\\/)Dockerfile[^\\/]*$/) each(",
+    "replace": "if (0) each(",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ENV ORT_LIB_PATH /x (no =) and a bare ARG are Dockerfile writes too"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-table-form",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if (one != \"\" && isort && !df) print",
+    "replace": "if (0) print",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "[dependencies.ort] with version = only keeps the default features, download-binaries included"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-table-df",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "one != \"\" && l ~ (\"^[[:space:]]*\" DF) { df = 1 }",
+    "replace": "0 { df = 1 }",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a [dependencies.ort] table that says default-features = false is the chain path and must pass"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-renamed-table",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "one != \"\" && l ~ (\"^[[:space:]]*package[[:space:]]*=[[:space:]]*\" O) { isort = 1 }",
+    "replace": "0 { isort = 1 }",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "[dependencies.onnx] package = \"ort\" is ort under another name"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-renamed-inline",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": " || l ~ (\"[{,][[:space:]]*package[[:space:]]*=[[:space:]]*\" O))",
+    "replace": ")",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "onnx = { package = \"ort\", version = ... } is ort under another name"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-dotted",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "for (n in dort) if (!(n in ddf)) print",
+    "replace": "for (n in dort) if (0) print",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ort.version = ... is a dotted-key dependency table with the default features"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-deps-only",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "deps && (l ~ (",
+    "replace": "(l ~ (",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "ort = [\"dep:ort\"] under [features] is a feature, not a dependency; only dependency tables decide default features"
+  },
+  {
+    "id": "critical-fixes.ort-cargo-header-comment",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "sub(/#.*/, \"\", h); ",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a comment after [dependencies.ort] must not hide the table"
+  },
+  {
+    "id": "probe.ort-crate-env-row",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": " web-lane-tools ort-crate-env\"",
+    "replace": " web-lane-tools\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "G3 on the shipped Linux image: the row is the assertion"
+  },
+  {
+    "id": "probe.ort-crate-env-lib-dir",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    /usr/local/lib/onnxruntime-cpu/lib|/usr/local/lib/onnxruntime-gpu/lib) ;;",
+    "replace": "    *) ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ORT_LIB_LOCATION must resolve into the chain prefix, not /opt/opencv5/lib"
+  },
+  {
+    "id": "probe.ort-crate-env-link-lib",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "FACT ort-link-lib)\" != yes ]; then",
+    "replace": "FACT ort-link-lib)\" = never ]; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ort-sys's -l onnxruntime needs the linker name in that dir"
+  },
+  {
+    "id": "probe.ort-crate-env-dylib",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    \"${lreal}\"/libonnxruntime.so*) ;;",
+    "replace": "    *) ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ORT_DYLIB_PATH must open the chain file, not the OpenCV install copy"
+  },
+  {
+    "id": "probe.ort-crate-env-switches",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      1|true) ;;",
+    "replace": "      *) ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ORT_PREFER_DYNAMIC_LINK and ORT_SKIP_DOWNLOAD must both be on"
+  },
+  {
+    "id": "probe.ort-crate-env-lib-path",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${v}\" != '<unset>' ]; then\n    printf 'ORT_LIB_PATH is set",
+    "replace": "  if false; then\n    printf 'ORT_LIB_PATH is set",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ORT_LIB_PATH outranks ORT_LIB_LOCATION in ort-sys"
+  },
+  {
+    "id": "probe.ort-crate-env-cargo-offline",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    '<unset>'|1|true) ;;\n    *) printf 'CARGO_NET_OFFLINE",
+    "replace": "    *) ;;\n    *) printf 'CARGO_NET_OFFLINE",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a falsy CARGO_NET_OFFLINE shadows ORT_SKIP_DOWNLOAD"
+  },
+  {
+    "id": "probe.ort-crate-env-nofact",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "FACT ort-probe)\" != yes ]; then",
+    "replace": "FACT ort-probe)\" = never ]; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "an unset variable and a missing line read the same; only the completion fact tells them apart"
+  },
+  {
+    "id": "probe.ort-crate-env-dispatch",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "        ort-crate-env) line=\"$(_consumer_ort_env_verdict \"${row}\" \"${probe}\")\" ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "without its arm the row falls to the directory verdict and never reads its facts"
+  },
+  {
+    "id": "probe.ort-crate-env-probe-spliced",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  _consumer_ort_env_probe; printf '%s\\n' 'echo CCPROBE_DONE'",
+    "replace": "  printf '%s\\n' 'echo CCPROBE_DONE'",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the facts must reach the probe the image runs"
+  },
+  {
+    "id": "probe.ort-crate-env-lib-path-empty",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  if [ \"${v}\" != '<unset>' ]; then",
+    "replace": "  if [ -n \"${v}\" ] && [ \"${v}\" != '<unset>' ]; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "ort-sys reads a set-but-EMPTY ORT_LIB_PATH before ORT_LIB_LOCATION"
+  },
+  {
+    "id": "probe.ort-crate-env-cargo-offline-empty",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    '<unset>'|1|true) ;;",
+    "replace": "    ''|'<unset>'|1|true) ;;",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a set-but-empty CARGO_NET_OFFLINE is the first skip switch ort-sys finds, and it re-arms the download"
+  },
+  {
+    "id": "probe.ort-crate-env-set-marker",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "\"${ORT_LIB_PATH-<unset>}\" \"${CARGO_NET_OFFLINE-<unset>}\"",
+    "replace": "\"${ORT_LIB_PATH:-<unset>}\" \"${CARGO_NET_OFFLINE:-<unset>}\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "only ${X-...} tells an unset variable from an empty one; ${X:-...} reads both as unset"
+  },
+  {
     "id": "probe.cf-pc-prefix-resolved",
     "target": "linux/scripts/06-packaging/smoke-critical-fixes.sh",
     "find": "        \"${PYTHON_CROSS_ROOT}/${arch}\"|\"${PYTHON_CROSS_ROOT}/${arch}\"/*)",
@@ -6531,6 +7339,22 @@
     "why": "a knob the driver never reads is a knob a consumer sets and does not get; the default would still look right"
   },
   {
+    "id": "python.ci-tests-default-leg-is-the-image-interpreter",
+    "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+    "find": "PY_VERSIONS=\"${2:-${PY_VERSIONS:-3.14}}\"",
+    "replace": "PY_VERSIONS=\"${2:-${PY_VERSIONS:-3.13 3.14}}\"",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "a default stable leg on another interpreter cannot take the cp314-only chain ORT wheels, so every ORT consumer on the default matrix fails its sync"
+  },
+  {
+    "id": "python.ci-docs-default-coverage-is-the-image-interpreter",
+    "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
+    "find": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-3.14}}\"",
+    "replace": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-3.13}}\"",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "the docs venv syncs on that interpreter too, and the page would publish the coverage of a leg the default matrix no longer runs"
+  },
+  {
     "id": "lib.cmake-build-configure-args-reach-cmake",
     "target": "linux/scripts/lib/cmake-build.sh",
     "find": "      cmake -B \"${BUILD_DIR}\" --preset \"${PRESET}\" ${CMAKE_BUILD_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_CONFIGURE_ARGS[@]}\"}",
@@ -6745,5 +7569,1693 @@
     "replace": "          if ($false) {",
     "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
     "why": "GHCR_PAT is required: false so a lint-only caller need not own a registry token; the job that DOES need one must then say so itself, or an empty secret surfaces four steps later as a ghcr docker login failure that names the registry instead of the missing input"
+  },
+  {
+    "id": "uv-chain-ort.census-proof",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  out=\"$(\"${py}\" -I \"${_UV_ORT_CENSUS}\" --check --store \"${store}\" 2>&1)\" || {",
+    "replace": "  out=\"\" || {",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "the census, not uv's exit code, proves no PyPI ORT is left in a consumer venv"
+  },
+  {
+    "id": "uv-chain-ort.sync-calls-reconcile",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  uv_reconcile_chain_ort \"${_venv}\"\n}",
+    "replace": "  true\n}",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "uv_sync_project is the entry point every Python CI driver and consumer calls"
+  },
+  {
+    "id": "uv-chain-ort.failed-sync-returns",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  env \"${_env_clear[@]}\" uv \"${sync_args[@]}\" || return\n",
+    "replace": "  env \"${_env_clear[@]}\" uv \"${sync_args[@]}\" || true\n",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "a failed uv sync must not be reported green because the reconcile after it succeeded"
+  },
+  {
+    "id": "uv-chain-ort.outside-only-warns",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  if [ \"${#drop[@]}\" -eq 0 ] || [ -z \"${store}\" ]; then",
+    "replace": "  if [ \"${#drop[@]}\" -eq 0 ]; then",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "outside our images (no store) the venv keeps today's behaviour plus a notice"
+  },
+  {
+    "id": "uv-chain-ort.no-wheel-no-uninstall",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  if [ \"${#wheels[@]}\" -eq 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "a store with no ORT wheel must fail before PyPI ORT is uninstalled"
+  },
+  {
+    "id": "uv-chain-ort.hold-uv-run",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  _uv_chain_ort_hold_sync hold\n",
+    "replace": "  true\n",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "uv run re-syncs to the lock and would reinstall PyPI ORT over the chain wheels"
+  },
+  {
+    "id": "uv-chain-ort.image-census-path",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "[ -f \"${_UV_ORT_CENSUS}\" ] || _UV_ORT_CENSUS=\"${_UV_ORT_CENSUS%/runtime/*}/final/ort-venv-census.py\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "the torch image's own python_uv.sh has no 03-media/runtime; without the final/ copy every in-image reconcile would fail on a missing census"
+  },
+  {
+    "id": "uv-chain-ort.torch-census-copy-dest",
+    "target": "linux/Dockerfile.torch",
+    "find": "linux/scripts/03-media/runtime/ort-venv-census.py /opt/scripts/03-media/final/ort-venv-census.py",
+    "replace": "linux/scripts/03-media/runtime/ort-venv-census.py /opt/scripts/03-media/ort-venv-census.py",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "the image the store is declared in must ship the census where its own python_uv.sh looks; elsewhere every in-image sync fails on a missing census"
+  },
+  {
+    "id": "uv-chain-ort.import-proof",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  out=\"$(\"${py}\" -I -c 'import sys; print(sys.version); import onnxruntime' 2>&1)\" || {",
+    "replace": "  out=\"\" || {",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "a chain wheel of the right ABI tag the venv still cannot load (a missing DLL) passes the byte census; only the import shows it"
+  },
+  {
+    "id": "uv-chain-ort.stage-installed-flavour",
+    "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+    "find": "  done < <(printf '%s\\n' \"${out}\" | sed -n 's/^ORT-CENSUS chain .* = \\([^/]*\\.whl\\)$/\\1/p')",
+    "replace": "  done < <(cd /opt/wheels && ls onnxruntime*.whl)",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "the store must hold only the flavour /opt/venv runs, or every consumer venv gets two cores"
+  },
+  {
+    "id": "uv-chain-ort.stage-venv-proof",
+    "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+    "find": "  out=\"$(\"${VENV}/bin/python\" -I \"${census}\" --check --store /opt/wheels 2>&1)\" \\",
+    "replace": "  out=\"$(\"${VENV}/bin/python\" -I \"${census}\" --purge-list 2>&1)\" \\",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "a PyPI ORT in /opt/venv must stop the image build, not be staged as chain"
+  },
+  {
+    "id": "uv-chain-ort.pinned-target",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  uv_reconcile_chain_ort \"${_venv}\"\n}",
+    "replace": "  uv_reconcile_chain_ort \"${UV_PROJECT_ENVIRONMENT:-${PWD}/.venv}\"\n}",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "every hub driver syncs through uv_venv_create's _CURRENT_VENV_PATH, where UV_PROJECT_ENVIRONMENT is set only for the uv call; reconciling any other venv proves the wrong one"
+  },
+  {
+    "id": "uv-chain-ort.unowned-import",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "    [ -z \"${store}\" ] || _uv_chain_ort_unowned \"${venv}\" \"${py}\" \"${store}\" || return 1\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "the purge list names distributions only; an ORT import package no distribution owns would pass an in-image sync unchecked"
+  },
+  {
+    "id": "uv-chain-ort.abi-fits",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "  _uv_chain_ort_abi_fits \"${venv}\" \"${py}\" \"${wheels[@]}\" || return 1\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "uv installs a path wheel of another cp tag without complaint; a leg on another interpreter must fail before its venv is touched, naming the remedy"
+  },
+  {
+    "id": "uv-chain-ort.abi3-fits",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "    case \"${tag}\" in \"${abi}\"|abi3|none) ;; *) bad+=\" ${w##*/}\" ;; esac\n",
+    "replace": "    case \"${tag}\" in \"${abi}\") ;; *) bad+=\" ${w##*/}\" ;; esac\n",
+    "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+    "why": "an abi3 or none wheel loads on every interpreter; refusing it would fail legs the chain can serve"
+  },
+  {
+    "id": "ort-chain.opencv-missing-chain",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "if [ ! -d \"${chain}/include\" ] || [ ! -e \"${chain}/lib/libonnxruntime.so\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a missing chain ORT must stop OpenCV, not build it without ORT"
+  },
+  {
+    "id": "ort-chain.opencv-silent-off",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "|| die \"OpenCV must build against the chain ONNX Runtime at ${OPENCV_ORT_CHAIN_ROOT}\"",
+    "replace": "|| cmake_opts+=(\"-DWITH_ONNXRUNTIME=OFF\")",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the silent WITH_ONNXRUNTIME=OFF fallback must not come back"
+  },
+  {
+    "id": "ort-chain.opencv-download-line",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "-e 'DNN: Downloading ONNX Runtime' ",
+    "replace": "-e 'DNN: NEVER-PRINTED' ",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "dnn's 1.25.1 download line must fail the configure gate"
+  },
+  {
+    "id": "ort-chain.opencv-enabled-line",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "|| echo \"configure log: no 'DNN: ONNX Runtime enabled' (dnn did not take ORT)\"",
+    "replace": "|| true",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "dnn must positively report ORT enabled"
+  },
+  {
+    "id": "ort-chain.opencv-summary-version",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "| grep -qF -e \"YES (ver ${ver})\"",
+    "replace": "| grep -qF -e \"YES (ver\"",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the summary must name the chain version, not 1.25.1"
+  },
+  {
+    "id": "ort-chain.opencv-root-dir",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "[ \"${v}\" = \"${compat}\" ] || echo \"CMakeCache: ONNXRT_ROOT_DIR",
+    "replace": "true || echo \"CMakeCache: ONNXRT_ROOT_DIR",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a FORCEd ONNXRT_ROOT_DIR (the download branch) must fail"
+  },
+  {
+    "id": "ort-chain.opencv-cached-version",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "[ \"${v}\" = \"${ver}\" ] || echo \"CMakeCache: ONNX_VERSION",
+    "replace": "true || echo \"CMakeCache: ONNX_VERSION",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "ONNX_VERSION must be the chain's"
+  },
+  {
+    "id": "ort-chain.opencv-lib-in-chain",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "        *) echo \"${what}='${v}' resolves to '${lib}', not into ${chain_real}\" ;;",
+    "replace": "        *) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the linked ORT must resolve into the chain lib dir"
+  },
+  {
+    "id": "ort-chain.opencv-static",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "*.a) echo \"${what}='${v}' is a static ORT (a second ORT inside OpenCV)\" ;;",
+    "replace": "*.a) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a static ORT inside OpenCV must fail"
+  },
+  {
+    "id": "ort-chain.opencv-cmake-package",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "*) echo \"CMakeCache: ${key}='${v}' (a CMake ORT package was found)\" ;;",
+    "replace": "*) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a found ORT CMake package must fail"
+  },
+  {
+    "id": "ort-chain.opencv-forward-refuses",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "if [ ! -L \"${f}\" ] && ! cmp -s \"${f}\" \"${chain_lib}/${name}\"; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "bytes the chain lacks must never be forwarded"
+  },
+  {
+    "id": "ort-chain.opencv-install-copy",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "echo \"COPY ${f} (a second ORT file; only links into the chain are allowed)\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a real ORT file under /opt/opencv5 must fail"
+  },
+  {
+    "id": "ort-chain.opencv-install-foreign",
+    "target": "linux/scripts/03-media/build/opencv/opencv-ort.sh",
+    "find": "_opencv_ort_lib_finding \"installed\" \"${f}\" \"${chain_real}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a link out of the chain must fail"
+  },
+  {
+    "id": "ort-chain.opencv-wired-configure",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "opencv_ort_assert_configure \"${build_dir}\" \"${ort_compat}\" \"${ort_ver}\" \\",
+    "replace": "true \"${build_dir}\" \"${ort_compat}\" \"${ort_ver}\" \\",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "configure_opencv must run the configure gate"
+  },
+  {
+    "id": "ort-chain.opencv-wired-install",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "opencv_ort_assert_installed \"${OPENCV_PREFIX}\" \\",
+    "replace": "true \"${OPENCV_PREFIX}\" \\",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "install_opencv must run the install gate"
+  },
+  {
+    "id": "ort-chain.ffmpeg-missing-fatal",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "if [ ! -f \"${onnx_base}/lib/libonnxruntime.so\" ] || [ ! -f \"${onnx_base}/include/onnxruntime_c_api.h\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a missing chain must stop FFmpeg"
+  },
+  {
+    "id": "ort-chain.ffmpeg-synth-fatal",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "echo \"ERROR: the chain ONNX Runtime at ${onnx_base} does not compile and link for this target (probe detail above)\" >&2",
+    "replace": "return 1",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a chain the probe cannot link must stop FFmpeg, not build it without ORT"
+  },
+  {
+    "id": "ort-chain.ffmpeg-vendor-fallback",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "echo \"ERROR: the chain ONNX Runtime at ${onnx_base} does not compile and link for this target (probe detail above)\" >&2",
+    "replace": "ffmpeg_probe_pkg_config_feature \"libonnxruntime\" \"libonnxruntime\" \"onnxruntime_c_api.h\" \"OrtGetApiBase\" && return 0",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the vendor pkg-config fallback must not come back"
+  },
+  {
+    "id": "ort-chain.ffmpeg-root-recorded",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "_FFMPEG_ONNX_ROOT=\"${onnx_base}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the link gate needs the chain root the probe used"
+  },
+  {
+    "id": "ort-chain.ffmpeg-ldflags-first",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "if [ \"${_fol_placed}\" = 0 ] && [[ \"${_fol_o}\" == --extra-ldflags=* ]]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the chain -L must precede the cross multiarch -L"
+  },
+  {
+    "id": "ort-chain.ffmpeg-ldflags-wired",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "ffmpeg_ort_ldflags_first _ffpdb_out || die \"chain ORT -L missing (ffmpeg_probe_libonnxruntime set none)\"",
+    "replace": "_ffpdb_out+=(\"--extra-ldflags=${_FFMPEG_ONNX_EXTRA_LDFLAGS}\")",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the DNN step must hoist the chain -L, not append it after the cross one"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-order",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "for d in \"$@\"; do",
+    "replace": "for d in $(printf '%s\\n' \"$@\" | tac); do",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the gate must take the FIRST -L dir holding ORT, as ld does"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-foreign",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "*) echo \"LIB ${t} -> '${real:-unresolved}' is not in the chain lib dir ${lib}\" ;;",
+    "replace": "*) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a -lonnxruntime resolving outside the chain must fail"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-static",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "\"${lib}\"/*.a) echo \"LIB ${t} -> '${real}' is a static ORT, not the chain's shared one\" ;;",
+    "replace": "\"${lib}\"/*.a) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a static ORT must fail"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-so-first",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "'libonnxruntime.so libonnxruntime.a'",
+    "replace": "'libonnxruntime.a libonnxruntime.so'",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "ld takes the .so before the .a in one dir"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-enabled",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "grep -qx -e 'CONFIG_LIBONNXRUNTIME=yes' \"${mak}\" || echo",
+    "replace": "true || echo",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "FFmpeg configured without libonnxruntime must fail"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-refs",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "[ \"${refs}\" -gt 0 ] || echo \"${mak}: no link variable names libonnxruntime\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a link naming no ORT is a finding, not a pass"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-vars",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "s/^(SHFLAGS|LDFLAGS|LDSOFLAGS|LDEXEFLAGS|EXTRALIBS(-[A-Za-z0-9_]+)?)=//p",
+    "replace": "s/^(SHFLAGS|LDFLAGS|LDSOFLAGS|LDEXEFLAGS)=//p",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the EXTRALIBS lines carry -lonnxruntime and must be read"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-librarypath",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "IFS=':' read -r -a lpath <<< \"${LIBRARY_PATH:-}\"",
+    "replace": "lpath=()",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "LIBRARY_PATH is the tail of ld's walk"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-split-l",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "case \"${prev}\" in -L) d=\"${t}\" ;; esac",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a '-L dir' spelling must be walked"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-sysroot-eq",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "d=\"${d#=}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a '-L=dir' spelling must be walked"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-relative",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "*) printf '%s\\n' \"$1/${d}\" ;;",
+    "replace": "*) ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a relative -L is read against FFmpeg's source top"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-path-ref",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "/*libonnxruntime*.so*|/*libonnxruntime*.a) readlink -f -- \"${t}\" 2>/dev/null || true ;;",
+    "replace": "/*libonnxruntime*.so*|/*libonnxruntime*.a) return 1 ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "an ORT linked by path must be judged"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-l-colon",
+    "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+    "find": "-l:libonnxruntime*) _ffmpeg_ort_ld_pick \"${t#-l:}\" \"$@\" ;;",
+    "replace": "-l:libonnxruntime*) _ffmpeg_ort_ld_pick libonnxruntime.so \"$@\" ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "-l:<name> searches that exact file name"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-wired",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "ort_findings=\"$(ffmpeg_ort_link_findings ffbuild/config.mak \"${_FFMPEG_ONNX_ROOT:-}\")\"",
+    "replace": "ort_findings=\"\"",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "configure_ffmpeg must run the link gate"
+  },
+  {
+    "id": "ort-chain.ffmpeg-link-die",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "[ -z \"${ort_findings}\" ] || die \"FFmpeg links an ONNX Runtime other than the chain: ${ort_findings}\"",
+    "replace": "[ -z \"${ort_findings}\" ] || echo \"FFmpeg links an ONNX Runtime other than the chain: ${ort_findings}\"",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a link finding must stop the build"
+  },
+  {
+    "id": "ort-chain.gst-lib-foreign",
+    "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+    "find": "_gst_onnx_under \"${real}\" \"$@\" || echo \"LIB ${t} -> '${real:-unresolved}' is not a chain ORT\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a non-chain libonnxruntime in the gstonnx link must fail"
+  },
+  {
+    "id": "ort-chain.gst-l-flag",
+    "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+    "find": "-lonnxruntime) name=\"libonnxruntime.so\" ;;",
+    "replace": "-lonnxruntime) continue ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "-lonnxruntime must be resolved through -L and LIBRARY_PATH"
+  },
+  {
+    "id": "ort-chain.gst-no-refs",
+    "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+    "find": "[ \"${refs}\" -gt 0 ] || echo",
+    "replace": "true || echo",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a gstonnx link naming no ORT must fail"
+  },
+  {
+    "id": "ort-chain.gst-header",
+    "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+    "find": "|| echo \"HDR ${d} provides onnxruntime_c_api.h but is not a chain include dir\"",
+    "replace": "|| true",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a non-chain ORT header dir must fail"
+  },
+  {
+    "id": "ort-chain.gst-header-none",
+    "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+    "find": "[ \"${hits}\" -gt 0 ] || echo",
+    "replace": "true || echo",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "no ORT header dir at all must fail"
+  },
+  {
+    "id": "ort-chain.gst-wired",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "  _gst_monorepo_meson_setup_run\n  _gst_monorepo_onnx_ort_gate\n",
+    "replace": "  _gst_monorepo_meson_setup_run\n",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "the gate must run between meson setup and compile"
+  },
+  {
+    "id": "ort-chain.gst-gate-exits",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "    exit 1\n  fi\n  echo \"gst onnx plugin:",
+    "replace": "    true\n  fi\n  echo \"gst onnx plugin:",
+    "test": "bash linux/scripts/tests/test-ort-chain-build-gates.sh",
+    "why": "a gst finding must stop the build"
+  },
+  {
+    "id": "ort-chain.rt-denied-in-code",
+    "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+    "find": "  ort_is_denied_soname \"${so_name}\" && return 2\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "ORT sonames must be denied even with no map"
+  },
+  {
+    "id": "ort-chain.rt-map-row",
+    "target": "linux/scripts/03-media/runtime/so-package-map.txt",
+    "find": "libonnxruntime.so*\tsource-built",
+    "replace": "libonnxruntime.so.*\tsource-built",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "the map row must cover the unversioned soname"
+  },
+  {
+    "id": "ort-chain.rt-distro-names",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "libonnxruntime*|onnxruntime*|python3-onnxruntime*) return 0 ;;",
+    "replace": "onnxruntime*) return 0 ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "libonnxruntime*/python3-onnxruntime must count as ORT"
+  },
+  {
+    "id": "ort-chain.rt-dpkg-status",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "*\" installed\"|*\" unpacked\"|*\" half-configured\"|*\" half-installed\"|*\" triggers-\"*) ;;",
+    "replace": "*\" installed\") ;;",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "an unpacked ORT package has its files on disk too"
+  },
+  {
+    "id": "ort-chain.rt-plan-gate",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "\"$(ort_apt_plan_findings \"$(apt-get -s install",
+    "replace": "\"$(true \"$(apt-get -s install",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "an apt plan pulling ORT must fail"
+  },
+  {
+    "id": "ort-chain.rt-dpkg-gate",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "\"$(ort_dpkg_findings \"$(dpkg-query",
+    "replace": "\"$(true \"$(dpkg-query",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "an installed ORT package must fail"
+  },
+  {
+    "id": "ort-chain.rt-loader-foreign",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "_ort_in_roots \"${real}\" \"$@\" || echo \"FOREIGN ${f} -> ${real} (not a chain file)\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "a non-chain ORT on a loader path must fail"
+  },
+  {
+    "id": "ort-chain.rt-loader-dangling",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "[ -e \"${f}\" ] || { echo \"DANGLING ${f}\"; continue; }",
+    "replace": "[ -e \"${f}\" ] || continue",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "a dead ORT link on a loader path must fail"
+  },
+  {
+    "id": "ort-chain.rt-loader-none",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "[ \"${have}\" = 1 ] || echo \"NONE",
+    "replace": "true || echo \"NONE",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "an empty chain must fail, not pass vacuously"
+  },
+  {
+    "id": "ort-chain.rt-loader-providers",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "\"${d}\"/libonnxruntime.so* \"${d}\"/libonnxruntime_providers_*.so*; do",
+    "replace": "\"${d}\"/libonnxruntime.so*; do",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "provider libraries are ORT too"
+  },
+  {
+    "id": "ort-chain.rt-runtime-dpkg",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "    ort_dpkg_gate || return 1\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "ort_runtime_gate must include the dpkg gate"
+  },
+  {
+    "id": "ort-chain.rt-runtime-loader",
+    "target": "linux/scripts/03-media/runtime/ort-runtime-gate.sh",
+    "find": "/usr/local/lib)\" || return 1\n    echo \"OK: every loader path",
+    "replace": "/usr/local/lib)\" || true\n    echo \"OK: every loader path",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "a loader finding must fail ort_runtime_gate"
+  },
+  {
+    "id": "ort-chain.rt-conf-000",
+    "target": "linux/scripts/03-media/runtime/configure-runtime.sh",
+    "find": "write_conf /etc/ld.so.conf.d/000-onnxruntime.conf",
+    "replace": "write_conf /etc/ld.so.conf.d/onnxruntime.conf",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "the chain conf must sort first (AGENTS.md priority 5)"
+  },
+  {
+    "id": "ort-chain.rt-conf-gate-wired",
+    "target": "linux/scripts/03-media/runtime/configure-runtime.sh",
+    "find": "ort_runtime_gate \"/usr/local/lib/onnxruntime-cpu/lib:",
+    "replace": "true \"/usr/local/lib/onnxruntime-cpu/lib:",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "configure-runtime must run the runtime gate"
+  },
+  {
+    "id": "ort-chain.rt-validate-plan-wired",
+    "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+    "find": "  ort_apt_plan_gate \"${UNIQ_PKGS[@]}\" || exit 1\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "the repair must simulate before it installs"
+  },
+  {
+    "id": "ort-chain.rt-validate-dpkg-wired",
+    "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+    "find": "ort_dpkg_gate || exit 1\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-chain-runtime-gate.sh",
+    "why": "validate-media-runtime must end with the dpkg gate"
+  },
+  {
+    "id": "ort-chain.genai-home-missing",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "      echo \"${cache} has no ORT_HOME, so ortlib.cmake fetched its own ONNX Runtime\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a cache without ORT_HOME means ortlib.cmake took its NuGet download branch"
+  },
+  {
+    "id": "ort-chain.genai-home-root",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "if [ \"${ok}\" != 1 ]; then echo",
+    "replace": "if false; then echo",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "an ORT_HOME outside the chain roots must fail"
+  },
+  {
+    "id": "ort-chain.genai-no-cache",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "if [ \"${have_cache}\" != 1 ]; then echo",
+    "replace": "if false; then echo",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a tree with no top-level CMakeCache.txt proves nothing"
+  },
+  {
+    "id": "ort-chain.genai-cache-depth",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "-mindepth 3 -maxdepth 3 -name CMakeCache.txt",
+    "replace": "-name CMakeCache.txt",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "FetchContent sub-build caches carry no ORT_HOME; only build/<platform>/<config> is GenAI's"
+  },
+  {
+    "id": "ort-chain.genai-fetchcontent-dir",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "-prune -printf 'FetchContent populated ONNX Runtime content at %p\\n'",
+    "replace": "-prune -printf ''",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "an ortlib-*/onnxruntime-* FetchContent dir is a fetched ORT"
+  },
+  {
+    "id": "ort-chain.genai-byte-rule",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "      *) echo \"${f} is not the chain's ${name} (foreign ONNX Runtime bytes)\" ;;",
+    "replace": "      *) ;;",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a file named like a chain ORT file must carry the chain bytes"
+  },
+  {
+    "id": "ort-chain.genai-unreadable",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "|| sum=\"unreadable\"",
+    "replace": "|| sum=\"${GENAI_ORT_CHAIN_SHA[${1##*/}]# }\"",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a dangling link under a chain ORT name must fail, not be skipped"
+  },
+  {
+    "id": "ort-chain.genai-archive",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "        echo \"an ONNX Runtime archive sits in the tree: ${f}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "an ORT archive in the tree is a download"
+  },
+  {
+    "id": "ort-chain.genai-anchor",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "[ -n \"${GENAI_ORT_CHAIN_SHA[${f}]:-}\" ] || echo \"no chain",
+    "replace": "true || echo \"no chain",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "an empty chain must fail, not pass the byte rule vacuously"
+  },
+  {
+    "id": "ort-chain.genai-artifacts-no-tree",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "    return 1\n  fi\n  echo \"GENAI-ORT SKIP",
+    "replace": "    return 0\n  fi\n  echo \"GENAI-ORT SKIP",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "GenAI artifacts with no build tree cannot be proven"
+  },
+  {
+    "id": "ort-chain.genai-findings-fail",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "    return 1\n  fi\n  echo \"GENAI-ORT OK",
+    "replace": "    return 0\n  fi\n  echo \"GENAI-ORT OK",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "any finding must fail the RUN"
+  },
+  {
+    "id": "ort-chain.genai-wired",
+    "target": "linux/Dockerfile.media",
+    "find": "      bash /opt/scripts/03-media/verify-genai-ort.sh --src-dir /opt/onnxruntime-genai \\\n",
+    "replace": "      true /opt/scripts/03-media/verify-genai-ort.sh --src-dir /opt/onnxruntime-genai \\\n",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "the genai verify RUN must run the gate"
+  },
+  {
+    "id": "ort-chain.genai-no-image-dir",
+    "target": "linux/Dockerfile.media",
+    "find": "COPY --chmod=755 linux/scripts/03-media/runtime /opt/scripts/03-media/runtime\n",
+    "replace": "COPY --chmod=755 linux/scripts/03-media /opt/scripts/03-media\n",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a whole-dir COPY holding the build-only gate ships it and re-keys final on every edit"
+  },
+  {
+    "id": "ort-chain.genai-no-image-copy",
+    "target": "linux/Dockerfile.package",
+    "find": "COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/\n",
+    "replace": "COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/\nCOPY --chmod=755 linux/scripts/03-media/verify-genai-ort.sh /opt/scripts/03-media/final/verify-genai-ort.sh\n",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a per-file COPY ships the build-only gate in the package image"
+  },
+  {
+    "id": "ort-chain.genai-no-image-mount-dir",
+    "target": "linux/Dockerfile.media",
+    "find": "--mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \\\n    --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,",
+    "replace": "--mount=type=bind,source=linux/scripts,target=/opt/scripts/all,readonly \\\n    --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "a bind mount of a dir holding the gate re-keys that RUN on every gate edit"
+  },
+  {
+    "id": "ort-census.foreign",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  if [ -n \"${foreign}\" ]; then printf 'FOREIGN",
+    "replace": "  if false; then printf 'FOREIGN",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a foreign build root must be FOREIGN"
+  },
+  {
+    "id": "ort-census.stale",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  elif [ \"${chain}\" = 1 ]; then printf 'STALE",
+    "replace": "  elif false; then printf 'STALE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a chain-rooted non-chain copy must be STALE"
+  },
+  {
+    "id": "ort-census.relative",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  elif [ \"${relative}\" = 1 ]; then printf 'FOREIGN",
+    "replace": "  elif false; then printf 'FOREIGN",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "remapped source paths are not the chain"
+  },
+  {
+    "id": "ort-census.unproven",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  else printf 'UNPROVEN\\t%s\\tan ORT-named",
+    "replace": "  else : 'UNPROVEN\\t%s\\tan ORT-named",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an unfingerprinted foreign ORT name must fail"
+  },
+  {
+    "id": "ort-census.unread",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "      UNREAD) printf 'UNPROVEN",
+    "replace": "      UNREAD) : 'UNPROVEN",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an unreadable ORT file is not a clean one"
+  },
+  {
+    "id": "ort-census.elsewhere",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  _ort_under \"${2%%!*}\" \"${_ORTC_ALLOW[@]}\" || printf 'ELSEWHERE",
+    "replace": "  true || printf 'ELSEWHERE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a chain copy outside its homes must fail"
+  },
+  {
+    "id": "ort-census.unregistered",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "      USE) if [ \"${b}\" = \"-\" ] && [ -z \"${_ORTC_REF[${e}]:-}\" ]; then",
+    "replace": "      USE) if false; then",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an ORT user outside the contract must fail"
+  },
+  {
+    "id": "ort-census.stamp-armed",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "      STAMP) if [ \"$2\" = 1 ]; then _ort_stamp_verdict",
+    "replace": "      STAMP) if false; then _ort_stamp_verdict",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an armed STAMP arm must grade the stamps"
+  },
+  {
+    "id": "ort-census.stamp-core",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "[ -z \"${_ORTC_CORE[${s}]:-}\" ] || return 0",
+    "replace": "return 0",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a stamp must name THIS chain's core lib"
+  },
+  {
+    "id": "ort-census.dist",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  if [ \"${#owners[@]}\" -gt 1 ]; then printf 'DIST",
+    "replace": "  if [ \"${#owners[@]}\" -gt 9 ]; then printf 'DIST",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "two onnxruntime distributions must fail"
+  },
+  {
+    "id": "ort-census.unresolved-none",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "    printf 'UNRESOLVED\\t%s\\tno %s on its ld.so search path",
+    "replace": "    : 'UNRESOLVED\\t%s\\tno %s on its ld.so search path",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an import nothing satisfies must fail"
+  },
+  {
+    "id": "ort-census.unresolved-foreign",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  elif [ -z \"${_ORTC_REF[$4]:-}\" ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an import that lands on a non-chain file must fail"
+  },
+  {
+    "id": "ort-census.none-probe",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  [ \"${_ORTC_DONE}\" = 1 ] || printf 'NONE",
+    "replace": "  true || printf 'NONE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a probe that did not finish is not a pass"
+  },
+  {
+    "id": "ort-census.none-reference",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  [ \"${#_ORTC_REF[@]}\" -gt 0 ] || printf 'NONE",
+    "replace": "  true || printf 'NONE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "no reference means nothing is proven"
+  },
+  {
+    "id": "ort-census.none-scan",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  [ \"${_ORTC_NBIN}\" -gt 0 ] || printf 'NONE",
+    "replace": "  true || printf 'NONE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a scan that found no ORT is vacuous"
+  },
+  {
+    "id": "ort-census.reference-self",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "      REF) _ort_ref_verdict \"${b}\" \"${c}\" ;;",
+    "replace": "      REF) : ;;",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the reference itself must carry a chain root"
+  },
+  {
+    "id": "ort-census.exempt-stale",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "    else printf \"EXEMPT-STALE",
+    "replace": "    else : \"EXEMPT-STALE",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an exemption that matches nothing must fail"
+  },
+  {
+    "id": "ort-census.exempt-arch",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "    [ \"${e_arch}\" = '*' ] || [ \"${e_arch}\" = \"${arch}\" ] || continue",
+    "replace": "    true",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an exemption only waives its own arch"
+  },
+  {
+    "id": "ort-census.under-boundary",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "    case \"${p}\" in \"${q}\" | \"${q}\"/* | \"${q}\"\\\\*) return 0 ;; esac",
+    "replace": "    case \"${p}\" in \"${q}\"*) return 0 ;; esac",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "/opt/onnxruntime-androidx is not under /opt/onnxruntime"
+  },
+  {
+    "id": "ort-census.crlf",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  local probe=\"${1//$'\\r'/}\"",
+    "replace": "  local probe=\"$1\"",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "CRLF probe text must read the same"
+  },
+  {
+    "id": "ort-census.main-exit",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  if [ \"${bad}\" -gt 0 ]; then echo \"ORT census FAILED",
+    "replace": "  if false; then echo \"ORT census FAILED",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the consumer CLI must exit 1 on a finding"
+  },
+  {
+    "id": "ort-census.probe-content",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "        instance = bool(INSTANCE.match(name) or roots)",
+    "replace": "        instance = bool(INSTANCE.match(name))",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a renamed ORT is found by its fingerprint"
+  },
+  {
+    "id": "ort-census.probe-archive",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "        if name.lower().endswith(ARCHIVE_EXT):",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "wheel members are scanned"
+  },
+  {
+    "id": "ort-census.probe-ldconf",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "            self.search = ld_conf_dirs(self.root) + multi",
+    "replace": "            self.search = multi",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "ld.so.conf order decides the importer's copy"
+  },
+  {
+    "id": "ort-census.probe-ldpath",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "        for d in rpath + self.ldpath + runpath + self.search:",
+    "replace": "        for d in rpath + runpath + self.search + self.ldpath:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "LD_LIBRARY_PATH precedes the cache"
+  },
+  {
+    "id": "ort-census.probe-origin",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": ".replace(\"$ORIGIN\", origin)",
+    "replace": ".replace(\"$NOPE\", origin)",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "$ORIGIN RUNPATHs resolve inside the bundle"
+  },
+  {
+    "id": "ort-census.probe-symlink",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "        if os.path.islink(host(root, nxt)):",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "symlinks resolve inside the root, not on the host"
+  },
+  {
+    "id": "ort-census.probe-dist",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "            if any(line.startswith(\"onnxruntime/\") for line in fh):",
+    "replace": "            if False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "RECORD ownership of onnxruntime is read"
+  },
+  {
+    "id": "ort-census.probe-nomanifest",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "    except FileNotFoundError:\n        emit(\"NOMANIFEST\", manifest)",
+    "replace": "    except FileNotFoundError:\n        pass",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a missing wheel manifest is reported"
+  },
+  {
+    "id": "ort-census.smoke-wired",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_ort_census \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the runtime smoke must run the census"
+  },
+  {
+    "id": "ort-census.smoke-fail-arm",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      *) bad=$((bad + 1)); fail \"ORT census:",
+    "replace": "      *) : \"ORT census:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "every non-EXEMPT verdict fails the smoke"
+  },
+  {
+    "id": "ort-census.manifest-written",
+    "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+    "find": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the chain wheel manifest is written before the wheels move"
+  },
+  {
+    "id": "ort-census.manifest-genai",
+    "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+    "find": "onnxruntime(?:[_-](?!genai)[a-z0-9]+)?-\" + re.escape",
+    "replace": "onnxruntime(?:[_-][a-z0-9]+)?-\" + re.escape",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "GenAI's wheel is not chain ORT, even when its version equals ORT's"
+  },
+  {
+    "id": "ort-census.manifest-version",
+    "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+    "find": "+ re.escape(sys.argv[2]) +",
+    "replace": "+ r\"[0-9][^-]*\" +",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "only this build's ORT version is chain truth; another ORT wheel in the prefix must not become reference"
+  },
+  {
+    "id": "ort-census.manifest-no-version",
+    "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+    "find": "to pin the chain wheel to\" >&2\n    return 1\n",
+    "replace": "to pin the chain wheel to\" >&2\n",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "with no version to pin to, the writer fails rather than list an unpinned manifest"
+  },
+  {
+    "id": "ort-census.manifest-graded",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  if [ \"${_ORTC_REF[$1]}\" = m ] && ! _ort_roots_chain \"$3\"; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a manifest row carries no roots, so the bytes matching it must name a chain root (check (a))"
+  },
+  {
+    "id": "ort-census.manifest-follow-rehash",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "return \"%s  %s!%s\\n\" % (got, hits[0], member), None",
+    "replace": "return \"%s  %s!%s\\n\" % (sha, hits[0], member), None",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "follow re-hashes the rewritten member: the as-built sha leaves a stripped cross venv ORT STALE"
+  },
+  {
+    "id": "ort-census.manifest-check-bytes",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "if wheel not in present or members(wheel).get(member) != sha:",
+    "replace": "if wheel not in present:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a foreign wheel under the chain wheel's name fails the check before the strip"
+  },
+  {
+    "id": "ort-census.manifest-follow-unique",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "if len(hits) == 1 else None",
+    "replace": "if hits else None",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "two wheels of the chain wheel's name: nothing is re-pointed"
+  },
+  {
+    "id": "ort-census.manifest-check-called",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "ort_manifest_rows check \"${WHEELS_DIR}\" \"${_ORT_MANIFESTS[@]}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the manifest rows are proven against /opt/wheels before anything rewrites a wheel"
+  },
+  {
+    "id": "ort-census.manifest-follow-cross",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "  ort_manifest_rows follow \"${WHEELS_DIR}\" \"${_ORT_MANIFESTS[@]}\"\n  exit 0",
+    "replace": "  exit 0",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the cross path re-points the manifest after its strip and retag"
+  },
+  {
+    "id": "ort-census.manifest-follow-native",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "|| true\nort_manifest_rows follow \"${WHEELS_DIR}\" \"${_ORT_MANIFESTS[@]}\"\n",
+    "replace": "|| true\n",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the native path re-points the manifest after auditwheel"
+  },
+  {
+    "id": "ort-census.manifest-check-twins",
+    "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+    "find": "    if twins:\n",
+    "replace": "    if False:\n",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a foreign wheel of the chain wheel's name, platform tag aside, fails the check before the retag renames it onto the chain wheel"
+  },
+  {
+    "id": "ort-census.manifest-row-kind",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "REF) if [ \"${c}\" = '?' ]; then",
+    "replace": "REF) if false; then",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a manifest-only sha must stay marked ungraded, or its bytes are trusted outright"
+  },
+  {
+    "id": "ort-chain.g2-byte-compare",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "*) echo \"${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}\" ;;",
+    "replace": "*) : ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT file under a chain name must carry the chain's bytes"
+  },
+  {
+    "id": "ort-chain.g2-unknown-binary",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "    echo \"${path} is an ONNX Runtime binary the chain does not build${sfx}\"",
+    "replace": "    : \"${path} is an ONNX Runtime binary the chain does not build${sfx}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT binary the chain does not build is foreign"
+  },
+  {
+    "id": "ort-chain.g2-archive",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      echo \"an ONNX Runtime archive: ${path}${sfx}\"",
+    "replace": "      : \"an ONNX Runtime archive: ${path}${sfx}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT archive (release, NuGet, wheel, pyke .tar.lzma2) in a build input fails"
+  },
+  {
+    "id": "ort-chain.g2-fetched-dir",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      D) echo \"fetched ONNX Runtime content at ${path}${sfx}\" ;;",
+    "replace": "      D) : ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a FetchContent/NuGet/release ORT dir in the tree fails even when it is empty"
+  },
+  {
+    "id": "ort-chain.g2-hidden",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "-o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \\)",
+    "replace": "-o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \\) ! -path '*/.*'",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "hidden files and dirs are scanned too"
+  },
+  {
+    "id": "ort-chain.g2-pyke",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ -n \"${f}\" ]; then echo \"pyke's ORT download cache holds ${f}\"; fi",
+    "replace": "if false; then echo \"pyke's ORT download cache holds ${f}\"; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "anything in pyke's ORT cache is a foreign ORT"
+  },
+  {
+    "id": "ort-chain.g2-record-file",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ -f \"${tok}\" ]; then _ortg_name_finding \"${tok}\" | sed -e \"s#^#${rec}: #\"",
+    "replace": "if [ -f \"${tok}\" ]; then :",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT file a record names outside the chain must carry chain bytes"
+  },
+  {
+    "id": "ort-chain.g2-record-absent",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "else echo \"${rec} names ${tok}, an ONNX Runtime file outside the chain (not on disk to compare)\"; fi",
+    "replace": "else :; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT file a record names outside the chain fails even when it is gone"
+  },
+  {
+    "id": "ort-chain.g2-record-segment",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "echo \"${rec} names an ONNX Runtime path outside the chain: ${tok}\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a record naming an ORT dir outside the chain fails"
+  },
+  {
+    "id": "ort-chain.g2-record-searchdir",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      _ortg_name_finding \"${d}\" | sed -e \"s#^#${rec} searches ${d%/*}: #\"",
+    "replace": "      : \"${d}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a search dir a record names must not hold a foreign ORT (a distro libonnxruntime)"
+  },
+  {
+    "id": "ort-chain.g2-record-symlink",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if _ortg_under \"${reals[${i}]:-}\" \"${_ORTG_REFS_AT[@]+\"${_ORTG_REFS_AT[@]}\"}\"; then _ORTG_REFS=$((_ORTG_REFS + 1))",
+    "replace": "if false; then _ORTG_REFS=$((_ORTG_REFS + 1))",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a record naming the chain through a symlink still counts as the chain"
+  },
+  {
+    "id": "ort-chain.g2-chain-ref",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ \"${_ORTG_REFS}\" -eq 0 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a build no record ties to the chain proves nothing and fails"
+  },
+  {
+    "id": "ort-chain.g2-log",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "{ grep -n -i -E -e \"${_ORTG_FETCH_RE}\" || true; }",
+    "replace": "{ grep -n -i -E -e \"no-such-fetch-line\" || true; }",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a configure/build log that fetched ORT fails"
+  },
+  {
+    "id": "ort-chain.g2-log-genai",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "-e 's/onnx ?runtime[-_. ]?(genai|extensions)/GENAI/Ig'",
+    "replace": "-e 's/no-such-text/GENAI/Ig'",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GenAI's and extensions' own fetches are not ORT fetches"
+  },
+  {
+    "id": "ort-chain.g2-shim-link",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "        echo \"the shim link ${l} leaves the chain for ${real}\"",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a shim's links must land in the chain"
+  },
+  {
+    "id": "ort-chain.g2-shim-dangling",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"the shim link ${l} is dangling\"; continue; fi",
+    "replace": "then continue; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a dangling shim link fails"
+  },
+  {
+    "id": "ort-chain.g2-vacuous",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"the tree(s) hold no files: a vacuous scan, not a clean build\"; fi",
+    "replace": "then :; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an empty tree is a vacuous scan, not a pass"
+  },
+  {
+    "id": "ort-chain.g2-no-tree",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"no tree at ${r} to check\"; continue; fi",
+    "replace": "then continue; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a tree that is not there fails"
+  },
+  {
+    "id": "ort-chain.g2-anchors",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "[ -n \"${_ORTG_SHA[${name}]:-}\" ] || echo \"the chain ONNX Runtime (${all% }) has no ${name} to compare against\"",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a chain without its C API header or core lib cannot be compared against"
+  },
+  {
+    "id": "ort-chain.g2-no-chain",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ \"${#_ORTG_ROOTS[@]}\" -eq 0 ]; then echo \"no chain ONNX Runtime at any of: ${all% }\"; fi",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "no chain root at all fails"
+  },
+  {
+    "id": "ort-chain.g2-one-line",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  all=\"$(printf '%s ' \"$@\")\"",
+    "replace": "  all=\"$*\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a finding stays one line under the consumers' IFS=$'\\n\\t'"
+  },
+  {
+    "id": "ort-chain.g2-missing-record",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"the build record ${rec} is missing\"; continue; fi",
+    "replace": "then continue; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a build record that is not there fails"
+  },
+  {
+    "id": "ort-chain.g2-missing-log",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"the build log ${log} is missing\"; continue; fi",
+    "replace": "then continue; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a build log that is not there fails"
+  },
+  {
+    "id": "ort-chain.g2-fail-closed",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  if [ \"${n}\" != 0 ]; then",
+    "replace": "  if [ \"${n}\" = 999999 ]; then",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "any finding fails the gate and writes no stamp"
+  },
+  {
+    "id": "ort-chain.g2-stale-stamp",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "${SUDO_WRAP:+\"${SUDO_WRAP}\"} rm -f \"${stamp}\"",
+    "replace": ": \"${stamp}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a failing rerun leaves no earlier stamp behind"
+  },
+  {
+    "id": "ort-chain.g2-stamp-core",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "for root in \"${_ORTG_ROOTS[@]}\"; do body+=",
+    "replace": "for root in \"${_ORTG_ROOTS[@]}\"; do : body+=",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the stamp names the chain core lib's sha256, which the census requires"
+  },
+  {
+    "id": "ort-chain.g2-no-stamp-arg",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ -z \"${stamp}\" ]; then echo \"no --stamp file given\" > \"${out}\"; fi",
+    "replace": "if false; then echo \"no --stamp file given\" > \"${out}\"; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a gate run without a stamp file fails"
+  },
+  {
+    "id": "ort-chain.g2-bad-consumer",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "case \"${consumer}\" in \"\" | *[!a-z0-9-]*) echo",
+    "replace": "case \"${consumer}\" in \"NEVER\") echo",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a consumer name the census contract cannot hold fails"
+  },
+  {
+    "id": "ort-chain.g2-opencv-fatal",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "|| die \"OpenCV's build inputs reach an ONNX Runtime other than the chain's\"",
+    "replace": "|| true \"OpenCV's build inputs reach an ONNX Runtime other than the chain's\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "OpenCV dies on a G2 finding"
+  },
+  {
+    "id": "ort-chain.g2-opencv-stamp-path",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "--stamp \"${OPENCV_PREFIX}/ort-provenance/opencv.json\"",
+    "replace": "--stamp \"${OPENCV_PREFIX}/opencv.json\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "OpenCV's stamp lands where the census reads it"
+  },
+  {
+    "id": "ort-chain.g2-opencv-sourced",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": "source \"${SCRIPT_DIR}/../../ort-provenance.sh\"",
+    "replace": ": \"${SCRIPT_DIR}/../../ort-provenance.sh\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "build-opencv.sh sources G2 by its per-file path"
+  },
+  {
+    "id": "ort-chain.g2-ffmpeg-fatal",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "|| die \"FFmpeg's build inputs reach an ONNX Runtime other than the chain's\"",
+    "replace": "|| true \"FFmpeg's build inputs reach an ONNX Runtime other than the chain's\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "FFmpeg dies on a G2 finding"
+  },
+  {
+    "id": "ort-chain.g2-gst-fatal",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "--log builddir/meson-logs/meson-log.txt || exit 1",
+    "replace": "--log builddir/meson-logs/meson-log.txt || true",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GStreamer exits on a G2 finding"
+  },
+  {
+    "id": "ort-chain.g2-gst-called",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "  _gst_monorepo_install\n  _gst_monorepo_ort_provenance\n}",
+    "replace": "  _gst_monorepo_install\n}",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the GStreamer build runs G2 after its install"
+  },
+  {
+    "id": "ort-chain.g2-genai-called",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "  _genai_ort_g2 \"${src}\" \"${out}\" \"${roots[@]}\"",
+    "replace": "  : \"${src}\" \"${out}\" \"${roots[@]}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the GenAI verify step runs G2 once its own gate passed"
+  },
+  {
+    "id": "ort-chain.g2-mount",
+    "target": "linux/Dockerfile.media",
+    "find": "verify-genai-ort.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \\\n",
+    "replace": "verify-genai-ort.sh,readonly \\\n",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "every consumer RUN mounts G2 per file"
+  },
+  {
+    "id": "ort-chain.g2-census-arm",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "local g2=\"${_ORT_CENSUS_HERE}/../03-media/ort-provenance.sh\"",
+    "replace": "local g2=\"${_ORT_CENSUS_HERE}/../03-media/core/ort-provenance.sh\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the census arms STAMP on G2's real path"
+  },
+  {
+    "id": "ort-chain.g2-link-walked",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "        queue+=(\"${real}\")",
+    "replace": "        : \"${real}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a dir link in a tree whose target leaves the trees and the chain is walked too"
+  },
+  {
+    "id": "ort-chain.g2-link-listed",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      L) _ORTG_FOUND_LINKS+=(\"${path}\") ;;",
+    "replace": "      L) : ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the tree scan lists every dir link it meets, for the walk and for the record paths spelled through it"
+  },
+  {
+    "id": "ort-chain.g2-link-holds-tree",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "then echo \"the link ${l} points at ${real}, which holds the tree itself\"; continue; fi",
+    "replace": "then continue; fi",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a dir link to an ancestor of the tree (or /) is a finding, not a walk of the whole disk"
+  },
+  {
+    "id": "ort-chain.g2-link-recorded",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      _ORTG_TREE_LINKS+=(\"${l}\")",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the dir links found land where the record split reads them"
+  },
+  {
+    "id": "ort-chain.g2-link-record-resolved",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "        && ! _ortg_under \"${tok}\" \"${_ORTG_TREE_LINKS[@]+\"${_ORTG_TREE_LINKS[@]}\"}\"; then _ortg_intree \"${tok}\"",
+    "replace": "        ; then _ortg_intree \"${tok}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a record path lexically in a tree but spelled through one of its dir links is read at its target, not exempted"
+  },
+  {
+    "id": "ort-chain.g2-segment-real",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "elif _ortg_ort_segment \"${tok}\" || _ortg_ort_segment \"$3\"; then",
+    "replace": "elif _ortg_ort_segment \"${tok}\"; then",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT dir name reached through a link counts as an ORT path"
+  },
+  {
+    "id": "ort-chain.g2-static-component",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "_ORTG_BIN_RE='^(lib)?onnxruntime(_[a-z0-9_]+)?\\.",
+    "replace": "_ORTG_BIN_RE='^(lib)?onnxruntime(_providers_[a-z0-9_]+)?\\.",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a static ORT component (libonnxruntime_session.a, libonnxruntime_providers.a) is an ORT binary"
+  },
+  {
+    "id": "ort-chain.g2-bin-genai-excluded",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  case \"${lc}\" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 1 ;; esac",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GenAI's and extensions' own libraries are not ORT binaries"
+  },
+  {
+    "id": "ort-chain.g2-intree-graded",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      if [ -f \"${f}\" ]; then _ortg_name_finding \"${f}\" | sed -e \"s#^#${rec}: #\"; fi",
+    "replace": "      : \"${f}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an ORT library a record names inside a tree is graded, not exempted"
+  },
+  {
+    "id": "ort-chain.g2-cache-whole",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "    CMakeCache.txt) { sed -n -E",
+    "replace": "    CMakeCache.NEVER) { sed -n -E",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a CMakeCache value is read whole, so a path with spaces is not cut"
+  },
+  {
+    "id": "ort-chain.g2-arg-whole",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if (s ~ /^\\// && s !~ /[ \\t][-\\/][A-Za-z]/) print \"P\" s; else print \"T\" $0",
+    "replace": "print \"T\" $0",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "an argument that is one absolute path is kept whole, spaces and all"
+  },
+  {
+    "id": "ort-chain.g2-ninja-space",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "-e 's/\\$ /\\x01/g'",
+    "replace": "-e 's/NEVER /\\x01/g'",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "ninja's escaped space stays inside the path"
+  },
+  {
+    "id": "ort-chain.g2-quoted-whole",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "-e \"s#\\\"${_ORTG_FLAG_RE}?(/[^\\\"]+)\\\"# ${q}\\\\2${q} #g\"",
+    "replace": "-e \"s#NEVER##g\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a quoted path (a flag's, a JSON string) is kept whole"
+  },
+  {
+    "id": "ort-chain.g2-core-session",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "for sub in onnxruntime onnxruntime/core/session; do",
+    "replace": "for sub in onnxruntime; do",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a searched include dir is read in ORT's older onnxruntime/core/session layout too"
+  },
+  {
+    "id": "ort-chain.g2-log-mandatory",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ \"${#_ORTG_LOGS[@]}\" -eq 0 ]; then echo \"no build log was given",
+    "replace": "if false; then echo \"no build log was given",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a gate run with no build log is a finding: the fetch-trace arm would otherwise never run"
+  },
+  {
+    "id": "ort-chain.g2-no-tmp",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "out=\"$(mktemp)\" || { echo \"ORT-GATE FAILED (${consumer}): no temp file for the findings, so nothing was checked\" >&2; return 1; }",
+    "replace": "out=\"$(mktemp)\" || true",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "no temp file for the findings fails the gate by name"
+  },
+  {
+    "id": "ort-chain.g2-count-unreadable",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  if [ \"${n}\" != 0 ]; then",
+    "replace": "  if [ \"${n}\" -gt 0 ]; then",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a finding count that is not a number fails closed (an integer test would pass it)"
+  },
+  {
+    "id": "ort-chain.g2-resolve-count",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "if [ \"${#reals[@]}\" -ne \"${#raw[@]}\" ]; then echo \"$1: only ${#reals[@]} of its ${#raw[@]} path(s) resolved\"; return 0; fi",
+    "replace": ":",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "record paths realpath did not resolve are a finding, not a shorter list"
+  },
+  {
+    "id": "ort-chain.g2-cache-sdks",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": " tree \"${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}\"",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the FFmpeg SDK cache mount is a default G2 root"
+  },
+  {
+    "id": "ort-chain.g2-cache-cargo",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "tree \"${cargo}/registry\" tree \"${cargo}/git\"",
+    "replace": "tree \"${cargo}/git\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "cargo's registry mount is a default G2 root"
+  },
+  {
+    "id": "ort-chain.g2-cache-uv",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": " uv \"${UV_CACHE_DIR:-${xdg}/uv}\"",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "uv's cache is a default G2 root, at UV_CACHE_DIR when set"
+  },
+  {
+    "id": "ort-chain.g2-cache-pip",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": " pip \"${PIP_CACHE_DIR:-${xdg}/pip}\"",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "pip's cache is a default G2 root, at PIP_CACHE_DIR when set"
+  },
+  {
+    "id": "ort-chain.g2-cache-nuget",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "    tree \"${NUGET_PACKAGES:-${HOME:-/root}/.nuget/packages}\"\n",
+    "replace": "\n",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "NuGet's package folder is a default G2 root, as on Windows"
+  },
+  {
+    "id": "ort-chain.g2-uv-http-only",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "-type f -name '*.http' -printf",
+    "replace": "-type f -printf",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "only an ORT wheel uv fetched over HTTP fails: a local chain wheel (.rev) and resolver metadata do not"
+  },
+  {
+    "id": "ort-chain.g2-uv-genai",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      onnxruntime-genai* | onnxruntime-extensions*) ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GenAI's and extensions' wheels in uv's cache are not ORT"
+  },
+  {
+    "id": "ort-chain.g2-uv-unreadable",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      *) echo \"cannot read all of $1: ${line}\"; continue ;;",
+    "replace": "      *) continue ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a uv cache G2 cannot read is a finding, not a pass"
+  },
+  {
+    "id": "ort-chain.g2-pip-top-level",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "any(n.startswith(\"onnxruntime/\") for n in zf.namelist())",
+    "replace": "any(\"onnxruntime/\" in n for n in zf.namelist())",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "only a top-level onnxruntime/ package is ORT: optimum's optimum/onnxruntime/ is not"
+  },
+  {
+    "id": "ort-chain.g2-pip-no-python",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "|| { echo \"cannot inspect pip's HTTP cache at $1/http-v2 (python3 failed)\"; return 0; }",
+    "replace": "|| return 0",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a pip cache G2 cannot inspect is a finding, not a pass"
+  },
+  {
+    "id": "ort-chain.g2-pip-unreadable",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "      \"E \"*) echo \"pip's HTTP cache at $1/http-v2: ${rel#E }\" ;;",
+    "replace": "      \"E \"*) ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a pip cache body or directory G2 cannot read is a finding, not a pass"
+  },
+  {
+    "id": "ort-chain.g2-pip-open",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "    with open(path, \"rb\") as fh:\n        if fh.read(4) != b\"PK\\x03\\x04\":\n            return False\n",
+    "replace": "    if not zipfile.is_zipfile(path):\n        return False\n",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "is_zipfile() swallows an unreadable body's OSError; the scanner opens it so the read error is a finding"
+  },
+  {
+    "id": "ort-chain.g2-cache-tree",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "else _ortg_tree_findings \"$2\"; fi ;;",
+    "replace": "else :; fi ;;",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "cargo, the FFmpeg SDK cache, NuGet and every --cache are graded like a tree"
+  },
+  {
+    "id": "ort-chain.g2-cache-counters",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  local kind dir\n  (\n    while IFS=$'\\t' read -r kind dir; do _ortg_cache_findings \"${kind}\" \"${dir}\"; done < <(ort_gate_default_caches)\n    for dir in \"${_ORTG_CACHES[@]+\"${_ORTG_CACHES[@]}\"}\"; do _ortg_cache_findings tree \"${dir}\"; done\n  )\n",
+    "replace": "  local kind dir\n  {\n    while IFS=$'\\t' read -r kind dir; do _ortg_cache_findings \"${kind}\" \"${dir}\"; done < <(ort_gate_default_caches)\n    for dir in \"${_ORTG_CACHES[@]+\"${_ORTG_CACHES[@]}\"}\"; do _ortg_cache_findings tree \"${dir}\"; done\n  }\n",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a cache walk runs in a subshell, so its files never reach the stamp's tree count"
+  },
+  {
+    "id": "ort-chain.g2-genai-fetch-uv",
+    "target": "linux/Dockerfile.media",
+    "find": "ort-provenance.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+    "replace": "ort-provenance.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GenAI's G2 RUN grades the uv cache the GenAI build RUN fetched into"
+  },
+  {
+    "id": "ort-chain.g2-genai-fetch-pip",
+    "target": "linux/Dockerfile.media",
+    "find": "    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+    "replace": "    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GenAI's G2 RUN grades the pip cache the GenAI build RUN fetched into"
+  },
+  {
+    "id": "ort-chain.g2-genai-log-passed",
+    "target": "linux/scripts/03-media/verify-genai-ort.sh",
+    "find": "--tree \"${src}\" --log \"${src}/build/genai-build.log\" \"${g2[@]}\"",
+    "replace": "--tree \"${src}\" \"${g2[@]}\"",
+    "test": "bash linux/scripts/tests/test-genai-ort.sh",
+    "why": "GenAI's G2 call reads the build log 60-build-genai.sh tees"
+  },
+  {
+    "id": "ort-chain.g2-genai-log-teed",
+    "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+    "find": "--ort_home \"${ORT_HOME}\" 2>&1 | tee -a \"${GENAI_BUILD_LOG}\"",
+    "replace": "--ort_home \"${ORT_HOME}\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "both GenAI build.py calls tee into the log G2 reads"
+  },
+  {
+    "id": "ort-chain.g2-genai-log-path",
+    "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+    "find": "GENAI_BUILD_LOG=\"${GENAI_SRC_DIR}/build/genai-build.log\"",
+    "replace": "GENAI_BUILD_LOG=\"${GENAI_SRC_DIR}/genai-build.log\"",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "the GenAI build log sits where verify-genai-ort.sh reads it"
+  },
+  {
+    "id": "ort-chain.g2-opencv-records",
+    "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+    "find": " --record \"${OPENCV_SRC}/build/CMakeCache.txt\"",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "OpenCV hands G2 both of its records"
+  },
+  {
+    "id": "ort-chain.g2-ffmpeg-record",
+    "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+    "find": "--record \"${FFMPEG_SRC}/ffbuild/config.mak\" ",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "FFmpeg hands G2 its config.mak"
+  },
+  {
+    "id": "ort-chain.g2-gst-records",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": " --record builddir/meson-info/intro-dependencies.json",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "GStreamer hands G2 meson's dependency record as well as build.ninja"
+  },
+  {
+    "id": "pre-commit.plan-strips-cr",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "<<'PY' | tr -d '\\r'",
+    "replace": "<<'PY'",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "on Windows python prints CRLF; a kept \\r makes every sampled id unknown and the commit aborts"
   }
 ]

@@ -3,7 +3,8 @@
 
 #requires -Version 7.0
 
-# ONNX Runtime NuGet layout + optional-package installation.
+# ONNX Runtime for consumers: the chain install at ONNX_ROOT, never a NuGet package (owner rule 2026-09-23).
+# NOT covered: byte provenance under ONNX_ROOT (the ORT census). docs/windows-build-invariants.md#the-unreferenced-windowsscripts-modules-are-external-consumer-api
 #
 # RESTORED 2026-09-14, for the SECOND time. Deleted in f0d12ff (2026-06-24),
 # restored 2026-08-11, deleted again in 2eaed40e (2026-09-08, "no consumer"),
@@ -27,7 +28,7 @@ Set-StrictMode -Version Latest
 # -Force -Global copy must not be displaced (see WindowsCMake.Common's header).
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 
-# Get-WindowsRuntimeIdentifier, on the same unforced terms. This module is NOT
+# Assert-PeTargetMachine, on the same unforced terms. This module is NOT
 # reached through WindowsSourceBuild.Common (which re-exports the arch
 # accessors) -- it is imported directly by the external AccelerANTgine
 # Build-Windows.ps1, so it cannot borrow that re-export and must import the arch
@@ -35,89 +36,131 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 # COPYs as a whole directory, so co-location is guaranteed.
 Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1')
 
-function Get-OnnxPackageLayout {
+# NuGet ids that carry ORT: every *OnnxRuntime* package (GenAI, EPs, Intel's OpenVINO build) and Windows ML.
+$script:OrtNuGetIdPattern = '(?i)onnxruntime|^Microsoft\.(Windows\.)?AI\.MachineLearning(\.|$)'
+$script:OrtFilePattern = '(?i)^(onnxruntime(_providers_\w+)?\.(dll|lib)|onnxruntime_c_api\.h|onnxruntime_pybind11_state.*\.pyd|microsoft\.(windows\.)?ai\.machinelearning\.dll)$'
+$script:OrtGenAiFilePattern = '(?i)^(onnxruntime-genai(-\w+)?\.(dll|lib)|ort_genai(_c)?\.h|onnxruntime_genai.*\.pyd)$'
+
+function Get-OnnxChainRuleMessage {
     param(
-        [Parameter(Mandatory)]
-        [string]$OnnxRoot,
+        [Parameter(Mandatory)][string]$Subject,
+        [string]$OnnxRoot = $env:ONNX_ROOT
+    )
+    $current = if ([string]::IsNullOrWhiteSpace($OnnxRoot)) { 'unset' } else { "'$OnnxRoot'" }
+    return ('{0}. ONNX Runtime comes from the chain build only (owner rule 2026-09-23): point ONNX_ROOT at its ' +
+        'install (C:\runtime\lib\onnxruntime-source in the image, built by Build-OnnxFromSource.ps1) and use ' +
+        'Get-OnnxChainLayout. ONNX_ROOT is {1}.') -f $Subject, $current
+}
 
-        [Parameter(Mandatory)]
-        [string]$OnnxVersion,
+<#
+.SYNOPSIS
+    ONNX Runtime binaries and headers under a directory, recognised by file name.
+.DESCRIPTION
+    Kind 'genai' for onnxruntime-genai files, 'ort' for the runtime, its EPs, its C API
+    header, its python extension and Windows ML. A missing directory yields nothing.
+#>
+function Get-OnnxRuntimeFile {
+    [OutputType([pscustomobject])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$Recurse
+    )
 
-        [Parameter(Mandatory)]
-        [string]$OnnxGenAiVersion,
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath $Path -File -Force -Recurse:$Recurse -ErrorAction Stop)) {
+        $kind = if ($file.Name -match $script:OrtGenAiFilePattern) { 'genai' }
+                elseif ($file.Name -match $script:OrtFilePattern) { 'ort' }
+                else { $null }
+        if ($kind) {
+            [pscustomobject]@{ Kind = $kind; Name = $file.Name; FullName = $file.FullName; Extension = $file.Extension.ToLowerInvariant() }
+        }
+    }
+}
 
-        [Parameter(Mandatory)]
-        [string]$OnnxDirectMlVersion,
-
-        # Target arch. '' delegates to Get-WindowsTargetArch's own precedence:
-        # explicit -Arch, then $env:WINDOWS_TARGET_ARCH, then 'amd64'. Appended
-        # LAST and optional so every existing caller -- including the external
-        # AccelerANTgine Build-Windows.ps1, named or positional --
-        # binds exactly as it does today and lands on win-x64.
+<#
+.SYNOPSIS
+    The chain ONNX Runtime install (plus the chain GenAI, when given), validated.
+.DESCRIPTION
+    ONNX_ROOT must hold bin\onnxruntime.dll for the TARGET machine; a NuGet tree or a
+    release zip (lib\onnxruntime.dll) throws. A GenAI root must hold lib\ (or bin\)onnxruntime-genai.dll,
+    no NuGet runtimes\ or .nupkg, and no ONNX Runtime file of its own. RuntimeDirectories lists the existing DLL
+    directories with the chain ORT LAST, so it wins any name collision when staged.
+#>
+function Get-OnnxChainLayout {
+    [OutputType([pscustomobject])]
+    [CmdletBinding()]
+    param(
+        [string]$OnnxRoot = $env:ONNX_ROOT,
+        [string]$OnnxGenAiRoot = $env:ONNX_GENAI_ROOT,
         [string]$Arch = ''
     )
 
-    $normalizedRoot = Resolve-NormalizedPath -Path $OnnxRoot
-    $runtimePackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntime.{0}" -f $OnnxVersion)
-    $directMlPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntime.DirectML.{0}" -f $OnnxDirectMlVersion)
-    $cudaPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntime.Gpu.Windows.{0}" -f $OnnxVersion)
-    $genAiPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntimeGenAI.{0}" -f $OnnxGenAiVersion)
-    $genAiDirectMlPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntimeGenAI.DirectML.{0}" -f $OnnxGenAiVersion)
-    $genAiCudaPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntimeGenAI.Cuda.{0}" -f $OnnxGenAiVersion)
+    if ([string]::IsNullOrWhiteSpace($OnnxRoot)) {
+        throw (Get-OnnxChainRuleMessage -Subject 'Get-OnnxChainLayout: ONNX_ROOT is not set' -OnnxRoot $OnnxRoot)
+    }
+    $root = Resolve-NormalizedPath -Path $OnnxRoot
+    $dll = Join-Path $root 'bin\onnxruntime.dll'
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+        throw (Get-OnnxChainRuleMessage -Subject "Get-OnnxChainLayout: $root is not the chain install (no bin\onnxruntime.dll)" -OnnxRoot $OnnxRoot)
+    }
+    [void](Assert-PeTargetMachine -Path $dll -Arch $Arch -Context 'chain ONNX Runtime')
 
-    # ONE derivation for all 23 native-payload paths. Every package here uses the
-    # standard NuGet native layout runtimes\<rid>\native, and the rid is the only
-    # arch-varying token in any of them -- so the 23 inline 'runtimes\win-x64\native'
-    # literals collapse to this single string instead of 23 separate arch calls.
-    # amd64 -> 'runtimes\win-x64\native', byte-for-byte what was spelled inline.
-    $rid = Get-WindowsRuntimeIdentifier -Arch $Arch
-    $nativeRelDir = 'runtimes\{0}\native' -f $rid
+    $genAiRoot = $null
+    $genAiDll = $null
+    $subDirs = @()
+    if ($OnnxGenAiRoot.Trim()) {
+        $genAiRoot = Resolve-NormalizedPath -Path $OnnxGenAiRoot
+        $genAiFiles = @(Get-OnnxRuntimeFile -Path $genAiRoot -Recurse)
+        $ownOrt = @($genAiFiles | Where-Object { $_.Kind -eq 'ort' })
+        if ($ownOrt.Count -gt 0) {
+            throw (Get-OnnxChainRuleMessage -OnnxRoot $OnnxRoot -Subject ("Get-OnnxChainLayout: the GenAI root $genAiRoot carries its own ONNX Runtime: " +
+                    (($ownOrt | ForEach-Object { $_.FullName }) -join ', ')))
+        }
+        # An extracted NuGet GenAI package carries no ORT file; its runtimes\ tree and .nupkg/.nuspec give it away.
+        $nugetMarks = @(if (Test-Path -LiteralPath $genAiRoot -PathType Container) {
+                Get-ChildItem -LiteralPath $genAiRoot -Force -ErrorAction Stop | Where-Object { $_.Name -match '(?i)^runtimes$|\.(nupkg|nuspec)$' }
+            })
+        if ($nugetMarks.Count -gt 0) {
+            throw (Get-OnnxChainRuleMessage -OnnxRoot $OnnxRoot -Subject ("Get-OnnxChainLayout: ONNX_GENAI_ROOT $genAiRoot is a NuGet package (" +
+                    (($nugetMarks | ForEach-Object { $_.Name }) -join ', ') + '), not the chain GenAI install'))
+        }
+        # Exact paths, like the ORT half: the chain installs lib\onnxruntime-genai.dll (bin\ tolerated), never deeper.
+        $genAiDll = @('lib', 'bin') | ForEach-Object { Join-Path $genAiRoot "$_\onnxruntime-genai.dll" } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $genAiDll) {
+            throw (Get-OnnxChainRuleMessage -OnnxRoot $OnnxRoot -Subject "Get-OnnxChainLayout: ONNX_GENAI_ROOT $genAiRoot holds no onnxruntime-genai.dll in lib\ or bin\")
+        }
+        [void](Assert-PeTargetMachine -Path $genAiDll -Arch $Arch -Context 'chain ONNX Runtime GenAI')
+        $subDirs += (Join-Path $genAiRoot 'bin'), (Join-Path $genAiRoot 'lib')
+    }
+    $subDirs += (Join-Path $root 'lib'), (Join-Path $root 'bin')
 
     return [pscustomobject]@{
-        Root = $normalizedRoot
-        # Which lane this layout describes. Additive member; the caller has no
-        # other way to tell a win-x64 layout from a win-arm64 one.
-        RuntimeIdentifier = $rid
-
-        RuntimePackagePath = $runtimePackagePath
-        RuntimeIncludeDir = Join-Path $runtimePackagePath 'build\native\include'
-        RuntimeHeaderPath = Join-Path $runtimePackagePath 'build\native\include\onnxruntime_cxx_api.h'
-        RuntimeNativeDir = Join-Path $runtimePackagePath $nativeRelDir
-        RuntimeLibPath = Join-Path $runtimePackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
-        RuntimeDllPath = Join-Path $runtimePackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
-
-        DirectMlPackagePath = $directMlPackagePath
-        DirectMlNativeDir = Join-Path $directMlPackagePath $nativeRelDir
-        DirectMlDllPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
-        DirectMlLibPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
-        DirectMlSharedProviderPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_shared.dll')
-
-        CudaPackagePath = $cudaPackagePath
-        CudaNativeDir = Join-Path $cudaPackagePath $nativeRelDir
-        CudaDllPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
-        CudaLibPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
-        CudaProviderDllPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_cuda.dll')
-        CudaSharedProviderPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_shared.dll')
-
-        GenAiPackagePath = $genAiPackagePath
-        GenAiIncludeDir = Join-Path $genAiPackagePath 'build\native\include'
-        GenAiHeaderPath = Join-Path $genAiPackagePath 'build\native\include\ort_genai.h'
-        GenAiNativeDir = Join-Path $genAiPackagePath $nativeRelDir
-        GenAiDllPath = Join-Path $genAiPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
-        GenAiLibPath = Join-Path $genAiPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
-
-        GenAiDirectMlPackagePath = $genAiDirectMlPackagePath
-        GenAiDirectMlNativeDir = Join-Path $genAiDirectMlPackagePath $nativeRelDir
-        GenAiDirectMlDllPath = Join-Path $genAiDirectMlPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
-        GenAiDirectMlLibPath = Join-Path $genAiDirectMlPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
-
-        GenAiCudaPackagePath = $genAiCudaPackagePath
-        GenAiCudaNativeDir = Join-Path $genAiCudaPackagePath $nativeRelDir
-        GenAiCudaDllPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
-        GenAiCudaLibPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
-        GenAiCudaProviderDllPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai-cuda.dll')
-        GenAiCudaProviderLibPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai-cuda.lib')
+        Root               = $root
+        BinDir             = Join-Path $root 'bin'
+        LibDir             = Join-Path $root 'lib'
+        IncludeDir         = Join-Path $root 'include\onnxruntime'
+        DllPath            = $dll
+        ImportLibPath      = Join-Path $root 'lib\onnxruntime.lib'
+        GenAiRoot          = $genAiRoot
+        GenAiDllPath       = $genAiDll
+        RuntimeDirectories = [string[]]@($subDirs | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
     }
+}
+
+# Kept, with the NuGet-era parameters, so an old caller gets this refusal and not a binding error.
+function Get-OnnxPackageLayout {
+    param(
+        [string]$OnnxRoot = '',
+        [string]$OnnxVersion = '',
+        [string]$OnnxGenAiVersion = '',
+        [string]$OnnxDirectMlVersion = '',
+        [string]$Arch = ''
+    )
+
+    throw (Get-OnnxChainRuleMessage -Subject ("Get-OnnxPackageLayout: the NuGet Microsoft.ML.OnnxRuntime layout " +
+            "(root '$OnnxRoot', version '$OnnxVersion') is refused"))
 }
 
 function Test-NuGetPackageVersionAvailable {
@@ -137,6 +180,20 @@ function Test-NuGetPackageVersionAvailable {
     return ($null -ne ($packageList | Select-String -SimpleMatch ("{0} {1}" -f $PackageId, $Version)))
 }
 
+# Every NuGet package (the top-level entry above a .nupkg, either layout) under $OutputDirectory whose id or content is ORT.
+function Get-NuGetOnnxRuntimePayload {
+    param([Parameter(Mandatory)][string]$OutputDirectory)
+
+    $base = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $base -PathType Container)) { return }
+    $packages = Get-ChildItem -LiteralPath $base -Filter '*.nupkg' -File -Recurse -Depth 2 -Force -ErrorAction Stop |
+        ForEach-Object { Join-Path $base ($_.FullName.Substring($base.Length + 1) -split '\\')[0] } | Sort-Object -Unique
+    foreach ($package in @($packages)) {
+        if ((Split-Path $package -Leaf) -match $script:OrtNuGetIdPattern) { $package }
+        else { Get-OnnxRuntimeFile -Path $package -Recurse | ForEach-Object { $_.FullName } }
+    }
+}
+
 function Install-OptionalNuGetPackage {
     param(
         [Parameter(Mandatory)]
@@ -150,9 +207,19 @@ function Install-OptionalNuGetPackage {
         [string]$UnavailableMessage = ''
     )
 
+    if ($PackageId -match $script:OrtNuGetIdPattern) {
+        throw (Get-OnnxChainRuleMessage -Subject "Install-OptionalNuGetPackage: $PackageId is an ONNX Runtime package and is refused")
+    }
+
     if (Test-NuGetPackageVersionAvailable -PackageId $PackageId -Version $Version) {
         Write-Host ('Found {0} package on NuGet; installing...' -f $PackageId)
-        nuget install $PackageId -Version $Version -OutputDirectory $OutputDirectory
+        nuget install $PackageId -Version $Version -OutputDirectory $OutputDirectory | Out-Host
+        # A dependency or a bundled copy brings ORT in under another id; a re-run finds it already there.
+        $foreign = @(Get-NuGetOnnxRuntimePayload -OutputDirectory $OutputDirectory)
+        if ($foreign.Count -gt 0) {
+            throw (Get-OnnxChainRuleMessage -Subject ("Install-OptionalNuGetPackage: {0} left ONNX Runtime in {1}: {2}" -f
+                    $PackageId, $OutputDirectory, ($foreign -join ', ')))
+        }
         return $true
     }
 
@@ -166,6 +233,8 @@ function Install-OptionalNuGetPackage {
 
 Export-ModuleMember -Function @(
     'Get-OnnxPackageLayout',
+    'Get-OnnxChainLayout',
+    'Get-OnnxRuntimeFile',
     'Test-NuGetPackageVersionAvailable',
     'Install-OptionalNuGetPackage'
 )

@@ -35,6 +35,13 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH} `
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
+# ort-sys links (and ort load-dynamic loads) THIS chain ORT, never pyke's download.
+# docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
+    ORT_PREFER_DYNAMIC_LINK=1 `
+    ORT_SKIP_DOWNLOAD=1 `
+    ORT_DYLIB_PATH=$ONNX_ROOT\bin\onnxruntime.dll
+
 # Rust note: provisioned by Install-RustToolchain.ps1 via rustup WITH a stable default
 # toolchain (DELIBERATELY unpinned -- versions.env's RUST_VERSION pins only the Linux
 # lane). rustup is REQUIRED by Flutter's Cargokit (flutter_rust_bridge consumers);
@@ -47,8 +54,9 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 # classic builder pays a LAYER per instruction and the chain runs close to
 # Docker's 125-layer cap (hit 2026-08-03). Modules dir COPY stays separate
 # (different dest). Copied here — the cheapest, last stage — so script edits
-# never invalidate the base or media layers.
-COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
+# never invalidate the base or media layers. ort-venv-census.py: the image copy of WindowsUv.Common
+# finds it beside its modules dir (docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi).
+COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
 # Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
 # imported from this path by downstream Invoke-Ci* / rust build scripts).
 COPY windows\scripts\modules C:\temp\scripts\modules

@@ -81,6 +81,9 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($gstPluginMod
 $sourceBuildModule = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildModule)))) { Import-Module $sourceBuildModule }
+# G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
+$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
 
 # Merge-lane leaf modules (#134), mounted by Dockerfile.media-merge-builder ONLY,
 # so editing them costs the GStreamer layer and nothing else. Do NOT fold them
@@ -1545,6 +1548,11 @@ cpp_link_args = [$buildLinkArgs]
     } else {
         log "All $(@(Get-RequiredGstPlugin -Arch $script:GstTargetArch).Count) mandatory GStreamer plugins verified present."
     }
+
+    # G2: the onnx plugin's trees, build.ninja, meson's dependency record and log hold the chain ORT only; a pass stamps it.
+    Assert-ChainOrtOnly -Consumer 'gstreamer' -OrtRoot $(if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }) `
+        -TreeRoot $gstSrcDir, $resolvedBuildDir -Log (Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt') `
+        -Record (Join-Path $resolvedBuildDir 'build.ninja'), (Join-Path $resolvedBuildDir 'meson-info\intro-dependencies.json')
 
     Switch-BuildPhase '10. cleanup'
     # ---- 10. cleanup ----

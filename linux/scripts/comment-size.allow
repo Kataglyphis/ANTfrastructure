@@ -110,7 +110,6 @@ linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh	# WebGPU wasm fl
 linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh	# GENAI-DRIFT producer half (2026-08-24): this gate used to
 linux/scripts/03-media/build/opencv/build-opencv.sh	# ----------------------------------------------------------
 linux/scripts/03-media/build/opencv/build-opencv.sh	# ==========================================================
-linux/scripts/03-media/build/opencv/build-opencv.sh	# Build a CMake-compatible ORT layout so FindONNX.cmake's fi
 linux/scripts/03-media/build/opencv/build-opencv.sh	# RV1 RE-LIFT (2026-08-21, closure window 2): the 2026-08-20
 linux/scripts/03-media/build/opencv/build-opencv.sh	# Same class for GSTREAMER (2026-08-21, riscv64 pass-2): vid
 linux/scripts/03-media/build/opencv/install-deps.sh	# RV1-FREETYPE (2026-08-24): riscv64 needs a TARGET harfbuzz

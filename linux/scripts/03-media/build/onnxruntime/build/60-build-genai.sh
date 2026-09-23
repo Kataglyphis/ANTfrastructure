@@ -244,6 +244,11 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   export _PYTHON_HOST_PLATFORM
 fi
 
+# G2 (verify-genai-ort.sh) reads build.py's output for ORT fetch traces; each retry appends, so a fetch in a failed attempt counts.
+GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"
+mkdir -p "${GENAI_SRC_DIR}/build"
+: > "${GENAI_BUILD_LOG}"
+
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   ORT_HOME="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
   info "Building onnxruntime-genai with GPU ORT from ${ORT_HOME}"
@@ -262,7 +267,7 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   retry 3 10 "ONNX Runtime GenAI GPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
     --ort_home "${ORT_HOME}" \
-    "${_genai_gpu_args[@]}"
+    "${_genai_gpu_args[@]}" 2>&1 | tee -a "${GENAI_BUILD_LOG}"
 else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
@@ -285,7 +290,7 @@ else
   info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
   retry 3 10 "ONNX Runtime GenAI CPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
-    --ort_home "${ORT_HOME}"
+    --ort_home "${ORT_HOME}" 2>&1 | tee -a "${GENAI_BUILD_LOG}"
 fi
 
 collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"

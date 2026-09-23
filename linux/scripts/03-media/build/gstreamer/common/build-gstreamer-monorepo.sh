@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_GST_MONOREPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=gst-onnx-ort.sh
+source "${_GST_MONOREPO_DIR}/gst-onnx-ort.sh"
+# shellcheck source=../../../ort-provenance.sh
+source "${_GST_MONOREPO_DIR}/../../../ort-provenance.sh"
+
 run_gstreamer_meson_setup() {
   local -a extra_meson_flags=()
 
@@ -497,6 +503,26 @@ _gst_monorepo_meson_setup_run() {
   prebuild_gstreamer_riscv_targets
 }
 
+# The onnx plugin takes the chain ONNX Runtime only (owner rule 2026-09-23); gst-onnx-ort.sh.
+_gst_monorepo_onnx_ort_gate() {
+  local findings
+  findings="$(gst_onnx_ort_findings builddir/build.ninja "$(pwd)/builddir" \
+    /usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-gpu)"
+  if [ -n "${findings}" ]; then
+    printf 'ERROR: the gst onnx plugin reaches an ONNX Runtime outside the chain:\n%s\n' "${findings}" >&2
+    exit 1
+  fi
+  echo "gst onnx plugin: headers and library resolve to the chain ONNX Runtime only"
+}
+
+# G2 after the build: the whole tree, build.ninja, meson's dependency record and log; a pass stamps the prefix for G1.
+_gst_monorepo_ort_provenance() {
+  ort_assert_chain_only gstreamer --stamp "${GSTREAMER_PREFIX}/ort-provenance/gstreamer.json" \
+    --chain /usr/local/lib/onnxruntime-cpu --chain /usr/local/lib/onnxruntime-gpu --tree "$(pwd)" \
+    --record builddir/build.ninja --record builddir/meson-info/intro-dependencies.json \
+    --log builddir/meson-logs/meson-log.txt || exit 1
+}
+
 # csound-sys 0.1.2's `[0i8; 64usize]` literals fail on unsigned-char targets
 # (aarch64/riscv64, where bindgen maps `char[64]` to `[u8; 64]`); an untyped
 # literal infers per arch. crates.io dep, so patch the unpacked registry copy.
@@ -641,6 +667,8 @@ build_gstreamer_monorepo() {
   _gst_monorepo_opencv_flags
   _gst_monorepo_tflite_flags
   _gst_monorepo_meson_setup_run
+  _gst_monorepo_onnx_ort_gate
   _gst_monorepo_compile
   _gst_monorepo_install
+  _gst_monorepo_ort_provenance
 }

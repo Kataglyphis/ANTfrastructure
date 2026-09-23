@@ -34,9 +34,15 @@ On riscv64 that never runs:
    `torch @ git+…` for riscv64 and locking would source-build torch under QEMU
    (~1 h) for metadata alone.
 
-3. `reconcile_local_wheels` force-installs `/opt/wheels` `--no-deps`, and
-   `ensure_project_package_installed` runs `uv pip install "${APP_DIR}"` —
-   **`[project].dependencies` only**, no extras.
+3. `reconcile_local_wheels` uninstalls every ORT distribution the census lists
+   (`ort-venv-census.py --purge-list`), then force-installs `/opt/wheels`
+   `--no-deps`, and `ensure_project_package_installed` runs
+   `uv pip install "${APP_DIR}"` — **`[project].dependencies` only**, no extras.
+
+Since 2026-09-23 `install_project_environment` fails before any of this when
+`/opt/wheels` holds no chain ORT wheel (`assert_chain_ort_wheel_staged`), and it
+ends with `assert_ort_chain_only`
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
 
 So the riscv64 venv was the local wheels plus the app's nine pure-Python core
 deps. The extras' whole closure was missing. `uv_lock_regen` and

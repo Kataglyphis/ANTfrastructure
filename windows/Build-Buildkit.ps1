@@ -103,7 +103,7 @@ param(
     # Measured 2026-08-14 baseline: 184 passed / 1 skipped; raise with it, lower
     # only EXPLICITLY. A ceiling >= the suite's Skip-Test site count (33) is
     # inert — it cannot trip even if every section skips.
-    [int]$SmokeMinPassed = 160,
+    [int]$SmokeMinPassed = 170,
     [int]$SmokeMaxSkipped = 3,
     # Per-stage cache bypass (backlog #64), e.g. -NoCacheStage opencv. Matched as
     # a substring of the stage LABEL; chain-wide -NoCache overrides everything.
@@ -229,6 +229,12 @@ function Get-BkRocmStageArg {
     if ($Variant -ne 'rocm') { return @{} }
     switch ($Stage) {
         'media-tvm' { return @{ TVM_ROCM = $(if ($NoRocmSpikes) { '0' } else { '1' }) } }
+        # The onnx stage's WebGPU EP spike and its ORT_WEBGPU_WINDOWS_* pins (valueless ARGs there).
+        'media-core' {
+            $coreArgs = @{ ORT_WEBGPU = $(if ($NoRocmSpikes) { '0' } else { '1' }) }
+            foreach ($k in @($VersionTable.Keys | Where-Object { $_ -like 'ORT_WEBGPU_WINDOWS_*' })) { $coreArgs[$k] = $VersionTable[$k] }
+            return $coreArgs
+        }
         # Both spike modes write the same tags, so the gate must know which one this image claims.
         'smoke-gate' { return @{ EXPECT_ROCM_SPIKES = $(if ($NoRocmSpikes) { '0' } else { '1' }) } }
         'torch' {
@@ -677,6 +683,8 @@ if ($Stages -contains 'sdk') {
             ROCM_WINDOWS_RELEASE        = Get-Ver 'ROCM_WINDOWS_RELEASE'
             ROCM_WINDOWS_GFX_FAMILY     = Get-Ver 'ROCM_WINDOWS_GFX_FAMILY'
             ROCM_WINDOWS_TARBALL_SHA256 = Get-Ver 'ROCM_WINDOWS_TARBALL_SHA256'
+            VULKAN_VERSION              = Get-Ver 'VULKAN_VERSION'
+            VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
         }
     } else {
         # CPU lane: containerd has no unprivileged `tag`; re-export base under
@@ -720,7 +728,7 @@ if ($Stages -contains 'media') {
     foreach ($branch in $loopBranches) {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
-        } + $branchArgs[$branch] + $sccache + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes))
+        } + $branchArgs[$branch] + $sccache + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
         if ($branch -eq 'media-core') {
             # DIRECT SOLVES: the warm/materialize pairs existed for the
             # ExportLayer-0x3 defect, fixed by the patched runhcs shim — see
@@ -883,6 +891,7 @@ if ($Stages -contains 'llama') {
         LLAMA_CPP_HIP_ASSET  = Get-Ver 'LLAMA_CPP_HIP_ASSET'
         LLAMA_CPP_HIP_SHA256 = Get-Ver 'LLAMA_CPP_HIP_SHA256'
         LLAMA_CPP_HIP_LICENSE_SHA256 = Get-Ver 'LLAMA_CPP_HIP_LICENSE_SHA256'
+        LLAMA_CPP_VULKAN_SHA256 = Get-Ver 'LLAMA_CPP_VULKAN_SHA256'
     }
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-llama' -Target 'built' -Tag $llamaTag -BuildArgs $llamaArgs
 }
@@ -918,10 +927,10 @@ if ($Stages -contains 'final') {
     # because containerd's pipe is admin-only and this driver is non-admin.
     if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
         # CROSS LANE: the suite runs its host-toolchain sections and skips the
-        # payload ones itself. 69 sits just under the arm64 section-floor sum of
-        # 77 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
+        # payload ones itself. 76 sits just under the arm64 section-floor sum of
+        # 82 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
         # no gate here proves the payload RUNS.
-        $armMinPassed = 69
+        $armMinPassed = 76
         $armMaxSkipped = 20
         if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
         if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
@@ -940,8 +949,8 @@ if ($Stages -contains 'final') {
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow
     } elseif (-not $SkipSmokeGate) {
-        # LANE-AWARE FLOOR: 160 is the CPU number (just under its section-floor
-        # sum of 161); on the GPU lane it would tolerate losing 60 of the 220
+        # LANE-AWARE FLOOR: 170 is the CPU number (just under its section-floor
+        # sum of 180); on the GPU lane it would tolerate losing 60 of the 220
         # assertions a green run executes. 190 is the GPU column's sum in
         # Test-Container.ps1. An explicit -SmokeMinPassed always wins.
         $effectiveMinPassed = $SmokeMinPassed
