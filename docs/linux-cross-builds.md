@@ -552,7 +552,7 @@ The cross path consumes one `TARGET_ARCH` per `nerdctl build`, fanned out per ar
 `linux/Dockerfile.package` is the handoff point where amd64-hosted cross artifacts are copied into a clean
 target-native root filesystem. For foreign-architecture images, the package stage must receive:
 - A target-native `/opt/llvm-target` tree, wired to `/usr/bin/clang`
-- A target-native `/opt/gcc-16.2.0` (cross-compiled from source via Canadian cross, swapped in by `Dockerfile.android`)
+- A target-native `/opt/gcc-16.2.0` (cross-compiled from source via Canadian cross, swapped in by `Dockerfile.android`), carrying libsanitizer like the amd64 full-make GCC: asan, ubsan, lsan and tsan, plus hwasan on arm64 ([`cross-build-verification.md#the-native-gcc-ships-libsanitizer`](cross-build-verification.md#the-native-gcc-ships-libsanitizer))
 - A hard-fail CC validation guard (dumpmachine, ELF type, cc1 smoke test)
 
 `linux/Dockerfile.torch` produces the final `:latest-<arch>` wrapper images (torch venv, app, runtime scripts, entrypoint).

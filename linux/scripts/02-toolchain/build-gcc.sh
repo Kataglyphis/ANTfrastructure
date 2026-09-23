@@ -753,8 +753,17 @@ if [ "${USE_CCACHE}" = "1" ] && [ ! -e /tmp/.gcc-cache-stats-zeroed ]; then
   sccache --zero-stats >/dev/null 2>&1 || true
   : > /tmp/.gcc-cache-stats-zeroed 2>/dev/null || true
 fi
+# host == target (Canadian native, swapped in as the image's cc): build
+# libsanitizer like the full-make GCC. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+_gcc_extra_target_libs() {
+  if [ -n "${HOST_TRIPLET}" ] && [ "${HOST_TRIPLET}" = "${TARGET_TRIPLET}" ]; then
+    printf '%s' target-libsanitizer
+  fi
+  return 0
+}
+_gcc_san="$(_gcc_extra_target_libs)"
 if [ -n "${TARGET_TRIPLET}" ]; then
-  make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic
+  make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic ${_gcc_san:+"all-${_gcc_san}"}
 else
   make -j"${JOBS}"
 fi
@@ -779,11 +788,19 @@ fi
 echo "Installing to ${PREFIX}..."
 ${SUDO} mkdir -p "${PREFIX}"
 if [ -n "${TARGET_TRIPLET}" ]; then
-  ${SUDO} make install-gcc install-target-libgcc install-target-libstdc++-v3 install-target-libatomic \
+  ${SUDO} make install-gcc install-target-libgcc install-target-libstdc++-v3 install-target-libatomic ${_gcc_san:+"install-${_gcc_san}"} \
     2> >(filter_libtool_finish_warnings)
 else
   ${SUDO} make install 2> >(filter_libtool_finish_warnings)
 fi
+# libsanitizer's configure can switch itself off silently (SANITIZER_SUPPORTED).
+_gcc_assert_sanitizer_installed() {
+  [ -f "${PREFIX}/lib/gcc/${TARGET_TRIPLET}/${GCC_VERSION}/include/sanitizer/common_interface_defs.h" ] \
+    && compgen -G "${PREFIX}/lib*/libasan.so.*" >/dev/null \
+    || die "libsanitizer installed no headers/libasan for ${TARGET_TRIPLET} under ${PREFIX}"
+  return 0
+}
+[ -z "${_gcc_san}" ] || _gcc_assert_sanitizer_installed
 finish_libtool_dirs
 
 if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then

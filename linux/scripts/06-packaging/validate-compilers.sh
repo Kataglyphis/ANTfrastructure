@@ -620,6 +620,23 @@ _smoke_optimization_level() {
   fi
 }
 
+# -fsanitize compile+link with the header abseil includes; the RUN is
+# smoke-runtime-image.sh's (native only). docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+_smoke_gcc_sanitizers() {
+  local d dyn=""; d="$(mktemp -d)"
+  printf '#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (c << 3) == 8 ? 0 : 1;\n}\n' > "${d}/s.cpp"
+  if g++ -O1 -fsanitize=address,undefined "${d}/s.cpp" -o "${d}/s" 2>"${d}/e"; then
+    dyn="$(readelf -d "${d}/s" 2>/dev/null || true)"
+  fi
+  if grep -q 'NEEDED.*libasan\.so' <<<"${dyn}" && grep -q 'NEEDED.*libubsan\.so' <<<"${dyn}"; then
+    echo "SMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)"
+  else
+    sed 's/^/    /' "${d}/e" >&2 || true
+    validate_fail "gcc-sanitizers" "g++ -fsanitize=address,undefined failed or did not link libasan/libubsan"
+  fi
+  rm -rf "${d}"
+}
+
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
@@ -639,6 +656,7 @@ validate_smoke() {
   _smoke_symlink_chains
   _smoke_optional_payloads
   _smoke_optimization_level
+  _smoke_gcc_sanitizers
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then
     echo "SMOKE FAILED: ${_VALIDATE_ERRORS} check(s) failed" >&2
