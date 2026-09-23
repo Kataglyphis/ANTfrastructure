@@ -27,7 +27,7 @@
     Root of the patch tree (default: the patches/ dir next to this script's parent).
 
 .PARAMETER Versions
-    Optional hashtable overriding the pinned tags per repo key (ONNXRUNTIME, OPENCV, FFMPEG, GSTREAMER).
+    Optional hashtable overriding the pinned tags per repo key (ONNXRUNTIME, OPENCV, FFMPEG, GSTREAMER, LLVM, HAILORT).
 
 .PARAMETER WorkDir
     Scratch dir for the shallow clones (default: a temp dir; removed on completion).
@@ -61,6 +61,7 @@ $defaultRefs = @{
     FFMPEG      = 'master'
     GSTREAMER   = '1.29.2'
     LLVM        = 'llvmorg-23.1.0'
+    HAILORT     = 'v5.4.0'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
@@ -70,7 +71,9 @@ if (Test-Path $versionsFile) {
             @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
             @{ Ref = 'FFMPEG';      Key = 'FFMPEG_VERSION' },
             @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' },
-            @{ Ref = 'LLVM';        Key = 'LLVM_WINDOWS_VERSION'; Fmt = 'llvmorg-{0}' }
+            @{ Ref = 'LLVM';        Key = 'LLVM_WINDOWS_VERSION'; Fmt = 'llvmorg-{0}' },
+            # The tag Build-HailortFromSource.ps1 downloads (archive/refs/tags/v<ver>).
+            @{ Ref = 'HAILORT';     Key = 'HAILORT_VERSION';      Fmt = 'v{0}' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
@@ -88,6 +91,7 @@ $repoMap = @{
     'ffmpeg'         = @{ Url = 'https://github.com/FFmpeg/FFmpeg.git';           Ref = $defaultRefs.FFMPEG }
     'gstreamer'      = @{ Url = 'https://github.com/gstreamer/gstreamer.git';     Ref = $defaultRefs.GSTREAMER }
     'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
+    'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
 }
 
 function Get-PatchTargetPaths {

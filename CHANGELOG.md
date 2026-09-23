@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - Windows Scripts CI is green again: an unmounted CUDA root reads as absent, and the Hailo patches are checked
+
+- **`WindowsSourceBuild.Cuda.psm1`.** `ad5b7d8f` (#176) built `Get-CudnnLibraryDir`'s and
+  `Test-CudaWindowsArm64Payload`'s paths with `Join-Path`, which resolves the root's drive
+  and throws `DriveNotFoundException` on an unmounted one; the contract (and the
+  `SourceBuild.Resolve` `X:\` cases) is `$null` / `$false`. Every `lint-and-test` run
+  since 2026-09-20 failed on it, on the runner and on any host without an `X:`. The paths
+  are interpolated now; the rocm lane gate in `Get-GpuEnvironment` had the same latent
+  shape and changes with them. The tests stay as the regression cases.
+- **`Test-PatchesApplyClean.ps1`** maps `patches/hailo/` to `hailo-ai/hailort` at
+  `v<HAILORT_VERSION>` (the tag `Build-HailortFromSource.ps1` downloads). Without it the
+  four Hailo patches failed `patch-drift` unchecked since `da14e043`; all four apply
+  cleanly at v5.4.0.
+
+
 ## 2026-09-23 - ONNX Runtime has one source: the chain
 
 **Owner rule: every component that compiles against, links or loads ONNX Runtime uses
