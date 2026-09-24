@@ -2224,6 +2224,30 @@
     "why": "a doc-duplication failure must refuse the commit"
   },
   {
+    "id": "pre-commit.doc-numbers-aborts",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  bash linux/scripts/tests/test-doc-numbers.sh >/dev/null 2>&1 || {",
+    "replace": "  bash linux/scripts/tests/test-doc-numbers.sh >/dev/null 2>&1 || true || {",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "stale derived doc numbers must refuse the commit; printed and let through, the digit reaches CI and reds the preflight and every mutation shard (36022089345)"
+  },
+  {
+    "id": "pre-commit.doc-numbers-trigger-names-the-manifest",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "  | grep -E '^(docs/scripts/mutations\\.json|linux/host-config",
+    "replace": "  | grep -E '^(docs/scripts/mutations-renamed\\.json|linux/host-config",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "the manifest is the input most commits move; a trigger that stops naming it never runs the suite on exactly the commit that made the total stale"
+  },
+  {
+    "id": "pre-commit.doc-numbers-only-when-an-input-moves",
+    "target": "linux/host-config/git-hooks/pre-commit",
+    "find": "if [ -n \"${_staged_dn}\" ]; then",
+    "replace": "if true; then",
+    "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+    "why": "the suite costs seconds and reads a whole-tree census; a commit that moves none of its inputs must not pay for it, or the hook drifts back toward the budget that taught --no-verify"
+  },
+  {
     "id": "mutations.symlink-checked-before-exists",
     "target": "docs/scripts/verify_mutations.py",
     "find": "    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not os.path.exists(target):\n        return None, None, \"target missing\"",

@@ -111,9 +111,12 @@ t_assert_fails grep -q -e 'mutation gate' <<<"${_out}"
 
 # Every remaining abort path. A hook that stops refusing is a hook that ships
 # what it was built to stop, and each of these was reachable with the suite green.
-_abort_rig() {  # $1 = which gate fails; prints the hook's output, then rc=<n>
+_abort_rig() {  # $1 = which gate fails, $2 = staged list; prints the output, then rc=<n>
   printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = preflight ] && echo 1 || echo 0)" \
     > "${_root}/linux/scripts/preflight.sh"
+  mkdir -p "${_root}/linux/scripts/tests"
+  printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = docnumbers ] && echo 1 || echo 0)" \
+    > "${_root}/linux/scripts/tests/test-doc-numbers.sh"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s/bin/shellcheck"\nexit %s\n' \
     "${_work}" "$([ "$1" = printbin ] && echo 1 || echo 0)" \
     > "${_root}/linux/scripts/lint-shell.sh"
@@ -125,10 +128,11 @@ _abort_rig() {  # $1 = which gate fails; prints the hook's output, then rc=<n>
   printf 'import sys; sys.exit(%s)\n' "$([ "$1" = docdupes ] && echo 1 || echo 0)" \
     > "${_root}/docs/scripts/verify_doc_dupes.py"
   local _o _rc
-  _o="$(_run_hook 0 "${_work}/abort-staged.txt" 0)"; _rc=$?
+  _o="$(_run_hook 0 "${2:-${_work}/abort-staged.txt}" 0)"; _rc=$?
   printf '%s\nrc=%s\n' "${_o}" "${_rc}"
 }
-printf 'linux/scripts/subject.sh\ndocs/page.md\n' > "${_work}/abort-staged.txt"
+printf 'linux/scripts/subject.sh\ndocs/page.md\ndocs/scripts/mutations.json\n' > "${_work}/abort-staged.txt"
+printf 'linux/scripts/subject.sh\ndocs/page.md\n' > "${_work}/no-doc-number-input.txt"
 
 t_case "a failing fast preflight gate aborts the commit"
 _out="$(_abort_rig preflight)"
@@ -157,6 +161,18 @@ t_case "a doc-duplication failure on a staged page aborts the commit"
 _out="$(_abort_rig docdupes)"
 t_assert_contains "${_out}" "doc duplication FAILED"
 t_assert_contains "${_out}" "rc=1"
+
+t_case "stale derived doc numbers abort the commit when the manifest is staged"
+# 7482747c added two mutations, left the quoted total at 1332, and this hook said
+# OK; CI's preflight and all four mutation shards went red on it (36022089345).
+_out="$(_abort_rig docnumbers)"
+t_assert_contains "${_out}" "derived doc numbers are STALE"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "the doc-numbers suite is not run when none of its inputs is staged"
+_out="$(_abort_rig docnumbers "${_work}/no-doc-number-input.txt")"
+t_assert_fails grep -q -e 'derived doc numbers' <<<"${_out}"
+t_assert_contains "${_out}" "rc=0" "a commit that moves no input must not pay for the suite"
 
 t_case "every gate green: the hook lets the commit through"
 _out="$(_abort_rig none)"
