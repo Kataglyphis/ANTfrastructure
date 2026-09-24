@@ -90,9 +90,9 @@ function Invoke-EarlyWebDavDownload {
     if (-not $versions.Contains('WEBDAVCLIENT_REF')) {
       throw 'WEBDAVCLIENT_REF is not set in linux/scripts/01-core/versions.env; the ANTfrastructure pin predates the convention.'
     }
-    $webdavRef = $versions['WEBDAVCLIENT_REF']
-    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: git+https://github.com/Kataglyphis/WebDavClient@$webdavRef"
-    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', "git+https://github.com/Kataglyphis/WebDavClient@$webdavRef") -IgnoreExitCode | Out-Null
+    $requirement = Get-WebDavClientRequirement -Ref $versions['WEBDAVCLIENT_REF']
+    Write-BuildLog -Context $Context -Message "DEBUG: Installing Kataglyphis WebDAV client into uv venv: $requirement"
+    Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', $requirement) -IgnoreExitCode | Out-Null
   } catch {
     Write-BuildLogWarning -Context $Context -Message "uv pip install step failed: $($_.Exception.Message)"
   }
@@ -104,6 +104,28 @@ function Invoke-EarlyWebDavDownload {
   Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, $WebDavPass, $WebDavRemote, $WebDavLocal, '--extension', '.pfx') -IgnoreExitCode -RedactParameterValues @($WebDavPass)
 }
 
+function Get-WebDavClientRequirement {
+  <#
+  .SYNOPSIS
+      The pip requirement for the pinned WebDAV client: the source archive of
+      that commit, never a git+https URL.
+  .DESCRIPTION
+      A git requirement makes uv run `git submodule update --recursive --init`.
+      The pinned commit still carries ExternalLib/Kataglyphis-ContainerHub, whose
+      nested DocumANTation and LaTeX submodules overflow Git for Windows' gitdir
+      limit inside uv's cache: "fatal: '$GIT_DIR' too big" (BeschleunigerBallett
+      run 36020442781). The package needs nothing from those submodules, and the
+      archive is the same commit's tree.
+  #>
+  param(
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[0-9a-f]{40}$')]
+    [string]$Ref
+  )
+  return "kataglyphis_webdavclient @ https://github.com/Kataglyphis/WebDavClient/archive/$Ref.tar.gz"
+}
+
 Export-ModuleMember -Function @(
+  'Get-WebDavClientRequirement',
   'Invoke-EarlyWebDavDownload'
 )
