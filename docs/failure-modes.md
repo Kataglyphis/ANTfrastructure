@@ -957,15 +957,15 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 
 **Symptom.** One of:
 - `RUNTIME_WHEELS_SOURCE=<x>: expected auto, image or export` (exit 2, at chain or lane start);
-- `the android layout <dir> holds <digest>, but <ref> is <digest> in containerd`;
+- `the android layout <dir> holds <digest>, but <ref> is <digest> in containerd` (or `is not present in containerd`);
 - `needs ARTIFACT_CONTEXT_MODE=oci to prove the layout is <ref>`;
 - `no wheel in <dir>/opt/wheels, exported from <ref>`;
 - `the wheelhouse staged for <arch> at <dir> is missing or changed since its export`;
 - from BuildKit, `target stage "wheels-export" could not be found`.
 
-**Cause.** Export mode refuses anything that would change where the wheels come from, or mount bytes it did not seal. In order: a typo; a `--no-push` artifact layout that is not the image image mode would mount; a directory artifact with no digest to compare; an android image without a wheelhouse; a staged directory changed or removed between the export and the wrapper; a `--wrapper-dockerfile` without the export stage.
+**Cause.** Export mode refuses anything that would change where the wheels come from, or mount bytes it did not seal. In order: a typo; a `--no-push` artifact layout that is not the image image mode would mount, which is every `--no-push` chain whose android tag is published (every default or variant one on the amd64 cross host): such a chain threads no pin, so the lane names the registry's digest (`<ref>` is `<repo>@sha256:...`) while the layout holds this run's android; a directory artifact with no digest to compare; an android image without a wheelhouse; a staged directory changed or removed between the export and the wrapper; a `--wrapper-dockerfile` without the export stage.
 
-**Fix.** `RUNTIME_WHEELS_SOURCE=image` is the pre-2026-09-24 delivery and needs none of these. Nothing falls back on its own. For a digest mismatch, re-export the android layout from the tag the lane names, or rebuild android in the same run.
+**Fix.** `RUNTIME_WHEELS_SOURCE=image` is the pre-2026-09-24 delivery and needs none of these. Nothing falls back on its own. For a digest mismatch, use it too: rebuilding android in the same run is exactly the published-tag case above. Never re-export the layout from the ref the error names, because the package build copies from that layout and would switch to the published android too ([why](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
 ### A GPU venv ships two onnxruntime distributions
 

@@ -292,10 +292,10 @@ runtime_wheels_image_ref() {
   # pass the digest-pinned android ref (the wrapper's registry-resident
   # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
   _wheels_image="$(runtime_android_pin "${arch}")"
-  # The pin is empty under --no-push. On a build host whose android tag carries
-  # a -host<arch> infix, Dockerfile.torch's un-infixed default would then name
-  # the AMD box's artifact and bind-mount ITS /opt/wheels. Name this host's tag
-  # instead, so a miss fails loudly rather than shipping the wrong generation.
+  # Empty when nothing threaded a pin and the tag is unpublished; a published tag
+  # yields its registry digest, under --no-push too. With a -host<arch> infix,
+  # Dockerfile.torch's un-infixed default would then name the AMD box's artifact
+  # and mount ITS /opt/wheels. Name this host's tag, so a miss fails loudly.
   # Structurally unreachable on amd64: the infix is empty there. A VARIANT is the
   # same hazard on every host: the default names the default chain's android.
   if [ -z "${_wheels_image}" ] && { [ -n "$(cross_build_host_infix)" ] || [ -n "$(cross_variant 2>/dev/null)" ]; }; then

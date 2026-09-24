@@ -10297,5 +10297,21 @@
     "replace": "  cleanup_wheelhouse",
     "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
     "why": "every torch-venv step is timed, the last one included"
+  },
+  {
+    "id": "wheels-source.timed-steps",
+    "target": "linux/scripts/01-core/runtime-build-fns.sh",
+    "find": "  _runtime_timed wrapper \"${arch}\" runtime_build_wrapper_image \"${arch}\" || return 1",
+    "replace": "  runtime_build_wrapper_image \"${arch}\" || return 1",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "every runtime-lane step prints its [runtime-timing] line; the wrapper's is one the A/B measures"
+  },
+  {
+    "id": "wheels-source.nopush-published-ref",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  ref=\"$(runtime_wheels_image_ref \"${arch}\")\"\n  if is_dry_run; then",
+    "replace": "  ref=\"$(runtime_wheels_image_ref \"${arch}\")\"\n  ! runtime_use_local_artifact_context || ref=\"$(cross_android_tag \"${arch}\")\"\n  if is_dry_run; then",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "on a --no-push chain whose android tag is published the export must refuse, not quietly read another android than image mode; switching its ref is an owner decision"
   }
 ]
