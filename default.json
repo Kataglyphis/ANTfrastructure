@@ -24,7 +24,7 @@
     },
     {
       "description": [
-        "Composite actions resolved at @main are a deliberate exception to digest pinning: a consumer workflow that pinned ANTfrastructure's own actions to a SHA would stop picking up the upstream-first change flow the repos are built around (upstream is pushed BEFORE the consumer change that needs it).",
+        "Composite actions resolved at @develop are a deliberate exception to digest pinning: a consumer workflow that pinned ANTfrastructure's own actions to a SHA would stop picking up the upstream-first change flow the repos are built around (upstream is pushed BEFORE the consumer change that needs it).",
         "This rule only stops Renovate from proposing those pins; workflows keep pinning every THIRD-PARTY action by digest."
       ],
       "matchManagers": ["github-actions"],
