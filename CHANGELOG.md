@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The consumer inventory counts a consumer's own modules as its own
+
+`verify_consumer_inventory.py` failed its first run after the fleet renames (36019965353):
+`OxidANT names a hub path that does not exist: scripts/windows/New-ReleaseArchive.ps1:18 ->
+WindowsOrtPayload.Common.psm1`. That module is OxidANT's own, in `scripts/windows/modules/`,
+where `Resolve-BuildModule` falls back to it. It dates from 2026-09-23 and is the first local
+module whose name starts with `Windows`. The gate assumed every `Windows*` name was the hub's.
+`dangling_modules` now skips a name the consumer tracks as a `.psm1` outside its test trees
+(a fixture's `.psm1` exists to be absent and still counts as dangling).
+`test-consumer-inventory.sh` covers both. Two new mutations,
+`consumer-inventory.own-module-is-not-dangling` and `consumer-inventory.fixture-psm1-is-not-own`,
+bite. Against the live fleet: CONSUMER INVENTORY OK, 0 dangling.
+
 ## 2026-09-24 - Workflow names follow the fleet convention; `arches` for the Python Linux lane
 
 The owner set one naming rule for the workflows of every repository in the family:

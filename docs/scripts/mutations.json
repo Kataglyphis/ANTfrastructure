@@ -6843,6 +6843,22 @@
     "why": "a comment recording that a hub path was removed, or naming one as an example, is prose about a path -- failing the run on it makes every consumer's history a permanent red"
   },
   {
+    "id": "consumer-inventory.own-module-is-not-dangling",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "                    if name in have or name in own or not name.startswith(\"Windows\"):",
+    "replace": "                    if name in have or not name.startswith(\"Windows\"):",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a consumer's own Windows* module resolves through Resolve-BuildModule's fallback; reporting it as a dangling hub module failed the whole inventory on OxidANT's WindowsOrtPayload.Common (run 36019965353)"
+  },
+  {
+    "id": "consumer-inventory.fixture-psm1-is-not-own",
+    "target": "linux/scripts/verify_consumer_inventory.py",
+    "find": "    own = {Path(rel).stem for rel in files if rel.endswith(\".psm1\") and not is_fixture(rel)}",
+    "replace": "    own = {Path(rel).stem for rel in files if rel.endswith(\".psm1\")}",
+    "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+    "why": "a .psm1 in a test tree is a fixture that exists to be absent from the hub; counting it as the consumer's own would hide a genuinely dangling module name"
+  },
+  {
     "id": "consumer-inventory.empty-class-is-refused",
     "target": "linux/scripts/verify_consumer_inventory.py",
     "find": "        if not hits:",

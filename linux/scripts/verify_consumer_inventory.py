@@ -373,6 +373,10 @@ MODULE_NAME = re.compile(r"['{q}]([A-Za-z0-9_.]+?)(?:\.psm1)?['{q}]".replace("{q
 def dangling_modules(root, files, hub_root):
     """Module NAMES a consumer imports that the hub no longer ships."""
     have = {p.stem for p in (hub_root / MODULE_DIR).glob("*.psm1")}
+    # The consumer's own modules: Resolve-BuildModule falls back to them, so a
+    # name found here resolves at runtime whatever the hub ships. A fixture's
+    # .psm1 is not one -- it exists to be absent from the hub.
+    own = {Path(rel).stem for rel in files if rel.endswith(".psm1") and not is_fixture(rel)}
     found = []
     for rel in files:
         if is_fixture(rel) or not rel.endswith((".ps1", ".psm1")):
@@ -389,7 +393,7 @@ def dangling_modules(root, files, hub_root):
                     # A local fallback module is the consumer's own and is not
                     # this inventory's business; only a name the HUB is expected
                     # to carry can dangle here.
-                    if name in have or not name.startswith("Windows"):
+                    if name in have or name in own or not name.startswith("Windows"):
                         continue
                     found.append("%s:%d -> %s.psm1 (module name)" % (rel, lineno, name))
     return sorted(set(found))
