@@ -7,6 +7,45 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-23 - The preflight timeout was a regression from 57bec177: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
+
+**This was our regression.** On `a7ccc896` the Ubuntu 26.04 `preflight` job was killed
+at its 45-minute timeout inside the mutation gate. `57bec177` had made fix11 run one awk
+pass over its corpus per rule (~50 per gate run), and `test-critical-fixes.sh` ran the
+whole gate once or twice per knocked-out row: the suite went from 4.4 s to 45-59 s on the
+runner, and its 68 mutation entries each re-ran it (43% of the gate's serial cost). The
+killed job printed nothing the gate had found, because the report was buffered.
+
+- **fix11 judges its corpus in one awk pass.** The checks queue rules (`_f11_deny`,
+  `_f11_require`, `_f11_pair`, `_f11_count`); `_f11_judge` answers them all, rules outside
+  and lines inside, so gawk compiles each regex once. `_f11_env_writes` gives each of its
+  seven forms its own `match()` site (gawk recompiled one shared site seven times per line:
+  22 s of the runner's 32 s real-tree run). A pass that returns fewer verdicts than rules
+  is a FAIL. Real tree, CI-parity container: gawk 10.1 s → 0.7 s.
+- **`test-critical-fixes.sh`** builds the fixture once, `cp -a`s it per row, and runs only
+  the knocked-out fix, extracted with `t_fn_src`; a case proves the extraction prints
+  exactly what the gate prints. 52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired
+  runs). All 74 entries bite. The gate's serial cost: 8348 s → 4777 s.
+- **The mutation gate is its own CI job, in four shards.** `preflight` runs with
+  `PREFLIGHT_SKIP=mutations`; the `mutations` job (matrix `shard: [0, 1, 2, 3]`, 30 min,
+  same setup steps) runs `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4`, which
+  preflight passes on as the new `verify_mutations.py --shard K/N` (`entries[K::N]`).
+  Locally, `make preflight` still runs every entry.
+- **`verify_mutations.py` streams.** Each verdict is printed, flushed and tagged `[j/J]`
+  as its entry completes; a closing line names the failures in manifest order.
+- **Four reds the timeout hid**, all from `e785e82d`/`57bec177`:
+  `test-version-snapshot.sh` counted 11 `Build-*FromSource.ps1` subjects (13 since the
+  MIGraphX and AMD GPU EP scripts); `cross-build-verification.md` cited the hook's
+  staged-shell block as `:101-118` (now `:102-119`); `pre-commit.doc-span-fast-slugs` was
+  stale; and `test-smoke-arch-parity.sh`'s sandbox lacked `check-ort-provenance.sh`, which
+  `smoke-runtime-image.sh` now sources (39 assertions read empty). The 20 entries of the
+  first two suites had been vacuous.
+
+Docs: [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded),
+[`onnxruntime-single-source.md` § How G4 runs](docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass).
+Unverified until CI runs: the per-shard wall time on the runner and the gawk real-tree time there.
+
+
 ## 2026-09-24 - ORT census: an ORT under another name is found by the entry point it defines
 
 **Closes a G6 hole a review found.** Take an ORT with its fingerprints stripped,
