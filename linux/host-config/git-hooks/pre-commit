@@ -126,6 +126,19 @@ if [ -n "${_staged_md}" ]; then
   ${_PY} docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 
+# Derived doc numbers only when one of their inputs is staged. Most gate commits
+# append to the manifest, and its quoted total once went stale while this hook
+# said OK (CI run 36022089345). The digits are rewritten by --update, never typed.
+_staged_dn="$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '^(docs/scripts/mutations\.json|linux/host-config/git-hooks/pre-commit|docs/code-quality-tooling\.md|docs/cross-build-verification\.md|AGENTS\.md)$' || true)"
+if [ -n "${_staged_dn}" ]; then
+  echo "pre-commit: derived doc numbers…"
+  bash linux/scripts/tests/test-doc-numbers.sh >/dev/null 2>&1 || {
+    echo "pre-commit: derived doc numbers are STALE -- run: bash linux/scripts/tests/test-doc-numbers.sh --update" >&2
+    exit 1
+  }
+fi
+
 # Mutation gate, SAMPLED. Scope is the STAGED files, not `--changed` (which also
 # selects everything committed since origin/main, so every commit of a batch
 # re-paid for the ones before it: 132 entries / 5m22s for this session's 43-file

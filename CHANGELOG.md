@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The pre-commit hook checks the derived doc numbers when their inputs move
+
+7482747c added two consumer-inventory mutations and left `docs/code-quality-tooling.md`
+quoting 1332 entries. The hook said OK. CI's preflight then failed `test-doc-numbers.sh`,
+and every `doc-numbers.*` mutation in all four shards reported a baseline that already
+failed (run 36022089345). 2bba2833 fixed the digit. The hook now runs
+`test-doc-numbers.sh` whenever `docs/scripts/mutations.json`, the hook itself,
+`docs/code-quality-tooling.md`, `docs/cross-build-verification.md` or `AGENTS.md` is
+staged, and it refuses the commit with the `--update` command to run. It does not run
+when none of them is staged. The new block sits after the doc-duplication gate, so the
+two hook spans the docs quote do not move. `test-precommit-hook.sh` gains the abort case
+and the skip case (42 assertions), and three new mutations bite:
+`pre-commit.doc-numbers-aborts`, `pre-commit.doc-numbers-trigger-names-the-manifest` and
+`pre-commit.doc-numbers-only-when-an-input-moves`. The manifest now holds 1337 entries.
+
 ## 2026-09-24 - `Invoke-WithAsanOptions -Options ''` adds nothing instead of refusing to bind
 
 `Invoke-WithRuntimePath` takes an optional `[string]$AsanOptions` and hands it to
