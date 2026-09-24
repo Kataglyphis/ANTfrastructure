@@ -604,16 +604,30 @@ price of the round-robin split, bounded by one run of each suite per job.
 
 **Locally nothing changes**: `make preflight` and `bash linux/scripts/preflight.sh`
 without the variables run every entry. To reproduce one CI job, set the same two
-variables.
+variables; to time one, give it the runner's 4 CPUs as well (below).
 
 **Measured 2026-09-24** in the CI-parity container (the image as uid 1001, gawk as
-`awk`, the image's venv python off `PATH`). The serial cost — one run of each
-distinct test command × (entries + 1) — fell from **8348 s** to **4777 s**, and
-`test-critical-fixes.sh`'s share from **4117 s** to **706 s**. The whole 1171-entry
-manifest took **12m07s** at `--jobs 16` on 32 cores; one slice (`0/4`, 293 entries)
-through `preflight.sh` pinned to 4 CPUs took **6m16s**. The runner ran at 0.75-1.02×
-this container on 2026-09-23, so a slice should fit its 30 minutes with room; the
-first CI run is the proof.
+`awk`, the image's venv python off `PATH`), one run at a time. The serial cost — one
+run of each distinct test command × (entries + 1) — fell from **11469 s** on
+`a7ccc896` to **6633 s**, and `test-critical-fixes.sh`'s share from **6044 s** to
+**901 s**. A second session measured the new tree at 5816 s: sessions differ by up to
+17%, so compare numbers from one session only. The whole 1172-entry manifest took
+**18m39s** at `--jobs 16` on 32 cores; 1164 entries bite, and the 8 under
+`test-compiler-cache.sh` are vacuous there only because the image ships a real sccache.
+
+**A CI slice should take about 10-16 of its 30 minutes, slice 1 up to 4 more.** A lab
+run pinned to 4 CPUs is not a runner: under `taskset`, `os.cpu_count()` still reports
+the host's 32, so `verify_mutations.py` picks `--jobs 8` where the runner's 4 vCPUs
+give it 4. An early lab slice timed that way (6m16s) is no CI figure. Run as the
+runner runs it — `taskset -c 0-3` plus `PYTHON_CPU_COUNT=4` — slice `1/4` took
+**12m09s**. For the runner, each slice's serial cost is scaled by the gate's measured
+CI time on `41a07927` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
+over that tree's serial cost in the same session. Three sessions put a slice at
+10.0-12.4 min on a fast runner and 12.7-15.7 min on a slow one; the spread comes from
+the session, not the slice. The scaling spreads over all four slices the one entry
+that sits out the gate's 300-s per-entry timeout (`mutations.timeout-kills-tree`),
+which slice 1 pays alone. The same scaling puts `a7ccc896`'s whole gate, in one job,
+at 66-84 min; CI killed it at 45. The first CI run is the proof.
 
 ### The pre-commit hook's cost budget
 
