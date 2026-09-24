@@ -220,26 +220,60 @@ F
 
 _gate() { bash "$1/linux/scripts/verify-critical-fixes.sh"; }
 
-# _red <relpath> <sed expr> <expected message> — one guarded line knocked out.
+# The gate minus its driver: its F11_* tables and every function, extracted with t_fn_src, so a row runs only
+# the fix it knocks out (a whole gate per row made this suite 45-59 s on CI). The equivalence case proves it.
+_FIX_FUNCS=()
+read -r -a _FIX_FUNCS <<< "$(sed -n 's/^FIX_FUNCS=(\(.*\))$/\1/p' "${GATE}")"
+_gate_lib="set -euo pipefail"$'\n'"source '${PKG}/smoke-common.sh'"$'\n'"$(awk '/^F11_[A-Z0-9_]+=\($/ { a = 1 }
+  a || /^F11_[A-Z0-9_]+=/ { print } /^\)$/ { a = 0 }' "${GATE}")"
+for _fn in $(sed -n 's/^\([a-z_][a-z0-9_]*\)() {$/\1/p' "${GATE}"); do
+  _src="$(t_fn_src "${GATE}" "${_fn}")" || exit 1
+  _gate_lib+=$'\n'"${_src}"
+done
+declare -A _FN_OF=()
+for _fn in "${_FIX_FUNCS[@]}"; do _FN_OF["${_fn%%_*}"]="${_fn}"; done
+# _run_fix <tree> <fix function>: that one fix over <tree>, ending in the gate's own summary and exit code.
+_run_fix() { REPO_ROOT="$1" bash -c "${_gate_lib}"$'\n'"$2"$'\n''smoke_summary'; }
+
+# _red <fixN> <relpath> <sed expr> <expected message> — one guarded line knocked out of a copy of the
+# healthy fixture; the finding has to be a FAIL line of that fix.
+_rows=0
 _red() {
-  local d expr="$2"
-  d="$(_tree)"
-  sed -i -e "${expr}" "${d}/$1"
-  t_assert_eq "1" "$(t_rc _gate "${d}")" "knocking out $1 must fail the gate"
-  t_assert_contains "$(t_out _gate "${d}")" "$3" "wrong finding for $1 / ${expr}"
+  local d out rc=0 line fails=""
+  d="${_work}/row$((_rows += 1))"
+  cp -a "${_healthy}" "${d}"
+  sed -i -e "$3" "${d}/$2"
+  out="$(_run_fix "${d}" "${_FN_OF[$1]}" 2>&1)" || rc=$?
+  while IFS= read -r line; do
+    case "${line}" in *FAIL*) fails+="${line}"$'\n' ;; esac
+  done <<< "${out}"
+  t_assert_eq "1" "${rc}" "knocking out $2 must fail $1"
+  t_assert_contains "${fails}" "$4" "wrong finding for $2 / $3"
 }
 
 t_case "a healthy tree passes — without this the reds below prove nothing"
-_fix="$(_tree)"
-t_assert_eq "0" "$(t_rc _gate "${_fix}")"
-t_assert_contains "$(t_out _gate "${_fix}")" "=== Results: 0 failure(s) ==="
-t_assert_contains "$(t_out _gate "${_fix}")" "Critical Fixes: host tree checks"
+_healthy="$(_tree)"
+_healthy_rc=0
+_healthy_out="$(_gate "${_healthy}" 2>&1)" || _healthy_rc=$?
+t_assert_eq "0" "${_healthy_rc}"
+t_assert_contains "${_healthy_out}" "=== Results: 0 failure(s) ==="
+t_assert_contains "${_healthy_out}" "Critical Fixes: host tree checks"
+
+t_case "every fix the gate defines is in FIX_FUNCS, and the extracted fixes print exactly what the gate prints"
+t_assert_eq "$(sed -n 's/^fix\([0-9]*\)_.*() {$/\1/p' "${GATE}" | LC_ALL=C sort -u | tr '\n' ' ')" \
+  "$(printf '%s\n' "${!_FN_OF[@]}" | sed 's/^fix//' | LC_ALL=C sort -u | tr '\n' ' ')" "a fix left out of FIX_FUNCS never runs"
+_each=""
+for _fn in "${_FIX_FUNCS[@]}"; do
+  _each+="$(REPO_ROOT="${_healthy}" bash -c "${_gate_lib}"$'\n'"${_fn}" 2>&1)"$'\n\n'
+done
+t_assert_eq "$(printf '%s\n' "${_healthy_out}" | sed '1,2d;$d')" "${_each%$'\n\n'}" \
+  "the fixes run one at a time must print what the gate prints, or the rows below test something else"
 
 t_case "the /opt-probing half is GONE from the host gate"
 # It skipped on every host run it ever had, and fix4 was a tautology there
 # (host cc is the host arch). Its real verdicts live in smoke-critical-fixes.sh.
 for _moved in "Fix 1:" "Fix 2:" "Fix 3:" "Fix 4:"; do
-  case "$(t_out _gate "${_fix}")" in
+  case "${_healthy_out}" in
     *"${_moved}"*) t_assert_eq "moved" "still here" "${_moved} must not run on the host" ;;
     *)             t_assert_eq "moved" "moved" ;;
   esac
@@ -257,7 +291,7 @@ while IFS="$(printf '\t')" read -r _g _f _e _m; do
     t_case "${_g}"
     _group="${_g}"
   fi
-  _red "${_f}" "${_e//@LHS@/${_bare_export_lhs}}" "${_m}"
+  _red "${_g%% *}" "${_f}" "${_e//@LHS@/${_bare_export_lhs}}" "${_m}"
 done <<'ROWS'
 fix5 — the geometry.hpp patch	linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh	s|geometry.hpp|core.hpp|	missing geometry.hpp reference
 fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	s|-idirafter /usr/include||g	lost the -idirafter CXXFLAGS injection
@@ -290,20 +324,10 @@ fix10 — the PR100017 c++23 -nostdinc++ patch, its loud die and its self-retiri
 fix10 — the PR100017 c++23 -nostdinc++ patch, its loud die and its self-retiring guard	linux/scripts/02-toolchain/build-gcc.sh	s|if ! grep -q -- '-nostdinc++' src/c++23/Makefile.in; then|if true; then|	lost its idempotence gate
 ROWS
 
-# fix11's rows run the gate ONCE each: its fixture is large and fix11 spawns more than the rest.
-_red_once() {
-  local d out rc=0
-  d="$(_tree)"
-  sed -i -e "$2" "${d}/$1"
-  out="$(_gate "${d}" 2>&1)" || rc=$?
-  t_assert_eq "1" "${rc}" "knocking out $1 must fail the gate"
-  t_assert_contains "$(printf '%s\n' "${out}" | grep -e 'FAIL' || true)" "$3" "wrong finding for $1 / $2"
-}
-
 t_case "fix11 — ORT has one source: the denylist, the G1/G2/G3 wiring, the census roots, the invariant"
 while IFS="$(printf '\t')" read -r _f _e _m; do
   [ -n "${_f}" ] || continue
-  _red_once "${_f}" "${_e}" "${_m}"
+  _red fix11 "${_f}" "${_e}" "${_m}"
 done <<'ROWS11'
 linux/scripts/03-media/build/opencv/opencv-ort.sh	/HAVE_ONNXRUNTIME=1/d	pre-sets HAVE_ONNXRUNTIME
 linux/scripts/03-media/build/opencv/opencv-ort.sh	s|DOWNLOAD_ONNXRUNTIME=OFF|DOWNLOAD_ONNXRUNTIME=ON|	no OpenCV DOWNLOAD_ONNXRUNTIME
@@ -356,16 +380,17 @@ windows/scripts/modules/WindowsSourceBuild.Common.psm1	$a Import-Module (Join-Pa
 linux/Dockerfile.media	1s|03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh|03-media/core/common.sh,target=/opt/scripts/03-media/core/common.sh|	every consumer RUN mounts its G2 helper
 linux/Dockerfile.media	$a COPY linux/scripts/03-media/ort-provenance.sh /opt/scripts/03-media/ort-provenance.sh	only as per-file bind mounts
 windows/scripts/build/Test-Container.ps1	/Invoke-OrtImageCensus/d	the Windows smoke runs the ORT census (G1)
-linux/scripts/06-packaging/smoke-runtime-image.sh	/check_ort_census/d	G1 unwired
+linux/scripts/06-packaging/smoke-runtime-image.sh	/check_ort_census/d	the wrapper-smoke stage runs the ORT census (G1)
 docs/windows-build-invariants.md	s|^### |## |	lost '### ONNX Runtime has exactly one source
 windows/scripts/build/Build-OnnxFromSource.ps1	s|onnx-src|ort-src|	SourceDir ('C:\temp\ort-src') is not the root
 linux/scripts/03-media/build/onnxruntime/build/lib/common.sh	s|/opt/onnxruntime|/opt/ort|	ORT_SRC_DIR ('/opt/ort') is not the root
 ROWS11
 
 t_case "fix11 — an ort dependency with its default features is pyke's download, in every Cargo shape (mutation)"
-_fix="$(_tree)"
-printf '[dependencies]\nort = "=2.0.0-rc.13"\n' | _write "${_fix}/linux/scripts/x/Cargo.toml"
-t_assert_eq "1" "$(t_rc _gate "${_fix}")" "the gate runs the Cargo rule: ort's default features carry download-binaries"
+cp -a "${_healthy}" "${_work}/cargo-tree"
+printf '[dependencies]\nort = "=2.0.0-rc.13"\n' | _write "${_work}/cargo-tree/linux/scripts/x/Cargo.toml"
+t_assert_eq "1" "$(t_rc _run_fix "${_work}/cargo-tree" "${_FN_OF[fix11]}")" \
+  "fix11 runs the Cargo rule: ort's default features carry download-binaries"
 _cargo_verdict="$(t_fn_src "${GATE}" _f11_verdict)" || exit 1
 _cargo_rule="$(t_fn_src "${GATE}" fix11_ort_cargo)" || exit 1
 # _cargo <toml, \n-escaped>: the Cargo rule's one verdict line over a tree holding just that Cargo.toml.
@@ -424,7 +449,7 @@ l/s.yml:1:  run: echo "ORT_LIB_PATH: ${ORT_LIB_PATH}"	-
 WRITES
 
 t_case "fix11 — the healthy fixture passes every fix11 check it has, and no G2 row is vacuous"
-_out="$(t_out _gate "$(_tree)")"
+_out="${_healthy_out}"
 t_assert_contains "${_out}" "PASS fix11: every consumer RUN mounts its G2 helper"
 t_assert_contains "${_out}" "PASS fix11: Build-OrtAmdgpuEpFromSource.ps1 calls Assert-ChainOrtOnly exactly once"
 t_assert_contains "${_out}" "PASS fix11: the Linux census fingerprints the ORT source root /opt/onnxruntime"
@@ -432,6 +457,17 @@ t_assert_contains "${_out}" "PASS fix11: nothing re-arms the ort crate download"
 t_assert_contains "${_out}" "PASS fix11: no Cargo.toml here enables" "the Cargo rule is wired"
 t_assert_contains "${_out}" "PASS fix11: nothing deletes or patches an in-box ORT" "the census READING System32's ORT is not a patch"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e 'FAIL fix11' || true)" "no fix11 check is red on the healthy tree"
+t_assert_contains "${_out}" "PASS fix11: every Linux GenAI build.py call passes --ort_home (2/2)" "the counts reach bash"
+
+t_case "fix11 — a judging pass that dies is a FAIL, never a quiet pass (mutation)"
+# Every corpus verdict comes out of one awk run; one that prints nothing would otherwise pass them all.
+mkdir -p "${_work}/deadawk"
+printf '#!/bin/sh\nexit 2\n' > "${_work}/deadawk/awk"
+chmod +x "${_work}/deadawk/awk"
+printf 'a/b.sh:1:x\n' > "${_work}/one-line-corpus"
+_dead="$(PATH="${_work}/deadawk:${PATH}" bash -c "${_gate_lib}"$'\n'"_F11_RULES=(); _f11_deny never x; _f11_judge '${_work}/one-line-corpus'; smoke_summary" 2>&1)"
+t_assert_contains "${_dead}" "got 0 verdict(s) for 1 rule(s) -- the judging pass broke"
+t_assert_contains "${_dead}" "=== Results: 1 failure(s) ==="
 
 # ── the in-image half ───────────────────────────────────────────────────────
 # CF_SMOKE_ROOT is what makes these provable off-target: the probes read a

@@ -5346,8 +5346,8 @@
   {
     "id": "critical-fixes.ort-apt",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "_f11_verdict \"$(_f11_grep \"${c}\" \"${tok}\")\" \\",
-    "replace": "_f11_verdict \"$(_f11_grep \"${c}\" \"never_matches${tok}\")\" \\",
+    "find": "package list)\" \\\n    \"${tok}\"\n",
+    "replace": "package list)\" \\\n    \"never_matches${tok}\"\n",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "apt libonnxruntime1.23 was pulled into media-arm64 on 2026-08-27 and shadowed the chain build"
   },
@@ -5394,8 +5394,8 @@
   {
     "id": "critical-fixes.ort-opencv-have-preset",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "([^a-z0-9_]|$)')\" -eq 0 ]; then",
-    "replace": "([^a-z0-9_]|$)')\" -lt 0 ]; then",
+    "find": "if (fn && !fb) bad = bad FP[f] \" \"",
+    "replace": "if (fn && fb < 0) bad = bad FP[f] \" \"",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "OpenCV 5.0 dnn downloads ORT whenever HAVE_ONNXRUNTIME is not pre-set (dnn/CMakeLists.txt:141)"
   },
@@ -5554,8 +5554,8 @@
   {
     "id": "critical-fixes.ort-g1-linux",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "  if [ -n \"$(_f11_grep \"${c}\" '^[[:space:]]+check_ort_census",
-    "replace": "  if true || [ -n \"$(_f11_grep \"${c}\" '^[[:space:]]+check_ort_census",
+    "find": "check-ort-provenance\\.sh[[:space:]]+[^[:space:]]' 1+ \\",
+    "replace": "check-ort-provenance\\.sh[[:space:]]+[^[:space:]]' 0+ \\",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "the Linux census must be CALLED by a runtime smoke, not merely sourced"
   },
@@ -5602,8 +5602,8 @@
   {
     "id": "critical-fixes.ort-apt-context-free",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "\"$(_f11_grep \"${c}\" \"${tok}\")\"",
-    "replace": "\"$(_f11_grep \"${c}\" \"${tok}\" 'apt-get|dpkg')\"",
+    "find": "package list)\" \\\n    \"${tok}\"\n",
+    "replace": "package list)\" \\\n    \"${tok}\" 'apt-get|dpkg'\n",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "the hub's apt lists put package names on continuation lines with no apt-get on them; an apt-context rule never sees them"
   },
@@ -5642,24 +5642,24 @@
   {
     "id": "critical-fixes.ort-env-form-environ-index",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "each(Q N Q \"[[:space:]]*[]][[:space:]]*=\", t)",
-    "replace": "each(\"never_matches\", t)",
+    "find": "IX = Q N Q \"[[:space:]]*[]][[:space:]]*=\"",
+    "replace": "IX = \"never_matches\"",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "os.environ[\"CARGO_NET_OFFLINE\"] = \"false\" sets the variable for every cargo the script starts"
   },
   {
     "id": "critical-fixes.ort-env-form-setenv",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "each(\"(setenvironmentvariable|setdefault|putenv|setenv)",
-    "replace": "each(\"(never_matches)",
+    "find": "API = \"(setenvironmentvariable|setdefault|putenv|setenv)",
+    "replace": "API = \"(never_matches)",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "[Environment]::SetEnvironmentVariable('ORT_LIB_PATH', ...) sets it for the machine without an = in sight"
   },
   {
     "id": "critical-fixes.ort-env-form-set-item",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "each(\"(set-item|new-item)",
-    "replace": "each(\"(never_matches)",
+    "find": "PRV = \"(set-item|new-item)",
+    "replace": "PRV = \"(never_matches)",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "Set-Item -Path Env:ORT_LIB_PATH is PowerShell's provider spelling of the same write"
   },
@@ -5674,8 +5674,8 @@
   {
     "id": "critical-fixes.ort-env-form-setx",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "each(\"(^|[^a-z0-9_-])setx",
-    "replace": "each(\"(never_matches)setx",
+    "find": "SETX = \"(^|[^a-z0-9_-])setx",
+    "replace": "SETX = \"(never_matches)setx",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "setx /M ORT_SKIP_DOWNLOAD 0 re-arms the download machine-wide"
   },
@@ -5690,8 +5690,8 @@
   {
     "id": "critical-fixes.ort-env-yaml-key-position",
     "target": "linux/scripts/verify-critical-fixes.sh",
-    "find": "each(\"(^[[:space:]]*(-[[:space:]]+)?|[{,][[:space:]]*)\" Q",
-    "replace": "each(\"(^|[^a-z0-9_])\" Q",
+    "find": "MAP = \"(^[[:space:]]*(-[[:space:]]+)?|[{,][[:space:]]*)\" Q",
+    "replace": "MAP = \"(^|[^a-z0-9_])\" Q",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "echo \"ORT_LIB_PATH: $ORT_LIB_PATH\" in a run: step is a read; only a mapping KEY is a write"
   },
@@ -9393,5 +9393,53 @@
     "replace": "# Overridable",
     "test": "bash linux/scripts/tests/test-image-env.sh",
     "why": "a compiling stage that loses its endpoint ARG (it would compile uncached) fails the shipped tree"
+  },
+  {
+    "id": "critical-fixes.ort-judge-verdict-count",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "  if [ \"${seen}\" -ne \"${#_F11_RULES[@]}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "every corpus verdict comes out of ONE awk run; a run that dies or prints nothing would otherwise pass every rule it was handed"
+  },
+  {
+    "id": "critical-fixes.ort-judge-deny-verdict",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "else if (F[1] == \"deny\") verdict(!n,",
+    "replace": "else if (F[1] == \"deny\") verdict(1,",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a deny rule is judged by its hit count; a verdict that ignores it passes every download, NuGet and apt line in the tree"
+  },
+  {
+    "id": "critical-fixes.ort-judge-path-scope",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if ((PI != \"\" && FP[f] !~ PI) || (PX != \"\" && FP[f] ~ PX)) continue",
+    "replace": "if (PX != \"\" && FP[f] ~ PX) continue",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "a require rule counts the lines of ONE file; unscoped, 'calls it exactly once' counts every consumer's call together"
+  },
+  {
+    "id": "critical-fixes.ort-judge-exactly",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "verdict(F[9] ~ /\\+$/ ? n >= F[9] + 0 : n == F[9] + 0,",
+    "replace": "verdict(n >= F[9] + 0,",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "'1' means exactly once and only '1+' means at least once; read as a floor, a second, drifting G2 call passes"
+  },
+  {
+    "id": "critical-fixes.ort-judge-count-reaches-bash",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "print \"N\\t\" F[2] \"\\t\" (n + 0)",
+    "replace": "print \"N\\t\" F[2] \"\\t\" 1",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the GenAI build.py/--ort_home ratio is judged in bash from the counted lines; a constant count hides a build.py call that fetches ORT"
+  },
+  {
+    "id": "critical-fixes.ort-env-prefilter-names",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "if (t !~ N) next",
+    "replace": "if (t !~ \"ort_lib_path\") next",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "the prefilter skips lines naming no ort-sys variable; it must use the whole name set, or every other variable's write is skipped unread"
   }
 ]

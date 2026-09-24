@@ -193,6 +193,37 @@ and `Build-MediaCoreAll.ps1`, and out of `03-media/core/` and `03-media/runtime/
 which whole images copy. Otherwise one edit would re-key five compile RUNs.
 fix11 enforces the mounts.
 
+### How G4 runs: one judging pass
+
+fix11 reads its scan set once into a corpus (`<path>:<line>:<text>`, comment lines
+dropped). The `fix11_ort_*` checks do not grep it; they QUEUE rules, and
+`_f11_judge` answers every rule in one awk pass, a verdict per rule in queue order:
+
+| Helper | Rule | FAIL names |
+|---|---|---|
+| `_f11_deny <what> <re> [re2 re3 not path-in path-out]` | no live line matches | the first five lines |
+| `_f11_require <path> <re> <want> <what> [not]` | `N` (exactly) or `N+` (at least) lines of one file match; a `^`-path is a path ERE | the count |
+| `_f11_pair <what> <re> <re-b>` | every file with a line matching `<re>` also has one matching `<re-b>` | the files |
+| `_f11_count <key> <path> <re>` | no verdict: the count lands in `_F11_N[<key>]` for a bash check that runs after the pass | — |
+
+Until 2026-09-24 each rule was its own awk run over the corpus, about 50 per gate
+run. `test-critical-fixes.sh` runs fix11 once per knocked-out row, so the suite went
+from 4.4 s to 45-59 s on the CI runner, and the 68 mutation entries that re-run it
+pushed the preflight job past its 45-minute timeout.
+
+**Why one pass is written the way it is.** gawk (the runner's `awk`) caches a
+dynamic regex per call site and recompiles it whenever the site sees a different
+one. So the judge loops rules outside and lines inside: each rule's regexes are
+compiled once. `_f11_env_writes` had one `match()` site shared by seven regexes,
+recompiled seven times per line: 22 s of the runner's 32 s real-tree run. Each
+form now has its own site, and lines naming no ort-sys variable are skipped first.
+Measured 2026-09-24 in the CI-parity container, real tree: gawk 10.1 s → 0.7 s,
+mawk 1.4 s → 0.4 s.
+
+**A pass that dies is a FAIL.** If the judge returns fewer verdicts than rules,
+fix11 fails (`the judging pass broke`); otherwise a broken awk would pass every
+rule it was handed.
+
 ### The fetch caches G2 grades
 
 Every G2 call also grades the fetch caches of the machine it runs on:
