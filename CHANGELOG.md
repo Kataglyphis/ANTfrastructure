@@ -7,6 +7,28 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The WebDAV client installs from its commit archive, not through git
+
+BeschleunigerBallett's Windows lane (run 36020442781) died before its build, inside the
+early WebDAV download. `uv pip install git+https://github.com/Kataglyphis/WebDavClient@<pin>`
+makes uv run `git submodule update --recursive --init`. The pinned commit still carries
+`ExternalLib/Kataglyphis-ContainerHub`, whose nested DocumANTation and LaTeX submodules
+overflow Git for Windows' gitdir limit inside uv's cache: `fatal: '$GIT_DIR' too big`. A
+shorter cache root cannot help, because the limit is on the gitdir chain.
+
+Both halves now install
+`kataglyphis_webdavclient @ https://github.com/Kataglyphis/WebDavClient/archive/<pin>.tar.gz`:
+the same commit's tree, with no git and no submodules. The package needs nothing from
+them. The Windows half builds that string in one function, `Get-WebDavClientRequirement`,
+which refuses anything but a full 40-character commit SHA. Its Pester cases pin the form
+and the refusal (3/3). `webdav-download.sh` uses the same form. Checked on this host: an
+archive install of the pinned commit into a fresh venv imports `WebDavClient`, which has
+`download_all_files_iterative`.
+
+`versions.env`'s comment above `WEBDAVCLIENT_REF` still says "installed from git". It
+moves with the next change to that file, because any byte changed there rebuilds the
+Windows chain from `Dockerfile.base`'s `COPY versions.env` onward.
+
 ## 2026-09-24 - The pre-commit hook checks the derived doc numbers when their inputs move
 
 7482747c added two consumer-inventory mutations and left `docs/code-quality-tooling.md`

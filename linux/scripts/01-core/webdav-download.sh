@@ -61,9 +61,12 @@ webdav_download_tree() {
     return 1
   fi
 
+  # The commit's source archive, not git+https: the same form as
+  # Get-WebDavClientRequirement in WindowsWebDav.Common.psm1, whose comment says
+  # why (the pinned commit's submodule chain overflows Git for Windows).
   info "installing kataglyphis_webdavclient @ ${WEBDAVCLIENT_REF}"
   uv pip install --python "${venv_python}" \
-    "git+https://github.com/Kataglyphis/WebDavClient@${WEBDAVCLIENT_REF}" || return 1
+    "kataglyphis_webdavclient @ https://github.com/Kataglyphis/WebDavClient/archive/${WEBDAVCLIENT_REF}.tar.gz" || return 1
 
   info "webdav: ${remote} -> ${local_dir} (extension: ${extension})"
   "${venv_python}" "${script}" \
