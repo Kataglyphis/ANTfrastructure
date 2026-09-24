@@ -15,7 +15,7 @@
     {
       "name": "ANTfrastructure",
       "clone_url": "https://github.com/Kataglyphis/ANTfrastructure.git",
-      "ref": "main",
+      "ref": "develop",
       "self": true,
       "confirmed": true,
       "note": "The hub itself. Present so an entry point reached ONLY from here is visible as such: hub-internal use is not a consumer, and that distinction is the whole point of the report."
@@ -74,7 +74,7 @@
       "ref": "main",
       "self": false,
       "confirmed": true,
-      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
+      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @develop. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
     }
 ,
     {

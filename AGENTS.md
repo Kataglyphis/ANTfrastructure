@@ -136,14 +136,14 @@ qualifier (owner directive 2026-09-22).
 - **`:latest-cross` is RETIRED** (owner decision 2026-09-22): the old name of
   `:latest`. Nothing composes or pushes it any more, and `verify_ci_image_refs.py`
   rejects it under `.github/`. **The registry tags outlive the code,
-  deliberately** (owner, 2026-09-22): work stays on `develop`, and the fleet
-  reaches its container ref through this repo's composite actions at `@main`
-  (98 refs across six repos, none passing an explicit `image:`). `main` still
-  carries `CI_IMAGE_LINUX_TAG=latest-cross`, so `:latest-cross` is what every
-  consumer's CI pulls, now frozen at the last release that published it. **Do
-  not delete those tags.** They become deletable only once `main` carries
-  `:latest` (or the consumers leave `@main`), and even then not by version:
-  `:latest` and `:latest-cross` are ONE GHCR version, so the old name must
+  deliberately** (owner, 2026-09-22): work stays on `develop`. Since 2026-09-25
+  the fleet calls this repo's composite actions and reusable workflows at
+  `@develop` (owner directive; 110 refs across eight repos, none passing an
+  explicit `image:`), whose `versions.env` names `:latest`. `main` still carries
+  `CI_IMAGE_LINUX_TAG=latest-cross`, frozen at the last release that published
+  it, so only a lane left at `@main` pulls `:latest-cross`. **Do not delete those
+  tags yet.** The consumers leaving `@main` was the first condition; the second
+  still holds: `:latest` and `:latest-cross` are ONE GHCR version, so the old name must
   become a version of its own first. `ghcr-delete-tags.sh` already refuses the
   unsafe form.
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
@@ -365,7 +365,7 @@ When adding here:
   one file per platform and arch (`linux-x64.yml`, `windows-x64.yml`), display
   names `<Platform> <Arch> · <what>`. The hub's REUSABLE workflows
   (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`) keep their file
-  names for good: every consumer calls them at `@main`, so a rename breaks the
+  names for good: every consumer calls them at `@develop`, so a rename breaks the
   fleet in one push. The convention and the fleet's rename table:
   [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
@@ -568,7 +568,7 @@ and `ls` answers faster than a stale number.
 | `shared/templates/` | The consumer `AGENTS.md` skeleton. [README](shared/templates/README.md) |
 | `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor prompts both lane implementations read. |
 | `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](docs/code-quality-gates.md) |
-| `.github/actions/` | The composite actions consumers call `@main`. [README](.github/actions/README.md) |
+| `.github/actions/` | The composite actions consumers call `@develop`. [README](.github/actions/README.md) |
 | `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`). [Triggers](docs/ci-build-triggers.md) |
 | `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |

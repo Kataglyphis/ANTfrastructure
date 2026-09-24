@@ -46,7 +46,7 @@ calls the lane once per file:
 name: Linux arm64 · build + test
 jobs:
   linux:
-    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-linux.yml@main
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-linux.yml@develop
     with:
       package-name: orchestrant
       arches: arm64
@@ -73,9 +73,9 @@ cannot see them;
 [`tests/test-reusable-linux-lane.sh`](../linux/scripts/tests/test-reusable-linux-lane.sh)
 runs that step and holds the labels to the same rule.
 
-**Consumers wait for hub `main`.** The fleet calls this lane at `@main`, so
-OrchestrANT and WebDavClient keep their `ubuntu-26.04-amd64-arm64.yml` until the
-input is merged there, and only then split into `linux-x64.yml` and
+**Consumers follow hub `develop`.** The fleet calls this lane at `@develop`
+(since 2026-09-25), so the input is available to OrchestrANT and WebDavClient
+now: their `ubuntu-26.04-amd64-arm64.yml` can split into `linux-x64.yml` and
 `linux-arm64.yml`.
 
 ## The static-analysis knobs, and the bandit trap between them
@@ -119,7 +119,7 @@ tree, with the hub's ruleset consumed by reference.
 ```yaml
 jobs:
   windows:
-    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@main
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@develop
     with:
       lint-powershell: true
       lint-path: scripts/windows
@@ -140,7 +140,7 @@ this lane for the gate alone:
 ```yaml
 jobs:
   powershell-lint:
-    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@main
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-windows.yml@develop
     with:
       build-python-package: false
       lint-powershell: true

@@ -53,7 +53,7 @@ repo owns them:
 
 - Every ANTfrastructure PowerShell module declares `#requires -Version 7.0`, so the
   entry scripts do too — launch with `pwsh`, never `powershell`.
-- Workflows resolve ANTfrastructure's composite actions at `@main`, so an upstream
+- Workflows resolve ANTfrastructure's composite actions at `@develop`, so an upstream
   change a workflow depends on must be pushed **before** the consumer change.
 
 ## 3. Critical invariant: submodule pins

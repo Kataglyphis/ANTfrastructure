@@ -1148,7 +1148,7 @@ with `uses:` and inherits all of the above instead of restating it:
 ```yaml
 jobs:
   pins:
-    uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@main
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop
 ```
 
 ## Reusable module: WindowsContainerBuild.Reuse

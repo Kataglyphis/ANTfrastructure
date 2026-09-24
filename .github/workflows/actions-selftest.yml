@@ -3,7 +3,7 @@
 # The twelve composite actions under .github/actions/ are the family's shared
 # CI surface: 84 call sites (counted 2026-09-14) across BeschleunigerBallett,
 # OmniAccelerANT, OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology
-# resolve them at `@main`, which the submodule pin does NOT freeze. An edit here
+# resolve them at `@develop`, which the submodule pin does NOT freeze. An edit here
 # is live in every consumer on the next push, and until this workflow existed
 # exactly ONE of the twelve (run-pester-suite, from submodule-pins.yml) was
 # exercised by anything in this repository. The other eleven had no test between

@@ -68,9 +68,11 @@ build tags; variant manifests, when published, are `:latest-<variant>` (e.g.
 separate Hailo tag.
 
 Until 2026-09-22 this manifest was called `:latest-cross`; that name is
-**retired**: no release publishes it any more, and its tags are removed once
-this repo's `main` carries `:latest` (the fleet resolves the ref through
-`@main`). Move any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
+**retired**: no release publishes it any more. The fleet resolves the ref
+through `@develop` (since 2026-09-25), whose `versions.env` names `:latest`;
+only a lane left at `@main` still pulls the frozen `:latest-cross`, and its tags
+stay until the two names are separate GHCR versions (AGENTS.md § Image and tag
+naming). Move any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
 a different, dead native-lane index — its children had 404'd for months and it
 was deleted in the 2026-08-27 registry cleanup; the tag name was then reused
 for the cross-lane manifest.)

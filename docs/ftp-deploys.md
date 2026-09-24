@@ -26,7 +26,7 @@ ANThology, `Linux.yml` → `reusable-linux.yml`, `dart_on_native_linux.yml` and
 [the rename table](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
 **The Pin column below is history, not the present.** Every one of these steps
-now reads `uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main`
+now reads `uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop`
 (adopted 2026-09-14; the hub's own two workflows the same day), so the library
 version and its digest live in the action and nowhere else, and the host-side
 `chmod`/`chown` fixups in the last column are gone with it — the action does
@@ -246,7 +246,7 @@ After — the fixup, the pin and the policy all move inside:
 
 ```yaml
       - name: 📂 Sync files to domain
-        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop
         with:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}

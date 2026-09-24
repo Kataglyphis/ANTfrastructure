@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The fleet calls this hub at `@develop`, not `@main`
+
+Owner directive. Work lands on `develop`. `main` is a release branch that has
+lagged it since 2026-09-16, and its `versions.env` still sets
+`CI_IMAGE_LINUX_TAG=latest-cross`. The composite actions read that file at the ref
+they were called at. So every consumer lane pulled `:latest-cross`, which no
+release moves any more, and a Linux image fix such as CON7 would never have
+reached one. Both tags are one GHCR version today, so nothing changes in what CI
+runs until the next publish.
+
+- **In the hub:** `prepare-windows-container-host` now calls its three sub-actions
+  at `@develop`, and the reusable workflows call their 15 action references at
+  `@develop`. `lint-gates.yml` checks the tooling out at `ref: develop`, and the
+  consumer registry's hub entry now reads `develop`.
+- **Docs and templates:** AGENTS.md's tag note, `.github/actions/README.md`, six
+  docs pages and `shared/templates/AGENTS.md.template` now say `@develop`.
+  `adopting-in-a-new-project.md` § 6 says why.
+- **In the consumers:** 110 references across eight repositories move in their
+  own commits.
+- **What this means for `:latest-cross`:** it is deletable once it is a GHCR
+  version of its own. `python-ci.md` notes that OrchestrANT and WebDavClient no
+  longer wait for `main` before splitting their `amd64-arm64` workflow.
+
 ## 2026-09-24 - Backlog: four image gaps the consumer lanes hit (CON7–CON10)
 
 `docs/refactoring-backlog.md` gains two arm64 GCC gaps and two Windows LLVM gaps. Each

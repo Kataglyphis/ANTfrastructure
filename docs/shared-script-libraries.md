@@ -136,7 +136,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
-.github/actions/         12 composite actions consumers call @main, incl.
+.github/actions/         12 composite actions consumers call @develop, incl.
                          cleanup-disk-space (Windows runners),
                          run-in-linux-container, run-in-windows-container;
                          full list in .github/actions/README.md
