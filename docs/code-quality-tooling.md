@@ -525,10 +525,14 @@ per mutant. None of that can be batched — two mutations proven in one suite ru
 prove neither — but they are independent, so the entries are dealt round-robin
 over `--jobs` shards, each with its OWN `mirror_tree` copy, each applying, running
 and restoring inside it. Baselines stay shared across shards (one unmutated run
-per distinct command, whichever shard reaches it first) and every verdict is
-buffered per entry and printed in manifest order, so the report never depends on
-which shard finished when. Same 309 entries, same verdicts, same order:
-**1m59s** at the default `--jobs 8` (6.2x) and **1m24s** at `--jobs 16` (8.7x).
+per distinct command, whichever shard reaches it first). Same 309 entries, same
+verdicts: **1m59s** at the default `--jobs 8` (6.2x) and **1m24s** at `--jobs 16` (8.7x).
+Since 2026-09-24 every verdict is printed the moment its entry completes, flushed
+and tagged `[j/J]` with the shard that proved it, and a closing `FAILED: n of m
+entr(ies), in manifest order: …` line puts the failures back in manifest order. It
+used to be buffered and printed in manifest order at the end, which Python's block
+buffering of a piped stdout turned into NOTHING when CI killed the job — not even
+the header (§ [The mutation gate in CI, sharded](#the-mutation-gate-in-ci-sharded)).
 Measure one run at a time — two of these racing each other on the same host
 report numbers that mean nothing, which is how the first attempt at this
 paragraph was thrown away. The default is `min(8, os.cpu_count())` — each shard is a full ~200 MB copy
@@ -563,7 +567,53 @@ nothing (the common commit) copies nothing at all.
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default `min(8, cpu_count)`, capped at the entry count). Every mutation is still applied, run and restored alone, inside its own shard's copy |
+| `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
 | `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
+
+### The mutation gate in CI, sharded
+
+**What happened (2026-09-23).** The `preflight` job of `ubuntu26.04.yml` ran every
+slug in one job with a 45-minute timeout, and on `a7ccc896` it was killed inside
+the mutation gate. Nothing it had found was in the log: the report was buffered to
+the end, and Python block-buffers a piped stdout, so not even the gate's header
+arrived. Behind the timeout sat four deterministic reds, each a suite that failed
+unmutated and turned its entries into vacuous bites (CHANGELOG, 2026-09-23).
+
+**Why the gate got slow — a regression from `57bec177`.** fix11 ran one awk pass per
+rule, `test-critical-fixes.sh` ran the whole gate once or twice per knocked-out row,
+and 68 entries re-ran that suite: 4.4 s became 45-59 s on the runner, and that one
+suite became 43% of the gate's serial cost. It is fixed at the source
+([`onnxruntime-single-source.md` § How G4 runs](onnxruntime-single-source.md#how-g4-runs-one-judging-pass));
+the timeout was not raised and CI does not sample.
+
+**The layout since 2026-09-24.** `preflight.sh` stays the one source of the slug:
+
+| job | runs | timeout |
+| --- | --- | --- |
+| `preflight` | `PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh` — every other slug | 45 min |
+| `mutations` × 4 (`shard: [0, 1, 2, 3]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4 bash linux/scripts/preflight.sh`, which passes `--shard K/4` to `verify_mutations.py` | 30 min each |
+
+`--shard K/N` proves `entries[K::N]`, so the four jobs prove every entry exactly
+once; a suite pins that the slices partition the manifest and that the matrix
+lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
+preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
+unmutated, as on 2026-09-07. Each job still shards its slice over `--jobs`
+mirrors, and each job runs the baseline of every distinct command it holds, so a
+command whose entries span all four slices pays its baseline four times — the
+price of the round-robin split, bounded by one run of each suite per job.
+
+**Locally nothing changes**: `make preflight` and `bash linux/scripts/preflight.sh`
+without the variables run every entry. To reproduce one CI job, set the same two
+variables.
+
+**Measured 2026-09-24** in the CI-parity container (the image as uid 1001, gawk as
+`awk`, the image's venv python off `PATH`). The serial cost — one run of each
+distinct test command × (entries + 1) — fell from **8348 s** to **4777 s**, and
+`test-critical-fixes.sh`'s share from **4117 s** to **706 s**. The whole 1171-entry
+manifest took **12m07s** at `--jobs 16` on 32 cores; one slice (`0/4`, 293 entries)
+through `preflight.sh` pinned to 4 CPUs took **6m16s**. The runner ran at 0.75-1.02×
+this container on 2026-09-23, so a slice should fit its 30 minutes with room; the
+first CI run is the proof.
 
 ### The pre-commit hook's cost budget
 
@@ -643,11 +693,11 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 29 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 37 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
-call sites, the exclude list, the single-match rule, `copy2`, and both halves of
-the symlink contract. The isolation proof is
+call sites, the exclude list, the single-match rule, `copy2`, both halves of
+the symlink contract, the streamed report and the CI shard split. The isolation proof is
 a witness file: the fixture's test command `cp`s the pointed-at subject somewhere
 else *while the mutation is applied*, and the suite asserts that snapshot still
 reads `GUARD=on` — an after-the-fact byte comparison cannot tell isolation from a

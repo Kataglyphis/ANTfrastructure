@@ -232,6 +232,17 @@ t_assert_eq "1" "$(_count "${_push_calls}" -e '--changed')" \
 t_assert_eq "0" "$(_count "${_push_calls}" -e '--in-place')" \
   "the push hook must not opt out of isolation either"
 
+t_case "CI proves every entry once: preflight skips the slug, the mutations jobs' shards cover it"
+_wf="${REPO}/.github/workflows/ubuntu26.04.yml"
+t_assert_contains "$(cat "${REPO}/linux/scripts/preflight.sh")" '${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"}' \
+  "the slug must hand its shard to the gate, or every CI job proves the whole manifest"
+t_assert_contains "$(cat "${_wf}")" "PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh"
+_n="$(sed -n 's|.*PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/\([0-9]*\)" bash linux/scripts/preflight.sh.*|\1|p' "${_wf}")"
+t_assert_eq "$(seq -s ', ' 0 $(( ${_n:-0} - 1 )))" "$(sed -n 's/^ *shard: \[\(.*\)\]$/\1/p' "${_wf}")" \
+  "the matrix must list K = 0..N-1 for the N its jobs pass, or a slice is never proven"
+t_assert_eq "2 2" "$(grep -c -e 'pip install --quiet pytest' "${_wf}") $(grep -c -e 'pip install --quiet pyyaml' "${_wf}")" \
+  "both jobs that run preflight.sh need the same setup, or the baselines go vacuous"
+
 t_case "a find string that matches TWICE is an error, not a silent partial edit"
 _fixture "GUARD=on" "GUARD=off" yes .
 printf 'GUARD=on\n' >> "${_work}/subject.sh"
@@ -410,7 +421,11 @@ _shard_fixture() {
   done
   printf '[%s]\n' "${entries}" > "${_work}/m.json"
 }
-_bitten() { printf '%s\n' "$1" | sed -n 's/^  bites  *\(probe\.[0-9]*\).*/\1/p' | tr '\n' ' '; }
+# The ids reported as biting, in id order: verdicts stream in completion order, each behind its [j/J] tag.
+_bitten() {
+  printf '%s\n' "$1" | sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}  bites  *probe\.\([0-9]*\).*/\2/p' \
+    | sort -n | sed 's/^/probe./' | tr '\n' ' '
+}
 
 t_case "a parallel run proves every entry, and one survivor anywhere fails it"
 _shard_fixture 8 6
@@ -421,11 +436,53 @@ t_assert_contains "${_out}" "probe.6 SURVIVED" \
 t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.7 probe.8 " "$(_bitten "${_out}")" \
   "sharding must not thin the run: every other entry is still proven on its own"
 
-t_case "the report reads in manifest order, not in the order the shards finished"
-_shard_fixture 8 0
+t_case "every verdict carries its shard's tag, and the summary names failures in manifest order"
+_shard_fixture 8 6
 _out="$(t_out _iso --jobs 4)"
+t_assert_eq "8" "$(printf '%s\n' "${_out}" | grep -c -E -e '^\[[1-4]/4\] ( +bites +probe\.[0-9]|FAIL: probe\.[0-9])' || true)" \
+  "one tagged verdict per entry: a CI log that is cut off must still say which shard proved what"
+t_assert_contains "${_out}" "FAILED: 1 of 8 entr(ies), in manifest order: probe.6"
+_shard_fixture 8 0
 t_assert_eq "0" "$(t_rc _iso --jobs 4)" "eight catchable mutations are eight bites"
-t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " "$(_bitten "${_out}")"
+t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " "$(_bitten "$(t_out _iso --jobs 4)")"
+
+t_case "--shard K/N slices the selection so N runs prove every entry exactly once"
+_shard_fixture 8 0
+for _n in 1 3 5; do
+  _union=""
+  for _k in $(seq 0 $((_n - 1))); do _union+="$(_bitten "$(t_out _iso --jobs 2 --shard "${_k}/${_n}")")"; done
+  t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " \
+    "$(printf '%s' "${_union}" | tr ' ' '\n' | sed '/^$/d' | sort -t. -k2 -n | tr '\n' ' ')" \
+    "the ${_n} slices must partition the manifest: no entry twice, none dropped"
+done
+t_assert_contains "$(t_out _iso --shard 1/3)" "(shard 1/3: 3 entr(ies))" "the header names the slice it proved"
+for _bad in 3/3 -1/3 1 x/y; do
+  t_assert_eq "2" "$(t_rc _iso --shard "${_bad}")" "--shard ${_bad} is a usage error, not an empty green run"
+done
+
+t_case "a run killed mid-way has already printed the verdicts it reached"
+# CI kills a job at its timeout; a block-buffered report took every finding with it (2026-09-23).
+printf 'GUARD=on\n' > "${_work}/s1.sh"; printf 'GUARD=on\n' > "${_work}/s2.sh"
+printf 'grep -q "GUARD=on" ./s1.sh\n' > "${_work}/t1.sh"
+printf 'grep -q "GUARD=on" ./s2.sh && exit 0\nsleep 30 &\necho $! > "%s/gpid"\nwait\n' "${_tmp}" > "${_work}/t2.sh"
+printf '[%s,%s]\n' \
+  '{"id":"probe.1","target":"s1.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t1.sh","why":"probe 1"}' \
+  '{"id":"probe.2","target":"s2.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t2.sh","why":"probe 2"}' \
+  > "${_work}/m.json"
+TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --jobs 1 > "${_tmp}/cut.log" 2>&1 &
+_gp=$!
+for _ in $(seq 150); do
+  if grep -q -e 'bites   probe.1' "${_tmp}/cut.log"; then break; fi
+  sleep 0.1
+done
+t_assert_ok kill -0 "${_gp}"
+kill "${_gp}" 2>/dev/null; wait "${_gp}" 2>/dev/null
+t_assert_contains "$(cat "${_tmp}/cut.log")" "=== mutation gate: can these tests fail? ===" \
+  "the header must not wait for the end"
+t_assert_contains "$(cat "${_tmp}/cut.log")" "bites   probe.1" \
+  "the verdict reached before the kill must be in the log while the run is still going"
+kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null
+rm -rf "${_tmp}/gpid" "${_tmp}/cut.log" "${_tmp}"/mutation-gate-*
 
 t_case "a parallel run mutates its own mirrors only, never the tree it was pointed at"
 _shard_fixture 8 0
