@@ -10553,5 +10553,53 @@
     "replace": "    true \"${so:-/opt/venv/<no _pyhailort*.so>}\" \"${TARGET_ARCH:-amd64}\" \"${ipo}\" \\\n",
     "test": "bash linux/scripts/tests/test-hailo-build.sh",
     "why": "the module installed into /opt/venv is the shipped byte; checking only the wheel lets a broken install ship"
+  },
+  {
+    "id": "hailo.off-keeps-home",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  else\n    cmake \"$@\" || rc=$?\n  fi",
+    "replace": "  else\n    HOME=/nonexistent-home cmake \"$@\" || rc=$?\n  fi",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "off, and carry without a launcher, run the configure with the caller's HOME, as before 2026-09-24"
+  },
+  {
+    "id": "hailo.no-launcher-no-carrier",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ \"${mode}\" = carry ] && [ -n \"${launcher}\" ]; then",
+    "replace": "  if [ \"${mode}\" = carry ]; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "with no launcher there is nothing to carry: the configure keeps the caller's HOME"
+  },
+  {
+    "id": "hailo.carrier-login-first",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    [ -z \"${login}\" ] || printf '. %q\\n' \"${login}\"\n    # shellcheck disable=SC2016  # ${PATH} is the nested shell's\n    printf 'export PATH=%q:\"${PATH}\"\\n' \"${dir}/.hailo-cache-bin\"\n    while IFS= read -r v; do printf 'export %s=%q\\n' \"${v}\" \"${!v}\"; done < <(hailo_cache_env_names)\n",
+    "replace": "    # shellcheck disable=SC2016  # ${PATH} is the nested shell's\n    printf 'export PATH=%q:\"${PATH}\"\\n' \"${dir}/.hailo-cache-bin\"\n    while IFS= read -r v; do printf 'export %s=%q\\n' \"${v}\" \"${!v}\"; done < <(hailo_cache_env_names)\n    [ -z \"${login}\" ] || printf '. %q\\n' \"${login}\"\n",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the carrier's exports come after the real login file, so a login file that sets PATH or a cache variable cannot undo them"
+  },
+  {
+    "id": "hailo.install-failure-fatal",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "    [ \"${ipo}\" = upstream ] \\\n      || die \"pyhailort: installing $(basename \"${wheel}\") into /opt/venv failed",
+    "replace": "    [ \"${ipo}\" = upstream ] \\\n      || warn \"pyhailort: installing $(basename \"${wheel}\") into /opt/venv failed",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "under HAILO_PYHAILORT_IPO=off a failed install stops the build; a warning would ship /opt/venv without a checked module"
+  },
+  {
+    "id": "hailo.install-no-wheel-fatal",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "    [ \"${ipo}\" = upstream ] || die \"pyhailort: no hailort-*.whl in",
+    "replace": "    [ \"${ipo}\" = upstream ] || warn \"pyhailort: no hailort-*.whl in",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "under HAILO_PYHAILORT_IPO=off no wheel to install stops the build instead of shipping /opt/venv without pyhailort"
+  },
+  {
+    "id": "hailo.install-no-wheel-guard",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "hailort-*.whl 2>/dev/null | head -1 || true)\"",
+    "replace": "hailort-*.whl 2>/dev/null | head -1)\"",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "an unguarded ls | head under pipefail turns 'no wheel' into errexit's silent rc 2 (shell-safety class 2)"
   }
 ]

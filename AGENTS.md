@@ -824,9 +824,10 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   build HailoRT runs under `env -i`, and fails a `carry` build the cache did not reach;
   `off` is the old uncached build. `HAILO_PYHAILORT_IPO=off` (default) patches out
   upstream's forced LTO, so pyhailort is a real module, checked on the wheel and on
-  `/opt/venv`; `upstream` is the old empty module. Never soften either check under its
-  default, and keep the code in `03-media/build/hailo/`, outside `01-core`, so a
-  change there re-keys only the wrapper's Hailo RUN:
+  `/opt/venv`, where a failed install or a missing wheel is fatal too; `upstream` is the
+  old empty module, and warns. Never soften either check under its default, and keep
+  the code in `03-media/build/hailo/`, outside `01-core`, so a change there re-keys only
+  the wrapper's Hailo RUN:
   [`hailo-support.md`](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`

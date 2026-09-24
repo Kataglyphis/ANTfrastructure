@@ -7,6 +7,67 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - Hailo: review fixes
+
+A review of the entry below found a check that could be skipped, an old-path guarantee
+that no test held, and docs claims that went further than the evidence.
+`HAILO_NESTED_CACHE` behaves as it did. Under `HAILO_PYHAILORT_IPO=off` the install is
+stricter; `upstream` warns as it always did.
+[`hailo-support.md` § pyhailort](docs/hailo-support.md#pyhailort).
+
+- **Under `off`, a failed install into `/opt/venv`, or no wheel at all, stops the
+  build.** The installed-module check ran only inside `if uv pip install ...; then`, so a
+  failed install only warned, the `RUN` stayed green, and an image could ship without
+  pyhailort in `/opt/venv` while the docs called the check fatal. `install_pyhailort` now
+  prints uv's own error and dies, naming `HAILO_PYHAILORT_IPO=upstream`, which keeps the
+  old warning. `import hailo_platform` still only warns in both modes, and the gates
+  table now says so. A run without `/opt/venv`, outside the image, still only stages the
+  wheel.
+- **Found on the way:** the `ls | head` that finds the wheel was unguarded under
+  `pipefail`, so "no wheel" never reached its `return 0`: the build died with rc 2 and no
+  message (shell-safety class 2). Guarded; no wheel is now an error under `off` and a
+  warning under `upstream`.
+- **The old nested build's `HOME` has a test.** The fake cmake recorded the `HOME` it ran
+  with, and nothing read it. `off`, and `carry` without a launcher, now assert the
+  caller's `HOME`, and `carry` the carrier. The carrier test's login file sets `PATH` and
+  `SCCACHE_DIR` itself, which pins that the carrier's exports come after it.
+- **Docs.** README and `failure-modes.md` tied a working pyhailort to a build date, but no
+  image has this change yet, the arm64 import is untested, and an image built from
+  `develop` that day still carries the stub. Both now name the switch and say the import
+  only warns and is proven on amd64 only; `hailo-support.md` too. The Hailo `RUN`'s cache
+  mounts are the chain's own on whichever arch `CROSS_BUILD_PLATFORM` names, so on the
+  Jetson the old 10G cap could trim `sccache-arm64` too, not only `sccache-amd64` on the
+  cross host: `build-cache-tiers.md` and the entry below are corrected. `hailo-support.md` § pyhailort
+  now says the shipped module depends on floating `scikit-build-core>=0.10` and
+  `pybind11>=2.13.6,<3` resolves from PyPI, which reach the image now that the module is
+  real. Pinning them waits for the next planned `versions.env` re-key (an open question on
+  that page). The entry below also gave `# noforward` as a reason for scikit-build-core,
+  which was wrong: the Hailo `RUN` loads the image's `versions.env` and can read
+  `PY_SCIKIT_BUILD_CORE_VERSION` today. Only pybind11 needs a new key.
+- **`code-dupes.allow`:** two budgets go back up by one and two rows come back, all four
+  as they were before 2026-09-20. `install_pyhailort` no longer holds the shingle
+  `[ -n "S" ] || return N`, so the shingle falls from 7 owners to 6, under the idiom
+  cutoff, and counts for those pairs again. No file in those pairs changed.
+- **Tests.** `test-hailo-build.sh` 110 -> 139 assertions: the `HOME` each mode configures
+  with, the login-file order, and `install_pyhailort` itself, run under `set -e` against a
+  fake uv and a sandbox venv in both modes (installed, stub, failed install, failed import,
+  no wheel, no venv). Six new mutations, each seen biting: `hailo.off-keeps-home`,
+  `hailo.no-launcher-no-carrier`, `hailo.carrier-login-first`,
+  `hailo.install-failure-fatal`, `hailo.install-no-wheel-fatal` and
+  `hailo.install-no-wheel-guard`. All 36 `hailo.*` bite; the manifest goes 1252 -> 1258.
+- **What re-keys:** the wrapper's Hailo `RUN` (`build-hailort.sh`), which the entry below
+  already re-keys and no host has built yet. No `versions.env`, `01-core` or Dockerfile
+  change.
+- **Verified here:** on the Windows host, the suites that read the touched files (the two
+  that fail, `test-version-snapshot` and `test-mutation-gate`, fail on the same assertions
+  at the parent commit), all 36 `hailo.*` mutations, shellcheck and its warning ratchet,
+  the hook's fast gates, the doc gates and the manifest's `--stale-check`. In the local
+  amd64 image: `test-hailo-build.sh` as uid 1001 (139 passed) with the six new mutations
+  biting there too, and `install_pyhailort` alone as root against the image's uv and
+  `/opt/venv`, with a stub wheel, a truncated wheel and no wheel under both values, each
+  with the exit code above. **Not verified:** a full `build-hailort.sh` run with these
+  changes, and everything the entry below lists.
+
 ## 2026-09-24 - Hailo: the nested protobuf build is cached, pyhailort is a real module, the old build one switch away
 
 arm64's Hailo `RUN` took 595 s in the 2026-09-22 lane, and 384 s of that was HailoRT's
@@ -39,12 +100,14 @@ old build one switch away.
   `PyInit__pyhailort`. `off` patches the forced IPO out of the cached source; the twelve
   sources compile at `compute_cpp_heavy_jobs` and cache; `hailo_check_pyext` checks the
   wheel's module and the installed one (ELF machine, a defined `PyInit__pyhailort`),
-  fatal under `off`, a warning under `upstream`, which rebuilds the old stub. Measured on
-  amd64: a 1.7 MB module, and `import hailo_platform` works on Python 3.14.
+  fatal under `off` (a failed install too, since the review entry above), a warning under
+  `upstream`, which rebuilds the old stub. Measured on amd64: a 1.7 MB module, and
+  `import hailo_platform` works on Python 3.14.
 - **Cache caps.** The Hailo `RUN` passes `Dockerfile.base`'s `SCCACHE_CACHE_SIZE=30G` and
   `CCACHE_MAXSIZE=30G`. The runtime image lost base's ENV, so `compiler-cache.sh`'s 10G
-  applied there and trimmed the shared mount, which on the amd64 lane is the chain's own
-  `sccache-amd64`. The suite pins the pair to base.
+  applied there and trimmed the shared mount, which is the chain's own cache on the arch
+  `CROSS_BUILD_PLATFORM` names: `sccache-amd64` on the cross host, `sccache-arm64` on the
+  Jetson (corrected in the review entry above). The suite pins the pair to base.
 - **Where the code is.** New `03-media/build/hailo/hailo-build-lib.sh` (the switches, the
   carrier, the counters, the gate, the IPO patch, the module check) and
   `probe-hailo-nested-cache.sh`, a seconds-long check inside an image: `off`, then `carry`
@@ -56,14 +119,16 @@ old build one switch away.
   fix, against the owner's rule); only exported variables are carried, so the unexported
   10G default never becomes a nested server's cap; the `HOME` redirect keeps the real
   `HOME`'s reads through the mirror; the gate follows the code's `USE_*` semantics; the
-  cap scope is the amd64 lane; the pybind build is capped; the twelve TUs are twelve.
+  cap scope is the build platform's arch, not only amd64 (the review entry above); the
+  pybind build is capped; the twelve TUs are twelve.
 - **Not done, and why.** The design's Unit 2: its stats fix is already in
   `compiler-cache.sh`, and moving the carrier into `01-core` would re-key the chain from
   the compiler stage. Unit 3, the opt-in cross fast path: the recorded `-EL` cross failure
   is not diagnosed, and the wrapper's final stage would need a restructure no BuildKit
-  here could test. Pinning scikit-build-core and pybind11: `PY_SCIKIT_BUILD_CORE_VERSION` is
-  `# noforward` and `PY_PYBIND11_VERSION` is 3.x while pyhailort needs <3, so both need a
-  `versions.env` edit, which re-keys every stage from base; left as they were.
+  here could test. Pinning scikit-build-core and pybind11: `PY_PYBIND11_VERSION` is 3.x
+  while pyhailort needs <3, so pybind11 needs a new `versions.env` key, which re-keys every
+  stage from base; both are left for that re-key (the review entry above says why it now
+  matters).
 - **What re-keys:** per lane, the wrapper's Hailo `RUN` (`Dockerfile.torch` and the
   `hailo/` directory it COPYs) and the small `RUN` after it, which re-run on every lane
   anyway. No `versions.env`, `01-core` or other Dockerfile is touched, and the

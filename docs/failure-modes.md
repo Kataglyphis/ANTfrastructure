@@ -1126,11 +1126,12 @@ before 2026-09-24. Run the probe in a fresh container, or give each user its own
 
 ### `import hailo_platform` fails: `_pyhailort` is a 4 KB module
 
-**Symptom.** In an image built before 2026-09-24, or with
+**Symptom.** In an image built before the `HAILO_PYHAILORT_IPO` switch, or with
 `HAILO_PYHAILORT_IPO=upstream`: `import hailo_platform` fails, and
 `_pyhailort.cpython-314-<arch>-linux-gnu.so` is about 4 KB. `readelf --dyn-syms`
-lists no `PyInit__pyhailort`, only a `__gnu_lto_slim` object. Since 2026-09-24 the
-default build stops instead: `[hailo] ERROR: ... does not export PyInit__pyhailort`.
+lists no `PyInit__pyhailort`, only a `__gnu_lto_slim` object. The build date does
+not say which build an image had; the module does. With the switch at its default,
+`off`, the build stops instead: `[hailo] ERROR: ... does not export PyInit__pyhailort`.
 
 **Cause.** Upstream forces IPO in pyhailort's CMake. GCC writes slim LTO objects,
 and lld, the linker `setup_lld_linker` selects, cannot read them, so the link
