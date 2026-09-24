@@ -1,7 +1,7 @@
 # CI Build Triggers (commit-message opt-ins)
 
 > **These lanes live in CONSUMER repos, not here.** ANTfrastructure's own CI is
-> `ubuntu26.04.yml` (preflight + docs), `windows-scripts.yml` (PowerShell
+> `ubuntu26.04.yml` (preflight, the sharded mutation gate + docs), `windows-scripts.yml` (PowerShell
 > lint/tests), `llm-stack-serving.yml` (push/PR, path-filtered on
 > `linux/llm-stack/**`), `submodule-pins.yml`, `actions-selftest.yml`, and the
 > scheduled housekeeping workflows — `ghcr-cleanup.yml` (Sundays), `sbom.yml`,

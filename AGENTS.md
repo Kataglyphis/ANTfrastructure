@@ -876,7 +876,7 @@ Read the strategy before editing that Dockerfile:
   | --- | --- | --- |
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/ubuntu26.04.yml` — `bash linux/scripts/preflight.sh` | CI |
+  | every push | `.github/workflows/ubuntu26.04.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
 
   Install the hook once with **`make hooks`**: it sets `core.hooksPath` rather
   than copying into `.git/hooks`, so the hook is version-controlled and arrives
@@ -888,6 +888,11 @@ Read the strategy before editing that Dockerfile:
   `--no-verify`. A sample never reports as full coverage: it prints how many of
   how many it ran. Why it is capped, and what it measured before it was:
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
+
+  CI never samples: its four `mutations` jobs split the manifest with `--shard`
+  and together prove every entry. When the gate gets slow, fix the suite that got
+  slow; do not raise a timeout or sample in CI. The 2026-09-23 timeout and the
+  layout: [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
 
 - **Never retype a number a gate can measure.** Manifest sizes, per-prefix
   mutation counts and the hook's own slug list are pinned by

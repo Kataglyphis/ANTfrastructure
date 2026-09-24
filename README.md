@@ -321,7 +321,7 @@ secret scan), and nothing else in the tree depends on them.
 
 | Workflow | Purpose |
 |----------|---------|
-| `ubuntu26.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
+| `ubuntu26.04.yml` | On push/PR: the shell preflight gate suite, its mutation gate as four sharded jobs, + docs validation/build |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
 | `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
