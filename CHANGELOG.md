@@ -15,6 +15,17 @@ kebab-case files, one file per platform and arch for a build, display names
 the fleet's rename table:
 [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
+The consumer renames cleared most of the workflow-convention backlog, so
+`workflow-conventions.allow` drops twelve CENSUS rows that now measure zero
+(OmniAccelerANT, OxidANT and AccelerANTgine all three checks, jotrockenmitlocken
+job-timeout and permissions, ANThology job-timeout) and lowers BeschleunigerBallett's
+job-timeout 15 → 13 and permissions 12 → 11, each measured with
+`verify_workflow_conventions.py` on the renamed tree. OrchestrANT keeps its 2 until its
+Linux lane splits on `arches`. `test-workflow-lint.sh`'s ramp cases graded a fixture
+named OxidANT against the REAL allow file, so they passed only while the real OxidANT
+still had a backlog; they now carry their own census. `third_party/DocumANTation` moves
+to `2e861fc`, its own rename (`docs.yml`, `linux-x64.yml`).
+
 - **Renamed.** `ubuntu26.04.yml` → `linux-x64.yml` ("Linux x64 · preflight + mutation
   gate") and `windows-scripts.yml` → `windows-x64.yml` ("Windows x64 · script tests").
   Their concurrency groups follow the file (`linux-x64-…`, `windows-x64-…`), and

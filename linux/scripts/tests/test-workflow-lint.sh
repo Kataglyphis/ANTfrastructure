@@ -277,6 +277,15 @@ jobs:
 
 _conv() { "${_PY}" "${CONV}" "$1"; }
 
+# _conv_hub <allow body> -> a hub tree carrying that allow file, the real
+# consumers.json, and the gate at the depth it resolves both from.
+_conv_hub() {
+  local d; d="$(mktemp -d "${_work}/convhub.XXXXXX")"
+  _conv_half "${d}" "$1"
+  printf '%s' "${d}"
+}
+_conv_at() { "${_PY}" "$1/linux/scripts/verify_workflow_conventions.py" "$2"; }
+
 t_case "the conventions half runs as part of lint-workflows.sh, not beside it"
 # The wiring is the point: a gate nobody calls asserts nothing.
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "workflow conventions under ${clean}" \
@@ -315,9 +324,17 @@ t_assert_eq "1" "$(t_rc _conv "${d}")"
 t_assert_contains "$(t_out _conv "${d}")" "runner label 'windows-latest'"
 
 t_case "the three ramped conventions REPORT and pass while unarmed"
+# Its own census, not the real one: the ramp is the gate's behaviour, and a real
+# repository that clears its backlog drops its rows (OxidANT did on 2026-09-24,
+# and this case, graded against the real file, went red with it).
+_RAMP_CENSUS='CENSUS | OxidANT | job-timeout | 1 | fixture census for the ramp cases
+CENSUS | OxidANT | permissions | 1 | fixture census for the ramp cases
+CENSUS | OxidANT | artifact-error | 1 | fixture census for the ramp cases'
+rhub="$(_conv_hub "${_RAMP_CENSUS}")"
+_ramp() { _conv_at "${rhub}" "$1"; }
 ramped="$(_conv_root OxidANT "${_CONV_RAMPED}")"
-_out="$(t_out _conv "${ramped}")"
-t_assert_eq "0" "$(t_rc _conv "${ramped}")" \
+_out="$(t_out _ramp "${ramped}")"
+t_assert_eq "0" "$(t_rc _ramp "${ramped}")" \
   "turning eight repositories red in one commit is what the ramp exists to avoid"
 t_assert_contains "${_out}" "ADVISORY .github/workflows/ci.yml:4 [job-timeout]"
 t_assert_contains "${_out}" "[permissions] no top-level"
@@ -326,20 +343,20 @@ t_assert_contains "${_out}" "set WORKFLOW_CONVENTIONS_GATE=" \
   "an advisory that does not say how to arm it is a comment with a longer path"
 
 t_case "...and FAIL once armed, which is the half that makes the ramp a ramp"
-_armed() { WORKFLOW_CONVENTIONS_GATE=1 "${_PY}" "${CONV}" "$1"; }
+_armed() { WORKFLOW_CONVENTIONS_GATE=1 _conv_at "${rhub}" "$1"; }
 t_assert_eq "1" "$(t_rc _armed "${ramped}")"
 _out="$(t_out _armed "${ramped}")"
 t_assert_contains "${_out}" "FAIL: .github/workflows/ci.yml:4 [job-timeout]"
 t_assert_contains "${_out}" "WORKFLOW CONVENTION GATE FAILED (3 finding(s)"
 
 t_case "arming one check leaves the other two advisory"
-_one() { WORKFLOW_CONVENTIONS_GATE=permissions "${_PY}" "${CONV}" "$1"; }
+_one() { WORKFLOW_CONVENTIONS_GATE=permissions _conv_at "${rhub}" "$1"; }
 t_assert_eq "1" "$(t_rc _one "${ramped}")"
 t_assert_contains "$(t_out _one "${ramped}")" "WORKFLOW CONVENTION GATE FAILED (1 finding(s)" \
   "a per-check knob is how a convention gets cleared one repository at a time"
 
 t_case "a WORKFLOW_CONVENTIONS_GATE nobody can spell is refused, not ignored"
-_typo() { WORKFLOW_CONVENTIONS_GATE=job-timeouts "${_PY}" "${CONV}" "$1"; }
+_typo() { WORKFLOW_CONVENTIONS_GATE=job-timeouts _conv_at "${rhub}" "$1"; }
 t_assert_eq "1" "$(t_rc _typo "${ramped}")" \
   "silently arming nothing is how a gate reports green over a convention nobody enforced"
 t_assert_contains "$(t_out _typo "${ramped}")" "names unknown check(s): job-timeouts"
@@ -363,15 +380,6 @@ t_assert_fails grep -q -F -e "[job-timeout] job 'call'" <<<"$(t_out _conv "${d}"
 # --- the EXCUSED-with-reason table -------------------------------------------
 # A deviation is declared, never silent; and the declaration is graded too, so
 # the list can only shrink by becoming true.
-
-# _conv_hub <allow body> -> a hub tree carrying that allow file, the real
-# consumers.json, and the gate at the depth it resolves both from.
-_conv_hub() {
-  local d; d="$(mktemp -d "${_work}/convhub.XXXXXX")"
-  _conv_half "${d}" "$1"
-  printf '%s' "${d}"
-}
-_conv_at() { "${_PY}" "$1/linux/scripts/verify_workflow_conventions.py" "$2"; }
 
 _ROW='OxidANT | .github/workflows/ci.yml | job-timeout | build | measured at 4 minutes and bounded upstream; a timeout here would only fire on an outage'
 
