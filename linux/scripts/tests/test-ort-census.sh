@@ -133,27 +133,40 @@ t_assert_contains "$(_v "$(_base; _done)" 0 'no-colons')" "EXEMPT-STALE	no-colon
 PROBE="$(_ort_host_dir "${PKG}")/ort_census_probe.py"
 _probe() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" "${PROBE}" "$@"; }
 # _elf <path> <needed,csv> <runpath> <text>... : an x86-64 ELF .so with a dynamic section and strings.
+# ORT_TEST_SYM=<gnu|sysv>:<shndx> adds OrtGetApiBase to its dynamic symbols behind that hash table (shndx 0 = an import).
 _elf() {
   mkdir -p "$(dirname "$1")"
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" - "$(_ort_host_dir "$(dirname "$1")")/$(basename "$1")" "${@:2}" <<'PY'
+import os
 import struct
 import sys
 
 path, needed, runpath, texts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
-strtab, dyn = b"\0", []
+style, _, shndx = os.environ.get("ORT_TEST_SYM", "").partition(":")
+strtab, dyn, syms = b"\0", [], b""
 for tag, value in [(1, n) for n in needed.split(",") if n] + ([(29, runpath)] if runpath else []):
     dyn.append((tag, len(strtab)))
     strtab += value.encode() + b"\0"
+if style:
+    h = 5381
+    for c in b"OrtGetApiBase":
+        h = (h * 33 + c) & 0xFFFFFFFF
+    table = struct.pack("<IIIIQII", 1, 1, 1, 6, 2**64 - 1, 1, h | 1) if style == "gnu" else struct.pack("<IIIII", 1, 2, 1, 0, 0)
+    syms = b"\0" * 24 + struct.pack("<IBBHQQ", len(strtab), 0x12, 0, int(shndx), 0x1000 if int(shndx) else 0, 0) + table
+    strtab += b"OrtGetApiBase\0"
 dyn_off = 64 + 2 * 56
-str_off = dyn_off + 16 * (len(dyn) + 2)
+dyn_size = 16 * (len(dyn) + 2 + (3 if style else 0))
+str_off = dyn_off + dyn_size + len(syms)
+if style:
+    dyn += [(6, dyn_off + dyn_size), (11, 24), (0x6FFFFEF5 if style == "gnu" else 4, dyn_off + dyn_size + 48)]
 payload = b"".join(b"\0" + t.encode() + b"\0" for t in texts)
 total = max(str_off + len(strtab) + len(payload), 2048)
 data = b"\x7fELF" + bytes([2, 1, 1, 0]) + b"\0" * 8
 data += struct.pack("<HHIQQQIHHHHHH", 3, 62, 1, 0, 64, 0, 0, 64, 56, 2, 64, 0, 0)
 data += struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)
-data += struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, 16 * (len(dyn) + 2), 16 * (len(dyn) + 2), 8)
+data += struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, dyn_size, dyn_size, 8)
 data += b"".join(struct.pack("<qQ", t, v) for t, v in dyn) + struct.pack("<qQ", 5, str_off) + struct.pack("<qQ", 0, 0)
-data += strtab + payload
+data += syms + strtab + payload
 open(path, "wb").write(data + b"\0" * (total - len(data)))
 PY
 }
@@ -240,6 +253,31 @@ t_case "G6: an ORT built with relative source paths is FOREIGN, not an unfingerp
 _elf "${_work}/rel/lib/libonnxruntime.so.1" "" "" 'onnxruntime/core/session/inference_session.cc' OrtGetApiBase
 t_assert_contains "$(bash "${CENSUS}" --reference "${_ref}/lib" "${_work}/rel" 2>&1)" \
   "FOREIGN      /lib/libonnxruntime.so.1 -- built with relative (remapped) source paths" "a lone relative root survives the probe"
+
+_ren="${_work}/renamed"
+mkdir -p "${_ren}/lib"
+cp "${_ref}/lib/libonnxruntime.so.1" "${_ren}/lib/libonnxruntime.so"
+mapfile -t _targs < <(_ort_census_tree_args "${_ren}" "${_ref}/lib" "")
+# _ren_census <gnu|sysv>:<shndx> : libhelper.so with that OrtGetApiBase symbol beside the chain ORT; facts, verdicts, exit.
+_ren_census() {
+  local out rc
+  ORT_TEST_SYM="$1" _elf "${_ren}/lib/libhelper.so" "" '$ORIGIN'
+  out="$(bash "${CENSUS}" --reference "${_ref}/lib" "${_ren}" 2>&1)"
+  rc=$?
+  printf '%s\n%s\nexit %s\n' "$(_probe "${_targs[@]}" | tr -d '\r')" "${out}" "${rc}"
+}
+
+t_case "G6: a file that DEFINES OrtGetApiBase is ORT under any name; one that imports it is an importer (mutations)"
+# With an $ORIGIN RUNPATH beside the chain ORT an importer's modeled dlopen passes, so a renamed ORT must not be one.
+for _style in gnu sysv; do
+  _r="$(_ren_census "${_style}:11")"
+  t_assert_contains "${_r}" "	/lib/libhelper.so	-	def" "an ORT instance by its dynamic symbols (${_style})"
+  t_assert_contains "${_r}" "UNPROVEN     /lib/libhelper.so -- an ORT under another name (it defines OrtGetApiBase)" "graded by its bytes (${_style})"
+  t_assert_contains "${_r}" "exit 1" "and red (${_style})"
+  _r="$(_ren_census "${_style}:0")"
+  t_assert_contains "${_r}" "USE	/lib/libhelper.so	*	OrtGetApiBase" "an undefined symbol is a reference (${_style})"
+  t_assert_contains "${_r}" "exit 0" "resolved to the chain ORT beside it (${_style})"
+done
 
 t_case "G1 image mode: ld.so.conf order and LD_LIBRARY_PATH decide which copy an importer gets"
 _img="${_work}/img"

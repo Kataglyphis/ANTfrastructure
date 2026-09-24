@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 
 # Optional at load, so a lone copy of this file imports. The census asserts it (Assert-OrtCensusDependency).
 $script:OrtTargetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
-if (-not (Get-Command -Name 'Get-PeImportNames' -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $script:OrtTargetArchPath -PathType Leaf)) {
+if (-not (Get-Command -Name 'Get-PeExportNames' -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $script:OrtTargetArchPath -PathType Leaf)) {
     Import-Module $script:OrtTargetArchPath -DisableNameChecking
 }
 
@@ -27,8 +27,8 @@ $script:OrtFatalVerdict = @('NONE', 'EXEMPT-STALE', 'FOREIGN', 'STALE', 'UNPROVE
     'UNREGISTERED', 'STAMP', 'DIST', 'INBOX')
 
 function Assert-OrtCensusDependency {
-    # Throws, so a census never scans import-blind: WindowsTargetArch.Common supplies the PE imports and the arch.
-    foreach ($cmd in 'Get-PeImportNames', 'Get-WindowsTargetArch') {
+    # Throws, so a census never scans import-blind: WindowsTargetArch.Common supplies the PE imports, exports and the arch.
+    foreach ($cmd in 'Get-PeImportNames', 'Get-PeExportNames', 'Get-WindowsTargetArch') {
         if (-not (Get-Command -Name $cmd -ErrorAction SilentlyContinue)) {
             throw "ORT census: $cmd is unavailable; import WindowsTargetArch.Common.psm1 first (none at $script:OrtTargetArchPath)"
         }
@@ -143,6 +143,7 @@ function New-OrtFact {
         OrtText    = $(if ($Scan) { [bool]$Scan.OrtText } else { $false })
         IsPe       = [bool]($Scan -and $Scan.Head.StartsWith('MZ'))
         IsInstance = (Test-OrtInstanceName -Name $name) -or $roots.Count -gt 0
+        Defines    = $false
         Imports    = [string[]]@()
         Error      = $ErrorText
     }
@@ -167,6 +168,11 @@ function Get-OrtBinaryFact {
     if ($fact.IsPe -and -not $fact.IsInstance -and ($fact.OrtText -or $fact.Abi.Count -gt 0)) {
         Assert-OrtCensusDependency
         try { $fact.Imports = [string[]]@(Get-PeImportNames -Path $Path -IncludeDelayLoad) } catch { $fact.Imports = [string[]]@() }
+        # An ORT under another name with its fingerprints stripped still exports its entry point.
+        if ($fact.Abi -contains 'OrtGetApiBase') {
+            try { $fact.Defines = @(Get-PeExportNames -Path $Path) -ccontains 'OrtGetApiBase' } catch { $fact.Defines = $false }
+            $fact.IsInstance = $fact.Defines
+        }
     }
     return $fact
 }
@@ -314,6 +320,7 @@ function Get-OrtBytesVerdict {
     if ($foreign.Count -gt 0) { return New-OrtFinding 'FOREIGN' $Fact.Path "built under $($foreign -join ', '), not the chain ($($ChainRoot -join ', '))" }
     if ($chain.Count -gt 0) { return New-OrtFinding 'STALE' $Fact.Path 'a chain-rooted build whose bytes match no file of this chain ORT (older or patched)' }
     if (@($Fact.Roots).Count -gt 0) { return New-OrtFinding 'FOREIGN' $Fact.Path 'built with relative (remapped) source paths, which the chain never does' }
+    if ($Fact.Defines) { return New-OrtFinding 'UNPROVEN' $Fact.Path 'an ORT under another name (it exports OrtGetApiBase) with no source fingerprint that matches no file of the chain ORT' }
     return New-OrtFinding 'UNPROVEN' $Fact.Path 'an ORT-named binary with no source fingerprint that matches no file of the chain ORT'
 }
 

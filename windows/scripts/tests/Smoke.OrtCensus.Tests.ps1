@@ -13,9 +13,31 @@ $script:ForeignSrc = 'C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
 $script:OxidantRun = 'invalid Once stateC:\temp\onnx-src\onnxruntime\core\C:\ws\third_party\OxidANT\crates\inferenceresourcesmodelsyolov10m.onnx'
 $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
-# A PE32+ with one section holding an import table for -Import and each -Text as a NUL-bounded string.
+# IMAGE_EXPORT_DIRECTORY at -Rva with its tables and names; -Forward points every function into it (a forwarder).
+function New-OrtTestExportTable {
+    param([uint32]$Rva, [string[]]$Name, [switch]$Forward)
+    $n = $Name.Count
+    $strAt = 40 + 10 * $n
+    $strs = [System.Collections.Generic.List[byte]]::new()
+    $nameRva = foreach ($x in $Name) { $Rva + $strAt + $strs.Count; $strs.AddRange([System.Text.Encoding]::ASCII.GetBytes("$x`0")) }
+    $fwdRva = $Rva + $strAt + $strs.Count
+    $strs.AddRange([System.Text.Encoding]::ASCII.GetBytes("onnxruntime.OrtGetApiBase`0"))
+    $out = [byte[]]::new($strAt)
+    foreach ($f in @(@(20, $n), @(24, $n), @(28, ($Rva + 40)), @(32, ($Rva + 40 + 4 * $n)), @(36, ($Rva + 40 + 8 * $n)))) {
+        [BitConverter]::GetBytes([uint32]$f[1]).CopyTo($out, $f[0])
+    }
+    for ($i = 0; $i -lt $n; $i++) {
+        [BitConverter]::GetBytes([uint32]$(if ($Forward) { $fwdRva } else { 0x1000 })).CopyTo($out, 40 + 4 * $i)
+        [BitConverter]::GetBytes([uint32]@($nameRva)[$i]).CopyTo($out, 40 + 4 * $n + 4 * $i)
+        [BitConverter]::GetBytes([uint16]$i).CopyTo($out, 40 + 8 * $n + 2 * $i)
+    }
+    return , [byte[]]($out + $strs.ToArray())
+}
+
+# A PE32+ with one section holding an import table for -Import, each -Text as a NUL-bounded string and an
+# export table for -Export.
 function New-OrtTestPe {
-    param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @())
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @(), [string[]]$Export = @(), [switch]$Forward)
     $rva = 0x1000
     $descSize = 20 * ($Import.Count + 1)
     $names = [System.Collections.Generic.List[byte]]::new()
@@ -25,6 +47,8 @@ function New-OrtTestPe {
     $body.AddRange([byte[]]::new(20))
     $body.AddRange($names)
     foreach ($t in $Text) { $body.Add(0); $body.AddRange([System.Text.Encoding]::ASCII.GetBytes($t)); $body.Add(0) }
+    $expAt = $body.Count
+    if ($Export.Count -gt 0) { $body.AddRange((New-OrtTestExportTable -Rva ($rva + $expAt) -Name $Export -Forward:$Forward)) }
     $raw = $body.ToArray()
     $h = [byte[]]::new(0x200)
     $h[0] = 0x4D; $h[1] = 0x5A; $h[0x40] = 0x50; $h[0x41] = 0x45
@@ -36,6 +60,10 @@ function New-OrtTestPe {
     [BitConverter]::GetBytes([uint32]16).CopyTo($h, 0x58 + 108)
     [BitConverter]::GetBytes([uint32]$rva).CopyTo($h, 0x58 + 120)
     [BitConverter]::GetBytes([uint32]$descSize).CopyTo($h, 0x58 + 124)
+    if ($Export.Count -gt 0) {
+        [BitConverter]::GetBytes([uint32]($rva + $expAt)).CopyTo($h, 0x58 + 112)
+        [BitConverter]::GetBytes([uint32]($raw.Length - $expAt)).CopyTo($h, 0x58 + 116)
+    }
     [System.Text.Encoding]::ASCII.GetBytes('.rdata').CopyTo($h, 0x148)
     [BitConverter]::GetBytes([uint32]$raw.Length).CopyTo($h, 0x148 + 8)
     [BitConverter]::GetBytes([uint32]$rva).CopyTo($h, 0x148 + 12)
@@ -101,7 +129,8 @@ function Get-OrtTestFatal {
 }
 
 # A G6 tree from a layout, then its census: 'host' = an exe, 'import' = a PE importing onnxruntime.dll,
-# 'names' = a dlopen-only consumer naming the chain directory (oxidant.dll), 'chain' = the chain copy.
+# 'names' = a dlopen-only consumer naming the chain directory (oxidant.dll), 'chain' = the chain copy,
+# 'exports' = an ORT under another name with no fingerprint, 'forwards' = a DLL forwarding OrtGetApiBase.
 function Invoke-OrtLoaderTree {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Chain, [Parameter(Mandatory)][System.Collections.IDictionary]$Layout)
     foreach ($rel in $Layout.Keys) {
@@ -110,6 +139,8 @@ function Invoke-OrtLoaderTree {
             'host' { New-OrtTestPe -Path $p -Text @('host') }
             'import' { New-OrtTestPe -Path $p -Import @('onnxruntime.dll') -Text @('OrtGetApiBase') }
             'names' { New-OrtTestPe -Path $p -Text @($script:OxidantRun, 'OrtGetApiBase') }
+            'exports' { New-OrtTestPe -Path $p -Export @('OrtGetApiBase') }
+            'forwards' { New-OrtTestPe -Path $p -Export @('OrtGetApiBase') -Forward }
             'chain' { $null = New-Item -ItemType Directory -Force -Path (Split-Path $p -Parent); Copy-Item -LiteralPath "$Chain\bin\onnxruntime.dll" -Destination $p }
             default { throw "Invoke-OrtLoaderTree: unknown kind '$_'" }
         }
@@ -381,18 +412,7 @@ Describe 'ORT census: Test-OrtProvenanceTree (G6, consumer bundles)' {
         }
     }
 
-    It 'censuses a consumer naming the chain directory as an importer: green beside the chain ORT, UNRESOLVED without it (mutation)' {
-        Invoke-InTestDir { param($dir)
-            $chain = New-OrtTestImage -Dir $dir
-            $c = Invoke-OrtLoaderTree -Root "$dir\ox" -Chain $chain -Layout ([ordered]@{ 'app.exe' = 'host'; 'oxidant.dll' = 'names'; 'onnxruntime.dll' = 'chain' })
-            Assert-Equal '' (@(Get-OrtTestFatal $c | ForEach-Object Verdict) -join ',') 'green, where the directory string used to make it STALE'
-            Assert-False (@($c.Candidate | Where-Object Name -EQ 'oxidant.dll')[0].IsInstance) 'an importer, not an ORT copy'
-            $c = Invoke-OrtLoaderTree -Root "$dir\bare" -Chain $chain -Layout ([ordered]@{ 'app.exe' = 'host'; 'oxidant.dll' = 'names' })
-            Assert-Match 'oxidant\.dll' ((Get-OrtTestFatal $c 'UNRESOLVED').Path -join ';') 'its resolution is checked'
-        }
-    }
-
-    It 'models a client loader: host exe dirs for a DLL, its own dir first for a .pyd, only itself for an .exe, every host (mutation)' {
+    It 'models a client loader (host exe dirs for a DLL, its own dir first for a .pyd, only itself for an .exe, every host) and tells an importer from an ORT by what a file defines (mutation)' {
         Invoke-InTestDir { param($dir)
             $chain = New-OrtTestImage -Dir $dir
             $winMl = "so a client host loads System32's Windows ML copy"
@@ -411,11 +431,21 @@ Describe 'ORT census: Test-OrtProvenanceTree (G6, consumer bundles)' {
                     L = [ordered]@{ 'app.exe' = 'host'; 'tools\t.exe' = 'import'; 'tools\onnxruntime.dll' = 'chain' } }
                 @{ N = 'all'; Want = 'UNRESOLVED'; Detail = "not in $([regex]::Escape("$dir\all\sub")), $winMl"; Why = 'app.exe finds the copy, sub\tool.exe would not'
                     L = [ordered]@{ 'app.exe' = 'host'; 'onnxruntime.dll' = 'chain'; 'sub\tool.exe' = 'host'; 'sub\x.dll' = 'import' } }
+                @{ N = 'ox'; Want = ''; Inst = $false; Why = 'names the chain directory: an importer, green where the string used to make it STALE'
+                    L = [ordered]@{ 'app.exe' = 'host'; 'x.dll' = 'names'; 'onnxruntime.dll' = 'chain' } }
+                @{ N = 'bare'; Want = 'NONE,UNRESOLVED'; Inst = $false; Why = 'and its resolution is checked'
+                    L = [ordered]@{ 'app.exe' = 'host'; 'x.dll' = 'names' } }
+                @{ N = 'ren'; Want = 'UNPROVEN'; Inst = $true; Detail = 'exports OrtGetApiBase'; Why = 'an ORT under another name is graded by its bytes, not passed beside the chain ORT'
+                    L = [ordered]@{ 'app.exe' = 'host'; 'x.dll' = 'exports'; 'onnxruntime.dll' = 'chain' } }
+                @{ N = 'fwd'; Want = ''; Inst = $false; Why = 'a forwarder runs onnxruntime.dll''s code: an importer'
+                    L = [ordered]@{ 'app.exe' = 'host'; 'x.dll' = 'forwards'; 'onnxruntime.dll' = 'chain' } }
             )
             foreach ($k in $cases) {
-                $f = @(Get-OrtTestFatal (Invoke-OrtLoaderTree -Root "$dir\$($k.N)" -Chain $chain -Layout $k.L))
+                $c = Invoke-OrtLoaderTree -Root "$dir\$($k.N)" -Chain $chain -Layout $k.L
+                $f = @(Get-OrtTestFatal $c)
                 Assert-Equal $k.Want (@($f | ForEach-Object Verdict) -join ',') "$($k.N): $($k.Why)"
-                if ($k['Detail']) { Assert-Match $k['Detail'] (@($f | ForEach-Object Detail) -join ';') "$($k.N): names the host dir it checked" }
+                if ($k['Detail']) { Assert-Match $k['Detail'] (@($f | ForEach-Object Detail) -join ';') "$($k.N): names the host dir it checked, or why it is ORT" }
+                if ($k.Contains('Inst')) { Assert-Equal $k.Inst (@($c.Candidate | Where-Object Name -EQ 'x.dll')[0].IsInstance) "$($k.N): instance or importer" }
             }
         }
     }

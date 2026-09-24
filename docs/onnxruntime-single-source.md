@@ -88,6 +88,51 @@ needed it: OmniAccelerANT's `OrtRunner.Tests.ps1` (2 of 6 failed at the fix),
 OxidANT's `OrtPayload.Tests.ps1` and AccelerANTgine's `OrtBundle.Tests.ps1`
 (one case each).
 
+### An ORT under another name
+
+A fingerprint and a name are not the only way to recognise an ORT. Every ORT
+build defines its entry point, `OrtGetApiBase`, and a consumer only imports it,
+or looks it up with `dlsym`. So since 2026-09-24 the census also counts a file
+that **defines** it as an ORT instance, whatever the file is called:
+
+- Linux (`ort_census_probe.py`, `elf_defines`): the ELF's dynamic symbol table
+  holds `OrtGetApiBase` with a section index (not `SHN_UNDEF`). The probe finds
+  the symbol through `DT_GNU_HASH`, or `DT_HASH` when there is no GNU table, the
+  same lookup `ld.so` makes. Its BIN line ends in `def`.
+- Windows (`WindowsOrtProvenance.Common`, through `Get-PeExportNames` in
+  `WindowsTargetArch.Common`): the PE's export table names `OrtGetApiBase`, and
+  not as a forwarder. A forwarder (`onnxruntime.OrtGetApiBase`) runs
+  `onnxruntime.dll`'s code, so it stays an importer and G6 resolves it.
+
+Such a file is then graded by its bytes like any other ORT instance. With no
+fingerprint and no chain match it is `UNPROVEN` ("an ORT under another name").
+Before, it was an importer, and an `$ORIGIN` RUNPATH next to the chain ORT was
+enough for G6 to pass it. OmniAccelerANT's packer gives exactly that RUNPATH to
+every ELF that holds `OrtGetApiBase`. The narrower fingerprint of 2026-09-24
+had widened the hole a little: an ORT whose paths lost their NUL passed too.
+
+Measured on 2026-09-24 in a local `:latest-cross` (e8eb8a42). The image's chain
+ORT was renamed to `libhelper.so`, given an `$ORIGIN` RUNPATH and put beside the
+chain ORT, in two forms. In the first, every ORT directory string is overwritten.
+In the second, the directories are kept and the NUL after each path is broken.
+Both have one byte flipped. The fix branch before this change passed both
+(`ORT census PASS`), and now both are `UNPROVEN`.
+
+Nothing real moved. In a whole-image census of that image, no file changed its
+verdict, apart from the scratch copies above. On real files:
+
+- the chain `libonnxruntime.so` defines the symbol, found through both hash tables;
+- `libAccelerANTgine.so` and `liboxidant.so` do not;
+- the 2026-09-17 OmniAccelerANT release bundle still passes.
+
+On Windows, the chain `onnxruntime.dll` and Windows ML's copy both export it,
+and `oxidant.dll` and the 80-odd GStreamer and runtime DLLs of a runner do not.
+
+**Not covered:** an ORT that is renamed, stripped of its fingerprints and
+rebuilt so it no longer exports `OrtGetApiBase`. That is deliberate evasion,
+not an accident this gate exists for. Archive members are still found by name
+and by fingerprint only, because nothing loads them from inside the archive.
+
 ## What was wrong before 2026-09-23
 
 - **Windows OpenCV** downloaded `onnxruntime-win-x64-1.25.1.zip` at configure

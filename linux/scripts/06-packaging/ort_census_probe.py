@@ -81,40 +81,50 @@ def scan_stream(read):
     return sha.hexdigest(), sorted(abi), roots
 
 
-def elf_dynamic(mm):
-    """DT_NEEDED / DT_RPATH / DT_RUNPATH of an ELF, read from its program headers; {} if none."""
+def _elf_image(mm):
+    """(is64, byte order, PT_LOAD spans, dynamic entries) from an ELF's program headers; None without PT_DYNAMIC."""
     if mm[:4] != MAGIC[0]:
-        return {}
+        return None
     is64, end = mm[4] == 2, "<" if mm[5] == 1 else ">"
-    try:
-        phoff = struct.unpack_from(end + ("Q" if is64 else "I"), mm, 32 if is64 else 28)[0]
-        phentsize, phnum = struct.unpack_from(end + "HH", mm, 54 if is64 else 42)
-        loads, dyn = [], None
-        for i in range(phnum):
-            if is64:
-                p_type, _f, p_off, p_vaddr, _p, p_filesz = struct.unpack_from(end + "IIQQQQ", mm, phoff + i * phentsize)
-            else:
-                p_type, p_off, p_vaddr, _p, p_filesz = struct.unpack_from(end + "IIIII", mm, phoff + i * phentsize)
-            if p_type == 1:
-                loads.append((p_vaddr, p_off, p_filesz))
-            elif p_type == 2:
-                dyn = (p_off, p_filesz)
-        return _dynamic_entries(mm, is64, end, loads, dyn) if dyn else {}
-    except (struct.error, ValueError, IndexError):
-        return {}
-
-
-def _dynamic_entries(mm, is64, end, loads, dyn):
+    phoff = struct.unpack_from(end + ("Q" if is64 else "I"), mm, 32 if is64 else 28)[0]
+    phentsize, phnum = struct.unpack_from(end + "HH", mm, 54 if is64 else 42)
+    loads, dyn = [], None
+    for i in range(phnum):
+        if is64:
+            p_type, _f, p_off, p_vaddr, _p, p_filesz = struct.unpack_from(end + "IIQQQQ", mm, phoff + i * phentsize)
+        else:
+            p_type, p_off, p_vaddr, _p, p_filesz = struct.unpack_from(end + "IIIII", mm, phoff + i * phentsize)
+        if p_type == 1:
+            loads.append((p_vaddr, p_off, p_filesz))
+        elif p_type == 2:
+            dyn = (p_off, p_filesz)
+    if not dyn:
+        return None
     step, fmt = (16, end + "qQ") if is64 else (8, end + "iI")
-    entries, strtab = [], -1
+    entries = []
     for off in range(dyn[0], dyn[0] + dyn[1], step):
         tag, val = struct.unpack_from(fmt, mm, off)
         if tag == 0:
             break
-        if tag == 5:
-            strtab = val
         entries.append((tag, val))
-    base = next((o + strtab - v for v, o, n in loads if v <= strtab < v + n), None)
+    return is64, end, loads, entries
+
+
+def _file_offset(loads, vaddr):
+    return next((o + vaddr - v for v, o, n in loads if v <= vaddr < v + n), None)
+
+
+def elf_dynamic(mm):
+    """DT_NEEDED / DT_RPATH / DT_RUNPATH of an ELF, read from its program headers; {} if none."""
+    try:
+        image = _elf_image(mm)
+        return _dynamic_entries(mm, image[2], image[3]) if image else {}
+    except (struct.error, ValueError, IndexError):
+        return {}
+
+
+def _dynamic_entries(mm, loads, entries):
+    base = _file_offset(loads, dict(entries).get(5, -1))
     if base is None:
         return {}
     out = {"needed": [], "rpath": [], "runpath": []}
@@ -124,6 +134,70 @@ def _dynamic_entries(mm, is64, end, loads, dyn):
             text = bytes(mm[base + val:mm.find(b"\0", base + val)]).decode("utf-8", "replace")
             out[key].extend([text] if key == "needed" else [d for d in text.split(":") if d])
     return out
+
+
+def elf_defines(mm, name):
+    """True when ld.so's hash lookup finds `name` DEFINED in the ELF's dynamic symbols: ORT under any name."""
+    try:
+        image = _elf_image(mm)
+        if image is None:
+            return False
+        is64, end, loads, entries = image
+        tags = dict(entries)
+        sym, strtab = _file_offset(loads, tags.get(6, -1)), _file_offset(loads, tags.get(5, -1))
+        if sym is None or strtab is None:
+            return False
+        size, shndx = (24, 6) if is64 else (16, 14)
+        for i in _hash_chain(mm, end, 8 if is64 else 4, loads, tags, name):
+            at = sym + i * size
+            st_name = strtab + struct.unpack_from(end + "I", mm, at)[0]
+            if struct.unpack_from(end + "H", mm, at + shndx)[0] and mm[st_name:st_name + len(name) + 1] == name + b"\0":
+                return True
+        return False
+    except (struct.error, ValueError, IndexError, ZeroDivisionError):
+        return False
+
+
+def user_facts(mm, abi, roots):
+    """(kind, sha, abi, roots, dyn) of an unnamed, unfingerprinted file that mentions ORT: 'use', or 'def'."""
+    sha = hashlib.sha256(mm).hexdigest()
+    # An ORT under another name with its fingerprints stripped still defines its entry point.
+    if "OrtGetApiBase" in abi and elf_defines(mm, b"OrtGetApiBase"):
+        return "def", sha, abi, roots, {}
+    return "use", sha, abi, roots, elf_dynamic(mm) if mm[:4] == MAGIC[0] else None
+
+
+def _hash_chain(mm, end, word, loads, tags, name):
+    """The symbol indices ld.so compares for `name`: DT_GNU_HASH's chain, else DT_HASH's."""
+    def u32(off):
+        return struct.unpack_from(end + "I", mm, off)[0]
+    gnu, sysv = _file_offset(loads, tags.get(0x6FFFFEF5, -1)), _file_offset(loads, tags.get(4, -1))
+    if gnu is not None:
+        h = 5381
+        for c in name:
+            h = (h * 33 + c) & 0xFFFFFFFF
+        nbuckets, symoffset, bloom = u32(gnu), u32(gnu + 4), u32(gnu + 8)
+        buckets = gnu + 16 + bloom * word
+        i = u32(buckets + 4 * (h % nbuckets))
+        while i and i >= symoffset:
+            link = u32(buckets + 4 * nbuckets + 4 * (i - symoffset))
+            if (link | 1) == (h | 1):
+                yield i
+            if link & 1:
+                return
+            i += 1
+    elif sysv is not None:
+        h = 0
+        for c in name:
+            h = ((h << 4) + c) & 0xFFFFFFFF
+            h = (h ^ ((h & 0xF0000000) >> 24)) & ~(h & 0xF0000000) & 0xFFFFFFFF
+        nbucket, nchain = u32(sysv), u32(sysv + 4)
+        i = u32(sysv + 8 + 4 * (h % nbucket))
+        for _ in range(nchain):
+            if not i:
+                return
+            yield i
+            i = u32(sysv + 8 + 4 * nbucket + 4 * i)
 
 
 def resolve(root, path):
@@ -305,7 +379,7 @@ class Census:
                     return "bin", hashlib.sha256(mm).hexdigest(), abi, roots, {}
                 if not (abi or has_ort):
                     return (None,) * 5
-                return "use", hashlib.sha256(mm).hexdigest(), abi, roots, elf_dynamic(mm) if mm[:4] == MAGIC[0] else None
+                return user_facts(mm, abi, roots)
 
     def one(self, ipath, hpath, st, kind_ref):
         """Emit the REF/BIN/USE/UNREAD facts of one file (archive members included)."""
@@ -327,16 +401,16 @@ class Census:
                 emit("UNREAD", ipath, exc)
             return
         if kind:
-            self._record(kind_ref, ipath, name, sha, abi, roots, dyn)
+            self._record(kind_ref, ipath, name, sha, abi, roots, dyn, kind == "def")
 
-    def _record(self, kind_ref, label, name, sha, abi, roots, dyn):
-        instance = bool(INSTANCE.match(name) or roots)
+    def _record(self, kind_ref, label, name, sha, abi, roots, dyn, defines=False):
+        instance = bool(INSTANCE.match(name) or roots) or defines
         # A relative root prints as '.': emit() turns '' into '-', which means "no fingerprint at all".
         joined = "|".join(r or "." for r in roots)
         if kind_ref:
             emit("REF", sha, label, joined)
         elif instance:
-            emit("BIN", sha, label, joined, "name" if INSTANCE.match(name) else "fp")
+            emit("BIN", sha, label, joined, "name" if INSTANCE.match(name) else "fp" if roots else "def")
         elif abi or dyn is not None:
             needed = [n for n in (dyn or {}).get("needed", []) if INSTANCE.match(n)]
             if abi or needed:

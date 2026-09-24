@@ -263,23 +263,19 @@ function Get-PeFileMachine {
 .OUTPUTS
     [string[]] DLL names as written in the file (case preserved), unique.
 #>
-function Get-PeImportNames {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [switch]$IncludeDelayLoad
-    )
+function Read-PeLayout {
+    # The bytes, sections and data directories every PE directory reader needs; throws on a non-PE, naming $Caller.
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Caller)
     $bytes = [System.IO.File]::ReadAllBytes($Path)
-    if ($bytes.Length -lt 0x40) { throw "Get-PeImportNames: $Path is too small to be a PE file" }
+    if ($bytes.Length -lt 0x40) { throw "${Caller}: $Path is too small to be a PE file" }
     $peOff = [BitConverter]::ToUInt32($bytes, 0x3C)
     if ($peOff + 24 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $peOff) -ne 0x00004550) {
-        throw "Get-PeImportNames: $Path is not a PE file"
+        throw "${Caller}: $Path is not a PE file"
     }
     $numSections = [BitConverter]::ToUInt16($bytes, $peOff + 6)
     $optSize     = [BitConverter]::ToUInt16($bytes, $peOff + 20)
     $optOff      = $peOff + 24
     $isPlus      = ([BitConverter]::ToUInt16($bytes, $optOff) -eq 0x20B)
-    $numDD       = [BitConverter]::ToUInt32($bytes, $optOff + $(if ($isPlus) { 108 } else { 92 }))
-    $ddOff       = $optOff + $(if ($isPlus) { 112 } else { 96 })
     $secOff      = $optOff + $optSize
     $sections = @(for ($i = 0; $i -lt $numSections; $i++) {
         $s = $secOff + $i * 40
@@ -290,50 +286,100 @@ function Get-PeImportNames {
             RawSize = [BitConverter]::ToUInt32($bytes, $s + 16)
         }
     })
-    $rvaToOffset = {
-        param([uint32]$rva)
-        foreach ($s in $sections) {
-            $span = [Math]::Max($s.VSize, $s.RawSize)
-            if ($rva -ge $s.VA -and $rva -lt ($s.VA + $span)) { return [int]($s.Raw + ($rva - $s.VA)) }
-        }
-        return -1
+    return [pscustomobject]@{
+        Bytes    = $bytes
+        Sections = $sections
+        NumDD    = [BitConverter]::ToUInt32($bytes, $optOff + $(if ($isPlus) { 108 } else { 92 }))
+        DdOff    = $optOff + $(if ($isPlus) { 112 } else { 96 })
     }
-    $readAscii = {
-        param([int]$off)
-        $end = $off
-        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
-        return [System.Text.Encoding]::ASCII.GetString($bytes, $off, $end - $off)
+}
+
+function ConvertTo-PeFileOffset {
+    # The file offset of an RVA, or -1 when no section holds it.
+    param([Parameter(Mandatory)][object]$Pe, [uint32]$Rva)
+    foreach ($s in $Pe.Sections) {
+        $span = [Math]::Max($s.VSize, $s.RawSize)
+        if ($Rva -ge $s.VA -and $Rva -lt ($s.VA + $span)) { return [int]($s.Raw + ($Rva - $s.VA)) }
     }
+    return -1
+}
+
+function Add-PeName {
+    # Adds the NUL-terminated ASCII name at an RVA to $Names; an RVA outside every section adds nothing.
+    param([Parameter(Mandatory)][object]$Pe, [System.Collections.Generic.List[string]]$Names, [uint32]$Rva)
+    $bytes = $Pe.Bytes
+    $start = ConvertTo-PeFileOffset -Pe $Pe -Rva $Rva
+    if ($start -lt 0) { return }
+    $end = $start
+    while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
+    $Names.Add([System.Text.Encoding]::ASCII.GetString($bytes, $start, $end - $start))
+}
+
+function Add-PeDescriptorName {
+    # Walks a descriptor table at $Rva ($Size bytes each, the DLL-name RVA at +$NameAt, ended by a zero name).
+    param([Parameter(Mandatory)][object]$Pe, [System.Collections.Generic.List[string]]$Names, [uint32]$Rva, [int]$Size, [int]$NameAt)
+    $off = ConvertTo-PeFileOffset -Pe $Pe -Rva $Rva
+    while ($Rva -ne 0 -and $off -ge 0 -and $off + $Size -le $Pe.Bytes.Length) {
+        $nameRva = [BitConverter]::ToUInt32($Pe.Bytes, $off + $NameAt)
+        if ($nameRva -eq 0) { break }
+        Add-PeName -Pe $Pe -Names $Names -Rva $nameRva
+        $off += $Size
+    }
+}
+
+function Get-PeImportNames {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$IncludeDelayLoad
+    )
+    $pe = Read-PeLayout -Path $Path -Caller 'Get-PeImportNames'
     $names = [System.Collections.Generic.List[string]]::new()
     # DataDirectory[1] = imports: IMAGE_IMPORT_DESCRIPTOR is 20 bytes, Name RVA at +12, all-zero terminator.
-    if ($numDD -gt 1) {
-        $impRva = [BitConverter]::ToUInt32($bytes, $ddOff + 8)
-        if ($impRva -ne 0) {
-            $off = & $rvaToOffset $impRva
-            while ($off -ge 0 -and $off + 20 -le $bytes.Length) {
-                $nameRva = [BitConverter]::ToUInt32($bytes, $off + 12)
-                if ($nameRva -eq 0) { break }
-                $nOff = & $rvaToOffset $nameRva
-                if ($nOff -ge 0) { $names.Add((& $readAscii $nOff)) }
-                $off += 20
-            }
-        }
+    if ($pe.NumDD -gt 1) {
+        Add-PeDescriptorName -Pe $pe -Names $names -Rva ([BitConverter]::ToUInt32($pe.Bytes, $pe.DdOff + 8)) -Size 20 -NameAt 12
     }
     # DataDirectory[13] = delay-load: IMAGE_DELAYLOAD_DESCRIPTOR is 32 bytes, DllNameRVA at +4.
-    if ($IncludeDelayLoad -and $numDD -gt 13) {
-        $dRva = [BitConverter]::ToUInt32($bytes, $ddOff + 13 * 8)
-        if ($dRva -ne 0) {
-            $off = & $rvaToOffset $dRva
-            while ($off -ge 0 -and $off + 32 -le $bytes.Length) {
-                $nameRva = [BitConverter]::ToUInt32($bytes, $off + 4)
-                if ($nameRva -eq 0) { break }
-                $nOff = & $rvaToOffset $nameRva
-                if ($nOff -ge 0) { $names.Add((& $readAscii $nOff)) }
-                $off += 32
-            }
-        }
+    if ($IncludeDelayLoad -and $pe.NumDD -gt 13) {
+        Add-PeDescriptorName -Pe $pe -Names $names -Rva ([BitConverter]::ToUInt32($pe.Bytes, $pe.DdOff + 13 * 8)) -Size 32 -NameAt 4
     }
     return @($names | Select-Object -Unique)
+}
+
+<#
+.SYNOPSIS
+    Lists the names a PE file exports (export directory), by parsing the file.
+.DESCRIPTION
+    A forwarded export, whose address points back into the export directory
+    (kernel32's AcquireSRWLockExclusive -> NTDLL), is another DLL's code, so it
+    is left out unless -IncludeForwarded. The ORT census uses this to tell an ORT
+    under another name, which exports OrtGetApiBase, from a consumer of one.
+    Throws on a non-PE, like Get-PeImportNames.
+.OUTPUTS
+    [string[]] export names as written in the file.
+#>
+function Get-PeExportNames {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$IncludeForwarded
+    )
+    $pe = Read-PeLayout -Path $Path -Caller 'Get-PeExportNames'
+    $bytes = $pe.Bytes
+    if ($pe.NumDD -lt 1) { return @() }
+    # DataDirectory[0] = IMAGE_EXPORT_DIRECTORY: NumberOfNames at +24, then the function, name and ordinal table RVAs.
+    $dirRva = [BitConverter]::ToUInt32($bytes, $pe.DdOff)
+    $dirEnd = $dirRva + [BitConverter]::ToUInt32($bytes, $pe.DdOff + 4)
+    $dir = ConvertTo-PeFileOffset -Pe $pe -Rva $dirRva
+    if ($dirRva -eq 0 -or $dir -lt 0 -or $dir + 40 -gt $bytes.Length) { return @() }
+    $tables = @(28, 32, 36 | ForEach-Object { ConvertTo-PeFileOffset -Pe $pe -Rva ([BitConverter]::ToUInt32($bytes, $dir + $_)) })
+    if (@($tables | Where-Object { $_ -lt 0 }).Count -gt 0) { return @() }
+    $names = [System.Collections.Generic.List[string]]::new()
+    $count = [BitConverter]::ToUInt32($bytes, $dir + 24)
+    for ($i = 0; $i -lt $count; $i++) {
+        $fn = [BitConverter]::ToUInt32($bytes, $tables[0] + 4 * [BitConverter]::ToUInt16($bytes, $tables[2] + 2 * $i))
+        if (-not $IncludeForwarded -and $fn -ge $dirRva -and $fn -lt $dirEnd) { continue }
+        Add-PeName -Pe $pe -Names $names -Rva ([BitConverter]::ToUInt32($bytes, $tables[1] + 4 * $i))
+    }
+    return $names.ToArray()
 }
 
 <#
@@ -760,6 +806,7 @@ Export-ModuleMember -Function @(
     'Get-PeMachineType',
     'Get-PeFileMachine',
     'Get-PeImportNames',
+    'Get-PeExportNames',
     'Assert-PeTargetMachine',
     'Assert-DirectoryTargetArch',
     'Assert-PythonExtensionTag',

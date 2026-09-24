@@ -84,7 +84,7 @@ _ort_census_load() {  # <probe>: the tables every verdict consults
   return 0
 }
 
-_ort_bytes_verdict() {  # <path> <roots|-> : a non-chain ORT instance, by its build roots
+_ort_bytes_verdict() {  # <path> <roots|-> [name|fp|def] : a non-chain ORT instance, by its build roots
   local path="$1" r foreign="" chain=0 relative=0 hint=""
   local -a roots=()
   [ "$2" = "-" ] || IFS='|' read -r -a roots <<< "$2"
@@ -97,6 +97,7 @@ _ort_bytes_verdict() {  # <path> <roots|-> : a non-chain ORT instance, by its bu
   if [ -n "${foreign}" ]; then printf 'FOREIGN\t%s\tbuilt under %s, not the chain (%s)\n' "${path}" "${foreign}" "${_ORTC_CHAIN[*]}"
   elif [ "${chain}" = 1 ]; then printf 'STALE\t%s\ta chain-rooted build whose bytes match no file of this chain ORT%s\n' "${path}" "${hint}"
   elif [ "${relative}" = 1 ]; then printf 'FOREIGN\t%s\tbuilt with relative (remapped) source paths, which the chain never does\n' "${path}"
+  elif [ "${3:-}" = def ]; then printf 'UNPROVEN\t%s\tan ORT under another name (it defines OrtGetApiBase) with no source fingerprint that matches no chain file\n' "${path}"
   else printf 'UNPROVEN\t%s\tan ORT-named binary with no source fingerprint that matches no chain file%s\n' "${path}" "${hint}"; fi
 }
 
@@ -111,9 +112,9 @@ _ort_roots_chain() {  # <roots|-> : 0 when there is no fingerprint or one root s
   return 1
 }
 
-_ort_bin_verdict() {  # <sha> <path> <roots>
+_ort_bin_verdict() {  # <sha> <path> <roots> [name|fp|def]
   if [ -z "${_ORTC_REF[$1]:-}" ]; then
-    _ort_bytes_verdict "$2" "$3"
+    _ort_bytes_verdict "$2" "$3" "${4:-}"
     return 0
   fi
   # Check (a) for a manifest-only sha: the reference's own bytes, read here, must name a chain root.
@@ -170,7 +171,7 @@ _ort_census_findings() {  # <probe> <stamps armed 0|1>
   while IFS=$'\t' read -r kind a b c d e; do
     case "${kind}" in
       REF) _ort_ref_verdict "${b}" "${c}" ;;
-      BIN) _ort_bin_verdict "${a}" "${b}" "${c}" ;;
+      BIN) _ort_bin_verdict "${a}" "${b}" "${c}" "${d}" ;;
       UNREAD) printf 'UNPROVEN\t%s\tunreadable: %s\n' "${a}" "${b}" ;;
       USE) if [ "${b}" = "-" ] && [ -z "${_ORTC_REF[${e}]:-}" ]; then
              printf 'UNREGISTERED\t%s\tuses the ORT ABI (%s) but no ort_census_contract entry covers it\n' "${a}" "${c},${d}"
