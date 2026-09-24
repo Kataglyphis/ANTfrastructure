@@ -1315,6 +1315,91 @@ local tag, which is what runtime_push_tag + the manifest step consume.
 (Re-embedding ancestry provenance via a locally-tagging method is tracked
 separately; correctness of the shipped bytes comes first.)
 
+### Measuring the torch RUN's wait before `uv venv`
+
+What `RUNTIME_WHEELS_SOURCE=export` is meant to remove, and how to tell whether it
+did. The two deliveries are in
+[`linux-cross-builds.md`](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
+
+**Lines every runtime lane prints since 2026-09-24**, in both modes:
+
+| Line | Printed by | Says |
+|---|---|---|
+| `[runtime-timing] arch=<a> step=<s> secs=<n> rc=<rc>` | `_runtime_timed`, host | wall time of `base`, `package`, `smoke`, `wrapper`, and `wheels-export` in export mode |
+| `[wheels] <a>: files=<n> bytes=<b> sha256=<d> (exported from <ref>)` | `lib-runtime-wheels.sh`, host, export mode | what was staged, and from which image |
+| `[torch-run] start epoch=<t> arch=<a>` | the torch RUN's first statement | when the RUN's process started |
+| `[torch-venv] wheelhouse files=<n> bytes=<b> sha256=<d>` | `setup-torch-venv.sh`, before anything prunes | what the RUN mounted |
+| `[torch-venv:timing] <step> epoch=<t> +<n>s` | `setup-torch-venv.sh`, after each step | the RUN's own timeline |
+
+`sha256` in both wheelhouse lines is the same function: sha256 over
+`<sha256>  ./<path>` lines for every file, sorted by path. So the host's `[wheels]` line
+and the RUN's `[torch-venv] wheelhouse` line must match, and image mode's RUN line
+must match export mode's.
+
+**Telling the causes apart.** The RUN's first-line elapsed time does NOT separate them.
+A cold snapshot and a lock wait both show a late first line, and part of a cold
+snapshot's cost lands inside the RUN vertex (8.2 s of a 27 s wait in the 2026-09-23
+BuildKit probe on Rancher). Compare the `wheels-source` vertex with the RUN vertex's start instead:
+
+```bash
+LOG=out/build-logs/<run>/runtime.log   # or the tee'd helper log
+grep -nE '\[runtime-timing\]|\[wheels\] |\[torch-run\] start|\[torch-venv(:timing)?\] ' "$LOG"
+grep -nE '^#[0-9]+ \[wheels-source 1/1\] FROM' "$LOG"   # its vertex id N, per build
+grep -nE '^#N (resolve|sha256:|extracting|DONE|CACHED)' "$LOG"
+grep -nE '\[disk-(watch|reclaim|buildkit)\]' "$LOG"       # a prune between package and wrapper
+```
+
+- `extracting` lines under `wheels-source`, finishing just before the RUN vertex
+  starts: the snapshot was cold. Export mode removes this from the wrapper build.
+- No extraction, and the RUN vertex started long before its first line: a lock.
+  The next suspect is the `sharing=locked` apt cache mounts, not the wheelhouse.
+- In export mode the wrapper build shows no `wheels-source` pull or extraction at all.
+  It transfers the small `runtime_wheels` context instead.
+
+**Before a lane, on the build host** (edits nothing, about a minute): this runs the
+same mount, cold and then warm, and checks ownership inside the RUN.
+
+```bash
+mkdir -p /tmp/wheels-probe && cd /tmp/wheels-probe
+printf '%s\n' 'ARG WHEELS_IMAGE' 'FROM ${WHEELS_IMAGE} AS wheels-source' 'FROM busybox AS probe' \
+  'RUN --mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels,rw echo "[probe] start $(date -u +%s)"; ls -ln /opt/wheels | head -3' > Dockerfile
+for i in cold warm; do
+  nerdctl build --progress=plain --platform linux/arm64 --target probe \
+    --build-arg WHEELS_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-arm64 . 2>&1 | tee "$i.log"
+done
+```
+
+The mount's `,rw` arrived on 2026-09-22 (fbc91813), between the fast and the slow
+samples. The Rancher probe found no cost for rw over ro on a warm source, but that was
+BuildKit 0.28.1 with a containerd worker, while the host runs a rootless OCI worker
+(0.31.2). On the host, drop `,rw` from the probe for one cold run to settle it.
+
+**The A/B.** Build the same android pins in both modes, with nothing published:
+
+```bash
+for m in image export; do
+  RUNTIME_WHEELS_SOURCE=$m bash linux/scripts/build-runtime-manifest.sh \
+    --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
+    --target-arches amd64,arm64,riscv64 --skip-manifest 2>&1 | tee "out/build-logs/wheels-ab-$m.log"
+done
+```
+
+BuildKit keys a bind mount by its content, so the second mode may find the first
+one's torch RUN in the cache and skip the step you want to time. When the RUN shows
+`CACHED`, add `RUNTIME_NO_CACHE=1`, which re-runs the package build as well. The other
+way is to compare two real chains, the first in `image` mode and the next in
+`export` mode. Accept `export` when, per arch:
+
+- the export-mode wrapper build has no `wheels-source` pull or `extracting` line;
+- `[torch-run] start` is within 10 s of the RUN vertex's start;
+- both modes print the same `[torch-venv] wheelhouse` digest, and that digest equals
+  the host's `[wheels]` line;
+- `verify-shipped-wrapper.sh`, the ORT census and the boot smokes pass in both modes.
+
+Report the result per arch. amd64 waited 96 s even on the fast day, so its share may
+come from something else. One `export` run on a native host (Jetson or X100, `--no-push`)
+also exercises the layout digest check that only `ARTIFACT_CONTEXT_ROOT` reaches.
+
 ### Host-side env scrubbing for native sub-builds
 
 cross_compile_cmake_lib_from_source NAME URL[|MIRROR...] INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]

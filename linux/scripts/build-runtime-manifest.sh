@@ -277,7 +277,7 @@ _manifest_build_and_smoke() {
   # emulators must exist BEFORE the build loop -- not merely before the smokes.
   ensure_foreign_binfmt "${TARGET_ARCHES}"
 
-  run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+  run_parallel_arch_loop runtime_wheels_arch_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 
   # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
   # can never ship as :latest. RUNTIME_IMAGE_SMOKE=0 skips.
@@ -318,6 +318,7 @@ main() {
 
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
+  runtime_wheels_setup || exit $?
 
   # One run-id for every wrapper so the coherence gate passes on a same-run push.
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"

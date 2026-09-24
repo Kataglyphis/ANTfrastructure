@@ -10129,5 +10129,173 @@
     "replace": "done\n\necho \"=== Results: ${FAILURES} failure(s) ===\"",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "every row runs an EXTRACTED fix, so only the real-gate Cargo case reaches the gate's own summary; a gate that prints its FAILs and exits 0 is green in preflight"
+  },
+  {
+    "id": "wheels-source.unknown-value",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "      return 2\n      ;;",
+    "replace": "      return 0\n      ;;",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "a typo'd RUNTIME_WHEELS_SOURCE must be a usage error, not an empty mode that runs"
+  },
+  {
+    "id": "wheels-source.setup-refuses",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  RUNTIME_WHEELS_MODE=\"$(runtime_wheels_source_mode)\" || return 2",
+    "replace": "  RUNTIME_WHEELS_MODE=\"$(runtime_wheels_source_mode)\" || true",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the lanes' setup must stop on an unknown value before any build"
+  },
+  {
+    "id": "wheels-source.chain-checks-first",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  runtime_wheels_source_mode >/dev/null || exit 2",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the chain must refuse a typo at its start, not at the runtime lane hours later"
+  },
+  {
+    "id": "wheels-source.manifest-lane-setup",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  runtime_wheels_setup || exit $?",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "without setup the knob is never resolved and export mode silently runs as image"
+  },
+  {
+    "id": "wheels-source.artifacts-lane-setup",
+    "target": "linux/scripts/build-runtime-artifacts.sh",
+    "find": "  runtime_wheels_setup || exit $?",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the artifacts lane must resolve the knob the same way the manifest lane does"
+  },
+  {
+    "id": "wheels-source.manifest-lane-loop",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "run_parallel_arch_loop runtime_wheels_arch_chain ",
+    "replace": "run_parallel_arch_loop runtime_build_chain ",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "looping runtime_build_chain directly would never stage the wheelhouse"
+  },
+  {
+    "id": "wheels-source.no-fallback",
+    "target": "linux/scripts/01-core/runtime-build-fns.sh",
+    "find": "    runtime_wheels_wrapper_args _awba_out \"${arch}\" || return 1",
+    "replace": "    _append_wheels_image_args _awba_out \"${arch}\" || return 1",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "in export mode the wrapper must mount the staged directory, never fall back to the android image"
+  },
+  {
+    "id": "wheels-source.export-build-rc",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "    . || return 1\n  _runtime_wheels_seal \"${arch}\" \"${ref}\"",
+    "replace": "    . || true\n  _runtime_wheels_seal \"${arch}\" \"${ref}\"",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "a failed export build must fail the arch even when it left wheels on disk"
+  },
+  {
+    "id": "wheels-source.failed-export-stops-chain",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  if [ \"${rc}\" -eq 0 ]; then\n    runtime_build_chain \"$@\" || rc=$?",
+    "replace": "  if true; then\n    runtime_build_chain \"$@\" || rc=$?",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "no base, package or wrapper may build after the export failed"
+  },
+  {
+    "id": "wheels-source.empty-export",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  if ! compgen -G \"${dir}/opt/wheels/*.whl\" >/dev/null; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "an export that produced no wheel must stop at the export, naming the directory and the image"
+  },
+  {
+    "id": "wheels-source.wrapper-reverify",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  if [ ! -s \"${dir}.sha256\" ] || ! _runtime_wheels_manifest \"${dir}/opt/wheels\" 2>/dev/null | cmp -s - \"${dir}.sha256\"; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "a wheelhouse changed, added to or unsealed between export and wrapper must not be mounted"
+  },
+  {
+    "id": "wheels-source.layout-identity",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  if [ -z \"${have}\" ] || [ \"${have}\" != \"${want}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "under ARTIFACT_CONTEXT_ROOT the export may read the android layout only when it IS the image image mode mounts"
+  },
+  {
+    "id": "wheels-source.same-image",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  ref=\"$(runtime_wheels_image_ref \"${arch}\")\"",
+    "replace": "  ref=\"$(runtime_artifact_image_ref \"${arch}\")\"",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the export must read the ref image mode mounts, not the package's ARTIFACT_IMAGE"
+  },
+  {
+    "id": "wheels-source.discard",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "    rm -rf \"${RUNTIME_WHEELS_EXPORT_ROOT:?}/$1\" \"${RUNTIME_WHEELS_EXPORT_ROOT:?}/$1.sha256\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "each arch's staged wheelhouse must be removed after its wrapper"
+  },
+  {
+    "id": "wheels-source.pull-parity",
+    "target": "linux/scripts/lib-runtime-wheels.sh",
+    "find": "  runtime_pushes_intermediate_images || pull=\"--pull=false\"",
+    "replace": "  pull=\"--pull=false\"",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the export must resolve its image with the same pull policy as the wrapper build it replaces"
+  },
+  {
+    "id": "wheels-source.timed-rc",
+    "target": "linux/scripts/01-core/runtime-build-fns.sh",
+    "find": "  log \"[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}\"\n  return \"${rc}\"",
+    "replace": "  log \"[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}\"\n  return 0",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the timing wrapper must not turn a failed runtime step into success"
+  },
+  {
+    "id": "wheels-source.export-stage-source",
+    "target": "linux/Dockerfile.torch",
+    "find": "COPY --link --from=wheels-source /opt/wheels /opt/wheels",
+    "replace": "COPY --link --from=torch /opt/wheels /opt/wheels",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "wheels-export must copy the one stage the torch RUN mounts in image mode"
+  },
+  {
+    "id": "wheels-source.torch-run-stamp",
+    "target": "linux/Dockerfile.torch",
+    "find": "    echo \"[torch-run] start epoch=$(date -u +%s) arch=${TARGETARCH}\"; \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the torch RUN's start stamp is how a lane log splits the wait before the RUN from the work in it"
+  },
+  {
+    "id": "wheels-source.in-run-never-fatal",
+    "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+    "find": "      | awk '{print substr($0, 1, 64) \"  \" substr($0, 67)}' | sha256sum) 2>/dev/null || true)\"",
+    "replace": "      | awk '{print substr($0, 1, 64) \"  \" substr($0, 67)}' | sha256sum) 2>/dev/null)\"",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the wheelhouse line is diagnostics; under set -Eeuo pipefail it must never kill the torch RUN"
+  },
+  {
+    "id": "wheels-source.in-run-digest-agrees",
+    "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+    "find": "find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum \\",
+    "replace": "find . -type f -print0 | LC_ALL=C sort -rz | xargs -0 -r sha256sum \\",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "the in-RUN digest must equal the host's [wheels] digest, or the A/B cannot compare the two modes"
+  },
+  {
+    "id": "wheels-source.in-run-marks",
+    "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+    "find": "  cleanup_wheelhouse\n  _stv_mark cleanup_wheelhouse",
+    "replace": "  cleanup_wheelhouse",
+    "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+    "why": "every torch-venv step is timed, the last one included"
   }
 ]

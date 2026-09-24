@@ -261,6 +261,8 @@ _chain_validate_stages() {
   fi
 
   _chain_validate_variant
+  # The runtime lane reads it hours from now; a typo must stop the chain here.
+  runtime_wheels_source_mode >/dev/null || exit 2
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} final=${FINAL_IMAGE}"
 

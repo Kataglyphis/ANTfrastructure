@@ -7,6 +7,68 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The wrapper's wheelhouse: `RUNTIME_WHEELS_SOURCE=image|export`, image the default
+
+In the 2026-09-22 lane the torch RUN waited 161 / 565 / 661 s (amd64 / arm64 /
+riscv64) before `uv venv` wrote its first file; on 2026-09-21 it waited 96 / 1 / 2 s
+with the same scripts. The likely cause: to bind-mount `/opt/wheels` (about 0.1 GB)
+BuildKit must hold and checksum the whole android snapshot (about 12.7 GB), and pulls
+it again when something evicted it after the package build. Inferred, not proven.
+**Owner decision: both options**, the current one the default until a host lane
+confirms the other. Speedup item `uv-wait`, with its challenge's corrections. How to
+pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
+
+- **`RUNTIME_WHEELS_SOURCE=auto|image|export`**, default `auto` = `image`. `image` is
+  the old delivery, byte for byte: the wrapper's argument vector is identical to the
+  pre-change code over 32 combinations of pin, host infix, variant,
+  `ARTIFACT_CONTEXT_ROOT` and GPU. `export` builds only `Dockerfile.torch`'s new
+  `wheels-export` stage (`--output type=local`) before each arch's base and package
+  builds. It copies `/opt/wheels` out of the image image mode would mount, seals it
+  with a sha256 manifest, and the wrapper mounts that directory
+  (`WHEELS_IMAGE=runtime_wheels`). Any other value exits 2, at the chain's start too.
+- **Challenge corrections applied.** The export reads the ref image mode reads
+  (`runtime_wheels_image_ref`, moved out of `append_wrapper_build_args`), not the
+  package's `ARTIFACT_IMAGE`, so an empty pin, a custom prefix or
+  `--artifact-build-mode native` cannot switch the source. Under `ARTIFACT_CONTEXT_ROOT`
+  it reads the android OCI layout only when its digest equals the containerd image's,
+  otherwise it stops. The staging root is minted in the main shell, so `--push-all`
+  works. The wrapper re-checks the whole manifest; there is no fallback between
+  modes. `image` needs no `ARTIFACT_CONTEXT_ROOT` refusal: it is the old code for both
+  lane modes, so the design's separate `containerd` value is gone.
+- **Diagnostics in both modes**: `[runtime-timing]` per step, `[wheels]` for the
+  export, `[torch-run] start` as the torch RUN's first statement, `[torch-venv]
+  wheelhouse` (a content digest equal to the host's) and `[torch-venv:timing]` after
+  every `setup-torch-venv.sh` step. [The measurement recipe and the A/B](docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv).
+- **Where the code is.** `linux/scripts/lib-runtime-wheels.sh` (new, outside every
+  image closure, loaded by `lib-orchestrator.sh`) holds the modes, the export, the
+  seal and the arch loop both runtime orchestrators now run. `01-core/runtime-build-fns.sh`
+  gains the resolver, the `image` arm, a two-way branch in `append_wrapper_build_args`
+  and `_runtime_timed`: the wrapper's arguments are built there, so this part could
+  not live elsewhere.
+- **What re-keys.** `01-core` is mounted whole by `Dockerfile.toolchain`'s verify
+  layer and COPY'd whole after it, so the next full chain rebuilds the compiler image
+  from that layer on (its GCC and LLVM layers still hit), then sdk, media and android
+  for every arch on warm compiler caches; the variant chains' `Dockerfile.nvidia` and
+  `Dockerfile.amd` RUNs likewise. That rebuild is ALREADY due: the published
+  `cross-compiler-amd64` dates from 2026-09-22 12:15Z, and 57bec177 and d8c31072
+  (2026-09-23) changed `01-core` and `versions.env`, which re-keys from base. So this
+  adds nothing to the next chain, if it lands before that chain. Per lane:
+  `Dockerfile.torch` (the torch RUN, hailo and final) and `setup-torch-venv.sh`, which
+  re-run every lane anyway. `Dockerfile.package` is untouched.
+- **Tests.** `tests/test-runtime-wheels-source.sh` (new, 91 assertions, hermetic)
+  shares `tests/runtime-wheels-fixtures.sh` with `test-runtime-wheels-context.sh`,
+  which now extracts the moved helpers; `test-env-contract.sh` counts the lib as the
+  knob's consumer. 21 `wheels-source.*` mutations, each seen biting;
+  `mutation-family:wheels-source` registered. Two `code-dupes.allow` rows (the in-RUN
+  digest twin, and a self-pair that shrank because of the new files) and one
+  `file-size.allow` row (+2 lines in `build-cross-chain.sh`).
+- **Verified here** (Windows host): the suites above, dry runs of
+  `build-runtime-artifacts.sh` in both modes and with a typo, and the chain's typo
+  refusal. **Not verified:** no BuildKit ran. The `wheels-export` build, the named
+  directory context on the host's rootless OCI worker (0.31.2), the layout digest
+  check against real `nerdctl save` output, and whether `export` removes the wait at
+  all are for the host A/B in the recipe above.
+
 ## 2026-09-24 - A mutation-gate timeout on a Windows host is a verdict, not a crash
 
 - **`verify_mutations.py`**: `_run_test` killed a timed-out test's tree with `os.killpg`,

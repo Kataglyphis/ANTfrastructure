@@ -152,6 +152,8 @@ caller, and its in-image consumers load it via `source_module`.
 
 `runtime-flow-common.sh` is sourced by `lib-orchestrator.sh` inside `runtime_flow_preamble()`; `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`.
 
+`lib-runtime-wheels.sh` (`RUNTIME_WHEELS_SOURCE`) is sourced by `lib-orchestrator.sh` at top level, right after `artifact-common.sh`. It sits beside `01-core`, not in it, because `01-core` is in the compiler image's closure and this file is host-only. `append_wrapper_build_args` calls into it only while `RUNTIME_WHEELS_EXPORT_ROOT` is set, which only its own `runtime_wheels_setup` does ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+
 **Which loader a NEW script should use (the dual-loader rule):** scripts that
 also execute INSIDE containers (bind-mounted or COPY'd — base-image, 02-toolchain,
 03-media, 06-packaging) load via `modules.sh` / `source_module`, which resolves
