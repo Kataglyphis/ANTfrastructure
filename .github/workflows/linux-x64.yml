@@ -1,6 +1,7 @@
-# .github/workflows/ubuntu26.04.yml
+# .github/workflows/linux-x64.yml
 # Entry-point workflow: runs docs validation/build and the shell preflight gates.
-name: Ubuntu 26.04 Workflow
+# Named by the fleet convention: docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
+name: Linux x64 · preflight + mutation gate
 
 # Least privilege: nothing in this workflow writes to the repo.
 permissions:
@@ -17,7 +18,7 @@ on:
 # carries its own job-level docs-deploy concurrency group
 # (cancel-in-progress: false) so two runs can never FTP-sync concurrently.
 concurrency:
-  group: ubuntu26-04-${{ github.ref }}
+  group: linux-x64-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

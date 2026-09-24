@@ -36,7 +36,7 @@
 # answer for the authenticated USER - the Actions GITHUB_TOKEN is not one, so
 # the old `secrets.GHCR_TOKEN || github.token` fallback could only ever have
 # produced a confusing 404. It is now GHCR_TOKEN or a loud failure.
-name: ghcr-cleanup
+name: GHCR · cleanup
 
 on:
   schedule:

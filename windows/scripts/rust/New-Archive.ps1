@@ -13,7 +13,8 @@
   - Supports customizing archive name, binary name, and version.
 
   RESTORED 2026-09-14. Deleted in 2eaed40e (2026-09-08, "no consumer") while
-  OxidANT's .github/workflows/rust_windows2025.yml reaches it by hub PATH
+  OxidANT's .github/workflows/rust_windows2025.yml (windows-x64.yml since
+  2026-09-24) reached it by hub PATH
   (`file: C:\ws\third_party\ANTfrastructure\windows\scripts\rust\New-Archive.ps1`),
   a reference shape the consumer inventory did not grade until the
   `windows-lang-script` class landed in .github/consumers.json.

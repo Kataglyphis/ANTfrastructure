@@ -8,9 +8,10 @@
   <h4>Multi-arch build images (Linux amd64/arm64/riscv64, a slim nginx webserver, Windows Server Core) plus the shared CI actions, reusable workflows, build/quality gates and agentic-loop tooling every Kataglyphis repo consumes.</h4>
 </div>
 
-[![CI](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ubuntu26.04.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ubuntu26.04.yml)
-[![ghcr-cleanup](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml)
-[![Consumer Inventory](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml)
+[![Linux x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml)
+[![Windows x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml)
+[![GHCR cleanup](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml)
+[![Consumers inventory](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml)
 [![Composite actions self-test](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
@@ -319,21 +320,25 @@ secret scan), and nothing else in the tree depends on them.
 
 ## CI
 
-| Workflow | Purpose |
-|----------|---------|
-| `ubuntu26.04.yml` | On push/PR: the shell preflight gate suite, its mutation gate as four sharded jobs, + docs validation/build |
-| `build-docs.yml` | Reusable workflow for docs build |
-| `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
-| `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
-| `python-ci-windows.yml` | Reusable (`workflow_call`) — the same for Windows |
-| `llm-stack-serving.yml` | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
-| `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
-| `sbom.yml` | Scheduled (Mondays): SBOM generation |
-| `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
-| `actions-selftest.yml` | The composite actions under `.github/actions/` exercised against themselves — push/PR on `.github/actions/**`, Mondays, and dispatch for the deep Windows lane |
-| `consumer-inventory.yml` | Scheduled (Mondays): clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
-| `submodule-pins.yml` | The submodule-pin invariant suite; also `workflow_call`, so a consumer runs it with `uses:` instead of copying the job |
-| `lint-gates.yml` | Reusable (`workflow_call`) — `run-lint-gates.sh` over a consumer tree |
+Both name columns follow the family's
+[workflow naming convention](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names)
+(2026-09-24).
+
+| Workflow | Shown as | Purpose |
+|----------|----------|---------|
+| `linux-x64.yml` | Linux x64 · preflight + mutation gate | On push/PR: the shell preflight gate suite, its mutation gate as four sharded jobs, + docs validation/build |
+| `windows-x64.yml` | Windows x64 · script tests | PowerShell lint + the `windows/scripts/tests` suite |
+| `build-docs.yml` | Docs · build (reusable) | Reusable workflow for docs build |
+| `python-ci-linux.yml` | Python CI · Linux (reusable) | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here. `arches` picks the rows (default `x64 arm64`) |
+| `python-ci-windows.yml` | Python CI · Windows (reusable) | Reusable (`workflow_call`) — the same for Windows |
+| `llm-stack-serving.yml` | LLM stack · serving | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
+| `ghcr-cleanup.yml` | GHCR · cleanup | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
+| `sbom.yml` | SBOM | Scheduled (Mondays): SBOM generation |
+| `stale-docs-check.yml` | Docs · stale check | Scheduled (Mondays): stale doc references and broken script paths |
+| `actions-selftest.yml` | Composite actions · self-test | The composite actions under `.github/actions/` exercised against themselves — push/PR on `.github/actions/**`, Mondays, and dispatch for the deep Windows lane |
+| `consumer-inventory.yml` | Consumers · inventory | Scheduled (Mondays): clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
+| `submodule-pins.yml` | Submodule pins (reusable) | The submodule-pin invariant suite; also `workflow_call`, so a consumer runs it with `uses:` instead of copying the job |
+| `lint-gates.yml` | Lint gates (reusable) | Reusable (`workflow_call`) — `run-lint-gates.sh` over a consumer tree |
 
 **Contributing?** Run `make hooks` once. It installs a pre-commit gate that
 costs **~4 seconds**: the cheap whole-tree checks, `shellcheck` on the shell

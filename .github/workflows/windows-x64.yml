@@ -1,4 +1,4 @@
-# .github/workflows/windows-scripts.yml
+# .github/workflows/windows-x64.yml
 # Source-level gate for the Windows build tooling: PowerShell parse/analyzer
 # lint plus the windows/scripts/tests suites. Deliberately builds NO container
 # images (the image chain is built locally; see docs/windows-builds.md).
@@ -14,7 +14,8 @@
 # runner image under a green build with no commit to blame. The rest of the
 # family (BeschleunigerBallett, OmniAccelerANT, OrchestrANT) and this repo's own
 # python-ci-windows.yml were already on windows-2025; this closes the split.
-name: Windows Scripts
+# Named by the fleet convention: docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
+name: Windows x64 · script tests
 on:
   push:
     branches: [main, develop]
@@ -22,14 +23,14 @@ on:
       - 'windows/**'
       - 'shared/windows/**'
       - 'linux/scripts/01-core/versions.env'
-      - '.github/workflows/windows-scripts.yml'
+      - '.github/workflows/windows-x64.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - 'windows/**'
       - 'shared/windows/**'
       - 'linux/scripts/01-core/versions.env'
-      - '.github/workflows/windows-scripts.yml'
+      - '.github/workflows/windows-x64.yml'
 
 permissions:
   contents: read
@@ -37,7 +38,7 @@ permissions:
 # One run per ref: a force-push supersedes the in-flight run instead of
 # burning Windows runner minutes next to it.
 concurrency:
-  group: windows-scripts-${{ github.ref }}
+  group: windows-x64-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

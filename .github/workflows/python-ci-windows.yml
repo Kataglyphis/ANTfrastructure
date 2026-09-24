@@ -23,7 +23,7 @@
 #
 # fetch-depth is the one difference that is a real choice, so it is an input:
 # WebDavClient fetches full history (0), OrchestrANT shallow (1).
-name: Python CI (Windows, reusable)
+name: Python CI · Windows (reusable)
 
 # Least privilege: this lane reads the repo, pulls an image and pushes artifacts.
 # It never writes to the repository.
@@ -98,8 +98,8 @@ on:
           image pull, a run of `build-script` as a Python package build, a
           `./dist/` upload and a GHCR_PAT - and OxidANT, which measured the lint
           job as byte-for-byte its own, still had to keep that job: it is a Rust
-          crate with no Python package, and its Windows container build is
-          rust_windows2025.yml. Trading a two-minute lint for a second container
+          crate with no Python package, and its Windows container build is its
+          own windows-x64.yml. Trading a two-minute lint for a second container
           build was not the trade the input was offering.
         required: false
         type: boolean
@@ -246,7 +246,7 @@ jobs:
           fetch-depth: 1
           submodules: true
 
-      # PINNED, the way the hub pins it for its own windows-scripts.yml lane: an
+      # PINNED, the way the hub pins it for its own windows-x64.yml lane: an
       # unpinned install lets a new analyzer release add a rule that fails this
       # lane with no commit to blame - the argument the ruff pin makes.
       - name: Install PSScriptAnalyzer

@@ -1488,7 +1488,8 @@ The :latest-cross image runs as uid 1001 with CARGO_HOME=/usr/local/cargo
 owned by root, so the Corrosion/cargo half of the configure dies with
 "failed to create directory /usr/local/cargo/registry" - which took the
 whole Linux lane down when combined with the tee exit-code masking in
-Linux.yml (fixed there with shell: bash / pipefail). Redirect cargo to a
+BeschleunigerBallett's Linux.yml, reusable-linux.yml since 2026-09-24 (fixed
+there with shell: bash / pipefail). Redirect cargo to a
 writable home rather than requiring the image to hand us its own.
 
 Checked in order:

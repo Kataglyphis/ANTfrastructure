@@ -411,7 +411,7 @@ t_case "a row for ANOTHER repository is neither used nor stale here"
 # One table is shared by every consumer through the submodule, so a row about
 # BeschleunigerBallett must not turn OxidANT red - and must not be reported
 # resolved either, because this tree cannot see the file it names.
-hub2="$(_conv_hub 'BeschleunigerBallett | .github/workflows/Linux.yml | job-timeout | asan | a row about a tree this run cannot see')"
+hub2="$(_conv_hub 'BeschleunigerBallett | .github/workflows/reusable-linux.yml | job-timeout | asan | a row about a tree this run cannot see')"
 _foreign() { _conv_at "${hub2}" "${clean_root}"; }
 t_assert_eq "0" "$(t_rc _foreign)"
 t_assert_contains "$(t_out _foreign)" "1 for other repositories"

@@ -338,6 +338,62 @@ called with
 Because actions resolve at `@main`, a consumer workflow change that depends on
 an action change requires the ANTfrastructure push to land first.
 
+### Workflow file names and display names
+
+Owner decision 2026-09-24, for every repository in the family, this one
+included.
+
+- **Files are kebab-case, and a build gets one file per platform and arch:**
+  `linux-x64.yml`, `linux-arm64.yml`, `windows-x64.yml`,
+  `windows-arm64-cross.yml`, `android.yml`, `web.yml`. A lane every repo has
+  carries the same file name everywhere: `lint-gates.yml`, `submodule-pins.yml`,
+  `codeql.yml`, `docs.yml`. A reusable workflow that lives in a consumer is
+  `reusable-<platform>.yml`.
+- **Display names read `<Platform> <Arch> · <what>`** for a build (`Linux x64 ·
+  preflight + mutation gate`) and `<Area> · <what>` for anything else (`Docs ·
+  stale check`, `GHCR · cleanup`). The separator is U+00B7, the middle dot. The
+  shared lanes are `Lint gates`, `Submodule pins`, `CodeQL` and `Docs · …`; a
+  consumer's reusable workflow is `<Platform> · reusable build`.
+- **This hub's reusable workflows keep their file names.** Every consumer calls
+  them as `Kataglyphis/ANTfrastructure/.github/workflows/<file>@main`, so a
+  rename breaks the fleet at once. Only their display names changed, and they
+  end in `(reusable)`: `Docs · build (reusable)`, `Lint gates (reusable)`,
+  `Python CI · Linux (reusable)`, `Python CI · Windows (reusable)`,
+  `Submodule pins (reusable)`.
+- **Splitting a Python lane per arch** needs no copied job:
+  `python-ci-linux.yml`'s `arches` input picks the rows
+  ([`python-ci.md`](python-ci.md#one-arch-per-caller-the-arches-input)).
+
+The rename across the fleet, old name to new:
+
+| Repository | Before | After |
+|---|---|---|
+| ANTfrastructure | `ubuntu26.04.yml` | `linux-x64.yml` |
+| ANTfrastructure | `windows-scripts.yml` | `windows-x64.yml` |
+| OxidANT | `rust_ubuntu26_04.yml` | `linux-x64.yml` + `linux-arm64.yml` |
+| OxidANT | `rust_windows2025.yml` | `windows-x64.yml` |
+| AccelerANTgine | `linux_run.yml` | `reusable-linux.yml` |
+| AccelerANTgine | `linux_run_x86.yml` | `linux-x64.yml` |
+| AccelerANTgine | `linux_run_arm.yml` | `linux-arm64.yml` |
+| AccelerANTgine | `windows_run.yml` | `windows-x64.yml` |
+| OmniAccelerANT | `dart_on_native_linux.yml` | `linux-x64.yml` + `linux-arm64.yml` |
+| OmniAccelerANT | `dart_on_native_windows.yml` | `windows-x64.yml` |
+| OmniAccelerANT | `dart_build_android_app.yml` | `android.yml` |
+| OmniAccelerANT | `dart_on_web_linux.yml` | `web.yml` |
+| BeschleunigerBallett | `Linux.yml` | `reusable-linux.yml` |
+| BeschleunigerBallett | `Linux_x86.yml` | `linux-x64.yml` |
+| BeschleunigerBallett | `Linux_arm.yml` | `linux-arm64.yml` |
+| BeschleunigerBallett | `Windows.yml` | `windows-x64.yml` |
+| OrchestrANT, WebDavClient | `windows-2025.yml` | `windows-x64.yml` |
+| OrchestrANT, WebDavClient | `ubuntu-26.04-amd64-arm64.yml` | kept until `arches` reaches hub `main`, then `linux-x64.yml` + `linux-arm64.yml` |
+| jotrockenmitlocken | `dart.yml` | `web.yml` |
+| ANThology | `dart.yml` | `docs.yml` |
+| DocumANTation | `docs-pages.yml` | `docs.yml` |
+
+A hub page that cites a consumer workflow with a LINE number from before the
+rename (the table in [`ftp-deploys.md`](ftp-deploys.md)) is a dated record and
+keeps the old name; this table translates it.
+
 ## 7. Certificates / packaging (Windows)
 
 `windows/scripts/certificates/` holds MSIX certificate generation and import
@@ -462,6 +518,9 @@ each is genuinely one line; the point is that the answer exists and is findable.
   (`ORCHESTRANT_*`). The hub's registry gate
   ([`code-quality-tooling.md` § `env-knobs`](code-quality-tooling.md#env-knobs--a-stale-allow-row-always-fails))
   grades the hub's own knobs against that vocabulary.
+- **Workflow files.** Kebab-case, one per platform and arch, display names
+  `<Platform> <Arch> · <what>`: § 6,
+  [Workflow file names and display names](#workflow-file-names-and-display-names).
 
 ### The pre-commit hook, by reference
 
@@ -537,6 +596,7 @@ hook of § 8 instead, which runs the aggregator and nothing hub-specific.
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
 - [ ] Workflows call the composite actions, FTP publishes through `deploy-over-ftp`
+- [ ] Workflow files and display names follow § 6 (`linux-x64.yml`, `Linux x64 · …`)
 - [ ] Consumer AGENTS.md links to these docs instead of restating them
 
 ### When the push is refused

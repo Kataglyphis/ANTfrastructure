@@ -493,7 +493,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1325 entries** over **106 distinct test commands**; both digits are
+manifest holds **1332 entries** over **107 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -572,7 +572,7 @@ nothing (the common commit) copies nothing at all.
 
 ### The mutation gate in CI, sharded
 
-**What happened (2026-09-23).** The `preflight` job of `ubuntu26.04.yml` ran every
+**What happened (2026-09-23).** The `preflight` job of `linux-x64.yml` (then `ubuntu26.04.yml`) ran every
 slug in one job with a 45-minute timeout, and on `a7ccc896` it was killed inside
 the mutation gate. Nothing it had found was in the log: the report was buffered to
 the end, and Python block-buffers a piped stdout, so not even the gate's header
@@ -1760,7 +1760,7 @@ re-baselined 3 → 2 — each deletion landing with a suite that executes what
 survives it, not with a grep. `package_archive.sh` stays at 4 by DECISION, not
 by inertia: nothing in this repo invokes it and no stage copies it, so its three
 parsed-and-ignored flags are a CLI contract for callers outside this repo — one
-exists (OxidANT's Ubuntu workflow runs the hub path directly, found 2026-09-18)
+exists (OxidANT's Linux lane runs the hub path directly, found 2026-09-18)
 — and no build can rule on them either. The two `SC2206` cmake-argv rows also stay, with
 sharper reasons: `build-clang.sh`'s two values are file literals, so quoting is
 provably a no-op, while `cross-env.sh`'s is operator-reachable, so quoting is a
@@ -1792,7 +1792,7 @@ the gate's own `shutil.which` lookup is gone.
 correct locally. It now accepts a `PATH` copy **only** when its reported version
 equals the pin, and otherwise falls through to the bootstrap it already had — the
 pinned release, downloaded once into a version-keyed cache and SHA256-verified.
-The `Install shellcheck` step in `.github/workflows/ubuntu26.04.yml` is therefore
+The `Install shellcheck` step in `.github/workflows/linux-x64.yml` is therefore
 removed: the gate brings its own, verified.
 
 **The commit hook is inside the scope (2026-09-04).** `lint-shell.sh` admitted
@@ -2558,8 +2558,8 @@ nobody:
 | convention | how it was transmitted | why the backlog is what it is |
 | --- | --- | --- |
 | no `*-latest` runner label | restated in **seven** workflow headers | the one already clean fleet-wide, which is why it is enforced from day one with no knob |
-| job-level `timeout-minutes` | nowhere but the jobs that happen to have one | worst in `BeschleunigerBallett/.github/workflows/Linux.yml`, whose own comments price two lanes at ~25 minutes each and the whole run at 2h13m, then warn about "the 6-hour job cap" every one of its jobs is left sitting under |
-| a `permissions:` block | nowhere | includes `jotrockenmitlocken`'s `dart.yml`, which consumes 14 distinct secrets and runs four FTP deploys on the repository default token |
+| job-level `timeout-minutes` | nowhere but the jobs that happen to have one | worst in `BeschleunigerBallett/.github/workflows/reusable-linux.yml` (then `Linux.yml`), whose own comments price two lanes at ~25 minutes each and the whole run at 2h13m, then warn about "the 6-hour job cap" every one of its jobs is left sitting under |
+| a `permissions:` block | nowhere | includes `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and runs four FTP deploys on the repository default token |
 | `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
 
 The counts are deliberately not written here. They live once, as the CENSUS rows

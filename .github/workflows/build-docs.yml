@@ -1,5 +1,5 @@
 # .github/workflows/build-docs.yml
-name: Build Docs
+name: Docs · build (reusable)
 
 # Least privilege: docs build + FTP deploy need no repo write access.
 permissions:
@@ -61,10 +61,10 @@ jobs:
           submodules: 'true'
 
       # The verification list lives in preflight.sh (single source of the gate
-      # list — the same one ubuntu26.04.yml runs in full and the commit hook
+      # list — the same one linux-x64.yml runs in full and the commit hook
       # subsets). Deliberately narrowed to the docs-relevant slugs plus
       # `shellcheck`: this reusable workflow must stay self-sufficient for
-      # callers that have no preflight job of their own, but ubuntu26.04.yml's
+      # callers that have no preflight job of their own, but linux-x64.yml's
       # preflight job and its four sharded mutations jobs already carry the FULL
       # gate, so re-running everything here just doubled the work on every PR/push.
       #
@@ -92,7 +92,7 @@ jobs:
           script: bash linux/scripts/build-docs.sh
 
       # Deploy gate: a reusable workflow sees the CALLER's event, and
-      # ubuntu26.04.yml calls this on pull_request too — without the
+      # linux-x64.yml calls this on pull_request too — without the
       # event_name guard, PR content would deploy straight to production.
       # The tree is written by the container user; deploy-over-ftp owns the
       # readability fixup, the pin and the empty-tree refusal (docs/ftp-deploys.md).

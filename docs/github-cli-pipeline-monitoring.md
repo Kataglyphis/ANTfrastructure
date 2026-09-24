@@ -50,8 +50,9 @@ gh run list --limit 10
 # Only the failures
 gh run list --limit 20 --status failure
 
-# One workflow
-gh run list --workflow "Linux build + test + coverage on Ubuntu 26.04 x86"
+# One workflow, by FILE name: the same in every repo of the family
+# (adopting-in-a-new-project.md § Workflow file names and display names)
+gh run list --workflow linux-x64.yml
 
 # Watch an in-progress run to completion
 gh run watch <run-id>

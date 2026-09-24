@@ -22,7 +22,7 @@
 # No container image is named here, on purpose: the gate binaries are
 # bootstrapped from this repo's versions.env at pinned, SHA-verified versions,
 # so the verdict does not depend on what a base image happens to ship.
-name: Lint gates
+name: Lint gates (reusable)
 
 on:
   workflow_call:
