@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The doc-links git-free floor works under a Windows python
+
+- **`verify_doc_links.py`**: `_static_ignores` compared `str(path)` with the `/`-spelled
+  `UNTRACKED_OUTPUT` rows, and a Windows python spells a relative path with `\`, so
+  without git the floor excluded nothing there. It matches the POSIX form and still
+  returns the caller's `str()`; on Linux nothing changes. `test-doc-links.sh` said so on
+  a Windows host (`the floor skips 0 of 3 output paths`), which failed the commit hook
+  whenever it sampled a doc-links entry there. That suite also needs a one-word
+  `PREFLIGHT_PYTHON` (it quotes the value) and `PYTHONUTF8=1` on such a host.
+
+
 ## 2026-09-23 - The preflight timeout was a regression from 57bec177: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
 
 **This was our regression.** On `a7ccc896` the Ubuntu 26.04 `preflight` job was killed
