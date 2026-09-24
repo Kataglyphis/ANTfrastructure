@@ -7,6 +7,58 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - ORT census: a consumer that names the chain directory is not an ORT build
+
+**Fixes G6 failing OmniAccelerANT's Linux lane** (run 35928030957, x64 and arm64):
+`UNPROVEN /lib/liboxidant.so -- an ORT-named binary with no source fingerprint`. The
+bundle was correct: it held the chain ORT, byte for byte. The census got the file
+wrong. Details and measurements:
+[`docs/onnxruntime-single-source.md` § What "the chain ORT" is](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
+
+- **Cause 1: a directory string counted as a fingerprint.** OxidANT's loader keeps
+  `/opt/onnxruntime/onnxruntime/core/` as a string to check the ORT it loads. The
+  census treated any file holding `onnxruntime/core/` as an ORT build. Now a
+  fingerprint is a whole source-file path ending in NUL (`.cc`, `.cpp`, `.cxx`, `.c`,
+  `.h`, `.hpp`, `.inc`, `.cu`, `.cuh`), the shape `__FILE__` leaves. Changed in
+  `ort_census_probe.py` (`MARK`) and in the Windows twin
+  (`WindowsOrtProvenance.Common.psm1`, `$script:OrtPathMarker`), where `oxidant.dll`
+  would have been `STALE`. `liboxidant.so` is now an importer, and G6 checks that it
+  resolves to the chain ORT, which it used to skip. Every fingerprint of the chain ORT
+  1.29 (592), its dnnl EP (23) and the Android build (545) still matches.
+- **Cause 2: a relative root printed as "no fingerprint".** rustc packs string
+  literals with no NUL between them, so the text before the directory became a
+  relative root (`''`), which `emit()` prints as `-`. The probe now prints it as `.`,
+  and `check-ort-provenance.sh` reads `.` as relative. A lone relative root is
+  `FOREIGN` (relative), as on Windows, not `UNPROVEN`.
+- **The same false positive hit G1 on FFmpeg.** FFmpeg compiles its configure line
+  into every lib and tool, and the chain's passes
+  `-I/usr/local/lib/onnxruntime-cpu/include/onnxruntime/core/session`
+  (`ffmpeg-dnn-backends.sh`). The old rule made every FFmpeg ELF an ORT build with
+  no fingerprint. Whole-image census of a local `:latest-cross` (e8eb8a42), old vs new
+  probe: `UNPROVEN` 14 → 1 (10 FFmpeg ELFs and 3 scratch `liboxidant.so` copies gone).
+  `libavfilter` is now the registered `ffmpeg` consumer it is, graded by RES and
+  STAMP, and the other nine are not ORT at all. The runtime smoke's census
+  (SHIPPED-TRUTH E) would have reported the same ten on the next image.
+- **Stricter, on purpose:** a reference file whose roots are all relative is now
+  `FOREIGN`, where `-` passed before. It matches Windows. e8eb8a42 has no such
+  reference: its two unfingerprinted ones (`libonnxruntime_providers_shared.so`, the
+  Android `libonnxruntime4j_jni.so`) still print `-` and pass as before. The CI image
+  (ec4bb68b) was not available here to check.
+- **Tests:** `test-ort-census.sh` 110 → 122 assertions (the fingerprint shape, a
+  rustc-packed consumer passing beside the chain ORT, then failing with no ORT or a
+  one-byte-off one, a relative-only ORT). 6 new mutation entries (`ort-census.probe-*`,
+  `ort-census.relative-dot`), each verified. `Smoke.OrtCensus.Tests.ps1` 24 → 26.
+- **Reproduced in a local `:latest-cross` (e8eb8a42)** with the REAL `liboxidant.so`
+  built from OxidANT f018bec with the lane's features, inside the 2026-09-17 release
+  bundle, through OmniAccelerANT's own packer and bundle checks. Hub a7ccc896 gives
+  CI's line and `bundle closure: 1 failure(s) across 42 ELF file(s)`; this change
+  gives `ORT census PASS`. Five mutations of that bundle (ORT removed, one byte off,
+  foreign, no `$ORIGIN`, a renamed re-rooted ORT) each still fail.
+- **Consumers pick it up with a hub pin bump.** Nothing in OxidANT changes: the
+  consumer rule is "name the chain directory, never embed a whole ORT source path".
+  The rule is in `AGENTS.md` § Linux Build Rules and in the section 25 bullet of
+  `docs/windows-build-invariants.md`.
+
 ## 2026-09-24 - Review follow-ups to the sccache-endpoint fix
 
 Six review findings on the entry below, each verified before it was applied.

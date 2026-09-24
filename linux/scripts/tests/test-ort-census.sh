@@ -47,6 +47,10 @@ t_assert_contains "$(_v "$(_base; _fact BIN "${FOREIGN_SHA}" /opt/x/libonnxrunti
   "FOREIGN	/opt/x/libonnxruntime.so.1	built under /home/tlwu/onnxruntime" "a foreign root wins over a chain one"
 t_assert_contains "$(_v "$(_base; _fact BIN "${FOREIGN_SHA}" /opt/x/libonnxruntime.so '|' name; _done)")" \
   "FOREIGN	/opt/x/libonnxruntime.so	built with relative" "relative source paths"
+t_assert_contains "$(_v "$(_base; _fact BIN "${FOREIGN_SHA}" /opt/x/libonnxruntime.so . name; _done)")" \
+  "FOREIGN	/opt/x/libonnxruntime.so	built with relative" "a lone relative root, as the probe prints it ('.')"
+t_assert_contains "$(_v "$(_base; _fact REF "${FOREIGN_SHA}" /usr/local/lib/onnxruntime-cpu/lib/libx.so .; _done)")" \
+  "FOREIGN	/usr/local/lib/onnxruntime-cpu/lib/libx.so	the chain reference itself was built under ." "a reference with relative roots only is not the chain"
 
 t_case "STALE: the chain's root, other bytes; the capi arm names a missing manifest"
 t_assert_contains "$(_v "$(_base; _fact BIN "${FOREIGN_SHA}" /opt/old/libonnxruntime.so.1 /opt/onnxruntime name; _done)")" \
@@ -155,6 +159,8 @@ PY
 }
 CHAIN_SRC=/opt/onnxruntime/onnxruntime/core/session/inference_session.cc
 WINML_SRC='C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
+# FFmpeg compiles its configure line into every lib and tool, and the chain's names an ORT include dir.
+FFMPEG_CONFIG="--enable-libonnxruntime --extra-cflags='-I/usr/local/lib/onnxruntime-cpu/include -I/usr/local/lib/onnxruntime-cpu/include/onnxruntime/core/session' --extra-ldflags=-L/usr/local/lib/onnxruntime-cpu/lib"
 
 _ref="${_work}/ref"
 _elf "${_ref}/lib/libonnxruntime.so.1" "" "" "${CHAIN_SRC}" OrtGetApiBase
@@ -182,6 +188,59 @@ t_assert_contains "${_out}" "FOREIGN      /lib/libvendored.so -- built under C:\
 t_assert_contains "${_out}" "FOREIGN      /onnxruntime-1.27.0-cp314-cp314-manylinux_2_28_x86_64.whl!onnxruntime/capi/libonnxruntime.so.1" "a wheel member"
 t_assert_eq 2 "$(t_rc bash "${CENSUS}")" "no directory = usage error"
 
+t_case "the fingerprint is a whole NUL-terminated ORT source path; a directory literal is not one"
+# The roots roots_in reads off each buffer ('.' = relative), ';'-separated.
+_roots() {
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" - "$(_ort_host_dir "${PKG}")" "${FFMPEG_CONFIG}" <<'PY' | tr -d '\r'
+import sys
+sys.dont_write_bytecode = True  # no __pycache__ in a tree that is a build context
+sys.path.insert(0, sys.argv[1])
+import ort_census_probe as p
+FFMPEG_CONFIG = sys.argv[2]
+print(";".join("|".join(r or "." for r in p.roots_in(buf)) for buf in (
+    b"\0/opt/onnxruntime/onnxruntime/core/session/inference_session.cc\0",
+    b"\0C:\\temp\\onnx-src\\onnxruntime\\core\\providers\\dml\\a.cpp\0",
+    b"\0/opt/onnxruntime/onnxruntime/contrib_ops/cuda/bert/b.cuh",
+    b"invalid Once state/opt/onnxruntime/onnxruntime/core//workspace/x/crates/inferenceresources\0",
+    b"invalid Once stateC:\\temp\\onnx-src\\onnxruntime\\core\\C:\\ws\\crates\\inferenceresources\0",
+    b"\0/opt/onnxruntime/onnxruntime/core/x.hpp is missing\0",
+    b"\0" + FFMPEG_CONFIG.encode() + b"\0",
+)))
+PY
+}
+t_assert_eq '/opt/onnxruntime;C:\temp\onnx-src;/opt/onnxruntime;;;;' "$(_roots)" \
+  "__FILE__ paths (.cc, .cpp, a .cuh at the end of the data) count; directory strings (rustc-packed, FFmpeg's configure line) and a path-shaped word without its NUL do not"
+
+# What OxidANT f018bec's liboxidant.so carries: rustc packs &str literals with no NUL between them.
+OXIDANT_RUN='Failed to run ONNX model (ort)internal error: entered unreachable code: invalid Once state/opt/onnxruntime/onnxruntime/core//workspace/third_party/OxidANT/crates/inferenceresourcesmodelsyolov10m.onnxModel returned no outputs'
+_dl="${_work}/dlopen"
+_elf "${_dl}/lib/liboxidant.so" "" '$ORIGIN' "${OXIDANT_RUN}" OrtGetApiBase
+cp "${_ref}/lib/libonnxruntime.so.1" "${_dl}/lib/libonnxruntime.so"
+mapfile -t _targs < <(_ort_census_tree_args "${_dl}" "${_ref}/lib" "")
+
+t_case "G6: a dlopen-only consumer naming the chain directory is an importer and passes beside the chain ORT"
+_facts="$(_probe "${_targs[@]}" | tr -d '\r')"
+t_assert_contains "${_facts}" "USE	/lib/liboxidant.so	*	OrtGetApiBase" "an importer"
+t_assert_contains "${_facts}" "RES	/lib/liboxidant.so	libonnxruntime.so	/lib/libonnxruntime.so" "resolved through its \$ORIGIN RUNPATH"
+t_assert_eq "" "$(printf '%s\n' "${_facts}" | grep -e '^BIN.*liboxidant' || true)" "never an ORT instance"
+t_assert_eq 0 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" "${_dl}")" "exit 0"
+
+t_case "G6: the same consumer with no ORT beside it, or a one-byte-off one, fails (mutations)"
+cp "${_ref}/lib/libonnxruntime.so.1" "${_dl}/lib/libonnxruntime.so"
+printf 'x' >> "${_dl}/lib/libonnxruntime.so"
+_out="$(bash "${CENSUS}" --reference "${_ref}/lib" "${_dl}" 2>&1)"
+t_assert_contains "${_out}" "STALE        /lib/libonnxruntime.so" "the copy is not this chain"
+t_assert_contains "${_out}" "UNRESOLVED   /lib/liboxidant.so -- libonnxruntime.so resolves to /lib/libonnxruntime.so, which is not the chain ORT" "and it loads that copy"
+rm -f "${_dl}/lib/libonnxruntime.so"
+_out="$(bash "${CENSUS}" --reference "${_ref}/lib" "${_dl}" 2>&1)"
+t_assert_contains "${_out}" "UNRESOLVED   /lib/liboxidant.so -- no libonnxruntime.so on its ld.so search path" "nothing to dlopen"
+t_assert_eq 1 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" "${_dl}")" "exit 1"
+
+t_case "G6: an ORT built with relative source paths is FOREIGN, not an unfingerprinted UNPROVEN"
+_elf "${_work}/rel/lib/libonnxruntime.so.1" "" "" 'onnxruntime/core/session/inference_session.cc' OrtGetApiBase
+t_assert_contains "$(bash "${CENSUS}" --reference "${_ref}/lib" "${_work}/rel" 2>&1)" \
+  "FOREIGN      /lib/libonnxruntime.so.1 -- built with relative (remapped) source paths" "a lone relative root survives the probe"
+
 t_case "G1 image mode: ld.so.conf order and LD_LIBRARY_PATH decide which copy an importer gets"
 _img="${_work}/img"
 mkdir -p "${_img}/etc/ld.so.conf.d"
@@ -189,7 +248,7 @@ printf 'include /etc/ld.so.conf.d/*.conf\n' > "${_img}/etc/ld.so.conf"
 printf '/opt/opencv5/lib\n' > "${_img}/etc/ld.so.conf.d/000-opencv.conf"
 printf '/usr/local/lib/onnxruntime-cpu/lib\n' > "${_img}/etc/ld.so.conf.d/onnxruntime.conf"
 _elf "${_img}/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1" "" "" "${CHAIN_SRC}" OrtGetApiBase
-_elf "${_img}/opt/ffmpeg/lib/libavfilter.so.11" libonnxruntime.so.1 "" OrtGetApiBase
+_elf "${_img}/opt/ffmpeg/lib/libavfilter.so.11" libonnxruntime.so.1 "" OrtGetApiBase "${FFMPEG_CONFIG}"
 mkdir -p "${_img}/opt/opencv5/lib" "${_img}/opt/venv/lib/python3.14/site-packages/onnxruntime/capi"
 cp "${_img}/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1" "${_img}/opt/opencv5/lib/"
 cp "${_img}/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1" "${_img}/opt/venv/lib/python3.14/site-packages/onnxruntime/capi/"

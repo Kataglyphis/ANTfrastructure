@@ -340,6 +340,9 @@ Do not regress any of these:
   files under `C:\Windows` in a layer (fix11 refuses a line doing so to an ORT or Windows
   ML file); a base that ships one keeps the previous `WINDOWS_BASE_DIGEST`:
   [§ The in-box ONNX Runtime](onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml).
+  Its `$script:OrtPathMarker` matches a whole NUL-terminated source path, never the bare
+  directory, which `oxidant.dll` carries as a string:
+  [§ What "the chain ORT" is](onnxruntime-single-source.md#what-the-chain-ort-is).
 - **Section 19's crate-env row and section 21's DirectML and chain-wheel checks** run on
   every amd64 lane, with no lane condition above them.
 - **`WindowsOnnx.Common` refuses NuGet ORT**, and the WebGPU EP is built in-tree, never

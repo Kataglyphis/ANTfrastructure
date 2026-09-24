@@ -9,6 +9,8 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProve
 $script:ChainSrc = 'C:\temp\onnx-src\onnxruntime\core\session\inference_session.cc'
 # The string Windows ML's in-box onnxruntime.dll 1.17 carries (measured on this host's System32 copy).
 $script:ForeignSrc = 'C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
+# OxidANT's ort_runtime.rs chain marker as rustc packs &str literals: no NUL on either side.
+$script:OxidantRun = 'invalid Once stateC:\temp\onnx-src\onnxruntime\core\C:\ws\third_party\OxidANT\crates\inferenceresourcesmodelsyolov10m.onnx'
 $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
 # A PE32+ with one section holding an import table for -Import and each -Text as a NUL-bounded string.
@@ -98,7 +100,8 @@ function Get-OrtTestFatal {
     return @($Census.Findings | Where-Object { $_.Fatal -and (-not $Verdict -or $_.Verdict -eq $Verdict) })
 }
 
-# A G6 tree from a layout, then its census: 'host' = an exe, 'import' = a PE importing onnxruntime.dll, 'chain' = the chain copy.
+# A G6 tree from a layout, then its census: 'host' = an exe, 'import' = a PE importing onnxruntime.dll,
+# 'names' = a dlopen-only consumer naming the chain directory (oxidant.dll), 'chain' = the chain copy.
 function Invoke-OrtLoaderTree {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Chain, [Parameter(Mandatory)][System.Collections.IDictionary]$Layout)
     foreach ($rel in $Layout.Keys) {
@@ -106,6 +109,7 @@ function Invoke-OrtLoaderTree {
         switch ($Layout[$rel]) {
             'host' { New-OrtTestPe -Path $p -Text @('host') }
             'import' { New-OrtTestPe -Path $p -Import @('onnxruntime.dll') -Text @('OrtGetApiBase') }
+            'names' { New-OrtTestPe -Path $p -Text @($script:OxidantRun, 'OrtGetApiBase') }
             'chain' { $null = New-Item -ItemType Directory -Force -Path (Split-Path $p -Parent); Copy-Item -LiteralPath "$Chain\bin\onnxruntime.dll" -Destination $p }
             default { throw "Invoke-OrtLoaderTree: unknown kind '$_'" }
         }
@@ -147,6 +151,13 @@ Describe 'ORT census: source fingerprints' {
             Assert-True (Get-OrtBinaryFact -Path "$dir\onnxruntime_providers_webgpu.dll").IsInstance 'ORT-named = instance'
             Assert-False (Test-OrtInstanceName -Name 'onnxruntime-genai.dll') 'GenAI is a consumer, never an instance'
         }
+    }
+
+    It 'a fingerprint is a whole NUL-terminated source path; a consumer naming the chain directory is not one (mutation)' {
+        Assert-Equal '' ((Get-OrtSourceRoot -Text $script:OxidantRun) -join '|') 'the Windows directory literal, rustc-packed'
+        Assert-Equal '' ((Get-OrtSourceRoot -Text ($script:OxidantRun.Replace('C:\temp\onnx-src\onnxruntime\core\', '/opt/onnxruntime/onnxruntime/core/'))) -join '|') 'the Linux one'
+        Assert-Equal '' ((Get-OrtSourceRoot -Text "x`0C:\temp\onnx-src\onnxruntime\core\x.hpp is missing`0") -join '|') 'a path-shaped word needs its NUL'
+        Assert-Equal 'C:\temp\onnx-src' ((Get-OrtSourceRoot -Text "x`0C:\temp\onnx-src\onnxruntime\contrib_ops\cuda\bert\a.cuh`0") -join '|') 'a CUDA header is a source path'
     }
 }
 
@@ -367,6 +378,17 @@ Describe 'ORT census: Test-OrtProvenanceTree (G6, consumer bundles)' {
             $c = Test-OrtProvenanceTree -Root "$dir\solo" -ReferenceDir @("$chain\bin") -PassThru
             Assert-Match 'Windows ML' ((Get-OrtTestFatal $c 'UNRESOLVED').Detail -join ';') 'no exe dir holds it, so System32 would win'
             Assert-False (Test-OrtProvenanceTree -Root "$dir\solo" -ReferenceDir @("$dir\none")) 'no reference = NONE = red'
+        }
+    }
+
+    It 'censuses a consumer naming the chain directory as an importer: green beside the chain ORT, UNRESOLVED without it (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $chain = New-OrtTestImage -Dir $dir
+            $c = Invoke-OrtLoaderTree -Root "$dir\ox" -Chain $chain -Layout ([ordered]@{ 'app.exe' = 'host'; 'oxidant.dll' = 'names'; 'onnxruntime.dll' = 'chain' })
+            Assert-Equal '' (@(Get-OrtTestFatal $c | ForEach-Object Verdict) -join ',') 'green, where the directory string used to make it STALE'
+            Assert-False (@($c.Candidate | Where-Object Name -EQ 'oxidant.dll')[0].IsInstance) 'an importer, not an ORT copy'
+            $c = Invoke-OrtLoaderTree -Root "$dir\bare" -Chain $chain -Layout ([ordered]@{ 'app.exe' = 'host'; 'oxidant.dll' = 'names' })
+            Assert-Match 'oxidant\.dll' ((Get-OrtTestFatal $c 'UNRESOLVED').Path -join ';') 'its resolution is checked'
         }
     }
 

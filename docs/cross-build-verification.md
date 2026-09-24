@@ -542,8 +542,11 @@ must resolve to it through the image's own loader order.
 **How.** `06-packaging/ort_census_probe.py` runs INSIDE the image as one process,
 so the loader facts are the image's own and nothing needs `readelf` under QEMU. It
 finds ORT by name (`libonnxruntime*.so*`, `onnxruntime_pybind11_state*`) and by
-content: the `onnxruntime/(core|contrib_ops)/` source paths every ORT build embeds,
+content: the whole `onnxruntime/(core|contrib_ops)/….cc` source-file paths, ending in
+NUL, that every ORT build embeds through `__FILE__` (a directory string alone is a
+consumer, not ORT: [`onnxruntime-single-source.md`](onnxruntime-single-source.md#what-the-chain-ort-is)),
 plus the ABI markers `OrtGetApiBase`, `CreateEpFactories` and `RegisterCustomOps`.
+The probe prints a relative build root as `.`; `-` means no fingerprint at all.
 It reads every ELF or wasm file of at least 1 KiB and every archive member, and
 emulates `ld.so` per importer: RPATH, `LD_LIBRARY_PATH`, RUNPATH with `$ORIGIN`,
 `ld.so.conf`, then the default dirs. `ort_census_verdicts` in
@@ -564,7 +567,7 @@ sha whose bytes name a non-chain root is FOREIGN.
 
 | Verdict | Meaning (every one fatal except EXEMPT) |
 | --- | --- |
-| `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths |
+| `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths, alone or mixed; a reference whose roots are all relative is FOREIGN too |
 | `STALE` | the chain's root, but not this chain's bytes |
 | `UNPROVEN` | an ORT name with no fingerprint and foreign bytes, or an unreadable ORT file or archive |
 | `ELSEWHERE` | a chain-identical copy outside the chain prefixes and `*/site-packages/onnxruntime/capi` |

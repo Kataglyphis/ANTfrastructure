@@ -40,6 +40,39 @@ and the PyPI GPU wheel carries `N:\_work\1\s`. Two consequences:
   without DirectML, so a name-and-version check cannot tell it from the chain
   wheel. The guards compare bytes.
 
+**The census (G1, G6) reads a whole source-file path, not the directory**
+(since 2026-09-24). A fingerprint is `onnxruntime/core/` or
+`onnxruntime/contrib_ops/`, then a path ending in `.cc`, `.cpp`, `.cxx`, `.c`,
+`.h`, `.hpp`, `.inc`, `.cu` or `.cuh`, then a NUL byte. That is the shape
+`__FILE__` leaves in a binary. Before, the directory alone counted, and that
+failed OmniAccelerANT's Linux lane (run 35928030957, x64 and arm64):
+
+- OxidANT's loader (`ort_runtime.rs`) keeps `/opt/onnxruntime/onnxruntime/core/`
+  as a string, because it looks for that fingerprint in the ORT file it loads.
+  The Windows build keeps `C:\temp\onnx-src\onnxruntime\core\`.
+- rustc stores string literals back to back, with no NUL between them. The
+  census read the text before the directory, `...invalid Once state`, as a
+  relative build root and called `liboxidant.so` an ORT build without a
+  fingerprint: `UNPROVEN`. On Windows the same string would have made
+  `oxidant.dll` `STALE`.
+- Now such a file is an importer. G6 checks that its `ld.so` lookup lands on
+  the chain ORT, a check it used to skip for it.
+- G1 had the same fault. FFmpeg compiles its configure line into every library
+  and tool, and the chain's line holds
+  `-I/usr/local/lib/onnxruntime-cpu/include/onnxruntime/core/session`, so every
+  FFmpeg ELF counted as an ORT build with no fingerprint. Now `libavfilter` is
+  the `ffmpeg` consumer in the contract, and the rest are not ORT.
+
+Nothing real was lost. Measured on 2026-09-24 in a local `:latest-cross`
+(e8eb8a42, ORT 1.29.0): the chain `libonnxruntime.so` keeps all 592 of its fingerprints,
+`libonnxruntime_providers_dnnl.so` 23 of 23, the Android build 545 of 545. The
+verification of the fix also checked the Windows chain DLL, the PyPI 1.30 and
+DirectML 1.24.4 wheels and the WebGPU EP: every fingerprint kept.
+
+**The rule for a consumer:** it may name the chain directory, but it must never
+embed a whole ORT source-file path. A file that does is counted as an ORT build
+and fails the census as `STALE` or `FOREIGN`, so the mistake fails closed.
+
 ## What was wrong before 2026-09-23
 
 - **Windows OpenCV** downloaded `onnxruntime-win-x64-1.25.1.zip` at configure
