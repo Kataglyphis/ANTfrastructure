@@ -58,7 +58,9 @@ _hub() {
 #              by path -- Import-BuildModule, Resolve-BuildModule -Name, and a
 #              Join-Path onto '<Name>.psm1'. A path-only scan can never see one
 #              of these dangle, and a dangling module name fails at RUNTIME,
-#              inside a build, with "module not found".
+#              inside a build, with "module not found". Plus a module the
+#              consumer tracks itself (the resolver's fallback finds it) and
+#              one whose only .psm1 sits in a test tree (a fixture, not a module)
 _consumer() {
   local d shape="$1"
   d="$(mktemp -d "${_work}/consumer.XXXXXX")"
@@ -84,7 +86,11 @@ _consumer() {
       { printf '%s\n' "Import-BuildModule @('WindowsBuild.Common', 'WindowsGone.Common')"
         printf '%s\n' "Resolve-BuildModule -Name 'WindowsAlsoGone.Common'"
         printf '%s\n' "Import-Module (Join-Path \$modulesDir 'WindowsThirdGone.Common.psm1')"
-      } > "${d}/scripts/Build-Windows.ps1" ;;
+        printf '%s\n' "Import-BuildModule @('WindowsOwn.Common', 'WindowsFixtureOnly.Common')"
+      } > "${d}/scripts/Build-Windows.ps1"
+      mkdir -p "${d}/scripts/modules" "${d}/scripts/tests"
+      printf 'function Get-Own { }\n' > "${d}/scripts/modules/WindowsOwn.Common.psm1"
+      printf 'function Get-Fake { }\n' > "${d}/scripts/tests/WindowsFixtureOnly.Common.psm1" ;;
   esac
   printf 'We use third_party/ANTfrastructure/linux/scripts/only-mentioned.sh one day.\n' \
     > "${d}/README.md"
@@ -214,6 +220,13 @@ for _shape in WindowsGone.Common WindowsAlsoGone.Common WindowsThirdGone.Common;
 done
 t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsBuild.Common' || true)" \
   "a module the hub DOES ship must not be reported; that would make the check noise"
+# OxidANT's own WindowsOrtPayload.Common failed the hub's inventory run
+# 36019965353: a Windows* name was taken for the hub's whatever the consumer
+# tracked. A test tree's .psm1 is still no module of the consumer's.
+t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsOwn.Common' || true)" \
+  "a module the consumer tracks itself resolves through the fallback and must not dangle"
+t_assert_contains "${OUT}" "WindowsFixtureOnly.Common" \
+  "a .psm1 that exists only in a test tree must not make its name the consumer's own"
 rm -rf "${_cm}"
 
 t_case "an executable reference to a hub path that does not exist FAILS the run"
