@@ -101,6 +101,15 @@ Describe 'GenAI ORT: CMake args (every lane)' {
     }
 }
 
+Describe 'GenAI: its own tests are not built' {
+    It 'passes ENABLE_TESTS=OFF, the option GenAI gates test\ on (BUILD_TESTING is not it) (mutation)' {
+        # The rocm lane's CPU build could not link unit_tests (unexported Generators::Log,
+        # g_log, 2026-09-24); nothing in the chain runs them.
+        $text = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) $script:GenaiOrtScript)
+        Assert-Match "(?m)^\s*'-DENABLE_TESTS=OFF'\s*$" $text 'GenAI must be configured without its test\ tree'
+    }
+}
+
 # One writer for every fixture tree here: relative path -> text, parent dirs created by New-Item -Force.
 $script:GenaiWrite = { param([string]$Root, [System.Collections.IDictionary]$Files) foreach ($rel in $Files.Keys) { $null = New-Item -ItemType File -Force -Path (Join-Path $Root $rel) -Value $Files[$rel] } }
 # A chain ORT as cmake --install lays it out on Windows: flat headers (+ nested provider dirs), lib\*.lib, bin\*.dll.

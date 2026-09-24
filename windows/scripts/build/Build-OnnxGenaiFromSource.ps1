@@ -131,6 +131,11 @@ $cmakeExtraGenAi = @(
     '-DENABLE_TELEMETRY=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
+    # GenAI gates test\ on its OWN option, ENABLE_TESTS (default ON), not BUILD_TESTING,
+    # and nothing here runs those tests. A CPU build (the rocm lane, 2026-09-24) cannot even
+    # link unit_tests: it links the shared onnxruntime-genai and uses unexported internals
+    # (Generators::Log, g_log), which only the CUDA-lane variant compiles in itself.
+    '-DENABLE_TESTS=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE $(Get-WarningNoiseSuppressionFlags)$genaiTargetFlag"
 ) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs
 # Both spellings, two finders: `Python_*` for genai's find_package(Python), `PYTHON_*` for
