@@ -10009,5 +10009,53 @@
     "replace": "    :",
     "test": "bash linux/scripts/tests/test-setup-package-image.sh",
     "why": "on amd64/arm64 the prebuilt usually succeeds and the from-source leg never runs; only the up-front check stops a typo'd switch there"
+  },
+  {
+    "id": "ort-census.probe-defines",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "    if \"OrtGetApiBase\" in abi and elf_defines(mm, b\"OrtGetApiBase\"):",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a renamed ORT with its fingerprints stripped is still found by the OrtGetApiBase it defines"
+  },
+  {
+    "id": "ort-census.probe-defines-instance",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "roots) or defines",
+    "replace": "roots)",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a file that defines OrtGetApiBase is an ORT instance graded by its bytes, never an importer"
+  },
+  {
+    "id": "ort-census.probe-defines-undef",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "if struct.unpack_from(end + \"H\", mm, at + shndx)[0] and ",
+    "replace": "if ",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an undefined (imported) OrtGetApiBase is a reference, not a definition"
+  },
+  {
+    "id": "ort-census.probe-gnu-hash",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "    if gnu is not None:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "the definition is looked up through DT_GNU_HASH, as ld.so does"
+  },
+  {
+    "id": "ort-census.probe-sysv-hash",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "    elif sysv is not None:",
+    "replace": "    elif False:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an ELF with only a DT_HASH table is looked up too"
+  },
+  {
+    "id": "ort-census.unproven-def",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "  elif [ \"${3:-}\" = def ]; then printf 'UNPROVEN",
+    "replace": "  elif [ \"${3:-}\" = def ]; then : 'UNPROVEN",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "an unfingerprinted ORT under another name must fail, and say why"
   }
 ]

@@ -7,6 +7,57 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - ORT census: an ORT under another name is found by the entry point it defines
+
+**Closes a G6 hole a review found.** Take an ORT with its fingerprints stripped,
+rename it (`libhelper.so`), and give it an `$ORIGIN` RUNPATH beside the chain ORT.
+The census called it an importer, modelled its `dlopen` onto the chain copy, and
+passed it. OmniAccelerANT's packer gives exactly that RUNPATH to every ELF holding
+`OrtGetApiBase`. The whole-path fingerprint (the earlier 2026-09-24 census entry)
+had also widened the hole a little: an ORT whose source paths lost their NUL passed too, where it
+was `STALE` before. Details:
+[`onnxruntime-single-source.md` § An ORT under another name](docs/onnxruntime-single-source.md#an-ort-under-another-name).
+
+- **Rule:** a file that DEFINES `OrtGetApiBase` is an ORT instance under any name,
+  graded by its bytes; with no fingerprint it is `UNPROVEN` ("an ORT under another
+  name"). A consumer only imports it or `dlsym`s it.
+- **Linux:** `elf_defines` in `ort_census_probe.py` looks the symbol up through
+  `DT_GNU_HASH`, or `DT_HASH` when there is no GNU table, as `ld.so` does, and
+  ignores an undefined (imported) entry. Such a BIN line ends in `def`, which
+  `check-ort-provenance.sh` uses for the message.
+- **Windows:** `Get-PeExportNames` is new in `WindowsTargetArch.Common`, beside
+  `Get-PeImportNames`. Both now read the headers through one private
+  `Read-PeLayout`, and the import results are unchanged on 87 real PEs. A
+  forwarded export is left out, so a DLL that forwards `OrtGetApiBase` to
+  `onnxruntime.dll` stays an importer. `WindowsOrtProvenance.Common` sets `Defines` on
+  such a fact and makes it an instance.
+- **Measured** in a local `:latest-cross` (e8eb8a42), with the image's chain ORT
+  renamed and stripped two ways, beside the chain copy: the census before this
+  change passed both, and this change gives `UNPROVEN` for both. Whole-image census: no verdict moved
+  outside those scratch files. The 2026-09-17 OmniAccelerANT release bundle still
+  passes. OmniAccelerANT's bundle-gate suites pass: 13/13 as committed, and 17/17
+  for its liboxidant cases. On the Windows host, the three consumers' ORT suites
+  pass against this hub.
+- **Tests:**
+  - `test-ort-census.sh` 122 → 132 assertions (a GNU- and a SysV-hashed
+    definition is `UNPROVEN` and red, an import through either stays a green
+    importer);
+  - `Smoke.OrtCensus.Tests.ps1`: the loader table gains four rows (names the
+    chain directory, the same with no ORT, exports `OrtGetApiBase`, forwards
+    it), and the separate oxidant case folds into them (26 → 25 tests);
+  - `TargetArch.PeInspection.Tests.ps1` 5 → 6 (kernel32's own exports versus its
+    forwarders).
+  6 new mutation entries (`ort-census.probe-defines*`, `-gnu-hash`, `-sysv-hash`,
+  `ort-census.unproven-def`), each verified to bite. 5 Windows mutations were run
+  by hand on scratch copies, and each bit.
+- **Code-dupes budgets moved with it:** the Smoke suite's self-pair 17 → 26 (the
+  export table pokes fields the way the PE header does), GenAI/G2 48 → 46, and the
+  FFmpeg/rocm-Torch row is gone (below the threshold now). The two unchanged
+  pairs moved because shingle-owner counts shift.
+- **Not covered:** an ORT that is renamed, stripped AND rebuilt without the
+  `OrtGetApiBase` export; archive members (name and fingerprint only).
+
+
 ## 2026-09-24 - riscv64 web-lane tools: `legacy` is the old build verbatim; review fixes
 
 A review of the entry below found that `WEB_LANE_TOOLS_SOURCE=native` is not the
@@ -182,6 +233,7 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
   natively under ASan+UBSan.
 - **Still missing on arm64 and riscv64, out of scope:** libgomp (`omp.h`), libitm and
   gfortran, and a target `libasan` for the amd64 image's plain cross compilers.
+
 
 ## 2026-09-24 - ORT census: a consumer that names the chain directory is not an ORT build
 

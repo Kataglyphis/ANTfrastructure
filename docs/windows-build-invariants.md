@@ -343,6 +343,8 @@ Do not regress any of these:
   Its `$script:OrtPathMarker` matches a whole NUL-terminated source path, never the bare
   directory, which `oxidant.dll` carries as a string:
   [§ What "the chain ORT" is](onnxruntime-single-source.md#what-the-chain-ort-is).
+  A PE that exports `OrtGetApiBase` (not as a forwarder) is an ORT instance under any name:
+  [§ An ORT under another name](onnxruntime-single-source.md#an-ort-under-another-name).
 - **Section 19's crate-env row and section 21's DirectML and chain-wheel checks** run on
   every amd64 lane, with no lane condition above them.
 - **`WindowsOnnx.Common` refuses NuGet ORT**, and the WebGPU EP is built in-tree, never

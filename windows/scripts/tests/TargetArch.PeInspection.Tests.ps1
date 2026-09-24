@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Get-PeFileMachine / Get-PeImportNames (WindowsTargetArch.Common.psm1): the
+# Get-PeFileMachine / Get-PeImportNames / Get-PeExportNames (WindowsTargetArch.Common.psm1): the
 # dependency-free PE readers behind the merge arch gate and its #127 import
 # walk. Real PE files from this host stand in for fixtures (kernel32.dll and
 # the running pwsh.exe exist on every Windows test runner); the machine
@@ -55,6 +55,17 @@ Describe 'PE inspection primitives' {
         Assert-Equal $imports.Count @($imports | Select-Object -Unique).Count 'names are unique'
         $threw = $false
         try { Get-PeImportNames -Path $script:notPe | Out-Null } catch { $threw = $true }
+        Assert-True $threw 'non-PE input must throw'
+    }
+
+    It 'Get-PeExportNames lists a real PE''s own exports; a forwarder only with -IncludeForwarded (kernel32)' {
+        $own = @(Get-PeExportNames -Path $script:kernel32)
+        $all = @(Get-PeExportNames -Path $script:kernel32 -IncludeForwarded)
+        Assert-True ($own -ccontains 'GetProcAddress') 'GetProcAddress is kernel32''s own code'
+        Assert-False ($own -ccontains 'AcquireSRWLockExclusive') 'AcquireSRWLockExclusive forwards to NTDLL'
+        Assert-True ($all -ccontains 'AcquireSRWLockExclusive') 'and is listed when forwarders are asked for'
+        $threw = $false
+        try { Get-PeExportNames -Path $script:notPe | Out-Null } catch { $threw = $true }
         Assert-True $threw 'non-PE input must throw'
     }
 }

@@ -549,6 +549,10 @@ content: the whole `onnxruntime/(core|contrib_ops)/….cc` source-file paths, en
 NUL, that every ORT build embeds through `__FILE__` (a directory string alone is a
 consumer, not ORT: [`onnxruntime-single-source.md`](onnxruntime-single-source.md#what-the-chain-ort-is)),
 plus the ABI markers `OrtGetApiBase`, `CreateEpFactories` and `RegisterCustomOps`.
+An ELF whose dynamic symbols DEFINE `OrtGetApiBase` is an ORT instance under any name,
+with or without fingerprints: the probe looks the symbol up through `DT_GNU_HASH` or
+`DT_HASH`, as `ld.so` does, and prints such a file's BIN line with `def`
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md#an-ort-under-another-name)).
 The probe prints a relative build root as `.`; `-` means no fingerprint at all.
 It reads every ELF or wasm file of at least 1 KiB and every archive member, and
 emulates `ld.so` per importer: RPATH, `LD_LIBRARY_PATH`, RUNPATH with `$ORIGIN`,
@@ -572,7 +576,7 @@ sha whose bytes name a non-chain root is FOREIGN.
 | --- | --- |
 | `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths only (mixed with a chain root the verdict is `STALE`, with a foreign root `FOREIGN`); a reference whose roots are all relative is FOREIGN too |
 | `STALE` | the chain's root, but not this chain's bytes |
-| `UNPROVEN` | an ORT name with no fingerprint and foreign bytes, or an unreadable ORT file or archive |
+| `UNPROVEN` | an ORT name or an `OrtGetApiBase` definition with no fingerprint and foreign bytes, or an unreadable ORT file or archive |
 | `ELSEWHERE` | a chain-identical copy outside the chain prefixes and `*/site-packages/onnxruntime/capi` |
 | `UNRESOLVED` | an importer's `ld.so` order lands on nothing, or on a non-reference file |
 | `UNREGISTERED` | an ORT-ABI user outside `ort_census_contract` |
@@ -590,7 +594,9 @@ consumer stages are rebuilt.
 **What it does NOT cover.** Header-only provenance: a consumer compiled against
 foreign headers or import libraries ships no foreign bytes, which is G2's job.
 Files the image user cannot read (`/root` is not scanned). Which copy a `dlopen`
-by absolute path picks at run time. The call sits inside the
+by absolute path picks at run time. An ORT that is renamed, stripped of its
+fingerprints AND built so it no longer exports `OrtGetApiBase`; an archive member
+is found by name and fingerprint only. The call sits inside the
 `RUNTIME_FUNCTIONAL_SMOKE=1` branch of `main()`.
 
 **Consumer use (G6).** Inside the image the app was built in, run
