@@ -212,6 +212,53 @@ function Get-ScriptFunctionDefinition {
     return [scriptblock]::Create(($bodies -join "`n"))
 }
 
+<#
+.SYNOPSIS
+    Imports a source TEXT (or only its -FunctionName functions) as a module in -Dir, after one
+    optional literal edit and behind an optional prelude; returns the module.
+.DESCRIPTION
+    Get-ScriptFunctionDefinition's sibling for code that needs a module scope of its own: an
+    in-suite mutant (-Find/-Replace), or a driver function lifted over fakes (-Prelude defines
+    what it reads). Imported -Global under -Prefix, so a suite calls the copies without
+    shadowing the originals; calls inside the module keep the plain names.
+#>
+function Import-FunctionModule {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][string]$Dir,
+        [string[]]$FunctionName = @(),
+        [string]$Find = '',
+        [AllowEmptyString()][string]$Replace = '',
+        [string]$Prelude = '',
+        [string]$Prefix = 'Mut',
+        [object[]]$ArgumentList = @()
+    )
+    $stem = Join-Path $Dir ('Lifted-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $body = $Text
+    if ($FunctionName.Count -gt 0) {
+        [IO.File]::WriteAllText("$stem.ps1", $Text)
+        $body = (Get-ScriptFunctionDefinition -ScriptPath "$stem.ps1" -FunctionName $FunctionName).ToString()
+    }
+    if ($Find) {
+        if (-not $body.Contains($Find)) { throw "Import-FunctionModule: find text is gone: $Find" }
+        $body = $body.Replace($Find, $Replace)
+    }
+    [IO.File]::WriteAllText("$stem.psm1", $Prelude + "`n" + $body + "`n")
+    Import-Module "$stem.psm1" -Global -Prefix $Prefix -Force -PassThru -DisableNameChecking -ArgumentList $ArgumentList
+}
+
+# Runs $Body with Import-FunctionModule's *-Mut* copy imported from a fresh test directory, then removes it.
+function Invoke-WithFunctionModule {
+    param([Parameter(Mandatory)][string]$Text, [string[]]$FunctionName = @(), [string]$Find = '',
+        [AllowEmptyString()][string]$Replace = '', [Parameter(Mandatory)][scriptblock]$Body)
+    # Renamed: inside Invoke-InTestDir, $Body is that function's own parameter.
+    $mutantBody = $Body
+    Invoke-InTestDir { param($dir)
+        $m = Import-FunctionModule -Text $Text -Dir $dir -FunctionName $FunctionName -Find $Find -Replace $Replace
+        try { & $mutantBody } finally { Remove-Module $m -Force }
+    }
+}
+
 Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ScriptFunctionDefinition, `
-    Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
+    Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile

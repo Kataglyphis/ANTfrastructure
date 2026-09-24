@@ -411,8 +411,9 @@ grades a built wrapper. What it refuses and why:
 [`build-cache-tiers.md` § The shipped image carries no build-host setting](build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting).
 It parses Windows Dockerfiles by their own `# escape=` backtick, which the ENV-order
 pass above does not. Proof: `tests/test-image-env.sh`, eleven `dockerfile-lint.image-env-*`
-mutations over the script and its call, and four `image-env.*` ones over the wrapper
-check and two real Windows Dockerfiles.
+mutations over the script and its call, and six `image-env.*` ones: four over the
+manifest's image-env gate in `build-runtime-manifest.sh` and two over real Windows
+Dockerfiles.
 
 ## The allowlist contract
 
@@ -492,7 +493,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1172 entries** over **102 distinct test commands**; both digits are
+manifest holds **1174 entries** over **102 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

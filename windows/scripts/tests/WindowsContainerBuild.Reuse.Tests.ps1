@@ -65,6 +65,55 @@ Describe 'WindowsContainerBuild.Reuse: Get-SccacheContainerEnv' {
     }
 }
 
+# The image stopped carrying the build host's endpoint (2026-09-23); the host forwards it at run time.
+Describe 'WindowsContainerBuild.Reuse: Add-HostSccacheRemoteEnv' {
+
+    $reuse = @(Get-Module WindowsContainerBuild.Reuse)[0]
+    $merge = { param($e) & $reuse { param($x) Add-HostSccacheRemoteEnv -CacheEnv $x 6>$null } $e }
+    $hostTier = @{ SCCACHE_WEBDAV_ENDPOINT = 'http://10.9.8.7:5000'; SCCACHE_MULTILEVEL_CHAIN = 'disk,webdav' }
+
+    It 'adds this host''s endpoint and chain when the caller set neither' {
+        Invoke-WithEnv $hostTier {
+            $r = & $merge (Get-SccacheContainerEnv)
+            Assert-Equal 'http://10.9.8.7:5000' $r['SCCACHE_WEBDAV_ENDPOINT']
+            Assert-Equal 'disk,webdav' $r['SCCACHE_MULTILEVEL_CHAIN']
+            Assert-Equal 'C:\sccache-local' $r['SCCACHE_DIR'] 'the caller''s entries stay'
+        }
+    }
+
+    It 'a key the caller set wins, an empty one included (the opt-out)' {
+        Invoke-WithEnv $hostTier {
+            $r = & $merge ([ordered]@{ SCCACHE_WEBDAV_ENDPOINT = '' })
+            Assert-Equal '' $r['SCCACHE_WEBDAV_ENDPOINT']
+            Assert-Equal 'disk,webdav' $r['SCCACHE_MULTILEVEL_CHAIN']
+        }
+    }
+
+    It 'adds nothing on a host without a remote tier (a CI runner)' {
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = $null; SCCACHE_MULTILEVEL_CHAIN = $null } {
+            $r = & $merge (Get-SccacheContainerEnv)
+            Assert-False ($r.Contains('SCCACHE_WEBDAV_ENDPOINT')) 'nothing to forward'
+            Assert-False ($r.Contains('SCCACHE_MULTILEVEL_CHAIN'))
+        }
+    }
+
+    It 'never modifies the caller''s dictionary, and keeps its kind (a hashtable still sorts)' {
+        Invoke-WithEnv $hostTier {
+            $mine = @{ ZED = '1' }
+            $r = & $merge $mine
+            Assert-Equal 1 $mine.Count 'the caller''s hashtable was modified'
+            Assert-True ($r -is [hashtable]) 'a hashtable came back as another kind'
+            Assert-Equal 'SCCACHE_MULTILEVEL_CHAIN=disk,webdav' @(Get-ContainerEnvArgs -Environment $r)[1]
+        }
+    }
+
+    It 'Invoke-ContainerBuild sends its -CacheEnv through it (both transports read $cacheArgs)' {
+        $src = [IO.File]::ReadAllText($reuse.Path)
+        Assert-Match '\$cacheArgs = Get-ContainerEnvArgs -Environment \(Add-HostSccacheRemoteEnv -CacheEnv \$CacheEnv\)' $src
+        Assert-Equal 1 ([regex]::Matches($src, '(?m)^\s*\$cacheArgs\s*=').Count) 'a second $cacheArgs assignment would bypass the forward'
+    }
+}
+
 Describe 'WindowsContainerBuild.Reuse: Resolve-ContainerBuildCommand' {
 
     It 'passes the workspace path to a scriptblock' {

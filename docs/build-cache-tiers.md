@@ -1296,12 +1296,17 @@ reaching `:latest`:
   `SCCACHE_FORCE_LOCAL`, …), an ENV that expands one under another name, and an
   RFC1918 or link-local literal in an ENV or an ARG default. On Windows it also
   refuses a compiling RUN whose stage never declares `ARG SCCACHE_WEBDAV_ENDPOINT`.
-- **Check 6 of `verify-shipped-wrapper.sh`** reads each wrapper's config ENV with
-  `nerdctl image inspect --platform linux/<arch> --format '{{range .Config.Env}}…'`
-  and runs the same script with `--env-file`. It is HARD even under
-  `WRAPPER_CONTENT_GATE=0`, which waives content mismatches and nothing else, and an
-  unreadable config fails it too. It runs where the content gate runs: per arch, in
-  `build-runtime-manifest.sh`, before the manifest is assembled.
+- **`_manifest_image_env_gate`**, the first step of `create_manifest` in
+  `build-runtime-manifest.sh`, reads each wrapper's config ENV with `nerdctl image
+  inspect --platform linux/<arch> --format '{{range .Config.Env}}…'` and runs the same
+  script with `--env-file`. An unreadable config fails it too, and a tag missing
+  locally is pulled first (only then, like the content gate). It has no switch: it
+  runs on every path that creates an index, `--manifest-only`/`--repair` included,
+  and neither `RUNTIME_IMAGE_SMOKE=0`, `WRAPPER_CONTENT_GATE=0` nor `--force` waives
+  it. Until 2026-09-24 it was check 6 of `verify-shipped-wrapper.sh`, which sits
+  behind `RUNTIME_IMAGE_SMOKE` and never runs on `--manifest-only`. It does not cover
+  the per-arch wrapper tags: those are pushed by the build loop before any runtime
+  gate, as they always were.
 
 The address rule, the version exemption and what neither pass covers (hostnames,
 loopback, files, image history) are the same on both lanes, because one case file,

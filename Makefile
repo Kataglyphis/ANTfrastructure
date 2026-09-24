@@ -29,7 +29,8 @@
 #   BUILDKIT_CACHE_DIR=DIR  local buildkit cache root (default ~/.cache/kata-buildcache)
 #   MAX_PARALLEL_ARCHS=N    concurrent per-arch stage builds (with --parallel-archs)
 #   PARALLEL_ARCHS=1        build sdk/media/android arches in parallel
-#   RUNTIME_IMAGE_SMOKE=0   skip the host-side runtime-image boot smoke
+#   RUNTIME_IMAGE_SMOKE=0   skip the runtime-image boot smoke and wrapper content gate
+#                           (never the manifest image-env gate, which has no switch)
 #   CROSS_LOG_ARCHIVE_KEEP=N  run dirs kept under LOG_DIR/archive (default 5;
 #                             0 = keep all — the archive reached 12G unbounded)
 #   BUILD_ATTEST=1          attach SLSA provenance + SBOM to pushed images (slower)

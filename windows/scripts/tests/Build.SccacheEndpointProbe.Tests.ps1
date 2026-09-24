@@ -41,6 +41,36 @@ function Invoke-WithProbeEnv {
     Invoke-WithEnv $all $Body
 }
 
+# Splatted into Invoke-WithFunctionModule: a mutant is the probe's two functions, as Clear-MutUnreachableSccacheEndpoint.
+$probeMutantSource = @{
+    Text         = [IO.File]::ReadAllText((Join-Path $modDir 'WindowsBuild.Common.psm1'))
+    FunctionName = 'Test-TcpEndpointReachable', 'Clear-UnreachableSccacheEndpoint'
+}
+
+# Runs $Body with SCCACHE_WEBDAV_ENDPOINT on a loopback port that refuses every connect.
+function Invoke-WithClosedEndpoint {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $s = New-ClosedLoopbackPort
+    try { Invoke-WithProbeEnv @{ SCCACHE_WEBDAV_ENDPOINT = "http://127.0.0.1:$($s.LocalEndPoint.Port)" } $Body }
+    finally { $s.Dispose() }
+}
+
+# Runs $Body with SCCACHE_WEBDAV_ENDPOINT on http://localhost:<port>, where only 127.0.0.1 listens.
+function Invoke-WithLocalhostEndpoint {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $l = New-ListeningLoopbackPort
+    try { Invoke-WithProbeEnv @{ SCCACHE_WEBDAV_ENDPOINT = "http://localhost:$($l.LocalEndpoint.Port)" } $Body }
+    finally { $l.Stop() }
+}
+
+# Milliseconds $Body takes.
+function Measure-ProbeMs {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    $null = & $Body
+    $clock.ElapsedMilliseconds
+}
+
 Describe 'Clear-UnreachableSccacheEndpoint' {
 
     It 'keeps a reachable endpoint (the build host keeps its cache) and says nothing' {
@@ -102,26 +132,53 @@ Describe 'Clear-UnreachableSccacheEndpoint' {
     }
 
     It 'a mutant that only warns leaves the endpoint in place, and this suite notices (mutation)' {
-        Invoke-InTestDir { param($dir)
-            $text = [IO.File]::ReadAllText((Join-Path $modDir 'WindowsBuild.Common.psm1'))
-            $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$null)
-            $defs = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-                        $n.Name -in @('Test-TcpEndpointReachable', 'Clear-UnreachableSccacheEndpoint') }, $true) |
-                    ForEach-Object { $_.Extent.Text })
-            Assert-Equal 2 $defs.Count 'both functions must be found'
-            $find = 'Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue'
-            $body = ($defs -join "`n")
-            Assert-True $body.Contains($find) 'mutation target is gone'
-            $path = Join-Path $dir 'WbtProbeMutant.psm1'
-            [IO.File]::WriteAllText($path, $body.Replace($find, '') + "`nExport-ModuleMember -Function Clear-UnreachableSccacheEndpoint`n")
-            $m = Import-Module $path -Prefix Mut -Force -PassThru -DisableNameChecking
-            $s = New-ClosedLoopbackPort
-            try {
-                Invoke-WithProbeEnv @{ SCCACHE_WEBDAV_ENDPOINT = "http://127.0.0.1:$($s.LocalEndPoint.Port)" } {
-                    $null = Clear-MutUnreachableSccacheEndpoint -WarningAction SilentlyContinue
-                    Assert-NotNull $env:SCCACHE_WEBDAV_ENDPOINT 'the mutant must keep the endpoint, or the removal assertion above proves nothing'
-                }
-            } finally { $s.Dispose(); Remove-Module $m -Force }
+        Invoke-WithFunctionModule @probeMutantSource -Find 'Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue' -Body {
+            Invoke-WithClosedEndpoint -Body {
+                $null = Clear-MutUnreachableSccacheEndpoint -WarningAction SilentlyContinue
+                Assert-NotNull $env:SCCACHE_WEBDAV_ENDPOINT 'the mutant must keep the endpoint, or the removal assertion above proves nothing'
+            }
+        }
+    }
+
+    # Windows reports a refused loopback connect after ~2 s, the default bound, so only a
+    # smaller -TimeoutMs tells a probe that honours it from one that waits for the refusal.
+    It 'honours -TimeoutMs: an unreachable endpoint is removed at the bound, not when Windows gives up' {
+        Invoke-WithClosedEndpoint -Body {
+            $ms = Measure-ProbeMs { Assert-Equal $true (Clear-UnreachableSccacheEndpoint -TimeoutMs 200 -WarningAction SilentlyContinue) }
+            Assert-Null $env:SCCACHE_WEBDAV_ENDPOINT
+            Assert-True ($ms -lt 1500) "took $ms ms against a 200 ms bound"
+        }
+    }
+
+    It 'a mutant that ignores -TimeoutMs outlasts the bound here, so the case above bites (mutation)' {
+        Invoke-WithFunctionModule @probeMutantSource -Find 'WaitAny($pending.ToArray(), $left)' -Replace 'WaitAny($pending.ToArray(), 10000)' -Body {
+            Invoke-WithClosedEndpoint -Body {
+                $ms = Measure-ProbeMs { Clear-MutUnreachableSccacheEndpoint -TimeoutMs 200 -WarningAction SilentlyContinue }
+                Assert-True ($ms -ge 1500) "the mutant returned in $ms ms: this host refuses fast, so the bound case proves nothing"
+            }
+        }
+    }
+
+    It 'keeps a hostname whose first address refuses when another one answers (localhost: ::1, then 127.0.0.1)' {
+        $first = @([System.Net.Dns]::GetHostAddresses('localhost'))[0]
+        Assert-Equal 'InterNetworkV6' "$($first.AddressFamily)" 'premise: localhost resolves to ::1 first, as on Windows'
+        Invoke-WithLocalhostEndpoint {
+            $ms = Measure-ProbeMs { Assert-Equal $false (Clear-UnreachableSccacheEndpoint -WarningAction SilentlyContinue) }
+            Assert-NotNull $env:SCCACHE_WEBDAV_ENDPOINT 'the IPv4 listener answered; the endpoint must survive'
+            Assert-True ($ms -lt 1500) "took $ms ms: the addresses were tried one after another"
+        }
+    }
+
+    It 'a mutant that tries only the first resolved address drops that endpoint, so the case above bites (mutation)' {
+        Invoke-WithFunctionModule @probeMutantSource -Find 'foreach ($address in $resolve.Result)' -Replace 'foreach ($address in @($resolve.Result)[0])' -Body {
+            Invoke-WithLocalhostEndpoint { Assert-Equal $true (Clear-MutUnreachableSccacheEndpoint -WarningAction SilentlyContinue) }
+        }
+    }
+
+    It 'removes a hostname that does not resolve' {
+        Invoke-WithProbeEnv @{ SCCACHE_WEBDAV_ENDPOINT = 'http://kata-probe.invalid:5000' } {
+            Assert-Equal $true (Clear-UnreachableSccacheEndpoint -TimeoutMs 500 -WarningAction SilentlyContinue)
+            Assert-Null $env:SCCACHE_WEBDAV_ENDPOINT
         }
     }
 }

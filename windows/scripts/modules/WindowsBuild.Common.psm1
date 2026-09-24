@@ -772,7 +772,8 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList'
 )
 
-# $true when a TCP connect to Host:Port completes within TimeoutMs (refused and timed out are both $false).
+# $true when a TCP connect to ANY address of Host:Port completes within TimeoutMs, resolution included.
+# All addresses at once: Windows takes ~2 s to report a refused ::1 before trying 127.0.0.1.
 function Test-TcpEndpointReachable {
     param(
         [Parameter(Mandatory)][string]$HostName,
@@ -780,14 +781,30 @@ function Test-TcpEndpointReachable {
         [int]$TimeoutMs = 2000
     )
 
-    $client = [System.Net.Sockets.TcpClient]::new()
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    $clients = [System.Collections.Generic.List[System.Net.Sockets.TcpClient]]::new()
     try {
-        $connect = $client.ConnectAsync($HostName, $Port)
-        return ($connect.Wait($TimeoutMs) -and $client.Connected)
+        $resolve = [System.Net.Dns]::GetHostAddressesAsync($HostName)
+        if (-not $resolve.Wait($TimeoutMs)) { return $false }
+        $pending = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
+        foreach ($address in $resolve.Result) {
+            $client = [System.Net.Sockets.TcpClient]::new($address.AddressFamily)
+            $clients.Add($client)
+            $pending.Add($client.ConnectAsync($address, $Port))
+        }
+        while ($pending.Count -gt 0) {
+            $left = $TimeoutMs - [int]$clock.ElapsedMilliseconds
+            if ($left -le 0) { return $false }
+            $done = [System.Threading.Tasks.Task]::WaitAny($pending.ToArray(), $left)
+            if ($done -lt 0) { return $false }
+            if ($pending[$done].IsCompletedSuccessfully) { return $true }
+            $pending.RemoveAt($done)
+        }
+        return $false
     } catch {
         return $false
     } finally {
-        $client.Dispose()
+        foreach ($c in $clients) { $c.Dispose() }
     }
 }
 

@@ -117,6 +117,7 @@ Two neighbours, so you land on the right page:
 - [`atlbase.h` not found when building LLVM in the container](#atlbaseh-not-found-when-building-llvm-in-the-container)
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
 - [A consumer's CMake says clang-cl "is not able to compile a simple test program"](#a-consumers-cmake-says-clang-cl-is-not-able-to-compile-a-simple-test-program)
+- [A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`](#a-windows-chain-stops-in-seconds-at-bkpublish-gatebk-windows-)
 
 
 ---
@@ -1595,6 +1596,20 @@ launchers (`Clear-UnreachableSccacheEndpoint`, one WARN), so bumping the hub pin
 old image. Images built from that hub no longer carry the variable, and three gates refuse one
 that does: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 By hand on an old hub: clear `SCCACHE_WEBDAV_ENDPOINT` in the container before the build.
+
+### A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`
+
+**Symptom.** Right after its preflight, before the stage you expected, `Build-Buildkit.ps1` fails
+in a stage labelled `publish-gate:<tag>` with `LEAK [Process] SCCACHE_WEBDAV_ENDPOINT=…` in the
+log and `<tag> was not built by this run and failed the publish gate … Rebuild it`.
+
+**Cause.** The run inherits a parent image it did not build (its `-Stages` leaves out the stage
+that produces it), and that image predates the 2026-09-23 fix, so its config ENV still carries the
+endpoint. Every stage built on it would inherit it, up to the published image.
+
+**Fix.** Put the producing stage in `-Stages` (after that fix: `toolchain` and everything after
+it) and start a fresh driver process; never resume a run that was started before the fix:
+[`windows-build-resources.md` § An image this run did not build](windows-build-resources.md#an-image-this-run-did-not-build).
 
 ### A declaration that masks its command's exit status
 

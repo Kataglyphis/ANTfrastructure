@@ -842,10 +842,14 @@ Read the strategy before editing that Dockerfile:
   (2026-09-23, both lanes). A build-host setting — the sccache endpoint, a LAN
   mirror, a proxy — reaches a RUN as an ARG and never lands in an ENV: `:winamd64`
   shipped the owner's LAN WebDAV and broke every consumer's sccache. Three gates hold
-  it and none has a skip switch: the static pass in `lint-dockerfiles.sh`, Windows'
-  `Dockerfile.publish-gate` (before any export or push, not skipped by
-  `-SkipSmokeGate`) and check 6 of `verify-shipped-wrapper.sh` (hard even under
-  `WRAPPER_CONTENT_GATE=0`). Why, and what they cannot see:
+  it and none has a skip switch: the static pass in `lint-dockerfiles.sh`; Windows'
+  `Dockerfile.publish-gate`, solved on every parent a run inherits but did not build,
+  on the fresh toolchain, and on the final image before any export or push
+  (`-SkipSmokeGate` skips none of them); and `build-runtime-manifest.sh`'s image-env
+  gate, first in `create_manifest` on every path, `--manifest-only` included. **Cross
+  such a fix by restarting a chain, never by resuming one**: a driver started before
+  it has no gate, and a parent built before it still carries the leak. Why, and what
+  the gates cannot see:
   [`windows-build-resources.md` § What the published image carries](docs/windows-build-resources.md#what-the-published-image-carries).
 
 ## Validation

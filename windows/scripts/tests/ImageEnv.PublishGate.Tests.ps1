@@ -2,10 +2,9 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# The Windows publish gate (WindowsImageEnv.Common + Dockerfile.publish-gate + the
-# driver's call before any export). The matcher is graded by the fixture its Python
-# twin reads, and each rule is mutated in a temp copy to prove the fixture bites.
-# docs/windows-build-resources.md#what-the-published-image-carries
+# The Windows publish gate (WindowsImageEnv.Common + Dockerfile.publish-gate + the driver's
+# three call sites). The matcher is graded by its Python twin's fixture; the driver's parent
+# gate runs lifted out with a fake buildctl. docs/windows-build-resources.md#what-the-published-image-carries
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsImageEnv.Common.psm1') -Force -DisableNameChecking
@@ -21,14 +20,29 @@ function Get-ImageEnvCaseMismatch {
         ForEach-Object { "$($_.name)=$($_.value)" })
 }
 
-# Imports a copy of the gate module with one literal edit, as Get-Mut* functions.
-function Import-ImageEnvMutant {
-    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$Find, [AllowEmptyString()][string]$Replace = '')
-    $text = [IO.File]::ReadAllText($script:imageEnvModule)
-    if (-not $text.Contains($Find)) { throw "mutant: find text is gone from the module: $Find" }
-    $path = Join-Path $Dir 'WindowsImageEnv.Mutant.psm1'
-    [IO.File]::WriteAllText($path, $text.Replace($Find, $Replace))
-    Import-Module $path -Prefix Mut -Force -PassThru -DisableNameChecking
+# The scope names Assert-ImageEnvPublishable reads when no -Scopes is given, from its loop literal.
+function Get-DefaultImageEnvScope {
+    param([Parameter(Mandatory)][string]$Text)
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
+    $fn = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $n.Name -eq 'Assert-ImageEnvPublishable' }, $true))
+    if ($fn.Count -ne 1) { throw 'Assert-ImageEnvPublishable not found' }
+    $loops = @($fn[0].FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and
+                $n.Body.Extent.Text -match "GetEnvironmentVariables\(\`$$($n.Variable.VariablePath.UserPath)\)" }, $true))
+    if ($loops.Count -ne 1) { throw "expected one loop over GetEnvironmentVariables, found $($loops.Count)" }
+    @($loops[0].Condition.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) |
+        ForEach-Object Value)
+}
+
+# Splatted into Invoke-WithFunctionModule: a mutant is a copy of the whole gate module.
+$imageEnvMutantSource = @{ Text = [IO.File]::ReadAllText($script:imageEnvModule) }
+
+# Runs $Body, given the variable's name, with a uniquely named Process variable that leaks a LAN
+# address: unique, because this host's own Machine scope may leak too.
+function Invoke-WithLeakingProcessVariable {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $name = 'KATA_PUBLISH_GATE_PROBE_' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+    Invoke-WithEnv @{ $name = 'http://10.0.0.1:5000' } { & $Body $name }
 }
 
 Describe 'WindowsImageEnv.Common: the matcher' {
@@ -57,12 +71,9 @@ Describe 'WindowsImageEnv.Common: the matcher' {
             @{ Why = 'the VERSION exemption'; Find = "return (`$Name.ToUpperInvariant() -notlike '*VERSION*')"; Replace = 'return $true' },
             @{ Why = 'the path-fragment rule'; Find = 'if ($before.Length -gt 0 -and -not $script:Lead.Contains($before[-1])) { return $false }'; Replace = '' })) {
         It "a mutant without $($mutant.Why) fails the fixture (mutation)" {
-            Invoke-InTestDir { param($dir)
-                $m = Import-ImageEnvMutant -Dir $dir -Find $mutant.Find -Replace $mutant.Replace
-                try {
-                    $bad = @(Get-ImageEnvCaseMismatch -Leak { param($n, $v) Get-MutImageEnvLeak -Name $n -Value $v })
-                    Assert-True ($bad.Count -gt 0) "the fixture did not notice $($mutant.Why) was removed"
-                } finally { Remove-Module $m -Force }
+            Invoke-WithFunctionModule @imageEnvMutantSource -Find $mutant.Find -Replace $mutant.Replace -Body {
+                $bad = @(Get-ImageEnvCaseMismatch -Leak { param($n, $v) Get-MutImageEnvLeak -Name $n -Value $v })
+                Assert-True ($bad.Count -gt 0) "the fixture did not notice $($mutant.Why) was removed"
             }
         }
     }
@@ -92,6 +103,33 @@ Describe 'WindowsImageEnv.Common: Assert-ImageEnvPublishable' {
     It 'refuses to pass an environment it never read' {
         Assert-Throws { Assert-ImageEnvPublishable -Scopes ([ordered]@{ Process = @{ A = '1' } }) 6>$null } -MessagePattern 'never read'
     }
+
+    It 'with no -Scopes it grades the live Process environment (the path the gate''s RUN takes)' {
+        Invoke-WithLeakingProcessVariable { param($name)
+            Assert-Throws { Assert-ImageEnvPublishable 6>$null } -MessagePattern $name
+        }
+    }
+
+    # A test cannot write the Machine scope without admin, so the list itself is pinned.
+    It 'with no -Scopes it reads exactly Process, Machine and User' {
+        Assert-Equal 'Process,Machine,User' ((Get-DefaultImageEnvScope -Text ([IO.File]::ReadAllText($script:imageEnvModule))) -join ',')
+    }
+
+    It 'a mutant that skips the Process scope misses a leaking variable, so the live test above bites (mutation)' {
+        Invoke-WithFunctionModule @imageEnvMutantSource -Find "foreach (`$s in 'Process', 'Machine', 'User')" -Replace "foreach (`$s in 'Machine', 'User')" -Body {
+            Invoke-WithLeakingProcessVariable { param($name)
+                $msg = try { Assert-MutImageEnvPublishable 6>$null; '' } catch { $_.Exception.Message }
+                Assert-False ($msg -match $name) 'the mutant read the Process scope after all'
+            }
+        }
+    }
+
+    It 'a mutant that drops Machine and User fails the scope-list pin (mutation)' {
+        $text = [IO.File]::ReadAllText($script:imageEnvModule)
+        $find = "'Process', 'Machine', 'User'"
+        Assert-True $text.Contains($find) 'mutation target is gone'
+        Assert-Equal 'Process' ((Get-DefaultImageEnvScope -Text $text.Replace($find, "'Process'")) -join ',')
+    }
 }
 
 Describe 'Dockerfile.publish-gate' {
@@ -117,20 +155,42 @@ Describe 'Dockerfile.publish-gate' {
     }
 }
 
-# '' when Build-Buildkit.ps1 solves the publish gate once, -NoOutput, against the final
-# tag, BEFORE both exports and outside every -SkipSmokeGate branch; else the problem.
+# The CommandAsts named $Name, and the name of the function a node sits in ('' at script level).
+function Find-DriverCall {
+    param([Parameter(Mandatory)]$Ast, [Parameter(Mandatory)][string]$Name)
+    @($Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
+                $n.GetCommandName() -eq $Name }.GetNewClosure(), $true))
+}
+function Get-EnclosingFunctionName {
+    param([Parameter(Mandatory)]$Node)
+    for ($p = $Node.Parent; $p; $p = $p.Parent) {
+        if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $p.Name }
+    }
+    ''
+}
+
+# '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem. ONE
+# Dockerfile.publish-gate solve, in Invoke-BkPublishGate (-NoOutput -NoParentGate, BASE_IMAGE =
+# $Image). The helper runs on the final tag before both exports and outside every -SkipSmokeGate
+# branch, on the toolchain right after its solve, and in Invoke-BkStage before buildctl.
 function Get-PublishGateWiringProblem {
     param([Parameter(Mandatory)][string]$Text)
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
-    $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                $n.GetCommandName() -eq 'Invoke-BkStage' }, $true))
-    $gate = @($calls | Where-Object { $_.Extent.Text -match 'Dockerfile\.publish-gate' })
-    if ($gate.Count -ne 1) { return "expected one publish-gate solve, found $($gate.Count)" }
-    $g = $gate[0]
-    if ($g.Extent.Text -notmatch '-NoOutput') { return 'the publish gate must not export anything' }
-    if ($g.Extent.Text -notmatch 'BASE_IMAGE\s*=\s*Get-BkTag \$script:FinalTagName') { return 'the gate does not grade the final tag' }
+    $stages = Find-DriverCall $ast 'Invoke-BkStage'
+    $solve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.publish-gate' })
+    if ($solve.Count -ne 1) { return "expected one publish-gate solve, found $($solve.Count)" }
+    $s = $solve[0]
+    if ((Get-EnclosingFunctionName $s) -ne 'Invoke-BkPublishGate') { return 'the publish-gate solve is not inside Invoke-BkPublishGate' }
+    if ($s.Extent.Text -notmatch '-NoOutput') { return 'the publish gate must not export anything' }
+    if ($s.Extent.Text -notmatch '-NoParentGate') { return 'the publish gate would gate its own BASE_IMAGE' }
+    if ($s.Extent.Text -notmatch 'BASE_IMAGE\s*=\s*\$Image\b') { return 'the gate does not grade the image it is handed' }
+
+    $gates = Find-DriverCall $ast 'Invoke-BkPublishGate'
+    $final = @($gates | Where-Object { $_.Extent.Text -match '-Image \(Get-BkTag \$script:FinalTagName\)' })
+    if ($final.Count -ne 1) { return "expected one publish gate on the final tag, found $($final.Count)" }
+    $g = $final[0]
     foreach ($label in 'final-tar', 'final-push') {
-        $export = @($calls | Where-Object { $_.Extent.Text -match "-Label '$label'" })
+        $export = @($stages | Where-Object { $_.Extent.Text -match "-Label '$label'" })
         if ($export.Count -eq 0) { return "no $label solve found (scanner rot?)" }
         if ($export[0].Extent.StartOffset -lt $g.Extent.StartOffset) { return "$label runs before the publish gate" }
     }
@@ -140,27 +200,132 @@ function Get-PublishGateWiringProblem {
             return 'the publish gate sits in a -SkipSmokeGate branch'
         }
     }
-    return ''
+
+    $tcSolve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.toolchain-builder' })
+    $tcGate = @($gates | Where-Object { $_.Extent.Text -match "-Image \(Get-BkTag 'windows-toolchain'\)" })
+    if ($tcSolve.Count -ne 1 -or $tcGate.Count -ne 1) {
+        return "expected one toolchain solve and one gate on the toolchain, found $($tcSolve.Count) and $($tcGate.Count)"
+    }
+    if (-not [object]::ReferenceEquals($tcGate[0].Parent.Parent, $tcSolve[0].Parent.Parent) -or
+        $tcGate[0].Extent.StartOffset -lt $tcSolve[0].Extent.EndOffset) {
+        return 'the toolchain is not graded right after its solve, in the same block'
+    }
+
+    $hook = @($gates | Where-Object { (Get-EnclosingFunctionName $_) -eq 'Invoke-BkStage' })
+    if ($hook.Count -ne 1) { return "expected Invoke-BkStage to gate an unbuilt parent once, found $($hook.Count)" }
+    if ($hook[0].Extent.Text -notmatch '-Image \$parent\b') { return 'the parent gate grades something other than BASE_IMAGE' }
+    $buildctl = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
+                $n.InvocationOperator -eq 'Ampersand' -and $n.CommandElements[0].Extent.Text -eq '$BuildCtl' }, $true) |
+            Where-Object { (Get-EnclosingFunctionName $_) -eq 'Invoke-BkStage' })
+    if ($buildctl.Count -eq 0) { return 'no buildctl call in Invoke-BkStage (scanner rot?)' }
+    if ($hook[0].Extent.StartOffset -gt $buildctl[0].Extent.StartOffset) { return 'the parent gate runs after the stage solves' }
+    ''
 }
 
-Describe 'Build-Buildkit.ps1: the publish gate runs before every export' {
+Describe 'Build-Buildkit.ps1: where the publish gate runs' {
 
     $drv = Get-Content -Raw (Join-Path $script:imageEnvRoot 'windows\Build-Buildkit.ps1')
+    $finalCall = 'Invoke-BkPublishGate -Image (Get-BkTag $script:FinalTagName)'
 
-    It 'solves Dockerfile.publish-gate against the final tag, before final-tar and final-push, never skipped' {
+    It 'one solve, in Invoke-BkPublishGate: final tag before both exports and never skipped, the toolchain, an unbuilt parent' {
         Assert-Equal '' (Get-PublishGateWiringProblem -Text $drv)
     }
 
-    It 'a driver without the call is caught (mutation)' {
-        $mutant = [regex]::Replace($drv, "(?s)Invoke-BkStage -Dockerfile 'windows/Dockerfile\.publish-gate'.*?-MaxAttempts 1", '')
-        Assert-True ($mutant -ne $drv) 'mutation did not apply'
-        Assert-Match 'found 0' (Get-PublishGateWiringProblem -Text $mutant)
+    foreach ($mutant in @(
+            @{ Why = 'a driver without the final call'; Find = $finalCall; Replace = ''; Want = 'final tag, found 0' },
+            @{ Why = 'a final gate moved under -SkipSmokeGate'; Find = $finalCall
+                Replace = "if (-not `$SkipSmokeGate) { $finalCall }"; Want = 'SkipSmokeGate' },
+            @{ Why = 'a driver that stops grading the fresh toolchain'; Replace = ''; Want = 'gate on the toolchain'
+                Find = "Invoke-BkPublishGate -Image (Get-BkTag 'windows-toolchain') -Label 'publish-gate:toolchain'" },
+            @{ Why = 'a gate solve without -NoParentGate (it would recurse into itself)'; Find = '-NoOutput -NoParentGate'
+                Replace = '-NoOutput'; Want = 'its own BASE_IMAGE' })) {
+        It "$($mutant.Why) is caught (mutation)" {
+            Assert-True $drv.Contains($mutant.Find) 'mutation target is gone'
+            Assert-Match $mutant.Want (Get-PublishGateWiringProblem -Text $drv.Replace($mutant.Find, $mutant.Replace))
+        }
+    }
+}
+
+# What Invoke-BkStage reads besides the driver's own state, and a buildctl that records each
+# solve as '<Dockerfile>|<BASE_IMAGE>' and fails the one named $FailDockerfile.
+$script:gateScenarioPrelude = @'
+param($Dir, $FailDockerfile)
+$script:Solves = [System.Collections.Generic.List[string]]::new()
+$script:LogDir = $Dir; $script:RunId = 'test'; $script:StageTimings = @{}
+$repoRoot = $Dir; $SkipHostChecks = $true; $NoCacheStage = @(); $NoCache = $false
+$ImportCacheRef = ''; $ExportCacheRef = ''; $TargetArch = 'amd64'; $BuildArg = @()
+function Assert-StageDiskHeadroom { }
+function Set-BuildPhase { param($Name) }
+function Invoke-TransientCooldown { $false }
+$BuildCtl = {
+    $file = "$($args | Where-Object { "$_" -like 'filename=*' })" -replace '^filename=', ''
+    $base = "$($args | Where-Object { "$_" -like 'build-arg:BASE_IMAGE=*' })" -replace '^build-arg:BASE_IMAGE=', ''
+    $script:Solves.Add("$file|$base")
+    $global:LASTEXITCODE = if ($FailDockerfile -and $file -eq $FailDockerfile) { 1 } else { 0 }
+}
+'@
+
+# Lifts Invoke-BkStage and Invoke-BkPublishGate (plus the driver's own initialisers of the state
+# they keep) out of $Driver over the prelude above, runs $Scenario there, and returns the solves
+# in order and the error message, if any, from a fresh test directory. -Find/-Replace mutate
+# the lifted functions.
+function Invoke-GateScenario {
+    param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
+        [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '')
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Driver, [ref]$null, [ref]$null)
+    $state = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $n.Left.Extent.Text -in @('$script:NoCacheStageMatched', '$script:BkBuiltTags', '$script:BkGatedImages') }, $true) |
+            ForEach-Object { $_.Extent.Text })
+    if ($state.Count -ne 3) { throw "scenario: found $($state.Count) of the driver's three state initialisers" }
+    Invoke-InTestDir { param($dir)
+        $m = Import-FunctionModule -Text $Driver -FunctionName 'Invoke-BkStage', 'Invoke-BkPublishGate' -Dir $dir -Prefix Scn `
+            -Prelude ($script:gateScenarioPrelude + "`n" + ($state -join "`n")) -Find $Find -Replace $Replace -ArgumentList $dir, $FailDockerfile
+        try {
+            $err = ''
+            try { $null = & $m $Scenario 6>$null } catch { $err = $_.Exception.Message }
+            [pscustomobject]@{ Solves = (@(& $m { $script:Solves }) -join '; '); Error = $err }
+        } finally { Remove-Module $m -Force }
+    }
+}
+
+Describe 'Build-Buildkit.ps1: a parent this run did not build is graded before a stage inherits its ENV' {
+
+    $drv = Get-Content -Raw (Join-Path $script:imageEnvRoot 'windows\Build-Buildkit.ps1')
+    $oneStage = { Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Tag 'img:media' -BuildArgs @{ BASE_IMAGE = 'img:toolchain' } }
+    $chain = {
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Tag 'img:toolchain' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Tag 'img:media' -BuildArgs @{ BASE_IMAGE = 'img:toolchain' }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-migraphx' -Tag 'img:mgx' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
     }
 
-    It 'a gate moved under -SkipSmokeGate is caught (mutation)' {
-        $call = [regex]::Match($drv, "(?s)Invoke-BkStage -Dockerfile 'windows/Dockerfile\.publish-gate'.*?-MaxAttempts 1").Value
-        Assert-True ($call.Length -gt 0) 'call not found'
-        $mutant = $drv.Replace($call, "if (-not `$SkipSmokeGate) { $call }")
-        Assert-Match 'SkipSmokeGate' (Get-PublishGateWiringProblem -Text $mutant)
+    # Want is a regex over the solves; a case without Find runs the real driver, one with Find a mutant.
+    foreach ($case in @(
+            @{ Why = 'grades an unbuilt BASE_IMAGE first, then solves the stage'; Scenario = $oneStage
+                Want = '^' + [regex]::Escape('Dockerfile.publish-gate|img:toolchain; Dockerfile.media-builder|img:toolchain') + '$' },
+            @{ Why = 'grades neither a parent this run built nor one it already graded'; Scenario = $chain
+                Want = '^' + [regex]::Escape('Dockerfile.publish-gate|img:sdk; Dockerfile.toolchain-builder|img:sdk; ' +
+                    'Dockerfile.media-builder|img:toolchain; Dockerfile.rocm-migraphx|img:sdk') + '$' },
+            @{ Why = 'the gate grades exactly the image it is handed, never that image''s own parent'
+                Scenario = { Invoke-BkPublishGate -Image 'img:final' }; Want = '^Dockerfile\.publish-gate\|img:final$' },
+            @{ Why = 'a driver without the parent gate solves the stage ungraded, so the first case bites (mutation)'
+                Scenario = $oneStage; Find = 'if (-not $NoParentGate -and $parent -and'; Replace = 'if ($false -and'
+                Want = '^Dockerfile\.media-builder\|img:toolchain$' },
+            @{ Why = 'a driver that forgets what it built re-grades its own output, so the second case bites (mutation)'
+                Scenario = $chain; Find = 'if ($Tag) { $null = $script:BkBuiltTags.Add($Tag) }'; Replace = ''
+                Want = 'Dockerfile\.publish-gate\|img:toolchain' })) {
+        It $case.Why {
+            $find = if ($case.ContainsKey('Find')) { $case.Find } else { '' }
+            $replace = if ($case.ContainsKey('Replace')) { $case.Replace } else { '' }
+            $r = Invoke-GateScenario -Driver $drv -Scenario $case.Scenario -Find $find -Replace $replace
+            Assert-Equal '' $r.Error
+            Assert-Match $case.Want $r.Solves
+        }
+    }
+
+    It 'a stale parent stops the run before the stage solves, and the error says to rebuild it' {
+        $r = Invoke-GateScenario -Driver $drv -Scenario $oneStage -FailDockerfile 'Dockerfile.publish-gate'
+        Assert-Equal 'Dockerfile.publish-gate|img:toolchain' $r.Solves 'the stage must not solve on a stale parent'
+        Assert-Match 'img:toolchain was not built by this run' $r.Error
+        Assert-Match 'Rebuild it' $r.Error
     }
 }

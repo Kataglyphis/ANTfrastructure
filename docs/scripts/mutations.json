@@ -9347,20 +9347,36 @@
     "why": "lint-dockerfiles.sh runs the static pass"
   },
   {
-    "id": "image-env.wrapper-reads-config",
-    "target": "linux/scripts/verify-shipped-wrapper.sh",
-    "find": "&& python3 \"${_here}/verify_image_env.py\" --env-file \"${_env_lines}\" --label \"${_ref}\"; then",
-    "replace": "; then",
+    "id": "image-env.manifest-reads-config",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "       || ! python3 \"${REPO_ROOT}/linux/scripts/verify_image_env.py\" --env-file \"${env_lines}\" --label \"${tag}\"; then",
+    "replace": "       ; then",
     "test": "bash linux/scripts/tests/test-image-env.sh",
-    "why": "the wrapper gate grades the config ENV it read, not merely that it could read one"
+    "why": "the manifest gate grades the config ENV it read, not merely that it could read one"
   },
   {
-    "id": "image-env.wrapper-hard",
-    "target": "linux/scripts/verify-shipped-wrapper.sh",
-    "find": "[ \"${_env_fail}\" -eq 0 ] || exit 1",
-    "replace": ":",
+    "id": "image-env.manifest-fails",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "      failed=\"${failed:+${failed} }${arch}\"",
+    "replace": "      :",
     "test": "bash linux/scripts/tests/test-image-env.sh",
-    "why": "an ENV leak fails the wrapper gate, even under WRAPPER_CONTENT_GATE=0"
+    "why": "a leaking or unreadable wrapper fails the index"
+  },
+  {
+    "id": "image-env.manifest-no-switch",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  _manifest_image_env_gate || err \"manifest image-env gate refused",
+    "replace": "  [ \"${RUNTIME_IMAGE_SMOKE}\" = \"1\" ] && _manifest_image_env_gate || err \"manifest image-env gate refused",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "create_manifest runs the gate unconditionally; RUNTIME_IMAGE_SMOKE=0 once skipped it"
+  },
+  {
+    "id": "image-env.manifest-pull-if-missing",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "    if ! image_exists \"${NERDCTL_BIN:-nerdctl}\" \"${tag}\"; then\n      run \"${NERDCTL_BIN:-nerdctl}\" pull -q --platform",
+    "replace": "    if true; then\n      run \"${NERDCTL_BIN:-nerdctl}\" pull -q --platform",
+    "test": "bash linux/scripts/tests/test-image-env.sh",
+    "why": "an existing wrapper tag is graded as it is, never re-pointed at the published image by a pull"
   },
   {
     "id": "image-env.windows-endpoint-env",
