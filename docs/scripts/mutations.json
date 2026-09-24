@@ -9441,5 +9441,53 @@
     "replace": "if (t !~ \"ort_lib_path\") next",
     "test": "bash linux/scripts/tests/test-critical-fixes.sh",
     "why": "the prefilter skips lines naming no ort-sys variable; it must use the whole name set, or every other variable's write is skipped unread"
+  },
+  {
+    "id": "ort-census.probe-whole-path",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "[\\\\/][\\w.+\\\\/-]*?\\.(?:cc|cpp|cxx|c|h|hpp|inc|cu|cuh)(?:\\x00|\\Z)\")",
+    "replace": "[\\\\/]\")",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a consumer naming the chain directory as data (liboxidant.so) is an importer, not an ORT copy"
+  },
+  {
+    "id": "ort-census.probe-terminator",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "(?:\\x00|\\Z)\")",
+    "replace": "\")",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a path-shaped word is a __FILE__ path only when its NUL follows"
+  },
+  {
+    "id": "ort-census.probe-cuda-ext",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "|inc|cu|cuh)",
+    "replace": "|inc)",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "CUDA sources fingerprint an ORT build too"
+  },
+  {
+    "id": "ort-census.probe-relative-dot",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "joined = \"|\".join(r or \".\" for r in roots)",
+    "replace": "joined = \"|\".join(roots)",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a lone relative root must not print as '-', which means no fingerprint"
+  },
+  {
+    "id": "ort-census.relative-dot",
+    "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+    "find": "    if [ -z \"${r}\" ] || [ \"${r}\" = . ]; then relative=1",
+    "replace": "    if [ -z \"${r}\" ]; then relative=1",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "'.' is the probe's relative root"
+  },
+  {
+    "id": "ort-census.probe-dlopen-res",
+    "target": "linux/scripts/06-packaging/ort_census_probe.py",
+    "find": "for name in needed or ([\"libonnxruntime.so\"] if \"OrtGetApiBase\" in abi else []):",
+    "replace": "for name in needed:",
+    "test": "bash linux/scripts/tests/test-ort-census.sh",
+    "why": "a dlopen-only importer is resolved too"
   }
 ]

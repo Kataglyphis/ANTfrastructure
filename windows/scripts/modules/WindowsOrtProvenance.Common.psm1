@@ -15,8 +15,9 @@ if (-not (Get-Command -Name 'Get-PeImportNames' -ErrorAction SilentlyContinue) -
 }
 
 $script:OrtAbiMarker = @('OrtGetApiBase', 'CreateEpFactories', 'RegisterCustomOps')
-# ORT's own source tree, as __FILE__ strings put it into every binary built from it.
-$script:OrtPathMarker = [regex]::new('onnxruntime[\\/](?:core|contrib_ops)[\\/]')
+# A whole ORT source-file path ending in NUL, as __FILE__ puts it into every ORT build. A consumer that
+# names the chain DIRECTORY as data is not ORT: docs/onnxruntime-single-source.md#what-the-chain-ort-is
+$script:OrtPathMarker = [regex]::new('onnxruntime[\\/](?:core|contrib_ops)[\\/][A-Za-z0-9_.+\\/-]*?\.(?:cc|cpp|cxx|c|h|hpp|inc|cu|cuh)(?:\x00|\z)')
 $script:OrtInstancePattern = [regex]::new(
     '^(?:lib)?onnxruntime(?:_providers_[a-z0-9_]+)?\.(?:dll|so(?:\.[0-9]+)*)$|^onnxruntime_pybind11_state[^\\/]*\.(?:pyd|so)$',
     'IgnoreCase')

@@ -20,8 +20,9 @@ import struct
 import zipfile
 
 ABI = (b"OrtGetApiBase", b"CreateEpFactories", b"RegisterCustomOps")
-# ORT's own source tree, as __FILE__ strings put it into every binary built from it.
-MARK = re.compile(rb"onnxruntime[\\/](?:core|contrib_ops)[\\/]")
+# A whole ORT source-file path ending in NUL, as __FILE__ puts it into every ORT build. A consumer that
+# names the chain DIRECTORY as data is not ORT: docs/onnxruntime-single-source.md#what-the-chain-ort-is
+MARK = re.compile(rb"onnxruntime[\\/](?:core|contrib_ops)[\\/][\w.+\\/-]*?\.(?:cc|cpp|cxx|c|h|hpp|inc|cu|cuh)(?:\x00|\Z)")
 INSTANCE = re.compile(r"^(?:lib)?onnxruntime(?:_providers_[a-z0-9_]+)?\.(?:dll|so(?:\.[0-9]+)*)$"
                       r"|^onnxruntime_pybind11_state[^/]*\.(?:pyd|so)$", re.IGNORECASE)
 ARCHIVE_EXT = (".whl", ".aar", ".jar", ".zip", ".nupkg", ".apk")
@@ -330,10 +331,12 @@ class Census:
 
     def _record(self, kind_ref, label, name, sha, abi, roots, dyn):
         instance = bool(INSTANCE.match(name) or roots)
+        # A relative root prints as '.': emit() turns '' into '-', which means "no fingerprint at all".
+        joined = "|".join(r or "." for r in roots)
         if kind_ref:
-            emit("REF", sha, label, "|".join(roots))
+            emit("REF", sha, label, joined)
         elif instance:
-            emit("BIN", sha, label, "|".join(roots), "name" if INSTANCE.match(name) else "fp")
+            emit("BIN", sha, label, joined, "name" if INSTANCE.match(name) else "fp")
         elif abi or dyn is not None:
             needed = [n for n in (dyn or {}).get("needed", []) if INSTANCE.match(n)]
             if abi or needed:

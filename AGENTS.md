@@ -808,6 +808,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
     soname deny is in code: never map a `libonnxruntime*` soname to a distro package.
   - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a
     missing chain wheel fails the torch stage, with no PyPI fallback.
+  - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path,
+    never the bare `onnxruntime/core/` directory: consumers name that directory as
+    data (OxidANT's loader, FFmpeg's configure line), and must stay importers.
   - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce
     it. Every consumer, guard and gap:
     [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md); the Windows

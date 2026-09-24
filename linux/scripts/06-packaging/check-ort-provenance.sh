@@ -89,7 +89,7 @@ _ort_bytes_verdict() {  # <path> <roots|-> : a non-chain ORT instance, by its bu
   local -a roots=()
   [ "$2" = "-" ] || IFS='|' read -r -a roots <<< "$2"
   for r in ${roots[@]+"${roots[@]}"}; do
-    if [ -z "${r}" ]; then relative=1
+    if [ -z "${r}" ] || [ "${r}" = . ]; then relative=1
     elif _ort_under "${r}" "${_ORTC_CHAIN[@]}"; then chain=1
     else foreign="${foreign:+${foreign}, }${r}"; fi
   done
