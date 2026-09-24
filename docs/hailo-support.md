@@ -20,9 +20,10 @@ a variant exists only for a stack that cannot ship in the default image. The
 build's own checks run before the
 payload is accepted, so a broken element fails the build rather than shipping.
 **pyhailort is built from source** (scikit-build-core, the `platform/`
-directory) and installed into `/opt/venv`. Until 2026-09-24 every image shipped
-it as an empty module that could never import; the build now patches that and
-checks the module ([pyhailort](#pyhailort)). One honest caveat: upstream declares
+directory) and installed into `/opt/venv`. Every image built before the
+`HAILO_PYHAILORT_IPO` switch shipped it as an empty module that could never
+import; the switch's default patches that and checks the module
+([pyhailort](#pyhailort)). One honest caveat: upstream declares
 `requires-python <3.14` and the image runs 3.14, so the wheel's metadata is
 relaxed before the build and the install is followed by an import test — a
 failure is REPORTED, never hidden. The wheel also stays staged at
@@ -132,7 +133,8 @@ linux/scripts/build-cross-chain.sh ...`. Unset it to go back.
 
 - `HAILO_NESTED_CACHE=off` when the nested-build gate below stops a build and the
   image is needed before the cause is known.
-- `HAILO_PYHAILORT_IPO=upstream` when the pyhailort build or its module check fails.
+- `HAILO_PYHAILORT_IPO=upstream` when the pyhailort build, its module check or its
+  install into `/opt/venv` fails.
 - Any other value stops the chain before its first stage, and a runtime lane before
   its first build, with exit 2.
 - Both are `Dockerfile.torch` ARGs. `lib-orchestrator.sh` forwards them only when
@@ -219,15 +221,32 @@ in `Dockerfile.base`, and `tests/test-hailo-build.sh` pins the pair to it. Why t
 Upstream's `bindings/python/src/CMakeLists.txt` sets
 `CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE` as a normal variable, so no `-D` can
 change it. GCC then writes slim LTO objects, `setup_lld_linker` links with lld, and
-lld cannot read GCC's LTO code. Every image before 2026-09-24 shipped a 4 KB
-`_pyhailort` without `PyInit__pyhailort`, on amd64 and arm64.
+lld cannot read GCC's LTO code. Every image built before this switch shipped a
+4 KB `_pyhailort` without `PyInit__pyhailort`, on amd64 and arm64.
 
 `HAILO_PYHAILORT_IPO=off` turns that line to `FALSE` in the cached source, and
 `upstream` turns it back. The twelve binding sources then really compile, at
 `compute_cpp_heavy_jobs`, and cache. `hailo_check_pyext` checks both the wheel's
 module and the one installed into `/opt/venv`: the target's ELF machine and a
-defined `PyInit__pyhailort`. Under `off` a failed check stops the build; under
-`upstream` it warns, which is how the image shipped before.
+defined `PyInit__pyhailort`. Under `off` a failed check stops the build, and so
+do a wheel that does not install and a missing wheel, because the installed
+module is what ships. Under `upstream` all three warn, which is how the image
+shipped before. A run without `/opt/venv`, outside the image, only stages the
+wheel.
+
+`import hailo_platform` is tried last, and it only warns, in both modes: upstream
+declares `requires-python <3.14`, and the import on the image's 3.14 is proven on
+amd64 only. The gate is the `PyInit__pyhailort` export, not the import.
+
+**The build backend is not pinned.** `build_pyhailort` installs
+`scikit-build-core>=0.10` and `pybind11>=2.13.6,<3` from PyPI, unpinned and
+unhashed. Under `off` that reaches the image: pybind11's headers compile into the
+module that ships, so a new pybind11 2.x release changes those bytes and
+recompiles the twelve sources cold, under QEMU on arm64. Before, the module was an
+empty stub and pybind11 never reached `/opt/venv`. Pinning pybind11 needs a new
+2.x key in `versions.env` (`PY_PYBIND11_VERSION` is 3.x), which re-keys every
+stage from base, so both pins wait for the next planned `versions.env` re-key
+([open question](#open-questions)).
 
 ### What is proven, and what is not
 
@@ -245,6 +264,10 @@ pyhailort built as a 1.7 MB module that exports `PyInit__pyhailort`, and
 `import hailo_platform` works on Python 3.14; `upstream` rebuilt the 4 KB stub and
 only warned. `USE_SCCACHE=0` carried ccache instead and passed the gate. The probe
 reported CACHED as root and as uid 1001. Unit tests: `tests/test-hailo-build.sh`.
+The install checks the review added (a failed install and a missing wheel) ran later,
+as `install_pyhailort` alone in the same image against its uv 0.12.13 and `/opt/venv`
+(Python 3.14.4): a stub wheel, a truncated one and none, under both values. No full
+build has run with them.
 
 Not proven: arm64 under QEMU, where the saving is (estimated at 2.5 to 4 minutes
 per arm64 lane), the BuildKit `RUN` itself, the Jetson and the X100. On the build
@@ -386,7 +409,7 @@ them in step.
 | Build-stage self-check (`hailortcli --version`, `gst-inspect-1.0 hailonet`) | in `build-hailort.sh`, fails the build |
 | Runtime-stage self-check (`hailortcli`, `gst-inspect-1.0 hailonet` after the install) | in the `Dockerfile.torch` Hailo `RUN` |
 | The nested protobuf build reached the compiler cache | `hailo_assert_nested_cache_reached`, fails a `carry` build ([the gate](#the-gate)) |
-| pyhailort exports `PyInit__pyhailort` for the target, wheel and `/opt/venv` | `hailo_check_pyext`, fails under `HAILO_PYHAILORT_IPO=off` ([pyhailort](#pyhailort)) |
+| pyhailort exports `PyInit__pyhailort` for the target, wheel and `/opt/venv` | `hailo_check_pyext` and `install_pyhailort`: under `HAILO_PYHAILORT_IPO=off` a failed check, a failed install or a missing wheel fails the build; `import hailo_platform` only warns ([pyhailort](#pyhailort)) |
 | `docs/deps/deps.json` + `third-party-licenses.md` | MIT, LGPL-2.1-or-later (with source pointer), BSD-3-Clause, Apache-2.0 rows added |
 | `verify-media-artifacts.sh` / `smoke-runtime-image.sh` | **not wired yet** — the standard chain now carries Hailo, so the runtime smoke is the natural next gate |
 | Bundle closure | not applicable — the payload ships in the full image, not a bundle |
@@ -425,3 +448,6 @@ them in step.
 - Which device does the consumer actually run? That answer may add the
   Hailo-10H pin set.
 - `pyhailort`, if ever needed: it ships in Hailo's `.deb`, not the source build.
+- Pin pyhailort's build backend, `scikit-build-core` and `pybind11` 2.x, at the
+  next planned `versions.env` re-key, with a real build
+  ([why it floats](#pyhailort)).

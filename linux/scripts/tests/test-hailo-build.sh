@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 03-media/build/hailo/hailo-build-lib.sh off-target: the two switches, the nested-build carrier and
-# its gate, the cache counters, the pyhailort LTO patch and module check, and the wiring around them.
+# its gate, the cache counters, the pyhailort LTO patch and module check, install_pyhailort, and the
+# wiring around them. Not covered: a real HailoRT or pyhailort build, which needs the build host.
 # docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,7 +59,24 @@ env -i HOME="$HOME" PATH=/usr/bin:/bin bash -l -c '
 mkdir -p "$SB/nested"
 { printf '# ninja log v5\n'; for i in 0 1 2 3 4 5 6 7 8 9; do printf '1\t2\t3\tCMakeFiles/p.dir/t%s.cc.o\tabc\n' "$i"; done; } > "$SB/nested/.ninja_log"
 SH
-  chmod +x "${b}"/*
+  # uv installs an empty module into the sandbox venv (readelf answers for it), or fails like uv.
+  cat > "${b}/uv" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" > "$SB/uv-args"
+[ -e "$SB/uv.fails" ] && { echo "error: hailort-5.4.0 is not a supported wheel on this platform (fake uv)" >&2; exit 2; }
+mkdir -p "$SB/venv/site/hailo_platform/pyhailort"
+: > "$SB/venv/site/hailo_platform/pyhailort/_pyhailort.cpython-314-aarch64-linux-gnu.so"
+SH
+  mkdir -p "$1/venv/bin"
+  cat > "$1/venv/bin/python" <<'SH'
+#!/bin/sh
+case "$2" in
+  *sysconfig*) printf '%s\n' "$SB/venv/site" ;;
+  *hailo_platform*) [ -d "$SB/venv/site/hailo_platform" ] && [ ! -e "$SB/import.fails" ] ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "${b}"/* "$1/venv/bin/python"
   printf '%s\n' AArch64 > "$1/machine"
 }
 
@@ -104,8 +122,9 @@ t_assert_eq $'SAME-OPTS\nSAME-IFS' "${_out}" "lib-orchestrator.sh sources it on 
 
 # ---- 2. the carrier -------------------------------------------------------------------------
 t_case "the nested bash -l sees the exported cache env, the real login file, and nothing else"
+# The login file sets PATH and a cache variable itself: the carrier's exports must come after it.
 _out="$(_hb '
-  printf "export hailo_t_profile=ran\n" > "${HOME}/.profile"
+  printf "export hailo_t_profile=ran SCCACHE_DIR=/from-login-file PATH=/usr/bin:/bin\n" > "${HOME}/.profile"
   printf "[user]\n  name = t\n" > "${HOME}/.gitconfig"
   export CMAKE_CXX_COMPILER_LAUNCHER=/opt/scripts/core/sccache-launcher.sh CMAKE_C_COMPILER_LAUNCHER=/opt/scripts/core/sccache-launcher.sh
   export SCCACHE_SERVER_UDS=/tmp/sccache-0.sock SCCACHE_DIR=/var/cache/sccache CCACHE_DIR=/var/cache/ccache
@@ -129,6 +148,7 @@ t_assert_contains "${_out}" 'SLOPPY=[pch_defines, "quoted" word]' "a value is qu
 t_assert_contains "${_out}" "SIZE=[] LD=[] CC=[] CXX=[] CF=[] PINS=[]" \
   "an unexported default (compiler-cache.sh's := 10G), versions.env's pins and the compiler/linker flags must NOT cross"
 t_assert_contains "${_out}" "PROFILE=ran GIT=1" "the real login file runs and the real HOME's files read through the carrier"
+t_assert_contains "${_out}" " D=/var/cache/sccache " "the carrier's exports come after the real login file, which sets SCCACHE_DIR too"
 t_assert_contains "${_out}" "SCCACHE=${_SB_ROOT}/" "the nested client is the parent's sccache"
 t_assert_contains "${_out}" "/carrier/.hailo-cache-bin/sccache (sccache 0.17.0)" \
   "the nested client is the server's own binary, not the distro 0.13 the clean PATH finds first"
@@ -161,6 +181,12 @@ _configure() {  # <mode> <launcher> [channel|nochannel] -> the library call and 
     real_home=\"\${HOME}\"
     HAILO_NESTED_CACHE='$1' hailo_nested_configure t3 \"\${SB}/nested\" \"\${SB}/execute_cmake.cmake\" -S src -B build; r=\$?
     echo \"NESTED=\$(cat \"\${SB}/nested-launcher\" 2>/dev/null || echo NOT-RUN)\"
+    case \"\$(cat \"\${SB}/cmake-home\" 2>/dev/null || echo NOT-RUN)\" in
+      NOT-RUN) echo CMAKE-HOME=NOT-RUN ;;
+      \"\${real_home}\") echo CMAKE-HOME=caller ;;
+      \"\${TMPDIR}\"/hailo-nested-home.*) echo CMAKE-HOME=carrier ;;
+      *) echo CMAKE-HOME=other ;;
+    esac
     [ \"\${HOME}\" = \"\${real_home}\" ] && echo HOME-KEPT
     ls \"\${TMPDIR}\" | grep -c hailo-nested-home
     (exit \"\${r}\")"
@@ -169,6 +195,7 @@ _configure() {  # <mode> <launcher> [channel|nochannel] -> the library call and 
 t_case "carry: the nested build gets the launcher, the gate passes, the carrier is gone"
 _out="$(_configure carry /opt/scripts/core/sccache-launcher.sh)"
 t_assert_contains "${_out}" "NESTED=/opt/scripts/core/sccache-launcher.sh" "the carrier must reach the build upstream spawns under env -i"
+t_assert_contains "${_out}" "CMAKE-HOME=carrier" "carry runs the configure with HOME at the carrier"
 t_assert_contains "${_out}" "[CACHE] hailo/t3: secs=" "one stats line per phase"
 t_assert_contains "${_out}" "requests=+10 hits=+0 misses=+0 launcher=/opt/scripts/core/sccache-launcher.sh cap=30 GiB"
 t_assert_contains "${_out}" "the nested build's 10 objects reached"
@@ -177,12 +204,14 @@ t_assert_contains "${_out}" $'HOME-KEPT\n0\nrc=0' "HOME is redirected for the co
 t_case "off: today's nested build, uncached, and the gate only warns"
 _out="$(_configure off /opt/scripts/core/sccache-launcher.sh)"
 t_assert_contains "${_out}" "NESTED=NONE" "off must leave upstream's clean env exactly as it was"
+t_assert_contains "${_out}" "CMAKE-HOME=caller" "off runs the configure with the caller's HOME, as before 2026-09-24"
 t_assert_contains "${_out}" "WARNING: HAILO_NESTED_CACHE=off: the nested build compiled 10 objects uncached"
 t_assert_contains "${_out}" "rc=0"
 
 t_case "carry without a launcher (USE_CCACHE off): nothing to carry, a warning, no failure"
 _out="$(_configure carry "")"
 t_assert_contains "${_out}" "NESTED=NONE"
+t_assert_contains "${_out}" "CMAKE-HOME=caller" "with nothing to carry the configure keeps the caller's HOME"
 t_assert_contains "${_out}" "no compiler-cache launcher resolved"
 t_assert_contains "${_out}" "rc=0"
 
@@ -190,6 +219,7 @@ t_case "carry when the spawner no longer carries upstream's channel: rc 1 before
 _out="$(_configure carry /opt/scripts/core/sccache-launcher.sh nochannel)"
 t_assert_contains "${_out}" "re-derive the carrier (HAILO_NESTED_CACHE=off builds without it)"
 t_assert_contains "${_out}" "NESTED=NOT-RUN"
+t_assert_contains "${_out}" "CMAKE-HOME=NOT-RUN"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "a failed configure keeps its own rc and skips the gate"
@@ -330,6 +360,73 @@ t_assert_contains "$(_pyext "${_STUB_SYMS}" AArch64 arm64 off wheel)" "rc=1"
 _out="$(_pyext "${_REAL_SYMS}" AArch64 arm64 off nowheel)"
 t_assert_contains "${_out}" "no _pyhailort*.so in"
 t_assert_contains "${_out}" "rc=1"
+
+# build-hailort.sh's install_pyhailort, with /opt/venv moved into the sandbox, under set -e as in the build.
+_INSTALL_FN="$(t_fn_src "${BUILD}" install_pyhailort)" || exit 1
+_INSTALL_FN="$(printf '%s\n' "${_INSTALL_FN}" | sed 's#/opt/venv#${SB}/venv#g')"
+# _install <ipo mode> [stub|install-fails|import-fails|nowheel|novenv]
+_install() {
+  local syms="${_REAL_SYMS}"
+  [ "${2:-}" != stub ] || syms="${_STUB_SYMS}"
+  _hb "${_INSTALL_FN}
+    die() { printf 'ERROR: %s\n' \"\$*\" >&2; exit 1; }
+    info() { printf '[INFO] %s\n' \"\$*\"; }
+    warn() { printf 'WARN: %s\n' \"\$*\" >&2; }
+    cat > \"\${SB}/dynsym\" <<'SYMS'
+${syms}
+SYMS
+    HAILO_PREFIX=\"\${SB}/hailo\" TARGET_ARCH=arm64 HAILO_PYHAILORT_IPO='$1'
+    mkdir -p \"\${HAILO_PREFIX}/wheels\"
+    [ '${2:-}' = nowheel ] || : > \"\${HAILO_PREFIX}/wheels/hailort-5.4.0-cp314-cp314-linux_aarch64.whl\"
+    case '${2:-}' in
+      install-fails) touch \"\${SB}/uv.fails\" ;;
+      import-fails) touch \"\${SB}/import.fails\" ;;
+      novenv) rm -f \"\${SB}/venv/bin/python\" ;;
+    esac
+    ( set -e; install_pyhailort ); echo \"IRC=\$?\"
+    cat \"\${SB}/uv-args\" 2>/dev/null || echo UV-NOT-RUN"
+}
+
+t_case "install_pyhailort: the module installed into /opt/venv is checked; the 3.14 import only warns"
+_out="$(_install off)"
+t_assert_contains "${_out}" "exports PyInit__pyhailort"
+t_assert_contains "${_out}" "[INFO] pyhailort installed into"
+t_assert_contains "${_out}" "IRC=0"
+t_assert_contains "${_out}" "/venv/bin/python --no-deps --reinstall ${_SB_ROOT}/" "the wheel goes into the app venv"
+_out="$(_install off stub)"
+t_assert_contains "${_out}" "does not export PyInit__pyhailort"
+t_assert_contains "${_out}" "IRC=1" "an off build stops on the stub in /opt/venv"
+_out="$(_install off import-fails)"
+t_assert_contains "${_out}" "WARN: pyhailort installed but 'import hailo_platform' fails on Python 3.14"
+t_assert_contains "${_out}" "IRC=0" "the import is checked but only warns: upstream declares <3.14"
+
+t_case "install_pyhailort under off: a failed install or no wheel stops the build"
+_out="$(_install off install-fails)"
+t_assert_contains "${_out}" "(fake uv)" "uv's own reason is shown"
+t_assert_contains "${_out}" "failed, so the module that ships is unchecked (HAILO_PYHAILORT_IPO=upstream only warns)"
+t_assert_contains "${_out}" "IRC=1" "a failed install would ship /opt/venv without a checked module"
+_out="$(_install off nowheel)"
+t_assert_contains "${_out}" "ERROR: pyhailort: no hailort-*.whl in"
+t_assert_contains "${_out}" $'IRC=1\nUV-NOT-RUN'
+
+t_case "install_pyhailort under upstream: the old warnings, never a failure"
+_out="$(_install upstream install-fails)"
+t_assert_contains "${_out}" "WARN: pyhailort wheel staged at"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'ERROR')" "upstream's failed install is a warning, as before"
+t_assert_contains "${_out}" "IRC=0"
+_out="$(_install upstream nowheel)"
+t_assert_contains "${_out}" "nothing installed into"
+t_assert_contains "${_out}" "IRC=0" "no wheel under upstream is a warning, not errexit's silent rc 2"
+_out="$(_install upstream stub)"
+t_assert_contains "${_out}" "WARNING: HAILO_PYHAILORT_IPO=upstream ships what upstream's forced LTO builds under lld"
+t_assert_contains "${_out}" "IRC=0"
+
+t_case "install_pyhailort without /opt/venv (a run outside the image): the wheel stays staged"
+for _m in off upstream; do
+  _out="$(_install "${_m}" novenv)"
+  t_assert_contains "${_out}" "pyhailort wheel stays staged at"
+  t_assert_contains "${_out}" $'IRC=0\nUV-NOT-RUN' "${_m}"
+done
 
 # ---- 7. cap parity ------------------------------------------------------------------------------
 t_case "the Hailo RUN's cache caps are Dockerfile.base's (the runtime image lost base's ENV)"

@@ -269,18 +269,22 @@ build_pyhailort() {
 }
 
 install_pyhailort() {
-  local wheel
-  wheel="$(ls -1 "${HAILO_PREFIX}/wheels"/hailort-*.whl 2>/dev/null | head -1)"
-  [ -n "${wheel}" ] || return 0
+  local wheel ipo out so
+  ipo="$(hailo_pyhailort_ipo_mode)" || exit 2
+  wheel="$(ls -1 "${HAILO_PREFIX}/wheels"/hailort-*.whl 2>/dev/null | head -1 || true)"
+  if [ -z "${wheel}" ]; then
+    # off promises a checked module in /opt/venv, so nothing to install is fatal there.
+    [ "${ipo}" = upstream ] || die "pyhailort: no hailort-*.whl in ${HAILO_PREFIX}/wheels to install (HAILO_PYHAILORT_IPO=upstream skips it)"
+    warn "pyhailort: no hailort-*.whl in ${HAILO_PREFIX}/wheels; nothing installed into /opt/venv"
+    return 0
+  fi
   [ -x /opt/venv/bin/python ] || { info "no /opt/venv; pyhailort wheel stays staged at ${wheel}"; return 0; }
 
   # The pyproject sed above already relaxed Requires-Python before the build,
   # so the wheel installs as-is — proven; a zip-rewrite of the metadata only
   # corrupted it once. Then PROVE the import under the image's 3.14.
-  if uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${wheel}" >/dev/null 2>&1; then
+  if out="$(uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${wheel}" 2>&1)"; then
     # The installed bytes are what ships: check them, not only the wheel.
-    local ipo so
-    ipo="$(hailo_pyhailort_ipo_mode)" || exit 2
     so="$(/opt/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["platlib"])' 2>/dev/null || true)"
     so="$(compgen -G "${so:-/nonexistent}/hailo_platform/pyhailort/_pyhailort*.so" | head -1 || true)"
     hailo_check_pyext "${so:-/opt/venv/<no _pyhailort*.so>}" "${TARGET_ARCH:-amd64}" "${ipo}" \
@@ -291,6 +295,9 @@ install_pyhailort() {
       warn "pyhailort installed but 'import hailo_platform' fails on Python 3.14 (upstream declares <3.14)"
     fi
   else
+    printf '%s\n' "${out}" | tail -n 20 >&2
+    [ "${ipo}" = upstream ] \
+      || die "pyhailort: installing $(basename "${wheel}") into /opt/venv failed, so the module that ships is unchecked (HAILO_PYHAILORT_IPO=upstream only warns)"
     warn "pyhailort wheel staged at ${wheel}; install into /opt/venv failed"
   fi
 }
