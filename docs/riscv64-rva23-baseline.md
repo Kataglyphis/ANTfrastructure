@@ -76,8 +76,8 @@ that disable works around an NDK-clang bug with sizeless RVV types, not a
 platform choice.
 
 TVM and IREE still need a codegen-target change rather than a compile flag —
-their shipped compilers emit code at runtime. That is open; see
-docs/refactoring-backlog.md.
+their shipped compilers emit code at runtime. That is open: CON24 in the root
+[`BACKLOG.md`](../BACKLOG.md).
 
 ## The gate
 

@@ -16,7 +16,8 @@ without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary (only the prefixes this OPEN file still uses): **F#**=the size and
-duplication registers; **CON#**=an image gap a consumer lane hit.
+duplication registers. Image gaps (**CON7** onwards) live in the root
+[`BACKLOG.md`](../BACKLOG.md).
 Everything else is archive-only: **CON1–CON6** closed 2026-09-17/18 (the consumer
 issues, the last one measured and aligned at Flutter 3.47.4), **EX** closed on
 2026-09-07/09 (the extent gates scan `linux/llm-stack` and froze its rows),
@@ -28,8 +29,7 @@ Last groomed: **2026-09-18, after CON4's Windows half was measured, the
 dependency wave landed and the two owner questions were answered** — every closed
 narrative moved to
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md) and the
-CHANGELOG. What stays here is **two registers**, plus **four image gaps**
-(CON7–CON10) opened on 2026-09-24. Every
+CHANGELOG. What stays here is **two registers**. Every
 earlier grooming's warning still applies: **re-derive; do not trust a number
 here, including these.**
 
@@ -108,62 +108,6 @@ number growing is the gate succeeding.
 finish-args block, 797 → 851); the row carries the NOT-a-split reason and the seam
 that kept it that way. Record in
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
-
-### CON7. The published arm64 image predates the native GCC's libsanitizer [S, ★★]
-
-**Fixed in source, not shipped.** AccelerANTgine's `Linux arm64 · build + test`
-(run 36045732850, 2026-09-24) fails its `gcc` job at `absl/base/internal/dynamic_annotations.h:369:10:
-fatal error: sanitizer/common_interface_defs.h: No such file or directory`, and its
-`clang` job in the same run passes. That is the symptom e2de5852 fixed
-(`_gcc_extra_target_libs` in `linux/scripts/02-toolchain/build-gcc.sh`;
-[`cross-build-verification.md` § The native GCC ships libsanitizer](cross-build-verification.md#the-native-gcc-ships-libsanitizer)),
-at 2026-09-24 04:43 UTC. The newest published `:latest`/`:latest-cross` index is from
-2026-09-23 01:18 UTC (`latest-arm64` 2026-09-22 20:57), so no published image has it.
-**Close by** rebuilding and publishing the Linux images (a push: the owner's call),
-then re-running that lane. Pass = its `gcc` job compiles the abseil TU and links ASan.
-
-### CON8. arm64: CMake with the image's GCC does not find libX11 [M, ★★]
-
-**Symptom.** BeschleunigerBallett's `Linux arm64 · build + test` (run 36042437555,
-4905b935): both GNU 16.2.0 presets, `linux-profile-GNU` and `linux-debug-GNU`, stop at
-configure with GLFW's `Including X11 support`, then `Could NOT find X11 (missing:
-X11_X11_LIB)`. The same run's `linux-debug-clang` (Clang 23.1.1), same image, same
-runner, prints `Found X11: /usr/include`. The library is there; the GCC configure misses it.
-**Hypothesis, unverified.** FindX11's `find_library` searches `<prefix>/lib/<arch>`
-only once CMake has derived `CMAKE_LIBRARY_ARCHITECTURE`, and it derives that from the
-compiler's implicit link directories. arm64's `cc` is the Canadian-native GCC (CON7's
-section), no hub GCC is configured with `--enable-multiarch`, and
-`linux/scripts/01-core/cross-meson.sh` already sets `CMAKE_LIBRARY_ARCHITECTURE` by
-hand for the hub's own cross builds. No lane configures X11 with amd64's GCC, so
-whether amd64 shares this is unknown.
-**First step, before choosing a fix:** in the arm64 image, configure a two-line
-project (`project(p C)` and `message(STATUS "arch=${CMAKE_LIBRARY_ARCHITECTURE}")`)
-once with `CC=gcc` and once with `CC=clang`, and read `gcc -print-search-dirs`. Then
-choose between the compiler reporting the multiarch directory and consumers passing
-`CMAKE_LIBRARY_ARCHITECTURE`.
-
-### CON9. Windows: the patched LLVM ships no `clang_rt.profile` [M, ★]
-
-`windows/scripts/build/Build-LlvmFromSource.ps1` sets `COMPILER_RT_BUILD_PROFILE=OFF`
-("profile fails to compile under clang-cl"), so `-fprofile-instr-generate` cannot
-link with the image's clang-cl. BeschleunigerBallett's ClangCL presets stopped at
-`Coverage was requested, but the clang-cl profile runtime is missing` (run
-36042436962) and turned coverage OFF on 2026-09-24. Coverage is now measured on the
-Linux lanes only. **Close by** building the profile runtime (re-diagnose the compile
-failure first), then set BeschleunigerBallett's `myproject_ENABLE_COVERAGE` in
-`x64-ClangCL-Windows-Base` back to ON.
-
-### CON10. Windows: the patched LLVM ships no clang-tidy [M, ★]
-
-The same script's `LLVM_ENABLE_PROJECTS=clang;lld` builds no `clang-tools-extra`, so
-no `clang-tidy.exe` sits beside the image's compiler, and a foreign one cannot read
-its BMIs. AccelerANTgine run 36008508666 ran scoop's and failed with `module file
-'…kataglyphis.config_loader.pcm' built from a different branch () than the compiler`.
-AccelerANTgine now uses the compiler's own clang-tidy when there is one, and otherwise
-skips every TU that imports a module, which leaves its six self-contained `.ixx`
-interfaces. **Close by** adding `clang-tools-extra` to the project list (a longer
-LLVM build), then check that AccelerANTgine's step picks the compiler's own tidy
-and covers every TU.
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
 `gh auth setup-git` + HTTPS remotes, and ten of the thirteen files in
