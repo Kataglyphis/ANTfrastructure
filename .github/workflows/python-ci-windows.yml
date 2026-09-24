@@ -190,7 +190,7 @@ jobs:
       # tree the build never touched. The checkout therefore takes the
       # submodules itself, recursively - the input the action was missing.
       - name: Prepare Windows container host
-        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
         with:
           image: ${{ inputs.image }}
           registry-username: Kataglyphis
@@ -211,7 +211,7 @@ jobs:
       # PowerShell 5.1 cannot load them, which is how one caller's lane used to
       # fail with an opaque Import-Module error.
       - name: Run container
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
         with:
           image: ${{ inputs.image }}
           mount-source: ${{ github.workspace }}

@@ -6,10 +6,12 @@ cross-repo with the fully-qualified path:
 
 ```yaml
 - name: Cleanup disk space
-  uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@main
+  uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@develop
 ```
 
-Pin `@main` for latest, or `@<sha>` for reproducibility.
+The fleet pins `@develop` (owner directive 2026-09-25): `main` is a release
+branch that lags it, and its `versions.env` still names the retired
+`:latest-cross`. Pin `@<sha>` for reproducibility.
 
 ## Available actions
 
@@ -256,7 +258,7 @@ newlines cannot be expressed in the per-line inputs.
 
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
 edit here and the 84 consumer call sites (counted 2026-09-14) that resolve these
-actions at `@main` - which the submodule pin does not freeze. It `uses:` all
+actions at `@develop` - which the submodule pin does not freeze. It `uses:` all
 twelve directories here, and it fires on any change under `.github/actions/`.
 Read its header before trusting a green run; the short version:
 

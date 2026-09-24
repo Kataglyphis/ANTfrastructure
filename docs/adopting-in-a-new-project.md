@@ -19,8 +19,8 @@ git submodule update --init --recursive
 
 Everything below assumes that path. Consumers pin a commit like any other
 submodule; bump the pin and the consuming change in the same commit, and push
-ANTfrastructure `main` **before** the consumer, because CI resolves composite
-actions at `@main`.
+ANTfrastructure `develop` **before** the consumer, because CI resolves composite
+actions at `@develop` (§ 6 says why not `@main`).
 
 ## Submodule maintenance
 
@@ -31,7 +31,7 @@ git submodule update --remote --merge --recursive
 ```
 
 Commit the resulting pointer change together with the consuming change, and push
-ANTfrastructure `main` **first** — CI resolves composite actions at `@main`.
+ANTfrastructure `develop` **first** — CI resolves composite actions at `@develop`.
 
 ### Resolving a submodule conflict on merge
 
@@ -313,7 +313,12 @@ holding defaults and hooks.
 
 Composite actions live in [`.github/actions/`](../.github/actions/README.md)
 and are referenced from a consumer workflow as
-`Kataglyphis/ANTfrastructure/.github/actions/<name>@main`:
+`Kataglyphis/ANTfrastructure/.github/actions/<name>@develop`.
+
+**`@develop`, not `@main`** (owner directive 2026-09-25). Work lands on
+`develop`; `main` is a release branch that lags it, and its `versions.env` still
+names the retired `:latest-cross`, so an action at `@main` pulls an image no
+release moves any more. The same ref applies to the reusable workflows below.
 
 All twelve, with every input and output, are listed once in
 [`.github/actions/README.md`](../.github/actions/README.md) — that page is the
@@ -333,9 +338,9 @@ the move dies late with `hcsshim::ImportLayer 0x70` (measured; see
 Two lanes are reusable workflows rather than actions: `lint-gates.yml` (the
 consumer lint gates, § 9) and `submodule-pins.yml` (the pin suite, § 9), both
 called with
-`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@main`.
+`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`.
 
-Because actions resolve at `@main`, a consumer workflow change that depends on
+Because actions resolve at `@develop`, a consumer workflow change that depends on
 an action change requires the ANTfrastructure push to land first.
 
 ### Workflow file names and display names
@@ -355,7 +360,7 @@ included.
   shared lanes are `Lint gates`, `Submodule pins`, `CodeQL` and `Docs · …`; a
   consumer's reusable workflow is `<Platform> · reusable build`.
 - **This hub's reusable workflows keep their file names.** Every consumer calls
-  them as `Kataglyphis/ANTfrastructure/.github/workflows/<file>@main`, so a
+  them as `Kataglyphis/ANTfrastructure/.github/workflows/<file>@develop`, so a
   rename breaks the fleet at once. Only their display names changed, and they
   end in `(reusable)`: `Docs · build (reusable)`, `Lint gates (reusable)`,
   `Python CI · Linux (reusable)`, `Python CI · Windows (reusable)`,
@@ -555,7 +560,7 @@ four things and gets all of it:
    [`shared-script-libraries.md`](shared-script-libraries.md) § run-lint-gates.sh.
    Keep a ~5-line `scripts/linux/run-lint-gates.sh` wrapper so the dev-box
    command and the CI step are the same string, and call the reusable lane from
-   CI: `jobs: lint: uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@main`
+   CI: `jobs: lint: uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop`
    (inputs: `exclude`, `submodules`, `hub-checkout` for a consumer without a
    submodule). Add `--ratchets` once the eight `<gate>.allow` freeze files are
    seeded and committed; that switches on the measurement gates (code size,
@@ -564,7 +569,7 @@ four things and gets all of it:
    own shell.
 3. **The pin suite.** `Submodule.Pins.Tests.ps1` asserts every submodule sits at
    its recorded, remotely reachable commit; consumers call
-   `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@main`
+   `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop`
    (the AGENTS.md template's § 3 names the suite) instead of copying the job.
 4. **Python repos** get the whole CI surface from the reusable
    `python-ci-linux.yml` / `python-ci-windows.yml` workflows —

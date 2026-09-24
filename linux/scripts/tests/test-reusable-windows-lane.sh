@@ -11,20 +11,22 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-LANE="${ROOT}/.github/workflows/python-ci-windows.yml"
+LANE_REL=".github/workflows/python-ci-windows.yml"
+LANE="${ROOT}/${LANE_REL}"
 
 t_case "the lane file is where preflight and every consumer expect it"
 t_assert_ok test -f "${LANE}"
 
 # _q <python-expression> -- prints one line, evaluated against the parsed lane.
 # `lane`, `jobs`, `inputs` and `job` are in scope; V.value unwraps the loader's
-# (value, line) pairs.
+# (value, line) pairs. Python runs in ROOT and gets RELATIVE paths: a Git Bash
+# path (/c/...) means nothing to a native Windows python3, so it failed there.
 _q() {
-  python3 -c "
+  (cd "${ROOT}" && python3 -c "
 import sys, pathlib
-sys.path.insert(0, '${ROOT}/linux/scripts')
+sys.path.insert(0, 'linux/scripts')
 import verify_workflow_conventions as V
-lane = V.load_yaml(pathlib.Path('${LANE}'))
+lane = V.load_yaml(pathlib.Path('${LANE_REL}'))
 jobs = V.value(lane, 'jobs') or {}
 call = V.value(V.value(lane, 'on'), 'workflow_call')
 inputs = V.value(call, 'inputs') or {}
@@ -32,11 +34,11 @@ secrets = V.value(call, 'secrets') or {}
 job = V.value(jobs, 'lint-powershell')
 build = V.value(jobs, 'build-test-python-package-on-windows')
 steps = V.value(job, 'steps') if job else []
-raw = pathlib.Path('${LANE}').read_text(encoding='utf-8')
+raw = pathlib.Path('${LANE_REL}').read_text(encoding='utf-8')
 def run_text():
     return '\n'.join(str(V.value(s, 'run') or '') for s in (steps or []))
 print($1)
-" 2>&1
+" 2>&1)
 }
 
 # _raw_has <literal> -- True when the lane's TEXT contains it. The lint step's

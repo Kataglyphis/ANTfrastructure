@@ -6,7 +6,7 @@
 #
 #   jobs:
 #     lint:
-#       uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@main
+#       uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop
 #
 # and keeps its ~5-line scripts/linux/run-lint-gates.sh wrapper for the dev-box
 # command; the CI step and the wrapper drive the same aggregator with the same
@@ -86,7 +86,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Kataglyphis/ANTfrastructure
-          ref: main
+          ref: develop
           path: antfrastructure-tools
 
       # uvx is how the aggregator runs ruff; the runner carries no uv.

@@ -189,7 +189,7 @@ jobs:
       # a copy of the retry loop, so the retry count and timeout live in one
       # place for every repo instead of drifting per workflow.
       - name: Prepare CI host
-        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           registry-username: Kataglyphis
@@ -198,7 +198,7 @@ jobs:
           submodules: recursive
 
       - name: Python static analysis
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -207,7 +207,7 @@ jobs:
             '${{ matrix.arch }}' '${{ inputs.static-analysis-python-version }}'"
 
       - name: Run Python tests
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -224,7 +224,7 @@ jobs:
 
       - name: Build Docs
         if: ${{ matrix.arch == 'x64' }}
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
@@ -234,11 +234,11 @@ jobs:
 
       # The docs are built as root inside the container; deploy-over-ftp owns
       # the readability fixup, the pin, the trailing-slash normalisation and the
-      # empty-tree refusal (docs/ftp-deploys.md). Named at @main: a workflow_call
+      # empty-tree refusal (docs/ftp-deploys.md). Named at @develop: a workflow_call
       # workflow runs in the CALLER's checkout, where ./ does not resolve here.
       - name: 📂 Sync files to domain
         if: ${{ matrix.arch == 'x64' && inputs.deploy-docs }}
-        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
@@ -246,7 +246,7 @@ jobs:
           local-dir: ${{ inputs.docs-artifact-path }}
 
       - name: Packaging application
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@main
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: --platform ${{ matrix.platform }}
