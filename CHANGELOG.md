@@ -35,8 +35,10 @@ killed job printed nothing the gate had found, because the report was buffered.
   is a FAIL. Real tree, CI-parity container: gawk 10.1 s → 0.7 s.
 - **`test-critical-fixes.sh`** builds the fixture once, `cp -a`s it per row, and runs only
   the knocked-out fix, extracted with `t_fn_src`; a case proves the extraction prints
-  exactly what the gate prints. 52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired
-  runs). All 74 entries bite. The gate's serial cost: 8348 s → 4777 s.
+  exactly what the gate prints, and the fix11 Cargo case still runs the real gate, so a
+  FAIL is proven to reach its exit code (`critical-fixes.summary-reaches-exit`).
+  52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired runs). All 75 entries bite.
+  The gate's serial cost: 8348 s → 4777 s.
 - **The mutation gate is its own CI job, in four shards.** `preflight` runs with
   `PREFLIGHT_SKIP=mutations`; the `mutations` job (matrix `shard: [0, 1, 2, 3]`, 30 min,
   same setup steps) runs `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4`, which
