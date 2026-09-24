@@ -101,6 +101,9 @@ mutation-family:linux-lane
 mutation-family:lint-gates
 mutation-family:ci-image-ref
 mutation-family:consumer-inventory
+# windows/scripts/patches/ffmpeg/makedef writes every FFmpeg DLL's EXPORTS list: an
+# ordinary build input no slug owns. Proof: linux/scripts/tests/test-ffmpeg-makedef.sh.
+mutation-family:ffmpeg-makedef
 
 # renovate-local.sh and the modules beside it are the family's dependency-upgrade
 # tool -- an ordinary script no preflight slug owns, proved by three suites of

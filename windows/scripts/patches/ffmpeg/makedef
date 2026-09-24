@@ -10,6 +10,10 @@
 #  * The msvc toolchain invokes this with SLIB_CREATE_DEF_INPUTS=@target.objs —
 #    a RESPONSE FILE listing the objects — which must be read, not treated as
 #    an object itself.
+#  * An empty dump or export list is REFUSED, never written: the DLL would export
+#    nothing and every library linking it fails later on undefined symbols, far
+#    from the cause (the rocm lane's avutil-61.dll, 2026-09-24). LLVM_NM names the
+#    compiler's own llvm-nm (Build-FfmpegFromSource.ps1); bare llvm-nm is the fallback.
 
 vscript=$1
 shift
@@ -18,6 +22,9 @@ if [ ! -f "$vscript" ]; then
     echo "Version script does not exist: $vscript" >&2
     exit 1
 fi
+
+nm="${LLVM_NM:-llvm-nm}"
+nm_errors="${vscript}.nm-errors"
 
 # Glob patterns from the global: section (semicolon-separated, may span lines)
 pats=$(sed -n '/global:/,/local:/p' "$vscript" \
@@ -33,15 +40,32 @@ objs=$(for a in "$@"; do
            esac
        done | sed -e '/^[[:space:]]*$/d')
 
-# Global defined symbols from all objects (xargs batches the command lines)
+# Global defined symbols from all objects (xargs batches the command lines).
+# stderr is kept, not discarded: it is the only evidence when the dump is empty.
 dump=$(printf '%s\n' "$objs" \
-        | xargs llvm-nm --defined-only -g 2>/dev/null \
+        | xargs "$nm" --defined-only -g 2>"$nm_errors" \
         | awk 'NF>=3 {print $3}' \
         | sed -e "s/^${EXTERN_PREFIX}//" \
         | sort -u)
 
+if [ -z "$dump" ]; then
+    count=$(printf '%s\n' "$objs" | grep -c .)
+    echo "makedef: '$nm' listed no global symbol in $count object(s) for $vscript;" \
+         "refusing to write an empty EXPORTS list. Its stderr ($nm_errors):" >&2
+    head -n 20 "$nm_errors" >&2
+    exit 1
+fi
+
+exports=$(for p in $pats; do
+              rx=$(printf '%s' "$p" | sed -e 's/\./\\./g' -e 's/\*/.*/g')
+              printf '%s\n' "$dump" | grep -E "^${rx}\$" || true
+          done | sort -u)
+
+if [ -z "$exports" ]; then
+    echo "makedef: no global symbol matches the patterns of $vscript ($(printf '%s ' $pats));" \
+         "refusing to write an empty EXPORTS list" >&2
+    exit 1
+fi
+
 echo "EXPORTS"
-for p in $pats; do
-    rx=$(printf '%s' "$p" | sed -e 's/\./\\./g' -e 's/\*/.*/g')
-    printf '%s\n' "$dump" | grep -E "^${rx}\$" || true
-done | sort -u | sed 's/^/    /'
+printf '%s\n' "$exports" | sed 's/^/    /'

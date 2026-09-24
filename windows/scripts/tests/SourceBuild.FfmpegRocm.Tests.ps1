@@ -310,6 +310,29 @@ CONFIG_COLOR_VULKAN_FILTER=yes
     }
 }
 
+Describe 'Get-FfmpegLlvmNm (makedef lists exports with the compiler''s own llvm-nm)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'Get-FfmpegLlvmNm')
+
+    It 'returns the llvm-nm.exe beside the resolved clang-cl, not one found on PATH' {
+        Invoke-InTestDir {
+            param($dir)
+            Write-FfRocmTestFile (Join-Path $dir 'bin\clang-cl.exe')
+            Write-FfRocmTestFile (Join-Path $dir 'bin\llvm-nm.exe')
+            Assert-Equal (Join-Path $dir 'bin\llvm-nm.exe') (Get-FfmpegLlvmNm (Join-Path $dir 'bin\clang-cl.exe')) 'the sibling of the compiler'
+        }
+    }
+
+    It 'throws when the compiler has no llvm-nm beside it (mutation)' {
+        # On the rocm lane (2026-09-24) makedef dumped no symbol and wrote an empty EXPORTS
+        # list; avutil-61.dll exported nothing and every library linking it failed.
+        Invoke-InTestDir {
+            param($dir)
+            Write-FfRocmTestFile (Join-Path $dir 'bin\clang-cl.exe')
+            Assert-Throws { Get-FfmpegLlvmNm (Join-Path $dir 'bin\clang-cl.exe') } 'no llvm-nm must stop the build before makedef runs'
+        }
+    }
+}
+
 Describe 'Get-FfmpegRocmLeak (TheRock never reaches the non-CMake configure)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'Get-FfmpegRocmLeak')
     $script:cleanMak = "SRC_PATH=/c/temp/ffmpeg-src/FFmpeg-n9.0.2`nCC=clang-cl`nEXTRALIBS-avutil=user32.lib bcrypt.lib"

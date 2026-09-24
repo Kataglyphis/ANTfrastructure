@@ -6883,6 +6883,38 @@
     "why": "a .psm1 in a test tree is a fixture that exists to be absent from the hub; counting it as the consumer's own would hide a genuinely dangling module name"
   },
   {
+    "id": "ffmpeg-makedef.empty-dump-refused",
+    "target": "windows/scripts/patches/ffmpeg/makedef",
+    "find": "if [ -z \"$dump\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
+    "why": "an llvm-nm that lists nothing must stop the recipe with its stderr; written as an empty EXPORTS list, the DLL exports nothing and every library linking it fails on undefined symbols (the rocm lane's avutil-61.dll, 2026-09-24)"
+  },
+  {
+    "id": "ffmpeg-makedef.empty-exports-refused",
+    "target": "windows/scripts/patches/ffmpeg/makedef",
+    "find": "if [ -z \"$exports\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
+    "why": "globs that match no symbol are the same empty DLL by another route; refusing only the empty dump would leave this one silent"
+  },
+  {
+    "id": "ffmpeg-makedef.nm-stderr-kept",
+    "target": "windows/scripts/patches/ffmpeg/makedef",
+    "find": "        | xargs \"$nm\" --defined-only -g 2>\"$nm_errors\" \\",
+    "replace": "        | xargs \"$nm\" --defined-only -g 2>/dev/null \\",
+    "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
+    "why": "llvm-nm's stderr is the only evidence of why the dump is empty; discarding it is how the rocm failure surfaced forty seconds later as a link error with no cause"
+  },
+  {
+    "id": "ffmpeg-makedef.llvm-nm-override",
+    "target": "windows/scripts/patches/ffmpeg/makedef",
+    "find": "nm=\"${LLVM_NM:-llvm-nm}\"",
+    "replace": "nm=\"llvm-nm\"",
+    "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
+    "why": "the build hands makedef the compiler's own llvm-nm; a bare llvm-nm is whatever bash finds first on a PATH that puts scoop's shims ahead of the compiler"
+  },
+  {
     "id": "consumer-inventory.empty-class-is-refused",
     "target": "linux/scripts/verify_consumer_inventory.py",
     "find": "        if not hits:",
