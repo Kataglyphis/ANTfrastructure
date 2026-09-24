@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - A mutation-gate timeout on a Windows host is a verdict, not a crash
+
+- **`verify_mutations.py`**: `_run_test` killed a timed-out test's tree with `os.killpg`,
+  which a Windows python does not have, so the first slow test there ended the whole gate
+  in an `AttributeError` with no verdicts (seen on the pre-push gate of 2026-09-24, on
+  `test-web-lane-tools.sh` under parallel load). Without process groups it now runs
+  `taskkill /T` on the shell's tree. On Linux nothing changes.
+- **`test-mutation-gate.sh`**: the timeout case asserts the verdict and the absence of a
+  traceback on every host; only its grandchild check stays POSIX-only. Measured on Git
+  Bash: fails before the fix, passes after (98/98 with `MSYS=winsymlinks:nativestrict`,
+  which the suite's symlink cases need there). No mutation entry: CI's Linux python has
+  `os.killpg`, so a mutant of the Windows branch could not bite there.
+
+
 ## 2026-09-24 - The doc-links git-free floor works under a Windows python
 
 - **`verify_doc_links.py`**: `_static_ignores` compared `str(path)` with the `/`-spelled

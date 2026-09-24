@@ -330,7 +330,8 @@ t_case "a test that times out is killed as a TREE, its grandchildren with it"
 # A test that forks a sleeper, records its pid, then spins past the entry's
 # timeout. Killing only the shell left the sleeper (and, in the real gate, a
 # whole pytest) running: one such orphan burned CPU for twenty minutes.
-if _posix_host "process groups (os.killpg)"; then
+# The timeout itself is a verdict on EVERY host: a Windows python has no
+# os.killpg, and the gate used to crash there on the first slow test.
 _fixture "GUARD=on" "GUARD=off" yes .
 # Green unmutated, spinning once the guard is gone: a probe that ALWAYS spins
 # fails its own baseline and is reported vacuous before the kill is exercised.
@@ -338,11 +339,13 @@ printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpi
 printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":2}]\n' > "${_work}/m.json"
 _out="$(_iso_run)"
 t_assert_contains "${_out}" "bites" "the spinning mutant times out, and a timeout counts as a bite"
+t_assert_fails grep -q -e 'Traceback' <<<"${_out}"
+if _posix_host "process groups (os.killpg)"; then
 sleep 1
 _g="$(cat "${_tmp}/gpid" 2>/dev/null)"
 t_assert_eq "dead" "$( kill -0 "${_g}" 2>/dev/null && echo alive || echo dead )" "the sleeper grandchild must not survive the timeout"
-kill -9 "${_g}" 2>/dev/null; rm -f "${_tmp}/gpid"
 fi
+kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null; rm -f "${_tmp}/gpid"
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 

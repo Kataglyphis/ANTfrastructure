@@ -171,6 +171,8 @@ def _run_test(cmd, root, timeout):
     pytest which spawns a candidate left the grandchildren alive when the gate
     was interrupted -- one orphan burned CPU for twenty minutes beside the
     timing-sensitive tests of the next run. Own session, then kill the group.
+    A Windows python has no process groups (os.killpg is missing and the
+    first timeout crashed the gate): taskkill /T walks the same tree there.
     Returns (returncode, timed_out).
     """
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
@@ -179,10 +181,14 @@ def _run_test(cmd, root, timeout):
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, False, (err or "") + (out or "")
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        if hasattr(os, "killpg"):
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        else:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                           capture_output=True, check=False)
         proc.kill()
         proc.communicate()
         return None, True, ""
