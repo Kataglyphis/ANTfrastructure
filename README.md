@@ -150,7 +150,7 @@ Accelerators whose runtime fits the default image are built into it instead:
 
 | Accelerator | In `:latest` | Arches |
 |---|---|---|
-| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS) | always | amd64, arm64 (riscv64: no upstream support) |
+| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS, pyhailort: `import hailo_platform` works in images built since 2026-09-24, [`docs/hailo-support.md`](docs/hailo-support.md#pyhailort)) | always | amd64, arm64 (riscv64: no upstream support) |
 | Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) - **the current release was built without it** | arm64 |
 | NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
 

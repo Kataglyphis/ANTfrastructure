@@ -663,6 +663,9 @@ The rules an agent must never violate:
    - Degrade, never disable: prefer `01-core/sccache-launcher.sh`, accept bare
      `sccache`, and treat "uncached" as a bug. `RUSTC_WRAPPER=""` is the one
      documented opt-out.
+   - A build that runs its own compiles under `env -i` is out of the resolver's
+     reach. HailoRT's nested protobuf build is the known case: `hailo-build-lib.sh`
+     carries the cache into it, and a gate fails a build the cache did not reach.
    `--ccache` is a flag NAME, not a tool choice. Before a multi-hour run rides on
    a change here, `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the
    compiler image answers in seconds whether a cache was actually consulted â€”
@@ -816,6 +819,15 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   chain whose android tag is published (every one on the amd64 cross host). Never
   "fix" that by re-exporting the layout; changing the ref it reads is the owner's call:
   [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
+- **The Hailo build has two switches; keep both** (2026-09-24).
+  `HAILO_NESTED_CACHE=carry` (default) carries the compiler cache into the protobuf
+  build HailoRT runs under `env -i`, and fails a `carry` build the cache did not reach;
+  `off` is the old uncached build. `HAILO_PYHAILORT_IPO=off` (default) patches out
+  upstream's forced LTO, so pyhailort is a real module, checked on the wheel and on
+  `/opt/venv`; `upstream` is the old empty module. Never soften either check under its
+  default, and keep the code in `03-media/build/hailo/`, outside `01-core`, so a
+  change there re-keys only the wrapper's Hailo RUN:
+  [`hailo-support.md`](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`
   on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and

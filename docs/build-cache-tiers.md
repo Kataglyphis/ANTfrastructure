@@ -1041,6 +1041,7 @@ The rules an agent must never violate:
 | `ENABLE_SCCACHE_CUDA` | `0` | sccache as the CUDA/HIP compiler launcher (§ 5.4) |
 | `USE_CCACHE` / `USE_SCCACHE` / `USE_LLD` | `true` | per-tool switches in `compiler-cache.sh`; note § 5.3 item 3 |
 | `WEB_LANE_TOOLS_CACHE` | `on` | `refresh` rebuilds past the web-lane tool cache and re-stores; `off` bypasses it (§ 1.2) |
+| `HAILO_NESTED_CACHE` | `carry` | `off` builds the protobuf that HailoRT's configure compiles under `env -i` without the cache, as before 2026-09-24 ([two switches](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches)) |
 
 `CROSS_REGISTRY_CACHE` is deliberately **not** in this table. The T4 pilot knob
 was written and reverted, nothing in `cross-stage-build.sh` reads it, and

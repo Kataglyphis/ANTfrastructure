@@ -154,6 +154,8 @@ caller, and its in-image consumers load it via `source_module`.
 
 `lib-runtime-wheels.sh` (`RUNTIME_WHEELS_SOURCE`) is sourced by `lib-orchestrator.sh` at top level, right after `artifact-common.sh`. It sits beside `01-core`, not in it, because `01-core` is in the compiler image's closure and this file is host-only. `append_wrapper_build_args` calls into it only while `RUNTIME_WHEELS_EXPORT_ROOT` is set, which only its own `runtime_wheels_setup` does ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
+`03-media/build/hailo/hailo-build-lib.sh` is sourced there too, right after it, for one function: `hailo_validate_knobs`, which the chain and both runtime orchestrators call before they build anything. The same file is the Hailo build's own library inside the wrapper image, so it sets no shell options and runs nothing at load, and a change to it re-keys only the wrapper's Hailo RUN ([two switches](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches)).
+
 **Which loader a NEW script should use (the dual-loader rule):** scripts that
 also execute INSIDE containers (bind-mounted or COPY'd — base-image, 02-toolchain,
 03-media, 06-packaging) load via `modules.sh` / `source_module`, which resolves

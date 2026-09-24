@@ -411,10 +411,13 @@ for a stack that cannot ship in `:latest`). Design, upstream matrix and pins:
 | --- | --- |
 | `linux/Dockerfile.torch` | The Hailo `RUN` in the standard wrapper: builds the payload natively in the runtime image (amd64/arm64; riscv64 skips) |
 | `linux/scripts/03-media/build/hailo/build-hailort.sh` | Verified sources → offline CMake build → self-checks (`hailortcli --version`, `gst-inspect-1.0 hailonet`) |
+| `linux/scripts/03-media/build/hailo/hailo-build-lib.sh` | The build's two switches, `HAILO_NESTED_CACHE` and `HAILO_PYHAILORT_IPO`, and the checks behind them |
 | `linux/scripts/01-core/versions.env` | `HAILORT_*`, `HAILO_PROTOBUF_*`, `TAPPAS_*` pins (also the Dockerfile ARG defaults) |
 
 **Build:** the normal chain (`make cross-build`, or `build-cross-chain.sh`) —
-nothing Hailo-specific to run.
+nothing Hailo-specific to run. Two switches pick between the default (the
+cached nested build, a real pyhailort) and the build as it was before
+2026-09-24: [`hailo-support.md`](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
 
 **Run:**
 

@@ -77,6 +77,7 @@ main() {
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_PREFIX}"
   runtime_wheels_setup || exit $?
+  hailo_validate_knobs || exit 2
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
