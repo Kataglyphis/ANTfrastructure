@@ -1300,6 +1300,30 @@ use, which is how a consumer's `-e CCACHE_DIR=/some/mount` keeps working.
 Layer cost: none. This is an ENV change, so nothing is copied up and no file
 metadata is rewritten.
 
+**One build in this image's lineage does compile through the launcher** (since the
+Hailo fold-in, 2026-09-20): the Hailo `RUN` in `Dockerfile.torch` builds HailoRT,
+pyhailort, libzmq and TAPPAS on the `ccache-<arch>` and `sccache-<arch>` cache mounts.
+The paragraph above says nothing after the package ENV does; that stopped being true
+there. Base's caps do not reach that `RUN` either, for the same rootfs-handoff reason,
+so `compiler-cache.sh`'s 10G defaults applied. An sccache server trims its directory to
+its own cap on its first compile (the design probe of 2026-09-23 saw an 8 MiB cap cut a
+41 MiB directory to 8 MiB), and `ccache -M 10G` rewrote the shared `ccache.conf`. The
+`RUN` mounts `sccache-${TARGETARCH}` and `ccache-${TARGETARCH}`, the ids every cross
+stage mounts for the arch `CROSS_BUILD_PLATFORM` names. On that arch the Hailo `RUN`
+shares the chain's own cache and could shrink it: amd64 on the cross host, arm64 on the
+Jetson (`CROSS_BUILD_PLATFORM=linux/arm64`). Only an arch the runtime lane builds under
+QEMU, such as arm64 on the cross host, has mounts no cross stage uses. riscv64 skips the
+Hailo build and never writes its mounts.
+
+`SCCACHE_CONF` does not set the cap: with `SCCACHE_DIR` set, sccache takes its disk
+settings from the environment and ignores the size in the file. Only
+`SCCACHE_CACHE_SIZE` does (the same probe: 10 GiB with the file, 30 GiB with the
+variable). Since 2026-09-24 the Hailo `RUN` passes `SCCACHE_CACHE_SIZE=30G` and
+`CCACHE_MAXSIZE=30G`, and `tests/test-hailo-build.sh` pins them to `Dockerfile.base`;
+its `[CACHE] hailo/<phase>` lines print `cap=30 GiB`. `compiler-cache.sh` keeps its 10G
+defaults: changing them is an `01-core` edit, which re-keys the chain from the compiler
+stage.
+
 ## The shipped image carries no build-host setting
 
 **A published image's environment names nothing outside the container** (both lanes,
