@@ -26,10 +26,14 @@ resolve outside the tree, and a symlink is therefore refused as a mutation targe
 fixtures).
 
 Every mutation is still proven on its own, but --jobs of them run at once, each
-shard in its own mirror; the report is reassembled in manifest order.
+shard in its own mirror. Each verdict is printed, flushed and tagged [j/J] with
+its shard as soon as its entry completes, so a run killed by a timeout still names
+what it found; the failures are summarised in manifest order at the end.
 
 Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
 the entries whose target -- or whose test file -- is in the diff, plain for all.
+--shard K/N proves entries[K::N] of that selection: CI splits the manifest over N
+jobs this way.
 
 --stale-check runs NO test: it only asks whether every recorded edit still
 applies. That is the half of the manifest that rots on its own, and it costs a
@@ -219,27 +223,45 @@ class Baselines:
 
 
 class Report:
-    """Per-entry output buffer, so shards that finish out of order still read in
-    manifest order."""
+    """Prints each verdict the moment its entry completes, tagged with the shard
+    that proved it, and flushed: Python block-buffers a piped stdout, so the old
+    report -- buffered and printed in manifest order at the end -- showed nothing,
+    not even its header, when CI killed the job at its timeout (2026-09-23).
+    summary() names the failures in manifest order once every shard is done."""
 
     def __init__(self):
-        self.lines = {}
+        self.failed = set()
+        self._lock = threading.Lock()
         self._cur = threading.local()
+
+    def shard(self, tag):
+        self._cur.tag = tag
 
     def entry(self, key):
         self._cur.key = key
-        self.lines[key] = []
 
     def out(self, text):
-        self.lines[self._cur.key].append((sys.stdout, text))
+        self._write(sys.stdout, text)
 
     def err(self, text):
-        self.lines[self._cur.key].append((sys.stderr, text))
+        self.failed.add(self._cur.key)
+        self._write(sys.stderr, text)
 
-    def flush(self, entries):
-        for e in entries:
-            for stream, text in self.lines.get(e["id"], ()):
-                stream.write(text)
+    def _write(self, stream, text):
+        with self._lock:
+            stream.write(getattr(self._cur, "tag", "") + text)
+            stream.flush()
+
+    def summary(self, entries):
+        failed = [e["id"] for e in entries if e["id"] in self.failed]
+        if failed:
+            say("FAILED: %d of %d entr(ies), in manifest order: %s"
+                % (len(failed), len(entries), ", ".join(failed)))
+
+
+def say(text):
+    """One line on stdout, flushed: see Report."""
+    print(text, flush=True)
 
 
 def applicable(entry, root):
@@ -329,9 +351,10 @@ def run_entries(args, entries, report, baselines=None):
     return rc
 
 
-def run_shard(args, entries, root, report, baselines):
+def run_shard(args, entries, root, report, baselines, tag=""):
     local = argparse.Namespace(**vars(args))
     local.root = root
+    report.shard(tag)
     return run_entries(local, entries, report, baselines)
 
 
@@ -351,8 +374,9 @@ def run_shards(args, entries, src, report):
         for root in extra:
             mirror_tree(src, root)
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-            done = [pool.submit(run_shard, args, shard, root, report, baselines)
-                    for shard, root in zip(shards, [args.root] + extra)]
+            done = [pool.submit(run_shard, args, shard, root, report, baselines,
+                                "[%d/%d] " % (n + 1, jobs))
+                    for n, (shard, root) in enumerate(zip(shards, [args.root] + extra))]
             return max(f.result() for f in done)
     finally:
         for root in extra:
@@ -385,6 +409,36 @@ def select_only(entries, only, manifest):
     return [e for e in entries if e["id"] in set(only)]
 
 
+def select_shard(entries, spec):
+    """--shard K/N: entries[K::N], K counted from 0, or SystemExit(2) on a bad spec.
+
+    Deterministic, so N CI jobs over the same manifest prove every entry exactly
+    once between them; test-mutation-gate.sh pins that the slices partition it.
+    """
+    if not spec:
+        return entries
+    try:
+        k, n = (int(x) for x in spec.split("/"))
+    except ValueError:
+        k, n = -1, 0
+    if not 0 <= k < n:
+        sys.stderr.write("ERROR: --shard takes K/N with 0 <= K < N, got %r\n" % spec)
+        raise SystemExit(2)
+    return entries[k::n]
+
+
+def select(args):
+    """The entries this invocation proves: --only, then --changed, then --shard."""
+    entries = select_only(load(args.manifest), args.only, args.manifest)
+    if args.changed:
+        touched = changed_files()
+        # By target OR by the test the entry runs: a commit that only weakens
+        # tests/test_x.py touched no target and selected nothing.
+        entries = [e for e in entries
+                   if e["target"] in touched or any(t in e["test"] for t in touched)]
+    return select_shard(entries, args.shard)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -400,28 +454,23 @@ def main():
                     help="mutations to prove at once, one mirror each (default: %(default)s)")
     ap.add_argument("--stale-check", action="store_true",
                     help="only check that every selected edit still applies; run no test")
+    ap.add_argument("--shard", metavar="K/N",
+                    help="prove only entries[K::N] of the selection (K from 0): one of N CI jobs")
     args = ap.parse_args()
 
-    entries = load(args.manifest)
-    entries = select_only(entries, args.only, args.manifest)
-    if args.changed:
-        touched = changed_files()
-        # By target OR by the test the entry runs: a commit that only weakens
-        # tests/test_x.py touched no target and selected nothing.
-        entries = [e for e in entries
-                   if e["target"] in touched or any(t in e["test"] for t in touched)]
-
+    entries = select(args)
+    scope = " (shard %s: %d entr(ies))" % (args.shard, len(entries)) if args.shard else ""
     if args.stale_check:
-        print("=== mutation staleness: does every recorded edit still apply? ===")
-        print("  %d entr(ies), no test run" % len(entries))
+        say("=== mutation staleness: does every recorded edit still apply?%s ===" % scope)
+        say("  %d entr(ies), no test run" % len(entries))
         rc = run_stale(entries, args.root)
         if rc == 0:
-            print("OK: every recorded mutation still applies to its target")
+            say("OK: every recorded mutation still applies to its target")
         return rc
 
-    print("=== mutation gate: can these tests fail? ===")
+    say("=== mutation gate: can these tests fail?%s ===" % scope)
     if not entries:
-        print("  nothing selected")
+        say("  nothing selected")
         return 0
     report = Report()
     if args.in_place:
@@ -435,9 +484,9 @@ def main():
             rc = run_shards(args, entries, src, report)
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
-    report.flush(entries)
+    report.summary(entries)
     if rc == 0:
-        print("OK: every recorded mutation is caught by its tests")
+        say("OK: every recorded mutation is caught by its tests")
     return rc
 
 

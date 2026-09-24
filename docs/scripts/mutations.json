@@ -2754,10 +2754,10 @@
   {
     "id": "mutations.report-is-printed",
     "target": "docs/scripts/verify_mutations.py",
-    "find": "    report.flush(entries)",
+    "find": "    report.summary(entries)",
     "replace": "    pass",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-    "why": "the shards buffer their verdicts; without the flush a SURVIVED entry sets the exit code but names nothing, and the run says only OK or nothing at all"
+    "why": "verdicts stream in the order the shards finish them; without the closing summary a long log names its failures nowhere in manifest order"
   },
   {
     "id": "pre-commit.pinned-shellcheck-or-refuse",
@@ -10057,5 +10057,69 @@
     "replace": "  elif [ \"${3:-}\" = def ]; then : 'UNPROVEN",
     "test": "bash linux/scripts/tests/test-ort-census.sh",
     "why": "an unfingerprinted ORT under another name must fail, and say why"
+  },
+  {
+    "id": "mutations.verdicts-stream",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "            stream.flush()",
+    "replace": "            pass",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "Python block-buffers a piped stdout: unflushed, a job killed at its timeout loses every verdict it had reached, header included (2026-09-23)"
+  },
+  {
+    "id": "mutations.verdicts-tagged",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "stream.write(getattr(self._cur, \"tag\", \"\") + text)",
+    "replace": "stream.write(text)",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "streamed verdicts arrive in completion order; the shard tag is what says which mirror proved a line"
+  },
+  {
+    "id": "mutations.shard-slices-partition",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    return entries[k::n]",
+    "replace": "    return entries[k::max(n - 1, 1)]",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "N CI jobs prove the manifest only if their slices partition it: an overlap proves entries twice and a gap never proves them"
+  },
+  {
+    "id": "mutations.shard-spec-checked",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "    if not 0 <= k < n:",
+    "replace": "    if n == 0:",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a K outside 0..N-1 selects nothing or the wrong slice, and reads as a green job"
+  },
+  {
+    "id": "mutations.ci-shard-passed-through",
+    "target": "linux/scripts/preflight.sh",
+    "find": " \\\n  ${PREFLIGHT_MUTATION_SHARD:+--shard \"${PREFLIGHT_MUTATION_SHARD}\"}",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "without the pass-through every CI mutations job proves the WHOLE manifest, four times over, into the timeout the split exists to avoid"
+  },
+  {
+    "id": "mutations.ci-shards-cover-the-manifest",
+    "target": ".github/workflows/ubuntu26.04.yml",
+    "find": "        shard: [0, 1, 2, 3]",
+    "replace": "        shard: [0, 1, 2]",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a matrix that stops short of N-1 leaves a quarter of the manifest proven by nobody, green"
+  },
+  {
+    "id": "mutations.ci-preflight-skips-the-slug",
+    "target": ".github/workflows/ubuntu26.04.yml",
+    "find": "run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh",
+    "replace": "run: bash linux/scripts/preflight.sh",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "the whole gate inside the preflight job is what hit its 45-minute timeout on 2026-09-23"
+  },
+  {
+    "id": "mutations.ci-same-setup",
+    "target": ".github/workflows/ubuntu26.04.yml",
+    "find": "      - name: Install pytest (mutation-gate baselines)\n        run: pip install --quiet pytest\n      - name: Install PyYAML (renovate_audit.py's real YAML parser)\n        run: pip install --quiet pyyaml\n      - name: Mutation gate,",
+    "replace": "      - name: Mutation gate,",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "without pytest and PyYAML the baselines fail unmutated and every entry under them reads vacuous (2026-09-07)"
   }
 ]

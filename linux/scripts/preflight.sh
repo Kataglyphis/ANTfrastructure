@@ -223,7 +223,11 @@ run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/sc
 run_check code-complexity "cyclomatic complexity + nesting" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_complexity.py
 run_check dead-functions "dead shell functions" ${PREFLIGHT_PYTHON} linux/scripts/verify_dead_functions.py
 run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
-run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py
+# CI runs this slug as N jobs, each PREFLIGHT_MUTATION_SHARD=K/N; unset, every entry runs.
+# docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
+: "${PREFLIGHT_MUTATION_SHARD:=}"
+run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py \
+  ${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"}
 run_check gate-registry "gate proof registry" ${PREFLIGHT_PYTHON} linux/scripts/verify_gate_registry.py
 
 # The root .cmake-format.yaml is a CONSUMER copy of shared/config's canonical
