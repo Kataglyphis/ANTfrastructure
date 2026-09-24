@@ -396,10 +396,13 @@ OmniAccelerANT Windows lanes went red (runs 35921977157, 35912798986).
 | `SCCACHE_FORCE_LOCAL` | ARG, no default | the hub's own diagnostic switch, read only by `Test-SccacheRemoteConfigured` |
 | `SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_ERROR_LOG`, `SCCACHE_LOG`, `SCCACHE_IDLE_TIMEOUT` | ENV, the runtime defaults | container-local: a path, a size, a log file and level, a timeout. None names a host, so they behave the same on the build host, a runner and a laptop, and the Linux image ships the same set ([`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-images-cache-dirs)) |
 
-The runtime defaults keep their values, so a consumer sees no change beyond the
-removed variables. `Initialize-BuildCacheEnvironment` and `Get-SccacheContainerEnv`
-already override `SCCACHE_DIR` for consumer builds. `SCCACHE_LOG=warn` stays beside
-`SCCACHE_ERROR_LOG` because without a level the error log is never written (#90).
+The runtime defaults keep their values. `Initialize-BuildCacheEnvironment` and
+`Get-SccacheContainerEnv` already override `SCCACHE_DIR` for consumer builds.
+`SCCACHE_LOG=warn` stays beside `SCCACHE_ERROR_LOG` because without a level the error
+log is never written (#90). What a consumer build on the build host does lose is the
+remote tier, which it only ever reached through the leaked ENV; `Invoke-ContainerBuild`
+now forwards it at run time:
+[§ The build host's remote tier, at run time](#the-build-hosts-remote-tier-at-run-time).
 
 **Why every compiling stage redeclares the ARG.** An ARG is in the environment of
 the RUNs of the stage that declares it, and only that stage. The media-core chain
@@ -421,16 +424,21 @@ must see `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage.
   build-host sccache name, an ENV that expands one, a LAN literal in an ENV or ARG
   default, and the missing per-stage ARG above.
 - **Publish, Windows:** `Build-Buildkit.ps1` solves `windows/Dockerfile.publish-gate`
-  against the final tag after the smoke gate and before `-FinalTar`/`-PushRef`.
-  `-SkipSmokeGate` does not skip it. Its one RUN mounts `WindowsImageEnv.Common.psm1`
-  and runs `Assert-ImageEnvPublishable` over the Process, Machine and User scopes.
-  The Process scope is the config's ENV; a RUN that set a Machine variable publishes
-  that too. No ARG follows its FROM, because an ARG would join the environment under
-  test, and it does not run the entrypoint, because VsDevCmd adds variables the image
-  does not carry.
-- **Publish, Linux:** `verify-shipped-wrapper.sh` check 6 reads each wrapper's config
-  ENV (`nerdctl image inspect --platform linux/<arch>`) and runs the same Python
-  matcher; see [`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting).
+  (`Invoke-BkPublishGate`) at three points: on every `BASE_IMAGE` a stage inherits
+  that this run did not build, before that stage solves
+  ([§ An image this run did not build](#an-image-this-run-did-not-build)); on the
+  toolchain right after its solve; and on the final tag after the smoke gate and
+  before `-FinalTar`/`-PushRef`. `-SkipSmokeGate` skips none of them. Its one RUN
+  mounts `WindowsImageEnv.Common.psm1` and runs `Assert-ImageEnvPublishable` over the
+  Process, Machine and User scopes. The Process scope is the config's ENV; a RUN that
+  set a Machine variable publishes that too. No ARG follows its FROM, because an ARG
+  would join the environment under test, and it does not run the entrypoint, because
+  VsDevCmd adds variables the image does not carry.
+- **Publish, Linux:** `_manifest_image_env_gate`, the first thing `create_manifest` in
+  `build-runtime-manifest.sh` does. It reads each wrapper's config ENV (`nerdctl image
+  inspect --platform linux/<arch>`) and runs the same Python matcher. No switch waives
+  it: not `RUNTIME_IMAGE_SMOKE=0`, not `--force`, and `--manifest-only`/`--repair` run
+  it too; see [`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting).
 
 What counts as a leak, identically on both lanes (one case file,
 `linux/scripts/tests/image-env-cases.json`, grades the PowerShell and the Python
@@ -449,9 +457,46 @@ endpoint for every compiling RUN. That is metadata, not configuration, and nothi
 reads it at run time. Moving the endpoint into a secret mount would remove it; that
 is open as backlog #177.
 
+#### An image this run did not build
+
+A stage inherits its parent's config ENV: `FROM` an image or an earlier stage copies
+it, and only ARGs stop at the boundary. So the Dockerfile fix protects only images
+built from the fixed Dockerfiles. A `bk-windows-toolchain` (or `-media`, `-torch`) left
+by a run from before 2026-09-23 still carries the endpoint, and every stage built on it
+inherits it. The merge `built` stage used to overwrite the variable with its own ENV;
+now it passes the parent's value straight through to the published image. Two ways a
+stale parent gets reused: a run whose `-Stages` leaves out the stage that produces it,
+and a driver process that was already running when the checkout moved (PowerShell
+parsed the old script, so that process has no gate at all).
+
+`Invoke-BkStage` therefore grades every `BASE_IMAGE` this run did not build and has
+not graded yet, before it solves the stage. A stale one stops the run in seconds, not
+hours later at the final gate:
+
+```text
+[bk:publish-gate:bk-windows-toolchain] buildctl failed (exit 1) — full log: ...
+[bk:publish-gate:bk-windows-toolchain] docker.io/local/kataglyphis:bk-windows-toolchain was not built
+by this run and failed the publish gate: a build-host setting in its ENV (built before 2026-09-23?)
+or no such image. Rebuild it: put the stage that produces it in -Stages, from a fresh driver process.
+```
+
+The fresh toolchain is graded right after its solve as well: every later stage
+inherits it, and a RUN can write the Machine or User scope, which no Dockerfile lint
+sees. A parent this run built is not graded again; the final image always is. Each
+gate solve takes seconds, and a repeat on an unchanged image is a cache hit. Tests:
+`ImageEnv.PublishGate.Tests.ps1` lifts `Invoke-BkStage` out of the driver and runs it
+against a fake buildctl.
+
+**Restart a chain across this fix; never resume one.** Start a fresh driver process
+with `toolchain` in `-Stages`, so that no toolchain built from the old Dockerfile is
+reused.
+
 **Cache impact of the change:** the `patched-llvm` stage and every media stage re-key
 (and, on the rocm lane, `rocm-migraphx`); the toolchain's `built` (CPython) stage,
 base and the sdk slot do not. The full re-key set is in `CHANGELOG.md`, 2026-09-23.
+The 2026-09-24 follow-up (the parent gate, the probe, the forward) re-keys nothing
+beyond that: its only image input is two modules that just the final
+`windows/Dockerfile` copies.
 
 ### The consumer-side probe
 
@@ -459,8 +504,14 @@ Images published before 2026-09-23 still carry the endpoint, so the consumer sid
 defends itself. `Enable-SccacheCompilerWrapper` (`WindowsBuild.Common.psm1`) is the
 one place both consumer wiring sites go through — `Initialize-BuildCacheEnvironment`
 and `Invoke-CmakeConfigureAndBuild` — and before it sets a launcher it calls
-`Clear-UnreachableSccacheEndpoint`. That function TCP-probes the endpoint's
-host:port with a 2 s timeout. Reachable: nothing changes, so the build host keeps
+`Clear-UnreachableSccacheEndpoint`. That function resolves the endpoint's host and
+connects to every address it resolves to at once, within one 2 s budget
+(`-TimeoutMs`) that includes the resolution; the first connection that succeeds
+counts. One address at a time would lose a reachable host: Windows takes about 2 s
+to refuse a closed IPv6 address, which `localhost` and a dual-stack name resolve to
+first, so an IPv4-only
+listener behind `http://localhost:<port>` was removed after 2049 ms and is now kept
+in 37 ms (measured 2026-09-24). Reachable: nothing changes, so the build host keeps
 its cache. Unreachable or not a URL: it removes `SCCACHE_WEBDAV_ENDPOINT` from the
 process environment (and `SCCACHE_MULTILEVEL_CHAIN` when that names webdav), writes
 one WARN naming the endpoint, and sccache caches on local disk instead of failing
@@ -475,6 +526,28 @@ The image build does NOT use this path. Its compile stages wire sccache through
 `WindowsSourceBuild.Common`, gated on `Test-SccacheRemoteConfigured`, where an
 unreachable endpoint must stay a loud failure rather than quietly become an uncached
 multi-hour build. Tests: `windows/scripts/tests/Build.SccacheEndpointProbe.Tests.ps1`
-(a loopback port bound but never listening, and a listening one).
+(a loopback port bound but never listening, a listening one, `localhost` against an
+IPv4-only listener, a 200 ms bound against Windows' ~2 s refusal, an unresolvable
+name, and an in-suite mutant per case showing it can fail on the host it runs on).
+
+### The build host's remote tier, at run time
+
+Until 2026-09-23 a consumer build on the build host reached the WebDAV tier only
+through the leaked ENV. Now `Invoke-ContainerBuild` (`WindowsContainerBuild.Reuse`)
+forwards this host's `SCCACHE_WEBDAV_ENDPOINT` and `SCCACHE_MULTILEVEL_CHAIN` into the
+container as run-time `-e` entries (`Add-HostSccacheRemoteEnv`), on both transports
+and for every caller: AccelerANTgine passes `-CacheEnv (Get-SccacheContainerEnv)`,
+and OmniAccelerANT's agentic-loop driver passes no `-CacheEnv` at all. A host without
+the variables, such as a GitHub runner, forwards nothing. A key the caller sets in
+`-CacheEnv` wins, and `SCCACHE_WEBDAV_ENDPOINT = ''` opts out. The container's probe
+(above) still drops an endpoint it cannot reach, so a bad forward costs one WARN,
+not a build.
+
+Two limits. A reusable container keeps the environment it was created with, so it
+picks the forward up when it is recreated: a new image does that, `-FreshContainer`
+forces it. And a `docker run` by hand forwards nothing (OmniAccelerANT's documented
+parity run is one); add `-e SCCACHE_WEBDAV_ENDPOINT=$env:SCCACHE_WEBDAV_ENDPOINT`
+yourself. Tests: `WindowsContainerBuild.Reuse.Tests.ps1` (`Add-HostSccacheRemoteEnv`)
+and `Modules.Orchestrators.Tests.ps1` (the build run carries the `-e`).
 
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.

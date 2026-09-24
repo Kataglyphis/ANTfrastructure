@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # No build-host setting in a published image's environment, on both lanes: the static
-# pass of lint-dockerfiles.sh, the publish check in verify-shipped-wrapper.sh, and the
+# pass of lint-dockerfiles.sh, the image-env gate in build-runtime-manifest.sh, and the
 # case file that also grades the Windows twin (WindowsImageEnv.Common.psm1).
 # docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
 set -u
@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 CASES="${TESTS_DIR}/image-env-cases.json"
 GATE="${REPO_ROOT}/linux/scripts/verify_image_env.py"
-WRAPPER="${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh"
+MANIFEST="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
@@ -146,55 +146,84 @@ t_case "lint-dockerfiles.sh runs the gate (an orphaned gate proves nothing)"
 t_assert_ok grep -q -e 'python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES\[@\]}" || FAILED=1' \
   "${REPO_ROOT}/linux/scripts/lint-dockerfiles.sh"
 
-# --- verify-shipped-wrapper.sh: the Linux publish gate -------------------------
-# A fake nerdctl serves the rootfs listing the content checks need and the config ENV.
+# --- build-runtime-manifest.sh: the Linux publish gate -------------------------
+# The gate lifted out with its collaborators stubbed; a fake nerdctl serves each
+# arch's config ENV from ${FAKE_ENV_DIR}/<arch>.env and fails when there is none.
 _fk="${_work}/bin"
-mkdir -p "${_fk}" "${_work}/root/opt/ffmpeg/lib" "${_work}/root/usr/local/lib"
+mkdir -p "${_fk}" "${_work}/envs"
 cat > "${_fk}/nerdctl" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_LOG}"
 case "$1" in
   image)
-    for a in "$@"; do
-      if [ "${a}" = "--format" ]; then
-        [ -n "${FAKE_ENV_FILE:-}" ] && [ -f "${FAKE_ENV_FILE}" ] || exit 1
-        cat "${FAKE_ENV_FILE}"; exit 0
-      fi
-    done
-    exit 0 ;;
-  create) echo fakecid ;;
-  export) tar -cf - -C "${FAKE_ROOTFS}" . ;;
+    arch="" prev=""
+    for a in "$@"; do [ "${prev}" = "--platform" ] && arch="${a#linux/}"; prev="${a}"; done
+    [ -n "${arch}" ] && [ -f "${FAKE_ENV_DIR}/${arch}.env" ] || exit 1
+    cat "${FAKE_ENV_DIR}/${arch}.env" ;;
   *) exit 0 ;;
 esac
 SH
 chmod +x "${_fk}/nerdctl"
-t_fake_elf "${_work}/root/opt/ffmpeg/lib/libavcodec.so.62.1.100" 62
-: > "${_work}/root/usr/local/lib/libonnxruntime.so.1"
-printf 'FFMPEG_ENABLE_TF=0\n' > "${_work}/versions-tf-off.env"
+_env_fn="$(t_fn_src "${MANIFEST}" _manifest_image_env_gate)" || exit 1
 
-# _wrapper <env-file|""> [extra env...] -> runs the gate against the fake image
-_wrapper() {
-  local envf="$1"; shift
-  env NERDCTL_BIN="${_fk}/nerdctl" VERSIONS_ENV="${_work}/versions-tf-off.env" \
-      FAKE_ROOTFS="${_work}/root" FAKE_LOG="${_work}/nerdctl.log" FAKE_ENV_FILE="${envf}" "$@" \
-      bash "${WRAPPER}" img:tag amd64
+# _env_gate -> the gate's output and RC=<rc>, over TARGET_ARCHES (default amd64,arm64).
+# FAKE_PRESENT=0 makes every wrapper tag missing locally.
+_env_gate() {
+  (
+    set +e
+    TARGET_ARCHES="${TARGET_ARCHES:-amd64,arm64}"
+    NERDCTL_BIN="${_fk}/nerdctl" FAKE_ENV_DIR="${_work}/envs" FAKE_LOG="${_work}/nerdctl.log"
+    export FAKE_ENV_DIR FAKE_LOG NERDCTL_BIN
+    eval "${_env_fn}"
+    arch_list_to_words() { printf '%s' "${1//,/ }"; }
+    runtime_wrapper_tag() { printf 'img:latest-%s' "$1"; }
+    image_exists() { [ "${FAKE_PRESENT:-1}" = "1" ]; }
+    run() { "$@"; }
+    warn() { printf 'WARN %s\n' "$*"; }
+    python3() { command "${PY}" "$@"; }
+    _manifest_image_env_gate
+    printf 'RC=%s\n' "$?"
+  ) 2>&1
 }
-_wrapper_rc() { _wrapper "$@" >/dev/null 2>&1; echo $?; }
 
-t_case "the wrapper gate passes a clean image and reads its config for the right platform"
+t_case "the manifest gate passes clean wrappers and reads each arch's config for its own platform"
+cp "${_work}/clean.env" "${_work}/envs/amd64.env"; cp "${_work}/clean.env" "${_work}/envs/arm64.env"
 : > "${_work}/nerdctl.log"
-t_assert_eq "0" "$(_wrapper_rc "${_work}/clean.env")" "the fake image must be able to pass, or every red below proves nothing"
-t_assert_contains "$(_wrapper "${_work}/clean.env" 2>&1)" "ok: image env (3 variable(s) in img:tag"
+_out="$(_env_gate)"
+t_assert_contains "${_out}" "RC=0" "the fake wrappers must be able to pass, or every red below proves nothing"
+t_assert_contains "${_out}" "3 variable(s) in img:latest-arm64"
 t_assert_contains "$(cat "${_work}/nerdctl.log")" "--platform linux/amd64"
+t_assert_contains "$(cat "${_work}/nerdctl.log")" "--platform linux/arm64"
 
-t_case "the wrapper gate fails an image whose ENV carries the endpoint"
-t_assert_eq "1" "$(_wrapper_rc "${_work}/leak.env")"
-t_assert_contains "$(_wrapper "${_work}/leak.env" 2>&1)" "LEAK img:tag: SCCACHE_WEBDAV_ENDPOINT"
+t_case "one leaking arch fails the index, and the finding names the wrapper and the variable"
+cp "${_work}/leak.env" "${_work}/envs/arm64.env"
+_out="$(_env_gate)"
+t_assert_contains "${_out}" "RC=1"
+t_assert_contains "${_out}" "LEAK img:latest-arm64: SCCACHE_WEBDAV_ENDPOINT"
+t_assert_contains "${_out}" "the ENV of [arm64]"
 
-t_case "WRAPPER_CONTENT_GATE=0 waives content, never the ENV check"
-t_assert_eq "1" "$(_wrapper_rc "${_work}/leak.env" WRAPPER_CONTENT_GATE=0)"
+t_case "a wrapper whose config cannot be read fails closed"
+rm -f "${_work}/envs/arm64.env"
+t_assert_contains "$(_env_gate)" "RC=1"
+cp "${_work}/clean.env" "${_work}/envs/arm64.env"
 
-t_case "an image whose config cannot be read fails closed"
-t_assert_eq "1" "$(_wrapper_rc "")"
+t_case "a wrapper missing locally is pulled for its platform first; a present one never is"
+: > "${_work}/nerdctl.log"
+t_assert_contains "$(FAKE_PRESENT=0 _env_gate)" "RC=0"
+t_assert_contains "$(cat "${_work}/nerdctl.log")" "pull -q --platform linux/arm64 img:latest-arm64"
+: > "${_work}/nerdctl.log"
+_env_gate >/dev/null
+t_assert_eq "" "$(grep -e '^pull' "${_work}/nerdctl.log" || true)" "an existing tag was re-pointed by a pull"
+
+t_case "create_manifest runs the gate first, unconditionally: no switch, and --manifest-only reaches it"
+_create="$(t_fn_src "${MANIFEST}" create_manifest)" || exit 1
+t_assert_ok grep -q -e '^  _manifest_image_env_gate || err ' <<< "${_create}"
+_gate_line="$(grep -n -e '_manifest_image_env_gate' <<< "${_create}" | head -1 | cut -d: -f1)"
+_first_switch="$(grep -n -e 'RUNTIME_MANIFEST_' <<< "${_create}" | head -1 | cut -d: -f1)"
+t_assert_ok test "${_gate_line:-999}" -lt "${_first_switch:-0}"
+_main="$(t_fn_src "${MANIFEST}" main)" || exit 1
+t_assert_ok grep -q -e '^  if \[ "${CREATE_MANIFEST}" -eq 1 \]; then$' <<< "${_main}"
+t_assert_eq "" "$(t_fn_src "${MANIFEST}" _manifest_build_and_smoke | grep -e 'verify_image_env\|image_env_gate' || true)" \
+  "the env gate is behind RUNTIME_IMAGE_SMOKE again"
 
 t_summary

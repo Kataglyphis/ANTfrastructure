@@ -677,6 +677,34 @@ function Get-SccacheContainerEnv {
 
 <#
 .SYNOPSIS
+  -CacheEnv plus this host's sccache remote tier, for the keys the caller did not set.
+.DESCRIPTION
+  Since 2026-09-23 the image carries no SCCACHE_WEBDAV_ENDPOINT, so a build host's endpoint and
+  SCCACHE_MULTILEVEL_CHAIN reach the container as run-time -e entries instead. A key the caller
+  set wins, '' included (the opt-out); a container that cannot reach the endpoint drops it
+  itself. docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time
+.OUTPUTS
+  A new dictionary of the same kind as -CacheEnv; the caller's is never modified.
+#>
+function Add-HostSccacheRemoteEnv {
+    [CmdletBinding()]
+    param([System.Collections.IDictionary]$CacheEnv = @{})
+
+    $merged = if ($CacheEnv -is [hashtable]) { @{} } else { [ordered]@{} }
+    if ($CacheEnv) { foreach ($k in $CacheEnv.Keys) { $merged[$k] = $CacheEnv[$k] } }
+    $added = @()
+    foreach ($name in 'SCCACHE_WEBDAV_ENDPOINT', 'SCCACHE_MULTILEVEL_CHAIN') {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ([string]::IsNullOrEmpty($value) -or $merged.Contains($name)) { continue }
+        $merged[$name] = $value
+        $added += $name
+    }
+    if ($added) { Write-Host "Forwarding this host's sccache remote tier into the container: $($added -join ', ')" }
+    return $merged
+}
+
+<#
+.SYNOPSIS
   Normalises -BuildCommand into the argv executed inside the container.
 .DESCRIPTION
   Accepts a [scriptblock] (invoked with the in-container workspace path, so the
@@ -724,7 +752,9 @@ function Resolve-ContainerBuildCommand {
   Subset of -OutputDirs that must contain executables and have them delivered.
 .PARAMETER CacheEnv
   Environment entries applied to the container (compiler cache, image
-  contract flags, ...). See Get-SccacheContainerEnv.
+  contract flags, ...). See Get-SccacheContainerEnv. This host's
+  SCCACHE_WEBDAV_ENDPOINT/SCCACHE_MULTILEVEL_CHAIN are added unless set here
+  ('' opts out): Add-HostSccacheRemoteEnv.
 .PARAMETER WaitTimeoutMinutes
   How long the bind-mount transport waits on a container that is still running
   after the docker client returned. See Wait-ContainerExit.
@@ -766,7 +796,7 @@ function Invoke-ContainerBuild {
         [switch]$FreshContainer
     )
 
-    $cacheArgs = Get-ContainerEnvArgs -Environment $CacheEnv
+    $cacheArgs = Get-ContainerEnvArgs -Environment (Add-HostSccacheRemoteEnv -CacheEnv $CacheEnv)
     $buildArgs = Resolve-ContainerBuildCommand -BuildCommand $BuildCommand -WorkspacePath $WorkspacePath
 
     # Bind mounting looks like the obvious win - no tar transport at all - and

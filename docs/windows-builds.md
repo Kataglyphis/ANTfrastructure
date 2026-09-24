@@ -1102,7 +1102,7 @@ Not a script — the automatic verification stage (backlog #44). Solved against 
 
 *`windows/`*
 
-Not a script — the publish gate (2026-09-23). Solved `-NoOutput` against the final tag right after the smoke gate and before `-FinalTar`/`-PushRef`, on every lane, and **`-SkipSmokeGate` does not skip it**. Its one RUN bind-mounts `WindowsImageEnv.Common.psm1` and runs `Assert-ImageEnvPublishable`, which fails when the image's environment (the config ENV plus the Machine and User registry scopes) carries a build-host sccache variable or an RFC1918/link-local address. No ARG after FROM and no entrypoint, so the environment it grades is the one that ships. Why it exists and what it cannot see: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries). Tests: `ImageEnv.PublishGate.Tests.ps1` (the matcher against `linux/scripts/tests/image-env-cases.json`, one mutant per rule, and the driver's call order).
+Not a script — the publish gate (2026-09-23). `Invoke-BkPublishGate` solves it `-NoOutput` at three points of every lane, the last one before any export or push, and **`-SkipSmokeGate` skips none of them**. Its one RUN bind-mounts `WindowsImageEnv.Common.psm1` and runs `Assert-ImageEnvPublishable`, which fails when the image's environment (the config ENV plus the Machine and User registry scopes) carries a build-host sccache variable or an RFC1918/link-local address. No ARG after FROM and no entrypoint, so the environment it grades is the one that ships. The three points, why it exists and what it cannot see: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries). Tests: `ImageEnv.PublishGate.Tests.ps1` (the matcher against `linux/scripts/tests/image-env-cases.json`, one mutant per rule, and the driver's call order).
 
 #### `patches/litert-lm/patch-assert.cmake`
 
@@ -1204,6 +1204,11 @@ exit code after the pipe, and the function returns its result object alone.
 `ContainerBuild.Output.Tests.ps1` holds the class guard (an AST scan for any
 unconsumed `& $DockerExe` pipeline in the module) and a child-session check that a
 discarded result still prints the build.
+
+**The host's sccache remote tier is forwarded at run time (2026-09-24).** The image no
+longer carries `SCCACHE_WEBDAV_ENDPOINT`, so `Invoke-ContainerBuild` adds this host's
+endpoint and chain to `-CacheEnv` as `-e` entries unless the caller set them (`''`
+opts out): [`windows-build-resources.md` § The build host's remote tier, at run time](windows-build-resources.md#the-build-hosts-remote-tier-at-run-time).
 
 Consumers resolve it ANTfrastructure-first with a vendored fallback (see
 BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).

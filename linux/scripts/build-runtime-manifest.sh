@@ -137,6 +137,29 @@ _manifest_completeness_gate() {
   return 1
 }
 
+# PUBLISH GATE, no skip switch: the config ENV of every wrapper the index points at names nothing
+# outside the container. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
+_manifest_image_env_gate() {
+  local arch tag env_lines failed=""
+  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+    tag="$(runtime_wrapper_tag "${arch}")" || { warn "[manifest] image-env gate: no wrapper tag for ${arch}"; return 1; }
+    # Pull only when MISSING, as the content gate does: a pull re-points an existing tag.
+    if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"; then
+      run "${NERDCTL_BIN:-nerdctl}" pull -q --platform "linux/${arch}" "${tag}" || true
+    fi
+    env_lines="$(mktemp)" || return 1
+    if ! "${NERDCTL_BIN:-nerdctl}" image inspect --platform "linux/${arch}" \
+           --format '{{range .Config.Env}}{{println .}}{{end}}' "${tag}" > "${env_lines}" 2>/dev/null \
+       || ! python3 "${REPO_ROOT}/linux/scripts/verify_image_env.py" --env-file "${env_lines}" --label "${tag}"; then
+      failed="${failed:+${failed} }${arch}"
+    fi
+    rm -f "${env_lines}"
+  done
+  [ -z "${failed}" ] && return 0
+  warn "[manifest] image-env gate: the ENV of [${failed}] carries a build-host setting, or could not be read (see above)."
+  return 1
+}
+
 create_manifest() {
   local refs=()
   local arch
@@ -149,6 +172,9 @@ create_manifest() {
     log "[DRY RUN] would create manifest ${IMAGE_NAME} from refs: ${refs[*]}"
     return 0
   fi
+
+  # Before every switchable gate below, and on --manifest-only too: none of them waives this one.
+  _manifest_image_env_gate || err "manifest image-env gate refused ${IMAGE_NAME}: a wrapper's ENV carries a build-host setting (see above)"
 
   # Refuse a mixed/stale-generation index unless --force.
   if [ "${RUNTIME_MANIFEST_COHERENCE:-1}" = "1" ]; then

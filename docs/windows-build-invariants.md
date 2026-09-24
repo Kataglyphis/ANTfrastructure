@@ -367,10 +367,13 @@ endpoint, so CMake reported clang-cl broken. Do not regress any of these:
 - **A new compiling stage** (a RUN mounting both `C:\sccache` and `C:\sccache-logs`)
   declares `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage, or the static lint fails it —
   without the ARG it compiles uncached and says nothing.
-- **The publish gate stays armed**: `Dockerfile.publish-gate` runs after the smoke gate
-  and before any export or push, and `-SkipSmokeGate` does not skip it. Never give it
-  an ARG after FROM or route it through the entrypoint; either changes the environment
-  it grades.
+- **The publish gate stays armed at all three points**: on every `BASE_IMAGE` a stage
+  inherits that the run did not build (in `Invoke-BkStage`, before the solve), on the
+  fresh toolchain, and on the final image after the smoke gate and before any export or
+  push. `-SkipSmokeGate` skips none of them. An ENV crosses FROM, so a parent built
+  before a fix carries the leak into every stage after it; restart a chain across such
+  a fix, never resume one. Never give the gate an ARG after FROM or route it through the
+  entrypoint; either changes the environment it grades.
 - **The same holds for any future build-host knob** — a LAN mirror, a proxy, a cache
   server: ARG, never ENV. The gates refuse a LAN address in any ENV value.
 

@@ -7,6 +7,51 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - Review follow-ups to the sccache-endpoint fix
+
+Six review findings on the entry below, each verified before it was applied.
+
+- **A parent the run did not build is graded before a stage inherits it.** `FROM` copies the
+  parent image's config ENV (the merge Dockerfile's comment said it does not; corrected). With
+  the merge `built` stage's own ENV gone, a `bk-windows-toolchain` from before the fix passed
+  its endpoint straight through to the published image, and only the final gate, hours later,
+  would have seen it. `Invoke-BkStage` now solves `Dockerfile.publish-gate` on every
+  `BASE_IMAGE` the run neither built nor graded, before the stage; a stale parent fails in
+  seconds and the error says to rebuild it. The fresh toolchain is graded right after its
+  solve. All three sites go through `Invoke-BkPublishGate`. **A run started before this commit
+  has no gate: restart the chain with `toolchain` in `-Stages` from a fresh driver process;
+  never resume it.** [`windows-build-resources.md` § An image this run did not build](docs/windows-build-resources.md#an-image-this-run-did-not-build).
+- **The Windows gate's default path is tested.** The gate's RUN passes no `-Scopes`, and no
+  test did either. Now a uniquely named leaking Process variable must make a bare
+  `Assert-ImageEnvPublishable` throw, the Process/Machine/User list is pinned from the AST, and
+  an in-suite mutant for each proves it bites.
+- **The Linux image-env gate has no switch.** Check 6 of `verify-shipped-wrapper.sh` sat
+  inside the `RUNTIME_IMAGE_SMOKE=1` block and never ran on `--manifest-only`/`--repair`. It is
+  now `_manifest_image_env_gate`, the first step of `create_manifest`, on every path that
+  creates an index; check 6 is gone. The `make` help and four `image-env.manifest-*`
+  mutations (replacing the two `image-env.wrapper-*`) follow.
+- **The consumer probe tries every address at once.** `Test-TcpEndpointReachable` now
+  resolves within the budget and connects to every address in parallel. Before, an IPv4-only
+  listener behind `http://localhost:<port>` was removed after 2049 ms, because Windows refuses
+  `::1` only after ~2 s; now it is kept in 37 ms. New cases: that one, a 200 ms bound against
+  a closed port, and an unresolvable name, with an in-suite mutant per case.
+- **The build host keeps its remote tier.** Consumer builds on the build host reached WebDAV
+  only through the leaked ENV and would have lost it silently. `Invoke-ContainerBuild` now
+  forwards this host's `SCCACHE_WEBDAV_ENDPOINT` and `SCCACHE_MULTILEVEL_CHAIN` into the
+  container at run time (`Add-HostSccacheRemoteEnv`) unless `-CacheEnv` sets them (`''` opts
+  out). A `docker run` by hand still passes `-e` itself:
+  [`windows-build-resources.md` § The build host's remote tier, at run time](docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time).
+- **Two things this host needed to commit it through the hook.** `verify_doc_links.py`'s git-free
+  floor compared `str(path)` with POSIX entries, so on Windows it ignored nothing and
+  `test-doc-links.sh` failed at baseline; it now matches the POSIX spelling (a no-op on Linux).
+  And `build-cross-chain.sh`'s `_CHAIN_RUNTIME_GATES` does not name the new Linux gate yet:
+  staging that file samples `test-chain-lifecycle.sh`, whose symlink cases fail on a Windows
+  host, so that one-line edit is for a Linux host.
+- **Re-key set: nothing beyond the entry below.** The driver, the tests and the Linux host
+  scripts are in no image closure, the merge Dockerfile edit is a comment (no LLB change), and
+  the two edited modules are copied only by the final `windows/Dockerfile`, which re-keys
+  anyway. Base, the sdk slot and the toolchain are untouched. Linux: nothing re-keys.
+
 ## 2026-09-23 - The published image no longer carries the build host's sccache endpoint
 
 **What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`)

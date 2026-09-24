@@ -250,10 +250,8 @@ ARG SCCACHE_WEBDAV_ENDPOINT
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
-# WebDAV-ONLY sccache, same reasoning and same caveats as Dockerfile.media-builder's
-# `common` stage (read the block there before changing either). This stage is not
-# a descendant of it, so the variables have to be repeated -- ENV does not cross a
-# FROM boundary any more than ARG does.
+# WebDAV-only sccache, as in (and to change with) media-builder's `common`, which is not an ancestor.
+# FROM does inherit the parent image's ENV: docs/windows-build-resources.md#an-image-this-run-did-not-build
 #
 # SCCACHE_MULTILEVEL_CHAIN is UNSET on purpose since 2026-08-16: the local L0 tier
 # sits on a BuildKit cache mount, and on Windows those lose writes once the

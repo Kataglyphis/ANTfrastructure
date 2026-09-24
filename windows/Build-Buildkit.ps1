@@ -411,6 +411,10 @@ $script:FinalTagName = if ($TargetArch -eq 'arm64') { 'winarm64' } elseif ($Vari
 # Which -NoCacheStage entries matched a stage label; checked at the end of the
 # run so a typo fails LOUDLY instead of building everything from cache (#64).
 $script:NoCacheStageMatched = @{}
+# Tags this run built, and images the publish gate passed: a BASE_IMAGE in neither is graded
+# before a stage inherits its ENV. docs/windows-build-resources.md#an-image-this-run-did-not-build
+$script:BkBuiltTags = [System.Collections.Generic.HashSet[string]]::new()
+$script:BkGatedImages = [System.Collections.Generic.HashSet[string]]::new()
 
 function Invoke-BkStage {
     param(
@@ -430,10 +434,21 @@ function Invoke-BkStage {
         # Transient-failure budget: 3 suits any stage touching ONE snapshot tree.
         # The media MERGE stage fans in three branch images and was measured
         # green only on its third attempt, so it asks for more.
-        [int]$MaxAttempts = 3
+        [int]$MaxAttempts = 3,
+        # Set by Invoke-BkPublishGate only: the gate's own BASE_IMAGE is what it grades.
+        [switch]$NoParentGate
     )
     if (-not $NoOutput -and -not $Tag -and -not $OutputSpec) { throw 'Invoke-BkStage: need -Tag, -OutputSpec or -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
+    # A parent this run did not build may predate the 2026-09-23 fix: grade the ENV it passes
+    # down now, in seconds, not at the final gate. docs/windows-build-resources.md#an-image-this-run-did-not-build
+    $parent = "$($BuildArgs['BASE_IMAGE'])"
+    if (-not $NoParentGate -and $parent -and -not $script:BkBuiltTags.Contains($parent) -and -not $script:BkGatedImages.Contains($parent)) {
+        Invoke-BkPublishGate -Image $parent -Label "publish-gate:$($parent -replace '^.*:', '')" -Hint (
+            "$parent was not built by this run and failed the publish gate: a build-host setting in its ENV " +
+            "(built before 2026-09-23?) or no such image. Rebuild it: put the stage that produces it in -Stages, " +
+            'from a fresh driver process.')
+    }
 
     # PER-STAGE DISK GATE: the launch gate passed at 164 GB free and a heavy
     # stage still walked to 23 GB, where hcsshim stops failing honestly — and
@@ -527,7 +542,24 @@ function Invoke-BkStage {
     }
     $stageClock.Stop()
     $script:StageTimings[$Label] = [math]::Round($stageClock.Elapsed.TotalSeconds, 1)
+    if ($Tag) { $null = $script:BkBuiltTags.Add($Tag) }
     Write-Host ("[bk:{0}] OK -> {1}  ({2:hh\:mm\:ss})" -f $Label, $dest, $stageClock.Elapsed) -ForegroundColor Green
+}
+
+# The publish gate: $Image's environment carries no build-host setting. -Hint is appended to a failure.
+# docs/windows-build-resources.md#what-the-published-image-carries
+function Invoke-BkPublishGate {
+    param([Parameter(Mandatory)][string]$Image, [string]$Label = 'publish-gate', [string]$Hint = '')
+    try {
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.publish-gate' -Label $Label -NoOutput -NoParentGate -BuildArgs @{
+            BASE_IMAGE = $Image
+        } -MaxAttempts 1
+    } catch {
+        if ($Hint) { throw "$($_.Exception.Message)`n[bk:$Label] $Hint" }
+        throw
+    }
+    $null = $script:BkGatedImages.Add($Image)
+    Write-Host "[bk:$Label] $Image carries no build-host setting" -ForegroundColor Green
 }
 
 $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
@@ -708,6 +740,8 @@ if ($Stages -contains 'toolchain') {
         $toolchainArgs['BUILD_PATCHED_LLVM'] = '1'
     }
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Target $toolchainTarget -Tag (Get-BkTag 'windows-toolchain') -BuildArgs $toolchainArgs
+    # Every later stage inherits this ENV (and the Machine/User scopes): grade it now, not hours on.
+    Invoke-BkPublishGate -Image (Get-BkTag 'windows-toolchain') -Label 'publish-gate:toolchain'
 }
 
 if ($Stages -contains 'media') {
@@ -976,10 +1010,7 @@ if ($Stages -contains 'final') {
     }
     # PUBLISH GATE, never skipped (not even by -SkipSmokeGate): no build-host setting in the
     # final image's environment. docs/windows-build-resources.md#what-the-published-image-carries
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.publish-gate' -Label 'publish-gate' -NoOutput -BuildArgs @{
-        BASE_IMAGE = Get-BkTag $script:FinalTagName
-    } -MaxAttempts 1
-    Write-Host '[bk:publish-gate] the image environment carries no build-host setting' -ForegroundColor Green
+    Invoke-BkPublishGate -Image (Get-BkTag $script:FinalTagName)
     # FAIL LOUDLY, pre-export (audit #15), on a -NoCacheStage entry that matched
     # nothing: a typo would otherwise leave every stage cached and look green.
     & Assert-NoCacheStageMatched

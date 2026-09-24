@@ -372,6 +372,19 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
         }
     }
 
+    It 'forwards this host''s sccache endpoint into the build run, and a caller''s own value wins' {
+        & $build '0' 'exited' '0' { param($log, $dir)
+            Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = 'http://10.9.8.7:5000'; SCCACHE_MULTILEVEL_CHAIN = $null } {
+                $null = Invoke-ContainerBuild @common -RepoRoot $dir 6>$null
+                $null = Invoke-ContainerBuild @common -RepoRoot $dir -CacheEnv @{ SCCACHE_WEBDAV_ENDPOINT = '' } 6>$null
+            }
+            $runs = @(Get-Content $log | Where-Object { $_ -match '^DOCKER run --name' })
+            Assert-Equal 2 $runs.Count
+            Assert-Match ' -e SCCACHE_WEBDAV_ENDPOINT=http://10\.9\.8\.7:5000 ' $runs[0]
+            Assert-Match ' -e SCCACHE_WEBDAV_ENDPOINT= ' $runs[1] 'the caller''s empty value is the opt-out'
+        }
+    }
+
     It 'returns its result object ALONE: the build''s stdout goes to the host (callers write $null = ...)' {
         & $build '0' 'exited' '0' { param($log, $dir)
             $r = @(Invoke-ContainerBuild @common -RepoRoot $dir 6>$null)
