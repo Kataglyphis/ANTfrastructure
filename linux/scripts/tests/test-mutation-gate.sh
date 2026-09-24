@@ -38,6 +38,17 @@ _fixture() {
     "${find}" "${replace}" "${dir}" > "${_work}/m.json"
 }
 
+# _posix_host <what>: true on a POSIX host. An MSYS host's native Python has no process groups, mode bits
+# or PATH-resolved scripts; the cases needing <what> SKIP there, loudly, and the Linux CI proves them.
+_posix_host() {
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+      printf '  SKIP [%s] needs a POSIX host for %s\n' "${_T_CASE}" "$1" >&2
+      return 1 ;;
+  esac
+  return 0
+}
+
 _gate() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place "$@"; }
 _run() { t_out _gate; }
 _rc()  { t_rc _gate; }
@@ -130,6 +141,7 @@ t_assert_eq "" "$(find "${_tmp}" -maxdepth 1 -name 'mutation-gate-*' -print)" \
   "one leaked copy per invocation fills the disk of the machine running CI"
 
 t_case "--changed selects by target, using the diff of the real repo"
+if _posix_host "a script named git on PATH"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 mkdir -p "${_work}/bin"
 printf '#!/usr/bin/env bash\nprintf "subject.sh\\n"\n' > "${_work}/bin/git"
@@ -139,14 +151,17 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" 
 printf '#!/usr/bin/env bash\nprintf "somewhere/else.sh\\n"\n' > "${_work}/bin/git"
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
   "a target outside the diff must be skipped, not run"
+fi
 
 t_case "--changed also selects by the TEST an entry runs, not only by target"
 # A commit that only weakens tests/t.sh touches no target; matching the test
 # path is what makes the gate re-verify the guarantee that test carries.
+if _posix_host "a script named git on PATH"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 printf '#!/usr/bin/env bash\nprintf "t.sh\\n"\n' > "${_work}/bin/git"
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" \
   "an entry whose test file is in the diff must be selected"
+fi
 
 # --- --stale-check: the half of an entry that ROTS, without running one test ---
 # 378 entries in ~0.06s, which is what makes a whole-manifest pass affordable in
@@ -231,12 +246,14 @@ case "${_out}" in
 esac
 
 t_case "the copy keeps file modes, so a mutated script is still executable"
+if _posix_host "mode bits"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 chmod +x "${_work}/subject.sh"
 printf 'test -x ./subject.sh || exit 1\ngrep -q "GUARD=on" ./subject.sh\n' > "${_work}/t.sh"
 t_assert_contains "$(_iso_run)" "bites" \
   "a mode-losing copy makes every shell test fail for the wrong reason, not for the mutation"
 t_assert_eq "0" "$(_iso_rc)" "the executable subject must still produce an honest bite"
+fi
 
 t_case "the copy skips the heavy trees, it does not clone the whole checkout"
 _fixture "GUARD=on" "GUARD=off" yes .
@@ -286,8 +303,8 @@ case "$(cat "${_tmp}/copied")" in *"ollama-binary.tar.zst"*) t_assert_eq "file e
   "an excluded FILE was still copied -- the skip only pruned dirnames" ;; *) t_assert_ok true ;; esac
 rm -rf "${_work}/linux"
 
-if [ "$(id -u)" != 0 ]; then
 t_case "a copy that fails is a loud error, never a vacuous-bite verdict"
+if [ "$(id -u)" != 0 ] && _posix_host "an unreadable file (chmod 000)"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 printf 'secret\n' > "${_work}/unreadable"; chmod 000 "${_work}/unreadable"
 _out="$(_iso_run)"; _code="$(_iso_rc)"
@@ -302,6 +319,7 @@ t_case "a test that times out is killed as a TREE, its grandchildren with it"
 # A test that forks a sleeper, records its pid, then spins past the entry's
 # timeout. Killing only the shell left the sleeper (and, in the real gate, a
 # whole pytest) running: one such orphan burned CPU for twenty minutes.
+if _posix_host "process groups (os.killpg)"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 # Green unmutated, spinning once the guard is gone: a probe that ALWAYS spins
 # fails its own baseline and is reported vacuous before the kill is exercised.
@@ -313,6 +331,7 @@ sleep 1
 _g="$(cat "${_tmp}/gpid" 2>/dev/null)"
 t_assert_eq "dead" "$( kill -0 "${_g}" 2>/dev/null && echo alive || echo dead )" "the sleeper grandchild must not survive the timeout"
 kill -9 "${_g}" 2>/dev/null; rm -f "${_tmp}/gpid"
+fi
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 
