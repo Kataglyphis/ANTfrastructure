@@ -7,6 +7,37 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - `BACKLOG.md`: every known image gap, measured
+
+The root `BACKLOG.md`, in the agentic loop's `- [ ]` / `- [b]` format, now lists
+every gap in `:latest`, `:winamd64` and the `:winarm64` bundle that a consumer
+hits or works around. There are CON7–CON33, grouped by image, each with its
+evidence and what closes it. CON7–CON10 moved there from
+`docs/refactoring-backlog.md`, which now points at it.
+
+**Sources.** Nine consumers and this hub's own docs were swept for image notes and
+workarounds. Each Linux candidate was then measured in `:latest` (`ec4bb68b`,
+amd64, uid 1001, through the entrypoint). Windows and arm64 items cite runs and
+hub documents.
+
+**Found:**
+- **CON14: a stale stage.** API 37 was added to source on 2026-09-18, but the
+  image built on 2026-09-22 has no `ANDROID_EXTRA_*` ENV and only
+  `platforms/android-36`.
+- **CON17:** the image's clang has no libFuzzer runtime (`llvm-cross.sh:201`),
+  which breaks WebDavClient's atheris build.
+- **CON15:** LLVM 21 `clang-tidy`/`llvm-profdata`/`llvm-cov`/`ld.lld` sit first on
+  PATH next to clang 23.
+- **CON12:** the published `:winamd64` builds OpenCV/GenAI against an ONNX
+  Runtime that is not the chain's.
+
+**Closed by the measurement.** Eleven gaps that consumers still describe turned out
+closed. Among them: `CARGO_HOME` ownership, rustup, wasm32,
+`GSTREAMER_ROOT_ANDROID`, and a second ONNX Runtime in `/opt/opencv5/lib` that is
+the chain build, byte for byte. `BACKLOG.md` lists all eleven so nobody files them
+again. `docs/riscv64-rva23-baseline.md`'s pointer for the
+TVM/IREE RVV codegen item now names CON24, and `docs/INDEX.md` lists the file.
+
 ## 2026-09-25 - The fleet calls this hub at `@develop`, not `@main`
 
 Owner directive. Work lands on `develop`. `main` is a release branch that has
