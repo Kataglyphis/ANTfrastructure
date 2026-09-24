@@ -230,10 +230,18 @@ wrong. Details and measurements:
   CI's line and `bundle closure: 1 failure(s) across 42 ELF file(s)`; this change
   gives `ORT census PASS`. Five mutations of that bundle (ORT removed, one byte off,
   foreign, no `$ORIGIN`, a renamed re-rooted ORT) each still fail.
-- **Consumers pick it up with a hub pin bump.** Nothing in OxidANT changes: the
-  consumer rule is "name the chain directory, never embed a whole ORT source path".
-  The rule is in `AGENTS.md` § Linux Build Rules and in the section 25 bullet of
-  `docs/windows-build-invariants.md`.
+- **Consumers pick it up with a hub pin bump, and their Windows ORT test fixtures
+  need one edit.** OxidANT's loader does not change: the consumer rule is "name the
+  chain directory, never embed a whole ORT source path". The rule is in `AGENTS.md`
+  § Linux Build Rules and in the section 25 bullet of
+  `docs/windows-build-invariants.md`. But a fixture that fakes an ORT as
+  `"$chainSrc OrtGetApiBase"` has no fingerprint under the new rule. At this commit,
+  OmniAccelerANT's `OrtRunner.Tests.ps1` fails 2 of 6, and OxidANT's
+  `OrtPayload.Tests.ps1` and AccelerANTgine's `OrtBundle.Tests.ps1` fail one case
+  each (`UNPROVEN` where `STALE` is expected). Ending the fake path with a NUL
+  (`` "$chainSrc`0OrtGetApiBase" ``) fixes all three and passes at either hub:
+  [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
+  (Corrected on 2026-09-24. This bullet first said nothing in the consumers changes.)
 
 ## 2026-09-24 - Review follow-ups to the sccache-endpoint fix
 
