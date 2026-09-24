@@ -6923,6 +6923,30 @@
     "why": "the object list must reach llvm-nm as @file; through xargs it rides a command line, and Git for Windows' xargs aborts once the environment eats the ~32K limit (the rocm lane, 2026-09-24: 'assertion \"bc_ctl.arg_max >= LINE_MAX\" failed')"
   },
   {
+    "id": "compiler-llvm-tools.cmakecache-compiler-wins",
+    "target": "linux/scripts/lib/compiler-llvm-tools.sh",
+    "find": "    cxx=\"$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' \"${build_dir}/CMakeCache.txt\" | head -n 1)\"",
+    "replace": "    cxx=\"\"",
+    "test": "bash linux/scripts/tests/test-compiler-llvm-tools.sh",
+    "why": "the tree's own compiler must answer: PATH's clang++ can be another LLVM, whose llvm-profdata cannot merge this tree's raw profiles"
+  },
+  {
+    "id": "compiler-llvm-tools.relative-answer-fails",
+    "target": "linux/scripts/lib/compiler-llvm-tools.sh",
+    "find": "  [[ \"${path}\" == /* && -x \"${path}\" ]] || return 1",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-compiler-llvm-tools.sh",
+    "why": "-print-prog-name answers with the bare name when the compiler has no such tool; taken as a hit, PATH's mismatched copy would run under the compiler's name"
+  },
+  {
+    "id": "compiler-llvm-tools.every-tool-required",
+    "target": "linux/scripts/lib/compiler-llvm-tools.sh",
+    "find": "    if [[ ! -x \"${dir}/${tool}\" ]]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-compiler-llvm-tools.sh",
+    "why": "llvm-profdata and llvm-cov must come as a matched pair; prepending a directory that holds only one mixes two LLVMs in a single coverage report"
+  },
+  {
     "id": "consumer-inventory.empty-class-is-refused",
     "target": "linux/scripts/verify_consumer_inventory.py",
     "find": "        if not hits:",
