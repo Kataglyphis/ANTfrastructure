@@ -7,6 +7,15 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - Backlog: four image gaps the consumer lanes hit (CON7–CON10)
+
+`docs/refactoring-backlog.md` gains two arm64 GCC gaps and two Windows LLVM gaps. Each
+cites the run that showed it and says what closes it. CON7 (no libsanitizer in the
+arm64 GCC) is fixed in source by e2de5852 and waits only for a published image. CON8
+(arm64 GCC configures cannot find libX11) comes with a hypothesis and the check that
+decides it. CON9 (`clang_rt.profile`) and CON10 (clang-tidy) are the two components
+the patched Windows LLVM does not build. No code changed.
+
 ## 2026-09-24 - ONNX Runtime GenAI is configured without its own tests (`ENABLE_TESTS=OFF`)
 
 With FFmpeg fixed, the rocm chain got through OpenCV (25:36) and Hailo (8:09), then failed in
