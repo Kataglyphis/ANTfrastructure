@@ -158,8 +158,9 @@ def _static_ignores(paths: list) -> set:
     out = set()
     for p in paths:
         s = str(p)
+        posix = s.replace("\\", "/")  # a Windows path, matched against the POSIX entries
         for entry in UNTRACKED_OUTPUT:
-            if s == entry or s.startswith(entry + "/"):
+            if posix == entry or posix.startswith(entry + "/"):
                 out.add(s)
                 break
     return out
