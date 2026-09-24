@@ -38,7 +38,7 @@ killed job printed nothing the gate had found, because the report was buffered.
   exactly what the gate prints, and the fix11 Cargo case still runs the real gate, so a
   FAIL is proven to reach its exit code (`critical-fixes.summary-reaches-exit`).
   52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired runs). All 75 entries bite.
-  The gate's serial cost: 8348 s → 4777 s.
+  The gate's serial cost, one lab session: 11469 s → 6633 s.
 - **The mutation gate is its own CI job, in four shards.** `preflight` runs with
   `PREFLIGHT_SKIP=mutations`; the `mutations` job (matrix `shard: [0, 1, 2, 3]`, 30 min,
   same setup steps) runs `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4`, which
@@ -56,7 +56,9 @@ killed job printed nothing the gate had found, because the report was buffered.
 
 Docs: [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded),
 [`onnxruntime-single-source.md` § How G4 runs](docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass).
-Unverified until CI runs: the per-shard wall time on the runner and the gawk real-tree time there.
+Unverified until CI runs: the per-shard wall time on the runner (projected at about 10-16 of
+its 30 minutes, slice 1 up to 4 more, scaled from `41a07927`'s measured CI gate time) and the
+gawk real-tree time there.
 
 
 ## 2026-09-24 - ORT census: an ORT under another name is found by the entry point it defines
