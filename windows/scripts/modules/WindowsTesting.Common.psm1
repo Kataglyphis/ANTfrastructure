@@ -235,13 +235,22 @@ function Invoke-WithAsanOptions {
       typically want report_globals=1, while a full GUI application needs
       report_globals=0 + windows_hook_rtl_allocators=false, because GUI/driver
       globals and RTL allocator hooking produce noise a test binary never sees.
+      An empty -Options adds nothing: the block runs with ASAN_OPTIONS exactly
+      as the caller had it (Invoke-WithRuntimePath -AsanOptions '' is how a
+      consumer opts out of the test-binary defaults).
   #>
   param(
     [Parameter(Mandatory)]
+    [AllowEmptyString()]
     [string]$Options,
     [Parameter(Mandatory)]
     [scriptblock]$Script
   )
+
+  if ([string]::IsNullOrEmpty($Options)) {
+    & $Script
+    return
+  }
 
   $oldAsanOptions = $env:ASAN_OPTIONS
   if ([string]::IsNullOrEmpty($oldAsanOptions)) {
