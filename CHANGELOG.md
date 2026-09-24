@@ -7,6 +7,38 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - FFmpeg's makedef refuses an empty export list and runs the compiler's own llvm-nm
+
+The rocm chain (hub a943dd94) built base, the ROCm SDK layer, the patched toolchain and ONNX
+Runtime, then failed FFmpeg n9.0.2's `make + install`: `swresample-7.dll` and `swscale-10.dll`
+could not resolve a single libavutil symbol (`av_mallocz`, `av_log`, `av_channel_layout_*`).
+`avutil-61.dll` had linked, but with an empty export list. The replacement
+`windows/scripts/patches/ffmpeg/makedef` writes each DLL's `.def` from an `llvm-nm` dump.
+It sent `llvm-nm`'s stderr to `/dev/null` and wrote `EXPORTS` with nothing under it
+whenever the dump came back empty. Its own header records the same symptom from the
+replacement before it. The same FFmpeg linked four times on the plain amd64 lane
+(09-21, 09-22). The rocm lane adds AMF and Vulkan, and the FFmpeg script puts scoop's shims
+first on the PATH its Git-bash `make` sees, so a bare `llvm-nm` is not necessarily the
+compiler's.
+
+- `makedef` keeps `llvm-nm`'s stderr in `<version script>.nm-errors`. It exits 1, naming the
+  tool, the object count and that stderr, when the dump is empty or when no symbol matches
+  the version script's globs. Nothing reaches the `.def` on either refusal.
+- It runs `$LLVM_NM`, with bare `llvm-nm` only as the fallback. `Build-FfmpegFromSource.ps1`
+  sets it on the clang-cl toolchain to the `llvm-nm.exe` beside the `clang-cl` that this
+  PATH resolves (`Get-FfmpegLlvmNm`), and throws if there is none.
+
+`linux/scripts/tests/test-ffmpeg-makedef.sh` drives `makedef` with a stub `llvm-nm` whose
+"objects" are nm-format text, so it runs on any host. It passes 15/15 here, and 11/15 fail
+against the old script, which ignored `LLVM_NM` and on a host with no `llvm-nm` wrote an empty
+`EXPORTS` list: the rocm signature, reproduced. The four new mutations bite
+(`ffmpeg-makedef.*`, a family declared in `gate-proofs.allow`). `SourceBuild.FfmpegRocm.Tests.ps1`
+covers `Get-FfmpegLlvmNm`; its throw case fails when the throw is removed. Against real COFF
+objects from clang 23.1.0 and its llvm-nm, in the Linux image, `makedef` exported exactly the
+`av*` symbols and refused an nm that could not read them. What emptied the rocm dump is not
+pinned yet: the next rocm run either links with the compiler's own `llvm-nm`, or stops at
+`makedef` with that tool's own error.
+
 ## 2026-09-24 - The WebDAV client installs from its commit archive, not through git
 
 BeschleunigerBallett's Windows lane (run 36020442781) died before its build, inside the

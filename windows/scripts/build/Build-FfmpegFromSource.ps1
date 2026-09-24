@@ -49,6 +49,16 @@ function ConvertTo-MsysPath([string]$Path) {
     return '/' + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
 }
 
+# makedef (patches\ffmpeg\makedef) lists each DLL's exports with llvm-nm, which must be the
+# compiler's own: the one beside the clang-cl that make resolves on this PATH. Throws if absent.
+function Get-FfmpegLlvmNm([string]$ClangClPath) {
+    $nm = Join-Path (Split-Path -Parent $ClangClPath) 'llvm-nm.exe'
+    if (-not (Test-Path -LiteralPath $nm -PathType Leaf)) {
+        throw "FFmpeg: no llvm-nm.exe beside $ClangClPath; makedef needs the compiler's own to list exports."
+    }
+    return $nm
+}
+
 function Assert-FfmpegPkgConfig {
     # Gates the .pc files `make install` produced. Both defects it guards stayed silent for
     # MONTHS because the files were PRESENT and looked fine: `Version: ..` (configure found
@@ -496,6 +506,11 @@ if ($ffToolchain -eq 'clang-cl') {
     $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
     Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
     $confFlags += '--toolchain=msvc', "--cc=clang-cl$ffCcTargetFlag", '--ld=lld-link'
+    # Unset, makedef ran whatever `llvm-nm` bash found first; on the rocm lane (2026-09-24)
+    # avutil-61.dll then exported nothing, and makedef had thrown llvm-nm's stderr away.
+    $ffLlvmNm = Get-FfmpegLlvmNm (Get-Command clang-cl.exe -ErrorAction Stop).Source
+    $env:LLVM_NM = ConvertTo-MsysPath $ffLlvmNm
+    Write-Host "FFmpeg makedef: llvm-nm = $ffLlvmNm"
 } else {
     Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
     $confFlags += '--toolchain=msvc'
