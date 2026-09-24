@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - ONNX Runtime GenAI is configured without its own tests (`ENABLE_TESTS=OFF`)
+
+With FFmpeg fixed, the rocm chain got through OpenCV (25:36) and Hailo (8:09), then failed in
+`media-core-built` at ONNX Runtime GenAI v0.15.2: `unit_tests.exe` would not link
+(`undefined symbol: Generators::Log`, `Generators::g_log`, `SetLogBool`, `GetEnv`). GenAI
+gates `test\` on its own `ENABLE_TESTS` option (default ON) and ignores the `BUILD_TESTING=OFF`
+this script already passed. Its `unit_tests` links the shared `onnxruntime-genai` and uses
+internals that DLL does not export. Only the CUDA variant, which every earlier chain run built,
+compiles those sources into the test itself, so the rocm lane's CPU build was the first to hit
+it. Nothing in the chain runs GenAI's tests, so `Build-OnnxGenaiFromSource.ps1` now passes
+`-DENABLE_TESTS=OFF` on every lane. That also drops the CUDA kernel tests from the CUDA
+lanes' build time. `SourceBuild.GenaiOrt.Tests.ps1` pins the flag, and its case fails with
+the flag removed.
+
 ## 2026-09-24 - `lib/compiler-llvm-tools.sh`: the LLVM tools of the compiler that built a tree
 
 BeschleunigerBallett's coverage lane failed with `error: no profile can be merged`: its
