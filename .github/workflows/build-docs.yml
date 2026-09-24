@@ -65,8 +65,8 @@ jobs:
       # subsets). Deliberately narrowed to the docs-relevant slugs plus
       # `shellcheck`: this reusable workflow must stay self-sufficient for
       # callers that have no preflight job of their own, but ubuntu26.04.yml's
-      # dedicated preflight job already carries the FULL gate, so re-running
-      # everything here just doubled the work on every PR/push.
+      # preflight job and its four sharded mutations jobs already carry the FULL
+      # gate, so re-running everything here just doubled the work on every PR/push.
       #
       # `shellcheck` replaces a hand-rolled
       # `find linux/scripts -name '*.sh' -exec bash -n {} +` step. That was not
