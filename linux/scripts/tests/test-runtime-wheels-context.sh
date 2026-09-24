@@ -7,36 +7,22 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/runtime-wheels-fixtures.sh"
 RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
 CTX="${TESTS_DIR}/../01-core/context-management.sh"
 
-_FNS="$(t_fn_src "${RBF}" append_wrapper_build_args)"$'\n' || exit 1
-_FNS+="$(t_fn_src "${RBF}" runtime_gpu_backend_pair)"$'\n' || exit 1
-for _fn in runtime_use_local_artifact_context _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir; do
-  _FNS+="$(t_fn_src "${CTX}" "${_fn}")"$'\n' || exit 1
-done
+_FNS="$(rw_fns "${RBF}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args runtime_gpu_backend_pair)" || exit 1
+_FNS+=$'\n'"$(rw_fns "${CTX}" runtime_use_local_artifact_context _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir)" || exit 1
 _STUBS='runtime_android_pin() { :; }
 cross_build_host_infix() { printf hostarm64; }
 cross_android_tag() { printf "repo:cross-android-hostarm64-%s" "$1"; }
-append_optional_build_arg() { local -n _o=$1; [ -n "$3" ] && _o+=(--build-arg "$2=$3"); return 0; }
-runtime_stage_context_dir() { printf "%s/%s-%s" "${WORK}" "$1" "$2"; }'
+runtime_stage_context_dir() { printf "%s/%s-%s" "${WORK}" "$1" "$2"; }'$'\n'"${RW_OPTIONAL_ARG_STUB}"
 
 # A nerdctl that logs its calls; `export` streams a rootfs holding a wheelhouse
 # AND an unrelated tree, or fails.
-_BIN="$(mktemp -d)"
-_ROOTFS="$(mktemp -d)"
-mkdir -p "${_ROOTFS}/opt/wheels" "${_ROOTFS}/usr/lib"
-touch "${_ROOTFS}/opt/wheels/x.whl" "${_ROOTFS}/usr/lib/big.so"
+_BIN="$(rw_nerdctl_dir)"
+_ROOTFS="$(rw_rootfs)"
 export ROOTFS="${_ROOTFS}"
-cat > "${_BIN}/nerdctl" <<'STUB'
-#!/usr/bin/env bash
-echo "$*" >> "${NLOG}"
-case "$1" in
-  create) echo cid42 ;;
-  export) [ -n "${EXPORT_FAIL:-}" ] && exit 1; tar -cf - -C "${ROOTFS}" opt usr ;;  # no ./ prefix, like the real one
-esac
-STUB
-chmod +x "${_BIN}/nerdctl"
 
 _args() {  # prints one arg per line; exit 7 = append_wrapper_build_args failed
   PATH="${_BIN}:${PATH}" bash -c "set -uo pipefail"$'\n'"${_STUBS}"$'\n'"${_FNS}"$'\n''a=(); append_wrapper_build_args a arm64 parent || exit 7; printf "%s\n" "${a[@]}"' 2>&1

@@ -46,10 +46,10 @@ _build_one_artifact() {
   # — without the guards, a failed build falls through to the export below,
   # which exports the STALE tag left by a previous run and reports green.
   if runtime_use_local_stage_context_outputs; then
-    runtime_build_chain "${_arch}" "${OUTPUT_ROOT}/${_arch}/rootfs" || return 1
+    runtime_wheels_arch_chain "${_arch}" "${OUTPUT_ROOT}/${_arch}/rootfs" || return 1
     runtime_write_artifact_metadata "${_arch}" "${OUTPUT_ROOT}/${_arch}" || return 1
   else
-    runtime_build_chain "${_arch}" || return 1
+    runtime_wheels_arch_chain "${_arch}" || return 1
     tag="$(runtime_wrapper_tag "${_arch}")"
     export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${_arch}" \
       "TARGET_ARCH=${_arch}" \
@@ -76,6 +76,7 @@ main() {
   # Post-parse setup (replaces runtime_flow_export_setup)
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_PREFIX}"
+  runtime_wheels_setup || exit $?
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 

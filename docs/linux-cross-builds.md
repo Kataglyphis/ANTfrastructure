@@ -753,6 +753,72 @@ The riscv64 app wheelhouse is built on the amd64 host for `torch`, `torchvision`
 - Each local stage context is deleted after the downstream build consumes it.
 - `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest` from existing per-arch wrappers.
 
+### The wrapper's wheelhouse: two deliveries
+
+The torch RUN in `Dockerfile.torch` builds `/opt/venv` from `/opt/wheels`: 8 to 10
+wheels, about 83 MB on arm64 and 165 MB on riscv64. Those wheels live in the android
+image, which is about 12.7 GB in 96 layers. `RUNTIME_WHEELS_SOURCE` picks how the RUN
+gets them. Both deliveries read the same image. They differ in what BuildKit must hold
+while the wrapper builds.
+
+| `RUNTIME_WHEELS_SOURCE` | What happens |
+|---|---|
+| `auto` (default) | The same as `image`, for now. |
+| `image` | The delivery every image was built with before 2026-09-24, unchanged. The torch RUN bind-mounts `/opt/wheels` from the android image (stage `wheels-source`). A pushing run hands BuildKit the digest-pinned ref. Under `ARTIFACT_CONTEXT_ROOT` (a `--no-push` chain) `runtime_wheels_context_dir` extracts the directory from containerd with `nerdctl export \| tar`. |
+| `export` | Before each arch's base and package builds, BuildKit builds only `Dockerfile.torch`'s `wheels-export` stage with `--output type=local`. That copies `/opt/wheels` out of the same image into `<RUNTIME_CONTEXT_ROOT>/runtime-flow.wheels.*/<arch>`, and a sha256 manifest is written beside it. The wrapper build re-checks the manifest, then mounts the directory (`WHEELS_IMAGE=runtime_wheels`, `--build-context runtime_wheels=<dir>`). The directory is removed after the wrapper. |
+
+**How to pick one.**
+
+- Keep the default unless you are measuring or have measured. Every published image
+  was built through `image`.
+- Put `RUNTIME_WHEELS_SOURCE=export` in front of `build-cross-chain.sh`,
+  `build-runtime-manifest.sh` or `build-runtime-artifacts.sh` for one run. Unset it,
+  or set `image`, to go back. A switch costs no rebuild of its own: the only step
+  it re-keys, the torch RUN, re-runs on every lane anyway.
+- A native host takes either one: a Jetson with `CROSS_BUILD_PLATFORM=linux/arm64`,
+  the X100 with `linux/riscv64`. The export stage is one COPY and runs no target
+  code, so it behaves the same on an amd64 cross host and on a native host.
+- Any other value stops the lane with exit 2, and the chain checks it before its
+  first stage.
+
+**What `export` guarantees, and what it refuses.**
+
+- **The same image.** The export resolves its ref with `runtime_wheels_image_ref`,
+  the function image mode uses. It passes the same `WHEELS_IMAGE`, or none when the
+  ref is empty, so both fall back to the Dockerfile default. It uses the wrapper
+  build's `--platform` and pull policy.
+- **Under `ARTIFACT_CONTEXT_ROOT`** BuildKit cannot see the containerd-only tag. The
+  export then reads the android OCI layout the package build reads, but only when the
+  layout's one manifest digest equals the containerd image's digest (`nerdctl image
+  inspect --mode=native`). Otherwise it stops and names both.
+  `ARTIFACT_CONTEXT_MODE=dir` is refused, because there is no digest to compare.
+- **A failed export build, or one without a wheel,** fails the arch before its base
+  build.
+- **At wrapper time** the build fails if the directory or its manifest is missing, or
+  if any file changed, appeared or vanished since the export. Nothing falls back from
+  `export` to `image`; going back is the operator's switch.
+- **Not proven by the unit suite** (`tests/test-runtime-wheels-source.sh`, which runs
+  no BuildKit): the named-context override on the build host's rootless OCI worker,
+  and that both modes mount identical bytes there. The A/B recipe in
+  [`cross-build-verification.md`](cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv)
+  checks both.
+
+**Why it exists.** In the 2026-09-22 lane the torch RUN waited 161 / 565 / 661 s
+(amd64 / arm64 / riscv64) before `uv venv` wrote its first file. On 2026-09-21 it
+waited 96 / 1 / 2 s with the same scripts. The likely cause is BuildKit pulling,
+extracting and hashing the whole android snapshot for that one bind mount, after
+something evicted it between the package build and the wrapper. `export` moves the
+dependency to before the package build, which needs the same snapshot anyway. That
+cause is inferred, not proven. The `sharing=locked` apt cache mounts are not ruled out,
+and amd64's recurring 96-161 s has no explanation yet. Count savings per arch, and do
+not count on the amd64 share.
+
+**Where it lives.** `linux/scripts/lib-runtime-wheels.sh`, beside `lib-orchestrator.sh`
+and outside every image closure. Changing it, including a later switch of `auto` to
+`export`, re-keys no stage. `01-core/runtime-build-fns.sh` holds only the ref resolver,
+the `image` arm (`_append_wheels_image_args`) and a two-way branch in
+`append_wrapper_build_args`, because that is where the wrapper's arguments are built.
+
 ### Verified local foreign-architecture rebuild
 
 ```bash
@@ -919,6 +985,7 @@ destroys it, and what replacing it costs is in
 |---|---|
 | `NO_CACHE=1` | `--no-cache` across the whole chain. |
 | `RUNTIME_NO_CACHE=1` | `--no-cache` on just the runtime package + wrapper builds (use after a media toggle flip). |
+| `RUNTIME_WHEELS_SOURCE=auto\|image\|export` | Where the wrapper's torch RUN gets `/opt/wheels`: a bind mount of the android image (`image`; `auto`, the default, means `image`), or a sealed directory exported from that same image before each package build (`export`). [Both paths](#the-wrappers-wheelhouse-two-deliveries). |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
 | `NO_CACHE_EXPORT=1` | Drop everything registry-facing (inline cache export + registry cache reads). The manual recovery for the ghcr `DeadlineExceeded`/`httpReadSeeker` import flake — which the chain now also does by itself after two such failures. |
 | `CROSS_REGISTRY_CACHE=max` | **DESIGN ONLY — setting it is a silent no-op.** The T4 pilot was declined and its implementation reverted; the `--cache-to type=registry` it describes no longer exists, and `verify-critical-fixes.sh` actively forbids the dead `<tag>-buildcache` ref from returning. Kept as a row only so the name resolves to its history — see [`build-cache-tiers.md` § 4](build-cache-tiers.md). |

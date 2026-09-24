@@ -943,7 +943,29 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 
 **Cause.** The android tag exists only in containerd's store, which BuildKit's OCI worker cannot see. nerdctl maps every `oci-layout://` context onto one store id (`parent-image-key`), so a second one beside `runtime_package` makes one of them unresolvable. Rootless nerdctl refuses `cp` from a stopped container.
 
-**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. Never pass two `oci-layout://` contexts to one nerdctl build.
+**Fix.** `runtime_wheels_context_dir` extracts `/opt/wheels` with `nerdctl export | tar` into a directory context. Never pass two `oci-layout://` contexts to one nerdctl build. Since 2026-09-24 `RUNTIME_WHEELS_SOURCE=export` is the other way: its own export build reads the android OCI layout (the only `oci-layout://` context of that build), after proving it is the same image ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+
+### The torch RUN idles for minutes before `uv venv`
+
+**Symptom.** The wrapper's torch RUN (the one that mounts `wheels-source`) writes nothing for minutes. The first `/opt/venv` file is dated 161 / 565 / 661 s (amd64 / arm64 / riscv64) after the `COPY setup-torch-venv.sh` layer (2026-09-22 lane), where the day before it was 96 / 1 / 2 s with the same scripts.
+
+**Cause.** Likely, not proven: to bind-mount `/opt/wheels` (about 0.1 GB), BuildKit must hold and checksum the whole android snapshot (about 12.7 GB in 96 layers). When a prune or GC evicted that snapshot after the package build, the wrapper pulls and extracts it again first. A lock on the `sharing=locked` apt cache mounts would look the same from inside the RUN.
+
+**Fix.** `RUNTIME_WHEELS_SOURCE=export` stages the wheelhouse before the package build, so the wrapper no longer depends on the snapshot. To tell the causes apart, compare the `wheels-source` vertex's `extracting` lines with the RUN vertex's start: [the recipe](cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv).
+
+### `RUNTIME_WHEELS_SOURCE=export` stops a runtime lane
+
+**Symptom.** One of:
+- `RUNTIME_WHEELS_SOURCE=<x>: expected auto, image or export` (exit 2, at chain or lane start);
+- `the android layout <dir> holds <digest>, but <ref> is <digest> in containerd`;
+- `needs ARTIFACT_CONTEXT_MODE=oci to prove the layout is <ref>`;
+- `no wheel in <dir>/opt/wheels, exported from <ref>`;
+- `the wheelhouse staged for <arch> at <dir> is missing or changed since its export`;
+- from BuildKit, `target stage "wheels-export" could not be found`.
+
+**Cause.** Export mode refuses anything that would change where the wheels come from, or mount bytes it did not seal. In order: a typo; a `--no-push` artifact layout that is not the image image mode would mount; a directory artifact with no digest to compare; an android image without a wheelhouse; a staged directory changed or removed between the export and the wrapper; a `--wrapper-dockerfile` without the export stage.
+
+**Fix.** `RUNTIME_WHEELS_SOURCE=image` is the pre-2026-09-24 delivery and needs none of these. Nothing falls back on its own. For a digest mismatch, re-export the android layout from the tag the lane names, or rebuild android in the same run.
 
 ### A GPU venv ships two onnxruntime distributions
 

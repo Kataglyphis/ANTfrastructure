@@ -525,14 +525,43 @@ stage_chain_ort_wheels() {
     || { echo "ERROR: ${store} does not hold exactly the chain wheels ${VENV} was installed from" >&2; exit 1; }
 }
 
+# The torch RUN's timeline, and what /opt/wheels held before any prune. Never fatal; the
+# digest equals the host's [wheels] line. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+_STV_T0="$(date +%s)"
+_stv_mark() {
+  local now
+  now="$(date +%s)"
+  echo "[torch-venv:timing] $1 epoch=${now} +$((now - _STV_T0))s"
+}
+
+_stv_wheelhouse_line() {
+  local d="${1:-/opt/wheels}" counts="" digest=""
+  if [ -d "${d}" ]; then
+    counts="$(find "${d}" -type f -printf '%s\n' 2>/dev/null | awk '{n++; s+=$1} END {printf "files=%d bytes=%d", n, s}' || true)"
+    digest="$( (cd "${d}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum \
+      | awk '{print substr($0, 1, 64) "  " substr($0, 67)}' | sha256sum) 2>/dev/null || true)"
+  fi
+  digest="${digest%% *}"
+  echo "[torch-venv] wheelhouse ${counts:-files=0 bytes=0} sha256=${digest:-none}"
+}
+
 main() {
+  _stv_mark start
+  _stv_wheelhouse_line
   setup_torch_venv
+  _stv_mark setup_torch_venv
   seed_opencv5_bindings
+  _stv_mark seed_opencv5_bindings
   setup_torch_deps
+  _stv_mark setup_torch_deps
   setup_torch_app
+  _stv_mark setup_torch_app
   stage_chain_ort_wheels
+  _stv_mark stage_chain_ort_wheels
   bytecompile_venv
+  _stv_mark bytecompile_venv
   cleanup_wheelhouse
+  _stv_mark cleanup_wheelhouse
 }
 
 main "$@"

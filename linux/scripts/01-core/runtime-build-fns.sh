@@ -9,6 +9,7 @@
 #   runtime_build_wrapper_image
 #   runtime_build_wrapper_rootfs
 #   runtime_build_chain
+#   runtime_wheels_image_ref
 #   runtime_write_artifact_metadata
 #
 # Depends on functions defined in artifact-common.sh:
@@ -16,6 +17,8 @@
 #   export_image_to_oci_layout, export_image_rootfs_dir,
 #   remove_local_image_if_exists, runtime_*_tag(), runtime_artifact_*,
 #   runtime_stage_context_*, runtime_use_local_*, etc.
+# and, only while RUNTIME_WHEELS_EXPORT_ROOT is set, on runtime_wheels_wrapper_args
+# from linux/scripts/lib-runtime-wheels.sh (loaded by lib-orchestrator.sh).
 
 # One push attempt, output tee'd so the caller can classify the failure.
 _runtime_push_attempt() {
@@ -250,21 +253,6 @@ append_wrapper_build_args() {
   # helper invocations that never went through main().
   _prov_date="${CROSS_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   _prov_ref="${CROSS_VCS_REF:-$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
-  # AP3 (2026-08-18): the wheelhouse is bind-mounted into Dockerfile.torch's
-  # venv RUN from a wheels-source stage instead of being baked into package —
-  # pass the digest-pinned android ref (the wrapper's registry-resident
-  # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
-  local _wheels_image
-  _wheels_image="$(runtime_android_pin "${arch}")"
-  # The pin is empty under --no-push. On a build host whose android tag carries
-  # a -host<arch> infix, Dockerfile.torch's un-infixed default would then name
-  # the AMD box's artifact and bind-mount ITS /opt/wheels. Name this host's tag
-  # instead, so a miss fails loudly rather than shipping the wrong generation.
-  # Structurally unreachable on amd64: the infix is empty there. A VARIANT is the
-  # same hazard on every host: the default names the default chain's android.
-  if [ -z "${_wheels_image}" ] && { [ -n "$(cross_build_host_infix)" ] || [ -n "$(cross_variant 2>/dev/null)" ]; }; then
-    _wheels_image="$(cross_android_tag "${arch}" 2>/dev/null || true)"
-  fi
   _awba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "BUILD_MODE=native"
@@ -274,14 +262,12 @@ append_wrapper_build_args() {
     --build-arg "BUILD_DATE=${_prov_date}"
     --build-arg "VCS_REF=${_prov_ref}"
   )
-  [ -n "${_wheels_image}" ] && _awba_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
-  # That tag exists only in the containerd store, which BuildKit's OCI worker
-  # cannot see: wheels-source died "not found". Hand it the wheelhouse as a
-  # directory context (see runtime_wheels_context_dir for why not OCI).
-  if [ -n "${_wheels_image}" ] && runtime_use_local_artifact_context; then
-    local _wheels_ctx
-    _wheels_ctx="$(runtime_wheels_context_dir "${arch}" "${_wheels_image}")" || return 1
-    _awba_out+=(--build-context "${_wheels_image}=${_wheels_ctx}")
+  # RUNTIME_WHEELS_SOURCE: the export root exists only in export mode, and never falls back.
+  # docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
+  if [ -n "${RUNTIME_WHEELS_EXPORT_ROOT:-}" ]; then
+    runtime_wheels_wrapper_args _awba_out "${arch}" || return 1
+  else
+    _append_wheels_image_args _awba_out "${arch}" || return 1
   fi
   # Documented operator overrides (see runtime_shared_usage_env_overrides);
   # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
@@ -295,6 +281,46 @@ append_wrapper_build_args() {
   fi
   append_optional_build_arg _awba_out ONNX_PACKAGE "${_onnx_pkg}"
   append_optional_build_arg _awba_out PYTORCH_EXTRA "${_torch_extra}"
+}
+
+# The image Dockerfile.torch's wheels-source reads for <arch>; empty = its own
+# WHEELS_IMAGE default. Both RUNTIME_WHEELS_SOURCE deliveries resolve it here.
+runtime_wheels_image_ref() {
+  local arch="$1" _wheels_image
+  # AP3 (2026-08-18): the wheelhouse is bind-mounted into Dockerfile.torch's
+  # venv RUN from a wheels-source stage instead of being baked into package —
+  # pass the digest-pinned android ref (the wrapper's registry-resident
+  # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
+  _wheels_image="$(runtime_android_pin "${arch}")"
+  # The pin is empty under --no-push. On a build host whose android tag carries
+  # a -host<arch> infix, Dockerfile.torch's un-infixed default would then name
+  # the AMD box's artifact and bind-mount ITS /opt/wheels. Name this host's tag
+  # instead, so a miss fails loudly rather than shipping the wrong generation.
+  # Structurally unreachable on amd64: the infix is empty there. A VARIANT is the
+  # same hazard on every host: the default names the default chain's android.
+  if [ -z "${_wheels_image}" ] && { [ -n "$(cross_build_host_infix)" ] || [ -n "$(cross_variant 2>/dev/null)" ]; }; then
+    _wheels_image="$(cross_android_tag "${arch}" 2>/dev/null || true)"
+  fi
+  printf '%s' "${_wheels_image}"
+}
+
+# RUNTIME_WHEELS_SOURCE=image, the delivery every chain used before 2026-09-24:
+# the torch RUN bind-mounts /opt/wheels straight out of that android image.
+_append_wheels_image_args() {
+  local -n _awia_out=$1
+  local arch="$2" _wheels_image
+  _wheels_image="$(runtime_wheels_image_ref "${arch}")"
+  [ -n "${_wheels_image}" ] || return 0
+  _awia_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
+  # That tag exists only in the containerd store, which BuildKit's OCI worker
+  # cannot see: wheels-source died "not found". Hand it the wheelhouse as a
+  # directory context (see runtime_wheels_context_dir for why not OCI).
+  if runtime_use_local_artifact_context; then
+    local _wheels_ctx
+    _wheels_ctx="$(runtime_wheels_context_dir "${arch}" "${_wheels_image}")" || return 1
+    _awia_out+=(--build-context "${_wheels_image}=${_wheels_ctx}")
+  fi
+  return 0
 }
 
 # The GPU wrapper's "<ONNX_PACKAGE> <PYTORCH_EXTRA>" pair, or empty for a CPU
@@ -589,16 +615,27 @@ runtime_build_chain() {
   # disables set -e for the whole call tree — without these, a failed base or
   # package build fell through to the next step and the lane reported success
   # with nothing built.
-  runtime_build_base_image "${arch}" || return 1
-  runtime_build_package_image "${arch}" || return 1
-  _runtime_run_package_smoke "${arch}" || return 1
+  _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1
+  _runtime_timed package "${arch}" runtime_build_package_image "${arch}" || return 1
+  _runtime_timed smoke "${arch}" _runtime_run_package_smoke "${arch}" || return 1
 
   if [ -n "${rootfs_dir}" ]; then
-    runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}" || return 1
+    _runtime_timed wrapper "${arch}" runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}" || return 1
     return 0
   fi
 
-  runtime_build_wrapper_image "${arch}" || return 1
+  _runtime_timed wrapper "${arch}" runtime_build_wrapper_image "${arch}" || return 1
+}
+
+# <step> <arch> <cmd...>: run one runtime-lane step, log its wall time, return its rc.
+# docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+_runtime_timed() {
+  local step="$1" arch="$2" t0 rc=0
+  shift 2
+  t0="$(date +%s)"
+  "$@" || rc=$?
+  log "[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}"
+  return "${rc}"
 }
 
 runtime_write_artifact_metadata() {
@@ -668,5 +705,9 @@ Environment overrides:
   FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
   WRAPPER_SMOKE_GATE          1 (default) = run the wrapper-smoke gate after
                                 package build; 0 = skip
+  RUNTIME_WHEELS_SOURCE        Where the wrapper's /opt/wheels comes from: auto
+                                (default, = image), image (the android image, as
+                                before 2026-09-24) or export (a directory copied
+                                out before each package build)
 EOF
 }

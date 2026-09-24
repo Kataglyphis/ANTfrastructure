@@ -40,6 +40,9 @@ _LIB_ORCHESTRATOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # artifact-common.sh has its own load guard, so repeated sourcing is a no-op.
 # shellcheck source=linux/scripts/01-core/artifact-common.sh
 source "${_LIB_ORCHESTRATOR_DIR}/01-core/artifact-common.sh"
+# RUNTIME_WHEELS_SOURCE. Beside, not inside, 01-core: that tree is in the compiler image's closure.
+# shellcheck source=linux/scripts/lib-runtime-wheels.sh
+source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-wheels.sh"
 
 # Operator toggles forwarded like a versions.env key (only when set) without sitting in
 # one, which would re-key the whole chain. docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv

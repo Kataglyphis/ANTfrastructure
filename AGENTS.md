@@ -807,6 +807,13 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   pre-2026-09-23 build verbatim. Never remove either, never let `legacy` drift
   from the old command, and never soften the gate on a binary that claims to be good:
   [`consumer-image-contract.md`](docs/consumer-image-contract.md#building-the-web-lane-tools-from-source).
+- **The wrapper's `/opt/wheels` has two deliveries; keep both** (owner decision
+  2026-09-24). `RUNTIME_WHEELS_SOURCE=image` (what `auto`, the default, means today)
+  mounts the android image as every published image did; `export` stages that same
+  image's wheelhouse, sealed, before each package build. Never add a fallback between
+  them, and keep their logic in `linux/scripts/lib-runtime-wheels.sh`, outside every
+  image closure, so a change there re-keys nothing:
+  [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`
   on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and

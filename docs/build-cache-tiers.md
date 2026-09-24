@@ -1019,7 +1019,8 @@ The rules an agent must never violate:
 | Knob | Default | Effect |
 |---|---|---|
 | `NO_CACHE=1` | unset | `--no-cache`; also disables T2 and T3 entirely |
-| `RUNTIME_NO_CACHE=1` | unset | `--no-cache` on just the runtime package + wrapper builds |
+| `RUNTIME_NO_CACHE=1` | unset | `--no-cache` on just the runtime package + wrapper builds (and the `export` build below) |
+| `RUNTIME_WHEELS_SOURCE` | `auto` (= `image`) | `export`: the wrapper mounts a small directory staged from the android image before the package build, so it no longer needs the ~12.7 GB android snapshot in the BuildKit store; a prune after the package build then costs nothing. Only the torch RUN's key changes; the lib is outside every closure ([both paths](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)) |
 | `NO_CACHE_EXPORT=1` | unset | drops everything registry-facing (T3, and T4 when enabled); keeps T2 |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | unset (set by the disk guard) | stop *writing* T2; still read it |
 | `SALVAGE_CACHE_EXPORT=0` | `1` | disable the per-`--target` salvage re-drive after a failed stage |

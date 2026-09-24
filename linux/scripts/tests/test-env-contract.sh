@@ -52,6 +52,7 @@ _surface="$(mktemp)"
   cat "${TESTS_DIR}/../build-runtime-artifacts.sh" 2>/dev/null || true
   cat "${TESTS_DIR}/../build-runtime-manifest.sh" 2>/dev/null || true
   cat "${TESTS_DIR}/../build-cross-chain.sh" 2>/dev/null || true
+  cat "${TESTS_DIR}/../lib-runtime-wheels.sh"   # consumes RUNTIME_WHEELS_SOURCE
 } > "${_surface}"
 
 _dead="" _zombie=""
