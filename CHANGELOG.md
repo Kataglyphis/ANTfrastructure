@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - makedef hands llvm-nm its object list as @file: xargs died in the rocm lane's environment
+
+The refusal below paid off on the first rerun. The rocm FFmpeg stage stopped at
+`makedef: 'C:/llvm-patched/bin/llvm-nm.exe' listed no global symbol in 116 object(s)`, and
+the captured stderr was not llvm-nm's at all:
+`assertion "bc_ctl.arg_max >= LINE_MAX" failed: file "xargs.c", line 512`. Git for Windows'
+xargs subtracts the whole environment block from the ~32 000-character command-line limit.
+The rocm lane's environment is large enough (hundreds of version variables, among them
+the long `TORCH_ROCM_*` wheel URLs) that nothing was left, so xargs aborted before it ran
+llvm-nm. The amd64 lane's smaller environment stayed under the line, which is why the same
+FFmpeg linked there four times. The previous `2>/dev/null` had turned the abort into an
+empty export list.
+
+`makedef` no longer uses xargs. It writes the object list, one per line, to
+`<version script>.nm-objects` and runs `llvm-nm --defined-only -g @<that file>`, so no
+command line carries the list. LLVM tools expand response files, and the real llvm-nm 23.1.0
+read it and exported exactly the `av*` symbols from clang's COFF objects. Reproduced on this
+host with Git for Windows' shell: past ~33 KB of environment, the xargs version fails
+(`xargs: environment is too large for exec`) at 33, 41 and 50 KB, and the `@file` version
+passes at all three. `test-ffmpeg-makedef.sh` asserts one llvm-nm run with one `@file`
+argument and no object on its command line (19/19). The new
+`ffmpeg-makedef.objects-by-response-file` mutation, which puts xargs back, bites.
+
 ## 2026-09-24 - FFmpeg's makedef refuses an empty export list and runs the compiler's own llvm-nm
 
 The rocm chain (hub a943dd94) built base, the ROCm SDK layer, the patched toolchain and ONNX

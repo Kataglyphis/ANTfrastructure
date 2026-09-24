@@ -6901,8 +6901,8 @@
   {
     "id": "ffmpeg-makedef.nm-stderr-kept",
     "target": "windows/scripts/patches/ffmpeg/makedef",
-    "find": "        | xargs \"$nm\" --defined-only -g 2>\"$nm_errors\" \\",
-    "replace": "        | xargs \"$nm\" --defined-only -g 2>/dev/null \\",
+    "find": "dump=$(\"$nm\" --defined-only -g \"@$nm_objects\" 2>\"$nm_errors\" \\",
+    "replace": "dump=$(\"$nm\" --defined-only -g \"@$nm_objects\" 2>/dev/null \\",
     "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
     "why": "llvm-nm's stderr is the only evidence of why the dump is empty; discarding it is how the rocm failure surfaced forty seconds later as a link error with no cause"
   },
@@ -6913,6 +6913,14 @@
     "replace": "nm=\"llvm-nm\"",
     "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
     "why": "the build hands makedef the compiler's own llvm-nm; a bare llvm-nm is whatever bash finds first on a PATH that puts scoop's shims ahead of the compiler"
+  },
+  {
+    "id": "ffmpeg-makedef.objects-by-response-file",
+    "target": "windows/scripts/patches/ffmpeg/makedef",
+    "find": "dump=$(\"$nm\" --defined-only -g \"@$nm_objects\" 2>\"$nm_errors\" \\",
+    "replace": "dump=$(xargs \"$nm\" --defined-only -g < \"$nm_objects\" 2>\"$nm_errors\" \\",
+    "test": "bash linux/scripts/tests/test-ffmpeg-makedef.sh",
+    "why": "the object list must reach llvm-nm as @file; through xargs it rides a command line, and Git for Windows' xargs aborts once the environment eats the ~32K limit (the rocm lane, 2026-09-24: 'assertion \"bc_ctl.arg_max >= LINE_MAX\" failed')"
   },
   {
     "id": "consumer-inventory.empty-class-is-refused",

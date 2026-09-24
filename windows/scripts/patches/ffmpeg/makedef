@@ -1,19 +1,24 @@
 #!/usr/bin/env sh
 # Replacement makedef: expands version-script globs (e.g. `av*;`) against the
-# global defined symbols of the actual objects, dumped with llvm-nm via xargs
-# (xargs batches around the Windows command-line length limit that breaks the
-# upstream script's single lib.exe invocation for libavcodec's ~800 objects).
+# global defined symbols of the actual objects, dumped with llvm-nm from a
+# RESPONSE FILE (the upstream script's single lib.exe invocation broke the
+# Windows command-line length limit on libavcodec's ~800 objects).
 #
-# Notes vs the previous replacement (which emitted an EMPTY export list):
+# Notes vs the previous replacements (both emitted an EMPTY export list):
 #  * FFmpeg version scripts contain GLOBS (av*;), not literal symbol names —
 #    they must be expanded against real object symbols.
 #  * The msvc toolchain invokes this with SLIB_CREATE_DEF_INPUTS=@target.objs —
 #    a RESPONSE FILE listing the objects — which must be read, not treated as
 #    an object itself.
+#  * The object list reaches llvm-nm as @file, never on a command line. xargs did,
+#    and on the rocm lane (2026-09-24) it aborted before running llvm-nm:
+#    `assertion "bc_ctl.arg_max >= LINE_MAX" failed` -- Git for Windows' xargs
+#    subtracts the whole environment from the ~32K limit, and that lane's
+#    environment left too little. Its stderr went to /dev/null.
 #  * An empty dump or export list is REFUSED, never written: the DLL would export
 #    nothing and every library linking it fails later on undefined symbols, far
-#    from the cause (the rocm lane's avutil-61.dll, 2026-09-24). LLVM_NM names the
-#    compiler's own llvm-nm (Build-FfmpegFromSource.ps1); bare llvm-nm is the fallback.
+#    from the cause. LLVM_NM names the compiler's own llvm-nm
+#    (Build-FfmpegFromSource.ps1); bare llvm-nm is the fallback.
 
 vscript=$1
 shift
@@ -25,6 +30,7 @@ fi
 
 nm="${LLVM_NM:-llvm-nm}"
 nm_errors="${vscript}.nm-errors"
+nm_objects="${vscript}.nm-objects"
 
 # Glob patterns from the global: section (semicolon-separated, may span lines)
 pats=$(sed -n '/global:/,/local:/p' "$vscript" \
@@ -40,16 +46,16 @@ objs=$(for a in "$@"; do
            esac
        done | sed -e '/^[[:space:]]*$/d')
 
-# Global defined symbols from all objects (xargs batches the command lines).
+# Global defined symbols from all objects, one llvm-nm run over a response file.
 # stderr is kept, not discarded: it is the only evidence when the dump is empty.
-dump=$(printf '%s\n' "$objs" \
-        | xargs "$nm" --defined-only -g 2>"$nm_errors" \
+printf '%s\n' "$objs" > "$nm_objects"
+dump=$("$nm" --defined-only -g "@$nm_objects" 2>"$nm_errors" \
         | awk 'NF>=3 {print $3}' \
         | sed -e "s/^${EXTERN_PREFIX}//" \
         | sort -u)
 
 if [ -z "$dump" ]; then
-    count=$(printf '%s\n' "$objs" | grep -c .)
+    count=$(grep -c . "$nm_objects")
     echo "makedef: '$nm' listed no global symbol in $count object(s) for $vscript;" \
          "refusing to write an empty EXPORTS list. Its stderr ($nm_errors):" >&2
     head -n 20 "$nm_errors" >&2
