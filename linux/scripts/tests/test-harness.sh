@@ -88,6 +88,14 @@ t_stubbed_script() {
   printf 'set -uo pipefail\nsource %q\n%s\n' "${_lib}" "${_args}"
 }
 
+# t_stage_build_args <repo root> <arch> — "ARGS=<n>", then every build arg an orchestrator hands a
+# stage for <arch>, one per line: how a suite proves an exported switch is forwarded, and only when set.
+t_stage_build_args() {
+  bash -c 'REPO_ROOT="$1"; source "$1/linux/scripts/lib-orchestrator.sh" >/dev/null 2>&1
+    declare -a a=(); append_common_build_args a "$2"; echo "ARGS=${#a[@]}"
+    printf "%s\n" "${a[@]}"' _ "$1" "$2"
+}
+
 # t_gate_tree <module>... — a throwaway root holding linux/scripts/<module> for each
 # named module, for a gate that derives its own root from __file__. Prints the root;
 # the caller adds its fixture and removes it. Second owner of a shape two suites had

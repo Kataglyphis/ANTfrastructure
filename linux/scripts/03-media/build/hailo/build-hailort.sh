@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
+# shellcheck source=linux/scripts/03-media/build/hailo/hailo-build-lib.sh
+source "${SCRIPT_DIR}/hailo-build-lib.sh"
 
 case "${1:-}" in
   -h|--help)
@@ -24,10 +26,15 @@ Environment:
   HAILO_BUILD_ROOT      Work tree (default: /var/cache/hailo-build; cache mount)
   TARGET_ARCH           amd64|arm64 (riscv64 is refused — no HailoRT support)
   GSTREAMER_PREFIX      GStreamer prefix (default: /opt/gstreamer)
+  HAILO_NESTED_CACHE    carry (default): the nested protobuf build is cached;
+                        off: it builds uncached, as before 2026-09-24
+  HAILO_PYHAILORT_IPO   off (default): pyhailort links a real module;
+                        upstream: upstream's forced LTO, an empty module under lld
 EOF
     exit 0
     ;;
 esac
+hailo_validate_knobs || exit 2
 
 : "${HAILORT_VERSION:?HAILORT_VERSION must be set (versions.env)}"
 : "${HAILORT_SOURCE_SHA256:?HAILORT_SOURCE_SHA256 must be set (versions.env)}"
@@ -179,13 +186,19 @@ build_hailort() {
   # "not ELF-based" error when a cross-attempt cache met the native build).
   rm -rf "${HAILORT_SRC}/hailort/external"/*-build "${HAILORT_SRC}/hailort/external"/*-install
   info "configuring HailoRT (GStreamer element ON, offline externals)"
+  # The configure itself builds protobuf, under `env -i`. docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
   PKG_CONFIG_PATH="$(gst_pkgconfig_dir):${PKG_CONFIG_PATH:-}" \
-    cmake -S "${HAILORT_SRC}" -B "${build_dir}" -G Ninja "${cmake_opts[@]}"
+    hailo_nested_configure hailort-configure "${HAILORT_SRC}/hailort/external/protobuf-build" \
+      "${HAILORT_SRC}/hailort/cmake/execute_cmake.cmake" \
+      -S "${HAILORT_SRC}" -B "${build_dir}" -G Ninja "${cmake_opts[@]}" \
+    || die "HailoRT configure failed"
 
-  local jobs
+  local jobs mark
   jobs="$(compute_cpp_heavy_jobs "")"
+  mark="$(hailo_cache_mark "${CMAKE_CXX_COMPILER_LAUNCHER:-}")"
   info "building HailoRT (jobs=${jobs})"
   cmake --build "${build_dir}" -j "${jobs}"
+  hailo_cache_report hailort-build "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
   cmake --install "${build_dir}"
 }
 
@@ -220,7 +233,10 @@ verify_install() {
 build_pyhailort() {
   local platform_dir="${HAILORT_SRC}/hailort/libhailort/bindings/python/platform"
   [ -d "${platform_dir}" ] || { warn "pyhailort packaging dir absent; skipping"; return 0; }
-  local wheel_dir="${HAILO_PREFIX}/wheels"
+  local wheel_dir="${HAILO_PREFIX}/wheels" ipo mark w
+  ipo="$(hailo_pyhailort_ipo_mode)" || exit 2
+  hailo_pyhailort_ipo "${ipo}" "${platform_dir}/../src/CMakeLists.txt" \
+    || die "pyhailort: cannot apply HAILO_PYHAILORT_IPO=${ipo}"
   mkdir -p "${wheel_dir}"
   info "building the pyhailort wheel (scikit-build-core)"
   # pip refuses to even BUILD a wheel whose project rejects the interpreter
@@ -236,11 +252,20 @@ build_pyhailort() {
   local pybind_dir
   pybind_dir="$(python3 -m pybind11 --cmakedir 2>/dev/null || true)"
   [ -n "${pybind_dir}" ] || die "pybind11 --cmakedir produced nothing; the pyhailort wheel would be a stub"
+  mark="$(hailo_cache_mark "${CMAKE_CXX_COMPILER_LAUNCHER:-}")"
+  # Twelve -O3 pybind11 TUs: capped like every heavy C++ build here, never ninja's nproc.
+  CMAKE_BUILD_PARALLEL_LEVEL="$(compute_cpp_heavy_jobs "")" \
   CMAKE_ARGS="-DLIBHAILORT_PATH=${HAILO_PREFIX}/lib/libhailort.so -DHAILORT_INCLUDE_DIR=${HAILO_PREFIX}/include -Dpybind11_DIR=${pybind_dir}" \
     python3 -m pip wheel --no-build-isolation --no-deps \
       --wheel-dir "${wheel_dir}" "${platform_dir}" \
     || die "pyhailort wheel build failed"
-  local w; for w in "${wheel_dir}"/*.whl; do [ -e "${w}" ] && info "pyhailort wheel: $(basename "${w}")"; done
+  hailo_cache_report pyhailort "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
+  for w in "${wheel_dir}"/hailort-*.whl; do
+    [ -e "${w}" ] || continue
+    info "pyhailort wheel: $(basename "${w}")"
+    hailo_check_pyext "${w}" "${TARGET_ARCH:-amd64}" "${ipo}" \
+      || die "pyhailort wheel $(basename "${w}") carries no working module (HAILO_PYHAILORT_IPO=upstream builds it as upstream does)"
+  done
 }
 
 install_pyhailort() {
@@ -253,6 +278,13 @@ install_pyhailort() {
   # so the wheel installs as-is — proven; a zip-rewrite of the metadata only
   # corrupted it once. Then PROVE the import under the image's 3.14.
   if uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${wheel}" >/dev/null 2>&1; then
+    # The installed bytes are what ships: check them, not only the wheel.
+    local ipo so
+    ipo="$(hailo_pyhailort_ipo_mode)" || exit 2
+    so="$(/opt/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["platlib"])' 2>/dev/null || true)"
+    so="$(compgen -G "${so:-/nonexistent}/hailo_platform/pyhailort/_pyhailort*.so" | head -1 || true)"
+    hailo_check_pyext "${so:-/opt/venv/<no _pyhailort*.so>}" "${TARGET_ARCH:-amd64}" "${ipo}" \
+      || die "pyhailort in /opt/venv carries no working extension module"
     if /opt/venv/bin/python -c 'import hailo_platform' >/dev/null 2>&1; then
       info "pyhailort installed into /opt/venv and imports"
     else
@@ -326,12 +358,15 @@ build_libzmq() {
   fi
   rm -rf "${build}"
   info "building libzmq"
+  local mark
+  mark="$(hailo_cache_mark "${CMAKE_CXX_COMPILER_LAUNCHER:-}")"
   cmake -S "${src}" -B "${build}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${HAILO_PREFIX}" \
     -DBUILD_TESTS=OFF -DWITH_DOCS=OFF -DENABLE_CPACK=OFF -DBUILD_SHARED=ON >/dev/null \
     || die "libzmq configure failed"
   cmake --build "${build}" -j "$(compute_cpp_heavy_jobs "")" || die "libzmq build failed"
+  hailo_cache_report libzmq "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
   cmake --install "${build}" || die "libzmq install failed"
 
   # libzmq ships the C API only; TAPPAS's zmq elements include the C++ header
@@ -357,9 +392,10 @@ build_libzmq() {
 #   - libxtensor/libcxxopts/librapidjson default to a repo-root open_source/,
 #     while the sources live under core/open_source/.
 build_tappas() {
-  local build="${WORK}/tappas-build" triple plugin_dir
+  local build="${WORK}/tappas-build" triple plugin_dir mark
   rm -rf "${build}"
   info "configuring TAPPAS v${TAPPAS_VERSION} (GStreamer, HailoRT ${HAILORT_VERSION})"
+  mark="$(hailo_cache_mark "${CMAKE_CXX_COMPILER_LAUNCHER:-}")"
   PKG_CONFIG_PATH="$(gst_pkgconfig_dir):${HAILO_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
     meson setup "${build}" "${TAPPAS_SRC}/core/hailo" \
       --prefix="${TAPPAS_PREFIX:-/opt/tappas}" --buildtype=release \
@@ -370,6 +406,7 @@ build_tappas() {
     || die "TAPPAS configure failed"
   info "building TAPPAS"
   ninja -C "${build}" -j "$(compute_cpp_heavy_jobs "")" || die "TAPPAS build failed"
+  hailo_cache_report tappas "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
   ninja -C "${build}" install || die "TAPPAS install failed"
 
   # TAPPAS installs its libraries into the system multiarch dirs (its meson

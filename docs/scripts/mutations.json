@@ -10313,5 +10313,245 @@
     "replace": "  ref=\"$(runtime_wheels_image_ref \"${arch}\")\"\n  ! runtime_use_local_artifact_context || ref=\"$(cross_android_tag \"${arch}\")\"\n  if is_dry_run; then",
     "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
     "why": "on a --no-push chain whose android tag is published the export must refuse, not quietly read another android than image mode; switching its ref is an owner decision"
+  },
+  {
+    "id": "hailo.carrier-home",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "      HOME=\"${carrier}\" cmake \"$@\" || rc=$?",
+    "replace": "      cmake \"$@\" || rc=$?",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the carrier reaches the nested build only through the configure's HOME; without it carry is the uncached build"
+  },
+  {
+    "id": "hailo.carrier-exported-only",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  compgen -e | grep -E -e '^(SCCACHE_",
+    "replace": "  compgen -v | grep -E -e '^(SCCACHE_",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "only EXPORTED cache variables cross: compiler-cache.sh's unexported 10G default must not become the nested server's cap"
+  },
+  {
+    "id": "hailo.carrier-server-address",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "'^(SCCACHE_[A-Z0-9_]+|CCACHE_",
+    "replace": "'^(SCCACHE_DIR|CCACHE_",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the sccache server address must cross env -i, or the nested clients reach no server of this RUN"
+  },
+  {
+    "id": "hailo.carrier-login-file",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    [ -z \"${login}\" ] || printf '. %q\\n' \"${login}\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the nested bash -l still runs the real HOME's login file, as it did before the carrier"
+  },
+  {
+    "id": "hailo.carrier-mirror",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    [ \"${name}\" = .bash_profile ] || ln -s \"${entry}\" \"${dir}/${name}\" || return 1",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the configure reads the real HOME through the carrier (git config, the CMake package registry)"
+  },
+  {
+    "id": "hailo.carrier-cache-bin",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    printf 'export PATH=%q:\"${PATH}\"\\n' \"${dir}/.hailo-cache-bin\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the nested client must be the server's own sccache; the clean PATH finds the distro 0.13 first"
+  },
+  {
+    "id": "hailo.channel-guard",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if grep -Fq -e \"${_HAILO_CLEAN_ENV_CHANNEL}\" \"$1\" 2>/dev/null; then",
+    "replace": "  if true; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a HailoRT bump that changes the clean-env channel must stop a carry build, not lose the cache silently"
+  },
+  {
+    "id": "hailo.gate-bypass",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ $((2 * req)) -lt \"${objs}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a nested build that bypassed the cache (1 request for 200 objects, the as-is number) must fail carry mode"
+  },
+  {
+    "id": "hailo.gate-moved-build",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ -z \"${objs}\" ] || [ \"${objs}\" -eq 0 ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a nested build that left no .ninja_log moved upstream; the gate must fail instead of passing on nothing"
+  },
+  {
+    "id": "hailo.gate-off-warns",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ \"${mode}\" = off ]; then\n    _hailo_warn \"HAILO_NESTED_CACHE=off",
+    "replace": "  if false; then\n    _hailo_warn \"HAILO_NESTED_CACHE=off",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "HAILO_NESTED_CACHE=off is the build before 2026-09-24: the gate reports it and never fails it"
+  },
+  {
+    "id": "hailo.counters-anchored",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "        /^Compile requests[[:space:]]+[0-9]+[[:space:]]*$/ { r = $NF }",
+    "replace": "        /^Compile requests/ { r = $NF }",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "sccache also prints 'Compile requests executed'; an unanchored match reads that line instead"
+  },
+  {
+    "id": "hailo.pyext-pyinit",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "       | awk '$4 == \"FUNC\" && $7 != \"UND\" && $8 == \"PyInit__pyhailort\" { f = 1 } END { exit !f }'; then",
+    "replace": "       | awk '{ f = 1 } END { exit !f }'; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the stub every image shipped exports no PyInit__pyhailort; a check that accepts any symbol table lets it ship again"
+  },
+  {
+    "id": "hailo.pyext-machine",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ \"${machine}\" != \"${want}\" ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a module built for another arch fails the build"
+  },
+  {
+    "id": "hailo.ipo-patch",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  sed -i -E \"s/^([[:space:]]*set\\(CMAKE_INTERPROCEDURAL_OPTIMIZATION) ${from}\\)/\\1 ${to})/\" \"${file}\" || return 1",
+    "replace": "  true",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "upstream's forced IPO makes GCC emit slim LTO objects that lld links into an empty module"
+  },
+  {
+    "id": "hailo.ipo-upstream-restores",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ \"${mode}\" = upstream ]; then from=FALSE; to=TRUE; fi",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "HAILO_PYHAILORT_IPO=upstream restores upstream's line in the cached source, or the switch back does nothing"
+  },
+  {
+    "id": "hailo.pyext-upstream-warns",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "  if [ \"$3\" = upstream ]; then",
+    "replace": "  if false; then",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "HAILO_PYHAILORT_IPO=upstream is the build before 2026-09-24, stub included: it warns and never fails"
+  },
+  {
+    "id": "hailo.knob-nested-values",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    carry|off) printf '%s' \"${HAILO_NESTED_CACHE:-carry}\" ;;",
+    "replace": "    *) printf '%s' \"${HAILO_NESTED_CACHE:-carry}\" ;;",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a typo'd HAILO_NESTED_CACHE is rc 2, never a third mode"
+  },
+  {
+    "id": "hailo.knob-ipo-values",
+    "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+    "find": "    off|upstream) printf '%s' \"${HAILO_PYHAILORT_IPO:-off}\" ;;",
+    "replace": "    *) printf '%s' \"${HAILO_PYHAILORT_IPO:-off}\" ;;",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a typo'd HAILO_PYHAILORT_IPO is rc 2, never a third mode"
+  },
+  {
+    "id": "hailo.cap-parity",
+    "target": "linux/Dockerfile.torch",
+    "find": "        SCCACHE_CACHE_SIZE=30G CCACHE_MAXSIZE=30G \\",
+    "replace": "        CCACHE_MAXSIZE=30G \\",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "without base's cap the Hailo RUN's sccache server runs at compiler-cache.sh's 10G and trims the shared mount"
+  },
+  {
+    "id": "hailo.dockerfile-default",
+    "target": "linux/Dockerfile.torch",
+    "find": "ARG HAILO_NESTED_CACHE=carry",
+    "replace": "ARG HAILO_NESTED_CACHE=off",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the chain's default is the Dockerfile ARG; it must be the library's default"
+  },
+  {
+    "id": "hailo.forwarded",
+    "target": "linux/scripts/lib-orchestrator.sh",
+    "find": "_VERSION_BUILD_ARG_VARS+=(HAILO_NESTED_CACHE HAILO_PYHAILORT_IPO)",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "an exported switch reaches the wrapper build only through the forwarded set"
+  },
+  {
+    "id": "hailo.chain-start-check",
+    "target": "linux/scripts/build-cross-chain.sh",
+    "find": "  runtime_wheels_source_mode >/dev/null || exit 2\n  hailo_validate_knobs || exit 2",
+    "replace": "  runtime_wheels_source_mode >/dev/null || exit 2",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a typo'd switch stops the chain before its first stage, not at the wrapper hours later"
+  },
+  {
+    "id": "hailo.manifest-lane-check",
+    "target": "linux/scripts/build-runtime-manifest.sh",
+    "find": "  runtime_wheels_setup || exit $?\n  hailo_validate_knobs || exit 2",
+    "replace": "  runtime_wheels_setup || exit $?",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the standalone runtime lane checks the switches before its first build too"
+  },
+  {
+    "id": "hailo.artifacts-lane-check",
+    "target": "linux/scripts/build-runtime-artifacts.sh",
+    "find": "  runtime_wheels_setup || exit $?\n  hailo_validate_knobs || exit 2",
+    "replace": "  runtime_wheels_setup || exit $?",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the artifacts lane checks the switches before its first build too"
+  },
+  {
+    "id": "hailo.script-validates",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "esac\nhailo_validate_knobs || exit 2\n",
+    "replace": "esac\n",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "build-hailort.sh stops on a typo with rc 2 before it fetches or builds anything"
+  },
+  {
+    "id": "hailo.configure-through-carrier",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "    hailo_nested_configure hailort-configure \"${HAILORT_SRC}/hailort/external/protobuf-build\" \\\n      \"${HAILORT_SRC}/hailort/cmake/execute_cmake.cmake\" \\\n      -S \"${HAILORT_SRC}\"",
+    "replace": "    cmake -S \"${HAILORT_SRC}\"",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "a bare configure bypasses the carrier and its gate: the nested protobuf build is uncached again"
+  },
+  {
+    "id": "hailo.pyhailort-parallel",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "  CMAKE_BUILD_PARALLEL_LEVEL=\"$(compute_cpp_heavy_jobs \"\")\" \\\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "twelve -O3 pybind11 TUs at ninja's nproc can exhaust memory under QEMU; they take the heavy-C++ cap"
+  },
+  {
+    "id": "hailo.ipo-applied",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "  hailo_pyhailort_ipo \"${ipo}\" \"${platform_dir}/../src/CMakeLists.txt\" \\\n    || die \"pyhailort: cannot apply HAILO_PYHAILORT_IPO=${ipo}\"",
+    "replace": "  :",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the build applies HAILO_PYHAILORT_IPO to the cached source before every wheel build"
+  },
+  {
+    "id": "hailo.wheel-checked",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "    hailo_check_pyext \"${w}\" \"${TARGET_ARCH:-amd64}\" \"${ipo}\" \\\n",
+    "replace": "    true \"${w}\" \"${TARGET_ARCH:-amd64}\" \"${ipo}\" \\\n",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the built wheel's module is checked before it is installed or staged"
+  },
+  {
+    "id": "hailo.installed-module-checked",
+    "target": "linux/scripts/03-media/build/hailo/build-hailort.sh",
+    "find": "    hailo_check_pyext \"${so:-/opt/venv/<no _pyhailort*.so>}\" \"${TARGET_ARCH:-amd64}\" \"${ipo}\" \\\n",
+    "replace": "    true \"${so:-/opt/venv/<no _pyhailort*.so>}\" \"${TARGET_ARCH:-amd64}\" \"${ipo}\" \\\n",
+    "test": "bash linux/scripts/tests/test-hailo-build.sh",
+    "why": "the module installed into /opt/venv is the shipped byte; checking only the wheel lets a broken install ship"
   }
 ]

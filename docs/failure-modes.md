@@ -66,6 +66,8 @@ Two neighbours, so you land on the right page:
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
+- [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
+- [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 
 **Windows: the layer store (hcsshim)**
 
@@ -1092,6 +1094,50 @@ key, and their gate refuses any `NEEDED` outside libc's own family, so a regress
 fails the build instead of shipping. `WEB_LANE_TOOLS_SOURCE=legacy` is exempt on
 purpose: it is the old build verbatim, pkg-config probe and all.
 docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+
+### HailoRT's configure is slow while the cache looks healthy
+
+**Symptom.** arm64's Hailo `RUN` spends most of its time before CMake generates
+(384 s of 595 s in the 2026-09-22 lane), yet every compile the cache counts is a
+hit. The nested `external/protobuf-build/CMakeCache.txt` has no
+`CMAKE_CXX_COMPILER_LAUNCHER`. Since 2026-09-24 a build can stop instead, with
+`[hailo] ERROR: the nested build compiled N objects and the cache saw R requests`
+or `... no longer spawns its nested build through 'env -i HOME=$ENV{HOME} ...'`.
+
+**Cause.** HailoRT compiles a host protobuf inside its own configure, under
+`env -i`. The launcher environment `setup_ccache` exports never reaches that
+build, whatever the resolver decides. Two shapes seen while fixing it:
+
+- `sccache --show-stats` fails with `Mismatch of client/server versions?` (`tag
+  for enum is not valid`). A clean `PATH` puts `/bin` first and finds the distro
+  sccache 0.13; when no server answered it, it started a 0.13 server on the socket
+  the pinned 0.17 client then talks to.
+- The probe sees 0 requests after another user's run in the same container.
+  `SCCACHE_ERROR_LOG` is `/tmp/sccache.log` for every user, and under
+  `fs.protected_regular=2` the second user, root included, cannot open the first
+  user's file, so its server does not start.
+
+**Fix.** `HAILO_NESTED_CACHE=carry`, the default, carries the cache environment
+and the parent's own `sccache` into that build, and its gate stops a `carry`
+build the cache did not reach. `HAILO_NESTED_CACHE=off` is the build as it was
+before 2026-09-24. Run the probe in a fresh container, or give each user its own
+`SCCACHE_ERROR_LOG`.
+[The carrier and its gate](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
+
+### `import hailo_platform` fails: `_pyhailort` is a 4 KB module
+
+**Symptom.** In an image built before 2026-09-24, or with
+`HAILO_PYHAILORT_IPO=upstream`: `import hailo_platform` fails, and
+`_pyhailort.cpython-314-<arch>-linux-gnu.so` is about 4 KB. `readelf --dyn-syms`
+lists no `PyInit__pyhailort`, only a `__gnu_lto_slim` object. Since 2026-09-24 the
+default build stops instead: `[hailo] ERROR: ... does not export PyInit__pyhailort`.
+
+**Cause.** Upstream forces IPO in pyhailort's CMake. GCC writes slim LTO objects,
+and lld, the linker `setup_lld_linker` selects, cannot read them, so the link
+yields a module with no code.
+
+**Fix.** `HAILO_PYHAILORT_IPO=off`, the default, patches the forced IPO out of
+the cached source. [pyhailort](hailo-support.md#pyhailort).
 
 ## Windows: the layer store (hcsshim)
 

@@ -7,6 +7,88 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - Hailo: the nested protobuf build is cached, pyhailort is a real module, the old build one switch away
+
+arm64's Hailo `RUN` took 595 s in the 2026-09-22 lane, and 384 s of that was HailoRT's
+configure: it builds a host protobuf (200 objects) under `env -i`, so the compiler cache
+never reached it, while every other compile hit. The same diagnosis found that every image
+shipped pyhailort as an empty module. Speedup item `hailo-arm64`, with its challenge's
+corrections. **Owner decision: both options**, each default the fast or fixed path and the
+old build one switch away.
+[`hailo-support.md` § two switches](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
+
+- **`HAILO_NESTED_CACHE=carry|off`**, default `carry`. Only HailoRT's configure runs with
+  `HOME` at a new directory in the `RUN`'s tmpfs. It mirrors the real `HOME`, and its
+  `.bash_profile` runs the real login file, then exports every exported `SCCACHE_*` and
+  `CCACHE_*` variable (not `versions.env`'s pins) and both CMake launchers, with the
+  parent's own `sccache` and `ccache` first on `PATH`. `off` is the old uncached nested
+  build. Measured natively on amd64: the configure took 9 s warm under `carry` and 32 s
+  under `off`, and 243 requests reached the cache for the 200 nested objects.
+- **Found on the way:** the clean `PATH` resolves the distro sccache 0.13 in `/bin` before
+  the pinned 0.17. Its stats requests fail against the 0.17 server, and with no server
+  running it starts a 0.13 one on the same socket. The carrier puts the parent's binaries
+  first, so client and server are one binary.
+- **The gate** (`hailo_assert_nested_cache_reached`). Under `carry` with a launcher it fails
+  the build when the cache saw fewer requests than half the nested objects, or when the
+  nested build left no `.ninja_log`; a spawner without the exact `env -i` line fails
+  before the configure. Everything else warns. `USE_SCCACHE=0` keeps it armed on ccache;
+  `USE_CCACHE=0` and `off` only warn. One `[CACHE] hailo/<phase>: secs= requests= hits=
+  misses= launcher= cap=` line per phase: configure, build, pyhailort, libzmq, TAPPAS.
+- **`HAILO_PYHAILORT_IPO=off|upstream`**, default `off`. Upstream forces IPO, and lld
+  cannot link GCC's slim LTO objects, so every image carried a 4 KB `_pyhailort` without
+  `PyInit__pyhailort`. `off` patches the forced IPO out of the cached source; the twelve
+  sources compile at `compute_cpp_heavy_jobs` and cache; `hailo_check_pyext` checks the
+  wheel's module and the installed one (ELF machine, a defined `PyInit__pyhailort`),
+  fatal under `off`, a warning under `upstream`, which rebuilds the old stub. Measured on
+  amd64: a 1.7 MB module, and `import hailo_platform` works on Python 3.14.
+- **Cache caps.** The Hailo `RUN` passes `Dockerfile.base`'s `SCCACHE_CACHE_SIZE=30G` and
+  `CCACHE_MAXSIZE=30G`. The runtime image lost base's ENV, so `compiler-cache.sh`'s 10G
+  applied there and trimmed the shared mount, which on the amd64 lane is the chain's own
+  `sccache-amd64`. The suite pins the pair to base.
+- **Where the code is.** New `03-media/build/hailo/hailo-build-lib.sh` (the switches, the
+  carrier, the counters, the gate, the IPO patch, the module check) and
+  `probe-hailo-nested-cache.sh`, a seconds-long check inside an image: `off`, then `carry`
+  cold and warm. `build-hailort.sh` routes its configure through the carrier and refuses a
+  typo. `lib-orchestrator.sh` forwards both switches only when set and sources the lib;
+  `build-cross-chain.sh` and both runtime orchestrators refuse a typo (exit 2) before
+  they build anything.
+- **Challenge corrections applied.** Both switches exist (the design had none for the cache
+  fix, against the owner's rule); only exported variables are carried, so the unexported
+  10G default never becomes a nested server's cap; the `HOME` redirect keeps the real
+  `HOME`'s reads through the mirror; the gate follows the code's `USE_*` semantics; the
+  cap scope is the amd64 lane; the pybind build is capped; the twelve TUs are twelve.
+- **Not done, and why.** The design's Unit 2: its stats fix is already in
+  `compiler-cache.sh`, and moving the carrier into `01-core` would re-key the chain from
+  the compiler stage. Unit 3, the opt-in cross fast path: the recorded `-EL` cross failure
+  is not diagnosed, and the wrapper's final stage would need a restructure no BuildKit
+  here could test. Pinning scikit-build-core and pybind11: `PY_SCIKIT_BUILD_CORE_VERSION` is
+  `# noforward` and `PY_PYBIND11_VERSION` is 3.x while pyhailort needs <3, so both need a
+  `versions.env` edit, which re-keys every stage from base; left as they were.
+- **What re-keys:** per lane, the wrapper's Hailo `RUN` (`Dockerfile.torch` and the
+  `hailo/` directory it COPYs) and the small `RUN` after it, which re-run on every lane
+  anyway. No `versions.env`, `01-core` or other Dockerfile is touched, and the
+  orchestrators and `lib-orchestrator.sh` are outside every image closure. The first run
+  compiles the nested protobuf and the pybind11 sources cold, once.
+- **Tests.** `tests/test-hailo-build.sh` (new, 110 assertions): the switches, the carrier
+  through a real `env -i ... bash -l`, every variable `setup_ccache` exports, the configure
+  wrapper against a fake cmake that spawns its nested build the same way, the gate's
+  thresholds, the counters' anchoring, the IPO patch both ways, the module check on the
+  shipped stub's symbol table, cap parity and the wiring. `t_stage_build_args` in
+  `test-harness.sh` is now the one owner of the forwarding probe `test-web-lane-tools.sh`
+  had, because `code-dupes` caught the second copy. 30 `hailo.*` mutations, all seen
+  biting; `mutation-family:hailo` registered; `file-size.allow` +1 line for
+  `build-cross-chain.sh`.
+- **Verified here.** In the local amd64 image, as root with this tree's scripts at the
+  image paths: `build-hailort.sh` end to end under `carry` cold and warm, `off`,
+  `upstream` and `USE_SCCACHE=0` (every run exit 0, numbers in the doc), the probe as root
+  and as uid 1001, and every suite as uid 1001 (the failures there are the baseline
+  tree's too). On the Windows host: the touched suites, all 30 new mutations and the 25
+  existing ones on touched files (11 of those in the image, where their suites run),
+  shellcheck and its warning ratchet on every touched shell file, and the preflight gates.
+  **Not verified:** arm64 under QEMU, where the saving is (estimated at 2.5 to 4 minutes per
+  arm64 lane), the BuildKit `RUN` itself, the Jetson and the X100. The commands for the
+  build host are in the doc.
+
 ## 2026-09-24 - The wrapper's wheelhouse: review fixes
 
 A review of the entry below found that `RUNTIME_WHEELS_SOURCE=export` cannot run on

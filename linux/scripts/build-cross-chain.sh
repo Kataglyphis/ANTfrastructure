@@ -263,6 +263,7 @@ _chain_validate_stages() {
   _chain_validate_variant
   # The runtime lane reads it hours from now; a typo must stop the chain here.
   runtime_wheels_source_mode >/dev/null || exit 2
+  hailo_validate_knobs || exit 2
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} final=${FINAL_IMAGE}"
 

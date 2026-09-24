@@ -43,10 +43,14 @@ source "${_LIB_ORCHESTRATOR_DIR}/01-core/artifact-common.sh"
 # RUNTIME_WHEELS_SOURCE. Beside, not inside, 01-core: that tree is in the compiler image's closure.
 # shellcheck source=linux/scripts/lib-runtime-wheels.sh
 source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-wheels.sh"
+# HAILO_NESTED_CACHE / HAILO_PYHAILORT_IPO: the orchestrators check them before the first stage.
+# shellcheck source=linux/scripts/03-media/build/hailo/hailo-build-lib.sh
+source "${_LIB_ORCHESTRATOR_DIR}/03-media/build/hailo/hailo-build-lib.sh"
 
 # Operator toggles forwarded like a versions.env key (only when set) without sitting in
 # one, which would re-key the whole chain. docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
 _VERSION_BUILD_ARG_VARS+=(WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES)
+_VERSION_BUILD_ARG_VARS+=(HAILO_NESTED_CACHE HAILO_PYHAILORT_IPO)
 
 # ── cross-lane preamble ────────────────────────────────────────────────────────
 # Shared invariant scalar defaults for the cross orchestrators

@@ -1013,12 +1013,15 @@ destroys it, and what replacing it costs is in
 | `WEB_LANE_TOOLS_SOURCE=auto\|cross\|native\|legacy` | Where riscv64's from-source `wasm-pack` / `flutter_rust_bridge_codegen` come from: android's cross build when usable (`auto`, default), only that (`cross`), a gated, cached compile in the package stage with rv64gc Rust and vendored C (`native`), or the package stage's pre-2026-09-23 `cargo install` verbatim (`legacy`). [Contract](consumer-image-contract.md#building-the-web-lane-tools-from-source). |
 | `WEB_LANE_TOOLS_CACHE=on\|refresh\|off` | Their package-stage binary cache: read and write (default), rebuild and re-store, or bypass. |
 | `WEB_LANE_TOOLS_CROSS_ARCHES=riscv64` | Targets the android producer cross-builds them for: a comma list, or `none` to turn it off. |
+| `HAILO_NESTED_CACHE=carry\|off` | Whether the protobuf build HailoRT runs inside its own configure uses the compiler cache (`carry`, default) or runs uncached as before 2026-09-24 (`off`). [Both paths](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches). |
+| `HAILO_PYHAILORT_IPO=off\|upstream` | pyhailort with upstream's forced LTO patched out, a real module (`off`, default), or as upstream ships it, which lld links empty (`upstream`). |
 
-The three `WEB_LANE_TOOLS_*` toggles are Dockerfile ARGs. `lib-orchestrator.sh`
-appends their names to the forwarded set, so an exported value reaches every stage
-the way a `versions.env` key does, and an unset one sends no `--build-arg` at all.
-They are kept out of `versions.env` because any byte there re-keys the chain from
-base.
+The three `WEB_LANE_TOOLS_*` toggles and the two `HAILO_*` switches are Dockerfile
+ARGs. `lib-orchestrator.sh` appends their names to the forwarded set, so an exported
+value reaches every stage the way a `versions.env` key does, and an unset one sends
+no `--build-arg` at all. They are kept out of `versions.env` because any byte there
+re-keys the chain from base. The chain and both runtime orchestrators refuse an
+unknown `HAILO_*` value (exit 2) before they build anything.
 
 ### Clang cross wrappers
 

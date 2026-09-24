@@ -470,9 +470,7 @@ t_assert_contains "$(grep -e 'source /tmp/wlt/web-lane-tools.sh' "${SCRIPTS}/06-
 
 t_case "one environment switch reaches both stages, and only when set"
 _fwd() {  # the build args an orchestrator hands every stage: their count, then the WEB_LANE ones
-  bash -c 'REPO_ROOT="$1"; source "$1/linux/scripts/lib-orchestrator.sh" >/dev/null 2>&1
-    declare -a a=(); append_common_build_args a riscv64; echo "ARGS=${#a[@]}"
-    printf "%s\n" "${a[@]}" | grep -e WEB_LANE || true' _ "$(cd "${SCRIPTS}/../.." && pwd)"
+  t_stage_build_args "$(cd "${SCRIPTS}/../.." && pwd)" riscv64 | grep -e '^ARGS=' -e WEB_LANE || true
 }
 _on="$(WEB_LANE_TOOLS_SOURCE=native WEB_LANE_TOOLS_CACHE=refresh WEB_LANE_TOOLS_CROSS_ARCHES=none _fwd)"
 t_assert_contains "${_on}" "WEB_LANE_TOOLS_SOURCE=native" "WEB_LANE_TOOLS_SOURCE=native must reach the package stage"
