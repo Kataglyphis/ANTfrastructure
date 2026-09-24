@@ -245,7 +245,8 @@ count. Then:
   lines. There is nothing left to guess, and all of them are written. This is
   the ordinary case for a workflow that uses `actions/upload-artifact@v7.0.1` in
   two steps, which
-  `.github/workflows/dart_on_native_linux.yml` in OmniAccelerANT does.
+  `.github/workflows/dart_on_native_linux.yml` in OmniAccelerANT did (split
+  into `linux-x64.yml` and `linux-arm64.yml` on 2026-09-24).
 * **counts disagree** — one reported update, two pins in the file. Which line
   the row means is not knowable, so **nothing is written** and both line numbers
   are printed.

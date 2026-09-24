@@ -1,4 +1,4 @@
-name: llm-stack serving
+name: LLM stack · serving
 
 # The serving stack's shape and its registry, now that the benchmark suite
 # lives in OrchestrANT. No image is built and no model is pulled: compose files

@@ -2,7 +2,8 @@
 #
 # Reusable Linux CI lane for the Python consumers (OrchestrANT,
 # WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
-# packaging, on the x86-64 and arm64 native runners.
+# packaging, on the x86-64 and arm64 native runners; `arches` picks which, so a
+# caller split into linux-x64.yml / linux-arm64.yml passes one each.
 #
 # Before this existed the two callers each carried a 112-line copy that differed
 # on 14 lines, and every one of those differences was a parameter. Two of them
@@ -15,7 +16,7 @@
 # default to '' and be passed through unconditionally - the driver's own default
 # then applies, and callers only name a version when they actually want to
 # override it. That is why there is no conditional command construction below.
-name: Python CI (Linux, reusable)
+name: Python CI · Linux (reusable)
 
 # Least privilege: this lane reads the repo, pulls an image and pushes artifacts.
 # It never writes to the repository.
@@ -77,6 +78,16 @@ on:
         required: false
         type: string
         default: ./docs/build/html/
+      arches:
+        description: >-
+          The arch rows to run, space-separated, from "x64" and "arm64". The
+          default runs both, which is what every caller ran before this input
+          existed. A caller split per arch (linux-x64.yml, linux-arm64.yml)
+          passes one. An unknown, repeated or empty entry fails the plan job
+          rather than running fewer rows than were asked for.
+        required: false
+        type: string
+        default: x64 arm64
     secrets:
       GHCR_PAT:
         description: Token used to pull the build image from ghcr.
@@ -95,8 +106,48 @@ on:
         required: false
 
 jobs:
+  # `arches` -> the build matrix. The rows are written here, not as a static
+  # matrix, because GitHub re-adds an excluded `include:` row
+  # (docs/python-ci.md#one-arch-per-caller-the-arches-input).
+  plan:
+    name: plan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.rows.outputs.matrix }}
+    steps:
+      - name: Select the arch rows
+        id: rows
+        env:
+          ARCHES: ${{ inputs.arches }}
+        run: |
+          set -euo pipefail
+          rows=""
+          seen=" "
+          # -d '': a block-scalar input spans lines; one plain read would drop all but the first.
+          read -r -d '' -a want <<< "${ARCHES}" || true
+          for arch in "${want[@]}"; do
+            case "${arch}" in
+              x64) row='{"runs_on":"ubuntu-26.04","arch":"x64","platform":"linux/amd64"}' ;;
+              arm64) row='{"runs_on":"ubuntu-26.04-arm","arch":"arm64","platform":"linux/arm64"}' ;;
+              *) echo "::error::arches: unknown arch '${arch}' (known: x64 arm64)"; exit 1 ;;
+            esac
+            case "${seen}" in
+              *" ${arch} "*) echo "::error::arches: '${arch}' is listed twice"; exit 1 ;;
+            esac
+            seen="${seen}${arch} "
+            rows="${rows:+${rows},}${row}"
+          done
+          if [ -z "${rows}" ]; then
+            echo "::error::arches is empty: name at least one of x64 arm64"
+            exit 1
+          fi
+          printf 'matrix={"include":[%s]}\n' "${rows}" >> "${GITHUB_OUTPUT}"
+          printf 'rows: %s\n' "${rows}"
+
   build:
     name: ${{ matrix.arch }}
+    needs: plan
     env:
       # The caller's override wins; otherwise the family Linux image.
       #
@@ -127,14 +178,7 @@ jobs:
     strategy:
       # One arch failing should not hide the other's result.
       fail-fast: false
-      matrix:
-        include:
-          - runs_on: ubuntu-26.04
-            arch: x64
-            platform: linux/amd64
-          - runs_on: ubuntu-26.04-arm
-            arch: arm64
-            platform: linux/arm64
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 60

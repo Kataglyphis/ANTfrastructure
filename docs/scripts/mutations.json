@@ -7571,6 +7571,62 @@
     "why": "GHCR_PAT is required: false so a lint-only caller need not own a registry token; the job that DOES need one must then say so itself, or an empty secret surfaces four steps later as a ghcr docker login failure that names the registry instead of the missing input"
   },
   {
+    "id": "linux-lane.arches-default-keeps-both-rows",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "        default: x64 arm64",
+    "replace": "        default: x64",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "every caller written before the input would silently lose its arm64 row and stay green"
+  },
+  {
+    "id": "linux-lane.unknown-arch-fails",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "              *) echo \"::error::arches: unknown arch '${arch}' (known: x64 arm64)\"; exit 1 ;;",
+    "replace": "              *) continue ;;",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "a typo like `x64 arn64` would run one row instead of two and report green"
+  },
+  {
+    "id": "linux-lane.repeated-arch-fails",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "              *\" ${arch} \"*) echo \"::error::arches: '${arch}' is listed twice\"; exit 1 ;;",
+    "replace": "              *\" ${arch} \"*) : ;;",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "two identical rows upload artifacts under the same name and fail half-way through the run, far from the input that caused it"
+  },
+  {
+    "id": "linux-lane.empty-arches-fails",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "          if [ -z \"${rows}\" ]; then",
+    "replace": "          if false; then",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "an empty list must be refused by the plan job, not handed to GitHub as an empty matrix"
+  },
+  {
+    "id": "linux-lane.arm-row-keeps-its-runner",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "row='{\"runs_on\":\"ubuntu-26.04-arm\",",
+    "replace": "row='{\"runs_on\":\"ubuntu-latest\",",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "the runner labels sit in a run: block the workflow-convention gate cannot read; a moving or wrong label there would pass every YAML gate"
+  },
+  {
+    "id": "linux-lane.build-reads-the-plan",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "    needs: plan\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "without needs: plan the build job cannot read the plan's output and its matrix evaluates to nothing"
+  },
+  {
+    "id": "linux-lane.multi-line-arches-keep-every-row",
+    "target": ".github/workflows/python-ci-linux.yml",
+    "find": "read -r -d '' -a want <<< \"${ARCHES}\" || true",
+    "replace": "read -r -a want <<< \"${ARCHES}\"",
+    "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+    "why": "a caller that writes arches as a block scalar would get its first line's rows only, and the lane would stay green"
+  },
+  {
     "id": "uv-chain-ort.census-proof",
     "target": "linux/scripts/01-core/python_uv.sh",
     "find": "  out=\"$(\"${py}\" -I \"${_UV_ORT_CENSUS}\" --check --store \"${store}\" 2>&1)\" || {",
@@ -10100,7 +10156,7 @@
   },
   {
     "id": "mutations.ci-shards-cover-the-manifest",
-    "target": ".github/workflows/ubuntu26.04.yml",
+    "target": ".github/workflows/linux-x64.yml",
     "find": "        shard: [0, 1, 2, 3]",
     "replace": "        shard: [0, 1, 2]",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
@@ -10108,7 +10164,7 @@
   },
   {
     "id": "mutations.ci-preflight-skips-the-slug",
-    "target": ".github/workflows/ubuntu26.04.yml",
+    "target": ".github/workflows/linux-x64.yml",
     "find": "run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh",
     "replace": "run: bash linux/scripts/preflight.sh",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
@@ -10116,7 +10172,7 @@
   },
   {
     "id": "mutations.ci-same-setup",
-    "target": ".github/workflows/ubuntu26.04.yml",
+    "target": ".github/workflows/linux-x64.yml",
     "find": "      - name: Install pytest (mutation-gate baselines)\n        run: pip install --quiet pytest\n      - name: Install PyYAML (renovate_audit.py's real YAML parser)\n        run: pip install --quiet pyyaml\n      - name: Mutation gate,",
     "replace": "      - name: Mutation gate,",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",

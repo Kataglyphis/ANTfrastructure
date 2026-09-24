@@ -361,6 +361,13 @@ When adding here:
   `06-packaging/package_archive.sh`) and `linux/webserver/scripts/flutter_integration_smoke_test.sh`
   are frozen: consumer wrappers resolve them by path, so a rename is a
   consumer-breaking change with no structural gain.
+- **Workflow file names** (owner decision 2026-09-24, fleet-wide). Kebab-case,
+  one file per platform and arch (`linux-x64.yml`, `windows-x64.yml`), display
+  names `<Platform> <Arch> · <what>`. The hub's REUSABLE workflows
+  (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`) keep their file
+  names for good: every consumer calls them at `@main`, so a rename breaks the
+  fleet in one push. The convention and the fleet's rename table:
+  [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
 ### Reusable Module: WindowsContainerBuild.Reuse
 
@@ -898,7 +905,7 @@ Read the strategy before editing that Dockerfile:
   | --- | --- | --- |
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/ubuntu26.04.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
+  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
 
   Install the hook once with **`make hooks`**: it sets `core.hooksPath` rather
   than copying into `.git/hooks`, so the hook is version-controlled and arrives
@@ -1011,7 +1018,7 @@ Read the strategy before editing that Dockerfile:
 
 - **PowerShell gate:** `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (CI:
-  `.github/workflows/windows-scripts.yml`). The suite guards *classes* of defect,
+  `.github/workflows/windows-x64.yml`). The suite guards *classes* of defect,
   not instances — when you fix a bug here, prefer a guard for its class. Which
   classes, and why the linter exits 2 for an infrastructure failure:
   [`windows-builds.md`](docs/windows-builds.md).

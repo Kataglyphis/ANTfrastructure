@@ -18,7 +18,12 @@ Measured 2026-09-09 across the five top-level repos plus the three owned
 submodules (`AccelerANTgine`, `OxidANT`, `ANThology`). Vendored
 `third_party/ANTfrastructure` copies are the same two hub workflows and are not
 counted twice. Line numbers are the committed ones; the step is the stable
-handle.
+handle. File names are the 2026-09-09 ones too: the consumer files were renamed
+on 2026-09-24 (`dart.yml` → `web.yml` in jotrockenmitlocken and `docs.yml` in
+ANThology, `Linux.yml` → `reusable-linux.yml`, `dart_on_native_linux.yml` and
+`rust_ubuntu26_04.yml` → `linux-x64.yml` + `linux-arm64.yml`, `linux_run.yml` →
+`reusable-linux.yml`), so read the table through
+[the rename table](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
 **The Pin column below is history, not the present.** Every one of these steps
 now reads `uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@main`

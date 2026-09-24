@@ -166,6 +166,8 @@ The two halves of one topic often split:
 | Who still calls each hub entry point (weekly, every consumer cloned) | [`consumer-inventory.md`](consumer-inventory.md), `../.github/workflows/consumer-inventory.yml` |
 | The composite actions exercised against themselves — what a green tick does and does not prove | [`../.github/actions/README.md`](../.github/actions/README.md), `../.github/workflows/actions-selftest.yml` |
 | The submodule-pin invariant as a lane a consumer can `uses:` | [`adopting-in-a-new-project.md` § 9](adopting-in-a-new-project.md), `../.github/workflows/submodule-pins.yml` |
+| Workflow file and display names across the family (`linux-x64.yml`, `Linux x64 · …`), and the 2026-09-24 rename table | [`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names) |
+| One Linux arch per caller of the Python lane (`arches`) | [`python-ci.md` § One arch per caller](python-ci.md#one-arch-per-caller-the-arches-input) |
 
 ### Backlogs, history and archives
 

@@ -7,6 +7,62 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - Workflow names follow the fleet convention; `arches` for the Python Linux lane
+
+The owner set one naming rule for the workflows of every repository in the family:
+kebab-case files, one file per platform and arch for a build, display names
+`<Platform> <Arch> · <what>` (or `<Area> · <what>`). The hub goes first. The rule and
+the fleet's rename table:
+[`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
+
+- **Renamed.** `ubuntu26.04.yml` → `linux-x64.yml` ("Linux x64 · preflight + mutation
+  gate") and `windows-scripts.yml` → `windows-x64.yml` ("Windows x64 · script tests").
+  Their concurrency groups follow the file (`linux-x64-…`, `windows-x64-…`), and
+  `windows-x64.yml`'s path filter names itself. The README badge moved; a Windows x64
+  badge is new.
+- **Display names only.** `actions-selftest.yml` "Composite actions · self-test",
+  `consumer-inventory.yml` "Consumers · inventory", `ghcr-cleanup.yml` "GHCR · cleanup",
+  `llm-stack-serving.yml` "LLM stack · serving", `sbom.yml` "SBOM",
+  `stale-docs-check.yml` "Docs · stale check" (its issue footer too; the issue is still
+  found by its title).
+- **The reusable workflows keep their FILE names**, because every consumer calls them
+  at `@main`: `build-docs.yml` "Docs · build (reusable)", `lint-gates.yml` "Lint gates
+  (reusable)", `python-ci-linux.yml` "Python CI · Linux (reusable)",
+  `python-ci-windows.yml` "Python CI · Windows (reusable)", `submodule-pins.yml`
+  "Submodule pins (reusable)". AGENTS.md now states that as a rule.
+- **`python-ci-linux.yml` takes `arches`** (string, default `"x64 arm64"`), so
+  OrchestrANT and WebDavClient can split into `linux-x64.yml` and `linux-arm64.yml`. The
+  default runs both rows with the same job and artifact names as before. A new `plan`
+  job builds the matrix and fails on an unknown, repeated or empty name; a static matrix
+  cannot be filtered, because GitHub adds an excluded `include:` row back. Callers see
+  one more check, `<job> / plan`.
+  [`python-ci.md` § One arch per caller](docs/python-ci.md#one-arch-per-caller-the-arches-input).
+- **Tests.** New `tests/test-reusable-linux-lane.sh` (33 assertions) runs the plan step
+  itself: the default rows equal the old static matrix, one name gives one row, the
+  refusals fire, and no row uses a `*-latest` label. That last one is needed because
+  the labels now sit in a `run:` block, which the workflow-convention gate cannot read.
+  Seven new mutations in a new family, `linux-lane` (declared in `gate-proofs.allow`), each
+  seen biting; the manifest goes 1325 -> 1332. The three `mutations.ci-*` entries and
+  `test-mutation-gate.sh` point at `linux-x64.yml`. `code-dupes.allow` gains two rows
+  for the new suite's preamble, the same row the Windows lane's suite has.
+- **Fleet references.** Hub prose that names a consumer workflow uses the new name, with
+  the old one beside it where the text is dated: the `consumers.json` notes, the CENSUS
+  reasons in `workflow-conventions.allow` (counts unchanged), `shellcheck-warnings.allow`,
+  `code-quality-tooling.md`, `shared-script-libraries.md`, `dependency-updates.md`,
+  `cross-build-verification.md`, `New-Archive.ps1`'s header, and
+  `github-cli-pipeline-monitoring.md` (now `gh run list --workflow linux-x64.yml`).
+  `ftp-deploys.md`'s 2026-09-09 table keeps its old names and line numbers as a dated
+  record and points at the rename table. Left alone on purpose:
+  `02-toolchain/rust/cargo_fmt_clippy.sh` quotes `rust_ubuntu26_04.yml:134-139` as a
+  dated citation, and that file sits in `Dockerfile.toolchain`'s
+  `COPY linux/scripts/02-toolchain/`, so a comment edit would re-key the toolchain stage.
+- **For the consumers.** A split that adds caller files without a top-level
+  `permissions:` raises that repo's `permissions` count above its CENSUS row, and its
+  lint lane fails; give each new file its own block. `arches` reaches a caller only once
+  this is on hub `main`.
+- **What re-keys:** nothing. No `versions.env`, `01-core`, Dockerfile or other
+  image-closure file changed.
+
 ## 2026-09-24 - Hailo: review fixes
 
 A review of the entry below found a check that could be skipped, an old-path guarantee

@@ -7,7 +7,7 @@
 #
 # Weekly rather than per-push: the answer changes when a CONSUMER changes, and
 # this repository never sees those commits. Nothing here writes to a consumer.
-name: Consumer Inventory
+name: Consumers · inventory
 
 on:
   schedule:

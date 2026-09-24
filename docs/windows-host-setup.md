@@ -421,7 +421,7 @@ Verify: `pwsh -NoProfile -c '$PSVersionTable.PSVersion'` → 7.x.
 
 ### B3. PSScriptAnalyzer + Pester (the PowerShell gates)
 
-CI parity pins (`.github/workflows/windows-scripts.yml`): PSScriptAnalyzer
+CI parity pins (`.github/workflows/windows-x64.yml`): PSScriptAnalyzer
 **1.25.0**, Pester **>= 5.7**. `Invoke-Tests.ps1` FAILS (never silently
 skips) when Pester >= 5 is missing.
 

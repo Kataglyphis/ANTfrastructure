@@ -94,6 +94,9 @@ mutation-family:image-env
 # `python` for the static-analysis driver.)
 mutation-family:bind-mount
 mutation-family:windows-lane
+# 2026-09-24: its Linux twin, the `arches` plan step of the reusable
+# .github/workflows/python-ci-linux.yml; proof tests/test-reusable-linux-lane.sh.
+mutation-family:linux-lane
 
 mutation-family:lint-gates
 mutation-family:ci-image-ref

@@ -31,6 +31,53 @@ anywhere, and a caller names a version only to genuinely override it.
 This is also why two consumers that *looked* different were running identical
 commands: passing `'3.14'` to `ci_static_analysis.sh` is exactly its default.
 
+## One arch per caller: the `arches` input
+
+`python-ci-linux.yml` takes `arches` (string, default `"x64 arm64"`): the rows
+to run, space-separated. The default is both rows, so every caller written
+before the input runs exactly what it ran before, with the same job names
+(`x64`, `arm64`) and the same artifact names. A caller that follows the fleet's
+one-file-per-arch convention
+([`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names))
+calls the lane once per file:
+
+```yaml
+# .github/workflows/linux-arm64.yml
+name: Linux arm64 · build + test
+jobs:
+  linux:
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/python-ci-linux.yml@main
+    with:
+      package-name: orchestrant
+      arches: arm64
+    secrets:
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+```
+
+The docs build and the FTP deploy run on the `x64` row only, so the
+`linux-x64.yml` caller is the one that passes the FTP secrets.
+
+A small `plan` job turns the list into the build matrix, and it **fails** on an
+unknown name (`amd64`, `x86_64`), on a name listed twice, and on an empty list.
+Without that, `arches: "x64 arn64"` would run one row and stay green.
+Separators are whitespace, newlines included, so a block-scalar input works;
+`x64,arm64` is one unknown name.
+
+**Why a plan job and not a filtered static matrix.** An `exclude:` cannot drop
+a row that `include:` defines: GitHub applies `exclude` first, and an `include`
+entry that no longer fits any combination is added back as a new one. So the
+rows are written once, in the plan step's `case` table, and the build job reads
+`fromJSON(needs.plan.outputs.matrix)`. The cost is that the runner labels sit
+inside a `run:` block, where the workflow-convention gate's `*-latest` ban
+cannot see them;
+[`tests/test-reusable-linux-lane.sh`](../linux/scripts/tests/test-reusable-linux-lane.sh)
+runs that step and holds the labels to the same rule.
+
+**Consumers wait for hub `main`.** The fleet calls this lane at `@main`, so
+OrchestrANT and WebDavClient keep their `ubuntu-26.04-amd64-arm64.yml` until the
+input is merged there, and only then split into `linux-x64.yml` and
+`linux-arm64.yml`.
+
 ## The static-analysis knobs, and the bandit trap between them
 
 Two knobs decide what the six analysers grade, and each has a Windows twin that

@@ -1,7 +1,7 @@
 # CI Build Triggers (commit-message opt-ins)
 
 > **These lanes live in CONSUMER repos, not here.** ANTfrastructure's own CI is
-> `ubuntu26.04.yml` (preflight, the sharded mutation gate + docs), `windows-scripts.yml` (PowerShell
+> `linux-x64.yml` (preflight, the sharded mutation gate + docs), `windows-x64.yml` (PowerShell
 > lint/tests), `llm-stack-serving.yml` (push/PR, path-filtered on
 > `linux/llm-stack/**`), `submodule-pins.yml`, `actions-selftest.yml`, and the
 > scheduled housekeeping workflows — `ghcr-cleanup.yml` (Sundays), `sbom.yml`,
@@ -15,11 +15,15 @@ Windows-runner minutes or cross-compile time it does not need. The token is
 matched against `github.event.head_commit.message`, so it must be in the
 **pushed HEAD commit's** message (not an earlier commit in the push).
 
-| Lane | Trigger | Default |
-|---|---|---|
-| Linux x86_64 (build + test + coverage) | always, on push/PR to `main`/`develop` | **runs every time** |
-| Windows (MSVC/clang-cl container build) | `[build-win]` in the commit message | skipped |
-| Linux ARM64 | `[build-arm]` in the commit message | skipped |
+| Lane | Workflow file | Trigger | Default |
+|---|---|---|---|
+| Linux x86_64 (build + test + coverage) | `linux-x64.yml` | always, on push/PR to `main`/`develop` | **runs every time** |
+| Windows (MSVC/clang-cl container build) | `windows-x64.yml` | `[build-win]` in the commit message | skipped |
+| Linux ARM64 | `linux-arm64.yml` | `[build-arm]` in the commit message | skipped |
+
+The file names are the fleet convention of 2026-09-24, one file per platform and
+arch; the old names and the full mapping are in
+[`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
 ## Usage
 

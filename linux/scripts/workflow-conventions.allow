@@ -29,22 +29,22 @@
 #
 CENSUS | ANTfrastructure | job-timeout | 1 | build-test-python-package-on-windows in python-ci-windows.yml — the one job in this repo still without a bound. Clear it and this check can be armed here beside `permissions`, and this row deleted
 CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
-CENSUS | BeschleunigerBallett | job-timeout | 15 | 13 in Linux.yml plus 2 in Windows.yml. Linux.yml's own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
-CENSUS | BeschleunigerBallett | permissions | 12 | Every job in Linux.yml; Windows.yml declares one at the top level. One `permissions:` block at the top of Linux.yml clears all twelve at once
-CENSUS | BeschleunigerBallett | artifact-error | 2 | The package uploads in Linux.yml and Windows.yml — the two artifacts a release actually ships, which is where an empty upload is worst
-CENSUS | OmniAccelerANT | job-timeout | 5 | Across four dart_* workflows; the Flutter lanes are the fleet's longest and the least bounded
-CENSUS | OmniAccelerANT | permissions | 1 | The `lint` job of dart_on_native_linux.yml, alone in this repo in declaring none at either level
+CENSUS | BeschleunigerBallett | job-timeout | 15 | 13 in reusable-linux.yml (Linux.yml until 2026-09-24) plus 2 in windows-x64.yml. Its own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
+CENSUS | BeschleunigerBallett | permissions | 12 | Every job in reusable-linux.yml (was Linux.yml); windows-x64.yml declares one at the top level. One `permissions:` block at the top of reusable-linux.yml clears all twelve at once
+CENSUS | BeschleunigerBallett | artifact-error | 2 | The package uploads in reusable-linux.yml and windows-x64.yml — the two artifacts a release actually ships, which is where an empty upload is worst
+CENSUS | OmniAccelerANT | job-timeout | 5 | Across the Flutter workflows (four dart_* files until 2026-09-24); the Flutter lanes are the fleet's longest and the least bounded
+CENSUS | OmniAccelerANT | permissions | 1 | The `lint` job of dart_on_native_linux.yml (linux-x64.yml + linux-arm64.yml since 2026-09-24), alone in this repo in declaring none at either level
 CENSUS | OmniAccelerANT | artifact-error | 4 | The APK, the Linux packages, the generic artifact and the build log
 CENSUS | OrchestrANT | permissions | 2 | The `linux` and `windows` jobs, which call the hub's reusable python-ci workflows; the caller declares the token scope, so it cannot be fixed in the callee
-CENSUS | jotrockenmitlocken | job-timeout | 2 | The `lint` and `build` jobs of dart.yml — the workflow that also consumes 14 distinct secrets and runs four FTP deploys
+CENSUS | jotrockenmitlocken | job-timeout | 2 | The `lint` and `build` jobs of web.yml (dart.yml until 2026-09-24) — the workflow that also consumes 14 distinct secrets and runs four FTP deploys
 CENSUS | jotrockenmitlocken | permissions | 2 | The same two jobs of the same workflow, with nothing declared at either level
-CENSUS | OxidANT | job-timeout | 4 | Three in rust_ubuntu26_04.yml (including the feature matrix) and one in rust_windows2025.yml
-CENSUS | OxidANT | permissions | 1 | The `windows-pipeline` job; rust_ubuntu26_04.yml declares one at the top level
+CENSUS | OxidANT | job-timeout | 4 | Three in the Linux lane (including the feature matrix; rust_ubuntu26_04.yml until 2026-09-24) and one in windows-x64.yml (was rust_windows2025.yml)
+CENSUS | OxidANT | permissions | 1 | The `windows-pipeline` job of windows-x64.yml; the Linux lane declares one at the top level
 CENSUS | OxidANT | artifact-error | 4 | The MSI, MSIX, build and combined artifact uploads — a Windows release that uploads nothing and stays green
-CENSUS | AccelerANTgine | job-timeout | 2 | The `build` jobs of linux_run.yml and windows_run.yml
-CENSUS | AccelerANTgine | permissions | 6 | Every job of linux_run.yml, linux_run_arm.yml, linux_run_x86.yml and windows_run.yml
+CENSUS | AccelerANTgine | job-timeout | 2 | The `build` jobs of reusable-linux.yml and windows-x64.yml (linux_run.yml and windows_run.yml until 2026-09-24)
+CENSUS | AccelerANTgine | permissions | 6 | Every job of reusable-linux.yml, linux-arm64.yml, linux-x64.yml and windows-x64.yml (the linux_run*.yml and windows_run.yml files until 2026-09-24)
 CENSUS | AccelerANTgine | artifact-error | 2 | The Linux package upload and the Windows installer/zip upload
-CENSUS | ANThology | job-timeout | 1 | The `build` job of dart.yml, this repo's only lane
+CENSUS | ANThology | job-timeout | 1 | The `build` job of docs.yml (dart.yml until 2026-09-24), this repo's only lane
 #
 # `runner-ban` has no row anywhere, and never will: it is armed with no knob, so
 # its ceiling is zero and a single `*-latest` label is a hard failure the day it

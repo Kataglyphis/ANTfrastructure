@@ -74,7 +74,7 @@
       "ref": "main",
       "self": false,
       "confirmed": true,
-      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: dart.yml checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
+      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @main. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
     }
 ,
     {
@@ -111,7 +111,7 @@
       "kind": "linux-script",
       "glob": "linux/scripts/*.sh",
       "needle": "path",
-      "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are deliberately out of scope, though a consumer CAN reach one directly: OxidANT's Ubuntu workflow calls 06-packaging/package_archive.sh (found 2026-09-18), so this class under-reports those trees."
+      "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are deliberately out of scope, though a consumer CAN reach one directly: OxidANT's Linux lane calls 06-packaging/package_archive.sh (found 2026-09-18), so this class under-reports those trees."
     },
     {
       "kind": "docs-gate",
@@ -147,7 +147,7 @@
       "kind": "windows-lang-script",
       "glob": "windows/scripts/rust/*.ps1",
       "needle": "path",
-      "why": "Per-language Windows drivers a consumer calls by hub PATH from its workflow (OxidANT's rust_windows2025.yml names New-Archive.ps1 this way). The windows/scripts/*.ps1 class above is non-recursive, so without this row nothing graded them and the 2026-09-08 sweep deleted one that was live."
+      "why": "Per-language Windows drivers a consumer calls by hub PATH from its workflow (OxidANT's windows-x64.yml, rust_windows2025.yml until 2026-09-24, names New-Archive.ps1 this way). The windows/scripts/*.ps1 class above is non-recursive, so without this row nothing graded them and the 2026-09-08 sweep deleted one that was live."
     },
     {
       "kind": "windows-module",

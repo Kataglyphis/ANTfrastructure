@@ -233,7 +233,7 @@ t_assert_eq "0" "$(_count "${_push_calls}" -e '--in-place')" \
   "the push hook must not opt out of isolation either"
 
 t_case "CI proves every entry once: preflight skips the slug, the mutations jobs' shards cover it"
-_wf="${REPO}/.github/workflows/ubuntu26.04.yml"
+_wf="${REPO}/.github/workflows/linux-x64.yml"
 t_assert_contains "$(cat "${REPO}/linux/scripts/preflight.sh")" '${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"}' \
   "the slug must hand its shard to the gate, or every CI job proves the whole manifest"
 t_assert_contains "$(cat "${_wf}")" "PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh"

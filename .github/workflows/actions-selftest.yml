@@ -57,7 +57,7 @@
 # The self-test is a peer of the actions, so it is also its own consumer: the
 # path filters fire on any edit under .github/actions/.
 
-name: Composite actions self-test
+name: Composite actions · self-test
 
 # Least privilege. The one job that needs more says so itself.
 permissions:

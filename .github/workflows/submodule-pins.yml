@@ -35,7 +35,7 @@
 # in-tree copy. run-pester-suite is named at @main in both cases: a
 # workflow_call workflow runs in the CALLER's checkout, where ./ does not
 # resolve to this repository.
-name: Submodule Pins
+name: Submodule pins (reusable)
 
 on:
   workflow_call:

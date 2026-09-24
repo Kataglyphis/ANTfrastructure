@@ -82,8 +82,9 @@ linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
                          wired into CI or builds
 linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          assembly — consumer surface. Called from
-                         OxidANT's
-                         .github/workflows/rust_ubuntu26_04.yml release job.
+                         OxidANT's Linux lanes (linux-x64.yml and
+                         linux-arm64.yml; rust_ubuntu26_04.yml until the
+                         2026-09-24 rename).
                          Deleted by the 2026-08-08 orphan sweep as
                          "zero-reference" and restored 2026-08-11: the sweep
                          searched only THIS repo, so a consumer's CI lane was

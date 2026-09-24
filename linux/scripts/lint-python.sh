@@ -4,7 +4,7 @@
 # Dockerfiles, workflows and PowerShell all have gates — ~3,300 first-party
 # Python lines had none.
 #
-# TWO-PASS DESIGN (the PSSA advisory-ramp precedent, windows-scripts.yml):
+# TWO-PASS DESIGN (the PSSA advisory-ramp precedent, windows-x64.yml):
 #   gate pass  — `ruff check --select E9,F63,F7,F82` (syntax errors, invalid
 #                comparisons/asserts, undefined names): near-zero false
 #                positives, HARD-fails. An undefined name in bump_versions.py

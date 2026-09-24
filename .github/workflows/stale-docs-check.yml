@@ -1,6 +1,6 @@
 # Weekly check: file an issue if version markers, deps table, Dockerfile ARGs,
 # or website license files are out of sync with versions.env.
-name: Stale Docs Check
+name: Docs · stale check
 
 on:
   schedule:
@@ -61,7 +61,7 @@ jobs:
               'Then commit and push the changes.',
               '',
               '---',
-              '_Generated automatically by the Stale Docs Check workflow._',
+              '_Generated automatically by the Docs · stale check workflow (stale-docs-check.yml)._',
             ].join('\n');
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
