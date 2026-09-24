@@ -10121,5 +10121,13 @@
     "replace": "      - name: Mutation gate,",
     "test": "bash linux/scripts/tests/test-mutation-gate.sh",
     "why": "without pytest and PyYAML the baselines fail unmutated and every entry under them reads vacuous (2026-09-07)"
+  },
+  {
+    "id": "critical-fixes.summary-reaches-exit",
+    "target": "linux/scripts/verify-critical-fixes.sh",
+    "find": "done\n\nsmoke_summary",
+    "replace": "done\n\necho \"=== Results: ${FAILURES} failure(s) ===\"",
+    "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+    "why": "every row runs an EXTRACTED fix, so only the real-gate Cargo case reaches the gate's own summary; a gate that prints its FAILs and exits 0 is green in preflight"
   }
 ]

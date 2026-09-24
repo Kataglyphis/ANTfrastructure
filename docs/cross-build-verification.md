@@ -609,8 +609,10 @@ is found by name and fingerprint only. The call sits inside the
 The `critical-fixes` battery was two scripts wearing one name, and the split is
 what let its preflight slug leave `gate-proofs.allow`. `verify-critical-fixes.sh`
 now holds fix5–fix11, every one of them a grep over the REPO TREE, so preflight
-can run it off-target and `test-critical-fixes.sh` can drive the real gate in a
-fixture tree and knock out one guarded line at a time.
+can run it off-target and `test-critical-fixes.sh` can knock out one guarded line
+at a time in a fixture tree. Each row runs only the fix it knocks out, extracted
+from the gate; one case runs the real gate, which proves a FAIL reaches the exit
+code.
 `06-packaging/smoke-critical-fixes.sh` holds fix1–fix4, the probes that only mean
 anything inside a built image. It is **not wired into any build stage**: run it
 against a shipped image with `nerdctl run --rm --platform linux/<arch> -v

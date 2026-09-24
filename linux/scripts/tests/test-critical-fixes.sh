@@ -221,7 +221,7 @@ F
 _gate() { bash "$1/linux/scripts/verify-critical-fixes.sh"; }
 
 # The gate minus its driver: its F11_* tables and every function, extracted with t_fn_src, so a row runs only
-# the fix it knocks out (a whole gate per row made this suite 45-59 s on CI). The equivalence case proves it.
+# the fix it knocks out (a whole gate per row made this suite 45-59 s on CI). The Cargo case runs the real gate.
 _FIX_FUNCS=()
 read -r -a _FIX_FUNCS <<< "$(sed -n 's/^FIX_FUNCS=(\(.*\))$/\1/p' "${GATE}")"
 _gate_lib="set -euo pipefail"$'\n'"source '${PKG}/smoke-common.sh'"$'\n'"$(awk '/^F11_[A-Z0-9_]+=\($/ { a = 1 }
@@ -389,7 +389,12 @@ ROWS11
 t_case "fix11 — an ort dependency with its default features is pyke's download, in every Cargo shape (mutation)"
 cp -a "${_healthy}" "${_work}/cargo-tree"
 printf '[dependencies]\nort = "=2.0.0-rc.13"\n' | _write "${_work}/cargo-tree/linux/scripts/x/Cargo.toml"
-t_assert_eq "1" "$(t_rc _run_fix "${_work}/cargo-tree" "${_FN_OF[fix11]}")" \
+# The one red case through the REAL gate: the rows above never reach its closing smoke_summary.
+_cargo_rc=0
+_cargo_out="$(_gate "${_work}/cargo-tree" 2>&1)" || _cargo_rc=$?
+t_assert_eq "1" "${_cargo_rc}" "the gate must exit 1 on a FAIL, not just print it"
+t_assert_contains "${_cargo_out}" "=== Results: 1 failure(s) ===" "one knocked-out line is one failure"
+t_assert_contains "${_cargo_out}" "FAIL fix11: no Cargo.toml here enables" \
   "fix11 runs the Cargo rule: ort's default features carry download-binaries"
 _cargo_verdict="$(t_fn_src "${GATE}" _f11_verdict)" || exit 1
 _cargo_rule="$(t_fn_src "${GATE}" fix11_ort_cargo)" || exit 1
