@@ -62,6 +62,8 @@ linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
                          app-runner.sh (generic app launcher: arg parse, exe
                          discovery, LD_LIBRARY_PATH, per-profile hooks),
                          cmake-build.sh, code-quality.sh, coverage.sh,
+                         compiler-llvm-tools.sh (a build tree's own LLVM
+                         tools, first on PATH),
                          slang-compile.sh, wasm-opt.sh, ctest-run.sh (ctest
                          runner + perf-baseline comparator), docs-build.sh
                          (Sphinx build helper), rust-toolchain.sh — the last
@@ -331,6 +333,28 @@ uses.
 
 A GPU test suite needs the loader and the layers on the same terms the build had,
 which is why the Vulkan environment is resolved here too.
+
+## `compiler-llvm-tools.sh` — the LLVM tools of the compiler that built a tree
+
+Anything that reads clang's output has to come from the same LLVM. That covers
+`llvm-profdata` and `llvm-cov` on a raw profile, and `clang-tidy` on module PCMs. The
+images put a source-built clang behind `clang`/`clang++`, while the bare tools on
+PATH can be an older distro LLVM, so the pairing fails with "no profile can be
+merged" or "uses a newer format that cannot be read".
+
+- `compiler_llvm_tool <build-dir> <tool>` prints the tool beside the compiler that
+  configured the tree (`CMAKE_CXX_COMPILER` in its `CMakeCache.txt`, else `clang++`).
+  It asks that compiler's `-print-prog-name`, and fails when the answer is the bare
+  name, which is clang's way of saying it has none.
+- `use_compiler_llvm_tools <build-dir> <tool>...` puts that directory first on PATH,
+  but only when it holds every named tool. A half set would mix two LLVMs in one
+  report, so it warns and leaves PATH alone instead. Call it in a subshell when the
+  directory holds a tool the caller must not swap, such as `clang-format`.
+
+It came up from AccelerANTgine's `ci-common.sh` once BeschleunigerBallett's coverage
+lane hit the same "no profile can be merged" (2026-09-24).
+`linux/scripts/tests/test-compiler-llvm-tools.sh` pins it with two fake LLVM
+installs.
 
 ## `docs-build.sh` — build a Sphinx documentation tree
 

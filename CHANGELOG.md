@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - `lib/compiler-llvm-tools.sh`: the LLVM tools of the compiler that built a tree
+
+BeschleunigerBallett's coverage lane failed with `error: no profile can be merged`: its
+`build-coverage-llvm.sh` calls this hub's `coverage.sh`, which runs `llvm-profdata` and
+`llvm-cov` by bare name, and PATH's copies are an older LLVM than the image's clang.
+AccelerANTgine had hit and fixed the same thing locally (`compiler_llvm_tool` and
+`use_compiler_llvm_tools` in its `scripts/linux/ci-common.sh`). With a second consumer
+needing them, both functions move up unchanged into `linux/scripts/lib/compiler-llvm-tools.sh`.
+`test-compiler-llvm-tools.sh` covers them with two fake LLVM installs (the tree's compiler,
+and a different `clang++` first on PATH): 6 assertions. Three new mutations bite, family
+`compiler-llvm-tools`. `docs/shared-script-libraries.md` lists the library and describes it.
+The consumers switch to it with their next hub pin.
+
 ## 2026-09-24 - makedef hands llvm-nm its object list as @file: xargs died in the rocm lane's environment
 
 The refusal below paid off on the first rerun. The rocm FFmpeg stage stopped at
