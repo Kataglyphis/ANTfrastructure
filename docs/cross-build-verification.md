@@ -570,7 +570,7 @@ sha whose bytes name a non-chain root is FOREIGN.
 
 | Verdict | Meaning (every one fatal except EXEMPT) |
 | --- | --- |
-| `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths, alone or mixed; a reference whose roots are all relative is FOREIGN too |
+| `FOREIGN` | another build root (PyPI `N:\_work\1\s`, Windows ML `C:\__w\1\s`, pyke, …), or relative paths only (mixed with a chain root the verdict is `STALE`, with a foreign root `FOREIGN`); a reference whose roots are all relative is FOREIGN too |
 | `STALE` | the chain's root, but not this chain's bytes |
 | `UNPROVEN` | an ORT name with no fingerprint and foreign bytes, or an unreadable ORT file or archive |
 | `ELSEWHERE` | a chain-identical copy outside the chain prefixes and `*/site-packages/onnxruntime/capi` |

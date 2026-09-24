@@ -63,15 +63,30 @@ failed OmniAccelerANT's Linux lane (run 35928030957, x64 and arm64):
   FFmpeg ELF counted as an ORT build with no fingerprint. Now `libavfilter` is
   the `ffmpeg` consumer in the contract, and the rest are not ORT.
 
-Nothing real was lost. Measured on 2026-09-24 in a local `:latest-cross`
-(e8eb8a42, ORT 1.29.0): the chain `libonnxruntime.so` keeps all 592 of its fingerprints,
-`libonnxruntime_providers_dnnl.so` 23 of 23, the Android build 545 of 545. The
-verification of the fix also checked the Windows chain DLL, the PyPI 1.30 and
-DirectML 1.24.4 wheels and the WebGPU EP: every fingerprint kept.
+Nothing real was lost. Measured on 2026-09-24, old rule against new:
+
+- in a local `:latest-cross` (e8eb8a42, ORT 1.29.0), the chain
+  `libonnxruntime.so` keeps all 592 of its fingerprints,
+  `libonnxruntime_providers_dnnl.so` 23 of 23, the Android build 545 of 545;
+- on a Windows host, a chain `onnxruntime.dll` (a consumer's runner copy, root
+  `C:\temp\onnx-src`) keeps 608 of 608, and Windows ML's in-box 1.17 in
+  System32 518 of 518.
+
+The PyPI and DirectML wheels and the WebGPU EP were not measured.
 
 **The rule for a consumer:** it may name the chain directory, but it must never
 embed a whole ORT source-file path. A file that does is counted as an ORT build
 and fails the census as `STALE` or `FOREIGN`, so the mistake fails closed.
+
+**The same shape binds a consumer's test fixtures.** A fake ORT written as
+`"$chainSrc OrtGetApiBase"` (a space after the `.cc`) has no fingerprint under
+this rule. A chain fixture then no longer ties to the chain root, and a stale
+one reads `UNPROVEN` where the test expects `STALE`. End the fake path with a
+NUL, `` "$chainSrc`0OrtGetApiBase" ``: that passes the census before and after
+the change, so it can land ahead of the pin bump. Three Windows ORT suites
+needed it: OmniAccelerANT's `OrtRunner.Tests.ps1` (2 of 6 failed at the fix),
+OxidANT's `OrtPayload.Tests.ps1` and AccelerANTgine's `OrtBundle.Tests.ps1`
+(one case each).
 
 ## What was wrong before 2026-09-23
 
