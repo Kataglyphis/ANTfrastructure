@@ -681,6 +681,14 @@ how many files are staged. A one-file commit that happens to stage a *gate* scri
 can cost more than a wide one. A commit that touches no mutation target at all
 skips the step entirely.
 
+**Derived doc numbers (since 2026-09-24).** When `docs/scripts/mutations.json`,
+the hook itself or a page that quotes their numbers is staged, the hook also runs
+`test-doc-numbers.sh`. It costs 8.1 s on the Windows dev host (measured 2026-09-24)
+and nothing on a commit that stages none of those files. It is here because
+adding a mutation changes the total the owning page quotes, and the hook said OK
+over a stale one: CI's preflight and all four mutation shards went red on it
+(run 36022089345).
+
 **The cap moved 6 → 16 on 2026-09-04**, when the gate learned to shard. Same rig,
 the same newest-first sample of the 77-file diff, measured both ways: 6 entries
 cost **9.3 s** sharded against **15.5 s** serial, 16 cost **13.4 s** against
