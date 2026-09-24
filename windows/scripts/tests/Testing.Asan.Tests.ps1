@@ -35,6 +35,22 @@ Describe 'Invoke-WithAsanOptions' {
             Assert-Equal 'keep=1' $env:ASAN_OPTIONS 'restore must happen on the failure path too'
         }
     }
+
+    It 'runs the block with ASAN_OPTIONS untouched for an empty -Options' {
+        # A mandatory [string] refused '' outright, so AccelerANTgine's
+        # Start-Windows.ps1 (-AsanOptions '' for its full-application runs) died
+        # before running anything: "Cannot bind argument to parameter 'Options'
+        # because it is an empty string" (its CI run 36020001871).
+        Invoke-WithEnv @{ ASAN_OPTIONS = 'pre=1' } {
+            Invoke-WithAsanOptions -Options '' -Script { $script:seenEmpty = $env:ASAN_OPTIONS }
+            Assert-Equal 'pre=1' $script:seenEmpty 'nothing may be prepended, not even a separator'
+            Assert-Equal 'pre=1' $env:ASAN_OPTIONS 'the caller value must survive'
+        }
+        Invoke-WithEnv @{ ASAN_OPTIONS = '' } {
+            Invoke-WithAsanOptions -Options '' -Script { $script:seenUnset = $env:ASAN_OPTIONS }
+            Assert-True ([string]::IsNullOrEmpty($script:seenUnset)) 'an unset variable stays unset inside the block'
+        }
+    }
 }
 
 Describe 'Invoke-WithRuntimePath' {
@@ -51,6 +67,18 @@ Describe 'Invoke-WithRuntimePath' {
         Invoke-WithEnv @{ PATH = 'C:\base'; ASAN_OPTIONS = '' } {
             Invoke-WithRuntimePath -RuntimeDirs @($null, '', '   ') -Script { $script:seenPath2 = $env:PATH }
             Assert-Equal 'C:\base' $script:seenPath2 'an all-empty list must leave PATH alone'
+        }
+    }
+
+    It "accepts -AsanOptions '' and still prepends the runtime dirs" {
+        Invoke-WithEnv @{ PATH = 'C:\base'; ASAN_OPTIONS = 'pre=1' } {
+            Invoke-WithRuntimePath -RuntimeDirs @('C:\rt1') -AsanOptions '' -Script {
+                $script:seenPath3 = $env:PATH
+                $script:seenAsan3 = $env:ASAN_OPTIONS
+            }
+            Assert-Equal 'C:\rt1;C:\base' $script:seenPath3 'the runtime dirs still come first'
+            Assert-Equal 'pre=1' $script:seenAsan3 'an opted-out run keeps the caller ASAN_OPTIONS as they were'
+            Assert-Equal 'C:\base' $env:PATH 'PATH must be restored'
         }
     }
 }

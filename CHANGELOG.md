@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - `Invoke-WithAsanOptions -Options ''` adds nothing instead of refusing to bind
+
+`Invoke-WithRuntimePath` takes an optional `[string]$AsanOptions` and hands it to
+`Invoke-WithAsanOptions`, whose `-Options` was a mandatory `[string]`. PowerShell refuses
+an empty string there, so `Invoke-WithRuntimePath -AsanOptions ''` could never run.
+AccelerANTgine's `Start-Windows.ps1` passes exactly that for its full-application runs, to
+opt out of the test-binary defaults. Its Windows lane got past its container build for the
+first time in weeks (run 36020001871) and then stopped at the CLI version check: `Cannot bind
+argument to parameter 'Options' because it is an empty string`. `-Options` now takes
+`[AllowEmptyString()]`, and an empty value runs the block with `ASAN_OPTIONS` exactly as the
+caller had it: nothing prepended, not even a separator. `Testing.Asan.Tests.ps1` has both
+shapes; both cases fail against the old module with that same message.
+
 ## 2026-09-24 - The consumer inventory counts a consumer's own modules as its own
 
 `verify_consumer_inventory.py` failed its first run after the fleet renames (36019965353):
