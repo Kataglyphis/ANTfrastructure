@@ -812,7 +812,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   mounts the android image as every published image did; `export` stages that same
   image's wheelhouse, sealed, before each package build. Never add a fallback between
   them, and keep their logic in `linux/scripts/lib-runtime-wheels.sh`, outside every
-  image closure, so a change there re-keys nothing:
+  image closure, so a change there re-keys nothing. `export` refuses a `--no-push`
+  chain whose android tag is published (every one on the amd64 cross host). Never
+  "fix" that by re-exporting the layout; changing the ref it reads is the owner's call:
   [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`

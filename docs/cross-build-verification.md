@@ -1342,7 +1342,7 @@ snapshot's cost lands inside the RUN vertex (8.2 s of a 27 s wait in the 2026-09
 BuildKit probe on Rancher). Compare the `wheels-source` vertex with the RUN vertex's start instead:
 
 ```bash
-LOG=out/build-logs/<run>/runtime.log   # or the tee'd helper log
+LOG=out/build-logs/wheels-ab-<mode>.log   # the tee'd transcript: the runtime lane writes no stage log
 grep -nE '\[runtime-timing\]|\[wheels\] |\[torch-run\] start|\[torch-venv(:timing)?\] ' "$LOG"
 grep -nE '^#[0-9]+ \[wheels-source 1/1\] FROM' "$LOG"   # its vertex id N, per build
 grep -nE '^#N (resolve|sha256:|extracting|DONE|CACHED)' "$LOG"
@@ -1374,22 +1374,54 @@ samples. The Rancher probe found no cost for rw over ro on a warm source, but th
 BuildKit 0.28.1 with a containerd worker, while the host runs a rootless OCI worker
 (0.31.2). On the host, drop `,rw` from the probe for one cold run to settle it.
 
-**The A/B.** Build the same android pins in both modes, with nothing published:
+**The A/B.** Run it through the chain: the runtime lane's disk watch
+(`_chain_disk_watch_start runtime` in `build-cross-chain.sh`), whose mid-lane prune is
+the suspected eviction, runs only there. Both modes read the same published android,
+and nothing is published:
+
+```bash
+for m in image export; do
+  CROSS_LOCAL_CONTEXT_HANDOFF=0 RUNTIME_WHEELS_SOURCE=$m \
+    bash linux/scripts/build-cross-chain.sh --only runtime --no-push \
+      --target-arches amd64,arm64,riscv64 2>&1 | tee "out/build-logs/wheels-ab-$m.log"
+done
+```
+
+- `--no-push` hands the lane `--skip-manifest` and no `--push`, so no wrapper and no
+  manifest leave the host.
+- `--only runtime` builds no android: the chain pulls the published
+  `cross-android-<arch>`, and both modes resolve its registry digest.
+- `CROSS_LOCAL_CONTEXT_HANDOFF=0` is required. With the handoff on, the lane looks for
+  an android layout this run never wrote. On the cross host `export` would also be
+  refused there, as on every `--no-push` chain whose android tag is published
+  ([why](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
+
+**Mechanism check only.** `build-runtime-manifest.sh` on its own runs the same two
+paths without the disk watch. Nothing then prunes between the package build and the
+wrapper, and image mode will usually show no wait at all. Use it to see that `export`
+stages, seals and mounts the wheelhouse and that both modes print one digest, never to
+judge the wait:
 
 ```bash
 for m in image export; do
   RUNTIME_WHEELS_SOURCE=$m bash linux/scripts/build-runtime-manifest.sh \
     --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-    --target-arches amd64,arm64,riscv64 --skip-manifest 2>&1 | tee "out/build-logs/wheels-ab-$m.log"
+    --target-arches amd64,arm64,riscv64 --skip-manifest 2>&1 | tee "out/build-logs/wheels-mech-$m.log"
 done
 ```
 
 BuildKit keys a bind mount by its content, so the second mode may find the first
 one's torch RUN in the cache and skip the step you want to time. When the RUN shows
 `CACHED`, add `RUNTIME_NO_CACHE=1`, which re-runs the package build as well. The other
-way is to compare two real chains, the first in `image` mode and the next in
-`export` mode. Accept `export` when, per arch:
+way is to compare two real pushing chains, the first in `image` mode and the next in
+`export` mode; not two `--no-push` ones on the cross host, where `export` is refused.
+Accept `export` when, per arch:
 
+- the `image`-mode run reproduced the wait: `extracting` lines under its
+  `wheels-source` vertex, finishing just before the RUN vertex starts, often after a
+  `[disk-watch] <n>G free < <t>G DURING a stage` line (BuildKit's own GC evicts
+  silently). Without that the arch is inconclusive, not a pass: a run that
+  evicted nothing has no wait to remove;
 - the export-mode wrapper build has no `wheels-source` pull or `extracting` line;
 - `[torch-run] start` is within 10 s of the RUN vertex's start;
 - both modes print the same `[torch-venv] wheelhouse` digest, and that digest equals
@@ -1397,8 +1429,10 @@ way is to compare two real chains, the first in `image` mode and the next in
 - `verify-shipped-wrapper.sh`, the ORT census and the boot smokes pass in both modes.
 
 Report the result per arch. amd64 waited 96 s even on the fast day, so its share may
-come from something else. One `export` run on a native host (Jetson or X100, `--no-push`)
-also exercises the layout digest check that only `ARTIFACT_CONTEXT_ROOT` reaches.
+come from something else. One `export` run of a full `--no-push` chain on a native host
+(Jetson or X100) whose `-host<arch>` android tag was never pushed also exercises the
+layout digest check that only `ARTIFACT_CONTEXT_ROOT` reaches. On the cross host that
+check can only refuse.
 
 ### Host-side env scrubbing for native sub-builds
 

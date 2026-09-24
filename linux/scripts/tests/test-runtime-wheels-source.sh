@@ -9,6 +9,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/runtime-wheels-fixtures.sh"
+rw_hermetic_env
 SCRIPTS="${TESTS_DIR}/.."
 LIB="${SCRIPTS}/lib-runtime-wheels.sh"
 RBF="${SCRIPTS}/01-core/runtime-build-fns.sh"
@@ -96,6 +97,7 @@ _nth() {  # <kind> — that build's argv, one per line
 _events() { grep -E '^(BUILD-BEGIN|STEP|WRAPPER-SAW|PUSH|TRAP)' "${BLOG}" | tr '\n' ',' || true; }
 _wheels_tail() { _nth wrapper | awk 'p {print} $0 == "VCS_REF=R0" {p=1}' | tr '\n' ' '; }
 _head() { _nth wrapper | awk '$0 == "VCS_REF=R0" {exit} {print}'; }
+_steps() { printf '%s\n' "$1" | sed -n 's/^\[runtime-timing\] arch=arm64 step=\([a-z-]*\) secs=[0-9]* rc=0$/\1/p' | tr '\n' ' '; }
 
 t_case "the knob: auto and image are today's mount, export is the fast path, a typo stops the lane"
 for _v in "" auto image; do
@@ -117,6 +119,7 @@ for _v in image auto; do
   t_assert_contains "${_out}" "ROOT=" "RUNTIME_WHEELS_SOURCE=${_v}: no export root"
   t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F 'ROOT=/leaked' || true)" "an inherited root cannot switch the wrapper to export"
   t_assert_eq "STEP base,STEP package,STEP smoke,BUILD-BEGIN wrapper," "$(_events)" "exactly base, package, smoke, wrapper, as before"
+  t_assert_eq "base package smoke wrapper " "$(_steps "${_out}")" "each of them prints its [runtime-timing] line, in order"
   t_assert_eq "--build-arg WHEELS_IMAGE=repo@sha256:abc . " "$(_wheels_tail)" "the torch RUN mounts the pinned android image"
   t_assert_eq "" "$(ls -A "${RUNTIME_CONTEXT_ROOT}" 2>/dev/null)" "nothing is staged"
 done
@@ -149,7 +152,8 @@ t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_whe
   "the wrapper mounts the staged directory and never the image"
 t_assert_eq "${_IMAGE_HEAD}" "$(_head)" "every other wrapper argument is image mode's, byte for byte"
 t_assert_contains "${_out}" "[wheels] arm64: files=2 bytes=3 sha256=" "the export logs what it staged"
-t_assert_contains "${_out}" "[runtime-timing] arch=arm64 step=wheels-export secs=" "and how long it took"
+t_assert_eq "wheels-export base package smoke wrapper " "$(_steps "${_out}")" \
+  "every step prints its [runtime-timing] line, the export first: the A/B reads all five"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep '^LEFT ' || true)" "the arch's directory and seal are gone after the wrapper"
 _out="$(RUNTIME_WHEELS_SOURCE='export' _run 'runtime_wheels_setup; r="${RUNTIME_WHEELS_EXPORT_ROOT}"; runtime_wheels_cleanup; [ -d "${r}" ] && echo KEPT || echo GONE')"
 t_assert_contains "${_out}" "GONE" "the EXIT handler removes the root"
@@ -179,6 +183,24 @@ t_assert_contains "${_out}" "holds no single manifest" "a layout naming two mani
 _fresh; _layout '{}'
 _out="$(RUNTIME_WHEELS_SOURCE='export' ARTIFACT_CONTEXT_ROOT="${WORK}/aa" ARTIFACT_CONTEXT_MODE=dir INFIX=-hostarm64 _run "${_LANE}")"
 t_assert_contains "${_out}" "needs ARTIFACT_CONTEXT_MODE=oci" "a rootfs-directory artifact cannot be proved and is refused"
+
+t_case "--no-push with the android tag published (the cross host's case): export refuses"
+# A --no-push chain threads no pin, so runtime_android_pin falls back to the registry and
+# names the PUBLISHED digest; this run's android is in containerd under its tag (_D1).
+_R="repo@sha256:$(printf 'a%.0s' $(seq 64))"
+for _pulled in "" 1; do
+  _fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${_D1}"'","size":1}]}'
+  _out="$(RUNTIME_WHEELS_SOURCE='export' ARTIFACT_CONTEXT_ROOT="${WORK}/aa" PIN="${_R}" LOCAL_DIGEST="${_D1}" PINNED_PULLED="${_pulled}" _run "${_LANE}")"
+  _want="not present"; [ -z "${_pulled}" ] || _want="${_R##*@}"
+  t_assert_contains "${_out}" "holds ${_D1}, but ${_R} is ${_want} in containerd" "registry copy pulled='${_pulled}': the layout is never the digest the lane names"
+  t_assert_contains "${_out}" "CHAIN-RC=1" "and the arch fails"
+  t_assert_eq "TRAP runtime_wheels_cleanup," "$(_events)" "before its base build"
+done
+_fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${_D1}"'","size":1}]}'
+RUNTIME_WHEELS_SOURCE=image ARTIFACT_CONTEXT_ROOT="${WORK}/aa" PIN="${_R}" LOCAL_DIGEST="${_D1}" _run "${_LANE}" >/dev/null
+t_assert_eq "--build-arg WHEELS_IMAGE=${_R} --build-context ${_R}=${WORK}/wheels-arm64 . " "$(_wheels_tail)" \
+  "image mode there mounts the PUBLISHED android's wheelhouse (predates the knob, unchanged)"
+t_assert_contains "$(cat "${NLOG}")" "create ${_R} /bin/true" "extracted from a container of the registry's digest"
 
 t_case "a failed or empty export stops the arch before any image is built"
 _fresh

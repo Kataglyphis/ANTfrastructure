@@ -764,7 +764,7 @@ while the wrapper builds.
 | `RUNTIME_WHEELS_SOURCE` | What happens |
 |---|---|
 | `auto` (default) | The same as `image`, for now. |
-| `image` | The delivery every image was built with before 2026-09-24, unchanged. The torch RUN bind-mounts `/opt/wheels` from the android image (stage `wheels-source`). A pushing run hands BuildKit the digest-pinned ref. Under `ARTIFACT_CONTEXT_ROOT` (a `--no-push` chain) `runtime_wheels_context_dir` extracts the directory from containerd with `nerdctl export \| tar`. |
+| `image` | The delivery every image was built with before 2026-09-24, unchanged. The torch RUN bind-mounts `/opt/wheels` from the android image (stage `wheels-source`). A pushing run hands BuildKit the digest-pinned ref. Under `ARTIFACT_CONTEXT_ROOT` (a `--no-push` chain) `runtime_wheels_context_dir` extracts the directory from containerd with `nerdctl export \| tar`. When the android tag is published, that ref is the registry's digest: a `--no-push` chain threads no pin, so `runtime_android_pin` falls back to the registry. The extraction then reads the PUBLISHED android (nerdctl pulls it when it is not local), and the venv gets its wheels while the package copies from this run's layout. That predates the knob, and neither mode changes it. |
 | `export` | Before each arch's base and package builds, BuildKit builds only `Dockerfile.torch`'s `wheels-export` stage with `--output type=local`. That copies `/opt/wheels` out of the same image into `<RUNTIME_CONTEXT_ROOT>/runtime-flow.wheels.*/<arch>`, and a sha256 manifest is written beside it. The wrapper build re-checks the manifest, then mounts the directory (`WHEELS_IMAGE=runtime_wheels`, `--build-context runtime_wheels=<dir>`). The directory is removed after the wrapper. |
 
 **How to pick one.**
@@ -775,9 +775,14 @@ while the wrapper builds.
   `build-runtime-manifest.sh` or `build-runtime-artifacts.sh` for one run. Unset it,
   or set `image`, to go back. A switch costs no rebuild of its own: the only step
   it re-keys, the torch RUN, re-runs on every lane anyway.
+- **Not on a `--no-push` chain whose android tag is published**, which is every
+  default or variant `--no-push` chain on the amd64 cross host: `export` is refused
+  there (below). Use `image` for those.
 - A native host takes either one: a Jetson with `CROSS_BUILD_PLATFORM=linux/arm64`,
   the X100 with `linux/riscv64`. The export stage is one COPY and runs no target
-  code, so it behaves the same on an amd64 cross host and on a native host.
+  code, so it behaves the same on an amd64 cross host and on a native host. The
+  refusal above applies there too, once that host has pushed its `-host<arch>`
+  android tag.
 - Any other value stops the lane with exit 2, and the chain checks it before its
   first stage.
 
@@ -787,11 +792,21 @@ while the wrapper builds.
   the function image mode uses. It passes the same `WHEELS_IMAGE`, or none when the
   ref is empty, so both fall back to the Dockerfile default. It uses the wrapper
   build's `--platform` and pull policy.
-- **Under `ARTIFACT_CONTEXT_ROOT`** BuildKit cannot see the containerd-only tag. The
-  export then reads the android OCI layout the package build reads, but only when the
-  layout's one manifest digest equals the containerd image's digest (`nerdctl image
-  inspect --mode=native`). Otherwise it stops and names both.
+- **Under `ARTIFACT_CONTEXT_ROOT`** (a `--no-push` chain) the export reads the
+  android OCI layout the package build reads, but only when the layout's one manifest
+  digest equals the digest the ref has in containerd (`nerdctl image inspect
+  --mode=native`). Otherwise it stops and names both.
   `ARTIFACT_CONTEXT_MODE=dir` is refused, because there is no digest to compare.
+- **So a `--no-push` chain whose android tag is published always stops there.** The
+  ref is then the registry's digest (see the `image` row above), and this run's
+  layout never has it. The arch fails at the runtime lane, before its base build,
+  hours after the chain started; the chain does not check this at its start. The
+  remedy is `RUNTIME_WHEELS_SOURCE=image`. Never re-export the layout from the ref
+  the error names to make the two agree: the package build copies from that layout,
+  so it would switch to the published android too. The check can pass only while the
+  android tag has never been pushed, so that the ref is this run's containerd tag: a
+  native host's `-host<arch>` tag. Reading this run's tag on the cross host instead
+  would give up "the same image as `image` mode", so it is left to the owner.
 - **A failed export build, or one without a wheel,** fails the arch before its base
   build.
 - **At wrapper time** the build fails if the directory or its manifest is missing, or

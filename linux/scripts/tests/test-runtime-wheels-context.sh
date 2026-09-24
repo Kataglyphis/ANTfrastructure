@@ -8,6 +8,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/runtime-wheels-fixtures.sh"
+rw_hermetic_env
 RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
 CTX="${TESTS_DIR}/../01-core/context-management.sh"
 

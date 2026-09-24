@@ -7,6 +7,68 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-24 - The wrapper's wheelhouse: review fixes
+
+A review of the entry below found that `RUNTIME_WHEELS_SOURCE=export` cannot run on
+the cross host's `--no-push` chains, which that entry and the docs did not say, plus
+three smaller gaps; rerunning its suites in the CI image found a fourth. No behaviour
+changed: `image` and `export` do what they did.
+[`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
+
+- **`export` is refused on a `--no-push` chain whose android tag is published**, which
+  is every default or variant `--no-push` chain on the amd64 cross host. Such a chain
+  threads no android pin, so `runtime_android_pin` resolves the published tag's
+  registry digest, and this run's android layout never has it. The arch stops at the
+  runtime lane, before its base build, with both digests named; the remedy is
+  `RUNTIME_WHEELS_SOURCE=image`. `failure-modes.md` had suggested re-exporting the
+  layout from the tag the lane names, which would have switched the package build to
+  the published android as well; it now says never. Making `export` read this run's
+  tag there would give up "the same image as `image` mode", so that is left to the
+  owner. The same resolution means `image` mode on such a chain builds the venv from
+  the PUBLISHED android's wheels while the package copies from this run's layout. That
+  predates the knob and is unchanged; it is now documented and a test pins it.
+- **The A/B runs through the chain.** The runtime lane's disk watch, whose mid-lane
+  prune is the suspected eviction, runs only in `build-cross-chain.sh`, so the
+  standalone `build-runtime-manifest.sh` A/B could not reproduce the wait. The primary
+  A/B is now `CROSS_LOCAL_CONTEXT_HANDOFF=0 RUNTIME_WHEELS_SOURCE=<m>
+  build-cross-chain.sh --only runtime --no-push`, and the standalone run is a
+  mechanism check only. An arch counts only when its image-mode run shows the
+  `wheels-source` extraction. The runtime lane writes no stage log, so the recipe
+  greps the tee'd transcript, not a `runtime.log` that never existed.
+- **Tests.** `test-runtime-wheels-source.sh` (91 -> 101 assertions) checks every
+  `[runtime-timing]` step in both modes, and the published-tag `--no-push` case:
+  `export` refuses whether or not the registry's copy was pulled, and `image` mounts
+  the registry's digest. The shared nerdctl stub answers `image inspect` per ref. Two
+  new mutations, both seen biting: `wheels-source.timed-steps` (unwrapping the
+  wrapper step's timer used to survive) and `wheels-source.nopush-published-ref`.
+- **Both wheels suites are hermetic.** In the CI image they failed 7 of 91 and 5 of
+  21 assertions, at 736dea8a too: the image exports `ONNX_PACKAGE=onnxruntime` and
+  `PYTORCH_EXTRA=pytorch-cpu`, which the wrapper forwards as operator pins.
+  `rw_hermetic_env` (in `runtime-wheels-fixtures.sh`) now clears what the wrapper path
+  and the fixtures read before any case sets its own; an exported `ENABLE_NVIDIA=true`,
+  `RUNTIME_NO_CACHE=1` or `NERDCTL_BIN` no longer decides a case either. The
+  dead-function census counts the new helper (508 -> 509 in `code-quality-tooling.md`).
+- **Two stale hook-span references on this branch**, both fixed on `develop` already
+  and repeated here verbatim so this commit could pass the hook:
+  `cross-build-verification.md` quoted the staged-shell block as `:101-118` (it is
+  `:102-119` since 57bec177), and the two `pre-commit.doc-span-*` mutations searched
+  for the old spans (as 1b941556 did). The Windows-host floor fix for
+  `verify_doc_links.py` came over from `develop`'s 5a1648d8 as its own commit, de8aed49.
+- **What re-keys**, correcting the entry below: `Dockerfile.package` COPYs `01-core`
+  whole (`:372`), so the package image re-keys from that COPY on, its setup RUNs and
+  `wrapper-smoke` included. That is free on a full chain, where android changes
+  anyway, and one package rebuild per arch on a runtime-only rerun with an unchanged
+  android. This entry's own code edit is one comment in `01-core/runtime-build-fns.sh`
+  (it said the pin is always empty under `--no-push`): the same re-key set as the
+  entry below, and nothing more while no host has built that entry.
+- **Verified here:** on the Windows host, both wheels suites (also under a hostile
+  exported env), all 23 `wheels-source.*` mutations, the whole manifest's
+  `--stale-check`, `build-cross-chain.sh --dry-run` of the new A/B command in both
+  modes (it hands the lane `--skip-manifest` and no `--push`), and the helper's dry
+  run showing `export` naming the registry digest; in the local `:latest-cross` image,
+  the touched suites green. **Not verified:** no BuildKit ran, so neither the refusal
+  against a real `nerdctl save` layout nor the chain-driven A/B has run.
+
 ## 2026-09-24 - The wrapper's wheelhouse: `RUNTIME_WHEELS_SOURCE=image|export`, image the default
 
 In the 2026-09-22 lane the torch RUN waited 161 / 565 / 661 s (amd64 / arm64 /
@@ -31,7 +93,8 @@ pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-bui
   package's `ARTIFACT_IMAGE`, so an empty pin, a custom prefix or
   `--artifact-build-mode native` cannot switch the source. Under `ARTIFACT_CONTEXT_ROOT`
   it reads the android OCI layout only when its digest equals the containerd image's,
-  otherwise it stops. The staging root is minted in the main shell, so `--push-all`
+  otherwise it stops (always, on a `--no-push` chain whose android tag is published:
+  the review entry above). The staging root is minted in the main shell, so `--push-all`
   works. The wrapper re-checks the whole manifest; there is no fallback between
   modes. `image` needs no `ARTIFACT_CONTEXT_ROOT` refusal: it is the old code for both
   lane modes, so the design's separate `containerd` value is gone.
@@ -54,7 +117,8 @@ pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-bui
   (2026-09-23) changed `01-core` and `versions.env`, which re-keys from base. So this
   adds nothing to the next chain, if it lands before that chain. Per lane:
   `Dockerfile.torch` (the torch RUN, hailo and final) and `setup-torch-venv.sh`, which
-  re-run every lane anyway. `Dockerfile.package` is untouched.
+  re-run every lane anyway. `Dockerfile.package` itself is untouched, but it COPYs
+  `01-core` whole, so the package re-keys from that COPY on (the review entry above).
 - **Tests.** `tests/test-runtime-wheels-source.sh` (new, 91 assertions, hermetic)
   shares `tests/runtime-wheels-fixtures.sh` with `test-runtime-wheels-context.sh`,
   which now extracts the moved helpers; `test-env-contract.sh` counts the lib as the
