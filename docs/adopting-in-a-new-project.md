@@ -370,13 +370,13 @@ The rename across the fleet, old name to new:
 |---|---|---|
 | ANTfrastructure | `ubuntu26.04.yml` | `linux-x64.yml` |
 | ANTfrastructure | `windows-scripts.yml` | `windows-x64.yml` |
-| OxidANT | `rust_ubuntu26_04.yml` | `linux-x64.yml` + `linux-arm64.yml` |
+| OxidANT | `rust_ubuntu26_04.yml` | `linux-x64.yml` + `linux-arm64.yml`, sharing `reusable-linux.yml` |
 | OxidANT | `rust_windows2025.yml` | `windows-x64.yml` |
 | AccelerANTgine | `linux_run.yml` | `reusable-linux.yml` |
 | AccelerANTgine | `linux_run_x86.yml` | `linux-x64.yml` |
 | AccelerANTgine | `linux_run_arm.yml` | `linux-arm64.yml` |
 | AccelerANTgine | `windows_run.yml` | `windows-x64.yml` |
-| OmniAccelerANT | `dart_on_native_linux.yml` | `linux-x64.yml` + `linux-arm64.yml` |
+| OmniAccelerANT | `dart_on_native_linux.yml` | `linux-x64.yml` + `linux-arm64.yml`, sharing `reusable-linux.yml` |
 | OmniAccelerANT | `dart_on_native_windows.yml` | `windows-x64.yml` |
 | OmniAccelerANT | `dart_build_android_app.yml` | `android.yml` |
 | OmniAccelerANT | `dart_on_web_linux.yml` | `web.yml` |
