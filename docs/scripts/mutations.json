@@ -9859,6 +9859,46 @@
     "why": "the RUN must turn LSan off: it needs ptrace, which a container may not allow"
   },
   {
+    "id": "native-gcc-ma.flag",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": "if _gcc_is_canadian_native; then printf '%s' --enable-multiarch; fi",
+    "replace": "if _gcc_is_canadian_native; then printf '%s' --disable-multiarch; fi",
+    "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+    "why": "the Canadian native must ask for multiarch: --with-native-system-header-dir turned the auto-check off"
+  },
+  {
+    "id": "native-gcc-ma.wired",
+    "target": "linux/scripts/02-toolchain/build-gcc.sh",
+    "find": "    ${_gcc_ma:+\"${_gcc_ma}\"}\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+    "why": "defined but not wired changes nothing"
+  },
+  {
+    "id": "native-gcc-ma.swap-compare",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "[ \"${got}\" = \"${triplet}\" ] ||",
+    "replace": "true ||",
+    "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+    "why": "a relocated GCC without the image's multiarch must fail the swap"
+  },
+  {
+    "id": "native-gcc-ma.swap-tolerance",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "if ! \"${gcc}\" -dumpversion >/dev/null 2>&1; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+    "why": "a GCC this build host cannot run is noted, not failed, like the smoke"
+  },
+  {
+    "id": "native-gcc-ma.swap-wiring",
+    "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+    "find": "    _assert_native_gcc_multiarch \"/opt/gcc-${GCC_VERSION}/bin/gcc\" \"${triplet}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+    "why": "a gate nothing invokes is not a gate"
+  },
+  {
     "id": "rust.web-lane-gate-machine",
     "target": "linux/scripts/06-packaging/web-lane-tools.sh",
     "find": "    *\"${machine}\"*) ;;",

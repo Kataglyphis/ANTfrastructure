@@ -180,6 +180,20 @@ _assert_native_gcc_sanitizers() {
   echo "Sanitizer runtime present in ${prefix}: ${libs[*]}"
 }
 
+# The relocated GCC's multiarch, which puts /usr/lib/<triplet> on its link line: CMake reads
+# CMAKE_LIBRARY_ARCHITECTURE from there. Asserted only where this host can run the target
+# binary, like the smoke below. docs/cross-build-verification.md#the-native-gcc-has-multiarch
+_assert_native_gcc_multiarch() {
+  local gcc="$1" triplet="$2" got
+  if ! "${gcc}" -dumpversion >/dev/null 2>&1; then
+    echo "NOTE: ${gcc} does not run on this build host; its multiarch is not checked here"
+    return 0
+  fi
+  got="$("${gcc}" -print-multiarch 2>/dev/null || true)"
+  [ "${got}" = "${triplet}" ] || { echo "ERROR: ${gcc} -print-multiarch prints '${got}', not '${triplet}' (rebuild the toolchain image)" >&2; exit 1; }
+  echo "Native GCC multiarch: ${got}"
+}
+
 main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"
   : "${GCC_VERSION:?GCC_VERSION is required}"
@@ -213,6 +227,7 @@ main() {
     _link_multiarch_dirs "${triplet}"
     _write_native_gcc_profile_d "${triplet}"
     _wrap_native_gcc_drivers "${triplet}"
+    _assert_native_gcc_multiarch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${triplet}"
   fi
   _assert_native_gcc_sanitizers "/opt/gcc-${GCC_VERSION}" "${TARGET_ARCH}"
 

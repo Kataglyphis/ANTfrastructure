@@ -27,6 +27,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [b] **CON11 — Republish the Linux `:latest`** [S, ★★★]. Blocked on the owner, because
       a push is the owner's call. These fixes are in source and in no published image:
       - CON7: libsanitizer in the arm64/riscv64 GCC (e2de5852).
+      - CON8: multiarch in the arm64/riscv64 GCC (2026-09-25).
       - CON14: API 37.
       - pyhailort: a real module instead of the empty one
         (889417c7/0ef22316; `docs/hailo-support.md`).
@@ -34,6 +35,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Afterwards:
       - Re-run AccelerANTgine's `Linux arm64 · build + test`. Its `gcc` job must
         compile abseil with ASan.
+      - Re-run BeschleunigerBallett's `Linux arm64 · build + test`. Both GNU presets
+        must find X11.
       - Check `platforms/android-37.0` in the image, then drop OmniAccelerANT's
         `permission_handler_android` pin.
       - Check that `import hailo_platform` works on amd64 and arm64.
@@ -153,20 +156,24 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `_gcc_extra_target_libs` in `linux/scripts/02-toolchain/build-gcc.sh`; see
         [`cross-build-verification.md` § The native GCC ships libsanitizer](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer).
       - riscv64 has the same defect. No riscv64 consumer lane exercises it.
-- [ ] **CON8 — On arm64, CMake with the image's GCC does not find libX11** [M, ★★].
+- [b] **CON8 — On arm64, CMake with the image's GCC does not find libX11** [M, ★★].
+      Blocked on CON11.
       - Symptom: BeschleunigerBallett's `Linux arm64 · build + test` (run
         36042437555). Both GNU 16.2.0 presets stop at `Could NOT find X11 (missing:
         X11_X11_LIB)`, while the same run's Clang 23.1.1 preset prints
         `Found X11: /usr/include`.
-      - amd64 is fine. Measured 2026-09-25, GCC and clang both derive
-        `CMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu` and find `libX11.so`.
-      - **Hypothesis, unverified:** arm64's `cc` is the Canadian-native GCC, whose
-        implicit link directories give CMake no multiarch directory.
-        `01-core/cross-meson.sh` already sets `CMAKE_LIBRARY_ARCHITECTURE` by hand
-        for this hub's own builds.
-      - First step: in the arm64 image, configure the two-line probe
-        (`project(p C)` plus `message(STATUS "${CMAKE_LIBRARY_ARCHITECTURE}")`)
-        with `CC=gcc` and with `CC=clang`, and read `gcc -print-search-dirs`.
+      - Cause, measured 2026-09-25 in `:latest` `ec4bb68b` under qemu: the arm64
+        Canadian-native GCC prints no `-print-multiarch`, its implicit link dirs
+        hold no `/usr/lib/aarch64-linux-gnu`, and CMake leaves
+        `CMAKE_LIBRARY_ARCHITECTURE` empty. `--with-native-system-header-dir`
+        switches GCC's multiarch auto-check off. amd64's full-make GCC prints
+        `x86_64-linux-gnu`.
+      - Fixed in source (2026-09-25): `_gcc_native_multiarch` in
+        `linux/scripts/02-toolchain/build-gcc.sh` passes `--enable-multiarch` to the
+        Canadian native, and `swap-native-gcc.sh` refuses a GCC that prints another
+        triplet; see
+        [`cross-build-verification.md` § The native GCC has multiarch](docs/cross-build-verification.md#the-native-gcc-has-multiarch).
+      - riscv64 has the same defect. No riscv64 consumer lane exercises it.
 - [ ] **CON22 — The arm64/riscv64 GCC toolchains are thinner than amd64's** [M, ★].
       - The arm64 and riscv64 GCCs lack libgomp (`omp.h`), libitm and gfortran,
         so `-fopenmp` and Fortran fail with the image's `cc`.
