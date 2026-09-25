@@ -26,8 +26,8 @@ cannot be downloaded by the build. Same contract as the TensorRT zip in
    "unpinned" (documented-deliberate, like `TENSORRT_ZIP_SHA256` before it was populated).
 
 The zip is git-ignored (`windows/qnn-sdk/*` except this README) and rides into the
-BuildKit context only when present — the media-core `onnx` RUN bind-mounts this directory
-at `C:\temp\qnn-sdk`.
+BuildKit context only when present — the media-core `onnx` and `genai` RUNs and the
+`litert` and `tvm` RUNs bind-mount this directory at `C:\temp\qnn-sdk`.
 
 ## What the build does with it
 
@@ -46,4 +46,4 @@ chain: ONNX built the QNN provider with the `aarch64-windows-msvc` backend set,
 and the backend DLLs were staged beside all five frameworks (arch gate
 1168/0, import walk 0 unresolved, smoke 97/0/15). Execution on a Snapdragon
 device is still the standing open item. See `docs/windows-cross-builds.md`
-(QNN section) and backlog #121 in `docs/windows-builds.md`.
+(QNN section) and backlog #121 in `docs/windows-refactor-backlog.md`.

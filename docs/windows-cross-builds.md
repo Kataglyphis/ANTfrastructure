@@ -11,8 +11,9 @@ produce, and which gates keep it honest.
 > current tree — module-closure refactor (#134), forced clang-cl 23.1.0,
 > per-TU AArch64 codegen workarounds (#135) — built end to end and reached
 > RUNTIME PARITY with `:winamd64`. Every gate below hit its target on the
-> current HEAD. Nothing the lane produces has ever been *executed* — wheels
-> ship staged, not installed, and every verdict is a static check.
+> current HEAD. Nothing the lane produces had been *executed* until the
+> consumer cross lanes loaded some of it on 2026-09-25 (below) — wheels ship
+> staged, not installed, and every verdict of this lane is a static check.
 >
 > **The amd64 lane's TVM-vs-LLVM-23.1.0 blocker is fixed and REBUILT** (since
 > 2026-09-02 both lanes are green; `TVM_COMMIT=994e0216`, upstream main, with
@@ -44,14 +45,17 @@ produce, and which gates keep it honest.
 > GStreamer pieces are absent on BOTH lanes and so are not parity gaps: the optional `gdkpixbuf`
 > plugin (arm64: `glib-compile-resources`; amd64: `rst2man`) and anything needing `cargo-cbuild`.
 >
-> **Never verified — the asymmetry that outranks every number above:** no arm64 binary produced
-> by this repo has ever been *executed*, anywhere. Its wheels ship **staged, not installed**; the
-> smoke gate runs only host-toolchain sections (1-6, 14-16, 19, arch-filtered), and sections
-> 14/15 compile **for** the target and assert the produced PE machine rather than run anything.
-> A green build proves the code compiles and links for the target, and nothing more. The
-> `windows-11-arm` runner remains the only path to execution proof. The owner declined it for
-> this repo, and took it for the consumer apps' cross lanes on 2026-09-25
-> ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
+> **Barely verified — the asymmetry that outranks every number above:** until 2026-09-25 no
+> arm64 binary produced by this repo had been *executed*, anywhere. Its wheels ship **staged,
+> not installed**; the smoke gate runs only host-toolchain and static sections (1-6, 14-16, 19
+> arch-filtered, 23, 25), and sections 14/15 compile **for** the target and assert the produced PE
+> machine rather than run anything. A green build proves the code compiles and links for the
+> target, and nothing more. The `windows-11-arm` runner remains the only path to execution
+> proof. The owner declined it for this repo, and took it for the consumer apps' cross lanes on
+> 2026-09-25 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)). Their
+> first runs load the bundle's VC++ runtime and GLib/GStreamer, and AccelerANTgine's also its
+> chain ONNX Runtime — as far as loading only. Nothing runs an inference, a GStreamer pipeline
+> or a plugin, and the bundle's own tools and Python never execute (`BACKLOG.md` CON30).
 >
 > How the lane got here, run by run (#116, #128, #131, #133 narratives, including the three meson
 > build-only-subproject defects and the seven fix-and-rerun cycles of the runtime-python work):
@@ -147,11 +151,16 @@ base ─ sdk ─ toolchain ──┬─ media(amd64) ─ torch ─ final  → :w
    (shared, x64 host)    └─ media(arm64) ───────────────  → winarm64 artifact bundle
 ```
 
-Consequently **`WINDOWS_TARGET_ARCH` is never declared in `Dockerfile.base`, `.nvidia`, or
-`.toolchain-builder`.** It first appears in `Dockerfile.media-builder`'s `common` stage. This is
-the file's own documented ARG discipline (`Dockerfile.base` — "every RUN after an ARG declaration
-keys its cache on the ARG's value"): declaring the arch ARG in base would re-pay the VS Build
-Tools install — the chain's most expensive layer — on **every lane switch**.
+Consequently **`WINDOWS_TARGET_ARCH` is never declared in `Dockerfile.base` or
+`.toolchain-builder`.** On the CPU lanes it first appears in `Dockerfile.media-builder`'s `common`
+stage. This is the file's own documented ARG discipline (`Dockerfile.base` — "every RUN after an
+ARG declaration keys its cache on the ARG's value"): declaring the arch ARG in base would re-pay
+the VS Build Tools install — the chain's most expensive layer — on **every lane switch**. The GPU
+lane is the one exception: since #176 (2026-09-20) `Dockerfile.nvidia` declares it, because the
+sdk stage stages the arm64 CUDA payload on the cross lane. So on the GPU lane the CUDA layer, and
+everything built FROM it, is keyed on the target arch, while both arches still write the same
+unsuffixed `bk-windows-sdk` / `bk-windows-toolchain` tags (`$script:NoSuffixTags` in
+`Build-Buildkit.ps1`).
 
 For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer, in
 the same group as `Test-Toolchain.ps1` — its only consumer there. The host provisioning scripts
@@ -189,7 +198,7 @@ mode, guarded here by a throwing stub.
 
 The kernel SIMD flags were never an ordinary flag helper's output. `Build-OnnxFromSource.ps1`
 injects them **per-TU into `build.ninja` post-configure** — via `Get-WindowsTargetKernelSimdFlags
--Arch`; the old `Get-WindowsX86Avx512Flags` survives only as a zero-caller compat shim — onto
+-Arch`; the old `Get-WindowsX86Avx512Flags` compat shim was deleted on 2026-08-26 — onto
 exactly the MLAS kernels matched by `Get-MlasKernelTuPattern`. Globally-enabled AVX-512 was field-proven to crash protoc
 and `onnxruntime.dll`'s static initializers with `STATUS_ILLEGAL_INSTRUCTION`; entirely without
 the flags those TUs fail to compile. Per-TU is the only correct answer, because the kernels are
@@ -236,7 +245,8 @@ With nothing runnable on the build host, verification is layered:
 This repo's own lane has no native execution gate: a `windows-11-arm` CI job would be the only
 proof the artifacts actually **run**, so treat every arm64 output of the bundle as unvalidated
 — see the prose below. The consumer apps' cross lanes do have one
-([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
+([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)), and it has so far
+proved that the parts of the bundle their products import load on arm64 hardware, nothing more.
 
 `Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
@@ -290,7 +300,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
    command in it natively. This is the only execution an arm64 binary from the family gets.
 
 Two inputs serve the x64 lanes that move onto the same file (the family's next sharing step,
-2026-09-25; OxidANT's `windows-x64.yml` first):
+2026-09-25; OxidANT's `windows-x64.yml` first, then AccelerANTgine's; BeschleunigerBallett's
+x64 lane still calls the composite actions itself):
 - `version-file` resolves the CI version on the host with the hub's `version_util.sh` and hands
   `VERSION` and `MSIX_VERSION` to the container.
 - `host-command` runs on the runner host after the build, in the workspace the container built
@@ -323,18 +334,24 @@ on a closure DLL of the wrong machine. A DLL loaded by name at run time (ONNX Ru
 `load-dynamic`, a GStreamer plugin) is in neither import table, so the build passes it in as
 a seed. Names found in no search directory are left to the device, and the walk grades them.
 
-The search directories come from `Get-ProductDllSearchPath`, so all three consumers look in
-the same order:
+OxidANT and AccelerANTgine take the search directories from `Get-ProductDllSearchPath` (each
+in its `scripts/windows/Build-Windows.ps1`), so both look in the same order:
 1. `$env:ONNX_ROOT\bin`, so an ORT-family import resolves to the chain build;
 2. `C:\runtime\bin`, the media stack;
 3. `VCToolsRedistDir\<x64|arm64>\Microsoft.VC*.CRT`, the VC++ runtime, app-local.
+
+BeschleunigerBallett's cross bundle passes `-SearchDirectory C:\runtime\bin` to
+`Copy-PeImportClosure` itself (its `scripts/windows/Build-Windows.ps1`, checked 2026-09-25). Its
+VC++ runtime comes from the `cmake --install` it bundles, through `CPackCommon.cmake`'s
+`InstallRequiredSystemLibraries`.
 
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
 fills the closure into a directory it names at configure time as
 `KATAGLYPHIS_PACKAGE_DLL_DIR`. `CPackCommon.cmake` installs that directory's DLLs beside the
 executables (`kataglyphis_install_package_dlls`), so the MSI, the ZIP, the NSIS installer and
-a `cmake --install` bundle all ship them.
+a `cmake --install` bundle all ship them. On 2026-09-25 AccelerANTgine sets it; BeschleunigerBallett's
+build does not yet.
 
 **A CMake consumer names the target at configure time.** `Get-CrossConfigureArgs`
 (`WindowsCrossBundle.Common`) returns nothing on amd64, so an x64 configure line does not
@@ -344,6 +361,10 @@ change. On arm64 it returns `Get-CMakeCrossArgs`, which sets the triple and
 pointer size:
 - `-Corrosion` adds `Rust_CARGO_TARGET`;
 - `-Vulkan` adds `Vulkan_LIBRARY` from the SDK's `Lib-ARM64`.
+
+`Get-WindowsPackageArch` (same module) spells the target the way Windows packaging does, `x64`
+or `arm64`: an AppxManifest's `ProcessorArchitecture`, `wix build -arch` and the VC++ redist
+directory.
 
 The hub's `cmake/` reads `CMAKE_SYSTEM_PROCESSOR` too. `Hardening.cmake` links `/CETCOMPAT`
 on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`).
@@ -405,7 +426,7 @@ Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) whil
 
 ### `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)
 
-An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget feature the pass itself consults. It **disables the compression pass exactly as this flag does** — byte-identical output, verified 2026-08-27 — and is preferred only because a target feature is a supported spelling where `-mllvm` is a debug knob. The separate branch-range failure in `median_blur.dispatch.cpp` is handled per-TU with `/Ob1` and by no jump-table setting at all. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts. **ROOT CAUSE, corrected 2026-08-28 — the two failures are ONE defect, not two.** An earlier version of this paragraph claimed they were unrelated and that a toolchain move to LLVM `main` would retire `/Ob1`; **both halves were wrong**, and the correction is recorded rather than deleted because the wrong story was acted on. `AsmPrinter` emits a NOP after an `EH_LABEL` under async EH (`/EHa`, which OpenCV passes) while `getInstSizeInBytes` reports `EH_LABEL` as a zero-size meta-instruction, so every MIR-level block-size estimate is 4 bytes short per label. The two consumers of that estimate then each pick an encoding the assembler rejects: `AArch64CompressJumpTables` (`value evaluated as <N>`) and `BranchRelaxation` (`fixup value out of range`). That is the under-counted instruction this paragraph used to say was unidentified. Fixed by `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` (+ `002` for SEH pseudos) on the **pinned 23.1.0**, filed upstream as [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) (merged 2026-09-16, but not in `llvmorg-23.1.1`) and [llvm#219276](https://github.com/llvm/llvm-project/pull/219276) (still open). **Claimed but unlogged:** a `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1` on a compiler containing no llvm#202716 — but it ran by hand in the container and left no log, and no file in `out/windows-build-logs/` mentions either knob. Re-run it through the driver before acting on it. #202716 remains a real upstream defect either way; the evidence that it is not this lane's cause is the patch set that DID fix the lane, not this census. **The two workaround settings stay as the STOCK-toolchain fallback** — `Dockerfile.toolchain-builder` now ships `ARG BUILD_PATCHED_LLVM=1` (patched is the DEFAULT since #135; `-StockLlvm` is the opt-out), so a stock image still needs them. Full evidence: [`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
+An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)** by `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget feature the pass itself consults. It **disables the compression pass exactly as this flag does** — byte-identical output, verified 2026-08-27 — and was preferred only because a target feature is a supported spelling where `-mllvm` is a debug knob. The separate branch-range failure in `median_blur.dispatch.cpp` was handled per-TU with `/Ob1` and by no jump-table setting at all. **Both workarounds were REMOVED on 2026-08-29**, when the patched toolchain below became the default (`Build-OpencvFromSource.ps1` carries neither). Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts. **ROOT CAUSE, corrected 2026-08-28 — the two failures are ONE defect, not two.** An earlier version of this paragraph claimed they were unrelated and that a toolchain move to LLVM `main` would retire `/Ob1`; **both halves were wrong**, and the correction is recorded rather than deleted because the wrong story was acted on. `AsmPrinter` emits a NOP after an `EH_LABEL` under async EH (`/EHa`, which OpenCV passes) while `getInstSizeInBytes` reports `EH_LABEL` as a zero-size meta-instruction, so every MIR-level block-size estimate is 4 bytes short per label. The two consumers of that estimate then each pick an encoding the assembler rejects: `AArch64CompressJumpTables` (`value evaluated as <N>`) and `BranchRelaxation` (`fixup value out of range`). That is the under-counted instruction this paragraph used to say was unidentified. Fixed by `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` (+ `002` for SEH pseudos) on the **pinned LLVM** (23.1.0 then, 23.1.1 since 2026-09-18; both patches still apply), filed upstream as [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) (merged 2026-09-16, but not in `llvmorg-23.1.1`) and [llvm#219276](https://github.com/llvm/llvm-project/pull/219276) (still open). **Claimed but unlogged:** a `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1` on a compiler containing no llvm#202716 — but it ran by hand in the container and left no log, and no file in `out/windows-build-logs/` mentions either knob. Both knobs went with the workarounds, so it can no longer be re-run as it was. #202716 remains a real upstream defect either way; the evidence that it is not this lane's cause is the patch set that DID fix the lane, not this census. **There is no stock-toolchain fallback any more**: `Dockerfile.toolchain-builder` ships `ARG BUILD_PATCHED_LLVM=1` (patched is the DEFAULT since #135), and `-StockLlvm` builds with the stock scoop clang-cl, which still has the bug and is for patch debugging only ([`failure-modes.md` § AArch64 cross compile aborts](failure-modes.md)). Full evidence: [`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
 
 ### MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)
 
@@ -499,9 +520,10 @@ tables are larger, not slower:
 ```
 
 > **SUPERSEDED on LLVM 23.1.0 (2026-08-26); this note CORRECTED 2026-08-27.** The flag above is no
-> longer set; the lane now passes `-Xclang -target-feature -Xclang +force-32bit-jump-tables`
-> instead, which reaches the same end state by a supported spelling. The measurement table above
-> still describes a real mechanism — it is simply no longer the one being suppressed.
+> longer set; the lane then passed `-Xclang -target-feature -Xclang +force-32bit-jump-tables`
+> instead, which reaches the same end state by a supported spelling, and since 2026-08-29 it
+> passes neither: the patched toolchain fixes the size estimate both overflows came from. The
+> measurement table above still describes a real mechanism — it is simply no longer suppressed.
 >
 > **Two claims this note used to make were disproved on 2026-08-27, and both had cost runs:** that
 > the feature and the `-mllvm` flag differ in what they leave enabled, and that the difference
@@ -647,8 +669,9 @@ recorded with its one-line "why".
 host `protoc`. `flatc` is built natively from the **same vendored tree** (the `flatbuffers-flatc`
 target, with a per-call `-TargetArch host` override at the choke point) — because generated code
 and schema compiler must come from the same flatbuffers version. `protoc` is the 21.9 GitHub
-release zip, its version derived from the **vendored** protobuf commit (`90b73ac3` = C++ runtime
-3.21.9) — **not** the LM lane's `PROTOC_VERSION=31.1`, whose generated code includes
+release zip (since pinned as `LITERT_TFLITE_PROTOC_VERSION` in `versions.env`), its version derived from the
+**vendored** protobuf commit (`90b73ac3` = C++ runtime 3.21.9) — **not** the LM lane's
+`PROTOC_VERSION` (31.1 then, 35.1 today), whose generated code includes
 `google/protobuf/runtime_version.h`, a header 3.21.9 does not ship. The vendored runtime picks
 the protoc family; nothing else may.
 
@@ -768,15 +791,16 @@ Four findings from the first runs (3–6), each fixed in code and, where it is a
   x86-64 MASM trampoline object (`arch/x86_64_msvc.obj`) whenever `MSVC_C_ARCHITECTURE_ID MATCHES
   64`, so the ARM64 archive got an x64 object (`file machine type x64 conflicts with library
   machine type arm64`). Same "MSVC implies x86" class as gst-plugins-base's `have_sse`. Inline
-  patch to an exact x64 match, on both lanes, verified after applying. Draft issue:
-  `out/upstream-issue-iree-elf-arch-arm64-msvc.md`.
+  patch to an exact x64 match, on both lanes, verified after applying. Prepared as a PR, not
+  posted: [`windows/upstream/iree-elf-arch-x64-match/`](../windows/upstream/iree-elf-arch-x64-match/PR.md).
 - **C99 `inline` linkage in one ukernel:** with everything compiled, the tools failed to link on
   `iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm` — the single non-static C `inline` definition
   in the arm_64 set (checked file by file), whose address the entry point takes; C99 inline
   semantics emit no external symbol for it. `-fgnu89-inline` on that TU did not help under
   clang-cl (run 10); the definition is inline-patched to a plain external function (`inline`
   buys nothing for a function used by address), verified post-patch. (How upstream links this
-  on Linux/clang was not verified — a question, not a claim.)
+  on Linux/clang was not verified — a question, not a claim.) Prepared as a PR, not posted:
+  [`windows/upstream/iree-ukernel-i8mm-linkage/`](../windows/upstream/iree-ukernel-i8mm-linkage/PR.md).
 
 **First full run: 2026-08-24 evening (arm64 run 11) — see the status banner for the result.**
 
@@ -807,17 +831,18 @@ The QNN SDK gives a build-time flag to **ONE framework** (corrected 2026-08-31, 
 for the framework version) also falls back to QNN-off gracefully. The SDK staged on this
 host is QAIRT 2.44.0.260225 (QNN API 2.33.0), which carries `QNN_OP_STFT`,
 `QNN_OP_RANDOM_UNIFORM_LIKE`, and `QNN_OP_SCATTER_ELEMENTS_REDUCTION_MAX` — all required
-by ORT 1.29. The QNN EP should now build. The verification ceiling is DirectML's: a green
-build proves the right bytes ship, never NPU execution.
+by ORT 1.29. The QNN EP built with it on 2026-08-31 (§ QNN staging below). The verification
+ceiling is DirectML's: a green build proves the right bytes ship, never NPU execution.
 
-**The mandatory GStreamer plugin contract demands all four plugins on BOTH lanes again.** The
+**The mandatory GStreamer plugin contract demands all four plugins on BOTH lanes again** (six
+since #128, 2026-08-25, when `webrtc` and `nice` joined). The
 `UnavailableOn.arm64` entry that dropped `tflite` while LiteRT was a stand-in was deleted on
 2026-08-24 (#115) — the plugin is mandatory once more, and the green run proves it present. The
 arch-filter mechanism stays where it always was: in `Get-RequiredGstPlugin -Arch`, ONE place,
 because the contract has three consumers (build gate, smoke test, healthcheck) and
 *them disagreeing is the documented 2026-07-11 regression* that shipped an image without plugins.
-With no entry carrying an arch key any more, the filter is provably a no-op on both lanes: all four
-entries come back in the same order.
+With no entry carrying an arch key any more, the filter is provably a no-op on both lanes: every
+entry comes back in the same order.
 
 ### Verification cannot mean "run it"
 
@@ -835,8 +860,9 @@ So on the cross lane:
   machinery section for its measured recalibration) — and still says explicitly (`cross lane - load
   probe impossible on an x64 host`) why it stops there. Whether it is the right machine is
   `Test-TargetArch.ps1`'s job.
-- Since 2026-08-24 the smoke gate's **host-toolchain sections (1-6, 7, 14-16, and 19, arch-filtered:
-  `TORCH_APP_DIR` is dropped) run on this lane** against their own floors — measured **127 passed /
+- Since 2026-08-24 the smoke gate's **host-toolchain sections (1-6, 7 on the GPU lane, 14-16, and 19,
+  arch-filtered: `TORCH_APP_DIR` is dropped; since then also the static sections 23 and 25) run on
+  this lane** against their own floors — measured **127 passed /
   0 failed / 15 skipped** on the 2026-09-21 green run (97 before the CUDA/Hailo sections landed) —
   and the payload sections are skipped **as sections**,
   reported **NOT APPLICABLE**, not "passed". (Until then the whole gate was NOT APPLICABLE.)
@@ -882,9 +908,10 @@ Both would have produced a **green** result:
 2. **The arch gate's coverage floor could silently disable itself.** It arrives as
    `-MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED)`, and `[int]$null` is `0`, which switches the floor
    off entirely — so a dropped build-arg would turn the gate into a clean pass over whatever it happened to
-   find. "No floor" is now an explicit `-AllowEmptyTree` opt-in, and the cross lane raises the floor to 100
-   (the Dockerfile default of 10 is far below what a complete bundle contains, and could not detect losing
-   a whole component).
+   find. "No floor" is now an explicit `-AllowEmptyTree` opt-in, and the driver passes a real floor (the
+   Dockerfile default of 10 is far below what a complete bundle contains, and could not detect losing a
+   whole component): 100 on the cross lane at first, today 580 on arm64 and 650 on amd64 (`Build-Buildkit.ps1`,
+   measured counts minus headroom).
 
 ## aarch64 compiler-rt is a base prerequisite
 
@@ -934,8 +961,10 @@ self-heals**: `Build-GstreamerFromSource.ps1` § 5d, on the cross lane only, min
 `clang_rt.builtins-aarch64.lib` from the official release archive (same URL/recipe as
 `Install-ScoopTools.ps1`) next to the x86_64 lib, then re-runs its candidate search. The existing
 warn-and-link-without policy stays for the case the fetch fails. Regression: `SourceBuild.GstreamerCompilerRt.Tests.ps1`.
-The toolchain-level fix (builtins in the `patched-llvm` stage) is a tracked follow-up for the next natural
-toolchain rebuild.
+The toolchain-level fix has landed since (heading kept as an anchor): `Build-LlvmFromSource.ps1` stages
+`clang_rt.builtins-aarch64.lib` into `C:\llvm-patched` from the same release archive
+(`Install-AArch64CompilerRt`, pinned by `LLVM_WINDOWS_AARCH64_RT_SHA256`), and re-checks a cached tree from
+before 2026-08-31 under `-SkipIfPresent`. The merge-stage self-heal stays as the fail-open fallback.
 
 ### opus NEON intrinsics stay DISABLED on the cross lane (enablement reverted 2026-08-31)
 
@@ -1142,7 +1171,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### PyTorch / the torch app stage
 
-**Still dropped — but "structurally impossible", recorded here until 2026-08-24, overstated two things.** `download.pytorch.org` *does* publish `win_arm64` `+cpu` wheels, and `uv` can cross-**resolve** into a directory without executing the target interpreter (`uv sync` proper does run it). The binding constraint is this repo's own cp314 pin: upstream builds no `win_arm64` wheel for Python 3.14 at `PYTORCH_VERSION=v2.13.0`. The stage stays dropped; only the reasons changed.
+**Still dropped — but "structurally impossible", recorded here until 2026-08-24, overstated two things.** `download.pytorch.org` *does* publish `win_arm64` `+cpu` wheels, and `uv` can cross-**resolve** into a directory without executing the target interpreter (`uv sync` proper does run it). The binding constraint is this repo's own cp314 pin: upstream built no `win_arm64` wheel for Python 3.14 at `PYTORCH_VERSION=v2.13.0`, the pin when this was checked (the pin is v2.14.0 since 2026-09-20; not re-checked). The stage stays dropped; only the reasons changed.
 
 Everything in that table is a **product gap to document, not an engineering problem to route
 around**. Where a coverage floor can encode it (CUDA sections in the smoke floors), encode it, so

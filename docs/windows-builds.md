@@ -23,7 +23,7 @@ fixes moved to their own pages on 2026-08-25:
 
 ## Source Patch Policy
 
-This repository applies a **patch-first** policy to upstream sources on the Windows lane. **Default: extract upstream modifications into a reviewable `.patch` file** under `windows/scripts/patches/<component>/NNN-<slug>.patch`, applied via the canonical idempotent helper `Invoke-SourcePatch` (`windows/scripts/modules/WindowsSourceBuild.Common.psm1`). Every `.patch` file:
+This repository applies a **patch-first** policy to upstream sources on the Windows lane. **Default: extract upstream modifications into a reviewable `.patch` file** under `windows/scripts/patches/<component>/NNN-<slug>.patch`, applied via the canonical idempotent helper `Invoke-SourcePatch` (`windows/scripts/modules/WindowsSourceBuild.Patches.psm1`, re-exported by `WindowsSourceBuild.Common.psm1`). Every `.patch` file:
 
 - Is a standard `git diff` / unified diff (`a/`/`b/` prefix, `-p1` strip).
 - Applies idempotently: `Invoke-SourcePatch` runs `git apply --reverse --check` first and skips if already applied; falls back to `patch.exe -p1` for non-git tarball extractions; throws loudly with the patch file's first 40 lines on failure.
@@ -41,8 +41,7 @@ This repository applies a **patch-first** policy to upstream sources on the Wind
 
 5. **Binary byte-filter edits** — `onnxruntime.rc` non-ASCII byte stripping (`-le 127`) is a byte filter, not a textual diff. Not expressible as unified diff.
 
-6. **Single-file regex edits on aggressively-changing generated-as-schema upstream files** — The OpenCV `add_extra_compiler_option(-include cstring)` removal (plus surrounding CMake add-to-flags lines on `cmake/OpenCVCompilerOptions.cmake`) is kept inline *not* because a `.patch` couldn't be authored today, but because the upstream context drifts enough between minor releases that a static `.patch` would need re-generation on every tag bump:
-   - `Build-OpencvFromSource.ps1` — `cmake/OpenCVCompilerOptions.cmake` `-include cstring` removal
+6. **Single-file regex edits on aggressively-changing generated-as-schema upstream files** — none left (checked 2026-09-25). The one entry, an inline removal of OpenCV's `add_extra_compiler_option(-include cstring)` from `cmake/OpenCVCompilerOptions.cmake`, is gone: no build script edits that file. `Build-OpencvFromSource.ps1` passes `/FIcstring` in `CMAKE_CXX_FLAGS` on the configure line instead, and patch `002` does the same inside MLAS.
 
 7. **Upstream export-gap bridges (LiteRT-LM v0.14.0) — FROZEN FALLBACK ONLY.**
    The primary LiteRT-LM build is now **Bazel** (`Build-LitertLmBazel.ps1`),
@@ -89,12 +88,19 @@ Every inline substitution in a build script carries a `# Inline patch (kept inli
 | ONNX Runtime | `004-tunable-severity-macro-collision.patch` | `core/framework/tunable.h` | [details](#004-tunable-severity-macro-collisionpatch) |
 | ONNX Runtime | `005-xqa-host-stub-sccache.patch` | `contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh` | [details](#005-xqa-host-stub-sccachepatch) |
 | ONNX Runtime | ~~`006-cuda-llm-bare-nvcc.patch`~~ RETIRED 2026-08-18 | `cmake/onnxruntime_providers_cuda.cmake` | [details](#006-cuda-llm-bare-nvccpatch-retired-2026-08-18) |
-| OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | [details](#001-cmake-clang-cl-compatpatch) |
+| OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` + `cmake/OpenCVDetectCUDA{Language,Utils}.cmake` | [details](#001-cmake-clang-cl-compatpatch) |
 | OpenCV | `002-mlas-clangcl-force-include.patch` | `3rdparty/mlas/CMakeLists.txt` | [details](#002-mlas-clangcl-force-includepatch) |
-| OpenCV | `003-mlas-windows-skip.patch` | `3rdparty/mlas/CMakeLists.txt` | [details](#003-mlas-windows-skippatch) |
+| OpenCV | `003-mlas-windows-skip.patch` | `3rdparty/mlas/CMakeLists.txt` | [details](#003-mlas-windows-skippatch) — the reviewable form only: the build inserts the same guard inline, because `002` already edits that file |
 | OpenCV | `004-dnn-ort-profiling-wchar.patch` | `modules/dnn/src/net_impl_backend.cpp` | [details](#004-dnn-ort-profiling-wcharpatch) |
 | OpenCV | `cmake-hooks/POST_CREATE_MODULE_LIBRARY_opencv_gapi.cmake` (a hook, not a patch) | `opencv_gapi` link options | Delay-load dxcore/d3d12/dxgi/DirectML for the now-compiled G-API DirectML EP (§ Source Patch Policy, item 8) |
-| OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
+| OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` + `cudev/.../util/vec_traits.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
+| OpenCV (contrib) | `002-arm64-cudafilters-popcount.patch` | `modules/cudafilters/src/cuda/wavelet_matrix_2d.cuh` | Software popcount under `_M_ARM64`: `_mm_popcnt_u64` is x86-only and nvcc's device front-end rejects `__builtin_popcountll` (#176, 2026-09-20) |
+| LLVM | `001-aarch64-ehlabel-size.patch`, `002-aarch64-seh-pseudo-size.patch` | `llvm/lib/Target/AArch64/AArch64InstrInfo.cpp` | The AArch64 instruction-size fixes of the patched toolchain (llvm#219275, llvm#219276), applied by `Build-LlvmFromSource.ps1` |
+| MIGraphX | `001-mlir-off-stubs.patch` | `src/targets/gpu/mlir.cpp` | Upstream 5a80dc91ba's MLIR-off stubs, which the `MIGRAPHX_WINDOWS_COMMIT` pin predates (rocm lane, [`windows-rocm.md`](windows-rocm.md)) |
+| HailoRT | `001-quantization-msvc-guard.patch` | `hailort/libhailort/include/hailo/quantization.hpp` | The x86 rounding intrinsics only under MSVC on x86/x64, never under clang-cl or on ARM64 |
+| HailoRT | `002-ioctl-nullptr-template-specialization.patch` | `hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp` | The missing `template<>` on the two `nullptr_t` specialisations |
+| HailoRT | `003-windows-lockedfile-dtor.patch` | `hailort/common/os/windows/filesystem.cpp` | Define `LockedFile::~LockedFile`, which the Windows stub declares and never defines (undefined symbol at link) |
+| HailoRT | `004-cmake-target-arch-macro.patch` | `hailort/CMakeLists.txt` | `_ARM64_=1` on an ARM64 target instead of the pointer-size `_AMD64_=1` |
 
 ### Per-patch notes
 
@@ -130,7 +136,7 @@ Skip the vendored MLAS on Windows: its kernels are GAS/ELF-only (`.type sym,@fun
 
 #### `004-dnn-ort-profiling-wchar.patch`
 
-UPSTREAM BUG (5.0.0, run-13 find): dnn's ORT `EnableProfiling` passes `char*` but `ORTCHAR_T` is `wchar_t` on Windows — the model-path call right below is `#ifdef _WIN32`-widened, this one was not (upstream Windows CI never builds dnn with ORT). Issue draft: `out/upstream-issue-opencv-ort-wchar.md`
+UPSTREAM BUG (5.0.0, run-13 find): dnn's ORT `EnableProfiling` passes `char*` but `ORTCHAR_T` is `wchar_t` on Windows — the model-path call right below is `#ifdef _WIN32`-widened, this one was not (upstream Windows CI never builds dnn with ORT). Filed as opencv#29788 and closed: `5.x` had already fixed it (PR #29309, after the 5.0.0 tag we pin), so the patch retires with the next `OPENCV_VERSION` ([`upstream-windows-patches.md`](upstream-windows-patches.md))
 
 `ffmpeg/makedef` is **not** a patch — it is a whole-file replacement script staged over FFmpeg's `makedef` (a byte swap, not a diff), so it is not in the table above.
 
@@ -138,15 +144,15 @@ When bumping any upstream version, audit these `.patch` files before letting the
 
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into staged images:
 
-- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.2, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` handles this automatically via its `-Gpu` switch.
-- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
-- The **media stage fans out into three branch images** by `windows/Build-Buildkit.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
-  - **media-core** (`--target media-core` + `Build-MediaCoreAll.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime (source build, pin `ONNXRUNTIME_VERSION`; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch, the WebGPU EP on the rocm spike) → ONNX GenAI (CMake+clang-cl, bypassing `build.py`; built against the chain ONNX Runtime through an `ORT_HOME` shim, never the NuGet ORT its `cmake/ortlib.cmake` would download; `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, built against the chain ONNX Runtime through a header shim, no configure-time download) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
-  - **media-litert** (`--target media-litert` + `Build-LitertAll.ps1`) — LiteRT 2.1.6 (CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM 0.15.0 (independent of ONNX; built via **Bazel** with `Build-LitertLmBazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`Build-LitertLmFromSource.ps1`) is a frozen fallback, see § Source Patch Policy #7).
-  - **media-tvm** (`--target media-tvm` + `Build-MediaTvmAll.ps1`) — TVM → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
-  - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, plus a `cuda-runtime-stage` (via `Copy-CudaRuntime.ps1`) that FLATTENS the CUDA/cuDNN runtime DLLs into `C:\runtime\cuda-runtime\bin` on PATH — the CUDA-linked libs (notably OpenCV, which hard-links `cudnn64_9.dll`) otherwise fail to load in this non-nvidia-based image. Then GStreamer 1.29.2 is built via `Build-GstreamerFromSource.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
-- `windows/Dockerfile.torch` assembles the OrchestrANT app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
+- `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake, VS Build Tools 18, LLVM/Clang, Rust, Flutter, WiX 4; every version from `versions.env`).
+- The **sdk slot**: on the GPU lane `windows/Dockerfile.nvidia` layers CUDA + cuDNN + TensorRT (`CUDA_VERSION`, `CUDNN_VERSION`, `TENSORRT_VERSION`) on top of the base image and is tagged `windows-sdk`; on `-Variant rocm` `windows/Dockerfile.rocm` takes the slot (§ ROCm layer). On the CPU lane the base image is re-exported as `windows-sdk` through a one-line `FROM` stage (containerd has no unprivileged `tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` handles this through `-Gpu` / `-Variant`.
+- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1`, and by default the patched clang/LLVM on top (`patched-llvm` target, `BUILD_PATCHED_LLVM=1`; `-StockLlvm` opts out). The former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix.
+- The **media stage fans out into three branch images** by `windows/Build-Buildkit.ps1`, built **sequentially** by default (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism; `-ConcurrentAux` builds litert and tvm side by side after it). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per stage via `--target`; then the stage fans in:
+  - **media-core** (one `media-core-built-*` target and tag per library, in this order; each runs `Build-MediaCoreAll.ps1` for its one library, except HailoRT, whose script is called directly) — ONNX Runtime (source build, pin `ONNXRUNTIME_VERSION`; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch, the WebGPU EP on the rocm spike) → FFmpeg (pinned release tag `FFMPEG_VERSION`; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, built against the chain ONNX Runtime through a header shim, no configure-time download; after FFmpeg so its videoio links ours, #94) → HailoRT (`Build-HailortFromSource.ps1`, pin `HAILORT_VERSION`) → ONNX GenAI (CMake+clang-cl, bypassing `build.py`; built against the chain ONNX Runtime through an `ORT_HOME` shim, never the NuGet ORT its `cmake/ortlib.cmake` would download; `USE_DML=ON` + `USE_CUDA=ON`, telemetry off).
+  - **media-litert** (`--target media-litert-built` + `Build-LitertAll.ps1`) — LiteRT (pin `LITERT_VERSION`; CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM (pin `LITERT_LM_VERSION`; independent of ONNX; built via **Bazel** with `Build-LitertLmBazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`Build-LitertLmFromSource.ps1`) is a frozen fallback, see § Source Patch Policy #7).
+  - **media-tvm** (`--target media-tvm-built` + `Build-MediaTvmAll.ps1`) — TVM → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
+  - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, plus a `cuda-runtime-stage` (via `Copy-CudaRuntime.ps1`) that FLATTENS the CUDA/cuDNN runtime DLLs into `C:\runtime\cuda-runtime\bin` on PATH — the CUDA-linked libs (notably OpenCV, which hard-links `cudnn64_9.dll`) otherwise fail to load in this non-nvidia-based image. Then GStreamer (pin `GSTREAMER_VERSION`) is built via `Build-GstreamerFromSource.ps1` (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
+- `windows/Dockerfile.torch` assembles the OrchestrANT app env on the media image (`media → torch → final`; tag `bk-windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint). On `-Variant rocm` the `migraphx` and `llama` stages sit between media and torch ([`windows-rocm.md`](windows-rocm.md)).
 
 ## The Windows lane as AGENTS.md carried it
 
@@ -216,12 +222,12 @@ full build sequence.
 
 ## The build notes AGENTS.md carried
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited then except for this heading and the relative links; the media-core order and the per-script pointer were corrected on 2026-09-25. The RULES stayed there; this is the reference behind them.
 
-The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `Build-LitertLmBazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `Build-MediaCoreAll.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
+The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `Build-LitertLmBazel.ps1`): CPython in the toolchain stage; ONNX Runtime → **FFmpeg → OpenCV** → HailoRT → ONNX GenAI in media-core (FFmpeg before OpenCV is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is the `media-core-built-*` stage chain in `Dockerfile.media-builder`, which `Build-Buildkit.ps1` solves in that order, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
 
 - **Per-library reference** (generator/compiler per component, EP/delegate flags, patch stacks, RAM budgets, fallback paths): the authoritative table is `docs/windows-builds.md` § Component Build Matrix.
-- **Per-script reference** (every build/setup/verify and HOST-maintenance script, with flags, gotchas and refusal conditions): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
+- **Per-script reference** (build/setup/verify and HOST-maintenance scripts, with flags, gotchas and refusal conditions; the ones without an entry yet are listed there): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
 - Build sequence and commands: `docs/windows-builds.md` § Build Commands; container validation: § Smoke Testing there.
 
 Update those tables in `docs/windows-builds.md` — this section stays a pointer. The Windows Build Invariants above remain here because they are agent-behavioral rules, not reference data.
@@ -236,11 +242,13 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | ONNX Runtime (pin: `ONNXRUNTIME_VERSION`) | Ninja | clang-cl, lld-link | [details](#onnx-runtime-pin-onnxruntime_version) |
 | ONNX GenAI 0.15.2 | CMake (Ninja) | clang-cl, lld-link | [details](#onnx-genai-0152) |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | [details](#opencv-5x) |
-| LiteRT 2.1.6 | Ninja | clang-cl, lld-link | [details](#litert-216) |
-| LiteRT-LM 0.15.0 | **Bazel** | clang-cl, lld-link | [details](#litert-lm-0150) |
+| LiteRT (pin: `LITERT_VERSION`) | Ninja | clang-cl, lld-link | [details](#litert-pin-litert_version) |
+| LiteRT-LM (pin: `LITERT_LM_VERSION`) | **Bazel** | clang-cl, lld-link | [details](#litert-lm-pin-litert_lm_version) |
 | TVM (pin: `TVM_REF`) | Ninja | clang-cl, lld-link | [details](#tvm-pin-tvm_ref) |
-| FFmpeg `n9.0` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | [details](#ffmpeg-n90) |
-| GStreamer 1.29.2 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
+| IREE (pin: `IREE_VERSION`) | Ninja | clang-cl, lld-link | Two configures on the arm64 cross lane (§ TVM and IREE in [`windows-cross-builds.md`](windows-cross-builds.md)) |
+| HailoRT (pin: `HAILORT_VERSION`) | Ninja | clang-cl, lld-link | Four static patches (§ Source Patch Policy) |
+| FFmpeg (pin: `FFMPEG_VERSION`) | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | [details](#ffmpeg-pin-ffmpeg_version) |
+| GStreamer (pin: `GSTREAMER_VERSION`) | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
 ### Per-component notes
 
@@ -248,7 +256,7 @@ The components whose notes do not fit a table cell. Each is linkable, so another
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 
-**both lanes** (on `-TargetArch arm64` CUDA and TensorRT are OFF, the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `Build-OnnxFromSource.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` compat shim was deleted 2026-08-26; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
+**both lanes** (on `-TargetArch arm64` TensorRT is OFF, CUDA is ON only when the image carries the arm64 CUDA payload (`-Gpu`, #176, 2026-09-20), the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `Build-OnnxFromSource.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA provider at `CUDA_VERSION`, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` compat shim was deleted 2026-08-26; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
 
 #### ONNX GenAI 0.15.2
 
@@ -262,21 +270,21 @@ Source-built directly via CMake (bypasses `build.py` which always builds example
 
 Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2 (amd64 only; global SIMD flags are empty on arm64 by design). CUDA auto-detected. Custom `CMAKE_AR` path fix. ONNX Runtime: the chain's on every lane, through a nested-header shim with `HAVE_ONNXRUNTIME` pre-set, so there is no configure-time download, and G-API's ONNX DirectML EP is compiled in. `Get-OpencvOrtConfigureFinding` gates both after configure; see [`onnxruntime-single-source.md` § OpenCV on Windows](onnxruntime-single-source.md#opencv-on-windows-the-shim-the-hook-and-the-gate).
 
-#### LiteRT 2.1.6
+#### LiteRT (pin: `LITERT_VERSION`)
 
 GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links.
 
-#### LiteRT-LM 0.15.0
+#### LiteRT-LM (pin: `LITERT_LM_VERSION`)
 
 On-device LLM inference, built via `Build-LitertLmBazel.ps1` (bazelisk + Temurin JDK, `bazelisk build //runtime/engine:litert_lm_main --config=windows`) → `litert_lm_main.exe`, through the smoke-RUN gate. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`Build-LitertLmFromSource.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**.
 
 #### TVM (pin: `TVM_REF`)
 
-Auto-detects CUDA/Vulkan. **LLVM:** on amd64 TVM links the llvm-config first on PATH, which is the toolchain's patched LLVM (`C:\llvm-patched`, `AArch64;X86`), so TVM's LLVM `nvptx` target is absent on the nvidia lane too; the CUDA source codegen does not need it. The #47 heal builds a minimal LLVM from the pinned llvm-project source (DIA off, RTTI on, no xml2/zlib/zstd, `USE_LLVM=<path>/llvm-config.exe`, SHA from `Get-LlvmSourceSha256` / `LLVM_WINDOWS_SRC_SHA256`). It runs in two cases only: when PATH has no llvm-config (`-StockLlvm`: `X86;AArch64;NVPTX`, ~6 min sccache-warm), and on the rocm lane's `TVM_ROCM=1` spike, whose PATH LLVM lacks AMDGPU (`X86;AArch64;NVPTX;AMDGPU`, unmeasured; see [`windows-rocm.md` § IREE and TVM](windows-rocm.md#iree-and-tvm-on-the-rocm-lane)). The arm64 cross lane builds runtime-only with no LLVM (#116). Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers.
+Auto-detects CUDA/Vulkan. **LLVM:** on amd64 TVM links the llvm-config first on PATH, which is the toolchain's patched LLVM (`C:\llvm-patched`, `AArch64;X86`), so TVM's LLVM `nvptx` target is absent on the nvidia lane too; the CUDA source codegen does not need it. The #47 heal builds a minimal LLVM from the pinned llvm-project source (DIA off, RTTI on, no xml2/zlib/zstd, `USE_LLVM=<path>/llvm-config.exe`, SHA from `Get-LlvmSourceSha256` / `LLVM_WINDOWS_SRC_SHA256`). It runs in two cases only: when PATH has no llvm-config (`-StockLlvm`: `X86;AArch64;NVPTX`, ~6 min sccache-warm), and on the rocm lane's `TVM_ROCM=1` spike, whose PATH LLVM lacks AMDGPU (`X86;AArch64;NVPTX;AMDGPU`; built on the 2026-09-25 rocm run, inside a 2:55:07 media-tvm stage, its own share unmeasured; see [`windows-rocm.md` § IREE and TVM](windows-rocm.md#iree-and-tvm-on-the-rocm-lane)). The arm64 cross lane builds runtime-only with no LLVM (#116). Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers.
 
-#### FFmpeg `n9.0`
+#### FFmpeg (pin: `FFMPEG_VERSION`)
 
-Source build from the pinned release tag (`FFMPEG_VERSION=n9.0` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). **x86asm ENABLED on amd64 since 2026-08-24** (#119: nasm-assembled x86 SIMD via `--x86asmexe`; the old unconditional `--disable-x86asm` had no recorded reason — proven the same evening: configure names nasm as the x86 assembler, 154 `X86ASM` objects linked under lld-link). The arm64 cross lane keeps `--disable-x86asm` explicitly (an x86-only knob) and assembles its NEON kernels through clang's integrated assembler. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set).
+Source build from the pinned release tag (`FFMPEG_VERSION` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). **x86asm ENABLED on amd64 since 2026-08-24** (#119: nasm-assembled x86 SIMD via `--x86asmexe`; the old unconditional `--disable-x86asm` had no recorded reason — proven the same evening: configure names nasm as the x86 assembler, 154 `X86ASM` objects linked under lld-link). The arm64 cross lane keeps `--disable-x86asm` explicitly (an x86-only knob) and assembles its NEON kernels through clang's integrated assembler. A failed source build **fails the stage** (fail-closed since #68). Only `FFMPEG_ALLOW_PREBUILT=1` opts into a BtbN pre-built GPL binary, never on the cross lane; it scrubs the prefix first and sets the sentinel `FFMPEG_SOURCE_BUILD=0`.
 
 ## Prerequisites
 
@@ -303,9 +311,10 @@ If you used a custom `INSTALLDIR`, substitute `D:\Stevedore\bin\docker.exe` for 
 
 Reboot after installation. This enables the Windows Containers feature and adds your user to the `docker-users` group.
 
-**Tool roles on this host.** Stevedore's bundled `docker.exe` is the
-classic-lane tool for builds, runs and publishing: Docker Engine provides NAT
-networking natively, no CNI plugin needed. Since 2026-08-03 the CNI `nat`
+**Tool roles on this host.** Stevedore's bundled `docker.exe` publishes,
+inspects and runs images (it was also the classic lane's build tool until that
+lane was retired on 2026-08-26): Docker Engine provides NAT networking
+natively, no CNI plugin needed. Since 2026-08-03 the CNI `nat`
 **conf** (`C:\Program Files\containerd\cni\conf\0-containerd-nat.conf`; the
 `nat.exe` binary always shipped in `...\cni\bin`) is installed on this host —
 see [`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going, step 2, including the subnet-drift trap — so
@@ -316,7 +325,7 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 
 | Tool | Build | Run |
 |------|-------|-----|
-| `"D:\Stevedore\bin\docker.exe"` (non-admin) | ✅ classic lane | ✅ Works (NAT + DNS + process isolation) |
+| `"D:\Stevedore\bin\docker.exe"` (non-admin) | — (the classic lane, retired 2026-08-26) | ✅ Works (NAT + DNS + process isolation) |
 | `buildctl` via `windows\Build-Buildkit.ps1` (non-admin) | ✅ preferred lane | n/a |
 | `nerdctl` (**admin shell only**) | ✅ Works (verified 2026-08-07) — but the chain still uses `buildctl` on purpose, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane | ✅ Works — needs the CNI nat **conflist**, see [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane |
 
@@ -342,11 +351,12 @@ fallbacks), builds the stages in order, and applies the correct tags:
 .\windows\Build-Buildkit.ps1
 
 # arm64 cross lane (clang-cl x64 host -> windows-arm64; torch is auto-dropped —
-# `uv sync` must execute the target interpreter — and -Gpu is refused):
+# `uv sync` must execute the target interpreter. -Gpu adds the arm64 CUDA/cuDNN
+# payload since #176; -Variant rocm is refused):
 .\windows\Build-Buildkit.ps1 -TargetArch arm64
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
-# Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
+# TensorRT is optional: a zip in windows/downloads/ adds it (see § TensorRT setup (GPU lane, optional) below).
 .\windows\Build-Buildkit.ps1 -Gpu            # same as -Variant nvidia
 
 # ROCm variant (amd64 only): base -> rocm (tagged sdk) -> toolchain -> media -> migraphx
@@ -380,7 +390,7 @@ Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<s
 `-rocm` infix to every tag after base, e.g. `bk-windows-toolchain-rocm`), invisible to
 `docker` — use `-FinalTar` for a docker-loadable tarball. There is **no**
 `-TorchBaseImage` equivalent: the torch stage's `BASE_IMAGE` is pinned to the local
-`windows-media` tag, so `-Stages torch,final` needs the local chain images and cannot
+`windows-media` tag (the rocm lane's `llama` image on `-Variant rocm`), so `-Stages torch,final` needs the local chain images and cannot
 be pointed at a published one. `pwsh -File` cannot build arrays — call the script
 directly, or `& .\windows\Build-Buildkit.ps1 -Gpu -Stages @('media','final')`.
 
@@ -581,7 +591,7 @@ Everything that **produces or shapes compiled output** is pinned in
 
 | Pin | Installs | Why it is pinned |
 |---|---|---|
-| `LLVM_WINDOWS_VERSION` | scoop `main/llvm` | clang-cl + lld-link compile the entire media chain, and five patches under `windows/scripts/patches/` are written against a specific clang-cl's diagnostics |
+| `LLVM_WINDOWS_VERSION` | scoop `main/llvm` in the base; since #135 (2026-08-29) the toolchain stage also builds the patched clang/LLVM from the same pinned source into `C:\llvm-patched`, ahead on PATH | clang-cl + lld-link compile the entire media chain, and five patches under `windows/scripts/patches/` are written against a specific clang-cl's diagnostics |
 | `NINJA_WINDOWS_VERSION` | scoop `main/ninja` | build-graph executor for every CMake source build |
 | `NASM_WINDOWS_VERSION` | scoop `main/nasm` | assembles the x86 SIMD of GStreamer subprojects that ship `.asm` (openh264 — see `Build-GstreamerFromSource.ps1:482`) **and, since #119 (2026-08-24), FFmpeg's hand-written x86 kernels on the amd64 lane** (`--x86asmexe=<nasm>`; before that day FFmpeg passed an unconditional `--disable-x86asm` and nasm assembled nothing for it) — a bump changes shipped object code in both |
 | `CMAKE_VERSION`, `VULKAN_VERSION`, `FLUTTER_VERSION`, `GIT_VERSION` | scoop / installer | pre-existing pins, unchanged |
@@ -676,7 +686,7 @@ but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 against the freshly built `winamd64` image after `final`, and a failure fails
 the chain. **On `-TargetArch arm64` the gate RUNS since 2026-08-24** (the 2026-08-23 blanket
 "inapplicable" verdict was over-broad — roughly half the suite never touches the payload): the
-host-toolchain sections (1-6, 14-16, and 19 arch-filtered) execute against the arm64 image with
+host-toolchain and static sections (1-6, 14-16, 19 arch-filtered, 23 and 25; 7 too on the cross GPU lane) execute against the arm64 image with
 their own floor column (`MIN_PASSED=76`/`MAX_SKIPPED=20`; measured green at 97/0/15 before sections 19 and 25 grew, so re-measure), sections
 14/15 compile **for the target** and assert the produced PE machine instead of running, and the
 payload sections are skipped as sections with floor 0 — a floor that must stay 0, never be
@@ -735,7 +745,7 @@ To run it by hand against an existing image:
   pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 25 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-09-22, `bk-20260922-034440`, the GPU lane with Hailo, zip-less): 236 passed / 0 failed / 0 skipped** — the TensorRT asserts are conditional on the staged state (§ TensorRT setup) and Hailo section 24 adds six host-runnable assertions plus the two `HAILO_*` pointers, so the zip-less GPU run is a full pass; the CPU-lane figure remains 222/0/0 (2026-08-26, `bk-20260826-130136`, via the automatic gate), matching the arm64 parity table. It supersedes 184/0/1 (2026-08-14; the one skip was GPU device passthrough) and the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers). Section 23 (#167) is the baked `C:\temp\scripts` surface, which this hand-run invocation does not exercise. On 2026-09-23 three sections grew for the ONNX Runtime single-source rule: section 19 gained the ort-crate-env assertion (floors Gpu 31 / Cpu 27 / Arm64 25), section 21 the venv's DirectML and chain-wheel checks (floor 4 on amd64), and the new section 25 is the ORT census (floor 5 on the amd64 columns, the four census assertions plus `ORT in-box`, and 4 on arm64, where the in-box assertion is a skip; plus the STAMP assertion now that the build gate exists; [`onnxruntime-single-source.md`](onnxruntime-single-source.md)). The next green run's figures are not measured yet.
+The smoke test validates 25 categories including the CUDA Toolkit, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-09-22, `bk-20260922-034440`, the GPU lane with Hailo, zip-less): 236 passed / 0 failed / 0 skipped** — the TensorRT asserts are conditional on the staged state (§ TensorRT setup) and Hailo section 24 adds six host-runnable assertions plus the two `HAILO_*` pointers, so the zip-less GPU run is a full pass; the CPU-lane figure remains 222/0/0 (2026-08-26, `bk-20260826-130136`, via the automatic gate), matching the arm64 parity table. It supersedes 184/0/1 (2026-08-14; the one skip was GPU device passthrough) and the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers). Section 23 (#167) is the baked `C:\temp\scripts` surface, which this hand-run invocation does not exercise. On 2026-09-23 three sections grew for the ONNX Runtime single-source rule: section 19 gained the ort-crate-env assertion (floors Gpu 31 / Cpu 27 / Arm64 25), section 21 the venv's DirectML and chain-wheel checks (floor 4 on amd64), and the new section 25 is the ORT census (floor 5 on the amd64 columns, the four census assertions plus `ORT in-box`, and 4 on arm64, where the in-box assertion is a skip; plus the STAMP assertion now that the build gate exists; [`onnxruntime-single-source.md`](onnxruntime-single-source.md)). The next green run's figures are not measured yet.
 
 ### What is verified: native vs. Python
 
@@ -786,8 +796,8 @@ resolves to `h264_d3d12va`, so headless code should request software codecs
 like `mpeg4`/`libx264` by name). Consumer CI venvs synced inside the image are
 reconciled onto the ORT/GenAI wheels in this store (`Sync-UvChainOnnxRuntime`,
 [`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).
-`FFMPEG_VERSION` is pinned to the release tag
-`n9.0` since 2026-08-04 (it previously tracked `master`, which is when an
+`FFMPEG_VERSION` is pinned to a release tag since 2026-08-04
+(`n9.0` then; it previously tracked `master`, which is when an
 upstream drop moved `avformat.lib` et al. from `lib\` to `bin\` overnight —
 2026-07-13, PyAV died with LNK1181). `Build-FfmpegFromSource.ps1` still
 normalizes the import-lib layout after `make install` as a guard across tag
@@ -815,7 +825,8 @@ hard-import Media Foundation, which Server Core does not ship.
 The final image bakes the runtime orchestrator at
 **`C:\opt\OrchestrANT`** (`TORCH_APP_DIR`), assembled by
 `windows/scripts/build/Build-TorchApp.ps1` (mirror of the linux
-`assemble-torch-app.sh` stage) during the final `docker build`:
+`assemble-torch-app.sh` stage) in the torch stage (`windows/Dockerfile.torch`),
+which the final image builds FROM:
 
 - **Ref**: `Build-Buildkit.ps1` uses versions.env's **`APP_REF` pin by default** (the
   same commit always builds the same final image); pass `-LatestApp` to opt
@@ -824,7 +835,8 @@ The final image bakes the runtime orchestrator at
   Dockerfile as the `APP_REF` build-arg, so moving the app busts exactly the
   torch-step layer.
 - **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`,
-  `docs`, `pytorch-cpu`, `test`; the wxPython GUI extra excluded, like linux),
+  `docs`, `pytorch-cpu` — `pytorch-cu130` on the nvidia lane — and `test`; the
+  wxPython GUI extra excluded, like linux),
   with `--no-install-package` for every `onnxruntime*` name in `uv.lock` (a
   locked name whose family has no chain wheel stops the stage),
   then a reconcile so this lane's wheels always win. The ORT census
@@ -882,6 +894,7 @@ nobody can read.
 - **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`Test-BuildCopy.ps1`](#test-buildcopyps1) · [`Test-Rdna4LayerLock.ps1`](#test-rdna4layerlockps1) · [`Test-CudaCache.ps1`](#test-cudacacheps1) · [`Invoke-SccacheCudaLlmDeadlock.ps1`](#invoke-sccachecudallmdeadlockps1) · [`Test-GeniexNpuDriver.ps1`](#test-geniexnpudriverps1)
 - **Reusable modules — `windows/scripts/modules/`**: [`WindowsSourceBuild.Common.psm1`](#windowssourcebuildcommonpsm1) · [`WindowsSmokeTest.Common.psm1`](#windowssmoketestcommonpsm1) · [`WindowsGstPlugins.Common.psm1`](#windowsgstpluginscommonpsm1)
 - **Drivers and entry points**: [`Dockerfile.smoke-gate`](#dockerfilesmoke-gate) · [`Dockerfile.publish-gate`](#dockerfilepublish-gate) · [`patches/litert-lm/patch-assert.cmake`](#patcheslitert-lmpatch-assertcmake) · [`Test-SccacheWrite.ps1` + `Invoke-SccacheWriteProbe.ps1` + `Dockerfile.sccache-write-probe`](#test-sccachewriteps1--invoke-sccachewriteprobeps1--dockerfilesccache-write-probe) · [`Test-OpencvVideoBackends.ps1` + `Invoke-OpencvVideoProbe.ps1` + `Dockerfile.opencv-video-probe`](#test-opencvvideobackendsps1--invoke-opencvvideoprobeps1--dockerfileopencv-video-probe)
+- **No entry here yet** (counted 2026-09-25; the script's header comment is its reference until one is written): `build/` — `Build-HailortFromSource.ps1`, `Build-IreeFromSource.ps1`, `Build-LitertAll.ps1`, `Build-LlvmFromSource.ps1`, `Build-MediaCoreAll.ps1`, `Build-MediaTvmAll.ps1`, `Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps1`, `Build-ResourceSampler.ps1`, `Build-TargetCpython.ps1`, `Build-ToolchainAll.ps1`, `Build-TorchApp.ps1`, `Copy-TargetPythonDeps.ps1`, `Debug-LitertlmLink.ps1`, `Export-LitertLmBridge.ps1`, `Install-LlamaCpp.ps1`, `Install-TorchRocm.ps1`, `Test-RocmImage.ps1`, `Test-TargetArch.ps1`, `Write-BundleManifest.ps1`; `host/` — `Clear-SccacheMount.ps1`, `Disable-Sleep.ps1`, `Install-DufsService.ps1`, `Install-Rocm.ps1`, `Install-VulkanLoader.ps1`, `Invoke-BkMaterialize.ps1`, `Invoke-BkWarm.ps1`, `Reset-ContainerLocks.ps1`, `Set-BuildkitdGcpolicy.ps1`, `Set-ElevatedWindow.ps1`, `Start-GeniexServers.ps1`; `diagnostics/` — `Find-LsmEventHolder.ps1`, `Get-HostLsm.ps1`, `Get-LsmWaitObject.ps1`, `Get-LsmWaitstack.ps1`, `Get-SiloProcesses.ps1`, `Invoke-DiagnosticProbe.ps1`, `Invoke-LlvmAarch64Layout.ps1`, `Measure-WarningStream.ps1`, `Test-Arm64Prereqs.ps1`, `Test-GpuPassthrough.ps1`, `Test-HipMsvcCmath.ps1`, `Test-LayerRename.ps1`, `Test-OnnxTuReplay.ps1`, `Test-OpencvCudaCmdshape.ps1`, `Test-ProcessIsolationCommit.ps1`. Several are described on the page that owns their topic ([`windows-cross-builds.md`](windows-cross-builds.md), [`windows-rocm.md`](windows-rocm.md), [`windows-build-lanes.md`](windows-build-lanes.md)).
 
 
 ### Chain components — `windows/scripts/build/`
@@ -918,7 +931,7 @@ Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate. I
 
 #### `Copy-CudaRuntime.ps1`
 
-Runs in the merge's `cuda-runtime-stage` (derived from media-core). Recursively FLATTENS the CUDA_ROOT/CUDNN_ROOT DLLs into one dir COPY'd to `C:\runtime\cuda-runtime\bin` on PATH (cuDNN 9 buries DLLs in a CUDA-major subdir); hard-gates on `cudnn64_9.dll`. Fixes opencv's plugin load in the non-nvidia merge image
+Runs in the merge's `cuda-runtime-stage` (derived from the toolchain image since #134, 2026-08-26, so it re-runs only when the toolchain does). Recursively FLATTENS the CUDA_ROOT/CUDNN_ROOT DLLs into one dir COPY'd to `C:\runtime\cuda-runtime\bin` on PATH (cuDNN 9 buries DLLs in a CUDA-major subdir; `bin\arm64` on the cross GPU lane, #176); hard-gates on `cudnn64_9.dll`; stages an empty dir and exits 0 when neither root is set (the CPU lanes). Fixes opencv's plugin load in the non-nvidia merge image
 
 #### `Build-TvmFromSource.ps1`
 
@@ -926,7 +939,7 @@ Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds Python wheel; VsDevCmd for
 
 #### `Build-FfmpegFromSource.ps1`
 
-MSYS2 `make` with `--toolchain=msvc`; `--enable-libonnxruntime` links against the source-built ONNX Runtime. Loads `versions.env` via `Import-Versions.ps1` for the centralized `FFMPEG_VERSION` tag pin. Falls back to BtbN pre-built GPL binary on source-build failure (`FFMPEG_SOURCE_BUILD=0` sentinel).
+MSYS2 `make` with `--toolchain=msvc`; `--enable-libonnxruntime` links against the source-built ONNX Runtime. Loads `versions.env` via `Import-Versions.ps1` for the centralized `FFMPEG_VERSION` tag pin. A failed source build fails the stage (fail-closed since #68); `FFMPEG_ALLOW_PREBUILT=1` opts into the BtbN pre-built GPL binary on amd64 only (`FFMPEG_SOURCE_BUILD=0` sentinel).
 
 #### `Build-GstreamerFromSource.ps1`
 
@@ -938,7 +951,7 @@ Reads `C:\temp\versions.env` (COPY'd from `linux/scripts/01-core/versions.env`) 
 
 #### `Complete-Container.ps1`
 
-Enables git long paths and sets `core.longpaths` in the final image; writes the **toolchain provenance manifest** `C:\toolchain-manifest.json` (2026-08-07) — pinned inputs with pin-vs-resolved pairs (LLVM, ninja, nasm, CMake, Vulkan, Git, Flutter, VS→MSVC toolset, SDK build) plus the floating ones (lld-link, rustc/cargo, sccache, uv, pwsh, openssl, pkg-config) and the OS base digest. Answers "which compiler built this image" from the ARTIFACT instead of a build log that ages out, and makes classic-vs-BK lane parity a `diff`. Every probe is best-effort (missing tool → `null`, never a failed layer)
+Enables git long paths and sets `core.longpaths` in the final image; writes the **toolchain provenance manifest** `C:\toolchain-manifest.json` (2026-08-07) — pinned inputs with pin-vs-resolved pairs (LLVM, ninja, nasm, sccache, CMake, Vulkan, Git, Flutter, VS→MSVC toolset, SDK build) plus the floating ones (lld-link, rustc/cargo, uv, pwsh, openssl, pkg-config) and the OS base digest. Answers "which compiler built this image" from the ARTIFACT instead of a build log that ages out, and makes classic-vs-BK lane parity a `diff`. Every probe is best-effort (missing tool → `null`, never a failed layer)
 
 #### `Test-Toolchain.ps1`
 
@@ -950,7 +963,7 @@ Docker `HEALTHCHECK` script — verifies ONNX Runtime DLL, FFmpeg, GStreamer, CM
 
 #### `Test-Container.ps1`
 
-Comprehensive container validation — **23** test categories (an earlier AGENTS.md copy of this row said 18 until 2026-08-08; this doc had the right count all along). Runs INSIDE the final image, which `windows/Dockerfile` COPYs it into along with the whole `modules` dir. The 23 sections live here; the assertion harness is in `WindowsSmokeTest.Common.psm1`
+Comprehensive container validation — **25** test categories (23 until section 24, Hailo, and section 25, the ORT single-source census, landed in 2026-09; an earlier AGENTS.md copy of this row said 18 until 2026-08-08). Runs INSIDE the final image, which `windows/Dockerfile` COPYs it into along with the whole `modules` dir. The 25 sections live here; the assertion harness is in `WindowsSmokeTest.Common.psm1`
 
 #### `Set-TensorrtTree.ps1`
 
@@ -966,7 +979,7 @@ Installs VS Build Tools 18 with ClangCL toolset
 
 #### `Install-ScoopTools.ps1`
 
-Installs Git (installer) + WiX 4 (dotnet tool), then via Scoop: 7zip, Vulkan SDK, Flutter, LLVM, ninja, sccache, cppcheck, nano, nsis, uv, nuget, zlib, nasm, openssl, pkg-config, CMake. Installs **no** Rust (rustup via `Install-RustToolchain.ps1` is the sole provider). **PINNED from versions.env (2026-08-07): LLVM/ninja/nasm** (`LLVM_WINDOWS_VERSION`/`NINJA_WINDOWS_VERSION`/`NASM_WINDOWS_VERSION`, forwarded as Dockerfile ARGs) on top of the existing CMake/Vulkan/Flutter/Git pins — those three produce or shape compiled output, and an unpinned clang-cl made the base image unreproducible in its most load-bearing component (five patches under `windows/scripts/patches/` are clang-cl-version-shaped). `Test-Toolchain.ps1` asserts all three at base-build time. The rest stay floating deliberately — the build only invokes them. **Caveat (2026-08-08): that justification stops holding for `sccache` the moment multi-tier caching is wired** — the L0 tier then exists or not depending on the installed version (needs >= v0.16.0), and an older one ignores the config **silently**. Pin sccache in the same change, not after
+Installs Git (installer) + WiX 4 (dotnet tool), then via Scoop: 7zip, Vulkan SDK (plus its optional ARM64 component), Flutter, LLVM (plus the aarch64 compiler-rt builtins from the matching release archive), ninja, nasm, cppcheck, nano, nsis, uv, nuget, zlib, openssl (plus the arm64 build beside it), pkg-config, CMake, make, gawk. Installs **no** Rust (rustup via `Install-RustToolchain.ps1` is the sole provider) and, since 2026-09-18, **no** sccache (`Install-RustToolchain.ps1` installs the pinned released zip). **PINNED from versions.env (2026-08-07): LLVM/ninja/nasm** (`LLVM_WINDOWS_VERSION`/`NINJA_WINDOWS_VERSION`/`NASM_WINDOWS_VERSION`, forwarded as Dockerfile ARGs) on top of the existing CMake/Vulkan/Flutter/Git pins — those three produce or shape compiled output, and an unpinned clang-cl made the base image unreproducible in its most load-bearing component (five patches under `windows/scripts/patches/` are clang-cl-version-shaped). `Test-Toolchain.ps1` asserts all three at base-build time. The rest stay floating deliberately — the build only invokes them. **The 2026-08-08 caveat that the floating rule stops holding for `sccache` once multi-tier caching is wired is settled:** sccache is pinned (`SCCACHE_WINDOWS_VERSION`, recorded pin-vs-resolved in the toolchain manifest) and no longer comes from scoop
 
 #### `Install-Vcpkg.ps1`
 
@@ -978,7 +991,7 @@ Installs Rust via rustup WITH a stable default toolchain (sole provider; local `
 
 #### `Install-Cuda.ps1`
 
-Installs CUDA 13.3 + cuDNN; includes post-install verification (headers/libs/DLLs)
+Installs CUDA + cuDNN at the `versions.env` pins; includes post-install verification (headers/libs/DLLs). `-TargetArch arm64` also stages the Windows-arm64 redist components and cuDNN into the same root (`lib\arm64`, `bin\arm64`; #176)
 
 #### `Install-Tensorrt.ps1`
 
@@ -990,7 +1003,7 @@ HOST maintenance (admin, never while a build solves): installs a locally built `
 
 #### `Install-NewHost.ps1`
 
-HOST bring-up (admin, run `-ReportOnly` first, never while a build solves): the ONE elevated run that turns a freshly-rebooted Stevedore host into a green `Test-HostSetup.ps1`. Orchestrates the canonical per-concern scripts rather than duplicating them: authors the CNI `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW at runtime — no magic subnet literals anywhere), then `Set-ContainerdConfig.ps1` (derives the `.conf`, debug flags, teardown env, Defender), `Set-BuildkitdGcpolicy.ps1` + the `BUILDKIT_STEP_LOG_*` step-log env, the patched runhcs shim (BUILDS the 45min/100min fixed-constant shim from hcsshim source when no `-ShimPath` is given, installing Go via scoop — the recipe from `windows/upstream/`, then `Publish-ShimPatch.ps1`), and dufs (scoops if missing, starts it, registers the ONLOGON task, sets machine `SCCACHE_WEBDAV_ENDPOINT` to the host's LAN IP). Idempotent; every sub-script is called with a HASHTABLE splat (array splatting would bind `-ReportOnly`/`-ShimPath` by position — the array-splat rule in AGENTS.md). Companion to `Test-HostSetup.ps1` below
+HOST bring-up (admin, run `-ReportOnly` first, never while a build solves): the ONE elevated run that turns a freshly-rebooted Stevedore host into a green `Test-HostSetup.ps1`. Orchestrates the canonical per-concern scripts rather than duplicating them: authors the CNI `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW at runtime — no magic subnet literals anywhere), then `Set-ContainerdConfig.ps1` (derives the `.conf`, debug flags, teardown env, Defender), `Set-BuildkitdGcpolicy.ps1` + the `BUILDKIT_STEP_LOG_*` step-log env, the patched runhcs shim (when no `-ShimPath` is given it BUILDS the env-configurable shim from the owner's fork, `Kataglyphis/hcsshim@feature/configurable-teardown-timeout` checked out at a pinned commit, installing Go via scoop, then `Publish-ShimPatch.ps1` with `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` on the containerd service; the 45min/100min fixed-constant builds are history), and dufs (scoops if missing, starts it, registers the ONLOGON task, sets machine `SCCACHE_WEBDAV_ENDPOINT` to the host's LAN IP). Idempotent; every sub-script is called with a HASHTABLE splat (array splatting would bind `-ReportOnly`/`-ShimPath` by position — the array-splat rule in AGENTS.md). Companion to `Test-HostSetup.ps1` below
 
 #### `Set-Rdna4Gpu.ps1`
 
@@ -1018,7 +1031,7 @@ The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on a
 
 #### `Set-ContainerdConfig.ps1`
 
-HOST config (admin; never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `Set-BuildkitdGcpolicy.ps1`. It owns the debug-log flags, the runhcs shim teardown timeout, the GC policy and the CNI `.conf`/`.conflist` pair — all of which live only in the service's registry values, because containerd runs with no `config.toml` here. What each setting is for, and why a script is the only reproducible way to hold them: [`windows-host-setup.md`](windows-host-setup.md#c1-permanent-debug-flags-on-containerd--buildkitd-owner-policy).
+HOST config (admin; never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `Set-BuildkitdGcpolicy.ps1`. It owns the debug-log flags and the runhcs shim teardown timeout, which live only in the service's registry values because containerd runs with no `config.toml` here, plus containerd's Defender exclusions, and it derives the CNI `.conf` from the authored `.conflist`. What each setting is for, and why a script is the only reproducible way to hold them: [`windows-host-setup.md`](windows-host-setup.md#c1-permanent-debug-flags-on-containerd--buildkitd-owner-policy).
 
 #### `Optimize-HostVhdx.ps1`
 
@@ -1058,7 +1071,7 @@ CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl so
 
 #### `Invoke-SccacheCudaLlmDeadlock.ps1`
 
-**Deliberately fails.** Reproduces the sccache nvcc server deadlock and collects a server-side trace for mozilla/sccache#2808. Sets `SCCACHE_REPRO_CUDA_LLM=1`, which makes `Build-OnnxFromSource.ps1` SKIP patch 006 so the sccache CUDA launcher stays on for `onnxruntime_providers_cuda_llm` — the target the workaround exists to protect. Expect the build to die ~80 min in; that failure IS the artifact. Refuses to start while another `buildctl` is running (a concurrent build shares the sccache server and the locked mount, so a wedge would be unattributable). Needs `ARG SCCACHE_REPRO_CUDA_LLM` wired into `Dockerfile.media-builder`'s media-core-env stage first — it checks and throws with instructions if absent.
+**Obsolete since 2026-08-18.** It reproduced the sccache nvcc server deadlock for mozilla/sccache#2808 by setting `SCCACHE_REPRO_CUDA_LLM=1`, which made `Build-OnnxFromSource.ps1` skip patch 006 so the sccache CUDA launcher stayed on for `onnxruntime_providers_cuda_llm`. Patch 006 and that knob were retired on 2026-08-18: the fused_moe family goes through the launcher on every build, the ARG stays declared in `Dockerfile.media-builder` only so old commands do not silently no-op, and nothing reads it. #2808 is closed, fixed in the sccache 0.18.0 release this lane pins ([`upstream-windows-patches.md`](upstream-windows-patches.md)). A run today is an ordinary `-Gpu` media-core rebuild. It still refuses to start while another `buildctl` is running.
 
 #### `Test-GeniexNpuDriver.ps1`
 
@@ -1086,7 +1099,7 @@ Smoke-test assertion harness, extracted 2026-08-08: counters plus `Initialize-Sm
 
 #### `WindowsGstPlugins.Common.psm1`
 
-The mandatory GStreamer plugin CONTRACT (see § Mandatory GStreamer plugins and AGENTS.md § Windows Build Invariants): `Get-RequiredGstPlugin` (libav/opencv/onnx/tflite with per-plugin detection mechanism and rationale), `Write-PkgConfigFile`, `Get-LibraryLinkName`, `Assert-PkgConfigModule` (presence AND `-MinimumVersion` floors — `pkg-config --exists` alone passes on a `.pc` whose version field is empty). Merge-stage only, deliberately NOT in `WindowsScripts.Shared.psm1`: that one is in all three media branches' compile closure and this set changes often
+The mandatory GStreamer plugin CONTRACT (see § Mandatory GStreamer plugins and AGENTS.md § Windows Build Invariants): `Get-RequiredGstPlugin` (libav/opencv/onnx/webrtc/nice/tflite with per-plugin detection mechanism and rationale), `Write-PkgConfigFile`, `Get-LibraryLinkName`, `Assert-PkgConfigModule` (presence AND `-MinimumVersion` floors — `pkg-config --exists` alone passes on a `.pc` whose version field is empty). Merge-stage only, deliberately NOT in `WindowsScripts.Shared.psm1`: that one is in all three media branches' compile closure and this set changes often
 
 ### Drivers and entry points
 
@@ -1120,7 +1133,7 @@ Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min
 
 *`windows/scripts/`, `windows/`*
 
-Asks a BUILT media image what video backends OpenCV actually has (backlog #93-#95): prints the `Video I/O:` block, runs the three #95 assertions, and shows `videoio_registry.getBackends()` beside them. ~4 s against `bk-windows-media-core-ffmpeg`, versus a full chain rebuild — which is what let the #95 guards be watched FAILING on the real artifact before the fixes land. Same two safeguards as the sccache probe: `PROBE_NONCE` (a re-run with an unchanged script otherwise gives `CACHED` and replays an old verdict) and a `probe complete` marker check; `--no-cache` is not the alternative, it empties cache mounts (#96).
+Asks a BUILT media image what video backends OpenCV actually has (backlog #93-#95): prints the `Video I/O:` block, runs the three #95 assertions, and shows `videoio_registry.getBackends()` beside them. ~4 s against a built media-core image, versus a full chain rebuild. Pass `-BaseImage local/kataglyphis:bk-windows-media-core` (or `-opencv`): the script's default, the `-ffmpeg` intermediate, has carried no OpenCV since #94 moved OpenCV after FFmpeg — which is what let the #95 guards be watched FAILING on the real artifact before the fixes land. Same two safeguards as the sccache probe: `PROBE_NONCE` (a re-run with an unchanged script otherwise gives `CACHED` and replays an old verdict) and a `probe complete` marker check; `--no-cache` is not the alternative, it empties cache mounts (#96).
 
 ## Why the pin suite runs on a Windows runner, under Pester 3.4.0
 
@@ -1133,8 +1146,10 @@ PowerShell-era module. So the lane needs a **Windows** runner, not one of the
 cheaper `ubuntu-26.04` ones the rest of the Linux jobs use. The suite itself is
 version-agnostic: `shared/windows/tests/Submodule.Pins.Tests.ps1` asserts with
 `throw` rather than `Should`, and was verified under both 3.4.0 and 6.1.0 — so
-the lane can move to a cheaper runner the day the action can be told a
-Core-compatible version. Nothing else has to change for that.
+the lane can move to a cheaper runner the day the action's invocation survives a
+Core-compatible Pester. Today it does not: 5.x loses the per-failure diagnostics
+and 6.x rejects `-Quiet` (measured 2026-09-07). The workflow's `pester-version`
+and `runner` inputs are the switch; nothing else has to change for that.
 
 The label is **`windows-2025`, pinned**, not `windows-latest`. The alias
 resolves to windows-2025 today, so pinning is a no-op right now; the point is
@@ -1158,6 +1173,10 @@ The container-reuse pattern, packaged so consumers do not each reinvent it. Cons
 `windows/scripts/modules/WindowsContainerBuild.Reuse.psm1` implements the
 container-reuse pattern so consumers do not each reinvent it:
 
+- `Invoke-ContainerBuild` - the entry point: runs a consumer's build command in
+  the image over the tar pipe (default) or a bind mount (`-UseBindMount`) and
+  returns a result object. `Resolve-ContainerBuildCommand`, `Get-ContainerEnvArgs` and
+  `Get-SccacheContainerEnv` are its exported helpers.
 - `Get-ReusableBuildContainer` - reuse/start/recreate a named build container,
   recreating it when the image ID changes. Returns whether an existing
   container was reused.

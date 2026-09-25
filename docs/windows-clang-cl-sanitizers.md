@@ -11,11 +11,13 @@ end on Windows, not from release notes (AccelerANTgine, 2026-07-16).
 this page carries the reasoning its two-line comment ceiling keeps out of the
 module.
 
-All of it is Debug-only: every sanitizer compile flag, define and runtime link
-the module adds is wrapped in `$<$<CONFIG:Debug>:...>`, so a multi-config
-generator (Visual Studio, Ninja Multi-Config) never instruments its Release
-config, and single-config non-Debug builds are byte-identical with sanitizers
-requested or not.
+All of it is Debug-only: every sanitizer compile flag, define and runtime
+library the module adds is wrapped in `$<$<CONFIG:Debug>:...>`, so a
+multi-config generator (Visual Studio, Ninja Multi-Config) never instruments
+its Release config, and single-config non-Debug builds are byte-identical with
+sanitizers requested or not. The one unwrapped addition is the ASan runtime's
+link search directory (`target_link_directories`), which links nothing by
+itself.
 
 ## Dynamic ASan runtime: `/clang:-shared-libsan`
 
@@ -69,3 +71,22 @@ lib; the matching `clang_rt.asan_dynamic-x86_64.dll` from the same
 `VC\Tools\MSVC\<ver>` must sit next to the app exe (or on PATH) at launch. Each
 consumer's app-launch script stages it — the module cannot, because it never
 knows where the final exe lands.
+
+**What the hub stages, and the helpers it offers.** Both pick Microsoft's
+runtime first, like the link:
+
+* A Debug build through `Invoke-CmakeConfigureAndBuild` (`WindowsCMake.Common`)
+  copies the sanitizer DLLs into the build root before the build and into its
+  `bin\Debug\` (or `bin\`) after it. It also puts their directory on PATH while
+  it builds, so instrumented build-time tools start.
+* `Get-AsanRuntimeDll -RuntimeFlavor Msvc` (`WindowsTesting.Common`) returns
+  Microsoft's DLL for a launch script to copy.
+
+Test runs through `Invoke-ManualTestExecutable` or `Invoke-CtestDiscoveredTests`
+get the runtime on PATH and `ASAN_OPTIONS` scoped by `Invoke-WithAsanOptions`.
+It puts the caller's options first and restores the old value afterwards. The
+option values stay with the caller; the test default is
+`log_path=logs/asan.log:report_globals=1`. Since 2026-09-24 an empty
+`-Options` runs the block with `ASAN_OPTIONS` untouched, so
+`Invoke-WithRuntimePath -AsanOptions ''` opts a full-app run out of that
+default.

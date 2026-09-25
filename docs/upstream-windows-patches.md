@@ -28,7 +28,7 @@ when you go to regenerate a patch — see
 why each fix is in the form it is:
 
 - a static `.patch` under `windows/scripts/patches/<component>/`
-- an inline guarded edit in a `build-*.ps1` script
+- an inline guarded edit in a `Build-*.ps1` script
 - a whole-file asset staged over the upstream one
 
 ## Prepared and ready to send (12)
@@ -107,15 +107,29 @@ a competing PR. When it merges, drop the matching hunks from
 | Upstream | What | Why not yet |
 | --- | --- | --- |
 | opencv | videoio does not build against FFmpeg 8/9 (`AVCodec::pix_fmts` and `supported_framerates` removed) | Upstream fixed this on `4.x` and **not** on `5.x`. The right submission is a port of upstream's own two commits, already staged in [`docs/upstream/patches/`](upstream/patches/); see `upstreamable-patches.md` entry 2. Shared with the Linux lane — one PR covers both. Our Windows form is `opencv/Get-Ffmpeg9AvcodecConfig.ps1`. |
-| opencv | MLAS's vendored kernels are GAS/ELF-only, and clang-cl *is* a working GAS assembler, so `check_language(ASM)` does not spare Windows the way it spares MSVC | `opencv/003-mlas-windows-skip.patch` returns early on `WIN32`. Upstream has to choose: skip MLAS on Windows as the Android path already does, or port the kernels to MASM/COFF. Raised as a reviewer note in submission 5. |
+| opencv | MLAS's vendored kernels are GAS/ELF-only, and clang-cl *is* a working GAS assembler, so `check_language(ASM)` does not spare Windows the way it spares MSVC | `opencv/003-mlas-windows-skip.patch` returns early on `WIN32`. Upstream has to choose: skip MLAS on Windows as the Android path already does, or port the kernels to MASM/COFF. Raised as a reviewer note in entry 3 (`opencv-mlas-clangcl-forced-include`). |
 | opencv | CUDA with a clang-cl host compiler is refused outright, and `ocv_cuda_filter_options` leaks clang-cl-only flags into nvcc's `cl.exe` host pass | The rest of `opencv/001-cmake-clang-cl-compat.patch`. This is a feature — "support clang-cl as the CUDA host compiler" — not a bug fix, and wants agreement before code. |
-| iree | `add_custom_command` invokes a literal `ml64`, unoverridable and absent from a clang-only toolchain | Needs a decision on which variable should name the assembler (`CMAKE_ASM_MASM_COMPILER`). Raised as a reviewer note in submission 13. |
+| iree | `add_custom_command` invokes a literal `ml64`, unoverridable and absent from a clang-only toolchain | Needs a decision on which variable should name the assembler (`CMAKE_ASM_MASM_COMPILER`). Raised as a reviewer note in entry 11 (`iree-elf-arch-x64-match`). |
 | iree | `IREE_HOST_BIN_DIR` composes host tool paths without `.exe` | Draft: `out/upstream-issue-iree-host-bin-dir-exe.md`. |
 | gstreamer | `ges-validate.c`'s `_commit` collides with the CRT `_commit` under `-FIio.h` | `gstreamer/001-ges-commit-rename.patch`. **Dormant** — there is no collision at 1.29.2 and it is kept as insurance. Filing a fix for something that does not currently reproduce would be noise, and upstream would want a real rename rather than our `#define`. |
 | graphene | `meson.build` appends `-Werror=undef` after the caller's `c_args`, so its bare `#if __GNUC__` tests fail under clang-cl | Different project (`ebassi/graphene`), not the GStreamer monorepo. Not written up. |
 | moby/buildkit | WCOW cache mounts lose writes into an inherited directory | Draft: `out/upstream-buildkit-wcow-cache-mount-draft.md`. Strengthen first — reproduce with plain file writes, no sccache. |
 | meson | `summary()` in a `build`-machine subproject | Draft: `out/upstream-issue-meson-summary-build-subproject.md`, verified against meson 1.12.0. |
 | opencv | softfloat/NEON on Windows ARM64 | Draft: `out/upstream-issue-opencv-softfloat-neon.md`. Our fix (typedef to macro) is a hack; upstream would want a rename. |
+
+## Not graded yet — local changes added after 2026-09-02
+
+Found missing from this register on 2026-09-25. The Hailo four are applied `.patch`-first with an
+inline fallback. The grades are the owner's call.
+
+| Local change | What it fixes | Applied by |
+| --- | --- | --- |
+| `hailo/001-quantization-msvc-guard.patch` | `quantization.hpp` takes the x86 rounding intrinsics on any `_MSC_VER`, which clang-cl defines on every arch; now only MSVC on x86/x64 | `Build-HailortFromSource.ps1` |
+| `hailo/002-ioctl-nullptr-template-specialization.patch` | The two `nullptr_t` member specialisations in `driver_os_specific.cpp` lack `template<>`, which clang-cl enforces | `Build-HailortFromSource.ps1` |
+| `hailo/003-windows-lockedfile-dtor.patch` | The Windows `filesystem.cpp` stub declares `LockedFile::~LockedFile` and never defines it (undefined symbol at link) | `Build-HailortFromSource.ps1` |
+| `hailo/004-cmake-target-arch-macro.patch` | `CMakeLists.txt` defines `_AMD64_=1` for any 64-bit build, ARM64 included; now `_ARM64_=1` there | `Build-HailortFromSource.ps1` |
+| `opencv_contrib/002-arm64-cudafilters-popcount.patch` | `wavelet_matrix_2d.cuh` uses the x86-only `_mm_popcnt_u64` under `_MSC_VER`; a software popcount on `_M_ARM64` (#176) | `Build-OpencvFromSource.ps1` (applied without a fallback) |
+| `windows/scripts/hip/hip-msvc-cmath/` (two wrapper headers around clang's HIP math headers, via `#include_next`) | TheRock's clang HIP headers declare `isgreater` and five siblings that MSVC 14.51's `<cmath>` already owns as constexpr ([`windows-rocm.md`](windows-rocm.md)) | `Dockerfile.rocm-llama` (the image's `clang.cfg`/`clang++.cfg`); `Build-MigraphxFromSource.ps1` through `Write-HipMsvcCmathOverlay` |
 
 ## C — never file these
 

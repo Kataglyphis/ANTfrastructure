@@ -20,7 +20,7 @@ overwrites it and brings the defect back.**
 | [`PR.md`](PR.md) | PR description: what changes, why, verification, reviewer notes |
 | [`0001-shim-configurable-teardown-timeouts.patch`](0001-shim-configurable-teardown-timeouts.patch) | `git format-patch` output, applies to `microsoft/hcsshim` `main` |
 
-Background and the full defect history: `docs/windows-build-lanes.md` § BuildKit lane.
+Background and the full defect history: `docs/windows-build-lanes.md` § BuildKit/containerd lane.
 
 ## The two patches are NOT the same thing
 
@@ -97,28 +97,33 @@ env-var build.
 
 ## If the PR is accepted
 
-Once a released hcsshim carries the knob, the local patch can be retired in
-favour of configuration on the containerd service:
+Once a released hcsshim carries the knob, the fork build can be retired in
+favour of configuration on the containerd service. The host already sets the
+value, so a released shim picks it up unchanged (`Set-ContainerdConfig.ps1`
+owns it; the value was 45m until 2026-09-01, 5m since):
 
 ```pwsh
 # admin; the shim inherits containerd's environment
 Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\containerd `
   -Name Environment -Type MultiString `
-  -Value @('CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m')
+  -Value @('CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m')
 Restart-Service containerd -Force
 ```
 
 Setting the teardown timeout alone is enough: the patch derives the task-close
-timeout as `2*teardown + 30s` (here 90m30s, covering the 100 min the local patch
-sets by hand). Set `CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT` only to
-override that derivation.
+timeout as `2*teardown + 30s` (10m30s at 5m; it was 90m30s at 45m, covering the
+100 min the local patch set by hand). Set
+`CONTAINERD_SHIM_RUNHCS_V1_TASK_CLOSE_TIMEOUT` only to override that derivation.
 
-Until then the binary-size check after every Stevedore update stays mandatory.
+Until then the shim check (SHA256 since 2026-08-07) after every Stevedore update
+stays mandatory.
 
 ## Rebuilding the local 45 min shim
 
-The recipe that produced the currently deployed binary, kept here because the
-scratchpad clone it was built in is temporary:
+The recipe that produced the binary deployed until 2026-09-01, kept here because
+the scratchpad clone it was built in is temporary. The host has run the fork
+build since; `Install-NewHost.ps1` builds it at a pinned commit
+(`docs/windows-host-setup.md` § R1).
 
 ```pwsh
 scoop install go
@@ -136,14 +141,14 @@ Then install it with the repo script (admin; it keeps `.orig` and a timestamped
 backup, and refuses while a build or a shim process is alive):
 
 ```pwsh
-pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe
+pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe
 
 # for a build made from the UPSTREAM patch, which is inert without the env var:
-pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe `
-     -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m
+pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -ShimPath .\containerd-shim-runhcs-v1.exe `
+     -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m
 
-pwsh -File windows\scripts\Publish-ShimPatch.ps1 -ReportOnly     # what is installed?
-pwsh -File windows\scripts\Publish-ShimPatch.ps1 -Restore .orig  # back to stock
+pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -ReportOnly     # what is installed?
+pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -Restore .orig  # back to stock
 ```
 
 containerd does NOT need a restart for the swap itself - the shim is spawned per
