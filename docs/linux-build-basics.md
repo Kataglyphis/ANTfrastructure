@@ -19,8 +19,8 @@ ubuntu:26.04
     │   └── sdk                         (:cross-sdk-<arch>)
     │       ├── media                   (:cross-media-<arch>)
     │       │   └── android             (:cross-android-<arch>)
-    │       ├── nvidia (optional)       (:toolchain-nvidia)
-    │       └── amd (optional)          (:toolchain-amd)
+    │       └── gpu (variant chain)     (:cross-toolchain-nvidia-<arch>, :cross-toolchain-rocm-<arch>)
+    │           └── media → android     (:cross-media-<variant>-<arch> → :cross-android-<variant>-<arch>)
     └── runtime-base                    (:latest-base-<arch>)
         └── package                     (:latest-package-<arch>)
             └── torch/wrapper           (:latest-<arch>)
@@ -36,13 +36,16 @@ ubuntu:26.04
 
 The final release target is the multi-arch manifest `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`, assembled from per-arch wrappers `:latest-{amd64,arm64,riscv64}`.
 
-See `AGENTS.md` for the full container architecture documentation.
+The stage graph with its tags and platforms, and what each stage contains, is
+[`overview.md`](overview.md); a variant's tags are
+[`linux-accelerator-images.md`](linux-accelerator-images.md).
 
 ## Build Flow
 
 The full `:latest` pipeline:
 
-1. **Cross lane** (stages 1-5, all `linux/amd64`):
+1. **Cross lane** (stages 1-5, `linux/amd64`, or natively on the build host's
+   own platform with `CROSS_BUILD_PLATFORM`):
    - `base` → `compiler` → `sdk` → `media` → `android`
 2. **Runtime lane** (stage 6, target platform via QEMU/binfmt for foreign arches):
    - `base` → `package` → `torch`/`wrapper` → `manifest`
@@ -51,7 +54,7 @@ The stage graph itself — `CROSS_STAGE_ORDER`, the orchestration helpers, and
 the digest-pinning API — is owned by
 [`linux-cross-builds.md`](linux-cross-builds.md#stage-graph-management-functions-stage-defssh).
 
-See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
+The canonical build commands (orchestrator, single-stage, compiler, verification, dry-run) are in [`linux-cross-builds.md` § The command reference AGENTS.md used to carry](linux-cross-builds.md#the-command-reference-agentsmd-used-to-carry).
 
 ## Rootless Build Networking (host tuning)
 
@@ -66,8 +69,8 @@ The chain caches at every level it can; know the map before "optimizing":
 | Image layers | BuildKit layer cache (per RUN/COPY vertex) | The foundation. The expensive compiler RUNs bind-mount ONLY their per-file source closure so unrelated edits don't bust them. |
 | Cross-run stage cache | `--cache-to type=local` exports under `~/.cache/kata-buildcache/<stage-slug>` | Written by every chain stage; the between-stage disk guard LRU-prunes but PROTECTS slugs of stages still to run. |
 | Other hosts | inline registry cache (`--cache-to type=inline` on push) | Embedded in the image config — immune to ghcr's oversized-blob 400s. |
-| Rust | sccache through the guarded launcher (`01-core/sccache-launcher.sh`), ON by default since 2026-08-27 | `setup_sccache` exports `RUSTC_WRAPPER=<launcher>` (`compiler-cache.sh:199`) and `setup-gstreamer.sh:50` runs it before `build-gstreamer-monorepo.sh:581` tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so gst-plugins-rs is wired without `ENABLE_SCCACHE_RUST` — that gate now only covers the `media_common_init` copy of the call (`03-media/core/common.sh:144`). The 2026-08-20 disable (server dying at 99%) was the shared-TCP-port server reaching a sibling step's daemon; `SCCACHE_SERVER_UDS` cured it, and the launcher makes a hiccup cost hits rather than the build. Opt out by exporting `RUSTC_WRAPPER=""` — what `Dockerfile.toolchain:58` and `Dockerfile.package:173` do. Full multi-tier design (ccache `remote_storage` for C/C++ + shared backend with the Windows lane's sccache) is specced in the backlog. |
-| C/C++ objects | **sccache** since 2026-08-26 (owner decision, reversing the 2026-08-17 "full switch rejected"), with **ccache as the automatic fallback** — every launcher resolves through `compiler_cache_launcher()` in `01-core/common.sh`: GCC via `build-gcc.sh --ccache` (the flag name is historical; it means "use the compiler cache"), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh`. Relativization is launcher-specific: `CCACHE_BASEDIR` for ccache, `SCCACHE_BASEDIRS` for sccache (which is why `SCCACHE_LINUX_VERSION` is pinned at 0.17.0 — the distro 0.13.0 lacks it). sccache's sloppiness knobs (`file_stat_matches`, `ignore_time_macros`) have no env path and live in `/etc/sccache/config.toml`, baked into `Dockerfile.base`; direct mode does have one, `SCCACHE_DIRECT`, and `common.sh:418` sets it to `false` — which overrides the `use_preprocessor_cache_mode = true` in that file. Both cache mounts are present on every heavy RUN, because the fallback needs somewhere to persist. |
+| Rust | sccache through the guarded launcher (`01-core/sccache-launcher.sh`), ON by default since 2026-08-27 | `setup_sccache` exports `RUSTC_WRAPPER=<launcher>` (`compiler-cache.sh:199`) and `setup-gstreamer.sh:50` runs it before `build-gstreamer-monorepo.sh`'s `build_gstreamer_monorepo` tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so gst-plugins-rs is wired without `ENABLE_SCCACHE_RUST` — that gate now only covers the `media_common_init` copy of the call (`03-media/core/common.sh`). The 2026-08-20 disable (server dying at 99%) was the shared-TCP-port server reaching a sibling step's daemon; `SCCACHE_SERVER_UDS` cured it, and the launcher makes a hiccup cost hits rather than the build. Opt out by exporting `RUSTC_WRAPPER=""` — what `Dockerfile.toolchain` and `Dockerfile.package` do. Full multi-tier design (ccache `remote_storage` for C/C++ + shared backend with the Windows lane's sccache) is specced in the backlog. |
+| C/C++ objects | **sccache** since 2026-08-26 (owner decision, reversing the 2026-08-17 "full switch rejected"), with **ccache as the automatic fallback** — every launcher resolves through `compiler_cache_launcher()` in `01-core/common.sh`: GCC via `build-gcc.sh --ccache` (the flag name is historical; it means "use the compiler cache"), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh`. Relativization is launcher-specific: `CCACHE_BASEDIR` for ccache, `SCCACHE_BASEDIRS` for sccache (which is why `SCCACHE_LINUX_VERSION` pins a release in `versions.env` — the distro 0.13.0 lacks it). sccache's sloppiness knobs (`file_stat_matches`, `ignore_time_macros`) have no env path and live in `/etc/sccache/config.toml`, baked into `Dockerfile.base`; direct mode does have one, `SCCACHE_DIRECT`, and `ensure_sccache_env` in `01-core/common.sh` sets it to `false` — which overrides the `use_preprocessor_cache_mode = true` in that file. Both cache mounts are present on every heavy RUN, because the fallback needs somewhere to persist. |
 | Package managers | apt / cargo / uv / pip cache mounts | `sharing=locked` throughout. |
 | Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
 | GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
@@ -103,9 +106,9 @@ blind spots; neither replaces the other:
 - **The old "ccache wins C/C++" argument was conditional, and its condition
   holds today.** It rested on sccache's C/C++ path "always preprocessing",
   which is true whenever preprocessor-cache mode (sccache's analogue of
-  ccache's direct mode) is off — and it is off. `Dockerfile.base:118-130` still
+  ccache's direct mode) is off — and it is off. `Dockerfile.base` still
   writes `use_preprocessor_cache_mode = true` into `/etc/sccache/config.toml`
-  (`SCCACHE_CONF`), but `01-core/common.sh:418` exports
+  (`SCCACHE_CONF`), but `ensure_sccache_env` in `01-core/common.sh` exports
   `SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"` on every launcher resolution, and
   the environment wins over the file. The mode was turned off on 2026-08-26
   after it broke two builds: it re-reads the INPUT FILE to store the entry
@@ -123,7 +126,7 @@ blind spots; neither replaces the other:
 - **sccache is irreplaceable for Rust AND the GPU compilers**: ccache cannot
   wrap rustc, and nvcc's device compiles (plus hipcc for ROCm) are equally out
   of its reach — sccache handles all three first-class. With
-  `CUDA_ARCHITECTURES="86;87;89;120"` every CUDA kernel compiles FIVE times;
+  `CUDA_ARCHITECTURES="86;87;89;120"` every CUDA kernel compiles FOUR times;
   for the GPU onnxruntime/opencv builds this is the single biggest cache
   lever in the repo. Gates: `ENABLE_SCCACHE_RUST` (only the
   `media_common_init` call — the gstreamer lane wires Rust regardless, see the
@@ -163,9 +166,6 @@ local OCI-layout handoff; only runs RESUMED mid-chain are refused — see
 sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 # on Windows you must expose ports one by one
 sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
-
-# Alternative: QEMU/binfmt multi-platform build:
-# sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
 
 ## Optional Ubuntu Apt Mirror Workaround
@@ -197,7 +197,10 @@ Supported Dockerfiles:
 - `linux/Dockerfile.amd`
 - `linux/Dockerfile.torch`
 
-Local smoke validation for the shared package+wrapper flow (native mode):
+Local smoke validation for the shared package+wrapper flow (native mode). Native
+mode takes an android image built natively for the target, and nothing publishes
+one (the chain's is `:cross-android-<arch>`), so put your own in place of
+`:android` below:
 
 ```bash
 mkdir -p ./out/build-logs && \
@@ -234,7 +237,7 @@ The `build-runtime-manifest.sh` helper uses the same local-only handoff internal
   useful for repairing a manifest from existing per-arch wrappers without rebuilding images.
 The runtime helpers still run the Torch stage on the real target platform so the final image includes `/opt/venv`.
 
-See `docs/linux-cross-builds.md` for details on the riscv64 app wheelhouse, GCC compilation patterns (native vs Canadian cross), clang/cc symlink setup, LLVM_RELEASE forwarding through SDK rebuilds, and Dockerfile-specific ignore files.
+See `docs/linux-cross-builds.md` for details on the app wheelhouse, GCC compilation patterns (native vs Canadian cross), clang/cc symlink setup, and LLVM_RELEASE forwarding through SDK rebuilds.
 
 
 Not supported / not needed:
@@ -252,10 +255,16 @@ Not supported / not needed:
 mkdir -p ./out/build-logs && \
 nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.2 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
-  --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache,mode=max,oci-mediatypes=true \
-  --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache \
   . 2>&1 | tee ./out/build-logs/riscv64-build.log
 ```
+
+`Dockerfile.media` builds FROM `BASE_IMAGE` (default `local/kataglyphis:sdk`),
+which must be a riscv64 sdk image here. The example carries no registry cache
+ref on purpose: ghcr rejects an oversized `mode=max` cache blob with
+`400 Bad Request`, which fails the build
+([`build-cache-tiers.md` § 4](build-cache-tiers.md)). The
+chain's own riscv64 media is a cross build:
+`build-cross-stage.sh --stage media --arch riscv64`.
 
 `linux/Dockerfile.torch` is the final wrapper image; build it through the orchestrator or via the `wrapper-smoke` target in `Dockerfile.package` for cheaper packaging validation (see `docs/linux-cross-builds.md` § "Local wrapper smoke validation").
 
@@ -274,7 +283,9 @@ For a full hands-off cross build of `:latest`, prefer the orchestrator `linux/sc
 
 ## Consumer bash libraries (`linux/scripts/lib/`)
 
-Reusable libraries consumer repos source directly from the submodule:
+Reusable libraries consumer repos source directly from the submodule. The full
+set, one section each, is
+[`shared-script-libraries.md`](shared-script-libraries.md); among them:
 
 - `agentic-loop.sh` — planner/executor loop core (see
   `docs/windows-agentic-loop.md` for the config contract; the bash side is
@@ -286,11 +297,16 @@ Reusable libraries consumer repos source directly from the submodule:
   `APP_RUNNER_ENABLE_SHADER_CLEAN`). Consumers keep only per-profile
   wrappers (defaults + hooks); see BeschleunigerBallett
   `scripts/linux/run-{debug,profile,release}.sh` for the pattern.
-- `ctest-run.sh` — ctest runner with a perf-baseline comparator (fails on
-  regression against a stored baseline).
+- `ctest-run.sh` — the test-phase twin of `cmake-build.sh`: runs ctest over an
+  already-built tree (CI builds once and tests several: plain, ASan, TSan) with
+  verbose, uploadable output.
 - `docs-build.sh` — Sphinx docs build helper (not to be confused with the
   `02-toolchain/python/ci_build_docs.sh` CI helper).
-- `rust-toolchain.sh` — rustup/toolchain bootstrap for consumer repos.
+- `rust-toolchain.sh` — Rust toolchain prerequisites that must not assume
+  rustup (`ensure_wasm32_target`).
 
   (The last three were invisible until the 2026-08-08 orphan sweep: genuinely
-  useful, shipped into the images, referenced by nothing — including any doc.)
+  useful, referenced by nothing — including any doc. None of `lib/` is shipped
+  into the images: no Dockerfile copies it. Consumers source it from their
+  submodule, and in this repo `preflight.sh` and `flutter_checks.sh` source
+  `lib/code-quality.sh`.)

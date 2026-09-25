@@ -96,7 +96,7 @@ sudo nerdctl run --rm -it --runtime=nvidia ghcr.io/kataglyphis/kataglyphis_besch
 **Version overrides** (all have sensible defaults): `CUDA_VERSION`,
 `CUDNN_VERSION` and `TENSORRT_VERSION` are `versions.env` pins, forwarded to
 every stage as build-args. Change them there, not per command. The apt forms
-(`13-3` package suffix, cuDNN major) are derived inside `Dockerfile.nvidia`.
+(the `<major>-<minor>` package suffix, cuDNN major) are derived inside `Dockerfile.nvidia`.
 
 **Key differences from the standard build:**
 
@@ -110,7 +110,7 @@ every stage as build-args. Change them there, not per command. The apt forms
 | NVTX | Not installed | Installed |
 | GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
 | ORT native EP | CPU only | CPU + CUDA + cuDNN (+ TensorRT when enabled) |
-| ORT Python Package | `onnxruntime` (the `ONNX_PACKAGE` default, `linux/Dockerfile.torch:42`) | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
+| ORT Python Package | `onnxruntime` (the `ONNX_PACKAGE` ARG default in `linux/Dockerfile.torch`) | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
 | PyTorch Extra | `pytorch-cpu` | `pytorch-cu130` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
 | Image tag | `:latest` (3-arch manifest) | `:latest-nvidia` (manifest; not published yet) |
@@ -184,8 +184,10 @@ The knobs that exist for this lane:
 | `CUDA_MB_PER_CICC` | `3500` | Memory budget per `cicc` process for the ORT GPU job count. Heavy CUDA files peak at 3.5-6 GB; the average lies, because they are staggered. |
 | `NVCC_PREPEND_FLAGS` | `-allow-unsupported-compiler` | nvcc rejects the image's GCC 16 by version. Set in `Dockerfile.media` and `Dockerfile.package`. |
 
-`CUDA_ARCHITECTURES` carries `87` (Orin) and must stay in ascending order: ORT
-rewrites the list with a suffix match on `90`. OpenCV ignores
+`CUDA_ARCHITECTURES` carries `87` (Orin). The list stays ascending for
+readability only: since 2026-09-23 nothing depends on its order, because the
+trailing-`90` → `90a` rewrite ORT used to need is gone (AGENTS.md § GPU
+architecture coverage). OpenCV ignores
 `CMAKE_CUDA_ARCHITECTURES` on its default path and gets `CUDA_ARCH_BIN` in its
 own dotted form. Build with the image's GCC 16, never a downgraded
 `CUDAHOSTCXX`: a GCC 15 host compiler produced the `GLIBCXX` link failures it
@@ -222,8 +224,9 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
 - Nothing from this lane is published. A `--no-push` build on a Jetson tags
   `latest-nvidia-hostarm64-arm64` locally (an image built before the variant
   naming is `latest-cross-hostarm64-arm64`). It does not become
-  `:latest-nvidia-arm64`: the published arm64 entry will come from the cross-sbsa
-  lane on the amd64 host (see [`overview.md`](overview.md)).
+  `:latest-nvidia-arm64`: the published arm64 entry is to come from a cross-sbsa
+  lane on the amd64 host, which does not exist yet (`BACKLOG.md` CON31: no arm64
+  route).
 
 ## The media fan-out strategy, as AGENTS.md carried it
 
@@ -248,10 +251,13 @@ base ─┬─ onnxruntime ───────┐
 
 ## Torch Add-on (Linux)
 
-Builds on the base image:
+Builds on the package image (`BASE_IMAGE`, default `:latest-package-<arch>`), and
+the runtime lane builds it as the per-arch wrapper `:latest-<arch>`
+(`build-runtime-manifest.sh`). The old standalone `:torch` tag was deleted from
+the registry on 2026-08-27. A local build:
 
 ```bash
-nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Dockerfile.torch .
+nerdctl build -t local/kataglyphis:torch-amd64 -f linux/Dockerfile.torch .
 ```
 
 ## AMD GPU Build (Linux)
@@ -300,7 +306,7 @@ CROSS_VARIANT=rocm bash linux/scripts/build-cross-chain.sh \
 Same variant rules as NVIDIA (starts at `gpu`, own state, one chain at a time),
 plus: **amd64 only** — any other `--target-arches` is refused. The runtime lane
 copies `/opt/rocm` into the package (`copy-media-payloads.sh`
-`copy_rocm_payload`, with `/etc/ld.so.conf.d/000-rocm.conf`), and the wrappers
+`copy_rocm_payload`; `publish_rocm_ld_path` writes `/etc/ld.so.conf.d/000-rocm.conf`), and the wrappers
 take `onnxruntime-migraphx` + the app's `pytorch-rocm71` extra. The app's
 `rocm7.1` index stops at torch 2.13, so `assemble-torch-app.sh` re-installs the
 `PYTORCH_VERSION` pair from the pinned `PYTORCH_ROCM_INDEX` line (`rocm7.14`,
@@ -427,11 +433,12 @@ nerdctl run --rm -it --device=/dev/hailo0 ghcr.io/kataglyphis/kataglyphis_beschl
 
 ## Edge accelerators
 
-Neither of these has an image chain in this repo yet — they are host/device
-procedures for the boards the runtime artifacts get deployed to. Host-side
-driver and performance setup is [Linux Host Setup](linux-host-setup.md).
-Hailo's image-chain integration (Hailo-10H) is documented in
-[`hailo-support.md`](hailo-support.md); Jetson stays host-only.
+These are host/device procedures for the boards the runtime artifacts get
+deployed to. Host-side driver and performance setup is
+[Linux Host Setup](linux-host-setup.md). The images themselves are covered
+elsewhere: Hailo-10H is built into `:latest`
+([`hailo-support.md`](hailo-support.md)), and a Jetson runs the arm64 SBSA GPU
+image ([above](#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)).
 
 ### Hailo-10H: compiling an ONNX model to `.hef`
 

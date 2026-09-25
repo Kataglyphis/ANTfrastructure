@@ -52,7 +52,7 @@ wheel into `linux/hailo-sdk/` and the amd64 wrapper installs it
 | Standard runtime build (amd64/arm64, riscv64 skips) | `linux/Dockerfile.torch` |
 | Pins (`HAILORT_*`, `HAILO_PROTOBUF_*`, `TAPPAS_*`, `HAILO_LIBZMQ_*`) | `linux/scripts/01-core/versions.env` |
 | Dataflow Compiler drop point (login-gated, gitignored) | `linux/hailo-sdk/` |
-| Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause) | `docs/deps/deps.json` |
+| Licence rows (MIT, LGPL-2.1-or-later, BSD-3-Clause, MPL-2.0 for libzmq, BSL-1.0 among the TAPPAS header-only externals) | `docs/deps/deps.json` |
 | Build and run | [`linux-accelerator-images.md` § Hailo (in the standard image)](linux-accelerator-images.md#hailo-in-the-standard-image) |
 
 ## Phase 3: Windows HailoRT (LANDED 2026-09-21)
@@ -66,7 +66,7 @@ today is the device runtime every Windows consumer needs.
 | Build script | `windows/scripts/build/Build-HailortFromSource.ps1` |
 | Media branch (`media-core-built-hailo`, between opencv and the core merge) | `windows/Dockerfile.media-builder` |
 | Driver stage + pins forwarding | `windows/Build-Buildkit.ps1` (`Get-Ver 'HAILORT_*'`) |
-| Patches (three upstream Windows/clang-cl gaps) | `windows/scripts/patches/hailo/` |
+| Patches (four upstream Windows/clang-cl gaps) | `windows/scripts/patches/hailo/` |
 | Smoke section 24 + the `HAILO_ROOT`/`HAILO_BIN` pointers | `windows/scripts/build/Test-Container.ps1` |
 | Payload layout | `C:\runtime\hailo\{bin,lib,include}` (`libhailort.dll`, `hailopp.dll`, `hailortcli.exe`) |
 
@@ -76,8 +76,8 @@ Same shape as the Linux lane, with two Windows-specific facts:
   repositories at configure time, unpinned. The script stages each at the SAME
   commits the Linux lane pins (plus protobuf 21.12 from its SHA-verified tarball)
   and configures with `HAILO_OFFLINE_COMPILATION=ON`.
-- **Three upstream gaps, all patched** (probe-proven 2026-09-21,
-  `out/build-logs/probe-hailo-amd64-*`):
+- **Four upstream gaps, all patched** (the first three probe-proven 2026-09-21,
+  `out/build-logs/probe-hailo-amd64-*`; the fourth found the same day on arm64):
   1. `quantization.hpp`'s `bankers_round` guard keys on `_MSC_VER`, which clang-cl
      defines on EVERY arch → the x86 intrinsics fail on ARM64 and on a bare x64
      clang-cl without `-msse4.1` (`__builtin_ia32_roundss needs target feature
@@ -89,6 +89,10 @@ Same shape as the Linux lane, with two Windows-specific facts:
      (`undefined symbol: hailort::LockedFile::~LockedFile`). The destructor is
      added (the stub's `create()` returns `HAILO_NOT_IMPLEMENTED`, so there is
      nothing to release).
+  4. `hailort/CMakeLists.txt` defines `_AMD64_=1` for ANY 64-bit Windows build, so
+     the arm64 cross build made `winnt.h` take the x86 intrinsic path
+     (`ReadAcquire8`/`WriteRelease` undeclared under clang-cl). The macro now
+     follows the target: `_ARM64_=1` on arm64 (`004-cmake-target-arch-macro.patch`).
 
 **Not yet on Windows**: TAPPAS, the pyhailort wheel, the GStreamer `hailonet`
 element (`HAILO_BUILD_GSTREAMER` stays OFF — the binding exists upstream for
@@ -168,7 +172,8 @@ With `carry`, only the configure runs with another `HOME`: a new directory in th
   launchers and every exported `SCCACHE_*` and `CCACHE_*` variable, except the
   `*_VERSION` and `*_SHA256` pins from `versions.env`.
 - `.hailo-cache-bin` holds only the parent's `sccache` and `ccache`. The clean `PATH`
-  finds the distro sccache 0.13 in `/bin` before the pinned 0.17 in `/usr/local/bin`.
+  finds the distro sccache 0.13 in `/bin` before the pinned one
+  (`SCCACHE_LINUX_VERSION`, 0.17 when this was measured) in `/usr/local/bin`.
   Compiles between the two worked when tried, but the 0.13 client's stats requests
   fail against the 0.17 server, and with no server running it starts a 0.13 one on
   the same socket ([symptom](failure-modes.md#hailorts-configure-is-slow-while-the-cache-looks-healthy)).
@@ -322,8 +327,10 @@ the QNN EP are handled.
 | Hailo-10 | `master` | **v5.4.0** (`f5195903`) | **the supported family**; 10H is PCIe |
 | Hailo-15 | `master` | v5.4.0 | an SoC with its own apps repo — **out of scope** |
 
-A single pin cannot serve both lines: the branch is part of the pin
-(`HAILORT_BRANCH` + `HAILORT_COMMIT`), and the version keys differ.
+A single pin cannot serve both lines: the branch is part of the pin (the
+`HAILORT_COMMIT` lives on one branch; `versions.env` carries no branch key, only
+the `master` line's `HAILORT_VERSION`/`HAILORT_COMMIT`/`HAILORT_SOURCE_SHA256`),
+and the version keys differ.
 
 ### Components, licenses, where each one runs
 
@@ -410,7 +417,7 @@ them in step.
 | Runtime-stage self-check (`hailortcli`, `gst-inspect-1.0 hailonet` after the install) | in the `Dockerfile.torch` Hailo `RUN` |
 | The nested protobuf build reached the compiler cache | `hailo_assert_nested_cache_reached`, fails a `carry` build ([the gate](#the-gate)) |
 | pyhailort exports `PyInit__pyhailort` for the target, wheel and `/opt/venv` | `hailo_check_pyext` and `install_pyhailort`: under `HAILO_PYHAILORT_IPO=off` a failed check, a failed install or a missing wheel fails the build; `import hailo_platform` only warns ([pyhailort](#pyhailort)) |
-| `docs/deps/deps.json` + `third-party-licenses.md` | MIT, LGPL-2.1-or-later (with source pointer), BSD-3-Clause, Apache-2.0 rows added |
+| `docs/deps/deps.json` + `third-party-licenses.md` | MIT, LGPL-2.1-or-later (with source pointer), BSD-3-Clause, MPL-2.0 (libzmq) and `BSD-3-Clause AND MIT AND BSL-1.0` (TAPPAS header-only externals) rows added |
 | `verify-media-artifacts.sh` / `smoke-runtime-image.sh` | **not wired yet** — the standard chain now carries Hailo, so the runtime smoke is the natural next gate |
 | Bundle closure | not applicable — the payload ships in the full image, not a bundle |
 
@@ -424,15 +431,21 @@ them in step.
 
 ## Phased rollout
 
+The plan as first written, with what became of each phase:
+
 1. **Phase 0 — decisions.** Family: **Hailo-8L/8** (`hailo8`, HailoRT 4.24.x),
    the M.2 cards; Hailo-10H (`master`, 5.4.x) needs a second pin set. TAPPAS:
-   **no** — `hailonet` only (option (a) below).
+   **no** — `hailonet` only (option (a) below). *Revised 2026-09-20: Hailo-10H
+   (`master`, 5.4.0) is the one pin set, Hailo-8 is dropped, and TAPPAS is built.*
 2. **Phase 1 — HailoRT userspace + `hailonet`: amd64 DONE.** Built, verified
    and published as `:hailo-amd64`; arm64 is the next build (QEMU, needs a disk
-   window).
+   window). *Done on both arches; the payload ships in `:latest`, and the `:hailo`
+   variant was retired on 2026-09-22.*
 3. **Phase 2 — TAPPAS (optional, timeboxed).** Only if a consumer needs its
-   pipelines; evaluate option (b) and stop if the patches grow.
+   pipelines; evaluate option (b) and stop if the patches grow. *Done 2026-09-20,
+   with build-args and no patches.*
 4. **Phase 3 — Windows HailoRT (optional).** Separate lane, separate gates.
+   *Landed 2026-09-21: library and CLI ([above](#phase-3-windows-hailort-landed-2026-09-21)).*
 5. **Phase 4 — consumer adoption.** Consumer repos document the device
    passthrough and model path, and the cat-detection stream can move from ONNX
    CPU to `.hef` on the device.
@@ -442,12 +455,14 @@ them in step.
 - Does `hailonet` configure and load against the image's GStreamer? **Answered
   2026-09-20: yes** — built and loaded on amd64 (see the status block).
 - Does the protobuf/gRPC offline staging configure cleanly, and how long does
-  the gRPC submodule clone take? **Answered: yes**; all 16 commit-pinned
-  externals are staged by `stage_remaining_externals` (protobuf as a verified
-  tarball, gRPC as a tag clone with submodules).
-- Which device does the consumer actually run? That answer may add the
-  Hailo-10H pin set.
-- `pyhailort`, if ever needed: it ships in Hailo's `.deb`, not the source build.
+  the gRPC submodule clone take? **Answered: yes** for the `hailo8` line's 16
+  commit-pinned externals, gRPC included. The `master` line needs no gRPC:
+  `stage_remaining_externals` stages its commit-pinned externals, and protobuf
+  comes from a verified tarball.
+- Which device does the consumer actually run? **Answered 2026-09-20:
+  Hailo-10H**, now the one pin set; the Hailo-8 line was dropped.
+- `pyhailort`, if ever needed: **answered** — it is built from source and
+  installed into `/opt/venv` ([pyhailort](#pyhailort)).
 - Pin pyhailort's build backend, `scikit-build-core` and `pybind11` 2.x, at the
   next planned `versions.env` re-key, with a real build
   ([why it floats](#pyhailort)).

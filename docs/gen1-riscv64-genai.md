@@ -13,8 +13,8 @@ reference for that lane — what was changed, what each gate proves, and what to
 watch when the first real `media-riscv64` build finally runs it.
 
 > **See also** — this page is the *how it works*. The other two halves:
-> [`refactoring-backlog.md`](refactoring-backlog.md) (item A1) is the open
-> **validation watch**;
+> the **validation watch** was item A1, closed 2026-09-03 and archived in
+> [`refactoring-backlog-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md);
 > [`refactoring-backlog-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md)
 > and [`../CHANGELOG.md`](../CHANGELOG.md) (2026-08-31 closure window) are the
 > **history**. The one-screen summary lives in
@@ -286,7 +286,8 @@ The script-side conservative default follows the shape of
 standalone runs, `versions.env` opts the orchestrated image builds in. Concretely,
 `60-build-genai.sh` reads `${GENAI_ALLOW_RISCV64:-false}` so that a bare
 `bash 60-build-genai.sh` against a riscv64 target cannot walk into this
-still-unvalidated multi-hour build by accident. The same reasoning is why
+multi-hour build by accident (it was also still unvalidated when the default was
+chosen). The same reasoning is why
 `GENAI_ALLOW_RISCV64` sits in `verify-arg-consistency.sh`'s
 `SCRIPT_DEFAULT_DRIFT_ALLOW`: the script default is *meant* to differ from the
 `versions.env` pin.
@@ -563,9 +564,11 @@ ARCH-PARITY now asserts must be installed. Ordering confirmed:
 looks (L218), so a successful `rm` would have resurrected the GENAI-DRIFT bug —
 no local wheel, silent fallback to the app lock's PyPI genai.
 
-It was inert **only by accident**: `/opt/wheels` is a read-only bind mount
-(`Dockerfile.torch:80`), so the `rm` fails and `|| true` swallows it. Making
-that mount rw would have broken all three arches at once.
+It was inert **only by accident**: `/opt/wheels` was a read-only bind mount in
+`Dockerfile.torch`, so the `rm` failed and `|| true` swallowed it. Making that
+mount rw would have broken all three arches at once — and it became rw on
+2026-09-22 (`fbc91813`), so the narrowed glob below is now the only thing that
+keeps the CPU wheel.
 
 Narrowed to the GPU-flavoured variants the arm actually means — it sits beside
 `*_gpu-*` and `*_migraphx-*` — i.e. `*genai_cuda-*`, `*genai_rocm-*`,
@@ -602,9 +605,10 @@ In the order they can bite:
    `__atomic_*`. The new `validate-media-runtime.sh` scan is what would catch a
    surviving unresolved symbol at runtime.
 6. **Then performance, not correctness** — see below.
-7. **Network flake in the cargo fetch.** Deliberately left unfixed; owned as an
-   open item by [`refactoring-backlog.md`](refactoring-backlog.md) section B.
-   Note it if the riscv64 stage flakes.
+7. **Network flake in the cargo fetch.** Deliberately left unfixed. It was an
+   open item in the backlog's section B at the time; the current
+   [`refactoring-backlog.md`](refactoring-backlog.md) no longer lists it. Note it
+   if the riscv64 stage flakes.
 
 **Settled 2026-09-03:** a real run printed **14**, so the riscv64 floor moved
 12 → 13 — one wheel of slack on a single observation. The rule for raising it
@@ -612,11 +616,14 @@ further is in [The app-wheel floor](#the-app-wheel-floor).
 
 ### Performance: riscv64 MLAS is scalar
 
-Not a correctness issue, but it shapes expectations and timeouts. ORT v1.29's
-riscv64 MLAS falls back to the **scalar reference kernels** — including the int4
-`MatMulNBits` kernel GenAI models want. The RVV kernels need
-`onnxruntime_USE_RVV` plus an `-march=rv64gcv` compile probe, and this repo sets
-**neither**. Expect `generate()` to need a generous timeout.
+Not a correctness issue, but it shapes expectations and timeouts. When GEN1
+landed, ORT v1.29's riscv64 MLAS fell back to the **scalar reference kernels** —
+including the int4 `MatMulNBits` kernel GenAI models want. The RVV kernels need
+`onnxruntime_USE_RVV` plus an `-march=rv64gcv` compile probe, and this repo set
+**neither**. The RVA23 baseline sets both now: the riscv64 compiler targets
+`rv64gcv…` and the ORT build passes `onnxruntime_USE_RVV=ON`
+([`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md)). The tier-4 run above
+predates it. Under qemu-user, `generate()` still needs a generous timeout.
 
 ## Why ARCH-PARITY is deliberately red for existing riscv64 images
 

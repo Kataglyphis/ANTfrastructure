@@ -40,21 +40,26 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 
 - **Shared helper for class 2/3:** `01-core/common.sh` → `append_cross_idirafter <triplet>`
   already appends `-idirafter /usr/include{,/<triplet>}` to `CPPFLAGS/CFLAGS/CXXFLAGS`.
-  Used by `build-libcamera.sh`, `build-gstreamer-monorepo.sh`. (The torch-venv fix
-  should adopt this — see task #16.)
+  Used by `build-libcamera.sh`, `build-gstreamer-monorepo.sh`. `setup-torch-venv.sh`
+  and `swap-native-gcc.sh` carry deliberate inline copies, because they run
+  without `01-core/common.sh`; `verify-critical-fixes.sh` fix6 keeps them in sync.
 - **Compiler validation (class 4):** `06-packaging/validate-compilers.sh` emits
   `ARTIFACT COMPILER VERIFICATION PASSED for <arch>`; validates the
   `versions.env`-pinned GCC/Clang chain and per-arch ELF machine type. The
   versions are *not* baked into the script — it reads `GCC_VERSION` and
   `LLVM_RELEASE` from the environment, which the wrapper-smoke stage passes in
-  as build ARGs (`Dockerfile.package:339-346`); the `${LLVM_RELEASE:-…}`
-  fallback literal at `validate-compilers.sh:189` is dead in the build path.
-  Extend here for the compile smoke test.
+  as build ARGs (`Dockerfile.package`, the `wrapper-smoke` stage). The clang
+  checks refuse an unset `LLVM_RELEASE` (`${LLVM_RELEASE:?…}`); the
+  `${GCC_VERSION:-16.2.0}` fallback literals in `validate-compilers.sh` are dead in
+  the build path. Extend here for the compile smoke test.
 - **Smoke framework:** `06-packaging/smoke-common.sh` (`pass`/`fail`/`FAILURES`);
   smoke tests are `06-packaging/smoke-<thing>.sh` and `source smoke-common.sh`.
-- **Static host verifiers wired into `linux/host-config/git-hooks/pre-commit`:** `verify-critical-fixes.sh`,
-  `01-core/verify-arg-consistency.sh`, `sync_versions.py --check`, `bash -n`. The hook is
-  the home for the new shellcheck gate and the sourced-scripts-present check.
+- **Static host verifiers wired into `linux/host-config/git-hooks/pre-commit`:** the hook
+  runs the cheap subset of `preflight.sh` slugs listed in its `_FAST_SLUGS` —
+  `arg-consistency` (`01-core/verify-arg-consistency.sh`) and `copy-coverage` (the
+  sourced-scripts-present check) among them — plus `shellcheck` on the staged shell
+  files. `critical-fixes` (`verify-critical-fixes.sh`) and `version-snapshot`
+  (`sync_versions.py --check`) are not in that subset; `make preflight` runs them.
 
 ## Pre-flight
 
@@ -189,7 +194,7 @@ deliberately reduced image, never to "get the build green":
 | riscv64 app-wheelhouse must contain real `*.whl` (a `.placeholder`-only dir fails) | `verify-media-artifacts.sh app-wheels` (Dockerfile.media) | `ALLOW_EMPTY_APP_WHEELS=1` |
 | `/opt/venv` must exist in the package wrapper image (even torch-less images ship a venv with a `.torch-missing` sentinel) | `smoke-torch-venv.sh` via wrapper-smoke | unset `STV_REQUIRE_VENV` (only stages that legitimately ship no venv) |
 | CUDA/cuDNN/TensorRT/NCCL completeness | `verify-cuda-stack.sh` (Dockerfile.nvidia) | default is warn-only; `CUDA_STACK_STRICT=1` is the OPT-IN hard gate for images that claim a complete stack |
-| TVM presence/version per arch | `smoke-torch-venv.sh` — a HARD assert on every image since `EXP_TVM` is set from `versions.env` `TVM_REF` at `smoke-torch-venv.sh:97`, not opted into | none. A media build that ships without TVM fails the per-arch wrapper smoke and **blocks the manifest**, at the end of a multi-hour chain. Dropping TVM from a lane means removing the pin, not expecting a warning |
+| TVM presence/version per arch | `smoke-torch-venv.sh` — a HARD assert on every image since `EXP_TVM` is set from `versions.env` `TVM_REF` in `smoke-torch-venv.sh`, not opted into | none. A media build that ships without TVM fails the per-arch wrapper smoke and **blocks the manifest**, at the end of a multi-hour chain. Dropping TVM from a lane means removing the pin, not expecting a warning |
 | ELF architecture of shipped binaries | `validate-media-runtime.sh` — runs on EVERY scan since 2026-08-08 (a clean dependency scan used to `exit 0` before it) | `MEDIA_ELF_MISMATCH_FATAL=0` downgrades to warning |
 | litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip, which since GEN1 (2026-08-31) covers only NON-arm64/riscv64 cross targets and a riscv64 lane switched off with `GENAI_ALLOW_RISCV64` |
 | `onnxruntime_genai`'s native binding really works — version == the versions.env pin, the loaded pybind `.so` is TARGET-arch ELF (read from its own `e_machine`), and native code RUNS (`og.Tensor` numpy round-trip, the capability predicates, `og.Config` rejecting a non-model path from C++) | `smoke-runtime-image.sh` `check_genai_binding` (payload: `smoke-common.sh` `smoke_genai_py`) | none — but an absent wheel is a SKIP, not a failure (presence is the ARCH-PARITY table's assertion). Set `GENAI_MODEL_DIR` to a real model directory to arm the fourth tier, which calls `generate()` and asserts on TOKEN CONTENT; no model ships in these images, so that tier reports UNPROVEN by default |
@@ -234,8 +239,8 @@ no emulation — so it runs anywhere, while the smoke needs QEMU for foreign
 arches.
 
 That gate covers each wrapper's CONTENT. The INDEX went ungated until
-2026-08-27: the only manifest check in the chain is
-`nerdctl manifest inspect >/dev/null` (`build-runtime-manifest.sh:149`), which
+2026-08-27: the only manifest check in the chain was
+`nerdctl manifest inspect >/dev/null` (`build-runtime-manifest.sh`), which
 proves existence, not freshness — so an index can be created, pushed and
 reported green while one child still points at a previous run.
 `linux/scripts/verify-manifest-freshness.sh` closes that, registry-only (no
@@ -245,8 +250,11 @@ Run it with `EXPECT_RUN_ID` — measured on a live stale index, neither
 assertion suffices alone, because a wholesale-stale ship is perfectly
 self-consistent: child and tag agreed (both old), and all three run-ids
 matched (all from the previous run). Only pinning to the run that just built
-distinguishes the two. It is deliberately NOT yet wired into preflight or the
-chain. **`:latest-cross` was re-shipped 2026-08-16** (fresh amd64
+distinguishes the two. `build-runtime-manifest.sh` now runs it right after it
+writes the index, with `EXPECT_RUN_ID` set to the chain's run id. It is advisory
+there, because the index is already pushed: `MANIFEST_FRESHNESS_STRICT=1` makes it
+fatal and `MANIFEST_FRESHNESS_GATE=0` skips it. preflight does not run it.
+**`:latest-cross` was re-shipped 2026-08-16** (fresh amd64
 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) carrying the
 Batch-2 fixes; that full-media rebuild flushed out two bugs the runtime-lane
 validations miss because they skip smoke-media — (1) smoke-media's native cv2
@@ -268,7 +276,7 @@ drift if a slug is added without touching it.
 | Slug | Script | Catches |
 |------|--------|---------|
 | `crlf-guard` | inline (`git ls-files --eol` over `lint-shell.sh --list-files`) | a tracked shell script — `*.sh` or an extension-less file on a shell shebang — whose working tree carries CR bytes (`w/crlf`, `w/mixed` or `w/-text`) |
-| `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 294 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
+| `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over every file `lint-shell.sh --list-files` names (427 on 2026-09-25); `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify_script_copy_coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `context-paths` | `verify_dockerfile_context_paths.py` | class 1's other half — a COPY/`--mount=type=bind` source that no longer exists in that Dockerfile's build context, which BuildKit fails at context checksum before instruction one |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 — the host half (fix5-fix11; fix11 is the ONNX Runtime single-source denylist, which reads `windows/` too); the /opt-probing half is [`smoke-critical-fixes.sh`](#the-in-image-half-of-critical-fixes), which no build stage runs |
@@ -301,7 +309,7 @@ drift if a slug is added without touching it.
 | `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
 | `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
-| `shared-config` | inline (`pwsh shared/config/Sync-SharedConfig.ps1 -RepoRoot . -Check`) | ANTfrastructure's own root `.cmake-format.yaml` — a consumer copy of the canonical file beside the sync script — drifting from it or deleted; the other four canonical names have no root copy here and are `-Ignore`d by name |
+| `shared-config` | inline (`bash shared/config/sync-shared-config.sh --repo-root . --check`, the bash twin, because no hub Linux image ships pwsh) | ANTfrastructure's own root `.cmake-format.yaml` — a consumer copy of the canonical file beside the sync script — drifting from it or deleted; the root `.antfrastructure-shared.manifest` declares it as the one taken file, and the other four canonical names have no root copy here, so they are simply not declared |
 | `cmake-format` | inline (`lib/code-quality.sh` + `cmake-format --check`) | a repo-owned CMake file (`cmake/`, any `CMakeLists.txt`) deviating from the root `.cmake-format.yaml` — including CRLF endings, which `line_ending: unix` treats as drift; the `windows/scripts/patches/` shims are excluded because their bytes are Windows layer-cache keys |
 | `gate-registry` | `verify_gate_registry.py` | the meta-gate — a slug with no proof (no suite naming its script, no mutation) and `docs/code-quality-gates.md` drifting from what it derives; unproven slugs are frozen in `gate-proofs.allow` and may only leave it |
 
@@ -350,7 +358,7 @@ These validate a built/pulled image and also run during the build to fail fast:
   (classes 2/3) aborts in <1s instead of after a ~9-min numpy/pillow compile.
 - **Torch venv integrity** — `06-packaging/smoke-torch-venv.sh`: imports
   numpy/torch/torchvision/PIL/cv2/contourpy (+ torch↔numpy ABI bridge) from
-  `/opt/venv` (class 5). Wired into `the wrapper-smoke target's smoke set (validate-compilers, smoke-media, smoke-torch-venv, smoke-cross-all-arches)`; skips cleanly if no venv.
+  `/opt/venv` (class 5). Wired into the `wrapper-smoke` target's smoke set (`validate-compilers.sh`, `smoke-media.sh`, `smoke-torch-venv.sh`, `smoke-cross-all-arches.sh`); skips cleanly if no venv.
   Run standalone: `VENV=/opt/venv smoke-torch-venv.sh`.
 - **Runtime-image boot + functional smoke** — `06-packaging/smoke-runtime-image.sh
   <image> <arch>`, run per-arch by `build-runtime-manifest.sh` against the freshly
@@ -361,8 +369,8 @@ These validate a built/pulled image and also run during the build to fail fast:
   - **ML version-pin assertion** (fail) — not just *importable* but the *correct
     versions*. Delegates to `smoke-torch-venv.sh` (assert-only). Two authorities,
     but since GENAI-DRIFT (2026-08-23) they are **no longer unioned** — whichever
-    one OWNS the package decides (`smoke-torch-venv.sh:73`, implemented at `:254`
-    as `allowed = pin_set(build_pin) if build_pin else set(from_lock)`). A
+    one OWNS the package decides (`smoke-torch-venv.sh` `assert_pinned_versions`,
+    implemented as `allowed = pin_set(build_pin) if build_pin else set(from_lock)`). A
     versions.env **build pin** wins outright for everything we build or
     force-reinstall from a **local wheel** (riscv64 torch/vision, the source-built
     onnxruntime, ai-edge-litert, onnxruntime-genai) on every arch that builds it;
@@ -374,10 +382,11 @@ These validate a built/pulled image and also run during the build to fail fast:
     the build pin (`ONNXRUNTIME_VERSION` in `versions.env`) is what governs. The
     old union is exactly how arm64 shipped onnxruntime-genai 0.14.0 (from the
     lock) against a `v0.15.2` build pin and still printed OK. One carve-out
-    survives: `KNOWN_DRIFT` (`smoke-torch-venv.sh:178-180`) is a dated, exact
-    `(dist, arch, installed, expected)` quadruple, printed as a loud `!!` and
-    counted in the summary; anything that is not that exact quadruple still
-    FAILS, and a new version on either side re-arms the assert by itself.
+    mechanism survives: `KNOWN_DRIFT` in `smoke-torch-venv.sh` holds dated, exact
+    `(dist, arch, installed, expected)` quadruples (with a reason), each printed as
+    a loud `!!` and counted in the summary; anything that is not such a quadruple
+    still FAILS, and a new version on either side re-arms the assert by itself. The
+    list is empty on 2026-09-25.
     Also checks the `+cpu`/`+cu130` build variant vs `PYTORCH_EXTRA` and the OpenCV
     major. Catches a wrong version silently slipping in (lock drift, a stale local
     wheel, a floated index) — the class a presence/import check can't see.
@@ -402,11 +411,14 @@ These validate a built/pulled image and also run during the build to fail fast:
     `gst-inspect-1.0` loads the file directly). Warning there instead would let the
     table rot underneath a green run; failing makes it self-correcting, since the fix
     is the one-line deletion the message names.
-  - **CONSUMER CONTRACT** (fail) — the seven properties a consuming CI lane depends on
-    and cannot repair from inside a read-only overlay layer: compiler caches outside
-    `/workspace` and writable, `$RUSTUP_HOME/tmp` and `$CARGO_HOME` writable,
-    `ANDROID_HOME` set with `platform-tools` present *and* on `PATH`, and every path
-    under `/opt/flutter` owned by the runtime uid. One probe, run as the image's own
+  - **CONSUMER CONTRACT** (fail) — the properties a consuming CI lane depends on
+    and cannot repair from inside a read-only overlay layer, one row each in
+    `_CONSUMER_CONTRACT_ROWS`: compiler caches outside `/workspace` and writable,
+    `$RUSTUP_HOME/tmp` and `$CARGO_HOME` writable, `ANDROID_HOME` set with
+    `platform-tools` present *and* on `PATH`, a JDK, a readable `appimagetool`, every
+    path under `/opt/flutter` owned by the runtime uid, and, added since, the
+    staged flatpak and AppImage runtimes, the web-lane tools and the ORT crate
+    environment. One probe, run as the image's own
     `Config.User` — as root every directory answers writable, so a probe reporting any
     other identity fails the gate outright. The contract itself, its per-arch exemption
     table and the 2026-09-04 defects that motivated it:
@@ -502,10 +514,13 @@ what covers the transitive tail the extras graph cannot see.
 Documented divergences go in `_venv_pkg_exempt`, keyed `<arch>:<extra>:<pkg>`
 (`DEP` for a dangling edge) and following `_parity_exempt`'s contract exactly:
 listed = reviewed, and an arm whose package turns out to be **present** fails and
-names the line to delete, so the table cannot rot in place. Today it holds two
-real facts — `cv2` is the source-built `/opt/opencv5` binding rather than the
-PyPI `opencv-python` wheel, and `onnxruntime` ships under its flavour name
-(`onnxruntime_dnnl` / `_webgpu`), which `_parity_ort_flavor` asserts. An extra
+names the line to delete, so the table cannot rot in place. Today it holds three
+arms — `cv2` is the source-built `/opt/opencv5` binding rather than the
+PyPI `opencv-python` wheel; `onnxruntime` ships under its flavour name
+(`onnxruntime_dnnl` / `_webgpu`), which `_parity_ort_flavor` asserts; and riscv64
+ships no `scipy`, `scikit-learn` or `pandas` (no riscv64 wheels on PyPI, and a
+source build means BLAS/LAPACK and Fortran — an owner decision measured
+2026-09-02). An extra
 that yields **no** requirement edges fails (renamed upstream, or truncated
 metadata) and so does a run that asserted nothing: an empty set is not a pass.
 
@@ -726,10 +741,10 @@ largely **deliberate** and should not be "fixed":
   `PIPESTATUS` so a failing build's log tail is flushed and its true exit code
   returned; `parallel-loop.sh` names the failed arch.
 - **Smokes** — every previously-orphaned smoke now runs: `smoke-toolchain`
-  (toolchain, `Dockerfile.toolchain:314`), `smoke-android` (android,
-  `Dockerfile.android:361`), the wrapper-smoke set `validate-compilers` +
+  (toolchain, `Dockerfile.toolchain`), `smoke-android` (android,
+  `Dockerfile.android`), the wrapper-smoke set `validate-compilers` +
   `smoke-media` + `smoke-torch-venv` + `smoke-cross-all-arches`
-  (`Dockerfile.package:346`, `FROM package AS wrapper-smoke`). The wrapper-smoke
+  (`Dockerfile.package`, `FROM package AS wrapper-smoke`). The wrapper-smoke
   stage is a separate `--target wrapper-smoke` build run by
   `_runtime_run_package_smoke` in `runtime_build_chain`, between the package
   and wrapper builds (`WRAPPER_SMOKE_GATE=0` to skip) — it is NOT reached by the
@@ -740,27 +755,30 @@ largely **deliberate** and should not be "fixed":
   stage: it probes the full Vulkan *SDK* (`/opt/vulkan/active`,
   `vulkan/vulkan.h`, `libvulkan.so`) while this cross build installs only the
   Vulkan *runtime* (`libvulkan.so.1` + ICD/layer JSONs), so it can never pass
-  here. `verify-critical-fixes.sh:262-265` hard-fails preflight if any
+  here. `verify-critical-fixes.sh` hard-fails preflight if any
   Dockerfile RUNs it; it is retained as a standalone host tool for image
-  variants that DO ship the SDK (see the tail note in `Dockerfile.package:357`).
+  variants that DO ship the SDK (see the note after the `wrapper-smoke` stage in
+  `Dockerfile.package`).
 - **Reproducibility (opt-in)** — `clone_or_update_repo` and `build-ffmpeg.sh`
   accept a 40-hex commit SHA; `OPENCV_COMMIT`/`OPENCV_CONTRIB_COMMIT`/
-  `FFMPEG_COMMIT` (empty by default = track the bleeding-edge branch) freeze
+  `FFMPEG_COMMIT` (empty by default = keep the `OPENCV_VERSION`/`FFMPEG_VERSION`
+  ref, which has been a release tag rather than a branch since 2026-08) freeze
   those sources to an immutable commit for a release build.
 - **Attestations (opt-in)** — `BUILD_ATTEST=1` attaches SLSA provenance + SBOM
   to pushed images.
 
-**Residual supply-chain gaps** (tracked, not yet closed — each is a known
-`curl`/`wget` without a checksum; the fix is to route it through
-`download_verified_file` with a new `*_SHA256` in `versions.env`):
+**Residual supply-chain gaps, as listed in 2026-07 — four of five are closed now.**
+Each was a `curl`/`wget` without a checksum. Four now go through
+`download_verified_file` with a `*_SHA256` pin in `versions.env`, or refuse the
+unverified path:
 
-| Source | Site | Note |
+| Source | Site | Now |
 |--------|------|------|
-| Flutter SDK tarball | `flutter/setup-flutter.sh` | per-arch sha; large |
-| Android cmdline-tools zip | `android-sdk.sh` | NDK/build-tools are sdkmanager-verified |
-| freetype source | `opencv/install-deps.sh` | swallows failure with `\|\| true` — tighten too |
-| GStreamer-Android universal | `android/build-gstreamer.sh` | published sha256 available |
-| `rustup-init` / NodeSource | `install-rust.sh`, `onnxruntime/build/10-deps.sh` | `curl \| sh` — pin the bootstrap binary by sha |
+| Flutter SDK tarball | `flutter/setup-flutter.sh` | `FLUTTER_SDK_SHA256` |
+| Android cmdline-tools zip | `android-sdk.sh` | `ANDROID_CMDLINE_TOOLS_SHA256`; NDK/build-tools are sdkmanager-verified |
+| freetype source | `opencv/install-deps.sh` | **still open.** apt's `libfreetype-dev` comes first (`\|\| true`); the source fallback, `cross_compile_cmake_lib_from_source` (`01-core/cross-env.sh`, also used for harfbuzz and libpng), fetches a tag tarball or a shallow `git+` clone with no checksum, and never hard-fails |
+| GStreamer-Android universal | `android/build-gstreamer.sh` | `GSTREAMER_ANDROID_UNIVERSAL_SHA256` (the prebuilt fallback path) |
+| `rustup-init` / NodeSource | `install-rust.sh`, `onnxruntime/build/10-deps.sh` | `rustup-init` is downloaded to a file and checked against `RUSTUP_INIT_SHA256`, never piped into `sh`; the NodeSource fallback is refused in favour of the base image's pinned Node |
 
 **Deliberate keep:** the `-dev` header packages in `setup-torch-venv.sh` land in
 the final image. This is a cross-**dev** container that compiles Python wheels
@@ -862,6 +880,12 @@ still warns loudly if a future RUN forgets the co-mount.
 (Only apt_sources_set_architectures is contracted to work when cross-apt.sh
 is sourced STANDALONE — see 02-toolchain/android-sdk.sh:8 — and it stays
 dependency-free.)
+
+Update, 2026-09-25: `Dockerfile.android` now bakes `cross-apt.sh` too, for
+`cross_ensure_installed_foreign_arch_sources`, with `platform.sh` COPY'd beside
+it. So "Dockerfile.sdk is the ONLY image that bakes this file" and "Dockerfile.android
+... do NOT ship cross-apt.sh" above no longer hold; the co-mount rule they
+illustrate still does.
 
 The two ways this lookup can come back empty are NOT the same failure and
 must not degrade the same way. A single `... 2>/dev/null || true` collapsed
@@ -999,9 +1023,9 @@ sources are correct in isolation), invisible to a same-arch build, and invisible
 until a `Multi-Arch: same` package actually receives a security-only upload.
 Before 2026-09-08 the two pockets happened to agree.
 
-### Rust version parsing across toolchain spellings
+### `resolve_ci_version`: the version a CI run stamps
 
-Resolve the version a CI run should stamp, from the sources every consumer
+`02-toolchain/rust/version_util.sh`. Resolve the version a CI run should stamp, from the sources every consumer
 has: a VERSION.txt at the repo root, else the ref name, else the run number.
 
 Lifted out of a consumer (OxidANT's
@@ -1025,9 +1049,7 @@ newline was therefore ignored outright and the run number stamped instead -
 silently, since the fallback looks like a normal result. The
 `|| [[ -n "$line" ]]` guard below reads that last line.
 
-### 03-media module bootstrap
-
-Data-driven per-arch skip flags --------------------------------------------
+### 03-media: data-driven per-arch skip flags (`media_load_arch_flags`)
 
 The repeated boolean per-arch skip decisions in the media install/build
 scripts (e.g. "skip target Csound packages on riscv64/arm64 cross") are
@@ -1063,19 +1085,19 @@ contourpy, the amd64/arm64 torch/vision/onnx wheels when unpinned).
 The old union accepted either, which is exactly how arm64 shipped
 onnxruntime-genai 0.14.0 (from the lock) against a v0.15.2 build pin and
 still printed OK.
-That tightening exposes a drift whose PRODUCER-side fix is still open, and
-this assert is a hard release gate, so the known case is carried in
+That tightening exposed a drift whose PRODUCER-side fix was still open, and
+this assert is a hard release gate, so the known case was carried in
 KNOWN_DRIFT below: an exact (dist, arch, installed, expected) quadruple,
 dated, naming its backlog item, printed as a loud `!!` on every run and
 counted in the summary. Anything that is not that exact quadruple still
-FAILS. It uses each module's __version__ (the actual runtime
+FAILS. (KNOWN_DRIFT is empty on 2026-09-25: no case is tolerated.) It uses each module's __version__ (the actual runtime
 version) -- which for onnxruntime intentionally differs from its pip dist
 metadata (source-built lib vs locked wheel; the build pin governs). Also
 asserts the torch/vision build VARIANT (+cpu/+cu130/+rocm7.1) matches
 PYTORCH_EXTRA and that OpenCV's major matches OPENCV_VERSION, and runs the
 cv2 media backends for real (SMOKE-DEPTH a).
 
-### smoke-media: GTK/pango expectations per arch
+### smoke-media: the mandatory-plugin gate and its build-sandbox deferrals
 
 Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
 but a plugin that ships and then fails to dlopen was only a WARN-count.
@@ -1130,10 +1152,9 @@ The generated output tree is excluded: it holds no .slang sources, and
 feeding a build directory back in as an include path can only add
 ambiguity.
 
-### apt retry and mirror fallback
+### `alt_install_and_set`: register an alternative and select it
 
-── update-alternatives install + select ──────────────────────────────────────
-Register an alternative and immediately select it. Runs privileged via
+`01-core/common.sh`. Register an alternative and immediately select it. Runs privileged via
 run_priv (honors ${SUDO}). The --set is tolerant: a --set of the path just
 --installed effectively never fails, and a spurious failure must not abort a
 build running under `set -e`.
@@ -1359,8 +1380,10 @@ either — every run logged "wrapper tag(s) carry no run-id annotation …
 provenance unverifiable" — so nothing of value is lost by dropping the
 exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
 local tag, which is what runtime_push_tag + the manifest step consume.
-(Re-embedding ancestry provenance via a locally-tagging method is tracked
-separately; correctness of the shipped bytes comes first.)
+Ancestry provenance came back on 2026-08-23 (XC3-INERT) as config LABELS, which
+ride the image config through `-t` and the push: `append_runtime_image_output`
+appends `ancestry.sh`'s `ancestry_label_args` (run id, parent digest, parent
+stage) on both call sites, package and wrapper.
 
 ### Measuring the torch RUN's wait before `uv venv`
 
@@ -1481,7 +1504,9 @@ come from something else. One `export` run of a full `--no-push` chain on a nati
 layout digest check that only `ARTIFACT_CONTEXT_ROOT` reaches. On the cross host that
 check can only refuse.
 
-### Host-side env scrubbing for native sub-builds
+### `cross_compile_cmake_lib_from_source`: a small library from source
+
+`01-core/cross-env.sh`.
 
 cross_compile_cmake_lib_from_source NAME URL[|MIRROR...] INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
 
@@ -1505,7 +1530,7 @@ download_and_extract for curl --retry + temp-file hygiene (a hand-rolled
 WARN and returns 0 so the caller can degrade (e.g. OpenCV falls back to
 WITH_<lib>=OFF) instead of aborting the whole media stage.
 
-### uv venv creation and the experimental-Python path
+### `python_uv.sh`: which interpreter `uv sync` is pinned to
 
 Pin the interpreter for the SAME reason uv_pip_install_requirements does,
 and it is just as load-bearing here: uv honours UV_PYTHON OVER the activated
@@ -1529,13 +1554,13 @@ the exact permission error above (WebDavClient x64, 2026-08-12).
 _CURRENT_VENV_PATH is set by uv_venv_create/uv_venv_ensure/uv_venv_activate,
 so it names the venv THIS script owns — which is the one to sync into.
 
-### cmake-build: argument assembly
+### `cmake-build.sh`: a writable `CARGO_HOME`
 
-The :latest-cross image runs as uid 1001 with CARGO_HOME=/usr/local/cargo
-owned by root, so the Corrosion/cargo half of the configure dies with
+The :latest-cross image ran as uid 1001 with CARGO_HOME=/usr/local/cargo
+owned by root, so the Corrosion/cargo half of the configure died with
 "failed to create directory /usr/local/cargo/registry" - which took the
 whole Linux lane down when combined with the tee exit-code masking in
-BeschleunigerBallett's Linux.yml, reusable-linux.yml since 2026-09-24 (fixed
+BeschleunigerBallett's `Linux.yml` (`reusable-linux.yml` since 2026-09-24; fixed
 there with shell: bash / pipefail). Redirect cargo to a
 writable home rather than requiring the image to hand us its own.
 

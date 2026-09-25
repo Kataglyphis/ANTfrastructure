@@ -79,9 +79,9 @@ already did for the compilers. The host half is exported once by
 `_vulkan_setup_cross_pkgconfig` as `VULKAN_HOST_PKG_CONFIG_LIBDIR`, so the
 multiarch triplet is worked out in one place.
 
-With that fixed, nothing is skipped for being a cross lane. `slang` remains
-skipped on riscv64 alone, which is an upstream port gap rather than a build-host
-problem.
+With that fixed, nothing is skipped for being a cross lane, and nothing is
+skipped for the target arch either: the riscv64 `slang` skip is gone
+([below](#amd64-is-the-reference-all-three-arches-build-the-same-set)).
 
 `_VK_TARGET_COMPONENTS` is the table of what gets cross-built, one row per
 component: label, checkout candidates, extra CMake args. LunarG's directory names
@@ -122,16 +122,18 @@ else. `CMAKE_INSTALL_LIBDIR=lib` is passed explicitly, which is what keeps
 ## amd64 is the reference: all three arches build the same set
 
 `./vulkansdk` is NOT invoked with `all` here — it is handed an explicit component
-list, and what it really builds is **20**: SPIRV-Headers, SPIRV-Tools, glslang,
-Vulkan-Headers, Vulkan-Utility-Libraries, Vulkan-Loader, Vulkan-ValidationLayers,
-Vulkan-ExtensionLayer, volk, Vulkan-Tools, jsoncpp, valijson, shaderc, SPIRV-Cross,
-GFXreconstruct, SPIRV-Reflect, Vulkan-Profiles, VulkanMemoryAllocator,
-VulkanCapsViewer, slang. `VulkanTools`, `yaml-cpp`, `CrashDiagnosticLayer` and
-`DirectXShaderCompiler` are in the vendor script's `build_all()` but are never
-cloned here, so reading that function is misleading — read the log.
+list (`_vulkan_build_components`), and until VK4 what it really built was **20**:
+SPIRV-Headers, SPIRV-Tools, glslang, Vulkan-Headers, Vulkan-Utility-Libraries,
+Vulkan-Loader, Vulkan-ValidationLayers, Vulkan-ExtensionLayer, volk, Vulkan-Tools,
+jsoncpp, valijson, shaderc, SPIRV-Cross, GFXreconstruct, SPIRV-Reflect,
+Vulkan-Profiles, VulkanMemoryAllocator, VulkanCapsViewer, slang. VK4
+([below](#vk4-the-components-the-vendor-builds-and-we-did-not)) added the four the
+vendor script's `build_all()` sets and this list never named — `VulkanTools`,
+`yaml-cpp`, `CrashDiagnosticLayer` and `DirectXShaderCompiler` — so it is **24**
+now. Read the log for what a run built, not that function.
 
 The cross path matches it exactly: three hardwired (`loader`, `SPIRV-Tools`,
-`glslang`) plus the seventeen `_VK_TARGET_COMPONENTS` rows is the same 20 names.
+`glslang`) plus the twenty-one `_VK_TARGET_COMPONENTS` rows is the same 24 names.
 
 **No component is skipped for the target arch, and one used to be.** `slang` was
 skipped on riscv64 as *"not yet ported upstream"* — never measured, and gating the

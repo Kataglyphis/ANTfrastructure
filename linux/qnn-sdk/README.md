@@ -47,9 +47,9 @@ Linux lane needs the **Linux AArch64** SDK, a different download:
    it, so a wrong value fails loudly rather than silently shipping no backend.
 
 The zip is git-ignored (`linux/qnn-sdk/*` except this README). It rides into the
-BuildKit context only when present — the media `onnxruntime` RUN will
-bind-mount this directory at `/opt/scripts/qnn-sdk`. NB: the root
-`.dockerignore` does not exclude `linux/qnn-sdk/`, so a staged zip is uploaded
+BuildKit context only when present — five media RUNs (ORT cpu, ORT genai,
+LiteRT, TVM, app-wheelhouse) bind-mount this directory at `/opt/scripts/qnn-sdk`.
+NB: the root `.dockerignore` excludes only `linux/qnn-sdk/*.md`, so a staged zip is uploaded
 in the context for every stage build that shares the root context (base,
 compiler, sdk, media, …). Stage the zip immediately before a media rebuild and
 remove it after, the same discipline as the TensorRT zip.
@@ -84,7 +84,7 @@ remove it after, the same discipline as the TensorRT zip.
 
 Build status: the ORT QNN wiring is LANDED and **PROVEN 2026-08-30** (resolve
 helper, build script, Dockerfile mount, versions.env pin, artifact verification
-— see `docs/refactoring-backlog.md` A2. QNN-LINUX, items 1-6 DONE). Staged
+— see `docs/refactoring-backlog-archive-2026-09-03.md` § A2. QNN-LINUX). Staged
 QAIRT v2.49.0.260730: `cross-media-arm64` build GREEN,
 `libonnxruntime_providers_qnn.so` compiled and linked, 45 `libQnn*.so` backend
 libs + 7 `hexagon-v*` skel dirs staged, `verify-media-artifacts.sh
@@ -93,6 +93,7 @@ defaults it to `aarch64-android` on Linux aarch64, but it is a cache var
 guarded by `if(NOT QNN_ARCH_ABI)` (cmake/CMakeLists.txt:921), so
 `-DQNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` overrides it; no source patch
 needed. Framework fan-out (GenAI/LiteRT/TVM/IREE) is WIRED 2026-08-30 —
-fail-safe by construction (no zip = byte-identical), validation build with the
-zip staged still PENDING. See `docs/refactoring-backlog.md` (QNN-LINUX) and
-`docs/windows-cross-builds.md` (QNN section, #121) for the cross-lane plan.
+fail-safe by construction (no zip = byte-identical) — and the validation build
+with the zip staged ran on 2026-09-03; its results and the `QAIRT_HEADERS_DIR`
+defect it found are in `docs/qnn-linux.md`. See `docs/windows-cross-builds.md`
+(QNN section, #121) for the Windows lane.
