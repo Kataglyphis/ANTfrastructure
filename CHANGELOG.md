@@ -7,6 +7,31 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - One Windows module stages and proves a consumer's ONNX Runtime
+
+OxidANT, OmniAccelerANT and AccelerANTgine each carried the same glue around G6, as
+local modules under three names: the ORT family's names, "replace the ORT beside the
+exe with the chain's", and the proof of a shipped tree. It is
+`WindowsOrtPayload.Common` now, a consumer-side module.
+
+- `Copy-ChainOrtBeside` stages the core, the provider bridge and `DirectML.dll` from
+  the chain install; `-All` stages every DLL of its `lib\` and `bin\`, EP sidecars
+  included. It goes through `Get-OnnxChainLayout`, so a non-chain or wrong-arch
+  `ONNX_ROOT` throws before anything is copied. Two of the three copies only
+  checked that `bin\onnxruntime.dll` existed.
+- `Assert-ChainOrtTree` is G6 over a tree, plus what G6 does not grade: MISSING
+  `onnxruntime.dll` where the exe looks, a STRAY family name the chain has not got,
+  a CHANGED `DirectML.dll`. STRAY is judged against the chain's own file names, not
+  a fixed list, so a chain with a CUDA or QNN provider does not trip it.
+  `-WaiveUnresolved` keeps AccelerANTgine's Python-package mode.
+- `New-OrtProvenPayload` builds and proves a package payload in a fresh directory;
+  `-IncludeDirectory` carries a tree beside the exe with it (OxidANT's
+  `lib\gstreamer-1.0`), graded by G6 with the rest.
+- `OrtPayload.Common.Tests.ps1` holds OxidANT's cases, moved, plus `-All`, a chain
+  provider that is not STRAY, and `-WaiveUnresolved`. `onnxruntime-single-source.md`
+  § The shared Windows glue documents it; the consumers drop their copies when their
+  hub pins move.
+
 ## 2026-09-25 - The arm64/riscv64 native GCC has multiarch (CON8)
 
 BeschleunigerBallett's arm64 GNU presets could not find X11, while its Clang preset

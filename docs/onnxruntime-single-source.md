@@ -416,10 +416,42 @@ a decision on the in-box bytes verdict.
    Never a PyPI ORT, never a prebuilt plugin-EP wheel.
 8. **Run-time loading:** resolve the chain file by absolute path. A bare-name
    load on Windows reaches System32's Windows ML copy first.
+   **Windows packaging:** stage the chain files beside the exe with
+   `Copy-ChainOrtBeside` and prove what ships with `New-OrtProvenPayload` or
+   `Assert-ChainOrtTree` ([the shared glue](#the-shared-windows-glue)), never
+   by copying ORT by hand.
 9. **Licences:** a `docs/deps/deps.json` row for anything it ships beside the
    chain ORT.
 10. **Mutation-test it**: a suite that goes red when its check is removed, and a
     `docs/scripts/mutations.json` entry on Linux.
+
+## The shared Windows glue
+
+`windows/scripts/modules/WindowsOrtPayload.Common.psm1`, a consumer-side module
+(no image stage loads it). OxidANT, OmniAccelerANT and AccelerANTgine each carried
+it under their own names until 2026-09-25.
+
+- `Copy-ChainOrtBeside -OnnxRoot <root> -Destination <dir>` replaces every
+  ORT-family DLL at the top of the directory with the chain install's: the core,
+  the provider bridge and `DirectML.dll`. `-All` copies every DLL of the chain's
+  `lib\` and `bin\` instead, EP sidecars included (QNN's backends, WebGPU's DXC).
+  The install is `Get-OnnxChainLayout`'s, so an unset `ONNX_ROOT`, a NuGet tree
+  and another arch's `onnxruntime.dll` all throw before anything is copied.
+- `Assert-ChainOrtTree -Root <tree>` is G6 over the tree, plus three checks G6
+  does not make, in `-OrtDirectory`, where the exe loads ORT from:
+  `onnxruntime.dll` missing there (MISSING), an ORT-family name the chain has not
+  got (STRAY), and a `DirectML.dll` with other bytes than the chain's (CHANGED).
+  `-WaiveUnresolved` is for a Python package whose `__init__` registers that
+  directory with `os.add_dll_directory`. G6 models an exe's loader, not that
+  call, so only its UNRESOLVED verdicts are waived.
+- `New-OrtProvenPayload -ExePath <exe> -Destination <dir>` copies the exe, the
+  DLLs beside it and each `-IncludeDirectory` tree (a GStreamer plugin tree) into
+  a fresh directory and proves it there. A package that ships from that
+  directory ships the bytes proved. An exe that loads no ORT, directly or through
+  a DLL it ships, must carry none (UNEXPECTED).
+
+What stays in each consumer is its layout: OmniAccelerANT's runner stamp, which a
+host re-proves at launch, and AccelerANTgine's install tree and Python package.
 
 ## The consumer repositories
 
