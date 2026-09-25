@@ -7,6 +7,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The arm64/riscv64 native GCC has multiarch (CON8)
+
+BeschleunigerBallett's arm64 GNU presets could not find X11, while its Clang preset
+could. Measured in the published `:latest` (`ec4bb68b`) under qemu: the arm64 GCC
+printed no `-print-multiarch`, its link line held no `/usr/lib/aarch64-linux-gnu`, so
+CMake left `CMAKE_LIBRARY_ARCHITECTURE` empty and `find_library` never looked there.
+The amd64 GCC prints `x86_64-linux-gnu`. The arm64 and riscv64 GCC is the Canadian
+native, and `build-gcc.sh` configures every `--target` build with
+`--with-native-system-header-dir`, which switches GCC's multiarch auto-check off.
+
+- `build-gcc.sh` passes `--enable-multiarch` when `--host` equals `--target`
+  (`_gcc_native_multiarch`). `_gcc_is_canadian_native` is now the one owner of that
+  test, shared with libsanitizer's helper. Plain cross compilers are unchanged.
+- `swap-native-gcc.sh` stops the build when the relocated GCC prints another
+  multiarch, where the build host can run it.
+- `test-native-gcc-multiarch.sh` and the `native-gcc-ma.*` mutations prove the helper,
+  its wiring and the gate. `cross-build-verification.md` § The native GCC has
+  multiarch has the measurements.
+- In source only: it ships with libsanitizer in the next Linux `:latest` (CON11).
+
 ## 2026-09-25 - MSIX `-Sign` takes the signing root from the caller
 
 `Invoke-MsixPackage -Sign` looked for the signing `.pfx` in the staging directory's

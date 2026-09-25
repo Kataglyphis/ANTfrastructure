@@ -37,7 +37,9 @@ _rc_of() { printf '%s\n' "$1" | sed -n 's/^rc=//p'; }
 
 # ── build-gcc.sh: which configurations build libsanitizer ──────────────────
 t_case "_gcc_extra_target_libs names libsanitizer for host == target only"
-_extra="$(t_fn_src "${BUILD_GCC}" _gcc_extra_target_libs)" || exit 1
+# The predicate is shared with the multiarch helper (test-native-gcc-multiarch.sh).
+_canadian="$(t_fn_src "${BUILD_GCC}" _gcc_is_canadian_native)" || exit 1
+_extra="${_canadian}"$'\n'"$(t_fn_src "${BUILD_GCC}" _gcc_extra_target_libs)" || exit 1
 _extra_for() { HOST_TRIPLET="$1" TARGET_TRIPLET="$2" bash -c 'set -eu; eval "$1"; _gcc_extra_target_libs' _ "${_extra}"; }
 t_assert_eq "target-libsanitizer" "$(_extra_for aarch64-linux-gnu aarch64-linux-gnu)" "Canadian native"
 t_assert_eq "" "$(_extra_for "" aarch64-linux-gnu)" "a plain cross compiler is not the defect"
@@ -46,7 +48,8 @@ t_assert_eq "" "$(_extra_for "" "")" "the full make already builds it"
 
 # Both regions -- the make block, and install through finish_libtool_dirs -- run under the
 # script's own IFS with make stubbed to print its targets, so an empty word shows as [].
-awk '/^_gcc_extra_target_libs\(\) \{$/{p=1} p{print} p && /^fi$/{exit}' "${BUILD_GCC}" > "${_work}/regions.sh"
+printf '%s\n' "${_canadian}" > "${_work}/regions.sh"
+awk '/^_gcc_extra_target_libs\(\) \{$/{p=1} p{print} p && /^fi$/{exit}' "${BUILD_GCC}" >> "${_work}/regions.sh"
 awk '/^echo "Installing to /{p=1} p{print} p && /^finish_libtool_dirs$/{exit}' "${BUILD_GCC}" >> "${_work}/regions.sh"
 _gcc_run() {  # <host> <target> <prefix> -> build targets, the install banner, install targets, verdict
   _with_rc env HOST_TRIPLET="$1" TARGET_TRIPLET="$2" PREFIX="$3" GCC_VERSION="${GCCV}" bash -c '
@@ -112,7 +115,8 @@ _swap_main() {  # <target-arch> <build-arch>
   _with_rc env TARGET_ARCH="$1" BUILDARCH="$2" BUILD_MODE=cross GCC_VERSION="${GCCV}" bash -c '
     set -euo pipefail; source "$1"
     for f in _assert_and_relocate_native_gcc _link_multiarch_dirs _write_native_gcc_profile_d \
-             _wrap_native_gcc_drivers _smoke_native_gcc; do eval "${f}() { echo STEP ${f}; }"; done
+             _wrap_native_gcc_drivers _assert_native_gcc_multiarch _smoke_native_gcc; do
+      eval "${f}() { echo STEP ${f}; }"; done
     eval "$2"; main' _ "${PLATFORM}" "${_swap_fns}"
 }
 _P="${_OPT}/gcc-${GCCV}"

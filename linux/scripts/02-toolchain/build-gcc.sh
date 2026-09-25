@@ -647,12 +647,29 @@ else
   CONFIG_CMD+=("--disable-bootstrap")
 fi
 
+# host == target: the Canadian native, swapped in as the arm64/riscv64 image's cc.
+_gcc_is_canadian_native() {
+  if [ -n "${HOST_TRIPLET}" ] && [ "${HOST_TRIPLET}" = "${TARGET_TRIPLET}" ]; then return 0; fi
+  return 1
+}
+
+# The Canadian native gets Debian multiarch, as the amd64 full-make GCC has it.
+# --with-native-system-header-dir turns GCC's multiarch auto-check off, so its link line
+# lacked /usr/lib/<triplet> and CMake found no distro library there.
+# docs/cross-build-verification.md#the-native-gcc-has-multiarch
+_gcc_native_multiarch() {
+  if _gcc_is_canadian_native; then printf '%s' --enable-multiarch; fi
+  return 0
+}
+
 if [ -n "${TARGET_TRIPLET}" ]; then
+  _gcc_ma="$(_gcc_native_multiarch)"
   CONFIG_CMD+=(
     "--target=${TARGET_TRIPLET}"
     "--disable-nls"
     "--with-sysroot=${SYSROOT}"
     "--with-native-system-header-dir=${NATIVE_SYSTEM_HEADER_DIR}"
+    ${_gcc_ma:+"${_gcc_ma}"}
   )
   # riscv64 (A2): GCC 16 defaults to the newer RISC-V ISA spec, whose canonical
   # -march expansion uses profile extension names (zmmul/zaamo/zalrsc/zca/zcd)
@@ -753,12 +770,10 @@ if [ "${USE_CCACHE}" = "1" ] && [ ! -e /tmp/.gcc-cache-stats-zeroed ]; then
   sccache --zero-stats >/dev/null 2>&1 || true
   : > /tmp/.gcc-cache-stats-zeroed 2>/dev/null || true
 fi
-# host == target (Canadian native, swapped in as the image's cc): build
-# libsanitizer like the full-make GCC. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+# The Canadian native builds libsanitizer like the full-make GCC.
+# docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 _gcc_extra_target_libs() {
-  if [ -n "${HOST_TRIPLET}" ] && [ "${HOST_TRIPLET}" = "${TARGET_TRIPLET}" ]; then
-    printf '%s' target-libsanitizer
-  fi
+  if _gcc_is_canadian_native; then printf '%s' target-libsanitizer; fi
   return 0
 }
 _gcc_san="$(_gcc_extra_target_libs)"

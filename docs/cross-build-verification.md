@@ -1291,6 +1291,53 @@ affected.
 arm64 and riscv64 GCCs still lack libgomp (`omp.h`), libitm and gfortran. TSan on
 riscv64 needs an sv39 or sv48 VMA, which is unverified on the X100.
 
+### The native GCC has multiarch
+
+**Symptom.** In the arm64 image, CMake configured with GCC does not find libraries that
+sit in `/usr/lib/aarch64-linux-gnu`. BeschleunigerBallett's two GNU presets stop at
+`Could NOT find X11 (missing: X11_X11_LIB)`, while the same run's Clang preset finds X11
+(run 36042437555). The amd64 image is fine.
+
+**Cause, measured 2026-09-25** on the published `:latest` (index `ec4bb68b`, the arm64
+variant under qemu):
+
+| | arm64 `gcc` | arm64 `clang` | amd64 `gcc` |
+| --- | --- | --- | --- |
+| `gcc -print-multiarch` | empty | (no such option) | `x86_64-linux-gnu` |
+| CMake `CMAKE_LIBRARY_ARCHITECTURE` | empty | `aarch64-linux-gnu` | `x86_64-linux-gnu` |
+| `/usr/lib/<triplet>` among the implicit link dirs | no | yes | yes |
+| `find_package(X11)` | `X11_X11_LIB-NOTFOUND` | found | found |
+
+CMake takes the architecture from an implicit link directory that ends in
+`/lib/<triplet>`, and `find_library` searches `<prefix>/lib/<triplet>` only once it
+has one. The arm64 GCC is the Canadian native (the libsanitizer section above), and
+`build-gcc.sh` configures every `--target` build with
+`--with-native-system-header-dir`. GCC 16's `gcc/configure.ac` then turns
+`--enable-multiarch=auto`, its default, into `no` ("disabled auto check (configured
+with --native-system-header-dir)"). The amd64 GCC is a full `make` without that flag,
+so its auto-check finds multiarch. Linking still works on arm64 because
+`swap-native-gcc.sh` points `/opt/gcc-<ver>/<triplet>/lib` at `/usr/lib/<triplet>`,
+but no path of that shape tells CMake the architecture.
+
+**Fix.** When `--host` equals `--target`, `build-gcc.sh` also passes
+`--enable-multiarch` (`_gcc_native_multiarch`, sharing `_gcc_is_canadian_native` with
+libsanitizer's helper). With `--with-sysroot=/` the driver then puts `/lib/<triplet>`
+and `/usr/lib/<triplet>` on the link line wherever they exist, as a distro GCC does.
+The flag changes only what the shipped driver does: a Canadian build compiles its
+target libraries with the installed cross `<triplet>-g++`, never with the GCC being
+configured. Plain cross compilers keep their cross layout.
+
+**Gate.** `swap-native-gcc.sh` asks the relocated `/opt/gcc-<ver>/bin/gcc` for
+`-print-multiarch` and stops the build unless it prints the image's triplet. Where the
+build host cannot run the target binary it logs that and moves on, the tolerance the
+compile smoke next to it already has. `linux/scripts/tests/test-native-gcc-multiarch.sh`
+covers the helper, its wiring into the configure line, and the gate; the
+`native-gcc-ma.*` mutations prove each can fail. It cannot show what GCC's configure
+makes of the flag; only a chain run shows that.
+
+**Cost.** The same re-key as libsanitizer: the compiler stage down, on every arch. The
+two ship together in the next Linux `:latest` (`BACKLOG.md` CON11).
+
 ### Runtime stage context and ancestry annotations
 
 Append the image target for a runtime build to the nameref array.

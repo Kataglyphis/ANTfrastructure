@@ -129,6 +129,7 @@ mutation-family:renovate
 # the mode validation, so that proof would have been vacuous.
 mutation-id:shared-config.exact-mode-is-declared-in-the-manifest
 mutation-family:native-gcc-san
+mutation-family:native-gcc-ma
 mutation-family:wheels-source
 mutation-family:hailo
 mutation-family:cmake-arch
