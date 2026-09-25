@@ -7,6 +7,25 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - MIGraphX takes TheRock's nlohmann_json through a natvis shim
+
+With its own rocm-cmake (entry below), MIGraphX got past
+`rocm_add_version_resource`, then stopped at `src/CMakeLists.txt:389`:
+`Cannot find source file: C:/TheRock/build/nlohmann_json.natvis`. TheRock's
+nlohmann_json 3.12.0 was installed by an MSVC-style build. Its exported target
+therefore lists `<prefix>/nlohmann_json.natvis`, a debugger visualizer, as an
+interface source, and TheRock's dist does not carry that root-level file. It was
+the only missing source.
+
+`Write-NlohmannJsonConfigShim` writes a two-file package into the deps prefix:
+- The config includes TheRock's own config by absolute path, then clears
+  `INTERFACE_SOURCES` on `nlohmann_json::nlohmann_json`.
+- The version file includes TheRock's.
+
+`nlohmann_json_DIR` points at the shim. Headers, version and the staged licence
+notice all stay TheRock's. `Rocm.Migraphx.Tests.ps1` covers the shim's content,
+its refusal when TheRock lacks the package, and the new configure argument.
+
 ## 2026-09-25 - MIGraphX builds with its own rocm-cmake pin
 
 The rocm chain got through LiteRT (1:17:33), TVM (2:55:07) and the media merge

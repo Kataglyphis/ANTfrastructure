@@ -84,7 +84,8 @@ function Get-MigraphxCmakeArgs {
         [Parameter(Mandatory)][string]$RocmRoot,
         [Parameter(Mandatory)][string]$DepsPrefix,
         [Parameter(Mandatory)][string]$GpuTargets,
-        [Parameter(Mandatory)][string]$Python
+        [Parameter(Mandatory)][string]$Python,
+        [Parameter(Mandatory)][string]$NlohmannJsonDir
     )
     $deps = $DepsPrefix -replace '\\', '/'
     $rocm = $RocmRoot -replace '\\', '/'
@@ -105,8 +106,9 @@ function Get-MigraphxCmakeArgs {
         '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON', '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'
         "-DSQLite3_INCLUDE_DIR:PATH=$deps/include"
         "-DSQLite3_LIBRARY:FILEPATH=$deps/lib/sqlite3.lib"
-        # TheRock's header-only copy, named so the licence notice staged below is the one compiled in.
-        "-Dnlohmann_json_DIR:PATH=$rocm/share/cmake/nlohmann_json"
+        # TheRock's header-only copy (the licence notice staged below is the one compiled in), through
+        # the shim that drops the natvis its dist lacks (Write-NlohmannJsonConfigShim).
+        "-Dnlohmann_json_DIR:PATH=$($NlohmannJsonDir -replace '\\', '/')"
         "-DPython_EXECUTABLE:FILEPATH=$($Python -replace '\\', '/')"
         # The offload-arch check must use AMD's own tools, never whatever LLVM PATH finds first.
         "-DLLVM_OBJCOPY:FILEPATH=$(Get-RocmLlvmToolPath -RocmRoot $RocmRoot -Tool 'llvm-objcopy')"
@@ -169,7 +171,9 @@ try {
 
     Switch-BuildPhase '3. MIGraphX configure (AMD clang++)'
     $buildDir = Join-Path $WorkDir 'migraphx-build'
-    $migraphxArgs = Get-MigraphxCmakeArgs -RocmRoot $rocmRoot -DepsPrefix $depsPrefix -GpuTargets $gpuTargets -Python $python
+    $jsonDir = Write-NlohmannJsonConfigShim -RocmRoot $rocmRoot -DepsPrefix $depsPrefix
+    $migraphxArgs = Get-MigraphxCmakeArgs -RocmRoot $rocmRoot -DepsPrefix $depsPrefix -GpuTargets $gpuTargets -Python $python `
+        -NlohmannJsonDir $jsonDir
     # -AllowRocmPrefix: this build needs find_package(hip/miopen/rocblas/hipblaslt/hiprtc) from TheRock.
     Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $buildDir -InstallPrefix $InstallDir -BuildType $BuildType `
         -CCompiler (Get-RocmLlvmToolPath -RocmRoot $rocmRoot -Tool 'clang') `
