@@ -18,7 +18,10 @@
 #
 # The build script runs as `<script> <build-args>` inside the container, with the
 # workspace mounted at C:\ws. Put the lane's logic in that script, not here: it is
-# what a local container run executes too.
+# what a local container run executes too. An amd64 lane may add `version-file`
+# (the CI version, resolved on the host and handed to the container) and
+# `host-command` (what only the runner host can run: Server Core has no OpenGL).
+# OxidANT's windows-x64.yml, 2026-09-25, was the first amd64 lane to move here.
 
 name: Container CI · Windows (reusable)
 
@@ -108,6 +111,23 @@ on:
         required: false
         type: number
         default: 180
+      version-file:
+        description: >-
+          A version file, RELATIVE TO THE REPOSITORY ROOT (e.g. VERSION.txt). When set,
+          the hub's version_util.sh resolves VERSION and MSIX_VERSION on the host, from
+          that file, the ref name and the run number, and the container gets both as
+          environment. Empty = none.
+        required: false
+        type: string
+        default: ''
+      host-command:
+        description: >-
+          PowerShell that runs on the runner HOST, in the workspace, after the container
+          build: tests Server Core cannot run (it has no OpenGL), or a run of the x64
+          product. A non-zero exit fails the lane. Empty = none.
+        required: false
+        type: string
+        default: ''
     secrets:
       GHCR_PAT:
         description: Token to pull the image from ghcr. Only needed while the image is private.
@@ -130,15 +150,31 @@ jobs:
           fetch-depth: ${{ inputs.fetch-depth }}
           exclude-submodules: ${{ inputs.exclude-submodules }}
 
+      # Before the build, so the packages and the product carry the CI version.
+      - name: Resolve the version
+        id: version
+        if: ${{ inputs.version-file != '' }}
+        shell: bash
+        working-directory: ${{ steps.prep.outputs.workspace }}
+        env:
+          VERSION_FILE: ${{ inputs.version-file }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: bash third_party/ANTfrastructure/linux/scripts/02-toolchain/rust/version_util.sh --github-env "$VERSION_FILE"
+
       # run-in-windows-container takes docker arguments one per line.
       - name: Compose the container environment
         id: env
         shell: pwsh
         env:
           CONTAINER_ENV: ${{ inputs.container-env }}
+          RESOLVED_VERSION: ${{ steps.version.outputs.VERSION }}
+          RESOLVED_MSIX_VERSION: ${{ steps.version.outputs.MSIX_VERSION }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $lines = foreach ($pair in ($env:CONTAINER_ENV -split "\r?\n" | ForEach-Object Trim | Where-Object { $_ })) {
+          $pairs = @($env:CONTAINER_ENV -split "\r?\n" | ForEach-Object Trim | Where-Object { $_ })
+          if ($env:RESOLVED_VERSION) { $pairs += "VERSION=$env:RESOLVED_VERSION", "MSIX_VERSION=$env:RESOLVED_MSIX_VERSION" }
+          $lines = foreach ($pair in $pairs) {
               if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw "container-env line is not KEY=value: '$pair'" }
               '--env'; $pair
           }
@@ -154,6 +190,21 @@ jobs:
           file: C:\ws\${{ inputs.build-script }}
           file-args: ${{ inputs.build-args }}
           extra-args: ${{ steps.env.outputs.args }}
+
+      # The workspace is the bind mount the container built into, so the host sees
+      # every file the build left, at the same relative paths.
+      - name: Run the host command
+        if: ${{ inputs.host-command != '' }}
+        shell: pwsh
+        working-directory: ${{ steps.prep.outputs.workspace }}
+        env:
+          HOST_COMMAND: ${{ inputs.host-command }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:RUNNER_TEMP 'host-command.ps1'
+          Set-Content -LiteralPath $script -Value $env:HOST_COMMAND -Encoding utf8
+          & $script
+          if ($LASTEXITCODE) { throw "host-command exited $LASTEXITCODE" }
 
       # The caller's own hub submodule, so the gate is the version the caller pins.
       - name: Arch gate (arm64 tree, imports resolvable on a clean device)

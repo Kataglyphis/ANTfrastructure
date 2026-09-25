@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - x64 lanes move onto the reusable Windows lane: `version-file`, `host-command`
+
+The family's next sharing step (owner request): the consumers' `windows-x64.yml`
+lanes become thin callers of `container-ci-windows.yml`, one repo at a time,
+OxidANT first. Two things an x64 lane did by hand had no input.
+
+- `version-file`: the hub's `version_util.sh` resolves `VERSION` and
+  `MSIX_VERSION` on the host, from the file, the ref name and the run number. The
+  container gets both as environment.
+- `host-command`: PowerShell on the runner host after the container build, in the
+  workspace the container built into. It is for what Server Core cannot run (no
+  `opengl32.dll`), such as OxidANT's WebGPU renderer tests and a run of its x64
+  product.
+- `windows-cross-builds.md` § Consumer cross lanes and the workflow's header
+  describe both.
+
+`lint-workflows.sh` is clean.
+
 ## 2026-09-25 - x64 packages carry the same DLL closure as arm64
 
 Owner decision: the consumers' x64 packages ship what their binaries import,
