@@ -7,6 +7,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The torch ROCm wheels download straight into the cache, with no rename
+
+With MIGraphX, the EP and llama.cpp through, the torch stage built and verified the
+app venv. Its ROCm half then downloaded and SHA-verified three pinned wheels and
+stopped: `Move-Item: C:\bkmnt\Install-TorchRocm.ps1:324 ... Could not find a part of
+the path`. `Save-TorchRocmWheel` downloaded each file to `<file>.part` in the
+hash-keyed cache (`C:\uvcache\torch-rocm\<sha256>\`) and renamed it into place.
+torch (51-character file name) and torchvision (57) moved. The first 68-character
+name, `amd_torch_device_gfx1201-...`, did not. The download had just created the
+`.part` there, five characters longer still. So the failing operation is the rename
+on the BuildKit cache mount, the create-then-rename class in
+`windows-build-lanes.md` § *Run-side wcifs symptoms*. The containerd store is
+admin-only, so the host-side path length behind the mount was not measured.
+
+Each file now downloads to its cache path directly. The rename bought nothing the
+existing checks do not already give: a failed download deletes what it wrote, and
+every reuse re-hashes the cached copy. The four cache tests still pass (layout,
+offline reuse, tampered copy re-fetched, mismatch leaves nothing). A new one fails
+if a rename comes back, and was mutation-checked by re-adding one.
+`Torch.Rocm.Tests.ps1`: 57 pass.
+
 ## 2026-09-25 - The EP stage's G2 gate no longer finds its own source's `.tar`
 
 With the seeds extracting (entry below), `migraphx-ep.dll` configured, built in

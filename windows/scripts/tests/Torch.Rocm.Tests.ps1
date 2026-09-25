@@ -439,6 +439,13 @@ Describe 'Install-TorchRocm: hash-keyed wheel cache' {
             Assert-Equal 0 @(Get-ChildItem -LiteralPath $w.Cache -Recurse -File -ErrorAction SilentlyContinue).Count 'no file left behind'
         }
     }
+
+    It 'renames nothing on the cache mount, where a rename failed ERROR_PATH_NOT_FOUND (2026-09-25)' {
+        $body = (Get-Command Save-TorchRocmWheel).Definition
+        Assert-Match 'Invoke-DownloadWithRetry -Url \$Wheel\.Url -DestinationPath \$dest ' $body 'downloads to the cache path itself'
+        # \b: -match ignores case, and Remove-Item ends in 'move-Item'.
+        Assert-False ($body -match '\b(Move|Rename)-Item\b|\[System\.IO\.File\]::Move') 'no rename'
+    }
 }
 
 Describe 'rocm-checks\Torch.ps1: findings' {
