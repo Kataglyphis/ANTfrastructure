@@ -100,6 +100,7 @@ a competing PR. When it merges, drop the matching hunks from
 | --- | --- |
 | `opencv/004-dnn-ort-profiling-wchar.patch` | Fixed on `5.x` by PR #29309 (`toOrtPath()`), merged 11 days **after** the 5.0.0 tag we pin. The patch is dead the moment `OPENCV_VERSION` moves past it. This is the case that produced [the pre-filing checklist](#before-filing-anything). |
 | gst-libav `V308`/`V408`/`V410` codec-ID exclusions | Fixed upstream; see `upstreamable-patches.md` entry 12. Kept inline here because `FFMPEG_VERSION` floats. |
+| `migraphx/001-mlir-off-stubs.patch` | Fixed on `develop` by ROCm/AMDMIGraphX 5a80dc91ba (#5154, 2026-08-24), which lands after the `rocm-10.0` commit `MIGRAPHX_WINDOWS_COMMIT` pins. The patch is that commit's four `#else`-path definitions verbatim; without them an `MIGRAPHX_ENABLE_MLIR=OFF` build cannot link `migraphx_gpu.dll`. Dead the moment the pin moves past it. |
 
 ## B — genuine, but not ready to send
 

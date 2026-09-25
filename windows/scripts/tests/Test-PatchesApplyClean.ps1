@@ -27,7 +27,8 @@
     Root of the patch tree (default: the patches/ dir next to this script's parent).
 
 .PARAMETER Versions
-    Optional hashtable overriding the pinned tags per repo key (ONNXRUNTIME, OPENCV, FFMPEG, GSTREAMER, LLVM, HAILORT).
+    Optional hashtable overriding the pinned tags per repo key (ONNXRUNTIME, OPENCV, FFMPEG, GSTREAMER, LLVM, HAILORT,
+    MIGRAPHX - a 40-hex commit).
 
 .PARAMETER WorkDir
     Scratch dir for the shallow clones (default: a temp dir; removed on completion).
@@ -62,6 +63,7 @@ $defaultRefs = @{
     GSTREAMER   = '1.29.2'
     LLVM        = 'llvmorg-23.1.0'
     HAILORT     = 'v5.4.0'
+    MIGRAPHX    = 'becdb3da862f2297041b746b90bc6130e2b1d1f7'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
@@ -73,7 +75,9 @@ if (Test-Path $versionsFile) {
             @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' },
             @{ Ref = 'LLVM';        Key = 'LLVM_WINDOWS_VERSION'; Fmt = 'llvmorg-{0}' },
             # The tag Build-HailortFromSource.ps1 downloads (archive/refs/tags/v<ver>).
-            @{ Ref = 'HAILORT';     Key = 'HAILORT_VERSION';      Fmt = 'v{0}' }
+            @{ Ref = 'HAILORT';     Key = 'HAILORT_VERSION';      Fmt = 'v{0}' },
+            # A commit, not a tag: the one Build-MigraphxFromSource.ps1 downloads (archive/<sha>).
+            @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
@@ -92,6 +96,7 @@ $repoMap = @{
     'gstreamer'      = @{ Url = 'https://github.com/gstreamer/gstreamer.git';     Ref = $defaultRefs.GSTREAMER }
     'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
     'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
+    'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
 }
 
 function Get-PatchTargetPaths {
@@ -104,7 +109,8 @@ function Get-PatchTargetPaths {
     return $paths
 }
 
-$patches = Get-ChildItem -Path $PatchRoot -Recurse -Filter '*.patch' | Sort-Object FullName
+# @(): a -PatchRoot holding one patch yields a scalar, and StrictMode refuses .Count on it.
+$patches = @(Get-ChildItem -Path $PatchRoot -Recurse -Filter '*.patch' | Sort-Object FullName)
 if (-not $patches) { Write-Host 'No .patch files found.'; return }
 
 Write-Host "Checking $($patches.Count) patch(es) against pinned upstreams..." -ForegroundColor Cyan
@@ -133,7 +139,9 @@ try {
         if (-not $clone) {
             $clone = Join-Path $WorkDir $cacheKey.Replace('|', '_').Replace('/', '_')
             Write-Host "  clone $repoKey @ $($spec.Ref) (sparse)..." -ForegroundColor DarkGray
-            & git clone --depth 1 --branch $spec.Ref --filter=blob:none --sparse $spec.Url $clone 2>&1 | Out-Null
+            # --branch takes names only; a 40-hex commit pin (MIGraphX) needs --revision (git >= 2.49).
+            $refArgs = @(if ($spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($spec.Ref)" } else { '--branch', $spec.Ref })
+            & git clone --depth 1 @refArgs --filter=blob:none --sparse $spec.Url $clone 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'FAIL (clone)' })
                 continue

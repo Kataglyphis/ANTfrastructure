@@ -1,0 +1,28 @@
+Backport of ROCm/AMDMIGraphX 5a80dc91ba (2026-08-24, #5154), which lands after the pinned
+rocm-10.0 tag: "gpu: define all MLIR wrappers in the #else path so MLIR-off builds have no
+undefined symbols". The rocm lane builds MIGRAPHX_ENABLE_MLIR=OFF (TheRock ships no rocMLIR),
+and without these four stubs migraphx_gpu.dll cannot link: undefined is_module_fusible,
+adjust_param_shapes, dump_mlir_to_file, dump_mlir_to_mxr. Drop with a MIGraphX bump past it.
+
+diff --git a/src/targets/gpu/mlir.cpp b/src/targets/gpu/mlir.cpp
+index 1067e12..e641628 100644
+--- a/src/targets/gpu/mlir.cpp
++++ b/src/targets/gpu/mlir.cpp
+@@ -1431,6 +1431,17 @@ tuning_config get_tuning_config_mlir(const context&, module, const std::vector<s
+ {
+     return {};
+ }
++
++// Conservative "MLIR unavailable" default: the module cannot be MLIR-fused, so callers
++// take their non-MLIR path. Present so libmigraphx_gpu.so has no dangling MLIR symbols
++// when MIGRAPHX_MLIR is disabled.
++bool is_module_fusible(const module&, const context&, const value&) { return false; }
++
++void adjust_param_shapes(module&, const std::vector<shape>&) {}
++
++void dump_mlir_to_file(module, const std::vector<shape>&, const fs::path&) {}
++
++void dump_mlir_to_mxr(module, const std::vector<instruction_ref>&, const fs::path&) {}
+ // NOLINTEND(performance-unnecessary-value-param)
+ 
+ #endif

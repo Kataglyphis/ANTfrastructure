@@ -186,6 +186,30 @@ Describe 'Build-MigraphxFromSource.ps1: rocm-cmake' {
     }
 }
 
+Describe 'Build-MigraphxFromSource.ps1: MLIR-off stubs backport' {
+    It 'git-inits the fetched tree and patches it before anything builds' {
+        $text = Get-Content -Raw -LiteralPath (Join-Path $script:MgxRepo $script:MgxScript)
+        $order = '(?s)\$sourceRoot = Save-PinnedSource .*Initialize-ExtractedGitRepo -Path \$sourceRoot.*' +
+            'Invoke-SourcePatch -PatchFile \(Join-Path \$scriptAssetRoot ''patches\\migraphx\\001-mlir-off-stubs\.patch''\) -SourceDir \$sourceRoot.*2\. host deps'
+        Assert-Match $order $text 'saved, git-inited for git apply, patched, then the deps'
+    }
+
+    It 'adds the four definitions MLIR=OFF leaves undefined to mlir.cpp, and removes nothing' {
+        $patch = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\scripts\patches\migraphx\001-mlir-off-stubs.patch'))
+        Assert-Equal 'src/targets/gpu/mlir.cpp' (@([regex]::Matches($patch, '(?m)^\+\+\+ b/(\S+)') | ForEach-Object { $_.Groups[1].Value }) -join ',') 'target'
+        foreach ($fn in 'is_module_fusible', 'adjust_param_shapes', 'dump_mlir_to_file', 'dump_mlir_to_mxr') {
+            Assert-Match "(?m)^\+\S.*\b$fn\(" $patch "defines $fn"
+        }
+        Assert-False ($patch -match '(?m)^-(?!--)') 'a backport of added stubs deletes no line'
+        Assert-False ($patch.Contains("`r")) 'LF, as git apply reads the tarball''s LF source'
+    }
+
+    It 'Dockerfile.rocm-migraphx mounts the patch directory where the script resolves it' {
+        $joined = ([System.IO.File]::ReadAllText($script:MgxDockerfile)) -replace '`\r?\n', ' '
+        Assert-Match ([regex]::Escape('source=windows/scripts/patches/migraphx,target=C:\bkmnt\patches\migraphx')) $joined 'patch mount'
+    }
+}
+
 Describe 'WindowsMigraphx.Common: FetchContent seeding' {
     $cmake = @'
 FetchContent_Declare(

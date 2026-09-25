@@ -151,6 +151,11 @@ try {
     $sourceRoot = Save-PinnedSource -Source $source -WorkDir $WorkDir
     $treeVersion = Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText ([System.IO.File]::ReadAllText((Join-Path $sourceRoot 'CMakeLists.txt')))
     if ($treeVersion -ne $migraphxVersion) { throw "MIGRAPHX_WINDOWS_COMMIT is MIGraphX $treeVersion, but MIGRAPHX_VERSION is $migraphxVersion" }
+    # The four MLIR wrappers MLIR=OFF leaves undefined, backported from upstream 5a80dc91ba. git-init
+    # first, so Invoke-SourcePatch takes git apply rather than a patch.exe the image may not carry.
+    Initialize-ExtractedGitRepo -Path $sourceRoot
+    Invoke-SourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\migraphx\001-mlir-off-stubs.patch') -SourceDir $sourceRoot `
+        -Description 'MIGraphX: MLIR-off stubs (backport of 5a80dc91ba)' -IgnoreWhitespace
 
     Switch-BuildPhase '2. host deps (clang-cl)'
     $depsPrefix = Join-Path $WorkDir 'deps'
