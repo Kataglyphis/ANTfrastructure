@@ -96,7 +96,7 @@ yet (P2). This section is how it works, how to run it and how it is accepted.
 | File | What it is |
 | --- | --- |
 | `backends.json` → `serving` | The source of truth: gateway listeners, clients, lanes, aliases, the pinned tools prompt |
-| `gateway/render_apisix.py` | Renders `apisix.json` + `config.yaml` from it, and refuses what it cannot vouch for |
+| `gateway/render_apisix.py` | Renders `apisix.json` + `config.yaml` from it, and refuses what it cannot vouch for: an unknown lane, backend or key, a GGUF on the QAIRT lane, a prompt whose raw bytes miss their pin, a listener off loopback, a route id emitted twice (APISIX would silently keep the last), a lane that is the gateway itself |
 | `gateway/config.template.yaml` | APISIX's boot config (listeners, the 7 loaded plugins, the hook) |
 | `gateway/lua/apisix/plugins/geniex-shape.lua` | The per-route plugin: tools prompt, `power_mode`, size estimate, log tags |
 | `gateway/lua/geniex_hook.lua` | Four patches of APISIX internals (below) |
@@ -111,6 +111,7 @@ bash linux/llm-stack/scripts/serve-stack.sh keys
 # The lanes, on the Windows host (mirrored WSL networking reaches loopback):
 #   pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -BindAddress 127.0.0.1 -WithCpu `
 #        -Models @{cpu='empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M'}
+#   (a lane already running is skipped; one on another address gets a warning: -Restart rebinds it)
 # The consumer names the directory holding the pinned prompt:
 export ANTFRASTRUCTURE_LLM_PROMPTS_DIR=/mnt/c/GitHub/OrchestrANT/benchmarks/prompts
 bash linux/llm-stack/scripts/serve-stack.sh up       # render, validate, (re)start, wait
@@ -142,7 +143,10 @@ image, the boot config or the Lua changed (`restart_sha256` differs; run `up`),
 waits until the next whole second (APISIX compares mtimes in seconds), rewrites
 `apisix.json` in place (a rename would leave the single-file bind mount on the
 old inode) and puts the previous file back if the new config sha never shows.
-A new key needs `up`: keys live in the container's environment. The overlay's
+A new key needs `up`: keys live in the container's environment. `keys.env`,
+`live/runtime.env` (the env file compose reads) and `compose.log` (compose
+echoes the environment) are mode 600; the rest of `live/` is world-readable,
+because the container's uid 636 reads it. The overlay's
 healthcheck (bash `/dev/tcp` against `/status/ready`; the image has no curl)
 runs under docker; rootless nerdctl 2.3.5 records no health state for it, so on
 the dev host `serve-stack.sh status` is the check.
@@ -173,10 +177,10 @@ default_reserve)`; `bytes_per_token` wants calibrating from lab reports.
 | R3a | Too large for the NPU → GPU before sending | `gw_est_tokens` on the priority-30 route | `test_a_large_request_*`, `test_the_estimate_*` |
 | R3b | NPU overflow → GPU, once | Hook relabels the NPU's `400 context_length_exceeded` to 503; `http_5xx` fallback, `max_retries: 1`. Another 400 passes unchanged; a GPU overflow is not retried | `test_an_npu_overflow_*`, `test_a_second_overflow_*` |
 | R4 | T=0 made greedy on the GGUF lanes only; `power_mode` dropped | Hook, per lane (`0.01` + `top_k 1`); the NPU keeps T=0 (owner decision: P8.1 ran at T=0) | `test_t0_*`, `test_power_mode_*` |
-| R5 | No retries, no 429 cap | Single-lane routes cannot retry; `chat` falls back once, never after the reply started (hook), never after the primary's own timeout; no rate limits, no cache, keepalive off | `test_a_lane_that_dies_mid_stream_*`, `test_the_npu_times_out_*` |
-| R6 | 300 s on the NPU, 1800 s on the GGUF lanes | Hook: cap raised, timeout per lane (per socket operation, so no stream is capped) | `test_the_npu_times_out_*`, `test_the_gpu_waits_out_*`, `test_a_route_above_*` |
+| R5 | No retries, no 429 cap | Single-lane routes cannot retry; `chat` falls back once, never after the reply started (hook), never after the primary's own timeout; no rate limits, no cache, keepalive off; a client hang-up closes the lane's connection | `test_a_lane_that_dies_mid_stream_*`, `test_the_npu_times_out_*`, `test_two_failing_lanes_*`, `test_a_single_lane_route_never_retries`, `test_a_lane_429_*`, `test_concurrent_requests_*`, `test_a_client_that_hangs_up_*` |
+| R6 | 300 s on the NPU, 1800 s on the GGUF lanes | Hook: cap raised, timeout per lane (per socket operation, so no stream is capped) | `test_the_npu_times_out_*`, `test_the_gpu_waits_out_*`, `test_a_route_above_*`, `test_the_fallback_attempt_gets_the_gpu_timeout` |
 | R7 | SSE and tool calls pass through | Chunks forwarded as they arrive (`streaming_flush_interval_ms: 0`) | `test_sse_passes_*`, `test_tool_calls_*` |
-| R8 | A key per client | `key-auth` on `Authorization`, stored as `Bearer ${{GW_KEY_*}}`; lanes get `Bearer unused` | `test_every_client_*`, `test_the_lane_never_sees_*` |
+| R8 | A key per client | `key-auth` on `Authorization`, stored as `Bearer ${{GW_KEY_*}}`; lanes get `Bearer unused`; every listener on 127.0.0.1 | `test_every_client_*`, `test_the_lane_never_sees_*`, `test_the_keys_on_disk_stay_private`, `test_every_listener_is_on_loopback` |
 | R9 | One JSON log line per request, per-lane metrics | Global `file-logger` + `prometheus`; plugin sets lane, reroute and prompt tags | `test_one_log_line_*`, `test_metrics_*` |
 | R10 | Nothing probes a lane | No `checks` anywhere; `/v1/models` static | `test_models_is_static_*` |
 | R11 | The lab through the gateway | `lab-*` registry entries (`probe: false`), static `/v1/models`, `/gateway/info` | `test_gateway_info_*` |
@@ -205,21 +209,21 @@ not 3.18.0.
 
 **Upgrade rule: re-run the e2e suite (and Stage A below) before any APISIX
 bump.** Each patch was mutation-tested on 2026-09-25: removing it turns these
-tests red, and nothing else.
+tests red, and nothing else (rows 2 and 4 re-run on the 79-test suite).
 
 | Removed | Red |
 | --- | --- |
-| 1, the cap | `up` itself: validation refuses the dropped routes (all 63 tests error) |
-| 2, the transport wrap | 9: both overflow tests and the second-overflow test, the NPU timeout, the three T=0 tests, the prompt after an overflow, the fallback log line |
+| 1, the cap | `up` itself: validation refuses the dropped routes (every test errors) |
+| 2, the transport wrap | 11: both overflow tests and the second-overflow test, the NPU timeout, the GPU timeout after a fallback, the three T=0 tests, the prompt after an overflow, the fallback log line, the reload test (the hook must outlive a reload) |
 | 4, the headers guard | `test_a_lane_that_dies_mid_stream_is_not_retried` |
 | `nginx_config.envs` | `test_reload_swaps_routing_in_place_and_keys_survive_it`: a hot reload cannot resolve `${{GW_KEY_*}}` and the old config stays live |
-| The plugin's prompt insert | the four prompt tests |
+| The plugin's prompt insert | the prompt tests |
 
 ### What a client sees that a direct lane does not
 
 - Replies carry the lane's model id, not the alias.
 - Streams get a final usage chunk with empty `choices`: `stream_options.include_usage` is forced.
-- Bodies reach the lane re-encoded with keys sorted at every level (tools included), and the lane's path gets a bare `?` appended. The `raw-*` routes are not byte-transparent, so Stage A must control key order.
+- Bodies reach the lane re-encoded with keys sorted at every level (tools included), and the lane's path gets a bare `?` appended. The `raw-*` routes are not byte-transparent, so Stage A must control key order. What survives (`test_tool_definitions_keep_their_meaning_not_their_bytes`): array order, `{}` and `[]`, every number's value (a whole-number float loses its `.0`), non-ASCII as UTF-8.
 - Only the lane's status and `Content-Type` come back, plus `X-Gw-Lane` and `X-Gw-Rerouted` (`no`, `presend`, `overflow`, `fallback`).
 - The lane sees `X-Consumer-Username` and `X-Forwarded-*`; never the client's key.
 - A 401 is APISIX's `{"message": …}`, not OpenAI's error format.
@@ -268,13 +272,15 @@ Both stages on one day, one GenieX version, serving on hold, a quiet host.
   is not separable from `geniex-npu --system benchmarks/prompts/tool-disambiguation.md`
   (P8.1); `contract` differs only where expected (`power_mode_understood` no,
   `overflow_is_clean_error` a GPU 200); a ~7k-token document logs
-  `route_id: chat-presend, lane: gpu`; with `budget_tokens` raised so the
-  estimate never fires, an overflow logs one NPU and one GPU attempt,
-  `rerouted: overflow` and a 200, streamed and not.
+  `route_id: chat-presend, lane: gpu`; with `estimate.bytes_per_token` raised
+  (say to 1000) so the estimate never fires, an overflow logs one NPU and one
+  GPU attempt, `rerouted: overflow` and a 200, streamed and not. (Not
+  `budget_tokens`: the renderer refuses a budget at or above the NPU's 4096.)
 - **Upgrade gate:** Stage A and the overflow row again after every APISIX or GenieX bump.
 
 Not covered yet: how GenieX answers a streamed overflow (only a 400 before the
-stream is handled), whether it stops generating when a client disconnects, the
+stream is handled), whether it stops generating when a client hangs up (the
+gateway does close the lane's connection then), the
 gateway's TTFT overhead on the real lanes, its idle memory, and the P2/P3 work
 (Open WebUI, a logon supervisor, `hold`/`release` for lab windows).
 
