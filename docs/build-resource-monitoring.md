@@ -19,7 +19,7 @@ A CSV time-series (`resources-<run-id>.csv`), one row per tick (default every
 | `mem_used_mb`, `mem_avail_mb`, `mem_pct` | `MemTotal-MemAvailable`, `MemAvailable`, % used |
 | `swap_used_mb` | swap in use — **any** value >0 means real memory pressure |
 | `disk_avail_gb`, `disk_pct` | free space / % used on the build filesystem |
-| `compilers` | live `cc1plus`/`cc1`/`clang(++)`/`rustc`/`lto1`/`ld` count |
+| `compilers` | live `cc1plus`/`cc1`/`cc1objplus`/`clang(++)`/`rustc`/`lto1`/`go`/`ld` count |
 | `stage`, `context` | coarse build stage + the exact build log line active then |
 
 The **`context`** column is the key one: at every peak-pressure moment the
@@ -34,7 +34,8 @@ Negligible. Each tick is a handful of `/proc` reads plus ~3 short-lived forks
 
 ## Automatic use
 
-`build-cross-chain.sh` starts it automatically for the whole run (gated by
+`build-cross-chain.sh` and `build-cross-stage.sh` start it automatically for
+the whole run (`start_resource_monitor` in `lib-orchestrator.sh`, gated by
 `RESOURCE_MONITOR`, default on) and it self-terminates when the orchestrator
 exits (via `--watch-pid`), writing the summary. Output lands in `--log-dir`.
 
@@ -46,7 +47,7 @@ bash linux/scripts/build-cross-chain.sh --from-stage media --log-dir ~/build-log
 RESOURCE_MONITOR=0 bash linux/scripts/build-cross-chain.sh ...
 ```
 
-## Manual use (any build, or a surgical `build-cross-stage.sh`)
+## Manual use (any other build)
 
 ```bash
 # start in the background, following whichever log is newest, self-ending with
@@ -68,8 +69,11 @@ with `--near-oom-mb` (default 4096) and `--low-disk-gb` (default 20).
   edge. Cross-reference the `context` at that row and lower the relevant
   `*_MB_PER_JOB` per [build-parallelism-memory-tuning.md](build-parallelism-memory-tuning.md),
   or add RAM.
-- **`disk_avail_gb` dropping toward the low-disk threshold** → prune the local
-  buildkit cache (`~/.cache/kata-buildcache`) before the next run.
+- **`disk_avail_gb` dropping toward the low-disk threshold** → reclaim disk
+  before the next run in the order of
+  [Linux Host Setup § B7](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches):
+  `prune-safe.sh` first, the regenerable cache-export dir
+  `~/.cache/kata-buildcache` after it.
 - **`compilers` well below core count while `mem_avail` is low** → the stage is
   RAM-bound (expected for torch); more RAM, not more `-j`, is the lever.
 - The CSV plots directly in any spreadsheet / `gnuplot` if you want a timeline.
@@ -84,11 +88,12 @@ complementary problem is finding the real error in tens of thousands of lines,
 where the last line printed is usually a downstream symptom rather than the
 cause.
 
-Capture the log in the first place — every orchestrator script takes
-`--log-dir`, and a hand-run build should be teed:
+Capture the log in the first place — `build-cross-chain.sh` and
+`build-cross-stage.sh` take `--log-dir`; every other build, including a
+hand-run one, should be teed:
 
 ```bash
-docker build -t <tag> -f linux/Dockerfile . 2>&1 | tee out/build-logs/build.log
+nerdctl build -t <tag> -f linux/Dockerfile.<stage> . 2>&1 | tee out/build-logs/build.log
 ```
 
 Then pull out the lines that actually mark failures:

@@ -2,19 +2,20 @@
 
 Every third-party source change this repo carries, with the judgement call it
 needs before it becomes an upstream contribution. Written 2026-09-02, after the
-RVA23 switch; **do the RV23 verification first**, then work this list.
+RVA23 switch; the RVA23 rebuild it waited for ran on 2026-09-01/02
+([`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md)).
 
 **This page is the Linux chain.** The Windows chain keeps its own register,
 same grading scale, at
 [`upstream-windows-patches.md`](upstream-windows-patches.md); its prepared
 submissions live under `windows/upstream/`. Two entries are shared between the
-lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2) and the libyuv
-RVV backport (entry 16).
+lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2) and the gst-libav
+codec IDs FFmpeg 8 removed (entry 12).
 
 The patches themselves live in `linux/scripts/patches/<component>/NNN-name.patch`
 and are applied by `linux/scripts/01-core/apply-patch.sh`, which is idempotent
-(reverse-apply check first) and fails loudly rather than skipping. One further
-change is not a `.patch` file at all — see [Not a patch file](#not-a-patch-file).
+(reverse-apply check first) and fails loudly rather than skipping. Some changes
+are not `.patch` files at all — see [Not a patch file](#not-a-patch-file).
 
 ## How to read this
 
@@ -55,21 +56,23 @@ the branch you intend to target before filing.
 | 14 | [torchvision: staged torch paths](#14-torchvision-setuppy-cannot-be-pointed-at-a-staged-torch) | torchvision | **B/C** | ★ |
 | 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
+| 21 | [slang: riscv64 pointer size and byte order](#21-slang-riscv64-pointer-size-and-byte-order) | slang (Vulkan SDK) | **✔** | ★★ |
 
 Sorted by how ready each one is, not by number. Seven are ready to write today;
 the rest need the rework named in their entry.
 
-**Eight entries carry a ready-to-send message; the others deliberately do not.**
-9, 11, 12 and 14 need the patch itself reshaped before any message would be
+**Twelve entries carry a ready-to-send message; the others deliberately do not.**
+11 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
-15 is grade C and 16 is already fixed upstream, so neither gets one.
+8 and 9 are withdrawn, 15 is grade C, and 10, 12, 16 and 21 are already fixed
+upstream, so none of them gets one.
 
 ---
 
 ## 1. libstdc++: `-nostdinc++` for `src/c++23`
 
 **Not a `.patch` file** — applied as a `sed` on the pre-generated `Makefile.in` in
-`linux/scripts/02-toolchain/build-gcc.sh` (~line 527), guarded by
+`linux/scripts/02-toolchain/build-gcc.sh` (~line 565), guarded by
 `verify-critical-fixes.sh` as `fix10` so it cannot be silently dropped.
 Applies to: the pinned `GCC_VERSION`.
 
@@ -210,10 +213,10 @@ the `apps_lib` static library. Upstream compiles `dng_writer.cpp` into `apps_lib
 whenever libtiff is found, but never declares the dependency, so consumers of the
 static library fail to link.
 
-**Note the filename is misleading.** It is named `riscv64` because that is the
-lane where we first hit it, but the defect is architecture-independent — it is
-simply masked wherever the linker happens to pull libtiff in transitively.
-**Rename the patch before filing** and describe it as what it is.
+**The defect is architecture-independent.** We first hit it on the riscv64 lane,
+and the patch used to carry that name; it is simply masked wherever the linker
+happens to pull libtiff in transitively. The file is renamed; describe it as
+what it is.
 
 **PR message**
 
@@ -227,8 +230,7 @@ for some other reason.
 ```
 
 **Before filing:** libcamera reviews on their GitLab / mailing list. Confirm the
-bug still exists on `master`. Rename our patch file first — it is called
-`001-apps-add-libtiff-dependency.patch` and the defect has nothing to do with riscv64.
+bug still exists on `master`.
 
 ---
 
@@ -307,7 +309,7 @@ stub, expect that counter-proposal — the PR message above says so up front.
 
 `linux/scripts/patches/onnxruntime/001-android-gradle-agp8-compat.patch` ·
 applied by `03-media/build/onnxruntime/android/build-android.sh` ·
-applies to **v1.29.0**.
+applies to **v1.30.0**.
 
 Bumps `com.android.tools.build:gradle` from 7.4.2 to 8.3.1 in two build files and
 adds the `buildFeatures { buildConfig = true }` that AGP 8 requires now that
@@ -539,7 +541,7 @@ unconditionally. Happy to send a patch for either part.
 ## 14. torchvision: `setup.py` cannot be pointed at a staged torch
 
 `linux/scripts/patches/torchvision/001-torch-staging-paths.patch` ·
-applied by `05-frameworks/torch/build-app-wheelhouse.sh` · applies to **v0.28.0**.
+applied by `05-frameworks/torch/build-app-wheelhouse.sh` · applies to **v0.29.0**.
 
 Adds a `TORCHVISION_TORCH_STAGING` environment variable that, when set,
 monkey-patches `torch.utils.cpp_extension.include_paths` and `library_paths` to
@@ -759,6 +761,22 @@ build.
 
 ---
 
+## 21. slang: riscv64 pointer size and byte order
+
+`linux/scripts/patches/slang/001-riscv64-arch-detection.patch` ·
+applied by `02-toolchain/vulkan.sh` (`_vulkan_patch_component`) · applies to the
+slang the pinned `VULKAN_VERSION` SDK carries.
+
+**Upstream has already fixed this — do not open a PR.** `slang.h` derives
+`SLANG_PTR_IS_64` and the byte order from a processor list that has no riscv64,
+so riscv64 silently gets a 32-bit layout, and no byte order at all, which stops
+the first translation unit at an `#error`. Our patch backports upstream PR #12305
+(ask the compiler first); drop it when the SDK's slang carries it. The check and
+the drop condition:
+[`vulkan-foreign-arch-sdk.md` § Upstream patches](vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump).
+
+---
+
 ## Warning waivers — candidates for a report, not patches
 
 Four places demote an upstream `-Werror` rather than fixing the code. Each is a
@@ -777,9 +795,10 @@ minimal reproducer can settle, and GCC maintainers act on those.
 
 ## Not a patch file
 
-Five upstream-facing changes do not live under `patches/`: the libstdc++ `sed`
-(entry 1), the three cerbero `sed`s (entries 17–19), and the warning waivers
-above. One further item is tracked without any local change at all —
+Six upstream-facing changes do not live under `patches/`: the libstdc++ `sed`
+(entry 1), the three cerbero `sed`s (entries 17–19), the OpenCV `complex.h` shim
+(entry 20) and the warning waivers above. One further item is tracked without any
+local change at all —
 **sccache `-B` handling**, `mozilla/sccache#1102`, open since 2022:
 `02-toolchain/probe-sccache.sh` detects the broken shape and avoids it rather
 than patching it.
@@ -788,25 +807,25 @@ than patching it.
 
 Ordered so the cheap, unblocking work comes first.
 
-1. **Nothing here is blocked on the RV23 rebuild except entry 3.** The genai
-   riscv64 patch wants "built and smoke-tested on riscv64" in the PR body, and
-   that sentence should be true when you write it. Everything else can go now.
-2. **Regenerate entry 2 as a cherry-pick.** Ours is a hand-written
-   reimplementation of `700cd32ffd` and `83ed22ca28`. Cherry-pick both onto 5.x,
-   resolve conflicts, and replace our patch with that — then the PR is a port and
-   we stop carrying a divergent fix.
-3. **Split three patches that are currently two changes in one file.**
-   Entry 8 from entry 9 (`003-…`), and entry 10a from 10b (`005a`/`005b` are
-   already separate files — just do not send them together).
-4. **Rename `001-apps-add-libtiff-dependency.patch`.** The defect is not riscv64.
-5. **Capture evidence for the two issue-only items and the waivers.** Entry 18
-   needs the two soundtouch hashes out of a build log; the four waivers each need
-   their exact diagnostic. Do not file any of them from memory.
-6. **Decide the shape for entries 11 and 12** — both are compile fixes today and
-   both need to become version-conditional before they are sendable.
-7. **Check for competing work before each PR.** Entry 2 is the cautionary tale:
+1. **Nothing here is blocked on the RVA23 rebuild any more.** Entry 3 waited for
+   it, so that "built and smoke-tested on riscv64" in its PR body would be true.
+   GEN1 is validated since 2026-09-03, under qemu-user: say so in the PR, real
+   silicon is unproven ([`gen1-riscv64-genai.md`](gen1-riscv64-genai.md)).
+2. **Open the entry 2 PR.** Our side already carries upstream's `700cd32ffd` and
+   `83ed22ca28` as `002a`/`002b`, so the PR is the port of those two onto 5.x.
+3. **Drop `003` and `004` instead of sending them** (entries 8 and 9, both
+   withdrawn): put the triple in meson's `rust` list, confirm the cross target,
+   then delete both. `005a`/`005b` go with a GStreamer bump (entry 10), never as
+   a PR.
+4. **Capture evidence for the waivers.** The four each need their exact
+   diagnostic; entries 18 and 19 already carry theirs (measured 2026-09-02). Do
+   not file any of them from memory.
+5. **Decide the shape for entry 11** — a compile fix today that needs to become
+   version-conditional before it is sendable. Entry 12 needs only a GStreamer
+   bump: upstream already guards it.
+6. **Check for competing work before each PR.** Entry 2 is the cautionary tale:
    upstream had already fixed it on another branch and we did not look.
-8. **After libcamera bumps its libyuv wrap** (entry 16), delete our patch and the
+7. **After libcamera bumps its libyuv wrap** (entry 16), delete our patch and the
    `patch_libyuv_rvv_sources` call — but keep `verify_libyuv_rvv_rows`.
 
 Accounts you will need: GCC (bugzilla + `gcc-patches@`), GitHub for OpenCV,
@@ -818,7 +837,9 @@ start that early if you do not already have access.
 ## Regenerating a patch against a newer upstream
 
 From `linux/scripts/patches/generate-patches.sh`: patches are **not** generated
-automatically. After a version bump, re-run the component build with
-`APPLY_PATCH_TRACE=1` to see which patches still apply, then diff the modified
-tree against a fresh upstream clone at the new pinned revision. `apply-patch.sh`
-fails loudly when a patch stops applying, and prints that same instruction.
+automatically. After a version bump, re-run the component build: `apply-patch.sh`
+prints `APPLIED`, `SKIP` or `ERROR` for every patch, so the log shows which still
+apply. Then diff the modified tree against a fresh upstream clone at the new
+pinned revision. `apply-patch.sh` fails loudly when a patch stops applying and
+points at `generate-patches.sh`. The `APPLY_PATCH_TRACE=1` that script mentions
+is read by nothing.

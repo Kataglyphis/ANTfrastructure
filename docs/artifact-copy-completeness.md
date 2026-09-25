@@ -234,9 +234,13 @@ image sees it — and it reads bytes, not behaviour:
 
 ### What is exempt, and why the arm names the tree
 
-`_RT_TREE_ARCH_EXEMPT` holds `/opt/android-sdk` alone: one linux-x86_64 SDK copied
-unchanged into all three images, so its arch says nothing about this image either
-way. The arm names the **tree**, never an arch — so a newly host-installed tree
+`_RT_TREE_ARCH_EXEMPT` holds two trees. `/opt/android-sdk` is one linux-x86_64 SDK
+copied unchanged into all three images, so its arch says nothing about this image
+either way. `/opt/android` carries the Android target's ABI (`ANDROID_TARGET_ABI`,
+default `arm64-v8a`), not the image's, so `check_android_abi` judges it against the
+ABI the image advertises instead
+([`linux-cross-builds.md` § The Android ABI is a target, not the build host](linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host)).
+The arm names the **tree**, never an arch — so a newly host-installed tree
 fails by default instead of inheriting somebody's exemption. A tree that is present
 but holds no ELF at all (a per-arch empty dir) is a note, not a pass: presence is
 the ARCH-PARITY table's assertion, and absence of the directory itself is fatal
@@ -251,7 +255,7 @@ with the gate's own scanner, and the reasons did not all survive.
 | exemption | measured, per image | verdict |
 |---|---|---|
 | `/opt/android-sdk` | the same 40 644-file tree in all three: 582 X86-64, 417 Intel-80386, 414 ARM, 414 AArch64, 33 RISC-V | **KEEP.** Without it arm64 and riscv64 red on 1 446 foreign objects that are the SDK's host toolchain and device libs |
-| `/opt/android` | amd64 37 X86-64, arm64 37 AArch64, riscv64 34 RISC-V — and nothing else | **DELETED.** The reason ("device `.so`, arch says nothing") is false: `arch_android_abi_for` maps each build arch to the ABI with the SAME ELF machine (`amd64→x86_64`, `arm64→arm64-v8a`, `riscv64→riscv64`), and each image carries exactly one ABI directory. The gate now asserts it for free |
+| `/opt/android` | amd64 37 X86-64, arm64 37 AArch64, riscv64 34 RISC-V — and nothing else | **DELETED.** The reason ("device `.so`, arch says nothing") is false: `arch_android_abi_for` maps each build arch to the ABI with the SAME ELF machine (`amd64→x86_64`, `arm64→arm64-v8a`, `riscv64→riscv64`), and each image carries exactly one ABI directory. The gate asserted it for free — until `ANDROID_TARGET_ABI` stopped following the build arch; `/opt/android` is exempt again, and `check_android_abi` asserts it (above) |
 | `/opt/vulkan` probed at `/opt/vulkan/active` | `active/` is 122 files, 3 objects, all target. The rest of `/opt/vulkan` on arm64/riscv64 was **1 317 X86-64 + 2 Intel-80386 objects across 33 926 files — 1.8 GB of `x86_64/` plus 3.9 GB of `source/`** | **DELETED 2026-09-05.** The narrowing was hiding a packaging defect, not a legitimate host tree. Both subtrees are pruned before the COPY now and the gate asserts the WHOLE tree on all three arches — [the section below](#the-vulkan-tree-ships-only-what-the-image-runs) |
 | the cross-payload filter (`/lib/rustlib/`, `/lib/clang/`, `/lib/gcc/`, `gcc-*/​<triple>/`) | on amd64 it hides exactly the target payload: rustup's AArch64+RISC-V `libstd`, gcc's per-triple crt objects, clang's i386 multilib runtimes. On the foreign images it hides only own-arch objects | **KEEP.** It also does **not** hide the five X86-64 `libLLVM`/`libclang` in `/usr/local/llvm-target` on either foreign arch, which is how the frozen count of 5 was confirmed exact |
 
@@ -467,7 +471,7 @@ verdict line, so the message names the consumer symptom rather than a path.
   loop terminates, the package stage no longer copies anything into the prefix, and
   the loader-path half is still written. Plus `_RT_TREE_ARCH_FROZEN` empty and both
   of its gate arms.
-* Mutations `artifact-copy.completeness-check`, `flutter.bootstrap-hard-fail`,
+* Mutations `artifact-parity.completeness-check`, `flutter.bootstrap-hard-fail`,
   `flutter.bootstrap-cache-handover`, `flutter.bootstrap-whole-tree-chown`,
   `flutter.smoke-offline`, `flutter.smoke-dart-arch`,
   `flutter.smoke-sdk-writable`, `flutter.smoke-root-owned`,
@@ -476,7 +480,8 @@ verdict line, so the message names the consumer symptom rather than a path.
   `probe.tree-arch-arg-default`, `probe.tree-arch-relocation`,
   `llvm-target.fill-is-needed-driven`, `llvm-target.fill-replaces-dangling`,
   `llvm-target.fill-reaches-fixpoint`, `llvm-target.no-package-stage-copy`,
-  `llvm-target.ld-path-published`, `tree-arch.frozen-count-must-match`.
+  `llvm-target.ld-path-published`, `tree-arch.frozen-table-empty`,
+  `tree-arch.frozen-key-is-per-arch`.
 
 ## The membership test must not shell out
 

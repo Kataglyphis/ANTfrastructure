@@ -41,18 +41,19 @@ On Linux there is no equivalent resolution step, and
 `linux/scripts/lib/code-quality.sh` is not one: it is a **library you source**,
 not a wrapper that locates binaries. It invokes bare `clang-format -i`
 (in `code_quality_run_clang_format`) and bare `clang-tidy` (in `code_quality_run_clang_tidy`) straight
-off `PATH`, and there is no `CODE_QUALITY_*_BIN` knob among the variables it
-documents (the variables it documents in its header). Nothing checks for the binaries first
-either: the library *defines* a fallback `require_tools` (its fallback `require_tools`)
-but never calls it, so a missing LLVM tool surfaces as the shell's own
-`command not found` at the call site. Put LLVM on `PATH` yourself.
+off `PATH`, and there is no `CODE_QUALITY_*_BIN` knob among its caller
+variables (table below). Nothing checks for the binaries first either: the
+library sources `has_tool`/`require_tools` from `01-core/tool-checks.sh` but
+calls neither for the LLVM tools, so a missing LLVM tool surfaces as the shell's
+own `command not found` at the call site. Put LLVM on `PATH` yourself.
 
-`cmake-format` is the one tool the library will provision:
-`code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
-with `uv` and installs the project's requirements — but only when the consuming
-project has set both `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and
-`CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`. Without them it hard-errors
-(inside that function) instead of bootstrapping anything.
+`cmake-format` is the one tool the library will provision: when it is not on
+`PATH`, `code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
+with `uv` at `CODE_QUALITY_VENV_DIR` and installs the hub's pinned
+`linux/scripts/cmake-format.requirements.txt` through `01-core/python_uv.sh`.
+That default has applied since 2026-09-15; `CODE_QUALITY_UV_VENV_CREATE_SCRIPT`
+and `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` only override it. It still
+hard-errors when `uv` is missing or the hub's requirements file is absent.
 
 ### clang-format
 
@@ -132,9 +133,12 @@ consistent by construction.
   `code_quality_check_clang_format`, `code_quality_prepare_compile_db`,
   `code_quality_run_clang_tidy` and `code_quality_run_cmake_format` as separate
   steps to call in whatever order it wants. It is not a command you run: it has
-  no `main`, and nothing in this repo sources it — per
-  [`shared/config/README.md`](../shared/config/README.md) the consumers are the
-  downstream C++ projects.
+  no `main`. Inside this repo only the `cmake-format` preflight slug
+  (`check_cmake_format` in `preflight.sh`) and
+  `05-frameworks/flutter/flutter_checks.sh` source it, for the cmake-format and
+  tracked-file helpers; per
+  [`shared/config/README.md`](../shared/config/README.md) the consumers of its
+  C++ steps are the downstream C++ projects.
 
 ### The failure mode to watch for
 
@@ -162,10 +166,10 @@ the caller's shell options.
 |---|---|---|
 | `CODE_QUALITY_PROJECT_ROOT` | repo root; replaces the container workspace prefix when remapping a compile DB | `$PWD` |
 | `CODE_QUALITY_CMAKE_SEARCH_ROOT` | root of the cmake-format walk | `.` |
-| `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` | `find -not -path` globs for that walk | empty |
+| `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` | `find -not -path` globs for that walk, added to the built-in `*/.pub-cache/*` | empty |
 | `CODE_QUALITY_CMAKE_FORMAT_CONFIG` | cmake-format config, passed with `-c` only if it exists | `.cmake-format.yaml` |
-| `CODE_QUALITY_CPP_FORMAT_EXTENSIONS` | extensions fed to clang-format | — |
-| `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | — |
+| `CODE_QUALITY_CPP_FORMAT_EXTENSIONS` | extensions fed to clang-format | `c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp` |
+| `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | `c cc cpp cxx` |
 | `CODE_QUALITY_CLANG_TIDY_ARGS` | extra clang-tidy arguments, e.g. per-project `-checks=` | empty (see axis 4) |
 | `CODE_QUALITY_CLANG_TIDY_FIX` | `true` appends `-fix` | `false` |
 | `CODE_QUALITY_COMPILE_DB_HINT` | sentence appended to the "missing compile_commands.json" error | — |
@@ -173,13 +177,15 @@ the caller's shell options.
 | `CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR` | directory whose absence means the container GCC is unavailable locally; empty disables the flag stripping | empty |
 | `CODE_QUALITY_GCC_TOOLCHAIN_PREFIX` | prefix matched when stripping container-only toolchain flags | `/opt/gcc-` |
 | `CODE_QUALITY_VENV_DIR` | virtualenv used to obtain cmake-format | `<project root>/.venv` |
-| `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` | script that creates the venv | — |
-| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | — |
+| `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` | script that creates the venv | the hub's `uv_venv_create` (`01-core/python_uv.sh`) |
+| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | installs the hub's `linux/scripts/cmake-format.requirements.txt` |
 
-Both `UV_*` scripts run with the project root as cwd and are only needed when
-cmake-format is not already on `PATH`. Anything the wrapper does not provide is
-discovered from the environment: logging from `01-core/logging.sh` (or minimal
-fallbacks), tool presence from the caller's `require_tools`/`has_tool`.
+Both `UV_*` scripts run with the project root as cwd and only override the hub's
+default bootstrap, which runs only when cmake-format is not already on `PATH`.
+Anything the wrapper does not provide is discovered from the environment:
+logging from `01-core/logging.sh` via `lib/log-bootstrap.sh` (or minimal
+fallbacks), tool presence from the caller's `require_tools`/`has_tool`, or else
+`01-core/tool-checks.sh`.
 
 #### Dart file enumeration
 
@@ -199,17 +205,21 @@ package, which every other gate in this family exempts — so it graded a packag
 nobody in this fleet writes. A caller that copies the `case` arms instead of
 calling this helper drifts the same way.
 
-**Never `dart format .` in a CI lane.** The Linux lanes install the Flutter SDK
-inside the mounted workspace (`flutter_dir: /workspace/flutter`), so the
-recursive walk reformats the SDK. Measured 2026-09-03 on
-OmniAccelerANT: `Formatted 7404 files (627 changed)`, 604 of them
-under `flutter/` — by itself enough to fail `--set-exit-if-changed`.
+**Never `dart format .` in a CI lane.** The recursive walk reaches every
+directory under the root, `third_party/` and `build/` included. The Linux lanes
+used to install the Flutter SDK inside the mounted workspace
+(`flutter_dir: /workspace/flutter`), so the walk reformatted the SDK. Measured
+2026-09-03 on OmniAccelerANT: `Formatted 7404 files (627 changed)`, 604 of them
+under `flutter/` — by itself enough to fail `--set-exit-if-changed`. The lanes
+now take the image's SDK at `/opt/flutter` (`flutter_lane_prepare_env`,
+`05-frameworks/flutter/lane-prologue.sh`), but a leftover `flutter/` checkout in
+a workspace is walked the same way, so the exclusion stays.
 
 #### Known divergences from the Windows path — read before "unifying" the two
 
-The Windows equivalent is split across `WindowsFormatting.Common.psm1` and
-`WindowsCMake.Common.psm1` (both here) plus `WindowsClang.Common.psm1` (in the
-consumer project). An audit found seven genuine differences. They are recorded
+The Windows equivalent is split across `WindowsFormatting.Common.psm1`,
+`WindowsCMake.Common.psm1` and `WindowsClang.Common.psm1`, all three here. An
+audit found seven genuine differences. They are recorded
 so that unifying the sides is a decision with the facts in hand rather than an
 accident — the Linux library reproduces the Linux behaviour exactly, and none of
 these were "fixed" during the extraction.
@@ -239,9 +249,10 @@ derived table), `code-complexity` (decision paths and nesting depth, beside
 `lint-shell.sh` prints but never gated). The same day `code-dupes` and
 `env-knobs` gained the missing bookkeeping halves of their contracts — an
 unrecorded shrink and a knob nobody reads any more now fail — and `mutations`
-learned to refuse a bite recorded while that suite was already red. `preflight.sh`
-runs 33 checks today; which of them a suite or a mutation actually proves is
-generated into `docs/code-quality-gates.md`, never hand-maintained here.
+learned to refuse a bite recorded while that suite was already red. The checks
+`preflight.sh` runs are its `KNOWN_SLUGS` array; which of them a suite or a
+mutation actually proves is generated into `docs/code-quality-gates.md`, never
+hand-maintained here.
 
 ## Python that lives in shell heredocs
 
@@ -283,8 +294,9 @@ it) and `find linux/host-config/git-hooks -type f` (the git-hook cases plus
 `python-lint.hook-half-of-discovery`). The second half exists because a git hook
 cannot carry a `.sh` suffix; the pre-commit hook's `_mutation_plan` is ~15 lines of
 embedded Python that would silently leave the gate if that half were dropped.
-`tests/test-python-lint-gate.sh` asserts on the extractor's mapped-back NAME and
-line (`pre-commit__3.py:1:` = opener line 3, body line 1), not on the exit code, so
+`tests/test-python-lint-gate.sh` asserts on the mapped-back shell file and line
+(`linux/host-config/git-hooks/pre-commit:4:` = opener line 3 plus body line 1),
+not on the exit code, so
 a fixture that never reaches ruff cannot pass the case by accident.
 
 ## Proving a gate can go red
@@ -321,16 +333,18 @@ subjects are built with `printf`, not written as literal lines: a real
 so that is the one proven: an undefined name and a syntax error each exit 1. The
 **advisory tier** (the full default ruleset) must report and still exit 0 — an
 unused import prints `ADVISORY:` and passes. The fixture writes `RUFF_VERSION`
-from `01-core/versions.env` into its own `versions.env`, so it bootstraps the same
-pinned ruff the repo does instead of whatever is on PATH.
+from `01-core/versions.env` into its own `versions.env`, so when no ruff is on
+PATH it bootstraps the same pinned `uvx ruff@<pin>` the repo does (a ruff already
+on PATH is preferred by the gate and the fixture alike).
 
 The same suite pins the gate's **target set**, which the tier cases cannot see: a
 tree carrying all three shapes at once — a plain `.py`, a `python3 - <<'PY'` block
 opened on line 2 of `probe.sh`, and a `cat`ed `TPL_PY_*` family holding nginx
 config — must go red for a gate-tier error in either of the first two and stay
-green otherwise. The heredoc finding is asserted down to `probe__2.py:1:`, which
-is how a ruff diagnostic against a temp file maps back to the shell file and the
-opener line it came from. Switching the extraction off, narrowing the `find` that
+green otherwise. The heredoc finding is asserted down to `linux/scripts/probe.sh:3:`
+(opener line 2 plus body line 1), and the temp name `probe__2.py` must not
+appear — which is how a ruff diagnostic against a temp file maps back to the
+shell file and the line it came from. Switching the extraction off, narrowing the `find` that
 feeds it, or dropping the parse check each turn one of those three assertions red;
 before this, all three were silent — every suite stayed green while ~775 lines
 left the gate. The suite builds its fixture openers as `printf` ARGUMENTS so it is
@@ -341,9 +355,9 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `python-lint.gate-tier-neutered`, `python-lint.tier-boundary`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
 `python-lint.heredoc-python-decision` (the last targets
-`extract_embedded_python.py`, which `verify_gate_registry.py` does not count among
-`python-lint`'s own files — a `.sh` gate's shelled-out helpers are outside
-`own_files` today, so that entry is proven but uncredited).
+`extract_embedded_python.py`, which `verify_gate_registry.py` counts among
+`python-lint`'s own files because `own_files` includes the helpers a `.sh` gate
+shells out to).
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
@@ -352,8 +366,8 @@ hadolint's embedded shellcheck still parses RUN bodies as sh wherever it
 cannot see the inherited SHELL — e.g. stages whose base is an ARG image
 (`FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS ...`), where the SHELL set back in
 `common` is invisible to a static linter. PowerShell that happens to parse as
-sh slips through; PowerShell that does not (`...; & 'C:\x.ps1'` —
-Dockerfile.media-builder:321) raises a shellcheck PARSE error, which is
+sh slips through; PowerShell that does not (`...; & 'C:\x.ps1'` in
+`windows/Dockerfile.media-builder`) raises a shellcheck PARSE error, which is
 error-severity and so fails the gate on a pure false positive.
 
 Suppress the "shellcheck could not parse this at all" family, and only for
@@ -385,7 +399,7 @@ an image already on the host:
 | `Dockerfile.nvidia` | `PATH="${CUDA_HOME}/bin:${PATH}"`, `LD_LIBRARY_PATH="${CUDA_HOME}/lib64:…"` | a bare `/bin` fronting `PATH` and `/lib64` fronting `LD_LIBRARY_PATH`, instead of the CUDA ones |
 
 `verify_dockerfile_env_order.py` runs as pass 0 of `lint-dockerfiles.sh` — no
-download, so it is the one pass that cannot be skipped. It reports a value that
+download, so like pass 0b below it cannot be skipped. It reports a value that
 reads a key assigned **earlier in the same instruction**. Two references are
 deliberately not findings, because both resolve correctly:
 
@@ -399,7 +413,7 @@ deliberately not findings, because both resolve correctly:
 The fix is always the same: split the `ENV` in two. The second instruction sees
 the first one's keys.
 
-Proof: `tests/test-dockerfile-env-order.sh` (23 assertions) and eight
+Proof: `tests/test-dockerfile-env-order.sh` and eight
 `dockerfile-lint.env-order-*` mutations, including one that deletes the call
 from `lint-dockerfiles.sh` — a gate nothing invokes is the `copy-media-payloads.sh`
 defect again.
@@ -463,7 +477,7 @@ rather than a table.** `a | b` and `b | a` are one entry, so
 `frozenset` itself and keeps the line numbers to say `duplicate row for A <-> B
 (first at line N)`. Two *identical* rows have to reach it as two, which a dict
 view would already have folded — hence `iter_rows`. `verify_doc_dupes.load_allow`
-is the last copy of the parse still open; it wants the same three-line body.
+reads through `iter_rows` the same way.
 
 ## The mutation gate (`mutations`)
 
@@ -510,8 +524,9 @@ its guarantee removed. Restoring afterwards does not help — the hazard is the
 window, not the end state.
 
 Every invocation now builds ONE throwaway copy of the root (`mirror_tree()`, an
-`os.walk` + `copy2` that skips `.git`, `external`, `out`, `logs`, `archive` and
-`linux/webserver/dist`), points the whole run at it, and `rmtree`s it in a
+`os.walk` + `copy2` that skips every git-ignored path plus `COPY_EXCLUDES`: `.git`,
+`external`, `out`, `logs`, `archive`, `linux/webserver/dist` and
+`linux/llm-stack/ollama-binary.tar.zst`), points the whole run at it, and `rmtree`s it in a
 `finally`. Tests still run with `cwd` = that copy, so the relative commands every
 entry uses (`bash linux/scripts/tests/test-*.sh`) resolve unchanged. `--changed`
 still asks git about the REAL repo. Measured once, 2026-09-03: 0.58s for 6.4k
@@ -563,7 +578,7 @@ nothing (the common commit) copies nothing at all.
 | flag | use |
 | --- | --- |
 | *(none)* | every entry — CI, or before a release |
-| `--changed` | only entries whose target is committed since `origin/main`, staged, or edited. CI's incremental mode; the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
+| `--changed` | only entries whose target — or a file their `test` command names — is committed since `origin/main`, staged, or edited. The pre-push hook's mode (CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default `min(8, cpu_count)`, capped at the entry count). Every mutation is still applied, run and restored alone, inside its own shard's copy |
@@ -615,7 +630,8 @@ run of each distinct test command × (entries + 1) — fell from **11469 s** on
 **18m39s** at `--jobs 16` on 32 cores; 1164 entries bite, and the 8 under
 `test-compiler-cache.sh` are vacuous there only because the image ships a real sccache.
 
-**A CI slice should take about 10-16 of its 30 minutes, slice 1 up to 4 more.** A lab
+**A CI slice should take about 10-16 of its 30 minutes, the slice holding
+`mutations.timeout-kills-tree` (today `0/4`) up to 4 more.** A lab
 run pinned to 4 CPUs is not a runner: under `taskset`, `os.cpu_count()` still reports
 the host's 32, so `verify_mutations.py` picks `--jobs 8` where the runner's 4 vCPUs
 give it 4. An early lab slice timed that way (6m16s) is no CI figure. Run as the
@@ -626,7 +642,7 @@ over that tree's serial cost in the same session. Three sessions put a slice at
 10.0-12.4 min on a fast runner and 12.7-15.7 min on a slow one; the spread comes from
 the session, not the slice. The scaling spreads over all four slices the one entry
 that sits out the gate's 300-s per-entry timeout (`mutations.timeout-kills-tree`),
-which slice 1 pays alone. The same scaling puts `a7ccc896`'s whole gate, in one job,
+which that slice pays alone. The same scaling puts `a7ccc896`'s whole gate, in one job,
 at 66-84 min; CI killed it at 45. The first CI run is the proof.
 
 ### The pre-commit hook's cost budget
@@ -645,11 +661,11 @@ every commit of a batch re-pays for all the commits before it, so the tenth
 commit of a session is the most expensive one even if it touched one file. The
 hook now selects on the STAGED files alone — the same scoping it already applies
 to `shellcheck` (`--files`) and to the doc gates. `--changed` keeps its meaning
-for CI.
+for the pre-push hook.
 
 **Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
-handful of suites, and `test-code-complexity.sh` alone owns more than a fifth of
-the manifest. Each entry costs one full run of its suite — 0.5 s for a cheap one,
+handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
+than a fifth of the manifest. Each entry costs one full run of its suite — 0.5 s for a cheap one,
 3.2 s for `test-code-complexity.sh` (measured 2026-09-03) — so touching one gate script can be a minute on its
 own. No selection rule makes that both complete and fast. So the hook **samples**,
 and says so:
@@ -727,15 +743,17 @@ successful restore.
 
 **Isolation is a DEFAULT, and a default is one flag from being off.** Nothing in
 the code stops `--in-place` being appended to preflight's `run_check mutations`
-line or to the hook's `--changed` line; every suite in the repo survives that edit,
-and the consequence is precisely the hazard above. `test-mutation-gate.sh` therefore
-reads both call sites out of `linux/scripts/preflight.sh` and
-`linux/host-config/git-hooks/pre-commit` and asserts that each still invokes the
-gate — `run_check mutations`, and an `if` whose branch is the staged-file run — and
-that no invocation line carries `--in-place`. Four entries
+line or to the hook's `verify_mutations.py "${_only[@]}"` line; every suite in the
+repo survives that edit, and the consequence is precisely the hazard above.
+`test-mutation-gate.sh` therefore reads the call sites out of
+`linux/scripts/preflight.sh`, `linux/host-config/git-hooks/pre-commit` and
+`pre-push` and asserts that each still invokes the gate — `run_check mutations`,
+the hook's single `verify_mutations.py "${_only[@]}" ||` staged-file run, and
+pre-push's `--stale-check` and `--changed` runs — and that no invocation line
+carries `--in-place`. Four entries
 (`mutations.preflight-callsite-isolated`, `mutations.hook-callsite-isolated`,
 `mutations.preflight-runs-the-gate`, `mutations.hook-runs-the-gate`) flip each call
-site and must bite. The test only READS those two files; they belong to other gates.
+site and must bite. The test only READS those files; they belong to other gates.
 
 **Three properties of the copy are pinned rather than assumed.** `COPY_EXCLUDES` is
 membership, so emptying it is invisible to every functional test — the run just gets
@@ -779,8 +797,8 @@ exact false green the gate exists to find.
 
 - `--stale-check` over the WHOLE manifest — the only thing in the repo, outside
   CI, that reads every entry;
-- `--changed` for real, whose existing semantics (everything committed since
-  `origin/main`, plus the index and the worktree) are push semantics exactly.
+- `--changed` for real, whose existing semantics (entries whose target or test
+  file is committed since `origin/main`, staged or edited) are push semantics.
 
 `PREPUSH_MUTATION_JOBS` (default **4**, not the gate's 8) is the escape hatch for
 the memory the mirrors hold: one ~200 MB copy of the tree per job, on a host where
@@ -813,7 +831,7 @@ Two spellings are load-bearing, because they are what the gate finds:
 | `**<n> entries** over **<m> distinct test commands**` — this page, exactly once | the manifest's length and its distinct `test` commands |
 | ``<n> … (`<prefix>.*`)`` — any of the three pages | how many ids carry that prefix |
 | `the <n> fast slugs` / `the <n> cheap whole-tree slugs`, and ``` `_FAST_SLUGS` (`:<a>-<b>`) ``` | the hook's own list and the lines it spans |
-| `<n> definitions qualify`, `**<n>** rows remain`, `reports **<n>** rows today`, `the reachability tier reports <n>` — this page, each exactly once | the three counts in the `--census` header line |
+| `<n> definitions qualify`, `**<n>** rows remain`, `reports **<n>** rows today`, `the arm reaches **<n>** of them today`, `the reachability tier reports <n>` — this page, each exactly once | the four counts in the `--census` header line |
 
 A count of the whole manifest has ONE owner, the first row above; the other two
 pages say "every entry" and the gate fails if a bare `all <n> entries` comes
@@ -836,11 +854,10 @@ files, which are the inventory — this page does not keep a second count.
 Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
 cannot fool it. Dockerfiles have no function structure, so they are size-checked
-as files only — `Dockerfile.media` at 1162 lines is the largest **Dockerfile**
-in the tree (four files in the gate's scan set are bigger:
-`smoke-runtime-image.sh` at 2433, `bench_coding.py` at 2053, `bench_tasks.py` at
-1889 and `build-app-wheelhouse.sh` at 1248) and was invisible to every gate until
-2026-09-03.
+as files only — `Dockerfile.media` at 1248 lines (2026-09-25) is the largest
+**Dockerfile** in the tree (two files in the gate's scan set are bigger:
+`smoke-runtime-image.sh` at 2612 and `build-app-wheelhouse.sh` at 1258) and was
+invisible to every gate until 2026-09-03.
 
 One script rather than two: the four-way contract and the allow-file handling are
 shared, and a second copy would have tripped the duplication gate — correctly.
@@ -864,8 +881,8 @@ over 62 heredoc occurrences, four of which had been frozen in
 
 The stripper is `strip_line` / `code_lines`, and it lives **here** rather than in
 `verify_code_complexity.py`, which is where it was first written: `code-size` owns
-`scan`, `DEF_HEAD` and `shell_functions`, and `code-complexity`, `dead-functions`
-and `gate-registry` all import from it, so the lexer sits at the bottom of the
+`scan`, `DEF_HEAD` and `shell_functions`, and `code-complexity`, `dead-functions`,
+`trailing-conditional` and `gate-registry` all import from it, so the lexer sits at the bottom of the
 import graph and every gate that reads shell source shares one copy. Importing
 upward from `code-size` into `code-complexity` would have been a cycle.
 
@@ -910,8 +927,8 @@ asserts the exit code too.
 Owner directive 6 says two lines at the point of use; longer text belongs in
 `docs/` with a pointer. `verify_comment_size.py` fails on any NEW comment block
 over 10 lines in the `code-size` scan set, walked shell-only (`docs/scripts` has no
-`*.sh`, so it contributes none). The 172 blocks frozen in `comment-size.allow` are
-the inventory; shrinking one means deleting its line, and a stale entry fails too,
+`*.sh`, so it contributes none). The blocks frozen in `comment-size.allow` (182
+on 2026-09-25) are the inventory; shrinking one means deleting its line, and a stale entry fails too,
 so the list cannot rot.
 
 Entries are keyed on **file + the block's first comment line**, not on a line
@@ -925,7 +942,7 @@ that only leaf RUNs use) was prototyped and **dropped**: shared 01-core helpers
 are legitimately COPY'd into base stages for their descendants, so it produced
 false positives, and a noisy gate teaches people to ignore gates. The
 verify-media-artifacts case it was meant to catch is recorded in
-docs/refactoring-backlog.md F6 instead.
+`docs/refactoring-backlog-archive-2026-09-02.md` § F6 instead.
 
 ## Code-to-docs pointers (`doc-links`)
 
@@ -990,17 +1007,21 @@ found by real chains on 2026-09-08, both now pinned by mutations:
 
 Both survived because `test-cross-stage-build-cmd.sh` STUBBED the classifier to
 `[ "${TRANSIENT:-0}" = "1" ]`, so its regex had zero coverage while the file
-looked well tested. Ten assertions now drive the SHIPPED function. **A stub of the
-unit under test is not coverage of it** — the same shape as the `code-size.*`
-mutations, which all drive fixture trees and so could never see the real `SCAN`.
+looked well tested. Twelve assertions now drive the SHIPPED function. **A stub of the
+unit under test is not coverage of it** — the same shape the `code-size.*`
+mutations had while every one of them drove a fixture tree and none could see the
+real `SCAN` (`code-size.llm-stack-is-a-subject` now does).
 
 ### Generated data is not source, and git alone cannot say so
 
 A benchmark result under OrchestrANT's `benchmarks/benchmark_results/` holds MODEL
 OUTPUT. A model that writes a plausible `docs/<page>.md` link into its answer is
 not making a repo reference, and two such lines once failed the gate with
-findings nobody could act on. `_ignored_paths()` therefore drops the output
-trees before scanning, and `UNTRACKED_OUTPUT` names them.
+findings nobody could act on. `_ignored_paths()` therefore drops output trees
+before scanning, and `UNTRACKED_OUTPUT` names the ones this repo still has
+(`linux/webserver/dist`, `linux/llm-stack/.env`,
+`linux/llm-stack/ollama-binary.tar.zst`); under a consumer `--root` the gate
+lists tracked files and applies neither.
 
 It is a **floor under both answers**, not a git-free fallback, because git is
 wrong here in two separate ways. Without `.git` — the mutation gate mirrors the
@@ -1063,12 +1084,13 @@ the nine rows did, and every one of them rotted the way the group comment said i
 would. Mutation `doc-links.header-open-backlog` proves the rule is live.
 
 **Its blind spots, named.** The header window stops at line 10. Dockerfiles and
-`.env` files sit outside the scan entirely. An anchor can resolve and still be the
+`.env` files sit outside the header rule (it reads only `.sh`/`.py` headers),
+though their pointers are still checked for page and anchor. An anchor can resolve and still be the
 wrong section for the file quoting it. And the 266 pointers living in ordinary
 prose were declined on purpose, not overlooked.
 
-**One consequence of the scan set, and it is deliberate.** The manifest and both
-allow files under `docs/scripts/` are inside this gate's own scope, so a reference
+**One consequence of the scan set, and it is deliberate.** The manifest and the
+three allow files under `docs/scripts/` are inside this gate's own scope, so a reference
 quoted in a mutation entry is held to the same rule as one in code. Break a
 pointer there and the real tree goes red — which is why
 `doc-links.flutter-checks-anchor` neuters the target *heading* rather than the
@@ -1122,13 +1144,17 @@ question is always "why does *that* suite count?".
   stated openly: an incidental mention counts. The `mutations` gate is the backstop
   that turns a mention into evidence.
 - **Why the function name for an inline gate.** An inline gate's script column is
-  its host file — usually `preflight.sh`, which four unrelated suites mention in
-  passing. Keyed by the file, `crlf-guard` read "proven" while neutering its awk
-  pattern survived all four. Keyed by `check_crlf_guard`, only
+  its host file — usually `preflight.sh`, which eleven other suites mention in
+  passing (four did when this rule was written). Keyed by the file, `crlf-guard`
+  read "proven" while neutering its awk pattern survived all four. Keyed by
+  `check_crlf_guard`, only
   `tests/test-crlf-guard.sh` counts.
 - **A `mutations.json` entry is credited to the gate its id prefix names** — ids
-  are `<slug>.<kebab>` — and only when its `target` is that gate's own script or a
-  module that script `import`s. The prefix is the claim, the target the evidence;
+  are `<slug>.<kebab>` — and only when its `target` is one of that gate's own
+  files — its script, a module that script `import`s, or a helper a `.sh` gate
+  runs as a separate program — or a call site: a file the gate does not own that
+  names the gate's script, in an entry whose `test` runs one of the gate's own
+  suites. The prefix is the claim, the target the evidence;
   both must agree, so no entry can prove two gates.
 - **Why not "the suite that proves this gate runs it".** That was the first rule
   and it was circular: "proves" is mention-based, and three suites mention
@@ -1139,8 +1165,8 @@ question is always "why does *that* suite count?".
   half of their proof (all three keep a suite, none dropped to UNPROVEN).
 - **The convention is enforced in both directions, over every entry.** The rule is
   about the ID, not about which files happen to be registered. A prefix that names
-  a preflight slug is a claim of ownership: it fails unless the `target` is that
-  slug's own script or a module it imports — over an ordinary build script just as
+  a preflight slug is a claim of ownership: it fails unless the `target` is one of
+  that slug's own files or a call site credited to it (the rule above) — over an ordinary build script just as
   much as over another gate's file. A prefix that names no slug fails when it pins
   a registered gate's file at all (that entry belongs to the gate, under the
   gate's name), and otherwise must be a declared descriptive family. A typo'd or
@@ -1154,13 +1180,17 @@ question is always "why does *that* suite count?".
   keep descriptive prefixes, declared once as `mutation-family:` lines, so an
   invented or misspelled namespace still fails loudly and a family nothing carries
   any more reads STALE.
-- **The hook-tier column follows the hook, not one string in it.** `hook+CI` = the
+- **The hook-tier column follows the hooks — every versioned hook under
+  `linux/host-config/git-hooks/`, pre-push included, the widest scope winning —
+  not one string in them.** `hook+CI` = the
   slug is listed in `_FAST_SLUGS`, so the whole gate runs on every commit;
+  `hook (whole tree)+CI` = a hook names the gate at its top level and runs it
+  unconditionally (`mutations`, via pre-push);
   `hook (scoped)+CI` = a later hook block hands the gate the staged file list
-  (`shellcheck`, `shellcheck-warnings`, `mutations`);
+  (`shellcheck`, `shellcheck-warnings`);
   `hook (whole tree, when relevant)+CI` = a block runs the **whole-tree** gate but
   only fires when the commit touches its inputs (`doc-dupes`, behind
-  `[ -n "${_staged_md}" ]`); `CI` = preflight and CI only. The two hook tiers are
+  `[ -n "${_staged_md}" ]`); `CI` = preflight and CI only. The two block tiers are
   not interchangeable to a reader: one says "only what you staged was checked",
   the other says "everything was checked, this time". A block is scoped when its
   body expands the guard variable or passes `--changed`; otherwise it is
@@ -1194,21 +1224,20 @@ declaration goes stale in the same run. The file therefore holds three counts �
 frozen slugs, `mutation-id:` freezes and `mutation-family:` declarations — which
 the gate prints live on every run.
 
-Today's five frozen ids are the shape the file-ownership model cannot express.
-`mutations.preflight-callsite-isolated` and `mutations.preflight-runs-the-gate`
-pin `preflight.sh`, whose sole registered owner is `crlf-guard`;
-`mutations.hook-callsite-isolated` and `mutations.hook-runs-the-gate` pin
-`linux/host-config/git-hooks/pre-commit`, which no gate owns. All four prove how
-the ORCHESTRATOR invokes the `mutations` gate, and `test-mutation-gate.sh` is what
-catches them. The fifth, `python-lint.heredoc-python-decision`, pins
-`extract_embedded_python.py` — the helper `lint-python.sh` shells out to but does
-not `import`, so `own_files()` does not credit it. The last three became visible
-only on 2026-09-04: before the id rule was widened it was silent over files no
-gate owns. Renaming any of them would put false credit in a generated table, so
-they are frozen instead. The fix is an ownership rule for call sites and for a
-shell gate's shelled-out helpers, not a rename; see `docs/refactoring-backlog.md`.
+The five ids frozen here on 2026-09-04 were the shape the file-ownership model
+could not then express: four `mutations.*` ids pinning that gate's CALL SITES in
+`preflight.sh` and the pre-commit hook, and `python-lint.heredoc-python-decision`
+pinning `extract_embedded_python.py`, the helper `lint-python.sh` shells out to.
+The registry now credits both shapes (`calls_the_gate()`, `shelled_out()`), so all
+five are credited and their freezes are gone. The one freeze today is
+`shared-config.exact-mode-is-declared-in-the-manifest`: it pins
+`shared/config/shared-assets.manifest`, a data file `sync-shared-config.sh` reads
+but the preflight command line never names, so no ownership edge reaches it (the
+reason sits beside the line in `gate-proofs.allow`).
 
-The cheapest proof per frozen slug, by shape:
+The cheapest proof per slug, by shape — the recipes that emptied the list (every
+slug below is proven now; see
+[The two that stay frozen, with better reasons](#the-two-that-stay-frozen-with-better-reasons)):
 
 - **Tree-consistency checkers** (`copy-coverage`, `critical-fixes`,
   `patch-integrity`, `arg-consistency`, `mirror-consistency`, `runtime-paths`,
@@ -1285,11 +1314,11 @@ Seven mutations pin it, all survived by every suite that merely mentions
 instead of asking the owner) and `crlf-guard.pipefail-pin` (`set -uo pipefail`
 → `set -u`).
 
-**Known limit.** `lint-shell.sh` sniffs the shebang with `head -n 1`, so a *wholly*
-CRLF extension-less script reads as `#!/usr/bin/env bash\r`, matches no arm, and is
-invisible to this gate and to `shellcheck` alike. A half-rewritten one (`w/mixed`,
-the realistic accident) keeps an LF first line and is caught. Closing it is one
-edit in `lint-shell.sh`, that gate's scope owner, not a second classifier here.
+**A former limit, closed in the scope owner.** `lint-shell.sh` sniffs the shebang
+with `head -n 1` and strips the CR before matching, so a *wholly* CRLF
+extension-less script (`#!/usr/bin/env bash\r`) is in scope for this gate and for
+`shellcheck` alike; `shellcheck.crlf-shebang` pins it. The fix was one edit in
+`lint-shell.sh`, that gate's scope owner, not a second classifier here.
 
 ### Flags
 
@@ -1308,20 +1337,23 @@ regenerated whenever a slug, a suite name, a mutation entry or the hook's
   about it still counts; only the `mutations` gate can tell the difference.
 - Only slugs wired into `preflight.sh` are visible. A checker that exists but is
   not wired in is invisible to this registry.
-- The hook-tier column sees `_FAST_SLUGS` and any hook block that *names* the gate.
+- The hook-tier column sees `_FAST_SLUGS` and any hook — a guarded block or its
+  top level, in any versioned hook — that *names* the gate.
   A hook that ran a gate without naming its script or its inline function — behind
   a variable, say — would still read CI-only.
 - Scope is read from the block, not from the gate's own argument parser. A block
   that named the gate and then scoped it through some third spelling of "the
   staged files" would read whole-tree.
 
-Pinned by `tests/test-gate-registry.sh` over a twelve-slug fixture
+Pinned by `tests/test-gate-registry.sh` over a thirteen-slug fixture
 plus `ordinary.sh`, a build script no `run_check` registers (one per shape: file
 gate proven by a suite, by its own mutation, by an inherited mutation credited by
 id prefix, the same import under another gate's prefix, unproven, `[ -f ]`
 fallback pair, inline in `preflight.sh`, inline in a sourced lib, inline with a
 same-named stub in a lib nobody sources, run whole-tree by a staged-docs block,
-scoped by `--changed` rather than the guard variable, by-construction) plus the
+scoped by `--changed` rather than the guard variable, named at the top level of a
+second hook (`pre-push`), by-construction) plus the shelled-out-helper and
+call-site credit rules, the
 `mutation-id:` and `mutation-family:` ratchets in both directions and all three
 convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
 and 28 entries (`gate-registry.*`).
@@ -1430,7 +1462,8 @@ be measured as nested inside the first.
   anyway. The guard is deliberately one-sided: gating `{` the same way cost a real
   level in `$({ objdump …; } | awk …)`, and a bare `{` token that is *not* a group
   opener does not arise, because `${…}` tokenizes as one word. That delimiter set
-  is its own three-character constant, unrelated to `CMD_OPS`; its `;` — the
+  is its own four-character constant (`DELIM`: space, tab, newline, `;`),
+  unrelated to `CMD_OPS`; its `;` — the
   `{ : ;}` spelling — is the member a case can miss, because dropping it only
   shows up in what the *unclosed* group does to the nesting of everything after.
 - **Escaped quotes.** `\"` inside `"..."` and a `\'` in code were handled but
@@ -1445,8 +1478,10 @@ be measured as nested inside the first.
 key, so a `cc` row does not cover the same function's nesting or vice versa. A row
 whose third field is neither `cc` nor `nesting` used to be filtered out of both
 passes and ignored — not even reported STALE — and a row missing the metric column
-crashed the gate with an `IndexError` before either summary line printed. Both now
-fail with the offending row echoed back.
+crashed the gate with an `IndexError` before either summary line printed. The
+first now fails naming the row; the second is a named shape error
+(`code-complexity.allow:<line>: expected '<path> | <function> | cc|nesting | <count> | <reason>'`,
+exit 2).
 
 ### Known limits, not fixed here
 
@@ -1467,7 +1502,8 @@ fail with the offending row echoed back.
 ### Tests
 
 `linux/scripts/tests/test-code-complexity.sh`. Each case installs
-the gate with its two imports into a throwaway tree and reads the number back
+the gate with its three imports (`verify_code_size.py`, `quality_allow.py`,
+`gate_scope.py`) into a throwaway tree and reads the number back
 **through the real CLI** with `COMPLEXITY_LIMIT=0 NESTING_LIMIT=-1`, so nothing
 asserts on the parser's internals. Its last case runs the gate on the real tree,
 and that case is what caught the gate tripping its own limit: `_code_char` reached
@@ -1476,7 +1512,7 @@ cc 20 while gaining the arithmetic handling and had to be split into
 
 48 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
 the tokenizer guarantees (heredocs, here-strings, quotes, cross-line quote state,
-comments, case arms, worst-not-last, the Python walk, elif depth, the metric split,
+comments, case arms, the Python walk, elif depth, the metric split,
 the surviving verdict), and one for each fix above — including **both** directions
 of the command-position rule, so that neither "every word is a keyword" nor "no
 word ever is" can pass. Twenty of them delete a single element from `CMD_OPS`, a
@@ -1489,7 +1525,7 @@ without a case going red.
 `linux/scripts/verify_dead_functions.py`, preflight slug `dead-functions`. Every
 shell function defined under `linux/scripts` or `linux/host-config` must be named
 at least once somewhere in the scanned code. Definitions come from
-`verify_code_size.functions()`, so the two gates cannot disagree about what a
+`verify_code_size.shell_functions()`, the extent walker `code-size` uses too, so the two gates cannot disagree about what a
 definition is — including the `function name {` form and a one-liner on a file's
 last line, both of which an earlier brace walker missed, and **excluding** the
 column-0 definition heads inside heredoc fixtures, which that same walker counted
@@ -1549,8 +1585,9 @@ scanner cannot see:
   are not in this tree at all.
 - `verify-parity.sh check_*` — reached as `"check_${check_name}"` over `CHECK_LIST`.
 - `command_not_found_handle` — bash calls it, nothing else does.
-- four `test-embedded-python-extract.sh` names — heredoc fixture text that
-  `functions()` reads as column-0 definitions; it is not heredoc-aware.
+- public helpers outside `lib/` whose callers live in consumer repos —
+  `05-frameworks/flutter/flutter-pin.sh`, `01-core/http-readiness.sh`,
+  `01-core/webdav-download.sh`, `05-frameworks/flutter/lane-prologue.sh`.
 
 The **DEAD** group the file carried until 2026-09-04 — three `cpython_ext_*` and
 `verify_shared_lib_optional`, frozen only because their files sat inside the
@@ -1640,7 +1677,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "Known limits" — and it reports **101** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **101** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -1671,7 +1708,7 @@ purpose. That is a second tool the size of the gate, and it would still guess at
 `bash -c` strings — the 20-row measurement in the arm's section above is what that
 guessing costs. What shipped instead is the corner of the problem that needs no
 graph: the unlinked-definer arm decides the cases where the definers can never meet,
-and the census keeps reporting the rest of the 94 as a watch list to delete from by
+and the census keeps reporting the rest of the masked list as a watch list to delete from by
 hand with the ffmpeg `cleanup()` precedent — pinning the absence in
 `tests/test-dead-functions.sh`, since a masked function the arm does NOT reach can
 never hold an allow row (it would read STALE the moment it was written).
@@ -1684,14 +1721,15 @@ never invent one.
 
 `shared/` is out of the corpus for the same reason `windows/` is — it is a template
 lane shipped to consumer repos, not a caller in this tree. The cost is visible:
-three `lib/agentic-loop.sh` rows are frozen with `shared/agentic-loop/templates/Run-AgenticLoop.sh`
-named in their reason instead of being seen. Adding `shared` to `CORPUS` would send
-those three rows STALE; that is the deliberate trade, not an oversight.
+two `lib/agentic-loop.sh` rows (`init_agentic_loop`, `complete_agentic_loop`) are
+frozen with `shared/agentic-loop/templates/Run-AgenticLoop.sh` named in their reason
+instead of being seen. Adding `shared` to `CORPUS` would send those two rows STALE;
+that is the deliberate trade, not an oversight.
 
 ### Coverage
 
 `linux/scripts/tests/test-dead-functions.sh`, over throwaway trees —
-each case copies the gate plus the two modules it imports and plants a subject,
+each case copies the gate plus the three modules it imports and plants a subject,
 callers and an allow file. 34 mutations (`dead-functions.*`), every one proven
 to bite, covering the
 corpus boundaries one at a time (Dockerfiles in; `.allow`, `.patch`, `.diff`,
@@ -1701,8 +1739,8 @@ a comment or a definition head at byte 0 is stripped — every fixture used to s
 byte 0, so the flags were previously proven only by the real tree), the `(?<=\s)`
 lookbehind that keeps a tab-indented comment a comment, `linux/host-config` being a
 subject and not merely a caller, the two-way freeze contract, both `--census`
-tiers — the reachability filter, the masked `(file, name)` keying, and the rule
-that the pass reports and never fails — and every clause of the unlinked-definer
+tiers — the reachability filter and the masked `(file, name)` keying (that the
+pass reports and never fails is pinned by the suite alone) — and every clause of the unlinked-definer
 arm, each shown by a fixture the arm must stay quiet on: the two definers linked by
 a third file, by the peer, and by the subject; a caller that owns no definition; a
 definition its own file names again.
@@ -1727,10 +1765,11 @@ mid-line would flag every message that merely mentions a log file.
 
 **Proof (2026-09-04).** `tests/test-stdout-returns.sh`, over
 throwaway trees at the gate's own depth (it derives its root from `parents[2]`),
-plus four `stdout-returns.*` mutations, every one proven to bite. This was the
+plus 5 mutations (`stdout-returns.*`), every one proven to bite (the fifth,
+`root-argument-is-the-tree`, arrived 2026-09-15 with `--root`). This was the
 first of the fourteen `gate-proofs.allow` slugs to be closed rather than
-re-frozen; the shape generalises to the eight tree-consistency checkers still
-listed above.
+re-frozen; the shape generalised to the tree-consistency checkers listed above,
+all proven since 2026-09-05.
 
 ## Shellcheck warning ratchet (`shellcheck-warnings`)
 
@@ -1762,8 +1801,8 @@ load-bearing (`version_major` returns 1 on an empty version, so splitting the
 declaration would turn a tolerated empty `GCC_WANTED` into a `set -e` abort), and
 the SC2034 rows that CL6 held open were dead code in build-closure files, kept
 only because nothing static can prove a chain still runs. Four are **closed on
-2026-09-05** — `stage-defs.sh`, `python_uv.sh`, `pre-setup.sh` and
-`gstreamer-env.sh` lost their rows entirely, and `build-runtime-manifest.sh`
+2026-09-05** — `stage-defs.sh` and `python_uv.sh` lost their rows entirely,
+`pre-setup.sh` and `gstreamer-env.sh` their SC2034 rows, and `build-runtime-manifest.sh`
 re-baselined 3 → 2 — each deletion landing with a suite that executes what
 survives it, not with a grep. `package_archive.sh` stays at 4 by DECISION, not
 by inertia: nothing in this repo invokes it and no stage copies it, so its three
@@ -1775,7 +1814,7 @@ provably a no-op, while `cross-env.sh`'s is operator-reachable, so quoting is a
 real argv change only a build can price.
 
 **Why it exists.** `lint-shell.sh` gates at `-S error` and prints warnings as
-advisory noise, so those 177 findings were watched by nothing: the 178th was
+advisory noise (only with `--warning`), so those 177 findings were watched by nothing: the 178th was
 free, and a fix nobody recorded left no trace. That the advisory tier is not
 harmless is already written into `lint-shell.sh` itself — SC2215 (a `\`
 followed by a comment, so the command runs with no arguments) is warning-level,
@@ -1794,7 +1833,7 @@ is the general form.
 the gate's own `shutil.which` lookup is gone.
 
 **Version pinning, and why CI stopped installing shellcheck.**
-`shellcheck_ensure` used to take any `shellcheck` on `PATH`. CI apt-installs
+`shellcheck_ensure` used to take any `shellcheck` on `PATH`. CI apt-installed
 0.9.0 on noble while the baseline was frozen with the `versions.env` pin
 `SHELLCHECK_VERSION=v0.11.0`, so CI would have gone red on counts that are
 correct locally. It now accepts a `PATH` copy **only** when its reported version
@@ -1839,16 +1878,14 @@ three are exit 2 with a message rather than zero findings: `--list-files` fails
 binary, or shellcheck emits something that is not json1. Each has a suite case
 and a mutation.
 
-**Reasons may not contain `|` or `#`.** `quality_allow.load_counts` — the reader
-the other gates share — takes the count as the *second field from the right*, so
-a reason containing `|` shifts the column and raises `ValueError`, and an inline
-`#` is stripped before the split. This gate therefore reads its allow file the
-same way (comment first, fields after) and folds any extra `|`-separated tail
-into one field when it rewrites, so what it writes is safe for every reader.
-`verify_shellcheck_warnings.py` does not call `load_counts` at all — its frozen
-counts come from the one parser that also carries the reasons — but that is a
-workaround, not the fix: a shared `(count, reason)` reader belongs in
-`quality_allow.py`, and is filed for that file's owner.
+**A reason may contain `|` and `#`.** `quality_allow.iter_rows` — the reader
+every counted gate shares through `load_rows` and `load_counts` — takes the number
+of key columns from the caller; this gate passes 2, so the count is always the
+third field and the rest of the line, `|` and inline `#` included, is the reason
+(only `keys=None` counts from the right). A row that fits neither shape stops the
+gate with exit 2, naming the file, the line and the expected format.
+`--write-baseline` reads the existing reasons through `load_rows`, the shared
+`(count, reason)` reader, and writes them back verbatim.
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
@@ -1858,8 +1895,9 @@ last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it �
 which is what every mutation `test` command sets, so no mutation can be recorded
 as biting because the tree drifted rather than because the guarantee was removed.
 
-**The rows are frozen, not reviewed.** All 95 carry `not yet reviewed`. SC2034 is
-85 of the 177 findings and is where the real bugs are: a variable that is
+**The rows are reviewed, not just frozen.** No row carries `not yet reviewed` any
+more (see *Every row carries a verdict* above), and SC2034 is still the largest
+family and where the real bugs are: a variable that is
 genuinely unused is usually a typo'd reference somewhere else. Triage belongs in
 `docs/refactoring-backlog.md`; what this gate guarantees is only that the number
 matches reality, so a change lands in the diff with a reason next to it.
@@ -1916,8 +1954,8 @@ worklist under `--report` (`widely-copied blocks`) rather than being thrown away
 files are both shell; other kinds' rows are neither judged stale nor counted in
 the `N allowlisted pair(s)` total. Two caveats that follow from that:
 `--kind md` on a tree with no Markdown in scope exits 2 (`nothing in scope`),
-and **`--baseline --kind X` rewrites the WHOLE file from that kind's pairs
-only** — it will drop every other kind's row. Re-baseline without `--kind`.
+and **`--baseline` refuses `--kind`** (argparse, exit 2): it rewrites the WHOLE
+file, so a scoped rewrite would drop every other kind's row. Re-baseline without `--kind`.
 
 **`--baseline` is destructive by design.** It keeps the five header comment
 lines and nothing else: rows are re-sorted by budget descending, existing
@@ -1957,8 +1995,10 @@ preflight slug `env-knobs`. A knob is CONSUMED if some `*.sh` under
 `linux/scripts` reads it as `${VAR:-...}`. It is OWNED by any of four things:
 a key in a `.env` file a build stage SOURCES, a Dockerfile `ARG`/`ENV`, an
 assignment or `: "${VAR:=…}"` anywhere in the scripts, or a row in the allow file.
-Both the consumed scan and the two script-side owner scans go through one `_scan`
-helper, so *reader* and *owner* are decided by exactly the same line filter.
+The consumed scan and both script-side owner scans run the one `_KNOB_AWK`
+walker — readers and the `: "${VAR:=…}"` form through `_scan` (its line-prefix
+mode), command-position assignments through its default mode — so *reader* and
+*owner* follow the same comment and quote rules.
 
 **Which `.env` files own (2026-09-05).** `ENV_OWNER_FILES` is
 `01-core/versions.env` plus `03-media/core/arch-flags-*.env`. The arch-flags files
@@ -1981,8 +2021,9 @@ holds them.
 configures this hub's own machinery (the pin suite, the shared-config sync),
 `AGENTIC_*` belongs to the agentic loop, and a consumer-private knob takes that
 repo's name (`ORCHESTRANT_*`). Written down once in
-[`adopting-in-a-new-project.md` § 8](adopting-in-a-new-project.md); this gate
-grades the hub's own knobs against it.
+[`adopting-in-a-new-project.md` § 8](adopting-in-a-new-project.md); nothing
+grades a knob's prefix — this gate only asks whether each consumed knob has an
+owner.
 
 Unowned knobs stay advisory unless `KNOB_GATE=1` (preflight always sets it).
 A **stale** row — one whose knob no reader consumes any more — fails
@@ -2004,14 +2045,13 @@ full-line comments, strips trailing ` # …`, and only then extracts knob names;
 both rows are deleted, and a third comment-only mention (`EXTRA_CMAKE_FLAGS` in
 the LiteRT build) no longer counts as consumption.
 
-Three limits of that filter, stated so nobody rediscovers them:
+Three properties of that filter, stated so nobody rediscovers them:
 
-- The trailing-comment strip cuts at the first **whitespace-preceded** `#` and
-  is not quote-aware. `${#arr[@]}` is safe (its `#` follows `{`), but a knob
-  read to the right of a ` #` that sits *inside* a quoted string would be
-  missed. Measured 2026-09-03 over every non-comment `${VAR:-}` line in the tree:
-  the strip removed zero knob occurrences that day. The failure mode is loud — a live
-  row reported stale — not a silent pass.
+- The comment cut is quote-aware: `_scan` runs each line through the
+  `_KNOB_AWK` walker (`MODE=prefix`), which tracks `'…'`, `"…"` and `$( )`, so a
+  `#` ends the line only where it opens a real comment — `${#arr[@]}` is safe,
+  and so is a knob to the right of a ` #` inside a quoted string
+  (`env-knobs.quoted-hash-strip`). Quote state resets at each newline.
 - Full-line `#` inside a heredoc is dropped like any other comment. For the
   shell and Python bodies this repo emits that is correct; a heredoc in a
   language where `#` is not a comment would lose a reader.
@@ -2046,11 +2086,12 @@ twelve. `:=` and `:-` share
 their empty-or-unset fallback rule, so the only behavioural difference is that
 the variable is now SET in the reading shell — which is why a knob whose value
 is data rather than an operator choice must not be converted. `MEDIA_SKIP_CSOUND`
-is exactly that knob and stays a row: its real value comes from
-`03-media/core/arch-flags-<arch>.env` (`=1` on riscv64, `=0` on arm64), sourced
-by `media_load_arch_flags`, and the owner scan reads `*.sh` only, so the `.env`
-that decides it is invisible to the gate. `PREFLIGHT_ONLY`/`PREFLIGHT_SKIP` are
-the other two, left to the lane that owns `preflight.sh`.
+is exactly that knob, and it stayed a row until 2026-09-05: its real value comes
+from `03-media/core/arch-flags-<arch>.env` (`=1` on riscv64, `=0` on arm64),
+sourced by `media_load_arch_flags`, which the owner scan could not see until it
+learned to read those files (*Which `.env` files own*, above).
+`PREFLIGHT_ONLY`/`PREFLIGHT_SKIP` were the other two; `preflight.sh` now owns
+both with `: "${…:=}"`.
 
 **Nor is a message, a usage line or a test argument (2026-09-04).** The comment
 filter above is line-wise, and the owner scan still `grep -o`'d raw line text, so
@@ -2066,7 +2107,7 @@ hatches (`FORCE_LOW_DISK`, `GCC_REQUIRE_GPG`, `RUNTIME_REGISTER_BINFMT`,
 exports after `version_util.sh` writes it to `$GITHUB_ENV`. All 45 are documented
 rows in `lint-env-knobs.allow`; none was silenced by widening the scan.
 
-The owner scan is now a ~40-line `awk` tokenizer instead of a grep. It drops
+The owner scan is now a ~50-line `awk` tokenizer instead of a grep. It drops
 comments, single- and double-quoted text and heredoc bodies, and counts a
 `NAME=` only in **command position**: line start, or after `;` `&&` `||` `|` `(`
 `)` `{`, a `case` arm's `)`, `then`/`else`/`elif`/`do`/`if`/`while`/`until`,
@@ -2088,8 +2129,9 @@ the Python one would buy a duplicated 40 lines at the price of a cross-language
 dependency in a 0.5 s gate. If a third consumer ever needs it, extract one
 tokenizer then.
 
-Its one shared limitation is also worth stating: quote state resets at each
-newline (the complexity gate does the same). A `NAME=1` line in the middle of a
+Its one limitation is also worth stating: quote state resets at each newline
+(the complexity gate's `code_lines` carries it across lines; this awk does not).
+A `NAME=1` line in the middle of a
 multi-line `'…'` argument therefore still reads as an assignment. It can only
 *add* an owner, never remove one, and the heredoc skip already covers the form
 this repo actually writes multi-line program text in.
@@ -2202,7 +2244,7 @@ closes that hole over every `.sh` file under `linux/`.
 
 For each function the gate takes the **last statement** of the body and asks what
 its status is. The statement is the last non-empty line of stripped code, joined
-backwards over continuations (a line ending in `\`, `&&`, `||`, `|`, `{`, `(`,
+backwards over continuations (a line ending in `\`, `&&`, `||`, `|`, `(`,
 `then`, `do` or `else` continues into the next), then cut at its last top-level
 `;`. Stripping is `verify_code_size.code_lines` — the one tokenizer the size,
 complexity and dead-function gates already share — so comments, quoted text and
@@ -2214,6 +2256,7 @@ Given that statement, in this order:
 | shape | verdict |
 | --- | --- |
 | a bare `done` / `fi` / `esac` / `}` | step INTO the block: judge its own last statement instead |
+| a `{ …; }` group on one line | judge its LAST inner statement by these same rules |
 | a top-level `\|\|` | judge the **last arm** by these same rules, and answer with that |
 | a top-level `&&` | **finding** |
 | first word is `[`, `[[`, `test` or `!` | **finding** |
@@ -2257,9 +2300,10 @@ printf '%s' "${cxx}"
 
 A trailing conditional is *idiomatic* wherever the function's status **is** the
 answer: `cross_mode_requested`, `best_effort_mode`, `smoke_is_elf`,
-`ancestry_run_ids_coherent` and a dozen more exist only to be read in a
+`ancestry_run_ids_coherent` and sixteen more exist only to be read in a
 condition. The gate cannot see call sites, so it cannot tell those from a defect
-— and it does not try. Sixteen predicates and two verdict functions
+— and it does not try. Twenty predicates, ten one-line stub predicates planted
+by suites and two verdict functions
 (`smoke_test_ffmpeg`, `patch_csound_sys_char_signedness`) are frozen in
 `trailing-conditional.allow` under the two-way rule of
 [the allowlist contract](#the-allowlist-contract): a key that is not frozen is
@@ -2289,11 +2333,12 @@ handled as a block closer. What remains:
 * **A definition indented inside a block is not scanned at all.** `DEF` is
   column-anchored, shared with the size and dead-function gates, so the
   `cross_build_is_active` fallbacks defined inside `if ! command -v …` blocks in
-  `01-core/common.sh` and `03-media/core/common.sh` are invisible here.
+  `01-core/common.sh` and `03-media/build/gstreamer/common/build-gstreamer-monorepo.sh`
+  are invisible here.
   `tests/test-cross-fallback-parity.sh` is what watches those.
 * **A `while true` loop never falls out of the loop**, so its body's trailing
   conditional is not what the function returns. `invoke_agent`
-  (`lib/agentic-loop.sh`) is the one such FALSE POSITIVE in the tree today. It was
+  (`lib/agentic-engines.sh`) is the one such FALSE POSITIVE in the tree today. It was
   normalised to an `if` rather than allow-listed, because a `break` added later
   would make it a real defect — and the behavioural half of that one is honestly
   unproven: reverting it fails the gate, not a suite.
@@ -2309,7 +2354,7 @@ old shape and a case that catches it:
 * `derive_cxx_from_cc` (`01-core/compiler-resolution.sh`) ended on
   `[ -x "${cxx}" ] && printf …`, so a derived `c++` that is not executable
   returned 1 — against the function's own documented contract of "empty output".
-  Its caller at `:130` assigns it inside a `||` list, where that status kills the
+  Its caller at `:131` assigns it inside a `||` list, where that status kills the
   script instead of returning the intended 1. Fixing it moved the refusal to
   `_cross_env_resolve_tools`, which now tests the value rather than the status.
 * `_chain_on_exit` (`build-cross-chain.sh`) is the chain's **EXIT trap** and
@@ -2317,11 +2362,12 @@ old shape and a case that catches it:
   helper is not defined the trap returns 1, and under `set -e` a chain that
   finished green exits 1.
 * `patch_gstreamer_sources` (`03-media/…/patch-gstreamer-sources.sh`) ended on
-  the last of six `[ -f … ] && bash apply_patch …` lines. Both call sites invoke
+  the last of its `[ -f … ] && bash apply_patch …` lines. Both call sites invoke
   it bare under `set -euo pipefail`, so a tree without `subprojects/gst-libav`
-  would abort the GStreamer build. Only the last of the six is converted to an
-  `if`; the other five are not the function's status, and the gate now guards the
-  end of the list against a seventh patch being appended.
+  would abort the GStreamer build. Only the last guarded apply (006) is converted
+  to an `if`; the six `[ -f … ] && …` lines before it are not the function's
+  status, and the gate now guards the end of the list against another patch
+  being appended.
 
 ### The five the sharpening found
 
@@ -2344,7 +2390,7 @@ case in part B that runs the function off-target under `set -e`.
 * `wasm_opt_load_pin` (`lib/wasm-opt.sh`) returned 1 whenever the last
   `BINARYEN_*` key was already exported, which is its documented normal path
   ("unless they are already set").
-* `invoke_agent` (`lib/agentic-loop.sh`) is the false positive described under
+* `invoke_agent` (`lib/agentic-engines.sh`) is the false positive described under
   Known limits.
 
 The delegate hop and the one-line rule also made three predicates in
@@ -2508,11 +2554,12 @@ well-meaning tightening from making the gate unusable.
 
 ### Version ARG consistency (`arg-consistency`)
 
-`01-core/verify-arg-consistency.sh` is six sections and they are not all fatal.
+`01-core/verify-arg-consistency.sh` is seven checks and they are not all fatal.
 Fatal: an ARG default that drifts from `versions.env` (it wins silently on a plain
 `docker build`), a default-LESS ARG naming a `versions.env` variable (the
 LITERTJS_VERSION class — an empty value), the two case-mapped literals in
-`gcc.sh` and `common.sh`, the ~25 inline GCC fallbacks, and a hand-forward
+`gcc.sh` and `common.sh`, the inline GCC fallbacks (the gate prints how many it
+scanned — 33 today), and a hand-forward
 duplicating the auto-forward (XC7). Advisory: the `# noforward` coverage warning,
 and the generic `${VAR:-literal}` scan, whose divergence is often deliberate.
 
@@ -2545,12 +2592,10 @@ that carries its own `versions.env`.
 `ubuntu-26.04` / `ubuntu-26.04-arm` preview labels, which the pinned actionlint
 (still the newest release) predates. The config only ADDS labels — a genuinely
 unknown label still fails, so the `runner-label` check stays live. actionlint resolves that config from the project it LINTS, not from this repo.
-That used to mean every consumer needed its own copy of the same file, and seven
-of them grew one. It does not any more: when the linted root carries no
-`.github/actionlint.yaml`, `lint-workflows.sh` passes `-config-file` pointing at
-the HUB's, so a consumer gets the family's preview-runner labels without holding
-a copy that can drift. A consumer that genuinely needs different labels still
-wins by having its own file — the fallback only fires when there is none.
+That is why every consumer that uses the preview labels carries its own copy of
+the file — seven of them grew one; `lint-workflows.sh` runs actionlint from the
+linted root and passes no `-config-file`, so the hub's copy never applies to a
+consumer.
 
 ### Four fleet workflow conventions (`workflow-lint`)
 
@@ -2567,7 +2612,7 @@ nobody:
 | --- | --- | --- |
 | no `*-latest` runner label | restated in **seven** workflow headers | the one already clean fleet-wide, which is why it is enforced from day one with no knob |
 | job-level `timeout-minutes` | nowhere but the jobs that happen to have one | worst in `BeschleunigerBallett/.github/workflows/reusable-linux.yml` (then `Linux.yml`), whose own comments price two lanes at ~25 minutes each and the whole run at 2h13m, then warn about "the 6-hour job cap" every one of its jobs is left sitting under |
-| a `permissions:` block | nowhere | includes `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and runs four FTP deploys on the repository default token |
+| a `permissions:` block | nowhere | included `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and ran four FTP deploys on the repository default token until it declared `permissions: contents: read` on 2026-09-14 |
 | `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
 
 The counts are deliberately not written here. They live once, as the CENSUS rows
@@ -2697,7 +2742,9 @@ permanently red.
 
 Both of them took their route out on 2026-09-05, and `gate-proofs.allow`'s bare-slug
 namespace is empty for the first time: **34 slugs, 34 proven, 0 frozen** (36 of 36
-since `shared-config` and `cmake-format` arrived proven on 2026-09-06). The
+once `shared-config` and `cmake-format` arrived proven on 2026-09-06, and every
+slug added since arrived proven — `verify_gate_registry.py` prints the live
+count). The
 heading keeps its name because several files point at this anchor, and because the
 two stories are the reason the freeze list was worth keeping honest rather than
 deleting.
@@ -2730,12 +2777,12 @@ executed anywhere, and no suite written against them would have said so.
 `sync_versions.py --check` is a fan-out: `result |=` over eight sub-checks plus a
 subprocess into `generate-website-licenses.py`, whose targets span `README.md`
 markers, the deps table, doc literals, Dockerfile ARG defaults,
-`windows/scripts/build-*-from-source.ps1` and — the eighth, added 2026-09-09 — a
+`windows/scripts/**/Build-*FromSource.ps1` and — the eighth, added 2026-09-09 — a
 CONSUMER repository's own `pyproject.toml` / `.pre-commit-config.yaml`. Because
 the verdict is an OR, a suite that reddens ONE sub-check would un-freeze the slug
 while seven stayed unproven — the hollow-proof shape this list exists to prevent.
-`test-version-snapshot.sh` reddens seven of the eight independently, plus the
-subprocess, and pins the one that cannot be reddened (the KNOWN GAP below).
+`test-version-snapshot.sh` reddens all eight independently, plus the
+subprocess — the sixth only since its KNOWN GAP (below) was closed on 2026-09-17.
 
 **The eighth arrived unproven, and that is exactly the shape described above.**
 It shipped with nine mutations in the registry and none of them touching
@@ -2747,9 +2794,10 @@ be named, so it printed `NOT CHECKED` and exited 0 on every run in the fleet.
 Both halves are closed together, because either alone is still hollow — the
 check now runs as `run-lint-gates.sh`'s `consumer pins` gate in a CONSUMER's
 lane (that aggregator takes the consumer root as a mandatory argument, which is
-the thing the hub lane does not have), and four mutations
-(`consumer-pins-ored`, `-empty-run-fatal`, `-skip-comments`,
-`-one-declaration`) each fail a named new assertion. **The generalisable part:
+the thing the hub lane does not have), and the suite's 8/8 cases now drive it
+(a drifted pin fails through the same `result |=`, two declarations in one file
+are refused, an empty `--consumer-pins` run is refused) — but no mutation targets
+`check_consumer_pins` yet, so the slug is still credited on its nine older ids. **The generalisable part:
 "a check exists" and "a check runs" are different claims, and a registry can
 only see the first one.**
 
@@ -2757,7 +2805,7 @@ only see the first one.**
 `collect_versions()` — which `render_snapshot()` calls, so every `--check` run
 depends on it — hard-reads five fixed files (`linux/webserver/Dockerfile` and four
 under `windows/`) and raises an uncaught `FileNotFoundError` on a missing one,
-plus it `KeyError`s on any of eight `versions.env` keys. A hand-built minimal tree
+plus it `KeyError`s on any of six `versions.env` keys. A hand-built minimal tree
 therefore cannot reach a verdict at all, and a full copy is 8 GB. So the fixture
 mirrors the repo as symlinks one directory at a time, materialising only the file
 under test as a real copy. `sync_versions.py` itself must always be a real copy:
@@ -2830,8 +2878,9 @@ repo's ratchet inside the hub, where no consumer sees it in its own diff.
 they graded the hub and nothing else. Each now takes `--root`, keeps its
 current behaviour exactly when the root *is* the hub — the curated page set,
 the hub's own budgets, the `docs/index.rst` coverage requirement — and under any
-other root reads its scope from `gate_scope.tracked` and its budget from
-`<root>/<gate>.allow`. Two consequences worth stating: a consumer is **not**
+other root `doc-links` and `doc-dupes` read their scope from
+`gate_scope.tracked`, `code-dupes` still walks the root, and each reads its
+budget from `<root>/<gate>.allow`. Two consequences worth stating: a consumer is **not**
 required to keep a Sphinx index (that check is hub-only, because inventing the
 obligation would fail every consumer on a question nobody asked), and
 `doc-links` is the one of the three wired into the `--ratchets` step, because it

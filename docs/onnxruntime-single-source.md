@@ -473,8 +473,10 @@ Two couplings to keep in mind:
 
 ## Not proven by a build yet
 
-No container build has run with any of this. The first run of each lane is the
-real test. The likeliest first reds, all fail-closed:
+One lane has reached part of it: on 2026-09-25 the Windows rocm lane's AMDGPU
+EP stage ran G2 and hit the third red below, on the EP's own intermediate `.tar`
+(fixed the same day, [`windows-rocm.md`](windows-rocm.md)). For every other lane
+the first run is still the real test. The likeliest first reds, all fail-closed:
 
 - GenAI and OpenCV's G-API DirectML EP compiling against the 1.30 headers under
   clang-cl for the first time.

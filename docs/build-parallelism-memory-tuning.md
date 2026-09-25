@@ -58,7 +58,8 @@ typical OpenCV TU is a few hundred MB.
 ### `AGGRESSIVE_PARALLELISM` auto-enables at ≥ 16 GB RAM
 
 `_auto_aggressive_parallelism()` sets `AGGRESSIVE_PARALLELISM=true` automatically
-when `usable_RAM ≥ 16 GB` (unless you export it `false`). In aggressive mode the
+when `_mem_available_mb()` — the host figure, before `BUILD_MEM_DIVISOR` — is
+≥ 16 GB (unless you export it `false`). In aggressive mode the
 **generic** and **rust** estimates drop (2000→800, 2500→1200), so on any
 real-size host those stages run at **full core count** — they are *not*
 RAM-capped and have **no headroom to reclaim**.
@@ -98,9 +99,10 @@ close to a **3× speedup** on those stages.
 would each launch `RAM/4096` jobs → **3× overcommit → OOM at hour six.**
 
 **The fix (now built in):** `BUILD_MEM_DIVISOR`. When the orchestrator runs N
-arches in parallel it passes `BUILD_MEM_DIVISOR=N` into each build; every helper
-then sizes against `usable_RAM / N`, so the **sum** of all N builds' jobs still
-fits one host. Sequential builds pass nothing (divisor 1) → unchanged.
+arches in parallel it passes a `BUILD_MEM_DIVISOR` of at least N into each build
+(N × `PAR_INTRA_STEP_BUDGET` since PAR4, below); every helper then sizes against
+`usable_RAM / divisor`, so the **sum** of all N builds' jobs still fits one host.
+Sequential builds pass divisor 1 → unchanged.
 
 ```
 # 62 GB host, 3 arches in parallel:
@@ -110,8 +112,9 @@ fits one host. Sequential builds pass nothing (divisor 1) → unchanged.
 
 Because a container can't know how many siblings share the host, the divisor
 **must be injected** — it is the one number auto-detection can't supply. Wiring:
-the orchestrator computes `min(--max-parallel-archs, #arches)` and forwards it as
-a build-arg → `ENV BUILD_MEM_DIVISOR` in each heavy Dockerfile.
+`cross_build_mem_divisor` (`stage-defs.sh`) computes `min(--max-parallel-archs,
+#arches)` × `PAR_INTRA_STEP_BUDGET` and forwards it as a build-arg →
+`ENV BUILD_MEM_DIVISOR` in each heavy Dockerfile.
 
 > **Before the first `--parallel-archs` run**, validate the divisor actually
 > reaches the container (grep a build log for the job count on a *cheap* stage),
@@ -205,20 +208,21 @@ Three findings, in the order that matters:
 
 **1. The divisor is fixed at lane start BY CONSTRUCTION.**
 `cross_build_mem_divisor()` has exactly ONE production call site —
-`cross_stage_build_args()` ← `cross-stage-build.sh:553` — and it runs *once per
+`append_cross_build_args()`, reached from `cross_stage_build_args()` ←
+`cross-stage-build.sh:572` — and it runs *once per
 stage build*, to emit `--build-arg BUILD_MEM_DIVISOR=N`. Inside the image that
 value is `ARG` → `ENV` in the `base` stage of every Dockerfile
-(`Dockerfile.media:123,154`; likewise `.sdk:12,26`, `.android:15,70`,
-`.toolchain:31,45`) and `parallelism.sh` reads it at each `RUN`. **A build-arg
+(`Dockerfile.media:123,171`; likewise `.sdk:12,26`, `.android:15,76`,
+`.toolchain:31,52`) and `parallelism.sh` reads it at each `RUN`. **A build-arg
 is bound when the build starts; nothing on the host can move it afterwards.**
-The step that actually crawls — the app wheelhouse, `Dockerfile.media:584` —
+The step that actually crawls — the app wheelhouse, `Dockerfile.media:729` —
 is hours downstream of that `ENV`, inside the same build. So "adapt when lanes
 finish" is unachievable at this layer, no matter how the host-side number is
 computed.
 
 **2. The clamp could not fire where it was meant to.** The chain runs one
 `run_parallel_arch_loop` per stage and joins before the next
-(`build-cross-chain.sh:420`), and that loop starts every lane at t0. With
+(`build-cross-chain.sh:397`), and that loop starts every lane at t0. With
 `MAX_PARALLEL_ARCHS >= #arches` — the shipped 3-arch topology — all lanes are
 launched before any lane retires, so the lone survivor still reads the full
 static divisor. **The exact case PAR5 existed for was the one case it could not
@@ -242,7 +246,7 @@ is a pure function of `PARALLEL_ARCHS` / `TARGET_ARCHES` / `MAX_PARALLEL_ARCHS`
 ### The cache-key coupling (why the manual workaround doesn't exist either)
 
 Every host→build channel (build-args, bind mounts) is part of the **BuildKit
-cache key**. `ENV BUILD_MEM_DIVISOR` sits in `base` (`Dockerfile.media:154`),
+cache key**. `ENV BUILD_MEM_DIVISOR` sits in `base` (`Dockerfile.media:171`),
 above all 40 downstream `RUN` steps, so a divisor that varies with lane
 liveness would cache-miss the whole media chain on **every** run. The same
 coupling removes the obvious hand recovery: **killing the lone lane and
@@ -330,13 +334,14 @@ and the runtime throttles the whole build.
 For a one-off `docker build`:
 
 ```bash
-docker build --cpus=1.0 -t my-image .
+docker build --cpu-period=100000 --cpu-quota=100000 -t my-image .   # one core's worth
 docker build --cpuset-cpus="0" -t my-image .   # pin to a specific core
 ```
 
-`--cpus` is a share of total CPU time; `--cpuset-cpus` pins to physical cores.
-Prefer `--cpuset-cpus` when you want the *remaining* cores genuinely free, since
-a `--cpus` share still spreads across every core.
+`docker build` has no `--cpus` (that is `docker run`/`docker update`);
+`--cpu-quota`/`--cpu-period` is a share of total CPU time; `--cpuset-cpus` pins
+to physical cores. Prefer `--cpuset-cpus` when you want the *remaining* cores
+genuinely free, since a quota still spreads across every core.
 
 For BuildKit builds the flags do not apply — the work happens inside the
 builder container, not the client. Create a dedicated builder, then constrain

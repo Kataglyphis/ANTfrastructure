@@ -23,12 +23,13 @@ third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply .
 
 Consumers reach it through their own thin wrapper, named `renovate-local.sh` and
 placed wherever that repo already keeps its ANTfrastructure wrappers -
-`scripts/linux/` in BeschleunigerBallett, OmniAccelerANT and OrchestrANT, but the
-flat `scripts/` in jotrockenmitlocken. Same shape as `run-lint-gates.sh` there.
+`scripts/linux/` in BeschleunigerBallett, OmniAccelerANT, OrchestrANT, OxidANT,
+AccelerANTgine and ANThology, but the flat `scripts/` in jotrockenmitlocken.
+Same shape as `run-lint-gates.sh` there.
 
 ## The six things AGENTS.md warned about
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and the 2026-09-25 corrections. The RULES stayed there; this is the reference behind them.
 
 The two owner directives that govern this -- local CLI everywhere, and report
 unless `--apply` was asked for in that turn -- are RULES and stayed in
@@ -40,9 +41,10 @@ linux/scripts/renovate-local.sh --apply --dry-run .   # the plan, every ecosyste
 linux/scripts/renovate-local.sh --apply .      # gitlinks AND manifests AND locks
 ```
 
-Consumers call their own thin `scripts/linux/renovate-local.sh`, same shape as
-`run-lint-gates.sh`. Node 24 and Renovate are pinned in `01-core/versions.env` and
-bootstrapped on demand, checksum-verified, into `~/.cache/kataglyphis`. The apply
+Consumers call their own thin `renovate-local.sh` wrapper (`scripts/linux/`, or
+`scripts/` in a flat repo), same shape as `run-lint-gates.sh`. Node 24
+(SHA256-verified) and Renovate (an exact npm version) are pinned in
+`01-core/versions.env` and bootstrapped on demand into `~/.cache/kataglyphis`. The apply
 half's JSON reading and file editing live beside it in `renovate_planner.py`, and
 `tests/test-renovate-local.sh` drives the real script over fixtures through
 `RENOVATE_LOCAL_REPORT` / `RENOVATE_LOCAL_CONFIG` - no network, no node.
@@ -54,10 +56,12 @@ agent must not rediscover the hard way:
 * **`--platform=local` cannot write.** Renovate forces dryRun there; it is a
   detector. The apply half is this repo's own code: git for gitlinks, a located
   single-line rewrite for cargo/pub/npm/pep621/pip_requirements/pre-commit/
-  dockerfile/github-actions, and `custom.regex` over `versions.env` for the
+  github-actions (a manager with no locator, `dockerfile` among them, is refused
+  by name), and `custom.regex` over `versions.env` for the
   self-contained keys its file-scoped packageRule clears (the rest stay
-  approval-gated), then that ecosystem's own lock tool -- for `versions.env`'s
-  coupled checksums that is still `bump_versions.py`.
+  approval-gated), then that ecosystem's own lock tool -- `versions.env` has none
+  this script runs: its coupled checksums stay approval-gated and move with
+  `bump_versions.py`, by hand.
 * **It DOES resolve `extends`** - measured 2026-09-09 on 44.71.0, against the
   older claim in this repo's own docs. The shared preset and every
   `dependencyDashboardApproval` rule reachable through it are in force locally,
@@ -73,10 +77,11 @@ agent must not rediscover the hard way:
   read by Linux git shows every text file as modified and the checkout aborts half
   way, leaving the superproject partially updated. The script detects this and
   switches to `git.exe`; it also refuses up front rather than applying partially.
-* **A stale lockfile fails the run.** When the tool that owns a lock is not on
-  PATH the manifest edit stands, the lock is named as NOT refreshed and the run
-  exits non-zero. `--allow-stale-locks` is the only way past that, and nothing
-  tolerates it by default.
+* **A stale lockfile is refused, never written.** When the tool that owns a lock
+  is not on PATH the pre-flight names the lockfile and the tool, and the run
+  exits 1 with nothing written; a lock tool that fails at run time puts every
+  file it wrote back and exits non-zero. There is no switch to tolerate a stale
+  lock.
 
 The Renovate GitHub App is installed nowhere in this family and will not be (owner
 decision, 2026-09-09), so this CLI is the permanent mechanism rather than a stopgap
@@ -85,9 +90,9 @@ decision, 2026-09-09), so this CLI is the permanent mechanism rather than a stop
 
 ## Before you change the script
 
-Nine non-obvious rules shape
+Ten non-obvious rules shape
 [`linux/scripts/renovate-local.sh`](../linux/scripts/renovate-local.sh) and the
-three python modules beside it, and each one cost a measurement to find. Each
+modules beside it, and each one cost a measurement to find. Each
 has its own section below:
 
 1. It **detects**, it cannot write — [it detects, it does not write](#the-one-thing-to-understand-it-detects-it-does-not-write)
@@ -99,6 +104,7 @@ has its own section below:
 7. An edited manifest whose lock is stale is half a job — [lockfiles are part of the job](#lockfiles-are-part-of-the-job)
 8. A bare `git submodule update --remote` is forbidden here — [why `--apply` refuses some submodules](#why---apply-refuses-some-submodules)
 9. The apply half needs the git that **wrote** the working tree — [which git runs the apply half](#which-git-runs-the-apply-half)
+10. Nothing **else** in the repo may move while an ecosystem tool runs — [nothing else in the repo moved](#nothing-else-in-the-repo-moved)
 
 ## Why local, when a `renovate.json` already exists everywhere
 
@@ -142,8 +148,9 @@ So the loop has two halves, and the script owns both:
 A manager with no locator of its own is **refused by name**, not guessed at:
 
 ```
-NOT APPLIED - the report named these, but the locator would not place the
-value without guessing. The reason is exact; edit them by hand:
+NOT APPLIED - the report named these, but placing the value would have
+been a guess: either the locator would not read the line, or a real
+parser will not sanction the edit. The reason is exact; by hand, then:
   dockerfile  Dockerfile  ubuntu  22.04 -> 26.04  -- no exact locator for
   manager 'dockerfile'; this tool refuses to edit a syntax it cannot parse
 ```
@@ -177,11 +184,12 @@ it is only ever confirmed on a line that was already located.**
 |---|---|---|
 | `github-actions` | a `uses:` key of a **step** (a sequence item) or of a **job** (`jobs.<id>.uses`), whose value splits at the **last** `@` into `<dep>` or `<dep>/<path>` | the ref after that `@` |
 | `pub` | a key whose whole key **is** the dep, in a top-level `dependencies` / `dev_dependencies` / `dependency_overrides` mapping | the scalar after the colon |
-| `pip_requirements` | a PEP 508 line whose name **normalises** to the dep (PEP 503: `-`, `_`, `.` and case all fold) | the specifier, up to any `;` marker |
-| `pep621` | a quoted PEP 508 string inside a dependency **array** — `[project] dependencies`, an `optional-dependencies` group, `build-system.requires`, `dependency-groups` | the specifier inside that string |
+| `pip_requirements` / `pip-compile` | a PEP 508 line whose name **normalises** to the dep (PEP 503: `-`, `_`, `.` and case all fold) | the specifier, up to any `;` marker |
+| `pep621` | a quoted PEP 508 string inside a dependency **array** — `[project] dependencies`, an `optional-dependencies` group, `build-system.requires`, `dependency-groups`, uv's and pdm's dev-dependency arrays | the specifier inside that string |
 | `pre-commit` | the `rev:` of the sequence item whose **own** `repo:` resolves to `<owner>/<repo>` | the `rev:` scalar |
 | `cargo` | a key in `[dependencies]` / `[dev-dependencies]` / `[build-dependencies]` — optionally under `[workspace.…]` or `[target.<cfg>.…]`, optionally one segment deeper for one crate (`[dependencies.serde]`) | the bare string, or the inline table's `version` |
 | `npm` | the dep's key inside a **top-level** dependencies object of `package.json` | the version string |
+| `custom.regex` / `regex` | the `KEY=` line under a `# renovate: … depName=<dep>` hint (blank lines and one `# noforward` may sit between) | the value after `=` |
 
 The three "what counts" columns that read oddly are the ones that were wrong.
 A `uses:` is not a step's just because the line spells `uses:` — a `with:` input
@@ -230,8 +238,8 @@ holds a fixture for each:
    ```
    file edit(s) -- <file>:<line>, then that line before and after:
      pubspec.yaml:3  http  1.1.0 -> 1.6.0
-     -   http: 1.1.0
-     +   http: 1.6.0
+       -   http: 1.1.0
+       +   http: 1.6.0
    ```
 
 ### When several lines declare the same dependency
@@ -379,8 +387,9 @@ Until 2026-09-10 that decision was argued here and **reachable by nothing.** The
 locator read `ruff==0.9.0 \` as the value `==0.9.0 \`, which matched no reported
 current value, so such a file was refused one step earlier and with the wrong
 reason — *"something moved, so nothing is written"*, about a pin that had not
-moved. The locator now joins pip's continuations the way pip does, the pin is
-located, and the refusal is the true one:
+moved. The locator now drops pip's trailing continuation `\` before reading the
+specifier (the continuation carries only options; the audit's parser joins it
+back the way pip does), the pin is located, and the refusal is the true one:
 
 ```
 pip_requirements  requirements.txt  ruff  ==0.9.0 -> ==0.16.6  -- [0].spec
@@ -394,7 +403,10 @@ its own
 ### What this costs
 
 **PyYAML is now required** to write a YAML manifest — a workflow, a pubspec, a
-pre-commit config. Without it the run ends saying so. There is no fallback,
+pre-commit config — and to read back a YAML lockfile (`pnpm-lock.yaml`). Without
+it each such update is refused by name ("PyYAML is not installed for this
+python"): the run still applies its other files and exits 2 (a `pnpm-lock.yaml`
+refresh is refused in the pre-flight, rc 1). There is no fallback,
 because the only available fallback is the line-level reading this section
 exists to stop resting on. TOML and JSON need nothing that is not in the
 standard library.
@@ -548,7 +560,9 @@ Worse, the *caller* could not see it. In a pipeline `$?` is head's status, which
 is 0 — so a killed run reads as a passing one unless `set -o pipefail` is on.
 (This cost the owner two repositories out of a scan in one day.) Trapping the
 signal is what makes the rc reachable at all: with the trap, the run undoes its
-writes and exits **141**, and `pipefail` surfaces it.
+writes and exits non-zero — **141**, or **1** when bash's own write fails on the
+dead pipe before the trap runs (a race; `(X13)` accepts either and pins the
+tree) — and `pipefail` surfaces it.
 
 One detail the trap has to get right: after SIGPIPE, stdout is a pipe nobody is
 reading, so every line of the undo report would go nowhere. `on_signal` moves to
@@ -576,7 +590,7 @@ well, and a case drives the planner *alone* to pin it there.
 
 ### The proof, and that it can fail
 
-The three suites carry these:
+Two suites carry these:
 [`test-renovate-exit.sh`](../linux/scripts/tests/test-renovate-exit.sh) for the
 exit codes, the signals, the rollback across both halves and the marker a kill
 leaves behind,
@@ -778,8 +792,9 @@ That is the property a reviewer actually needs, and it is what makes the
 differing code safe — rc 1 there means the run met a failure and put everything
 back, which is what rc 1 means everywhere else. `(X15)` in
 [`test-renovate-exit.sh`](../linux/scripts/tests/test-renovate-exit.sh) runs both
-over identical fixtures and asserts the manifests and the gitlink match
-afterwards, so the class cannot quietly grow to include one where they do not.
+over identical fixtures and asserts that each leaves its manifest and its gitlink
+(commit and ref) exactly where it started, so the class cannot quietly grow to
+include one where they do not.
 
 ## Lockfiles are part of the job
 
@@ -974,9 +989,9 @@ writes. Measured against a fixture (git 2.55.0) in all five directions:
 | everything clean | rc 0 | rc 0 |
 
 `dirty`, never `all`: `all` also hides a gitlink that genuinely **moved**, which
-is the one thing `--apply` exists to write. Cases (H1)–(H4) in
+is the one thing `--apply` exists to write. Cases (H1)–(H3) in
 [`test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) pin
-every row above, and (H3) is red against `all`.
+the first three rows, and (H3) is red against `all`.
 
 **Both** questions in `classify_one` take the option. Given it to the first only,
 the false refusal merely changes its name: the tree comes back clean, falls
@@ -991,7 +1006,7 @@ afterwards.
 
 ## Version bumping, as AGENTS.md carried it
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links, the ONNX Runtime and Vulkan/llama.cpp notes added on 2026-09-23 and the 2026-09-25 corrections. The RULES stayed there; this is the reference behind them.
 
 **Single source of truth: `linux/scripts/01-core/versions.env`.** Update it first.
 
@@ -999,31 +1014,38 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 **Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
-**`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks ALL automated writes for that key (reported as `HELD`). Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
+**`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks every `bump_versions.py` write for that key (reported as `HELD`); Renovate's `--apply` does not read the marker and is kept off a held key only by `.github/renovate.json`'s approval rule. Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
 
-`common.sh` and `artifact-common.sh` source `versions.env` at load time with `set -a`. Per-Dockerfile ARG defaults are safety nets and should match.
+`common.sh` loads `versions.env` at load time through `load_versions_env` (`01-core/load-versions-env.sh`: parsed line by line and exported, never `source`d; a value already set in the environment wins), and `artifact-common.sh` gets it by sourcing `common.sh`. Per-Dockerfile ARG defaults are safety nets and should match.
 
 After changing versions:
 1. `python3 docs/scripts/sync_versions.py --write` (one pass now syncs Dockerfile
    ARGs BEFORE regenerating the snapshot — no second pass needed; `--check` to verify)
-2. `python3 docs/scripts/generate-website-licenses.py --write` (regenerate website /openSourceLicenses page)
+2. (step 1 already runs `docs/scripts/generate-website-licenses.py --write`, the
+   website /openSourceLicenses page; run it alone only when nothing else changed)
 3. **Refresh the matching `*_SHA256` pins in versions.env** (pwsh zip / git installer /
    nuget / CUDA / cuDNN / ollama / binaryen / hadolint / actionlint — each key's comment
    documents its fetch command; GitHub releases expose per-asset digests on
-   `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`)
+   `https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag>`) — then re-run
+   step 1: several of these pins are also Dockerfile ARG defaults
+   (`PWSH_ZIP_SHA256`, `GIT_WINDOWS_INSTALLER_SHA256` in `windows/Dockerfile.base`),
+   and `--check` fails until they match.
 4. Update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`, and `AGENTS.md`
 5. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
    (also enforces that every versions.env-named ARG has a safety-net default in its file)
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
-Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` requires adding the new
-version's SHA256 to `$llvmSrcSha` in **TWO** scripts — `Build-TvmFromSource.ps1`
-(the #47 mini-LLVM heal) and `Build-LlvmFromSource.ps1` (the #135 patched
-toolchain). Both pin the same llvm-project source tarball per version and THROW
-on an unknown one — deliberately, unpinned downloads are forbidden. Patching only
-one gives a green TVM stage and then a throw in the `patched-llvm` stage, hours
-later. A bump also invalidates `windows/scripts/patches/llvm/*.patch`, which are
-written against 23.1.0's `AArch64InstrInfo.cpp`.
+Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` needs the new version's
+llvm-project source-tarball SHA256 — in `LLVM_WINDOWS_SRC_SHA256` (versions.env,
+which overrides the entry for the version being built) and, as the record, in the
+ONE pin table in `Get-LlvmSourceSha256`
+(`windows/scripts/modules/WindowsSourceBuild.Common.psm1`), which both
+`Build-LlvmFromSource.ps1` (the #135 patched toolchain) and
+`Build-TvmFromSource.ps1` (the #47 mini-LLVM heal) read. It THROWS on a version
+with no pin — deliberately, unpinned downloads are forbidden. A bump can also
+invalidate `windows/scripts/patches/llvm/*.patch`, which are written against
+23.1.0's `AArch64InstrInfo.cpp` (they still apply to 23.1.1);
+`Invoke-SourcePatch` stops loudly on one that no longer applies.
 
 ONNX Runtime bump note (2026-09-23): three things follow `ONNXRUNTIME_VERSION`.
 - `ORT_WEBGPU_WINDOWS_DAWN_VERSION` and its SHA256 (`bump:hold`) are the Dawn tag
@@ -1066,11 +1088,12 @@ like every other tool this repo bootstraps on demand. Both are marked
 Node is pinned because Renovate 44 declares `"node": "^24.11.0"` and dies on
 Node 22 with `TypeError: RegExp.escape is not a function`, an error that names
 nothing relevant. It is deliberately **not** the canonical `NODE_VERSION`, which is
-26.8.1 for the images: Renovate declares `engines.node "^24.11.0"`, major 24 only,
+26.9.0 for the images: Renovate declares `engines.node "^24.11.0"`, major 24 only,
 so one name cannot serve both. A node already on `PATH` is used only when its major
 **matches** the pin rather than merely exceeding it;
 otherwise the pinned tarball is downloaded once, **SHA256-verified**, and cached
-per version under `~/.cache/kataglyphis` (override with `RENOVATE_LOCAL_CACHE`).
+per version under `${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with
+`RENOVATE_LOCAL_CACHE`).
 Renovate itself is installed into a user-owned npm prefix — no sudo, nothing
 global.
 
@@ -1087,7 +1110,7 @@ enabled for the run from the global config layer, which is why every
 Narrow it deliberately when you only care about one ecosystem:
 
 ```bash
-scripts/linux/renovate-local.sh --managers git-submodules,github-actions .
+scripts/linux/renovate-local.sh --managers git-submodules,github-actions
 ```
 
 Scope it because an **unscoped run is slow**. Scoped to `git-submodules` a repo
@@ -1110,9 +1133,11 @@ neither, 1 row with `RENOVATE_TOKEN`, 5 rows with `GITHUB_COM_TOKEN`).
 
 ## Full fidelity, when the report is not enough
 
-`--platform=local` does not resolve `extends`, so it does not prove the shared
-preset works. That needs the GitHub platform in dry-run — which still writes
-nothing:
+`--platform=local` does resolve `extends` (measured 2026-09-09 on 44.71.0; see
+[The six things AGENTS.md warned about](#the-six-things-agentsmd-warned-about)),
+but it only reports what is behind: it cannot show the branches the GitHub
+platform would open. That needs the GitHub platform in dry-run — which still
+writes nothing:
 
 ```bash
 GITHUB_COM_TOKEN=$(gh auth token) \
@@ -1404,9 +1429,9 @@ runs, and on this machine both `python3` and `python` on the Git Bash `PATH` are
 the Microsoft Store app-execution-alias stub: measured 2026-09-11, `python3 -c
 pass` exits **49** and prints *"Python wurde nicht gefunden"*, and so does
 `python`. Its probe therefore fails and no fleet run is possible from Windows
-unless `PREFLIGHT_PYTHON` names a real interpreter. Every measurement on this
-page was taken through
-`MSYS_NO_PATHCONV=1 wsl -d Ubuntu-26.04 -- bash …`.
+unless `PREFLIGHT_PYTHON` names a real interpreter. Every fleet measurement below
+was taken through `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-26.04 -- bash …` unless it
+names another host.
 
 ### The fleet is found, not written down
 
@@ -1777,27 +1802,33 @@ regex manager's `currentDigest` capture:
 
 ### What is still NOT annotated, and why
 
-**20 of the 99 tracked keys remain annotation-free**, in classes that are a
-reason rather than an omission:
+**62 of the 100 keys in `bump_versions.py`'s three tiers carry no annotation**,
+in classes that are a reason rather than an omission:
 
 * **Slaved** -- `LITERT_TFLITE_PROTOC_VERSION` follows LiteRT's vendored
-  protobuf commit, which has no feed of its own.
+  protobuf commit, which has no feed of its own, and the five
+  `MIGRAPHX_WINDOWS_*_VERSION`/`_SQLITE_YEAR` pins are re-derived from
+  `MIGRAPHX_WINDOWS_COMMIT`.
 * **Feeds no datasource can serve** -- `MIGRAPHX_VERSION` (its GitHub tags are
   test artifacts and PyPI has no package), `FLATPAK_RUNTIME_VERSION` (a
   freedesktop branch, not a release), `JRE_VERSION` (a major-only selector;
   every feed returns full versions), `LIBFFI_MESON_VERSION` (a GStreamer wrap
-  port).
-* **Base platform matrices with no version feed** -- the six `ANDROID_*`
+  port), and the 28 `TORCH_ROCM_WINDOWS_*_URL`/`_SHA256` wheel pins (no feed,
+  no published hashes).
+* **Base platform matrices with no version feed** -- the ten `ANDROID_*`
   keys, `WINDOWS_LTSC`, `WINDOWS_SDK_BUILD`, `VISUAL_STUDIO_VERSION`,
   `UBUNTU_CODENAME`.
+* **Per-arch archive values and a policy floor** -- `CMAKE_VERSION_RISCV64` and
+  `NODE_VERSION_RISCV64` advertise what Ubuntu's riscv64 archive ships;
+  `CMAKE_POLICY_VERSION_MINIMUM` is a floor, not a release.
 * **Checksums and raw SHAs** -- `SCCACHE_LINUX_X86_64_SHA256` /
   `..._AARCH64_SHA256`, and `SCCACHE_WINDOWS_ZIP_SHA256`.
 * **Artifact-gated** -- `TENSORFLOW_C_VERSION`: the git tag is not the
-  tarball.
+  tarball; and `ORT_WEBGPU_WINDOWS_DXC_VERSION`, whose dated asset name and SHA
+  move with the tag.
 * **Dated** -- `RUST_NIGHTLY_TOOLCHAIN` is a deliberate date.
 
-`SQLITE3_WASM_VERSION` remains the worked example from the paragraph above,
-still unannotated for the same reason: its consumer copy is the RUFF shape, but
+`SQLITE3_WASM_VERSION` also remains unannotated:
 `simolus3/sqlite3.dart` tags releases as `sqlite3_web_js-0.2.5`, so neither
 `github-tags` nor a guessed prefix is right.
 
@@ -1825,7 +1856,8 @@ never needed -- and leaves the script exactly where it was needed.
   that move ALONE, because no paired `*_SHA256`/`*_COMMIT` goes stale and the
   build consumes them at download/install time.
 * **Everything else still goes through `bump_versions.py`** -- coupled
-  checksum/commit pins, source-patched libraries and the 41 unannotated keys --
+  checksum/commit pins, source-patched libraries and the keys with no annotation
+  (62 in its tiers today) --
   so the script is now the LOCK TOOL and the detector-of-last-resort, not the
   only way to move a pin.
 
@@ -1845,11 +1877,14 @@ nor any `*_SHA256` refresh.
 | Report parsing, packageRules, the plan and the write | [`linux/scripts/renovate_planner.py`](../linux/scripts/renovate_planner.py) |
 | Which line declares a dependency | [`linux/scripts/renovate_locator.py`](../linux/scripts/renovate_locator.py) |
 | What the file MEANS, before and after the edit | [`linux/scripts/renovate_audit.py`](../linux/scripts/renovate_audit.py) |
+| How every renovate script says things: a fatal, a line, a refusal listing | [`linux/scripts/renovate-say.sh`](../linux/scripts/renovate-say.sh) |
+| The consumer wrapper, copied and edited | [`shared/linux/templates/renovate-local.sh`](../shared/linux/templates/renovate-local.sh) |
 | The world the suites run in | [`linux/scripts/tests/renovate-fixtures.sh`](../linux/scripts/tests/renovate-fixtures.sh) |
 | The suite that holds every refusal to its word | [`linux/scripts/tests/test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) |
 | What an ecosystem tool did BESIDE the manifest | [`linux/scripts/tests/test-renovate-collateral.sh`](../linux/scripts/tests/test-renovate-collateral.sh) |
 | The fleet: order, duplicates, and one repo failing | [`linux/scripts/tests/test-renovate-fleet.sh`](../linux/scripts/tests/test-renovate-fleet.sh) |
 | Every `# renovate:` line is matched by the regex that reads it | [`linux/scripts/tests/test-renovate-annotations.sh`](../linux/scripts/tests/test-renovate-annotations.sh) |
+| The annotated-env write and its refusals | [`linux/scripts/tests/test-renovate-env.sh`](../linux/scripts/tests/test-renovate-env.sh) |
 | The suite that lets the locator be wrong and checks the result | [`linux/scripts/tests/test-renovate-audit.sh`](../linux/scripts/tests/test-renovate-audit.sh) |
 | The suite for how a run ENDS: exit codes and signals | [`linux/scripts/tests/test-renovate-exit.sh`](../linux/scripts/tests/test-renovate-exit.sh) |
 | Version pins | [`linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env) |
@@ -1859,7 +1894,8 @@ nor any `*_SHA256` refresh.
 The suite runs Renovate not at all: it injects a measured report through
 `RENOVATE_LOCAL_REPORT` and a resolved config through `RENOVATE_LOCAL_CONFIG`,
 which is also how a human re-runs `--apply` over a report they already have.
-Lock tools are proved two ways — `uv lock` for real against a copy of
-OrchestrANT's own `pyproject.toml` and `uv.lock` (278 packages resolved,
-`ruff v0.16.4 -> v0.16.5`, 42 lines of `uv.lock` rewritten), and the rest by
-stub binaries that record the argv they were handed.
+Lock tools are proved by stub binaries that record the argv they were handed —
+all nine, `uv` included (`renovate-fixtures.sh`). `uv lock` was also run once for
+real against a copy of OrchestrANT's own `pyproject.toml` and `uv.lock` (278
+packages resolved, `ruff v0.16.4 -> v0.16.5`, 42 lines of `uv.lock` rewritten);
+no suite repeats that run.

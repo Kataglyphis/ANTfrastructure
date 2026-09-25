@@ -57,14 +57,16 @@ Two neighbours, so you land on the right page:
 - [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [A no-push wrapper build cannot find its own android image](#a-no-push-wrapper-build-cannot-find-its-own-android-image)
+- [The torch RUN idles for minutes before `uv venv`](#the-torch-run-idles-for-minutes-before-uv-venv)
+- [`RUNTIME_WHEELS_SOURCE=export` stops a runtime lane](#runtime_wheels_sourceexport-stops-a-runtime-lane)
 - [A GPU venv ships two onnxruntime distributions](#a-gpu-venv-ships-two-onnxruntime-distributions)
 - [The torch stage fails with `ORT-CENSUS FAIL`](#the-torch-stage-fails-with-ort-census-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
-- [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
 - [A USB camera delivers half its frame rate](#a-usb-camera-delivers-half-its-frame-rate)
+- [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
@@ -122,15 +124,19 @@ Two neighbours, so you land on the right page:
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
 - [A consumer's CMake says clang-cl "is not able to compile a simple test program"](#a-consumers-cmake-says-clang-cl-is-not-able-to-compile-a-simple-test-program)
 - [A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`](#a-windows-chain-stops-in-seconds-at-bkpublish-gatebk-windows-)
+- [A declaration that masks its command's exit status](#a-declaration-that-masks-its-commands-exit-status)
+- [RV1-FREETYPE: riscv64 OpenCV freetype/harfbuzz](#rv1-freetype-riscv64-opencv-freetypeharfbuzz)
+- [A half-fetched dependency that every retry inherits](#a-half-fetched-dependency-that-every-retry-inherits)
+- [RVV changed what the optimizer can prove](#rvv-changed-what-the-optimizer-can-prove)
 
 
 ---
 
 ## The shortlist AGENTS.md carried
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and a failure count that had gone stale. The RULES stayed there; this is the reference behind them.
 
-Symptom → cause → fix for 57 failures seen live on both lanes, keyed by the
+Symptom → cause → fix for every failure seen live on both lanes, keyed by the
 error message you actually get:
 [`docs/failure-modes.md`](failure-modes.md). Grouped as Linux/cross-lane ·
 the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and
@@ -526,13 +532,16 @@ unpinned `read` does not split on spaces: a row naming two modules
 (`libssl-dev required _ssl _hashlib`) would arrive as one word and the audit
 would look for an extension called `_ssl _hashlib`. Every accessor in the table
 file pins `IFS=' '` on its `read` for exactly that reason, and
-`tests/test-cpython-ext-table.sh` runs each one under both values of `IFS`.
+`tests/test-cpython-ext-table.sh` runs `cpython_ext_modules` and
+`cpython_ext_dev_packages` under both values of `IFS`.
 
 **What only a real build shows.** Whether the five modules the audit gained on
 2026-09-05 (`_zstd`, `readline`, `_curses`, `_uuid`, `_decimal`) actually land in
-`lib-dynload` on arm64 and riscv64. They are `optional` rows: a warning there is
-information, not a failure, and the toolchain smoke's own stdlib battery is what
-turns a genuinely broken interpreter red.
+`lib-dynload` on arm64 and riscv64. Four of them are `optional` rows and
+`readline` is `required`, which makes its package fatal at the install step, not
+its `.so`. The audit warns on every row, so a warning there is information, not
+a failure, and the toolchain smoke's own stdlib battery is what turns a
+genuinely broken interpreter red.
 
 ### The delete guard denies its own legitimate work
 
@@ -550,7 +559,9 @@ tool call and a rewrite. Two earlier variants of the same shape are recorded in
 the file's own header: `--rm` matching `\brm\b`, and `sed 's/^/  /'` reading as
 the filesystem root.
 
-**The fix.** Split the command on `;`, `&&`, `||`, `|` and newlines, and run the
+<a id="delete-guard-scope"></a>
+**The fix.** Split the command on `;`, `&&`, `||`, `|` and newlines, never inside
+a quoted span (`_split_outside_quotes`), and run the
 protected-path patterns only on the segments that actually carry a delete verb.
 A preceding `cd` target is carried into later segments, so `cd /usr && rm -rf *`
 still denies — the relative delete cannot escape the directory it was given.
@@ -560,9 +571,10 @@ across a whole command is not checking a relationship, it is checking
 co-occurrence. Co-occurrence guards look strict and behave randomly: they deny
 safe work and, worse, teach the operator to phrase commands to avoid the guard
 rather than to be safe. Bind the dangerous verb to its own argument. Both
-directions are mutation-tested in `test-delete-guard.sh` — widening the scope
+directions are pinned in `test-delete-guard.sh` — widening the scope
 back to the whole command turns the allow-cases red, and dropping the `cd`
-tracking turns the deny-cases red.
+tracking turns the deny-cases red; the recorded mutation,
+`delete-guard.quote-aware-split`, pins the quote-aware split.
 
 ### OpenCV: `std::complex` breaks on a shadowed `complex.h`
 
@@ -706,10 +718,13 @@ before a closing brace finds 17 sites in the tree; almost all are deliberate
 *predicates* (`[ -n "${_t}" ] && [ "${_t}" != "${_b}" ]`) whose callers use them
 in `if`/`||`. The bug shape is narrower: an *action* on the right-hand side and
 a *bare* call site under `set -e`. A regex on the function alone cannot tell the
-two apart, which is why this is a call-site check
-(docs/code-quality-tooling.md, planned gate `trailing-and`), not a pattern ban.
-Until it exists: a function-level test must assert the exit status on the
-"nothing to do" path, not only the calls it makes.
+two apart, so the gate that landed for it, preflight slug `trailing-conditional`
+(`linux/scripts/verify_trailing_conditional.py`), flags every function that ends
+on a conditional and freezes the reviewed predicates in
+`linux/scripts/trailing-conditional.allow`:
+[code-quality-tooling.md § Trailing-conditional returns](code-quality-tooling.md#trailing-conditional-returns-trailing-conditional).
+It cannot see call sites, so a function-level test must still assert the exit
+status on the "nothing to do" path, not only the calls it makes.
 
 ### The copied Rust toolchain is the builder's arch
 
@@ -756,7 +771,8 @@ fine when the probe's failure is itself the fault.
 
 **Fix.** `setup-package-image.sh` `ensure_native_rust_toolchain` (before
 `wire_cargo_symlinks`): if `${RUSTUP_HOME}/toolchains/` holds no
-`*-<own triple>` dir, wipe both trees and run the same `install-rust.sh` the
+`*-<own triple>` dir, wipe `${RUSTUP_HOME}` and everything in `${CARGO_HOME}` but
+its `registry` cache mount, and run the same `install-rust.sh` the
 toolchain stage uses, with `BUILD_MODE=native` and `RUST_INSTALL_CARGO_C=0`
 (compiling cargo-c under QEMU would cost an hour; the `cargo-c` apt package is
 what `wire_cargo_symlinks` links in that case — one minor version behind the
@@ -770,8 +786,10 @@ three arches ship the same toolchain surface.
 the active toolchain's host triple (`rustup show active-toolchain`) and requires
 `cargo-cbuild` — it fails on the 2026-09-01 image
 (`tests/test-runtime-image-gates.sh`). The same class applies to any *host*
-tree copied from artifact-source: `/opt/flutter` on arm64 is the x86-64 SDK
-too (`setup-flutter.sh`), which `check_flutter` exercises the same way. The
+tree copied from artifact-source: `/opt/flutter` ships bare from the amd64 sdk
+stage, and `bootstrap_flutter_sdk` (`setup-package-image.sh`) caches the
+target-arch Dart SDK, which `check_flutter` verifies the same way
+([Bootstrapping Flutter in the package stage](artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage)). The
 general audit for that class is `check_manifest_tree_arch`: it reads the ELF
 machine of everything under every tree in `runtime-artifacts.manifest` and fails
 when a foreign image carries builder-arch objects —
@@ -813,7 +831,8 @@ unrunnable `${CARGO_HOME}/bin/rustc` reports `does not execute` and points at
 
 **Reading it.** The trap reports the line of the *failing command*, not of the
 caller. Match it against the script in the image
-(`nerdctl run --rm <image> sed -n '<N>p' /opt/scripts/packaging/…`), because the
+(`nerdctl run --rm <image> sed -n '<N>p' /opt/scripts/packaging/<script>`;
+`assemble-torch-app.sh` lives in `/opt/scripts/03-media/final/`), because the
 line numbers move with every edit to the file.
 
 ### A callee invoked in an `if !` condition runs with errexit off
@@ -825,7 +844,7 @@ reports success. Nothing in the log says the exit code was thrown away.
 command used as a condition — the callee's body, and everything it calls. So a
 function written to rely on `set -e` for its aborts raises nothing when it is
 reached through `if ! f …`, `f && …`, `f || …` or a condition-context
-substitution. `gcc.sh:386` reaches `build_canadian_native_gcc_for` exactly that
+substitution. `gcc.sh:384` reaches `build_canadian_native_gcc_for` exactly that
 way, and inside it the invocation of `build-gcc.sh` was a plain command: its
 non-zero exit was discarded, and the missing native GCC only surfaced arches
 later.
@@ -921,7 +940,7 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 
 **Cause.** `COPY --link` into `/tmp` resets the directory to 0755 (a plain `COPY` does not). apt's `_apt` user can no longer write its temp files.
 
-**Fix.** Restore `chmod 1777 /tmp` after the copy, as `Dockerfile.nvidia` does; `test-layer-order.sh` asserts it for every `--link` copy into `/tmp`.
+**Fix.** Restore `chmod 1777 /tmp` after the copy, as `Dockerfile.nvidia` does; `test-layer-order.sh` asserts that every Dockerfile with a `--link` copy into `/tmp` also runs `chmod 1777 /tmp` (per file; it does not check the order).
 
 ### nvcc rejects the image's GCC 16
 
@@ -1185,9 +1204,9 @@ lsm!CService::Start
 lsm!ServiceMain
 ```
 
-Two dumps 30 s apart carry the **byte-identical** stack and the thread reports **0.000 s user time** — a fully static wait, not slow progress. So LSM never completes `CService::Start` because a *session-state event* inside the silo is never signalled; SCM then times it out (event 7022) and the rest of the boot proceeds. Reproduce with `windows/scripts/diagnostics/Get-LsmWaitstack.ps1` (elevated; it grabs the next container start and dumps twice). Two notes from doing it: the script must find the silo through the process TREE (a new `wininit.exe` → its `services.exe` → their `svchost`s) because `Win32_Process.ExecutablePath`/`CommandLine` are empty for silo processes even elevated; and the dumps land SYSTEM-owned, so `icacls <dir>\*.dmp /grant <user>:R` before analysing them unelevated. `cdb.exe` ships inside the WinDbg store package (`…\Microsoft.WinDbg_*\amd64\cdb.exe`). **The event object is NOT identified** — and one wrong way to try is recorded here because it looked convincing: reading the FIRST `KERNELBASE!WaitForSingleObjectEx` in the process names the **SCM dispatcher's own idle wait** (`sechost!ScDispatcherLoop`), which every service process has, not LSM's. Everything derived from that handle (`HandleCount 2`, "exactly one holder") described the wrong object and was retracted 2026-09-02. `kb`'s argument columns are home-space reconstructions and untrustworthy for a blocked wait; read **R10** of the thread whose stack actually shows `lsm!CService::Start` (the x64 syscall stub does `mov r10,rcx`, so R10 still holds argument 1). Silo handles also resolve as `Name <none>` from outside, so the `lsm!CEventDispatcher` frames stay the reliable pointer. This is the concrete, reportable core for microsoft/Windows-Containers#547, which so far only describes the symptom — ready-to-file draft: [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md).
+Two dumps 30 s apart carry the **byte-identical** stack and the thread reports **0.000 s user time** — a fully static wait, not slow progress. So LSM never completes `CService::Start` because a *session-state event* inside the silo is never signalled; SCM then times it out (event 7022) and the rest of the boot proceeds. Reproduce with `windows/scripts/diagnostics/Get-LsmWaitstack.ps1` (elevated; it grabs the next container start and dumps twice). Two notes from doing it: the script must find the silo through the process TREE (a new `wininit.exe` → its `services.exe` → their `svchost`s) because `Win32_Process.ExecutablePath`/`CommandLine` are empty for silo processes even elevated; and the dumps land SYSTEM-owned, so `icacls <dir>\*.dmp /grant <user>:R` before analysing them unelevated. `cdb.exe` ships inside the WinDbg store package (`…\Microsoft.WinDbg_*\amd64\cdb.exe`). **The waited object is identified, its signaller is not**: `Find-LsmEventHolder.ps1` reads R10 as described below and finds an auto-reset Event, `HandleCount 2`, whose only handle any process holds is LSM's own ([draft § The waited object](upstream/windows-containers-lsm-session-event-hang.md#the-waited-object)) — and one wrong way to try is recorded here because it looked convincing: reading the FIRST `KERNELBASE!WaitForSingleObjectEx` in the process names the **SCM dispatcher's own idle wait** (`sechost!ScDispatcherLoop`), which every service process has, not LSM's. Everything derived from that handle (`HandleCount 2`, "exactly one holder") described the wrong object and was retracted 2026-09-02; the R10 re-read of the right object later measured the same two numbers. `kb`'s argument columns are home-space reconstructions and untrustworthy for a blocked wait; read **R10** of the thread whose stack actually shows `lsm!CService::Start` (the x64 syscall stub does `mov r10,rcx`, so R10 still holds argument 1). Silo handles also resolve as `Name <none>` from outside, so the `lsm!CEventDispatcher` frames stay the reliable pointer. This is the concrete, reportable core for microsoft/Windows-Containers#547, which so far only describes the symptom — ready-to-file draft: [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md).
 
-**Recurrence playbook — decode the timing before debugging anything.** The signature is *identical* RUN durations regardless of what the step does. On the current 5 min knob: **~10 s** healthy · **~180 s** the shim is env-configurable but the containerd `Environment` value is gone (a Stevedore update wiped it — silent stock 30 s; redeploy below) · **~450 s** knob active, defect present · **~2841 s** the 45 min constant build is back. Re-mitigate with `Publish-ShimPatch.ps1 -ShimPath out\shim-builds\containerd-shim-runhcs-v1-fork-5e9df53c.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (rebuild recipe if the binary is lost: fork branch `feature/configurable-teardown-timeout`, `go build .\cmd\containerd-shim-runhcs-v1`). Confirm a suspected hang cheaply with `docker logs`/`docker top` on the stuck container — output present + no process = lost notification, not a hung command. And never conclude "wedge" from a killed probe: give any timing probe ≥15 min. Diagnose the rest with admin: `Get-ComputeProcess`, `fltmc instances -f bindflt` (the orphaned-instance signature from `hcsshim-teardown-timeout/ISSUE.md`), `ctr -n buildkit tasks ls`, the Hyper-V-Compute logs. **Do not judge a step by its console silence and kill `buildctl`** — that manufactures the `0xb7` debris two rows up; a 240 s timeout is what made this look like a hard wedge for a day. **The practical lever is the timeout, and 45 min was never the requirement:** the measured *legitimate* worst-case teardown on this host is **117 s** (`hcsshim-teardown-timeout/ISSUE.md`, OpenCV), so 2700 s is 23× the number it was raised to cover. Deploying the **`upstream-env` shim variant** — `Publish-ShimPatch.ps1 -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` — keeps ~2.5× headroom over the real worst case while capping the pathological case at 5 min, taking a RUN step from ~47 min to ~7 min without rebuilding the shim for every retune. **The value is a Go duration string and a bare number is not one:** `=300` fails `time.ParseDuration`, and the patch treats an unparseable value as unset, so it would silently give you the stock 30 s. The task-close timeout is then derived automatically to `2*5m+30s`. Force-terminating at the cap is known to be safe *here*: `docker stop` on a hung container returns in 91 s and the layer still exports (`exporting layers 1.7s`, `unpacking 5.2s`). Still an owner decision — it trades against the `ExportLayer 0x3` corruption the 45 min was raised to prevent. **Do not conclude the patch itself is obsolete:** checked 2026-09-01 and again 2026-09-22, upstream `main` (56195bbd, then 0e1f18b7) still hardcodes every 30 s constant, hcsshim#2855 sits unanswered, and Windows-Containers#547 is closed without a fix — dropping to stock re-opens the 0x3 A/B of 2026-08-06 the moment the host is healthy again. Build the shim from the fork branch (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` — owner directive; code-identical to the in-tree patch, current-main base incl. the e6580439 leaked-layer-reader deadlock fix), not from the in-tree patch file.
+**Recurrence playbook — decode the timing before debugging anything.** The signature is *identical* RUN durations regardless of what the step does. On the current 5 min knob: **~10 s** healthy · **~180 s** the shim is env-configurable but the containerd `Environment` value is gone (a Stevedore update wiped it — silent stock 30 s; `Set-ContainerdConfig.ps1` restores it) · **~450 s** knob active, defect present · **~2841 s** the 45 min constant build is back. Re-mitigate with `Publish-ShimPatch.ps1 -ShimPath out\shim-builds\containerd-shim-runhcs-v1-fork-5e9df53c.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (if the binary is lost: `Install-NewHost.ps1 -SkipCni -SkipGcPolicy -SkipDufs` rebuilds it from the pinned fork commit `5e9df53c` and deploys it with the 5m knob; by hand: fork branch `feature/configurable-teardown-timeout`, `go build .\cmd\containerd-shim-runhcs-v1`). Confirm a suspected hang cheaply with `docker logs`/`docker top` on the stuck container — output present + no process = lost notification, not a hung command. And never conclude "wedge" from a killed probe: give any timing probe ≥15 min. Diagnose the rest with admin: `Get-ComputeProcess`, `fltmc instances -f bindflt` (the orphaned-instance signature from `hcsshim-teardown-timeout/ISSUE.md`), `ctr -n buildkit tasks ls`, the Hyper-V-Compute logs. **Do not judge a step by its console silence and kill `buildctl`** — that manufactures the `0xb7` debris two rows up; a 240 s timeout is what made this look like a hard wedge for a day. **The practical lever is the timeout, and 45 min was never the requirement:** the measured *legitimate* worst-case teardown on this host is **117 s** (`hcsshim-teardown-timeout/ISSUE.md`, OpenCV), so 2700 s is 23× the number it was raised to cover. Deploying the **`upstream-env` shim variant** — `Publish-ShimPatch.ps1 -ShimPath <fork build> -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (a later retune is `Set-ContainerdConfig.ps1 -TeardownTimeout <duration>` — no rebuild, no redeploy) — keeps ~2.5× headroom over the real worst case while capping the pathological case at 5 min, taking a RUN step from ~47 min to ~7 min without rebuilding the shim for every retune. **The value is a Go duration string and a bare number is not one:** `=300` fails `time.ParseDuration`, and the patch treats an unparseable value as unset, so it would silently give you the stock 30 s. The task-close timeout is then derived automatically to `2*5m+30s`. Force-terminating at the cap is known to be safe *here*: `docker stop` on a hung container returns in 91 s and the layer still exports (`exporting layers 1.7s`, `unpacking 5.2s`). Still an owner decision — it trades against the `ExportLayer 0x3` corruption the 45 min was raised to prevent. **Do not conclude the patch itself is obsolete:** checked 2026-09-01 and again 2026-09-22, upstream `main` (56195bbd, then 0e1f18b7) still hardcodes every 30 s constant, hcsshim#2855 sits unanswered, and Windows-Containers#547 is closed without a fix — dropping to stock re-opens the 0x3 A/B of 2026-08-06 the moment the host is healthy again. Build the shim from the fork branch (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` — owner directive; code-identical to the in-tree patch, current-main base incl. the e6580439 leaked-layer-reader deadlock fix), not from the in-tree patch file.
 
 ### `hcsshim::ActivateLayer failed (0x20)` during build
 
@@ -1195,7 +1214,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** Windows Defender scanning new layer files + containerd snapshot contention
 
-**Fix.** Exclude `C:\ProgramData\containerd`, `C:\ProgramData\nerdctl` from Windows Defender. Or use `docker.exe` instead of `nerdctl` for builds (Docker's layer manager is more resilient).
+**Fix.** Exclude the container stores from Windows Defender: `windows\scripts\host\Sync-DefenderExclusions.ps1` (elevated) applies the full set, `C:\ProgramData\containerd` and `C:\ProgramData\nerdctl` among them.
 
 ### `ActivateLayer 0x20 "file used by another process"` on commit
 
@@ -1203,7 +1222,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** `--isolation process` was used for a `docker build` — it cannot commit layers on this host
 
-**Fix.** Never pass `--isolation process`. Use Hyper-V (the default) for `docker build`; for CPUs use the `docker run --cpu-count N` + `docker commit` path. Not Defender/Search/SysMain (all ruled out).
+**Fix.** Never pass `--isolation process` to a `docker build`. Build through `windows/Build-Buildkit.ps1`: buildctl commits process-isolated layers, so every RUN gets all host CPUs (the `docker run --cpu-count N` + `docker commit` path went with `build.ps1` on 2026-08-31). Not Defender/Search/SysMain (all ruled out).
 
 ### `ImportLayer ... (0xb7) "already exists"` — deterministic, burns the retry budget
 
@@ -1219,7 +1238,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** Persistent snapshotter debris from an earlier low-disk finalize failure — NOT transient, `buildctl prune` cannot reach it (0B reclaimable)
 
-**Fix.** Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live example in `Install-ScoopTools.ps1`'s 2026-08-05 header). Admin fix: prune/GC under the active gcpolicy.
+**Fix.** Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live examples in the 2026-08-06 headers of `Install-ScoopTools.ps1` and `Install-Vcpkg.ps1`, the latter this exact 0xb7 case). Admin fix: prune/GC under the active gcpolicy.
 
 ### `failed to reimport snapshot` / `failed to write compressed diff` — the hcs-temp flake family
 
@@ -1235,7 +1254,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **Windows Update ran INSIDE the build container** (servercore ships `wuauserv` + `UsoSvc`, trigger-started, and the container has network) and dropped an `.msu` into the update spool during the RUN; BuildKit's Windows layer writer cannot carry that file's alternate stream. Measured 2026-08-25 on the amd64 `media-core-onnx` stage (150 s RUN, KB5120233)
 
-**Fix.** **Prevention, not cleanup:** `Disable-ContainerWindowsUpdate` (Common.psm1) stops + disables both services and sets `NoAutoUpdate=1` as the first step of every build script (`Initialize-SourceBuildEnvironment`) and reports the spool count — an entry inherited from the parent image (1 item at RUN start on every media stage) is harmless, only a file written during the RUN lands in the diff. Nothing under `C:\Windows` is deleted by any script (protected-root rule). A layer that already carries a download is fixed by re-running its RUN with the guard in place (any module edit re-keys it); retrying the same cached RUN cannot help.
+**Fix.** **Prevention, not cleanup:** `Disable-ContainerWindowsUpdate` (`WindowsSourceBuild.Common.psm1`) stops + disables both services and sets `NoAutoUpdate=1` as the first step of every build script (`Initialize-SourceBuildEnvironment`) and reports the spool count — an entry inherited from the parent image (1 item at RUN start on every media stage) is harmless, only a file written during the RUN lands in the diff. Nothing under `C:\Windows` is deleted by any script (protected-root rule). A layer that already carries a download is fixed by re-running its RUN with the guard in place (any module edit re-keys it); retrying the same cached RUN cannot help.
 
 ### `exporting layers` prints nothing for 20+ minutes
 
@@ -1263,7 +1282,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **The CNI `.conf` is missing** — buildkitd then gives the container NO NETWORK ADAPTER AT ALL (not a DNS fault). Confirm in 30 s with a probe RUN: `ipconfig` prints nothing and a raw TCP connect to a literal IP fails *"unreachable network"*; the containerd debug log shows the `HcsCreateComputeSystem` spec with no networking block. Usual cause: someone "converted" `0-containerd-nat.conf` → `.conflist` to fix nerdctl (2026-08-07, cost a launched chain). The subnet-drift guard does NOT catch this and stays green.
 
-**Fix.** Restore it (admin): `Copy-Item '…\0-containerd-nat.conflist' '…\0-containerd-nat.conf'`, edit to the single-plugin form, `Restart-Service buildkitd -Force`. **Keep BOTH files** — buildkitd needs `.conf`, nerdctl needs `.conflist`. `Build-Buildkit.ps1` now fail-fasts (`Get-CniConfFormIssue`) and `Test-HostSetup.ps1` FAILs on a missing `.conf`.
+**Fix.** Restore it (admin): `pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1` derives the `.conf` from the `.conflist` (never hand-edit a copy — [invariant](windows-build-invariants.md#the-cni-conf-is-derived-from-the-conflist-not-hand-edited)), then `Restart-Service buildkitd -Force`. **Keep BOTH files** — buildkitd needs `.conf`, nerdctl needs `.conflist`. `Build-Buildkit.ps1` now fail-fasts (`Get-CniConfFormIssue`) and `Test-HostSetup.ps1` FAILs on a missing `.conf`.
 
 ### `The remote name could not be resolved` — CNI nat subnet drift
 
@@ -1271,7 +1290,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **CNI nat subnet drift**: dockerd restarts recreate the `nat` HNS network on a new subnet; the static CNI conf then hands out IPs whose gateway doesn't exist
 
-**Fix.** Update `ipam.subnet`/`GW` in `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` to match the live `vEthernet (nat)` adapter (`ipconfig`), then `Restart-Service buildkitd -Force` (admin). `Build-Buildkit.ps1`'s preflight guard detects this and prints the fix.
+**Fix.** Update `ipam.subnet`/`GW` in the authored `C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist` to match the live `vEthernet (nat)` adapter (`ipconfig`), re-derive the `.conf` with `windows\scripts\host\Set-ContainerdConfig.ps1`, then `Restart-Service buildkitd -Force` (admin). `Build-Buildkit.ps1`'s preflight guard (`Get-CniNatSubnetDrift`) detects this and prints the fix.
 
 ### nerdctl DNS failure in build
 
@@ -1279,7 +1298,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** BuildKit container can't resolve hostnames on Windows without a CNI nat CONFIG (`--dns` and `--network host` unsupported)
 
-**Fix.** Fixed 2026-08-03: install `0-containerd-nat.conf` into `C:\Program Files\containerd\cni\conf\` (nat.exe was already in ...\cni\bin) — buildkitd RUN steps then have full NAT+DNS. docker.exe remains the fallback.
+**Fix.** Fixed 2026-08-03: install `0-containerd-nat.conf` into `C:\Program Files\containerd\cni\conf\` (nat.exe was already in ...\cni\bin) — buildkitd RUN steps then have full NAT+DNS. Today both forms are installed (the `.conflist` authored, the `.conf` derived by `Set-ContainerdConfig.ps1`). There is no docker.exe fallback: the classic driver went on 2026-08-31 and the Dockerfiles need BuildKit.
 
 ---
 
@@ -1291,7 +1310,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **buildkitd step-log clip deadlock** (Windows buildkitd v0.32): after the 2 MiB clip the stdio pipe stops being drained; every process blocks on its next write. ONNX's warning flood hits the clip in ~3 min
 
-**Fix.** Set service env `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `BUILDKIT_STEP_LOG_MAX_SPEED=-1` on buildkitd (registry MultiString `Environment`), `Restart-Service buildkitd -Force`. See docs/windows-build-lanes.md § Getting it going, step 3b.
+**Fix.** Set service env `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `BUILDKIT_STEP_LOG_MAX_SPEED=-1` on buildkitd (registry MultiString `Environment`), `Restart-Service buildkitd -Force`. See docs/windows-build-lanes.md § Getting it going, step 4. `Build-Buildkit.ps1` refuses to start without it (`Assert-BuildkitdStepLogEnv`; `-SkipStepLogGate` for one launch), and `Install-NewHost.ps1` sets it.
 
 ### `buildctl prune` returns `Total: 0B` no matter what you pass
 
@@ -1379,7 +1398,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** A **toolchain-less** rustup (proxy shims in `CARGO_BIN` that resolve no toolchain) — e.g. `rustup-init --default-toolchain none`, or an image from before the Cargokit fix
 
-**Fix.** rustup WITH a stable default toolchain IS the sole provider (`Install-RustToolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default stable`; never add a second provider (no scoop rust) ([`windows-build-invariants.md`](windows-build-invariants.md) § Windows Build Invariants).
+**Fix.** rustup WITH a stable default toolchain IS the sole provider (`Install-RustToolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default stable`; never add a second provider (no scoop rust) ([`windows-build-invariants.md`](windows-build-invariants.md#rust-rustup-with-a-default-toolchain-is-the-sole-provider)).
 
 ### A GitLab download "succeeds" with HTTP 200 but is a few KB
 
@@ -1395,7 +1414,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** Scoop LLVM never ships llvm-config or dev libs — TVM was silently USE_LLVM=OFF (no CPU codegen) until 2026-08-17. NOT a broken PATH.
 
-**Fix.** The self-heal in `Build-TvmFromSource.ps1` builds a pinned minimal LLVM from source ([`windows-build-invariants.md`](windows-build-invariants.md) § Windows Build Invariants). If the gate throws, check the heal's download/SHA pin for the current `LLVM_WINDOWS_VERSION` — do NOT fall back to the official /MT dev tarball or USE_LLVM=OFF.
+**Fix.** The self-heal in `Build-TvmFromSource.ps1` builds a pinned minimal LLVM from source ([`windows-build-invariants.md`](windows-build-invariants.md#tvm-builds-its-own-minimal-llvm--do-not-simplify-it-away)). On amd64 TVM links the patched toolchain's llvm-config, so the heal runs only under `-StockLlvm` and on the rocm `TVM_ROCM=1` spike. If the gate throws, check the heal's download/SHA pin for the current `LLVM_WINDOWS_VERSION` — do NOT fall back to the official /MT dev tarball or USE_LLVM=OFF.
 
 ### `TVM ROCm spike: C:\llvm-patched\bin\llvm-config.exe has no AMDGPU target`
 
@@ -1411,7 +1430,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** TVM 0.26's `codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` / `MatchIntrinsicTypes_*` which were removed or renamed in LLVM 23.1.0. The forced `LLVM_WINDOWS_VERSION` bump from 22.1.8 to 23.1.0 (scoop reshaped the artifact, #135) broke the TVM compiler's LLVM API surface. The `llvm_module.cc` `LLJITBuilderState::ObjectLinkingLayerCreator` conversion also fails (API change).
 
-**Fix.** Not yet fixed. Either patch TVM 0.26 for the LLVM 23.1.0 Intrinsic API, or revert `LLVM_WINDOWS_VERSION` for the TVM compiler build only. The arm64 lane needs no fix — it builds runtime-only and never compiles `codegen_llvm.cc`. Tracked in `docs/windows-refactor-backlog.md` #134.
+**Fix.** Fixed (#134; rebuilt green 2026-09-02): `TVM_COMMIT` in `versions.env` pins TVM to upstream `main` (`994e0216`), which carries the `TVM_LLVM_VERSION >= 230` guards, and `Build-TvmFromSource.ps1` prefers it over `TVM_REF`. Drop it back to empty only once a TVM release ships those guards. The arm64 lane needs no fix — it builds runtime-only and never compiles `codegen_llvm.cc`.
 
 ### `lld-link: error: undefined symbol` for template instantiations after a green compile
 
@@ -1419,7 +1438,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **the sccache nvcc path produced objects lacking arch/define-guarded instantiations during REAL compiles** — runs 10+11 with launcher failed identically, runs 5+12 bare-nvcc linked green. Poisoning is excluded on BOTH levels (run 11: fresh L0 mount; L2 turned out to hold only 9 probe entries — the chain's write-through never fed it). Minimal wrapped-vs-bare nm-diff repros (define-guard + arch-guard shapes; plain, ORT-ish and `--options-file` command lines, fresh disk-only cache) are all CLEAN — the loss needs real-ORT invocation complexity (untested: `-MD/-MF` depgen, `-forward-unknown-to-host-compiler`, quoted rsp defines, client concurrency). Same machinery also crashed the server on fused_moe (10054, upstream family #1098) and produced the `Severity::k0` phantom; arch-guard×preprocessing has upstream history (#2299)
 
-**Fix.** CUDA is bare BY DEFAULT since 2026-08-10 night — the launcher is OPT-IN at the wiring site (`Invoke-CmakeConfigure` adds `CMAKE_CUDA_COMPILER_LAUNCHER` only under `SCCACHE_CUDA_LAUNCHER=1`; the earlier per-script opt-out env var leaked process-wide on the classic lane, review find). NEVER export that opt-in on a new sccache without all THREE canaries: Test-CudaCache.ps1 + fused_moe compile + a full providers_cuda LINK (the miscompile is invisible until link). C/CXX launcher stays safe.
+**Fix.** Root-caused to sccache's dryrun quote-collapse (mozilla/sccache#2811, shipped in 0.18.0); the launcher is ON BY DEFAULT again since 2026-08-18 (`ARG SCCACHE_CUDA_LAUNCHER="1"` in `Dockerfile.media-builder`'s onnx stage, `OPENCV_CUDA_LAUNCHER="1"` for OpenCV). The wiring site is unchanged — `Invoke-CmakeConfigure` adds `CMAKE_CUDA_COMPILER_LAUNCHER` only under `SCCACHE_CUDA_LAUNCHER=1`; opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`. NEVER trust a new sccache with it without all THREE canaries: Test-CudaCache.ps1 + fused_moe compile + a full providers_cuda LINK (the miscompile is invisible until link). C/CXX launcher stays safe.
 
 ### meson cross: `Summary section 'Build environment' already have key 'host cpu'`, then `Subproject "subprojects/glib" required but not found`
 
@@ -1484,8 +1503,9 @@ that (2) was [llvm#202716](https://github.com/llvm/llvm-project/pull/202716) and
 toolchain move to LLVM `main` would retire `/Ob1` — **also wrong**. A census is recorded as settling it — 1,869 objects
 green with BOTH workarounds off, on pinned 23.1.0 plus only the two `getInstSizeInBytes` patches,
 a compiler containing no llvm#202716 — but it was run by hand and **left no log**, so it is a
-claim, not evidence. Re-run it through the driver before acting on it. Full evidence in
-[`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
+claim, not evidence. It was acted on anyway: #135 closed 2026-08-29 with the patched toolchain
+as the default and both workarounds removed (below). Full evidence in
+[`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #135.
 
 1. **Jump-table entry width** → `value evaluated as <N> is out of range`.
    `AArch64CompressJumpTables` selects 1-byte entries whenever `span>>2` fits in 8 bits — a
@@ -1529,7 +1549,8 @@ claim, not evidence. Re-run it through the driver before acting on it. Full evid
    commit is load-bearing for *upstream's own test* — never evidence about
    `median_blur.dispatch.cpp`.
 
-**Fix — two settings, one per site, both cross-lane only.**
+**Fix — HISTORICAL (both removed 2026-08-29; the patched toolchain above is the fix): two
+settings, one per site, both cross-lane only.**
 
 * **(1)** `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, whole build. This
   **disables the compression pass** — `if (ST.force32BitJumpTables() && !MF->getFunction().hasMinSize()) return false;`
@@ -1538,7 +1559,7 @@ claim, not evidence. Re-run it through the driver before acting on it. Full evid
   Cost on a reproducer: 4522 → 4650 bytes of object, ~2.8 %, all of it jump-table DATA; full
   `/O2` retained.
 * **(2)** `/Ob1` on the two offending TUs — `median_blur.dispatch.cpp` and
-  `multiview_calibration.cpp` — appended to their `build.ninja` FLAGS lines by
+  `multiview_calibration.cpp` — were appended to their `build.ninja` FLAGS lines by
   `Build-OpencvFromSource.ps1`. It does **not** lower the optimisation level: every kernel keeps
   `/O2`, vectorisation and unrolling. It stops the inliner from gluing file-static helpers into
   one oversized function; on `median_blur` the largest function drops 33,860 → 10,620 bytes, i.e.
@@ -1549,9 +1570,10 @@ claim, not evidence. Re-run it through the driver before acting on it. Full evid
   **Get the list by census, not one rebuild at a time.** `NINJA_KEEP_GOING=1` (honoured by
   `Invoke-NinjaBuildWithRetry`) turns the stage into `ninja -k 0`, so one run compiles all 1,870
   objects and reports EVERY offender instead of stopping at the first. That is how the list above
-  was closed at two. Re-run it that way after an OpenCV bump: the ceiling is a property of what
-  the inliner produces, so a new offender is one source change away, and the per-TU floor only
-  catches the reverse (a TU that vanishes or is renamed).
+  was closed at two. It matters again only if the patched toolchain is dropped: the ceiling is a
+  property of what the inliner produces, so a new offender is one source change away. (No
+  Dockerfile declares `NINJA_KEEP_GOING` as an ARG, so `-BuildArg NINJA_KEEP_GOING=1` is silently
+  dropped.)
 
 **`+force-32bit-jump-tables` and `-mllvm -aarch64-enable-compress-jump-tables=false` are the same
 thing** — byte-identical `.asm` from clang-cl 23.1.0, verified locally on 2026-08-27. An earlier
@@ -1608,7 +1630,7 @@ Then read the listing: `.byte`/`.hword`/`.word` says which jump-table width was 
 `adrp` says how a base is reached, and the instruction count between a branch and its target
 label — ×4 for bytes — says whether relaxation failed and by how much.
 
-**Deciding whether a new compiler retires these two settings.** Do not answer that from a lane
+**Deciding whether a new stock compiler can replace the patched toolchain.** Do not answer that from a lane
 run, and do not answer it from a synthetic reproducer — a 148-byte miss flips on any perturbation,
 so a hand-written test case proves nothing about these TUs.
 [`Invoke-LlvmAarch64Layout.ps1`](../windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1) is
@@ -1622,8 +1644,8 @@ abort with the workaround off, and must still compile clean with it on. If eithe
 reports `INVALID` and exits 2, because a green candidate under a broken control is not evidence —
 it is a stale corpus. A `FIXED` verdict is necessary and **not sufficient**: the frozen set is a
 census taken at one commit, and the ceiling is a property of what the inliner produces, so
-removing anything from `Build-OpencvFromSource.ps1` still requires the full
-`NINJA_KEEP_GOING=1` run over all ~1,870 objects. Its command-line surgery — in particular that
+dropping the patched toolchain (`BUILD_PATCHED_LLVM=1`) still requires a full arm64 OpenCV build
+over all ~1,870 objects. Its command-line surgery — in particular that
 *both* spellings of the jump-table workaround are stripped, so the "off" arm is genuinely off — is
 pinned by `windows/scripts/tests/Diagnostics.Llvm135Repro.Tests.ps1` against the real ninja
 command line.
@@ -1749,8 +1771,8 @@ broken run is **indistinguishable in the log**.
 
 **The gate.** `verify_masked_assignments.py` (preflight slug `masked-decls`)
 fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
-command substitution; 54 pre-existing sites are frozen in
-`masked-assignments.allow`, keyed by file+variable so a site does not re-flag
+command substitution; the pre-existing sites (54 when frozen on 2026-09-01) are
+listed in `masked-assignments.allow`, keyed by file+variable so a site does not re-flag
 when something above it moves. Fixing one means deleting its line.
 
 Two reasons shellcheck alone was not enough: SC2155 does **not** fire on
