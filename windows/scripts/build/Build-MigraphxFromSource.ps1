@@ -148,6 +148,13 @@ try {
 
     Switch-BuildPhase '2. host deps (clang-cl)'
     $depsPrefix = Join-Path $WorkDir 'deps'
+    # MIGraphX's OWN rocm-cmake pin, installed ahead of TheRock's (which lacks rocm_add_version_resource).
+    $requirements = [System.IO.File]::ReadAllText((Join-Path $sourceRoot 'requirements.txt'))
+    $rocmCmakeRoot = Save-GitCommitSource -Name 'rocm-cmake' -Repository 'https://github.com/ROCm/rocm-cmake.git' `
+        -Commit (Get-MigraphxRocmCmakeCommit -RequirementsText $requirements) -WorkDir $WorkDir
+    Invoke-CmakeConfigure -SourceDir $rocmCmakeRoot -BuildDir (Join-Path $WorkDir 'rocm-cmake-build') -InstallPrefix $depsPrefix `
+        -BuildType $BuildType -ExtraArgs @('-DBUILD_TESTING:BOOL=OFF')
+    Invoke-NinjaBuildWithRetry -BuildDir (Join-Path $WorkDir 'rocm-cmake-build') -Install -InstallConfig $BuildType -RetryJobs 2
     $depRoots = @{}
     foreach ($spec in Get-MigraphxPinnedSourceSpec -Set MigraphxDeps) {
         $depSource = Resolve-PinnedSource @spec

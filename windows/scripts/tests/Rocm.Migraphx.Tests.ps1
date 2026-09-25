@@ -117,6 +117,30 @@ Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
         Assert-Throws { Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText 'project(x)' } -MessagePattern 'MigraphxVersion not found'
         Assert-Throws { Get-MigraphxTreeFact -Fact ProtobufAbseil -CMakeText '' } -MessagePattern 'ProtobufAbseil not found'
     }
+
+    It 'reads MIGraphX''s own rocm-cmake commit, and refuses a missing pin or one that is not a 40-hex commit' {
+        $sha = '6a7c5b73b8882c74f8f7060e2633f230dabb7b63'
+        $req = "abseil/abseil-cpp@20250512.0 -DABSL_ENABLE_INSTALL=ON`nROCm/rocm-cmake@$sha --build`nsqlite3@3.50.4"
+        Assert-Equal $sha (Get-MigraphxRocmCmakeCommit -RequirementsText $req) 'commit'
+        Assert-Throws { Get-MigraphxRocmCmakeCommit -RequirementsText 'google/protobuf@v30.0' } -MessagePattern 'rocm-cmake not found'
+        Assert-Throws { Get-MigraphxRocmCmakeCommit -RequirementsText 'ROCm/rocm-cmake@rocm-7.0.0 --build' } -MessagePattern 'not a 40-hex commit'
+    }
+
+    It 'Save-GitCommitSource binds only a 40-hex commit, so a branch or tag never reaches git' {
+        Assert-Throws { Save-GitCommitSource -Name 'x' -Repository 'https://example.invalid/x.git' -Commit 'develop' -WorkDir 'unused' } `
+            -MessagePattern 'Commit'
+    }
+}
+
+Describe 'Build-MigraphxFromSource.ps1: rocm-cmake' {
+    It 'installs MIGraphX''s own rocm-cmake into the deps prefix before MIGraphX configures' {
+        $text = Get-Content -Raw -LiteralPath (Join-Path $script:MgxRepo $script:MgxScript)
+        $fetch = $text.IndexOf('Save-GitCommitSource -Name ''rocm-cmake''')
+        $configure = $text.IndexOf('3. MIGraphX configure')
+        Assert-True ($fetch -gt 0 -and $fetch -lt $configure) 'rocm-cmake is staged in phase 2, before the MIGraphX configure'
+        Assert-True ($text -match 'Get-MigraphxRocmCmakeCommit -RequirementsText') 'the commit comes from MIGraphX''s requirements.txt'
+        Assert-True ($text -match '-InstallPrefix \$depsPrefix') 'it installs into the deps prefix, which precedes TheRock on CMAKE_PREFIX_PATH'
+    }
 }
 
 Describe 'WindowsMigraphx.Common: FetchContent seeding' {
