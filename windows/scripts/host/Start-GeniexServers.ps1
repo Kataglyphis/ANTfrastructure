@@ -16,6 +16,11 @@
 .PARAMETER Pull
     Run `geniex pull <model>` for any model the local store does not list.
 
+.PARAMETER BindAddress
+    The IPv4 address every lane listens on. Default 0.0.0.0, so WSL2 in NAT mode
+    reaches the lanes; 127.0.0.1 keeps them off the LAN and is enough for WSL2 in
+    mirrored mode and for the llm-stack gateway (linux/llm-stack/README.md § Gateway).
+
 .EXAMPLE
     pwsh -File windows/scripts/host/Start-GeniexServers.ps1
     Starts the NPU (18181) and GPU (18182) lanes with the backends.json models.
@@ -23,6 +28,10 @@
 .EXAMPLE
     pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -WithCpu -MaxTokens 8192 -Pull
     Adds the CPU lane, raises the per-response cap, and fetches missing models.
+
+.EXAMPLE
+    pwsh -File windows/scripts/host/Start-GeniexServers.ps1 -BindAddress 127.0.0.1 -WithCpu
+    The gateway's lanes: loopback only, with the CPU lane.
 #>
 [CmdletBinding()]
 param(
@@ -30,6 +39,8 @@ param(
     [int]$GpuPort    = 18182,
     [int]$HybridPort = 18183,
     [int]$CpuPort    = 18184,
+    [ValidatePattern('^\d{1,3}(\.\d{1,3}){3}$')]
+    [string]$BindAddress = '0.0.0.0',
     [int]$Nctx       = 16384,
     [int]$MaxTokens  = 4096,
     [int]$Keepalive  = 86400,
@@ -56,6 +67,8 @@ param(
 )
 
 Set-StrictMode -Version Latest
+# Where this script's own probes connect: a wildcard bind is reached on loopback.
+$ProbeHost = if ($BindAddress -eq '0.0.0.0') { '127.0.0.1' } else { $BindAddress }
 $ErrorActionPreference = 'Stop'
 
 $exe = Join-Path $env:LOCALAPPDATA 'GenieX CLI\geniex.exe'
@@ -122,7 +135,7 @@ function Get-BundleKind {
 function Get-ServedModels {
     param([int]$Port)
     try {
-        $r = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/v1/models" -TimeoutSec 5
+        $r = Invoke-RestMethod -Uri "http://${ProbeHost}:$Port/v1/models" -TimeoutSec 5
     } catch {
         return @()
     }
@@ -205,7 +218,7 @@ function Invoke-Warmup {
         stream     = $false
     } | ConvertTo-Json -Depth 5
     try {
-        Invoke-RestMethod -Uri "http://127.0.0.1:$Port/v1/chat/completions" `
+        Invoke-RestMethod -Uri "http://${ProbeHost}:$Port/v1/chat/completions" `
             -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 300 | Out-Null
         Write-Host ("  {0,-6} :{1}  warm ({2})" -f $Compute, $Port, $Model) -ForegroundColor DarkGreen
     } catch {
@@ -248,7 +261,7 @@ function Start-Lane {
     # no log to say so). So ASK the binary instead of assuming: the flag list is
     # one --help away. When it is gone, max_tokens is a per-request field and the
     # client owns it -- which is what the benchmark tools already send.
-    $argList = @('serve', '--compute', $Compute, '--host', "0.0.0.0:$Port",
+    $argList = @('serve', '--compute', $Compute, '--host', "${BindAddress}:$Port",
                  '--nctx', $Nctx, '--keepalive', $Keepalive)
     if (Test-ServeFlag '--max-tokens') {
         $argList += @('--max-tokens', $MaxTokens)
@@ -286,7 +299,7 @@ function Start-Lane {
     foreach ($i in 1..20) {
         Start-Sleep -Seconds 1
         try {
-            Invoke-RestMethod -Uri "http://127.0.0.1:$Port/v1/models" -TimeoutSec 2 | Out-Null
+            Invoke-RestMethod -Uri "http://${ProbeHost}:$Port/v1/models" -TimeoutSec 2 | Out-Null
             Write-Host ("  {0,-6} :{1}  up ({2}s)  log: {3}" -f $Compute, $Port, $i, $outLog) -ForegroundColor Green
             Invoke-Warmup -Compute $Compute -Port $Port -Model $model
             return
@@ -330,7 +343,7 @@ if ($WithCpu)    { $lanes += @{ Compute = 'cpu';    Port = $CpuPort;    Note = '
 foreach ($lane in $lanes) {
     $served = @(Get-ServedModels -Port $lane.Port)
     $shown = if ($served.Count -gt 0) { $served -join ', ' } else { '(not answering /v1/models)' }
-    Write-Host ("  http://127.0.0.1:{0}/v1  {1}   <- {2}" -f $lane.Port, $shown, $lane.Note)
+    Write-Host ("  http://{0}:{1}/v1  {2}   <- {3}" -f $ProbeHost, $lane.Port, $shown, $lane.Note)
     $want = Get-LaneModel -Compute $lane.Compute
     if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($want) -and $served -notcontains $want) {
         Write-Warning ("  {0,-6} serves {1}, not the configured {2} -- re-run with -Restart to load it." -f $lane.Compute, $served[0], $want)
