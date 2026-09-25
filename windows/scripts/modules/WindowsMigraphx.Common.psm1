@@ -317,6 +317,30 @@ function Write-NlohmannJsonConfigShim {
     return $shimDir
 }
 
+function Write-HipMsvcCmathOverlay {
+    <#
+    .SYNOPSIS
+        An -isystem directory whose two HIP math headers step aside for the comparisons MSVC's <cmath> owns.
+    .DESCRIPTION
+        Under clang, MSVC 14.51's <cmath> defines isgreater, isgreaterequal, isless, islessequal,
+        islessgreater and isunordered as constexpr wrappers over builtins, which HIP makes
+        __host__ __device__, so clang's HIP headers can no longer declare their __device__ versions
+        ("cannot overload __host__ __device__ function", 2026-09-25). Each overlay header renames those
+        six names, #include_next's the untouched original and restores them; device code then calls
+        MSVC's builtin versions. The wrapper includes both headers with <>, so -isystem reaches them.
+    #>
+    param([Parameter(Mandatory)][string]$WorkDir)
+    $owned = 'isgreater', 'isgreaterequal', 'isless', 'islessequal', 'islessgreater', 'isunordered'
+    $rename = $owned | ForEach-Object { "#pragma push_macro(`"$_`")"; "#undef $_"; "#define $_ __hip_msvc_owned_$_" }
+    $restore = $owned | ForEach-Object { "#undef $_"; "#pragma pop_macro(`"$_`")" }
+    $overlay = [IO.Directory]::CreateDirectory((Join-Path $WorkDir 'hip-msvc-cmath-overlay')).FullName
+    '__clang_cuda_math_forward_declares.h', '__clang_hip_cmath.h' | ForEach-Object {
+        $body = @('// Written by Write-HipMsvcCmathOverlay: MSVC''s <cmath> owns these six.') + $rename + "#include_next <$_>" + $restore
+        [IO.File]::WriteAllLines((Join-Path $overlay $_), [string[]]$body)
+    }
+    return $overlay
+}
+
 function Get-MigraphxPinnedSourceSpec {
     <#
     .SYNOPSIS
@@ -487,7 +511,7 @@ function Save-MigraphxLicense {
 Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList, Get-MigraphxHipRuntimeFile,
     Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Save-PinnedSource, Get-FetchContentUrlMap,
     Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
-    Write-NlohmannJsonConfigShim,
+    Write-NlohmannJsonConfigShim, Write-HipMsvcCmathOverlay,
     Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
     Get-MigraphxLicenseFile, Get-MigraphxStagedLicensePath, Get-MigraphxLicenseGap, Copy-MigraphxLicenseFile, Save-SpdxHeaderNotice,
     Save-MigraphxLicense

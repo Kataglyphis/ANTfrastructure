@@ -85,7 +85,8 @@ function Get-MigraphxCmakeArgs {
         [Parameter(Mandatory)][string]$DepsPrefix,
         [Parameter(Mandatory)][string]$GpuTargets,
         [Parameter(Mandatory)][string]$Python,
-        [Parameter(Mandatory)][string]$NlohmannJsonDir
+        [Parameter(Mandatory)][string]$NlohmannJsonDir,
+        [Parameter(Mandatory)][string]$HipMathOverlay
     )
     $deps = $DepsPrefix -replace '\\', '/'
     $rocm = $RocmRoot -replace '\\', '/'
@@ -104,6 +105,9 @@ function Get-MigraphxCmakeArgs {
         '-DBUILD_DEV=OFF', '-DBUILD_TESTING=OFF'
         '-DCMAKE_POLICY_DEFAULT_CMP0091:STRING=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreadedDLL'
         '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON', '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'
+        # Ahead of clang's resource dir: HIP's math headers yield isgreater & co. to MSVC 14.51's constexpr
+        # <cmath> versions (Write-HipMsvcCmathOverlay). Only HIP sources include those two headers.
+        "-DCMAKE_CXX_FLAGS:STRING=-isystem $($HipMathOverlay -replace '\\', '/')"
         "-DSQLite3_INCLUDE_DIR:PATH=$deps/include"
         "-DSQLite3_LIBRARY:FILEPATH=$deps/lib/sqlite3.lib"
         # TheRock's header-only copy (the licence notice staged below is the one compiled in), through
@@ -173,7 +177,7 @@ try {
     $buildDir = Join-Path $WorkDir 'migraphx-build'
     $jsonDir = Write-NlohmannJsonConfigShim -RocmRoot $rocmRoot -DepsPrefix $depsPrefix
     $migraphxArgs = Get-MigraphxCmakeArgs -RocmRoot $rocmRoot -DepsPrefix $depsPrefix -GpuTargets $gpuTargets -Python $python `
-        -NlohmannJsonDir $jsonDir
+        -NlohmannJsonDir $jsonDir -HipMathOverlay (Write-HipMsvcCmathOverlay -WorkDir $WorkDir)
     # -AllowRocmPrefix: this build needs find_package(hip/miopen/rocblas/hipblaslt/hiprtc) from TheRock.
     Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $buildDir -InstallPrefix $InstallDir -BuildType $BuildType `
         -CCompiler (Get-RocmLlvmToolPath -RocmRoot $rocmRoot -Tool 'clang') `

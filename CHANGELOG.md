@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - MIGraphX's HIP code compiles against MSVC 14.51's `<cmath>`
+
+With the configure through, every HIP source in `migraphx_device` failed (114
+errors): `__device__ function 'isgreater' cannot overload __host__ __device__
+function 'isgreater'`, with the previous declaration at MSVC 14.51's
+`cmath:688`, `_CLANG_BUILTIN2(isgreater)`. Under clang that `<cmath>` defines the
+six two-argument comparisons as `constexpr` builtin wrappers. HIP makes those
+`__host__ __device__`, so clang's HIP headers can no longer add their `__device__`
+versions. Upstream MIGraphX's Windows GPU job avoids this by building with VS 2022
+17.13.
+
+The owner chose to keep the image's own clang/MSVC 14.51 toolchain. The first
+try, `-Xclang -fno-cuda-host-device-constexpr`, cleared all 114 errors but broke
+device code instead (`reference to __host__ function 'operator unsigned int'`,
+`std::integral_constant` at `xtr1common:34`). It was dropped before any push.
+
+`Write-HipMsvcCmathOverlay` now writes an `-isystem` directory ahead of clang's
+resource dir. The wrapper includes both headers with `<>`, so the overlay reaches
+them. Each overlay header renames those six names, `#include_next`s the untouched
+original and restores them, so device code calls MSVC's builtin versions. No
+TheRock file is copied or edited. The flag is inert for non-HIP sources, which
+never include these headers. `Rocm.Migraphx.Tests.ps1` covers the overlay;
+51 cases pass.
+
 ## 2026-09-25 - MIGraphX takes TheRock's nlohmann_json through a natvis shim
 
 With its own rocm-cmake (entry below), MIGraphX got past

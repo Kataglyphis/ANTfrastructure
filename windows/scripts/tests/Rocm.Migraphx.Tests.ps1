@@ -132,6 +132,24 @@ Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
     }
 }
 
+Describe 'WindowsMigraphx.Common: HIP math overlay for MSVC 14.51 <cmath>' {
+    It 'renames the six comparisons MSVC owns around an #include_next of each untouched original' {
+        Invoke-InTestDir { param($dir)
+            $overlay = Write-HipMsvcCmathOverlay -WorkDir $dir
+            Assert-Equal (Join-Path $dir 'hip-msvc-cmath-overlay') $overlay 'overlay dir under the work dir'
+            foreach ($header in '__clang_cuda_math_forward_declares.h', '__clang_hip_cmath.h') {
+                $text = Get-Content -Raw -LiteralPath (Join-Path $overlay $header)
+                Assert-True ($text.Contains("#include_next <$header>")) "$header includes the original"
+                foreach ($n in 'isgreater', 'isgreaterequal', 'isless', 'islessequal', 'islessgreater', 'isunordered') {
+                    $order = "(?s)push_macro\(`"$n`"\).*#define $n __hip_msvc_owned_$n.*#include_next.*pop_macro\(`"$n`"\)"
+                    Assert-Match $order $text "$header renames $n before the original and restores it after"
+                }
+                Assert-False ($text -match '\bisnan\b|\bisinf\b|\bisfinite\b') "$header leaves the one-argument classifiers to HIP"
+            }
+        }
+    }
+}
+
 Describe 'WindowsMigraphx.Common: nlohmann_json natvis shim' {
     It 'loads TheRock''s config by absolute path and clears the natvis interface source' {
         Invoke-InTestDir { param($dir)
@@ -358,7 +376,7 @@ Describe 'Build-MigraphxFromSource.ps1' {
             New-Item -ItemType Directory -Force -Path $bin | Out-Null
             foreach ($t in 'llvm-ar', 'llvm-ranlib', 'llvm-objcopy', 'clang-offload-bundler', 'llvm-readobj') { Set-Content -LiteralPath (Join-Path $bin "$t.exe") -Value 'x' }
             $a = @(Get-MigraphxCmakeArgs -RocmRoot $dir -DepsPrefix 'C:\w\deps' -GpuTargets 'gfx1200;gfx1201' -Python 'C:\py\python.exe' `
-                -NlohmannJsonDir 'C:\w\deps\share\cmake\nlohmann_json')
+                -NlohmannJsonDir 'C:\w\deps\share\cmake\nlohmann_json' -HipMathOverlay 'C:\w\hip-msvc-cmath-overlay')
             $joined = $a -join ' '
             foreach ($want in '-DMIGRAPHX_ENABLE_GPU=ON', '-DMIGRAPHX_ENABLE_MLIR=OFF', '-DMIGRAPHX_USE_COMPOSABLEKERNEL=OFF',
                 '-DMIGRAPHX_ENABLE_PYTHON=OFF', '-DMIGRAPHX_ENABLE_TENSORFLOW=OFF', '-DBUILD_DEV=OFF', '-DGPU_TARGETS:STRING=gfx1200;gfx1201',
@@ -370,6 +388,7 @@ Describe 'Build-MigraphxFromSource.ps1' {
             Assert-True ($a -contains "-DCLANG_OFFLOAD_BUNDLER:FILEPATH=$rocm/lib/llvm/bin/clang-offload-bundler.exe") 'AMD bundler for the offload-arch check'
             Assert-True ($a -contains "-DCMAKE_PREFIX_PATH:STRING=C:/w/deps;$rocm") 'deps first, then TheRock'
             Assert-True ($a -contains '-Dnlohmann_json_DIR:PATH=C:/w/deps/share/cmake/nlohmann_json') 'the natvis shim over TheRock''s nlohmann/json'
+            Assert-True ($a -contains '-DCMAKE_CXX_FLAGS:STRING=-isystem C:/w/hip-msvc-cmath-overlay') 'the HIP math overlay precedes clang''s resource dir'
             Assert-False ($joined -match 'CMAKE_(C|CXX)_COMPILER=') 'compilers are passed to Invoke-CmakeConfigure, not here'
         }
     }
