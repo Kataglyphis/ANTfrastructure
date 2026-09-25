@@ -110,6 +110,30 @@ Describe 'WindowsMigraphx.Common: pinned sources' {
     }
 }
 
+Describe 'WindowsMigraphx.Common: 7-Zip''s refused links' {
+    # 7-Zip 26.03's own lines for flatbuffers 25.12.19, the archive that needed this.
+    $refused = 'ERROR: Dangerous link path was ignored : flatbuffers-25.12.19\ts\package.json : ..\package.json'
+    $refused2 = 'ERROR: Dangerous link path was ignored : flatbuffers-25.12.19\java\src\test\java\MyGame : ..\..\..\..\tests\MyGame'
+
+    It 'returns nothing on a clean pass, and only the refused link paths on an exit 2 made of refusals' {
+        Assert-Equal 0 @(Get-SevenZipSkippedLink -Output @('Everything is Ok', '') -ExitCode 0 -Archive 'a.zip').Count 'clean'
+        $links = @(Get-SevenZipSkippedLink -Output @('', $refused, $refused2, 'Sub items Errors: 2') -ExitCode 2 -Archive 'fb.zip')
+        Assert-Equal 'flatbuffers-25.12.19\ts\package.json|flatbuffers-25.12.19\java\src\test\java\MyGame' ($links -join '|') 'the links'
+    }
+
+    It 'throws on any other error, another exit code, or an exit 2 with nothing named' {
+        Assert-Throws { Get-SevenZipSkippedLink -Output @($refused, 'ERROR: Data Error : a.c') -ExitCode 2 -Archive 'x.zip' } -MessagePattern 'Data Error : a\.c'
+        Assert-Throws { Get-SevenZipSkippedLink -Output @($refused) -ExitCode 7 -Archive 'x.zip' } -MessagePattern 'exit 7'
+        Assert-Throws { Get-SevenZipSkippedLink -Output @('Sub items Errors: 1') -ExitCode 2 -Archive 'x.zip' } -MessagePattern 'Sub items Errors'
+    }
+
+    It 'Save-PinnedSource extracts through it, never the refusing Expand-SourceTarball' {
+        $body = (Get-Command Save-PinnedSource).Definition
+        Assert-Match 'Expand-PinnedArchive -Archive \$archive -Destination \$dest' $body 'extractor'
+        Assert-False ($body -match 'Expand-SourceTarball') 'no direct Expand-SourceTarball call'
+    }
+}
+
 Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
     It 'reads the MIGraphX version and protobuf''s abseil pin, and throws when upstream moved them' {
         Assert-Equal '2.17.0' (Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText "include(X)`nrocm_setup_version(VERSION 2.17.0)`n") 'version'

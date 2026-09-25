@@ -7,6 +7,28 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The ORT AMDGPU EP's flatbuffers seed extracts despite 7-Zip's link refusals
+
+With MIGraphX built (entry below), the EP stage stopped in phase 1:
+`7z extraction of 'C:\temp\ort-amdgpu-ep-work\flatbuffers.zip' failed (exit 2):
+Sub items Errors: 9`. The archive matched its pin. 7-Zip 25+ refuses every
+symlink whose target climbs with `..`, even one that stays inside the tree, and
+flatbuffers 25.12.19 carries nine: six Java test dirs, `ts/package.json`,
+`ts/pnpm-lock.yaml` and a test `.npmrc`. Reproduced on the host with 7-Zip 26.03.
+The other eight EP seeds extract cleanly, and no flatbuffers CMake file reads those
+paths.
+
+`Save-PinnedSource` now extracts through `Expand-PinnedArchive`. It runs the same
+two 7-Zip passes as `Expand-SourceTarball`, but hands each pass to
+`Get-SevenZipSkippedLink`. An exit 2 made only of those refusals is skipped with a
+warning that names each link. Any other ERROR line, another exit code, or an exit 2
+that names nothing still throws, now quoting 7-Zip's own ERROR lines. The links are
+never written, so the refusal keeps its point. The fix lives in
+`WindowsMigraphx.Common` because `WindowsSourceBuild.Common` is mounted into every
+media layer; fold it in at the next deliberate media rebuild. Checked on the host
+against the zip, a `.tar.gz`, a `.tar.xz` and a truncated zip (which still throws).
+`Rocm.Migraphx.Tests.ps1`: 57 pass.
+
 ## 2026-09-25 - MIGraphX links with MLIR off: upstream's stubs, backported
 
 With HIP compiling (entry below), the build reached `migraphx_gpu.dll` and stopped
