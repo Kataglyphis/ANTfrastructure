@@ -237,6 +237,11 @@ function Start-Lane {
     $busy = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
     if ($busy) {
         Write-Host ("  {0,-6} :{1}  already listening (pid {2}) -- skipped" -f $Compute, $Port, @($busy)[0].OwningProcess) -ForegroundColor DarkGray
+        # A lane started earlier on 0.0.0.0 stays on the LAN whatever -BindAddress says now.
+        $bound = @($busy | ForEach-Object { $_.LocalAddress } | Sort-Object -Unique)
+        if ($bound -notcontains $BindAddress) {
+            Write-Warning ("  {0,-6} :{1}  listens on {2}, not the requested {3} -- re-run with -Restart to rebind it." -f $Compute, $Port, ($bound -join ', '), $BindAddress)
+        }
         # A lane already holding a different KIND of bundle will not take this
         # model; on the NPU that is a server crash, not an error message.
         # @(): a function returning an empty array unrolls to $null, and
