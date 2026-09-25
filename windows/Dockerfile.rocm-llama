@@ -48,3 +48,10 @@ RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C
     & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend vulkan -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_VULKAN_HOME; `
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend vulkan); `
     if ($findings.Count -gt 0) { throw ('llama.cpp Vulkan check failed: ' + ($findings -join ' | ')) }
+
+# HIP compiles against the image's MSVC 14.51 <cmath>: TheRock's clang and clang++ load the overlay by default
+# through config files beside them (TheRock ships none). Not llama's: it belongs in Dockerfile.rocm, which keys
+# the whole rocm chain, and moves there at the next full rocm rebuild (BACKLOG.md CON34). Last in this file, so
+# the llama RUNs above stay cached. docs/windows-rocm.md § HIP compiles against MSVC 14.51.
+COPY windows\scripts\hip\hip-msvc-cmath C:\runtime\opt\hip-msvc-cmath
+COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\
