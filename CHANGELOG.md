@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The three consumer cross lanes are green; arm64 binaries ran
+
+OxidANT, AccelerANTgine and BeschleunigerBallett each gained
+`windows-arm64-cross.yml`, a thin caller of `container-ci-windows.yml`. All
+three went green on their first runs (36136967538, 36142875090, 36142882316).
+Each cross-built in the arm64 bundle and passed the arch gate: 12, 22 and 8
+arm64 binaries, no unresolved import. Each product then ran natively on
+`windows-11-arm`. It is the first execution of any binary from the bundle on
+arm64 hardware, though only as far as loading.
+
+- `BACKLOG.md` CON30 says what that proves and what it does not.
+- `windows-cross-builds.md` § Consumer cross lanes records the three runs.
+  It also records how BeschleunigerBallett's run job borrows the Khronos Vulkan
+  loader, pinned by hash, on the GPU-less runner.
+
 ## 2026-09-25 - A CMake consumer's cross build names its target
 
 AccelerANTgine and BeschleunigerBallett build with CMake, and nothing they
