@@ -6,6 +6,7 @@ local resty_sha256 = require("resty.sha256")
 local to_hex = require("resty.string").to_hex
 local ngx = ngx
 local type = type
+local pcall = pcall
 local ipairs = ipairs
 local tonumber = tonumber
 local math_ceil = math.ceil
@@ -124,6 +125,18 @@ local function verified_prompt(tp)
 end
 
 
+-- cjson's encode keeps 14 significant digits (a seed of 123456789012345 would reach the
+-- lane as 123456789012340); rapidjson round-trips every double. ai-proxy re-encodes the
+-- same way (ai-transport/http.lua), with the same cjson fallback.
+local function encode_body(body)
+    local ok, text = pcall(core.json.canonical_encode, body)
+    if ok and text then
+        return text
+    end
+    return core.json.encode(body)
+end
+
+
 -- R2: the pinned prompt goes first; a request that already starts with it is left alone.
 local function add_tools_prompt(tp, body, ctx)
     local prompt = verified_prompt(tp)
@@ -168,7 +181,7 @@ function _M.rewrite(conf, ctx)
         changed = changed or added
     end
     if changed then
-        ngx.req.set_body_data(core.json.encode(body))
+        ngx.req.set_body_data(encode_body(body))
         ctx.ai_request_body_changed = true
     end
 end
