@@ -144,3 +144,37 @@ def test_bodies_reach_the_lane_with_sorted_keys(gateway):
     text = req.raw.decode()
     assert text.index('"messages"') < text.index('"model"') < text.index('"tools"')
     assert text.index('"name"') < text.index('"parameters"'), "raw-* is not byte-transparent"
+
+
+def test_a_shaped_body_keeps_every_number_exact(gateway):
+    """geniex-shape re-encodes the body when it adds the prompt or drops power_mode."""
+    gateway.post("chat", tools=TOOLS, power_mode="high", seed=123456789012345,
+                 top_p=0.1234567890123457)
+    (req,) = gateway.requests("npu")
+    assert "power_mode" not in req.body and first_message(req)["content"] == PROMPT_TEXT
+    assert req.body["seed"] == 123456789012345, req.raw
+    assert req.body["top_p"] == 0.1234567890123457, req.raw
+
+
+RICH_TOOL = {"type": "function", "function": {
+    "name": "set_timer", "description": "Stellt einen Timer \u2013 \u00abminutes\u00bb \u2265 1",
+    "parameters": {"type": "object",
+                   "properties": {"zeta": {"type": "number", "minimum": 1.0, "default": 2.5},
+                                  "alpha": {"type": "string", "enum": ["b", "a"]},
+                                  "opts": {"type": "object", "properties": {}}},
+                   "required": []}}}
+
+
+@pytest.mark.parametrize("model", ["raw-npu", "chat"])
+def test_tool_definitions_keep_their_meaning_not_their_bytes(gateway, model):
+    """What Stage A has to control for: the lane sees the same tools, re-encoded."""
+    gateway.post(model, tools=[RICH_TOOL])
+    (req,) = gateway.requests("npu")
+    assert req.body["tools"] == [RICH_TOOL], "same meaning after a JSON decode"
+    text = req.raw.decode()
+    props = text[text.index('"properties"'):]
+    assert props.index('"alpha"') < props.index('"opts"') < props.index('"zeta"'), "keys sorted"
+    assert '"enum":["b","a"]' in text, "array order is kept"
+    assert '"properties":{}' in text and '"required":[]' in text, "empty object and array survive"
+    assert '"minimum":1,' in text, "a whole-number float loses its .0"
+    assert RICH_TOOL["function"]["description"] in text, "non-ASCII goes out as UTF-8"
