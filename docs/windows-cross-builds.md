@@ -299,14 +299,18 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. This is the only execution an arm64 binary from the family gets.
 
-Two inputs serve the x64 lanes that move onto the same file (the family's next sharing step,
-2026-09-25; OxidANT's `windows-x64.yml` first, then AccelerANTgine's; BeschleunigerBallett's
-x64 lane still calls the composite actions itself):
+Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,
+2026-09-25: OxidANT's `windows-x64.yml` first, then AccelerANTgine's, and BeschleunigerBallett's on 2026-09-26):
 - `version-file` resolves the CI version on the host with the hub's `version_util.sh` and hands
   `VERSION` and `MSIX_VERSION` to the container.
 - `host-command` runs on the runner host after the build, in the workspace the container built
   into. It is for what Server Core cannot run because it lacks `opengl32.dll`: OxidANT's WebGPU
   renderer tests, and a run of the x64 product.
+- The `CONTAINER_SECRET_ENV` secret carries the caller's own secrets into the container: one
+  `KEY=value` per line, composed from the caller's secrets. Each value is masked, and the pairs
+  reach docker as an `--env-file` in `RUNNER_TEMP`, so none enters a command line, a step output
+  or the job environment. BeschleunigerBallett's WebDAV credentials and signing password go
+  this way.
 
 `host-command` and `run-command` both run with `$PSNativeCommandUseErrorActionPreference`, so a
 native command that exits non-zero on any line fails the lane. Before that, only the exit code of

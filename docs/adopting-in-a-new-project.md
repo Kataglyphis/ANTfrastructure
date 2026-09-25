@@ -359,9 +359,10 @@ in (`dist/windows-x64` or `dist/windows-arm64` in every caller, with the DLL
 closure the product needs); `target-arch: arm64` adds the arch gate and a run on
 `windows-11-arm`
 ([`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)).
-On 2026-09-25 OxidANT's and AccelerANTgine's `windows-x64.yml` and
-`windows-arm64-cross.yml` and BeschleunigerBallett's `windows-arm64-cross.yml`
-call it.
+Since 2026-09-26 the `windows-x64.yml` and `windows-arm64-cross.yml` of OxidANT,
+AccelerANTgine and BeschleunigerBallett call it. A caller hands its own secrets
+to the container through the `CONTAINER_SECRET_ENV` secret, one `KEY=value` per
+line, which reaches docker as an `--env-file`.
 
 Because actions resolve at `@develop`, a consumer workflow change that depends on
 an action change requires the ANTfrastructure push to land first.
