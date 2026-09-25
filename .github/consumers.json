@@ -39,7 +39,7 @@
     {
       "name": "OrchestrANT",
       "clone_url": "https://github.com/Kataglyphis/OrchestrANT.git",
-      "ref": "main",
+      "ref": "develop",
       "self": false,
       "confirmed": true,
       "note": "Python. Calls the python-ci-linux.yml / python-ci-windows.yml reusable workflows."
@@ -58,12 +58,12 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Rust. Submodule at third_party/ANTfrastructure; bootstraps through scripts/linux/lib/antfrastructure.sh. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted in 2eaed40e (2026-09-08) as unreached because this repo was not declared here, and restored on 2026-09-09. Its Windows lane and container scripts reach windows/scripts/rust/New-Archive.ps1 and WindowsContainerLog.Common by path, which the same sweep deleted and 2026-09-14 restored."
+      "note": "Rust. Submodule at third_party/ANTfrastructure; bootstraps through scripts/linux/lib/antfrastructure.sh. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted in 2eaed40e (2026-09-08) as unreached because this repo was not declared here, and restored on 2026-09-09. Its container scripts (scripts/windows/container/*.ps1) reach WindowsContainerLog.Common by path; the same sweep deleted that module and windows/scripts/rust/New-Archive.ps1, and 2026-09-14 restored both. No family checkout names New-Archive.ps1 any more (checked 2026-09-25)."
     },
     {
       "name": "AccelerANTgine",
       "clone_url": "https://github.com/Kataglyphis/AccelerANTgine.git",
-      "ref": "main",
+      "ref": "develop",
       "self": false,
       "confirmed": true,
       "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches cmake-build, ctest-run, coverage, code-quality, docs-build and 01-core/python_uv via antfrastructure_source; run-lint-gates and renovate-local via antfrastructure_exec; its Windows lane imports WindowsOnnx.Common by NAME through Resolve-BuildModule (deleted in 2eaed40e, restored 2026-09-14)."
@@ -71,7 +71,7 @@
     {
       "name": "ANThology",
       "clone_url": "https://github.com/Kataglyphis/ANThology.git",
-      "ref": "main",
+      "ref": "develop",
       "self": false,
       "confirmed": true,
       "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @develop. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
@@ -80,7 +80,7 @@
     {
       "name": "WebDavClient",
       "clone_url": "https://github.com/Kataglyphis/WebDavClient.git",
-      "ref": "main",
+      "ref": "develop",
       "self": false,
       "confirmed": true,
       "note": "Python. Calls the python-ci-linux.yml / python-ci-windows.yml reusable workflows (verified 2026-09-14 against a clone; still under the pre-rename name Kataglyphis-ContainerHub at ExternalLib/, which is its own migration item). kataglyphis_webdavclient is imported by windows/scripts/certificates/download_webdav_files.py and by jotrockenmitlocken's scripts/download_markdown_files.py, so the hub is also a consumer of it."
@@ -147,7 +147,7 @@
       "kind": "windows-lang-script",
       "glob": "windows/scripts/rust/*.ps1",
       "needle": "path",
-      "why": "Per-language Windows drivers a consumer calls by hub PATH from its workflow (OxidANT's windows-x64.yml, rust_windows2025.yml until 2026-09-24, names New-Archive.ps1 this way). The windows/scripts/*.ps1 class above is non-recursive, so without this row nothing graded them and the 2026-09-08 sweep deleted one that was live."
+      "why": "Per-language Windows drivers a consumer calls by hub PATH from its workflow (OxidANT's Windows lane named New-Archive.ps1 this way; no family checkout does any more, checked 2026-09-25). The windows/scripts/*.ps1 class above is non-recursive, so without this row nothing graded them and the 2026-09-08 sweep deleted one that was live."
     },
     {
       "kind": "windows-module",
