@@ -95,6 +95,10 @@ format OFF removes the only build-time consumer of the target compiler; the
 riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
 wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
 bytecode compilation, which the app's check_iree uses, is unaffected.
+(Written when the target ran COMPILER=ON. That is now only the
+IREE_CROSS_BUILD_COMPILER=ON case; by default the cross target is runtime-only,
+next paragraph, and ships no compiler wheel. The flag is still passed on both
+paths.)
 CROSS TARGET IS RUNTIME-ONLY (2026-08-27, restored). IREE_BUILD_COMPILER
 is OFF here, and that is not a preference -- it is the only configuration
 upstream supports for a cross target.

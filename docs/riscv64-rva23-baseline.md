@@ -1,9 +1,11 @@
 # riscv64: build at Ubuntu's own baseline (RVA23, with vector)
 
-Every riscv64 artefact this chain builds targets `rva23u64_zifencei` /
-`lp64d` — the same ISA Ubuntu 26.04 (resolute) builds its own riscv64 port at.
-Before 2026-09-01 they were built at the cross toolchain's default `rv64gc`,
-which is **below** the platform the image already stands on.
+Every riscv64 artefact this chain builds targets RVA23-class code with vector —
+`rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond` / `lp64d`
+([§ Where it is set](#where-it-is-set)), a subset of the `rva23u64_zifencei` ISA
+Ubuntu 26.04 (resolute) builds its own riscv64 port at. Before 2026-09-01 they
+were built at the cross toolchain's default `rv64gc`, which is **below** the
+platform the image already stands on.
 
 ## Why this costs no compatibility
 

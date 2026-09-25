@@ -144,7 +144,11 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
   error` — including wrong-arch NATIVE tool sub-builds inside "no-emulation"
   cross stages (the IREE tblgen failure mode).
 - **Registry access** (GHCR) for pushing intermediate and final images
-- **Disk space**: ~50GB+ for full cross chain with all architectures
+- **Disk space**: far more than the ~50GB+ this line used to say. The chain's disk
+  preflight (`_chain_disk_preflight` in `build-cross-chain.sh`) budgets 60 GB per
+  arch for a run from `base` (40 GB from `media` on), plus ~120 GB for the runtime
+  lane (`CROSS_RUNTIME_LANE_GB`), and warns when free space is below the sum; the
+  runtime lane refuses to start without its share
 - **Python 3** for digest resolution (`registry-digest.py`)
 
 ## Phase B — Container runtime host config
@@ -688,16 +692,17 @@ in [C1](#c1-cpu-frequency-governor): `systemctl status tlp`.
 sudo apt install --reinstall -y software-properties-common \
   python3-software-properties python3-launchpadlib
 
+v=16   # the major you need; it must be newer than the distro's own
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt update
-sudo apt install -y gcc-11 g++-11
+sudo apt install -y "gcc-${v}" "g++-${v}"
 ```
 
 Register the alternatives and pick one:
 
 ```bash
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 60
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 60
+sudo update-alternatives --install /usr/bin/gcc gcc "/usr/bin/gcc-${v}" 60
+sudo update-alternatives --install /usr/bin/g++ g++ "/usr/bin/g++-${v}" 60
 sudo update-alternatives --config gcc
 sudo update-alternatives --config g++
 ```
@@ -721,11 +726,13 @@ and the failure surfaces much later as an unrelated-looking tool crash.
 
 ### D3. Multiple clang versions side by side
 
-Same mechanism as GCC above, for the compiler the build lanes actually use:
+Same mechanism as GCC above, for clang on the host (the images carry their own,
+source-built at `LLVM_RELEASE`):
 
 ```bash
-sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-20   100
-sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 100
+v=20   # an installed clang-<major>
+sudo update-alternatives --install /usr/bin/clang   clang   "/usr/bin/clang-${v}"   100
+sudo update-alternatives --install /usr/bin/clang++ clang++ "/usr/bin/clang++-${v}" 100
 sudo update-alternatives --config clang
 sudo update-alternatives --config clang++
 ```
@@ -809,15 +816,17 @@ update-shell`) before deciding an install failed.
 
 ### D5. The host tools preflight needs and never asked for
 
-`preflight.sh` fails on a correctly-set-up Linux host without these. `pwsh` and
-`pytest` were undeclared until 2026-09-07; `uv`, `shellcheck` and `uidmap` until
-2026-09-15. All but `uidmap` are user-scope and need no sudo.
+`preflight.sh` fails on a correctly-set-up Linux host without these. `uv`,
+`shellcheck` and `uidmap` were undeclared until 2026-09-15. All but `uidmap` are
+user-scope and need no sudo. Two tools this list used to lead with, `pwsh` and
+`pytest`, are no longer preflight prerequisites.
 
-**PowerShell**, for the `shared-config` slug. The gate shells out to
-`shared/config/Sync-SharedConfig.ps1`, which is the *same* script the Windows
-and CMake consumers run — one owner for the sync rule rather than a second
-implementation that can drift from it. Without `pwsh` the slug fails with
-`pwsh: command not found`, which reads exactly like config drift and is not:
+**PowerShell is no longer needed by preflight.** The `shared-config` slug used to
+shell out to `shared/config/Sync-SharedConfig.ps1`, and without `pwsh` it failed
+with `pwsh: command not found`, which read exactly like config drift. It now runs
+the bash twin, `shared/config/sync-shared-config.sh`, because no hub Linux image
+ships pwsh. Install pwsh on a Linux host only for the Windows-side Pester suites
+and linter:
 
 ```bash
 # NOTE the arch in the asset name: linux-x64 on amd64, linux-arm64 on an ARM
@@ -830,11 +839,14 @@ chmod +x ~/.local/powershell/pwsh && ln -sfn ~/.local/powershell/pwsh ~/.local/b
 pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
 ```
 
-**pytest**, for the `mutations` slug. 209 of the manifest's 882 entries drive
-`python3 -m pytest` over the `linux/llm-stack/` suites. Without it every one of
-them reports `baseline test already fails unmutated (vacuous bite)` — the gate
-is honest about it, but a quarter of the mutation corpus is dark. This host's
-python is PEP 668 externally-managed, so the flag is not optional:
+**pytest is no longer needed by preflight either.** The `mutations` slug needed it
+while about a quarter of the manifest drove `python3 -m pytest` over the
+`linux/llm-stack/` suites; without it each of those reported `baseline test
+already fails unmutated (vacuous bite)`. Those entries left with the benchmark lab
+(2026-09-12) and the NAS census (2026-09-15), and no manifest entry runs pytest
+today. The serving-shape tests in `linux/llm-stack/tests/` still use it
+(`llm-stack-serving.yml` installs it in a venv). To run them on the host, whose
+python is PEP 668 externally-managed, the flag is not optional:
 
 ```bash
 pip3 install --user --break-system-packages pytest
@@ -850,7 +862,9 @@ missing tool but is easy to read as a broken gate rather than a missing
 prerequisite:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # installs uv + uvx to ~/.local/bin
+# installs uv + uvx to ~/.local/bin; the installer is downloaded to a file and
+# checked against UV_INSTALL_SH_SHA256 (versions.env), never piped into sh
+bash -c 'source linux/scripts/01-core/python_uv.sh && uv_ensure_installed'
 ```
 
 **shellcheck on PATH**, for `test-shellcheck-warnings`. Note the asymmetry: the

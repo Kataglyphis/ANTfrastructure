@@ -2,7 +2,7 @@
 
 > **See also:** [`docs/linux-build-basics.md`](linux-build-basics.md) for build fundamentals, caching, and troubleshooting. [`AGENTS.md`](../AGENTS.md) for agent guardrails and the full repo map.
 
-> Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
+> Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. The drop-in is `linux/host-config/buildkit.service-override.conf`, installed by `linux/host-config/apply-host-config.sh` (AGENTS.md § Validation: Linux host config is code); `docs/project-info.md` explains it. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
 <a id="build-logging"></a>
 
@@ -10,11 +10,11 @@
 
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
-The existing multi-platform build above stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
+The existing multi-platform build stays unchanged. Treat it as the compatibility lane for the current QEMU/binfmt-based end-to-end build.
 
-The cross-compiler path below is additive. It does not replace the existing QEMU workflow. Instead, it prepares a single amd64-hosted builder image that contains cross toolchains for amd64, arm64, and riscv64 for a future artifact-based multi-architecture end-to-end build.
+The cross-compiler path below is additive. It does not replace the existing QEMU workflow. Instead, it prepares a single amd64-hosted builder image that contains cross toolchains for amd64, arm64, and riscv64 for the artifact-based multi-architecture chain (`build-cross-chain.sh`), which is what publishes `:latest`.
 
-This lane intentionally builds only a `linux/amd64` container image. The three architectures are the compiler targets installed inside that image via `CROSS_TARGETS=amd64,arm64,riscv64`, not three separate compiler container manifests. This image is a single amd64 builder image, not a replacement for the full multi-platform Linux chain yet. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
+This lane intentionally builds only a `linux/amd64` container image. The three architectures are the compiler targets installed inside that image via `CROSS_TARGETS=amd64,arm64,riscv64`, not three separate compiler container manifests. This image is a single amd64 builder image: the chain's `compiler` stage. It keeps the current native/emulated flow intact while adding source-built GCC 16 target compilers like `x86_64-linux-gnu-gcc`, `aarch64-linux-gnu-gcc`, and `riscv64-linux-gnu-gcc`, plus convenience wrappers such as `clang-amd64`, `clang-arm64`, and `clang-riscv64` for host-side cross builds.
 
 For the cross-compiler path, the helper can bootstrap the base image locally when needed, so you do not have to rely on a remote `base` intermediate tag surviving in GHCR.
 
@@ -27,16 +27,9 @@ Fastest entry point:
 
 Use `--fast-ubuntu-mirror-url URL` to override the default mirror (`https://archive.ubuntu.com/ubuntu/`). For example: `--fast-ubuntu-mirror-url http://de.archive.ubuntu.com/ubuntu/`.
 
-The helper script only uses `nerdctl`. It first tries to reuse a local image, then tries to pull from the registry, and if that fails it rebuilds the base image locally before building the compiler image. It only pushes when you pass `--push`. Internally the script delegates to the shared stage graph (`stage-defs.sh`) and build helpers — the same infrastructure used by the full orchestrator. The `--image-repo` flag switches the registry prefix; there are no legacy env var overrides.
+The helper script only uses `nerdctl`. It builds `base` and then the compiler image through `cross_stage_run()`, the function the orchestrator uses; BuildKit's cache, not a registry pull, is what makes an unchanged base cheap. It only pushes when you pass `--push`. Internally the script delegates to the shared stage graph (`stage-defs.sh`) and build helpers — the same infrastructure used by the full orchestrator. The `--image-repo` flag switches the registry prefix; there are no legacy env var overrides.
 
-If you only need the downstream SDK or media cross stages and want to reuse the published compiler image, pull it first:
-
-```bash
-mkdir -p ./out/build-logs && \
-nerdctl pull --platform linux/amd64 \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
-  2>&1 | tee ./out/build-logs/pull-compiler.log
-```
+If you only need the downstream SDK or media cross stages, build them with `build-cross-stage.sh` ([§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry)); it resolves the published compiler from the registry itself. A `nerdctl pull` beforehand does not help: it lands in containerd's store, which this host's BuildKit OCI worker does not read (§ `--no-push` full chains below).
 
 Build the local amd64 base image:
 
@@ -88,7 +81,8 @@ Or let the helper do the push too:
 ## Recommended: digest-pinned orchestrator (`build-cross-chain.sh`)
 
 For a hands-off, agent-proof end-to-end cross build, prefer the orchestrator
-(see `AGENTS.md` § Quick Reference for the canonical command).
+(the canonical command is in
+[§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry)).
 It runs `base -> compiler -> sdk -> media -> android -> runtime` and, after each
 cross stage is pushed, captures that stage's **registry-resolvable manifest
 digest** and feeds it to the next stage as
@@ -152,7 +146,8 @@ The runtime helpers share initialization logic via
 `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`, which
 loads it inside `runtime_flow_preamble()`.
 
-See `AGENTS.md` § Quick Reference for standalone single-stage rebuild commands.
+Standalone single-stage rebuild commands:
+[§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry).
 
 ### `--no-push` full chains: FIXED 2026-08-30 via local OCI-layout handoff
 
@@ -224,7 +219,7 @@ symlink-only. See `gcc.sh::_gcc_build_cross_targets_parallel`.
 Before a full build, verify whether downstream registry images are stale without
 performing any builds.  The verification logic is shared via
 `linux/scripts/01-core/chain-verify.sh` (sourced by both entry points).
-See `AGENTS.md` § Quick Reference for the chain verification commands. Both resolve all upstream registry digests and report mismatches so you can
+The chain verification commands are in [§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry). Both resolve all upstream registry digests and report mismatches so you can
 decide whether a full rebuild is needed.  The standalone script is useful for
 quick checks without loading the full orchestrator.
 
@@ -570,7 +565,7 @@ Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compati
 
 ## SDK rootfs artifacts (first host-side build step)
 
-The first additive artifact path is now the SDK stage. It reuses `linux/Dockerfile.sdk` in `BUILD_MODE=cross`, builds target-specific SDK root filesystems for amd64, arm64, and riscv64 on a fast amd64 host, and exports them to disk while the existing QEMU/binfmt multi-platform build above remains unchanged.
+The SDK stage can also be exported as root filesystems. `build-sdk-artifacts.sh` reuses `linux/Dockerfile.sdk` in `BUILD_MODE=cross`, builds target-specific SDK root filesystems for amd64, arm64, and riscv64 on a fast amd64 host, and exports them to disk.
 
 Build the first SDK artifacts for amd64, arm64, and riscv64 while saving this run under one timestamped `logs/` directory:
 
@@ -591,14 +586,7 @@ for arch in amd64 arm64 riscv64; do
 done
 ```
 
-If you want this helper to reuse the published compiler image instead of bootstrapping it locally, pull the compiler tag first:
-
-```bash
-mkdir -p ./out/build-logs && \
-nerdctl pull --platform linux/amd64 \
-  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-compiler-amd64 \
-  2>&1 | tee ./out/build-logs/pull-compiler.log
-```
+The helper builds the compiler stage first (`cross_stage_run compiler`), so a warm build cache is what makes that step cheap. Pulling `cross-compiler-amd64` beforehand does not: the pull lands in containerd's store, which BuildKit's OCI worker does not read.
 
 The helper accepts `TARGET_ARCHES=amd64,arm64,riscv64`, `TARGET_ARCH=amd64,arm64,riscv64`, or `--target-arches amd64,arm64,riscv64` and then fans that list out into one `TARGET_ARCH=<arch>` build per target.
 
@@ -613,15 +601,15 @@ out/linux-sdk/riscv64/rootfs/
 out/linux-sdk/riscv64/artifact.env
 ```
 
-This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.2.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU end-to-end build, but it does not yet replace the full `:latest` pipeline.
+This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.2.0` rather than the Ubuntu 26.04 system GCC toolchain. The exported rootfs trees are for inspection and host-side use; the `:latest` pipeline (`build-cross-chain.sh`) does not read them.
 
 `linux/Dockerfile.sdk` also forwards the checked-in `LLVM_RELEASE` pin into the `target-clang` step, so rebuilding an SDK artifact from an older `cross-compiler-amd64` base still refreshes `/opt/llvm-target` to the repository pin instead of inheriting a stale base-image environment value.
 
-## Cross packaging to multi-arch manifest (experimental)
+## Cross packaging to multi-arch manifest
 
 ### Overview
 
-The new end-goal path keeps the existing QEMU lane for compatibility while adding:
+This is the path that publishes `:latest`. It keeps the existing QEMU lane for compatibility while adding:
 1. Cross-compile target artifacts host-side with the cross builder.
 2. Assemble one runtime image per architecture from a clean per-arch `linux/Dockerfile.base` plus the target-built payload from `cross-android-${TARGET_ARCH}`.
 3. Publish a single multi-architecture manifest.
@@ -730,8 +718,10 @@ Variant manifests follow the same shape: `:latest-<variant>` (e.g. `nvidia`,
 `rocm`) over per-arch `:latest-<variant>-<arch>` wrappers. Hailo has no variant
 tag — it ships in the standard amd64/arm64 wrappers (`Dockerfile.torch`).
 `:latest-cross`, the manifest's name before 2026-09-22, is retired: nothing
-publishes it again, and the tags are deleted once `main` carries `:latest`.
-Prefer the runtime helpers (see `AGENTS.md` § Runtime Helpers for the canonical commands).
+publishes it again. Its registry tags stay until AGENTS.md § Image and tag naming
+says they may go.
+Prefer the runtime helpers (the canonical commands are in
+[§ Runtime lane helper commands](#runtime-lane-helper-commands)).
 Run with `--dry-run` to print the commands without building.
 
 ### Runtime helper scripts
@@ -743,7 +733,7 @@ Two helpers manage the `base → package → torch → wrapper → manifest` cha
 
 Both accept `--target-arches`, `TARGET_ARCHES`, or `TARGET_ARCH` for architecture selection, and `ARTIFACT_BUILD_MODE=cross|native` for the package artifact source. In `cross` mode, `ARTIFACT_IMAGE_PREFIX` is a prefix (e.g. `ghcr.io/...:cross-android`) that fans out `-${TARGET_ARCH}`; in `native` mode it is the exact artifact image ref.
 
-The riscv64 app wheelhouse is built on the amd64 host for `torch`, `torchvision`, and `opencv-python` git dependencies and carried through `/opt/wheels`. The final `linux/Dockerfile.torch` stage runs on the real target platform in both modes so `/opt/venv` is correct for the target architecture.
+The app wheelhouse (`05-frameworks/torch/build-app-wheelhouse.sh`) is built on the amd64 host: IREE on every arch, plus `torch` and `torchvision` for riscv64, which has no upstream wheels. It reaches the wrapper through `/opt/wheels`, with the other components' wheels. The final `linux/Dockerfile.torch` stage runs on the real target platform in both modes so `/opt/venv` is correct for the target architecture.
 
 **Local handoff behavior:**
 - When images stay local, `base` is exported as a plain rootfs directory, `package` and `torch` as OCI layouts consumed through named build contexts.
@@ -883,7 +873,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg GCC_VERSION=16.2.0 \
-  --build-arg LLVM_RELEASE=23.1.0 \
+  --build-arg LLVM_RELEASE=23.1.1 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
@@ -907,10 +897,12 @@ falls back to disabled. Current toggles:
 
 | Toggle | Effect | Notes |
 |---|---|---|
-| `FFMPEG_ENABLE_X265` | libx265 (HEVC) encoding in FFmpeg | Probe-gated; historically off because FFmpeg master could fail against bleeding-edge x265. |
+| `FFMPEG_ENABLE_X265` | libx265 (HEVC) encoding in FFmpeg | **Default ON** (`1`), on all arches, and still probe-gated. It was off for a while over a source-x265 compile break. |
 | `FFMPEG_ENABLE_TF` | FFmpeg **TensorFlow** DNN backend (amd64 only) | **Default OFF** (2026-08-14). When off, the TF C SDK is never downloaded and ~500 MB of `libtensorflow*` never enters the image; the ONNX DNN backend stays always-on regardless. Set `=1` to restore it. |
-| `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
-| `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
+| `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch, **default ON**; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
+| `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | **Default ON**. Dawn cross-build is the risky part; set it to `false` and WebGPU is amd64-only. |
+| `ORT_ENABLE_LTO` | `--enable_lto` for every ONNX Runtime build that goes through the shared helper (CPU, AMD, NVIDIA) | **Default OFF** (AP6, 2026-08-24), on all arches at once. A measuring knob, not probe-gated. |
+| `GENAI_ALLOW_RISCV64` | riscv64 self-builds `onnxruntime-genai` (GEN1) | **Default ON**; anything but `true` backs GEN1 out. Not probe-gated. [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 
 **QNN EP (Qualcomm QAIRT SDK, backlog QNN-LINUX):** opt-in for the **arm64**
 lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
@@ -935,8 +927,9 @@ each framework's install by `stage_qnn_runtime`. No zip = QNN off with a
 notice. Different SDK from the Windows lane (`aarch64-oe-linux-gcc11.2/`,
 not `aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
 **PROVEN 2026-08-30** on a staged QAIRT v2.49.0.260730 zip —
-`cross-media-arm64` build GREEN, ORT provider wired (`build results in
-`docs/refactoring-backlog.md` A2. QNN-LINUX). Framework fan-out to
+`cross-media-arm64` build GREEN, ORT provider wired (build results in
+[`refactoring-backlog-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md)
+§ A2. QNN-LINUX). Framework fan-out to
 GenAI/LiteRT/TVM/IREE is WIRED (same 2026-08-30 change), and the validation
 build ran 2026-09-03 against a real v2.49.0.260730 staged on arm64 — see
 [`qnn-linux.md`](qnn-linux.md), which owns the results and the
@@ -944,7 +937,7 @@ build ran 2026-09-03 against a real v2.49.0.260730 staged on arm64 — see
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
-(see `docs/refactoring-backlog.md`, standing rules). After a toggle flip, force
+(AGENTS.md § Caching discipline, rule 1). After a toggle flip, force
 a fresh runtime wrapper build with **`RUNTIME_NO_CACHE=1`** (scoped to the
 runtime package + wrapper; lighter than whole-chain `NO_CACHE=1`) so the shipped
 image actually reflects the new media. The shipped **bytes** are now checked
@@ -966,12 +959,13 @@ and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
 
 `TVM_REF=v0.26.0` is not what the build clones. `TVM_COMMIT` in `versions.env`
 wins over the tag (`tvm.sh`'s `${TVM_COMMIT:-$ref}`) and is currently set,
-because **TVM v0.26.0 does not compile against `LLVM_RELEASE=23.1.0`** — LLVM 23
+because **TVM v0.26.0 does not compile against LLVM 23** (`LLVM_RELEASE`) — LLVM 23
 dropped `TargetOptions::{NoInfsFPMath,NoNaNsFPMath}`, renamed
 `SubtargetSubTypeKV::Key`/`SubtargetFeatureKV::Key` to `key()`, and changed
 `getMCSubtargetInfo()` from pointer to reference, across three files. amd64
-never hit it because it links the *distro* `llvm-config-21`; only the cross
-lane links the chain's own LLVM.
+escaped it at first only because it linked the *distro* `llvm-config-21`;
+`tvm-detect.sh` now picks the `LLVM_RELEASE` major on every arch and asserts it,
+so the commit pin matters on amd64 too.
 
 Upstream `main` carries `TVM_LLVM_VERSION >= 230` guards for all of it and no
 tagged release does, so the commit is pinned rather than the port reproduced. A
@@ -1031,7 +1025,11 @@ selected host clang with `--target=<triplet>`, `--sysroot` and
 `--gcc-toolchain=<gcc_prefix>` already baked in, where `gcc_prefix` is
 `gcc_toolchain_prefix()` (`/opt/gcc-$GCC_VERSION`) or `/usr` when that directory
 is missing. These wrappers are the only path in the build where clang IS the
-compiler; nothing in the tree sets a bare `CC=clang`.
+compiler; nothing in the tree sets a bare `CC=clang`. They live in the build-stage
+images (the compiler stage installs them); `Dockerfile.package` does not copy
+them, so the runtime image has none, and a consumer compiling with clang in
+`:latest` passes `--gcc-toolchain` itself (`gcc_toolchain_prefix()` in
+`01-core/cross-gcc.sh` names the root).
 
 **`CROSS_GCC_TOOLCHAIN_PATH` and `export_clang_gcc_toolchain_env` were deleted on
 2026-09-05** (backlog CL3). The function exported `--gcc-toolchain` into
@@ -1051,30 +1049,34 @@ media image since 2026-07-14, with a deliberately split strategy per arch.
 
 No arch installs an upstream wheel: PyPI ships `iree-base-{compiler,runtime}`
 as `cp312-abi3` for x86_64+aarch64 only, riscv64 has none, and we need
-version-specific `cp314` everywhere — so every arch source-builds
-(`build-app-wheelhouse.sh:744-749`). What differs is *which* wheels come out:
+version-specific `cp314` everywhere — so every arch source-builds, with IREE's
+abi3 tagging patched out (`_iree_patch_setup_py_abi3` in
+`build-app-wheelhouse.sh`). What differs is *which* wheels come out:
 
 - **amd64** — NATIVE build (target arch == build arch), `IREE_BUILD_COMPILER=ON`
-  (`build-app-wheelhouse.sh:1183`): ships **both** `iree_base_compiler` and
+  (`_iree_build_target_native`): ships **both** `iree_base_compiler` and
   `iree_base_runtime`.
 - **arm64 / riscv64** — CROSS build, **RUNTIME-ONLY**
-  (`-DIREE_BUILD_COMPILER=${IREE_CROSS_BUILD_COMPILER:-OFF}`,
-  `build-app-wheelhouse.sh:1140`), so only `iree_base_runtime` ships. This is
+  (`-DIREE_BUILD_COMPILER=${IREE_CROSS_BUILD_COMPILER}`, default `OFF`,
+  `_iree_build_target_cross`), so only `iree_base_runtime` ships. This is
   not a preference: IREE imports host tools only under
   `if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)`, so `COMPILER=ON` makes
   the target ignore `IREE_HOST_BIN_DIR`, build its own `iree-tblgen` **for the
   target arch**, and then run it on the amd64 host — `Exec format error`,
-  `[code=126]` on `VMOpEncoder.cpp.inc` (`build-app-wheelhouse.sh:1055-1074`).
+  `[code=126]` on `VMOpEncoder.cpp.inc`.
   Set `IREE_CROSS_BUILD_COMPILER=ON` to re-try both wheels once IREE supports
   the combination. Models are compiled on amd64 and *executed* on the cross
   arches.
 
 The cross path's companion **host** stage (amd64 has none — one cmake
 configure does everything) supplies `iree-c-embed-data`, `iree-flatcc-cli`
-and `iree-tblgen` via `IREE_HOST_BIN_DIR`. It probes `IREE_BUILD_COMPILER=OFF`
-first and escalates to `ON` (the full-LLVM compile you see in the
-`app-wheelhouse` stage) only when a required tool is missing
-(`build-app-wheelhouse.sh:975-1026`).
+and `iree-tblgen` via `IREE_HOST_BIN_DIR` (`_iree_build_host_stage`). Only
+`IREE_BUILD_COMPILER=ON` installs `iree-tblgen`, so with the default
+runtime-only target the host stage builds `ON` directly (the full-LLVM compile
+you see in the `app-wheelhouse` stage). Under `IREE_CROSS_BUILD_COMPILER=ON` the
+target needs no host `iree-tblgen`; there the host stage tries `OFF` first and
+escalates to `ON` only when a required tool is missing.
+[`iree-two-stage-build.md`](iree-two-stage-build.md) has the reasoning.
 
 Build home: `linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh`
 (`build_iree_wheels`), which stages host tools + target runtime and is smoked
@@ -1095,7 +1097,7 @@ in minutes.
 To prevent regressions during updates, always preserve the following five vital fixes in the Linux cross pipeline:
 
 1. **Fix 1 (gst-python staged libpython):** In `build_python.sh`, `python_stage_finalize()` runs `fix_python_pc_file()` over the staged `python-<mm>.pc` and `-embed.pc` so their `libdir`/`includedir` point at the compiler's cross directory, and symlinks `python3.pc` to them, so `gst-python` builds succeed.
-2. **Fix 2 (libcamera abseil):** In `build-litert.sh`, the build must copy the required Abseil header `absl/types/span.h` into the LiteRT installation directory to prevent downstream `libcamera` build errors.
+2. **Fix 2 (libcamera abseil):** `build-litert.sh` (`_install_manual_abseil`) must install the Abseil headers the TFLite headers include (`absl/types/span.h` among them) through the shared `install_abseil_headers` (`01-core/abseil-headers.sh`, which `build-libcamera.sh` uses too), to prevent downstream `libcamera` build errors.
 3. **Fix 3 (cross lib-dynload dangling symlinks):** In `build_python.sh` (`build_cross_target_python_payload()`), standard CPython build steps create standard cross-build library symlinks that end up dangling when packaged. We use `cp -a -L` to dereference those symlinks, copy the safety-net Modules, and enforce a hard-fail guard `find ... -xtype l` to ensure absolutely zero dangling symlinks remain in the target's `lib-dynload` subdirectory. This prevents C-extension import failures (e.g. `import _struct` failing under QEMU/binfmt). Since target-packaged Python is staged into the compiler-cross image, the compiler itself must be rebuilt if this helper logic is changed.
 4. **Fix 4 (cross GCC architecture guard):** In `Dockerfile.package`, GCC alternatives wire `/opt/gcc-16.2.0/bin/gcc` as `cc`/`c++`. On `amd64`, GCC is built natively. On `arm64`/`riscv64`, it is Canadian-cross-compiled; `Dockerfile.android` swaps the amd64-hosted GCC for the target-native binary. The build hard-fails with three layered guards: (a) `cc -dumpmachine` must match `TARGET_ARCH`; (b) `readelf -h` on the `cc` binary itself checks ELF machine type (the real discriminator — `-dumpmachine` only reports the *target* triple, not the host arch); and (c) a cc1 compile-to-object smoke plus ELF check on the produced object, run under the target platform (QEMU for foreign arches). `wrapper-smoke` (Dockerfile.package target) runs validate-compilers.sh, smoke-media.sh, smoke-torch-venv.sh and smoke-cross-all-arches.sh for end-to-end verification.
 5. **Fix 5 (OpenCV 5 GStreamer compat):** `patch-gstreamer-sources.sh` → `patch_gstreamer_sources()` patches the GStreamer `gst-plugins-bad` opencv plugin sources at build time for OpenCV 5.x compatibility. Three API changes are handled: (a) `contourArea`/`approxPolyDP`/`convexHull` moved to new `geometry` module → adds `#include <opencv2/geometry.hpp>` to `gstsegmentation.cpp`; (b) chessboard/circles-grid detection (`findChessboardCorners`/`findCirclesGrid`/`CALIB_CB_*`) moved to `objdetect` module → adds `#include <opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`; (c) `cv::CascadeClassifier` removed from OpenCV 5 → drops the three cascade-dependent GStreamer elements (`faceblur`, `facedetect`, `handdetect`) from the monolithic `libgstopencv.so`. Additionally, `build-opencv.sh` creates an `opencv4.pc` → `opencv5.pc` compatibility alias because GStreamer's meson dependency lookup queries `dependency('opencv4')`. All patches are idempotent (guarded with grep before applying). When changing OpenCV or GStreamer versions, verify the patch still applies correctly.
@@ -1265,9 +1267,9 @@ overwrite the amd64 lane's real android artifact under the same name. The infix
 is empty on amd64, so that lane's tags are byte-identical to before.
 
 **What this does not deliver.** android stops being the reason a non-amd64-hosted
-run fails; it does not make the chain finish. On riscv64 the compiler stage is
-blocked earlier and harder: apt.llvm.org publishes no riscv64 packages at all.
-See [`refactoring-backlog.md`](refactoring-backlog.md).
+run fails; it does not make the chain finish. On riscv64 apt.llvm.org publishes
+no packages at all, so the compiler stage builds LLVM/Clang from source there
+(`02-toolchain/llvm.sh`).
 
 > **Superseded, 2026-09-15.** This paragraph used to name two more blockers —
 > that the runtime lane "still pins `--platform linux/amd64` for its artifact
@@ -1324,15 +1326,16 @@ See [`refactoring-backlog.md`](refactoring-backlog.md).
 > host):
 > [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
 
-**No JDK ships in any arch.** `java`, `javac` and `keytool` are absent and
-`/usr/lib/jvm` does not exist, so the SDK's Java wrappers (`sdkmanager`,
-`avdmanager`, `apkanalyzer`, `d8`, `apksigner`) and `flutter build apk` still
-need one supplied by the consumer. Setting `ANDROID_HOME` is necessary, not
-sufficient.
+**A JDK ships on every arch.** `Dockerfile.package` installs `JDK_PACKAGE`
+(`versions.env`, `openjdk-21-jdk-headless`) and sets
+`JAVA_HOME=/usr/lib/jvm/default-java`, so the SDK's Java wrappers (`sdkmanager`,
+`avdmanager`, `apkanalyzer`, `d8`, `apksigner`) and `flutter build apk` find one.
+The image used to carry the SDK and no Java at all:
+[`consumer-image-contract.md` § The Android lane needs a JDK](consumer-image-contract.md#the-android-lane-needs-a-jdk).
 
-The built image is asserted by `smoke-runtime-image.sh`'s `android-home`
-consumer-contract row; that the Dockerfile ever sets it, and appends rather than
-fronts, is asserted by `tests/test-dockerfile-env-order.sh`.
+The built image is asserted by `smoke-runtime-image.sh`'s `android-home` and
+`jdk` consumer-contract rows; that the Dockerfile ever sets `ANDROID_HOME`, and
+appends rather than fronts, is asserted by `tests/test-dockerfile-env-order.sh`.
 
 ### Cross Python wheels (setuptools knobs)
 
@@ -1376,9 +1379,10 @@ reproduce here — [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
   riscv64-only preflight drops the flag if `rustup target list --installed`
   positively lacks the triple, so a missing std warns instead of aborting a
   multi-hour stage.
-* **Performance note:** ORT v1.29's riscv64 MLAS uses the SCALAR reference
-  kernels — the RVV ones need `onnxruntime_USE_RVV` plus an `rv64gcv` compile
-  probe, neither of which this repo sets. Expect generation to be slow.
+* **Performance note:** ORT's riscv64 MLAS takes its RVV kernels only under
+  `onnxruntime_USE_RVV` and an `rv64gcv` compiler. When GEN1 landed this repo set
+  neither, so MLAS ran its SCALAR reference kernels. The RVA23 baseline now sets
+  both on riscv64 ([`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md)).
 * **Gates:** the producer's own cross wheel check (`assert_elf_arch` over every
   `.so` in the wheel + the target `EXT_SUFFIX` assert),
   `verify-media-artifacts.sh onnxruntime-genai`, `smoke-torch-venv.sh`'s pin
@@ -1396,7 +1400,7 @@ reproduce here — [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
 
 ## Runtime lane helper commands
 
-Building and publishing the per-arch wrappers and the multi-arch manifest, plus manifest repair. The canonical chain commands are in [`../AGENTS.md`](../AGENTS.md) § Quick Reference; these are the runtime-lane half.
+Building and publishing the per-arch wrappers and the multi-arch manifest, plus manifest repair. The canonical chain commands are in [§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry); these are the runtime-lane half.
 
 ```bash
 # Build and push per-arch wrappers + manifest

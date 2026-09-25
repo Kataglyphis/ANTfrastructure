@@ -78,10 +78,11 @@ was deleted in the 2026-08-27 registry cleanup; the tag name was then reused
 for the cross-lane manifest.)
 
 `.github/workflows/python-ci-linux.yml` runs its containerized steps — static
-analysis, tests, docs, packaging — in `:latest` on both the x64 and arm64
-runners (`CONTAINER_IMAGE` at :103, fed by the matrix at :126/:130 and consumed
-by the `run-in-linux-container` action; the permission-fix and upload steps run
-on the host). **Keep local runs on the same tag**, or reproducing a CI failure
+analysis, tests, docs, packaging — in `:latest` on the x64 and arm64 runners
+(`CONTAINER_IMAGE` in the job's `env`, one image for both rows; the `plan` job
+writes the matrix rows from the `arches` input, and `prepare-linux-ci-host` and
+the `run-in-linux-container` steps consume the image; the upload steps run on the
+host). **Keep local runs on the same tag**, or reproducing a CI failure
 locally proves nothing.
 
 `:latest` is not pinned by digest, so it still floats. Pinning would make
@@ -201,10 +202,12 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 
 ## Persisting the cargo cache
 
-The `:latest` image runs as uid 1001 with `/usr/local/cargo` owned by
-root, so cargo falls back to a container-local `CARGO_HOME` and every fresh
-container rebuilds all Rust dependencies from scratch. Point it at a named
-volume instead:
+The `:latest` image runs as uid 1001. Its `/usr/local/cargo` belongs to that uid
+now (it was root-owned until the consumer-contract fixes:
+[`artifact-copy-completeness.md`](artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user)),
+but the crate registry and every build's target tree still live in the
+throwaway container, so every fresh container rebuilds all Rust dependencies
+from scratch. Point it at a named volume instead:
 
 ```bash
 nerdctl volume create cargo-cache        # once

@@ -19,7 +19,11 @@ cp linux/llm-stack/.env.example linux/llm-stack/.env
 # then edit linux/llm-stack/.env and set WEBUI_SECRET_KEY, e.g.:
 #    printf 'WEBUI_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" > linux/llm-stack/.env
 
-# 2. Pull images and start all services (auto-pulls gemma4:26b on first start)
+# 2. Fetch the pinned Ollama release once. The ollama service is built here
+#    from it (build: .); version and SHA-256 come from versions.env.
+bash linux/llm-stack/scripts/download-ollama.sh
+
+# 3. Pull images and start all services (auto-pulls gemma4:26b on first start)
 nerdctl compose -f linux/llm-stack/docker-compose.yml pull
 nerdctl compose -f linux/llm-stack/docker-compose.yml up -d
 ```
@@ -135,8 +139,11 @@ nerdctl compose -f linux/llm-stack/docker-compose.yml exec ollama ollama rm gemm
 
 ## Change default model
 
-Edit the `ollama pull` line in the `command` block in `docker-compose.yml`, then restart:
+The ollama service's `entrypoint.sh` pulls every model named in
+`OLLAMA_PULL_MODELS` (comma-separated) once the API is up. In
+`docker-compose.yml` that is `${BENCH_MODEL:-gemma4:26b}`, so export
+`BENCH_MODEL` (or edit that line), then restart:
 
 ```bash
-nerdctl compose -f linux/llm-stack/docker-compose.yml up -d
+BENCH_MODEL=qwen2.5-coder:7b nerdctl compose -f linux/llm-stack/docker-compose.yml up -d
 ```

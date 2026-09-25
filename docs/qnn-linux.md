@@ -21,7 +21,8 @@ in the same commit.
 `resolve_qnn_sdk` (`01-core/qnn-sdk.sh`) verifies the hash, extracts, and asserts
 three canaries: the `include/QNN/QnnInterface.h` anchor, `libQnnCpu.so` under
 `lib/${QNN_SDK_LINUX_LIBDIR}` (default `aarch64-oe-linux-gcc11.2`), and
-`QNN_OP_STFT` in `QnnOpDef.h` — the QNN API 2.25+ marker ORT 1.29 needs.
+`QNN_OP_STFT` in `QnnOpDef.h` — the QNN API 2.25+ marker ORT has needed since
+1.29.
 
 <a id="qairt_headers_dir"></a>
 ## `QAIRT_HEADERS_DIR` — the trap that cost a build
