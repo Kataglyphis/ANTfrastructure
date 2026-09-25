@@ -15,7 +15,7 @@ import yaml
 HERE = pathlib.Path(__file__).resolve().parent.parent
 
 COMPOSE = HERE / "docker-compose.yml"
-OVERLAYS = ("docker-compose.gpu.yml", "docker-compose.lan.yml")
+OVERLAYS = ("docker-compose.gpu.yml", "docker-compose.lan.yml", "docker-compose.gateway.yml")
 REGISTRY = HERE / "backends.json"
 
 
