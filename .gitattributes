@@ -76,3 +76,6 @@ linux/**/*.allow text eol=lf
 .claude/**/*.py text eol=lf
 docs/**/*.py text eol=lf
 linux/**/*.py text eol=lf
+# The gateway's Lua and boot-config template: /gateway/info reports their sha256,
+# so a Windows checkout must mount the same bytes a Linux one does.
+linux/llm-stack/gateway/** text eol=lf
