@@ -1,6 +1,7 @@
 #requires -Version 7.0
-# Copy-PeImportClosure (WindowsCrossBundle.Common): the DLL closure a cross lane's product carries, walked
-# over synthetic PE import tables. NOT covered: a real binary's imports (the cross lanes' arch gate is that).
+# WindowsCrossBundle.Common: the configure arguments of a consumer's cross build, and the DLL closure its
+# product carries, walked over synthetic PE import tables. NOT covered: a real binary's imports (the cross
+# lanes' arch gate is that).
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsCrossBundle.Common.psm1') -Force -DisableNameChecking
 
@@ -19,6 +20,45 @@ function New-ClosureFixture {
     New-OrtTestPe -Path "$second\B.DLL" -Import @('c.dll', 'api-ms-win-crt-runtime-l1-1-0.dll') -Machine $BMachine
     New-OrtTestPe -Path "$Dir\app\app.exe" -Import @('a.dll', 'ucrtbase.dll') -Machine $script:Arm64
     return @($first, $second)
+}
+
+Describe 'Get-CrossConfigureArgs' {
+    It 'is empty on the host, so an x64 configure line does not change' {
+        Assert-Equal 0 @(Get-CrossConfigureArgs -Arch amd64 -Corrosion -Vulkan).Count 'amd64 adds nothing'
+    }
+
+    It 'names the target to CMake and, when asked, to Corrosion' {
+        $a = @(Get-CrossConfigureArgs -Arch arm64 -Corrosion)
+        Assert-Equal ((@(Get-CMakeCrossArgs -Arch arm64) + '-DRust_CARGO_TARGET=aarch64-pc-windows-msvc') -join ' ') ($a -join ' ') 'the hub''s cross args, then the cargo target'
+        Assert-Equal 0 @($a -match 'Vulkan_LIBRARY').Count 'no Vulkan library without -Vulkan'
+        Assert-Equal 0 @(@(Get-CrossConfigureArgs -Arch arm64) -match 'Rust_CARGO_TARGET').Count 'no cargo target without -Corrosion'
+    }
+
+    It 'takes Vulkan_LIBRARY from the SDK''s arm64 Lib, and refuses an SDK without one' {
+        Invoke-InTestDir { param($dir)
+            $sdk = Join-Path $dir 'VulkanSDK'
+            $null = New-Item -ItemType Directory -Force -Path "$sdk\Lib", "$sdk\Lib-ARM64"
+            Set-Content -LiteralPath "$sdk\Lib\vulkan-1.lib" -Value 'x64'
+            Invoke-WithEnv @{ VULKAN_SDK = $sdk } {
+                Assert-Throws { Get-CrossConfigureArgs -Arch arm64 -Vulkan } -MessagePattern 'Lib-ARM64\\vulkan-1\.lib.*com\.lunarg\.vulkan\.arm64'
+                Set-Content -LiteralPath "$sdk\Lib-ARM64\vulkan-1.lib" -Value 'arm64'
+                $a = @(Get-CrossConfigureArgs -Arch arm64 -Vulkan)
+                Assert-Equal "-DVulkan_LIBRARY=$sdk\Lib-ARM64\vulkan-1.lib" ($a | Select-Object -Last 1) 'the per-arch import library, never the x64 one'
+            }
+            Invoke-WithEnv @{ VULKAN_SDK = $null } {
+                Assert-Throws { Get-CrossConfigureArgs -Arch arm64 -Vulkan } -MessagePattern 'VULKAN_SDK'
+            }
+        }
+    }
+}
+
+Describe 'Get-WindowsPackageArch' {
+    It 'spells each target the way MSIX, WiX and the VC++ redist do, and refuses anything else' {
+        Assert-Equal 'x64' (Get-WindowsPackageArch -Arch amd64) 'amd64 packages as x64'
+        Assert-Equal 'x64' (Get-WindowsPackageArch -Arch x64) 'the hub accepts the x64 alias'
+        Assert-Equal 'arm64' (Get-WindowsPackageArch -Arch arm64) 'arm64 packages as arm64'
+        Assert-Throws { Get-WindowsPackageArch -Arch riscv64 } -MessagePattern 'Unsupported Windows target architecture'
+    }
 }
 
 Describe 'Copy-PeImportClosure' {

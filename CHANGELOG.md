@@ -7,6 +7,38 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - A CMake consumer's cross build names its target
+
+AccelerANTgine and BeschleunigerBallett build with CMake, and nothing they
+call told CMake, Corrosion, FindVulkan, the hardening flags or CPack that the
+target was arm64. Each of those follows the host by default.
+
+- `Get-CrossConfigureArgs` (`WindowsCrossBundle.Common`): empty on amd64. On
+  arm64 it returns `Get-CMakeCrossArgs`, plus `Rust_CARGO_TARGET` under
+  `-Corrosion` and `Vulkan_LIBRARY` from the SDK's `Lib-ARM64` under `-Vulkan`.
+  A missing arm64 import library throws and names the optional SDK component.
+- `Get-WindowsPackageArch`: `x64` or `arm64`, the one spelling an AppxManifest's
+  `ProcessorArchitecture`, `wix build -arch` and the VC++ redist directory share.
+- `cmake/Hardening.cmake`: `/CETCOMPAT` on x64 targets only. An ARM64 link
+  refuses it, and the flag was unconditional under `MSVC`, which clang-cl sets.
+- `cmake/CPackCommon.cmake`: `CPACK_WIX_ARCHITECTURE` is `arm64` when the
+  package arch is `aarch64`. Left unset, CPack derived x64 from the pointer size.
+  An arm64 package also installs the VC++ runtime without `vcruntime140_1.dll`
+  (`kataglyphis_arm64_system_runtime_libs`). The arm64 redist folder carries that
+  file as ARM64EC, an x64-machine PE, and AccelerANTgine's first cross build
+  shipped it and failed the arch gate. `CMake` identified the target correctly:
+  the file really is in the arm64 folder.
+- `windows-cross-builds.md` § Consumer cross lanes: the configure side, and why a
+  cross lane builds Release only.
+
+Tests:
+- `test-cmake-windows-arch.sh` (new) configures a compiler-less project with
+  MSVC faked: AMD64 keeps `/CETCOMPAT`, and `ARM64`, `arm64` and `aarch64` drop
+  it, and the arm64 runtime list keeps everything but `vcruntime140_1.dll`. 6
+  pass, and four `cmake-arch.*` mutations (a new declared family) bite.
+- `CrossBundle.Common.Tests.ps1` 7 pass. Dropping the host shortcut, reading
+  the x64 Vulkan `Lib` or ignoring `-Corrosion` each fails it.
+
 ## 2026-09-25 - A cross lane's product carries its DLL closure
 
 The arm64 run job needs a folder that runs on a clean device. The CRT, ONNX

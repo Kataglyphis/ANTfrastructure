@@ -131,3 +131,4 @@ mutation-id:shared-config.exact-mode-is-declared-in-the-manifest
 mutation-family:native-gcc-san
 mutation-family:wheels-source
 mutation-family:hailo
+mutation-family:cmake-arch

@@ -299,6 +299,26 @@ machine. A DLL loaded by name at run time (ONNX Runtime under `load-dynamic`, a 
 plugin) is in neither import table, so the build passes it in as a seed. Names found in no
 search directory are left to the device, and the walk grades them.
 
+**A CMake consumer names the target at configure time.** `Get-CrossConfigureArgs`
+(`WindowsCrossBundle.Common`) returns nothing on amd64, so an x64 configure line does not
+change. On arm64 it returns `Get-CMakeCrossArgs`, which sets the triple and
+`CMAKE_SYSTEM_NAME`/`CMAKE_SYSTEM_PROCESSOR`, so vendored `try_run` checks become
+`try_compile`. Two more follow only on request, because each otherwise follows the HOST's
+pointer size:
+- `-Corrosion` adds `Rust_CARGO_TARGET`;
+- `-Vulkan` adds `Vulkan_LIBRARY` from the SDK's `Lib-ARM64`.
+
+The hub's `cmake/` reads `CMAKE_SYSTEM_PROCESSOR` too. `Hardening.cmake` links `/CETCOMPAT`
+on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`).
+`CPackCommon.cmake` stamps the MSI `arm64` when the package name says `aarch64`. It also
+installs the VC++ runtime without `vcruntime140_1.dll`: the arm64 redist folder carries that
+file as ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the arch gate
+refuses it (measured in AccelerANTgine's first cross build).
+
+A cross lane builds its Release configuration only. Debug links an ASan runtime the bundle
+has no aarch64 copy of (`BACKLOG.md` CON30), and anything that runs a test, a benchmark or
+a PGO training pass cannot run on the amd64 host. That is what the run job is for.
+
 ## Sequencing: rebuild base twice, on purpose
 
 `Install-Vs.ps1` deliberately does **not** SHA-pin the VS bootstrapper (the installer refreshes
