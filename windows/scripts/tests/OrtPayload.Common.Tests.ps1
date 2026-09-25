@@ -32,7 +32,7 @@ function Invoke-PayloadCase {
     param([Parameter(Mandatory)][scriptblock]$Body, [switch]$PlainExe, [switch]$Unstaged)
     Invoke-InTestDir { param($dir)
         $case = New-PayloadCase -Dir $dir -PlainExe:$PlainExe
-        Invoke-WithEnv @{ ONNX_ROOT = $case.Chain } {
+        Invoke-WithEnv @{ ONNX_ROOT = $case.Chain; ONNX_GENAI_ROOT = $null } {
             if (-not $Unstaged) { $null = Copy-ChainOrtBeside -OnnxRoot $case.Chain -Destination $case.Release }
             & $Body $case
         }
@@ -112,6 +112,16 @@ Describe 'WindowsOrtPayload.Common: proof' {
             Remove-Item -LiteralPath "$($c.Release)\onnxruntime_extra.dll"
             New-OrtTestPe -Path "$($c.Release)\DirectML.dll" -Text @('other directml')
             Assert-Match 'CHANGED .*DirectML' (Get-PayloadRefusal $c)
+        }
+    }
+
+    It 'counts the chain GenAI install as the chain: its DLL is STRAY only without ONNX_GENAI_ROOT' {
+        Invoke-PayloadCase { param($c)
+            $genAi = Join-Path (Split-Path $c.Chain -Parent) 'genai'
+            New-OrtTestPe -Path "$genAi\lib\onnxruntime-genai.dll" -Import @('onnxruntime.dll') -Text @('genai')
+            Copy-Item -LiteralPath "$genAi\lib\onnxruntime-genai.dll" -Destination $c.Release
+            Assert-Match 'STRAY .*onnxruntime-genai' (Get-PayloadRefusal $c)
+            Invoke-WithEnv @{ ONNX_GENAI_ROOT = $genAi } { Assert-Equal '' (Get-PayloadRefusal $c) 'the chain GenAI ships' }
         }
     }
 
