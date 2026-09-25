@@ -177,6 +177,8 @@ install_bundle() {  # install_bundle <dir> full|config: apisix.json in place, th
   fi
   cp "${dir}/render.json" "${LIVE}/render.json"
   chmod -R a+rX "${LIVE}"
+  # The mounts must be world-readable (uid 636 in the container); the keys must not.
+  if [ -f "${LIVE}/runtime.env" ]; then chmod 0600 "${LIVE}/runtime.env"; fi
 }
 
 wait_next_second() {  # APISIX compares whole-second mtimes: never write twice in one second
