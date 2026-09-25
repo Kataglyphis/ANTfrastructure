@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 # ci-image-ref.sh - print the family CI container image reference.
 
-# versions.env owns the two tags, and the four container composite actions carry
-# the composed ref as their `image:` input DEFAULT - so a workflow step that
-# wants the family image omits the input and never calls this. This exists for
-# the callers that CANNOT omit an input because they are not calling an action
-# at all: a raw `docker run` in a loop, a local repro on a dev box, a PowerShell
-# sweep script. Its PowerShell twin is WindowsContainerImage.Common.psm1's
-# Get-CiImageReference; linux/scripts/tests/test-ci-image-ref.sh asserts the two
-# and verify_ci_image_refs.py all compose the same string.
+# versions.env owns the tags (Linux, Windows, the Windows arm64 cross bundle),
+# and the four container composite actions carry the composed refs as their
+# image input DEFAULTS - so a workflow step that wants the family image omits
+# the input and never calls this. This is for callers that CANNOT omit an input
+# because they call no action: a raw `docker run`, a local repro, a sweep script.
+# Its PowerShell twin is Get-CiImageReference (WindowsContainerImage.Common.psm1).
+# tests/test-ci-image-ref.sh holds this script and verify_ci_image_refs.py to the
+# same strings; ContainerImage.CiRef.Tests.ps1 holds the twin to versions.env.
 
 # It takes NO consumer root, unlike the other entry points here, and that is
 # deliberate rather than an oversight: the only file it reads is THIS repo's
 # versions.env, whichever tree is being built. A root parameter would imply a
 # per-consumer answer, and there isn't one.
 #
-#   ci-image-ref.sh              # the Linux image (default)
-#   ci-image-ref.sh --windows    # the Windows image
+#   ci-image-ref.sh                  # the Linux image (default)
+#   ci-image-ref.sh --windows        # the Windows image
+#   ci-image-ref.sh --windows-arm64  # the Windows arm64 cross bundle (windows-arm64-cross.yml)
 
 # stdout carries the reference and NOTHING else, so it is safe inside a command
 # substitution; every diagnostic goes to stderr. A missing key is a hard failure
@@ -52,8 +53,9 @@ ci_image_ref() {
   case "${platform}" in
     linux)   tag_key=CI_IMAGE_LINUX_TAG ;;
     windows) tag_key=CI_IMAGE_WINDOWS_TAG ;;
+    windows-arm64) tag_key=CI_IMAGE_WINDOWS_ARM64_TAG ;;
     *)
-      printf 'ci-image-ref.sh: unknown platform "%s" (expected linux or windows)\n' "${platform}" >&2
+      printf 'ci-image-ref.sh: unknown platform "%s" (expected linux, windows or windows-arm64)\n' "${platform}" >&2
       return 1
       ;;
   esac
@@ -72,12 +74,13 @@ _ci_image_ref_main() {
   case "${1:-}" in
     --linux|"") ;;
     --windows) platform=windows ;;
+    --windows-arm64) platform=windows-arm64 ;;
     -h|--help)
       printf 'Usage: ci-image-ref.sh [--linux|--windows]\n' >&2
       return 0
       ;;
     *)
-      printf 'ci-image-ref.sh: unknown argument "%s" (expected --linux or --windows)\n' "$1" >&2
+      printf 'ci-image-ref.sh: unknown argument "%s" (expected --linux, --windows or --windows-arm64)\n' "$1" >&2
       return 2
       ;;
   esac

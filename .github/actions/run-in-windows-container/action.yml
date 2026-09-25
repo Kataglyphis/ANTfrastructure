@@ -23,6 +23,21 @@ inputs:
       rather than a literal nobody reads.
     required: false
     default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64'
+  target-arch:
+    description: >-
+      What the lane builds FOR: amd64 runs `image`, arm64 runs `image-arm64`, the
+      cross bundle whose entrypoint loads an arm64-targeting VS environment (bare
+      clang-cl there still targets x64: pass --target, docs/windows-cross-builds.md).
+      Use the same value as prepare-windows-container-host, which pulled the image.
+    required: false
+    default: 'amd64'
+  image-arm64:
+    description: >-
+      The image for `target-arch: arm64`. Same contract as `image`: omit it, and
+      the default is a checked copy of
+      `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_ARM64_TAG}` from versions.env.
+    required: false
+    default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winarm64'
   command:
     description: >-
       PowerShell script text executed inside the container via
@@ -118,7 +133,9 @@ runs:
     - name: docker run
       shell: pwsh
       env:
+        RUN_IN_CONTAINER_TARGET_ARCH: ${{ inputs.target-arch }}
         RUN_IN_CONTAINER_IMAGE: ${{ inputs.image }}
+        RUN_IN_CONTAINER_IMAGE_ARM64: ${{ inputs.image-arm64 }}
         RUN_IN_CONTAINER_COMMAND: ${{ inputs.command }}
         RUN_IN_CONTAINER_FILE: ${{ inputs.file }}
         RUN_IN_CONTAINER_FILE_ARGS: ${{ inputs.file-args }}
@@ -130,7 +147,12 @@ runs:
         RUN_IN_CONTAINER_ISOLATION: ${{ inputs.isolation }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $image = $env:RUN_IN_CONTAINER_IMAGE
+        $image = switch ($env:RUN_IN_CONTAINER_TARGET_ARCH) {
+            'amd64' { $env:RUN_IN_CONTAINER_IMAGE }
+            'arm64' { $env:RUN_IN_CONTAINER_IMAGE_ARM64 }
+            default { throw "target-arch must be amd64 or arm64, not '$env:RUN_IN_CONTAINER_TARGET_ARCH'" }
+        }
+        Write-Host "target-arch $env:RUN_IN_CONTAINER_TARGET_ARCH -> $image"
         # Give the container every logical processor the runner has. This was
         # pinned at 4, which throttled the 3-config clang-cl build on any
         # runner with more cores. NUMBER_OF_PROCESSORS is what Windows reports

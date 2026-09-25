@@ -38,12 +38,14 @@ absent); `install-uv: true` installs the Astral uv package manager.
 ### `prepare-windows-container-host`
 The prologue every containerised Windows job repeats: long paths, checkout,
 short-path clone, data-root move, disk cleanup, registry login, image pull, disk
-report. Inputs: `image` (optional — defaults to the family Windows image; see
-"The two images" below), `registry`, `registry-username`,
+report. Inputs: `target-arch` (`amd64` default, or `arm64` for a cross lane),
+`image` (optional — defaults to the family Windows image; see "The two images"
+below), `image-arm64` (optional — defaults to the arm64 cross bundle, pulled
+instead of `image` under `target-arch: arm64`), `registry`, `registry-username`,
 `registry-password`, `checkout`, `fetch-depth`, `submodules`,
 `short-path-target`, `exclude-submodules`, `token`, `data-root`,
 `required-free-gb`, `free-disk-space`, `measure-data-root`. Outputs:
-`data-root`, `workspace`.
+`image` (the ref that was pulled), `data-root`, `workspace`.
 
 `submodules` reaches the checkout only when `short-path-target` is empty — with
 a short-path clone the checkout takes none and the clone brings the tree in, so
@@ -187,13 +189,16 @@ Every containerised lane in the family runs in exactly two images:
 `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` for Linux and
 `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_TAG}` for Windows, all three keys
 from `linux/scripts/01-core/versions.env`. That file is the owner of the
-convention.
+convention. The one exception is the Windows arm64 cross lanes: they run in the
+arm64 bundle, `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_ARM64_TAG}` from the
+same file.
 
 Workflow YAML cannot read it, so the four container actions below carry the
-composed reference as the **default** of their `image` input. **Omit `image:`**
-and your lane is on the family tag by construction; there is nothing to retype
-and nothing to keep in sync. Pass one only for a deliberate single-arch or
-experimental run.
+composed reference as the **default** of their `image` input, and the two Windows
+ones carry the bundle as the default of `image-arm64`, which `target-arch: arm64`
+selects. **Omit `image:`** (and `image-arm64:`) and your lane is on the family
+tag by construction; there is nothing to retype and nothing to keep in sync.
+Pass one only for a deliberate single-arch or experimental run.
 
 The defaults are copies, and copies are not trusted here:
 `linux/scripts/verify_ci_image_refs.py` (run by `lint-workflows.sh`, preflight
@@ -249,7 +254,9 @@ per line) must be set; the payload travels via `env:` so secret values never
 pass through the PowerShell parser (an apostrophe in a secret used to be a
 `ParserError`). `extra-args` is also one-argv-per-line (unlike the Linux
 sibling's verbatim fragment — Windows argv must stay literal). Other inputs:
-`image` (optional — defaults to the family Windows image),
+`target-arch` (`amd64` default; `arm64` runs `image-arm64`, the cross bundle —
+pass the same value the prepare step got), `image` (optional — defaults to the
+family Windows image), `image-arm64` (optional — defaults to the arm64 bundle),
 `cpus` (default: all runner CPUs, min 2), `memory` (default `16g`),
 `mount-source`/`mount-target` (default `D:\ws` → `C:\ws`). Values containing
 newlines cannot be expressed in the per-line inputs.
