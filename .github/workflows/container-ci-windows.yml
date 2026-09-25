@@ -22,6 +22,8 @@
 # (the CI version, resolved on the host and handed to the container) and
 # `host-command` (what only the runner host can run: Server Core has no OpenGL).
 # OxidANT's windows-x64.yml, 2026-09-25, was the first amd64 lane to move here.
+# A caller's own secrets reach the container through CONTAINER_SECRET_ENV, as an
+# --env-file (BeschleunigerBallett's WebDAV and signing credentials).
 
 name: Container CI · Windows (reusable)
 
@@ -133,6 +135,13 @@ on:
       GHCR_PAT:
         description: Token to pull the image from ghcr. Only needed while the image is private.
         required: false
+      CONTAINER_SECRET_ENV:
+        description: >-
+          Secret environment for the container, one KEY=value per line, which a caller
+          composes from its own secrets (WebDAV credentials, a signing password). Every
+          value is masked, and the pairs reach docker as an --env-file in RUNNER_TEMP, so
+          no value enters a command line, a step output or the job environment.
+        required: false
 
 jobs:
   build:
@@ -169,15 +178,29 @@ jobs:
         shell: pwsh
         env:
           CONTAINER_ENV: ${{ inputs.container-env }}
+          CONTAINER_SECRET_ENV: ${{ secrets.CONTAINER_SECRET_ENV }}
           RESOLVED_VERSION: ${{ steps.version.outputs.VERSION }}
           RESOLVED_MSIX_VERSION: ${{ steps.version.outputs.MSIX_VERSION }}
         run: |
           $ErrorActionPreference = 'Stop'
           $pairs = @($env:CONTAINER_ENV -split "\r?\n" | ForEach-Object Trim | Where-Object { $_ })
           if ($env:RESOLVED_VERSION) { $pairs += "VERSION=$env:RESOLVED_VERSION", "MSIX_VERSION=$env:RESOLVED_MSIX_VERSION" }
-          $lines = foreach ($pair in $pairs) {
+          $lines = @(foreach ($pair in $pairs) {
               if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw "container-env line is not KEY=value: '$pair'" }
               '--env'; $pair
+          })
+          # Secret pairs: each value masked, then all of them handed to docker as a file, never as an
+          # argument. A value is taken verbatim, and a bad line is refused without being echoed.
+          $secret = @($env:CONTAINER_SECRET_ENV -split "\r?\n" | Where-Object { $_ })
+          foreach ($pair in $secret) {
+              if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw 'a CONTAINER_SECRET_ENV line is not KEY=value (the line is withheld: it may hold a secret)' }
+              $value = $pair.Substring($pair.IndexOf('=') + 1)
+              if ($value) { Write-Output "::add-mask::$value" }
+          }
+          if ($secret.Count -gt 0) {
+              $envFile = Join-Path $env:RUNNER_TEMP 'container-secret.env'
+              [System.IO.File]::WriteAllText($envFile, (($secret -join "`n") + "`n"))
+              $lines += '--env-file', $envFile
           }
           $delim = "EOF_$([guid]::NewGuid().ToString('N'))"
           "args<<$delim", @($lines), $delim | Out-File -Append -Encoding utf8 -FilePath $env:GITHUB_OUTPUT

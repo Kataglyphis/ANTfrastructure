@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-26 - The reusable Windows lane takes a caller's secrets
+
+BeschleunigerBallett's x64 lane could not become a thin caller of `container-ci-windows.yml`:
+its build fetches the MSIX signing certificate over WebDAV, and the reusable lane accepted
+no secret but `GHCR_PAT`.
+
+- `container-ci-windows.yml` takes an optional `CONTAINER_SECRET_ENV` secret, one `KEY=value`
+  per line, which the caller composes from its own secrets. The compose step masks each value
+  and writes the pairs to an `--env-file` in `RUNNER_TEMP` (LF, UTF-8 without BOM), so no value
+  enters a command line, a step output or the job environment. A line that is not `KEY=value`
+  is refused without being echoed.
+- `windows-cross-builds.md` § Consumer cross lanes and the adoption guide describe it.
+
 ## 2026-09-25 - One Windows module stages and proves a consumer's ONNX Runtime
 
 OxidANT, OmniAccelerANT and AccelerANTgine each carried the same glue around G6, as
