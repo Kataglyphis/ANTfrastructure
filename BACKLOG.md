@@ -285,6 +285,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `:winamd64-rocm`: pushing it waits on a redistribution decision.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
+- [ ] **CON34 — The rocm image's HIP/MSVC `<cmath>` overlay is installed by the llama
+      stage, not by `Dockerfile.rocm`** [S, ★]. MSVC 14.51's `constexpr` `isgreater`
+      and its five siblings broke every HIP compile in the image. `windows/scripts/hip/`
+      fixes that with config files beside TheRock's clang (`docs/windows-rocm.md`
+      § HIP compiles against MSVC 14.51, 2026-09-25). They sit at the end of
+      `Dockerfile.rocm-llama` only because an edit to `Dockerfile.rocm` re-keys the
+      whole chain. At the next full rocm rebuild:
+      - install them with TheRock in `Dockerfile.rocm`;
+      - drop MIGraphX's own `-isystem` overlay (`Write-HipMsvcCmathOverlay`), since
+        TheRock's `clang++` then loads the config itself;
+      - drop the parity test that holds the two copies equal.
+
+      Retire the overlay itself when `Test-HipMsvcCmath.ps1` reports that the
+      `--no-default-config` compile passes too.
 
 ## Open — hub scripts out of step with the image
 

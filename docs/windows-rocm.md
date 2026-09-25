@@ -309,6 +309,37 @@ outside any build window):
 - a torch matmul compared against the CPU. This one is required, because upstream TheRock#8379
   reports torch+ROCm returning zeros on exactly that card.
 
+### HIP compiles against MSVC 14.51
+
+Under clang, the image's STL (VS 2026, MSVC 14.51) defines `isgreater`, `isgreaterequal`,
+`isless`, `islessequal`, `islessgreater` and `isunordered` as `constexpr` builtin wrappers. HIP
+makes those `__host__ __device__`, so clang's `__clang_cuda_math_forward_declares.h` and
+`__clang_hip_cmath.h` cannot declare their `__device__` versions. **Every** HIP compile in the
+image failed: the smoke gate's one-line `hipcc` kernel stopped with 20 errors on 2026-09-25, after
+215 other assertions had passed.
+
+The image ships the fix inside the toolchain. The overlay from `windows/scripts/hip/` goes to
+`C:\runtime\opt\hip-msvc-cmath`. Each of its two headers renames the six names, `#include_next`s
+the untouched original and restores them. `clang.cfg` and `clang++.cfg` beside TheRock's
+`clang.exe` add `-isystem` for that directory by default; TheRock ships no `*.cfg` of its own.
+`Test-HipMsvcCmath.ps1` measured the choice in the rocm image:
+
+| Way to reach TheRock's clang | nothing | `HIPCC_COMPILE_FLAGS_APPEND` | `CPATH` | config beside `clang.exe` |
+| --- | --- | --- | --- | --- |
+| `hipcc` | 20 errors | compiles | compiles | compiles |
+| `clang -x hip` (so `amdclang++` and CMake's HIP language) | 20 errors | not reached | compiles | compiles |
+
+The config files are the only row-complete choice that no user environment can undo. The probe
+also compiles with `--no-default-config`, which tells when a toolset or TheRock bump no longer
+needs the overlay.
+
+The files belong in `Dockerfile.rocm`, which installs TheRock. They are installed at the end of
+`Dockerfile.rocm-llama` instead, the first rocm stage that every rocm build has after the media
+stages, because an edit to `Dockerfile.rocm` re-keys the whole chain. They move at the next full
+rocm rebuild (`BACKLOG.md` CON34). MIGraphX builds before that stage, so it passes the same
+headers through its own `-isystem` (`Write-HipMsvcCmathOverlay`). A parity test in
+`Rocm.Migraphx.Tests.ps1` holds the two copies equal line for line.
+
 ## ONNX Runtime WebGPU EP (rocm lane, spike)
 
 The rocm lane's chain ORT (built from source by `Build-OnnxFromSource.ps1`) is built **with

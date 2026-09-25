@@ -7,6 +7,34 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - HIP compiles in the rocm image: TheRock's clang loads the `<cmath>` overlay
+
+With torch through (entry below), the rocm chain built `bk-winamd64-rocm` and the
+smoke gate passed 215 assertions. `Test-RocmImage.ps1` then failed on one item:
+`[FAIL] hipcc could not compile a kernel for gfx1201`. It was the same clash MIGraphX
+hit: MSVC 14.51's `constexpr` `isgreater` and its five siblings against clang's HIP
+math headers, 20 errors for a one-line kernel. MIGraphX only got past it with its own
+`-isystem` overlay, so no HIP compile worked in the image as shipped.
+
+A new diagnostic, `Test-HipMsvcCmath.ps1`, measured the choices in the image. The
+overlay fixes the compile given as `-isystem`, through `HIPCC_COMPILE_FLAGS_APPEND`
+(`hipcc` only), through `CPATH`, and through `clang.cfg`/`clang++.cfg` beside
+TheRock's `clang.exe`. TheRock ships no `*.cfg`, so the config files overwrite
+nothing. They reach every driver name (`clang`, `clang++`, `amdclang++`, `hipcc`),
+and CMake's HIP language too, and no user environment can undo them.
+
+`windows/scripts/hip/` now holds the two headers and both config files. Two `COPY`s at
+the end of `Dockerfile.rocm-llama` install them, as `C:\runtime\opt\hip-msvc-cmath`
+and beside TheRock's clang. That is the first rocm stage every rocm build has after
+the media stages, and being last keeps its llama RUNs cached. The files belong in
+`Dockerfile.rocm`, but that re-keys the whole chain, so they move at the next full
+rocm rebuild (`BACKLOG.md` CON34). MIGraphX keeps its generated copy for now. A
+parity test holds the shipped headers equal to `Write-HipMsvcCmathOverlay`'s output,
+and a second test holds both configs to the directory the Dockerfile installs into.
+The probe also compiles with `--no-default-config`, which reports when a toolset
+stops needing the overlay. On the unfixed image it measured MSVC 14.51.36231 with
+TheRock 10.0.0: all three drivers fail, and the overlay is still needed.
+
 ## 2026-09-25 - The torch ROCm wheels download straight into the cache, with no rename
 
 With MIGraphX, the EP and llama.cpp through, the torch stage built and verified the

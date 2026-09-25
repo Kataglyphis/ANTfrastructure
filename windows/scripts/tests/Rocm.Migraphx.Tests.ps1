@@ -180,6 +180,33 @@ Describe 'WindowsMigraphx.Common: HIP math overlay for MSVC 14.51 <cmath>' {
     }
 }
 
+Describe 'the image''s HIP/MSVC <cmath> overlay (windows/scripts/hip)' {
+    $hipDir = Join-Path $script:MgxRepo 'windows\scripts\hip'
+
+    It 'ships exactly the headers Write-HipMsvcCmathOverlay writes, line for line' {
+        Invoke-InTestDir { param($dir)
+            $generated = Write-HipMsvcCmathOverlay -WorkDir $dir
+            $shipped = Join-Path $hipDir 'hip-msvc-cmath'
+            $names = @(Get-ChildItem -LiteralPath $generated -File | ForEach-Object Name | Sort-Object)
+            Assert-Equal ($names -join ',') (@(Get-ChildItem -LiteralPath $shipped -File | ForEach-Object Name | Sort-Object) -join ',') 'the same two headers'
+            foreach ($n in $names) {
+                Assert-Equal ([System.IO.File]::ReadAllLines((Join-Path $generated $n)) -join "`n") ([System.IO.File]::ReadAllLines((Join-Path $shipped $n)) -join "`n") $n
+            }
+        }
+    }
+
+    It 'installs it with configs beside TheRock''s clang that name the very directory it lands in' {
+        $joined = ([System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm-llama'))) -replace '`\r?\n', ' '
+        $dest = [regex]::Match($joined, '(?m)^COPY windows\\scripts\\hip\\hip-msvc-cmath (C:\\\S+)').Groups[1].Value
+        Assert-True ([bool]$dest) 'the overlay is COPYed into the image'
+        Assert-Match ([regex]::Escape('COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\')) $joined 'both configs sit beside clang.exe'
+        foreach ($cfg in 'clang.cfg', 'clang++.cfg') {
+            $options = @([System.IO.File]::ReadAllLines((Join-Path $hipDir $cfg)) | Where-Object { $_ -and -not $_.StartsWith('#') })
+            Assert-Equal "-isystem $($dest -replace '\\', '/')" ($options -join '|') "$cfg carries one option, the install dir"
+        }
+    }
+}
+
 Describe 'WindowsMigraphx.Common: nlohmann_json natvis shim' {
     It 'loads TheRock''s config by absolute path and clears the natvis interface source' {
         Invoke-InTestDir { param($dir)
