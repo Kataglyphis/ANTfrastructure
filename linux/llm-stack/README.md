@@ -120,6 +120,13 @@ bash linux/llm-stack/scripts/serve-stack.sh reload   # routing change, no restar
 bash linux/llm-stack/scripts/serve-stack.sh down
 ```
 
+**Keep WSL running.** WSL stops a distro soon after its last session ends
+(`instanceIdleTimeout`), and the gateway's container stops with it: the first
+acceptance run on the dev host (2026-09-25) found every request refused on
+`127.0.0.1:9080` minutes after a clean `up`. Until the P3 supervisor holds it,
+keep one session open for as long as the gateway should serve, e.g.
+`wsl.exe -d Ubuntu-26.04 --exec sleep infinity` in a spare terminal.
+
 The lab then uses the `lab-*` entries with `GW_KEY_LAB` exported from the keys
 file (`ANTFRASTRUCTURE_LLM_GATEWAY_DIR/keys.env`).
 
