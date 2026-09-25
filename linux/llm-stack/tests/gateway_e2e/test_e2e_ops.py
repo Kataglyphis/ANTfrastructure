@@ -3,7 +3,9 @@ validation gate and reload (R12), and the hot-reload environment trap.
 """
 import json
 import os
+import re
 import shutil
+import stat
 import time
 import urllib.request
 
@@ -65,6 +67,23 @@ def test_metrics_carry_the_lane_as_node(gateway):
     assert any('node="gpu"' in m for m in tokens), tokens
 
 
+def test_the_keys_on_disk_stay_private(gateway):
+    """runtime.env holds every client key in clear; compose.log echoes them."""
+    for rel in ("live/runtime.env", "compose.log"):
+        mode = stat.S_IMODE(os.stat(os.path.join(gateway.state, rel)).st_mode)
+        assert mode == 0o600, f"{rel} is {oct(mode)}"
+
+
+def test_every_listener_is_on_loopback(gateway):
+    conf = gateway.exec("cat", "/usr/local/apisix/conf/nginx.conf")
+    listens = re.findall(r"^\s*listen\s+([^\s;]+)", conf, re.MULTILINE)
+    assert listens, "no listen directive found"
+    off = [a for a in listens if not a.startswith(("127.0.0.1:", "unix:"))]
+    assert not off, f"listeners off loopback: {off}"
+    ports = {a.split(":")[1] for a in listens if a.startswith("127.0.0.1:")}
+    assert ports == {str(p) for p in gateway.ports}, "API, status and metrics only (no admin, control, ssl)"
+
+
 def test_status_reports_in_sync(gateway):
     status = gateway.serve("status")
     assert status.returncode == 0, status.stdout + status.stderr
@@ -110,6 +129,12 @@ def test_reload_swaps_routing_in_place_and_keys_survive_it(gateway):
         assert gateway.post("chat", key=None).status == 401
         for client in ("webui", "lab", "agent"):
             assert gateway.post("chat", key=client).status == 200, client
+        # The hook patches module tables, not config: it must outlive a hot reload.
+        over = gateway.post("chat", max_tokens=10, fake={"npu": "overflow"})
+        assert (over.status, over.headers["x-gw-rerouted"]) == (200, "overflow")
+        slow = gateway.post("chat", max_tokens=10, fake={"npu": "hold=3.5"})
+        assert slow.status == 504 and slow.elapsed < 3.2, "the NPU's own timeout after a reload"
+        assert gateway.post("agent").status == 200, "a route above the stock cap reloaded too"
     finally:
         gateway.write_registry()
         back = gateway.serve("reload")

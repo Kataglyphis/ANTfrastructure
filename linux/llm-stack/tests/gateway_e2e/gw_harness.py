@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 
@@ -96,6 +97,17 @@ class Gateway:
         headers = {f"X-Fake-{lane.capitalize()}": d for lane, d in (fake or {}).items()}
         return call(self.port, path, dict(body, model=model), key=self.keys.get(key, key),
                     headers=headers)
+
+    def exec(self, *cmd):
+        """Run a command inside the live gateway container (not a validation one)."""
+        engine = os.environ.get("ANTFRASTRUCTURE_LLM_ENGINE") or next(
+            n for n in ("nerdctl", "docker") if shutil.which(n))
+        project = self.env["ANTFRASTRUCTURE_LLM_GATEWAY_PROJECT"]
+        names = subprocess.run([engine, "ps", "--format", "{{.Names}}"], capture_output=True,
+                               text=True, check=True).stdout.split()
+        (name,) = [n for n in names if n.startswith(project) and "-validate-" not in n]
+        return subprocess.run([engine, "exec", name, *cmd], capture_output=True, text=True,
+                              check=True).stdout
 
     def requests(self, lane):
         return self.lanes[lane].completions()
