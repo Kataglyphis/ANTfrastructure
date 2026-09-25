@@ -7,6 +7,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - MIGraphX links with MLIR off: upstream's stubs, backported
+
+With HIP compiling (entry below), the build reached `migraphx_gpu.dll` and stopped
+at the link: `is_module_fusible`, `adjust_param_shapes`, `dump_mlir_to_file` and
+`dump_mlir_to_mxr` were undefined. At `rocm-10.0`, `mlir.cpp` declares them for
+every build but defines them only when `MIGRAPHX_MLIR` is set, and the rocm lane
+builds MLIR off because TheRock ships no rocMLIR. Upstream fixed this on `develop`
+in 5a80dc91ba (#5154, 2026-08-24), after the tag.
+
+`windows/scripts/patches/migraphx/001-mlir-off-stubs.patch` carries that commit's
+four definitions verbatim. Their signatures were checked against the pinned
+`mlir.hpp`. Phase 1 git-inits the tarball and applies the patch with
+`Invoke-SourcePatch`, and `Dockerfile.rocm-migraphx` mounts the directory.
+`upstream-windows-patches.md` lists it as fixed upstream, to retire on a bump.
+
+`Test-PatchesApplyClean.ps1` now maps `migraphx` to `MIGRAPHX_WINDOWS_COMMIT`.
+That is a commit, and `git clone --branch` takes only names, so a 40-hex ref
+clones through `--revision` (git 2.49 or later). A `-PatchRoot` holding a single
+patch no longer dies on `.Count`. The whole catalogue passes, 20 of 20.
+`Rocm.Migraphx.Tests.ps1` covers placement, the patch and the mount: 54 pass.
+
 ## 2026-09-25 - MIGraphX's HIP code compiles against MSVC 14.51's `<cmath>`
 
 With the configure through, every HIP source in `migraphx_device` failed (114
