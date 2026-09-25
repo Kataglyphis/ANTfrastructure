@@ -1,0 +1,207 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# The family's Windows container lane, ONCE (owner decision 2026-09-25: hub
+# reusable lanes, thin callers). A caller's per-platform file only says which
+# script builds its tree, with which arguments, and what to upload; this file
+# owns the job skeleton around it.
+#
+# target-arch: arm64 is the cross lane (windows-arm64-cross.yml in OxidANT,
+# AccelerANTgine and BeschleunigerBallett). It builds in the arm64 bundle on the
+# amd64 runner -- no Windows arm64 container image exists, docs/windows-cross-builds.md
+# -- so nothing built there can RUN there. Two things make up for that:
+#   * the static arch gate: Test-TargetArch.ps1 -ImportWalk on the uploaded tree,
+#     inside the same image (its System32 is the reference Server Core OS), which
+#     fails on an x64 object in the tree and on an import no clean device resolves;
+#   * `run-command`: a second job on GitHub's windows-11-arm runner that downloads
+#     the tree and RUNS it natively, the only execution any arm64 binary gets.
+#
+# The build script runs as `<script> <build-args>` inside the container, with the
+# workspace mounted at C:\ws. Put the lane's logic in that script, not here: it is
+# what a local container run executes too.
+
+name: Container CI · Windows (reusable)
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      target-arch:
+        description: >-
+          amd64 builds in the family Windows image; arm64 builds in the arm64
+          bundle (the cross lane) and enables the arch gate and the run job.
+          Both images come from prepare-windows-container-host's defaults, which
+          verify_ci_image_refs.py holds to versions.env: no image is named here.
+        required: false
+        type: string
+        default: amd64
+      build-script:
+        description: >-
+          The lane's entry point, RELATIVE TO THE REPOSITORY ROOT
+          (e.g. scripts/windows/Build-Windows.ps1). It runs inside the container
+          under C:\ws.
+        required: true
+        type: string
+      build-args:
+        description: Arguments for the build script, one per line.
+        required: false
+        type: string
+        default: ''
+      container-env:
+        description: >-
+          Environment for the container, one KEY=value per line (passed as
+          `--env KEY=value`).
+        required: false
+        type: string
+        default: ''
+      cpus:
+        description: docker --cpus; empty = every logical processor of the runner.
+        required: false
+        type: string
+        default: ''
+      memory:
+        description: docker --memory.
+        required: false
+        type: string
+        default: 16g
+      fetch-depth:
+        description: Checkout depth. 0 = full history (a build that derives its version from git).
+        required: false
+        type: number
+        default: 1
+      exclude-submodules:
+        description: Submodule paths to leave out of the short-path clone, one per line.
+        required: false
+        type: string
+        default: ''
+      artifact-name:
+        description: Name of the uploaded artifact.
+        required: true
+        type: string
+      artifact-dir:
+        description: >-
+          The directory the build script leaves its product in, RELATIVE TO THE
+          REPOSITORY ROOT. It is uploaded whole, graded by the arch gate, and is
+          the working directory of the run job.
+        required: true
+        type: string
+      arch-gate-min-inspected:
+        description: >-
+          arm64 only: the arch gate's -MinInspected floor. A tree with fewer PE
+          files than this fails, so a build that silently produced nothing cannot
+          pass as "no x64 objects found".
+        required: false
+        type: number
+        default: 1
+      run-command:
+        description: >-
+          arm64 only: PowerShell that runs on windows-11-arm inside the downloaded
+          artifact-dir, e.g. `./app.exe --version`. A non-zero exit fails the lane.
+          Empty = no run job.
+        required: false
+        type: string
+        default: ''
+      timeout-minutes:
+        description: Time limit of the build job.
+        required: false
+        type: number
+        default: 180
+    secrets:
+      GHCR_PAT:
+        description: Token to pull the image from ghcr. Only needed while the image is private.
+        required: false
+
+jobs:
+  build:
+    name: build (${{ inputs.target-arch }})
+    runs-on: windows-2025
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare the Windows container host
+        id: prep
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
+        with:
+          target-arch: ${{ inputs.target-arch }}
+          registry-password: ${{ secrets.GHCR_PAT }}
+          fetch-depth: ${{ inputs.fetch-depth }}
+          exclude-submodules: ${{ inputs.exclude-submodules }}
+
+      # run-in-windows-container takes docker arguments one per line.
+      - name: Compose the container environment
+        id: env
+        shell: pwsh
+        env:
+          CONTAINER_ENV: ${{ inputs.container-env }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $lines = foreach ($pair in ($env:CONTAINER_ENV -split "\r?\n" | ForEach-Object Trim | Where-Object { $_ })) {
+              if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw "container-env line is not KEY=value: '$pair'" }
+              '--env'; $pair
+          }
+          $delim = "EOF_$([guid]::NewGuid().ToString('N'))"
+          "args<<$delim", @($lines), $delim | Out-File -Append -Encoding utf8 -FilePath $env:GITHUB_OUTPUT
+
+      - name: Build in the container
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
+        with:
+          target-arch: ${{ inputs.target-arch }}
+          cpus: ${{ inputs.cpus }}
+          memory: ${{ inputs.memory }}
+          file: C:\ws\${{ inputs.build-script }}
+          file-args: ${{ inputs.build-args }}
+          extra-args: ${{ steps.env.outputs.args }}
+
+      # The caller's own hub submodule, so the gate is the version the caller pins.
+      - name: Arch gate (arm64 tree, imports resolvable on a clean device)
+        if: ${{ inputs.target-arch == 'arm64' }}
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
+        with:
+          target-arch: ${{ inputs.target-arch }}
+          file: C:\ws\third_party\ANTfrastructure\windows\scripts\build\Test-TargetArch.ps1
+          file-args: |
+            -Path
+            C:\ws\${{ inputs.artifact-dir }}
+            -Arch
+            arm64
+            -MinInspected
+            ${{ inputs.arch-gate-min-inspected }}
+            -ImportWalk
+
+      - name: Upload the product
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ steps.prep.outputs.workspace }}/${{ inputs.artifact-dir }}
+          if-no-files-found: error
+
+  run-arm64:
+    name: run on windows-11-arm
+    if: ${{ inputs.target-arch == 'arm64' && inputs.run-command != '' }}
+    needs: build
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Download the product
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: product
+
+      - name: Run it natively
+        shell: pwsh
+        working-directory: product
+        env:
+          RUN_COMMAND: ${{ inputs.run-command }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the run job must be on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          $script = Join-Path $env:RUNNER_TEMP 'run-arm64.ps1'
+          Set-Content -LiteralPath $script -Value $env:RUN_COMMAND -Encoding utf8
+          & $script
+          if ($LASTEXITCODE) { throw "run-command exited $LASTEXITCODE" }

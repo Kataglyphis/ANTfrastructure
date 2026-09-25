@@ -4,7 +4,7 @@
 # image" and a wrong tag pulls someone else's toolchain - both failing far from
 # the cause. So: stdout carries the ref and nothing else, a missing key is fatal
 # rather than empty, and the value AGREES with verify_ci_image_refs.py, which is
-# what grades the four composite actions' `image:` defaults.
+# what grades the four composite actions' image-input defaults.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -19,10 +19,13 @@ t_case "the Linux ref is composed from versions.env, on stdout, alone"
 _prefix="$(sed -n 's/^IMAGE_REGISTRY_PREFIX=//p' "${VERSIONS}" | tail -n 1)"
 _linux_tag="$(sed -n 's/^CI_IMAGE_LINUX_TAG=//p' "${VERSIONS}" | tail -n 1)"
 _win_tag="$(sed -n 's/^CI_IMAGE_WINDOWS_TAG=//p' "${VERSIONS}" | tail -n 1)"
+_arm_tag="$(sed -n 's/^CI_IMAGE_WINDOWS_ARM64_TAG=//p' "${VERSIONS}" | tail -n 1)"
 t_assert_eq "${_prefix}:${_linux_tag}" "$(bash "${REF}")" \
   "the default must be the Linux image; every local repro depends on it"
 t_assert_eq "${_prefix}:${_linux_tag}" "$(bash "${REF}" --linux)"
 t_assert_eq "${_prefix}:${_win_tag}" "$(bash "${REF}" --windows)"
+t_assert_eq "${_prefix}:${_arm_tag}" "$(bash "${REF}" --windows-arm64)" \
+  "the arm64 cross lanes run in the bundle: its own key, never the plain Windows tag"
 
 t_case "stderr is not stdout: nothing but the ref can reach a command substitution"
 t_assert_eq "1" "$(bash "${REF}" 2>/dev/null | wc -l)" \
@@ -39,8 +42,9 @@ _have_py=0
 command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c pass >/dev/null 2>&1 && _have_py=1
 if [ "${_have_py}" -eq 1 ]; then
   _gate_out="$("${_py}" "${SCRIPTS}/verify_ci_image_refs.py" "${SCRIPTS}/../.." 2>&1)"
-  t_assert_contains "${_gate_out}" "linux   $(bash "${REF}")"
-  t_assert_contains "${_gate_out}" "windows $(bash "${REF}" --windows)"
+  t_assert_contains "${_gate_out}" "$(printf '%-13s %s' linux "$(bash "${REF}")")"
+  t_assert_contains "${_gate_out}" "$(printf '%-13s %s' windows "$(bash "${REF}" --windows)")"
+  t_assert_contains "${_gate_out}" "$(printf '%-13s %s' windows-arm64 "$(bash "${REF}" --windows-arm64)")"
 else
   t_assert_eq "no-python" "no-python" "PREFLIGHT_PYTHON unset and python3 is a stub"
 fi
@@ -91,16 +95,32 @@ t_assert_eq "ghcr.io/x/y:tag1" \
 _gh_tree() {
   local d
   d="$(mktemp -d "${_work}/gh.XXXXXX")"
-  mkdir -p "${d}/.github/actions/run-in-linux-container" "${d}/.github/workflows"
+  _gh_action "${d}" run-in-linux-container "image=$1"
+  _gh_finish "${d}" "${@:2}"
+}
+
+# _gh_action <tree> <action> <input>=<default | ""> ... -> one fixture action.yml
+#   carrying the given image inputs; an empty default writes the input without one.
+_gh_action() {
+  local tree="$1" action="$2" spec
+  shift 2
+  mkdir -p "${tree}/.github/actions/${action}"
   {
-    printf 'name: run-in-linux-container\ndescription: fixture\ninputs:\n'
-    printf '  image:\n    description: image to run\n    required: false\n'
-    [ -n "$1" ] && printf '    default: %s\n' "$1"
+    printf 'name: %s\ndescription: fixture\ninputs:\n' "${action}"
+    for spec in "$@"; do
+      printf '  %s:\n    description: image to run\n    required: false\n' "${spec%%=*}"
+      [ -n "${spec#*=}" ] && printf '    default: %s\n' "${spec#*=}"
+    done
     printf 'runs:\n  using: composite\n  steps:\n    - run: "true"\n      shell: bash\n'
-  } > "${d}/.github/actions/run-in-linux-container/action.yml"
+  } > "${tree}/.github/actions/${action}/action.yml"
+}
+
+# _gh_finish <tree> <workflow text> [<relpath>=<body> ...] -> the tree, indexed.
+_gh_finish() {
+  local d="$1" spec rel
+  mkdir -p "${d}/.github/workflows"
   printf '%s\n' "$2" > "${d}/.github/workflows/ci.yml"
   shift 2
-  local spec rel
   for spec in "$@"; do
     rel="${spec%%=*}"
     mkdir -p "${d}/$(dirname "${rel}")"
@@ -121,9 +141,20 @@ jobs:
 
 _gate() { "${_py}" "${SCRIPTS}/verify_ci_image_refs.py" "$1"; }
 
+# _gh_win_tree <image default> <image-arm64 default | ""> <workflow text>
+#   -> the Windows twin of _gh_tree: run-in-windows-container with BOTH image
+#      inputs, the second one what `target-arch: arm64` selects.
+_gh_win_tree() {
+  local d
+  d="$(mktemp -d "${_work}/ghw.XXXXXX")"
+  _gh_action "${d}" run-in-windows-container "image=$1" "image-arm64=$2"
+  _gh_finish "${d}" "$3"
+}
+
 if [ "${_have_py}" -eq 1 ]; then
   _linux_ref="${_prefix}:${_linux_tag}"
   _win_ref="${_prefix}:${_win_tag}"
+  _arm_ref="${_prefix}:${_arm_tag}"
 
   t_case "the fixture itself is sound: a correct .github/ passes"
   # Without this the four refusals below could each be passing for the wrong
@@ -166,6 +197,47 @@ if [ "${_have_py}" -eq 1 ]; then
   t_assert_eq "1" "$(t_rc _gate "${_d}")" \
     "both tags are canonical, so the literal check cannot see this: a Linux action handed the Windows image"
   t_assert_contains "$(t_out _gate "${_d}")" "it must run ${_linux_ref}"
+
+  # --- the arm64 cross bundle: a SECOND image input on the Windows actions ----
+  t_case "a Windows action with both canonical defaults passes"
+  _d="$(_gh_win_tree "${_win_ref}" "${_arm_ref}" "${_WF_CLEAN}")"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")"     "without this the arm64 refusals below could be passing for the wrong reason"
+
+  t_case "an image-arm64 default that is not the arm64 ref FAILS"
+  # The plain Windows ref: canonical, so only the per-input comparison sees it.
+  _d="$(_gh_win_tree "${_win_ref}" "${_win_ref}" "${_WF_CLEAN}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")"     "target-arch: arm64 would pull the amd64 image and cross-build against an x64 payload"
+  t_assert_contains "$(t_out _gate "${_d}")" "\`image-arm64\` default is ${_win_ref}, versions.env composes ${_arm_ref}"
+
+  t_case "an image-arm64 input with NO default FAILS"
+  _d="$(_gh_win_tree "${_win_ref}" "" "${_WF_CLEAN}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")"     "every arm64 lane would then re-type the bundle's tag"
+  t_assert_contains "$(t_out _gate "${_d}")" "the \`image-arm64\` input has no \`default:\`"
+
+  t_case "each image input takes ITS ref at a call site"
+  _d="$(_gh_win_tree "${_win_ref}" "${_arm_ref}" "${_WF_CLEAN}
+      - uses: ./.github/actions/run-in-windows-container
+        with:
+          image: ${_arm_ref}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")"     "the bundle handed to \`image:\` runs an x64 lane against an aarch64 payload"
+  t_assert_contains "$(t_out _gate "${_d}")" "it must run ${_win_ref}"
+  _d="$(_gh_win_tree "${_win_ref}" "${_arm_ref}" "${_WF_CLEAN}
+      - uses: ./.github/actions/run-in-windows-container
+        with:
+          image-arm64: ${_win_ref}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" "and the plain Windows image handed to image-arm64 is the mirror image"
+  t_assert_contains "$(t_out _gate "${_d}")" "it must run ${_arm_ref}"
+  _d="$(_gh_win_tree "${_win_ref}" "${_arm_ref}" "${_WF_CLEAN}
+      - uses: ./.github/actions/run-in-windows-container
+        with:
+          target-arch: arm64")"
+  t_assert_eq "0" "$(t_rc _gate "${_d}")" "target-arch: arm64 and no image at all is how a cross lane asks"
+  _d="$(_gh_win_tree "${_win_ref}" "${_arm_ref}" "${_WF_CLEAN}
+      - uses: ./.github/actions/run-in-windows-container
+        with:
+          image-arm64: ${_arm_ref}")"
+  t_assert_eq "1" "$(t_rc _gate "${_d}")" "even the RIGHT bundle spelled out is a copy (check D), frozen at today's tag"
+  t_assert_contains "$(t_out _gate "${_d}")" "omit the input"
 
   t_case "no workflow or action YAML at all is a refusal, not a green"
   _d="$(mktemp -d "${_work}/empty.XXXXXX")"

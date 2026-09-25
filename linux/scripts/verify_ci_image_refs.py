@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Every CI lane in the family runs in the SAME two images, and this proves it.
+"""Every CI lane in the family runs in the SAME images, and this proves it.
 
 versions.env owns the convention (IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG /
-CI_IMAGE_WINDOWS_TAG). Each language has exactly ONE way to ask it for the
-composed ref: YAML omits the `image:` input and inherits the four container
-composite actions' DEFAULT, Bash calls linux/scripts/ci-image-ref.sh, PowerShell
+CI_IMAGE_WINDOWS_TAG / CI_IMAGE_WINDOWS_ARM64_TAG, the last one the arm64 cross
+bundle). Each language has exactly ONE way to ask it for the composed ref: YAML
+omits the image input and inherits the four container composite actions'
+DEFAULT (a Windows step that says `target-arch: arm64` inherits the
+`image-arm64` default), Bash calls linux/scripts/ci-image-ref.sh, PowerShell
 calls Get-CiImageReference. Anything that spells the ref out instead is a COPY,
 and a copy is frozen at the tag it was written on. These four checks are what
 make a copy, or a default that stopped matching, visible:
 
-  A. Each of the four actions' `image` input still has a `default:` and that
-     default equals the ref composed from versions.env. A tag bump therefore
-     lands in one file and the four copies cannot drift away from it.
+  A. Each image input of the four actions (`image`, and on the Windows pair
+     `image-arm64`) still has a `default:`, and that default equals the ref
+     composed from versions.env for that input. A tag bump therefore lands in
+     one file and the copies cannot drift away from it.
   B. Every `kataglyphis_beschleuniger:<tag>` literal anywhere under .github/
-     names one of the two canonical tags. This is the drift detector: an
+     names one of the canonical tags. This is the drift detector: an
      arch-suffixed tag, a stale tag, or plain `:latest` (whose per-platform
      children were deleted and never restored) fails here rather than at
      `docker pull` time in someone else's lane.
-  C. A step that `uses:` one of the four actions and passes an `image:`
-     containing a literal must pass the canonical ref FOR THAT ACTION'S
-     PLATFORM. B alone cannot catch a Linux lane handed `:winamd64` -- both
-     tags are canonical, just not for the same action.
+  C. A step that `uses:` one of the four actions and passes an image input
+     containing a literal must pass the canonical ref FOR THAT INPUT. B alone
+     cannot catch a Linux lane handed `:winamd64`, or a Windows `image:` handed
+     the arm64 bundle -- every one of those tags is canonical, just not there.
   D. No COPY of a currently-canonical ref: not in a tracked *.sh / *.ps1 /
      *.psm1 anywhere under the root, and not as the whole value of a YAML
      mapping key other than `default:`. A/B/C were all blind to this, which is
@@ -68,12 +71,14 @@ sys.path.insert(0, str(HERE))
 import gate_scope  # noqa: E402
 
 # The four composite actions the whole family reaches its containers through,
-# and the platform each one is for. Relative to <root>/.github/actions/.
+# each one's image inputs, and the canonical ref each input is for. Relative to
+# <root>/.github/actions/. The Windows pair also runs the arm64 cross bundle:
+# `target-arch: arm64` selects their `image-arm64` input.
 CONTAINER_ACTIONS = {
-    "prepare-linux-ci-host": "linux",
-    "run-in-linux-container": "linux",
-    "prepare-windows-container-host": "windows",
-    "run-in-windows-container": "windows",
+    "prepare-linux-ci-host": {"image": "linux"},
+    "run-in-linux-container": {"image": "linux"},
+    "prepare-windows-container-host": {"image": "windows", "image-arm64": "windows-arm64"},
+    "run-in-windows-container": {"image": "windows", "image-arm64": "windows-arm64"},
 }
 
 # Non-canonical `kataglyphis_beschleuniger:<tag>` literals that are correct
@@ -91,10 +96,8 @@ USES_RE = re.compile(r"^(\s*)(?:-\s+)?uses:\s*(\S+)")
 # D's YAML half: a mapping line whose VALUE is the whole ref. A ref inside a
 # `run:` block or an expression is not this shape, and is judged by B and C.
 YAML_ENTRY_RE = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_.-]*):\s*(.*?)\s*$")
-IMAGE_RE = re.compile(r"^\s*image:\s*(.*?)\s*$")
+IMAGE_RE = re.compile(r"^\s*(image|image-arm64):\s*(.*?)\s*$")
 LIST_ITEM_RE = re.compile(r"^(\s*)-\s")
-# `image:` inside an action's `inputs:` block, i.e. the input NAME, not a value.
-INPUT_KEY_RE = re.compile(r"^  image:\s*$")
 DEFAULT_RE = re.compile(r"^    default:\s*(.*?)\s*$")
 
 
@@ -114,17 +117,21 @@ def load_versions(path: Path) -> dict[str, str]:
     return out
 
 
+# Each canonical ref's name and the versions.env key holding its tag.
+TAG_KEYS = {
+    "linux": "CI_IMAGE_LINUX_TAG",
+    "windows": "CI_IMAGE_WINDOWS_TAG",
+    "windows-arm64": "CI_IMAGE_WINDOWS_ARM64_TAG",
+}
+
+
 def canonical_refs() -> dict[str, str]:
     versions = load_versions(VERSIONS_ENV)
-    missing = [k for k in ("IMAGE_REGISTRY_PREFIX", "CI_IMAGE_LINUX_TAG",
-                           "CI_IMAGE_WINDOWS_TAG") if not versions.get(k)]
+    missing = [k for k in ("IMAGE_REGISTRY_PREFIX", *TAG_KEYS.values()) if not versions.get(k)]
     if missing:
         raise SystemExit("FAIL: %s: missing %s" % (VERSIONS_ENV, ", ".join(missing)))
     prefix = versions["IMAGE_REGISTRY_PREFIX"]
-    return {
-        "linux": "%s:%s" % (prefix, versions["CI_IMAGE_LINUX_TAG"]),
-        "windows": "%s:%s" % (prefix, versions["CI_IMAGE_WINDOWS_TAG"]),
-    }
+    return {name: "%s:%s" % (prefix, versions[key]) for name, key in TAG_KEYS.items()}
 
 
 def yaml_files(root: Path) -> list[Path]:
@@ -167,8 +174,8 @@ def ask_instead(path: Path) -> str:
     be able to turn a finding into a KeyError.
     """
     if path.suffix.lower() == ".sh":
-        return "bash <ANTfrastructure>/linux/scripts/ci-image-ref.sh [--windows]"
-    return "Get-CiImageReference [-Windows] (WindowsContainerImage.Common.psm1)"
+        return "bash <ANTfrastructure>/linux/scripts/ci-image-ref.sh [--windows|--windows-arm64]"
+    return "Get-CiImageReference [-Windows [-TargetArch arm64]] (WindowsContainerImage.Common.psm1)"
 
 
 def check_script_copies(root: Path, files: list[Path], frozen: re.Pattern) -> int:
@@ -211,17 +218,19 @@ def check_yaml_copies(root: Path, files: list[Path], frozen: re.Pattern) -> int:
     return bad
 
 
-def image_input_default(text: str) -> str | None:
-    """The `default:` of the top-level `image` input, or None when it has none.
+def image_input_default(text: str, name: str = "image") -> str | None:
+    """The `default:` of the top-level input `name`, or None when it has none.
 
     Hand-parsed on purpose: the gate must run with the stdlib alone (CI installs
     no PyYAML for it), and the shape it reads -- two-space input key, four-space
     key/value under it -- is the shape every action.yml in this repo is written
     in and the shape actionlint enforces.
     """
+    # The input NAME inside an action's `inputs:` block, not a value.
+    input_key = re.compile(r"^  %s:\s*$" % re.escape(name))
     lines = text.replace("\r\n", "\n").split("\n")
     for i, line in enumerate(lines):
-        if not INPUT_KEY_RE.match(line):
+        if not input_key.match(line):
             continue
         for follow in lines[i + 1:]:
             if follow.strip() and not follow.startswith("    "):
@@ -233,23 +242,25 @@ def image_input_default(text: str) -> str | None:
 
 
 def check_action_defaults(root: Path, refs: dict[str, str]) -> tuple[int, int]:
-    """A: the four `image` defaults are present and equal the composed ref."""
+    """A: every image input default is present and equals its composed ref."""
     bad = seen = 0
-    for name, platform in sorted(CONTAINER_ACTIONS.items()):
+    for name, inputs in sorted(CONTAINER_ACTIONS.items()):
         path = root / ".github" / "actions" / name / "action.yml"
         if not path.is_file():
             continue
-        seen += 1
         rel = path.relative_to(root).as_posix()
-        value = image_input_default(path.read_text(encoding="utf-8"))
-        if value is None:
-            fail("%s: the `image` input has no `default:` -- callers would have to "
-                 "re-type the tag, which is the drift this gate exists to stop." % rel)
-            bad += 1
-        elif value != refs[platform]:
-            fail("%s: `image` default is %s, versions.env composes %s"
-                 % (rel, value, refs[platform]))
-            bad += 1
+        text = path.read_text(encoding="utf-8")
+        for input_name, platform in sorted(inputs.items()):
+            seen += 1
+            value = image_input_default(text, input_name)
+            if value is None:
+                fail("%s: the `%s` input has no `default:` -- callers would have to "
+                     "re-type the tag, which is the drift this gate exists to stop." % (rel, input_name))
+                bad += 1
+            elif value != refs[platform]:
+                fail("%s: `%s` default is %s, versions.env composes %s"
+                     % (rel, input_name, value, refs[platform]))
+                bad += 1
     return bad, seen
 
 
@@ -263,7 +274,7 @@ def literal_refs(text: str) -> list[tuple[int, str, str]]:
 
 
 def check_literals(root: Path, files: list[Path], refs: dict[str, str]) -> tuple[int, set]:
-    """B: every literal tag under .github/ is one of the two canonical ones."""
+    """B: every literal tag under .github/ is one of the canonical ones."""
     canonical_tags = {ref.rsplit(":", 1)[1] for ref in refs.values()}
     bad = 0
     used_excuses = set()
@@ -282,31 +293,32 @@ def check_literals(root: Path, files: list[Path], refs: dict[str, str]) -> tuple
     return bad, used_excuses
 
 
-def action_platform(uses: str) -> str | None:
-    """The platform of a `uses:` reference to one of the four container actions."""
+def action_inputs(uses: str) -> dict[str, str] | None:
+    """The image inputs of a `uses:` reference to one of the four container actions."""
     ref = uses.strip().strip("'\"").split("@", 1)[0].rstrip("/")
-    for name, platform in CONTAINER_ACTIONS.items():
+    for name, inputs in CONTAINER_ACTIONS.items():
         if ref.endswith(".github/actions/" + name):
-            return platform
+            return inputs
     return None
 
 
 def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int:
-    """C: a literal handed to one of the four actions matches ITS platform.
+    """C: a literal handed to one of the four actions matches THAT INPUT's ref.
 
-    B cannot see this: `:winamd64` passed to run-in-linux-container is a
-    perfectly canonical tag, for the wrong operating system.
+    B cannot see this: `:winamd64` passed to run-in-linux-container, or the arm64
+    bundle passed to a Windows action's `image`, is a perfectly canonical tag,
+    for the wrong operating system or the wrong target.
     """
     bad = 0
     for path in files:
         rel = path.relative_to(root).as_posix()
-        pending = None  # (platform, indent of the `uses:` line)
+        pending = None  # (the action's image inputs, indent of the `uses:` line)
         for lineno, line in enumerate(
                 path.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n"), 1):
             uses = USES_RE.match(line)
             if uses:
-                platform = action_platform(uses.group(2))
-                pending = (platform, len(uses.group(1))) if platform else None
+                inputs = action_inputs(uses.group(2))
+                pending = (inputs, len(uses.group(1))) if inputs else None
                 continue
             if pending is None:
                 continue
@@ -315,18 +327,18 @@ def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int
                 pending = None  # next step; this one passed no image literal
                 continue
             image = IMAGE_RE.match(line)
-            if not image:
+            # An image input this action does not have is actionlint's to report.
+            if not image or image.group(1) not in pending[0]:
                 continue
-            value = image.group(1)
-            found = REF_RE.search(value)
+            platform = pending[0][image.group(1)]
+            found = REF_RE.search(image.group(2))
             # No literal means an expression or the omitted input -- both resolve
             # through the action default, and any literal inside the expression
             # was already judged by check_literals.
-            if found and found.group(1) != refs[pending[0]].rsplit(":", 1)[1]:
-                fail("%s:%d: a %s action is handed ':%s'; it must run %s"
-                     % (rel, lineno, pending[0], found.group(1), refs[pending[0]]))
+            if found and found.group(1) != refs[platform].rsplit(":", 1)[1]:
+                fail("%s:%d: `%s:` of a %s action is handed ':%s'; it must run %s"
+                     % (rel, lineno, image.group(1), platform.split("-")[0], found.group(1), refs[platform]))
                 bad += 1
-            pending = None
     return bad
 
 
@@ -334,8 +346,8 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HUB_ROOT
     refs = canonical_refs()
     print("== CI image refs under %s ==" % root)
-    print("   linux   %s" % refs["linux"])
-    print("   windows %s" % refs["windows"])
+    for name, ref in refs.items():
+        print("   %-13s %s" % (name, ref))
 
     files = yaml_files(root)
     if not files:

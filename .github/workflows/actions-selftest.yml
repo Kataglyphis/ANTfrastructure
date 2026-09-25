@@ -551,6 +551,9 @@ jobs:
         id: prep
         uses: ./.github/actions/prepare-windows-container-host
         with:
+          # amd64: the deep lane pulls the family image, not the arm64 bundle.
+          # Both images come from the action's defaults; none is named here.
+          target-arch: amd64
           registry: ghcr.io
           registry-username: Kataglyphis
           registry-password: ${{ secrets.GHCR_PAT }}
@@ -574,6 +577,10 @@ jobs:
           if ($root -ne 'D:\docker') { throw "prepare-windows-container-host output data-root='$root', expected 'D:\docker'" }
           if ($ws -ne 'D:\ws') { throw "prepare-windows-container-host output workspace='$ws'; with short-path-target it must be the short clone, not GITHUB_WORKSPACE" }
           if (-not (Test-Path 'D:\ws\.github\actions\README.md')) { throw 'the short-path clone at D:\ws is not this repository' }
+          $image = '${{ steps.prep.outputs.image }}'
+          if (-not $image) { throw 'prepare-windows-container-host output image is empty' }
+          docker image inspect $image --format '{{.Os}}' | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "output image '$image' is not the image that was pulled" }
 
       # -Command entrypoint. extra-args is ONE ARGV ELEMENT PER LINE here (the
       # Linux sibling takes a verbatim shell fragment; Windows argv must stay
@@ -581,6 +588,7 @@ jobs:
       - name: run-in-windows-container (-Command)
         uses: ./.github/actions/run-in-windows-container
         with:
+          target-arch: amd64
           command: |
             if ($env:SELFTEST_MARKER -ne 'ok') { throw "extra-args did not deliver SELFTEST_MARKER (got '$env:SELFTEST_MARKER')" }
             if ((Get-Location).Path -ne 'C:\ws') { throw "mount-target did not become the working directory (got '$((Get-Location).Path)')" }

@@ -51,6 +51,21 @@ inputs:
       rather than a literal nobody reads.
     required: false
     default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64'
+  target-arch:
+    description: >-
+      What the lane builds FOR: amd64 pulls `image`, arm64 pulls `image-arm64`,
+      the cross bundle (an amd64 image whose C:\runtime is aarch64 and whose
+      entrypoint targets arm64; docs/windows-cross-builds.md). The host is amd64
+      either way. The windows-arm64-cross lanes set arm64 and omit both images.
+    required: false
+    default: 'amd64'
+  image-arm64:
+    description: >-
+      The image for `target-arch: arm64`. Same contract as `image`: omit it, and
+      the default is a checked copy of
+      `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_ARM64_TAG}` from versions.env.
+    required: false
+    default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winarm64'
   registry:
     description: 'Registry to log in to.'
     required: false
@@ -138,6 +153,9 @@ inputs:
     default: 'false'
 
 outputs:
+  image:
+    description: 'The image that was pulled: `image`, or `image-arm64` under `target-arch: arm64`.'
+    value: ${{ steps.image.outputs.ref }}
   data-root:
     description: 'The data-root Docker was pointed at (empty when the move was skipped).'
     value: ${{ steps.datar.outputs.data-root }}
@@ -151,6 +169,24 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # First, so a typo fails in seconds rather than after the checkout and the disk moves.
+    - name: Resolve the image for the target arch
+      id: image
+      shell: pwsh
+      env:
+        TARGET_ARCH: ${{ inputs.target-arch }}
+        IMAGE_AMD64: ${{ inputs.image }}
+        IMAGE_ARM64: ${{ inputs.image-arm64 }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ref = switch ($env:TARGET_ARCH) {
+            'amd64' { $env:IMAGE_AMD64 }
+            'arm64' { $env:IMAGE_ARM64 }
+            default { throw "target-arch must be amd64 or arm64, not '$env:TARGET_ARCH'" }
+        }
+        Write-Host "target-arch $env:TARGET_ARCH -> $ref"
+        "ref=$ref" >> $env:GITHUB_OUTPUT
+
     # Without this a deep path in a submodule fails the checkout itself. It is
     # not sufficient on its own - see short-path-target - but it is free.
     - name: Enable Git long paths
@@ -207,11 +243,13 @@ runs:
 
     - name: Pull the Windows container image
       shell: pwsh
+      env:
+        IMAGE: ${{ steps.image.outputs.ref }}
       run: |
         $ErrorActionPreference = 'Stop'
-        Write-Host "Pulling ${{ inputs.image }}"
-        docker pull "${{ inputs.image }}"
-        if ($LASTEXITCODE -ne 0) { throw "docker pull failed for ${{ inputs.image }}" }
+        Write-Host "Pulling $env:IMAGE"
+        docker pull "$env:IMAGE"
+        if ($LASTEXITCODE -ne 0) { throw "docker pull failed for $env:IMAGE" }
 
     # Reported AFTER the pull on purpose: this is where the multi-GB drop has to
     # show up, and it must be on the data-root drive. Before the pull the numbers

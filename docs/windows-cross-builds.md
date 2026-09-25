@@ -49,7 +49,9 @@ produce, and which gates keep it honest.
 > smoke gate runs only host-toolchain sections (1-6, 14-16, 19, arch-filtered), and sections
 > 14/15 compile **for** the target and assert the produced PE machine rather than run anything.
 > A green build proves the code compiles and links for the target, and nothing more. The
-> `windows-11-arm` runner remains the only path to execution proof; the repo owner declined one.
+> `windows-11-arm` runner remains the only path to execution proof. The owner declined it for
+> this repo, and took it for the consumer apps' cross lanes on 2026-09-25
+> ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 >
 > How the lane got here, run by run (#116, #128, #131, #133 narratives, including the three meson
 > build-only-subproject defects and the seven fix-and-rerun cycles of the runtime-python work):
@@ -231,9 +233,10 @@ With nothing runnable on the build host, verification is layered:
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
 
-The one gate that does **not** exist yet is native execution: a `windows-11-arm` CI job would be
-the only proof the artifacts actually **run**. Until it exists, treat every arm64 output as
-unvalidated — see the prose below.
+This repo's own lane has no native execution gate: a `windows-11-arm` CI job would be the only
+proof the artifacts actually **run**, so treat every arm64 output of the bundle as unvalidated
+— see the prose below. The consumer apps' cross lanes do have one
+([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 
 `Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
@@ -261,6 +264,30 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners
 cost nothing. They are Windows 11 **client**, not Server Core — a caveat to state rather than a
 problem to solve, since no Server Core arm64 exists.
+
+## Consumer cross lanes (`container-ci-windows.yml`)
+
+The consumers build FOR this bundle's target in CI: `windows-arm64-cross.yml` in OxidANT,
+AccelerANTgine and BeschleunigerBallett (owner decision 2026-09-25). OmniAccelerANT has none:
+Flutter cannot cross-build `windows-arm64` from an x64 host (flutter/flutter#179777), and its
+Cargokit knows only `windows-x64`.
+
+Each caller is thin. It names its build script, the script's arguments and the directory the
+product lands in. The hub's reusable `container-ci-windows.yml` owns everything else, and it
+is the same file an x64 lane uses with `target-arch: amd64`:
+
+1. `prepare-windows-container-host` with `target-arch: arm64` pulls the arm64 bundle, the
+   action's `image-arm64` default. `verify_ci_image_refs.py` holds that default to
+   `CI_IMAGE_WINDOWS_ARM64_TAG`, so no workflow names the tag.
+2. `run-in-windows-container` runs the build script in that image, under `C:\ws`. Its
+   entrypoint loads the arm64-targeting VS environment, so the rules of this page apply to
+   the consumer's build: a bare `clang-cl` still targets x64 and needs `--target`.
+3. The arch gate: `Test-TargetArch.ps1 -Arch arm64 -ImportWalk` over the product, inside the
+   same image, from the caller's own hub submodule. An x64 object in the tree fails, and so
+   does an import that a clean device cannot resolve (the CRT has to ship with the product).
+4. The product is uploaded.
+5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
+   command in it natively. This is the only execution an arm64 binary from the family gets.
 
 ## Sequencing: rebuild base twice, on purpose
 

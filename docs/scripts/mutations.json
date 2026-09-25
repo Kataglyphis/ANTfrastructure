@@ -6648,6 +6648,14 @@
     "why": "--windows must resolve the WINDOWS tag; a Linux tag handed to a Windows lane is a valid-looking reference for the wrong operating system, which is the failure verify_ci_image_refs.py's check C exists for"
   },
   {
+    "id": "ci-image-ref.windows-arm64-tag-key",
+    "target": "linux/scripts/ci-image-ref.sh",
+    "find": "    windows-arm64) tag_key=CI_IMAGE_WINDOWS_ARM64_TAG ;;",
+    "replace": "    windows-arm64) tag_key=CI_IMAGE_WINDOWS_TAG ;;",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "--windows-arm64 must resolve the cross bundle's OWN key; falling back to the plain Windows tag hands a cross lane an x64 payload, and it links arm64 objects against x64 libraries far from the cause"
+  },
+  {
     "id": "ci-image-ref.quotes-unwrapped",
     "target": "linux/scripts/ci-image-ref.sh",
     "find": "  value=\"${value%\\\"}\"; value=\"${value#\\\"}\"\n  value=\"${value%\\'}\"; value=\"${value#\\'}\"",
@@ -6658,8 +6666,8 @@
   {
     "id": "ci-image-ref.unknown-argument-is-a-usage-error",
     "target": "linux/scripts/ci-image-ref.sh",
-    "find": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux or --windows)\\n' \"$1\" >&2\n      return 2",
-    "replace": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux or --windows)\\n' \"$1\" >&2\n      return 0",
+    "find": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux, --windows or --windows-arm64)\\n' \"$1\" >&2\n      return 2",
+    "replace": "      printf 'ci-image-ref.sh: unknown argument \"%s\" (expected --linux, --windows or --windows-arm64)\\n' \"$1\" >&2\n      return 0",
     "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
     "why": "a typo'd platform flag must be a usage error, not a silent success: returning 0 prints no reference at all and the caller runs docker with an empty image argument"
   },
@@ -6707,6 +6715,14 @@
     "why": "an `image` input with no default is not 'nothing to compare': every caller then re-types the tag, which is where the copies drift apart"
   },
   {
+    "id": "workflow-lint.every-image-input-graded",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "        for input_name, platform in sorted(inputs.items()):",
+    "replace": "        for input_name, platform in sorted(inputs.items())[:1]:",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "check A grades EVERY image input of an action, not its first: the Windows actions' `image-arm64` default is what every cross lane inherits, and a wrong or missing one would pass with only `image` graded"
+  },
+  {
     "id": "workflow-lint.non-canonical-literal-fails",
     "target": "linux/scripts/verify_ci_image_refs.py",
     "find": "            if tag in canonical_tags:\n                continue",
@@ -6717,10 +6733,18 @@
   {
     "id": "workflow-lint.call-site-platform-checked",
     "target": "linux/scripts/verify_ci_image_refs.py",
-    "find": "            if found and found.group(1) != refs[pending[0]].rsplit(\":\", 1)[1]:",
+    "find": "            if found and found.group(1) != refs[platform].rsplit(\":\", 1)[1]:",
     "replace": "            if False:",
     "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
-    "why": "check C is the half check B cannot do: both tags are canonical, so a Linux action handed ':winamd64' passes B and runs the wrong operating system"
+    "why": "check C is the half check B cannot do: every tag is canonical, so a Linux action handed ':winamd64' passes B and runs the wrong operating system"
+  },
+  {
+    "id": "workflow-lint.call-site-input-platform",
+    "target": "linux/scripts/verify_ci_image_refs.py",
+    "find": "            platform = pending[0][image.group(1)]",
+    "replace": "            platform = next(iter(pending[0].values()))",
+    "test": "bash linux/scripts/tests/test-ci-image-ref.sh",
+    "why": "check C takes the ref of the INPUT a literal is handed to: a Windows action's `image` and `image-arm64` want different images, and grading both against the first would wave the amd64 image through as a cross lane's bundle"
   },
   {
     "id": "workflow-lint.no-yaml-is-a-refusal",

@@ -7,6 +7,56 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The Windows arm64 cross lanes get a hub lane; the gate knows the bundle
+
+Owner decisions of 2026-09-25: `windows-arm64-cross.yml` lanes for OxidANT,
+AccelerANTgine and BeschleunigerBallett, built in the arm64 bundle on the amd64
+runner, plus a job that runs the product natively on GitHub's `windows-11-arm`.
+Lanes share through hub reusable workflows with thin callers. Until now nothing in
+the family could even name the bundle in CI: `verify_ci_image_refs.py` accepted
+exactly two canonical tags and had no route for a third.
+
+- `versions.env`: `CI_IMAGE_WINDOWS_ARM64_TAG=winarm64` (noforward). Like any
+  edit to that file it re-keys the next image build.
+- `prepare-windows-container-host` and `run-in-windows-container`:
+  - `target-arch: amd64|arm64` (default amd64; anything else fails in the first
+    step);
+  - an `image-arm64` input whose default is the bundle;
+  - the prepare action outputs the `image` it pulled.
+- `verify_ci_image_refs.py`: the arm64 ref is canonical.
+  - Check A grades every image input of an action, so six defaults now instead
+    of four.
+  - Check C takes the ref of the input a literal is handed to.
+  - The bundle spelled out anywhere is still a copy (check D).
+- `ci-image-ref.sh --windows-arm64` and `Get-CiImageReference -Windows -TargetArch
+  arm64` ask for the same ref.
+- `container-ci-windows.yml` ("Container CI · Windows (reusable)"): one Windows
+  container lane for `target-arch: amd64` and `arm64`. The job:
+  1. prepare;
+  2. run the caller's build script in the image;
+  3. on arm64, run `Test-TargetArch.ps1 -Arch arm64 -ImportWalk` over the
+     product, in the same image, from the caller's own hub submodule;
+  4. upload the product.
+  With a `run-command`, a `windows-11-arm` job then downloads the product and
+  runs it natively.
+- `actions-selftest.yml` passes `target-arch` to both actions and reads the new
+  `image` output. `windows-cross-builds.md` § Consumer cross lanes, the actions
+  README and `INDEX.md` describe all of it.
+
+Tests: `test-ci-image-ref.sh` 53 pass, with new fixtures for a Windows action
+carrying both inputs:
+- a wrong or missing `image-arm64` default fails;
+- the bundle handed to `image:`, or the amd64 image handed to `image-arm64:`,
+  fails;
+- `target-arch: arm64` with no image passes.
+
+All 13 mutations on the gate and on `ci-image-ref.sh` bite, three of them new.
+`lint-workflows.sh` is clean, 26 YAML files. No suite covered
+`Get-CiImageReference`, although `ci-image-ref.sh`'s header says the two are
+held equal. `ContainerImage.CiRef.Tests.ps1` now does: all three refs against
+versions.env, arm64 refused without `-Windows`, and a missing arm64 key throws.
+Breaking the arm64 key lookup fails it.
+
 ## 2026-09-25 - HIP compiles in the rocm image: TheRock's clang loads the `<cmath>` overlay
 
 With torch through (entry below), the rocm chain built `bk-winamd64-rocm` and the

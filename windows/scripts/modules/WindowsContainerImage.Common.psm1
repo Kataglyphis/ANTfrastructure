@@ -164,9 +164,9 @@ function Assert-ContainerCommandAvailable {
     The family CI container image reference, composed from ANTfrastructure's versions.env.
 .DESCRIPTION
     The PowerShell twin of linux/scripts/ci-image-ref.sh, and the same contract:
-    versions.env owns IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG / CI_IMAGE_WINDOWS_TAG,
-    the four container composite actions carry the composed value as their `image:`
-    input DEFAULT, and this exists for the callers that cannot omit an input because
+    versions.env owns IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG / CI_IMAGE_WINDOWS_TAG /
+    CI_IMAGE_WINDOWS_ARM64_TAG, the four container composite actions carry the composed
+    values as their image input DEFAULTS, and this exists for the callers that cannot omit an input because
     they are not calling an action -- a local lane driver, a `docker run`, a sweep script.
 
     It takes NO consumer repo root, deliberately, where every other entry point in this
@@ -180,19 +180,26 @@ function Assert-ContainerCommandAvailable {
     from the cause. Parsed, never sourced -- versions.env is inert KEY=value data.
 .PARAMETER Windows
     Compose the Windows image reference instead of the Linux one.
+.PARAMETER TargetArch
+    With -Windows: arm64 composes the arm64 cross bundle (CI_IMAGE_WINDOWS_ARM64_TAG),
+    the image the windows-arm64-cross lanes run in. amd64 (the default) is the plain
+    Windows image. Refused without -Windows: there is no Linux cross bundle.
 .PARAMETER VersionsEnvPath
     Override the versions.env location. For tests; leave unset in production.
 .OUTPUTS
     [string] '<IMAGE_REGISTRY_PREFIX>:<CI_IMAGE_LINUX_TAG>', or the
-    CI_IMAGE_WINDOWS_TAG one under -Windows. No sample value is spelled out here:
-    a ref in a comment freezes at the tag it was typed on exactly like one in
-    code, and verify_ci_image_refs.py check D reads comments too.
+    CI_IMAGE_WINDOWS_TAG one under -Windows (CI_IMAGE_WINDOWS_ARM64_TAG with
+    -TargetArch arm64). No sample value is spelled out here: a ref in a comment
+    freezes at the tag it was typed on exactly like one in code, and
+    verify_ci_image_refs.py check D reads comments too.
 #>
 function Get-CiImageReference {
     param(
         [switch]$Windows,
+        [ValidateSet('amd64', 'arm64')][string]$TargetArch = 'amd64',
         [string]$VersionsEnvPath = ''
     )
+    if ($TargetArch -eq 'arm64' -and -not $Windows) { throw '-TargetArch arm64 needs -Windows: only Windows has an arm64 cross bundle' }
 
     if ([string]::IsNullOrWhiteSpace($VersionsEnvPath)) {
         $hubRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
@@ -206,7 +213,7 @@ function Get-CiImageReference {
     }
 
     $versions = ConvertFrom-VersionsEnv -Path $VersionsEnvPath
-    $tagKey = if ($Windows) { 'CI_IMAGE_WINDOWS_TAG' } else { 'CI_IMAGE_LINUX_TAG' }
+    $tagKey = if (-not $Windows) { 'CI_IMAGE_LINUX_TAG' } elseif ($TargetArch -eq 'arm64') { 'CI_IMAGE_WINDOWS_ARM64_TAG' } else { 'CI_IMAGE_WINDOWS_TAG' }
 
     foreach ($key in @('IMAGE_REGISTRY_PREFIX', $tagKey)) {
         if (-not $versions.Contains($key) -or [string]::IsNullOrWhiteSpace($versions[$key])) {
