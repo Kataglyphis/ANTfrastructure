@@ -35,6 +35,14 @@ The probe also compiles with `--no-default-config`, which reports when a toolset
 stops needing the overlay. On the unfixed image it measured MSVC 14.51.36231 with
 TheRock 10.0.0: all three drivers fail, and the overlay is still needed.
 
+**The rocm chain is through.** The rebuild took 24:44 from cache, with
+`Stages: base, sdk, toolchain, media, migraphx, llama, torch, final (rocm)`. The smoke
+gate passed 215 assertions (1 skipped), and `ROCm image checks: all passed (root
+C:\TheRock\build, kernel compiled for gfx1201)`. The publish gate passed too. On the
+rebuilt image the probe reads both configs back, and `hipcc`, `clang -x hip` and
+`amdclang++ -x hip` all compile as the image ships them. `--no-default-config` still
+fails with the same 20 errors, so the overlay stays.
+
 ## 2026-09-25 - The torch ROCm wheels download straight into the cache, with no rename
 
 With MIGraphX, the EP and llama.cpp through, the torch stage built and verified the
