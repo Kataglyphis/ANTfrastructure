@@ -6,7 +6,7 @@
 # (owner rule 2026-09-23, docs/onnxruntime-single-source.md): the ORT family's names, the chain's
 # DLLs staged beside an exe, and the proof -- G6 (WindowsOrtProvenance.Common) over the tree plus
 # what G6 does not grade: onnxruntime.dll missing where the exe looks for it (a client host then
-# loads System32's Windows ML copy), an ORT-family name the chain has not got, another DirectML.dll.
+# loads System32's Windows ML build), an ORT-family name the chain has not got, another DirectML.dll.
 #
 # Three consumers each carried this glue under their own names until 2026-09-25: OxidANT's
 # WindowsOrtPayload.Common, OmniAccelerANT's WindowsOrtRunner.Common and AccelerANTgine's
@@ -102,7 +102,7 @@ function Get-OrtPayloadFinding {
     }
     $lines = [System.Collections.Generic.List[string]]::new()
     if (-not (Test-Path -LiteralPath (Join-Path $OrtDirectory 'onnxruntime.dll') -PathType Leaf)) {
-        $lines.Add("MISSING $OrtDirectory\onnxruntime.dll: without it a client host loads System32's Windows ML copy")
+        $lines.Add("MISSING $OrtDirectory\onnxruntime.dll: without it a client host loads System32's Windows ML build")
     }
     foreach ($file in (Get-OrtFamilyFile -Directory $OrtDirectory)) {
         if (-not $chain.ContainsKey($file.Name)) { $lines.Add("STRAY $($file.FullName) is not a file of the chain ORT ($prefix) or GenAI install"); continue }
