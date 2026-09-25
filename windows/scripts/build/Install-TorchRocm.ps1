@@ -301,6 +301,11 @@ function Get-TorchRocmInstallCommand {
 <#
 .SYNOPSIS
     Fetches one pinned file into the cache; a cached copy is reused only when it re-verifies.
+.DESCRIPTION
+    Straight to the cache path, never a .part renamed into place: on the BuildKit cache mount that rename
+    failed ERROR_PATH_NOT_FOUND on the third wheel (2026-09-25), the create-then-rename class of
+    docs/windows-build-lanes.md § Run-side wcifs symptoms. A partial file is never used either way: a
+    failed download deletes what it wrote, and every reuse re-checks the SHA256.
 #>
 function Save-TorchRocmWheel {
     param(
@@ -317,11 +322,9 @@ function Save-TorchRocmWheel {
         Write-Warning "cached $($Wheel.FileName) fails its SHA256 - fetching it again"
         Remove-Item -LiteralPath $dest -Force
     }
-    $part = "$dest.part"
     $signature = if ($Wheel.IsSdist) { '' } else { 'PK' }
-    Invoke-DownloadWithRetry -Url $Wheel.Url -DestinationPath $part -ExpectedSha256 $Wheel.Sha256 `
+    Invoke-DownloadWithRetry -Url $Wheel.Url -DestinationPath $dest -ExpectedSha256 $Wheel.Sha256 `
         -ExpectSignature $signature -Description $Wheel.FileName -InitialDelaySeconds $InitialDelaySeconds
-    Move-Item -LiteralPath $part -Destination $dest -Force
     return $dest
 }
 
