@@ -290,6 +290,33 @@ function Save-GitCommitSource {
     return $dest
 }
 
+function Write-NlohmannJsonConfigShim {
+    <#
+    .SYNOPSIS
+        A nlohmann_json package dir that loads TheRock's config and clears its INTERFACE_SOURCES.
+    .DESCRIPTION
+        TheRock's copy was installed by an MSVC-style build, so its exported target lists
+        <prefix>/nlohmann_json.natvis as an interface source, and TheRock's dist does not ship that
+        file: "Cannot find source file: C:/TheRock/build/nlohmann_json.natvis" (2026-09-25). The natvis
+        is a debugger visualizer; headers, version and licence stay TheRock's. Returns the shim dir.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RocmRoot,
+        [Parameter(Mandatory)][string]$DepsPrefix
+    )
+    $upstream = (Join-Path $RocmRoot 'share\cmake\nlohmann_json') -replace '\\', '/'
+    $absent = @('nlohmann_jsonConfig.cmake', 'nlohmann_jsonConfigVersion.cmake').Where({ -not [IO.File]::Exists("$upstream/$_") })
+    if ($absent.Count) { throw "TheRock has no $upstream/$($absent -join ' or ')" }
+    $shimDir = [IO.Directory]::CreateDirectory((Join-Path $DepsPrefix 'share\cmake\nlohmann_json')).FullName
+    [IO.File]::WriteAllLines((Join-Path $shimDir 'nlohmann_jsonConfig.cmake'), [string[]]@(
+        '# Written by Build-MigraphxFromSource.ps1: TheRock''s nlohmann_json minus the natvis its dist lacks.'
+        "include(`"$upstream/nlohmann_jsonConfig.cmake`")"
+        'set_property(TARGET nlohmann_json::nlohmann_json PROPERTY INTERFACE_SOURCES "")'))
+    [IO.File]::WriteAllLines((Join-Path $shimDir 'nlohmann_jsonConfigVersion.cmake'),
+        [string[]]@("include(`"$upstream/nlohmann_jsonConfigVersion.cmake`")"))
+    return $shimDir
+}
+
 function Get-MigraphxPinnedSourceSpec {
     <#
     .SYNOPSIS
@@ -460,6 +487,7 @@ function Save-MigraphxLicense {
 Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList, Get-MigraphxHipRuntimeFile,
     Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Save-PinnedSource, Get-FetchContentUrlMap,
     Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
+    Write-NlohmannJsonConfigShim,
     Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
     Get-MigraphxLicenseFile, Get-MigraphxStagedLicensePath, Get-MigraphxLicenseGap, Copy-MigraphxLicenseFile, Save-SpdxHeaderNotice,
     Save-MigraphxLicense

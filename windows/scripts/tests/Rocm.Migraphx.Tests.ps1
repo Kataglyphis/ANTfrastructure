@@ -132,6 +132,31 @@ Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
     }
 }
 
+Describe 'WindowsMigraphx.Common: nlohmann_json natvis shim' {
+    It 'loads TheRock''s config by absolute path and clears the natvis interface source' {
+        Invoke-InTestDir { param($dir)
+            $theRock = Join-Path $dir 'rock'
+            $pkg = Join-Path $theRock 'share\cmake\nlohmann_json'
+            New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+            foreach ($f in 'nlohmann_jsonConfig.cmake', 'nlohmann_jsonConfigVersion.cmake') { Set-Content -LiteralPath (Join-Path $pkg $f) -Value '#' }
+            $shim = Write-NlohmannJsonConfigShim -RocmRoot $theRock -DepsPrefix (Join-Path $dir 'deps')
+            Assert-Equal (Join-Path $dir 'deps\share\cmake\nlohmann_json') $shim 'the standard package dir under the deps prefix'
+            $config = Get-Content -Raw -LiteralPath (Join-Path $shim 'nlohmann_jsonConfig.cmake')
+            $upstream = $pkg -replace '\\', '/'
+            Assert-True ($config.Contains("include(`"$upstream/nlohmann_jsonConfig.cmake`")")) 'includes TheRock''s own config'
+            Assert-True ($config.Contains('set_property(TARGET nlohmann_json::nlohmann_json PROPERTY INTERFACE_SOURCES "")')) 'clears the natvis'
+            $version = Get-Content -Raw -LiteralPath (Join-Path $shim 'nlohmann_jsonConfigVersion.cmake')
+            Assert-True ($version.Contains("include(`"$upstream/nlohmann_jsonConfigVersion.cmake`")")) 'version stays TheRock''s'
+        }
+    }
+
+    It 'refuses a TheRock without the nlohmann_json package' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Write-NlohmannJsonConfigShim -RocmRoot $dir -DepsPrefix (Join-Path $dir 'deps') } -MessagePattern 'TheRock has no'
+        }
+    }
+}
+
 Describe 'Build-MigraphxFromSource.ps1: rocm-cmake' {
     It 'installs MIGraphX''s own rocm-cmake into the deps prefix before MIGraphX configures' {
         $text = Get-Content -Raw -LiteralPath (Join-Path $script:MgxRepo $script:MgxScript)
@@ -332,7 +357,8 @@ Describe 'Build-MigraphxFromSource.ps1' {
             $bin = Join-Path $dir 'lib\llvm\bin'
             New-Item -ItemType Directory -Force -Path $bin | Out-Null
             foreach ($t in 'llvm-ar', 'llvm-ranlib', 'llvm-objcopy', 'clang-offload-bundler', 'llvm-readobj') { Set-Content -LiteralPath (Join-Path $bin "$t.exe") -Value 'x' }
-            $a = @(Get-MigraphxCmakeArgs -RocmRoot $dir -DepsPrefix 'C:\w\deps' -GpuTargets 'gfx1200;gfx1201' -Python 'C:\py\python.exe')
+            $a = @(Get-MigraphxCmakeArgs -RocmRoot $dir -DepsPrefix 'C:\w\deps' -GpuTargets 'gfx1200;gfx1201' -Python 'C:\py\python.exe' `
+                -NlohmannJsonDir 'C:\w\deps\share\cmake\nlohmann_json')
             $joined = $a -join ' '
             foreach ($want in '-DMIGRAPHX_ENABLE_GPU=ON', '-DMIGRAPHX_ENABLE_MLIR=OFF', '-DMIGRAPHX_USE_COMPOSABLEKERNEL=OFF',
                 '-DMIGRAPHX_ENABLE_PYTHON=OFF', '-DMIGRAPHX_ENABLE_TENSORFLOW=OFF', '-DBUILD_DEV=OFF', '-DGPU_TARGETS:STRING=gfx1200;gfx1201',
@@ -343,7 +369,7 @@ Describe 'Build-MigraphxFromSource.ps1' {
             Assert-True ($a -contains "-DCMAKE_AR:FILEPATH=$rocm/lib/llvm/bin/llvm-ar.exe") 'AMD llvm-ar, never llvm-lib'
             Assert-True ($a -contains "-DCLANG_OFFLOAD_BUNDLER:FILEPATH=$rocm/lib/llvm/bin/clang-offload-bundler.exe") 'AMD bundler for the offload-arch check'
             Assert-True ($a -contains "-DCMAKE_PREFIX_PATH:STRING=C:/w/deps;$rocm") 'deps first, then TheRock'
-            Assert-True ($a -contains "-Dnlohmann_json_DIR:PATH=$rocm/share/cmake/nlohmann_json") 'TheRock''s nlohmann/json, the copy whose notice is staged'
+            Assert-True ($a -contains '-Dnlohmann_json_DIR:PATH=C:/w/deps/share/cmake/nlohmann_json') 'the natvis shim over TheRock''s nlohmann/json'
             Assert-False ($joined -match 'CMAKE_(C|CXX)_COMPILER=') 'compilers are passed to Invoke-CmakeConfigure, not here'
         }
     }
