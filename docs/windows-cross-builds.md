@@ -289,6 +289,19 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. This is the only execution an arm64 binary from the family gets.
 
+All three lanes went green on their first CI runs, 2026-09-25:
+
+| Consumer | Binaries graded | What runs on `windows-11-arm` |
+| --- | --- | --- |
+| OxidANT | 12 | `kataglyphis_cli.exe --help` and `stats` |
+| AccelerANTgine | 22 | `AccelerANTgine.exe`, which prints its version once the chain ONNX Runtime and GStreamer have loaded |
+| BeschleunigerBallett | 8 | `GraphicsEngine.exe --version` |
+
+**The runner is a GPU-less Windows 11 client.** It has `opengl32.dll`, which Server Core lacks,
+but no Vulkan loader. BeschleunigerBallett's engine imports `vulkan-1.dll`, which a device gets
+from its GPU driver. Its run job therefore borrows the Khronos loader from LunarG's arm64
+runtime, pinned by SHA256, for that one run. The product never ships the loader.
+
 **The product folder carries its own DLL closure.** A clean arm64 device has no VC++ redist
 and none of `C:\runtime`, so step 3's import walk fails any import the folder does not hold.
 `Copy-PeImportClosure` (`WindowsCrossBundle.Common`) fills it. It walks the static and

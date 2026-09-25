@@ -276,8 +276,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - No LiteRT QNN dispatch (#155: five upstream defects).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
         stage, Flutter, classic TensorRT, TAPPAS.
-      - No binary from the bundle has ever been executed
-        (`docs/windows-cross-builds.md`).
+      - Its binaries now run on real arm64 hardware, but only as far as loading.
+        The consumer cross lanes' run jobs on `windows-11-arm` (2026-09-25; runs
+        36136967538, 36142875090, 36142882316) load the bundle's VC++ runtime and
+        GLib/GStreamer, and AccelerANTgine's also loads its chain ONNX Runtime (a
+        static import). Nothing runs an inference, a GStreamer pipeline or a
+        plugin, and the bundle's own tools and Python never execute
+        (`docs/windows-cross-builds.md` § Consumer cross lanes).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
