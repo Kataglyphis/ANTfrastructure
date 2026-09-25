@@ -390,7 +390,8 @@ The rename across the fleet, old name to new:
 | BeschleunigerBallett | `Linux_arm.yml` | `linux-arm64.yml` |
 | BeschleunigerBallett | `Windows.yml` | `windows-x64.yml` |
 | OrchestrANT, WebDavClient | `windows-2025.yml` | `windows-x64.yml` |
-| OrchestrANT, WebDavClient | `ubuntu-26.04-amd64-arm64.yml` | kept until `arches` reaches hub `main`, then `linux-x64.yml` + `linux-arm64.yml` |
+| WebDavClient | `ubuntu-26.04-amd64-arm64.yml` | `linux-x64.yml` + `linux-arm64.yml` (2026-09-25, through `arches`) |
+| OrchestrANT | `ubuntu-26.04-amd64-arm64.yml` | kept for now; the same split is open to it (`arches`) |
 | jotrockenmitlocken | `dart.yml` | `web.yml` |
 | ANThology | `dart.yml` | `docs.yml` |
 | DocumANTation | `docs-pages.yml` | `docs.yml` |
