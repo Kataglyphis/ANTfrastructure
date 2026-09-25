@@ -10789,7 +10789,7 @@
   {
     "id": "cmake-arch.cetcompat-unconditional",
     "target": "cmake/Hardening.cmake",
-    "find": "    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES \"^([Aa][Rr][Mm]64|aarch64)$\")\n      list(APPEND NEW_LINK_OPTIONS /CETCOMPAT)\n    endif()\n",
+    "find": "    if(NOT\n       CMAKE_SYSTEM_PROCESSOR\n       MATCHES\n       \"^([Aa][Rr][Mm]64|aarch64)$\")\n      list(APPEND NEW_LINK_OPTIONS /CETCOMPAT)\n    endif()\n",
     "replace": "    list(APPEND NEW_LINK_OPTIONS /CETCOMPAT)\n",
     "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
     "why": "an ARM64 cross build links with /CETCOMPAT, which the ARM64 linker refuses"
@@ -10813,7 +10813,7 @@
   {
     "id": "cmake-arch.arm64-runtime-keeps-arm64ec",
     "target": "cmake/CPackCommon.cmake",
-    "find": "  list(FILTER _libs EXCLUDE REGEX \"[/\\\\\\\\]vcruntime[0-9]+_1\\\\.dll$\")\n",
+    "find": "  list(\n    FILTER\n    _libs\n    EXCLUDE\n    REGEX\n    \"[/\\\\\\\\]vcruntime[0-9]+_1\\\\.dll$\")\n",
     "replace": "  list(FILTER _libs EXCLUDE REGEX \"^$\")\n",
     "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
     "why": "an arm64 package ships the ARM64EC (x64-machine) vcruntime140_1.dll and the cross lane's arch gate fails it"

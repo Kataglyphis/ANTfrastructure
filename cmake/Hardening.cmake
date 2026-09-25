@@ -22,7 +22,10 @@ macro(
     list(APPEND NEW_LINK_OPTIONS /NXCOMPAT)
     # CET shadow stacks exist on x64 only, and an ARM64 link refuses /CETCOMPAT. A
     # Windows cross build names its target here (Get-CMakeCrossArgs).
-    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^([Aa][Rr][Mm]64|aarch64)$")
+    if(NOT
+       CMAKE_SYSTEM_PROCESSOR
+       MATCHES
+       "^([Aa][Rr][Mm]64|aarch64)$")
       list(APPEND NEW_LINK_OPTIONS /CETCOMPAT)
     endif()
     message(STATUS "*** MSVC flags: /sdl /DYNAMICBASE /guard:cf ${NEW_LINK_OPTIONS}")
