@@ -132,6 +132,12 @@ Describe 'WindowsMigraphx.Common: 7-Zip''s refused links' {
         Assert-Match 'Expand-PinnedArchive -Archive \$archive -Destination \$dest' $body 'extractor'
         Assert-False ($body -match 'Expand-SourceTarball') 'no direct Expand-SourceTarball call'
     }
+
+    It 'Expand-PinnedArchive deletes the intermediate .tar, which G2 reads as an ORT archive for the EP source' {
+        # onnxruntime-ep-amdgpu.tar matches G2's archive name rule; the EP stage's verify failed on it (2026-09-25).
+        $body = (Get-Command Expand-PinnedArchive).Definition
+        Assert-Match 'if \(\$pass -eq 2\) \{ Remove-Item -LiteralPath \$from -Force \}' $body 'the .tar goes once unpacked'
+    }
 }
 
 Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
