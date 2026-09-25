@@ -85,6 +85,24 @@ function(kataglyphis_arm64_system_runtime_libs out_var)
       PARENT_SCOPE)
 endfunction()
 
+# The DLL closure a Windows build script staged for its packages (Copy-PeImportClosure over the
+# built binaries, docs/windows-cross-builds.md): what the product imports that no install rule
+# ships, the media stack above all. Installed beside the executables, so every package runs on
+# a clean machine. The directory is named at configure time and filled before packaging; empty
+# names none.
+function(kataglyphis_install_package_dlls)
+  set(KATAGLYPHIS_PACKAGE_DLL_DIR
+      ""
+      CACHE PATH "Runtime DLLs a build script staged for the packages; empty for none")
+  if(KATAGLYPHIS_PACKAGE_DLL_DIR)
+    install(
+      DIRECTORY "${KATAGLYPHIS_PACKAGE_DLL_DIR}/"
+      DESTINATION bin
+      FILES_MATCHING
+      PATTERN "*.dll")
+  endif()
+endfunction()
+
 macro(kataglyphis_cpack_common)
   set(_kgcpack_flags SHORT_WINDOWS_FILE_NAME)
   set(_kgcpack_args
@@ -268,6 +286,7 @@ macro(kataglyphis_cpack_common)
       CACHE BOOL "Enable WiX MSI package generation on Windows")
 
   if(WIN32)
+    kataglyphis_install_package_dlls()
     if(KGCPACK_SHORT_WINDOWS_FILE_NAME)
       set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_BUILD_TYPE}-${KATAGLYPHIS_CPACK_ARCH}")
     endif()

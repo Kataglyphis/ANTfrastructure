@@ -10817,5 +10817,21 @@
     "replace": "  list(FILTER _libs EXCLUDE REGEX \"^$\")\n",
     "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
     "why": "an arm64 package ships the ARM64EC (x64-machine) vcruntime140_1.dll and the cross lane's arch gate fails it"
+  },
+  {
+    "id": "cmake-arch.package-dlls-installed",
+    "target": "cmake/CPackCommon.cmake",
+    "find": "    install(\n      DIRECTORY \"${KATAGLYPHIS_PACKAGE_DLL_DIR}/\"\n      DESTINATION bin\n      FILES_MATCHING\n      PATTERN \"*.dll\")\n",
+    "replace": "    message(STATUS \"package DLLs: ${KATAGLYPHIS_PACKAGE_DLL_DIR}\")\n",
+    "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+    "why": "the staged DLL closure never reaches a package, so an MSI or ZIP misses the media stack on a clean machine"
+  },
+  {
+    "id": "cmake-arch.package-dlls-only-dlls",
+    "target": "cmake/CPackCommon.cmake",
+    "find": "      FILES_MATCHING\n      PATTERN \"*.dll\")\n",
+    "replace": "      )\n",
+    "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+    "why": "whatever else sits in the staging directory (a closure log) ships in every package"
   }
 ]

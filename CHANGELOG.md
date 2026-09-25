@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - x64 packages carry the same DLL closure as arm64
+
+Owner decision: the consumers' x64 packages ship what their binaries import,
+as the arm64 ones do. A clean x64 PC lacks the media stack and may lack the
+VC++ runtime too, and AccelerANTgine's x64 MSIX carried neither.
+
+- `Get-ProductDllSearchPath` (`WindowsCrossBundle.Common`) gives one search
+  order for every consumer's closure:
+  1. the chain ORT (`ONNX_ROOT\bin`), so an ORT-family import resolves to it;
+  2. the image's `C:\runtime\bin`;
+  3. the target arch's `VCToolsRedistDir` CRT.
+  Only existing directories are returned.
+- `cmake/CPackCommon.cmake`: `kataglyphis_install_package_dlls` installs the
+  DLLs of a directory named at configure time (`KATAGLYPHIS_PACKAGE_DLL_DIR`)
+  beside the executables. A build script fills it with the closure before
+  packaging, so the CPack packages ship it too.
+- `windows-cross-builds.md` § Consumer cross lanes describes both.
+
+Tests:
+- `CrossBundle.Common.Tests.ps1` 8 pass. Reordering the search, ignoring the
+  arch or dropping the existence filter each fails it.
+- `test-cmake-windows-arch.sh` 8 pass. Two new `cmake-arch.*` mutations (the
+  install rule, the `*.dll` filter) bite.
+
 ## 2026-09-25 - The three consumer cross lanes are green; arm64 binaries ran
 
 OxidANT, AccelerANTgine and BeschleunigerBallett each gained
