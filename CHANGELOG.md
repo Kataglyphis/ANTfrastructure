@@ -20,6 +20,9 @@ OxidANT first. Two things an x64 lane did by hand had no input.
   workspace the container built into. It is for what Server Core cannot run (no
   `opengl32.dll`), such as OxidANT's WebGPU renderer tests and a run of its x64
   product.
+- Every native command in `host-command` and `run-command` counts
+  (`$PSNativeCommandUseErrorActionPreference`). Before, `run-command` failed the
+  lane only through the exit code of its last line.
 - `windows-cross-builds.md` § Consumer cross lanes and the workflow's header
   describe both.
 

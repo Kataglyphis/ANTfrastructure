@@ -297,6 +297,10 @@ Two inputs serve the x64 lanes that move onto the same file (the family's next s
   into. It is for what Server Core cannot run because it lacks `opengl32.dll`: OxidANT's WebGPU
   renderer tests, and a run of the x64 product.
 
+`host-command` and `run-command` both run with `$PSNativeCommandUseErrorActionPreference`, so a
+native command that exits non-zero on any line fails the lane. Before that, only the exit code of
+the last line counted.
+
 All three lanes went green on their first CI runs, 2026-09-25:
 
 | Consumer | Binaries graded | What runs on `windows-11-arm` |

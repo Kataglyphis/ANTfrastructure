@@ -101,8 +101,8 @@ on:
       run-command:
         description: >-
           arm64 only: PowerShell that runs on windows-11-arm inside the downloaded
-          artifact-dir, e.g. `./app.exe --version`. A non-zero exit fails the lane.
-          Empty = no run job.
+          artifact-dir, e.g. `./app.exe --version`. A non-zero exit of any native
+          command in it fails the lane. Empty = no run job.
         required: false
         type: string
         default: ''
@@ -124,7 +124,8 @@ on:
         description: >-
           PowerShell that runs on the runner HOST, in the workspace, after the container
           build: tests Server Core cannot run (it has no OpenGL), or a run of the x64
-          product. A non-zero exit fails the lane. Empty = none.
+          product. A non-zero exit of any native command in it fails the lane.
+          Empty = none.
         required: false
         type: string
         default: ''
@@ -201,6 +202,8 @@ jobs:
           HOST_COMMAND: ${{ inputs.host-command }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # Every native command in host-command counts, not just the last one.
+          $PSNativeCommandUseErrorActionPreference = $true
           $script = Join-Path $env:RUNNER_TEMP 'host-command.ps1'
           Set-Content -LiteralPath $script -Value $env:HOST_COMMAND -Encoding utf8
           & $script
@@ -251,6 +254,8 @@ jobs:
           RUN_COMMAND: ${{ inputs.run-command }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # Every native command in run-command counts, not just the last one.
+          $PSNativeCommandUseErrorActionPreference = $true
           if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the run job must be on arm64, not $env:PROCESSOR_ARCHITECTURE" }
           $script = Join-Path $env:RUNNER_TEMP 'run-arm64.ps1'
           Set-Content -LiteralPath $script -Value $env:RUN_COMMAND -Encoding utf8
