@@ -211,6 +211,13 @@ def parse_serving(doc):
     gateway = parse_gateway(serving["gateway"])
     need(isinstance(serving["lanes"], dict) and serving["lanes"], "serving.lanes must name at least one lane")
     lanes = {n: parse_lane(n, v, backends) for n, v in serving["lanes"].items() if not n.startswith("_")}
+    own = {gateway[k]["port"] for k in ("listen", "status_listen", "metrics_listen")}
+    for name, lane in lanes.items():
+        host, port = lane["endpoint"][len("http://"):].rsplit(":", 1)
+        loopback = host == "localhost" or host == "0.0.0.0" or host.startswith("127.")
+        need(not (loopback and int(port) in own),
+             f"serving.lanes.{name}: {lane['endpoint']} is the gateway's own listener; "
+             f"a lane is a GenieX server, never a lab-* entry")
     need(isinstance(serving["routes"], dict), "serving.routes must be an object")
     routes = [parse_route(a, r, lanes, gateway["prompts"])
               for a, r in serving["routes"].items() if not a.startswith("_")]
@@ -382,6 +389,10 @@ def render(registry, prompts_dir, overlay):
                 registry_sha256=sha256_hex(canonical(doc).encode("ascii")),
                 prompts_sha256={n: sha256_hex(b) for n, b in sorted(prompts.items())})
     document["routes"].insert(0, _mock("gateway-info", ["GET"], 200, info, uri="/gateway/info"))
+    ids = [r["id"] for r in document["routes"]]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    # APISIX keeps the last item of a repeated id and logs nothing: a silent half-load.
+    need(not dupes, f"route id(s) {dupes} would be emitted twice; rename the alias")
     gw = serving["gateway"]
     meta = dict(info, key_vars=list(gw["consumers"].values()),
                 listen=f"{gw['listen']['ip']}:{gw['listen']['port']}",
