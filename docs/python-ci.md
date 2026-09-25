@@ -74,9 +74,9 @@ cannot see them;
 runs that step and holds the labels to the same rule.
 
 **Consumers follow hub `develop`.** The fleet calls this lane at `@develop`
-(since 2026-09-25), so the input is available to OrchestrANT and WebDavClient
-now: their `ubuntu-26.04-amd64-arm64.yml` can split into `linux-x64.yml` and
-`linux-arm64.yml`.
+(since 2026-09-25), so the input reached the consumers at once. WebDavClient
+split its `ubuntu-26.04-amd64-arm64.yml` into `linux-x64.yml` and
+`linux-arm64.yml` the same day; OrchestrANT's split is still open.
 
 ## The static-analysis knobs, and the bandit trap between them
 

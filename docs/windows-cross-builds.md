@@ -289,6 +289,16 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. This is the only execution an arm64 binary from the family gets.
 
+**The product folder carries its own DLL closure.** A clean arm64 device has no VC++ redist
+and none of `C:\runtime`, so step 3's import walk fails any import the folder does not hold.
+`Copy-PeImportClosure` (`WindowsCrossBundle.Common`) fills it. It walks the static and
+delay-load imports of the binaries it is given, transitively, the set the walk grades. It
+copies each name it finds in the search directories (first directory wins, typically
+`$env:ONNX_ROOT\bin` then `C:\runtime\bin`) and throws on a closure DLL of the wrong
+machine. A DLL loaded by name at run time (ONNX Runtime under `load-dynamic`, a GStreamer
+plugin) is in neither import table, so the build passes it in as a seed. Names found in no
+search directory are left to the device, and the walk grades them.
+
 ## Sequencing: rebuild base twice, on purpose
 
 `Install-Vs.ps1` deliberately does **not** SHA-pin the VS bootstrapper (the installer refreshes

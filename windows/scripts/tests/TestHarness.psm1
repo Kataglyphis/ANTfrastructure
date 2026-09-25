@@ -152,6 +152,81 @@ function New-TestPeFile {
             [BitConverter]::GetBytes($Machine) + [System.Text.Encoding]::ASCII.GetBytes($Tag)))
 }
 
+# IMAGE_EXPORT_DIRECTORY at -Rva with its tables and names; -Forward points every function into it (a forwarder).
+function New-OrtTestExportTable {
+    param([uint32]$Rva, [string[]]$Name, [switch]$Forward)
+    $n = $Name.Count
+    $strAt = 40 + 10 * $n
+    $strs = [System.Collections.Generic.List[byte]]::new()
+    $nameRva = foreach ($x in $Name) { $Rva + $strAt + $strs.Count; $strs.AddRange([System.Text.Encoding]::ASCII.GetBytes("$x`0")) }
+    $fwdRva = $Rva + $strAt + $strs.Count
+    $strs.AddRange([System.Text.Encoding]::ASCII.GetBytes("onnxruntime.OrtGetApiBase`0"))
+    $out = [byte[]]::new($strAt)
+    foreach ($f in @(@(20, $n), @(24, $n), @(28, ($Rva + 40)), @(32, ($Rva + 40 + 4 * $n)), @(36, ($Rva + 40 + 8 * $n)))) {
+        [BitConverter]::GetBytes([uint32]$f[1]).CopyTo($out, $f[0])
+    }
+    for ($i = 0; $i -lt $n; $i++) {
+        [BitConverter]::GetBytes([uint32]$(if ($Forward) { $fwdRva } else { 0x1000 })).CopyTo($out, 40 + 4 * $i)
+        [BitConverter]::GetBytes([uint32]@($nameRva)[$i]).CopyTo($out, 40 + 4 * $n + 4 * $i)
+        [BitConverter]::GetBytes([uint16]$i).CopyTo($out, 40 + 8 * $n + 2 * $i)
+    }
+    return , [byte[]]($out + $strs.ToArray())
+}
+
+# A PE32+ for -Machine with one section holding an import table for -Import, a delay-load table for
+# -DelayImport, each -Text as a NUL-bounded string and an export table for -Export. The ORT census built
+# these first; any PE-walking suite may.
+function New-OrtTestPe {
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @(), [string[]]$Export = @(), [switch]$Forward,
+        [uint16]$Machine = 0x8664, [string[]]$DelayImport = @())
+    $rva = 0x1000
+    $descSize = 20 * ($Import.Count + 1)
+    $names = [System.Collections.Generic.List[byte]]::new()
+    $body = [System.Collections.Generic.List[byte]]::new()
+    $nameAt = foreach ($i in $Import) { $descSize + $names.Count; $names.AddRange([System.Text.Encoding]::ASCII.GetBytes("$i`0")) }
+    foreach ($at in @($nameAt)) { $d = [byte[]]::new(20); [BitConverter]::GetBytes([uint32]($rva + $at)).CopyTo($d, 12); $body.AddRange($d) }
+    $body.AddRange([byte[]]::new(20))
+    $body.AddRange($names)
+    # IMAGE_DELAYLOAD_DESCRIPTORs: 32 bytes, the DLL-name RVA at +4, a zero descriptor last, then the names.
+    $delayAt = $body.Count
+    $delayNamesAt = $delayAt + 32 * ($DelayImport.Count + 1)
+    $delayNames = [System.Collections.Generic.List[byte]]::new()
+    foreach ($x in $DelayImport) {
+        $d = [byte[]]::new(32)
+        [BitConverter]::GetBytes([uint32]($rva + $delayNamesAt + $delayNames.Count)).CopyTo($d, 4)
+        $body.AddRange($d)
+        $delayNames.AddRange([System.Text.Encoding]::ASCII.GetBytes("$x`0"))
+    }
+    if ($DelayImport.Count -gt 0) { $body.AddRange([byte[]]::new(32)); $body.AddRange($delayNames) }
+    foreach ($t in $Text) { $body.Add(0); $body.AddRange([System.Text.Encoding]::ASCII.GetBytes($t)); $body.Add(0) }
+    $expAt = $body.Count
+    if ($Export.Count -gt 0) { $body.AddRange((New-OrtTestExportTable -Rva ($rva + $expAt) -Name $Export -Forward:$Forward)) }
+    $raw = $body.ToArray()
+    $h = [byte[]]::new(0x200)
+    $h[0] = 0x4D; $h[1] = 0x5A; $h[0x40] = 0x50; $h[0x41] = 0x45
+    [BitConverter]::GetBytes([uint32]0x40).CopyTo($h, 0x3C)
+    [BitConverter]::GetBytes($Machine).CopyTo($h, 0x44)
+    [BitConverter]::GetBytes([uint16]1).CopyTo($h, 0x46)
+    [BitConverter]::GetBytes([uint16]0xF0).CopyTo($h, 0x54)
+    [BitConverter]::GetBytes([uint16]0x20B).CopyTo($h, 0x58)
+    [BitConverter]::GetBytes([uint32]16).CopyTo($h, 0x58 + 108)
+    [BitConverter]::GetBytes([uint32]$rva).CopyTo($h, 0x58 + 120)
+    [BitConverter]::GetBytes([uint32]$descSize).CopyTo($h, 0x58 + 124)
+    if ($Export.Count -gt 0) {
+        [BitConverter]::GetBytes([uint32]($rva + $expAt)).CopyTo($h, 0x58 + 112)
+        [BitConverter]::GetBytes([uint32]($raw.Length - $expAt)).CopyTo($h, 0x58 + 116)
+    }
+    # DataDirectory[13], the delay-load table.
+    if ($DelayImport.Count -gt 0) { [BitConverter]::GetBytes([uint32]($rva + $delayAt)).CopyTo($h, 0x58 + 216) }
+    [System.Text.Encoding]::ASCII.GetBytes('.rdata').CopyTo($h, 0x148)
+    [BitConverter]::GetBytes([uint32]$raw.Length).CopyTo($h, 0x148 + 8)
+    [BitConverter]::GetBytes([uint32]$rva).CopyTo($h, 0x148 + 12)
+    [BitConverter]::GetBytes([uint32]$raw.Length).CopyTo($h, 0x148 + 16)
+    [BitConverter]::GetBytes([uint32]0x200).CopyTo($h, 0x148 + 20)
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent)
+    [System.IO.File]::WriteAllBytes($Path, [byte[]]($h + $raw + [byte[]]::new([Math]::Max(0, 2048 - $h.Length - $raw.Length))))
+}
+
 function Get-TestResult { return $script:Results }
 
 # One owner for "where is the repo root" (#126): the suites spelled the
@@ -261,4 +336,4 @@ function Invoke-WithFunctionModule {
 
 Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile
+    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe

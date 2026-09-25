@@ -7,6 +7,31 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - A cross lane's product carries its DLL closure
+
+The arm64 run job needs a folder that runs on a clean device. The CRT, ONNX
+Runtime and everything they import have to be in it, and nothing in the hub
+could collect them.
+
+- `WindowsCrossBundle.Common` (new): `Copy-PeImportClosure -Path <binaries>
+  -SearchDirectory <dirs> -Destination <dir> -Arch arm64`. It walks static and
+  delay-load imports (the set the import walk grades) transitively and copies what
+  the search directories hold, the first directory winning. Names found nowhere are left to the device, and a closure DLL of the
+  wrong machine throws through `Assert-PeTargetMachine`, the media gates' own
+  check. It is a new module because `WindowsTargetArch.Common`,
+  where the PE readers live, is mounted into every media stage.
+- The synthetic PE builders (`New-OrtTestPe`, `New-OrtTestExportTable`) moved
+  from the census suite into `TestHarness.psm1`. `New-OrtTestPe` takes a
+  `-Machine` and writes a delay-load table for `-DelayImport`.
+- `windows-cross-builds.md` § Consumer cross lanes says what the folder must hold.
+- WebDavClient's Linux lane split into `linux-x64.yml` + `linux-arm64.yml`; the
+  rename table and `python-ci.md` record it. OrchestrANT's split stays open.
+
+Tests: `CrossBundle.Common.Tests.ps1` 3 pass. Dropping the transitive enqueue,
+the delay-load table, the first-directory rule or the machine check each fails
+it. The census suite still passes 25 with its builders moved. The dupes
+allowlist moves the builders' two rows to `TestHarness.psm1` unchanged.
+
 ## 2026-09-25 - The Windows arm64 cross lanes get a hub lane; the gate knows the bundle
 
 Owner decisions of 2026-09-25: `windows-arm64-cross.yml` lanes for OxidANT,
