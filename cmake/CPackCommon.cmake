@@ -74,7 +74,12 @@ include_guard(GLOBAL)
 # cross lanes' arch gate refuses it (docs/windows-cross-builds.md).
 function(kataglyphis_arm64_system_runtime_libs out_var)
   set(_libs ${ARGN})
-  list(FILTER _libs EXCLUDE REGEX "[/\\\\]vcruntime[0-9]+_1\\.dll$")
+  list(
+    FILTER
+    _libs
+    EXCLUDE
+    REGEX
+    "[/\\\\]vcruntime[0-9]+_1\\.dll$")
   set(${out_var}
       "${_libs}"
       PARENT_SCOPE)
@@ -223,8 +228,10 @@ macro(kataglyphis_cpack_common)
       set(_kgcpack_runtime_component COMPONENT ${CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT})
     endif()
     if(_kgcpack_runtime_libs)
-      install(PROGRAMS ${_kgcpack_runtime_libs} DESTINATION ${CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION}
-                                                            ${_kgcpack_runtime_component})
+      install(
+        PROGRAMS ${_kgcpack_runtime_libs}
+        DESTINATION ${CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION}
+        ${_kgcpack_runtime_component})
     endif()
     unset(_kgcpack_runtime_libs)
     unset(_kgcpack_runtime_component)
