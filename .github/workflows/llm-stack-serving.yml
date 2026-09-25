@@ -3,7 +3,7 @@ name: LLM stack · serving
 # The serving stack's shape and its registry, now that the benchmark suite
 # lives in OrchestrANT. No image is built and no model is pulled: compose files
 # are validated, and the properties the two registry consumers rely on are
-# pinned by tests.
+# pinned by tests. The one image pulled is the gateway's, for gateway-e2e.
 
 on:
   push:
@@ -37,6 +37,13 @@ jobs:
             -f linux/llm-stack/docker-compose.gpu.yml config -q
           docker compose -f linux/llm-stack/docker-compose.yml \
             -f linux/llm-stack/docker-compose.lan.yml config -q
+          # The gateway overlay reads its env file from the state dir serve-stack.sh owns.
+          export ANTFRASTRUCTURE_LLM_GATEWAY_DIR="${RUNNER_TEMP}/gateway"
+          mkdir -p "${ANTFRASTRUCTURE_LLM_GATEWAY_DIR}/live"
+          : > "${ANTFRASTRUCTURE_LLM_GATEWAY_DIR}/live/runtime.env"
+          docker compose -f linux/llm-stack/docker-compose.gateway.yml config -q
+          docker compose -f linux/llm-stack/docker-compose.yml \
+            -f linux/llm-stack/docker-compose.gateway.yml config -q
 
       # Ubuntu 26.04's system Python is externally managed; a venv keeps pytest
       # and PyYAML out of it.
@@ -47,3 +54,39 @@ jobs:
 
       - name: Serving-shape tests
         run: /tmp/serving-venv/bin/python -m pytest linux/llm-stack/tests -q
+
+  # The gateway for real: the pinned APISIX image, started by serve-stack.sh, in
+  # front of fake lanes (linux/llm-stack/README.md § Gateway). Both arches, since
+  # the dev host runs the arm64 image and hosted x64 runs the amd64 one.
+  gateway-e2e:
+    name: gateway e2e (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runs_on: ubuntu-26.04 }
+          - { arch: arm64, runs_on: ubuntu-26.04-arm }
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pytest + PyYAML
+        run: |
+          python3 -m venv /tmp/gateway-venv
+          /tmp/gateway-venv/bin/pip install --quiet pytest pyyaml
+
+      - name: Pull the pinned APISIX image
+        run: docker pull "$(python3 linux/llm-stack/gateway/render_apisix.py --print-image)"
+
+      - name: Gateway e2e against fake lanes
+        env:
+          GATEWAY_E2E: "1"
+          ANTFRASTRUCTURE_LLM_ENGINE: docker
+        run: /tmp/gateway-venv/bin/python -m pytest linux/llm-stack/tests/gateway_e2e -v -p no:cacheprovider
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -aq); do docker logs --tail 80 "$c" 2>&1; done
