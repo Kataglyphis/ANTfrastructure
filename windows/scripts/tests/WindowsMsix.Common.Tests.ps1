@@ -76,10 +76,28 @@ Describe 'WindowsMsix.Common' {
   }
 
   Context 'Invoke-MsixPackage' {
+    BeforeAll {
+      # Invoke-MsixSign, which -Sign checks for; the -Sign cases mock it, so
+      # nothing here signs for real.
+      Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsMsix.Signing.psm1') `
+        -Force -DisableNameChecking
+      # makeappx is not on a CI runner, and these cases are about the
+      # ORCHESTRATION, not about makeappx: the external call is this stub, which
+      # creates the file makeappx would.
+      $script:fakeMakeappx = {
+        param([string]$File, [string[]]$Parameters)
+        Set-Content -LiteralPath $Parameters[$Parameters.IndexOf('/p') + 1] -Value 'msix' -Encoding utf8
+      }
+      # The smallest template, for the cases that never read the manifest back.
+      $script:bareTemplate = Join-Path $script:tmp 'bare.template.xml'
+      Set-Content -LiteralPath $script:bareTemplate -Value '<Package/>' -Encoding utf8
+    }
+
+    BeforeEach {
+      Mock -ModuleName WindowsMsix.Common -CommandName Resolve-WindowsSdkToolPath { 'C:\fake\makeappx.exe' }
+    }
+
     It 'writes all four logo assets and an escaped manifest, then packs' {
-      # makeappx is not on a CI runner, and this case is about the
-      # ORCHESTRATION, not about makeappx: the resolver and the external call
-      # are mocked, and the mock creates the file makeappx would.
       $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'pkg') -Force).FullName
       $staging = Join-Path $ws 'staging'
       $template = Join-Path $ws 'AppxManifest.template.xml'
@@ -87,16 +105,10 @@ Describe 'WindowsMsix.Common' {
         -Value '<Package><Name>__PACKAGE_NAME__</Name><Desc>__DESCRIPTION__</Desc></Package>'
       $out = Join-Path $ws 'out\app_1.0.0.0_x64.msix'
 
-      Mock -ModuleName WindowsMsix.Common -CommandName Resolve-WindowsSdkToolPath { 'C:\fake\makeappx.exe' }
-      $invoker = {
-        param([string]$File, [string[]]$Parameters)
-        Set-Content -LiteralPath $Parameters[$Parameters.IndexOf('/p') + 1] -Value 'msix' -Encoding utf8
-      }
-
       Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `
         -ManifestTemplatePath $template -OutputPath $out `
         -TokenMap @{ '__PACKAGE_NAME__' = 'App'; '__DESCRIPTION__' = 'A & B' } `
-        -GenerateTransparentLogos -InvokerScriptBlock $invoker | Out-Null
+        -GenerateTransparentLogos -InvokerScriptBlock $script:fakeMakeappx | Out-Null
 
       foreach ($asset in @('StoreLogo.png', 'Square44x44Logo.png',
                            'Square150x150Logo.png', 'Wide310x150Logo.png')) {
@@ -110,16 +122,41 @@ Describe 'WindowsMsix.Common' {
     It 'throws when makeappx reports success and produces nothing' {
       # Seen for real. Without this check the lane goes green and the artifact
       # upload finds no file.
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'pkg2') -Force).FullName
-      $template = Join-Path $ws 'AppxManifest.template.xml'
-      Set-Content -LiteralPath $template -Value '<Package/>' -Encoding utf8
-
-      Mock -ModuleName WindowsMsix.Common -CommandName Resolve-WindowsSdkToolPath { 'C:\fake\makeappx.exe' }
+      $ws = Join-Path $script:tmp 'pkg2'
 
       { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $ws 'staging') `
-          -ManifestTemplatePath $template -OutputPath (Join-Path $ws 'out\nothing.msix') `
+          -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $ws 'out\nothing.msix') `
           -TokenMap @{} -GenerateTransparentLogos -InvokerScriptBlock { } } |
         Should -Throw -ExpectedMessage '*produced no package*'
+    }
+
+    # -Sign used to search the staging directory's parent for the .pfx: a build
+    # directory in every consumer, so none could use it. The certificate lives
+    # at the repository root, which only the caller knows.
+    It 'refuses -Sign without -SigningRoot before it stages anything' {
+      # Before even the template is read, which here does not exist and would
+      # otherwise be the error.
+      $staging = Join-Path $script:tmp 'unrooted\staging'
+
+      { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `
+          -ManifestTemplatePath (Join-Path $script:tmp 'no-such-template.xml') `
+          -OutputPath (Join-Path $script:tmp 'unrooted\app.msix') `
+          -TokenMap @{} -Sign -InvokerScriptBlock $script:fakeMakeappx } |
+        Should -Throw -ExpectedMessage '*-SigningRoot*'
+      Test-Path -LiteralPath $staging | Should -BeFalse -Because 'the check runs before any work'
+    }
+
+    It 'hands -SigningRoot to Invoke-MsixSign, not the staging directory''s parent' {
+      Mock -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign { }
+      $build = Join-Path $script:tmp 'rooted\build'
+      $root = Join-Path $script:tmp 'rooted\repo'
+
+      Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $build 'msix\staging') `
+        -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $build 'app.msix') `
+        -TokenMap @{} -GenerateTransparentLogos -Sign -SigningRoot $root -InvokerScriptBlock $script:fakeMakeappx | Out-Null
+
+      Should -Invoke -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign -Times 1 -Exactly `
+        -ParameterFilter { $WorkspacePath -eq $root }
     }
   }
 }

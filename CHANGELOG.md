@@ -7,6 +7,22 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - MSIX `-Sign` takes the signing root from the caller
+
+`Invoke-MsixPackage -Sign` looked for the signing `.pfx` in the staging directory's
+parent. Every consumer stages inside a build directory, so none could use it.
+AccelerANTgine and BeschleunigerBallett called `Invoke-MsixSign` themselves with their
+repository root, and OxidANT never signed.
+
+- `-Sign` now needs `-SigningRoot`, the directory that holds the `.pfx`: the
+  repository root, where the family keeps it gitignored. Without it the call throws
+  before it stages anything. No caller in the family's checkouts passed `-Sign`, so
+  nothing that worked breaks.
+- `Invoke-MsixSign`'s warning names the directory it searched. It used to say
+  "repository root" whatever it had been handed.
+- `WindowsMsix.Common.Tests.ps1` pins both halves, and each new case fails against
+  the old code. Its packer cases now share one makeappx stub and one resolver mock.
+
 ## 2026-09-25 - x64 lanes move onto the reusable Windows lane: `version-file`, `host-command`
 
 The family's next sharing step (owner request): the consumers' `windows-x64.yml`
