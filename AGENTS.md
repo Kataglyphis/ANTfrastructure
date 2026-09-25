@@ -237,6 +237,12 @@ A standalone serving stack lives in [`linux/llm-stack/`](linux/llm-stack/README.
 against real VRAM before claiming a context length. It is the family's reference
 server, and the benchmark suite that points at it lives in OrchestrANT.
 
+**The gateway in front of the GenieX lanes patches APISIX internals**
+(`gateway/lua/geniex_hook.lua`), so an APISIX bump is not done until
+`GATEWAY_E2E=1 pytest linux/llm-stack/tests/gateway_e2e` is green on it, and its
+config only ever changes through `scripts/serve-stack.sh`, which validates before
+it swaps: [the llm-stack README's Gateway section](linux/llm-stack/README.md#gateway).
+
 ### GenieX on Snapdragon (on-device OpenAI server)
 
 The Kataglyphis coding agents can run **fully on-device on Snapdragon** (Adreno
