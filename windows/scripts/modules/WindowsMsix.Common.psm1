@@ -187,6 +187,12 @@ function Invoke-MsixPackage {
     .PARAMETER GenerateTransparentLogos
       Write placeholder PNGs instead of copying -LogoPath. A package without the
       four logo assets fails to install with an error that names none of them.
+    .PARAMETER SigningRoot
+      Where -Sign looks for the signing *.pfx (non-recursive): the repository
+      root, where the family keeps it, gitignored. Required with -Sign. It used
+      to be derived as the staging directory's parent, which is a build
+      directory in every consumer, so two of them called Invoke-MsixSign
+      themselves and the third never signed.
   #>
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
@@ -201,12 +207,24 @@ function Invoke-MsixPackage {
     [switch]$GenerateTransparentLogos,
     [string]$MakeAppxPath = '',
     [switch]$Sign,
+    [string]$SigningRoot = '',
     # Optional invoker for testability, exactly as Invoke-MsixSign takes one:
     # Invoke-BuildExternal lives in WindowsBuild.Common, which this module does
     # not import, so a test cannot mock it here -- and packing for real needs a
     # Windows SDK no runner has.
     [scriptblock]$InvokerScriptBlock
   )
+
+  # Before any work: a package packed and then left unsigned for want of a
+  # parameter is the silent outcome this check exists to prevent.
+  if ($Sign) {
+    if ([string]::IsNullOrWhiteSpace($SigningRoot)) {
+      throw '-Sign needs -SigningRoot: the directory holding the signing .pfx, normally the repository root.'
+    }
+    if (-not (Get-Command -Name 'Invoke-MsixSign' -ErrorAction SilentlyContinue)) {
+      throw '-Sign needs WindowsMsix.Signing; import it before calling this.'
+    }
+  }
 
   $makeappx = Resolve-WindowsSdkToolPath -ToolName 'makeappx.exe' -OverridePath $MakeAppxPath
   if ([string]::IsNullOrWhiteSpace($makeappx)) {
@@ -263,10 +281,7 @@ function Invoke-MsixPackage {
   }
 
   if ($Sign) {
-    if (-not (Get-Command -Name 'Invoke-MsixSign' -ErrorAction SilentlyContinue)) {
-      throw '-Sign needs WindowsMsix.Signing; import it before calling this.'
-    }
-    Invoke-MsixSign -Context $Context -WorkspacePath (Split-Path -Parent $StagingDir) -MsixOutPath $OutputPath
+    Invoke-MsixSign -Context $Context -WorkspacePath $SigningRoot -MsixOutPath $OutputPath
   }
 
   return $OutputPath

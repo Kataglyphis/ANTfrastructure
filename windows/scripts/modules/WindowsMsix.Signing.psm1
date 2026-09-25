@@ -121,7 +121,7 @@ function Invoke-MsixSign {
       }
       Write-BuildLog -Context $Context -Message 'MSIX signing/verification completed.'
     } else {
-      Write-BuildLogWarning -Context $Context -Message 'No .pfx found at repository root; MSIX will not be signed.'
+      Write-BuildLogWarning -Context $Context -Message "No .pfx found in $WorkspacePath; MSIX will not be signed."
     }
   } catch [System.Management.Automation.CommandNotFoundException] {
     # A missing function/command is a BUG (broken import graph), not a
