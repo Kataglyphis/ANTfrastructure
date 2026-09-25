@@ -229,8 +229,11 @@ def test_a_client_that_hangs_up_mid_stream_frees_the_lane(gateway):
                           "Authorization": f"Bearer {gateway.keys['lab']}"})
     resp = conn.getresponse()
     assert resp.status == 200
-    while b"data:" not in resp.read1(65536):
-        pass
+    seen = b""
+    while b"data:" not in seen:
+        piece = resp.read1(65536)
+        assert piece, "the stream ended before its first event"
+        seen += piece
     conn.sock.close()  # hang up without reading the rest
     conn.close()
     time.sleep(4.5)  # longer than the whole fake stream (7 events, 0.5 s apart)
