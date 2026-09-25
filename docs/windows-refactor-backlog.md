@@ -71,6 +71,16 @@ this repo's cp314 pin).
 
 ### Open items
 
+- **#178 — fold `Expand-PinnedArchive` into `Expand-SourceTarball` at the next media
+  rebuild (opened 2026-09-25).** `Expand-PinnedArchive` (`WindowsMigraphx.Common`) is
+  `Expand-SourceTarball`'s two 7-Zip passes, except that it skips the links 7-Zip 25+
+  refuses as dangerous instead of failing (flatbuffers 25.12.19 carries nine in-tree
+  ones). It lives apart only because `WindowsSourceBuild.Common` is mounted into every
+  media layer, so an edit there re-keys the whole media lane. At the next deliberate
+  media rebuild, give `Expand-SourceTarball` that tolerance, point `Save-PinnedSource`
+  at it, delete `Expand-PinnedArchive`, and delete its row in
+  `docs/scripts/code-dupes.allow` (the `WindowsMigraphx.Common` ↔
+  `WindowsSourceBuild.Common` pair). Rebuild-coupled like CON34 in `BACKLOG.md`.
 - **#177 — the image history still names the build host's endpoint (opened 2026-09-23).**
   Since 2026-09-23 `SCCACHE_WEBDAV_ENDPOINT` reaches the compiling RUNs as an ARG, so
   no published ENV carries it and the publish gate refuses one that does. But BuildKit
