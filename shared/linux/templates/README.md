@@ -29,6 +29,13 @@ wrapper genuinely owns: without that token the GitHub-hosted managers are
 rate-limited into reporting nothing, which looks exactly like "nothing is
 behind".
 
+`git-hooks/pre-commit` is the third file here, and the one a consumer does
+**not** copy: `git config core.hooksPath
+third_party/ANTfrastructure/shared/linux/templates/git-hooks` runs
+`run-lint-gates.sh` over the repo on every commit. A copied hook is a fork nobody
+re-syncs ([`adopting-in-a-new-project.md` § 8](../../../docs/adopting-in-a-new-project.md#the-pre-commit-hook-by-reference)).
+The hub's own hooks are `linux/host-config/git-hooks/`, not these.
+
 ## Why this is copied rather than consumed
 
 It is the file that *finds* the submodule, so it cannot live inside it — the

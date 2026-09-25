@@ -1,60 +1,65 @@
-# CI Build Triggers (commit-message opt-ins)
+# CI Build Triggers: which lanes run when
 
-> **These lanes live in CONSUMER repos, not here.** ANTfrastructure's own CI is
-> `linux-x64.yml` (preflight, the sharded mutation gate + docs), `windows-x64.yml` (PowerShell
-> lint/tests), `llm-stack-serving.yml` (push/PR, path-filtered on
-> `linux/llm-stack/**`), `submodule-pins.yml`, `actions-selftest.yml`, and the
-> scheduled housekeeping workflows — `ghcr-cleanup.yml` (Sundays), `sbom.yml`,
-> `stale-docs-check.yml` and `consumer-inventory.yml` (Mondays). None of them
-> builds a container image, and none reacts to the tokens below. This page documents the convention
-> the *consuming* application repos use with the images published from here.
+**Every platform lane runs on every push and PR** (owner decision 2026-09-24,
+fleet-wide). The `[build-win]` and `[build-arm]` commit-message opt-ins are
+retired: no workflow in the family reads them, and no platform job carries an
+`if:`. The file names changed the same day, to one file per platform and arch
+([`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names)).
 
-Not every CI lane runs on every push. The heavier lanes are **opt-in per
-commit** via magic tokens in the commit message, so routine work does not spend
-Windows-runner minutes or cross-compile time it does not need. The token is
-matched against `github.event.head_commit.message`, so it must be in the
-**pushed HEAD commit's** message (not an earlier commit in the push).
+## The consumer lanes
 
-| Lane | Workflow file | Trigger | Default |
-|---|---|---|---|
-| Linux x86_64 (build + test + coverage) | `linux-x64.yml` | always, on push/PR to `main`/`develop` | **runs every time** |
-| Windows (MSVC/clang-cl container build) | `windows-x64.yml` | `[build-win]` in the commit message | skipped |
-| Linux ARM64 | `linux-arm64.yml` | `[build-arm]` in the commit message | skipped |
+| Lane | Workflow files | Trigger |
+|---|---|---|
+| Linux x64 and arm64 (build + test) | `linux-x64.yml`, `linux-arm64.yml`, most over a shared `reusable-linux.yml` (OrchestrANT: one `ubuntu-26.04-amd64-arm64.yml` for both) | every push and PR to `main`/`develop` |
+| Windows x64 | `windows-x64.yml` | the same |
+| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in OxidANT, AccelerANTgine and BeschleunigerBallett | the same |
+| Android, web | OmniAccelerANT's `android.yml` and `web.yml` | the same |
 
-The file names are the fleet convention of 2026-09-24, one file per platform and
-arch; the old names and the full mapping are in
-[`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
+Measured 2026-09-25 against the consumer checkouts. What is left is not a
+commit-message token on a platform lane:
 
-## Usage
+- **Path filters.** BeschleunigerBallett's four platform lanes ignore a push that
+  touches only `**.md` or `docs/**`. Most `submodule-pins.yml` callers run only
+  when `.gitmodules` or `third_party/**` changes. A workflow that a path filter
+  leaves out does not start at all; it does not report `skipped`.
+- **Push only.** jotrockenmitlocken's `web.yml` builds and deploys on a push, not
+  on a PR.
+- **One opt-in job.** OxidANT's `linux-x64.yml` carries a feature check
+  (`feature-matrix`) that runs only with `[build-features]` in the HEAD commit
+  message, or on `workflow_dispatch`. It is not a platform lane, and its
+  `skipped` does not skip the workflow around it.
 
-Add the token anywhere in the commit subject or body:
+## This repository's lanes
 
-```
-git commit -m "fix(shadows): correct the cascade split maths [build-win]"
-```
+None of them builds a container image. The image chains run on the build hosts.
 
-Combine them to run both extra lanes from one push:
+| Workflow | Trigger |
+|---|---|
+| `linux-x64.yml` | every push and PR to `main`/`develop`: preflight, the mutation gate in four shards, the docs build |
+| `windows-x64.yml` | push/PR that touches `windows/**`, `shared/windows/**`, `versions.env` or the workflow itself |
+| `llm-stack-serving.yml` | push/PR that touches `linux/llm-stack/**` |
+| `submodule-pins.yml` | push/PR that touches `.gitmodules`, `third_party/**` or the pin suite |
+| `actions-selftest.yml` | push/PR that touches `.github/actions/**`, Mondays, and dispatch |
+| `consumer-inventory.yml` | Mondays, dispatch, and push/PR that touches its own inputs |
+| `ghcr-cleanup.yml` | Sundays, dispatch |
+| `sbom.yml`, `stale-docs-check.yml` | Mondays, dispatch |
 
-```
-git commit -m "build: verify the toolchain on every target [build-win][build-arm]"
-```
+`build-docs.yml`, `container-ci-windows.yml`, `lint-gates.yml` and the two
+`python-ci-*` workflows are `workflow_call` only: they run when a caller runs.
 
-## Consequences worth knowing
+## A `skipped` job is still not a pass
 
-- **A green checkmark without `[build-win]` says nothing about Windows.** The
-  Windows workflow reports `skipped`, which reads as success at a glance but
-  means it never ran. If a change touches the Windows build (CMake, clang-cl
-  flags, the container image, anything under `windows/`), push at least once
-  with `[build-win]` before trusting it. Same for ARM and `[build-arm]`.
-- **The token is on the HEAD commit only.** If you push a batch, only the last
-  commit's message is checked. Amend or add an empty trigger commit
-  (`git commit --allow-empty -m "ci: run windows [build-win]"`) if the token
-  landed on an earlier commit.
-- These gates predate the current work and are a deliberate runner-cost
-  decision. Whether the Windows lane *should* be opt-in, or run on PRs to
-  `main` / nightly, is an open question tracked in the main repo's `BACKLOG.md`
-  under "CI and release gaps".
+A job with an `if:` reports `skipped` when the condition is false, and a badge or
+`gh run view` shows that like a success. Such jobs remain: the feature check above,
+`python-ci-windows.yml`'s build and lint jobs (each gated by an input), and
+`container-ci-windows.yml`'s `windows-11-arm` run job (only with `target-arch:
+arm64` and a `run-command`). Read the conclusion per job:
+[`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md).
 
-See also [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md)
-for reading lane status with `gh` (including telling a real pass from a
-`skipped` gate).
+## Before 2026-09-24
+
+The Windows lane and the Linux arm64 lane were opt-in per commit: `[build-win]` or
+`[build-arm]` had to be in the pushed HEAD commit's message
+(`github.event.head_commit.message`), or the workflow reported `skipped`. A
+consumer note, a run log or a commit message from before that date may still
+name the tokens; nothing acts on them any more.

@@ -106,14 +106,15 @@ evidence that the pipeline is green.
 gh run list --limit 5 --json conclusion,name,headBranch,displayTitle --jq '.[] | .conclusion + "  " + .name'
 ```
 
-A run reporting `skipped` is not a pass. Several workflows here are gated (the
-Windows container build is gated on `[build-win]` appearing in the commit
-message), and a gated-off workflow reports `skipped`, which is easy to read as
-success at a glance.
+A run reporting `skipped` is not a pass. The platform lanes carry no `if:` since
+2026-09-24, but some jobs still do (OxidANT's `[build-features]` feature check, a
+reusable workflow's input-gated jobs), and a gated-off job reports `skipped`,
+which is easy to read as success at a glance
+([`ci-build-triggers.md`](ci-build-triggers.md)).
 
 ## The orientation AGENTS.md carried
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and the `skipped` bullet (the opt-in markers it named were retired on 2026-09-24). The RULES stayed there; this is the reference behind them.
 
 **Check the pipeline after every push, and again before starting unrelated
 work.** `gh` is installed (winget) and authenticated; see
@@ -137,8 +138,8 @@ Three things that will otherwise cost you an hour:
   `error` mostly returns the runner's apt-get cleanup echoes. Ask which STEP
   failed first (command above), then grep the log for `SUMMARY:` (sanitizers)
   or `[  FAILED  ]` (GoogleTest).
-- **`skipped` is not a pass.** Gated workflows (the Windows container build
-  wants `[build-win]` in the commit message) report `skipped`, which reads as
+- **`skipped` is not a pass.** A gated job (OxidANT's feature check wants
+  `[build-features]` in the commit message) reports `skipped`, which reads as
   success at a glance.
 
 Green local tests do not imply green CI: the Linux lane runs ASan/UBSan fuzzing

@@ -2,8 +2,9 @@
 Copyright (c) 2025 Kataglyphis
 SPDX-License-Identifier: MIT
 
-Engine- and project-agnostic Planner ROLE prompt, passed to the agent via
---append-system-prompt-file. See executor.md next to this file for the
+Engine- and project-agnostic Planner ROLE prompt, passed to claude via
+--append-system-prompt-file and to opencode as a generated
+.opencode/agents/planner.md. See executor.md next to this file for the
 distinction from shared/agentic-loop/prompts/planner.md (the short task message)
 and for how a consumer's overlay is composed onto this.
 -->

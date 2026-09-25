@@ -1,7 +1,8 @@
 # Consumer templates
 
 Copy-and-edit starting points that are not language-specific. (The Windows
-PowerShell bootstrap lives in [`../windows/templates/`](../windows/templates/README.md);
+PowerShell bootstrap lives in [`../windows/templates/`](../windows/templates/README.md),
+the bash bootstrap in [`../linux/templates/`](../linux/templates/README.md);
 the agentic-loop config and runners in [`../agentic-loop/templates/`](../agentic-loop/templates/README.md).)
 
 Copy `AGENTS.md.template` to `<your-repo>/AGENTS.md`, then fill in sections 1,

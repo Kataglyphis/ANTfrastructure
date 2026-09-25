@@ -15,9 +15,9 @@
 
 ## Tests
 
-Current automated validation in this repository is documentation-focused:
+Automated validation in this repository is the no-build gate suite; no workflow here builds an image:
 
-- GitHub Actions runs the docs workflow and checks the generated version snapshot with `python3 docs/scripts/sync_versions.py --check`.
+- `linux-x64.yml` runs `bash linux/scripts/preflight.sh` on every push and PR to `main`/`develop` (the mutation gate as four shards) and the docs build. The version snapshot (`python3 docs/scripts/sync_versions.py --check`) is its `version-snapshot` slug. `windows-x64.yml` runs the PowerShell lint and the Pester suites when `windows/` changes. Every trigger: [`ci-build-triggers.md` § This repository's lanes](ci-build-triggers.md#this-repositorys-lanes).
 - Local container validation is currently documented as targeted smoke builds in `docs/linux-build-basics.md` and `docs/linux-cross-builds.md`.
 - The `wrapper-smoke` target in `Dockerfile.package` provides cheap packaging validation before publish.
 - `build-cross-chain.sh --verify-chain` performs a dry-run stale-check of the entire cross chain against registry digests without building anything.
@@ -25,27 +25,29 @@ Current automated validation in this repository is documentation-focused:
 - `cross_stage_validate_graph()` (in `stage-defs.sh`) runs automatically before every build to check internal stage graph consistency (parent references, cycle detection).
 - `build-cross-chain.sh --describe-chain` prints the full stage graph with tag names and parent chains.
 - `verify-artifact-copy-parity.sh` checks that the artifact COPY lists in `Dockerfile.package` are consistent.
-- `verify-critical-fixes.sh` validates the five critical fixes documented in `AGENTS.md`.
+- `verify-critical-fixes.sh` is the host half of the critical-fixes battery (fix5 through fix11); `06-packaging/smoke-critical-fixes.sh` probes fix1 to fix4 inside a built image. The original five are in `docs/linux-cross-builds.md` § Five Critical Fixes To Maintain.
 - `build-cross-chain.sh --dry-run` prints all build commands without executing them, useful for auditing the stage transitions.
 - There is not yet a single end-to-end CI workflow that builds every Linux, accelerator, and Windows image variant on each change.
 
 ## Windows Image Chain
 
-Windows Container builds run on `windows/amd64` only and produce a single published tag (`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`) on `windows/servercore:ltsc2025`. The lane uses Stevedore's bundled `docker.exe` for both builds and runs (`nerdctl build` has broken DNS in BuildKit on Windows, and `nerdctl run` fails without the Windows CNI `nat` plugin; `docker.exe run --isolation process` works and exposes the host's full CPU count). See `docs/windows-builds.md` for the full build commands and prerequisites.
+Windows container builds run on a `windows/amd64` host, on `windows/servercore:ltsc2025`. `windows/Build-Buildkit.ps1` is the only driver; the full build commands and prerequisites are in [`windows-builds.md` § Build Commands](windows-builds.md#build-commands). A run builds into the local store, and `-PushRef` publishes the final image: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` by default, `:winarm64` from `-TargetArch arm64` (a `windows/amd64` image carrying the aarch64 bundle), `:winamd64-rocm` from `-Variant rocm`.
 
-Stage chain (each `FROM` the previous stage's local tag):
+Stage chain (each `FROM` the previous stage's local tag, `docker.io/local/kataglyphis:bk-<name>`):
 
 | Stage | Dockerfile | Produces | Contents |
 |-------|------------|----------|----------|
-| 1 | `windows/Dockerfile.base` | `local/kataglyphis:windows-base` | VS Build Tools 18 (ClangCL toolset), Scoop (`LLVM_WINDOWS_VERSION`, Rust, Flutter, Vulkan SDK, WiX 4), Git, Python bootstrapping, `versions.env` |
-| 2 | `docker tag` of base (CPU) **or** `windows/Dockerfile.nvidia` (GPU) | `local/kataglyphis:windows-sdk` | CPU lane simply re-tags `windows-base` (the former `Dockerfile.sdk` no-op shim was removed); GPU lane builds the NVIDIA layer (CUDA 13.3 + cuDNN 9.25 + optional TensorRT 11.2.1.2). `windows/Build-Buildkit.ps1 [-Gpu]` picks the variant — both produce the `windows-sdk` tag. |
-| 3 | `windows/Dockerfile.toolchain-builder` (+ run+commit) | `local/kataglyphis:windows-toolchain` | CPython 3.14 source-built with ClangCL via `Build-ToolchainAll.ps1` (`PCbuild\build.bat`) |
-| 4 | `windows/Dockerfile.media-merge-builder` (+ per-branch media builders) | `local/kataglyphis:windows-media` | AI/media stack: ONNX Runtime (`ONNXRUNTIME_VERSION`), ONNX GenAI (`ONNXRUNTIME_GENAI_VERSION`), OpenCV 5.x, LiteRT (`LITERT_VERSION`), LiteRT-LM (`LITERT_LM_VERSION`), TVM (`TVM_REF`), FFmpeg `master` (`--enable-libonnxruntime`; DNN filters ship with the backend, no separate `--enable-dnn`), GStreamer (`GSTREAMER_VERSION`) — all source-built with Ninja/clang-cl in dependency order |
-| 5 | `windows/Dockerfile` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
+| 1 | `windows/Dockerfile.base` | `bk-windows-base` | VS Build Tools 18 (ClangCL toolset), Scoop (LLVM `LLVM_WINDOWS_VERSION`, CMake, Ninja, NASM, Flutter, Vulkan SDK), WiX 4 (`dotnet tool`, `WIX_VERSION`), rustup + Rust (`Install-RustToolchain.ps1`), Git, Python bootstrapping, `versions.env` |
+| 2 | re-tag of base (CPU) **or** `windows/Dockerfile.nvidia` (`-Gpu`, same as `-Variant nvidia`) **or** `windows/Dockerfile.rocm` (`-Variant rocm`) | `bk-windows-sdk` | CPU lane simply re-tags `bk-windows-base` (the former `Dockerfile.sdk` no-op shim was removed); the GPU lane builds the NVIDIA layer (CUDA `CUDA_VERSION` + cuDNN `CUDNN_VERSION` + optional TensorRT `TENSORRT_VERSION`); the rocm variant puts TheRock ROCm in the same slot, and every tag after base gets a `-rocm` infix. |
+| 3 | `windows/Dockerfile.toolchain-builder` | `bk-windows-toolchain` | CPython 3.14 source-built with ClangCL via `Build-ToolchainAll.ps1` (`PCbuild\build.bat`) |
+| 4 | `windows/Dockerfile.media-merge-builder` (+ per-branch `windows/Dockerfile.media-builder`) | `bk-windows-media` | AI/media stack: ONNX Runtime (`ONNXRUNTIME_VERSION`), ONNX GenAI (`ONNXRUNTIME_GENAI_VERSION`), FFmpeg (`FFMPEG_VERSION`; `--enable-libonnxruntime`, DNN filters ship with the backend, no separate `--enable-dnn`), OpenCV 5.x, HailoRT, LiteRT (`LITERT_VERSION`), LiteRT-LM (`LITERT_LM_VERSION`), TVM (`TVM_REF`), IREE, GStreamer (`GSTREAMER_VERSION`) — all source-built with clang-cl in dependency order; the generator per component is in `docs/windows-builds.md` § Component Build Matrix |
+| 4a | `windows/Dockerfile.rocm-migraphx`, then `windows/Dockerfile.rocm-llama` | `bk-windows-media-migraphx-rocm`, `bk-windows-media-llama-rocm` | rocm variant only: MIGraphX with the ONNX Runtime plugin EP, then llama.cpp (HIP and Vulkan) |
+| 5 | `windows/Dockerfile.torch` | `bk-windows-torch` | The OrchestrANT app environment at `APP_REF` |
+| 6 | `windows/Dockerfile` | `bk-winamd64` (`-PushRef` publishes it as `:winamd64`) | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
 
-Container validation uses `windows/scripts/build/Test-Container.ps1` (23 test categories; its assertion harness lives in `windows/scripts/modules/WindowsSmokeTest.Common.psm1`) and the Docker `HEALTHCHECK` defined in `windows/scripts/build/Test-Health.ps1`.
+Container validation uses `windows/scripts/build/Test-Container.ps1` (25 numbered sections; its assertion harness lives in `windows/scripts/modules/WindowsSmokeTest.Common.psm1`) and the Docker `HEALTHCHECK` defined in `windows/scripts/build/Test-Health.ps1`.
 
-The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Clang+Flutter+WiX, (5) VS Build Tools, (6) Vulkan SDK, (7) CUDA+cuDNN (skippable), (8) ONNX Runtime, (9) ONNX GenAI, (10) OpenCV 5, (11) GStreamer, (12) LiteRT, (13) LiteRT-LM, (14) compiler smoke, (15) CMake+Ninja+clang-cl integration, (16) MSBuild+ClangCL, (17) TVM (source-built), (18) FFmpeg (source-built with DNN/ONNX).
+The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Clang+Flutter+WiX, (5) VS Build Tools, (6) Vulkan SDK, (7) CUDA+cuDNN (skippable), (8) ONNX Runtime, (9) ONNX GenAI, (10) OpenCV 5, (11) GStreamer, (12) LiteRT, (13) LiteRT-LM, (14) compiler smoke, (15) CMake+Ninja+clang-cl integration, (16) MSBuild+ClangCL, (17) TVM (source-built), (18) FFmpeg (source-built with DNN/ONNX), (19) environment pointer integrity, (20) Python bindings, (21) the OrchestrANT app environment, (22) IREE, (23) the baked `C:\temp\scripts` surface, (24) Hailo, (25) the ONNX Runtime single source.
 
 ## Roadmap
 
@@ -76,7 +78,7 @@ Do not write a bare `RUSTC_WRAPPER=`. An *unset* `RUSTC_WRAPPER` is the opposite
 
 - Prefer workspace-relative output directories like `logs/` and `out/` for large build artifacts.
 - The runtime packaging helpers already avoid `/tmp` by default and use `${XDG_CACHE_HOME:-$HOME/.cache}/opencode/runtime-build-contexts` for temporary local stage handoff.
-- The main Linux Dockerfiles also use Dockerfile-specific ignore files so repo-root Linux builds do not keep re-sending `linux/webserver/` through unrelated build contexts.
+- The root `.dockerignore` excludes `linux/webserver` and `out/`, so repo-root Linux builds do not keep re-sending them through unrelated build contexts.
 - Keep exported repair trees such as `out/runtime-repair-*` out of later Docker build contexts too, or routine retries will spend minutes re-uploading them.
 - Clean old local images, caches, and exported rootfs artifacts if repeated BuildKit runs fill the disk.
 
@@ -96,8 +98,8 @@ Do not write a bare `RUSTC_WRAPPER=`. An *unset* `RUSTC_WRAPPER` is the opposite
 
 **Solution:**
 
-- `linux/Dockerfile.sdk` forwards the checked-in `LLVM_RELEASE` into the `target-clang` step so that build does not inherit a stale `LLVM_RELEASE` environment variable from an older `cross-compiler-amd64` base image.
-- Rebuild the SDK artifact after updating or selecting the desired compiler base image.
+- The target-native clang is built in the compiler image (`Dockerfile.toolchain` installs `/opt/llvm-target-<arch>` for every arch); `linux/Dockerfile.sdk` only selects it into `/opt/llvm-target` (`materialize-llvm-target.sh`). The SDK re-declares the checked-in `LLVM_RELEASE`, so it does not inherit a stale value from an older `cross-compiler-amd64` base image, but it cannot rebuild the clang.
+- After a pin bump, rebuild the compiler image first, then the SDK artifact.
 
 ### buildctl or ctr permission denied in rootless troubleshooting
 
@@ -118,12 +120,12 @@ Do not write a bare `RUSTC_WRAPPER=`. An *unset* `RUSTC_WRAPPER` is the opposite
 
 **Solution (already applied on this host):**
 
-- Switch the rootless BuildKit OCI worker to host networking with a systemd drop-in at `~/.config/systemd/user/buildkit.service.d/override.conf`:
+- Switch the rootless BuildKit OCI worker to host networking with the systemd drop-in `~/.config/systemd/user/buildkit.service.d/override.conf`. Its canonical copy is `linux/host-config/buildkit.service-override.conf` (it also raises the 2 MiB step-log clip); install it with `bash linux/host-config/apply-host-config.sh`, which refuses while a build runs and writes the nerdctl prefix the live units already name in place of `@NERDCTL_PREFIX@`. Never hand-write a `/usr/local` prefix there: it reverted a rootless `$HOME/.local` install once (2026-09-08). The line that matters:
 
   ```ini
   [Service]
   ExecStart=
-  ExecStart="/usr/local/bin/containerd-rootless-setuptool.sh" nsenter -- buildkitd --oci-worker=true --oci-worker-rootless=true --containerd-worker=false --oci-worker-net=host --allow-insecure-entitlement network.host
+  ExecStart="@NERDCTL_PREFIX@/bin/containerd-rootless-setuptool.sh" nsenter -- buildkitd --oci-worker=true --oci-worker-rootless=true --containerd-worker=false --oci-worker-net=host --allow-insecure-entitlement network.host
   ```
 
 - Make rootless containerd networking explicit and fast with `~/.config/systemd/user/containerd.service.d/override.conf`:
@@ -207,8 +209,8 @@ in another repository, from sources that do not exist here, so nothing in this
 repo could ever regenerate it.
 
 **What is tracked and large today: nothing.** After that removal the biggest
-tracked files are text — `docs/scripts/mutations.json` (~380 KB),
-`docs/scripts/code-dupes.allow` (~350 KB) and the documentation archives. The
+tracked files are text — `docs/scripts/mutations.json` (~600 KB on 2026-09-25),
+`docs/scripts/code-dupes.allow` (~390 KB), `CHANGELOG.md` and the documentation archives. The
 only tracked binary is `images/logo.png`, at 2 KB. The `.gitignore` rules under
 "Binaries and build output do not belong in git" are what keeps it that way; a
 binary that genuinely belongs here is committed with `git add -f` and named in
@@ -217,7 +219,7 @@ this section.
 **The history is NOT being rewritten, and that is a decision, not an oversight.**
 A `filter-repo` pass would reclaim most of the 154 MB and would also change every
 commit id in the repository — which breaks every pin in every consumer
-(`third_party/ANTfrastructure` is a gitlink in six of them), every SHA in every
+(`third_party/ANTfrastructure` is a gitlink in every consumer but ANThology), every SHA in every
 changelog entry and every link into this repo that names a commit. 154 MB is a
 one-time clone cost measured in seconds on any connection this project is
 developed on. The cost of the rewrite is paid by everyone, repeatedly, for as

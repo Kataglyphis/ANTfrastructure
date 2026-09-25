@@ -86,10 +86,13 @@ nerdctl compose -f linux/docker-compose.yml up -d beschleuniger
 
 ### Streaming from AccelerANTgine
 
-The AccelerANTgine project includes WebRTC streaming support via GStreamer's `webrtcsink`:
+The AccelerANTgine project includes WebRTC streaming support via GStreamer's `webrtcsink`.
+The `beschleuniger` service mounts the checkout at `/AccelerANTgine` **read-only**, so
+build on the host or in a writable copy; the preset writes `build-release/` into the
+source tree.
 
 ```bash
-# Build the project (inside container or on host with GStreamer)
+# Build the project (on the host with GStreamer, or in a writable copy in the container)
 cd /AccelerANTgine
 cmake --preset=linux-release-clang
 cmake --build build-release
@@ -108,9 +111,13 @@ cmake --build build-release
 
 ```text
 --webrtc                Start WebRTC streaming
+--config <file>         Load settings from a JSON config file
 --server <uri>          Signalling server URI (default: ws://127.0.0.1:8443)
---source <type>         Video source: libcamera, v4l2, test (default: libcamera)
+--source <type>         Video source: libcamera, v4l2, test, file, uri (default: libcamera)
 --device <path>         V4L2 device path (default: /dev/video0)
+--camera_id <name>      libcamera camera name
+--input_path <path>     Local media file for --source file
+--input_uri <uri>       Media URI for --source uri
 --width <pixels>        Video width (default: 1280)
 --height <pixels>       Video height (default: 720)
 --fps <rate>            Framerate (default: 30)
@@ -118,13 +125,22 @@ cmake --build build-release
 --bitrate <kbps>        Bitrate in kbps (default: 2000)
 ```
 
+The size, rate, bitrate and server defaults come from the config (built-in, or the
+`--config` file); a flag given on the command line overrides it. The flags are in
+AccelerANTgine's `Src/cli_main.cpp`.
+
 ### Viewing the Stream
 
-Open the webserver in your browser and use the GstWebRTC API to connect to the stream:
+The webserver's nginx proxies `/webrtc-ws` to the `beschleuniger` service's signalling
+port (`linux/webserver/nginx.conf`). The viewer page, a GstWebRTC API client at
 
 ```text
 http://localhost/javascript/webrtc/index.html
 ```
+
+shipped in the tracked `linux/webserver/dist/`, removed on 2026-09-15. The
+jotrockenmitlocken site sources carry no viewer (checked 2026-09-25), so that URL
+works only when a `dist/` left over from before is volume-mounted as above.
 
 ## Raw `gst-launch-1.0` pipelines (debugging below the app)
 
@@ -235,7 +251,7 @@ board to get a plugin the packaged runtime lacks.
 
 Build the version the packaged runtime ships, not a fixed number: the tag is
 `GSTREAMER_VERSION` from `linux/scripts/01-core/versions.env` (1.29.2), which is
-what `setup-gstreamer.sh:606-629` checks out for the image. A build from an older
+what `setup-gstreamer.sh:607-638` checks out for the image. A build from an older
 branch installs its own `libgst*.so*` over the prefix and lands you in the
 stale-library case described under [Removing a previous source
 install](#removing-a-previous-source-install).
@@ -327,8 +343,11 @@ makes no sense against the source you are reading.
 
 ### Prebuilt Android GStreamer
 
-The Android lane consumes the upstream universal tarball rather than building
-it. Unpack it where `Dockerfile.android` expects to find it:
+The Android lane builds GStreamer from source with cerbero
+(`linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh`,
+cerbero cloned at the `GSTREAMER_VERSION` tag). The upstream universal tarball is
+only the fallback `build-gstreamer.sh` takes when that script is missing. To use it
+by hand, unpack it where `Dockerfile.android` expects to find it:
 
 ```bash
 sudo mkdir -p /opt/android/gstreamer
@@ -336,7 +355,7 @@ sudo tar -xf gstreamer-1.0-android-universal-1.29.2.tar.xz -C /opt/android/gstre
 ```
 
 Keep the version aligned with `GSTREAMER_VERSION` in
-`linux/scripts/01-core/versions.env`: the Android stage derives the tarball name
+`linux/scripts/01-core/versions.env`: the fallback derives the tarball name
 from it (`linux/scripts/03-media/build/gstreamer/android/build-gstreamer.sh:38`)
 and verifies the download against `GSTREAMER_ANDROID_UNIVERSAL_SHA256`, which is
 pinned for that exact tarball. A hand-unpacked tree of any other version surfaces

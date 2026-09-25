@@ -140,7 +140,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:latest-<variant>` | A variant's **manifest** over all its arches, for a stack that cannot go into `:latest`: `:latest-nvidia` (CUDA), `:latest-rocm` (ROCm). `<variant>` names the feature, never an architecture |
 | `:latest-<arch>`, `:latest-<variant>-<arch>` | Per-architecture wrappers the manifests are assembled from (internal) |
 | `:cross-media-<arch>` | Media libraries layer (internal) |
-| `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md) |
+| `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md). Not in the registry on 2026-09-25 |
 | `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |
 | `:winarm64` | Windows **artifact bundle** for arm64 — a `windows/amd64` image, its own tag, never a manifest entry and never `--platform windows/arm64` |
 
@@ -332,25 +332,28 @@ Both name columns follow the family's
 | `python-ci-linux.yml` | Python CI · Linux (reusable) | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here. `arches` picks the rows (default `x64 arm64`) |
 | `python-ci-windows.yml` | Python CI · Windows (reusable) | Reusable (`workflow_call`) — the same for Windows |
 | `llm-stack-serving.yml` | LLM stack · serving | Push/PR, path-filtered on `linux/llm-stack/**` — compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
-| `ghcr-cleanup.yml` | GHCR · cleanup | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
+| `ghcr-cleanup.yml` | GHCR · cleanup | Scheduled (Sundays): `ghcr-prune-package.sh` deletes untagged versions no kept tag references; every tagged version stays, 14-day age guard |
 | `sbom.yml` | SBOM | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Docs · stale check | Scheduled (Mondays): stale doc references and broken script paths |
 | `actions-selftest.yml` | Composite actions · self-test | The composite actions under `.github/actions/` exercised against themselves — push/PR on `.github/actions/**`, Mondays, and dispatch for the deep Windows lane |
 | `consumer-inventory.yml` | Consumers · inventory | Scheduled (Mondays): clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
 | `submodule-pins.yml` | Submodule pins (reusable) | The submodule-pin invariant suite; also `workflow_call`, so a consumer runs it with `uses:` instead of copying the job |
 | `lint-gates.yml` | Lint gates (reusable) | Reusable (`workflow_call`) — `run-lint-gates.sh` over a consumer tree |
+| `container-ci-windows.yml` | Container CI · Windows (reusable) | Reusable (`workflow_call`) — the family's Windows container lane: x64, and the arm64 cross lane with its arch gate and a run on `windows-11-arm` ([docs/windows-cross-builds.md](docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)) |
 
 **Contributing?** Run `make hooks` once. It installs a pre-commit gate that
-costs **~4 seconds**: the cheap whole-tree checks, `shellcheck` on the shell
-files you actually staged, and the doc gates only when you touched `docs/`. It
-is a deliberate subset — the full suite takes minutes (the secret scan alone is
-~170 s), and a hook that slow just teaches everyone to type `--no-verify`. Run
+costs **8–27 seconds** (measured 2026-09-04): the cheap whole-tree checks,
+`shellcheck` on the shell files you actually staged, the doc gates only when you
+touched `docs/`, and a capped sample of the mutation gate, whose remainder the
+pre-push hook adds. It is a deliberate subset — the full suite takes minutes
+(the secret scan alone is ~170 s), and a hook that slow just teaches everyone
+to type `--no-verify`. Run
 `make preflight` yourself before a rebuild or a push; CI runs it on every push
 regardless.
 
 The first row's suite is `bash linux/scripts/preflight.sh` (the `KNOWN_SLUGS`
-array in that file is the list). Newest
-gates in it (2026-09-03): **`gate-registry`** is the meta-gate — every slug must
+array in that file is the list). Gates added on 2026-09-03:
+**`gate-registry`** is the meta-gate — every slug must
 carry a proof, a suite naming its script or a mutation, or sit frozen in an
 allowlist; **`code-complexity`** caps cyclomatic complexity and nesting,
 **`dead-functions`** fails a shell function nothing calls, and
@@ -365,10 +368,10 @@ clones the prose gate cannot see; deliberate twins are budgeted in
 
 **None of these builds a container image.** The image lanes are not CI here —
 they run on the build host (`windows/Build-Buildkit.ps1`, `linux/scripts/…`).
-The `[build-win]` / `[build-arm]` commit-message opt-ins are the convention of
-the *consuming* application repos, not of this one: no workflow above reacts to
-those tokens. See [docs/ci-build-triggers.md](docs/ci-build-triggers.md), which
-says so in its own opening note.
+No workflow above reacts to a commit-message token, and since 2026-09-24 the
+consumer repos' platform lanes do not either: every one runs on every push and
+PR. Which lanes run when, and what is still path-filtered:
+[docs/ci-build-triggers.md](docs/ci-build-triggers.md).
 
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot

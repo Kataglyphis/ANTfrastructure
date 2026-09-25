@@ -27,7 +27,7 @@ regional controls and service commitments as Mistral's own models.
 
 | Need | Where |
 |---|---|
-| Mistral Vibe CLI | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash` or `uv tool install mistral-vibe` |
+| Mistral Vibe CLI | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash` or `uv tool install mistral-vibe`; on a native riscv64 host `bash linux/host-config/install-mistral-vibe-riscv64.sh` ([`linux-host-setup.md` § D4](linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64)) |
 | Mistral account + API key | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) (La Plateforme / Mistral Studio) |
 | VS Code ≥ 1.94.0 | only if you want the IDE panel — the CLI works standalone |
 
@@ -154,8 +154,9 @@ Every row below was hit live on 2026-08-28. The log is at
 # 1. is the CLI installed?
 vibe --version
 
-# 2. is the key set? (prints length only, never the key)
-powershell -NoProfile -Command "echo $env:MISTRAL_API_KEY.Length"
+# 2. is the key set in this shell? (prints its length only, never the key;
+#    0 is fine when vibe --setup stored it in ~/.vibe/.env instead)
+echo "${#MISTRAL_API_KEY}"
 
 # 3. does the model answer?
 vibe -p "Reply with: OK" --max-turns 1 --auto-approve --output text

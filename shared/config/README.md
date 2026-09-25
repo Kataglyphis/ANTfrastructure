@@ -34,6 +34,13 @@ by walking up the directory tree from the file being processed**. A config
 sitting in `third_party/ANTfrastructure/shared/config/` is never found:
 it is below the source tree, not above it.
 
+`analysis_options.yaml`, the Dart analyzer config in this directory, is the one
+file here that IS referenced: the analyzer follows an explicit
+`include: third_party/ANTfrastructure/shared/config/analysis_options.yaml` and
+merges `analyzer.exclude` as a union, so a consumer adds its own excludes without
+copying. It therefore has no row in `shared-assets.manifest`. OmniAccelerANT and
+jotrockenmitlocken include it; its header says why.
+
 Passing explicit paths (`clang-format --style=file:<path>`, `clang-tidy
 --config-file=<path>`) fixes the *scripted* invocations, but not editors —
 VS Code, clangd and every IDE format-on-save look for `.clang-format` in the
@@ -271,4 +278,6 @@ CI actually calls.
 The bash half is the one that runs in CI. No hub Linux image ships pwsh, so the
 PowerShell form failed with "pwsh: command not found" on every Linux run — a gate
 that could not report on the platform it gates. `linux/scripts/tests/`
-`test-shared-config-sync.sh` holds the two to the same verdict.
+`test-shared-config-sync.sh` pins the bash half to the verdicts, exit codes and
+modes the two share. No hub suite runs the PowerShell half; OmniAccelerANT's
+`linux-x64.yml` runs both halves over its own tree.

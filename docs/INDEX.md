@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 **This page exists so consumer repos can link ONE hop.** A consuming project's
 `AGENTS.md` should point here (or at a heading in one of these files) instead of
 restating a procedure. Then reorganising the docs means fixing this page, not
-hunting links across seven repositories.
+hunting links across every consumer repository.
 
 Why it matters, concretely: on 2026-08-11 the Dev Drive filter command was
 written out in three separate places — `windows-builds.md` here, plus
@@ -63,7 +63,7 @@ The two halves of one topic often split:
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
 | **ROCm on Windows** (`-Variant rocm`): the layer in the sdk slot, `-rocm` tags, what each media component enables, redistribution | [`windows-rocm.md`](windows-rocm.md) |
-| **Rules you must not regress** when editing the Windows chain (48, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
@@ -71,6 +71,8 @@ The two halves of one topic often split:
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
+| **A consumer's Windows products**: the reusable `container-ci-windows.yml` lane, the product folder and its DLL closure (`Copy-PeImportClosure`), and CPack's `KATAGLYPHIS_PACKAGE_DLL_DIR` | [`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml) |
+| **Signing a consumer's MSIX** — `Invoke-MsixPackage -Sign -SigningRoot <repo root>` and the certificate scripts | [`adopting-in-a-new-project.md` § 7](adopting-in-a-new-project.md#7-certificates--packaging-windows) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
@@ -93,7 +95,7 @@ The two halves of one topic often split:
 | **Running an arm64 container locally** — Rancher's VM ships no emulators, so `binfmt` must be registered once per VM boot | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#registering-arm64-emulation-in-ranchers-vm-per-vm-boot) |
 | **flatpak/AppImage fail on emulated arm64** — bubblewrap's user namespace and static-PIE loading, neither of which `qemu-user` carries | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#emulated-arm64-cannot-run-bubblewrap-or-static-pie) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
-| **Vulkan SDK on foreign arches** — LunarG ships x86_64 only, so arm64/riscv64 are cross-built; what the target prefix contains, why it used to hold two binaries, and the four components still open (`vulkan-profiles`, `gfxreconstruct`, `slang`, `vulkanCapsViewer`) | [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md) |
+| **Vulkan SDK on foreign arches** — LunarG ships x86_64 only, so arm64/riscv64 are cross-built; what the target prefix contains, why it used to hold two binaries, and how the cross set grew to the vendor's own 24 components (VK2, VK4) | [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md) |
 | **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | **GCC sanitizers in the Linux image** — which GCC ships libsanitizer on each arch, the three gates, and why a sanitized binary runs only natively | [`cross-build-verification.md`](cross-build-verification.md#the-native-gcc-ships-libsanitizer) |
@@ -112,7 +114,7 @@ The two halves of one topic often split:
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
 | **Hailo in the image chain** — plan, upstream matrix (device families and branches, licences, TAPPAS's GStreamer gap) and the stage/gate design | [`hailo-support.md`](hailo-support.md) |
 | Raw `gst-launch-1.0` pipelines, and building GStreamer from source on a device | [`runtime-services.md`](runtime-services.md#raw-gst-launch-10-pipelines-debugging-below-the-app) |
-| Removing a stale GStreamer source install; the prebuilt Android tarball | [`runtime-services.md`](runtime-services.md#removing-a-previous-source-install) |
+| Removing a stale GStreamer source install; Android GStreamer (built with cerbero; the prebuilt tarball is the fallback) | [`runtime-services.md`](runtime-services.md#removing-a-previous-source-install) |
 | Detached containers, tmux, and bind-mount file ownership | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#long-running-work-detached-containers--tmux) |
 | Slow `apt update`, unattended-upgrade policy, excluding Docker from auto-upgrades | [`linux-host-setup.md`](linux-host-setup.md#phase-e--package-sources-and-automatic-updates) |
 | What filled the disk, and `/tmp` exhaustion during a build | [`linux-host-setup.md`](linux-host-setup.md#finding-what-filled-the-disk) |
@@ -132,7 +134,7 @@ The two halves of one topic often split:
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, and why `--apply` refuses some submodules | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
-| The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build | [`shared-script-libraries.md`](shared-script-libraries.md) |
+| The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build, app-packaging, compiler-llvm-tools and the rest — and the consumer entry points beside them (`run-lint-gates.sh`, `run-in-ci-image.sh`, `ci-image-ref.sh`) | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
 | Watching resource use during a build | [`build-resource-monitoring.md`](build-resource-monitoring.md) |
 | **Giving a build a credential** without baking it into a layer | [`build-secrets.md`](build-secrets.md) |
@@ -141,7 +143,7 @@ The two halves of one topic often split:
 | Building on an SBC or small VM: swap, zram, forcing `-j1` | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-other-end-building-on-a-memory-constrained-host) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
-| Opting a commit into the heavy CI lanes | [`ci-build-triggers.md`](ci-build-triggers.md) |
+| Which CI lanes run when — every platform lane on every push and PR since 2026-09-24; what is still path-filtered or gated | [`ci-build-triggers.md`](ci-build-triggers.md) |
 | **Publishing docs or a site over FTP** — the one composite action, its pin, and why a failed publish always fails the job | [`ftp-deploys.md`](ftp-deploys.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |
@@ -160,8 +162,8 @@ The two halves of one topic often split:
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |
 | Where a repo's Sphinx sources live | `docs/source/` in every consumer (`docs-build.sh`'s default); `docs/conf.py` beside the pages here and in DocumANTation — see [`adopting-in-a-new-project.md` § 8](adopting-in-a-new-project.md) |
-| Canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
-| Copy-and-edit templates (`Resolve-BuildModule.ps1`, `antfrastructure.sh`, `AGENTS.md` skeleton, agentic-loop config) | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
+| Canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml`, and the Dart `analysis_options.yaml` consumers `include:` by reference | [`../shared/config/README.md`](../shared/config/README.md) |
+| Copy-and-edit templates (`Resolve-BuildModule.ps1`, `antfrastructure.sh`, the `renovate-local.sh` wrapper, `AGENTS.md` skeleton, agentic-loop config), and the consumer pre-commit hook used by reference | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
 | Reusable CI workflows (`workflow_call`) — the Python lanes, the Windows container lane (x64, and the arm64 cross lanes with their `windows-11-arm` run job), the docs build, the lint aggregator, the submodule-pin suite | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml), [`../.github/workflows/container-ci-windows.yml`](../.github/workflows/container-ci-windows.yml), `../.github/workflows/build-docs.yml`, `../.github/workflows/lint-gates.yml`, `../.github/workflows/submodule-pins.yml` |
 | Who still calls each hub entry point (weekly, every consumer cloned) | [`consumer-inventory.md`](consumer-inventory.md), `../.github/workflows/consumer-inventory.yml` |
 | The composite actions exercised against themselves — what a green tick does and does not prove | [`../.github/actions/README.md`](../.github/actions/README.md), `../.github/workflows/actions-selftest.yml` |
@@ -199,7 +201,7 @@ exists only in one of these, promote it to its owning page above.
 
 ## Where does a piece of knowledge belong? (from AGENTS.md)
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and the repository count. The RULES stayed there; this is the reference behind them.
 
 The reuse rules below are about code. The same discipline applies to **what you
 write down**, and one question decides it:
@@ -219,7 +221,7 @@ in [`docs/INDEX.md`](INDEX.md)).
 
 [`docs/INDEX.md`](INDEX.md) maps topic → owning document. Consumers link
 one hop through it, so reorganising docs here means editing that page instead of
-hunting links across seven repositories.
+hunting links across every consumer repository.
 [`shared/templates/AGENTS.md.template`](../shared/templates/README.md) is the
 consumer-side skeleton that keeps the split visible.
 

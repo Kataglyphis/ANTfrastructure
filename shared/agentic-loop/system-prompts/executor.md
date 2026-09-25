@@ -2,13 +2,14 @@
 Copyright (c) 2025 Kataglyphis
 SPDX-License-Identifier: MIT
 
-Engine- and project-agnostic Executor ROLE prompt, passed to the agent via
---append-system-prompt-file. This is NOT the same artefact as
+Engine- and project-agnostic Executor ROLE prompt, passed to claude via
+--append-system-prompt-file and to opencode as a generated
+.opencode/agents/executor.md. This is NOT the same artefact as
 shared/agentic-loop/prompts/executor.md — that one is the short TASK MESSAGE
 handed to the agent as its -p prompt. Both are shared; they do different jobs.
 
 A consumer adds its build commands, test invocation and code conventions in a
-project overlay (engines.<engine>.executorPromptOverlayFile in the loop config);
+project overlay (promptOverlays.executorPromptOverlayFile in the loop config);
 the module concatenates default + overlay into one file at startup, because
 --append-system-prompt-file takes exactly one path.
 -->
