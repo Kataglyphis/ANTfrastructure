@@ -2,6 +2,11 @@
 
 Every test starts with empty fake lanes, so a count is exactly what the gateway sent.
 """
+import http.client
+import json
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from gw_client import call
 
@@ -164,3 +169,72 @@ def test_the_gpu_waits_out_a_long_first_byte(gateway):
     assert reply.status == 200
     assert reply.elapsed > 3.9
     assert gateway.counts() == {"npu": 0, "gpu": 1, "cpu": 0}
+
+
+# --- R5: nothing is ever sent twice, nothing is capped ---------------------------------------
+
+def test_the_fallback_attempt_gets_the_gpu_timeout(gateway):
+    reply = gateway.post("chat", fake={"npu": "overflow", "gpu": "hold=3"})
+    assert reply.status == 200 and reply.headers["x-gw-lane"] == "gpu"
+    assert reply.elapsed > 2.9, "the GPU attempt ran on its own 6 s, not the NPU's 2 s"
+    assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
+
+
+def test_two_failing_lanes_are_one_attempt_each(gateway):
+    reply = gateway.post("chat", fake={"npu": "status=500", "gpu": "status=502"})
+    assert reply.status == 502, "the client gets the last lane's answer"
+    assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
+
+
+@pytest.mark.parametrize("model, lane, fault", [
+    ("chat-long", "gpu", "status=500"), ("agent", "cpu", "reset"), ("raw-npu", "npu", "status=503"),
+    ("chat-long", "gpu", "overflow")])
+def test_a_single_lane_route_never_retries(gateway, model, lane, fault):
+    reply = gateway.post(model, fake={lane: fault})
+    assert reply.status >= 400
+    expect = {"npu": 0, "gpu": 0, "cpu": 0}
+    expect[lane] = 1
+    assert gateway.counts() == expect
+
+
+def test_a_lane_429_is_neither_retried_nor_rerouted(gateway):
+    reply = gateway.post("chat", fake={"npu": "status=429"})
+    assert reply.status == 429
+    assert gateway.counts() == {"npu": 1, "gpu": 0, "cpu": 0}
+
+
+@pytest.mark.parametrize("model, lane", [("chat", "npu"), ("chat-long", "gpu")])
+def test_concurrent_requests_are_never_capped_or_queued_away(gateway, model, lane):
+    fake = {lane: "hold=0.5"}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        replies = list(pool.map(lambda _: gateway.post(model, fake=fake), range(8)))
+    assert [r.status for r in replies] == [200] * 8, "the gateway never answers 429 or 503 itself"
+    assert gateway.counts()[lane] == 8
+    assert max(r.elapsed for r in replies) < 3.0, "all eight ran at once"
+
+
+def test_a_stream_that_dies_before_its_first_event_falls_back_once(gateway):
+    reply = gateway.post("chat", stream=True, fake={"npu": "crash=0"})
+    assert reply.status == 200
+    assert (reply.headers["x-gw-lane"], reply.headers["x-gw-rerouted"]) == ("gpu", "fallback")
+    assert reply.sse()[-1] == "[DONE]"
+    assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
+
+
+def test_a_client_that_hangs_up_mid_stream_frees_the_lane(gateway):
+    conn = http.client.HTTPConnection("127.0.0.1", gateway.port, timeout=10)
+    body = {"model": "chat-long", "stream": True, "messages": [{"role": "user", "content": "hi"}]}
+    conn.request("POST", "/v1/chat/completions", body=json.dumps(body).encode(),
+                 headers={"Content-Type": "application/json", "X-Fake-Gpu": "gap=0.5",
+                          "Authorization": f"Bearer {gateway.keys['lab']}"})
+    resp = conn.getresponse()
+    assert resp.status == 200
+    while b"data:" not in resp.read1(65536):
+        pass
+    conn.sock.close()  # hang up without reading the rest
+    conn.close()
+    time.sleep(4.5)  # longer than the whole fake stream (7 events, 0.5 s apart)
+    assert gateway.counts() == {"npu": 0, "gpu": 1, "cpu": 0}, "no retry after a hang-up"
+    assert gateway.lanes["gpu"].sent == [], "the gateway closed the lane's connection too"
+    (line,) = gateway.log.lines()
+    assert line["aborted"] == "client_disconnect"
