@@ -434,6 +434,14 @@ it finds in that directory (not recursively; the family keeps it there,
 gitignored) and `MSIX_PFX_PASSWORD`. Since 2026-09-25 `-Sign` without
 `-SigningRoot` throws before anything is staged.
 
+What a package carries is the consumer's to stage, with two hub helpers. The
+DLL closure of a product comes from `Copy-PeImportClosure`
+(`WindowsCrossBundle.Common`, [`windows-cross-builds.md`](windows-cross-builds.md)).
+ONNX Runtime comes from `WindowsOrtPayload.Common`: stage the chain copy with
+`Copy-ChainOrtBeside`, then prove the payload with `New-OrtProvenPayload` or
+`Assert-ChainOrtTree`
+([`onnxruntime-single-source.md` § The shared Windows glue](onnxruntime-single-source.md#the-shared-windows-glue)).
+
 The WebDAV downloader that fetches those signing certificates in CI (rather than
 committing them) is **not** Windows-specific and no longer lives there: it is
 `linux/scripts/01-core/download-webdav-files.py`, with a shim at the old
