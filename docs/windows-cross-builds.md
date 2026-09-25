@@ -289,6 +289,14 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. This is the only execution an arm64 binary from the family gets.
 
+Two inputs serve the x64 lanes that move onto the same file (the family's next sharing step,
+2026-09-25; OxidANT's `windows-x64.yml` first):
+- `version-file` resolves the CI version on the host with the hub's `version_util.sh` and hands
+  `VERSION` and `MSIX_VERSION` to the container.
+- `host-command` runs on the runner host after the build, in the workspace the container built
+  into. It is for what Server Core cannot run because it lacks `opengl32.dll`: OxidANT's WebGPU
+  renderer tests, and a run of the x64 product.
+
 All three lanes went green on their first CI runs, 2026-09-25:
 
 | Consumer | Binaries graded | What runs on `windows-11-arm` |
