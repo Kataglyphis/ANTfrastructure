@@ -237,6 +237,59 @@ function Get-MigraphxTreeFact {
     return $m.Groups[1].Value
 }
 
+function Get-MigraphxRocmCmakeCommit {
+    <#
+    .SYNOPSIS
+        The rocm-cmake commit MIGraphX's own requirements.txt pins; throws when upstream moved it.
+    .DESCRIPTION
+        MIGraphX rocm-10.0 calls rocm_add_version_resource (rocm-cmake 33541cd51f, 2026-04-17), which
+        TheRock's rocm-cmake predates, so the build installs this commit ahead of TheRock. Only a full
+        40-hex commit is accepted: that id is what verifies the fetched tree (Save-GitCommitSource).
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$RequirementsText)
+    $m = [regex]::Match($RequirementsText, '(?m)^\s*ROCm/rocm-cmake@(\S+)')
+    if (-not $m.Success) { throw 'rocm-cmake not found in MIGraphX requirements.txt: upstream moved the pin' }
+    $ref = $m.Groups[1].Value
+    if ($ref -notmatch '^[0-9a-f]{40}$') {
+        throw "MIGraphX pins rocm-cmake at '$ref', not a 40-hex commit - refusing a ref that cannot verify the tree"
+    }
+    return $ref
+}
+
+function Save-GitCommitSource {
+    <#
+    .SYNOPSIS
+        Fetches ONE commit of a repository into a fresh directory; returns the tree root.
+    .DESCRIPTION
+        The commit id is the pin: git checks every fetched object against it, so no archive SHA256
+        exists to compare. HEAD is re-read after the checkout and must equal the requested id.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{40}$')][string]$Commit,
+        [Parameter(Mandatory)][string]$WorkDir
+    )
+    $dest = Join-Path $WorkDir "$Name-src"
+    Reset-SourceBuildDirectory -Path $dest
+    & git init --quiet $dest
+    if ($LASTEXITCODE -ne 0) { throw "git init failed (exit $LASTEXITCODE) for $Name" }
+    $fetched = $false
+    foreach ($attempt in 1..3) {
+        & git -C $dest fetch --quiet --depth 1 $Repository $Commit
+        if ($LASTEXITCODE -eq 0) { $fetched = $true; break }
+        Write-Warning "git fetch $Name $Commit failed (exit $LASTEXITCODE), attempt $attempt of 3"
+        Start-Sleep -Seconds (5 * $attempt)
+    }
+    if (-not $fetched) { throw "could not fetch $Name at $Commit from $Repository" }
+    & git -C $dest checkout --quiet --detach FETCH_HEAD
+    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit $LASTEXITCODE) for $Name" }
+    $head = "$(& git -C $dest rev-parse HEAD)".Trim()
+    if ($head -ne $Commit) { throw "$Name checked out $head, not the pinned $Commit" }
+    Write-Host "Staged $Name at $($Commit.Substring(0, 12)) (git verified the commit) in $dest"
+    return $dest
+}
+
 function Get-MigraphxPinnedSourceSpec {
     <#
     .SYNOPSIS
@@ -406,6 +459,7 @@ function Save-MigraphxLicense {
 
 Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList, Get-MigraphxHipRuntimeFile,
     Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Save-PinnedSource, Get-FetchContentUrlMap,
-    Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
+    Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
+    Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
     Get-MigraphxLicenseFile, Get-MigraphxStagedLicensePath, Get-MigraphxLicenseGap, Copy-MigraphxLicenseFile, Save-SpdxHeaderNotice,
     Save-MigraphxLicense

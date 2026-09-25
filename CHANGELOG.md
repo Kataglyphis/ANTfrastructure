@@ -7,6 +7,33 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - MIGraphX builds with its own rocm-cmake pin
+
+The rocm chain got through LiteRT (1:17:33), TVM (2:55:07) and the media merge
+(42:20), then stopped in `rocm-migraphx` at the MIGraphX configure:
+`src/CMakeLists.txt:184: Unknown CMake command "rocm_add_version_resource"`.
+MIGraphX `rocm-10.0` calls that function in five CMakeLists, and rocm-cmake added
+it in 33541cd51f ("Add versioning for Windows", 2026-04-17). MIGraphX pins
+`ROCm/rocm-cmake@6a7c5b73` in its own `requirements.txt` (6 commits past it). The
+build took rocm-cmake from TheRock instead, and every TheRock tag points at
+10155d7272, 4 commits before it.
+
+Phase 2 of `Build-MigraphxFromSource.ps1` now does three things:
+- It reads the commit from the pinned MIGraphX tree's `requirements.txt`
+  (`Get-MigraphxRocmCmakeCommit`, which accepts only a 40-hex id).
+- It fetches exactly that commit (`Save-GitCommitSource`). git verifies every
+  object against the id and HEAD is re-read.
+- It installs rocm-cmake into the deps prefix, which precedes TheRock on
+  `CMAKE_PREFIX_PATH`.
+
+MIGraphX does `find_package(ROCmCMakeBuildTools REQUIRED)`, so it now finds this
+copy. The owner chose deriving it over a new `versions.env` pin: `versions.env` is
+baked into `Dockerfile.base`, so a pin there would re-key the whole Windows chain,
+while this change re-keys only the MIGraphX stage. It also makes a MIGraphX bump
+carry its own rocm-cmake. `Rocm.Migraphx.Tests.ps1` covers the parse, both
+refusals, the parameter guard, and where phase 2 stages it.
+`docs/windows-rocm.md` § Supply chain records the exception.
+
 ## 2026-09-25 - `BACKLOG.md`: every known image gap, measured
 
 The root `BACKLOG.md`, in the agentic loop's `- [ ]` / `- [b]` format, now lists
