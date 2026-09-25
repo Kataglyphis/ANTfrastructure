@@ -123,8 +123,8 @@ Every rocm feature is gated on `HasRocm`, which the cpu and nvidia lanes can nev
 includes features that need the AMD driver but not ROCm (AMF, OpenCL, D3D12, WebGPU), by owner
 decision.
 
-ORT builds the cpu lane's feature set plus DirectML on this lane and logs `ROCm layer present:
-CPU+DML ORT`. The WebGPU spike adds its EP on top ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)).
+ORT builds the cpu lane's feature set, DirectML included, on this lane and logs `ROCm layer
+present: CPU+DML ORT`. The WebGPU spike adds its EP on top ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)).
 ORT >= 1.23 has no ROCm EP, and the dead `onnxruntime_USE_ROCM` branch was deleted.
 
 **The app venv's ORT is checked on every amd64 lane, rocm included.** Smoke section 21
@@ -152,7 +152,7 @@ v1.30.0 asks for flatbuffers (`FIND_PACKAGE_ARGS 23.5.9`) and nlohmann_json (`3.
     `runtimes/CMakeLists.txt:89-90`);
   - TheRock's zlib/zstd sit only in `lib\rocm_sysdeps`;
   - there is no libxml2 and no python.exe in the tree.
-- A header-only leak (nlohmann_json) leaves no trace in a binary. On the first rocm run, grep the
+- A header-only leak (nlohmann_json) leaves no trace in a binary. To check a rocm run, grep its
   onnx stage log for `TheRock`: only the ignore-prefix line should match.
 
 **HIP device code** compiles only with TheRock's AMD clang
@@ -294,10 +294,11 @@ AMD GPU APIs loadable in the image. Neither needs a GPU to check, and
   finding, because AMD's ICD always reports its platform. Both loaders run in a child pwsh
   with a 120 s timeout; device counts are only logged.
 
-Not proven yet: that PAL initialises cleanly in a GPU-less Server Core container (every
-OpenCV T-API check in the image now loads it), and that the HKLM value survives into the
-later layers. If PAL misbehaves, dropping the `Register-OpenClIcd` call is the quick
-escape; `GpuLoaders.ps1` then reports the missing registration.
+Proven on 2026-09-25, when the rocm chain's smoke gate passed (`CHANGELOG.md`):
+`GpuLoaders.ps1` found the HKLM value in the final image, and AMD's ICD loaded there and
+listed its platform with no GPU, without a crash or a hang. If PAL ever misbehaves,
+dropping the `Register-OpenClIcd` call is the quick escape; `GpuLoaders.ps1` then reports
+the missing registration.
 
 **Licences.** See [Redistribution](#redistribution) below.
 
@@ -331,7 +332,9 @@ the untouched original and restores them. `clang.cfg` and `clang++.cfg` beside T
 
 The config files are the only row-complete choice that no user environment can undo. The probe
 also compiles with `--no-default-config`, which tells when a toolset or TheRock bump no longer
-needs the overlay.
+needs the overlay. On the rebuilt image (2026-09-25) the smoke gate's kernel compiles, and so do
+`hipcc`, `clang -x hip` and `amdclang++ -x hip` as shipped. `--no-default-config` still fails
+with the same 20 errors, so the overlay stays.
 
 The files belong in `Dockerfile.rocm`, which installs TheRock. They are installed at the end of
 `Dockerfile.rocm-llama` instead, the first rocm stage that every rocm build has after the media
@@ -387,8 +390,9 @@ record). Its clang-cl branch also adds `-Wall`, which is `-Weverything` there, a
 back to FXC. The patch refuses to run if that block moves.
 
 **Dawn and Tint under clang-cl.** Both have upstream clang-cl branches, `DAWN_WERROR` is off
-by default, and no flags or patches are added. That is read from source; the first
-container build is the proof.
+by default, and no flags or patches are added. That was read from source, and the rocm
+chain proved it: the image it built by 2026-09-25 carries the spike and passed
+`OrtWebGpu.ps1`.
 
 **What ships.**
 - `<ort>\bin\dxcompiler.dll` and `dxil.dll`, beside `onnxruntime.dll`, which loads them at
@@ -427,15 +431,18 @@ and in the app venv, it checks that:
 Any other outcome fails. The whole-script test runs it against a real venv and a shim
 `python`, and each finding carries its `[base]` or `[venv]` label.
 
-**Not proven yet:** Dawn and Tint compiling under the image's clang-cl; Dawn finding the
-Windows SDK's `d3dcompiler_47.dll` in the container; the build time the onnx stage gains
-(probably large); and what Server Core answers without a GPU. If it fails before adapter
-selection, the error text differs and the smoke goes red, by design.
+**Proven on 2026-09-25**, when the rocm chain's smoke gate passed: Dawn and Tint compile
+under the image's clang-cl, and Server Core without a GPU gets as far as adapter selection.
+A failure before that has other error text, and the smoke goes red on it by design. Which of
+the two accepted outcomes it gave is not recorded here.
+
+**Not proven yet:** Dawn finding the Windows SDK's `d3dcompiler_47.dll` in the container,
+and the build time the onnx stage gains (probably large).
 
 **Bumping.** The Dawn pin follows `ONNXRUNTIME_VERSION`: when ORT moves, take the tag from
 its `cmake/deps.txt` `dawn` row and re-measure the archive's SHA256 (held with `bump:hold`).
 DXC is a report row: `bump_versions.py` (`spec_ort_webgpu_dxc`) proposes the newest release
-and, with `--write`, its single `dxc_YYYY_MM_DD.zip` name and SHA256.
+and, with `--write-all`, its single `dxc_YYYY_MM_DD.zip` name and SHA256.
 
 ## GStreamer on the rocm lane
 
@@ -549,7 +556,7 @@ The cpu and nvidia lanes are configured exactly as before.
 **Not enabled: libplacebo.** FFmpeg's `libplacebo` filter needs libplacebo >= 7.351.0 through pkg-config (configure:7425). That would be a new meson source build with its own submodules to pin, plus a shader-compiler library shipped beside FFmpeg. `scale_vulkan` and the other Vulkan filters already cover GPU scaling.
 
 **Limits.**
-- The image has not built this yet. The host evidence is object files only: a real n9.0.2 configure with Strawberry mingw gcc 13.2 and the same SDK version enabled all 35 symbols, and all 103 Vulkan targets (45 C objects, 58 shaders) compiled. No DLL was linked, and that configure took gcc's path, not `--toolchain=msvc`. The first `-Variant rocm` media build is the first clang-cl compile.
+- The rocm chain built it with clang-cl on 2026-09-24, once `makedef` was fixed, and `FFmpeg.ps1` passed on its image on 2026-09-25 (`CHANGELOG.md`). The earlier host evidence was object files only: a real n9.0.2 configure with Strawberry mingw gcc 13.2 and the same SDK version enabled all 35 symbols, and all 103 Vulkan targets (45 C objects, 58 shaders) compiled. No DLL was linked, and that configure took gcc's path, not `--toolchain=msvc`.
 - No GPU-less check can show that a device opens or a shader runs. AMD's Windows Vulkan Video is reported buggy upstream (AMD-Gfx-Drivers#99; not re-checked). Verify on the bare host with the exported `C:\runtime\ffmpeg`, for example `ffmpeg -init_hw_device vulkan=vk:0 -filter_hw_device vk -f lavfi -i testsrc2 -vf format=nv12,hwupload,scale_vulkan=w=1280:h=720,hwdownload,format=nv12 -f null -`.
 
 Evidence (n9.0.2): `configure` 370, 405, 1114-1131, 3192-3677, 4149-4308, 7275-7287, 7800-7861; `libavutil/hwcontext_vulkan.c` 650-685; `compat/w32dlfcn.h`; `ffbuild/common.mak` 113-133; the `vulkan/Makefile`s under `libavcodec`, `libavfilter` and `libswscale`; `fftools/opt_common.c` 355-366.
@@ -625,7 +632,7 @@ On the spike, `Build-TvmFromSource.ps1` (`Get-TvmLlvmChoice`) asks the PATH `llv
 
 After the choice, the build reads `--targets-built` back from the llvm-config TVM will link, and the spike throws when AMDGPU is missing. `ROCM-FEATURES.txt` records that read-back list as `LLVM_TARGETS`, not the requested one, so the rocm lane without the spike records `AArch64;X86`.
 
-Until 2026-09-23 the minimal-LLVM branch ran only when PATH had no llvm-config. On amd64 the spike therefore always found the patched LLVM, threw at the AMDGPU check before configure, and took the whole media-tvm RUN, IREE included, down with it. The minimal LLVM with AMDGPU has not been built in the image yet; its cost and memory use are unmeasured.
+Until 2026-09-23 the minimal-LLVM branch ran only when PATH had no llvm-config. On amd64 the spike therefore always found the patched LLVM, threw at the AMDGPU check before configure, and took the whole media-tvm RUN, IREE included, down with it. The rocm chain has since built the minimal LLVM with AMDGPU in the image: its media-tvm stage, IREE and that LLVM included, took 2:55:07, and `TVM.ps1` passed (`CHANGELOG.md`, 2026-09-25). The LLVM's own share of that time, and its memory use, are unmeasured.
 
 `llvm-config` must never resolve into the ROCm tree.
 
@@ -862,7 +869,7 @@ What it produces:
 | `C:\runtime\lib\migraphx` (`MIGRAPHX_ROOT`) | AMD MIGraphX 2.17.0 (tag `rocm-10.0`, pinned by commit) built from source: `bin\migraphx*.dll`, `migraphx-driver.exe`, `migraphx-hiprtc-driver.exe`, `lib\cmake\migraphx`, headers |
 | `C:\runtime\lib\onnxruntime-ep-amdgpu` (`ORT_AMDGPU_EP_ROOT`) | AMD's out-of-tree ONNX Runtime plugin EP `migraphx-ep.dll` ([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), commit on `gpuep-releases/gpuep-rel-2611`), built against the image's ORT 1.30.0, with its MIGraphX closure and TheRock's `amdhip64_7`/`amd_comgr`/`hiprtc*` beside it |
 
-The MIGraphX stage leaves ORT and GenAI untouched. On this lane they are built with the cpu lane's feature flags plus DirectML, on the rocm sdk layer and with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`; nobody has compared their bytes with the cpu image's. The EP is built against that chain ORT and is loaded at run time with `onnxruntime.register_execution_provider_library(<name>, r"C:\runtime\lib\onnxruntime-ep-amdgpu\migraphx-ep.dll")`.
+The MIGraphX stage leaves ORT and GenAI untouched. On this lane they are built with the cpu lane's feature flags, DirectML included, on the rocm sdk layer and with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`. ORT also carries the WebGPU spike, which is on whenever this stage builds ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)). Nobody has compared their bytes with the cpu image's. The EP is built against that chain ORT and is loaded at run time with `onnxruntime.register_execution_provider_library(<name>, r"C:\runtime\lib\onnxruntime-ep-amdgpu\migraphx-ep.dll")`.
 
 How it is built (`Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps1`, helpers in `WindowsMigraphx.Common.psm1`):
 
@@ -926,16 +933,16 @@ text of its own.
   at all: it links `gstgl`, which imports `OPENGL32.dll`.
 - **GPU correctness:** upstream TheRock#8379 reports torch+ROCm returning zeros on the
   RX 9070 XT. Compare every GPU path against its CPU result on the bare host.
-- **The spikes are first builds.** MIGraphX with `MLIR=OFF`, `BUILD_DEV=OFF`, gfx120X and
-  TheRock 10 is a configuration no upstream CI builds; TVM's ROCm runtime includes
-  TheRock's HIP headers from clang-cl for the first time, on a minimal LLVM with AMDGPU
-  that has never been built in the image; Dawn and Tint have never compiled under the
-  image's clang-cl.
-- **The 2026-09-23 additions have not run in a container.** That covers the OpenCL ICD
-  registration, the Vulkan loader, FFmpeg's Vulkan build, the llama.cpp Vulkan zip,
-  gfx1200 and `ai-edge-litert`. The host evidence is partial; see each section's
-  Evidence. FFmpeg's Vulkan build produced object files only, through gcc. The gfx1200
-  wheels were hashed, not installed. Unit tests cover the rest.
+- **The spikes build, but none has run.** By 2026-09-25 all three built in the image and
+  passed their GPU-less smoke checks: MIGraphX with `MLIR=OFF`, `BUILD_DEV=OFF`, gfx120X and
+  TheRock 10 (a configuration no upstream CI builds, with one backported patch), TVM's ROCm
+  runtime on its minimal LLVM with AMDGPU, and Dawn and Tint under the image's clang-cl.
+  No GPU has executed any of them.
+- **The 2026-09-23 additions have run in a container.** By 2026-09-25 the OpenCL ICD
+  registration, the Vulkan loader, FFmpeg's Vulkan build, the llama.cpp Vulkan zip, gfx1200
+  and `ai-edge-litert` were in the rocm image, and their GPU-less checks passed
+  (`GpuLoaders.ps1`, `FFmpeg.ps1`, `LlamaCpp.ps1`, `Torch.ps1`). Each section says what
+  its check cannot see.
 - **Found on every lane, not fixed here (owner decision):** LiteRT-LM is cloned by tag,
   not by commit. OpenCV's configure-time ORT download, listed here until 2026-09-23, was
   a Windows-lane defect (Linux pre-set `HAVE_ONNXRUNTIME` all along) and is fixed on every

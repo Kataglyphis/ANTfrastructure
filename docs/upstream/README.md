@@ -4,7 +4,9 @@
 
 `../upstreamable-patches.md` is the register: every local third-party change,
 graded, with the message to send where one is ready. This directory holds the
-artefacts that are too big to inline there.
+artefacts that are too big to inline there. The Windows lane's register is
+[`../upstream-windows-patches.md`](../upstream-windows-patches.md); its two
+issue drafts below live here too.
 
 ## Contents
 
@@ -13,11 +15,15 @@ artefacts that are too big to inline there.
 | `patches/opencv-700cd32ffd.patch` | upstream OpenCV commit, `cap_ffmpeg_hw.hpp`, *support FFmpeg after AVCodec::pix_fmts removal* |
 | `patches/opencv-83ed22ca28.patch` | upstream OpenCV commit, `cap_ffmpeg_impl.hpp`, *use avcodec_get_supported_config for framerates* |
 | `hcsshim-lost-shutdown-notification-issue.md` | Windows lane, unrelated to the Linux register |
+| `windows-containers-lsm-session-event-hang.md` | Windows lane, the container boot hang (issue draft for microsoft/Windows-Containers) |
 
 Both OpenCV patches are the **original upstream commits with their authorship
 intact**, fetched from `github.com/opencv/opencv`. They are here because the
-OpenCV submission is a *port to 5.x*, not a fix of our own: send these, not our
-`002-ffmpeg8-avcodec-config-api.patch`.
+OpenCV submission is a *port to 5.x*, not a fix of our own: send these. Our own
+`002-ffmpeg8-avcodec-config-api.patch` is gone since 2026-09-02; the Linux lane
+applies these same two commits, byte for byte, as
+`linux/scripts/patches/opencv/002a-upstream-ffmpeg-pix_fmts-removal.patch` and
+`002b-upstream-ffmpeg-supported-config-framerates.patch`.
 
 Verified 2026-09-02 against `opencv/5.x`:
 

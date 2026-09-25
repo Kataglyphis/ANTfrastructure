@@ -87,8 +87,10 @@ to `usable_physical_GB − HostReserveGb`. `-HostReserveGb` (default 22 — see 
 learned-the-hard-way note below) is the RAM left for Windows + dockerd + Defender;
 lower it to push closer to the metal (riskier — under memory pressure the hcsshim
 `ttrpc` wedge is more likely). Pass an explicit `-MediaMemoryGb N` to override
-auto-detection. The cap is forwarded as `MEMORY_LIMIT_GB` so the build scripts
-scale their job count to the container's cap (`BUILD_JOBS` overrides the heuristic
+auto-detection. The budget is published to the sccache WebDAV endpoint
+(`preseed/memory-limit-gb.txt`; as an ARG or ENV it would be a cache key, #51), and
+`Get-BuildJobCount` scales each build's job count to it (a `MEMORY_LIMIT_GB` in the
+environment wins, host RAM is the fallback, and `BUILD_JOBS` overrides the heuristic
 outright).
 
 Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61,
@@ -178,10 +180,11 @@ run later with
 
 ## The Windows cache, tier by tier
 
-Moved out of `AGENTS.md` on 2026-09-15, unedited except for this heading and the
-list marker. The rule -- assume nothing from the Linux chain, preserve the layer
-ordering and the per-file module closures, check the reserve before blaming a
-cache key -- stays there; the tiers, the numbers and the two incidents are here.
+Moved out of `AGENTS.md` on 2026-09-15 with only this heading and the list marker
+changed; corrected since where the code moved (2026-09-18, 2026-09-25). The
+rule -- assume nothing from the Linux chain, preserve the layer ordering and the
+per-file module closures, check the reserve before blaming a cache key -- stays
+there; the tiers, the numbers and the two incidents are here.
 
 **The WINDOWS chain caches differently — do not assume rules 1-4 apply.**
    It relies on (a) deliberate layer ORDERING — `Install-Vs.ps1` sits ABOVE the
@@ -235,8 +238,15 @@ cache key -- stays there; the tiers, the numbers and the two incidents are here.
       the GStreamer layer.
    4. `Dockerfile.toolchain-builder`'s **`patched-llvm`** RUN mounts the same six
       as tier 1, per-file. It is the DEFAULT toolchain target, so an edit re-pays
-      the LLVM 23.1.0 compile AND every media lane below it — the most expensive
+      the patched-LLVM compile AND every media lane below it — the most expensive
       tier in the chain.
+   5. **`WindowsOrtProvenance.Build.psm1`** (the ORT gate G2, 2026-09-23) is a
+      per-file mount at `C:\bkmnt\ortmods\` in the five ORT-consumer RUNs: FFmpeg,
+      OpenCV and the GenAI tail in `Dockerfile.media-builder`, GStreamer in the
+      merge, and the AMD GPU EP in `Dockerfile.rocm-migraphx`. An edit re-runs
+      media-core from FFmpeg on (each stage builds FROM the one before), the
+      merge and the AMD GPU EP, never ONNX. `SourceBuild.OrtChainOnly.Tests.ps1`
+      holds the mount shape.
 
    Do NOT move a helper into `WindowsSourceBuild.Common` because "that is where
    helpers go" — if one branch is its only consumer, it belongs in a leaf.
@@ -250,10 +260,12 @@ cache key -- stays there; the tiers, the numbers and the two incidents are here.
    [`docs/windows-build-resources.md`](windows-build-resources.md)
    § Persistent compile cache (sccache).
    - **sccache runs WebDAV-remote-only since 2026-08-16.**
-     `SCCACHE_MULTILEVEL_CHAIN` defaults to `""` in **both**
-     `Dockerfile.media-builder`'s `common` stage and the merge builder (not a
-     descendant, so the ENV is repeated — **change BOTH or neither**). Restore
-     `disk,webdav` only after re-verifying against a newer buildkit.
+     `SCCACHE_MULTILEVEL_CHAIN` is an ARG with no default in every compiling
+     stage, never an ENV
+     ([§ What the published image carries](#what-the-published-image-carries));
+     unset means WebDAV only. Restore `disk,webdav` per run with
+     `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`, and only after
+     re-verifying against a newer buildkit.
      **`SCCACHE_DIR` alone does nothing** without the chain variable.
    - **sccache is the released 0.18.0 zip, installed into `CARGO_BIN`** (since
      2026-09-18; the `SCCACHE_GIT_REV` source build is retired). 0.18.0 carries
@@ -273,8 +285,9 @@ cache key -- stays there; the tiers, the numbers and the two incidents are here.
    `Build-GstreamerFromSource.ps1` moves the extracted tree. Also raise the
    tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
    **shared** by every cache mount plus local sources and git checkouts, and
-   the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
-   sizes and that cap are ONE decision, not two. (Since 2026-08-16 the L0 mount
+   the sccache L0 (15G) and uv cache (10G) already claim 25 GB of its 30 GB
+   reserve (the cap is 60 GB). Cache sizes and that cap are ONE decision, not
+   two. (Since 2026-08-16 the L0 mount
    is attached but DORMANT — the chain defaults to WebDAV-only — so its 15G is
    reserved rather than consumed. Do not repurpose that headroom: the tier is
    meant to return, see #99.)
@@ -287,9 +300,10 @@ container. **sccache is therefore REQUIRED by default for the media stages:
 Build-Buildkit.ps1 fails fast when a media stage is requested and no reachable
 endpoint is configured** (`-NoSccache` opts into a deliberate cache-less build). The
 gate is media-only (`Assert-SccacheEndpoint`, `$compileStages = @('media')` in
-`WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL
-CPython) has no sccache wiring, so toolchain-only builds are never blocked on
-an endpoint they would not use. One-time
+`WindowsBuildDriver.Common.psm1`): the toolchain's CPython build (MSBuild/ClangCL)
+has no sccache wiring, and its default `patched-llvm` target uses the endpoint when
+one is passed (#164) but compiles LLVM cold without it, so toolchain-only builds are
+never blocked on an endpoint. One-time
 host setup:
 
 ```pwsh
@@ -303,10 +317,14 @@ dufs C:\sccache-cache -A -p 5000
 .\windows\Build-Buildkit.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 ```
 
-CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route
-clang-cl through sccache, and since 2026-08-04 GStreamer (Meson) is cached too
-(`Build-GstreamerFromSource.ps1` sets `CC`/`CXX` to `'sccache clang-cl'`
-when the remote backend is configured). FFmpeg (MSVC/make) remains uncached.
+CMake-based builds (every configure through `Invoke-CmakeConfigure`: ONNX, GenAI,
+OpenCV, LiteRT, LiteRT-LM, TVM, IREE, HailoRT, and on the rocm lane MIGraphX and
+the AMD GPU EP) then route clang-cl through sccache, and since 2026-08-04 GStreamer
+(Meson) is cached too (`Build-GstreamerFromSource.ps1` sets `CC`/`CXX` to
+`'sccache clang-cl'` when the remote backend is configured). FFmpeg (clang-cl +
+make) is cached since 2026-08-20 (#100): the launcher goes in at make time
+(`make CC='sccache clang-cl'`), never into configure's `--cc`, and
+`FFMPEG_SCCACHE=0` opts out.
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
@@ -528,7 +546,8 @@ unreachable endpoint must stay a loud failure rather than quietly become an unca
 multi-hour build. Tests: `windows/scripts/tests/Build.SccacheEndpointProbe.Tests.ps1`
 (a loopback port bound but never listening, a listening one, `localhost` against an
 IPv4-only listener, a 200 ms bound against Windows' ~2 s refusal, an unresolvable
-name, and an in-suite mutant per case showing it can fail on the host it runs on).
+name, and in-suite mutants for the removal, the bound and the `localhost` case,
+each showing that case can fail on the host it runs on).
 
 ### The build host's remote tier, at run time
 
@@ -550,4 +569,4 @@ parity run is one); add `-e SCCACHE_WEBDAV_ENDPOINT=$env:SCCACHE_WEBDAV_ENDPOINT
 yourself. Tests: `WindowsContainerBuild.Reuse.Tests.ps1` (`Add-HostSccacheRemoteEnv`)
 and `Modules.Orchestrators.Tests.ps1` (the build run carries the `-e`).
 
-> **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
+> **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (they read only `linux/` from the same root context) but breaks Windows builds.

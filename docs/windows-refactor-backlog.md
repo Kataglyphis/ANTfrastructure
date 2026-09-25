@@ -14,7 +14,7 @@ The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 > **COUNTING NOTE:** item numbers are HISTORICAL and never reused — the highest
 > number is not the item count. Resolved narratives move to the dated archives
 > (`windows-backlog-archive-*.md`); a bare "#N" that is not in this file
-> resolves there. Lean-OPEN-only is the owner''s standing policy.
+> resolves there. Lean-OPEN-only is the owner's standing policy.
 
 ## OPEN
 
@@ -24,8 +24,9 @@ The `:winarm64` cross lane reached runtime parity with `:winamd64` apart from th
 exclusions listed below, and **2026-08-31 reran the FULL chain with the QNN EP
 enabled** (#121 build-time path proven; the earlier acceptance gap — HEAD vs the
 2026-08-26 tree — was two dead-on-arrival GStreamer cross-lane fixes that are now
-landed: see #135 follow-up below). Read the table as the last fully green run
-(`bk-winarm64`, 2026-08-31). The 2026-09-02 dual-lane rebuild (post-wave
+landed: see #135 follow-up below). Read the table as the fully green run of
+2026-08-31 (`bk-winarm64`); a later full arm64 run is #176's
+`bk-20260920-203631` (smoke 120/0/15, arch gate 1047/0, CUDA on). The 2026-09-02 dual-lane rebuild (post-wave
 toolchain with sanitizers, rustup 1.29.1) reproduced both SMOKE columns exactly
 — arm64 **97/0/15**, amd64 **222/0/0** (`bk-20260902-002412`); the other rows
 below are the 2026-08-31 measurements and were not re-extracted.
@@ -43,8 +44,8 @@ below are the 2026-08-31 measurements and were not re-extracted.
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
 `ABSENT-ON-ARM64.txt` (LiteRT-LM, the default name) or a `COMPILER-ABSENT-ON-ARM64.txt`
 (the two compilers, which pass `-FileName` explicitly) — the manifest globs both
-families. Call sites: `Build-TvmFromSource.ps1:341`,
-`Build-IreeFromSource.ps1:340`, `Build-LitertAll.ps1:79`: the **TVM compiler**, the **IREE
+families. Call sites, each a `Write-AbsentOnCrossMarker` call: `Build-TvmFromSource.ps1`,
+`Build-IreeFromSource.ps1`, `Build-LitertAll.ps1`: the **TVM compiler**, the **IREE
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
@@ -56,9 +57,11 @@ probe-proven 2026-09-19 — `AA64 machine (ARM64)` — once the arm64 library
 archives are staged). Wiring that into the lane is **#176**. The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
 runtime execution still needs a Snapdragon host — see #121 below).
 
-**The honest caveat, unchanged:** nothing the arm64 lane produces has ever been *executed*. Its
-wheels ship staged, not installed, and every verdict above is a static check — PE machine type,
-import resolution, exported symbols. The 15 skipped smoke assertions are the ones that would have
+**The honest caveat, barely changed:** until 2026-09-25 nothing the arm64 lane produces had
+been *executed*. Since then the consumer cross lanes' `windows-11-arm` run jobs load the bundle's
+VC++ runtime, GLib/GStreamer and (AccelerANTgine) the chain ONNX Runtime, as far as loading only
+(`BACKLOG.md` CON30). Its wheels ship staged, not installed, and every verdict above is a static
+check — PE machine type, import resolution, exported symbols. The 15 skipped smoke assertions are the ones that would have
 to run the aarch64 payload on an x64 host.
 
 **Permanently out of reach — do not re-litigate without new upstream facts:** classic TensorRT
@@ -199,7 +202,8 @@ this repo's cp314 pin).
 - **#158 / #159 / #160 / #164 / #167 / #168-#174 / #175 — the 2026-09-17
   batch: the thirteen audited defects, the eight settled-probe deletions, the
   compiler-rt verify+tar port, LLVM through sccache, smoke section 23, the
-  comment-discipline wave and the three neighbourhood checks. Landed, unbuilt.
+  comment-discipline wave and the three neighbourhood checks. Landed in
+  `2bb0410f` (2026-09-18), unbuilt when archived.
   Archive: [`windows-backlog-archive-2026-09-17.md`](windows-backlog-archive-2026-09-17.md).
 
 - **The 2026-09-03 doc-drift findings and the PascalCase anchors** — all six
@@ -214,7 +218,8 @@ this repo's cp314 pin).
   at the best recorded state **222/0/0** (`[PASS] AddressSanitizer …`,
   `clang_rt.asan_dynamic-x86_64.dll` installs verified in the toolchain log);
   arm64 closed green at its baseline **97/0/15**. The predicted re-pay was real
-  (full LLVM + media on both lanes). Narrative: `CHANGELOG.md` § 2026-09-01/02.
+  (full LLVM + media on both lanes). Narrative:
+  [`changelog-archive-2026-09-07.md`](changelog-archive-2026-09-07.md) § 2026-09-01/02.
 
 - **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
   FOUR independent breakages (every script path, the missing TargetArch + Tvm
@@ -236,7 +241,7 @@ this repo's cp314 pin).
   `patched-llvm` whole-dir module mount narrowed (and gated), TVM + GStreamer
   helpers moved to their leaf modules, `Set-StrictMode` plus the four latent bugs it
   exposed, the deliberate declines, the dead `build.ps1` permission entries, and the
-  CHANGELOG archive split. Seven commits, `7cc2e95f..a5eac0dd`. Full narratives:
+  CHANGELOG archive split. Seven commits, `7cc2e95f^..a5eac0dd`. Full narratives:
   [`windows-backlog-archive-2026-08-31.md`](windows-backlog-archive-2026-08-31.md)
   § Backlog wave #147-#151. Its declines are also a standing directive below.
 
@@ -287,7 +292,8 @@ this repo's cp314 pin).
 
 - **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
 - **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance
-  PASSED (smoke 192/0/1, arch gate 1134/0). Narrative: `CHANGELOG.md`
+  PASSED (smoke 192/0/1, arch gate 1134/0). Narrative:
+  [`changelog-archive-2026-09-07.md`](changelog-archive-2026-09-07.md)
   § 2026-08-29 — amd64 acceptance build GREEN, and
   [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) § #134
   acceptance run. NOT in `windows-backlog-archive-2026-08-26.md` — that archive
@@ -328,15 +334,15 @@ this repo's cp314 pin).
   `86;87;89;120`, owner decision 2026-09-23 — 80/A100 retired, 120/Blackwell
   added; in ALL builds, incl. dev iterations; pinned by Pins.CanonicalValues).
 - **CUDA compiles go THROUGH sccache** — `SCCACHE_CUDA_LAUNCHER` is DEFAULT ON
-  since 2026-08-18 (`Dockerfile.media-builder:327`; the OpenCV stage via
-  `OPENCV_CUDA_LAUNCHER:421`). **Do not flip it off silently** — the onnx stage
+  since 2026-08-18 (`Dockerfile.media-builder`'s `ARG SCCACHE_CUDA_LAUNCHER="1"`;
+  the OpenCV stage via its own `ARG OPENCV_CUDA_LAUNCHER="1"`). **Do not flip it off silently** — the onnx stage
   then re-pays ~25 min of CUDA compiles per rebuild. Opt out per run with
   `-BuildArg SCCACHE_CUDA_LAUNCHER=`.
   CORRECTED 2026-08-31: this directive read "CUDA compiles stay BARE nvcc" and had
   been wrong since 2026-08-18. The 2026-08-10 miscompile it rested on was
   root-caused to sccache's dryrun quote-collapse and fixed upstream
-  (mozilla/sccache#2811, merged 2026-08-19); patch 006 is retired
-  (`Build-OnnxFromSource.ps1:147`). A directive is the worst place for a stale
+  (mozilla/sccache#2811, merged 2026-08-19); patch 006 is retired (the
+  "Patch 006" comment in `Build-OnnxFromSource.ps1`). A directive is the worst place for a stale
   rule — acting on this one would have cost ~25 min per rebuild against an
   explicit Dockerfile warning.
 - **Do NOT collapse the media-core checkpoints** (#72: export is ~1.2% of the
@@ -383,17 +389,17 @@ this repo's cp314 pin).
 > output says `Reserved space: 161.0612736GB` for a healthy 150 GiB pin, NOT
 > "150GB": the toml takes GiB and buildctl prints GB, and the labels differ too.
 
-- **UPSTREAM, consolidated 2026-08-17 (was scattered across #99''s body and two
+- **UPSTREAM, consolidated 2026-08-17 (was scattered across #99's body and two
   Open-items entries):**
   1. **moby/buildkit — WCOW cache mounts lose writes into an inherited
      directory.** Cause, A/B measurements and the 2-minute repro are in the
      archive (#99). Strengthen before filing: reproduce with PLAIN file writes
      (no sccache). Goes to moby/buildkit, NOT mozilla/sccache.
-  2. **mozilla/sccache#2808 addendum** — the issue''s "WebDAV cache was largely
+  2. **mozilla/sccache#2808 addendum** — the issue's "WebDAV cache was largely
      empty" reasoning is now explained by the BuildKit mount defect (writes
      never reached the remote because L0 failed first under the default
      write-error-policy=l0). Core findings (nvcc deadlock + miscompile) stand;
-     a two-sentence correction protects the report''s credibility. Also note
+     a two-sentence correction protects the report's credibility. Also note
      CUDA was launcher-off by default only between 2026-08-10 and 2026-08-18
      and has been launcher-ON since (post-#2811); the repro is explicit either
      way — `Invoke-SccacheCudaLlmDeadlock.ps1:108` passes
@@ -414,12 +420,17 @@ this repo's cp314 pin).
   https://github.com/google-ai-edge/LiteRT-LM/issues/3245 (CMake-lane
   staleness, four findings). **POSTED 2026-08-24:** opencv/opencv#29788
   (dnn/ORT `char*` vs `wchar_t`, from out/upstream-issue-opencv-ort-wchar.md) —
-  our `004-dnn-ort-profiling-wchar.patch` stays until it lands upstream.
+  now closed: upstream fixed it on `5.x` (opencv/opencv#29309) after the 5.0.0 tag we pin, so
+  our `004-dnn-ort-profiling-wchar.patch` stays until `OPENCV_VERSION` moves past it
+  ([`upstream-windows-patches.md` § Already filed](upstream-windows-patches.md#already-filed),
+  checked 2026-09-18).
   **NEW DRAFTS (2026-08-24 evening, not posted — owner's call), both found by #116's
   first cross runs:** out/upstream-issue-iree-host-bin-dir-exe.md — `IREE_HOST_BIN_DIR`
   composes host tool paths without `.exe` on a Windows host;
   out/upstream-issue-iree-elf-arch-arm64-msvc.md — `MSVC_C_ARCHITECTURE_ID MATCHES 64`
-  matches `ARM64`, archiving the x64 MASM object into an ARM64 library.
+  matches `ARM64`, archiving the x64 MASM object into an ARM64 library. That one is
+  packaged as a ready-to-send PR since 2026-09-02, still not posted:
+  [`windows/upstream/iree-elf-arch-x64-match/`](../windows/upstream/iree-elf-arch-x64-match/PR.md).
 - **REGISTRY of unfiled drafts under `out/` (added 2026-08-31 — the section title
   says "do not let these evaporate", and four of these were named nowhere):**
   `upstream-buildkit-wcow-cache-mount-draft.md` (item 1 above; its own header records
@@ -450,7 +461,7 @@ this repo's cp314 pin).
   miscompile to sccache's dryrun quote-collapse (verified bare 3189 == wrapped
   3189 symbols; mozilla/sccache#2811 merged 2026-08-19), and the nvcc/CUDA crash
   proved to be #99 collateral, gone under a healthy backend. #75's `-j` ladder is
-  no longer silent either — it warns before and after (archive 2026-08-21:150).
+  no longer silent either — it warns before and after (archive 2026-08-21, item 75).
   (2) **RE-SCOPED 2026-09-18, run measured:** one `Test-BuildCopy.ps1 -Heavy`
   smoke after the poisoned-chain prune. With the RDNA4 dGPU ENABLED (RX 9070 XT,
   `Status OK`) it is red on both lanes with the known signature —

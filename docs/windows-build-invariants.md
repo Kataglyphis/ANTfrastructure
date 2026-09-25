@@ -146,9 +146,9 @@ Import-CanonicalVersions, then `Get-Command Resolve-DirectoryPath` must still
 resolve.
 **The "REPO-COMPLETE since 2026-08-05" claim that stood here was WRONG, and
 it cost a 53-minute compile on 2026-08-21.** Every leaf builder
-(`Build-OnnxFromSource.ps1`, `-opencv-`, `-ffmpeg-`, `-gstreamer-`, `-tvm-`,
-`-litert-`, `-iree-`, …) still opened with `Import-Module $modulePath -Force`
-— and those are precisely "scripts `&`-invoked from module scope": the chain
+(`Build-OnnxFromSource.ps1`, `Build-OpencvFromSource.ps1`, and the FFmpeg,
+GStreamer, TVM, LiteRT and IREE builders, …) still opened with
+`Import-Module $modulePath -Force` — and those are precisely "scripts `&`-invoked from module scope": the chain
 runs them in-process via `& (Join-Path $ScriptDir $stage.Script)`. ONNX built
 green for 53 min; the chain tail then died on `The term
 'Stop-LingeringBuildProcess' is not recognized`, because `-Force` had removed
@@ -254,7 +254,7 @@ hygiene.
 **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
 `Build-Buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
 finished image after `final`, and a failure fails the chain (backlog #44).
-It is the only gate since the classic driver's deletion on 2026-08-31
+It is the only smoke gate since the classic driver's deletion on 2026-08-31
 (mechanism and gating history: `docs/windows-builds.md` § Smoke Testing).
 Three rules when touching it: it
 must run **through `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and
@@ -268,8 +268,9 @@ run that asserted nothing used to print "All smoke tests passed!" and exit 0.
 `Test-Container.ps1` mostly verifies by EXECUTING the staged binaries,
 and Windows x64 has no ARM64 emulation — so the payload sections keep floor 0
 on arm64 and the driver reports them `NOT APPLICABLE`, never "passed", while
-the host-toolchain sections (1-6, 14-16, and 19 arch-filtered:
-`TORCH_APP_DIR` dropped) RUN with their OWN floor column, and the healthcheck
+the host-toolchain and static sections (1-6, 14-16, 19 arch-filtered:
+`TORCH_APP_DIR` dropped, 23 without the torch-baked script, and 25, the ORT
+census) RUN with their OWN floor column, and the healthcheck
 likewise runs its host-tool checks, skipping only payload execution.
 Sections 14/15 compile FOR the target and assert the produced PE machine
 instead of running (ASAN skipped there — LLVM's win-x64 package ships no
@@ -280,7 +281,8 @@ leave a number a later amd64 change could quietly be measured against, which
 is exactly how this gate became decorative once before. The cross lane's
 execution-side verification is `Test-TargetArch.ps1` (PE machine type over
 `C:\runtime` AND the fanned-in site-packages, `.lib` archives included,
-inside the merge stage, floor raised to 100 there) plus the fact that every
+inside the merge stage, with its own floor, `ARCH_GATE_MIN_INSPECTED` = 580
+on arm64) plus the fact that every
 artifact linked at all — neither proves the code RUNS, and nothing available
 on this host can.
 
@@ -298,11 +300,11 @@ non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
 
 ### AVX-512/AMX flags never go in global CXX flags
 
-**AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `Build-OnnxFromSource.ps1` appends `Get-WindowsTargetKernelSimdFlags -Arch` per-TU (the name this line carried until 2026-08-24, `Get-WindowsX86Avx512Flags`, survives only as a zero-caller compat shim) to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and **asserts the tagged count against `Get-MlasKernelTuMinimum` — a THROW, not a log**. Two field lessons shape that floor: on aarch64 the x86 pattern matches nothing and a no-match patch *succeeds* (why the pattern is arch-parameterized), and on 2026-08-24 the amd64 lane broke with the floor PRESENT but too low — ORT v1.29.0 added six AVX-512 TUs outside `intrinsics/`, the stale pattern still matched 5 ≥ floor 4, and five kernels failed to compile. Floor rule: **it must be high enough that the previous broken state trips it** (now 8 against 11 matched; the stale pattern's 5 fails loudly). When bumping `ONNXRUNTIME_VERSION`, re-measure BOTH arches' patterns against the new MLAS tree — the 1.29 bump re-measured only aarch64 and amd64 paid for it. Don't "simplify" in either direction.
+**AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `Build-OnnxFromSource.ps1` appends `Get-WindowsTargetKernelSimdFlags -Arch` per-TU (the name this line carried until 2026-08-24, `Get-WindowsX86Avx512Flags`, was a zero-caller compat shim until its deletion on 2026-08-26) to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and **asserts the tagged count against `Get-MlasKernelTuMinimum` — a THROW, not a log**. Two field lessons shape that floor: on aarch64 the x86 pattern matches nothing and a no-match patch *succeeds* (why the pattern is arch-parameterized), and on 2026-08-24 the amd64 lane broke with the floor PRESENT but too low — ORT v1.29.0 added six AVX-512 TUs outside `intrinsics/`, the stale pattern still matched 5 ≥ floor 4, and five kernels failed to compile. Floor rule: **it must be high enough that the previous broken state trips it** (now 8, against the 11 that v1.29.0 matched; the stale pattern's 5 fails loudly). When bumping `ONNXRUNTIME_VERSION`, re-measure BOTH arches' patterns against the new MLAS tree — the 1.29 bump re-measured only aarch64 and amd64 paid for it. Don't "simplify" in either direction.
 
 ### The mandatory GStreamer plugin set is a contract, never `auto`
 
-**The mandatory GStreamer plugin set is a CONTRACT, never `auto` (2026-08-07).** `Get-RequiredGstPlugin` (`WindowsGstPlugins.Common.psm1`) is the SINGLE definition of which integrations must exist — `libav`, `opencv`, `onnx`, `tflite`, the same four on BOTH lanes — enforced at four points that must never disagree: the pkg-config pre-flight in `Build-GstreamerFromSource.ps1`, meson features set to `enabled` (meson's `auto` means **skip silently** — never use it; tflite's flag is presence-driven `-Dgst-plugins-bad:tflite=enabled`), a post-install gate that throws, and smoke-test assertions that fail. Any arch filtering lives in the CONTRACT, never in a caller — teaching only one enforcement point about an arch would recreate the 2026-07-11 regression. `tensorfilter` is an NNStreamer element, not a GStreamer plugin — never add it to the set. Deliberate exception: `-SkipPluginGate`, which marks the image unshippable. The root causes, per-plugin mechanisms and the hardened export-marker gate: `docs/windows-builds.md` § Mandatory GStreamer plugins (the contract); the cross-lane arch conditionals: `docs/windows-cross-builds.md` § The merge stage on arm64.
+**The mandatory GStreamer plugin set is a CONTRACT, never `auto` (2026-08-07).** `Get-RequiredGstPlugin` (`WindowsGstPlugins.Common.psm1`) is the SINGLE definition of which integrations must exist — `libav`, `opencv`, `onnx`, `webrtc`, `nice`, `tflite`, the same six on BOTH lanes since 2026-08-25 (#128) — enforced at four points that must never disagree: the pkg-config pre-flight in `Build-GstreamerFromSource.ps1`, meson features set to `enabled` (meson's `auto` means **skip silently** — never use it; tflite's flag is presence-driven `-Dgst-plugins-bad:tflite=enabled`), a post-install gate that throws, and smoke-test assertions that fail. Any arch filtering lives in the CONTRACT, never in a caller — teaching only one enforcement point about an arch would recreate the 2026-07-11 regression. `tensorfilter` is an NNStreamer element, not a GStreamer plugin — never add it to the set. Deliberate exception: `-SkipPluginGate`, which marks the image unshippable. The root causes, per-plugin mechanisms and the hardened export-marker gate: `docs/windows-builds.md` § Mandatory GStreamer plugins (the contract); the cross-lane arch conditionals: `docs/windows-cross-builds.md` § The merge stage on arm64.
 
 ### A missing stage artifact is a THROW, not a warning
 
@@ -398,7 +400,7 @@ told the truth, each looking exactly like a product defect:
 (1) a hand-rolled `[DllImport("kernel32")] LoadLibraryW(string)` marshals
 `string` as **ANSI** by default, so a UTF-16 API answered "module not found"
 (126) for all 14 TensorRT DLLs — the repo's `Assert-DllLoads`
-(`WindowsSmokeTest.Common.psm1:233`) has always declared
+(`WindowsSmokeTest.Common.psm1`) has always declared
 `CharSet=CharSet.Unicode`; **use the existing helper, don't re-declare
 P/Invoke**. (2) A hand-written probe Dockerfile without `# escape=\`` let the
 default `\` escape eat the `s` in `target=C:\sccache`, so a cache mount
@@ -503,8 +505,8 @@ two cannot drift apart) with one `.prev` generation, falling back to the build
 dir only when no mount exists. **Never `$SCCACHE_DIR\logs`** — it wrote build
 logs straight into sccache's own LRU-managed cache ROOT, which is the same
 mistake #90 had already fixed for the error log; corrected 2026-08-16. Pass the result as `-LogFile`; never hand-roll the path, and never
-omit `-LogFile` (build-onnx-genai did, and produced no ninja log at all).
-This lived as ONE inline block in build-onnx for months while
+omit `-LogFile` (the ONNX GenAI builder did, and produced no ninja log at all).
+This lived as ONE inline block in `Build-OnnxFromSource.ps1` for months while
 opencv/iree/tvm/litert silently lost their logs — hence a shared helper
 (backlog #43). Corollary of the owner's standing "never swallow logs" rule.
 
@@ -521,7 +523,9 @@ stats go to STDERR (survives the step-log clip); and
 `BUILDKIT_STEP_LOG_MAX_SIZE=-1`/`MAX_SPEED=-1` on the buildkitd service is
 a REQUIRED host setting — a Stevedore reinstall/repair wipes the service
 env silently (found empty 2026-08-10; that clip hid guard verdicts and
-stats for three runs). Verify with `Install-NewHost.ps1 -ReportOnly`;
+stats for three runs). `Build-Buildkit.ps1` refuses to launch without
+`MAX_SIZE=-1` (`Assert-BuildkitdStepLogEnv`; `-SkipStepLogGate` skips it for
+one launch). Verify with `Install-NewHost.ps1 -ReportOnly`;
 re-apply + `Restart-Service buildkitd` only between builds.
 
 ---
@@ -546,7 +550,7 @@ fans in.
 
 ### A committed layer can never be shrunk later
 
-**Windows images have a HARD 125-layer cap — it binds any image LOADED INTO DOCKER, whichever builder produced it.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines, one layer apiece, under the since-deleted classic builder. BuildKit keeps metadata in the image config, so a BK solve spends layers only on `RUN`/`COPY`/`ADD` — but `-FinalTar` hands the result to `docker load`, which enforces the ceiling again. Rule: in every windows Dockerfile, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
+**A committed layer can never be shrunk later, so scrub INSIDE the container.** The BK lane — the only lane since 2026-08-31 — passes `-ScrubAfter` to the media branch and merge/GStreamer runs (`Clear-BuildScratch`: pip cache, `~\.nuget`, `%TEMP%`, INetCache). It was added there first; the classic lane went without it until 2026-08-07 and shipped debris the BK lane's images did not. Source trees are a separate mechanism — each leaf script calls `Remove-SourceBuildTree` itself. The toolchain stage is excluded on purpose: its CPython tree at `C:\temp\cpython` IS the deliverable.
 
 ### Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`
 
@@ -554,7 +558,7 @@ fans in.
 
 ### Windows images have a hard 125-layer cap
 
-**CMake cross configures must carry the ASM language target too (2026-08-24).** `Get-CMakeCrossArgs` (`WindowsTargetArch.Common.psm1`) sets `CMAKE_ASM_COMPILER_TARGET`/`CMAKE_ASM_FLAGS_INIT` alongside the C/CXX pair, and it OWNS them — never hand a project ad-hoc ASM cross flags. Before it did, any project enabling the ASM language assembled with clang's X64 default target — signature: `brackets expression not supported on this target` on aarch64 `.S` sources — and an aarch64 `-march` handed to that x86-targeted driver was misread as a CPU name (`unknown target CPU 'armv8.2-a+fp16'`), which sent the first diagnosis chasing a nonexistent driver gap. amd64 is untouched: the cross args stay empty there.
+**Windows images have a HARD 125-layer cap — it binds any image LOADED INTO DOCKER, whichever builder produced it.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines, one layer apiece, under the since-deleted classic builder. BuildKit keeps metadata in the image config, so a BK solve spends layers only on `RUN`/`COPY`/`ADD` — but `-FinalTar` hands the result to `docker load`, which enforces the ceiling again. Rule: in every windows Dockerfile, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
 
 ### `docker commit` inherits the container's `Cmd`
 
@@ -579,7 +583,7 @@ fans in.
 
 ### Parallelism is memory-bounded, not CPU-bounded
 
-**Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; every BK RUN is process-isolated and sees all host logical processors (32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-build-resources.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in BOTH media Dockerfiles; restore `disk,webdav` only after re-verifying against a newer buildkit (recipe + full measurement in `docs/windows-builds.md` #99). Do not "fix" this in sccache.
+**Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; every BK RUN is process-isolated and sees all host logical processors (32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-build-resources.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG with no default in every compiling stage (unset means WebDAV only); restore `disk,webdav` with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` only after re-verifying against a newer buildkit (recipe: `Test-SccacheWrite.ps1` in `docs/windows-builds.md`; full measurement: `docs/windows-backlog-archive-2026-08-17.md` § P0d, #99). Do not "fix" this in sccache.
 
 ### `buildctl` builds (non-admin), `nerdctl` runs and inspects (admin)
 
@@ -650,7 +654,7 @@ unroutable IPs — so start it deliberately, then RE-CHECK the CNI subnet
 
 ### Two BK-driver guards to know before debugging around them
 
-**Two guards added 2026-08-07 that change how the BK driver behaves — know they exist before debugging around them.** (1) `Invoke-TransientCooldown` now takes `-PreviousTail` and **refuses to retry a byte-identical failure**: a flake changes between attempts, a poisoned snapshot does not, and the old behaviour burned the whole retry budget on `ImportLayer 0xb7`. The comparison strips buildkit's per-line elapsed-time prefixes, which differ every attempt. (2) `Invoke-BkStage` gates **disk per stage** with a stage-aware floor (CUDA 60 GB, media 80, merge 60, toolchain 45, else 40) because the start-of-run check passed at 164 GB while the chain still walked to 23 GB inside one heavy stage. Both honour the existing override switches; both were BK-only when added, and since 2026-08-31 there is no other driver to differ from.
+**Two guards added 2026-08-07 that change how the BK driver behaves — know they exist before debugging around them.** (1) `Invoke-TransientCooldown` now takes `-PreviousTail` and **refuses to retry a byte-identical failure**: a flake changes between attempts, a poisoned snapshot does not, and the old behaviour burned the whole retry budget on `ImportLayer 0xb7`. The comparison strips buildkit's per-line elapsed-time prefixes, which differ every attempt. One class is retried even when identical: snapshot-mount contention (`failed to mount {windows-layer`, `failed to calculate checksum of ref`; `-RetryDespiteIdenticalPattern`), measured to go green on a later attempt. (2) `Invoke-BkStage` gates **disk per stage** with a stage-aware floor (`Get-StageDiskFloorGb`: 60 GB for the CUDA sdk, 55 for the ONNX solve, 40–45 for the rest; recalibrated since the first table's 80 GB media floor refused a good rebuild — [`windows-build-lanes.md` § Driver preflight gates and isolation policy](windows-build-lanes.md#driver-preflight-gates-and-isolation-policy)) because the start-of-run check passed at 164 GB while the chain still walked to 23 GB inside one heavy stage. Both honour the existing override switches; both were BK-only when added, and since 2026-08-31 there is no other driver to differ from.
 
 ---
 
@@ -819,11 +823,11 @@ question, not these modules'
 
 ### `versions.env` is the single source of truth
 
-**`versions.env` is the single source of truth.** `Build-Buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `Install-ScoopTools.ps1` splits its installs into exactly those two blocks.
+**`versions.env` is the single source of truth.** `Build-Buildkit.ps1` forwards the pins a stage declares as `--build-arg` (the media branches' through `Get-MediaBranchVersionArg`), and anything else a script reads falls back to the `versions.env` the base baked or a RUN bind-mounts; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `Install-ScoopTools.ps1` splits its installs into exactly those two blocks.
 
 ### CMake cross configures must carry the ASM language target too
 
-**A committed layer can never be shrunk later, so scrub INSIDE the container.** The BK lane — the only lane since 2026-08-31 — passes `-ScrubAfter` to the media branch and merge/GStreamer runs (`Clear-BuildScratch`: pip cache, `~\.nuget`, `%TEMP%`, INetCache). It was added there first; the classic lane went without it until 2026-08-07 and shipped debris the BK lane's images did not. Source trees are a separate mechanism — each leaf script calls `Remove-SourceBuildTree` itself. The toolchain stage is excluded on purpose: its CPython tree at `C:\temp\cpython` IS the deliverable.
+**CMake cross configures must carry the ASM language target too (2026-08-24).** `Get-CMakeCrossArgs` (`WindowsTargetArch.Common.psm1`) sets `CMAKE_ASM_COMPILER_TARGET`/`CMAKE_ASM_FLAGS_INIT` alongside the C/CXX pair, and it OWNS them — never hand a project ad-hoc ASM cross flags. Before it did, any project enabling the ASM language assembled with clang's X64 default target — signature: `brackets expression not supported on this target` on aarch64 `.S` sources — and an aarch64 `-march` handed to that x86-targeted driver was misread as a CPU name (`unknown target CPU 'armv8.2-a+fp16'`), which sent the first diagnosis chasing a nonexistent driver gap. amd64 is untouched: the cross args stay empty there.
 
 ### vcpkg ships zlib ONLY
 

@@ -9,9 +9,13 @@ lives in [Windows Build Image](windows-builds.md); this page is the ordered
 path through it, not a replacement.
 
 > **Check yourself against the machine, not against this page.**
-> `windows/scripts/host/Test-HostSetup.ps1` asserts every claim below and prints
-> a fix for each failure. Run it **first** (to see what a fresh box still
-> needs), **last** (to confirm bring-up), and after any host change:
+> `windows/scripts/host/Test-HostSetup.ps1` asserts most host-side claims below
+> and prints a fix for each failure. It does not cover Phase B's gate tooling,
+> C2's step-log env or buildkitd's `--debug` flag, and it checks two of C4's
+> exclusions (2026-09-25); the driver refuses a launch without the step-log env
+> itself. Run it **first** (to see
+> what a fresh box still needs), **last** (to confirm bring-up), and after any
+> host change:
 >
 > ```pwsh
 > pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://<lan-ip>:5000
@@ -52,16 +56,18 @@ Phases:
 
 > **Fast path for Phase A5 + C: `Install-NewHost.ps1`.** Once the interactive
 > steps are done (A1 Stevedore+reboot, A2 docker-users + a new shell, A3
-> services, B0 Git/B1 repo), a single elevated run of
+> services, B0 SSH/B1 Git + repo), a single elevated run of
 > `windows\scripts\host\Install-NewHost.ps1` does the *entire* scriptable half — CNI
 > `.conflist` authored from the **live** `vEthernet (nat)` subnet (magic
 > constants removed: it derives `network/prefix` + gateway at runtime), then
 > `Set-ContainerdConfig.ps1` (debug flags, teardown env var, Defender
 > exclusions, `.conf` derive), `Set-BuildkitdGcpolicy.ps1` + the step-log
-> env var, the patched runhcs shim (built from hcsshim source if no `-ShimPath`
-> is given — Go installed via scoop as needed — then deployed), and dufs
-> (scooped if missing, started serving the cache dir, ONLOGON task registered,
-> machine `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP).
+> env var, the patched runhcs shim (built from the pinned hcsshim fork commit,
+> § R1, if no `-ShimPath` is given — Go installed via scoop as needed — then
+> deployed with `TEARDOWN_TIMEOUT=5m`), and dufs (scooped if missing, started
+> serving the cache dir, ONLOGON task registered, machine
+> `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP; § C5 has the
+> session-independent task that replaces the ONLOGON one).
 >
 > ```pwsh
 > pwsh -File windows\scripts\host\Install-NewHost.ps1 -ReportOnly   # plan first (safe, non-admin)
@@ -154,7 +160,7 @@ Verify: `Get-Service stevedore, containerd, buildkitd` → all `Running`.
 
 - **`stevedore` service won't start / 1053 timeout** → a stale Docker Desktop
   `C:\ProgramData\docker\config\daemon.json` conflicts with the service's
-  `--host` flags. Remove/rename it: [Windows Build Image](windows-stevedore-and-docker.md)
+  `--host` flags. Remove/rename it:
   [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) § Stevedore Setup Fixes, Fix 1.
 - **`docker build` fails `runtime "com.docker.hcsshim.v1" binary not installed`**
   → apply Fix 2 (re-register with `--default-runtime=io.containerd.runhcs.v1`).
@@ -167,8 +173,9 @@ Verify: `& "$env:ProgramFiles\Stevedore\bin\docker.exe" info` succeeds.
 
 `nat.exe` already ships in `C:\Program Files\containerd\cni\bin`; only the
 conf is missing on a fresh host. Install it as a **`.conflist`** (plugin-list
-form), NOT a bare `.conf` — see the format note below — using the subnet from
-[Windows Build Image](windows-build-lanes.md) § Getting it going, step 2. The
+form), NOT a bare `.conf` — see the format note below — using the live
+adapter's subnet (derived below, as in
+[`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going, step 2). The
 `ipam.subnet`/`GW` values MUST match the live `vEthernet (nat)` adapter
 (`ipconfig`), and dockerd restarts can silently re-create that network on a
 new subnet (the driver's preflight fail-fasts on drift with the exact fix).
@@ -207,22 +214,26 @@ The `ipam.subnet`/`GW` MUST match that live `vEthernet (nat)` adapter
 new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 
 **Install BOTH forms — conf AND conflist (corrected 2026-08-07, same day, after
-the conflist-only state cost a launched chain).** Same content, two filenames:
+the conflist-only state cost a launched chain).** One network, two files: the
+`.conflist` above, and the single-plugin `.conf` derived from it:
 
 - **`0-containerd-nat.conflist`** is required by **nerdctl**; **`.conf`** is
   required by **buildkitd**. Both files must exist, and neither client fails in
   a way that names the missing one — nerdctl panics on an index, buildkitd
   silently gives RUN steps no network adapter at all. Never "convert" one into
-  the other. The two failure signatures, the debug-log evidence and the day this
-  cost a launched chain:
+  the other in place. The two failure signatures, the debug-log evidence and
+  the day this cost a launched chain:
   [`windows-build-invariants.md`](windows-build-invariants.md#the-cni-nat-config-must-exist-as-both-conf-and-conflist).
 
 The earlier claim here that "containerd and BuildKit read either form" was
 wrong. The 2026-08-07 conversion fixed nerdctl and silently killed the buildctl
 lane; it went unnoticed because no chain build ran in between. Keep both files,
-and **when you edit one, edit both** — `Build-Buildkit.ps1` fail-fasts on a
-missing `.conf` (`Get-CniConfFormIssue`), but nothing detects the two drifting
-apart in content.
+and **edit only the `.conflist`**: `Set-ContainerdConfig.ps1` (§ C1) rewrites the
+`.conf` from it whenever the two differ
+([`windows-build-invariants.md`](windows-build-invariants.md#the-cni-conf-is-derived-from-the-conflist-not-hand-edited)),
+then `Restart-Service buildkitd -Force` picks it up. `Build-Buildkit.ps1`
+fail-fasts on a missing `.conf` (`Get-CniConfFormIssue`), and
+`Test-HostSetup.ps1` fails when the two disagree on the subnet.
 
 Verify:
 
@@ -240,7 +251,8 @@ conf under any OTHER name turns the guard into a silent no-op.
 which is Administrator-only; `buildctl` stays non-admin because `buildkitd`
 has `--group docker-users` and containerd has no equivalent). This is the
 fastest confirmation that the conflist is correct, because nerdctl is the
-component that is picky about it:
+component that is picky about it. It needs a built `bk-windows-base`, so on a
+fresh host run it after the first base build (Phase E):
 
 ```pwsh
 nerdctl --namespace buildkit run --rm --network nat `
@@ -258,7 +270,7 @@ MACHINE path, so only shells opened AFTER the Stevedore install see it — open 
 new window rather than editing `$env:Path`.
 
 Full recipe set (interactive shell into an image, `nerdctl build`, the
-`ENTRYPOINT` trap, zombie cleanup): [Windows Build Image](windows-build-lanes.md)
+`ENTRYPOINT` trap, zombie cleanup):
 [`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane.
 
 ---
@@ -267,9 +279,9 @@ Full recipe set (interactive shell into an image, `nerdctl build`, the
 
 ### B0. SSH agent — one passphrase, then never again
 
-B1's clone URL is `git@github.com:`, and so is every `git@` entry in
-`.gitmodules`. A key that cannot *sign* therefore blocks the clone, every
-`submodule update`, and every push. Windows makes this easy to get wrong in a
+B1's clone URL is `git@github.com:`. A key that cannot *sign* therefore blocks
+the clone and every push. (The one submodule, `third_party/DocumANTation`, is
+fetched over HTTPS and needs no key.) Windows makes this easy to get wrong in a
 way that looks exactly like a rejected key.
 
 **Two OpenSSH installations, two agents, and PATH picks the wrong one.**
@@ -392,8 +404,8 @@ PATH, which on many hosts resolves to `System32\bash.exe` (WSL).
 ```pwsh
 git clone --recurse-submodules git@github.com:Kataglyphis/ANTfrastructure.git
 cd ANTfrastructure
-git config core.hooksPath .githooks      # pre-commit runs the same checks CI enforces
-git config core.longpaths true           # deep vendored trees; host LongPathsEnabled=1 recommended too
+git config core.hooksPath linux/host-config/git-hooks   # = `make hooks`; pre-commit runs a fast subset of CI's gates
+git config core.longpaths true                          # deep vendored trees; host LongPathsEnabled=1 recommended too
 ```
 
 - The `third_party/DocumANTation` submodule (Sphinx theme) is **optional for
@@ -404,14 +416,16 @@ git config core.longpaths true           # deep vendored trees; host LongPathsEn
   is tolerated. The preflight `crlf-guard` check catches any `*.sh` that went
   CRLF in the working tree; after editing media `.psm1`/`.ps1` files confirm
   `git diff` shows only your change, not a whole-file EOL flip
-  (AGENTS.md § Windows Build Invariants).
+  ([`windows-build-invariants.md`](windows-build-invariants.md#preserve-committed-line-endings-when-editing-a-copyd-psm1ps1)).
 
-Verify: `git config core.hooksPath` prints `.githooks`; `git status` is clean.
+Verify: `git config core.hooksPath` prints `linux/host-config/git-hooks`;
+`git status` is clean. The hook set and what each hook runs: AGENTS.md
+§ Validation.
 
 ### B2. PowerShell 7 (pwsh)
 
-Everything on this lane requires pwsh 7 (`#Requires -Version 7.0` in every
-script; owner policy — see AGENTS.md).
+Everything on this lane requires pwsh 7 (`#requires -Version 7.0` in every
+script but two deliberate 5.1 exceptions; owner policy — see AGENTS.md).
 
 ```pwsh
 winget install Microsoft.PowerShell
@@ -456,27 +470,30 @@ uv run --no-project python -V                              # Python 3.x
 
 `PREFLIGHT_PYTHON` is **not** preflight-only, and it is not a `python3` alias
 either: it may be a whole command line (`uv run --no-project python`), so every
-consumer expands it unquoted. One file answers the question for all of them —
-`linux/scripts/01-core/python-probe.sh`, whose `preflight_python_require` probes
-the value with `-c pass` and fails with this exact hint rather than dying inside
-a Python step. Export it once in the shell you run gates from and these all
-honour it: `preflight.sh`, `run-lint-gates.sh` (including the `--ratchets`
-gates), `lint-workflows.sh`, `lint-python.sh` and the repo's own `pre-commit` /
-`pre-push` hooks. A bare `python3` left in any of them is a bug, not a style
-choice — on this host it resolves to the Store stub.
+consumer expands it unquoted. One file answers the question for the standalone
+gates and the hooks — `linux/scripts/01-core/python-probe.sh`, whose
+`preflight_python_require` probes the value with `-c pass` and fails with this
+exact hint rather than dying inside a Python step. `preflight.sh` probes its own
+candidate list instead (uv's `~/.local/bin/python3.14.exe` among them) and
+exports what it finds to every check it runs. Export it once in the shell you
+run gates from and these all honour it: `preflight.sh`, `run-lint-gates.sh`
+(including the `--ratchets` gates), `lint-workflows.sh`, `lint-python.sh` and
+the repo's own `pre-commit` / `pre-push` hooks. A bare `python3` left in any of
+them is a bug, not a style choice — on this host it resolves to the Store stub.
 
 ### B5. shellcheck / hadolint / actionlint — nothing to install
 
 The preflight lint gates **auto-bootstrap** these: a PATH copy is used when
-present, otherwise the pinned release from `versions.env` is downloaded once
-into a version-keyed cache dir and SHA256-verified (`lint-shell.sh`,
-`lint-dockerfiles.sh`, `lint-workflows.sh`). First run needs network; a failed
-bootstrap fails the gate loudly (no silent skip).
+present (shellcheck's only when it is the pinned version), otherwise the pinned
+release from `versions.env` is downloaded once into a version-keyed cache dir
+and SHA256-verified (`lint-shell.sh`, `lint-dockerfiles.sh`,
+`lint-workflows.sh`). First run needs network; a failed bootstrap fails the
+gate loudly (no silent skip).
 
 ### B6. Run all three gates
 
 ```pwsh
-pwsh -File windows/scripts/Invoke-Lint.ps1                 # parse gate + PSScriptAnalyzer
+pwsh -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer # parse gate + PSScriptAnalyzer, findings fatal as in CI
 pwsh -File windows/scripts/tests/Invoke-Tests.ps1          # harness + Pester suites
 ```
 
@@ -504,8 +521,8 @@ while a build is solving.**
 Debug logging stays PERMANENTLY ON on build hosts, so the next snapshotter
 incident carries its evidence immediately (owner decision 2026-08-04; if the
 log grows huge, truncate it — never disable the flags). Recipe and rationale:
-[Windows Build Image](windows-build-lanes.md) § BuildKit/containerd lane ("How to
-capture the debug evidence again").
+[`windows-build-lanes.md`](windows-build-lanes.md), "How to capture the debug
+evidence again".
 
 **Use the script — it is the source of truth for the containerd side:**
 
@@ -518,11 +535,13 @@ containerd runs with **no `config.toml`** here — every setting lives in the
 service's `ImagePath`/`Environment` registry values, which is why it needs a
 script to be reproducible at all (buildkitd has `buildkitd.toml` +
 `Set-BuildkitdGcpolicy.ps1`; this is the missing counterpart, added
-2026-08-07). It owns three things a fresh host must have: the debug flags
+2026-08-07). It owns four things a fresh host must have: the debug flags
 below, `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits
 the SERVICE environment — a shim built from the upstream patch keeps its 30 s
-defaults and silently reverts to the `ExportLayer 0x3` defect without it), and
-the load-bearing Defender exclusions. Never run it while a build is solving.
+defaults and silently reverts to the `ExportLayer 0x3` defect without it), the
+load-bearing Defender exclusions on the three `C:\ProgramData` stores, and the
+CNI `.conf`, which it derives from the `.conflist` (§ A5). Never run it while a
+build is solving.
 
 The manual equivalent, if you want to see what it does — set via registry,
 because `sc.exe` quoting mangles these in PowerShell:
@@ -547,7 +566,7 @@ host state):
 ### C2. Disable buildkitd's per-step log limit (REQUIRED for compile stages)
 
 Without this, heavy steps deadlock silently at the 2 MiB clip
-([Windows Build Image](windows-build-lanes.md) § Getting it going, step 4).
+([`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going, step 4).
 Since 2026-08-10 this is ENFORCED: `Build-Buildkit.ps1`'s
 `Assert-BuildkitdStepLogEnv` preflight refuses to launch while the value is
 missing (a Stevedore repair once wiped it silently); `-SkipStepLogGate` is
@@ -577,18 +596,20 @@ history pinned a 414 GB store at `Reclaimable: 0B`. The repo policy
 pwsh -File windows\scripts\host\Set-BuildkitdGcpolicy.ps1    # admin; refuses while a build runs
 ```
 
-**Sizing on a different disk:** the toml's literals assume a ~930 GB C:.
-Reproduce the INVARIANTS, not the numbers — `reservedSpace` must exceed the
-fresh chain spine (~120–150 GB; rule of thumb 20–25 % of the disk, floor
-150 GB), `maxUsedSpace` ≈ 1.5× reservedSpace, `minFreeSpace` ≥ 25–30 GB
-always, `[history]` unchanged everywhere. The sizing rationale lives as a
-comment block in `windows/buildkitd.toml` itself. **Re-run the apply script
+**Sizing on a different disk:** the toml's literals are sized for the
+reference host's C:. Reproduce the INVARIANTS, not the numbers —
+`reservedSpace` must exceed the fresh chain spine (~120–150 GB; rule of thumb
+20–25 % of the disk, floor 150 GB), `maxUsedSpace` ≈ 1.5× reservedSpace,
+`minFreeSpace` a trigger well above the ~25 GB danger band (the toml's main
+tier uses 60 GB; 30 GB left GC no runway on 2026-08-07), `[history]` unchanged
+everywhere. The sizing rationale lives as a comment block in
+`windows/buildkitd.toml` itself. **Re-run the apply script
 after every repo-side toml change** — deploy is a copy, nothing syncs
 automatically (this host ran a stale copy for hours after the `[history]`
 section landed).
 
-Full story: [Windows Build Image](windows-builds.md) § BuildKit/containerd
-lane, "Store GC" bullet. Verify:
+Full story: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc)
+§ Store GC. Verify:
 
 ```pwsh
 & "$env:ProgramFiles\Stevedore\bin\buildctl.exe" debug workers -v | Select-String 'Reserved space|Maximum used|Minimum free'
@@ -609,13 +630,18 @@ lane, "Store GC" bullet. Verify:
 
 These exclusions are load-bearing: without them the realtime scanner races
 container churn and finalize/export operations flake constantly (the
-hcs-temp sharing-violation family). They also tame — but do NOT cure — the
+hcs-temp sharing-violation family). They also tamed — but did NOT cure — the
 `ExportLayer 0x3` heavy-churn finalize defect (TVM-class finalizes became
-reliable with them; OpenCV-class still trips it, which is why the
-warm/materialize pattern stays — full story: windows-build-lanes.md § BuildKit/containerd lane).
+reliable with them; OpenCV-class still tripped it). The cure is the patched
+runhcs shim (§ R1), which retired the warm/materialize workaround on
+2026-08-06 — [`windows-build-lanes.md`](windows-build-lanes.md#defect-solved).
 Skipping this step on a new machine makes builds flaky across the board.
-The full set (the [`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going step-3 list plus the process exclusions
-added 2026-08-05 after the hcs-temp sharing-violation flake family):
+`windows\scripts\host\Sync-DefenderExclusions.ps1` (elevated) owns the full
+set: it prints what is excluded, adds what is missing — more paths and
+processes than the core below — and prints the result. The core by hand (the
+[`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going step-3
+list plus the process exclusions added 2026-08-05 after the hcs-temp
+sharing-violation flake family):
 
 ```pwsh
 Add-MpPreference -ExclusionPath "C:\ProgramData\containerd"
@@ -639,13 +665,15 @@ Get-MpPreference | Select-Object -Expand ExclusionProcess
 
 ### C5. sccache / dufs WebDAV server (REQUIRED for the media stages)
 
-This server is load-bearing twice: it is the compile cache (sccache WebDAV
-backend) AND the transport for the warm/materialize handoff tars (the
-`bkhandoff/` subdir) that neutralize the `ExportLayer 0x3` snapshotter defect
-— **without it the BK media solves fail fast**. `Install-NewHost.ps1` automates
-all of it (scoop install if missing, cache dir, start, ONLOGON task,
-machine-level endpoint env with the host's LAN IP — never localhost). By hand
-(non-admin, except the machine-env line):
+This server is the compile cache (sccache WebDAV backend), and the driver also
+stages files on it under `preseed/` (the Vulkan SDK installer and the media
+memory budget) — **without it the BK media solves fail fast**
+(`Assert-SccacheEndpoint`). The warm/materialize handoff tars (`bkhandoff/`)
+that also rode it were retired with that workaround on 2026-08-06; only the
+rollback scripts still use them. `Install-NewHost.ps1` automates all of it
+(scoop install if missing, cache dir, start, ONLOGON task, machine-level
+endpoint env with the host's LAN IP — never localhost). By hand (non-admin,
+except the machine-env line):
 
 ```pwsh
 scoop install dufs
@@ -662,8 +690,16 @@ dufs C:\sccache-cache -A -p 5000                 # keep it running
 schtasks /Create /TN dufs-sccache /TR "\"%USERPROFILE%\scoop\shims\dufs.exe\" C:\sccache-cache -A -p 5000" /SC ONLOGON
 ```
 
-— or accept restarting it manually after every reboot (the reference host does
-the latter; then the Phase-D check below is what saves you). Verify:
+— or, better, make it independent of any logon session. An ONLOGON task dies
+with its session, and every sccache write then fails open, with an empty cache
+as the only symptom (2026-08-11). Elevated,
+`pwsh -File windows\scripts\host\Install-DufsService.ps1 -ServeDir C:\sccache-cache`
+stops running dufs instances, unregisters every other dufs task and registers
+`dufs-sccache-l2`: ONSTART, as SYSTEM, restarted on failure, port 5000 by
+default. Without `-ServeDir` it serves `%USERPROFILE%\sccache-cache`, and it
+refuses a directory that does not exist. Restarting dufs by hand after every
+reboot works too; the Phase-D check below is what catches a forgotten one.
+Verify:
 
 ```pwsh
 (Invoke-WebRequest http://<host-LAN-IP>:5000 -Method Head -UseBasicParsing).StatusCode   # 200
@@ -683,9 +719,9 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 2. **Services running?** `Get-Service stevedore, containerd, buildkitd` → all
    `Running`.
 3. **Disk headroom ≥ 40 GB free — now gated automatically.**
-   Both drivers refuse to start below the floor (`Assert-DiskHeadroom`;
-   override with `-SkipHostChecks`, raise/lower with `-MinFreeGb`), and the
-   BuildKit lane additionally verifies the patched runhcs shim is still
+   `Build-Buildkit.ps1` refuses to start below the floor (`Assert-DiskHeadroom`;
+   override with `-SkipHostChecks`, raise/lower with `-MinFreeGb`), and it
+   also verifies the patched runhcs shim is still
    installed (`Assert-ShimPatch` — a Stevedore update silently restores the
    stock binary, and the first heavy media finalize then dies with
    `ExportLayer 0x3` hours into the run). Both were manual checks here until
@@ -693,8 +729,8 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    disguised as a missing `ninja`.
    The disk gate checks **every drive the build uses** — C: (the layer stores)
    plus the repo checkout's drive, which on a VHDX-backed checkout has its own
-   exhaustion mode that a C:-only check cannot see (§ VHDX-backed checkouts in
-   [windows-builds.md](windows-builds.md)).
+   exhaustion mode that a C:-only check cannot see
+   ([`windows-build-lanes.md`](windows-build-lanes.md#vhdx-backed-checkouts) § VHDX-backed checkouts).
    The shim gate compares the live binary's **SHA256** against the hash
    `Publish-ShimPatch.ps1` recorded when it installed the patch (state file:
    `C:\ProgramData\kataglyphis\shim-patch.json`); a Stevedore update overwriting
@@ -707,7 +743,8 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    flakes). Reclaim levers, non-admin first: `buildctl prune --free-storage <MB>`
    (see the target trap below), then `buildctl prune-histories`,
    `buildctl prune --free-storage <MB>`, `docker image prune -f`; the full
-   playbook is [Windows Build Image](windows-build-lanes.md) § Store GC. Two traps
+   playbook is [`windows-build-lanes.md`](windows-build-lanes.md#store-gc)
+   § Store GC. Two traps
    that make the levers look broken: `--free-storage` is a **minimum-free
    target**, so it deletes nothing once the disk is already above it (ask for
    more free space than the disk has to drain everything unpinned), and a
@@ -724,7 +761,9 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 
    Without `-ReportOnly` it stops the build services, compacts and restores
    the disk — **admin, and never while a build solves.** Read the ReFS
-   caveat in [`windows-build-lanes.md`](windows-build-lanes.md) § Store GC first: on ReFS guests compaction reclaims ~nothing,
+   caveat in
+   [`windows-build-lanes.md`](windows-build-lanes.md#vhdx-backed-checkouts)
+   § VHDX-backed checkouts first: on ReFS guests compaction reclaims ~nothing,
    and the reclaim that does work is `Update-HostVhdx.ps1`, which rebuilds
    the disk around its live data. Run its `-CopyOnly` phase whenever you like
    — it touches nothing live — but the swap detaches the volume, so nothing
@@ -746,22 +785,27 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 ### E1. Optional inputs, expectations
 
 - **TensorRT (GPU lane, optional):** drop the NVIDIA EULA zip into
-  `windows\downloads\` if you have one; **without it the build skips TensorRT
-  gracefully** — the zip-less state is the normal state of the reference
-  host's GPU lane (AGENTS.md § TensorRT Setup). Do not wait on it.
+  `windows\downloads\` if you have one, with its hash in `versions.env`'s
+  `TENSORRT_ZIP_SHA256` (a mismatch fails the build); **without a zip the build
+  skips TensorRT gracefully** — the zip-less state is the normal state of the
+  reference host's GPU lane
+  ([`windows-builds.md`](windows-builds.md) § TensorRT setup (GPU lane, optional)).
+  Do not wait on it.
 - **Cost:** cold full chain ≈ 5–6 h (≈ 2.5 h in the media fan-out); hot
   rebuild of the whole BK chain ≈ 44 min. Parallelism is memory-bound —
   ~35–45 % average CPU during compiles is the expected signature, not a
-  fault ([Windows Build Image](windows-builds.md) § Maximum resource
+  fault ([`windows-build-resources.md`](windows-build-resources.md) § Maximum resource
   envelope; 32 CPU / 39 GB is the verified max on the 64 GB reference host).
 - **Logs:** per-stage under `out\windows-build-logs\`.
-- **Warm/materialize is normal:** heavy media libraries build in "warm"
-  solves (no exported image) and materialize in a second calm solve — that
-  two-step pattern in the log is the designed workaround for the host
-  snapshotter defect, not a failure.
+- **Every solve is direct:** the warm/materialize two-step that once routed
+  around the `ExportLayer 0x3` snapshotter defect was retired on 2026-08-06,
+  when the patched shim (§ R1) fixed the defect at its root. The
+  `(warm solve, no output)` label a normal log still prints belongs to the
+  smoke and publish gates, which export nothing on purpose.
 - **Transient retries are automatic:** the driver retries the known flake
   families (ActivateLayer 0x20, hcs-temp finalize/export). On any OTHER weird
-  hcsshim failure: check free disk first (AGENTS.md § Common Failure Modes).
+  hcsshim failure: check free disk first
+  ([`failure-modes.md`](failure-modes.md#exportlayer-0x3-spawn-flakes-exportlayer-0x70--disk-exhaustion-in-costume)).
 
 ### E2. Launch (non-admin)
 
@@ -784,8 +828,12 @@ solving. Single-stage iteration: `-Stages toolchain` etc.
 
 ### E4. Smoke test — on the GPU lane ALWAYS pass -ExpectGpu
 
-Without `-ExpectGpu`, a broken CUDA env is silently SKIPPED instead of failed
-([Windows Build Image](windows-builds.md) § Smoke Testing). Two routes:
+The chain already ran this suite: the driver's smoke gate runs it after every
+`final` stage (amd64 since 2026-08-14), and `-Gpu` passes `-ExpectGpu` itself
+and raises the floor to 190 passed. Run it by hand only to re-check an
+existing image. Without `-ExpectGpu`, a broken CUDA env is silently SKIPPED
+instead of failed ([`windows-builds.md`](windows-builds.md) § Smoke Testing).
+Two routes:
 
 ```pwsh
 # (a) via docker after a -FinalTar export (loads as local/kataglyphis:winamd64):
@@ -793,14 +841,17 @@ Without `-ExpectGpu`, a broken CUDA env is silently SKIPPED instead of failed
 & "$env:ProgramFiles\Stevedore\bin\docker.exe" run --memory 48g --rm --isolation process `
   local/kataglyphis:winamd64 pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 
-# (b) directly from the containerd store (admin shell):
-& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm `
-  docker.io/local/kataglyphis:bk-winamd64 pwsh -File C:\temp\scripts\Test-Container.ps1 -ExpectGpu
+# (b) from the containerd store (admin shell). No trailing command: nerdctl
+# appends it to the ENTRYPOINT and exits 255. The entrypoint loads the VS
+# environment the suite checks, then opens pwsh; run the suite at that prompt.
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm -it `
+  docker.io/local/kataglyphis:bk-winamd64
+#   PS> & C:\temp\scripts\Test-Container.ps1 -ExpectGpu
 ```
 
-Expected: the § Smoke Testing baseline (167 passed / 0 failed / 1 skipped on
-the GPU lane; the single skip is GPU device passthrough, blocked by host/base
-OS-build skew).
+Expected: the current baseline in [`windows-builds.md`](windows-builds.md)
+§ Smoke Testing (2026-09-22, GPU lane: 236 passed / 0 failed / 0 skipped). A
+higher count is growth, not a regression.
 
 ### E5. Publish (optional, non-admin)
 
@@ -833,7 +884,7 @@ A–C here, then § Phase R for a Stevedore reinstall), **not** to switch driver
 |---|---|---|
 | The **patched runhcs shim** | `Assert-ShimPatch` refuses the BK lane at preflight (and without the gate: `hcsshim::ExportLayer 0x3` on a heavy media layer, after the compile is paid for) | Rebuild — see below. There is **no local rollback**: `.exe.orig` and every `.exe.bak-*` are stock too |
 | The **buildkitd service `Environment`** | `Assert-BuildkitdStepLogEnv` refuses the BK lane; ungated, the 2 MiB step-log clip buries build verdicts | § C2, or the registry Multi-String + `Restart-Service buildkitd` |
-| The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `Install-DufsService.ps1 -NoPrompt`. Without the directory the script has nothing to serve and the endpoint stays dead |
+| The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `Install-DufsService.ps1 -NoPrompt`. Without the directory the script refuses to run (`serve dir not found`) and the endpoint stays dead |
 | Nothing — but note the **containerd content store** can also be left inconsistent (e.g. by killing a `docker build` mid-pull) | `failed to resolve source metadata ... blob sha256:<config> ... blob not found` at `Dockerfile.base` | R2 below — and note a plain `pull` CANNOT fix it, see the warning there |
 | — likewise the **windows snapshotter** | `failed to create scratch layer: failed to open ...\io.containerd.snapshotter.v1.windows\snapshots\<n>\blank.vhdx: The system cannot find the path specified` at the first `RUN` | R4 — this one has no surgical fix; reset the stores |
 
@@ -851,7 +902,9 @@ go build -o containerd-shim-runhcs-v1.exe .\cmd\containerd-shim-runhcs-v1
 
 An existing clone after the branch was rebased: `git fetch origin`, then
 `git checkout -B feature/configurable-teardown-timeout origin/feature/configurable-teardown-timeout`.
-A plain `git pull` stops on the diverged history.
+A plain `git pull` stops on the diverged history. `Install-NewHost.ps1` does
+not follow the branch head: it builds the pinned commit (`$forkPin`,
+`5e9df53c` since 2026-09-22) and refuses a tree without the teardown knob.
 
 ~15-21 s. The 2026-09-22 build of the rebased head `5e9df53c` was
 **25 890 304 bytes** with Go 1.27.1 (the 2026-09-01 build of `19251429`:
@@ -881,14 +934,14 @@ see `docs/failure-modes.md` § "Every RUN step reports DONE 2841.2s".)
 |---|---|
 | See what is installed and which backups exist; changes nothing | `-ReportOnly` |
 | The patched shim is already installed and only the gate bookkeeping is missing — records the hash in place, no services touched, no elevation | `-RecordCurrent` |
-| Deploy an upstream-shaped build, which needs the env var to do anything | `-ShimPath C:\src\shim.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m` |
+| Deploy an upstream-shaped build, which needs the env var to do anything | `-ShimPath C:\src\shim.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (never the retired `45m`: it taxes every RUN) |
 | Put the stock binary back — this CLEARS the gate record, because restoring stock must never teach the gate that stock is acceptable | `-Restore .orig` |
 
 **Verifying the result is behavioural, not log-based.** The shim logs its
 effective timeout at Debug level only, which does not reach containerd's log on
 a default setup — a quiet log is *not* proof the deployment worked. Run a
 filesystem-heavy container (the OpenCV canary in
-[`windows-builds.md`](windows-builds.md)) and confirm it finalizes and exports
+[`windows-build-lanes.md`](windows-build-lanes.md#defect-solved)) and confirm it finalizes and exports
 without `0x3`. A disposable canary snapshot is the right thing to risk; a chain
 run is not.
 
@@ -902,7 +955,9 @@ The BK lane solves every stage with `--opt image-resolve-mode=local` — correct
 for stage handoff, but it also forbids buildkit from fetching the PUBLIC pinned
 base from mcr. On an empty or damaged content store the base stage therefore
 cannot bootstrap itself. Elevated (containerd's pipe is admin-only), with the
-digest from `windows/Dockerfile.base`'s `ARG WINDOWS_BASE_DIGEST`:
+digest the driver passes, `WINDOWS_BASE_DIGEST` in
+`linux/scripts/01-core/versions.env` (`windows/Dockerfile.base`'s ARG default
+mirrors it):
 
 ```powershell
 & "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit pull `
@@ -928,8 +983,9 @@ digest from `windows/Dockerfile.base`'s `ARG WINDOWS_BASE_DIGEST`:
 
 `build.ps1` was **deleted on 2026-08-31**, and the two reasons it went are
 structural — restoring it from git history buys nothing. It could not bootstrap a
-chain: twelve `windows/Dockerfile.*` use BuildKit-only `RUN --mount=type=bind` for
-their script closures and `build.ps1` never set `DOCKER_BUILDKIT`, so the legacy
+chain: the `windows/Dockerfile.*` use BuildKit-only `RUN --mount=type=bind` for
+their script closures (twelve then, fifteen of seventeen on 2026-09-25) and
+`build.ps1` never set `DOCKER_BUILDKIT`, so the legacy
 builder died at `Dockerfile.base` step 8 with *"the --mount option requires
 BuildKit"*. And even given a chain, its `merge` target skipped the OpenCV GStreamer
 plugin, so the smoke gate that ends the run hard-failed on `cv2.CAP_GSTREAMER`. Use
@@ -1004,10 +1060,12 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";
 ```powershell
 & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe' `
     update --passive --norestart `
-    --installPath 'C:\Program Files\Microsoft Visual Studio\2022\Community'
+    --installPath 'C:\Program Files\Microsoft Visual Studio\18\Community'
 ```
 
-Needs an elevated shell. Pair with `winget upgrade --all --silent
+`18` is VS 2026, the family's toolchain (`VISUAL_STUDIO_VERSION` in
+`versions.env`); pass the path of the edition you have installed. Needs an
+elevated shell. Pair with `winget upgrade --all --silent
 --accept-source-agreements --accept-package-agreements --include-unknown` for
 everything else.
 
@@ -1015,7 +1073,7 @@ To force a **specific** version of a pinned SDK — the usual case when a gate
 requires an exact toolchain — winget needs both flags:
 
 ```powershell
-winget install --id KhronosGroup.VulkanSDK --version 1.4.341.1 --force
+winget install --id KhronosGroup.VulkanSDK --version <VULKAN_VERSION> --force   # the pin in linux/scripts/01-core/versions.env
 ```
 
 ### Opening a port for a service running in WSL

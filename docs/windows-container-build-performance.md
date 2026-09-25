@@ -183,7 +183,9 @@ Reuse trades isolation for speed, so guard it:
    than extracting over it. Sources re-stream in seconds; only the build tree
    is worth preserving. Get the exclusion pattern right first - a wrong one
    deletes the build tree on every build and silently undoes the whole
-   optimisation.
+   optimisation. `Invoke-ContainerBuild` runs this prune on every reuse
+   (`Remove-StaleContainerSources`, below). It removes top-level directories
+   only, so a deleted top-level *file* still needs `-FreshContainer`.
 3. Keep the build root: if the build script wipes its build directory before
    configuring, gate that behaviour behind an env var (this project uses
    `KATAGLYPHIS_KEEP_BUILD_ROOT`) or reuse buys nothing.
@@ -310,6 +312,12 @@ destructive — and leaves a 150 GB drive sitting at 146.6 GB free.
     data-root: 'D:\docker'
 ```
 
+[`prepare-windows-container-host`](../.github/actions/README.md#prepare-windows-container-host)
+already runs this step before its own pull (input `data-root`, default
+`D:\docker`; an empty value skips it), and so does every lane built on the
+reusable [`container-ci-windows.yml`](../.github/workflows/container-ci-windows.yml).
+Call the action yourself only in a job that pulls without that prologue.
+
 Measured on the same job, across the whole run:
 
 | Point in the job | C: free | D: free |
@@ -358,7 +366,8 @@ Things worth knowing before you copy this:
   ("Der Dateisystem-Minifilter kann nicht an das Entwicklervolume angefügt
   werden"), which forces the tar-pipe transport in the first place. Allow-
   listing the filters lifts the restriction — but measured slower here; see
-  "What does not work" above before reaching for it.
+  [Why the bind mount lost here](#why-the-bind-mount-lost-here) above before
+  reaching for it.
 
 - **Containers survive successful builds** (`wcifs` teardown lock). A
   lingering container makes it look like a build is still running. Compare the
@@ -371,7 +380,7 @@ Things worth knowing before you copy this:
   directory never runs. Invoke it explicitly:
 
   ```pwsh
-  docker exec -w C:\ws $container cmd /S /C C:	emp\scripts\entrypoint.cmd @buildArgs
+  docker exec -w C:\ws $container cmd /S /C C:\temp\scripts\entrypoint.cmd @buildArgs
   ```
 
   Symptoms if you forget: compilers "not found", or ASAN binaries failing to
@@ -387,15 +396,27 @@ Things worth knowing before you copy this:
 ## Reusable implementation
 
 The pattern is implemented here so consumers do not copy it:
-`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1`
-(`Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
+`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1`. Import it via the
+consumer's module resolver. **`Invoke-ContainerBuild` is the whole pattern in
+one call:** tar-pipe into the reusable container by default, `-UseBindMount`
+for the bind-mount transport (probed first; the tar-pipe takes over when the
+mount does not attach), `-FreshContainer` for the reset switch of rail 2, and
+`-VerifyDirs` for the delivery check of rail 4. It also hands the container
+this host's sccache remote tier
+([`windows-build-resources.md`](windows-build-resources.md#the-build-hosts-remote-tier-at-run-time)).
+The BeschleunigerBallett driver named at the top of this page is built on it.
+
+Its parts are exported for a caller that needs only some of them:
+`Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
 `Copy-FromBuildContainer`, `Initialize-ContainerPwsh`,
 `Remove-StaleContainerSources`, `Test-BuildArtifactsDelivered`,
-`Remove-BuildContainerSafe`, `Wait-ContainerExit`). Import it via the
-consumer's module
-resolver. `Initialize-ContainerPwsh`, `Remove-StaleContainerSources` and
+`Remove-BuildContainerSafe` and `Wait-ContainerExit`, and the plumbing under
+them: `Get-SccacheContainerEnv`, `Get-ContainerEnvArgs`,
+`Resolve-ContainerBuildCommand`, `Resolve-DockerExe`,
+`Get-ContainerIsolationArgs` and `Test-ContainerBindMount`.
+`Initialize-ContainerPwsh`, `Remove-StaleContainerSources` and
 `Test-BuildArtifactsDelivered` are the safety rails of the
-reusable-container pattern as functions: ensure pwsh exists in the image,
+reusable-container pattern as functions: ensure pwsh exists in the container,
 prune stale sources on reuse (tar never deletes), and verify every built
 executable actually reached the host before trusting a green build.
 `Remove-BuildContainerSafe` removes a container while tolerating the wcifs

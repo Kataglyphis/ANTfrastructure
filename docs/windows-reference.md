@@ -47,10 +47,18 @@ Get-CimInstance Win32_LogicalDisk |
 > `windows\scripts\host\Clear-DiskSpace.ps1`, which works from an allowlist and
 > is report-only by default. Prefer it over ad-hoc recursive deletes.
 
-Long paths are a build-host concern and are covered in
-[Fresh Windows Host Bring-Up](windows-host-setup.md) — including the registry
-switch and `robocopy /E /MOVE` for relocating a tree that has become too deep to
-handle normally.
+Long paths are a build-host concern.
+[Fresh Windows Host Bring-Up](windows-host-setup.md) sets git's
+`core.longpaths` and recommends the host switch as well. The switch, from an
+elevated shell (the image sets it the same way, in
+`windows/scripts/build/Complete-Container.ps1`):
+
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -Type DWord
+```
+
+A tree that has already grown too deep to handle normally can still be moved
+with `robocopy <source> <destination> /E /MOVE`.
 
 ## Running things and reading the result
 
@@ -192,8 +200,9 @@ stopped after any hardware change, check firmware before anything else.
 ## Certificates and MSIX
 
 Generating and importing an MSIX signing certificate is owned by
-[`windows/scripts/certificates/README.md`](../windows/scripts/certificates/README.md)
-and the `WindowsMsix.*` modules. One consumer-side step that is easy to miss:
+`windows/scripts/certificates/` — `GenerateCertificateMSIX.ps1` makes the
+certificate, and its [`README.md`](../windows/scripts/certificates/README.md)
+covers signing with it and importing it — and the `WindowsMsix.*` modules. One consumer-side step that is easy to miss:
 **Developer Mode must be enabled** (Settings → System → For developers) before
 Windows will install a self-signed `.msix`, even once the certificate is
 trusted.
@@ -218,11 +227,18 @@ int main() {
 & "C:\Program Files\LLVM\bin\clang++.exe" -v test.cpp -o test.exe
 ```
 
-Format Dart sources to the project's line length:
+Format Dart sources to the project's line length, naming the source
+directories:
 
 ```powershell
-dart format --line-length 80 .
+dart format --line-length 80 lib test
 ```
+
+Never `.` on Windows: the walk enters `.git/modules`, a deep vendored submodule
+gitdir overruns `MAX_PATH`, and the listing throws before anything is
+formatted. The hub's gates format tracked files only (`Get-ProjectDartFiles` in
+`WindowsFormatting.Common.psm1`; the Linux side is
+[Code Quality Tooling § Dart file enumeration](code-quality-tooling.md#dart-file-enumeration)).
 
 If `dart format` produces errors that make no sense, reinstall the SDK — a
 partially-extracted SDK fails here rather than at install time. The ARM variant
