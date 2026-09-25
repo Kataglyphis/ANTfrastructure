@@ -85,15 +85,19 @@ function Get-OrtPayloadFinding {
     <#
     .SYNOPSIS
         What G6 does not grade, one line per finding: onnxruntime.dll missing from -OrtDirectory (MISSING),
-        an ORT-family DLL there that the chain install has not got (STRAY), and one that is no ORT instance,
-        DirectML.dll, with other bytes than the chain's (CHANGED).
+        an ORT-family DLL there that the chain installs have not got (STRAY), and one that is no ORT
+        instance, DirectML.dll or GenAI's, with other bytes than the chain's (CHANGED).
+    .DESCRIPTION
+        The chain installs are ORT's prefix and, when ONNX_GENAI_ROOT names one, the chain GenAI install,
+        which the media runtime stages beside ORT.
     #>
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string]$OrtDirectory)
 
     $prefix = Get-OrtChainPrefix
+    $genAi = @(if ($env:ONNX_GENAI_ROOT) { "$env:ONNX_GENAI_ROOT\lib", "$env:ONNX_GENAI_ROOT\bin" })
     $chain = @{}
-    foreach ($dir in "$prefix\lib", "$prefix\bin") {
+    foreach ($dir in @($genAi) + @("$prefix\lib", "$prefix\bin")) {
         foreach ($f in (Get-OrtFamilyFile -Directory $dir)) { $chain[$f.Name] = $f.FullName }
     }
     $lines = [System.Collections.Generic.List[string]]::new()
@@ -101,8 +105,8 @@ function Get-OrtPayloadFinding {
         $lines.Add("MISSING $OrtDirectory\onnxruntime.dll: without it a client host loads System32's Windows ML copy")
     }
     foreach ($file in (Get-OrtFamilyFile -Directory $OrtDirectory)) {
-        if (-not $chain.ContainsKey($file.Name)) { $lines.Add("STRAY $($file.FullName) is not a file of the chain install ($prefix)"); continue }
-        # An ORT instance G6 grades byte for byte; DirectML.dll it does not.
+        if (-not $chain.ContainsKey($file.Name)) { $lines.Add("STRAY $($file.FullName) is not a file of the chain ORT ($prefix) or GenAI install"); continue }
+        # An ORT instance G6 grades byte for byte; DirectML.dll and GenAI's DLL it does not.
         if (Test-OrtInstanceName -Name $file.Name) { continue }
         $same = (Get-FileHash -LiteralPath $chain[$file.Name] -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
         if (-not $same) { $lines.Add("CHANGED $($file.FullName) is not the chain's $($chain[$file.Name])") }

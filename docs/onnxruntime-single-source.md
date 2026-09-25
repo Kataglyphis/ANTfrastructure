@@ -441,6 +441,8 @@ it under their own names until 2026-09-25.
   does not make, in `-OrtDirectory`, where the exe loads ORT from:
   `onnxruntime.dll` missing there (MISSING), an ORT-family name the chain has not
   got (STRAY), and a `DirectML.dll` with other bytes than the chain's (CHANGED).
+  The chain is ORT's prefix plus, when `ONNX_GENAI_ROOT` names it, the chain
+  GenAI install, whose `onnxruntime-genai.dll` the media runtime stages beside ORT.
   `-WaiveUnresolved` is for a Python package whose `__init__` registers that
   directory with `os.add_dll_directory`. G6 models an exe's loader, not that
   call, so only its UNRESOLVED verdicts are waived.

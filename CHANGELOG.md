@@ -22,7 +22,9 @@ exe with the chain's", and the proof of a shipped tree. It is
 - `Assert-ChainOrtTree` is G6 over a tree, plus what G6 does not grade: MISSING
   `onnxruntime.dll` where the exe looks, a STRAY family name the chain has not got,
   a CHANGED `DirectML.dll`. STRAY is judged against the chain's own file names, not
-  a fixed list, so a chain with a CUDA or QNN provider does not trip it.
+  a fixed list, so a chain with a CUDA or QNN provider does not trip it, and those
+  names include the chain GenAI install's when `ONNX_GENAI_ROOT` is set:
+  AccelerANTgine's staged `bin\` carries `onnxruntime-genai.dll`.
   `-WaiveUnresolved` keeps AccelerANTgine's Python-package mode.
 - `New-OrtProvenPayload` builds and proves a package payload in a fresh directory;
   `-IncludeDirectory` carries a tree beside the exe with it (OxidANT's
