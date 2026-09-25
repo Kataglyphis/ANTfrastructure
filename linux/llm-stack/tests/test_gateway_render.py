@@ -303,6 +303,15 @@ REFUSALS = [
     (_set(G + ("admin",), True), "unknown key"),
     (_set(L + ("npu", "ctx"), 4096), "unknown key"),
     (_del(G + ("drop_fields",)), "missing key"),
+    # APISIX keeps the LAST item of a repeated id without a word: these would
+    # silently replace chat's presend route, the model list or the info route.
+    (_set(R + ("chat-presend",), {"lane": "gpu"}), "route id"),
+    (_set(R + ("models",), {"lane": "gpu"}), "route id"),
+    (_set(R + ("gateway-info",), {"lane": "gpu"}), "route id"),
+    (_set(R + ("unknown-model",), {"lane": "gpu"}), "route id"),
+    # A lane that is the gateway itself: a lab-* entry named as a lane's backend.
+    (_set(("backends", "g-gpu", "base_url"), "http://127.0.0.1:9080"), "the gateway's own"),
+    (_set(("backends", "g-cpu", "base_url"), "http://localhost:9091"), "the gateway's own"),
 ]
 
 
