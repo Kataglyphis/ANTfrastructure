@@ -306,11 +306,23 @@ runtime, pinned by SHA256, for that one run. The product never ships the loader.
 and none of `C:\runtime`, so step 3's import walk fails any import the folder does not hold.
 `Copy-PeImportClosure` (`WindowsCrossBundle.Common`) fills it. It walks the static and
 delay-load imports of the binaries it is given, transitively, the set the walk grades. It
-copies each name it finds in the search directories (first directory wins, typically
-`$env:ONNX_ROOT\bin` then `C:\runtime\bin`) and throws on a closure DLL of the wrong
-machine. A DLL loaded by name at run time (ONNX Runtime under `load-dynamic`, a GStreamer
-plugin) is in neither import table, so the build passes it in as a seed. Names found in no
-search directory are left to the device, and the walk grades them.
+copies each name it finds in the search directories, the first directory winning, and throws
+on a closure DLL of the wrong machine. A DLL loaded by name at run time (ONNX Runtime under
+`load-dynamic`, a GStreamer plugin) is in neither import table, so the build passes it in as
+a seed. Names found in no search directory are left to the device, and the walk grades them.
+
+The search directories come from `Get-ProductDllSearchPath`, so all three consumers look in
+the same order:
+1. `$env:ONNX_ROOT\bin`, so an ORT-family import resolves to the chain build;
+2. `C:\runtime\bin`, the media stack;
+3. `VCToolsRedistDir\<x64|arm64>\Microsoft.VC*.CRT`, the VC++ runtime, app-local.
+
+**x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
+media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack
+fills the closure into a directory it names at configure time as
+`KATAGLYPHIS_PACKAGE_DLL_DIR`. `CPackCommon.cmake` installs that directory's DLLs beside the
+executables (`kataglyphis_install_package_dlls`), so the MSI, the ZIP, the NSIS installer and
+a `cmake --install` bundle all ship them.
 
 **A CMake consumer names the target at configure time.** `Get-CrossConfigureArgs`
 (`WindowsCrossBundle.Common`) returns nothing on amd64, so an x64 configure line does not

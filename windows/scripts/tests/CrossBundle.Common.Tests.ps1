@@ -61,6 +61,23 @@ Describe 'Get-WindowsPackageArch' {
     }
 }
 
+Describe 'Get-ProductDllSearchPath' {
+    It 'searches the chain ORT, then the media stack, then the target arch''s VC++ runtime, and only what exists' {
+        Invoke-InTestDir { param($dir)
+            $onnx = Join-Path $dir 'onnx'; $runtime = Join-Path $dir 'runtime\bin'; $redist = Join-Path $dir 'redist'
+            $null = New-Item -ItemType Directory -Force -Path "$onnx\bin", $runtime, "$redist\x64\Microsoft.VC145.CRT", "$redist\arm64\Microsoft.VC145.CRT", "$redist\arm64\Microsoft.VC145.OPENMP"
+            Invoke-WithEnv @{ ONNX_ROOT = $onnx; VCToolsRedistDir = $redist } {
+                Assert-Equal "$onnx\bin|$runtime|$redist\arm64\Microsoft.VC145.CRT" ((Get-ProductDllSearchPath -Arch arm64 -RuntimeBin $runtime) -join '|') 'arm64: chain ORT, media stack, the arm64 CRT only'
+                Assert-Equal "$onnx\bin|$runtime|$redist\x64\Microsoft.VC145.CRT" ((Get-ProductDllSearchPath -Arch amd64 -RuntimeBin $runtime) -join '|') 'amd64 takes the x64 CRT'
+            }
+            Invoke-WithEnv @{ ONNX_ROOT = $null; VCToolsRedistDir = $null } {
+                Assert-Equal $runtime ((Get-ProductDllSearchPath -Arch amd64 -RuntimeBin $runtime) -join '|') 'without the variables only the media stack is left'
+                Assert-Equal 0 @(Get-ProductDllSearchPath -Arch amd64 -RuntimeBin (Join-Path $dir 'missing')).Count 'a directory that does not exist is never offered'
+            }
+        }
+    }
+}
+
 Describe 'Copy-PeImportClosure' {
     It 'copies the transitive closure, delay-loads included, the first search dir winning, and leaves OS-only names to the device' {
         Invoke-InTestDir { param($dir)

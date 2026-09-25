@@ -2,11 +2,12 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# What a consumer's cross lane needs from the hub (docs/windows-cross-builds.md § Consumer cross
-# lanes). To BUILD: the CMake arguments that name the target (Get-CrossConfigureArgs). To RUN on
-# a clean device: every DLL its binaries import, transitively, beside them -- the CRT included,
-# because an arm64 device ships no VC++ redist (Copy-PeImportClosure). Test-TargetArch.ps1
-# -ImportWalk then grades the folder, and container-ci-windows.yml's windows-11-arm job runs it.
+# What a consumer's Windows product needs from the hub (docs/windows-cross-builds.md § Consumer
+# cross lanes). To BUILD a cross target: the CMake arguments that name it (Get-CrossConfigureArgs).
+# To RUN on a clean machine, x64 or arm64: every DLL its binaries import, transitively, beside
+# them -- the VC++ runtime included, because a clean device has no redist (Copy-PeImportClosure,
+# searching Get-ProductDllSearchPath). Test-TargetArch.ps1 -ImportWalk then grades an arm64
+# folder, and container-ci-windows.yml's windows-11-arm job runs it.
 #
 # A NEW module on purpose: WindowsTargetArch.Common, where the PE readers live, is mounted into
 # every media stage, so growing it would re-key the whole image chain.
@@ -16,6 +17,34 @@ Set-StrictMode -Version Latest
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath -DisableNameChecking }
+
+# Where the family images install the media stack's DLLs, for the target arch of the image.
+$script:ImageRuntimeBin = 'C:\runtime\bin'
+
+<#
+.SYNOPSIS
+    Where a product's DLL closure comes from, in the order Copy-PeImportClosure should search.
+.DESCRIPTION
+    1. ONNX_ROOT\bin, first so an ORT-family import resolves to the chain build.
+    2. The image's runtime bin, the media stack (GStreamer, GLib, OpenCV, FFmpeg).
+    3. VCToolsRedistDir\<x64|arm64>\Microsoft.VC*.CRT, the VC++ runtime of the toolset that
+       built the product, Microsoft's supported app-local deployment.
+    Only directories that exist are returned, so a missing variable narrows the search instead
+    of failing it; the closure's own machine check and the arch gate stay the verdict.
+#>
+function Get-ProductDllSearchPath {
+    param([string]$Arch = '', [string]$RuntimeBin = $script:ImageRuntimeBin)
+    $packageArch = Get-WindowsPackageArch -Arch $Arch
+    $ordered = @(
+        if ($env:ONNX_ROOT) { Join-Path $env:ONNX_ROOT 'bin' }
+        $RuntimeBin
+        if ($env:VCToolsRedistDir) {
+            Get-ChildItem -LiteralPath (Join-Path $env:VCToolsRedistDir $packageArch) -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue |
+                ForEach-Object FullName
+        }
+    )
+    return @($ordered | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+}
 
 <#
 .SYNOPSIS
@@ -102,4 +131,4 @@ function Copy-PeImportClosure {
     return $copied.ToArray()
 }
 
-Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Copy-PeImportClosure
+Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Copy-PeImportClosure
