@@ -6,8 +6,10 @@ logic lives in `windows/scripts/modules/WindowsAgenticLoop.Common.psm1` and
 
 - `AgenticLoop.config.template.json` → `scripts/agentic-loop/AgenticLoop.config.json`.
   Replace every `TODO`: the build matrix entries and the build/test/quality
-  commands. The loop refuses to start while any remain, naming each one — so you
-  cannot silently run a half-filled template.
+  commands. The PowerShell loop refuses to start while a matrix entry's `name`
+  or a `build.*Command` still says `TODO`, naming each one. It does not check an
+  entry's `testCommand`, and the Bash loop checks nothing, so grep for `TODO`
+  before the first run.
 - `Invoke-AgenticLoop.ps1` → `scripts/agentic-loop/Invoke-AgenticLoop.ps1`.
   Nothing, unless your submodule path differs.
 - `Run-AgenticLoop.sh` → `scripts/agentic-loop/Run-AgenticLoop.sh`. Same;

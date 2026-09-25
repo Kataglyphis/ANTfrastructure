@@ -76,11 +76,11 @@ entries:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | `string` | Build configuration name (maps to a CMake preset or `Build-Windows.config.psd1` entry) |
+| `name` | `string` | Handed to the build script: `-Configurations <name>` on Windows, `--preset <name>` on Linux (see [Cross-Platform Support](#cross-platform-support)) |
 | `sanitizer` | `string` | `asan`, `tsan`, or `none` — controls env vars set before tests |
-| `buildDir` | `string` | Build directory (used for Linux `--build-dir` and for `ctest --test-dir`) |
-| `buildType` | `string` | CMake build type (`Debug`, `RelWithDebInfo`, `Release`) — used for `ctest -C` |
-| `testCommand` | `string\|null` | Shell command for tests, or `null` to skip tests for this config |
+| `buildDir` | `string` | Linux `--build-dir` (default `build`). The Windows build command does not carry it; a `ctest --test-dir` names it inside `testCommand` |
+| `buildType` | `string` | CMake build type (`Debug`, `RelWithDebInfo`, `Release`). Recorded only: neither loop passes it on, so `ctest -C` goes inside `testCommand` |
+| `testCommand` | `string\|null` | Shell command for tests. `null` falls back to `build.windowsTestCommand` / `build.linuxTestCommand`; tests are skipped only when that is empty too |
 
 ### Backward Compatibility
 
@@ -105,10 +105,15 @@ This ensures sanitizer-instrumented tests actually catch memory errors and
 data races, rather than silently passing because the sanitizer was not
 configured to halt on error.
 
+The variables are set in the loop's own process. A `testCommand` that runs its
+tests inside a container sees them only if it forwards them (`-e ASAN_OPTIONS`).
+
 ### Windows ASAN Note
 
 On Windows, the ASAN debug binary needs `clang_rt.asan_dynamic-x86_64.dll`
-next to the executable. The build copies it automatically. The
+next to the executable. Staging it is the consumer's job, not the loop's, and
+it must be Microsoft's runtime:
+[`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md). The
 `ASAN_OPTIONS` env var must use a **relative** `log_path` — an absolute
 `C:\...` path breaks ASAN option parsing at the drive-letter colon. The
 module's default `ASAN_OPTIONS` does not set `log_path`, avoiding this
@@ -117,9 +122,10 @@ issue.
 ## Full Matrix Sweep
 
 In addition to cycling one config per build trigger, the loop supports a
-**full matrix sweep** — every N iterations, it runs ALL configs in
-sequence instead of just one. This ensures all configs are exercised
-regularly, not just the one that happens to be next in the cycle.
+**full matrix sweep** — a build that falls in every Nth iteration runs ALL
+configs in sequence instead of just the next one. This ensures all configs are
+exercised regularly, not just the one that happens to be next in the cycle.
+Executor-only mode never sweeps: its iteration counter stays at 0.
 
 Enable it in the config:
 
@@ -152,17 +158,22 @@ This ensures that over multiple build triggers, every config is exercised.
 
 ## Cross-Platform Support
 
-The same config file works on both Windows and Linux. The loop
-automatically selects the `windows` or `linux` matrix based on the
-platform it's running on:
+The same config file works on both Windows and Linux. The PowerShell module
+picks the `windows` or `linux` matrix from the host it runs on; the Bash loop
+takes the platform as `run_agentic_loop`'s third argument (the template passes
+`linux`). Each build is one call to a script the consumer owns:
 
-- **Windows**: builds go through `Build-Windows-Container.ps1` (Stevedore
-  container). The config name maps to a preset via
-  `Build-Windows.config.psd1`.
-- **Linux**: builds go through `cmake-configure-build.sh` (Rancher Desktop
-  container or native). The config name is the CMake preset, and the
-  `buildDir` field overrides the preset's `binaryDir` to ensure each
-  config has its own build directory.
+- **Windows**: `pwsh -File <build.windowsScript> -Configurations <name> -SkipTests`,
+  default script `scripts/windows/Build-Windows-Container.ps1` (a Stevedore
+  container build over the hub's `WindowsContainerBuild.Reuse`). What `<name>`
+  means is that script's business: a `Build-Windows.config.psd1` entry in
+  BeschleunigerBallett, a `Build-Windows.ps1` preset alias in OmniAccelerANT.
+- **Linux**: `bash <build.linuxScript> --preset <name> --build-dir <buildDir>`.
+  The PowerShell module defaults the script to
+  `scripts/linux/cmake-configure-build.sh`; the Bash loop has no default, so
+  set the key. For a CMake project that script can be a thin wrapper over the
+  hub's `linux/scripts/lib/cmake-build.sh`, whose `--build-dir` overrides the
+  preset's `binaryDir` so each config gets its own build directory.
 
 ## Module API
 
@@ -185,6 +196,7 @@ are documented in the module API reference,
 | `get_matrix_entry_name <config_json> <index> <platform>` | Get entry name by index (backward-compatible) |
 | `run_agentic_loop <config_json> <repo_root> <platform>` | Full loop with build matrix, sanitizer tests, quality gates |
 | `_agentic_planner_phase <repo_root> <force_planner> <planner_ran_nameref>` | Phase 1 of an iteration: skip while actionable tasks pend, starvation guard, refactor-cycle prompt; reports whether it ran |
+
 ### The two bash files
 
 `agentic-loop.sh` is the only file a consumer sources; it sources
@@ -194,7 +206,7 @@ run it on**.
 
 | File | Owns |
 |------|------|
-| `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
+| `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, the role-prompt composition (`resolve_role_prompt_file`, `write_opencode_agent_file`, `_agentic_repo_path`), `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
 | `lib/agentic-loop.sh` | `LOG_FILE` and `log`/`section`, `init_agentic_loop`/`complete_agentic_loop`, the BACKLOG helpers, the build/test/quality phases, `_agentic_planner_phase`, the matrix readers, the `_AL` loop state and `run_agentic_loop` |
 
 The dependency points one way only. The engine half calls `log` and appends to
@@ -233,7 +245,9 @@ gaps that shared one root cause — the composition only ever existed on the
    `WindowsAgenticLoop.Common.psm1`).
 
 Hence three branches, one invariant: `.opencode/agents/<role>.md` is written on
-every one of them, so the two engines can never be handed different instructions.
+every one of them, so opencode is never left without a role prompt. The two
+engines get the same text whenever a prompt is configured; with none, `claude`
+gets no role prompt and opencode the shared one.
 
 | Config shape | `claude` is given | `.opencode/agents/<role>.md` is given |
 |--------------|-------------------|---------------------------------------|
@@ -265,10 +279,11 @@ All optional; each one beats the value in the config JSON.
 | `PLANNER_ONLY` / `EXECUTOR_ONLY` | single-phase mode |
 | `MAX_ITERATIONS_OVERRIDE` | overrides `.intervals.maxIterations` |
 
-Typical use from a project's `Run-AgenticLoop.sh`:
+Typical use from a project's `Run-AgenticLoop.sh` (the full copy-and-edit
+wrapper is `shared/agentic-loop/templates/Run-AgenticLoop.sh`):
 
 ```bash
-source "${SCRIPT_DIR}/lib/agentic-loop.sh"
-init_agentic_loop "MyProject" "/path/to/repo"
-run_agentic_loop "$config_json_path"
+source "${REPO_ROOT}/third_party/ANTfrastructure/linux/scripts/lib/agentic-loop.sh"
+init_agentic_loop "MyProject" "$REPO_ROOT"
+run_agentic_loop "$CONFIG_PATH" "$REPO_ROOT" linux
 ```

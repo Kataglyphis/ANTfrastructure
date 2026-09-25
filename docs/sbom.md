@@ -23,25 +23,25 @@ section is the procedure for adding a component to the curated half.
 | **Curated** | [`scripts/generate_sbom.py`](scripts/generate_sbom.py) from `deps.json` + `versions.env` | the source-built stack | correctness — right version, right licence, source pointer |
 
 Neither is sufficient alone, and the reason is measurable rather than
-theoretical. From a real scan of `:latest-cross` (`linux/amd64`, syft 1.51.0,
-2026-08-25):
+theoretical. From a real scan of `:latest-cross` (today's `:latest`;
+`linux/amd64`, syft 1.51.0, 2026-08-25):
 
 > **Which syft produced the numbers on this page, and why it is not the pinned
 > one.** Every figure below, and in the Windows section under it, comes from
-> **syft 1.51.0** — not from `versions.env`'s `SYFT_VERSION=v1.20.0`. That was
-> nobody's decision: until 2026-09-09 `scan-image-sbom.sh` used whatever `syft`
-> `command -v` found on PATH and bootstrapped the pin only when there was none,
-> so these counts were measured by whichever scanner the workstation happened to
-> have — thirty-one minor releases past the pin, on a page whose own
-> [Generating them](#generating-them) section calls the scanner pinned. The
-> script now **refuses** a syft that is not the pinned version, from PATH or
-> from a stale bootstrap cache, which is what makes a re-run reproducible at
-> all. Until someone re-measures under `v1.20.0` — it needs the published image
-> and a network — read the numbers below as **dated evidence for the SHAPE of
-> the two halves** (thousands of packages, most carrying no declared licence,
+> **syft 1.51.0** — not from the `SYFT_VERSION=v1.20.0` that `versions.env`
+> pinned then. That was nobody's decision: until 2026-09-09 `scan-image-sbom.sh`
+> used whatever `syft` `command -v` found on PATH and bootstrapped the pin only
+> when there was none, so these counts were measured by whichever scanner the
+> workstation happened to have — thirty-one minor releases past the pin, on a
+> page whose own [Generating them](#generating-them) section calls the scanner
+> pinned. The script now **refuses** a syft that is not the pinned version, from
+> PATH or from a stale bootstrap cache, which is what makes a re-run reproducible
+> at all. The pin itself has moved on: `v1.51.1` by 2026-09-12, `v1.52.0` since
+> 2026-09-18. Until someone re-measures under the pin — it needs the published
+> image and a network — read the numbers below as **dated evidence for the SHAPE
+> of the two halves** (thousands of packages, most carrying no declared licence,
 > every copyleft component reported as the distro copy or not at all) rather
-> than as figures a pinned run will reproduce: cataloguer coverage and licence
-> conclusion both moved across that version range. Replace the numbers and this
+> than as figures a pinned run will reproduce. Replace the numbers and this
 > note together.
 
 - **4,112 packages** catalogued (2,202 distinct names) — maven 1,340, deb 1,255,
@@ -75,9 +75,9 @@ rather than an inventory: it needs filtering before it means anything, and the
 package count is not a quality signal.
 
 > **It also caught a real drift.** The scan reports ONNX Runtime **1.27.0**,
-> TVM **0.25.0** and FFmpeg **8.0.git**, while `versions.env` pins **v1.29.0**,
-> **v0.26.0** and **n9.0**. The published `:winamd64` image is behind the
-> current pins — which means the curated SBOM and the licence pages, both
+> TVM **0.25.0** and FFmpeg **8.0.git**, while `versions.env` then pinned **v1.29.0**,
+> **v0.26.0** and **n9.0**. The published `:winamd64` image was behind its
+> pins — which means the curated SBOM and the licence pages, both
 > generated from `versions.env`, describe *what the pins say* rather than *what
 > was last published*. Re-publish the image, or read the curated documents as
 > describing the next build rather than the current tag.

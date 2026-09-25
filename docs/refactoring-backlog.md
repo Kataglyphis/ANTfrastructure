@@ -54,11 +54,11 @@ future reader should not re-discover:
   37-line Meson-ini template).
 * **Much of the `cc` here is a TABLE, not tangle**: flag and subcommand parsers
   (`parse_tvm_args` 13 options, `append_tvm_cmake_args` 15, `setup-dependencies.sh`
-  `main` 5 flags × 10 commands), feature tables (`_ffmpeg_probe_core_codecs` is
-  sixteen `if probe; then --enable-<codec>` lines and nothing else), and two rows
-  where the metric is simply literal — `dump_debug_info` (cc 23) contains no
-  decision at all, just ~20 which-then-`--version` pairs each swallowed, and
-  `_torch_run_setup_py` counts the size of torch's build environment.
+  `main` 5 valued flags × 11 commands), feature tables (`_ffmpeg_probe_core_codecs`
+  is fifteen `if probe; then --enable-<codec>` lines and nothing else), and two rows
+  where the metric is simply literal — `dump_debug_info` (cc 23) holds one decision
+  (the `HOST_PYTHON` guard) and otherwise ~20 which-then-`--version` pairs each
+  swallowed, and `_torch_run_setup_py` counts the size of torch's build environment.
 * **Refusal matrices cost safety when flattened**: `_chain_prune_archived_logs`
   (every branch is a refusal to delete the wrong thing), `_manifest_wrapper_gate`
   (the cell that decides whether a manifest would MIX releases),
@@ -80,11 +80,13 @@ then the split into `_parse_args` / `_lookup` / `_sweep` / `_safe_row` /
 re-baselined. Every named row left in the two registers is inside the build
 closure.
 
-**Two rows carry a "do not do the obvious thing" verdict.** `verify_comment_size.blocks`
-(nesting 6): the honest fix is importing `verify_code_size.scan` like every other
-extent gate, but that WIDENS the scan to `docs/scripts` and NARROWS it by
-`SKIP_DIRS 'patches'` — it changes the gate's scope and needs a fresh
-`comment-size.allow` baseline, which is different work from a nesting trim. And
+**Two rows were given a "do not do the obvious thing" verdict; one is a row today.**
+`verify_comment_size.blocks` (nesting 6) is not in `code-complexity.allow`:
+`_walk_scan` holds the walk and `blocks` measures cc 9, nesting 4 (2026-09-25;
+the one nesting row is `smoke-android.sh check_ndk`, 7). Its verdict still stands
+for the walk: importing `verify_code_size.scan` would NARROW the scan by
+`SKIP_DIRS 'patches'` (the gate's own `SCAN` comment says why), which changes the
+gate's scope and needs a fresh `comment-size.allow` baseline. And
 `verify_package_names.load_arch` (17): every branch is a way the gate must not
 produce a FALSE verdict, the all-or-nothing partial-fetch refusal above all.
 
@@ -99,8 +101,9 @@ reason a stranger can act on.
 near-miss: the stage suites extract blocks from it **by line range**, so a file
 split silently re-aims them. And `smoke-runtime-image.sh` — which every earlier
 version of this entry nominated as THE one to split — is an explicit **NO**: its
-91 functions are the `check_*` / `_probe_*` assertions and the probe-and-verdict
-layer they share, all over one image through one `_rt_run` under one `main()`. Its
+99 functions (2026-09-25; 91 on 2026-09-18) are the `check_*` / `_probe_*`
+assertions and the probe-and-verdict layer they share, all over one image through
+one `_rt_run` under one `main()`. Its
 length is the number of assertions it makes about the shipped bytes, and that
 number growing is the gate succeeding.
 
@@ -110,6 +113,7 @@ that kept it that way. Record in
 [`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
-`gh auth setup-git` + HTTPS remotes, and ten of the thirteen files in
-`linux/scripts/lib/` source a sibling `lib/log-bootstrap.sh` — a consumer that
-copied ONE `lib/*.sh` file out on its own breaks on its next CI run, not here.
+`gh auth setup-git` + HTTPS remotes, and twelve of the fifteen `*.sh` files in
+`linux/scripts/lib/` source a sibling `lib/log-bootstrap.sh` (2026-09-25) — a
+consumer that copied ONE `lib/*.sh` file out on its own breaks on its next CI run,
+not here.

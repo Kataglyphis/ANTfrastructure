@@ -26,12 +26,21 @@ actions at `@develop` (§ 6 says why not `@main`).
 
 ### Bumping the pin
 
+The family moves gitlinks with Renovate run as a local CLI
+([`dependency-updates.md`](dependency-updates.md)): `renovate-local.sh`, which a
+consumer calls through the wrapper template in `shared/linux/templates/`, reports
+what is behind, and `--apply` moves the gitlink. By hand, name the path and leave
+`--recursive` out:
+
 ```bash
-git submodule update --remote --merge --recursive
+git submodule update --remote --merge third_party/ANTfrastructure
 ```
 
-Commit the resulting pointer change together with the consuming change, and push
-ANTfrastructure `develop` **first** — CI resolves composite actions at `@develop`.
+A bare `git submodule update --remote` is forbidden in this family (`AGENTS.md`
+§ Dependency Updates), and `--remote` follows the `branch =` that `.gitmodules`
+declares for the submodule. Commit the resulting pointer change together with the
+consuming change, and push ANTfrastructure `develop` **first** — CI resolves
+composite actions at `@develop`.
 
 ### Resolving a submodule conflict on merge
 
@@ -225,23 +234,27 @@ rather than re-typed per repo:
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- \
   bash scripts/linux/cmake-configure-build.sh --preset <preset> \
-       --build-dir /tmp/build --cargo-cache-dir /cargo-cache
+       --build-dir /tmp/build
 ```
 
-A cargo-cache volume is still yours to create and mount; everything else —
-image, mount layout, safe.directory, engine, the Git Bash escape — is the
-driver's, and
+The image, the mount layout, safe.directory, the engine and the Git Bash escape
+are the driver's, and
 [`shared-script-libraries.md` § `run-in-ci-image.sh`](shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)
-owns the explanation.
+owns the explanation. It mounts the checkout and nothing else, so a cargo cache
+that outlives the run (below) needs a plain `nerdctl run`/`docker run` with the
+image from `ci-image-ref.sh` and a named volume: the driver has no option for a
+second mount (2026-09-25).
 
 Three constraints worth internalising:
 
 - **The CMake build directory must be container-native** (`/tmp/...`), not on
   the bind-mounted host tree: FetchContent's rename and cargo's temp-file
   cleanup both fail on that filesystem.
-- **Persist cargo via a named volume** (`--cargo-cache-dir`), because the
-  image's `CARGO_HOME` is root-owned and otherwise gets redirected to a
-  container-local path that dies with the container.
+- **Persist cargo via a named volume** (`--cargo-cache-dir`, which
+  `lib/cmake-build.sh` turns into `CARGO_HOME` and `CARGO_TARGET_DIR`). The
+  image's own `CARGO_HOME` is writable
+  ([`consumer-image-contract.md`](consumer-image-contract.md), promise 2), but it
+  lives in the container and dies with it.
 - **Never assume a tool is present because it is on your dev box.** `jq`, for
   instance, is *not* in the Linux image; `python3` is. A hard dependency on the
   former silently broke shader precompilation and left CI with no artifacts.
@@ -330,15 +343,25 @@ reference consumer, twenty-plus copies across two workflows), and they include
 
 **One ordering rule does not live in that page, because it is about your
 workflow rather than about an action:** on a Windows runner, `set-docker-data-root`
-runs **FIRST**. It moves docker's data root to the big `D:` drive — the ~54 GB
+runs **FIRST** (`prepare-windows-container-host` runs it before its own pull). It
+moves docker's data root to the big `D:` drive — the ~54 GB
 image does not fit on a stock `windows-2025` runner's `C:`, and a pull without
 the move dies late with `hcsshim::ImportLayer 0x70` (measured; see
 [windows-build-resources.md](windows-build-resources.md)).
 
-Two lanes are reusable workflows rather than actions: `lint-gates.yml` (the
-consumer lint gates, § 9) and `submodule-pins.yml` (the pin suite, § 9), both
-called with
-`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`.
+Four lanes are reusable workflows rather than actions, each called with
+`uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`:
+`lint-gates.yml` (the consumer lint gates, § 9), `submodule-pins.yml` (the pin
+suite, § 9), the Python pair `python-ci-linux.yml` / `python-ci-windows.yml`
+(§ 9), and `container-ci-windows.yml`, the Windows container lane. Its caller
+names a build script, the script's arguments and the directory the product lands
+in (`dist/windows-x64` or `dist/windows-arm64` in every caller, with the DLL
+closure the product needs); `target-arch: arm64` adds the arch gate and a run on
+`windows-11-arm`
+([`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)).
+On 2026-09-25 OxidANT's and AccelerANTgine's `windows-x64.yml` and
+`windows-arm64-cross.yml` and BeschleunigerBallett's `windows-arm64-cross.yml`
+call it.
 
 Because actions resolve at `@develop`, a consumer workflow change that depends on
 an action change requires the ANTfrastructure push to land first.
@@ -364,7 +387,8 @@ included.
   rename breaks the fleet at once. Only their display names changed, and they
   end in `(reusable)`: `Docs · build (reusable)`, `Lint gates (reusable)`,
   `Python CI · Linux (reusable)`, `Python CI · Windows (reusable)`,
-  `Submodule pins (reusable)`.
+  `Submodule pins (reusable)`, and `Container CI · Windows (reusable)`, new on
+  2026-09-25.
 - **Splitting a Python lane per arch** needs no copied job:
   `python-ci-linux.yml`'s `arches` input picks the rows
   ([`python-ci.md`](python-ci.md#one-arch-per-caller-the-arches-input)).
@@ -404,7 +428,11 @@ keeps the old name; this table translates it.
 
 `windows/scripts/certificates/` holds MSIX certificate generation and import
 (`README.md` there). The `WindowsMsix.Common`, `WindowsMsix.Signing` and
-`WindowsWebDav.Common` modules drive it.
+`WindowsWebDav.Common` modules drive it. To sign a package, call
+`Invoke-MsixPackage -Sign -SigningRoot <repo root>`: it signs with the `*.pfx`
+it finds in that directory (not recursively; the family keeps it there,
+gitignored) and `MSIX_PFX_PASSWORD`. Since 2026-09-25 `-Sign` without
+`-SigningRoot` throws before anything is staged.
 
 The WebDAV downloader that fetches those signing certificates in CI (rather than
 committing them) is **not** Windows-specific and no longer lives there: it is
@@ -417,10 +445,11 @@ Both halves install the client at `WEBDAVCLIENT_REF` from `versions.env`.
 
 ## 8. Calling conventions (what every consumer looks like)
 
-Seven repos consume this one. The shapes below are what they converged on;
-a new consumer that follows them is immediately legible to anyone who has read
-another. Recorded 2026-08-11 after measuring all seven, because until then the
-convention was folklore and had drifted.
+Eight repos consume this one (`.github/consumers.json`). The shapes below are
+what they converged on; a new consumer that follows them is immediately legible
+to anyone who has read another. Recorded 2026-08-11 after measuring the seven
+consumers of that day (WebDavClient joined the list later), because until then
+the convention was folklore and had drifted.
 
 **Windows entry point** — `<scripts>/windows/Build-Windows.ps1`, PascalCase
 `Verb-Noun` like every other PowerShell file. It must:
@@ -444,13 +473,14 @@ still PowerShell and still belongs there, because the question a reader asks is
 "which shell do I need", not "which OS does it target".
 
 **Bash entry points** — `set -euo pipefail`, resolve the script's own directory,
-then source a per-repo bridge that pulls in `01-core/common.sh`:
+then source a per-repo bridge that pulls in the bootstrap of § 1, and reach a hub
+file through it rather than through a `../../third_party/...` literal:
 
 ```bash
 set -euo pipefail
-_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${_SCRIPT_DIR}/ci_common.sh"          # or lib/common.sh
-source "${_SCRIPT_DIR}/../../third_party/ANTfrastructure/linux/scripts/lib/<lib>.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"          # sources lib/antfrastructure.sh
+antfrastructure_source linux/scripts/lib/<lib>.sh
 ```
 
 Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`
@@ -462,15 +492,18 @@ is the canonical example.
 (§ *Shell safety conventions*) apply to consumer scripts too. Every one of them
 falsified or killed a real build here; they are not style preferences.
 
-**Directory layout is uniform across the five consumers that have a Windows
+**Directory layout is uniform across the six consumers that have a Windows
 lane** (BeschleunigerBallett, OmniAccelerANT, OrchestrANT, AccelerANTgine,
-OxidANT; normalised 2026-08-11): lowercase `scripts/`, with `scripts/windows/`,
-`scripts/linux/`, `scripts/windows/modules/` and — where the agentic loop is
-wired up — `scripts/agentic-loop/`. The two Linux-only Flutter repos
-(jotrockenmitlocken, ANThology) keep a flat `scripts/`, with the bootstrap at
-`scripts/lib/` and that path declared in `.antfrastructure-shared.manifest`.
-Two repos used `Scripts/` + `Scripts/Windows/` until that sweep. Use lowercase
-in a new consumer; there is no per-repo casing rule to look up any more.
+OxidANT, WebDavClient; normalised 2026-08-11, WebDavClient checked 2026-09-25):
+lowercase `scripts/`, with `scripts/windows/`, `scripts/linux/` and — where the
+agentic loop is wired up — `scripts/agentic-loop/`, plus `scripts/windows/modules/`
+for a repo with project-specific modules. jotrockenmitlocken, a Linux-only
+Flutter repo, keeps a flat `scripts/`, with the bootstrap at `scripts/lib/` and
+that path declared in `.antfrastructure-shared.manifest`. ANThology has no hub
+submodule and no bootstrap: its `scripts/lib/find-hub.sh` looks for a hub
+checkout instead. Two repos used `Scripts/` + `Scripts/Windows/` until that
+sweep. Use lowercase in a new consumer; there is no per-repo casing rule to look
+up any more.
 
 **Bash filenames still differ**, but not the way this note used to claim.
 Measured 2026-09-14: kebab-case everywhere except OrchestrANT, where the four
@@ -484,8 +517,8 @@ consistency, and renaming every script would churn history for a purely lexical
 preference. Match the repo you are in.
 
 `set -euo pipefail` applies to **entry points**, not to sourced libraries — a
-file-scope `set -e` in a library leaks into whoever sources it. `lib/common.sh`
-in BeschleunigerBallett says so in its own header.
+file-scope `set -e` in a library leaks into whoever sources it. This repo's own
+libraries follow the same rule (`AGENTS.md` § Development Rules).
 
 ### The rest of the naming rules, in one place
 
@@ -563,8 +596,9 @@ four things and gets all of it:
    command and the CI step are the same string, and call the reusable lane from
    CI: `jobs: lint: uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop`
    (inputs: `exclude`, `submodules`, `hub-checkout` for a consumer without a
-   submodule). Add `--ratchets` once the eight `<gate>.allow` freeze files are
-   seeded and committed; that switches on the measurement gates (code size,
+   submodule). Add `--ratchets` (the lane's `ratchets: true`) once the eight
+   `<gate>.allow` freeze files are seeded and committed; that switches on the
+   measurement gates (code size,
    complexity, dead functions, comment size, stdout returns, masked
    declarations, trailing conditionals, shellcheck warnings) over the consumer's
    own shell.
@@ -602,6 +636,7 @@ hook of § 8 instead, which runs the aggregator and nothing hub-specific.
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited
 - [ ] Workflows call the composite actions, FTP publishes through `deploy-over-ftp`
+- [ ] A Windows lane whose logic lives in one build script is a thin caller of `container-ci-windows.yml` (§ 6)
 - [ ] Workflow files and display names follow § 6 (`linux-x64.yml`, `Linux x64 · …`)
 - [ ] Consumer AGENTS.md links to these docs instead of restating them
 

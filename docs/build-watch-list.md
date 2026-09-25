@@ -15,8 +15,10 @@ Chain in flight when this page was written: `chain-status.json` run
 **Re-groomed 2026-09-07 for the Vulkan rows only.** That chain finished; the wave
 after it wired all four components this page had listed as known or expected
 failures. Those rows now say the opposite of what they said, because an
-`unavailable` line for any of the four is the finding VK2 stays open to catch. The
-rest of the page is still the 2026-09-05 text.
+`unavailable` line for any of the four is a regression. VK2 closed on 2026-09-09
+with 20/20 components on both foreign arches
+([archive](refactoring-backlog-archive-2026-09-09.md)). The rest of the page is
+the 2026-09-05 text, with log strings kept matching the code.
 
 ## Read this first: the three that abort a run
 
@@ -26,7 +28,7 @@ its own stage, rather than shipping — which is the design, but it is still a d
 | # | grep for | stage | what it means |
 |---|---|---|---|
 | 1 | `media_compiler_launcher: command not found` | media | the image's `03-media/core/common.sh` is an **older layer** than `build-ffmpeg.sh`/`build-pyav.sh`, which now call the new helper unqualified under `set -e`. A cache-layering problem, not a wiring one — all three files ship in the same commit |
-| 2 | any path printed after `still resolves to nothing` | sdk (all 3 arches) | `_llvm_target_repair_links` ends in `find <prefix> -xtype l` and exits 1 on any survivor. It has never run on any arch. The likely cause is a **materialised directory carrying a broken link of its own** — the one path the loop cannot reach |
+| 2 | any path printed after `still holds link(s) that resolve to nothing` | sdk (all 3 arches) | `_llvm_target_repair_links` ends in `find <prefix> -xtype l` and exits 1 on any survivor. It has never run on any arch. The likely cause is a **materialised directory carrying a broken link of its own** — the one path the loop cannot reach |
 | 3 | `ERROR` from `prune-vulkan-host-sdk.sh` | package (`artifact-source`) | a NEW `RUN` with two bind mounts. Fails before any COPY, so it costs minutes, not hours |
 
 ## SDK stage
@@ -52,7 +54,7 @@ baseline for the riscv64 lane rather than the pre-run guesses.
 | PASS (measured on arm64) | `Cross-building <label> for <arch>` with no following `unavailable` line, for eleven of: `vulkan-headers`, `spirv-headers`, `vulkan-utility-libraries`, `volk`, `vma`, `spirv-cross`, `spirv-reflect`, `shaderc`, `vulkan-tools`, `vulkan-extensionlayer`, `vulkan-validationlayers` |
 | FAIL (was KNOWN FAIL before VK2) | `vulkan-profiles unavailable` — `jsoncpp` and `valijson` are rows of their own in `_VK_TARGET_COMPONENTS` since `c59799b4`, ordered ahead of it, so `find_package(valijson)` has somewhere to look |
 | FAIL (was KNOWN FAIL before VK2) | `gfxreconstruct unavailable` — and the old diagnosis on this row was wrong. The `:${arch}` packages were already unpacked; `find_library` could not see them because nothing passed `CMAKE_LIBRARY_ARCHITECTURE`, which `_cross_build_sdk_component` now does for every row. The genuinely missing half was GL, added to `install_optional_target_packages` |
-| FAIL (was EXPECTED FAIL before VK2) | `slang unavailable` — and NOT for the reason this row gave. It is not host LLVM `tblgen`; slang cross-compiles its own generators and then cannot run them, so `SLANG_GENERATORS_PATH` points at the host `./vulkansdk` run's copies. `tblgen` is the `dx*` family's problem, and that family is deliberately not a row |
+| FAIL (was EXPECTED FAIL before VK2) | `slang unavailable` — and NOT for the reason this row gave. It is not host LLVM `tblgen`; slang cross-compiles its own generators and then cannot run them, so `SLANG_GENERATORS_PATH` points at the host `./vulkansdk` run's copies. `tblgen` is the `dx*` family's problem; `dxc` has been a row since VK4 (2026-09-09), fed the host run's `llvm-tblgen` the same way ([host tools](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool)) |
 | FAIL (was EXPECTED FAIL before VK2) | `vulkancapsviewer unavailable` — `qt6-base-dev:${arch}` is in the optional set with `QT_HOST_PATH=/usr` and a sysroot `CMAKE_PREFIX_PATH` |
 | FAIL | `shaderc: source missing at …/shaderc/src; skipping` — the checkout IS one level down and `_vulkan_target_src` is supposed to find it. It built on arm64, so this would be a regression |
 | FAIL | any `Cross-building` line naming a `-B TMP/<label>` path for a component whose source is absent — the missing-source guard has stopped skipping |
@@ -61,7 +63,7 @@ baseline for the riscv64 lane rather than the pre-run guesses.
 instruction and it still holds: editing `vulkan.sh` mid-run ships two arches from
 different sources, which is the drift this repo has been bitten by before. The four
 routes above are already in the tree; what the chain owes is a verdict on them, and
-`<arch>/bin` carrying what `x86_64/bin` does is what closes VK2.
+`<arch>/bin` carrying what `x86_64/bin` does is what closed VK2 (2026-09-09).
 
 ### LLVM target prefix (HT4)
 
@@ -69,7 +71,7 @@ routes above are already in the tree; what the chain owes is a verdict on them, 
 |---|---|
 | PASS | the stage completes with no output at all from `_llvm_target_repair_links` on arm64/riscv64 (both measured 0 dangling today, so **any** output there is news) |
 | PASS | amd64 prints `amd64 /opt/llvm-target NEEDED walk clean` and **not** `is NOT self-contained` |
-| FAIL | `still resolves to nothing` plus a path list — see #2 above |
+| FAIL | `still holds link(s) that resolve to nothing` plus a path list — see #2 above |
 | FAIL | the walk aborting on an unresolved `liblldb` soname. `liblldb*` joined the LLVM family this wave, so an apt set that ships the lldb binaries without the lib now stops the stage where it used to fall through |
 
 ### sccache — the YB verdict, and it is finally greppable (YB)
@@ -122,7 +124,7 @@ report **0** compile requests, not another container's hundreds.
 
 | what | PASS | FAIL |
 |---|---|---|
-| AppImage runtime | `Staged AppImage runtime-<arch> (<n> bytes) from …`, once per arch | `appimagetool did not report --appimage-offset` — a WARN, non-fatal, but the runtime is not staged and consumers go back to fetching it from GitHub |
+| AppImage runtime | `Staged AppImage runtime-<arch> (<n> bytes) from …`, once per arch | `no squashfs superblock in <tool>; runtime-<arch> not staged` — a WARN, non-fatal, but the runtime is not staged and consumers go back to fetching it from GitHub |
 | Flatpak runtimes | seven refs installed on amd64/arm64; **skipped outright** on riscv64 (Flathub builds x86_64 and aarch64 only) | a 404 retry loop on riscv64 means the arch guard stopped working |
 | web-lane toolchain | `OK: nightly-<date> installed with rust-src + wasm32-unknown-unknown` (the `RUST_NIGHTLY_TOOLCHAIN` pin) and two `OK: <crate> <version> installed` | `WARN: nightly-<date> is unavailable` — non-fatal, but the web lane then auto-installs a nightly per consumer run, which is the cost this exists to remove |
 | web-lane tools from source (riscv64, new 2026-09-23) | android `web-lane-tools`: `OK: web-lane producer: <crate> <version> built for riscv64gc-unknown-linux-gnu in <n> s`, or `cache HIT`; amd64/arm64 android: `skipped: not in WEB_LANE_TOOLS_CROSS_ARCHES` / `native-build-platform`. riscv64 package: `installed from the cross-built artifact`, twice | `WARN: web-lane <crate>: … the cross fast path was not taken` — non-fatal, but that RUN pays the QEMU compile (~44 min) once per key; the line carries the producer's reason. Any `ERROR: web-lane` stops the package stage on purpose ([contract](consumer-image-contract.md#building-the-web-lane-tools-from-source)) |
@@ -190,10 +192,16 @@ nerdctl run --rm --platform linux/<arch> -v <repo>:/repo:ro --entrypoint bash \
 
 * `VK_LAYER_PATH` is empty in every running image and always has been. The entrypoint
   sources LunarG's `setup-env.sh`, which UNSETS it and exports `VK_ADD_LAYER_PATH`
-  instead. Not touched this wave; see backlog **R1**.
+  instead. Not touched this wave; backlog **R1** (closed 2026-09-07,
+  [archive](refactoring-backlog-archive-2026-09-07.md)) fixed the value a consumer
+  that does not source it gets
+  ([`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md#vk_layer_path-pointed-at-a-directory-that-has-never-existed)).
 * The lib-dynload audit WARNs for five optional modules (`_zstd`, `readline`,
   `_curses`, `_uuid`, `_decimal`). Information on `optional` rows — but any of them on
-  **amd64** is a genuine finding.
+  **amd64** is a genuine finding. `readline` is a `required` row in
+  `01-core/cpython-dev-packages.sh` now, so its WARN is a finding on every arch.
+  `_ctypes` warns on the cross arches by design (`build_python.sh` sets
+  `ac_cv_header_ffi_h=no`).
 * `slang` and `vulkancapsviewer` failing to cross-configure was expected until
   2026-09-07 and is **not** any more — both have a route now, so either one failing
   is a finding, not noise.

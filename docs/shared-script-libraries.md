@@ -21,15 +21,17 @@ computation from `01-core/parallelism.sh`, tool presence and the Vulkan
 environment from the caller's own `has_tool`/`require_tools`/`source_vulkan_env`
 when it declares them.
 
-Two libraries in this directory have their own pages, because their topic is
-bigger than the library: [`code-quality.sh`](code-quality-tooling.md) and
-[`slang-compile.sh`](slang-shader-compilation.md).
+Three have their own pages, because their topic is bigger than the library:
+[`code-quality.sh`](code-quality-tooling.md),
+[`slang-compile.sh`](slang-shader-compilation.md), and the `agentic-loop.sh` +
+`agentic-engines.sh` pair, one executable loop in two files
+([`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md#the-two-bash-files)).
 
 ## The tree, as AGENTS.md drew it
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
-this heading. AGENTS.md keeps one line per top-level directory; the per-file
-detail, the deletion history and the consumer-surface notes are here.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since
+only to keep it current. AGENTS.md keeps one line per top-level directory; the
+per-file detail, the deletion history and the consumer-surface notes are here.
 
 ```
 linux/scripts/
@@ -46,6 +48,7 @@ linux/scripts/
 │   │   ├── libcamera/     libcamera
 │   │   ├── pyav/          PyAV wheel (`import av`), built in a stage layered on the FFmpeg it links against (Dockerfile.media `FROM ffmpeg AS pyav`); versions.env pinned PYAV_VERSION while nothing built it until 2026-08
 │   │   ├── armnn/         Arm NN + Arm Compute Library — arm64 ONLY; other arches get empty /opt/armnn + /opt/acl
+│   │   ├── hailo/         HailoRT + hailortcli + the hailonet element, built in the wrapper image (Dockerfile.torch); riscv64 skips
 │   │   └── iree/          android/ ONLY (dispatched via android-dispatch.sh); the Linux-lane IREE is built by 05-frameworks/torch/build-app-wheelhouse.sh
 │   └── runtime/         artifact collection, runtime config, wheel repair, verification, media-env.sh (canonical ENV)
 ├── 04-runtime/          entrypoint + env scripts (gstreamer-env.sh, etc.)
@@ -58,35 +61,44 @@ Top-level orchestrators: `build-cross-chain.sh`, `build-cross-compiler.sh`, `bui
 Beyond `linux/scripts/`:
 
 ```
-linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
+linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh +
+                         agentic-engines.sh (one loop in two files),
+                         app-packaging.sh (tar/deb/AppImage/Flatpak),
                          app-runner.sh (generic app launcher: arg parse, exe
                          discovery, LD_LIBRARY_PATH, per-profile hooks),
                          cmake-build.sh, code-quality.sh, coverage.sh,
                          compiler-llvm-tools.sh (a build tree's own LLVM
-                         tools, first on PATH),
-                         slang-compile.sh, wasm-opt.sh, ctest-run.sh (ctest
-                         runner + perf-baseline comparator), docs-build.sh
-                         (Sphinx build helper), rust-toolchain.sh — the last
-                         three had NO doc entry anywhere until the 2026-08-08
-                         orphan sweep; nothing in-repo invokes lib/, it is a
-                         consumer surface shipped into the images
-linux/scripts/02-toolchain/rust/   cargo_* helpers (test/bench/fmt+clippy/
-                         security/coverage/release/update/doc via
-                         _cargo_wrapper.sh) — consumer surface COPY'd into the
+                         tools, first on PATH), dartdoc-build.sh (+
+                         dartdoc-guides.py), log-bootstrap.sh (the logging
+                         block the others source), slang-compile.sh,
+                         wasm-opt.sh, ctest-run.sh (ctest runner),
+                         docs-build.sh (Sphinx build helper),
+                         rust-toolchain.sh — the last three had NO doc entry
+                         anywhere until the 2026-08-08 orphan sweep. A
+                         consumer surface, reached through the consumer's
+                         third_party/ANTfrastructure checkout: no image
+                         ships lib/, and in-repo only preflight.sh and
+                         05-frameworks/flutter/flutter_checks.sh source it
+                         (code-quality.sh)
+linux/scripts/02-toolchain/rust/   cargo_* helpers (test/bench/debug/
+                         fmt+clippy/security/coverage/release/doc; test,
+                         bench and debug run through _cargo_wrapper.sh) —
+                         consumer surface COPY'd into the
                          toolchain/sdk/package images; nothing in-repo calls
                          them (the redundant zero-ref Build-Linux.sh duplicate
                          was deleted 2026-08-08)
 linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
                          analysis, packaging, docs) — same consumer-surface
                          status as rust/
-linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
-                         nerdctl/buildkit prerequisites); intentionally not
-                         wired into CI or builds
+linux/scripts/01-core/setup-host-deps.sh    hand-run developer-onboarding
+                         helper (host toolchains, compiler caches, analysis
+                         and coverage tools); intentionally not wired into CI
+                         or builds
 linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          assembly — consumer surface. Called from
-                         OxidANT's Linux lanes (linux-x64.yml and
-                         linux-arm64.yml; rust_ubuntu26_04.yml until the
-                         2026-09-24 rename).
+                         OxidANT's reusable-linux.yml, which its Linux
+                         lanes (linux-x64.yml, linux-arm64.yml) call;
+                         rust_ubuntu26_04.yml until the 2026-09-24 rename.
                          Deleted by the 2026-08-08 orphan sweep as
                          "zero-reference" and restored 2026-08-11: the sweep
                          searched only THIS repo, so a consumer's CI lane was
@@ -115,11 +127,15 @@ windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
                          certificates/ (MSIX cert generation + WebDAV
                          download_webdav_files.py — see its README.md),
                          python/ + rust/ (consumer CI-lane drivers).
+                         Also ungrouped: patches/ (the static source-build
+                         patches, catalogued in its README.md) and hip/
+                         (TheRock's clang config + the MSVC cmath overlay,
+                         docs/windows-rocm.md).
                          modules/*.psm1 (reusable PS modules: SourceBuild,
                          Build.Common, ContainerBuild.Reuse, AgenticLoop,
                          CMake, Config, Formatting, Msix.{Common,Signing},
                          WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
-                         ContainerImage, Flutter, Installer,
+                         ContainerImage, CrossBundle, Flutter, Installer,
                          HostMaintenance, SmokeTest, GstPlugins, …),
                          tests/ (harness + suites), shims/
 windows/upstream/        prepared upstream submissions (not build inputs), one
@@ -135,7 +151,10 @@ windows/upstream/        prepared upstream submissions (not build inputs), one
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
-                         and linux/scripts/lib/agentic-loop.sh
+                         and linux/scripts/lib/agentic-loop.sh;
+                         system-prompts/*.md, the role prompts both halves
+                         compose (agentic-engines.sh on Linux); templates/,
+                         the consumer config and runner wrappers
 .github/actions/         12 composite actions consumers call @develop, incl.
                          cleanup-disk-space (Windows runners),
                          run-in-linux-container, run-in-windows-container;
@@ -146,7 +165,7 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
 
 ## Module loading order, as AGENTS.md carried it
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since only to keep it current. The RULES stayed there; this is the reference behind them.
 
 `artifact-common.sh` sources 01-core modules in dependency order:
 1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `path-helpers.sh`. `abseil-headers.sh` is
@@ -184,8 +203,8 @@ gutted or early-returning copy, not a library. It also parses
 `tests/test-lib-modules.sh` is the strict half described under
 [The logging bootstrap](#the-logging-bootstrap): double-source safety, and that
 `info`/`warn`/`err` arrive from the real `01-core/logging.sh` rather than a
-private fallback copy. It skips `agentic-loop.sh`, which is an executable loop
-rather than a source-library.
+private fallback copy. It skips the `agentic-*.sh` pair, one executable loop split
+over two files rather than a source-library.
 
 ## The logging bootstrap
 
@@ -384,7 +403,9 @@ C++/Rust build.
 | `DOCS_BUILD_TARGETS` | array of make targets | `html linkcheck` |
 
 Both `UV_*` scripts run with the project root as cwd — the same contract as
-`code-quality.sh`'s pair, and both defer to `01-core/python_uv.sh`.
+`code-quality.sh`'s pair, and both defer to `01-core/python_uv.sh`. Unlike that
+pair, which falls back to the hub's own bootstrap since 2026-09-15, both are
+required here: an unset one is fatal.
 
 **A missing SVG is fatal on purpose.** An empty diagram set means the generating
 build did not run, and shipping docs with holes in them is worse than failing
@@ -580,8 +601,9 @@ Bash it is the Microsoft Store stub, which prints an install hint and exits
 non-zero. `preflight.sh` probes a candidate list and exports the winner; a gate
 run standalone inherits nothing, so `lint-workflows.sh` and `run-lint-gates.sh`
 call this before their Python steps instead of each carrying the check inline,
-which is where the second copy sat until 2026-09-14. Expand the value unquoted,
-as `preflight.sh` does: it may be a command line such as
+which is where the second copy sat until 2026-09-14. `lint-python.sh` and this
+repo's own pre-commit/pre-push hooks joined them on 2026-09-15. Expand the value
+unquoted, as `preflight.sh` does: it may be a command line such as
 `uv run --no-project python`, the very hint the failure message gives.
 
 ### `run-in-ci-image.sh` — run a command in the CI image
@@ -616,7 +638,8 @@ is for everything that is not a workflow step.
 ### `ci-image-ref.sh` — the family CI image reference
 
 Prints `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}` (or `…_WINDOWS_TAG` with
-`--windows`) on stdout and nothing else, so it is safe in a command substitution.
+`--windows`, `…_WINDOWS_ARM64_TAG` with `--windows-arm64` for the arm64 cross
+bundle) on stdout and nothing else, so it is safe in a command substitution.
 
 ```bash
 docker run --rm -v "$PWD:/workspace" -w /workspace \
@@ -630,9 +653,10 @@ repro, a lane driver. It is the one entry point here that takes **no** consumer
 root, because the only file it reads is this repo's `versions.env` whatever tree
 is being built; a root parameter would imply a per-consumer answer and there is
 none. Its PowerShell twin is `Get-CiImageReference`
-(`WindowsContainerImage.Common.psm1`) and
-`tests/test-ci-image-ref.sh` asserts that both agree with
-`verify_ci_image_refs.py`, which grades the four action defaults.
+(`WindowsContainerImage.Common.psm1`). `tests/test-ci-image-ref.sh` holds the
+script to the same strings as `verify_ci_image_refs.py`, which grades the four
+action defaults (and the Windows pair's `image-arm64`);
+`ContainerImage.CiRef.Tests.ps1` holds the twin to `versions.env`.
 
 ### The empty-scope rule
 
@@ -752,7 +776,7 @@ to exclude it in that gate's own list.
 Three things it does not do, and must not gain: a `safe.directory` for the SDK
 (`setup-package-image.sh:556` registers `/opt/flutter` at `--system` level, so a
 `--global` copy is a no-op that reads like a requirement), sourcing `~/.bashrc`
-to find flutter (`Dockerfile.package:268` already puts it on `PATH`, and a stock
+to find flutter (`Dockerfile.package`'s `ENV PATH` already carries it, and a stock
 non-interactive `.bashrc` returns early with a meaningless status while hiding a
 broken rc file), and installing an SDK — a lane that installs one is testing a
 different toolchain from the one it ships.

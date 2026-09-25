@@ -69,10 +69,12 @@ the submodule-less checkout — and `if-no-files-found: error` then reports a
 missing build rather than a wrong path. The same applies to `hashFiles()`, which
 only sees inside `GITHUB_WORKSPACE`: probe with a step instead.
 
-It stops after the pull on purpose. The four Windows lanes diverge completely
-from there — one runs six test steps, one packages MSIX/MSI, one also builds on
-the host — so a reusable *workflow* would have to model all of it. The prologue
-is the part that is genuinely shared.
+It stops after the pull on purpose: what follows differs per lane. Since
+2026-09-25 the hub's reusable `container-ci-windows.yml` wraps this action and
+`run-in-windows-container` for a lane whose logic lives in one build script
+(OxidANT's and AccelerANTgine's x64 and arm64 lanes, BeschleunigerBallett's arm64
+one); a lane with more steps than that calls the actions itself
+(BeschleunigerBallett's and OmniAccelerANT's `windows-x64.yml`).
 
 ### `set-docker-data-root`
 Points the Docker daemon's data-root at another drive **before the image is
@@ -120,11 +122,12 @@ a real pipeline died of exactly that on 2026-08-05 with the gate itself happy.
 ### `clone-into-short-path`
 Clones the repo and submodules into a short directory (default `/d/ws`) because
 actions/checkout cannot on Windows with a deep submodule chain: the workspace is
-`D:\<repo>\<repo>` before any content, and `.git/modules/.../config` then
+`D:\a\<repo>\<repo>` before any content, and `.git/modules/.../config` then
 passes 260 characters, which `core.longpaths` does not reliably bypass for
 child clones. Also rewrites `git@github.com:` submodule URLs to token HTTPS,
 since a hosted runner has no SSH key. Inputs: `token` (required), `target`,
-`repository`, `ref`, `submodules`.
+`repository`, `ref`, `submodules`, `exclude-submodules` (submodule names to skip
+with everything beneath them, one per line).
 
 ### `run-pester-suite`
 Installs a PINNED Pester and runs a suite, printing Describe/Name plus the
@@ -179,8 +182,8 @@ before connecting, so a container-written tree fails the upload even after
 trailing slash. Full inventory, the reasoning and what was measured:
 [`../../docs/ftp-deploys.md`](../../docs/ftp-deploys.md).
 
-Not yet covered by `actions-selftest.yml` - see the note under
-**Testing these actions**.
+`actions-selftest.yml` checks its call statically on every run and runs it only
+as a dry run on request - see **Testing these actions**.
 
 
 ## The two images, and the one place they are named
@@ -193,8 +196,9 @@ convention. The one exception is the Windows arm64 cross lanes: they run in the
 arm64 bundle, `${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_WINDOWS_ARM64_TAG}` from the
 same file.
 
-Workflow YAML cannot read it, so the four container actions below carry the
-composed reference as the **default** of their `image` input, and the two Windows
+Workflow YAML cannot read it, so the four container actions (`prepare-*` and
+`run-in-*`) carry the composed reference as the **default** of their `image`
+input, and the two Windows
 ones carry the bundle as the default of `image-arm64`, which `target-arch: arm64`
 selects. **Omit `image:`** (and `image-arm64:`) and your lane is on the family
 tag by construction; there is nothing to retype and nothing to keep in sync.
@@ -258,8 +262,10 @@ sibling's verbatim fragment — Windows argv must stay literal). Other inputs:
 pass the same value the prepare step got), `image` (optional — defaults to the
 family Windows image), `image-arm64` (optional — defaults to the arm64 bundle),
 `cpus` (default: all runner CPUs, min 2), `memory` (default `16g`),
-`mount-source`/`mount-target` (default `D:\ws` → `C:\ws`). Values containing
-newlines cannot be expressed in the per-line inputs.
+`mount-source`/`mount-target` (default `D:\ws` → `C:\ws`), `isolation` (default
+`process`: a hosted runner has no nested virtualization, so a `hyperv` container
+is refused). Values containing newlines cannot be expressed in the per-line
+inputs.
 
 ## Testing these actions
 
@@ -269,11 +275,13 @@ actions at `@develop` - which the submodule pin does not freeze. It `uses:` all
 twelve directories here, and it fires on any change under `.github/actions/`.
 Read its header before trusting a green run; the short version:
 
-**`deploy-over-ftp` is covered statically only.** Its self-test step names every
-input and is guarded off (`if: false`), so actionlint checks the call site on
-every run while no runner ever dials an FTP server; the runtime half wants a
-real server and is exercised by the hub's own `build-docs.yml` and
-`python-ci-linux.yml`, which adopted the action on 2026-09-14.
+**`deploy-over-ftp` is covered statically, and at runtime only on request.** Its
+self-test step names every input, so actionlint checks the call site on every
+run, and it runs only when the workflow is dispatched with `ftp-dry-run: true` -
+then in the library's dry-run mode against the docs server, which connects and
+diffs but uploads nothing. The real upload is exercised by the hub's own
+`build-docs.yml` and `python-ci-linux.yml`, which adopted the action on
+2026-09-14.
 
 **Statically, on every run and locally.** actionlint reads the metadata of a
 locally-`uses:`d action and checks the call site: an input name the action does

@@ -324,5 +324,7 @@ one is pinning itself to a single architecture.
 > it rather than copying it.
 
 The same index was named `:latest-cross` until 2026-09-22; that name is retired
-(no release publishes it; the tags go once `main` carries `:latest`) — see
+and no release publishes it. Its registry tags stay until the conditions in
+[`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)
+are met. Name `:latest`:
 [`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).

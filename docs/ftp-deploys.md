@@ -21,7 +21,8 @@ counted twice. Line numbers are the committed ones; the step is the stable
 handle. File names are the 2026-09-09 ones too: the consumer files were renamed
 on 2026-09-24 (`dart.yml` → `web.yml` in jotrockenmitlocken and `docs.yml` in
 ANThology, `Linux.yml` → `reusable-linux.yml`, `dart_on_native_linux.yml` and
-`rust_ubuntu26_04.yml` → `linux-x64.yml` + `linux-arm64.yml`, `linux_run.yml` →
+`rust_ubuntu26_04.yml` → `linux-x64.yml` + `linux-arm64.yml` over a shared
+`reusable-linux.yml`, which holds the deploy step, `linux_run.yml` →
 `reusable-linux.yml`), so read the table through
 [the rename table](adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
@@ -64,11 +65,12 @@ None of those nine is outside a promise it never made: all seven repositories
 holding these sites extend the shared preset
 (`"extends": ["github>Kataglyphis/ANTfrastructure"]`), and `default.json` extends
 `helpers:pinGitHubActionDigests` — exactly the rule that would replace those
-tags with digests. The reason it has not is the one recorded in every one of
-those `renovate.json` files: the Renovate app is not installed on these
-repositories, so the config is inert. Until it is, this action's single
-digest-pinned `uses:` is the only thing actually holding a pin for a consumer
-that adopts it.
+tags with digests. The reason it has not is recorded in those `renovate.json`
+files: the Renovate app is not installed on these repositories and will not be
+(owner decision 2026-09-09), so the preset acts only when someone runs the local
+CLI, `renovate-local.sh` ([`dependency-updates.md`](dependency-updates.md)).
+Since the adoption below, this action's single digest-pinned `uses:` holds the
+pin for every one of these sites.
 
 **The failure policy is a habit, not a decision.** There are two policies across
 the eleven sites, not three: nine fail the lane, and two
@@ -267,7 +269,8 @@ All eleven sites were adopted on 2026-09-14 — the hub's two workflows
 `chmod -R 755` / `chown -R` fixup, which the action does itself. The gap this
 section used to name is closed with them: `actions-selftest.yml` `uses:` all
 twelve actions in `.github/actions/` now, `deploy-over-ftp` among them, guarded
-so no runner dials a server. That is what makes actionlint hold every declared
+so it runs only on a dispatch with `ftp-dry-run: true`, and then as a dry run that
+uploads nothing. That is what makes actionlint hold every declared
 input and output on every push, so renaming one breaks the hub rather than a
 consumer.
 
@@ -348,4 +351,4 @@ Not verified here, and named rather than implied:
 - `actionlint` has no schema for action metadata files, so linting `action.yml`
   directly only reports that it is not a workflow. A composite action is graded
   by linting a workflow that calls it — which is what the fixture runs above do,
-  and what `actions-selftest.yml` does not yet do for this action.
+  and what `actions-selftest.yml` has done for this action since 2026-09-14.

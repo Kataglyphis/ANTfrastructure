@@ -11,8 +11,9 @@ upstream component below carries its own license terms.
 
 ## Maintaining this list
 
-Everything below the marker is **generated**. Editing it by hand is lost on the
-next build. The sources are:
+Everything between the `generated:deps-table` markers is **generated**. Editing
+it by hand is lost on the next `sync_versions.py --write`; the two sections after
+the end marker are hand-written. The sources are:
 
 | File | Holds |
 |---|---|
@@ -81,8 +82,9 @@ stating that a redistributed component was changed:
 
 ### What the gate checks
 
-`preflight.sh` slugs `version-snapshot` and `sbom` run in the pre-commit hook
-and in CI. Together they fail when:
+`preflight.sh` slugs `version-snapshot` and `sbom` run in CI (`linux-x64.yml`;
+`sbom.yml` re-checks the curated SBOM weekly) and in `make preflight`. The
+pre-commit hook runs neither. Together they fail when:
 
 - an entry has no `spdx`;
 - an `spdx` id has no obligation mapping;
@@ -643,9 +645,12 @@ Each patch is in this repository at the path shown, and travels with the corresp
 - Ubuntu system packages carry diverse licenses (GPL, LGPL, Apache 2.0, MIT,
   BSD, zlib, Public Domain).  Check `/usr/share/doc/<pkg>/copyright` inside
   the image for exact terms.
-- NVIDIA EULAs require acceptance before download/use.  The container images
-  do not redistribute CUDA/cuDNN/TensorRT downloads — they are downloaded
-  during build from official NVIDIA repositories.
+- NVIDIA EULAs require acceptance before download/use.  The build fetches
+  CUDA/cuDNN from NVIDIA, and TensorRT is staged by hand.  The published
+  `:winamd64` image does carry all three (its config on 2026-09-25: CUDA 13.4,
+  cuDNN 9.26.0.51, TensorRT 11.3.0.99), so whether that redistribution is
+  permitted is the `eula-review` question above, not a settled one.  No published
+  Linux image carries them: `:latest-nvidia` is not published yet.
 - "git master" versions are built from the latest development branch at the
   time the image was built.  For exact commit SHAs, inspect the build logs.
 - Version numbers marked with <!-- generated:... --> are automatically kept

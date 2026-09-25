@@ -163,7 +163,7 @@ qualifier (owner directive 2026-09-22).
 ### Windows-Specific Naming
 
 The Windows lane names its local intermediate tags with `Get-BkTag`
-(`windows/Build-Buildkit.ps1:225`), which yields
+(`windows/Build-Buildkit.ps1`), which yields
 `docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
 `bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches
 `bk-windows-media-core` / `-media-litert` / `-media-tvm` (media-core is itself
@@ -245,23 +245,20 @@ pointing at the Windows host. Setup, the model matrix, the measured numbers and
 the debugging trail:
 [`geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md).
 
-### Triggering the opt-in CI lanes
+### Which CI lanes run when
 
-The Linux x86 lane runs on every push; **Windows and ARM are opt-in per
-commit** — and a green tick without the opt-in says nothing about them, because
-the workflow reports `skipped`. Which markers, and what each lane runs:
+**Every platform lane in the family runs on every push and PR** (owner decision
+2026-09-24): the `[build-win]` / `[build-arm]` commit-message opt-ins are
+retired, and no platform job carries an `if:`. What is still path-filtered or
+gated, and this repo's own triggers:
 [`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
-
-```
-git commit -m "build: check every target [build-win][build-arm]"
-```
 
 ### Reading CI status with the GitHub CLI
 
 **A skipped job is not a passed job.** `gh run view` prints both as a tick, and
 reading a required lane's skip as success is how a red push looked green here.
 Check the conclusion per job, not the run's summary glyph. The commands, and
-which lanes are opt-in:
+which jobs are still gated:
 [`github-cli-pipeline-monitoring.md`](docs/github-cli-pipeline-monitoring.md)
 and [`ci-build-triggers.md`](docs/ci-build-triggers.md).
 
@@ -275,8 +272,8 @@ For a CONSUMER repo, the shape of that split is
 
 ### Comments: as few as possible, as short as possible
 
-**Owner rule (2026-08-28, restated 2026-09-01 as priority 5).** Code comments
-here had grown into essays. They are now held to this:
+**Owner rule (2026-08-28, restated 2026-09-01 as a project priority, number 6
+today).** Code comments here had grown into essays. They are now held to this:
 
 - Comment only where the code cannot say it: a non-obvious *why*, a trap, a
   load-bearing constraint.
@@ -326,7 +323,9 @@ When adding here:
   `Get-Verb`-approved verb for scripts, `Windows<Area>.<Facet>.psm1` for modules,
   `<Subject>.Tests.ps1` for suites. Three tracked files sit outside all three on
   purpose, the delete guard among them — it is registered by that exact string,
-  so a rename silently unregisters it. A `verb-noun-name.ps1` spelling anywhere
+  so a rename silently unregisters it — plus `windows/scripts/build/rocm-checks/`,
+  whose files are named after the component they check (`FFmpeg.ps1`,
+  2026-09-23). A `verb-noun-name.ps1` spelling anywhere
   is stale, not a variant: 101 scripts were renamed on 2026-09-06.
 - PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and
   consumers resolve it ANTfrastructure-first with a vendored fallback. The resolver
@@ -356,7 +355,7 @@ When adding here:
   last one deleted three live files and they were restored a week later.
 - **Bash file names.** New files are kebab-case. The snake_case names that
   exist under `linux/scripts/` (`02-toolchain/python/ci_*.sh` and
-  `build_python.sh`, `02-toolchain/rust/cargo_*.sh`, `_*_guard.sh`,
+  `build_python.sh`, `02-toolchain/rust/cargo_*.sh`, `_*_guard.sh` and `_cargo_wrapper.sh`,
   `version_util.sh`, `01-core/python_uv.sh`, `05-frameworks/flutter/flutter_checks.sh`,
   `06-packaging/package_archive.sh`) and `linux/webserver/scripts/flutter_integration_smoke_test.sh`
   are frozen: consumer wrappers resolve them by path, so a rename is a
@@ -364,9 +363,10 @@ When adding here:
 - **Workflow file names** (owner decision 2026-09-24, fleet-wide). Kebab-case,
   one file per platform and arch (`linux-x64.yml`, `windows-x64.yml`), display
   names `<Platform> <Arch> · <what>`. The hub's REUSABLE workflows
-  (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`) keep their file
-  names for good: every consumer calls them at `@develop`, so a rename breaks the
-  fleet in one push. The convention and the fleet's rename table:
+  (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`, and
+  `build-docs`, which only this repo calls) keep their file names for good:
+  consumers call them at `@develop`, so a rename breaks the fleet in one push.
+  The convention and the fleet's rename table:
   [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
 
 ### Reusable Module: WindowsContainerBuild.Reuse
@@ -517,7 +517,7 @@ Commands:
 
 Stages 1-5 run on `linux/amd64`, or natively on an arm64 host with `CROSS_BUILD_PLATFORM=linux/arm64` (run end to end on a Jetson AGX Orin, [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson)). Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia|rocm] → toolchain → media → [migraphx → llama] → torch → final`, the bracketed rocm stages on `-Variant rocm` only; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image. `-Variant rocm` (amd64 only) puts `Dockerfile.rocm` in that same sdk slot, under `-rocm` tags that never overwrite the default ones; every media feature it enables is gated on `(Get-GpuEnvironment).HasRocm` ([`windows-rocm.md`](docs/windows-rocm.md)). See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia|rocm] → toolchain → media → [migraphx → llama] → torch → final`, the bracketed rocm stages on `-Variant rocm` only; torch assembles the OrchestrANT app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/Build-Buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet in [`windows-builds.md` § The Windows lane as AGENTS.md carried it](docs/windows-builds.md#the-windows-lane-as-agentsmd-carried-it)). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch, same as `-Variant nvidia`) for a CUDA-enabled image. `-Variant rocm` (amd64 only) puts `Dockerfile.rocm` in that same sdk slot, under `-rocm` tags that never overwrite the default ones; every media feature it enables is gated on `(Get-GpuEnvironment).HasRocm` ([`windows-rocm.md`](docs/windows-rocm.md)). See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -562,14 +562,14 @@ and `ls` answers faster than a stale number.
 | Directory | What lives there |
 |---|---|
 | `cmake/` | The shared CMake modules consumers `include()` — sanitizers, static analysers, cache, tests. |
-| `shared/config/` | The canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml`, plus the sync tool and the manifest that says which of them a consumer takes. [README](shared/config/README.md) |
+| `shared/config/` | The canonical `.clang-format`, `.clang-tidy`, `.cmake-format.yaml`, `gcovr.cfg`, `.pre-commit-config.yaml`, plus the sync tool and the manifest that says which of them a consumer takes. `analysis_options.yaml` is the Dart analyzer config, which Dart consumers `include:` by reference instead. [README](shared/config/README.md) |
 | `shared/linux/templates/` | Copy-and-edit bash: the `antfrastructure.sh` bootstrap, the `renovate-local.sh` wrapper, the consumer `git-hooks/`. [README](shared/linux/templates/README.md) |
 | `shared/windows/` | The `Resolve-BuildModule.ps1` bootstrap template and the shared Pester suites consumers run (`Submodule.Pins.Tests.ps1`). [README](shared/windows/templates/README.md) |
 | `shared/templates/` | The consumer `AGENTS.md` skeleton. [README](shared/templates/README.md) |
-| `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor prompts both lane implementations read. |
+| `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor task prompts and the role system prompts both lane implementations read, plus the copy-and-edit consumer templates. [Templates](shared/agentic-loop/templates/README.md) |
 | `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](docs/code-quality-gates.md) |
 | `.github/actions/` | The composite actions consumers call `@develop`. [README](.github/actions/README.md) |
-| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`). [Triggers](docs/ci-build-triggers.md) |
+| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`); `build-docs` is `workflow_call` too, called only by this repo's `linux-x64.yml`. [Triggers](docs/ci-build-triggers.md) |
 | `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
 | `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](linux/jetson-webcam/README.md) |
@@ -585,9 +585,11 @@ and `ls` answers faster than a stale number.
 
 **Before deleting anything under `linux/scripts/lib/`, `02-toolchain/rust/`,
 `02-toolchain/python/` or `06-packaging/`, grade it with the consumer
-inventory.** Those four are CONSUMER SURFACE: nothing in this repo calls them,
-and a 2026-08-08 sweep deleted `package_archive.sh` as "zero-reference" while a
-consumer's release job was calling it. The rule and the mechanism are in
+inventory.** Those four hold CONSUMER SURFACE that this repo's own lanes barely
+or never call (in-repo, only `preflight.sh` and `flutter_checks.sh` source
+`lib/code-quality.sh`; `06-packaging/` also holds the images' own packaging and
+smoke scripts), and a 2026-08-08 sweep deleted `package_archive.sh` as
+"zero-reference" while a consumer's release job was calling it. The rule and the mechanism are in
 § Contributing Reusable Work Here and
 [`consumer-inventory.md`](docs/consumer-inventory.md).
 
@@ -783,8 +785,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   evidence for the others.
 - **The arm64 GPU lane is SBSA CUDA: one image for Arm servers and Jetson.**
   Build with the image's GCC 16 (`NVCC_PREPEND_FLAGS=-allow-unsupported-compiler`),
-  never a downgraded `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES`,
-  in ascending order. The chain's `gpu` stage cannot push from an arm64 build
+  never a downgraded `CUDAHOSTCXX`, and keep `87` (Orin) in `CUDA_ARCHITECTURES`
+  (ascending for readability only; nothing depends on the order since 2026-09-23).
+  The chain's `gpu` stage cannot push from an arm64 build
   platform (the shared sdk is the amd64 lane's), so on the Jetson the lane stays
   `--no-push`, with the layer handed on by hand:
   [`linux-accelerator-images.md` § NVIDIA on arm64 (SBSA)](docs/linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson).
@@ -872,7 +875,8 @@ Read the strategy before editing that Dockerfile:
 - `build-runtime-manifest.sh --push` pushes wrappers + final manifest.
 - `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
 - Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
-  (the old `:latest-cross` name is retired and deleted, § Image and tag naming).
+  (the old `:latest-cross` name is retired; its registry tags stay until the
+  conditions in § Image and tag naming are met).
 - Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
 - **The manifest lane REFUSES to shrink an already-published index.**
   `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the
@@ -899,18 +903,19 @@ Read the strategy before editing that Dockerfile:
 
 ## Validation
 
-- **Three places run the gates, and they are deliberately not the same set.**
+- **Four places run the gates, and they are deliberately not the same set.**
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 18 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
 
-  Install the hook once with **`make hooks`**: it sets `core.hooksPath` rather
-  than copying into `.git/hooks`, so the hook is version-controlled and arrives
-  with a clone. `git commit --no-verify` bypasses it — then run `make preflight`
-  before pushing.
+  Install the hooks once with **`make hooks`**: it sets `core.hooksPath` rather
+  than copying into `.git/hooks`, so both hooks are version-controlled and arrive
+  with a clone. `git commit --no-verify` bypasses the commit hook — then run
+  `make preflight` before pushing.
 
   The hook is deliberately a SUBSET and its mutation step is deliberately a
   SAMPLE, because a pre-commit gate that takes minutes teaches everyone to type

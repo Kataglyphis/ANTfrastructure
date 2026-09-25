@@ -109,6 +109,7 @@ must be covered by [`.gitignore`](../.gitignore) before it is created.
 
 - [Code quality tooling](code-quality-tooling.md) — the gate list, including the
   secret scan
-- [`.gitleaksignore`](../.gitleaksignore) — every suppression needs a written
-  justification; needing a new one usually means a real secret got committed
+- [`.gitleaks.toml`](../.gitleaks.toml) — the scan's allowlist: each entry pins
+  one value and needs a written justification; needing a new one usually means
+  a real secret got committed. `.gitleaksignore` is kept empty on purpose.
 
