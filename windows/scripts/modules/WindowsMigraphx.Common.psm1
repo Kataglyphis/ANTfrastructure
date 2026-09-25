@@ -129,6 +129,59 @@ function Resolve-PinnedSource {
     }
 }
 
+function Get-SevenZipSkippedLink {
+    <#
+    .SYNOPSIS
+        The in-archive links one 7-Zip extraction refused as dangerous; throws on any other failure.
+    .DESCRIPTION
+        7-Zip 25+ refuses every symlink whose target climbs with '..', even one that stays inside the
+        tree, and exits 2: flatbuffers 25.12.19 carries nine (Java test dirs, ts/package.json), none of
+        them read by a C++ build. A refused link is never written, so nothing lands outside the
+        destination. Any other ERROR line, another exit code or an exit 2 without ERROR lines throws.
+    #>
+    param(
+        # 7-Zip prints blank lines.
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Output,
+        [Parameter(Mandatory)][int]$ExitCode,
+        [Parameter(Mandatory)][string]$Archive
+    )
+    if ($ExitCode -eq 0) { return }
+    $errors = @($Output -match '^ERROR: ')
+    $links = @($errors -match '^ERROR: Dangerous link path was ignored : ' | ForEach-Object { ($_ -split ' : ')[1] })
+    if ($ExitCode -ne 2 -or $errors.Count -eq 0 -or $links.Count -ne $errors.Count) {
+        $why = if ($errors.Count) { $errors } else { $Output | Select-Object -Last 5 }
+        throw "7z extraction of '$Archive' failed (exit $ExitCode): $($why -join '; ')"
+    }
+    return $links
+}
+
+function Expand-PinnedArchive {
+    <#
+    .SYNOPSIS
+        Expand-SourceTarball's two 7-Zip passes, except that links 7-Zip refuses as dangerous are skipped.
+    .DESCRIPTION
+        Get-SevenZipSkippedLink grades each pass. This lives here, not in Expand-SourceTarball, because
+        WindowsSourceBuild.Common is mounted into every media layer; fold it in at the next deliberate
+        media rebuild. Returns the extracted source root.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    $skipped = @()
+    # A .tar.gz yields a .tar on the first pass, and its entries on the second.
+    foreach ($pass in 1, 2) {
+        $from = if ($pass -eq 1) { $Archive } else { Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName }
+        if (-not $from) { break }
+        $out = @(& 7z x "$from" -o"$Destination" -y -bd 2>&1 | ForEach-Object { "$_" })
+        $skipped += @(Get-SevenZipSkippedLink -Output $out -ExitCode $LASTEXITCODE -Archive $from)
+    }
+    if ($skipped.Count) { Write-Warning "7-Zip left $($skipped.Count) in-tree link(s) of $(Split-Path $Archive -Leaf) unextracted: $($skipped -join ', ')" }
+    $root = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
+    if (-not $root) { throw "Failed to locate extracted source directory under $Destination" }
+    return $root
+}
+
 function Save-PinnedSource {
     <#
     .SYNOPSIS
@@ -144,7 +197,7 @@ function Save-PinnedSource {
     Reset-SourceBuildDirectory -Path $dest
     Invoke-DownloadWithRetry -Url $Source.Url -DestinationPath $archive -Description "$($Source.Name) $($Source.Version)" `
         -ExpectedSha256 $Source.Sha256
-    $root = Expand-SourceTarball -Archive $archive -Destination $dest
+    $root = Expand-PinnedArchive -Archive $archive -Destination $dest
     Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
     Write-Host "Staged $($Source.Name) $($Source.Version) (sha256 $($Source.Sha256.Substring(0, 12))...) at $root"
     return $root
@@ -509,7 +562,8 @@ function Save-MigraphxLicense {
 }
 
 Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList, Get-MigraphxHipRuntimeFile,
-    Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Save-PinnedSource, Get-FetchContentUrlMap,
+    Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Get-SevenZipSkippedLink, Expand-PinnedArchive,
+    Save-PinnedSource, Get-FetchContentUrlMap,
     Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
     Write-NlohmannJsonConfigShim, Write-HipMsvcCmathOverlay,
     Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
