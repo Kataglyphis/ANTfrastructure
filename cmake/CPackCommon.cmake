@@ -67,6 +67,19 @@ include_guard(GLOBAL)
 #
 # Leaves KATAGLYPHIS_CPACK_ARCH set for the caller: the normalised architecture
 # that went into the package name.
+
+# The VC++ runtime an arm64-native package installs: InstallRequiredSystemLibraries'
+# list without vcruntime<ver>_1.dll. The arm64 redist folder carries that one as
+# ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the Windows
+# cross lanes' arch gate refuses it (docs/windows-cross-builds.md).
+function(kataglyphis_arm64_system_runtime_libs out_var)
+  set(_libs ${ARGN})
+  list(FILTER _libs EXCLUDE REGEX "[/\\\\]vcruntime[0-9]+_1\\.dll$")
+  set(${out_var}
+      "${_libs}"
+      PARENT_SCOPE)
+endfunction()
+
 macro(kataglyphis_cpack_common)
   set(_kgcpack_flags SHORT_WINDOWS_FILE_NAME)
   set(_kgcpack_args
@@ -171,8 +184,6 @@ macro(kataglyphis_cpack_common)
   endforeach()
   unset(_kgcpack_resource)
 
-  include(InstallRequiredSystemLibraries)
-
   # Explicit package naming makes an ABI problem visible in the file name before
   # anyone unpacks it, and ties a build to one toolchain. PROJECT_ARCH is
   # honoured as an override so a cross build can name its target, not its host.
@@ -192,6 +203,33 @@ macro(kataglyphis_cpack_common)
     set(KATAGLYPHIS_CPACK_ARCH "x86_64")
   elseif(_kgcpack_arch_lc STREQUAL "aarch64" OR _kgcpack_arch_lc STREQUAL "arm64")
     set(KATAGLYPHIS_CPACK_ARCH "aarch64")
+  endif()
+
+  # The VC++ runtime ships with the package. On a Windows arm64 target the module's own
+  # install is replaced by one without the ARM64EC file (kataglyphis_arm64_system_runtime_libs),
+  # at the module's own destination and component; a caller's _SKIP is honoured as ever.
+  if(WIN32
+     AND KATAGLYPHIS_CPACK_ARCH STREQUAL "aarch64"
+     AND NOT CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    include(InstallRequiredSystemLibraries)
+    unset(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP)
+    kataglyphis_arm64_system_runtime_libs(_kgcpack_runtime_libs ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+    if(NOT CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION)
+      set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
+    endif()
+    set(_kgcpack_runtime_component)
+    if(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT)
+      set(_kgcpack_runtime_component COMPONENT ${CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT})
+    endif()
+    if(_kgcpack_runtime_libs)
+      install(PROGRAMS ${_kgcpack_runtime_libs} DESTINATION ${CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION}
+                                                            ${_kgcpack_runtime_component})
+    endif()
+    unset(_kgcpack_runtime_libs)
+    unset(_kgcpack_runtime_component)
+  else()
+    include(InstallRequiredSystemLibraries)
   endif()
 
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
@@ -278,6 +316,11 @@ macro(kataglyphis_cpack_common)
       set(CPACK_WIX_USE_LONG_FILE_NAMES ON)
       set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "${PROJECT_HOMEPAGE_URL}")
       set(CPACK_WIX_PROPERTY_ARPHELPLINK "${PROJECT_HOMEPAGE_URL}")
+      # The MSI platform follows the target, as the file name does. Left unset,
+      # CPack derives x64 from the pointer size and stamps an arm64 payload x64.
+      if(KATAGLYPHIS_CPACK_ARCH STREQUAL "aarch64")
+        set(CPACK_WIX_ARCHITECTURE "arm64")
+      endif()
 
       # WiX accepts only real RTF for the licence page and aborts with
       # 'unsupported WiX License file extension' otherwise. Both consumers keep

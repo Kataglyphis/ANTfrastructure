@@ -2,10 +2,11 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# What a cross lane's product needs to RUN on a clean device: every DLL its binaries import,
-# transitively, beside them -- the CRT included, because an arm64 device ships no VC++ redist.
-# Test-TargetArch.ps1 -ImportWalk then grades the folder, and container-ci-windows.yml's
-# windows-11-arm job runs it (docs/windows-cross-builds.md § Consumer cross lanes).
+# What a consumer's cross lane needs from the hub (docs/windows-cross-builds.md § Consumer cross
+# lanes). To BUILD: the CMake arguments that name the target (Get-CrossConfigureArgs). To RUN on
+# a clean device: every DLL its binaries import, transitively, beside them -- the CRT included,
+# because an arm64 device ships no VC++ redist (Copy-PeImportClosure). Test-TargetArch.ps1
+# -ImportWalk then grades the folder, and container-ci-windows.yml's windows-11-arm job runs it.
 #
 # A NEW module on purpose: WindowsTargetArch.Common, where the PE readers live, is mounted into
 # every media stage, so growing it would re-key the whole image chain.
@@ -15,6 +16,47 @@ Set-StrictMode -Version Latest
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath -DisableNameChecking }
+
+<#
+.SYNOPSIS
+    The CMake configure arguments that make a consumer's build a cross build; empty on the host.
+.DESCRIPTION
+    Get-CMakeCrossArgs (the triple, CMAKE_SYSTEM_NAME/PROCESSOR, so try_run is never attempted),
+    plus two a consumer names when it has them, because both otherwise follow the HOST's pointer
+    size: -Corrosion adds Rust_CARGO_TARGET, and -Vulkan adds Vulkan_LIBRARY from the SDK's
+    per-arch Lib directory (Lib-ARM64 comes with the optional com.lunarg.vulkan.arm64 component).
+#>
+function Get-CrossConfigureArgs {
+    param(
+        [string]$Arch = '',
+        [switch]$Corrosion,
+        [switch]$Vulkan
+    )
+    $resolved = Get-WindowsTargetArch -Arch $Arch
+    if (-not (Test-WindowsCrossTarget -Arch $resolved)) { return @() }
+    $result = [System.Collections.Generic.List[string]]::new()
+    foreach ($a in @(Get-CMakeCrossArgs -Arch $resolved)) { $result.Add($a) }
+    if ($Corrosion) { $result.Add("-DRust_CARGO_TARGET=$(Get-RustTargetTriple -Arch $resolved)") }
+    if ($Vulkan) {
+        if ([string]::IsNullOrWhiteSpace($env:VULKAN_SDK)) { throw "-Vulkan needs VULKAN_SDK, and it is unset" }
+        $lib = Join-Path $env:VULKAN_SDK (Join-Path (Get-VulkanLibDirName -Arch $resolved) 'vulkan-1.lib')
+        if (-not (Test-Path -LiteralPath $lib -PathType Leaf)) {
+            throw "No $lib`: the Vulkan SDK carries no $resolved import library (the optional com.lunarg.vulkan.arm64 component)"
+        }
+        $result.Add("-DVulkan_LIBRARY=$lib")
+    }
+    return $result.ToArray()
+}
+
+<#
+.SYNOPSIS
+    What a Windows package calls the target: x64 or arm64, the spelling of an AppxManifest's
+    ProcessorArchitecture, `wix build -arch` and the VC++ redist directory alike.
+#>
+function Get-WindowsPackageArch {
+    param([string]$Arch = '')
+    return @{ amd64 = 'x64'; arm64 = 'arm64' }[(Get-WindowsTargetArch -Arch $Arch)]
+}
 
 <#
 .SYNOPSIS
@@ -60,4 +102,4 @@ function Copy-PeImportClosure {
     return $copied.ToArray()
 }
 
-Export-ModuleMember -Function Copy-PeImportClosure
+Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Copy-PeImportClosure
