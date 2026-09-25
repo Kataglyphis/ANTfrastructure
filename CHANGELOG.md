@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-25 - The EP stage's G2 gate no longer finds its own source's `.tar`
+
+With the seeds extracting (entry below), `migraphx-ep.dll` configured, built in
+284 s and staged, and then phase 5 failed. `ORT gate (amdgpu-ep) FAIL: an ONNX
+Runtime archive: C:\temp\ort-amdgpu-ep-work\onnxruntime-ep-amdgpu-src\onnxruntime-ep-amdgpu.tar`.
+That file is the intermediate tar from the first 7-Zip pass over the EP's own
+`.tar.gz`. `Expand-SourceTarball` never deletes it, and G2's archive rule matches
+any `onnxruntime*` archive in the tree (only GenAI and extensions are excepted).
+The finding was the only one.
+
+`Expand-PinnedArchive` now deletes the intermediate `.tar` once its pass has
+unpacked it. The gate is unchanged. The pinned EP tarball, checked on the host,
+now unpacks with no `.tar` left and no file matching G2's archive rule.
+`Rocm.Migraphx.Tests.ps1`: 58 pass.
+
 ## 2026-09-25 - The ORT AMDGPU EP's flatbuffers seed extracts despite 7-Zip's link refusals
 
 With MIGraphX built (entry below), the EP stage stopped in phase 1:

@@ -160,9 +160,10 @@ function Expand-PinnedArchive {
     .SYNOPSIS
         Expand-SourceTarball's two 7-Zip passes, except that links 7-Zip refuses as dangerous are skipped.
     .DESCRIPTION
-        Get-SevenZipSkippedLink grades each pass. This lives here, not in Expand-SourceTarball, because
-        WindowsSourceBuild.Common is mounted into every media layer; fold it in at the next deliberate
-        media rebuild. Returns the extracted source root.
+        Get-SevenZipSkippedLink grades each pass. The intermediate .tar is deleted once unpacked: the EP's
+        onnxruntime-ep-amdgpu.tar is an ONNX Runtime archive by name, which G2 refuses to find in the tree.
+        This lives here, not in Expand-SourceTarball, because WindowsSourceBuild.Common is mounted into
+        every media layer; fold it in at the next deliberate media rebuild. Returns the extracted source root.
     #>
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -175,6 +176,7 @@ function Expand-PinnedArchive {
         if (-not $from) { break }
         $out = @(& 7z x "$from" -o"$Destination" -y -bd 2>&1 | ForEach-Object { "$_" })
         $skipped += @(Get-SevenZipSkippedLink -Output $out -ExitCode $LASTEXITCODE -Archive $from)
+        if ($pass -eq 2) { Remove-Item -LiteralPath $from -Force }
     }
     if ($skipped.Count) { Write-Warning "7-Zip left $($skipped.Count) in-tree link(s) of $(Split-Path $Archive -Leaf) unextracted: $($skipped -join ', ')" }
     $root = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
