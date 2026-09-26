@@ -16,56 +16,6 @@ acting; a number here is a date's measurement.**
 is blocked on the owner. A fix in source is not a fix in an image: the Linux ones ship
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
 
-## Handoff — 2026-09-26, work in flight
-
-The session that swept this backlog ran out of budget with work in flight. Start here.
-
-- **Where the work lives.** The hub's dev worktree is `C:\GitHub\ANTfrastructure-wfnames`, a
-  detached HEAD: `develop` is 738d07e3; 10a2ea37 (CON35) and the handoff commits after it are local only. That
-  worktree and `C:\GitHub\ANTfrastructure-con12` share OmniAccelerANT's submodule gitdir, so a
-  commit in one shows in the other. Push a sha with `git push origin <sha>:refs/heads/develop`;
-  no local branches.
-- **CON12: the local `:winamd64` rebuild passed.** Run 2 went from 16:13 to 23:37 in
-  `C:\GitHub\ANTfrastructure-con12` at 6fe2992f
-  (`pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-Buildkit.ps1 -Gpu`, no
-  `-PushRef`). Every stage passed. ORT took 1:59 with its nvcc bare, which proves 6fe2992f (run 1
-  had died at [2323/2383] on sccache#2862). TVM took 2:05, and the merge 0:39 after one transient
-  `hcsshim::ActivateLayer` retry (0x20). The smoke gate passed 245 assertions with 0 skipped (GPU
-  floor 190), the ORT census passed, and the publish gate found no build-host setting among 778
-  variables. Stage logs are in that worktree's `out\windows-build-logs\bk-*.log`.
-  1. Run 3 (same worktree and command, at 738d07e3, 23:39 to 00:30) re-ran the merge onward
-     from cache and passed the same gates, and the image now carries CON28's `gdkpixbuf`. It is
-     `docker.io/local/kataglyphis:bk-winamd64`, in buildkit's store only. Never edit that
-     worktree while a driver runs from it.
-  2. Then the owner decides the GHCR publish. The same command with
-     `-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` re-exports from cache.
-- **CON35 is committed, not pushed.** What remains unproven is that a TVM built by the new
-  `tvm.sh` loads and compiles. ORT's RAM-hungry tail is done; cap the container (`--cpus 8 --memory 16g`) while the chain runs.
-  In the amd64 `:latest`, as root, with the hub mounted read-only at `/hub`, run
-  `ln -s /usr/local/llvm-target /opt/llvm-target`. Then run
-  `TVM_JOBS=8 bash /hub/linux/scripts/05-frameworks/tvm.sh --ref v0.26.0 --prefix /work/tvm-out --workdir /work/tvm-src --no-apt --no-python`.
-  Its log must say `Using LLVM CMake package: /usr/local/llvm-target/lib/cmake/llvm`, and `ldd`
-  must resolve the new `libtvm_compiler.so`'s `libLLVM.so.23.1` to `/usr/local/llvm-target/lib`.
-  Copy it and `libtvm_runtime.so` into `/opt/venv/lib/python3.14/site-packages/tvm/lib/`. Then
-  run `assert_tvm_codegen` from `smoke-torch-venv.sh`, lifted with `awk` and with `pass`/`fail`
-  stubbed; it must PASS. Record the result in CON35.
-- **Pushes need the owner's OK, each time.** The pre-push hook grades every mutation since
-  `origin/main` (961 entries from 168 commits on 2026-09-26), so it times out while a chain
-  loads the host. The owner allowed `--no-verify` for 6fe2992f and 738d07e3 only. The
-  pre-commit hook needs `PYTHONUTF8=1` and grades the working tree, so stash unrelated edits
-  before a commit.
-- **Owner-only housekeeping** (the host, not the images):
-  - Rancher Desktop's `ext4.vhdx` is about 28.6 GB after an agent's 26 GB copy. Compact it
-    with Rancher stopped.
-  - Stop the orphaned `tail` processes from earlier sessions:
-    `Get-Process tail | Where-Object StartTime -lt '2026-09-25' | Stop-Process`.
-  - After CON12, prune the spike caches:
-    `& "$env:ProgramFiles\Stevedore\bin\buildctl.exe" prune --filter "description~=spike.complete"`.
-  - Remove the stale scratch worktree at 75cf5760 that
-    `git -C C:\GitHub\OmniAccelerANT\.git\modules\third_party\ContainerHub worktree list`
-    still names.
-  - QEMU arm64 stays registered in Rancher's VM until the VM restarts.
-
 ## Protocol
 
 The agentic loop's format (`docs/windows-agentic-loop.md`):
@@ -133,9 +83,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       ORT's LLM kernels compile as PTX only on MSVC, and sccache 0.18 aborts those nvcc
       compiles (mozilla/sccache#2862). ORT's nvcc now stays bare for such an arch list.
 
-      The local rebuild of 2026-09-26 (6fe2992f) passed the ENV gate
-      (`Assert-ImageEnvPublishable`), the ORT census and the smoke gate (245 passed, 0
-      skipped). After the publish, run one DirectML G-API session, set BeschleunigerBallett's
+      The local rebuild of 2026-09-26/27 (`windows\Build-Buildkit.ps1 -Gpu`, at 6fe2992f and
+      then 738d07e3) passed the ENV gate (`Assert-ImageEnvPublishable`), the ORT census and the
+      smoke gate (245 passed, 0 skipped); ORT took 1:59 with its nvcc bare. Its image,
+      `local/kataglyphis:bk-winamd64` in buildkit's store, is what the publish re-exports: the
+      same command at 738d07e3 with
+      `-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`. After the publish,
+      run one DirectML G-API session, set BeschleunigerBallett's
       ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
       let AccelerANTgine tidy every `Src/` TU.
 - [b] **CON13 — Retire `:latest-cross` for good** [S, ★]. Blocked on the owner. Consumer
@@ -228,7 +182,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         not load, and one built with LLVM that cannot compile a PrimFunc. Measured on
         `ec4bb68b`: red on amd64, green on arm64 under QEMU. riscv64 is unverified, and the
         smoke will say.
-      - Not yet proven: a TVM built by the new `tvm.sh` (§ Handoff).
+      - Not yet proven: a TVM built by the new `tvm.sh`. In the amd64 `:latest`, as root, with
+        the hub mounted read-only at `/hub` and `/opt/llvm-target` linked to
+        `/usr/local/llvm-target`, run `tvm.sh --ref v0.26.0 --no-apt --no-python` with its
+        prefix and workdir under `/work`. Its log must name the package at
+        `/usr/local/llvm-target/lib/cmake/llvm`, and the new `libtvm_compiler.so`, copied with
+        `libtvm_runtime.so` into `/opt/venv`'s `tvm/lib`, must pass `assert_tvm_codegen`.
 - [b] **CON36 — amd64's GCC carries 4.4 GB of unstripped cross compilers** [S, ★].
       Blocked on CON11. `/opt/gcc-16.2.0` is 4.9 GB, and 52 of its 99 x86-64 binaries are
       unstripped: the `aarch64-` and `riscv64-linux-gnu` compilers' (their `cc1plus` 444 and
