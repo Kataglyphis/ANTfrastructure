@@ -28,9 +28,9 @@ The session that swept this backlog ran out of budget with work in flight. Start
 - **CON12: a local `:winamd64` rebuild was running** from `C:\GitHub\ANTfrastructure-con12` at
   6fe2992f (`pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-Buildkit.ps1 -Gpu`,
   started 16:13). It has no `-PushRef`, so it pushes nothing. Stage logs are in that worktree's
-  `out\windows-build-logs\bk-*.log`. Base, nvidia and patched-llvm were cache hits; ORT reached
-  [2222/2383] at 17:35 with its nvcc bare, as 6fe2992f intends. Run 1 had died at [2323/2383] on
-  sccache#2862, with 0.1 GB of host RAM left in that tail. Never edit that worktree while a
+  `out\windows-build-logs\bk-*.log`. Base, nvidia and patched-llvm were cache hits, and ORT passed at
+  about 18:13 (stage 01:59:17) with its nvcc bare, which proves 6fe2992f. Run 1 had died at
+  [2323/2383] on sccache#2862, with 0.1 GB of host RAM left in that tail. Never edit that worktree while a
   driver runs from it.
   1. The run predates 738d07e3 (CON28's `gdkpixbuf`). When the merge stage starts
      (`==> [bk:Dockerfile.media-merge-builder:built]`), stop the driver, run
@@ -43,7 +43,7 @@ The session that swept this backlog ran out of budget with work in flight. Start
      the rebuild"). Ask the owner before any GHCR push
      (`-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`).
 - **CON35 is committed, not pushed.** What remains unproven is that a TVM built by the new
-  `tvm.sh` loads and compiles. Run the build only after ORT's tail, which needs the host's RAM.
+  `tvm.sh` loads and compiles. ORT's RAM-hungry tail is done; cap the container (`--cpus 8 --memory 16g`) while the chain runs.
   In the amd64 `:latest`, as root, with the hub mounted read-only at `/hub`, run
   `ln -s /usr/local/llvm-target /opt/llvm-target`. Then run
   `TVM_JOBS=8 bash /hub/linux/scripts/05-frameworks/tvm.sh --ref v0.26.0 --prefix /work/tvm-out --workdir /work/tvm-src --no-apt --no-python`.
