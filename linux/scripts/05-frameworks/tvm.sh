@@ -204,30 +204,31 @@ fetch_tvm_source() {
 }
 
 # Resolve the LLVM to build against, setting llvm_config / llvm_dir /
-# llvm_cmake_value / llvm_ignore_paths. Cross builds prefer a target LLVM CMake
-# package; otherwise fall back to a (target-sanitized) llvm-config.
+# llvm_cmake_value / llvm_ignore_paths. Both modes prefer an LLVM CMake package
+# -- a cross build the target's, a native build the one the image ships as
+# /usr/local/llvm-target -- and fall back to a (target-sanitized) llvm-config.
 resolve_tvm_llvm() {
   [ -n "$llvm_config" ] || llvm_config="$(detect_llvm_config)"
   [ -z "$llvm_dir" ] || llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
 
   if cross_build_is_active; then
     [ -n "$llvm_dir" ] || llvm_dir="$(detect_cross_llvm_cmake_dir)"
-    if [ -n "$llvm_dir" ]; then
-      llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
-      validate_detected_llvm_cmake_package "$llvm_dir"
-    fi
-    if [ -n "$llvm_dir" ]; then
-      # Use the target LLVM CMake package. TVM's FindLLVM would normally fall
-      # back to executing this package's llvm-config (a target-arch binary that
-      # can't run on the build host) when llvm_map_components_to_libnames("all")
-      # comes back empty under a dylib build — patch_tvm_findllvm_dylib_fallback()
-      # rewrites that fallback to link the imported LLVM dylib target instead, so
-      # no target binary is ever executed on the host.
-      log "Using target LLVM CMake package: $llvm_dir"
-      llvm_cmake_value="ON"
-    else
-      llvm_config="$(sanitize_llvm_config_for_target "$llvm_config")"
-    fi
+  else
+    # Not llvm-config-<major>: on amd64 that is apt's bootstrap LLVM, which the
+    # final image does not carry (BACKLOG CON35, detect_native_llvm_cmake_dir).
+    [ -n "$llvm_dir" ] || llvm_dir="$(detect_native_llvm_cmake_dir)"
+  fi
+  if [ -n "$llvm_dir" ]; then
+    llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
+    validate_detected_llvm_cmake_package "$llvm_dir"
+    # TVM's FindLLVM would normally fall back to executing this package's
+    # llvm-config (on a cross build a target-arch binary the build host cannot
+    # run) when llvm_map_components_to_libnames("all") comes back empty under a
+    # dylib build — patch_tvm_findllvm_dylib_fallback() rewrites that fallback
+    # to link the imported LLVM dylib target instead, so no target binary is
+    # ever executed on the host.
+    log "Using LLVM CMake package: $llvm_dir"
+    llvm_cmake_value="ON"
   else
     llvm_config="$(sanitize_llvm_config_for_target "$llvm_config")"
   fi

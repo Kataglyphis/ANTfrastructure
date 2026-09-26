@@ -10873,5 +10873,21 @@
     "replace": "      )\n",
     "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
     "why": "whatever else sits in the staging directory (a closure log) ships in every package"
+  },
+  {
+    "id": "tvm-llvm.native-takes-shipped-package",
+    "target": "linux/scripts/05-frameworks/tvm.sh",
+    "find": "    [ -n \"$llvm_dir\" ] || llvm_dir=\"$(detect_native_llvm_cmake_dir)\"\n",
+    "replace": "    :\n",
+    "test": "bash linux/scripts/tests/test-tvm-llvm-resolve.sh",
+    "why": "a native TVM links llvm-config's apt bootstrap again, which the image does not carry, so its compiler library cannot load (BACKLOG CON35)"
+  },
+  {
+    "id": "tvm-llvm.native-lib-dir",
+    "target": "linux/scripts/05-frameworks/tvm-detect.sh",
+    "find": "for dir in \"${1:-/opt/llvm-target}/lib/cmake/llvm\" \"${1:-/opt/llvm-target}/lib64/cmake/llvm\"; do",
+    "replace": "for dir in \"${1:-/opt/llvm-target}/lib64/cmake/llvm\"; do",
+    "test": "bash linux/scripts/tests/test-tvm-llvm-resolve.sh",
+    "why": "the shipped tree keeps its package under lib/cmake/llvm, so a native build falls back to llvm-config"
   }
 ]

@@ -191,6 +191,23 @@ detect_cross_llvm_cmake_dir() {
   printf '%s' "${dir}"
 }
 
+# The LLVM a NATIVE build links: the build host's pinned build at /opt/llvm-target,
+# which Dockerfile.package ships as /usr/local/llvm-target and copy-media-payloads.sh
+# registers with the loader. Empty when it is absent (a bare host). Until 2026-09-26
+# llvm-config-<major> won, and on amd64 that is apt's bootstrap LLVM: branch head,
+# every target, and not in the final image, so the loader gave libtvm_compiler.so
+# llvm-target's X86-only libLLVM and tvm fell back to its runtime without a word
+# (BACKLOG CON35). $1 overrides the root for the suite.
+detect_native_llvm_cmake_dir() {
+  local dir
+  for dir in "${1:-/opt/llvm-target}/lib/cmake/llvm" "${1:-/opt/llvm-target}/lib64/cmake/llvm"; do
+    [ -f "${dir}/LLVMConfig.cmake" ] || continue
+    normalize_llvm_cmake_dir "${dir}"
+    return 0
+  done
+  printf '%s' ""
+}
+
 detect_vulkan_llvm_cmake_ignore_paths() {
   local prefix="${VULKAN_PREFIX:-/opt/vulkan}"
   local dir=""
