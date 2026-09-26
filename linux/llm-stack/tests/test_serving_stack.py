@@ -4,7 +4,7 @@ The benchmark suite that used to grade this directory moved to OrchestrANT;
 what is left is host infrastructure, and these are the properties that make it
 infrastructure rather than a set of files: the compose files parse, the ollama
 image is built from the local Dockerfile, every PULLED image is pinned away
-from a mutable tag, and the backend registry both consumers rely on still holds
+from a mutable tag, and the backend registry every consumer relies on still holds
 its default lane and its GenieX entries.
 """
 import json
