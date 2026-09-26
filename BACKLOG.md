@@ -33,11 +33,10 @@ The session that swept this backlog ran out of budget with work in flight. Start
   `hcsshim::ActivateLayer` retry (0x20). The smoke gate passed 245 assertions with 0 skipped (GPU
   floor 190), the ORT census passed, and the publish gate found no build-host setting among 778
   variables. Stage logs are in that worktree's `out\windows-build-logs\bk-*.log`.
-  1. Run 3 started at about 23:40, same worktree and command, at 738d07e3, to build CON28's
-     `gdkpixbuf`. Everything before the merge is a cache hit, so the merge, torch, final and the
-     gates re-run, for about an hour. Check `gstgdkpixbuf.dll` in the merge's install and the
-     smoke count. Never edit that worktree while a driver runs from it. If the driver died with
-     its session, relaunch the same command.
+  1. Run 3 (same worktree and command, at 738d07e3, 23:39 to 00:30) re-ran the merge onward
+     from cache and passed the same gates, and the image now carries CON28's `gdkpixbuf`. It is
+     `docker.io/local/kataglyphis:bk-winamd64`, in buildkit's store only. Never edit that
+     worktree while a driver runs from it.
   2. Then the owner decides the GHCR publish. The same command with
      `-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` re-exports from cache.
 - **CON35 is committed, not pushed.** What remains unproven is that a TVM built by the new
@@ -338,8 +337,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         2.44.6 defaults `man=true` and fails setup without rst2man, so the plugin fell out
         of auto-features unseen. `Get-GstGdkPixbufMesonArgs` turns its man pages, tests and
         typelib off and passes `gst-plugins-good:gdk-pixbuf=enabled`, so the next such loss
-        fails meson setup. The CON12 merge build is its first: check `gstgdkpixbuf.dll` in
-        its install. arm64 keeps it off (§ Deliberate).
+        fails meson setup. Proven 2026-09-27 by the local CON12 rebuild at 738d07e3: the
+        subproject configures, and `gdk_pixbuf-2.0-0.dll` and `gstgdkpixbuf.dll` link and
+        install; the smoke gate still passes 245/0. arm64 keeps it off (§ Deliberate).
 - [b] **CON29 — The baked `VOLUME C:\workspace`** [S, ★]. Blocked on CON12. Dropped in
       source with its `WORKDIR` (2026-09-26): nothing needed the directory, every caller
       passes `-w`, and the VOLUME left an anonymous volume per container.
