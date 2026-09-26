@@ -292,7 +292,7 @@ Launch:
 $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 .\windows\Build-Buildkit.ps1 -Gpu                        # full chain from base
 .\windows\Build-Buildkit.ps1 -Stages toolchain           # one stage
-.\windows\Build-Buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar  # + docker-loadable export
+.\windows\Build-Buildkit.ps1 -Gpu -FinalTar out\bk-winamd64-nvidia.tar  # + docker-loadable export
 ```
 
 > **AMD RDNA4-GPU host (RX 9xxx)?** An ENABLED RDNA4 dGPU makes every

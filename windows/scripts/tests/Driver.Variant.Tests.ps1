@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Build-Buildkit.ps1 -Variant: the resolver's refusals, the lane tags (a golden table locks cpu/nvidia),
+# Build-Buildkit.ps1 -Variant: the resolver's refusals, the lane tags (golden tables per variant),
 # the rocm-only build-args and the rocm chain's wiring (sdk slot, migraphx/llama). NOT covered: a real solve.
 
 # The two sides of every build-arg parity check below: the ARGs a Dockerfile declares, and versions.env.
@@ -87,6 +87,13 @@ Describe 'Resolve-BkVariant' {
         Assert-Throws { Invoke-Resolve -Variant 'rocm' -PushRef 'localhost:5000/k' } 'rocm with no tag' -MessagePattern 'winamd64-rocm'
         Assert-Throws { Invoke-Resolve -PushRef "${repo}:winamd64-rocm" } 'default bytes under the rocm tag' -MessagePattern 'not -Variant rocm'
         Assert-Throws { Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64-rocm" } 'nvidia bytes under the rocm tag' -MessagePattern 'not -Variant rocm'
+        # nvidia has a tag of its own too since 2026-09-27 (owner decision), on both lanes.
+        Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64-nvidia" | Out-Null
+        Invoke-Resolve -Variant 'nvidia' -TargetArch 'arm64' -PushRef "${repo}:winarm64-nvidia" | Out-Null
+        Assert-Throws { Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64" } 'CUDA bytes under the default tag' -MessagePattern "':winamd64-nvidia'"
+        Assert-Throws { Invoke-Resolve -Gpu $true -TargetArch 'arm64' -PushRef "${repo}:winarm64" } 'CUDA bytes under the default bundle' -MessagePattern "':winarm64-nvidia'"
+        Assert-Throws { Invoke-Resolve -PushRef "${repo}:winamd64-nvidia" } 'default bytes under the nvidia tag' -MessagePattern 'not -Variant nvidia'
+        Assert-Throws { Invoke-Resolve -Variant 'rocm' -PushRef "${repo}:winamd64-nvidia" } 'rocm bytes under the nvidia tag' -MessagePattern 'not -Variant nvidia'
     }
 }
 
@@ -214,13 +221,42 @@ Describe 'Get-BkTag: lane tags (golden table)' {
         'windows-torch'             = 'windows-torch-rocm'
         'winamd64-rocm'             = 'winamd64-rocm'
     }
+    # nvidia since 2026-09-27: its own tag from sdk on, like rocm, on both arches (arm64 after the infix).
+    $script:NvidiaGolden = [ordered]@{
+        'windows-base'              = @('windows-base', 'windows-base')
+        'windows-sdk'               = @('windows-sdk-nvidia', 'windows-sdk-nvidia')
+        'windows-toolchain'         = @('windows-toolchain-nvidia', 'windows-toolchain-nvidia')
+        'windows-media-core-onnx'   = @('windows-media-core-onnx-nvidia', 'windows-media-core-onnx-nvidia-arm64')
+        'windows-media-core-ffmpeg' = @('windows-media-core-ffmpeg-nvidia', 'windows-media-core-ffmpeg-nvidia-arm64')
+        'windows-media-core-opencv' = @('windows-media-core-opencv-nvidia', 'windows-media-core-opencv-nvidia-arm64')
+        'windows-media-core-hailo'  = @('windows-media-core-hailo-nvidia', 'windows-media-core-hailo-nvidia-arm64')
+        'windows-media-core'        = @('windows-media-core-nvidia', 'windows-media-core-nvidia-arm64')
+        'windows-media-litert'      = @('windows-media-litert-nvidia', 'windows-media-litert-nvidia-arm64')
+        'windows-media-tvm'         = @('windows-media-tvm-nvidia', 'windows-media-tvm-nvidia-arm64')
+        'windows-media'             = @('windows-media-nvidia', 'windows-media-nvidia-arm64')
+        'windows-torch'             = @('windows-torch-nvidia', 'windows-torch-nvidia-arm64')
+        'winamd64-nvidia'           = @('winamd64-nvidia', 'winamd64-nvidia')
+        'winarm64-nvidia'           = @('winarm64-nvidia', 'winarm64-nvidia')
+    }
+    $finalBlock = Get-DriverAssignment '$script:FinalTagName'
 
-    It 'keeps every default and nvidia tag byte-identical on amd64 and arm64' {
-        foreach ($v in '', 'nvidia') {
-            foreach ($name in $script:Golden.Keys) {
-                Assert-Equal "$p$($script:Golden[$name][0])" (Get-LaneTag $v 'amd64' $name) "variant '$v' amd64 $name"
-                Assert-Equal "$p$($script:Golden[$name][1])" (Get-LaneTag $v 'arm64' $name) "variant '$v' arm64 $name"
+    It 'keeps every default tag byte-identical, and gives nvidia its own from sdk on, on amd64 and arm64' {
+        foreach ($lane in @(@{ V = ''; Rows = $script:Golden }, @{ V = 'nvidia'; Rows = $script:NvidiaGolden })) {
+            foreach ($name in $lane.Rows.Keys) {
+                Assert-Equal "$p$($lane.Rows[$name][0])" (Get-LaneTag $lane.V 'amd64' $name) "variant '$($lane.V)' amd64 $name"
+                Assert-Equal "$p$($lane.Rows[$name][1])" (Get-LaneTag $lane.V 'arm64' $name) "variant '$($lane.V)' arm64 $name"
             }
+        }
+    }
+
+    It 'names the final image after its lane and variant' {
+        foreach ($c in @(
+                @{ V = ''; A = 'amd64'; Want = 'winamd64' }, @{ V = ''; A = 'arm64'; Want = 'winarm64' },
+                @{ V = 'nvidia'; A = 'amd64'; Want = 'winamd64-nvidia' }, @{ V = 'nvidia'; A = 'arm64'; Want = 'winarm64-nvidia' },
+                @{ V = 'rocm'; A = 'amd64'; Want = 'winamd64-rocm' })) {
+            $script:BkVariantInfix = & $infixBlock $c.V
+            Set-Variable -Name 'TargetArch' -Value $c.A
+            Assert-Equal $c.Want (& $finalBlock $c.V) "variant '$($c.V)' on $($c.A)"
         }
     }
 
@@ -234,9 +270,10 @@ Describe 'Get-BkTag: lane tags (golden table)' {
         $src = Get-Content -Raw $driverPath
         $names = @([regex]::Matches($src, "Get-BkTag '([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
         # Dynamic names: "windows-$branch" for the aux branches and the final tag variable.
-        $names += @('windows-media-litert', 'windows-media-tvm', 'winamd64', 'winarm64', 'winamd64-rocm')
+        $names += @('windows-media-litert', 'windows-media-tvm', 'winamd64', 'winarm64', 'winamd64-nvidia', 'winarm64-nvidia', 'winamd64-rocm')
         Assert-True ($names.Count -ge 12) "scanner found only $($names.Count) tag names"
-        $missing = @($names | Sort-Object -Unique | Where-Object { -not $script:Golden.Contains($_) -and -not $script:RocmGolden.Contains($_) })
+        $missing = @($names | Sort-Object -Unique | Where-Object {
+                -not $script:Golden.Contains($_) -and -not $script:NvidiaGolden.Contains($_) -and -not $script:RocmGolden.Contains($_) })
         Assert-Equal '' ($missing -join ',') 'tag names with no golden row'
     }
 }
@@ -315,7 +352,7 @@ Describe 'Build-Buildkit.ps1: rocm chain wiring' {
     }
 
     It 'keeps the rocm final tag and the lane''s own torch as the final base' {
-        Assert-Match "elseif \(\`$Variant -eq 'rocm'\) \{ 'winamd64-rocm' \}" $src 'separate final tag'
+        Assert-Match "\`$script:FinalTagName = .+\) \+ \`$script:BkVariantInfix" $src 'separate final tag: the lane plus the variant infix'
         Assert-Match "\`$finalBase = if \(\`$TargetArch -eq 'amd64'\) \{ \`$torchTag \}" $src 'final builds on the lane''s own torch'
     }
 

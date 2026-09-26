@@ -7,6 +7,16 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-27 - `:winamd64` is CPU + DirectML; the CUDA build is `:winamd64-nvidia`
+
+The owner decided that Windows follows the variant rule in `AGENTS.md` § Image and tag
+naming. `Build-Buildkit.ps1 -Gpu` (`-Variant nvidia`) now writes `bk-*-nvidia` stage tags
+and a `winamd64-nvidia` final image, or `winarm64-nvidia` for the cross bundle, and
+`Resolve-BkVariant` refuses to push it under any other tag. `:winamd64` is the build without
+`-Gpu`. Until now the nvidia build wrote the default tags, so the `:winamd64` published on
+2026-09-22 carries CUDA until that tag is republished. No consumer needs CUDA from the
+Windows image, so the switch needs no consumer commit (BACKLOG CON12).
+
 ## 2026-09-26 - The image backlog, swept: fixed in source, decided, or the owner's
 
 Every open item of `BACKLOG.md` was worked. Most are image fixes that ship with the next

@@ -174,7 +174,8 @@ allows:
 | Publish / inspect images | Stevedore's `docker.exe` | non-admin |
 
 ```pwsh
-.\windows\Build-Buildkit.ps1 -Gpu          # build (non-admin)
+.\windows\Build-Buildkit.ps1               # build :winamd64, CPU + DirectML (non-admin)
+.\windows\Build-Buildkit.ps1 -Gpu          # build :winamd64-nvidia, bk-*-nvidia stage tags
 ```
 
 **The lane mechanics live in
