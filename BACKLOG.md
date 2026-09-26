@@ -21,27 +21,25 @@ with CON11, the Windows ones with CON12, and each item says what to check afterw
 The session that swept this backlog ran out of budget with work in flight. Start here.
 
 - **Where the work lives.** The hub's dev worktree is `C:\GitHub\ANTfrastructure-wfnames`, a
-  detached HEAD: `develop` is 738d07e3, and the CON35 commit on top of it is local only. That
+  detached HEAD: `develop` is 738d07e3; 10a2ea37 (CON35) and the handoff commits after it are local only. That
   worktree and `C:\GitHub\ANTfrastructure-con12` share OmniAccelerANT's submodule gitdir, so a
   commit in one shows in the other. Push a sha with `git push origin <sha>:refs/heads/develop`;
   no local branches.
-- **CON12: a local `:winamd64` rebuild was running** from `C:\GitHub\ANTfrastructure-con12` at
-  6fe2992f (`pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-Buildkit.ps1 -Gpu`,
-  started 16:13). It has no `-PushRef`, so it pushes nothing. Stage logs are in that worktree's
-  `out\windows-build-logs\bk-*.log`. Base, nvidia and patched-llvm were cache hits, and ORT passed at
-  about 18:13 (stage 01:59:17) with its nvcc bare, which proves 6fe2992f. Run 1 had died at
-  [2323/2383] on sccache#2862, with 0.1 GB of host RAM left in that tail. Never edit that worktree while a
-  driver runs from it.
-  1. The run predates 738d07e3 (CON28's `gdkpixbuf`). When the merge stage starts
-     (`==> [bk:Dockerfile.media-merge-builder:built]`), stop the driver, run
-     `git -C C:\GitHub\ANTfrastructure-con12 checkout --detach 738d07e3` and relaunch. Every
-     earlier stage is a cache hit, because only the merge RUN mounts
-     `Build-GstreamerFromSource.ps1`. Then check for `gstgdkpixbuf.dll` in the merge's install.
-  2. If the driver died with its session, relaunch the same command; finished stages are cache
-     hits.
-  3. When it is done, grade the smoke gate, the publish gate and the G6 census (CON12, "After
-     the rebuild"). Ask the owner before any GHCR push
-     (`-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`).
+- **CON12: the local `:winamd64` rebuild passed.** Run 2 went from 16:13 to 23:37 in
+  `C:\GitHub\ANTfrastructure-con12` at 6fe2992f
+  (`pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-Buildkit.ps1 -Gpu`, no
+  `-PushRef`). Every stage passed. ORT took 1:59 with its nvcc bare, which proves 6fe2992f (run 1
+  had died at [2323/2383] on sccache#2862). TVM took 2:05, and the merge 0:39 after one transient
+  `hcsshim::ActivateLayer` retry (0x20). The smoke gate passed 245 assertions with 0 skipped (GPU
+  floor 190), the ORT census passed, and the publish gate found no build-host setting among 778
+  variables. Stage logs are in that worktree's `out\windows-build-logs\bk-*.log`.
+  1. Run 3 started at about 23:40, same worktree and command, at 738d07e3, to build CON28's
+     `gdkpixbuf`. Everything before the merge is a cache hit, so the merge, torch, final and the
+     gates re-run, for about an hour. Check `gstgdkpixbuf.dll` in the merge's install and the
+     smoke count. Never edit that worktree while a driver runs from it. If the driver died with
+     its session, relaunch the same command.
+  2. Then the owner decides the GHCR publish. The same command with
+     `-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` re-exports from cache.
 - **CON35 is committed, not pushed.** What remains unproven is that a TVM built by the new
   `tvm.sh` loads and compiles. ORT's RAM-hungry tail is done; cap the container (`--cpus 8 --memory 16g`) while the chain runs.
   In the amd64 `:latest`, as root, with the hub mounted read-only at `/hub`, run
@@ -136,8 +134,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       ORT's LLM kernels compile as PTX only on MSVC, and sccache 0.18 aborts those nvcc
       compiles (mozilla/sccache#2862). ORT's nvcc now stays bare for such an arch list.
 
-      After the rebuild, grade the ENV gate (`Assert-ImageEnvPublishable`) and the
-      G6 census. Then run one DirectML G-API session, set BeschleunigerBallett's
+      The local rebuild of 2026-09-26 (6fe2992f) passed the ENV gate
+      (`Assert-ImageEnvPublishable`), the ORT census and the smoke gate (245 passed, 0
+      skipped). After the publish, run one DirectML G-API session, set BeschleunigerBallett's
       ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
       let AccelerANTgine tidy every `Src/` TU.
 - [b] **CON13 — Retire `:latest-cross` for good** [S, ★]. Blocked on the owner. Consumer
