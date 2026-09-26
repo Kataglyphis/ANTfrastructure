@@ -127,6 +127,17 @@ try {
         }
     }
 
+    # rustfmt and clippy are baked into the image, whose rustup has no dist server left
+    # (Install-RustToolchain.ps1), so a component is checked for, never installed.
+    function Assert-CargoSubcommand {
+        param([Parameter(Mandatory)][string]$Name)
+        $out = @(& cargo $Name --version 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo $Name is not installed for the active toolchain: $(($out | Out-String).Trim())"
+        }
+        Write-BuildLog -Context $Context -Message "cargo $Name`: $($out[0])"
+    }
+
     Invoke-BuildStep -Context $Context -StepName "Security Checks (audit & deny)" -Script {
         # ONE crate per `cargo install`: `--version X a b` applies the SAME
         # version to every crate on the line, so the two pins cannot share an
@@ -140,14 +151,14 @@ try {
     }
 
     Invoke-BuildStep -Context $Context -StepName "Format Check (cargo fmt)" -Critical -Script {
-        Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "rustfmt")
+        Assert-CargoSubcommand -Name 'fmt'
         $fmtParams = @("fmt", "--all", "--", "--check")
         $fmtParams = Join-ParameterSet -Base $fmtParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $fmtParams
     }
 
     Invoke-BuildStep -Context $Context -StepName "Linting (cargo clippy)" -Critical -Script {
-        Invoke-BuildExternal -Context $Context -File "rustup" -Parameters @("component", "add", "clippy")
+        Assert-CargoSubcommand -Name 'clippy'
         $clippyParams = @("clippy", "--all-targets", "--all-features", "--", "-D", "warnings")
         $clippyParams = Join-ParameterSet -Base $clippyParams -Extra $ExtraCargoArgs
         Invoke-BuildExternal -Context $Context -File "cargo" -Parameters $clippyParams

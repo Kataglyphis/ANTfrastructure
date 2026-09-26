@@ -737,7 +737,7 @@
               "spdx": "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             },
             {
-              "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32, the pinned copy and its licence in C:\\vulkan-loader; rocm variant only)",
+              "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images)",
               "var": "VULKAN_VERSION",
               "url": "https://vulkan.lunarg.com/",
               "license": "Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\\vulkan-loader",
@@ -752,7 +752,7 @@
               "spdx": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             },
             {
-              "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv; rocm variant only)",
+              "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images)",
               "var": null,
               "version_fixed": "2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*)",
               "url": "https://github.com/google-ai-edge/LiteRT",

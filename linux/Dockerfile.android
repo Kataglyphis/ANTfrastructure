@@ -113,15 +113,18 @@ COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/
 # Dockerfile.media): android-sdk.sh only runs on amd64 build hosts and the
 # downloaded payload (cmdline-tools zip, Java tooling, sdkmanager packages,
 # NDK) is identical for every target arch — packages are keyed by name+version,
-# not build arch. Keying the id on the version tuple invalidates the cache on
-# any pin bump; sharing=locked serializes concurrent --parallel-archs builds so
+# not build arch. The id names EVERY pin in android-sdk.sh's sdk_packages
+# (tests/test-android-sdk-cache-key.sh), so any pin bump invalidates the cache;
+# the two API 37 pins were missing from it, and a 2026-08-22 tree without them
+# was restored into every image built after (BACKLOG CON14). sharing=locked
+# serializes concurrent --parallel-archs builds so
 # the first arch populates <cache>/sdk-tree and the others restore from it
 # (grep the build log for "android-sdk shared cache HIT/MISS"). The cache mount
 # is invisible at image runtime — the script still installs everything the
 # image needs into ${ANDROID_HOME} in this layer.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
+    --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_EXTRA_COMPILE_SDK}-${ANDROID_EXTRA_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; ANDROID_SDK_CACHE_DIR=/var/cache/android-sdk-shared /opt/scripts/android-sdk.sh && \
     mkdir -p /opt/android-sdk /opt/android && \

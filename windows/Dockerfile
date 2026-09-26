@@ -42,6 +42,17 @@ ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
     ORT_SKIP_DOWNLOAD=1 `
     ORT_DYLIB_PATH=$ONNX_ROOT\bin\onnxruntime.dll
 
+# The Khronos Vulkan loader (Server Core has none) in C:\vulkan-loader, on PATH and never
+# in System32, so a Vulkan-linked binary loads: gstvulkan, IREE's Vulkan HAL, OpenCV
+# vkcom, ggml-vulkan (BACKLOG CON25). No ICD: the loader reports zero devices. The rocm
+# variant installed it already, System32 copy included (Dockerfile.rocm), and the pinned
+# zip is x64 only, so both skip.
+ARG VULKAN_VERSION=1.4.357.0
+ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
+COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
+RUN if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
+ENV PATH=$PATH;C:\vulkan-loader
+
 # Rust note: provisioned by Install-RustToolchain.ps1 via rustup WITH a stable default
 # toolchain (DELIBERATELY unpinned -- versions.env's RUST_VERSION pins only the Linux
 # lane). rustup is REQUIRED by Flutter's Cargokit (flutter_rust_bridge consumers);
@@ -66,8 +77,10 @@ COPY windows\scripts\modules C:\temp\scripts\modules
 # TORCH_APP_DIR. Keeping the assembly out of this stage means an app bump
 # rebuilds torch + this cheap tail only, and the logic exists in one place.
 
-WORKDIR C:\workspace
-VOLUME ["C:\\workspace"]
+# No WORKDIR/VOLUME C:\workspace (dropped 2026-09-26, BACKLOG CON29): binding over a
+# directory the image holds fails at hcs::CreateComputeSystem when the host's OS build
+# differs from the image's, and the VOLUME left an anonymous volume behind every
+# container. Every caller passes -w with its own mount target.
 
 # Dev image: a relaxed interval keeps the healthcheck from burning cycles every 30s.
 HEALTHCHECK --interval=5m --timeout=15s --start-period=60s --retries=3 `

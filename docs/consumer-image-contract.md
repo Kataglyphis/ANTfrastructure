@@ -401,6 +401,23 @@ These are paths, not versions, so they are outside the advertised-version-key ga
   re-downloads the SDK every run for nothing. `sccache` and `appimagetool` are on
   `PATH` as well.
 
+## What changes with the image after CON11
+
+In source since 2026-09-26, shipped by the next `:latest` (BACKLOG CON11). Each item
+retires a workaround a consumer carries today; drop it once your lane runs on that image.
+
+| What | Before | After |
+| --- | --- | --- |
+| A bare `clang`/`clang++` | selects the distro GCC 16, so linking a library the image's GCC built fails (`std::format` symbols, `GLIBCXX_3.4.36`) | `<native-triple>-clang{,++}.cfg` beside the compiler select `${GCC_PREFIX}`; a `--target` build loads neither |
+| `clang-tidy`, `llvm-profdata`, `llvm-cov`, `llvm-symbolizer`, `ld.lld`, … on `PATH` | LLVM 21, which cannot read what LLVM 23 wrote | clang's own, linked into `/usr/local/bin`. `clang-format` and `llvm-config` stay 21 on purpose |
+| `-fsanitize=fuzzer` with the image's clang | no libFuzzer runtime | built with compiler-rt (without a private libc++) |
+| `VIRTUAL_ENV`, `UV_PYTHON` | point at the root-owned `/opt/venv`, over an activated venv | empty in the ENV and unset by the entrypoint; `/opt/venv/bin` stays first on `PATH` |
+| A Vulkan device | none (`nvidia_icd.json` only) | lavapipe, a CPU device (`mesa-vulkan-drivers`) |
+| `perf`, `jq`, `Xvfb`, gperftools' `libprofiler` | absent | installed (`linux-perf` carries `perf` on 26.04) |
+| A caller's `LD_LIBRARY_PATH`/`GST_PLUGIN_PATH` | the entrypoint put `/opt/libcamera` ahead of it, and a host `libstdc++` in it shadowed GCC's | the image's libcamera goes after it and `${GCC_PREFIX}`'s runtime before it, so a Raspberry Pi host-libcamera run needs no `--entrypoint` |
+| The distro GStreamer 1.28 runtime | installed beside `/opt/gstreamer` | dropped on amd64; kept on arm64/riscv64, where `libgstgtk4.so` needs Ubuntu's GTK 4 |
+| Android API 37 | missing although pinned (a stale SDK cache) | `platforms/android-37.0` and `build-tools/37.0.0` |
+
 ## The Android SDK roots are advertised
 
 `Dockerfile.android` sets `GSTREAMER_ROOT_ANDROID`, `ONNXRUNTIME_ROOT_ANDROID`,

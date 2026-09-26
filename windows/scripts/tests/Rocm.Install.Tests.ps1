@@ -501,7 +501,7 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
         $pins = @{ TempDir = (Join-Path $Root 'tmp'); VulkanVersion = $script:VkPeVersion; InstallDir = (Join-Path $Root 'vulkan-loader')
             TargetArch = 'amd64'; SystemDir = (Join-Path $Root 'system32'); BaseUrl = ([uri](Join-Path $Root 'site')).AbsoluteUri }
         foreach ($k in $Override.Keys) { $pins[$k] = $Override[$k] }
-        New-Item -ItemType Directory -Force -Path $pins.SystemDir | Out-Null
+        if ($pins.SystemDir) { New-Item -ItemType Directory -Force -Path $pins.SystemDir | Out-Null }
         if ($SystemCopy) { Copy-Item -LiteralPath $SystemCopy -Destination (Join-Path $pins.SystemDir 'vulkan-1.dll') }
         $v = $pins.VulkanVersion
         $mirror = Join-Path $Root "site\$v\windows\VulkanRT-X64-$v-Components.zip"
@@ -513,19 +513,21 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
         $failure = Invoke-WithEnv @{ VULKAN_VERSION = $null; VULKAN_RT_WINDOWS_ZIP_SHA256 = $null; WINDOWS_TARGET_ARCH = $null } {
             try { Install-VulkanLoader @pins 6>$null; $null } catch { $_.Exception.Message }
         }
-        $sysLoader = Join-Path $pins.SystemDir 'vulkan-1.dll'
-        return [pscustomobject]@{ Error = $failure; Pins = $pins; SystemHash = $(if (Test-Path -LiteralPath $sysLoader) { (Get-FileHash -LiteralPath $sysLoader).Hash }) }
+        $sysLoader = if ($pins.SystemDir) { Join-Path $pins.SystemDir 'vulkan-1.dll' } else { '' }
+        return [pscustomobject]@{ Error = $failure; Pins = $pins; SystemHash = $(if ($sysLoader -and (Test-Path -LiteralPath $sysLoader)) { (Get-FileHash -LiteralPath $sysLoader).Hash }) }
     }
     $script:VkPeHash = (Get-FileHash -LiteralPath $script:VkPe).Hash
 
-    It 'downloads the zip through the real download and SHA256 check, installs the loader into System32 and the pinned copy with its licence, keeps no zip' {
-        Invoke-InTestDir { param($dir)
-            $r = Invoke-VulkanInstallFixture -Root $dir
-            Assert-Null $r.Error 'installs'
-            Assert-Equal 'vulkan-1.dll,VulkanRT-License.txt' ((Get-ChildItem -LiteralPath $r.Pins.InstallDir -File | Sort-Object Name).Name -join ',') 'installed files'
-            Assert-Equal $script:VkPeHash (Get-FileHash -LiteralPath (Join-Path $r.Pins.InstallDir 'vulkan-1.dll')).Hash 'the x64 loader bytes'
-            Assert-Equal $script:VkPeHash $r.SystemHash 'System32 holds the same loader'
-            Assert-Equal 0 @(Get-ChildItem -LiteralPath $r.Pins.TempDir -File).Count 'the zip is gone'
+    It 'downloads the zip through the real download and SHA256 check, installs the loader into System32 (none for an empty -SystemDir, the final stage''s CON25 mode) and the pinned copy with its licence, keeps no zip' {
+        foreach ($systemCopy in $true, $false) {
+            Invoke-InTestDir { param($dir)
+                $r = Invoke-VulkanInstallFixture -Root $dir -Override $(if ($systemCopy) { @{} } else { @{ SystemDir = '' } })
+                Assert-Null $r.Error "installs (System32 copy: $systemCopy)"
+                Assert-Equal 'vulkan-1.dll,VulkanRT-License.txt' ((Get-ChildItem -LiteralPath $r.Pins.InstallDir -File | Sort-Object Name).Name -join ',') 'installed files'
+                Assert-Equal $script:VkPeHash (Get-FileHash -LiteralPath (Join-Path $r.Pins.InstallDir 'vulkan-1.dll')).Hash 'the x64 loader bytes'
+                Assert-Equal $(if ($systemCopy) { $script:VkPeHash } else { $null }) $r.SystemHash 'System32 holds the same loader, or none'
+                Assert-Equal 0 @(Get-ChildItem -LiteralPath $r.Pins.TempDir -File).Count 'the zip is gone'
+            }
         }
     }
 
@@ -574,7 +576,7 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
     }
 }
 
-Describe 'Dockerfile.rocm: the Vulkan loader layer, rocm lane only' {
+Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     $root = Get-RepoRoot
     $df = Get-Content -Raw (Join-Path $root 'windows\Dockerfile.rocm')
     $driver = Get-Content -Raw (Join-Path $root 'windows\Build-Buildkit.ps1')
@@ -622,12 +624,32 @@ Describe 'Dockerfile.rocm: the Vulkan loader layer, rocm lane only' {
         Assert-Equal (($declared | Sort-Object) -join ',') (($sent | Sort-Object) -join ',') 'sent = declared'
     }
 
-    It 'leaves cpu and nvidia untouched: only Dockerfile.rocm and the driver''s rocm branch know the loader' {
+    It 'ships only from the rocm sdk layer and the final stage, and the driver sends the pin to exactly those two' {
         $hits = @(Get-ChildItem -LiteralPath (Join-Path $root 'windows') -Filter 'Dockerfile*' -File |
                 Where-Object { (Get-Content -Raw $_.FullName) -match 'Install-VulkanLoader|vulkan-loader|VULKAN_RT_WINDOWS_ZIP_SHA256|VULKAN_LOADER_DIR' } | ForEach-Object Name)
-        Assert-Equal 'Dockerfile.rocm' ($hits -join ',') 'Dockerfiles that ship the loader'
-        Assert-Equal 1 ([regex]::Matches($driver, 'VULKAN_RT_WINDOWS_ZIP_SHA256\s*= Get-Ver')).Count 'the driver sends the pin once'
+        Assert-Equal 'Dockerfile,Dockerfile.rocm' (($hits | Sort-Object) -join ',') 'Dockerfiles that ship the loader'
+        Assert-Equal 2 ([regex]::Matches($driver, 'VULKAN_RT_WINDOWS_ZIP_SHA256\s*= Get-Ver')).Count 'the driver sends the pin twice'
         $rocmBranch = [regex]::Match($driver, "(?s)\} elseif \(\`$Variant -eq 'rocm'\) \{\s+#[^\r\n]*\s+Invoke-BkStage -Dockerfile 'windows/Dockerfile\.rocm'.+?\n\s+\}").Value
         Assert-Match 'VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver' $rocmBranch 'and only in the rocm sdk branch'
+    }
+
+    # CON25: the final stage of the default and nvidia images puts the same loader on PATH.
+    $finalDf = Get-Content -Raw (Join-Path $root 'windows\Dockerfile')
+
+    It 'the final stage declares the pins with versions.env defaults, and the driver''s final args send both' {
+        $finalArgs = $driver.Substring($driver.IndexOf('$finalArgs = $stampArgs'))
+        $finalArgs = $finalArgs.Substring(0, $finalArgs.IndexOf('} + $archArgs'))
+        foreach ($k in 'VULKAN_VERSION', 'VULKAN_RT_WINDOWS_ZIP_SHA256') {
+            Assert-Equal $pins[$k] ([regex]::Match($finalDf, "(?m)^ARG $k=(\S+)\s*$").Groups[1].Value) "ARG $k default = versions.env"
+            Assert-Match "(?m)^\s*$k\s*= Get-Ver '$k'" $finalArgs "the final stage gets $k"
+        }
+    }
+
+    It 'the final stage installs without a System32 copy, amd64 only, not over the rocm variant''s, and appends PATH' {
+        $run = [regex]::Match($finalDf, "(?m)^RUN .*Install-VulkanLoader\.ps1.*$").Value
+        Assert-Match "-InstallDir 'C:\\vulkan-loader' -SystemDir ''" $run 'no System32 copy'
+        Assert-Match "WINDOWS_TARGET_ARCH -eq 'amd64'" $run 'amd64 only: the pinned zip is x64'
+        Assert-Match '-not \$env:VULKAN_LOADER_DIR' $run 'the rocm variant keeps its own'
+        Assert-Match '(?m)^ENV PATH=\$PATH;C:\\vulkan-loader\s*$' $finalDf 'appended after the inherited PATH'
     }
 }

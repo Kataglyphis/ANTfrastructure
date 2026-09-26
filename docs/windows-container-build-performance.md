@@ -127,7 +127,7 @@ Without a shared path, every switch between transports forces a cold rebuild
 and the two are not really interchangeable. One path (here `C:\ws`) fixes it.
 
 The path must still be **absent from the image**: mounting over a directory
-baked in (`C:\workspace`) fails at `CreateComputeSystem` when the host OS build
+baked in (`C:\workspace`, until the image after 2026-09-26) fails at `CreateComputeSystem` when the host OS build
 differs from the image base build. Verify with
 `docker run --rm --entrypoint cmd $image /c "if exist C:\ws (echo BAKED IN)"`.
 
@@ -387,7 +387,7 @@ Things worth knowing before you copy this:
   start because `clang_rt.asan*.dll` is not on `PATH`.
 
 - **Mount over a fresh path.** Mounting onto a directory baked into the image
-  (e.g. `C:\workspace`) fails at `CreateComputeSystem` when the host OS build
+  (e.g. `C:\workspace`, until the image after 2026-09-26) fails at `CreateComputeSystem` when the host OS build
   differs from the image base build. Use a path absent from the image — and if
   you support both transports, make it the *same* path the tar-pipe extracts
   to (`C:\ws`), not a separate one, or CMake rejects the cache on every switch.

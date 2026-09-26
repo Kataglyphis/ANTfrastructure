@@ -80,6 +80,20 @@ else
   }
 fi
 
+# The image's libcamera goes AFTER whatever the caller set: a Raspberry Pi run bind-mounts the
+# host's libcamera and names it in these variables, and a prepend shadowed it (BACKLOG CON23).
+_libcamera_path_append() {
+  local __varname="$1" __value="$2" __cur
+  __cur="${!__varname:-}"
+  case ":${__cur}:" in *":${__value}:"*) return 0 ;; esac
+  if [ -z "${__cur}" ]; then
+    printf -v "${__varname}" '%s' "${__value}"
+  else
+    printf -v "${__varname}" '%s:%s' "${__cur}" "${__value}"
+  fi
+  export "${__varname?}"
+}
+
 PREFIX="$LIBCAMERA_PREFIX"
 
 # Detect multiarch triplet if possible (for proper library paths)
@@ -106,14 +120,14 @@ for d in \
   "${PREFIX}/share/pkgconfig" \
 ; do
   if [ -d "$d" ]; then
-    _path_prepend_unique PKG_CONFIG_PATH "$d"
+    _libcamera_path_append PKG_CONFIG_PATH "$d"
   fi
 done
 
 # Fallback: scan common nested pkgconfig dirs (e.g. lib/<triplet>/pkgconfig)
 for d in "${PREFIX}/lib"/*/pkgconfig "${PREFIX}/lib"/*/*/pkgconfig; do
   [ -d "$d" ] || continue
-  _path_prepend_unique PKG_CONFIG_PATH "$d"
+  _libcamera_path_append PKG_CONFIG_PATH "$d"
 done
 
 # runtime library search paths (including multiarch)
@@ -124,20 +138,20 @@ for d in \
   "${PREFIX}/lib64" \
 ; do
   if [ -d "$d" ]; then
-    _path_prepend_unique LD_LIBRARY_PATH "$d"
+    _libcamera_path_append LD_LIBRARY_PATH "$d"
   fi
 done
 
 # Fallback: include nested lib directories (e.g. lib/<triplet> or lib/*/)
 for d in "${PREFIX}/lib"/* "${PREFIX}/lib"/*/*; do
   [ -d "$d" ] || continue
-  _path_prepend_unique LD_LIBRARY_PATH "$d"
+  _libcamera_path_append LD_LIBRARY_PATH "$d"
 done
 
 # bin tools (e.g. libcamera-apps)
 if [ -d "${PREFIX}/bin" ]; then
-  # prepend to PATH if not present
-  _path_prepend_unique PATH "${PREFIX}/bin"
+  # append to PATH if not present
+  _libcamera_path_append PATH "${PREFIX}/bin"
 fi
 
 # Python site-packages locations (attempt a few common patterns)
@@ -151,13 +165,13 @@ for p in \
   # expand glob safely
   for dir in $p; do
     [ -d "$dir" ] || continue
-    _path_prepend_unique PYTHONPATH "$dir"
+    _libcamera_path_append PYTHONPATH "$dir"
   done
 done
 
 # also consider pkg-installed python module locations under prefix/share
 if [ -d "${PREFIX}/share/python" ]; then
-  _path_prepend_unique PYTHONPATH "${PREFIX}/share/python"
+  _libcamera_path_append PYTHONPATH "${PREFIX}/share/python"
 fi
 
 # GStreamer plugin path for libcamerasrc (including multiarch paths)
@@ -168,14 +182,14 @@ for p in \
   "${PREFIX}/lib64/gstreamer-1.0" \
 ; do
   if [ -d "$p" ]; then
-    _path_prepend_unique GST_PLUGIN_PATH "$p"
+    _libcamera_path_append GST_PLUGIN_PATH "$p"
   fi
 done
 
 # Fallback: scan nested gstreamer plugin dirs
 for p in "${PREFIX}/lib"/*/gstreamer-1.0 "${PREFIX}/lib"/*/*/gstreamer-1.0; do
   [ -d "$p" ] || continue
-  _path_prepend_unique GST_PLUGIN_PATH "$p"
+  _libcamera_path_append GST_PLUGIN_PATH "$p"
 done
 
 # Export LIBCAMERA_PREFIX for convenience

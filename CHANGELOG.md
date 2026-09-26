@@ -7,6 +7,49 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-26 - The image backlog, swept: fixed in source, decided, or the owner's
+
+Every open item of `BACKLOG.md` was worked. Most are image fixes that ship with the next
+publish (CON11 for `:latest`, CON12 for `:winamd64`), each proven against the published
+image in a throwaway container or a buildkit probe; the rest are recorded decisions or wait
+on the owner. Both chains rebuild from base at the next publish anyway (`versions.env`
+changed since each published image), so none of this adds a re-key.
+
+- Hub scripts, effective now. `Copy-MediaRuntimeBundle` finds the family image's GStreamer
+  through `GSTREAMER_BIN` (`C:\runtime\bin`); AccelerANTgine run 36044940426 had staged
+  only ONNX Runtime (CON33). The Rust driver checks for `cargo fmt`/`cargo clippy` instead
+  of `rustup component add` (CON32).
+- Android API 37 (CON14). The `android-sdk-shared` cache id never named the two API 37
+  pins, so every build since 2bb0410f restored an SDK tree cached on 2026-08-22. The id
+  names every pin (`tests/test-android-sdk-cache-key.sh`); a restored tree is checked
+  against sdkmanager's `package.xml` records, completed and refreshed; the smoke checks
+  every platform.
+- The Linux toolchain (CON15-CON17). A bare `clang`/`clang++` selects `${GCC_PREFIX}`
+  through `<native-triple>-clang{,++}.cfg`; clang's own `clang-tidy`, `llvm-profdata`,
+  `llvm-cov`, `llvm-symbolizer`, `ld.lld` and 16 more are on `PATH` (`clang-format` and
+  `llvm-config` stay 21 on purpose); compiler-rt builds libFuzzer. `validate-compilers.sh
+  smoke` checks all three.
+- The Linux runtime (CON18, CON19, CON20, CON21, CON23). `VIRTUAL_ENV`/`UV_PYTHON` no
+  longer send uv at the root-owned `/opt/venv`; lavapipe gives a CPU Vulkan device; `perf`,
+  `jq`, `Xvfb` and gperftools ship; amd64 drops the unused distro GTK 4 and GStreamer 1.28
+  runtime; `libcamera-env.sh` and the entrypoint let a caller's `LD_LIBRARY_PATH` win
+  without shadowing GCC 16.2's `libstdc++`. `consumer-image-contract.md` § What changes
+  with the image after CON11 is the consumer's list.
+- The Windows image (CON9, CON10, CON25, CON28, CON29). The patched LLVM builds
+  `clang_rt.profile` and a clang-tidy that reads its own BMIs, both proven by rebuilding the
+  tree that ships in `:winamd64`, and its 7.1 GB source tree no longer stays in the layer;
+  the final stage puts LunarG's `vulkan-1.dll` on PATH (never System32; OpenGL stays
+  host-only, the owner's decision); the app venv
+  installs `ai-edge-litert` from the lock; no baked `C:\workspace`.
+- Decided (§ Deliberate): arm64/riscv64's distro GStreamer (CON21), their thin GCC
+  (CON22), riscv64 TVM/IREE targets (CON24, with the flags in
+  `riscv64-rva23-baseline.md`), lane-installed `cargo-audit`/`cargo-deny` and no Linux
+  `pwsh` (CON20), five Windows absences (CON28), and OpenGL in the Windows image, host-only
+  by the owner's decision (CON25). CON27 waits on microsoft/STL#6298.
+- Found on the way: amd64's GCC carried 4.4 GB of unstripped cross compilers, because
+  `build-gcc.sh` stripped with the target's `strip` alone; the build machine's runs too now
+  (CON36). amd64's TVM cannot load its compiler library, filed as CON35.
+
 ## 2026-09-26 - The reusable Windows lane takes a caller's secrets
 
 BeschleunigerBallett's x64 lane could not become a thin caller of `container-ci-windows.yml`:

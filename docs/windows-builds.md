@@ -851,12 +851,12 @@ which the final image builds FROM:
   every ORT distribution byte-identical to a wheel in `C:\runtime\wheels` and
   `onnxruntime` owned once, or the stage fails
   ([failure-modes](failure-modes.md#the-torch-stage-fails-with-ort-census-fail)).
-- **Known limitation**: `ai-edge-litert` is excluded from `uv sync`
-  (`--no-install-package`) on every lane. The old reason, "its pinned version
-  ships no cp314 wheel", is stale: the app lock at v0.0.28 locks 2.1.6, which
-  has one. It stays excluded so the cpu/nvidia app layer does not change. The
-  rocm lane adds `ai-edge-litert` 2.2.0, hash-pinned and `--no-deps`, in the
-  torch stage's `rocm-1` ([`windows-rocm.md` § PyTorch on the rocm lane](windows-rocm.md#pytorch-on-the-rocm-lane-torch-stage)).
+- **`ai-edge-litert`** installs from the app lock on every lane since 2026-09-26
+  (BACKLOG CON28). It was excluded from `uv sync` (`--no-install-package`) while the
+  lock pinned 2.1.3, which ships no cp314 wheel; the 2.1.6 that v0.0.28 locks has one,
+  and the app's smoke passes it on Server Core. The rocm lane still replaces it with
+  2.2.0, hash-pinned and `--no-deps`, in the torch stage's `rocm-1`
+  ([`windows-rocm.md` § PyTorch on the rocm lane](windows-rocm.md#pytorch-on-the-rocm-lane-torch-stage)).
 - **Gates**: the docker build itself fails unless the venv passes the import
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
   **and the app's own wheel-smoke suite** (`python -m orchestrant.smoke`

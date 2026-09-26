@@ -371,12 +371,10 @@ function Install-TorchAppEnvironment {
         $extraArgs = '--extra ml-ai --extra docs'
         if ($PytorchExtra -and $PytorchExtra -ne 'none') { $extraArgs += " --extra $PytorchExtra" }
         if ($env:SKIP_TORCH_TEST_EXTRAS -ne 'true') { $extraArgs += ' --extra test' }
-        # ai-edge-litert: ml-ai pins 2.1.3, which ships NO cp314 wheel (cp311-313
-        # only) and is the one family this lane cannot build (LiteRT python is
-        # bazel-only on Windows; linux serves it from a locally-built wheel via
-        # the same --no-install-package mechanism). The app's LiteRT code path is
-        # therefore unavailable in this venv -- documented limitation.
-        $baseSyncArgs = "--find-links ""$WheelDir"" $extraArgs --no-install-package ai-edge-litert"
+        # ai-edge-litert installs from the app lock like the rest: 2.1.3 had no cp314
+        # wheel, the 2.1.6 that OrchestrANT v0.0.28 locks has one, and the app smoke
+        # passes it on Server Core (BACKLOG CON28, 2026-09-26).
+        $baseSyncArgs = "--find-links ""$WheelDir"" $extraArgs"
         $lockPath = Join-Path $AppDir 'uv.lock'
 
         # Frozen first when the repo ships a lock; regenerate on failure
@@ -504,10 +502,9 @@ print('torch-app-env OK')
     }
     # The app's OWN wheel-smoke suite ("exercise the installed ML wheels with
     # real work"; exits non-zero on any required failure -- upstream designed it
-    # to gate container builds). Expected report on this lane: 10/11 ok on app
-    # v0.0.24/v0.0.25 (pyav check on top of v0.0.23's genai + tvm), 11/12 ok
-    # once a tag ships the iree check -- always with ONE WARN (ai-edge-litert,
-    # skipped by design: no cp314 wheel exists).
+    # to gate container builds). Measured on app v0.0.28 with ai-edge-litert
+    # installed (2026-09-26): 13/15 ok, 0 failures, the WARNs opencv-codecs (no
+    # .exr) and opencv-freetype.
     [void](Invoke-ShieldedNative -Label 'app smoke suite (python -m orchestrant.smoke)' `
             -CommandLine """$venvPython"" -m orchestrant.smoke")
     [void](Invoke-ShieldedNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython""")

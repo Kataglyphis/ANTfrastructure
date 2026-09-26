@@ -102,17 +102,54 @@ apt-get install -y --no-install-recommends \
 # everything is still installed into ${ANDROID_HOME} in the image layer.
 # Unset/absent cache dir (script run outside the Dockerfile) => plain install.
 ANDROID_SDK_CACHE_DIR="${ANDROID_SDK_CACHE_DIR:-}"
+
+# Every package the image ships. Dockerfile.android's cache id names each pin in
+# this list (tests/test-android-sdk-cache-key.sh).
+sdk_packages=(
+  "cmake;${ANDROID_CMAKE_VERSION}"
+  "platform-tools"
+  "platforms;android-${ANDROID_COMPILE_SDK}"
+  "build-tools;${ANDROID_BUILD_TOOLS}"
+  # CON5: API 37 alongside 36, so a consumer can raise compileSdk without the
+  # image losing the level everything else builds against. 37.0 is the base
+  # platform package's name in Google's repository (see versions.env).
+  "platforms;android-${ANDROID_EXTRA_COMPILE_SDK}"
+  "build-tools;${ANDROID_EXTRA_BUILD_TOOLS}"
+  "ndk;${ANDROID_NDK_VERSION}"
+  "extras;android;m2repository"
+  "extras;google;m2repository"
+)
+
+# Prints each of sdk_packages that ${ANDROID_HOME} does not hold, by the path
+# sdkmanager records in every installed package's package.xml. A restored cache
+# tree once lacked the two API 37 packages, and nothing noticed (BACKLOG CON14).
+sdk_missing_packages() {
+  local installed pkg
+  installed="$(find "${ANDROID_HOME}" -maxdepth 4 -name package.xml -exec \
+    sed -n 's/.*localPackage path="\([^"]*\)".*/\1/p' {} + 2>/dev/null || true)"
+  for pkg in "${sdk_packages[@]}"; do
+    grep -qxF "${pkg}" <<<"${installed}" || printf '%s\n' "${pkg}"
+  done
+}
+
 sdk_cache_tree=""
 if [ -n "${ANDROID_SDK_CACHE_DIR}" ] && [ -d "${ANDROID_SDK_CACHE_DIR}" ]; then
   sdk_cache_tree="${ANDROID_SDK_CACHE_DIR}/sdk-tree"
 fi
 
 sdk_restored=0
+sdk_cache_stale=0
 if [ -n "${sdk_cache_tree}" ] && [ -d "${sdk_cache_tree}" ]; then
   echo "android-sdk shared cache HIT: restoring ${ANDROID_HOME} from ${sdk_cache_tree} (skipping SDK/NDK downloads)"
   mkdir -p "${ANDROID_HOME}"
   cp -a "${sdk_cache_tree}/." "${ANDROID_HOME}/"
   sdk_restored=1
+  sdk_stale_packages="$(sdk_missing_packages)"
+  if [ -n "${sdk_stale_packages}" ]; then
+    echo "android-sdk shared cache STALE: the restored tree lacks $(tr '\n' ' ' <<<"${sdk_stale_packages}")- installing, then refreshing the cache"
+    sdk_restored=0
+    sdk_cache_stale=1
+  fi
 elif [ -n "${sdk_cache_tree}" ]; then
   echo "android-sdk shared cache MISS: downloading SDK/NDK, then populating ${sdk_cache_tree} for the other arches"
 fi
@@ -236,21 +273,6 @@ if [ "${sdk_restored}" -eq 0 ]; then
   # later, so fail loudly here where the cause is still visible.
   accept_licenses
 
-  sdk_packages=(
-    "cmake;${ANDROID_CMAKE_VERSION}"
-    "platform-tools"
-    "platforms;android-${ANDROID_COMPILE_SDK}"
-    "build-tools;${ANDROID_BUILD_TOOLS}"
-    # CON5: API 37 alongside 36, so a consumer can raise compileSdk without the
-    # image losing the level everything else builds against. 37.0 is the base
-    # platform package's name in Google's repository (see versions.env).
-    "platforms;android-${ANDROID_EXTRA_COMPILE_SDK}"
-    "build-tools;${ANDROID_EXTRA_BUILD_TOOLS}"
-    "ndk;${ANDROID_NDK_VERSION}"
-    "extras;android;m2repository"
-    "extras;google;m2repository"
-  )
-
   # sdkmanager_install already retries transient failures; call it directly
   # instead of the old one-shot-then-retry duplication of the package list.
   sdkmanager_install "${sdk_packages[@]}"
@@ -268,6 +290,11 @@ if [ ! -d "${ndk_dir}" ]; then
   echo "ERROR: expected NDK directory '${ndk_dir}' missing after sdkmanager install" >&2
   exit 1
 fi
+sdk_absent_packages="$(sdk_missing_packages)"
+if [ -n "${sdk_absent_packages}" ]; then
+  echo "ERROR: ${ANDROID_HOME} lacks $(tr '\n' ' ' <<<"${sdk_absent_packages}")after the install" >&2
+  exit 1
+fi
 
 # Convenience symlink used by some Android workflows.
 if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "${ANDROID_NDK_HOME}" ]; then
@@ -280,11 +307,14 @@ fi
 # filesystem, then atomically mv into place: rename is atomic, so a build
 # killed mid-copy can never publish a partial tree — the next build simply
 # misses and re-populates. Failure to populate is non-fatal by design: THIS
-# arch's install is already complete in the image layer.
-if [ "${sdk_restored}" -eq 0 ] && [ -n "${sdk_cache_tree}" ] && [ ! -d "${sdk_cache_tree}" ]; then
+# arch's install is already complete in the image layer. A STALE tree is
+# replaced; between its removal and the mv the next build simply misses.
+if [ "${sdk_restored}" -eq 0 ] && [ -n "${sdk_cache_tree}" ] && \
+   { [ ! -d "${sdk_cache_tree}" ] || [ "${sdk_cache_stale}" -eq 1 ]; }; then
   rm -rf "${ANDROID_SDK_CACHE_DIR}"/sdk-tree.staging.*
   sdk_cache_staging="$(mktemp -d "${ANDROID_SDK_CACHE_DIR}/sdk-tree.staging.XXXXXX")"
-  if cp -a "${ANDROID_HOME}/." "${sdk_cache_staging}/" && mv "${sdk_cache_staging}" "${sdk_cache_tree}"; then
+  if cp -a "${ANDROID_HOME}/." "${sdk_cache_staging}/" && rm -rf "${sdk_cache_tree}" && \
+     mv "${sdk_cache_staging}" "${sdk_cache_tree}"; then
     echo "android-sdk shared cache populated: ${sdk_cache_tree}"
   else
     rm -rf "${sdk_cache_staging}"
