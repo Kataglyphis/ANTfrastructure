@@ -29,9 +29,9 @@
 #
 CENSUS | ANTfrastructure | job-timeout | 1 | build-test-python-package-on-windows in python-ci-windows.yml — the one job in this repo still without a bound. Clear it and this check can be armed here beside `permissions`, and this row deleted
 CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
-CENSUS | BeschleunigerBallett | job-timeout | 13 | 13 in reusable-linux.yml (Linux.yml until 2026-09-24) plus 2 in windows-x64.yml. Its own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
+CENSUS | BeschleunigerBallett | job-timeout | 12 | 11 in reusable-linux.yml (Linux.yml until 2026-09-24) plus windows-x64.yml's pester-tests; its build job calls the hub's container-ci-windows.yml since 2026-09-26, which bounds itself. reusable-linux.yml's own comments price two lanes at ~25 minutes each and the run at 2h13m, then warn about the 6-hour cap every one of these jobs sits under
 CENSUS | BeschleunigerBallett | permissions | 11 | Every job in reusable-linux.yml (was Linux.yml); windows-x64.yml declares one at the top level. One `permissions:` block at the top of reusable-linux.yml clears all twelve at once
-CENSUS | BeschleunigerBallett | artifact-error | 2 | The package uploads in reusable-linux.yml and windows-x64.yml — the two artifacts a release actually ships, which is where an empty upload is worst
+CENSUS | BeschleunigerBallett | artifact-error | 1 | The package upload in reusable-linux.yml, an artifact a release actually ships, which is where an empty upload is worst. windows-x64.yml's moved to the hub's container-ci-windows.yml on 2026-09-26, whose upload fails on an empty product
 CENSUS | OrchestrANT | permissions | 2 | The `linux` and `windows` jobs, which call the hub's reusable python-ci workflows; the caller declares the token scope, so it cannot be fixed in the callee
 #
 # `runner-ban` has no row anywhere, and never will: it is armed with no knob, so
