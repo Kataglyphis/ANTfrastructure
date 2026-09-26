@@ -2,7 +2,7 @@ name: LLM stack · serving
 
 # The serving stack's shape and its registry, now that the benchmark suite
 # lives in OrchestrANT. No image is built and no model is pulled: compose files
-# are validated, and the properties the two registry consumers rely on are
+# are validated, and the properties the registry's consumers rely on are
 # pinned by tests. The one image pulled is the gateway's, for gateway-e2e.
 
 on:
@@ -64,8 +64,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: x64, runs_on: ubuntu-26.04 }
-          - { arch: arm64, runs_on: ubuntu-26.04-arm }
+          - arch: x64
+            runs_on: ubuntu-26.04
+          - arch: arm64
+            runs_on: ubuntu-26.04-arm
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 20
     steps:

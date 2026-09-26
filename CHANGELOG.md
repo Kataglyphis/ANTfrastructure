@@ -301,6 +301,14 @@ no cap, a client hang-up closes the lane's connection), loopback-only
 listeners and the hook surviving a hot reload. Details:
 `linux/llm-stack/README.md` § Gateway.
 
+Merging it into `develop` (`6b1532a8`) would have turned preflight's
+`workflow-lint` slug red. The two `gateway-e2e` matrix rows were one-line flow
+mappings (`- { arch: x64, runs_on: ubuntu-26.04 }`), which the YAML subset that
+`verify_workflow_conventions.py` reads cannot parse. That failed
+`lint-workflows.sh`, the shipped-census assertion in `test-workflow-lint.sh`
+and the *actionlint + CI image refs* gate of `run-lint-gates.sh`. The rows are
+block mappings now, and the matrix GitHub reads is unchanged.
+
 ## 2026-09-25 - HIP compiles in the rocm image: TheRock's clang loads the `<cmath>` overlay
 
 With torch through (entry below), the rocm chain built `bk-winamd64-rocm` and the
