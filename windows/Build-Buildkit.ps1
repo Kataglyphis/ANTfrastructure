@@ -29,9 +29,11 @@
 .PARAMETER FinalTar
     Optional path: additionally export the final image as a docker-load tar.
 .PARAMETER Variant
-    '' (CPU + DirectML), nvidia (= -Gpu) or rocm. nvidia and rocm both take the sdk slot;
-    rocm (amd64 only) writes every tag from sdk on with a -rocm infix, so it never
-    overwrites the default images. docs/windows-builds.md § ROCm layer.
+    '' (CPU + DirectML), nvidia (= -Gpu) or rocm (amd64 only). Both variants take the sdk
+    slot and write every tag from sdk on with their infix (-nvidia, -rocm), so neither
+    overwrites the default images, and each publishes under a tag of its own: :winamd64-nvidia,
+    :winamd64-rocm, and :winarm64-nvidia for the cross bundle (AGENTS.md § Image and tag
+    naming; the nvidia build wrote :winamd64 until 2026-09-27). docs/windows-builds.md § ROCm layer.
 .PARAMETER Stages
     Subset of base,sdk,toolchain,media,migraphx,llama,torch,final. migraphx and llama are
     rocm-only: dropped from the default list on other variants, refused when named.
@@ -40,7 +42,9 @@
     write the same tags, so the smoke gate checks the image carries the mode this run asked for.
 
 .EXAMPLE
-    .\windows\Build-Buildkit.ps1 -Gpu
+    .\windows\Build-Buildkit.ps1                                   # CPU + DirectML, :winamd64
+.EXAMPLE
+    .\windows\Build-Buildkit.ps1 -Gpu                              # CUDA in the sdk slot, bk-*-nvidia tags, :winamd64-nvidia
 .EXAMPLE
     .\windows\Build-Buildkit.ps1 -Variant rocm                     # ROCm in the sdk slot, bk-*-rocm tags, :winamd64-rocm
 .EXAMPLE
@@ -61,8 +65,8 @@
 param(
     # The nvidia variant's original spelling; -Variant nvidia means the same.
     [switch]$Gpu,
-    # Empty = the default (CPU + DirectML) image. rocm is amd64-only and takes the sdk
-    # slot like nvidia, under its own -rocm tags (docs/windows-builds.md § ROCm layer).
+    # Empty = the default (CPU + DirectML) image. nvidia and rocm (amd64-only) take the sdk
+    # slot under their own -<variant> tags (docs/windows-builds.md § ROCm layer).
     [ValidateSet('', 'nvidia', 'rocm')]
     [string]$Variant = '',
     # rocm only: drop the migraphx stage and pass TVM_ROCM=0 to media-tvm.
@@ -204,12 +208,12 @@ function Resolve-BkVariant {
     if ($PushRef) {
         $lastSegment = ($PushRef -split '/')[-1]
         $pushTag = if ($lastSegment -match ':') { ($lastSegment -split ':')[-1] } else { '' }
-        if ($Variant -eq 'rocm' -and $pushTag -ne 'winamd64-rocm') {
-            throw "-Variant rocm pushes only to a ':winamd64-rocm' tag; got -PushRef '$PushRef'"
-        }
-        if ($Variant -ne 'rocm' -and $pushTag -like '*-rocm') {
-            throw "-PushRef '$PushRef' names a rocm tag, but this run is not -Variant rocm"
-        }
+        # A variant is a tag of its own (AGENTS.md § Image and tag naming): its bytes never go
+        # under the default tag, and no other lane's bytes go under a variant's.
+        $foreign = @('nvidia', 'rocm') | Where-Object { $_ -ne $Variant -and $pushTag -like "*-$_" }
+        if ($foreign) { throw "-PushRef '$PushRef' names the $foreign variant's tag, but this run is not -Variant $foreign" }
+        $own = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $(if ($Variant) { "-$Variant" })
+        if ($Variant -and $pushTag -ne $own) { throw "-Variant $Variant pushes only to a ':$own' tag; got -PushRef '$PushRef'" }
     }
     return @{ Variant = $Variant; Stages = $Stages }
 }
@@ -394,9 +398,11 @@ Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 # amd64 keeps the historical unsuffixed names, a cross target appends its arch —
 # except the shared pre-fork stages (suffixing would fork the chain's most
 # expensive layers) and the final tags, which already spell their arch.
-$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64', 'winamd64-rocm')
-# rocm owns the sdk slot, so every tag from sdk on gets '-rocm'; '' and nvidia keep their names.
-$script:BkVariantInfix = if ($Variant -eq 'rocm') { '-rocm' } else { '' }
+$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64',
+    'winamd64-nvidia', 'winarm64-nvidia', 'winamd64-rocm')
+# A variant owns the sdk slot, so every tag from sdk on gets '-<variant>' and the default keeps
+# its names. nvidia shared the default's until 2026-09-27, so one overwrote the other.
+$script:BkVariantInfix = if ($Variant) { "-$Variant" } else { '' }
 function Get-BkTag([string]$Name) {
     $infix = $script:BkVariantInfix
     $variant = if ($infix -and $Name -ne 'windows-base' -and -not $Name.EndsWith($infix)) { $infix } else { '' }
@@ -406,7 +412,7 @@ function Get-BkTag([string]$Name) {
 
 # NB winarm64 labels a windows/amd64 image carrying an aarch64 payload - never
 # publish it with --platform windows/arm64, that yields a manifest nothing runs.
-$script:FinalTagName = if ($TargetArch -eq 'arm64') { 'winarm64' } elseif ($Variant -eq 'rocm') { 'winamd64-rocm' } else { 'winamd64' }
+$script:FinalTagName = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $script:BkVariantInfix
 
 # Which -NoCacheStage entries matched a stage label; checked at the end of the
 # run so a typo fails LOUDLY instead of building everything from cache (#64).

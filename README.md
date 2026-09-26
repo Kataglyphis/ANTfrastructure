@@ -70,7 +70,8 @@ The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
 
 ```pwsh
 # BUILD — non-admin shell, buildctl against buildkitd
-.\windows\Build-Buildkit.ps1 -Gpu
+.\windows\Build-Buildkit.ps1          # :winamd64, CPU + DirectML
+.\windows\Build-Buildkit.ps1 -Gpu     # :winamd64-nvidia, adds CUDA + cuDNN + TensorRT
 
 # INSPECT / RUN — ADMIN shell; containerd's pipe is admin-only upstream
 & "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
@@ -141,8 +142,8 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 | `:latest-<arch>`, `:latest-<variant>-<arch>` | Per-architecture wrappers the manifests are assembled from (internal) |
 | `:cross-media-<arch>` | Media libraries layer (internal) |
 | `:webserver` | Slim nginx webserver — built by hand from a named build context (`--build-context site=<jotrockenmitlocken>/build/web`), not from a directory tracked here; see [`linux/webserver/README.md`](linux/webserver/README.md). Not in the registry on 2026-09-25 |
-| `:winamd64` | Windows **manifest** (`windows/amd64`); variants as `:winamd64-<variant>` |
-| `:winarm64` | Windows **artifact bundle** for arm64 — a `windows/amd64` image, its own tag, never a manifest entry and never `--platform windows/arm64` |
+| `:winamd64` | Windows **manifest** (`windows/amd64`), CPU + DirectML; variants as `:winamd64-<variant>`: `:winamd64-nvidia` (CUDA), `:winamd64-rocm` (ROCm) |
+| `:winarm64` | Windows **artifact bundle** for arm64 — a `windows/amd64` image, its own tag, never a manifest entry and never `--platform windows/arm64`. `:winarm64-nvidia` carries the arm64 CUDA payload |
 
 **One published tag is one manifest, over every architecture of its variant** —
 the grammar, the variant policy and the Windows exception live in

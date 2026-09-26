@@ -21,7 +21,7 @@
 [CmdletBinding()]
 param(
     [string]$Endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', 'Machine'),
-    [string]$BaseImage = 'docker.io/local/kataglyphis:bk-windows-toolchain',
+    [string]$BaseImage = 'docker.io/local/kataglyphis:bk-windows-toolchain-nvidia',
     # Empty = resolve from the supported install layouts (backlog item #2).
     [string]$BuildCtl = ''
 )

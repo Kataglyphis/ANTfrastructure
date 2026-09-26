@@ -149,6 +149,12 @@ qualifier (owner directive 2026-09-22).
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
   published index (§ Push and Publish Rules), so a partial run cannot silently
   drop an architecture from one.
+- **Windows follows the variant rule for CUDA too** (owner decision 2026-09-27).
+  `Build-Buildkit.ps1 -Gpu` (`-Variant nvidia`) builds under `bk-*-nvidia` stage
+  tags and publishes `:winamd64-nvidia`, or `:winarm64-nvidia` for the cross
+  bundle. `:winamd64` is CPU + DirectML. Until then the nvidia build wrote the
+  default tags, so the `:winamd64` published on 2026-09-22 carries CUDA until the
+  next publish of that tag. `Resolve-BkVariant` refuses a push to any other tag.
 - **Windows is the documented exception, and it is a platform fact, not a
   convention:** `windows/arm64` does not exist as a platform — Microsoft
   publishes no arm64 `servercore`/`nanoserver` base and Windows Server has no

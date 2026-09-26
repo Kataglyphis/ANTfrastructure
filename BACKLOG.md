@@ -59,7 +59,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       `versions.env` and `01-core` changed after the published image's commit
       (7a43905a), so the chain rebuilds from base anyway; none of the above adds a re-key.
-- [b] **CON12 — Republish `:winamd64`** [M, ★★★]. Blocked on the owner. The published
+- [b] **CON12 — Republish `:winamd64`, and publish `:winamd64-nvidia`** [M, ★★★]. Blocked on the owner. The published
       image (2026-09-22, hub 0d85b8c1) has three problems:
       - **A LAN sccache endpoint in its ENV.** It is the build host's LAN WebDAV,
         unreachable from CI, so sccache exits and CMake reports clang-cl as broken.
@@ -85,11 +85,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       The local rebuild of 2026-09-26/27 (`windows\Build-Buildkit.ps1 -Gpu`, at 6fe2992f and
       then 738d07e3) passed the ENV gate (`Assert-ImageEnvPublishable`), the ORT census and the
-      smoke gate (245 passed, 0 skipped); ORT took 1:59 with its nvcc bare. Its image,
-      `local/kataglyphis:bk-winamd64` in buildkit's store, is what the publish re-exports: the
-      same command at 738d07e3 with
-      `-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`. After the publish,
-      run one DirectML G-API session, set BeschleunigerBallett's
+      smoke gate (245 passed, 0 skipped); ORT took 1:59 with its nvcc bare.
+
+      **Two tags since 2026-09-27** (owner decision: Windows follows the variant rule). The
+      `-Gpu` build is the nvidia variant and publishes as `:winamd64-nvidia`; `:winamd64`
+      becomes the build without `-Gpu`, CPU + DirectML:
+      - `:winamd64-nvidia`: `-Gpu -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64-nvidia`
+        at the rename's commit or later. The local run predates the rename, so its stages
+        re-solve under the new `bk-*-nvidia` names.
+      - `:winamd64`: the default build, not run yet. The consumers use its chain ORT (DirectML
+        and `onnxruntime_providers_shared.dll`), its media runtime and its cp314 ORT wheels in
+        `C:\runtime\wheels`, so those must stay.
+
+      No consumer needs CUDA from the Windows image (all eight repos surveyed 2026-09-27).
+      Every lane inherits `:winamd64` through the hub's actions at `@develop`, so publishing the
+      default build moves them all with no consumer commit. A lane that wants CUDA later needs
+      a variant input first: `container-ci-windows.yml` has no `image` input, and
+      `Get-CiImageReference` has no variant. After the publishes, run one DirectML G-API session, set BeschleunigerBallett's
       ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
       let AccelerANTgine tidy every `Src/` TU.
 - [b] **CON13 — Retire `:latest-cross` for good** [S, ★]. Blocked on the owner. Consumer
