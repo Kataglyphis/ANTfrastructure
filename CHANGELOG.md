@@ -40,7 +40,10 @@ changed since each published image), so none of this adds a re-key.
   tree that ships in `:winamd64`, and its 7.1 GB source tree no longer stays in the layer;
   the final stage puts LunarG's `vulkan-1.dll` on PATH (never System32; OpenGL stays
   host-only, the owner's decision); the app venv
-  installs `ai-edge-litert` from the lock; no baked `C:\workspace`.
+  installs `ai-edge-litert` from the lock; GStreamer's `gdkpixbuf` plugin builds on amd64,
+  `enabled` so its next loss fails meson setup; no baked `C:\workspace`. The first local
+  rebuild with Blackwell in the arch set found that sccache 0.18 aborts ORT's PTX-only LLM
+  kernels (mozilla/sccache#2862), so ORT's nvcc stays bare for such an arch list.
 - Decided (§ Deliberate): arm64/riscv64's distro GStreamer (CON21), their thin GCC
   (CON22), riscv64 TVM/IREE targets (CON24, with the flags in
   `riscv64-rva23-baseline.md`), lane-installed `cargo-audit`/`cargo-deny` and no Linux

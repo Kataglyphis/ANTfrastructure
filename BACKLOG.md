@@ -70,7 +70,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       In source since and shipped by the same rebuild (2026-09-26): CON9 and CON10
       (`clang_rt.profile` and a matching clang-tidy), CON25's Vulkan loader on PATH,
-      CON29 (no baked `C:\workspace`), and 7.1 GB less image, because the patched LLVM's
+      CON28 (LiteRT Python and the `gdkpixbuf` plugin), CON29 (no baked
+      `C:\workspace`), and 7.1 GB less image, because the patched LLVM's
       source and Ninja tree no longer stay in its layer. `versions.env` changed after
       0d85b8c1, so the chain rebuilds from base anyway.
 
@@ -261,17 +262,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
       `_USE_STD_VECTOR_ALGORITHMS=0` image-wide: it turns every vectorized algorithm off.
       Close when a production toolset ships #6298.
-- [ ] **CON28 — Smaller Windows absences** [S, ★]. Swept 2026-09-26:
+- [b] **CON28 — Smaller Windows absences** [S, ★]. Blocked on CON12. Swept 2026-09-26:
       - LiteRT Python is fixed in source and ships with CON12. Its exclusion from `uv sync`
         outlived its reason (2.1.3 had no cp314 wheel; the locked 2.1.6 has one). Measured
         in `:winamd64`'s app venv: it installs, and the app smoke passes it (13/15, 0 failed).
       - TAPPAS, `cargo-cbuild`, opus SIMD, Hailo's Windows pyhailort and `hailonet` are
         decided (§ Deliberate).
-      - Open: GStreamer's `gdkpixbuf` plugin on amd64: gdk-pixbuf 2.44.6 defaults `man=true` and
-        fails without rst2man, so the plugin falls out of auto-features. Pass
-        `-Dgdk-pixbuf:man=false` in `Build-GstreamerFromSource.ps1`, as the Linux riscv64
-        build does, and prove it with the next merge build (arm64 also needs a
-        build-machine `glib-compile-resources`: § Deliberate).
+      - GStreamer's `gdkpixbuf` plugin on amd64 is fixed in source (2026-09-26). gdk-pixbuf
+        2.44.6 defaults `man=true` and fails setup without rst2man, so the plugin fell out
+        of auto-features unseen. `Get-GstGdkPixbufMesonArgs` turns its man pages, tests and
+        typelib off and passes `gst-plugins-good:gdk-pixbuf=enabled`, so the next such loss
+        fails meson setup. The CON12 merge build is its first: check `gstgdkpixbuf.dll` in
+        its install. arm64 keeps it off (§ Deliberate).
 - [b] **CON29 — The baked `VOLUME C:\workspace`** [S, ★]. Blocked on CON12. Dropped in
       source with its `WORKDIR` (2026-09-26): nothing needed the directory, every caller
       passes `-w`, and the VOLUME left an anonymous volume per container.

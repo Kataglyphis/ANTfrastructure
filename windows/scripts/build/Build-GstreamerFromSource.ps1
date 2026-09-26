@@ -119,6 +119,18 @@ function Get-GstRocmMesonArgs {
         '-Dgst-plugins-bad:d3d11=enabled', '-Dgst-plugins-bad:d3d12=enabled')
 }
 
+# amd64 only (BACKLOG CON28). gdk-pixbuf 2.44.6 defaults man=true and fails setup without rst2man,
+# which took the gdkpixbuf plugin out of `auto` unseen; `enabled` makes the next such loss fail
+# setup instead. Its tests ship nothing and no consumer reads its typelib. The cross lane keeps
+# the plugin out: gdk-pixbuf runs glib-compile-resources at build time, and a cross build has
+# only the target's (docs/windows-cross-builds.md).
+function Get-GstGdkPixbufMesonArgs {
+    param([switch]$Cross)
+    if ($Cross) { return @() }
+    return @('-Dgst-plugins-good:gdk-pixbuf=enabled', '-Dgdk-pixbuf:man=false',
+        '-Dgdk-pixbuf:tests=false', '-Dgdk-pixbuf:introspection=disabled')
+}
+
 # Entries under the ROCm root, per search-path variable meson or its cmake probe reads (cmake maps a
 # PATH ...\bin to a package prefix). Returns only the variables that change: Name -> {Value, Removed}.
 function Get-GstRocmScrubbedSearchPath {
@@ -1171,7 +1183,7 @@ cpp_link_args = [$buildLinkArgs]
                 $requiredPlugins | Where-Object { $_.Detection -eq 'meson' } | ForEach-Object { "-D$($_.MesonOption)=enabled" }
             )
         }
-    ) + @(
+    ) + @(Get-GstGdkPixbufMesonArgs -Cross:$script:GstCross) + @(
         # glib's own test suite: 562 targets that ship nothing. The top-level
         # -Dtests=disabled covers the GStreamer modules only; glib is a wrap.
         '-Dglib:tests=false'
