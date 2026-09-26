@@ -1,0 +1,44 @@
+# APISIX boot config for the llm-stack gateway, rendered by render_apisix.py.
+# Changing it needs a restart (serve-stack.sh up); linux/llm-stack/README.md § Gateway.
+apisix:
+  node_listen:
+    - ip: ${listen_ip}
+      port: ${listen_port}
+  enable_admin: false
+  enable_control: false
+  enable_ipv6: false
+  ssl:
+    enable: false
+  extra_lua_path: "/usr/local/apisix/custom/?.lua"
+  lua_module_hook: "geniex_hook"
+  max_post_args_readable_size: 16
+  status:
+    ip: ${status_ip}
+    port: ${status_port}
+  data_encryption:
+    enable_encrypt_fields: false
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: json
+nginx_config:
+  worker_processes: 2
+  error_log_level: warn
+  # Workers only see declared variables; without this every hot reload fails.
+  envs: ${key_vars}
+plugins:
+  - key-auth
+  - consumer-restriction
+  - mocking
+  - geniex-shape
+  - ai-proxy-multi
+  - file-logger
+  - prometheus
+plugin_attr:
+  ai-proxy:
+    http_client: lua-resty-http
+  prometheus:
+    export_addr:
+      ip: ${metrics_ip}
+      port: ${metrics_port}
+    llm_latency_buckets: [100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 120000, 180000, 300000, 600000, 1200000, 1800000]

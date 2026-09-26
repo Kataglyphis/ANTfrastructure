@@ -1,0 +1,31 @@
+# The gateway: APISIX in front of the GenieX lanes (P1: the lab only, no UI yet).
+# Start it with scripts/serve-stack.sh, which renders and validates everything
+# this file mounts: linux/llm-stack/README.md § Gateway. Valid on its own and on
+# top of docker-compose.yml; P2 adds the Open WebUI rewiring here.
+services:
+  apisix:
+    # The only place the image is pinned; render_apisix.py --print-image reads it.
+    image: docker.io/apache/apisix:3.18.0-debian@sha256:84e6b5e787e9f889ebff88161cb9a16599bafcffa236c6b54c7f779a0655940d
+    # Host networking: the lanes are on the host's 127.0.0.1, and config.yaml
+    # binds every listener to 127.0.0.1 itself (no ports: under host mode).
+    network_mode: host
+    environment:
+      APISIX_STAND_ALONE: "true"
+    env_file:
+      - ${ANTFRASTRUCTURE_LLM_GATEWAY_DIR:?run scripts/serve-stack.sh, which sets it}/live/runtime.env
+    volumes:
+      - ${ANTFRASTRUCTURE_LLM_GATEWAY_DIR:?run scripts/serve-stack.sh}/live/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ${ANTFRASTRUCTURE_LLM_GATEWAY_DIR:?run scripts/serve-stack.sh}/live/apisix.json:/usr/local/apisix/conf/apisix.json:ro
+      - ${ANTFRASTRUCTURE_LLM_GATEWAY_DIR:?run scripts/serve-stack.sh}/live/lua:/usr/local/apisix/custom:ro
+      - ${ANTFRASTRUCTURE_LLM_GATEWAY_DIR:?run scripts/serve-stack.sh}/logs:/var/log/gateway
+    healthcheck:
+      # The image has no curl; bash's /dev/tcp asks the status listener instead.
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c "exec 3<>/dev/tcp/127.0.0.1/$${GW_STATUS_PORT}
+          && printf 'GET /status/ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

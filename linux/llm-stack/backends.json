@@ -17,7 +17,9 @@
     "  request_extra  JSON object merged into the request body BEFORE the caller's own keys, so an explicit model/max_tokens/temperature always wins. One level deep. Use it for per-backend knobs: {\"num_ctx\": 16384} on Ollama, {\"chat_template_kwargs\": {\"enable_thinking\": false}} on a Qwen server.",
     "  probe          Default true. false stops the tools asking /v1/models what this endpoint serves -- set it on paid hosts, where a discovery request costs money or is not offered. A probe:false backend must name its 'model' here or be given --model.",
     "",
-    "A 'control' backend is the calibration point: when every candidate fails a case there is no way to tell a hard case from a broken one. Point it at the strongest endpoint you have (a hosted model, or the LAN Ollama) and the benchmarks will flag a case the control also fails as suspect rather than as evidence about the candidates."
+    "A 'control' backend is the calibration point: when every candidate fails a case there is no way to tell a hard case from a broken one. Point it at the strongest endpoint you have (a hosted model, or the LAN Ollama) and the benchmarks will flag a case the control also fails as suspect rather than as evidence about the candidates.",
+    "",
+    "The lab-* entries reach the GenieX lanes THROUGH the gateway (APISIX, scripts/serve-stack.sh); the top-level 'serving' block below is what the gateway is rendered from. Both: linux/llm-stack/README.md § Gateway."
   ],
   "default": "ollama",
   "backends": {
@@ -36,13 +38,18 @@
     },
     "geniex-gpu": {
       "base_url": "http://127.0.0.1:18182",
-      "model": "unsloth/Qwen3-4B-GGUF:Q4_0",
-      "note": "Adreno GPU. Composes with the NPU lane at ~0% mutual cost."
+      "model": "unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_0",
+      "note": "Adreno GPU. Composes with the NPU lane at ~0% mutual cost. Serves the Instruct-2507 GGUF since 2026-09-25: it is the gateway's chat-long lane (owner decision), so runs before that date measured the base Qwen3-4B GGUF."
     },
     "geniex-cpu": {
       "base_url": "http://127.0.0.1:18184",
       "model": "unsloth/Qwen3-4B-GGUF:Q4_0",
       "note": "Oryon CPU. Fastest GGUF backend here, but pegs 7.5 of 8 cores."
+    },
+    "geniex-cpu-9b": {
+      "base_url": "http://127.0.0.1:18184",
+      "model": "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M",
+      "note": "The CPU lane with the 9B distill: what the gateway's agent alias serves, and the direct baseline for lab-agent and lab-raw-cpu. A separate entry so geniex-cpu, which the lab's commands measure, keeps its 4B. Start the lane with -Models @{cpu='empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M'} to warm this model instead."
     },
     "geniex-cpu-shim": {
       "base_url": "http://127.0.0.1:18190",
@@ -63,6 +70,81 @@
       "api_key_env": "MISTRAL_API_KEY",
       "probe": false,
       "note": "HOSTED, COSTS MONEY. The GLM-5.2 endpoint docs/mistral-vibe-glm-setup.md already configures for the coding agent, reused here as a strong control. Export MISTRAL_API_KEY first (console.mistral.ai/api-keys); the key never goes in this file. probe:false because a paid host should not be asked what it serves - the model id above is exact (zai-glm-5-2, not glm-5.2)."
+    },
+    "lab-chat": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "chat",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway: the chat alias. NPU first; a request estimated over the budget, or refused by the NPU for its context, goes to the GPU lane; the pinned tools prompt is added when tools are sent. Replies carry the lane's model id."
+    },
+    "lab-chat-long": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "chat-long",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway: the chat-long alias, the GPU lane (16k context), T=0 rewritten to greedy."
+    },
+    "lab-agent": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "agent",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway: the agent alias, the CPU lane with the 9B distill (geniex-cpu-9b), T=0 rewritten to greedy."
+    },
+    "lab-raw-npu": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "raw-npu",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway with no GenieX shaping, lab key only: the transparency path against geniex-npu. APISIX still re-encodes the body with sorted keys, pins the lane's model and forces stream_options on streams."
+    },
+    "lab-raw-gpu": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "raw-gpu",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway with no GenieX shaping, lab key only: the transparency path against geniex-gpu (same caveats as lab-raw-npu)."
+    },
+    "lab-raw-cpu": {
+      "base_url": "http://127.0.0.1:9080",
+      "model": "raw-cpu",
+      "api_key_env": "GW_KEY_LAB",
+      "probe": false,
+      "note": "Through the gateway with no GenieX shaping, lab key only: the transparency path against geniex-cpu-9b (same caveats as lab-raw-npu)."
+    }
+  },
+  "serving": {
+    "_comment": [
+      "Read only by linux/llm-stack/gateway/render_apisix.py, which renders the APISIX gateway from it and refuses anything it cannot vouch for: linux/llm-stack/README.md § Gateway.",
+      "A lane names a backends entry; its base_url and model are what the gateway sends. A route is an alias clients ask for. consumers maps a client to the NAME of the variable holding its key.",
+      "The prompt sha256 pins the raw bytes P8.1 measured: the CRLF working copy of OrchestrANT's benchmarks/prompts/tool-disambiguation.md, 1823 bytes."
+    ],
+    "gateway": {
+      "listen": "127.0.0.1:9080",
+      "status_listen": "127.0.0.1:7085",
+      "metrics_listen": "127.0.0.1:9091",
+      "consumers": {"webui": "GW_KEY_WEBUI", "lab": "GW_KEY_LAB", "agent": "GW_KEY_AGENT"},
+      "lab_consumer": "lab",
+      "estimate": {"bytes_per_token": 3.0, "default_reserve": 1024},
+      "drop_fields": ["power_mode"],
+      "prompts": {
+        "tool-disambiguation": {
+          "file": "tool-disambiguation.md",
+          "sha256": "970a8e4fcaf8540f55be6011c06ee33489e7915774ffc304d4022482b743e709"
+        }
+      },
+      "raw_routes": true
+    },
+    "lanes": {
+      "npu": {"backend": "geniex-npu", "format": "qairt", "context": 4096, "timeout_s": 300, "t0_rewrite": false},
+      "gpu": {"backend": "geniex-gpu", "format": "gguf", "context": 16384, "timeout_s": 1800, "t0_rewrite": true},
+      "cpu": {"backend": "geniex-cpu-9b", "format": "gguf", "context": 16384, "timeout_s": 1800, "t0_rewrite": true}
+    },
+    "routes": {
+      "chat": {"lane": "npu", "overflow_lane": "gpu", "budget_tokens": 3900, "tools_prompt": "tool-disambiguation"},
+      "chat-long": {"lane": "gpu"},
+      "agent": {"lane": "cpu"}
     }
   }
 }

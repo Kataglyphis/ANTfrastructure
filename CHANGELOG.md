@@ -250,6 +250,57 @@ held equal. `ContainerImage.CiRef.Tests.ps1` now does: all three refs against
 versions.env, arm64 refused without `-Windows`, and a missing arm64 key throws.
 Breaking the arm64 key lookup fails it.
 
+## 2026-09-25 - An APISIX gateway in front of the GenieX lanes (P1: the lab only)
+
+`linux/llm-stack` gains a gateway: APISIX 3.18.0, pinned by digest, on
+`127.0.0.1:9080`. Clients ask for an alias (`chat`, `chat-long`, `agent`) with
+their own key (`webui`, `lab`, `agent`), and the gateway applies the GenieX rules
+the lab measured. `chat` goes to the NPU. A request estimated too large for its
+4k context goes to the GPU before anything is sent, and an NPU
+`400 context_length_exceeded` is sent to the GPU once. With tools, the request
+gets the tools prompt P8.1 measured, pinned by the sha256 of its raw bytes. T=0 is
+made greedy on the GGUF lanes only. The NPU times out at 300 s and the GGUF lanes
+at 1800 s. Nothing is retried once a reply has started, and nothing probes a lane.
+`raw-<lane>` routes, lab key only, skip the shaping; they are the transparency
+path for the acceptance runs.
+
+Everything is rendered from a new top-level `serving` block in `backends.json`
+by `gateway/render_apisix.py`, which refuses an unknown lane or key, a GGUF on
+the QAIRT lane, a missing prompt, a prompt sha mismatch, a listener off
+loopback, a route id emitted twice and a lane that is the gateway itself.
+`scripts/serve-stack.sh up|reload|down|status|keys|validate` boots each
+candidate in a throwaway container before it goes live, rewrites `apisix.json` in
+place and waits until `/gateway/info` reports the new config sha. APISIX alone
+cannot do four of the rules, so a custom plugin (`geniex-shape`) and a hook
+(`geniex_hook`) that patches four APISIX internals carry them. That hook is why
+an APISIX bump now needs the new e2e suite green (AGENTS.md § LLM Stack).
+
+The registry: `geniex-gpu` now names the Instruct-2507 GGUF (the chat-long lane,
+an owner decision; earlier `geniex-gpu` runs measured the base 4B GGUF). The 9B
+agent lane is a NEW entry, `geniex-cpu-9b`, because re-pointing `geniex-cpu`
+would change what the lab's existing commands measure. Six `lab-*` entries reach
+the lanes through the gateway with `GW_KEY_LAB` and `probe: false`.
+`Start-GeniexServers.ps1` takes `-BindAddress` (default `0.0.0.0`, unchanged),
+and warns when a lane it skips as already running listens somewhere else.
+
+Tests: `test_gateway_render.py` (52 offline, with the overlay and `serve-stack.sh
+keys`), and `tests/gateway_e2e/`, 79 tests against the real image and three fake
+lanes (`GATEWAY_E2E=1`; CI job `gateway-e2e` on x64 and arm64). All 79 passed
+live under rootless nerdctl on the arm64 dev host. Removing each hook patch, the
+worker `envs` or the prompt insert turned the suite red where it should. That
+run also found a reload rollback that restored `apisix.json` but not
+`render.json`; fixed. An adversarial review then found and fixed, each with a
+test that was red first: `live/runtime.env` (every key in clear) left 0644 by
+the install's `chmod -R a+rX`; `geniex-shape` re-encoding a shaped body with
+cjson's 14 significant digits (a seed of 123456789012345 reached the lane as
+123456789012340); route ids an alias could repeat, which APISIX resolves by
+silently keeping the last; a lane pointing at the gateway itself; and an
+acceptance step (raise `budget_tokens` past the NPU's context) the renderer
+refuses. The review also added the R5 cases (no request sent twice, no 429,
+no cap, a client hang-up closes the lane's connection), loopback-only
+listeners and the hook surviving a hot reload. Details:
+`linux/llm-stack/README.md` § Gateway.
+
 ## 2026-09-25 - HIP compiles in the rocm image: TheRock's clang loads the `<cmath>` overlay
 
 With torch through (entry below), the rocm chain built `bk-winamd64-rocm` and the

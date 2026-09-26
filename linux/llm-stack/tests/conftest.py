@@ -20,6 +20,8 @@ import pytest
 # The two modules that talk to a live server on purpose; both skip themselves
 # when nothing answers.
 _LIVE_ENDPOINT_MODULES = {"test_harness_against_ollama.py", "test_v1_api.py"}
+# The gateway e2e starts its own APISIX container; it skips unless GATEWAY_E2E=1.
+_LIVE_ENDPOINT_DIRS = {"gateway_e2e"}
 
 # Ports bound by this process: a stub server a test started itself.
 _OWN_PORTS = set()
@@ -48,6 +50,8 @@ class NetworkAccessInATest(RuntimeError):
 @pytest.fixture(autouse=True)
 def no_network(request, monkeypatch):
     if os.path.basename(str(request.node.fspath)) in _LIVE_ENDPOINT_MODULES:
+        return
+    if os.path.basename(os.path.dirname(str(request.node.fspath))) in _LIVE_ENDPOINT_DIRS:
         return
     if request.node.get_closest_marker("inference"):
         return
