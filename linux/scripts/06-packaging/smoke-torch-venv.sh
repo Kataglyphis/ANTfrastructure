@@ -528,6 +528,43 @@ PYEOF
   fi
 }
 
+# `import tvm` is not codegen: tvm/base.py falls back to its runtime without a word when
+# libtvm_compiler.so does not load, which is how amd64 shipped a TVM that compiled nothing
+# (BACKLOG CON35). A shipped compiler must load, and with LLVM compiled in it must build
+# one PrimFunc for the host. Exit status is not evidence: a pass needs the OK sentinel.
+assert_tvm_codegen() {
+  local out rc
+  if out="$("${PY}" - 2>&1 <<'PYEOF'
+import os, sys
+try:
+    import tvm
+except Exception as e:
+    print("TVM-CODEGEN SKIP: tvm not importable (%s)" % e)
+    sys.exit(3)
+if not os.path.exists(os.path.join(os.path.dirname(tvm.__file__), "lib", "libtvm_compiler.so")):
+    print("TVM-CODEGEN SKIP: a runtime-only tvm, no libtvm_compiler.so")
+    sys.exit(3)
+if tvm.base._RUNTIME_ONLY:
+    print("TVM-CODEGEN FAIL: libtvm_compiler.so ships but did not load")
+    sys.exit(1)
+llvm = str(tvm.support.libinfo().get("USE_LLVM", "OFF"))
+if llvm.upper() in ("", "OFF", "0", "FALSE"):
+    print("TVM-CODEGEN SKIP: built without LLVM (USE_LLVM=%s)" % llvm)
+    sys.exit(3)
+from tvm import te
+a = te.placeholder((8,), name="a")
+f = te.create_prim_func([a, te.compute((8,), lambda i: a[i] * 2.0, name="b")])
+(tvm.compile if hasattr(tvm, "compile") else tvm.build)(f, target="llvm")
+print("TVM-CODEGEN OK: one PrimFunc compiled for llvm (USE_LLVM=%s)" % llvm)
+PYEOF
+  )"; then rc=0; else rc=$?; fi
+  case "${rc}:${out}" in
+    0:*"TVM-CODEGEN OK: "*) pass "tvm codegen: ${out##*TVM-CODEGEN OK: }" ;;
+    3:*"TVM-CODEGEN SKIP: "*) echo "  SKIP tvm codegen: ${out##*TVM-CODEGEN SKIP: }" ;;
+    *) fail "tvm codegen (rc=${rc}): ${out:-no output}" ;;
+  esac
+}
+
 main() {
   echo "=== smoke: torch venv integrity (${VENV}) ==="
   if [ ! -x "${PY}" ]; then
@@ -633,6 +670,7 @@ STV_PY
     else
       fail "onnxruntime InferenceSession FAILED on the generated Add graph: ${_stv_onnx_out}"
     fi
+    assert_tvm_codegen
   fi
 
   # Not just "importable" but "the CORRECT versions": assert each ML package

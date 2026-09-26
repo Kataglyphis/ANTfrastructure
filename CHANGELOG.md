@@ -51,7 +51,9 @@ changed since each published image), so none of this adds a re-key.
   by the owner's decision (CON25). CON27 waits on microsoft/STL#6298.
 - Found on the way: amd64's GCC carried 4.4 GB of unstripped cross compilers, because
   `build-gcc.sh` stripped with the target's `strip` alone; the build machine's runs too now
-  (CON36). amd64's TVM cannot load its compiler library, filed as CON35.
+  (CON36). amd64's TVM could not load its compiler library: a native build linked apt's
+  bootstrap LLVM, which the image lacks. It links the LLVM the image ships now, and the venv
+  smoke fails a TVM that cannot compile (CON35).
 
 ## 2026-09-26 - The reusable Windows lane takes a caller's secrets
 

@@ -16,6 +16,59 @@ acting; a number here is a date's measurement.**
 is blocked on the owner. A fix in source is not a fix in an image: the Linux ones ship
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
 
+## Handoff — 2026-09-26, work in flight
+
+The session that swept this backlog ran out of budget with work in flight. Start here.
+
+- **Where the work lives.** The hub's dev worktree is `C:\GitHub\ANTfrastructure-wfnames`, a
+  detached HEAD: `develop` is 738d07e3, and the CON35 commit on top of it is local only. That
+  worktree and `C:\GitHub\ANTfrastructure-con12` share OmniAccelerANT's submodule gitdir, so a
+  commit in one shows in the other. Push a sha with `git push origin <sha>:refs/heads/develop`;
+  no local branches.
+- **CON12: a local `:winamd64` rebuild was running** from `C:\GitHub\ANTfrastructure-con12` at
+  6fe2992f (`pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-Buildkit.ps1 -Gpu`,
+  started 16:13). It has no `-PushRef`, so it pushes nothing. Stage logs are in that worktree's
+  `out\windows-build-logs\bk-*.log`. Base, nvidia and patched-llvm were cache hits; ORT reached
+  [2222/2383] at 17:35 with its nvcc bare, as 6fe2992f intends. Run 1 had died at [2323/2383] on
+  sccache#2862, with 0.1 GB of host RAM left in that tail. Never edit that worktree while a
+  driver runs from it.
+  1. The run predates 738d07e3 (CON28's `gdkpixbuf`). When the merge stage starts
+     (`==> [bk:Dockerfile.media-merge-builder:built]`), stop the driver, run
+     `git -C C:\GitHub\ANTfrastructure-con12 checkout --detach 738d07e3` and relaunch. Every
+     earlier stage is a cache hit, because only the merge RUN mounts
+     `Build-GstreamerFromSource.ps1`. Then check for `gstgdkpixbuf.dll` in the merge's install.
+  2. If the driver died with its session, relaunch the same command; finished stages are cache
+     hits.
+  3. When it is done, grade the smoke gate, the publish gate and the G6 census (CON12, "After
+     the rebuild"). Ask the owner before any GHCR push
+     (`-PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`).
+- **CON35 is committed, not pushed.** What remains unproven is that a TVM built by the new
+  `tvm.sh` loads and compiles. Run the build only after ORT's tail, which needs the host's RAM.
+  In the amd64 `:latest`, as root, with the hub mounted read-only at `/hub`, run
+  `ln -s /usr/local/llvm-target /opt/llvm-target`. Then run
+  `TVM_JOBS=8 bash /hub/linux/scripts/05-frameworks/tvm.sh --ref v0.26.0 --prefix /work/tvm-out --workdir /work/tvm-src --no-apt --no-python`.
+  Its log must say `Using LLVM CMake package: /usr/local/llvm-target/lib/cmake/llvm`, and `ldd`
+  must resolve the new `libtvm_compiler.so`'s `libLLVM.so.23.1` to `/usr/local/llvm-target/lib`.
+  Copy it and `libtvm_runtime.so` into `/opt/venv/lib/python3.14/site-packages/tvm/lib/`. Then
+  run `assert_tvm_codegen` from `smoke-torch-venv.sh`, lifted with `awk` and with `pass`/`fail`
+  stubbed; it must PASS. Record the result in CON35.
+- **Pushes need the owner's OK, each time.** The pre-push hook grades every mutation since
+  `origin/main` (961 entries from 168 commits on 2026-09-26), so it times out while a chain
+  loads the host. The owner allowed `--no-verify` for 6fe2992f and 738d07e3 only. The
+  pre-commit hook needs `PYTHONUTF8=1` and grades the working tree, so stash unrelated edits
+  before a commit.
+- **Owner-only housekeeping** (the host, not the images):
+  - Rancher Desktop's `ext4.vhdx` is about 28.6 GB after an agent's 26 GB copy. Compact it
+    with Rancher stopped.
+  - Stop the orphaned `tail` processes from earlier sessions:
+    `Get-Process tail | Where-Object StartTime -lt '2026-09-25' | Stop-Process`.
+  - After CON12, prune the spike caches:
+    `& "$env:ProgramFiles\Stevedore\bin\buildctl.exe" prune --filter "description~=spike.complete"`.
+  - Remove the stale scratch worktree at 75cf5760 that
+    `git -C C:\GitHub\OmniAccelerANT\.git\modules\third_party\ContainerHub worktree list`
+    still names.
+  - QEMU arm64 stays registered in Rancher's VM until the VM restarts.
+
 ## Protocol
 
 The agentic loop's format (`docs/windows-agentic-loop.md`):
@@ -36,6 +89,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - CON15–CON21, CON23 and CON36: the toolchain, Python, Vulkan, tool, libcamera and
         strip fixes of 2026-09-26. `docs/consumer-image-contract.md` § What changes with the image
         after CON11 lists them for consumers.
+      - CON35: amd64's TVM links the LLVM the image ships, and the venv smoke fails a TVM
+        that cannot compile (2026-09-26).
       - pyhailort: a real module instead of the empty one
         (889417c7/0ef22316; `docs/hailo-support.md`).
 
@@ -47,6 +102,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Check `platforms/android-37.0` in the image, then drop OmniAccelerANT's
         `permission_handler_android` pin.
       - Check that `import hailo_platform` works on amd64 and arm64.
+      - Check the venv smoke's `tvm codegen` line: it must PASS on amd64 and arm64, and
+        riscv64 reports what it has.
       - Retire the consumer workarounds the contract table names: the injected
         `--gcc-toolchain` (BeschleunigerBallett, OmniAccelerANT, AccelerANTgine), the
         `unset VIRTUAL_ENV UV_PYTHON` lines (WebDavClient, OrchestrANT), the Pi runners'
@@ -156,14 +213,24 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       own GTK 4, and keeps them with a warning if anything else would go with them. Measured
       on `ec4bb68b`: the registry (308 plugins, 1601 features), `gtk4paintablesink` and
       OpenCV's GStreamer backend are unchanged. arm64 and riscv64: § Deliberate.
-- [ ] **CON35 — amd64's TVM cannot generate code** [S–M, ★★]. `libtvm_compiler.so` was
-      linked against an all-targets `libLLVM.so.23.1`, and at run time the loader finds
-      `/usr/local/llvm-target/lib`'s x86-only copy first (`copy-media-payloads.sh`):
-      `undefined symbol: LLVMInitializeAArch64TargetInfo`. `tvm/base.py` then falls back to
-      the runtime silently, so `tvm.target.Target` does not exist and nothing fails loudly.
-      riscv64 is unverified. Found 2026-09-26 in the CON24 sweep. Close by resolving
-      `libtvm_compiler.so` against the LLVM it was built with (RUNPATH or a staged copy),
-      with a smoke that compiles one PrimFunc.
+- [b] **CON35 — amd64's TVM cannot generate code** [S–M, ★★]. Blocked on CON11.
+      `libtvm_compiler.so` was linked against an all-targets `libLLVM.so.23.1`. At run time
+      the loader finds the only 23.1 in the image, `/usr/local/llvm-target/lib`'s X86-only
+      copy: `undefined symbol: LLVMInitializeAArch64TargetInfo`. `tvm/base.py` then falls back
+      to the runtime (`tvm.base._RUNTIME_ONLY`), and nothing fails loudly. Found 2026-09-26 in
+      the CON24 sweep. Root cause: a native build took `llvm-config-23`, apt's bootstrap LLVM
+      (branch head, every target), which never reaches the final image. Fixed in source
+      (2026-09-26):
+      - `tvm.sh` `resolve_tvm_llvm` links a native build against the CMake package at
+        `/opt/llvm-target`, the tree `Dockerfile.package` ships as `/usr/local/llvm-target`,
+        as a cross build links its target's. amd64's TVM then emits X86 code only, as arm64's
+        emits AArch64 only. `tests/test-tvm-llvm-resolve.sh` and two `mutations.json` entries
+        hold it.
+      - `smoke-torch-venv.sh` `assert_tvm_codegen` fails a TVM whose compiler ships but does
+        not load, and one built with LLVM that cannot compile a PrimFunc. Measured on
+        `ec4bb68b`: red on amd64, green on arm64 under QEMU. riscv64 is unverified, and the
+        smoke will say.
+      - Not yet proven: a TVM built by the new `tvm.sh` (§ Handoff).
 - [b] **CON36 — amd64's GCC carries 4.4 GB of unstripped cross compilers** [S, ★].
       Blocked on CON11. `/opt/gcc-16.2.0` is 4.9 GB, and 52 of its 99 x86-64 binaries are
       unstripped: the `aarch64-` and `riscv64-linux-gnu` compilers' (their `cc1plus` 444 and

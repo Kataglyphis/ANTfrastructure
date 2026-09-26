@@ -417,6 +417,7 @@ retires a workaround a consumer carries today; drop it once your lane runs on th
 | A caller's `LD_LIBRARY_PATH`/`GST_PLUGIN_PATH` | the entrypoint put `/opt/libcamera` ahead of it, and a host `libstdc++` in it shadowed GCC's | the image's libcamera goes after it and `${GCC_PREFIX}`'s runtime before it, so a Raspberry Pi host-libcamera run needs no `--entrypoint` |
 | The distro GStreamer 1.28 runtime | installed beside `/opt/gstreamer` | dropped on amd64; kept on arm64/riscv64, where `libgstgtk4.so` needs Ubuntu's GTK 4 |
 | Android API 37 | missing although pinned (a stale SDK cache) | `platforms/android-37.0` and `build-tools/37.0.0` |
+| TVM on amd64 | `import tvm` works, but its compiler library needs an LLVM the image lacks, so TVM loads runtime-only and compiles nothing | linked against `/usr/local/llvm-target`'s LLVM (X86 codegen, as arm64's is AArch64); the image smoke compiles one PrimFunc |
 
 ## The Android SDK roots are advertised
 
