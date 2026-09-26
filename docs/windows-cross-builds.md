@@ -41,9 +41,11 @@ produce, and which gates keep it honest.
 > x86_64-only prebuilt (upstream's CMake path with its constraint-provider stub is an unattempted
 > port, backlog #133(d)); **classic TensorRT** (x64-only; TensorRT-RTX is the arm64 successor and
 > is not wired — CUDA/cuDNN **are** cross-built since #176); and the **torch app stage**, because
-> `uv sync` must execute the target interpreter. Two
-> GStreamer pieces are absent on BOTH lanes and so are not parity gaps: the optional `gdkpixbuf`
-> plugin (arm64: `glib-compile-resources`; amd64: `rst2man`) and anything needing `cargo-cbuild`.
+> `uv sync` must execute the target interpreter. The optional
+> `gdkpixbuf` GStreamer plugin is absent on arm64 only since 2026-09-26: gdk-pixbuf runs
+> `glib-compile-resources` at build time, and a cross build has only the target's (amd64 lost
+> it to a missing `rst2man` until `Get-GstGdkPixbufMesonArgs` turned the man pages off).
+> Anything needing `cargo-cbuild` is absent on BOTH lanes, so it is not a parity gap.
 >
 > **Barely verified — the asymmetry that outranks every number above:** until 2026-09-25 no
 > arm64 binary produced by this repo had been *executed*, anywhere. Its wheels ship **staged,
