@@ -89,7 +89,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       two API 37 pins, so every build after 2bb0410f restored the SDK tree cached on
       2026-08-22, skipped the install, and passed a smoke that checked build-tools 36
       only. Fixed in source:
-      - the id names every pin in `android-sdk.sh`'s `sdk_packages`, and
+      - the id names every pin in `android-sdk.sh`'s `sdk_components`, and
         `tests/test-android-sdk-cache-key.sh` holds it (it names the two pins against
         the old Dockerfile);
       - a restored tree is checked against the list by the paths sdkmanager records in
