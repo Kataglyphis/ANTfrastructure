@@ -20,6 +20,20 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
+# sccache 0.18 aborts an nvcc compile whose output is PTX only ('Missing "cubin" file output',
+# mozilla/sccache#2862, open), and ORT builds its LLM kernels for 120/121 as compute_12x PTX on
+# MSVC (REPLACE_SM120_REAL_WITH_VIRTUAL: native sm_120a pulls tcgen05 headers MSVC cannot host).
+# With Blackwell in the arch list nvcc therefore stays bare here; C/C++ keep the launcher. The
+# 2026-09-26 chain, the first with 120, died at [2323/2383] on fpA_intB_gemm (BACKLOG CON12).
+function Disable-OrtCudaLauncherForPtx {
+    param([string]$Architectures = (Get-CudaArchitectureList))
+    if ($env:SCCACHE_CUDA_LAUNCHER -ne '1') { return $false }
+    if (-not @($Architectures -split ';' | Where-Object { $_ -match '^12[01]' }).Count) { return $false }
+    $env:SCCACHE_CUDA_LAUNCHER = ''
+    Write-Host "nvcc stays bare for ONNX Runtime: CUDA_ARCHITECTURES=$Architectures names Blackwell, whose LLM kernels compile as PTX only, which sccache cannot cache (mozilla/sccache#2862)"
+    return $true
+}
+
 # ── rocm-lane WebGPU EP spike (ORT_WEBGPU=1): the in-tree EP over Dawn/D3D12 with a pinned DXC.
 #    Inputs, fetches and the clang-cl notes: docs/windows-rocm.md § ONNX Runtime WebGPU EP.
 function Get-OrtWebGpuPlan {
@@ -441,8 +455,9 @@ $cxxFlags = (@('/WX-', $baseSimdFlags, $x86OnlyFlags,
                '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value',
                (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
 
-# CUDA stays BARE: the sccache launcher is opt-in at the wiring site (Invoke-CmakeConfigure
-# honors only SCCACHE_CUDA_LAUNCHER=1) -- docs/windows-build-resources.md.
+# CUDA stays BARE unless SCCACHE_CUDA_LAUNCHER=1 (Invoke-CmakeConfigure honors only that), and
+# Disable-OrtCudaLauncherForPtx takes it back for a Blackwell arch list --
+# docs/windows-build-resources.md.
 
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 skips the ~1h CUDA/TensorRT kernel compiles so the DirectML clang-cl patch
@@ -459,6 +474,7 @@ $gpuArgs = @()
 $cudaUsable = $gpuEnv.HasCuda -and ((-not $onnxCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
 if ($cudaUsable) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
+    $null = Disable-OrtCudaLauncherForPtx
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
     # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.

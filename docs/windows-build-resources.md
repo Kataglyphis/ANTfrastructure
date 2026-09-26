@@ -393,6 +393,14 @@ after a decision history worth keeping:
   compiles through the launcher, link green).
 - Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the
   default off silently.**
+- **Except with Blackwell in the arch list (2026-09-26).** sccache 0.18.0 aborts an nvcc
+  compile whose output is PTX only (`Missing "cubin" file output`, mozilla/sccache#2862,
+  open), and ORT compiles `onnxruntime_providers_cuda_llm` for 120/121 as `compute_12x` PTX
+  on MSVC (`REPLACE_SM120_REAL_WITH_VIRTUAL`: native `sm_120a` pulls tcgen05 headers MSVC
+  cannot host). The first chain with `120` died at [2323/2383] on `fpA_intB_gemm`, so
+  `Build-OnnxFromSource.ps1` `Disable-OrtCudaLauncherForPtx` keeps nvcc bare, and says so,
+  whenever `CUDA_ARCHITECTURES` names 120 or 121; C/C++ keep the launcher. Drop it when a
+  released sccache fixes #2862. OpenCV passes `-real` archs only and is unaffected.
 
 ### What the published image carries
 

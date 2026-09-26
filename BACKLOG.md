@@ -74,6 +74,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       source and Ninja tree no longer stay in its layer. `versions.env` changed after
       0d85b8c1, so the chain rebuilds from base anyway.
 
+      The first local rebuild (2026-09-26) found one more: with Blackwell in the arch set,
+      ORT's LLM kernels compile as PTX only on MSVC, and sccache 0.18 aborts those nvcc
+      compiles (mozilla/sccache#2862). ORT's nvcc now stays bare for such an arch list.
+
       After the rebuild, grade the ENV gate (`Assert-ImageEnvPublishable`) and the
       G6 census. Then run one DirectML G-API session, set BeschleunigerBallett's
       ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
