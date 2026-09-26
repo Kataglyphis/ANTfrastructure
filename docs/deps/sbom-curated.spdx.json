@@ -975,8 +975,8 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-75c18a6a",
-      "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32, the pinned copy and its licence in C:\\vulkan-loader; rocm variant only)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-fe666ae8",
+      "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images)",
       "versionInfo": "1.4.357.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
@@ -1001,8 +1001,8 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-ddee6c4d",
-      "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv; rocm variant only)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-77c3fb1b",
+      "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images)",
       "versionInfo": "2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*)",
       "downloadLocation": "https://github.com/google-ai-edge/LiteRT",
       "filesAnalyzed": false,
@@ -2176,7 +2176,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-75c18a6a"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-fe666ae8"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
@@ -2186,7 +2186,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-ddee6c4d"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-77c3fb1b"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

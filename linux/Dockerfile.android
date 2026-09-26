@@ -113,7 +113,7 @@ COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/
 # Dockerfile.media): android-sdk.sh only runs on amd64 build hosts and the
 # downloaded payload (cmdline-tools zip, Java tooling, sdkmanager packages,
 # NDK) is identical for every target arch — packages are keyed by name+version,
-# not build arch. The id names EVERY pin in android-sdk.sh's sdk_packages
+# not build arch. The id names EVERY pin in android-sdk.sh's sdk_components
 # (tests/test-android-sdk-cache-key.sh), so any pin bump invalidates the cache;
 # the two API 37 pins were missing from it, and a 2026-08-22 tree without them
 # was restored into every image built after (BACKLOG CON14). sharing=locked

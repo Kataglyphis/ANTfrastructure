@@ -103,9 +103,9 @@ apt-get install -y --no-install-recommends \
 # Unset/absent cache dir (script run outside the Dockerfile) => plain install.
 ANDROID_SDK_CACHE_DIR="${ANDROID_SDK_CACHE_DIR:-}"
 
-# Every package the image ships. Dockerfile.android's cache id names each pin in
+# Every sdkmanager component the image ships. Dockerfile.android's cache id names each pin in
 # this list (tests/test-android-sdk-cache-key.sh).
-sdk_packages=(
+sdk_components=(
   "cmake;${ANDROID_CMAKE_VERSION}"
   "platform-tools"
   "platforms;android-${ANDROID_COMPILE_SDK}"
@@ -120,14 +120,14 @@ sdk_packages=(
   "extras;google;m2repository"
 )
 
-# Prints each of sdk_packages that ${ANDROID_HOME} does not hold, by the path
+# Prints each of sdk_components that ${ANDROID_HOME} does not hold, by the path
 # sdkmanager records in every installed package's package.xml. A restored cache
 # tree once lacked the two API 37 packages, and nothing noticed (BACKLOG CON14).
-sdk_missing_packages() {
+sdk_missing_components() {
   local installed pkg
   installed="$(find "${ANDROID_HOME}" -maxdepth 4 -name package.xml -exec \
     sed -n 's/.*localPackage path="\([^"]*\)".*/\1/p' {} + 2>/dev/null || true)"
-  for pkg in "${sdk_packages[@]}"; do
+  for pkg in "${sdk_components[@]}"; do
     grep -qxF "${pkg}" <<<"${installed}" || printf '%s\n' "${pkg}"
   done
 }
@@ -144,9 +144,9 @@ if [ -n "${sdk_cache_tree}" ] && [ -d "${sdk_cache_tree}" ]; then
   mkdir -p "${ANDROID_HOME}"
   cp -a "${sdk_cache_tree}/." "${ANDROID_HOME}/"
   sdk_restored=1
-  sdk_stale_packages="$(sdk_missing_packages)"
-  if [ -n "${sdk_stale_packages}" ]; then
-    echo "android-sdk shared cache STALE: the restored tree lacks $(tr '\n' ' ' <<<"${sdk_stale_packages}")- installing, then refreshing the cache"
+  sdk_stale_components="$(sdk_missing_components)"
+  if [ -n "${sdk_stale_components}" ]; then
+    echo "android-sdk shared cache STALE: the restored tree lacks $(tr '\n' ' ' <<<"${sdk_stale_components}")- installing, then refreshing the cache"
     sdk_restored=0
     sdk_cache_stale=1
   fi
@@ -275,7 +275,7 @@ if [ "${sdk_restored}" -eq 0 ]; then
 
   # sdkmanager_install already retries transient failures; call it directly
   # instead of the old one-shot-then-retry duplication of the package list.
-  sdkmanager_install "${sdk_packages[@]}"
+  sdkmanager_install "${sdk_components[@]}"
 
   # Ensure licenses are accepted after installation too (some packages add new
   # licenses). FATAL for the same reason as the pre-install acceptance above.
@@ -290,9 +290,9 @@ if [ ! -d "${ndk_dir}" ]; then
   echo "ERROR: expected NDK directory '${ndk_dir}' missing after sdkmanager install" >&2
   exit 1
 fi
-sdk_absent_packages="$(sdk_missing_packages)"
-if [ -n "${sdk_absent_packages}" ]; then
-  echo "ERROR: ${ANDROID_HOME} lacks $(tr '\n' ' ' <<<"${sdk_absent_packages}")after the install" >&2
+sdk_absent_components="$(sdk_missing_components)"
+if [ -n "${sdk_absent_components}" ]; then
+  echo "ERROR: ${ANDROID_HOME} lacks $(tr '\n' ' ' <<<"${sdk_absent_components}")after the install" >&2
   exit 1
 fi
 
