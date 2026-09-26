@@ -102,9 +102,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     rm -rf /root/.cache/uv/git-v0/locks/ 2>/dev/null || true; \
     bash /opt/scripts/packaging/setup-torch-venv.sh
 
-ENV VIRTUAL_ENV=${VENV} \
+# VIRTUAL_ENV and UV_PYTHON are EMPTIED, not pointed at ${VENV}: it is root-owned, the image
+# runs as uid 1001, and uv honours UV_PYTHON over an activated venv, so a consumer's uv
+# died with Permission denied (BACKLOG CON18). Docker cannot unset the values the toolchain
+# stage exported; uv reads empty as unset, and entrypoint.sh unsets both.
+ENV VIRTUAL_ENV= \
     PATH=${VENV}/bin:${PATH} \
-    UV_PYTHON=${VENV}/bin/python \
+    UV_PYTHON= \
     MEDIA_HOST_PYTHON=${VENV}/bin/python \
     UV_LOCK_TIMEOUT=14400 \
     PIP_DEFAULT_TIMEOUT=1200 \

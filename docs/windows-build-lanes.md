@@ -1496,8 +1496,9 @@ OmniAccelerANT inside the image):
   container creation with `hcs::CreateComputeSystem ... Die Anforderung wird
   nicht unterstützt`, while the same source mounted to a fresh target
   (`target=C:\ws-mnt`) works. Version-matched CI runners mount over existing
-  dirs fine — consider not pre-creating `C:\workspace` in the image, or adopt a
-  fresh-target convention on skewed hosts.
+  dirs fine. The image stopped pre-creating `C:\workspace` on 2026-09-26 (BACKLOG
+  CON29, from the next `:winamd64` on); on every earlier image the fresh-target
+  convention still holds.
 - `docker cp` into a **running** Windows container silently copies nothing, and
   against a **stopped** container it triggers the ActivateLayer lock. Use
   `tar -cf - . | docker exec -i <container> tar -xf - -C <dir>` instead.

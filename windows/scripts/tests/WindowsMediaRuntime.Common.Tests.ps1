@@ -61,7 +61,7 @@ Describe 'WindowsMediaRuntime.Common' {
     $ctx = New-BuildContext -Workspace $root -LogDir $logDir
     $ctx.SuppressConsoleOutput = $true
 
-    Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null } {
+    Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null; GSTREAMER_BIN = $null } {
 
         It 'returns an EMPTY ARRAY, not $null, when nothing is installed' {
             # The $null.Count trap: the empty case is the one that kills a build step
@@ -88,6 +88,23 @@ Describe 'WindowsMediaRuntime.Common' {
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA, $twice) -OnnxRoot '' `
                     -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
             Assert-Equal 1 $r.Count
+        }
+
+        It 'probes GSTREAMER_BIN, the image''s C:\runtime\bin, after the named roots (mutation)' {
+            Invoke-WithEnv @{ GSTREAMER_BIN = $gstB } {
+                $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA) -OnnxRoot '')
+                Assert-Equal ((@($gstA, $gstB) | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }) -join '|') ($r -join '|')
+            }
+        }
+
+        It 'stages the image''s GStreamer with no root named (AccelerANTgine run 36044940426, mutation)' {
+            # That run staged only the ORT DLLs: GStreamer was looked for where the SDK installer puts it.
+            $target = Join-Path $root 'stage9\bin'
+            Invoke-WithEnv @{ GSTREAMER_BIN = $gstA } {
+                $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -OnnxRoot $ortRoot
+                Assert-Equal 6 $n 'gst 2 + ort lib 1 + ort bin 3'
+                Assert-True (Test-Path -LiteralPath (Join-Path $target 'gstreamer-1.0-0.dll'))
+            }
         }
 
         It 'resolves the chain ORT: ONNX_ROOT\lib then \bin, after GStreamer (mutation)' {

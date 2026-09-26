@@ -424,9 +424,9 @@ function Test-ClangClThreadSanitizerSupport {
 
 # --- CTest metadata after a container build ----------------------------------
 # A build produced INSIDE the container records container paths; running its
-# tests on the HOST needs those rewritten. C:/workspace is this repo's own
-# image convention (windows/Dockerfile WORKDIR), so every consumer of these
-# images hits it.
+# tests on the HOST needs those rewritten. -ContainerRoot is the mount target the
+# build ran under; C:/workspace was the image's WORKDIR until 2026-09-26 (BACKLOG
+# CON29) and stays the default.
 
 function Get-CMakeShareDir {
     param([string]$CMakeExePath)
@@ -459,7 +459,8 @@ function Update-CTestMetadataPaths {
         [string]$BuildRoot,
         [Parameter(Mandatory)]
         [string]$WorkspaceRoot,
-        [string]$CMakeShareDir
+        [string]$CMakeShareDir,
+        [string]$ContainerRoot = 'C:/workspace'
     )
 
     if (-not (Test-Path $BuildRoot)) {
@@ -467,12 +468,13 @@ function Update-CTestMetadataPaths {
     }
 
     $workspacePathUnix = $WorkspaceRoot.Replace('\', '/')
+    $containerRootUnix = $ContainerRoot.Replace('\', '/').TrimEnd('/')
     $files = Get-ChildItem -Path $BuildRoot -Recurse -File -Include 'CTestTestfile.cmake', 'DartConfiguration.tcl', '*_include.cmake', '*_discovery.cmake', '*_tests.cmake' -ErrorAction SilentlyContinue
     $asciiEncoding = [System.Text.Encoding]::ASCII
 
     foreach ($file in $files) {
         $originalContent = [System.IO.File]::ReadAllText($file.FullName)
-        $updatedContent = $originalContent.Replace('C:/workspace', $workspacePathUnix)
+        $updatedContent = $originalContent.Replace($containerRootUnix, $workspacePathUnix)
 
         if (-not [string]::IsNullOrWhiteSpace($CMakeShareDir)) {
             $updatedContent = [regex]::Replace($updatedContent, 'C:/Program Files/CMake/share/cmake-[0-9.]+', $CMakeShareDir)

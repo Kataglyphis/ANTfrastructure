@@ -69,8 +69,11 @@ function Resolve-MediaRuntimeClosure {
         }
     }
 
+    # GSTREAMER_BIN is the family image's C:\runtime\bin, for the image's target arch; the rest
+    # are the SDK installer's. Without it an image build staged no GStreamer (AccelerANTgine run 36044940426).
     $directories = [System.Collections.Generic.List[string]]::new()
     foreach ($candidate in (@($GStreamerRoot) + @(
+                $env:GSTREAMER_BIN,
                 'C:\gstreamer\bin',
                 'C:\gstreamer\1.0\msvc_x86_64\bin',
                 'C:\Program Files\gstreamer\1.0\msvc_x86_64\bin'))) {
@@ -125,7 +128,8 @@ function Assert-MediaRuntimeOnnxFromChain {
     What DOES throw: an ONNX_ROOT/ONNX_GENAI_ROOT that is not the chain install
     (see Get-OnnxChainLayout), and an ONNX Runtime DLL in any other directory.
 .PARAMETER GStreamerRoot
-    Extra GStreamer bin directories to probe BEFORE the well-known ones.
+    Extra GStreamer bin directories to probe BEFORE the well-known ones: $env:GSTREAMER_BIN
+    (the family image's C:\runtime\bin), then the GStreamer SDK installer's locations.
 .PARAMETER OnnxRoot
     The chain ONNX Runtime install. Defaults to $env:ONNX_ROOT.
 .PARAMETER OnnxVersion

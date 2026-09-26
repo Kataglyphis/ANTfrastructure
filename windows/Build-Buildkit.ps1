@@ -953,7 +953,12 @@ if ($Stages -contains 'final') {
     # The arm64 lane skips the torch stage (guarded at launch), so its final
     # image is based on the merged media stage directly.
     $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
-    $finalArgs = $stampArgs + @{ BASE_IMAGE = $finalBase } + $archArgs
+    # The Vulkan loader's pins: the final stage installs it on PATH (BACKLOG CON25).
+    $finalArgs = $stampArgs + @{
+        BASE_IMAGE                   = $finalBase
+        VULKAN_VERSION               = Get-Ver 'VULKAN_VERSION'
+        VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
+    } + $archArgs
     # -Label 'final': the default label is the filename ('Dockerfile'), so
     # -NoCacheStage final matched only the re-exports, not this stage.
     Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs

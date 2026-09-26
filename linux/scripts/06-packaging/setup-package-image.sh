@@ -20,6 +20,9 @@ link_path_if_present() {
 
 # shellcheck disable=SC1091
 source /opt/scripts/core/package-lists.sh
+# The package stage's toolchain and runtime wiring (BACKLOG CON15, CON16, CON21).
+# shellcheck source=linux/scripts/06-packaging/package-image-wiring.sh
+source /opt/scripts/packaging/package-image-wiring.sh
 
 link_command_if_present() {
     local command_name="$1"
@@ -148,6 +151,11 @@ select_dev_packages() {
         "libclang-rt-${_pkg_llvm_major}-dev" "libfuzzer-${_pkg_llvm_major}-dev"
     append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
+    # What consumer lanes installed per run or went without (BACKLOG CON19/CON20):
+    # lavapipe, a Vulkan device for headless GPU tests; perf, which 26.04 moved out of
+    # linux-tools into linux-perf; gperftools' libprofiler; jq; and Xvfb.
+    append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
+        libgoogle-perftools-dev jq xvfb
 
     # DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both look like the
     # obvious fix for a consumer whose `--features gstreamer` / `gui_linux`
@@ -250,6 +258,7 @@ pin_clang_alternatives() {
         echo "[INFO] Pinned /usr/bin/clang -> $(readlink -f /usr/bin/clang) ($(/usr/bin/clang --version 2>/dev/null | head -1)); wanted LLVM_RELEASE=${_want_llvm:-<unset>}"
     fi
 }
+
 
 # Wire /usr/local python/pip/config + libpython symlinks (and create the dirs
 # the cargo/venv phases below rely on).
@@ -486,6 +495,16 @@ verify_consumer_dev_surface() {
     fi
     echo "OK: dev surface reachable (gstreamer-1.0/-app/-video from ${GSTREAMER_PREFIX:-?}, openssl)"
 
+    # CON19/CON20: optional per arch (append_available_packages), so a warning, not a gate.
+    local tool absent=()
+    for tool in perf jq Xvfb; do command -v "${tool}" >/dev/null 2>&1 || absent+=("${tool}"); done
+    compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' >/dev/null || absent+=("the lavapipe ICD")
+    if [ "${#absent[@]}" -eq 0 ]; then
+        echo "OK: perf, jq, Xvfb and lavapipe (a CPU Vulkan device) are present"
+    else
+        echo "WARN: absent on this arch: ${absent[*]}"
+    fi
+
     if pkg-config --exists gtk4 2>/dev/null; then
         echo "NOTE: gtk4 dev files are present. They are normally excluded on purpose;"
         echo "      if that was not deliberate, check whether the GLib/GIR dev chain"
@@ -707,10 +726,13 @@ main() {
     local -a _dev_packages=()
     select_dev_packages _dev_packages "${python_mm}" "${gcc_major}"
     install_dev_packages "${_dev_packages[@]}"
+    drop_redundant_distro_gtk4
     anchor_java_home
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
+    wire_clang_llvm_tools
+    write_clang_gcc_toolchain_cfg
     ensure_native_rust_toolchain
     wire_cargo_symlinks
     install_web_lane_toolchain

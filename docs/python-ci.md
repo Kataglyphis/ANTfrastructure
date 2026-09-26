@@ -217,6 +217,12 @@ Both `uv_sync_project()` and `uv_pip_install_requirements()` therefore pin
 another uv entry point, pin it too, and end it in `uv_reconcile_chain_ort`
 (Trap 3).
 
+The image after CON11 exports neither variable (in source since 2026-09-26):
+`Dockerfile.torch` empties both, since Docker cannot unset an inherited ENV, and the
+entrypoint unsets them, so an activated venv is what uv targets again while
+`/opt/venv/bin` stays first on `PATH`. Keep the pin: every image before it exports
+both, and the pin is correct on either.
+
 The two traps stack: the extras error hides the venv error, because the resolve
 never gets far enough to write anything. Fixing only the first one just moves
 the failure.

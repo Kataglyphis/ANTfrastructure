@@ -1309,8 +1309,9 @@ affected.
 
 **Not covered.** The amd64 image's plain cross compilers still have no target
 `libasan`, so `aarch64-linux-gnu-g++ -fsanitize=address` from amd64 still fails. The
-arm64 and riscv64 GCCs still lack libgomp (`omp.h`), libitm and gfortran. TSan on
-riscv64 needs an sv39 or sv48 VMA, which is unverified on the X100.
+arm64 and riscv64 GCCs still lack libgomp (`omp.h`), libitm and gfortran. Both are
+§ Deliberate in the root `BACKLOG.md` since 2026-09-26 (CON22): no consumer uses them.
+TSan on riscv64 needs an sv39 or sv48 VMA, which is unverified on the X100.
 
 ### The native GCC has multiarch
 
@@ -1643,6 +1644,14 @@ The distro copy won. It is not installed by us — `libgtk-4-1` pulls
 — so a consumer linking `-lgstreamer-1.0` got 1.28.2 while all 287 shipped
 plugins were 1.29.2. A core/plugin version split fails at runtime in confusing
 ways.
+
+Since 2026-09-26 the package stage drops that runtime again on amd64
+(`setup-package-image.sh` `drop_redundant_distro_gtk4`, BACKLOG CON21): there
+`/opt/gstreamer` builds its own GTK 4, so nothing loaded Ubuntu's GTK 4 or its
+GStreamer, and the GStreamer registry, `gtk4paintablesink` and OpenCV's backend are
+unchanged without them. arm64 and riscv64 cross-build GStreamer without GTK, so their
+`libgstgtk4.so` needs Ubuntu's `libgtk-4-1` and the distro runtime stays; the
+`000-` confs below keep ours first there.
 
 `configure-runtime.sh` therefore writes `000-gstreamer.conf`,
 `000-ffmpeg.conf`, `000-opencv.conf`, `000-libcamera.conf`, `000-armnn.conf` and

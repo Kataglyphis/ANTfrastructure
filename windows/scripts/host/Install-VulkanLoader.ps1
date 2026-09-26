@@ -12,7 +12,8 @@
     the only place FFmpeg's dlopen and Python's DLL search look besides the app dir (neither reads PATH),
     and the verified copy plus its licence into InstallDir. The zip is the base SDK's VULKAN_VERSION,
     verified against the pinned SHA256. No ICD in the container: the loader reports zero devices.
-    amd64 only. docs/windows-rocm.md § The ROCm layer.
+    An empty -SystemDir makes no System32 copy: the final stage of the default and nvidia images
+    puts InstallDir on PATH instead (BACKLOG CON25). amd64 only. docs/windows-rocm.md § The ROCm layer.
 #>
 param(
     [string]$TempDir = 'C:\temp',
@@ -143,8 +144,12 @@ function Install-VulkanLoader {
     if ($shipped -ne $VulkanVersion) {
         throw "Install-VulkanLoader: $loader reports version '$shipped', expected VULKAN_VERSION '$VulkanVersion'"
     }
-    $system = Install-VulkanLoaderSystemCopy -Loader $loader -SystemDir $SystemDir
-    Write-Host "Vulkan loader $VulkanVersion installed at $system (verified copy and licence in $InstallDir)"
+    if ([string]::IsNullOrEmpty($SystemDir)) {
+        Write-Host "Vulkan loader $VulkanVersion installed in $InstallDir with its licence (no System32 copy: callers find it on PATH)"
+    } else {
+        $system = Install-VulkanLoaderSystemCopy -Loader $loader -SystemDir $SystemDir
+        Write-Host "Vulkan loader $VulkanVersion installed at $system (verified copy and licence in $InstallDir)"
+    }
     Clear-PendingFileHandle
 }
 

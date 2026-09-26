@@ -124,7 +124,12 @@ $cmakeArgs = @(
     '-S', (Join-Path $srcDir 'llvm'),
     '-B', $buildDir,
     '-DCMAKE_BUILD_TYPE=Release',
-    '-DLLVM_ENABLE_PROJECTS=clang;lld',
+    # clang-tools-extra (CON10): only a clang-tidy built from THIS tree reads this
+    # clang's BMIs. A module file records the compiler's repository string, empty for
+    # a tarball build, and any other clang-tidy fails the compare ("built from a
+    # different branch () than the compiler"). No clangd: nothing runs it here.
+    '-DLLVM_ENABLE_PROJECTS=clang;lld;clang-tools-extra',
+    '-DCLANG_ENABLE_CLANGD=OFF',
     '-DLLVM_ENABLE_RUNTIMES=compiler-rt',
     '-DLLVM_TARGETS_TO_BUILD=AArch64;X86',
     "-DCMAKE_INSTALL_PREFIX=$InstallPrefix",
@@ -139,10 +144,15 @@ $cmakeArgs = @(
     # compiler-rt: builtins for lld-link (__udivti3 …) AND the sanitizer
     # runtimes — the smoke gate runs /fsanitize=address, and the one build with
     # sanitizers OFF shipped a clang-cl that cannot (gate red 2026-09-01).
-    # Fuzzer/profile/ORC stay off; profile fails to compile under clang-cl.
+    # libFuzzer: every image shipped clang_rt.fuzzer*, because the switch here was
+    # COMPILER_RT_BUILD_FUZZER, which names no option; it says ON now.
+    # profile (CON9): clang-cl coverage links clang_rt.profile (cmake/Tests.cmake). No
+    # recorded failure backed "fails to compile under clang-cl". profile_rocm is its
+    # HIP-offload twin, which the driver links only for HIP; this LLVM has no AMDGPU.
     '-DCOMPILER_RT_BUILD_BUILTINS=ON',
-    '-DCOMPILER_RT_BUILD_FUZZER=OFF',
-    '-DCOMPILER_RT_BUILD_PROFILE=OFF',
+    '-DCOMPILER_RT_BUILD_LIBFUZZER=ON',
+    '-DCOMPILER_RT_BUILD_PROFILE=ON',
+    '-DCOMPILER_RT_BUILD_PROFILE_ROCM=OFF',
     '-DCOMPILER_RT_BUILD_SANITIZERS=ON',
     '-DCOMPILER_RT_BUILD_ORC=OFF',
     '-DCOMPILER_RT_BUILD_MEMPROF=OFF',
@@ -181,4 +191,13 @@ if ($banner -notmatch [regex]::Escape($LlvmVersion)) {
     throw "Built clang reports '$banner' but LLVM_WINDOWS_VERSION is $LlvmVersion - the provenance gate would fail."
 }
 Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
+
+# What consumers take from THIS build fails the layer when absent (CON9, CON10), and
+# the 7.1 GB source plus Ninja tree the 2026-09-22 layer shipped goes.
+$consumed = @('bin\clang-tidy.exe', 'bin\clang-apply-replacements.exe',
+    "lib\clang\$($LlvmVersion.Split('.')[0])\lib\windows\clang_rt.profile-x86_64.lib")
+$absent = $consumed.Where({ -not [IO.File]::Exists((Join-Path $InstallPrefix $_)) })
+if ($absent) { throw "The patched LLVM in $InstallPrefix lacks $($absent -join ', ')." }
+Remove-Item -LiteralPath $SourceRoot -Recurse -Force -ErrorAction SilentlyContinue
+
 Write-Host "Patched clang installed to $InstallPrefix - put its bin\ ahead of the scoop shims on PATH."

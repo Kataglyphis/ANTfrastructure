@@ -386,6 +386,7 @@ COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh
 COPY --chmod=755 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
+COPY --chmod=755 linux/scripts/06-packaging/package-image-wiring.sh /opt/scripts/packaging/package-image-wiring.sh
 COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh

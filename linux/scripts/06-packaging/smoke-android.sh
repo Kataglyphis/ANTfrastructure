@@ -144,6 +144,30 @@ check_build_tools() {
   echo ""
 }
 
+# Every SDK platform the image ships. The build-tools check above reads only the
+# main pin, so an image without API 37 passed it (BACKLOG CON14).
+check_platforms() {
+  echo "--- SDK platforms ---"
+  local level dir
+  for level in "${ANDROID_COMPILE_SDK:-}" "${ANDROID_EXTRA_COMPILE_SDK:-}"; do
+    [ -n "${level}" ] || continue
+    dir="${ANDROID_SDK_ROOT}/platforms/android-${level}"
+    if [ -f "${dir}/android.jar" ]; then
+      pass "Platform android-${level} installed"
+    else
+      fail "Platform android-${level} not found at ${dir}"
+    fi
+  done
+  if [ -n "${ANDROID_EXTRA_BUILD_TOOLS:-}" ]; then
+    if [ -x "${ANDROID_SDK_ROOT}/build-tools/${ANDROID_EXTRA_BUILD_TOOLS}/aapt2" ]; then
+      pass "Build tools ${ANDROID_EXTRA_BUILD_TOOLS} installed"
+    else
+      fail "Build tools ${ANDROID_EXTRA_BUILD_TOOLS} not found in ${ANDROID_SDK_ROOT}/build-tools"
+    fi
+  fi
+  echo ""
+}
+
 check_android_cmake() {
   # 6. CMake (Android)
   echo "--- Android CMake ---"
@@ -196,7 +220,7 @@ main() {
     cat "${_android_payload_off_marker}"
     echo ""
     local _check
-    for _check in sdk_root sdkmanager adb ndk build_tools android_cmake opencv; do
+    for _check in sdk_root sdkmanager adb ndk build_tools platforms android_cmake opencv; do
       echo "SKIP ${_check} (android payload off)"
     done
     echo ""
@@ -209,6 +233,7 @@ main() {
   check_adb
   check_ndk
   check_build_tools
+  check_platforms
   check_android_cmake
   check_opencv
   smoke_summary

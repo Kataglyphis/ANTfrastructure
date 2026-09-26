@@ -638,6 +638,45 @@ _smoke_gcc_sanitizers() {
   rm -rf "${d}"
 }
 
+# A bare clang++ selects the image's GCC through the native triple's config file
+# (setup-package-image.sh write_clang_gcc_toolchain_cfg, BACKLOG CON16).
+_smoke_clang_gcc_toolchain() {
+  local sel
+  sel="$(clang++ -x c++ -v -fsyntax-only /dev/null 2>&1 | sed -n 's/^Selected GCC installation: //p')"
+  case "${sel}" in
+    "${GCC_PREFIX:?GCC_PREFIX must be set}"/*) echo "SMOKE OK: bare clang++ selects ${sel}" ;;
+    *) validate_fail "clang-gcc-toolchain" "bare clang++ selects '${sel:-no GCC}', not ${GCC_PREFIX}" ;;
+  esac
+}
+
+# The LLVM tools on PATH are clang's own version (wire_clang_llvm_tools, BACKLOG CON15).
+_smoke_llvm_tool_versions() {
+  local want tool ver
+  want="$(clang --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  for tool in clang-tidy llvm-profdata llvm-cov llvm-symbolizer ld.lld; do
+    ver="$("${tool}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    if [ -n "${want}" ] && [ "${ver}" = "${want}" ]; then
+      echo "SMOKE OK: ${tool} ${ver} == clang"
+    else
+      validate_fail "llvm-tool-version" "${tool} ${ver:-MISSING} is not clang's ${want:-MISSING}"
+    fi
+  done
+}
+
+# clang ships libFuzzer (llvm-cross.sh, BACKLOG CON17): a fuzz target links and runs.
+_smoke_clang_libfuzzer() {
+  local d
+  d="$(mktemp -d)"
+  printf 'int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\n' > "${d}/f.c"
+  if clang -fsanitize=fuzzer "${d}/f.c" -o "${d}/f" 2>"${d}/e" && "${d}/f" -runs=10 >/dev/null 2>&1; then
+    echo "SMOKE OK: clang -fsanitize=fuzzer links and runs"
+  else
+    sed 's/^/    /' "${d}/e" >&2 || true
+    validate_fail "clang-libfuzzer" "clang -fsanitize=fuzzer failed to link or run a trivial target"
+  fi
+  rm -rf "${d}"
+}
+
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
@@ -658,6 +697,9 @@ validate_smoke() {
   _smoke_optional_payloads
   _smoke_optimization_level
   _smoke_gcc_sanitizers
+  _smoke_clang_gcc_toolchain
+  _smoke_llvm_tool_versions
+  _smoke_clang_libfuzzer
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then
     echo "SMOKE FAILED: ${_VALIDATE_ERRORS} check(s) failed" >&2

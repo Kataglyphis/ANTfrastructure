@@ -77,9 +77,21 @@ Android riscv64 keeps RVV **off** (`03-media/build/opencv/android/build-android.
 that disable works around an NDK-clang bug with sizeless RVV types, not a
 platform choice.
 
-TVM and IREE still need a codegen-target change rather than a compile flag —
-their shipped compilers emit code at runtime. That is open: CON24 in the root
-[`BACKLOG.md`](../BACKLOG.md).
+TVM's `llvm` target has no host-CPU default on any arch, so on riscv64 it compiles
+for LLVM's generic CPU: soft-float, no vector unit. Name the baseline, or the board
+tag the pinned TVM ships (`riscv/spacemit-k3` for the X100, `riscv/licheepi3a` for the
+X60):
+
+```
+llvm -mtriple=riscv64-unknown-linux-gnu -mcpu=generic-rv64 -mabi=lp64d -mattr=+m,+a,+f,+d,+c,+v,+zvl128b,+zba,+zbb,+zbs,+zicond
+```
+
+riscv64 ships no IREE compiler (a documented parity exemption). Compile for it elsewhere with
+`--iree-llvmcpu-target-triple=riscv64-unknown-linux-gnu --iree-llvmcpu-target-abi=lp64d`
+and the same `--iree-llvmcpu-target-cpu-features`, or `--iree-llvmcpu-target-cpu=spacemit-x100`.
+Measured 2026-09-26 with amd64 `:latest`'s `iree-compile`: without the features the link
+fails on `__mulsf3`; with them the module holds 31 vector instructions in 153. Recorded
+in the root [`BACKLOG.md`](../BACKLOG.md) § Deliberate (CON24).
 
 ## The gate
 

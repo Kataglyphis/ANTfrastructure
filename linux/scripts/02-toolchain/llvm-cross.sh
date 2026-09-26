@@ -198,7 +198,11 @@ _llvm_cross_superset_cmake_args() {
     -DCOMPILER_RT_BUILD_SANITIZERS=ON
     -DCOMPILER_RT_BUILD_BUILTINS=ON
     -DCOMPILER_RT_BUILD_XRAY=OFF
-    -DCOMPILER_RT_BUILD_LIBFUZZER=OFF
+    # -fsanitize=fuzzer and atheris' source build need it (BACKLOG CON17). No private
+    # libc++: that is an ExternalProject a cross build need not risk; libFuzzer then
+    # uses libstdc++ like the fuzz target does (a -fsanitize=memory fuzz run would not).
+    -DCOMPILER_RT_BUILD_LIBFUZZER=ON
+    -DCOMPILER_RT_USE_LIBCXX=OFF
     -DCOMPILER_RT_BUILD_PROFILE=ON
     -DCOMPILER_RT_BUILD_MEMPROF=OFF
     -DCOMPILER_RT_BUILD_ORC=OFF

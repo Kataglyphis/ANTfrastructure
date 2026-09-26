@@ -1029,7 +1029,10 @@ compiler; nothing in the tree sets a bare `CC=clang`. They live in the build-sta
 images (the compiler stage installs them); `Dockerfile.package` does not copy
 them, so the runtime image has none, and a consumer compiling with clang in
 `:latest` passes `--gcc-toolchain` itself (`gcc_toolchain_prefix()` in
-`01-core/cross-gcc.sh` names the root).
+`01-core/cross-gcc.sh` names the root). From the image after CON11 it need not:
+the package stage writes `<native-triple>-clang.cfg` and `-clang++.cfg` beside the
+compiler, holding `--gcc-toolchain=${GCC_PREFIX}` (BACKLOG CON16), which clang reads
+for a native build only; a `--target` build loads neither.
 
 **`CROSS_GCC_TOOLCHAIN_PATH` and `export_clang_gcc_toolchain_env` were deleted on
 2026-09-05** (backlog CL3). The function exported `--gcc-toolchain` into

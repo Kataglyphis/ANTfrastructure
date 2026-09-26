@@ -359,7 +359,9 @@ Anything that reads clang's output has to come from the same LLVM. That covers
 `llvm-profdata` and `llvm-cov` on a raw profile, and `clang-tidy` on module PCMs. The
 images put a source-built clang behind `clang`/`clang++`, while the bare tools on
 PATH can be an older distro LLVM, so the pairing fails with "no profile can be
-merged" or "uses a newer format that cannot be read".
+merged" or "uses a newer format that cannot be read". The image after CON11 links
+clang's own copies into `/usr/local/bin` (BACKLOG CON15); keep the helper for older
+images and for a tree another compiler configured.
 
 - `compiler_llvm_tool <build-dir> <tool>` prints the tool beside the compiler that
   configured the tree (`CMAKE_CXX_COMPILER` in its `CMakeCache.txt`, else `clang++`).

@@ -281,6 +281,11 @@ AMD GPU APIs loadable in the image. Neither needs a GPU to check, and
   System32 comes before PATH in the standard search, so the copy also wins over any PATH
   copy; an app-local copy still wins over it. The loader layer comes after the ROCm RUN in
   `Dockerfile.rocm`, so a Vulkan bump does not re-download the 2.3 GB tarball.
+- **The default and nvidia images carry the same loader** since 2026-09-26 (BACKLOG
+  CON25), installed by the final stage with `-SystemDir ''`: `C:\vulkan-loader` is
+  appended to `PATH` and nothing is written to System32. That lets every statically
+  linked consumer load (gstvulkan, IREE's Vulkan HAL, OpenCV vkcom, ggml-vulkan), not
+  FFmpeg's `dlopen` or a `.pyd`. The rocm variant skips it: its `VULKAN_LOADER_DIR` is set.
 - **What the loader serves:** gstvulkan and amfcodec through it, llama.cpp's
   `ggml-vulkan.dll`, IREE's Vulkan HAL, OpenCV's vkcom backend, FFmpeg's `vulkan`
   hwdevice and TVM's Vulkan runtime. There is no Vulkan ICD in the container, so the

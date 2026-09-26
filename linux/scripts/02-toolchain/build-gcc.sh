@@ -858,14 +858,13 @@ fi
 # 6e) Strip binaries if requested
 if [ "${DO_STRIP}" = "1" ]; then
   info "Stripping binaries in ${PREFIX}..."
-  STRIP_BIN="strip"
-  if [ -n "${TARGET_TRIPLET}" ] && command -v "${TARGET_TRIPLET}-strip" >/dev/null 2>&1; then
-    STRIP_BIN="${TARGET_TRIPLET}-strip"
-  fi
-  strip_jobs="${JOBS:-$(nproc)}"
-  ${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
-    | awk -F': *' '/ELF.*(executable|shared object)/{print $1}' \
-    | xargs -r -P"${strip_jobs}" "${STRIP_BIN}" --strip-all 2>/dev/null || true
+  # The build machine's strip too: ${TARGET_TRIPLET}-strip cannot read a plain cross
+  # compiler's x86-64 executables, whose cc1plus shipped at 444-534 MB (BACKLOG CON36).
+  mapfile -t strip_files < <(${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
+    | awk -F': *' '/ELF.*(executable|shared object)/{print $1}')
+  for strip_bin in strip ${TARGET_TRIPLET:+"${TARGET_TRIPLET}-strip"}; do
+    printf '%s\0' "${strip_files[@]}" | xargs -0 -r -P"${JOBS:-$(nproc)}" "${strip_bin}" --strip-all 2>/dev/null || true
+  done
 fi
 
 # 7) Enhanced verification
