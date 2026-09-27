@@ -71,7 +71,7 @@ if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; 
   # findable through the core-<ver>/lib/cmake prefix. Hand CMake the whole
   # prefix rather than pinning dirs one by one (proven: migraphx configures
   # with CMAKE_PREFIX_PATH=.../core-10.0/lib/cmake alone).
-  _rocm_cmake_root="$(dirname "$(dirname "${_hip_config_dir}")")"
+  _rocm_cmake_root="$(dirname "${_hip_config_dir}")"
   info "Pinning hip_DIR=${_hip_config_dir} + CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
   BUILD_ARGS+=(
     --cmake_extra_defines "hip_DIR=${_hip_config_dir}"
