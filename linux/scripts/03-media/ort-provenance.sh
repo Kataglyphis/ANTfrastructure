@@ -294,7 +294,11 @@ _ortg_record_roots() {  # what a record path is judged against: _ORTG_REFS_AT (c
 }
 
 _ortg_intree() {  # <path>: a tree path a record names; an ORT file name lands in _ORTG_INTREE to be graded
+  # A trailing-slash token basenames to EMPTY; under set -u that empty subscript is a fatal
+  # "bad array subscript" (same class as _ortg_token_finding). A dir name can never match a file
+  # index, so an empty name simply grades nothing.
   local name="${1##*/}"
+  [ -n "${name}" ] || return 0
   if [ -n "${_ORTG_SHA[${name}]:-}" ] || _ortg_is_bin "${name}"; then _ORTG_INTREE+=("$1"); fi
   return 0
 }
