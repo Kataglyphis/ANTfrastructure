@@ -212,7 +212,10 @@ publish_rocm_ld_path() {
     find /opt/rocm -name 'libamdhip64.so*' -printf '%h\n' 2>/dev/null || true
     printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
   } | LC_ALL=C sort -u | while IFS= read -r lib; do
-    [ -n "${lib}" ] && [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf
+    # if, NOT a bare [ ] && printf chain: a false final iteration makes the
+    # while's status 1 and, under set -e, kills the RUN message-less
+    # (shell-safety class 5; run 20260927-192623, package-image exit 1).
+    if [ -n "${lib}" ] && [ -d "${lib}" ]; then printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf; fi
   done
   [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
 }
