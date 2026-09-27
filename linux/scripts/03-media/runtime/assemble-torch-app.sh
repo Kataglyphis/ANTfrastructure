@@ -579,10 +579,14 @@ enforce_torch_version_pins() {
     # From the GPU line's OWN index, and WITH deps: the CPU index swapped a CUDA
     # torch back to CPU, and --no-deps would keep the old torch's pinned
     # nvidia-cudnn/nccl and triton (they move between torch minors).
+    # The pin names the LOCAL VERSION too (+${gpu_index}): with PyPI as the
+    # extra index, a bare torch==2.14.0 matched PyPI's CUDA build and the venv
+    # swapped 2.13.0+rocm7.1 for a CUDA torch (rocm lane 2026-09-27 —
+    # torch.version.hip None). Both indexes publish the +${gpu_index} tag.
     uv pip install \
       --index-url "https://download.pytorch.org/whl/${gpu_index}" \
       --extra-index-url https://pypi.org/simple \
-      "torch==${want_torch}" "torchvision==${want_tv}"
+      "torch==${want_torch}+${gpu_index}" "torchvision==${want_tv}+${gpu_index}"
   else
     uv pip install --force-reinstall --no-deps \
       --index-url https://download.pytorch.org/whl/cpu \
