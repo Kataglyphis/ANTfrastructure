@@ -178,10 +178,13 @@ copy_rocm_payload() {
   # in core-<ver>/lib — the same flat-layout trap the G2 gate hit on the cmake
   # configs. Grade the whole /opt/rocm tree, not one lib dir; publish_rocm_ld_path
   # makes every libamdhip64-bearing dir visible to the loader.
-  if ! find "$(_dest /opt/rocm)" -type f -o -type l -name 'libamdhip64.so*' 2>/dev/null | grep -q .; then
+  # -print -quit, NO pipe: under pipefail a `find | grep -q .` dies of SIGPIPE
+  # (rc 141) on this ~20 GiB tree and the `!` inverts the false into failure
+  # (the very shell-safety class the family lints for).
+  [ -n "$(find "$(_dest /opt/rocm)" \( -type f -o -type l \) -name 'libamdhip64.so*' -print -quit 2>/dev/null)" ] || {
     printf '[ERROR] ENABLE_AMD=true but /opt/rocm in the package has no libamdhip64 anywhere (links unresolved?)\n' >&2
     return 1
-  fi
+  }
 }
 
 # The toolkit's libs live under targets/<arch>-linux/lib, which no default
