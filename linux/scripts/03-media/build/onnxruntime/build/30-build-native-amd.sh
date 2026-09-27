@@ -72,10 +72,17 @@ if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; 
   # prefix rather than pinning dirs one by one (proven: migraphx configures
   # with CMAKE_PREFIX_PATH=.../core-10.0/lib/cmake alone).
   _rocm_cmake_root="$(dirname "${_hip_config_dir}")"
+  # The prefix that fixes hip/MIOpen/rocblas also exposes ROCm's OWN
+  # flatbuffers (25.x), and ORT's FetchContent FIND_PACKAGE_ARGS then takes it
+  # instead of building its pinned 23.5.26 — ort.fbs.h asserts == 23 and the
+  # build dies mid-compile (run 20260927-115341). CMAKE_IGNORE_PREFIX_PATH
+  # does not reach it; CMAKE_DISABLE_FIND_PACKAGE_<name> makes FetchContent
+  # skip the find_package step and build the pinned copy. Container-proven.
   info "Pinning hip_DIR=${_hip_config_dir} + CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
   BUILD_ARGS+=(
     --cmake_extra_defines "hip_DIR=${_hip_config_dir}"
     --cmake_extra_defines "CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
+    --cmake_extra_defines "CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE"
   )
 else
   warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
