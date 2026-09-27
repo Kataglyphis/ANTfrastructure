@@ -59,6 +59,18 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+# TheRock splits ROCm into versioned subdirs (/opt/rocm/core-10.0/), so
+# hipConfig.cmake sits only under core-<ver>/lib/cmake/hip — while ORT's
+# onnxruntime_providers_migraphx.cmake probes flat prefixes only
+# (/opt/rocm/hcc /opt/rocm/hip /opt/rocm $ENV{HIP_PATH}). Pin hip_DIR to the
+# resolved config dir; see docs/linux-accelerator-images.md § ROCm.
+_hip_config_dir="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -1)"
+if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; then
+  info "Pinning hip_DIR=${_hip_config_dir}"
+  BUILD_ARGS+=(--cmake_extra_defines "hip_DIR=${_hip_config_dir}")
+else
+  warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
+fi
 # HIP compile caching — sccache wraps hipcc/clang-hip first-class (ccache cannot).
 # Resolve through compiler_cache_launcher() for the guarded launcher;
 # only accept sccache-class launchers (ccache can't wrap hipcc).
