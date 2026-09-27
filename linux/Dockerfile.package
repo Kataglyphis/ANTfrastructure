@@ -406,6 +406,26 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" || true
 
+# Stage the libFuzzer runtime beside the target clang when its compiler-rt was
+# built without it (the variant chain reuses a pre-CON17 cached LLVM tree).
+# TheRock's patched LLVM under /opt/rocm ships the same ABI's libclang_rt.fuzzer*.
+# Without it `clang -fsanitize=fuzzer` links nothing and the wrapper-smoke
+# clang-libfuzzer gate fails the whole runtime lane (run 20260927-194301).
+RUN set -euo pipefail; \
+    _resdir="$(/usr/local/llvm-target/bin/clang -print-resource-dir 2>/dev/null)"; \
+    _libdir="${_resdir}/lib/x86_64-unknown-linux-gnu"; \
+    if [ -n "${_resdir}" ] && [ ! -f "${_libdir}/libclang_rt.fuzzer-x86_64.a" ]; then \
+        for _cand in /opt/rocm/core-*/lib/llvm/lib/clang/23/lib/linux; do \
+            [ -f "${_cand}/libclang_rt.fuzzer-x86_64.a" ] || continue; \
+            mkdir -p "${_libdir}"; \
+            cp -a "${_cand}"/libclang_rt.fuzzer*-x86_64.a "${_libdir}/"; \
+            echo "[INFO] staged $(cd "${_cand}" && ls libclang_rt.fuzzer*-x86_64.a | tr '\n' ' ')from ${_cand} into ${_libdir}"; \
+            break; \
+        done; \
+        [ -f "${_libdir}/libclang_rt.fuzzer-x86_64.a" ] || \
+            echo "[WARN] no libclang_rt.fuzzer-x86_64.a staged (no TheRock LLVM under /opt/rocm)"; \
+    fi
+
 # Redirect this stage's apt sources off ports.ubuntu.com onto the configured
 # fast ports mirror (leaseweb) BEFORE setup-package-image.sh runs apt. The
 # inherited cross-android base carries ports.ubuntu.com sources; Dockerfile.media
