@@ -280,9 +280,11 @@ problem to solve, since no Server Core arm64 exists.
 ## Consumer cross lanes (`container-ci-windows.yml`)
 
 The consumers build FOR this bundle's target in CI: `windows-arm64-cross.yml` in OxidANT,
-AccelerANTgine and BeschleunigerBallett (owner decision 2026-09-25). OmniAccelerANT has none:
-Flutter cannot cross-build `windows-arm64` from an x64 host (flutter/flutter#179777), and its
-Cargokit knows only `windows-x64`.
+AccelerANTgine and BeschleunigerBallett (owner decision 2026-09-25). OmniAccelerANT's
+`windows-arm64.yml` (2026-09-27) is a hybrid: Flutter cannot cross-build `windows-arm64` from an
+x64 host (flutter/flutter#62597, open), so its natives cross-build here and a second job builds
+the Flutter app natively on `windows-11-arm` against them. Its vendored Cargokit gained
+`windows-arm64` and a switch that takes a prebuilt library for that.
 
 Each caller is thin. It names its build script, the script's arguments and the directory the
 product lands in. The hub's reusable `container-ci-windows.yml` owns everything else, and it
@@ -1173,7 +1175,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### Flutter
 
-**Not cross-compilable.** windows-arm64 needs a native arm64 host — native engine builds landed on beta/stable in March 2026 ([flutter/flutter#176385](https://github.com/flutter/flutter/pull/176385)) — but cross-compiling from an x64 host is still not upstream ([flutter/flutter#179777](https://github.com/flutter/flutter/issues/179777) tracks the remaining stable-channel gaps).
+**Not cross-compilable.** windows-arm64 needs a native arm64 host — native engine builds landed on beta/stable in March 2026 ([flutter/flutter#176385](https://github.com/flutter/flutter/pull/176385)) — but cross-compiling from an x64 host is still not upstream: [flutter/flutter#62597](https://github.com/flutter/flutter/issues/62597), open, tracks arm64 as a target. Until 2026-09-27 this cited #179777, which only asked when arm64 builds reach stable and is closed. OmniAccelerANT builds its Flutter part on `windows-11-arm` instead (§ Consumer cross lanes).
 
 ### PyTorch / the torch app stage
 
