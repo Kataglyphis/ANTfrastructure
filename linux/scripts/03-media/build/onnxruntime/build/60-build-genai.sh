@@ -126,6 +126,14 @@ info ">>> GenAI build: ${GENAI_CONFIG} (${JOBS} parallel jobs)"
 # Create Python virtual environment with uv
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
+# G2 grades this RUN's uv cache by SOURCE: a PyPI ORT any earlier build
+# downloaded under the same cache-mount id fails the gate even when this build
+# never touched it (rocm lane 2026-09-27: the app lock's onnxruntime 1.27 from
+# an earlier uv sync). Clean it here, in the one RUN that owns the mount, and
+# let the chain wheel come from /usr/local/lib/onnxruntime-cpu. G2 then grades
+# a cache that this run populated.
+command -v uv >/dev/null 2>&1 && uv cache clean onnxruntime >/dev/null 2>&1 || true
+
 # Install Python build dependencies with uv
 info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
 ensure_uv_python_packages "${HOST_PYTHON}" pip numpy wheel setuptools requests
