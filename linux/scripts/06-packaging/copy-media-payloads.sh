@@ -173,8 +173,13 @@ copy_rocm_payload() {
     case "${real}" in "${root}"|"${root}"/*) ;; *) copy_path "${real}" ;; esac
     ln -sfn "$(realpath -m -s --relative-to="$(dirname "${img}")" "${real}")" "${link}"
   done < <(find "$(_dest "${root}")" -type l -print0)
-  if ! compgen -G "$(_dest /opt/rocm)/lib/libamdhip64.so*" >/dev/null; then
-    printf '[ERROR] ENABLE_AMD=true but /opt/rocm/lib in the package has no libamdhip64 (links unresolved?)\n' >&2
+  # TheRock's versioned tree beats the flat layout check: MIGraphX's share
+  # pre-created /opt/rocm/lib as a REAL dir (migraphx libs only), so HIP lives
+  # in core-<ver>/lib — the same flat-layout trap the G2 gate hit on the cmake
+  # configs. Grade the whole /opt/rocm tree, not one lib dir; publish_rocm_ld_path
+  # makes every libamdhip64-bearing dir visible to the loader.
+  if ! find "$(_dest /opt/rocm)" -type f -o -type l -name 'libamdhip64.so*' 2>/dev/null | grep -q .; then
+    printf '[ERROR] ENABLE_AMD=true but /opt/rocm in the package has no libamdhip64 anywhere (links unresolved?)\n' >&2
     return 1
   fi
 }
@@ -195,8 +200,16 @@ publish_cuda_ld_path() {
 publish_rocm_ld_path() {
   local lib
   : > /etc/ld.so.conf.d/000-rocm.conf
-  for lib in /opt/rocm/lib /opt/rocm/lib64; do
-    [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf
+  # /opt/rocm/lib is MIGraphX's REAL dir (its share created it ahead of the
+  # convenience symlinks); HIP sits in core-<ver>/lib. Write every dir that
+  # carries a HIP library plus the flat ones — the literal /opt/rocm/lib alone
+  # leaves the loader without libamdhip64 (the flat-layout trap, non-ASAN sweep
+  # item 4: write the RESOLVED path).
+  {
+    find /opt/rocm -name 'libamdhip64.so*' -printf '%h\n' 2>/dev/null || true
+    printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
+  } | LC_ALL=C sort -u | while IFS= read -r lib; do
+    [ -n "${lib}" ] && [ -d "${lib}" ] && printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf
   done
   [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
 }
