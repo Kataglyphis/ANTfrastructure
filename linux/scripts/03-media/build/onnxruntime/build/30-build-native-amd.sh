@@ -66,8 +66,17 @@ append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIV
 # resolved config dir; see docs/linux-accelerator-images.md § ROCm.
 _hip_config_dir="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -1)"
 if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; then
-  info "Pinning hip_DIR=${_hip_config_dir}"
-  BUILD_ARGS+=(--cmake_extra_defines "hip_DIR=${_hip_config_dir}")
+  # migraphx-config.cmake find_dependency()s MIOpen/rocblas/hipblaslt, whose
+  # own configs sit in the same versioned tree — every one of them is only
+  # findable through the core-<ver>/lib/cmake prefix. Hand CMake the whole
+  # prefix rather than pinning dirs one by one (proven: migraphx configures
+  # with CMAKE_PREFIX_PATH=.../core-10.0/lib/cmake alone).
+  _rocm_cmake_root="$(dirname "$(dirname "${_hip_config_dir}")")"
+  info "Pinning hip_DIR=${_hip_config_dir} + CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
+  BUILD_ARGS+=(
+    --cmake_extra_defines "hip_DIR=${_hip_config_dir}"
+    --cmake_extra_defines "CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
+  )
 else
   warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
 fi
