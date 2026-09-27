@@ -411,6 +411,9 @@ RUN set -euo pipefail; \
 # TheRock's patched LLVM under /opt/rocm ships the same ABI's libclang_rt.fuzzer*.
 # Without it `clang -fsanitize=fuzzer` links nothing and the wrapper-smoke
 # clang-libfuzzer gate fails the whole runtime lane (run 20260927-194301).
+# TWO names per file: the driver asks for the UNSUFFIXED libclang_rt.fuzzer.a
+# (the shipped tree's other runtimes carry unsuffixed aliases) — staged under
+# both spellings, the smoke gate only fails on the unsuffixed name.
 RUN set -euo pipefail; \
     _resdir="$(/usr/local/llvm-target/bin/clang -print-resource-dir 2>/dev/null)"; \
     _libdir="${_resdir}/lib/x86_64-unknown-linux-gnu"; \
@@ -419,7 +422,9 @@ RUN set -euo pipefail; \
             [ -f "${_cand}/libclang_rt.fuzzer-x86_64.a" ] || continue; \
             mkdir -p "${_libdir}"; \
             cp -a "${_cand}"/libclang_rt.fuzzer*-x86_64.a "${_libdir}/"; \
-            echo "[INFO] staged $(cd "${_cand}" && ls libclang_rt.fuzzer*-x86_64.a | tr '\n' ' ')from ${_cand} into ${_libdir}"; \
+            cp -a "${_cand}"/libclang_rt.fuzzer-x86_64.a "${_libdir}/libclang_rt.fuzzer.a"; \
+            cp -a "${_cand}"/libclang_rt.fuzzer_interceptors-x86_64.a "${_libdir}/libclang_rt.fuzzer_interceptors.a"; \
+            echo "[INFO] staged libclang_rt.fuzzer{,_interceptors,_no_main}{,-x86_64}.a from ${_cand}"; \
             break; \
         done; \
         [ -f "${_libdir}/libclang_rt.fuzzer-x86_64.a" ] || \
