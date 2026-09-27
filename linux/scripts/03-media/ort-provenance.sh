@@ -328,8 +328,16 @@ _ortg_split_tokens() {  # <record>: counts chain references; tree paths with an 
   return 0
 }
 
+_ortg_token_dirname() {  # <tok ending in />: its last non-empty segment; a bare "/" yields nothing and stays empty
+  local t="${1%%/}"
+  printf '%s' "${t##*/}"
+}
+
 _ortg_token_finding() {  # <record> <path> <real path>: one path outside the chain, shims and trees; a dir to search lands in _ORTG_DIRS
   local rec="$1" tok="$2" name="${2##*/}" sub
+  # A trailing-slash token (CMakeCache holds them) basenames to EMPTY, and ${arr[${name}]} with an
+  # empty subscript is a fatal "bad array subscript" under set -u. Treat it as the dir it is.
+  if [ -z "${name}" ]; then name=$(_ortg_token_dirname "${tok}"); fi
   if [ -n "${_ORTG_SHA[${name}]:-}" ] || _ortg_is_bin "${name}"; then
     if [ -f "${tok}" ]; then _ortg_name_finding "${tok}" | sed -e "s#^#${rec}: #"
     else echo "${rec} names ${tok}, an ONNX Runtime file outside the chain (not on disk to compare)"; fi
