@@ -391,6 +391,8 @@ function Invoke-AgentProcess {
         # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
         # ConcurrentQueue, not ConcurrentBag: captured Output is documented API
         # and the bag enumerates LIFO, reversing every consumer's transcript.
+        # A queue has Enqueue, not Add: an .Add() here throws on the first
+        # line, the reader's catch swallows it, and Output comes back empty.
         $outLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $errLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $renderStream = [bool]$RenderClaudeStream
@@ -403,7 +405,7 @@ function Invoke-AgentProcess {
             $r = $p.StandardOutput
             try {
                 while ($null -ne ($line = $r.ReadLine())) {
-                    $outLines.Add($line)
+                    $outLines.Enqueue($line)
                     if ($renderStream -and $line.StartsWith('{')) {
                         # Render claude stream-json events as compact progress lines
                         # Per-line JSON probe: non-JSON lines are expected and
@@ -459,7 +461,7 @@ function Invoke-AgentProcess {
             $r = $p.StandardError
             try {
                 while ($null -ne ($line = $r.ReadLine())) {
-                    $errLines.Add($line)
+                    $errLines.Enqueue($line)
                     [Console]::Error.WriteLine($line)
                     if ($logFile) { Add-Content $logFile -Value $line }
                 }

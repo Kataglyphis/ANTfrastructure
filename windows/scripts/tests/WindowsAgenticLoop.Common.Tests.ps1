@@ -110,6 +110,20 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
+    # A real child process, not a mock: every other test here runs -DryRun, which
+    # is how the reader threads' .Add() on a ConcurrentQueue (no such method)
+    # returned an empty Output for every engine without a test going red.
+    Context 'Invoke-AgentProcess captures a real process' {
+        It 'returns stdout in order and the exit code' {
+            $pwsh = (Get-Process -Id $PID).Path
+            $result = Invoke-AgentProcess -Executable $pwsh `
+                -ArgumentList @('-NoProfile', '-Command', '$in = [Console]::In.ReadToEnd(); "one"; "two:$in"; exit 3') `
+                -Message 'stdin-text' -TimeoutSeconds 60 -Label 'capture-test' 6>$null
+            $result.ExitCode | Should -Be 3
+            $result.Output | Should -Be "one`ntwo:stdin-text"
+        }
+    }
+
     # -- BACKLOG helpers ---------------------------------------------------
 
     Context 'Get-UncheckedTaskCount' {
