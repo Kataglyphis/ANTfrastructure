@@ -25,6 +25,28 @@ speed on the table. All four ship with the next `:winamd64`/`:winarm64` build:
   have no usable Windows-on-Arm KleidiAI/ACL path at the pinned versions:
   `docs/windows-cross-builds.md`.
 
+Then, the same day, the owner took the four follow-ups:
+
+- **KleidiAI's `.S` kernels are assembled through a preprocess step.** Upstream's `ASM_MARMASM`
+  rule hands them raw to armasm64, which has no C preprocessor and rejects the `/arch:armv8.2`
+  KleidiAI adds. Measured in `:winamd64`: A2029, then A2003/A2230/A2034, until the rule became
+  `clang-cl /P /EP /TC /U__clang__` then armasm64 (178/178 objects). ORT gets that patched tree
+  through `FETCHCONTENT_SOURCE_DIR_KLEIDIAI`; configure fails if its rule is not the wrapper.
+- **ONNX Runtime ThinLTO** on the CPU and arm64 builds (not with CUDA, as ORT itself withholds
+  `/LTCG` there). A probe of the image's clang-cl + llvm-lib + lld-link produced bitcode objects
+  and a linked DLL for amd64 and arm64. `versions.env`'s `ORT_ENABLE_LTO` stays the Linux knob.
+- **GStreamer** also passes `-Db_ndebug=if-release`, so every subproject drops `assert()`.
+- **FFmpeg on every native amd64 lane** gains AMD AMF (was rocm-only) and NVENC/NVDEC/CUVID (was
+  nvidia-only). Both are header-only and load the vendor DLL at run time, so the CPU image imports
+  nothing new. Vulkan stays rocm's. The smoke gate lists `h264_amf`/`hevc_amf` and the NVENC
+  encoders on the CPU image.
+- **FFmpeg software codecs (amd64)**: `Build-FfmpegCodecs.ps1` builds static dav1d (AV1 decode),
+  x264 and x265 (H.264/HEVC encode) and links them into FFmpeg's DLLs, so no codec DLL can meet
+  GStreamer's. They use the static CRT, as FFmpeg's DLLs do (`avcodec` imports no CRT DLL).
+  x265 4.1's two OLD policies are set NEW, because CMake 4 refuses them. dav1d and x264 are the sources GStreamer's own wraps pin; the six pins live in
+  `versions.env` and travel as media-core build args. The arm64 cross lane has none yet: it needs
+  GStreamer's meson cross file and aarch64 asm shim reproduced first.
+
 ## 2026-09-27 - `:winamd64` is CPU + DirectML; the CUDA build is `:winamd64-nvidia`
 
 The owner decided that Windows follows the variant rule in `AGENTS.md` § Image and tag

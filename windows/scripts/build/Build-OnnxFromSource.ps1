@@ -65,16 +65,94 @@ function Get-OrtWebGpuPin {
     return [pscustomobject]$pin
 }
 
+# One row of ORT's cmake/deps.txt (Name;URL;SHA1): exactly one, pinned by a SHA1. The callers judge the URL.
+function Get-OrtDepsRow {
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$DepsLine, [Parameter(Mandatory)][string]$Name)
+    $rows = @($DepsLine | Where-Object { $_ -match "^$([regex]::Escape($Name));" })
+    if ($rows.Count -ne 1) { throw "ORT's cmake/deps.txt has $($rows.Count) '$Name;' rows, expected exactly one" }
+    $null, $url, $sha1 = $rows[0].Trim() -split ';'
+    if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw "ORT's cmake/deps.txt pins $Name by '$sha1', not a SHA1" }
+    return [pscustomobject]@{ Url = $url; Sha1 = $sha1 }
+}
+
 # ORT's cmake/deps.txt dawn row: it must fetch exactly the pinned tag, and its SHA1 is ORT's own pin.
 function Get-OrtDawnDepsEntry {
     param([Parameter(Mandatory)][AllowEmptyString()][string[]]$DepsLine, [Parameter(Mandatory)][string]$DawnVersion)
-    $rows = @($DepsLine | Where-Object { $_ -match '^dawn;' })
-    if ($rows.Count -ne 1) { throw "ORT's cmake/deps.txt has $($rows.Count) 'dawn;' rows, expected exactly one" }
-    $null, $url, $sha1 = $rows[0].Trim() -split ';'
+    $entry = Get-OrtDepsRow -DepsLine $DepsLine -Name 'dawn'
     $want = "https://github.com/google/dawn/archive/refs/tags/$DawnVersion.zip"
-    if ($url -ne $want) { throw "ORT's cmake/deps.txt fetches Dawn from '$url', not '$want': re-derive ORT_WEBGPU_WINDOWS_DAWN_* for this ORT" }
-    if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw "ORT's cmake/deps.txt pins Dawn by '$sha1', not a SHA1" }
-    return [pscustomobject]@{ Url = $url; Sha1 = $sha1 }
+    if ($entry.Url -ne $want) { throw "ORT's cmake/deps.txt fetches Dawn from '$($entry.Url)', not '$want': re-derive ORT_WEBGPU_WINDOWS_DAWN_* for this ORT" }
+    return $entry
+}
+
+# ORT's cmake/deps.txt kleidiai row: the tarball ORT itself pins for onnxruntime_USE_KLEIDIAI.
+function Get-OrtKleidiaiDepsEntry {
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$DepsLine)
+    $entry = Get-OrtDepsRow -DepsLine $DepsLine -Name 'kleidiai'
+    if ($entry.Url -notmatch '^https://github\.com/ARM-software/kleidiai/archive/refs/tags/v[\d.]+\.tar\.gz$') { throw "ORT's cmake/deps.txt fetches KleidiAI from '$($entry.Url)', not an ARM-software/kleidiai release tag" }
+    return $entry
+}
+
+# KleidiAI's Windows path (under `if(MSVC)`, which clang-cl takes) hands its .S kernels to CMake's
+# ASM_MARMASM rule: raw armasm64 plus the file's COMPILE_OPTIONS. Measured 2026-09-28 in :winamd64
+# (KleidiAI v1.20.0, armasm64 14.51, Ninja): armasm64 has no C preprocessor (#if, //, #define), and
+# rejects the /arch:armv8.2 KleidiAI attaches (A2029). MLAS solves the same thing with `cl /P` then
+# armasm64. This is that step as a rule: clang-cl preprocesses with /EP (armasm64 reads only
+# `#line`, not clang's `# 1 "file"` markers) and /U__clang__ (half the files pick their GNU branch
+# for clang-cl), armasm64 assembles, and <FLAGS> is dropped. 178/178 objects built that way.
+function Get-KleidiaiArmasmWrapper {
+    param([Parameter(Mandatory)][string]$Triple)
+    return (@(
+            '@echo off',
+            'rem ASM_MARMASM rule for KleidiAI .S under Ninja (Build-OnnxFromSource.ps1): preprocess, then armasm64.',
+            "clang-cl --target=$Triple /nologo /P /EP /TC /U__clang__ `"/Fi%~2.i`" `"%~1`" || exit /b 1",
+            'armasm64 -nologo "%~2.i" -o "%~2" || exit /b 1'
+        ) -join "`r`n") + "`r`n"
+}
+
+# The rule must be set AFTER KleidiAI's own enable_language(ASM_MARMASM), which defines it: a -D or
+# CMAKE_USER_MAKE_RULES_OVERRIDE_ASM_MARMASM is replaced there (both measured). Rule variables are read
+# at generate time from the directory scope, so a set() right below it wins.
+function Edit-KleidiaiMarmasmRule {
+    param(
+        [Parameter(Mandatory)][string]$CMakeText,
+        [Parameter(Mandatory)][string]$WrapperPath
+    )
+    # A fresh extract only: a second pass would stack a second rule and hide which one CMake reads.
+    if ($CMakeText -match 'CMAKE_ASM_MARMASM_COMPILE_OBJECT') { throw 'KleidiAI CMakeLists.txt already sets CMAKE_ASM_MARMASM_COMPILE_OBJECT: patch a fresh extract, or upstream now sets its own rule -- re-check before overriding it' }
+    # The match stops BEFORE the line ending, so the rule goes in after the anchor's own \r\n or \n.
+    $anchor = '(?m)^(?<indent>[ \t]*)enable_language\(ASM_MARMASM\)[ \t]*(?=\r?$)'
+    $found = [regex]::Matches($CMakeText, $anchor)
+    if ($found.Count -ne 1) { throw "KleidiAI CMakeLists.txt has $($found.Count) enable_language(ASM_MARMASM) lines, expected exactly one" }
+    $m = $found[0]
+    $rule = "$($m.Groups['indent'].Value)set(CMAKE_ASM_MARMASM_COMPILE_OBJECT `"$($WrapperPath -replace '\\', '/') <SOURCE> <OBJECT>`")"
+    $end = $m.Index + $m.Length
+    $eol = if ($end -lt $CMakeText.Length -and $CMakeText[$end] -eq "`r") { "`r`n" } else { "`n" }
+    return $CMakeText.Substring(0, $end) + $eol + $rule + $CMakeText.Substring($end)
+}
+
+# ORT's own KleidiAI tarball (deps.txt URL + SHA1), extracted, rule-patched and wrapped; the caller hands
+# the directory to FetchContent as FETCHCONTENT_SOURCE_DIR_KLEIDIAI.
+function Initialize-OrtKleidiaiSource {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 is the pin ORT''s own deps.txt carries')]
+    param(
+        [Parameter(Mandatory)][string]$OrtSourceDir,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string]$Triple
+    )
+    $entry = Get-OrtKleidiaiDepsEntry -DepsLine @(Get-Content -LiteralPath (Join-Path $OrtSourceDir 'cmake\deps.txt'))
+    Reset-SourceBuildDirectory -Path $WorkDir
+    $null = [System.IO.Directory]::CreateDirectory($WorkDir)
+    $archive = Join-Path $WorkDir 'kleidiai.tar.gz'
+    Invoke-DownloadWithRetry -Url $entry.Url -DestinationPath $archive -Description 'KleidiAI (ORT deps.txt)'
+    $sha1 = (Get-FileHash -LiteralPath $archive -Algorithm SHA1).Hash.ToLowerInvariant()
+    if ($sha1 -ne $entry.Sha1) { throw "KleidiAI archive SHA1 $sha1 is not ORT's deps.txt pin $($entry.Sha1)" }
+    $root = Expand-SourceTarball -Archive $archive -Destination (Join-Path $WorkDir 'src')
+    $wrapper = Join-Path $root 'kai-armasm.cmd'
+    [System.IO.File]::WriteAllText($wrapper, (Get-KleidiaiArmasmWrapper -Triple $Triple), [System.Text.Encoding]::ASCII)
+    $cml = Join-Path $root 'CMakeLists.txt'
+    [System.IO.File]::WriteAllText($cml, (Edit-KleidiaiMarmasmRule -CMakeText ([System.IO.File]::ReadAllText($cml)) -WrapperPath $wrapper))
+    Write-Host "KleidiAI $($entry.Url) (SHA1 $sha1) -> $root, ASM_MARMASM rule -> $wrapper"
+    return [pscustomobject]@{ SourceDir = $root; Wrapper = $wrapper }
 }
 
 # ORT's own Dawn patches in its PATCH_COMMAND order, read from the pinned ORT rather than restated.
@@ -597,14 +675,29 @@ else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt
 # has SME; every kernel is runtime-dispatched (IsProcessorFeaturePresent), so the armv8-a baseline
 # stays. Under MSVC -- which clang-cl counts as -- KleidiAI v1.20.0 builds only its _ASM kernel sets:
 # hex-encoded .S through ASM_MARMASM (armasm64, which MLAS's own .asm step already uses here) and C
-# wrappers without intrinsics. MLAS's kleidiai/*.cpp use baseline NEON only.
-$kleidiArgs = if ($onnxCross) { @('-Donnxruntime_USE_KLEIDIAI=ON') } else { @() }
+# wrappers without intrinsics. MLAS's kleidiai/*.cpp use baseline NEON only. The .S kernels need
+# the preprocess-then-armasm64 rule (Initialize-OrtKleidiaiSource), so FetchContent gets that tree.
+$kleidiArgs = @()
+$kleidiSrc = $null
+if ($onnxCross) {
+    $kleidiSrc = Initialize-OrtKleidiaiSource -OrtSourceDir $SourceDir -WorkDir 'C:\temp\kleidiai' -Triple (Get-ClangTargetTriple -Arch $onnxTargetArch)
+    $kleidiArgs = @('-Donnxruntime_USE_KLEIDIAI=ON', "-DFETCHCONTENT_SOURCE_DIR_KLEIDIAI=$($kleidiSrc.SourceDir -replace '\\', '/')")
+}
+# -- ThinLTO (owner decision 2026-09-28). ORT marks its own targets INTERPROCEDURAL_OPTIMIZATION,
+# which clang-cl turns into -flto=thin; the static libs are archived by llvm-lib and the DLLs linked
+# by lld-link (Invoke-CmakeConfigure's defaults), both of which read bitcode. versions.env's
+# ORT_ENABLE_LTO is the LINUX lanes' knob (AP6) and is not read here. Not with CUDA -- ORT itself
+# withholds /LTCG from a CUDA build, and nvcc's host compiler is MSVC cl, not clang-cl.
+# The archiver by its resolved path, as the other media scripts pass it: bitcode members need llvm-lib,
+# and a bare name is not guaranteed to resolve to it.
+$ltoArgs = if ($cudaUsable) { @() } else { @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
+Write-Host "ONNX: ThinLTO $(if ($ltoArgs.Count) { 'ON' } else { 'OFF (CUDA lane)' })"
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
-) + $gpuArgs + $qnnArgs + $kleidiArgs
+) + $gpuArgs + $qnnArgs + $kleidiArgs + $ltoArgs
 # rocm lane: ORT_WEBGPU=1 adds the WebGPU EP (the driver sends it; cpu/nvidia never see it).
 $webgpuPlan = Get-OrtWebGpuPlan -GpuEnv $gpuEnv -Cross $onnxCross -SpikeFlag "$env:ORT_WEBGPU"
 $webgpu = $null
@@ -633,6 +726,13 @@ if (-not $onnxCross) {
     }
     Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
 }
+if ($ltoArgs.Count -gt 0) {
+    # CMP0069 already fails configure when CMake cannot do IPO for this compiler; this proves the
+    # property turned into compile flags instead of being dropped on the way.
+    $ltoLines = @(Select-String -LiteralPath (Join-Path $buildDir 'build.ninja') -Pattern '-flto' -SimpleMatch)
+    if ($ltoLines.Count -eq 0) { throw "onnxruntime_ENABLE_LTO=ON, yet no compile line in build.ninja carries -flto -- see $ortCfgLog" }
+    Write-Host "ORT: ThinLTO reaches $($ltoLines.Count) build.ninja line(s)"
+}
 if ($kleidiArgs.Count -gt 0) {
     # ORT only WARNS when is_kleidiai_supported() says no, then builds without it: a bundle that
     # "has" KleidiAI but ships plain MLAS. Fail at configure instead, and prove the target exists.
@@ -640,6 +740,9 @@ if ($kleidiArgs.Count -gt 0) {
     if ($kaiDropped.Count -gt 0) { throw "ORT configure dropped KleidiAI: $($kaiDropped -join ' | ') -- see $ortCfgLog" }
     $ninjaFile = Join-Path $buildDir 'build.ninja'
     if (-not (Select-String -LiteralPath $ninjaFile -Pattern 'kleidiai' -SimpleMatch -Quiet)) { throw "onnxruntime_USE_KLEIDIAI=ON, yet $ninjaFile has no kleidiai target -- see $ortCfgLog" }
+    # The patched tree was used (not a fresh FetchContent download) and its .S rule is the wrapper.
+    $rulesFile = Join-Path $buildDir 'CMakeFiles\rules.ninja'
+    if (-not (Select-String -LiteralPath $rulesFile -Pattern 'kai-armasm.cmd' -SimpleMatch -Quiet)) { throw "KleidiAI's ASM_MARMASM rule in $rulesFile is not $($kleidiSrc.Wrapper): FETCHCONTENT_SOURCE_DIR_KLEIDIAI or the rule patch did not take -- see $ortCfgLog" }
     Write-Host 'ORT: KleidiAI in MLAS ON for the arm64 bundle (configure kept it; build.ninja carries the kleidiai target)'
 }
 if ($webgpuPlan.WebGpu) {

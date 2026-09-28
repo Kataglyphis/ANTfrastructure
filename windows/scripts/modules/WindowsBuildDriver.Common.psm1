@@ -120,6 +120,13 @@ function Get-MediaBranchVersionArg {
                 # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
                 AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
                 AMF_HEADERS_SHA256        = Get-VersionTableValue $VersionTable 'AMF_HEADERS_SHA256'
+                # FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64).
+                DAV1D_VERSION             = Get-VersionTableValue $VersionTable 'DAV1D_VERSION'
+                DAV1D_SHA256              = Get-VersionTableValue $VersionTable 'DAV1D_SHA256'
+                X264_MESON_BRANCH         = Get-VersionTableValue $VersionTable 'X264_MESON_BRANCH'
+                X264_MESON_COMMIT         = Get-VersionTableValue $VersionTable 'X264_MESON_COMMIT'
+                X265_VERSION              = Get-VersionTableValue $VersionTable 'X265_VERSION'
+                X265_SHA256               = Get-VersionTableValue $VersionTable 'X265_SHA256'
                 CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
                 # build-opencv resolves the CPython it builds bindings against.
                 PYTHON_VERSION            = Get-VersionTableValue $VersionTable 'PYTHON_VERSION'
@@ -176,7 +183,9 @@ function Get-MediaMergeVersionArg {
     # them only produces "unused build-arg" warnings and pollutes the merge stage's cache key.
     $branchOnly = @(
         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
-        'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers (rocm lane)
+        'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers
+        'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
+        'X265_VERSION', 'X265_SHA256',        # media-core: FFmpeg's static software codecs
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'QNN_SDK_ZIP_SHA256',                 # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
         'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
