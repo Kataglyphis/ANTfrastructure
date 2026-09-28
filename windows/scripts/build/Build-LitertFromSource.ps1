@@ -131,6 +131,15 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
 )
+# amd64: the image's AVX2+FMA baseline (ORT and OpenCV already build with it, so the image needs an
+# AVX2 CPU regardless). Without it tflite's own kernels (Eigen, optimized_ops) compile at SSE2;
+# XNNPACK's microkernels carry their own per-family flags either way. Through *_FLAGS_INIT, not
+# CMAKE_*_FLAGS: the platform module appends /DWIN32 /GR /EHsc to _INIT, a CMAKE_*_FLAGS value
+# would replace them. The cross lane's _INIT carries --target (Get-CMakeCrossArgs) and is left alone.
+if (-not (Test-WindowsCrossTarget)) {
+    $litertSimd = Get-WindowsTargetSimdFlags
+    $cmakeExtra += @("-DCMAKE_C_FLAGS_INIT=$litertSimd", "-DCMAKE_CXX_FLAGS_INIT=$litertSimd")
+}
 # NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
 # -DTFLITE_ENABLE_QNN / -DQNN_HOME and print "QNN delegate ON". No such option
 # exists: a GitHub-wide search for TFLITE_ENABLE_QNN finds it only in THIS repo, and

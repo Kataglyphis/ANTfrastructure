@@ -26,6 +26,18 @@ produce, and which gates keep it honest.
 > plugin, and the TVM/IREE **runtimes together with their python packages** — 6 wheels, the same
 > count as amd64.
 >
+> **KleidiAI (2026-09-28):** ORT's MLAS builds with `onnxruntime_USE_KLEIDIAI=ON` on arm64.
+> CMake's default is OFF and only upstream's `build.py` turns it on, so bundles before this date
+> shipped without it. It is runtime-dispatched, so the armv8-a baseline is unchanged, and it
+> routes MatMulNBits (the GenAI hot path), plus SGEMM/conv on SME CPUs, through KleidiAI.
+> `Build-OnnxFromSource.ps1` fails configure if ORT drops the option or `build.ninja` has no
+> kleidiai target. **Not available at the pinned versions, checked against their sources:**
+> - XNNPACK in LiteRT v2.2.0 forces `XNNPACK_ENABLE_KLEIDIAI` OFF on Windows with a plain `SET`.
+> - OpenCV 5.0.0 offers `WITH_KLEIDICV` only for `ANDROID OR UNIX`.
+> - Arm NN v26.07 has no Windows support, and ACL v53.3.0 calls Windows builds experimental and
+>   native-only.
+> - llama.cpp is not built from source here.
+>
 > | Gate (arm64 `bk-20260828-171914`) | Result | amd64 (run 8, blocked at TVM) |
 > | --- | --- | --- |
 > | PE arch gate over `C:\runtime` + host site-packages | **992 inspected / 0 violations** | 1134 / 0 |

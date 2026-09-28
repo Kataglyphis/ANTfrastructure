@@ -1103,6 +1103,11 @@ cpp_link_args = [$buildLinkArgs]
         '-Dintrospection=disabled',
         '-Dtests=disabled',
         '-Dexamples=disabled',
+        # The monorepo's default_options say buildtype=debugoptimized (checked at
+        # 1.29.2): /Zi objects, and glib_debug=auto turns GLib's debug checks ON in
+        # every shipped GLib. The Linux lane passes release
+        # (build-gstreamer-monorepo.sh). b_ndebug stays meson's default on both lanes.
+        '-Dbuildtype=release',
         # Enable all GStreamer plugin sets. meson's `auto` means "skip silently if
         # the dependency is missing" -- which is how opencv/onnx/libav went missing
         # from a SHIPPED image without one line of red. `enabled` fails meson setup

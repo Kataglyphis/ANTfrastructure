@@ -590,12 +590,21 @@ $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK
 $qnnArgs = if ($qnnSdk) { $qnnSdk.CmakeArgs } else { @() }
 if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
 else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
+# -- KleidiAI in MLAS, arm64 only (2026-09-28). ORT's CMake option defaults OFF and only build.py
+# turns it on (it is ON in upstream's own Windows ARM64 builds); this script configures through
+# CMake directly, so the arm64 bundle shipped without it. MLAS routes MatMulNBits (the GenAI hot
+# path) through KleidiAI, and its SGEMM/conv overrides through KleidiAI's SME kernels when the CPU
+# has SME; every kernel is runtime-dispatched (IsProcessorFeaturePresent), so the armv8-a baseline
+# stays. Under MSVC -- which clang-cl counts as -- KleidiAI v1.20.0 builds only its _ASM kernel sets:
+# hex-encoded .S through ASM_MARMASM (armasm64, which MLAS's own .asm step already uses here) and C
+# wrappers without intrinsics. MLAS's kleidiai/*.cpp use baseline NEON only.
+$kleidiArgs = if ($onnxCross) { @('-Donnxruntime_USE_KLEIDIAI=ON') } else { @() }
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
-) + $gpuArgs + $qnnArgs
+) + $gpuArgs + $qnnArgs + $kleidiArgs
 # rocm lane: ORT_WEBGPU=1 adds the WebGPU EP (the driver sends it; cpu/nvidia never see it).
 $webgpuPlan = Get-OrtWebGpuPlan -GpuEnv $gpuEnv -Cross $onnxCross -SpikeFlag "$env:ORT_WEBGPU"
 $webgpu = $null
@@ -623,6 +632,15 @@ if (-not $onnxCross) {
         throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
     }
     Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
+}
+if ($kleidiArgs.Count -gt 0) {
+    # ORT only WARNS when is_kleidiai_supported() says no, then builds without it: a bundle that
+    # "has" KleidiAI but ships plain MLAS. Fail at configure instead, and prove the target exists.
+    $kaiDropped = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'KleidiAI (is not supported|requires MSVC)|onnxruntime_USE_KLEIDIAI was set but it is not supported' })
+    if ($kaiDropped.Count -gt 0) { throw "ORT configure dropped KleidiAI: $($kaiDropped -join ' | ') -- see $ortCfgLog" }
+    $ninjaFile = Join-Path $buildDir 'build.ninja'
+    if (-not (Select-String -LiteralPath $ninjaFile -Pattern 'kleidiai' -SimpleMatch -Quiet)) { throw "onnxruntime_USE_KLEIDIAI=ON, yet $ninjaFile has no kleidiai target -- see $ortCfgLog" }
+    Write-Host 'ORT: KleidiAI in MLAS ON for the arm64 bundle (configure kept it; build.ninja carries the kleidiai target)'
 }
 if ($webgpuPlan.WebGpu) {
     $webgpuCfg = @(Get-OrtWebGpuConfigureFinding -CacheText ([System.IO.File]::ReadAllText((Join-Path $buildDir 'CMakeCache.txt'))) -LogText ([System.IO.File]::ReadAllText($ortCfgLog)))
