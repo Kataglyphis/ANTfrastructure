@@ -317,41 +317,44 @@ claude_stream_render() {
 
 # ── OpenCode invocation ─────────────────────────────────────────────────
 # Twin of the PS module's Get-AgenticOpenCodeMajorVersion: v1 prints
-# "1.18.33", v2 "opencode v2.0.18". Unparseable (or no opencode) is 1, which
-# keeps the v1 command line unchanged. $1 is the `opencode --version` output.
+# "1.18.33", v2 "opencode v2.0.18". Unparseable text is 0.
+# $1 is the `opencode --version` output.
 opencode_major_version() {
     if [[ "${1:-}" =~ ([0-9]+)\.[0-9]+\.[0-9]+ ]]; then
         echo "${BASH_REMATCH[1]}"
     else
-        echo 1
+        echo 0
     fi
 }
 
-# `opencode run` arguments, one per line, for <agent> <model> <major>.
-# v2 adds --standalone (a v2 run otherwise attaches to the per-user background
-# service, which keeps working after the timeout kills the client) and --auto
-# for the executor only (a headless v2 run auto-REJECTS every `ask`
-# permission and exits 1). docs/windows-agentic-loop.md#opencode-v2
+# opencode v2 `run` arguments, one per line, for <agent> <model>.
+# --standalone: a v2 run otherwise attaches to the per-user background
+# service, which keeps working after the timeout kills the client. --auto, for
+# the executor only: a headless v2 run auto-REJECTS every `ask` permission and
+# exits 1. docs/windows-agentic-loop.md#opencode-v2
 opencode_run_args() {
-    local agent="$1" model="$2" major="${3:-1}"
-    printf '%s\n' run --agent "$agent" --model "$model"
-    if [[ "$major" -ge 2 ]]; then
-        echo --standalone
-        if [[ "$agent" == "executor" ]]; then echo --auto; fi
-    fi
+    local agent="$1" model="$2"
+    printf '%s\n' run --agent "$agent" --model "$model" --standalone
+    if [[ "$agent" == "executor" ]]; then echo --auto; fi
 }
 
 invoke_opencode() {
     local agent="$1" model="$2" message="$3"
     local -a run_args
-    mapfile -t run_args < <(opencode_run_args "$agent" "$model" \
-        "$(opencode_major_version "$(opencode --version 2>/dev/null || true)")")
+    mapfile -t run_args < <(opencode_run_args "$agent" "$model")
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log "[DRY RUN] opencode ${run_args[*]}"
         return 0
     fi
     if ! command -v opencode &>/dev/null; then
-        log "opencode not found on PATH. Install: curl -fsSL https://opencode.ai/install | bash" "FATAL"
+        log "opencode not found on PATH. Install v2: curl -fsSL https://opencode.ai/v2/install | bash" "FATAL"
+        return 1
+    fi
+    # v1 takes neither flag above; `run --standalone` there is not a run.
+    local version_text
+    version_text="$(opencode --version 2>/dev/null || true)"
+    if [[ "$(opencode_major_version "$version_text")" -lt 2 ]]; then
+        log "opencode v2 is required; PATH has '${version_text}'. Install: curl -fsSL https://opencode.ai/v2/install | bash" "FATAL"
         return 1
     fi
     local timeout_s

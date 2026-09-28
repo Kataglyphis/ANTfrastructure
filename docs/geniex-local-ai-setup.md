@@ -284,6 +284,15 @@ text chat — SoX only enables audio input.
 
 ## Wire the coding agent (opencode)
 
+> **opencode v2.** Use opencode v2 here, as everywhere in this family
+> ([install](windows-agentic-loop.md#opencode-v2)). Everything below was measured
+> on opencode v1 (1.18.x) and has not been re-measured on v2. That covers the
+> `provider` block, the top-level `tools` trim and the 8,175-token preamble. v2's
+> config reference names its native key `providers`, and it lists top-level
+> `tools` among the legacy agent fields. If v2 rejects or ignores the blocks
+> below, port them to those shapes and re-measure the preamble before trusting
+> the lane sizing on this page.
+
 **The recommended model is `qualcomm/Qwen3-4B-Instruct-2507:W4A16` on the NPU
 lane** — 19.5 tok/s and, because it does not emit `<think>`, ~6x faster to a
 finished answer than any GGUF here (see § Getting the most out of this machine

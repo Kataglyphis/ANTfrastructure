@@ -221,8 +221,8 @@ sources `agentic-loop.sh` only, and its config-precedence and `invoke_agent`
 cases land in the engine half through it.
 
 Two engines are supported: `opencode` invokes
-`opencode run --agent <role> --model <model>` (plus `--standalone`, and
-`--auto` for the executor, on a v2 CLI:
+`opencode run --agent <role> --model <model> --standalone` (plus `--auto` for
+the executor; opencode v2 only, v1 is refused:
 [opencode v2](windows-agentic-loop.md#opencode-v2)); `claude` invokes
 `claude -p --model <model>` with the role system prompt appended from the
 configured prompt file.
