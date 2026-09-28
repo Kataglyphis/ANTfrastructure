@@ -25,7 +25,9 @@ run again), `- [x]` done (pruned automatically — history lives in git).
 Add `scripts/agentic-loop/prompts/{planner,executor}-overlay.md` holding only
 what is specific to your project, and point `promptOverlays` in the config at
 them. The loop composes `../system-prompts/<role>.md` + your overlay once and
-hands the result to **both** engines: to `claude` behind
+hands the result to **both** engines (opencode must be **v2**; the loop refuses
+v1, see [opencode v2](../../../docs/windows-agentic-loop.md#opencode-v2)): to
+`claude` behind
 `--append-system-prompt-file`, and to `opencode` by generating
 `.opencode/agents/<role>.md`, which is the only role-prompt channel opencode
 has.

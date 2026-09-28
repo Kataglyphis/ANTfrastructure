@@ -20,7 +20,7 @@ Two agent CLI backends are supported; select via config `engine`,
 
 | Engine | Invocation | Role prompts | Permissions |
 |--------|-----------|--------------|-------------|
-| `opencode` | `opencode run --agent <role> --model <model>`; on v2 also `--standalone`, and `--auto` for the executor ([below](#opencode-v2)) | `.opencode/agents/<role>.md`, **generated** by the loop (resolved by opencode) | Configured in `opencode.json`; on v2 the executor auto-approves every `ask` rule, the planner has them rejected |
+| `opencode` (**v2 only**) | `opencode run --agent <role> --model <model> --standalone`, plus `--auto` for the executor ([below](#opencode-v2)) | `.opencode/agents/<role>.md`, **generated** by the loop (resolved by opencode) | Configured in `opencode.json`; the executor auto-approves every `ask` rule, the planner has them rejected |
 | `claude` | `claude -p --model <model>` (Claude Code CLI) | `--append-system-prompt-file` from the composed prompt | Planner sandboxed via `--allowed-tools` (e.g. `Read Glob Grep Edit(BACKLOG.md)`); executor uses `permissionMode` (default `bypassPermissions` — intended for trusted repos/sandboxes) |
 
 ### Role prompts: one composition, both engines
@@ -72,14 +72,26 @@ opencode is left with nothing.
 
 ### opencode v2
 
-The loop runs both opencode CLIs. It reads `opencode --version` before every
-invocation (`1.18.33` on v1, `opencode v2.0.18` on v2). An unreadable answer
-counts as v1, and v1 gets exactly the command line it always had. v2 is the npm
-package `@opencode/cli`. GitHub's opencode releases are still 1.x, so v2 does
-not arrive through a package manager that tracks them, such as scoop.
+The opencode engine requires **opencode v2**. Before every invocation the loop
+reads `opencode --version` (`opencode v2.0.18` on v2, a bare `1.18.33` on v1).
+Anything below 2, including an unreadable answer, is a FATAL that names the
+version found and how to install v2. v1 is refused rather than run, because it
+takes neither of the flags below.
 
-On v2 the loop adds two flags. Each one fixes something that was observed on
-2.0.18:
+Install v2 from its own channels:
+
+| Host | Command |
+| --- | --- |
+| Linux, macOS, WSL | `curl -fsSL https://opencode.ai/v2/install \| bash` (installs to `~/.opencode/bin`) |
+| Windows, Git Bash | the same installer with `--no-modify-path`, then put `%USERPROFILE%\.opencode\bin` first on the user `PATH` |
+| Anywhere with Node | `npm install -g @opencode/cli` |
+
+GitHub's opencode releases and the package managers that follow them, such as
+scoop, still carry 1.x. A scoop-installed opencode is v1: uninstall it, or keep
+it behind v2 on `PATH`.
+
+The loop passes two flags that v1 did not need. Each one fixes something that
+was observed on 2.0.18:
 
 - **`--standalone`, for both roles.** Without it, a v2 `run` attaches to the
   per-user background service, and the session runs there. The loop's timeout
@@ -96,7 +108,7 @@ On v2 the loop adds two flags. Each one fixes something that was observed on
   the tree and edit `BACKLOG.md`. What gets rejected is access outside the
   project and reads of `.env` files.
 
-What carries over unchanged was verified against 2.0.18:
+What carries over from v1 unchanged was verified against 2.0.18:
 
 - The prompt still goes in on stdin.
 - `--agent <role>` still resolves `.opencode/agents/<role>.md`, and the
@@ -124,9 +136,9 @@ Nth after N × `agentRetryDelaySeconds`) and honor per-role timeouts
 
 ## Prerequisites
 
-- [OpenCode](https://opencode.ai) CLI and/or
+- [OpenCode](https://opencode.ai) **v2** CLI ([install](#opencode-v2)) and/or
   [Claude Code](https://claude.com/claude-code) CLI installed and authenticated
-  (`opencode auth login`; run `claude` once interactively)
+  (`opencode auth login` under v2; run `claude` once interactively)
 - PowerShell 7+ (cross-platform)
 - A `BACKLOG.md` file in the repository root (task format: `- [ ] Title` for actionable tasks, `- [b] Title` for blocked/parked ones the executor must skip)
 - `jq` on Linux (for config parsing in the Bash equivalent,
@@ -206,9 +218,9 @@ Pass `-BuildConfigs` / `-PlannerPrompt` / `-ExecutorPrompt` /
 |----------|---------|
 | `Resolve-AgenticEngine -Config <object> [-RepoRoot <path>] [-EngineOverride <string>]` | Resolve engine + models + prompt files + timeouts into a flat hashtable; writes `.opencode/agents/<role>.md` on the way. |
 | `Invoke-AgenticAgent -Role <planner\|executor\|fixer> -Message <string> -EngineConfig <hashtable>` | Engine dispatcher with retry + linear backoff. Returns `$true` on success. |
-| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string> [-TimeoutSeconds <int>]` | Passes message via stdin to `opencode run`. Returns its stdout, `$null` when opencode is missing. |
-| `Get-AgenticOpenCodeMajorVersion [-VersionText <string>]` | The opencode CLI's major version, from `opencode --version` (or the given text); 1 when unreadable. |
-| `Get-AgenticOpenCodeCommandLine -Agent <string> -Model <string> [-Major <int>]` | The `opencode run` argument array for one role and major version ([opencode v2](#opencode-v2)). |
+| `Invoke-OpenCode -Agent <string> -Model <string> -Message <string> [-TimeoutSeconds <int>]` | Passes message via stdin to opencode v2's `run`. Returns its stdout, `$null` when opencode is missing or older than v2. |
+| `Get-AgenticOpenCodeMajorVersion -VersionText <string>` | The major version in an `opencode --version` output; 0 when unreadable. |
+| `Get-AgenticOpenCodeCommandLine -Agent <string> -Model <string>` | The opencode v2 `run` argument array for one role ([opencode v2](#opencode-v2)). |
 | `Invoke-ClaudeCode -Role <string> -Model <string> -Message <string> -EngineConfig <hashtable>` | Headless `claude -p` run with role system prompt, tool sandbox, and fallback model. |
 | `Invoke-AgentProcess -Executable <string> -ArgumentList <string[]> -Message <string> [-TimeoutSeconds <int>]` | Low-level process runner (stdin prompt, streamed stdout/stderr, timeout). |
 | `Invoke-BuildFixer -ConfigurationName <string> -EngineConfig <hashtable>` | Dispatch the fixer role with the tail of the loop log after a build failure. |

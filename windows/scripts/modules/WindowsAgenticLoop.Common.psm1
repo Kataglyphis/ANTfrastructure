@@ -12,8 +12,8 @@
 # Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
 #
 # Supports two engines:
-#   opencode — invokes `opencode run --agent <role> --model <model>`, plus
-#              --standalone (and --auto for the executor) on a v2 CLI
+#   opencode — invokes opencode v2 (refuses v1): `opencode run --agent <role>
+#              --model <model> --standalone`, plus --auto for the executor
 #   claude   — invokes `claude -p --model <model>` (Claude Code CLI) with a
 #              role system prompt appended from a prompt file
 #
@@ -506,26 +506,20 @@ function Invoke-AgentProcess {
 function Get-AgenticOpenCodeMajorVersion {
     <#
     .SYNOPSIS
-      Major version of the opencode CLI: 1 prints "1.18.33", 2 prints
-      "opencode v2.0.18". Anything unparseable - including no opencode on
-      PATH - is 1, which keeps the v1 command line unchanged.
-    .PARAMETER VersionText
-      Parse this instead of running `opencode --version` (tests).
+      Major version of an opencode CLI from its `--version` output: v1
+      prints "1.18.33", v2 "opencode v2.0.18". Unparseable text is 0.
     #>
     param([string]$VersionText)
-    if (-not $PSBoundParameters.ContainsKey('VersionText')) {
-        $VersionText = try { (& opencode --version 2>$null) -join "`n" } catch { '' }
-    }
     if ($VersionText -match '(\d+)\.\d+\.\d+') { return [int]$Matches[1] }
-    return 1
+    return 0
 }
 
 function Get-AgenticOpenCodeCommandLine {
     <#
     .SYNOPSIS
-      The `opencode run` argument list for one role and CLI major version.
+      The opencode v2 `run` argument list for one role.
     .DESCRIPTION
-      v2 (docs/windows-agentic-loop.md#opencode-v2) adds two flags:
+      Two flags beyond --agent/--model (docs/windows-agentic-loop.md#opencode-v2):
       --standalone, because a v2 `run` otherwise attaches to the per-user
       background service, where the agent keeps working after the loop's
       timeout kills the client; and --auto for the executor only, because a
@@ -533,25 +527,31 @@ function Get-AgenticOpenCodeCommandLine {
       (an external directory, a .env file) and exits 1. That mirrors the
       claude engine: executor bypassPermissions, planner restricted.
     #>
-    param([Parameter(Mandatory)][string]$Agent, [Parameter(Mandatory)][string]$Model, [int]$Major = 1)
-    $runArgs = @('run', '--agent', $Agent, '--model', $Model)
-    if ($Major -ge 2) {
-        $runArgs += '--standalone'
-        if ($Agent -eq 'executor') { $runArgs += '--auto' }
-    }
+    param([Parameter(Mandatory)][string]$Agent, [Parameter(Mandatory)][string]$Model)
+    $runArgs = @('run', '--agent', $Agent, '--model', $Model, '--standalone')
+    if ($Agent -eq 'executor') { $runArgs += '--auto' }
     return , $runArgs
 }
 
 function Invoke-OpenCode {
     <#
     .SYNOPSIS
-      Invoke opencode with a prompt via stdin. Returns the captured stdout
-      string ($null when opencode is missing).
+      Invoke opencode v2 with a prompt via stdin. Returns the captured stdout
+      string ($null when opencode is missing or older than v2).
     #>
     param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
     if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
-    $runArgs = Get-AgenticOpenCodeCommandLine -Agent $Agent -Model $Model -Major (Get-AgenticOpenCodeMajorVersion)
+    $runArgs = Get-AgenticOpenCodeCommandLine -Agent $Agent -Model $Model
     if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode $($runArgs -join ' ')"; return '[DRY RUN]' }
+    if (Get-Command opencode -ErrorAction SilentlyContinue) {
+        # v1 takes neither flag above; `run --standalone` there is not a run.
+        $versionText = try { ((& opencode --version 2>$null) -join ' ').Trim() } catch { '' }
+        if ((Get-AgenticOpenCodeMajorVersion -VersionText $versionText) -lt 2) {
+            Write-AgenticLog "opencode v2 is required; PATH has '$versionText'. Install it: npm install -g @opencode/cli (Windows), or curl -fsSL https://opencode.ai/v2/install | bash" 'FATAL'
+            $script:AgenticExitCode = 1
+            return $null
+        }
+    }
     Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
     $result = Invoke-AgentProcess -Executable 'opencode' `
         -ArgumentList $runArgs `

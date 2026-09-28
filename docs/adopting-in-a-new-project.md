@@ -295,7 +295,8 @@ wrappers). A consumer supplies four things:
    and `executor-overlay.md`, wired via the config's top-level `promptOverlays`
    block. Write only your project's delta. The loop composes
    `shared/agentic-loop/system-prompts/<role>.md` + your overlay once and
-   delivers that one text to both engines: to `claude` via
+   delivers that one text to both engines (the opencode engine needs opencode
+   **v2**, [install](windows-agentic-loop.md#opencode-v2)): to `claude` via
    `--append-system-prompt-file`, and to `opencode` by GENERATING
    `.opencode/agents/<role>.md`, which is its only role-prompt channel. Add
    `.opencode/agents/` to `.gitignore` — the loop warns if you have not. A

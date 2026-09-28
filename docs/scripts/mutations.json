@@ -4978,8 +4978,8 @@
   {
     "id": "lib.agentic-opencode-v2-standalone",
     "target": "linux/scripts/lib/agentic-engines.sh",
-    "find": "        echo --standalone\n",
-    "replace": "        :\n",
+    "find": "--model \"$model\" --standalone",
+    "replace": "--model \"$model\"",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",
     "why": "a v2 run without --standalone attaches to the background service, which keeps editing the tree after the loop's timeout kills the client"
   },
@@ -4992,12 +4992,12 @@
     "why": "a headless v2 run auto-rejects every ask permission and exits 1; without --auto the executor fails on any path outside the project"
   },
   {
-    "id": "lib.agentic-opencode-v1-unchanged",
+    "id": "lib.agentic-opencode-v1-refused",
     "target": "linux/scripts/lib/agentic-engines.sh",
-    "find": "    if [[ \"$major\" -ge 2 ]]; then\n",
-    "replace": "    if [[ \"$major\" -ge 1 ]]; then\n",
+    "find": "if [[ \"$(opencode_major_version \"$version_text\")\" -lt 2 ]]; then",
+    "replace": "if false; then",
     "test": "bash linux/scripts/tests/test-agentic-loop.sh",
-    "why": "v1 has no --standalone; handing it the v2 flags breaks every consumer that has not upgraded"
+    "why": "v1 takes neither --standalone nor v2's permission model; letting it through runs a v1 agent with flags it does not have"
   },
   {
     "id": "cross-build.media-init-refuses-a-missing-cross-predicate",

@@ -37,7 +37,7 @@ complete_agentic_loop() {
         log "The loop exited with errors. Check sections above marked [ERROR] or [FATAL]." "WARN"
         log "Common fixes:" "WARN"
         log "  1. claude engine: run 'claude' once interactively to log in" "WARN"
-        log "  2. opencode engine: run 'opencode auth login' and 'opencode models'" "WARN"
+        log "  2. opencode engine: needs v2 ('opencode --version'); run 'opencode auth login' and 'opencode models'" "WARN"
         log "  3. Verify model IDs in the loop config JSON" "WARN"
         log "  4. Run with --dry-run to test the configuration without executing" "WARN"
         log "  5. Run with --max-iterations 1 to test a single iteration" "WARN"

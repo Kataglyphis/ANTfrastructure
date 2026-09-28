@@ -153,30 +153,32 @@ _out="$(_drain ":")"
 t_assert_contains "${_out}" "Tasks in queue: 0"
 t_assert_contains "${_out}" "completed=0" "blocked work must let the planner run again, not stall the executor"
 
-# ── 3b. the opencode command line, v1 and v2 ────────────────────────────
+# ── 3b. the opencode command line: v2 only ──────────────────────────────
 # The strings are what each CLI's `--version` really prints (1.18.33, 2.0.18).
 # docs/windows-agentic-loop.md#opencode-v2
-t_case "opencode_major_version reads both CLIs' --version and defaults to 1"
+t_case "opencode_major_version reads both CLIs' --version; unreadable is 0"
 t_assert_eq "1" "$(_lib 'opencode_major_version "1.18.33"')"
 t_assert_eq "2" "$(_lib 'opencode_major_version "opencode v2.0.18"')"
-t_assert_eq "1" "$(_lib 'opencode_major_version ""')" "no opencode, or an unreadable version, keeps the v1 command line"
+t_assert_eq "0" "$(_lib 'opencode_major_version ""')" "an unreadable version must not pass for v2"
 
-t_case "a v1 CLI gets exactly the v1 command line"
-_out="$(_lib 'opencode_run_args executor m 1 | tr "\n" " "')"
-t_assert_eq "run --agent executor --model m " "${_out}"
-
-t_case "v2: both roles run --standalone, only the executor gets --auto"
-_out="$(_lib 'opencode_run_args executor m 2 | tr "\n" " "')"
+t_case "both roles run --standalone, only the executor gets --auto"
+_out="$(_lib 'opencode_run_args executor m | tr "\n" " "')"
 t_assert_eq "run --agent executor --model m --standalone --auto " "${_out}" \
   "a headless v2 run auto-rejects every ask permission without --auto"
-_out="$(_lib 'opencode_run_args planner m 2 | tr "\n" " "')"
+_out="$(_lib 'opencode_run_args planner m | tr "\n" " "')"
 t_assert_eq "run --agent planner --model m --standalone " "${_out}" \
   "the planner stays restricted, as it is under the claude engine"
 
-t_case "invoke_opencode hands the CLI the arguments its version calls for"
-_out="$(_lib 'opencode() { echo "opencode v2.0.18"; }
-DRY_RUN=true invoke_opencode executor m msg')"
+t_case "a dry run shows the v2 command line"
+_out="$(_lib 'DRY_RUN=true invoke_opencode executor m msg')"
 t_assert_contains "${_out}" "[DRY RUN] opencode run --agent executor --model m --standalone --auto"
+
+t_case "a v1 opencode on PATH is FATAL and never gets a run"
+_out="$(_lib 'opencode() { if [[ "$1" == --version ]]; then echo 1.18.33; else echo RAN-RUN; fi; }
+invoke_opencode executor m msg; echo "rc=$?"')"
+t_assert_contains "${_out}" "opencode v2 is required; PATH has '1.18.33'"
+t_assert_contains "${_out}" "rc=1"
+t_assert_eq "0" "$(grep -c RAN-RUN <<< "${_out}")" "v1 must not be handed v2's flags"
 
 # ── 4. the F2 seam: two files, one entry point ──────────────────────────
 # The engine half is loaded BY agentic-loop.sh from its own directory, so a

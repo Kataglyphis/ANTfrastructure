@@ -126,27 +126,38 @@ Describe 'WindowsAgenticLoop.Common' {
 
     # The strings are what each CLI's --version really prints (1.18.33, 2.0.18).
     # docs/windows-agentic-loop.md#opencode-v2
-    Context 'opencode v1 / v2 command line' {
-        It 'reads the major version from both CLIs and defaults to 1' {
+    Context 'opencode v2 command line' {
+        It 'reads the major version from both CLIs; unreadable is 0' {
             Get-AgenticOpenCodeMajorVersion -VersionText '1.18.33' | Should -Be 1
             Get-AgenticOpenCodeMajorVersion -VersionText 'opencode v2.0.18' | Should -Be 2
-            Get-AgenticOpenCodeMajorVersion -VersionText '' | Should -Be 1
+            Get-AgenticOpenCodeMajorVersion -VersionText '' | Should -Be 0
         }
 
-        It 'gives a v1 CLI exactly the v1 command line' {
-            (Get-AgenticOpenCodeCommandLine -Agent 'executor' -Model 'm' -Major 1) -join ' ' |
-                Should -Be 'run --agent executor --model m'
-        }
-
-        It 'runs both roles --standalone on v2 and gives only the executor --auto' {
-            (Get-AgenticOpenCodeCommandLine -Agent 'executor' -Model 'm' -Major 2) -join ' ' |
+        It 'runs both roles --standalone and gives only the executor --auto' {
+            (Get-AgenticOpenCodeCommandLine -Agent 'executor' -Model 'm') -join ' ' |
                 Should -Be 'run --agent executor --model m --standalone --auto'
-            (Get-AgenticOpenCodeCommandLine -Agent 'planner' -Model 'm' -Major 2) -join ' ' |
+            (Get-AgenticOpenCodeCommandLine -Agent 'planner' -Model 'm') -join ' ' |
                 Should -Be 'run --agent planner --model m --standalone'
         }
 
-        It 'returns an array even for the shortest command line' {
+        It 'returns an array' {
             , (Get-AgenticOpenCodeCommandLine -Agent 'planner' -Model 'm') | Should -BeOfType [object[]]
+        }
+
+        It 'refuses a v1 opencode on PATH without handing it a run' {
+            $script:ocCalls = [System.Collections.Generic.List[string]]::new()
+            function global:opencode { $script:ocCalls.Add("$args"); if ($args[0] -eq '--version') { '1.18.33' } }
+            try {
+                Initialize-AgenticLoop -RepoRoot $script:testDir 6>$null
+                $out = Invoke-OpenCode -Agent 'executor' -Model 'm' -Message 'hi' 6>$null
+                $out | Should -BeNullOrEmpty
+                $script:ocCalls | Should -Be @('--version')
+                Get-Content (Get-ChildItem (Join-Path $script:testDir 'logs\agentic-loop\*.log') | Sort-Object LastWriteTime | Select-Object -Last 1) -Raw |
+                    Should -Match "opencode v2 is required; PATH has '1\.18\.33'"
+            } finally {
+                Remove-Item Function:\opencode -ErrorAction SilentlyContinue
+                Initialize-AgenticLoop -RepoRoot $script:testDir -DryRun 6>$null
+            }
         }
     }
 
