@@ -280,17 +280,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `vulkan-1.dll` into `C:\vulkan-loader` and appends it to PATH, never System32. Proven
       in `:winamd64`: a program importing `vulkan-1.dll` went from `0xC0000135` to running
       (zero devices, no ICD), and `gstvulkan` loads. OpenGL stays host-only (§ Deliberate).
-- [b] **CON26 — `:winamd64` does not fit a stock `windows-2025` runner** [M, ★★].
-      Blocked on an owner decision.
-      - The ~54 GB of layers exhausted `C:` (`hcsshim::ImportLayer … not enough
-        space on the disk (0x70)`, BeschleunigerBallett, root-caused 2026-07-21).
-      - The `set-docker-data-root` action moves the data root to `D:` and is the
-        documented workaround.
-      - BeschleunigerBallett proposes a slim `:winamd64-toolchain`
-        (`-Stages base,sdk,toolchain`, no `-Gpu`) for lanes that need no
-        media/ML stack.
-      - CON12 takes 7.1 GB off the image: the patched LLVM's source and Ninja tree no
-        longer stay in its layer (found 2026-09-26).
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-09-26): microsoft/STL#6294
       is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
@@ -438,6 +427,11 @@ These are recorded so nobody files them as gaps:
   third-party builds (pal1000/mesa-dist-win). wgpu-linked binaries run on the host, as
   OxidANT's renderer tests do. A lavapipe device would also need an HKLM ICD
   registration, because the loader ignores `VK_DRIVER_FILES` in an elevated process.
+- No slim `:winamd64-toolchain` tag (owner decision 2026-09-28, CON26). `:winamd64`'s
+  ~54 GB of layers exhaust a stock `windows-2025` runner's `C:` (`hcsshim::ImportLayer …
+  not enough space on the disk (0x70)`, BeschleunigerBallett, 2026-07-21); the
+  `set-docker-data-root` action, which moves the data root to `D:`, stays the answer for
+  every lane. CON12 takes 7.1 GB off the image regardless.
 - Windows (CON28): no TAPPAS (upstream supports Ubuntu, Raspberry Pi OS and Yocto only); no
   `cargo-cbuild` (no Windows consumer builds a Rust GStreamer plugin); opus SIMD off on
   both lanes, performance only (arm64's RTCD passes `-mfpu=neon` and `__emit`, which

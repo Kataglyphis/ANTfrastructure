@@ -49,6 +49,49 @@ function Get-ForwardSwitchValue {
     return [bool]$value
 }
 
+# The `codeql database create` argv, apart from the executable. Pure, so a suite can
+# hold it without the CLI (Invoke-BuildCodeQL downloads and runs a real codeql.exe).
+# -CodeScanningConfig is the scoping seam: a code-scanning config file (paths-ignore,
+# query filters) that travels inside the database to `database analyze`. It scopes
+# the ANALYSIS, not extraction -- a built language's extractor still reads whatever
+# the build compiles.
+function Get-CodeQLDatabaseCreateArgs {
+    param(
+        [Parameter(Mandatory)]
+        [string]$DbClusterDir,
+        [Parameter(Mandatory)]
+        [string[]]$Languages,
+        [Parameter(Mandatory)]
+        [string]$InnerCommand,
+        [Parameter(Mandatory)]
+        [string]$SourceRoot,
+        [string]$CodeScanningConfig = '',
+        [switch]$Overwrite
+    )
+
+    $createArgs = @('database', 'create', $DbClusterDir, '--db-cluster')
+    foreach ($lang in $Languages) {
+        $createArgs += "--language=$lang"
+    }
+    $createArgs += @(
+        "--command=$InnerCommand",
+        '--no-run-unnecessary-builds',
+        "--source-root=$SourceRoot"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($CodeScanningConfig)) {
+        # A named config that is not there must fail, not scan unscoped: the whole
+        # point of passing one is to keep vendored trees out of the results.
+        if (-not (Test-Path -LiteralPath $CodeScanningConfig -PathType Leaf)) {
+            throw "CodeQL code-scanning config not found: $CodeScanningConfig"
+        }
+        $createArgs += "--codescanning-config=$((Resolve-Path -LiteralPath $CodeScanningConfig).Path)"
+    }
+    if ($Overwrite) {
+        $createArgs += '--overwrite'
+    }
+    return $createArgs
+}
+
 function Invoke-BuildCodeQL {
     param(
         [Parameter(Mandatory)]
@@ -59,7 +102,10 @@ function Invoke-BuildCodeQL {
         [hashtable]$ForwardParameters,
         [Parameter(Mandatory)]
         [string]$BuildScriptPath,
-        [string[]]$Languages = @('cpp', 'rust')
+        [string[]]$Languages = @('cpp', 'rust'),
+        # Optional code-scanning config (see Get-CodeQLDatabaseCreateArgs). Empty keeps
+        # the previous, unscoped behaviour.
+        [string]$CodeScanningConfig = ''
     )
 
     Write-BuildLog -Context $Context -Message "=== CodeQL Mode Active ==="
@@ -143,33 +189,21 @@ function Invoke-BuildCodeQL {
         }
     }
 
-    $languageArgs = @()
-    foreach ($lang in $Languages) {
-        $languageArgs += "--language=$lang"
-    }
-
     if ($shouldCreateDbCluster) {
-        $createArgs = @(
-            'database', 'create', $dbClusterDir,
-            '--db-cluster'
-        ) + $languageArgs + @(
-            "--command=$innerCommand",
-            '--no-run-unnecessary-builds',
-            "--source-root=$Workspace"
-        )
+        $createArgs = Get-CodeQLDatabaseCreateArgs -DbClusterDir $dbClusterDir -Languages $Languages `
+            -InnerCommand $innerCommand -SourceRoot $Workspace `
+            -CodeScanningConfig $CodeScanningConfig -Overwrite:$cleanCodeQLDb
 
-        if ($cleanCodeQLDb) {
-            $createArgs += '--overwrite'
-        }
-
-        Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', ')"
+        $scope = if ($CodeScanningConfig) { $CodeScanningConfig } else { 'none, the analysis is unscoped' }
+        Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', '); code-scanning config: $scope"
         & $codeQLExe @createArgs
 
         if ($LASTEXITCODE -ne 0) {
             throw 'CodeQL Database Cluster creation failed'
         }
     } else {
-        Write-BuildLog -Context $Context -Message 'Skipping database creation and reusing existing CodeQL DB cluster.'
+        # The config is read at `database create` only: a reused cluster keeps its scope.
+        Write-BuildLog -Context $Context -Message 'Skipping database creation and reusing existing CodeQL DB cluster (a code-scanning config applies only to a new one: -CleanCodeQLDb).'
     }
 
     $resultsDir = Join-Path $Workspace 'codeql-results'
@@ -238,6 +272,7 @@ function Invoke-BuildCodeQL {
 }
 
 Export-ModuleMember -Function @(
+    'Get-CodeQLDatabaseCreateArgs',
     'Invoke-BuildCodeQL'
 )
 
