@@ -29,6 +29,8 @@ FunctionsToExport = @(
     'Resolve-AgenticEngine',
     'Get-AgentTimeoutForRole',
     'Invoke-AgentProcess',
+    'Get-AgenticOpenCodeMajorVersion',
+    'Get-AgenticOpenCodeCommandLine',
     'Invoke-OpenCode',
     'Invoke-ClaudeCode',
     'Invoke-AgenticAgent',

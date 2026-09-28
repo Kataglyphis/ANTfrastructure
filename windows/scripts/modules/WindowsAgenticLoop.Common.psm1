@@ -12,7 +12,8 @@
 # Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
 #
 # Supports two engines:
-#   opencode — invokes `opencode run --agent <role> --model <model>`
+#   opencode — invokes `opencode run --agent <role> --model <model>`, plus
+#              --standalone (and --auto for the executor) on a v2 CLI
 #   claude   — invokes `claude -p --model <model>` (Claude Code CLI) with a
 #              role system prompt appended from a prompt file
 #
@@ -502,6 +503,45 @@ function Invoke-AgentProcess {
 }
 
 # -- OpenCode invocation --------------------------------------------------
+function Get-AgenticOpenCodeMajorVersion {
+    <#
+    .SYNOPSIS
+      Major version of the opencode CLI: 1 prints "1.18.33", 2 prints
+      "opencode v2.0.18". Anything unparseable - including no opencode on
+      PATH - is 1, which keeps the v1 command line unchanged.
+    .PARAMETER VersionText
+      Parse this instead of running `opencode --version` (tests).
+    #>
+    param([string]$VersionText)
+    if (-not $PSBoundParameters.ContainsKey('VersionText')) {
+        $VersionText = try { (& opencode --version 2>$null) -join "`n" } catch { '' }
+    }
+    if ($VersionText -match '(\d+)\.\d+\.\d+') { return [int]$Matches[1] }
+    return 1
+}
+
+function Get-AgenticOpenCodeCommandLine {
+    <#
+    .SYNOPSIS
+      The `opencode run` argument list for one role and CLI major version.
+    .DESCRIPTION
+      v2 (docs/windows-agentic-loop.md#opencode-v2) adds two flags:
+      --standalone, because a v2 `run` otherwise attaches to the per-user
+      background service, where the agent keeps working after the loop's
+      timeout kills the client; and --auto for the executor only, because a
+      headless v2 run auto-REJECTS every permission that resolves to `ask`
+      (an external directory, a .env file) and exits 1. That mirrors the
+      claude engine: executor bypassPermissions, planner restricted.
+    #>
+    param([Parameter(Mandatory)][string]$Agent, [Parameter(Mandatory)][string]$Model, [int]$Major = 1)
+    $runArgs = @('run', '--agent', $Agent, '--model', $Model)
+    if ($Major -ge 2) {
+        $runArgs += '--standalone'
+        if ($Agent -eq 'executor') { $runArgs += '--auto' }
+    }
+    return , $runArgs
+}
+
 function Invoke-OpenCode {
     <#
     .SYNOPSIS
@@ -510,10 +550,11 @@ function Invoke-OpenCode {
     #>
     param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
     if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
-    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode run --agent $Agent --model $Model"; return '[DRY RUN]' }
+    $runArgs = Get-AgenticOpenCodeCommandLine -Agent $Agent -Model $Model -Major (Get-AgenticOpenCodeMajorVersion)
+    if ($script:AgenticDryRun) { Write-AgenticLog "[DRY RUN] opencode $($runArgs -join ' ')"; return '[DRY RUN]' }
     Write-AgenticLog "Invoking opencode: agent=$Agent model=$Model (timeout=${TimeoutSeconds}s)"
     $result = Invoke-AgentProcess -Executable 'opencode' `
-        -ArgumentList @('run', '--agent', $Agent, '--model', $Model) `
+        -ArgumentList $runArgs `
         -Message $Message -TimeoutSeconds $TimeoutSeconds -Label "opencode-$Agent"
     if ($result.ExitCode -eq 127) { return $null }
     if ($result.ExitCode -ne 0) { Write-AgenticLog "opencode exited with code $($result.ExitCode) (agent=$Agent)" 'WARN' }
@@ -1380,6 +1421,8 @@ Export-ModuleMember -Function @(
     'Resolve-AgenticEngine',
     'Get-AgentTimeoutForRole',
     'Invoke-AgentProcess',
+    'Get-AgenticOpenCodeMajorVersion',
+    'Get-AgenticOpenCodeCommandLine',
     'Invoke-OpenCode',
     'Invoke-ClaudeCode',
     'Invoke-AgenticAgent',

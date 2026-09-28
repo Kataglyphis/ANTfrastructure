@@ -4976,6 +4976,30 @@
     "why": "opencode has no agent named fixer; the mapping is the only thing that routes it to the executor"
   },
   {
+    "id": "lib.agentic-opencode-v2-standalone",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "        echo --standalone\n",
+    "replace": "        :\n",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "a v2 run without --standalone attaches to the background service, which keeps editing the tree after the loop's timeout kills the client"
+  },
+  {
+    "id": "lib.agentic-opencode-v2-executor-auto",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "if [[ \"$agent\" == \"executor\" ]]; then echo --auto; fi",
+    "replace": "if false; then echo --auto; fi",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "a headless v2 run auto-rejects every ask permission and exits 1; without --auto the executor fails on any path outside the project"
+  },
+  {
+    "id": "lib.agentic-opencode-v1-unchanged",
+    "target": "linux/scripts/lib/agentic-engines.sh",
+    "find": "    if [[ \"$major\" -ge 2 ]]; then\n",
+    "replace": "    if [[ \"$major\" -ge 1 ]]; then\n",
+    "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+    "why": "v1 has no --standalone; handing it the v2 flags breaks every consumer that has not upgraded"
+  },
+  {
     "id": "cross-build.media-init-refuses-a-missing-cross-predicate",
     "target": "linux/scripts/03-media/core/common.sh",
     "find": "  for _fn in log cross_build_is_active mem_capped_jobs; do",
