@@ -583,7 +583,11 @@ enforce_torch_version_pins() {
     # extra index, a bare torch==2.14.0 matched PyPI's CUDA build and the venv
     # swapped 2.13.0+rocm7.1 for a CUDA torch (rocm lane 2026-09-27 —
     # torch.version.hip None). Both indexes publish the +${gpu_index} tag.
-    uv pip install \
+    # unsafe-best-match is REQUIRED for that tag: uv's first-index-wins guard
+    # sees torch on PyPI first and refuses the +rocm7.14 version outright
+    # (the same run, one commit later). Both indexes are equally trusted here —
+    # the +tag names the line we WANT, so cross-source confusion cannot happen.
+    uv pip install --index-strategy unsafe-best-match \
       --index-url "https://download.pytorch.org/whl/${gpu_index}" \
       --extra-index-url https://pypi.org/simple \
       "torch==${want_torch}+${gpu_index}" "torchvision==${want_tv}+${gpu_index}"
