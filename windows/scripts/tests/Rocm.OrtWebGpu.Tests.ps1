@@ -7,7 +7,7 @@
 
 $script:OrtBuildScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:OrtWebGpuCheck = 'windows\scripts\build\rocm-checks\OrtWebGpu.ps1'
-$script:OrtWebGpuBuildFunction = @('Get-OrtWebGpuPlan', 'Get-OrtWebGpuPin', 'Get-OrtDawnDepsEntry', 'Get-OrtDawnPatchName',
+$script:OrtWebGpuBuildFunction = @('Get-OrtWebGpuPlan', 'Get-OrtWebGpuPin', 'Get-OrtDepsRow', 'Get-OrtDawnDepsEntry', 'Get-OrtDawnPatchName',
     'Get-OrtDawnRequiredDep', 'Get-OrtDawnDepsProbeSource', 'Invoke-OrtDawnDepsProbe', 'ConvertTo-OrtDawnDepPin', 'Save-OrtDawnDep', 'Expand-OrtZipMember',
     'Expand-OrtWebGpuDxc', 'Expand-OrtDawnArchive', 'Invoke-DawnPrebuiltDxcPatch', 'Resolve-GnuPatchExe', 'Initialize-OrtWebGpuInput',
     'Get-OrtWebGpuCmakeArgs', 'Get-OrtWebGpuConfigureFinding', 'Install-OrtWebGpuRuntime', 'Get-OrtWebGpuWheelFinding',

@@ -1310,7 +1310,11 @@ if (Test-Path $ffmpegBin) {
 
     # The banner says nothing about hardware codecs and the nv-codec-headers step is skippable,
     # so a build that silently dropped NVENC would still pass. Listing codecs needs no GPU device.
-    if ($script:gpuNvidia) {
+    # Since 2026-09-28 every native amd64 lane but rocm carries NVENC (header-only), and every
+    # native amd64 lane carries AMF; rocm's AMF/Vulkan set is Test-RocmImage.ps1's. EXPECT_ROCM
+    # is the smoke-gate stage's ARG, which a Windows RUN sees as an env var.
+    $ffNativeAmd64 = -not $smokeCross
+    if ($script:gpuNvidia -or ($ffNativeAmd64 -and $env:EXPECT_ROCM -ne '1')) {
         Assert-Test -Name "ffmpeg NVENC encoders present (h264_nvenc + hevc_nvenc)" -Condition {
             $enc = & $ffmpegExe -hide_banner -encoders 2>&1 | Out-String
             return ($enc -match 'h264_nvenc') -and ($enc -match 'hevc_nvenc')
@@ -1320,6 +1324,12 @@ if (Test-Path $ffmpegBin) {
             $dec = & $ffmpegExe -hide_banner -decoders 2>&1 | Out-String
             return ($dec -match 'h264_cuvid')
         } -FailMessage "ffmpeg -decoders did not list h264_cuvid (NVDEC/CUVID not built)"
+    }
+    if ($ffNativeAmd64 -and $env:EXPECT_ROCM -ne '1') {
+        Assert-Test -Name "ffmpeg AMF encoders present (h264_amf + hevc_amf)" -Condition {
+            $enc = & $ffmpegExe -hide_banner -encoders 2>&1 | Out-String
+            return ($enc -match 'h264_amf') -and ($enc -match 'hevc_amf')
+        } -FailMessage "ffmpeg -encoders did not list h264_amf/hevc_amf (AMF headers not fetched, or --enable-amf dropped)"
     }
 } else {
     Skip-Test 'FFmpeg not installed (C:\runtime\ffmpeg\bin not found)'

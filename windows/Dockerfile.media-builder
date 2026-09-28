@@ -396,11 +396,24 @@ ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 # AMF headers: every lane carries the pin, only the rocm lane fetches them (GPU_TYPE=rocm).
 ARG AMF_HEADERS_VERSION=v1.5.2
 ARG AMF_HEADERS_SHA256=d3c12eb324edf05e214608b6a395a51dd95770ed9d45520185d6c3a206811c99
+# FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64); versions.env owns the values.
+ARG DAV1D_VERSION=1.4.1
+ARG DAV1D_SHA256=8d407dd5fe7986413c937b14e67f36aebd06e1fa5cfec679d10e548476f2d5f8
+ARG X264_MESON_BRANCH=164.3108-meson
+ARG X264_MESON_COMMIT=ecc833a37945073a779b42b1a9f20c4454a62fbb
+ARG X265_VERSION=4.1
+ARG X265_SHA256=a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     PYAV_VERSION="${PYAV_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
     AMF_HEADERS_VERSION="${AMF_HEADERS_VERSION}" `
-    AMF_HEADERS_SHA256="${AMF_HEADERS_SHA256}"
+    AMF_HEADERS_SHA256="${AMF_HEADERS_SHA256}" `
+    DAV1D_VERSION="${DAV1D_VERSION}" `
+    DAV1D_SHA256="${DAV1D_SHA256}" `
+    X264_MESON_BRANCH="${X264_MESON_BRANCH}" `
+    X264_MESON_COMMIT="${X264_MESON_COMMIT}" `
+    X265_VERSION="${X265_VERSION}" `
+    X265_SHA256="${X265_SHA256}"
 # Build-host sccache settings: RUN env only, never image ENV (see `common`).
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_MULTILEVEL_CHAIN
@@ -409,6 +422,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegFromSource.ps1,target=C:\bkmnt\Build-FfmpegFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-FfmpegCodecs.ps1,target=C:\bkmnt\Build-FfmpegCodecs.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

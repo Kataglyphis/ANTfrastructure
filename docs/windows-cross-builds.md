@@ -31,7 +31,13 @@ produce, and which gates keep it honest.
 > shipped without it. It is runtime-dispatched, so the armv8-a baseline is unchanged, and it
 > routes MatMulNBits (the GenAI hot path), plus SGEMM/conv on SME CPUs, through KleidiAI.
 > `Build-OnnxFromSource.ps1` fails configure if ORT drops the option or `build.ninja` has no
-> kleidiai target. **Not available at the pinned versions, checked against their sources:**
+> kleidiai target. Upstream's Windows path does not assemble under Ninja as shipped. Its
+> `ASM_MARMASM` rule hands the `.S` kernels raw to armasm64, which has no C preprocessor and
+> rejects the `/arch:armv8.2` KleidiAI adds. So the script fetches ORT's own KleidiAI tarball
+> (`deps.txt`, SHA1-checked) and sets the rule, right after KleidiAI's `enable_language`, to
+> `clang-cl /P /EP /TC /U__clang__` then armasm64. ORT gets that tree as
+> `FETCHCONTENT_SOURCE_DIR_KLEIDIAI`. Proven in `:winamd64`: 178/178 objects, SME2 kernels in
+> `kleidiai.lib`. **Not available at the pinned versions, checked against their sources:**
 > - XNNPACK in LiteRT v2.2.0 forces `XNNPACK_ENABLE_KLEIDIAI` OFF on Windows with a plain `SET`.
 > - OpenCV 5.0.0 offers `WITH_KLEIDICV` only for `ANDROID OR UNIX`.
 > - Arm NN v26.07 has no Windows support, and ACL v53.3.0 calls Windows builds experimental and

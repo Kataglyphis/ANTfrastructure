@@ -11,7 +11,7 @@ function Write-FfRocmTestFile([string]$Path, [string]$Text = 'x') {
     [System.IO.File]::WriteAllText($Path, $Text)
 }
 
-Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg (rocm lane only)' {
+Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg (AMF: native amd64; Vulkan: rocm)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'ConvertTo-MsysPath', 'Get-FfmpegAmfPlan', 'Get-FfmpegVulkanPlan', 'Get-FfmpegRocmConfigureArg')
 
     # A slice of the real amd64 cpu-lane line; the property is that NOTHING is appended to it.
@@ -41,21 +41,33 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
         }
     }
 
-    It 'cpu and nvidia lanes (real Get-GpuEnvironment): no plan, and the configure line is byte-identical' {
+    It 'cpu and nvidia lanes (real Get-GpuEnvironment): an AMF-only plan natively, none on the cross lane, never Vulkan' {
+        # Owner decision 2026-09-28: AMF (header-only, the driver's amfrt64.dll loads at run time) on
+        # every native amd64 lane; Vulkan stays rocm's.
         foreach ($lane in @($null, 'cpu', 'nvidia')) {
             Invoke-OnGpuLane $lane { param($gpu, $src, $vk)
                 Assert-Equal ($lane -eq 'nvidia') $gpu.HasCuda "GPU_TYPE='$lane': fixture is the lane it claims"
                 $plan = Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $false -SourceDir $src
-                Assert-Null $plan "GPU_TYPE='$lane': no plan -> no fetch, no config.mak gates, no include\AMF"
+                Assert-Equal (Join-Path $src 'compat\amf') $plan.CompatDir "GPU_TYPE='$lane': native amd64 -> an AMF plan"
+                Assert-False $plan.Rocm "GPU_TYPE='$lane': not the rocm lane"
+                Assert-True ([string]::IsNullOrWhiteSpace($plan.RocmRoot)) "GPU_TYPE='$lane': no ROCm root for the leak gate to check"
                 Assert-Null (Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $true -SourceDir $src) "GPU_TYPE='$lane': cross, no plan and no throw"
                 $vkPlan = Get-FfmpegVulkanPlan -AmfPlan $plan -VulkanSdk $env:VULKAN_SDK
                 Assert-Null $vkPlan "GPU_TYPE='$lane': a complete Vulkan SDK in VULKAN_SDK is not a Vulkan plan"
                 Assert-Null (Get-FfmpegVulkanPlan -AmfPlan $plan -VulkanSdk '') "GPU_TYPE='$lane': no SDK, no plan and no throw"
-                $withRocm = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $vkPlan))
-                Assert-Equal $script:baseLine ([string]::Join(' ', $withRocm)) "GPU_TYPE='$lane': nothing appended, even with a HIP tree and a Vulkan SDK"
-                # Even a stray Vulkan plan cannot reach a line whose lane has no AMF (rocm) plan.
-                $stray = @{ IncludeDir = '/c/vk/Include'; Glslc = 'C:/vk/Bin/glslc.exe' }
-                Assert-Equal 0 @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $stray).Count "GPU_TYPE='$lane': no rocm plan, no Vulkan args"
+                $withAmf = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $vkPlan))
+                Assert-Equal "$script:baseLine --enable-amf --extra-cflags=-I$($plan.IncludeDir)" ([string]::Join(' ', $withAmf)) "GPU_TYPE='$lane': AMF appended, nothing else, even with a HIP tree and a Vulkan SDK"
+            }
+        }
+    }
+
+    It 'the cross lane gets no AMF plan, so its configure line is byte-identical' {
+        foreach ($lane in @($null, 'cpu', 'nvidia')) {
+            Invoke-OnGpuLane $lane { param($gpu, $src, $vk)
+                $plan = Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $true -SourceDir $src
+                Assert-Null $plan "GPU_TYPE='$lane': cross -> no plan, no fetch, no config.mak gates, no include\AMF"
+                $crossLine = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $null))
+                Assert-Equal $script:baseLine ([string]::Join(' ', $crossLine)) "GPU_TYPE='$lane': nothing appended on the cross lane"
             }
         }
     }
@@ -68,6 +80,7 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
             Assert-Equal (ConvertTo-MsysPath $plan.CompatDir) $plan.IncludeDir 'configure gets the MSYS form of the same dir'
             Assert-Match '^/[a-z]/.+/compat/amf$' $plan.IncludeDir 'MSYS path'
             Assert-True ($plan.RocmRoot -and $plan.RocmRoot -eq $gpu.RocmRoot) 'the leak gate checks the lane''s real ROCm root'
+            Assert-True $plan.Rocm 'the rocm plan says so: Vulkan keys on it'
             $vkPlan = Get-FfmpegVulkanPlan -AmfPlan $plan -VulkanSdk "$vk\"
             Assert-Equal $vk $vkPlan.SdkRoot 'trailing separator dropped'
             Assert-Equal (ConvertTo-MsysPath (Join-Path $vk 'Include')) $vkPlan.IncludeDir 'SDK Include in MSYS form, like the AMF -I'
@@ -80,7 +93,7 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
     }
 
     It 'Get-FfmpegVulkanPlan fails closed on the rocm lane: unset or spaced VULKAN_SDK, or any required SDK file missing (mutation)' {
-        $amf = @{ CompatDir = 'C:\s\compat\amf'; IncludeDir = '/c/s/compat/amf'; RocmRoot = 'C:\TheRock\build' }
+        $amf = @{ CompatDir = 'C:\s\compat\amf'; IncludeDir = '/c/s/compat/amf'; RocmRoot = 'C:\TheRock\build'; Rocm = $true }
         Assert-Throws { Get-FfmpegVulkanPlan -AmfPlan $amf -VulkanSdk '' } -MessagePattern 'VULKAN_SDK is not set' 'unset'
         Invoke-InTestDir { param($dir)
             $spaced = New-FfVulkanSdk (Join-Path $dir 'Vulkan SDK')
@@ -336,6 +349,12 @@ Describe 'Get-FfmpegLlvmNm (makedef lists exports with the compiler''s own llvm-
 Describe 'Get-FfmpegRocmLeak (TheRock never reaches the non-CMake configure)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'Get-FfmpegRocmLeak')
     $script:cleanMak = "SRC_PATH=/c/temp/ffmpeg-src/FFmpeg-n9.0.2`nCC=clang-cl`nEXTRALIBS-avutil=user32.lib bcrypt.lib"
+
+    It 'reports nothing on a lane with no ROCm root (the cpu/nvidia AMF plan), whatever config.mak says' {
+        foreach ($root in @($null, '', '  ')) {
+            Assert-Equal 0 @(Get-FfmpegRocmLeak -ConfigMakText "$script:cleanMak`nX=C:/TheRock/build/lib" -RocmRoot $root).Count "RocmRoot='$root'"
+        }
+    }
 
     It 'names every line that spells the ROCm root, in any slash, drive or case form (mutation)' {
         foreach ($spelling in 'C:\TheRock\build\lib\zlib.lib', 'c:/therock/build/include', '/c/TheRock/build/lib') {

@@ -12,8 +12,15 @@
 # that are obviously fake, PLUS two decoys (MEMORY_LIMIT_GB / BASE_IMAGE) that
 # must NEVER leak into version build-args — they are lane-shaped, added by the
 # callers themselves.
+# FFmpeg's static software codecs: media-core keys, never the merge. One table, merged into the
+# fake versions.env below and into media-core's expected build args.
+$script:WbtCodecPins = @{
+    DAV1D_VERSION = 'dav1d-20'; DAV1D_SHA256 = 'dav1dsha-21'; X264_MESON_BRANCH = 'x264b-22'
+    X264_MESON_COMMIT = 'x264c-23'; X265_VERSION = 'x265-24'; X265_SHA256 = 'x265sha-25'
+}
+
 function New-WbtFakeMediaVersionTable {
-    return @{
+    $table = @{
         ONNXRUNTIME_VERSION       = 'ort-1'
         ONNXRUNTIME_GENAI_VERSION = 'genai-2'
         OPENCV_VERSION            = 'cv-3'
@@ -46,6 +53,8 @@ function New-WbtFakeMediaVersionTable {
         # The rocm lane's IREE device-bitcode pin (media-tvm only, never the merge).
         IREE_ROCM_DEVICE_BC_SHA256          = 'ireebc-19'
     }
+    foreach ($k in $script:WbtCodecPins.Keys) { $table[$k] = $script:WbtCodecPins[$k] }
+    return $table
 }
 
 Describe 'Get-MediaBranchVersionArg' {
@@ -94,6 +103,8 @@ Describe 'Get-MediaBranchVersionArg' {
                 }
             }
         )
+        # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
+        foreach ($k in $script:WbtCodecPins.Keys) { $cases[0].Expected[$k] = $script:WbtCodecPins[$k] }
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table
             $expectedKeys = @($case.Expected.Keys | Sort-Object) -join ','
@@ -139,6 +150,9 @@ Describe 'Get-MediaMergeVersionArg' {
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_SHA256')) 'AMF_HEADERS_SHA256 is excluded from the merge env'
+        foreach ($k in $script:WbtCodecPins.Keys) {
+            Assert-False ($merge.Contains($k)) "$k is excluded from the merge env"
+        }
         # No lane-shaped leakage:
         Assert-False ($merge.Contains('MEMORY_LIMIT_GB')) 'MEMORY_LIMIT_GB must not leak into the merge env'
         Assert-False ($merge.Contains('BASE_IMAGE')) 'BASE_IMAGE must not leak into the merge env'
