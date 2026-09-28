@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-28 - Windows images: faster native libraries, KleidiAI on arm64
+
+An audit of the Windows build before the CON12 rebuild found four things that left runtime
+speed on the table. All four ship with the next `:winamd64`/`:winarm64` build:
+
+- **GStreamer (both arches)** passes `-Dbuildtype=release`, as the Linux lane does. Without it
+  the monorepo's `default_options` gave `debugoptimized`: `/Zi` objects, and GLib's
+  `glib_debug` checks switched on in every shipped GLib.
+- **OpenCV (amd64)** sets `CPU_BASELINE=AVX2`. Every TU was already compiled for AVX2+FMA, but
+  OpenCV's baseline universal intrinsics stayed at SSE3/128-bit. A configure gate fails if the
+  baseline does not report AVX2.
+- **LiteRT (amd64)** gets the image's AVX2 baseline through `CMAKE_*_FLAGS_INIT`. Its own
+  kernels had built at SSE2.
+- **ONNX Runtime (arm64)** builds MLAS with KleidiAI, runtime-dispatched. Only `build.py` turns
+  it on, and this script configures through CMake. XNNPACK, OpenCV (KleidiCV), Arm NN and ACL
+  have no usable Windows-on-Arm KleidiAI/ACL path at the pinned versions:
+  `docs/windows-cross-builds.md`.
+
 ## 2026-09-27 - `:winamd64` is CPU + DirectML; the CUDA build is `:winamd64-nvidia`
 
 The owner decided that Windows follows the variant rule in `AGENTS.md` § Image and tag

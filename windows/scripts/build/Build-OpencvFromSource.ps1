@@ -220,9 +220,13 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
 # The amd64 SIMD string is pinned byte-for-byte by TargetArch.Common.Tests; arm64 returns none on
-# purpose (NEON is baseline, the rest is runtime dispatch). CPU_BASELINE/CPU_DISPATCH stay unset
-# on both lanes -- adding them would re-key every amd64 per-file command line.
+# purpose (NEON is baseline, the rest is runtime dispatch).
 $simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
+# amd64: those flags already make every TU AVX2+FMA, so the image requires an AVX2 CPU anyway. Left
+# unset, OpenCV's CPU_BASELINE stays at its SSE3 default and its baseline universal intrinsics stay
+# 128-bit; AVX2 lets them use CV_SIMD256. CPU_DISPATCH keeps OpenCV's default (AVX-512 kernels stay
+# runtime-dispatched). Cross keeps OpenCV's AArch64 defaults (the NEON override is further down).
+$ocvBaselineArgs = if ($ocvCross) { @() } else { @('-DCPU_BASELINE=AVX2') }
 # The triple must ride in THIS script's CMAKE_*_FLAGS, not only in CMAKE_*_FLAGS_INIT: passing
 # -DCMAKE_C_FLAGS DEFINES the cache variable, so _INIT is never applied and an "arm64" OpenCV
 # would configure green while emitting x86_64 objects.
@@ -247,7 +251,7 @@ if ($env:OPENCV_CUDA_NO_RSP -eq '1') {
     )
 }
 
-$cmakeExtra = $cudaRspArgs + @(
+$cmakeExtra = $cudaRspArgs + $ocvBaselineArgs + @(
     # Silence CMake policy deprecation warnings baked into OpenCV's own CMakeLists.
     '-DCMAKE_POLICY_DEFAULT_CMP0146=NEW',
     '-DCMAKE_POLICY_DEFAULT_CMP0148=NEW',
@@ -629,10 +633,18 @@ if ($gpuEnv.HasRocm) {
     Write-Host 'OpenCV rocm-lane configure gate OK: OpenCL T-API YES, no configure line or CMake cache entry resolves into the ROCm tree'
 }
 
+# The value of the LAST "<Label>: value" line of OpenCV's configure summary, '' when absent. The
+# lines arrive as "--     Label:  value" (message(STATUS)), so the label is not anchored at ^;
+# -cmatch keeps 'Baseline' from matching a CPU_BASELINE echo.
+function Get-OpenCvSummaryValue([string] $Label) {
+    $pattern = "(?:^|\s)$([regex]::Escape($Label)):\s*(.*)$"
+    $line = @(Get-Content $cfgLog | Where-Object { $_ -cmatch $pattern } | Select-Object -Last 1)
+    if ($line.Count -gt 0 -and $line[0] -cmatch $pattern) { return $Matches[1].Trim() }
+    return ''
+}
 # GATE (#129): an empty dispatch line is a build that "succeeds" with every optional kernel
 # silently dropped. Cross must name NEON_FP16; amd64 may never regress to nothing.
-$dispatchLine = @(Get-Content $cfgLog | Where-Object { $_ -match 'Dispatched code generation:\s*(.*)$' } | Select-Object -Last 1)
-$dispatched = if ($dispatchLine.Count -gt 0 -and $dispatchLine[0] -match 'Dispatched code generation:\s*(.*)$') { $Matches[1].Trim() } else { '' }
+$dispatched = Get-OpenCvSummaryValue 'Dispatched code generation'
 # Never throw blind: the probe RESULT is in the configure log, but the compiler ERRORS behind it
 # are only in CMakeFiles\CMakeError.log.
 function Write-OpenCvProbeDiagnostics {
@@ -654,6 +666,12 @@ function Write-OpenCvProbeDiagnostics {
 if (-not $dispatched) { Write-OpenCvProbeDiagnostics; throw "OpenCV configure reports NO dispatched code generation (the 'Dispatched code generation:' summary line is empty or missing in $cfgLog) -- every optional SIMD kernel would be dropped silently (#129)" }
 if ($ocvCross -and $dispatched -notmatch '\bNEON_FP16\b') { Write-OpenCvProbeDiagnostics; throw "OpenCV cross configure dispatches '$dispatched' but not NEON_FP16 -- the clang-cl feature-flag override (#129) is not taking effect for that probe; see the diagnostics above and $cfgLog" }
 Write-Host "OpenCV dispatched code generation: $dispatched"
+# amd64 asked for an AVX2 baseline above; a probe that silently fell back would ship 128-bit code.
+if (-not $ocvCross) {
+    $baseline = Get-OpenCvSummaryValue 'Baseline'
+    if ($baseline -notmatch '\bAVX2\b') { Write-OpenCvProbeDiagnostics; throw "OpenCV amd64 configure reports baseline '$baseline' without AVX2 although CPU_BASELINE=AVX2 was requested; see $cfgLog" }
+    Write-Host "OpenCV baseline: $baseline"
+}
 
 # GATE: prove FFmpeg was detected before spending ~20 min compiling -- a dropped backend still
 # builds, installs and passes every test, and only surfaces at cv::VideoCapture in production
