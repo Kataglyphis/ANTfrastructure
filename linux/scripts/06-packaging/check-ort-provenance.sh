@@ -123,7 +123,17 @@ _ort_bin_verdict() {  # <sha> <path> <roots> [name|fp|def]
     return 0
   fi
   [ "${#_ORTC_ALLOW[@]}" -gt 0 ] || return 0
-  case "$2" in */site-packages/onnxruntime/capi/* | */dist-packages/onnxruntime/capi/*) return 0 ;; esac
+  case "$2" in
+    */site-packages/onnxruntime/capi/* | */dist-packages/onnxruntime/capi/*) return 0 ;;
+    # The wrapper's staged chain-wheel store (Dockerfile.torch ENV
+    # ORT_CHAIN_WHEEL_DIR=/opt/onnxruntime-wheels): stage_chain_ort_wheels
+    # byte-checks every wheel it copies there against the census, so its
+    # members are the chain's own bytes by construction. The census graded
+    # them ELSEWHERE the first time a wrapper shipped the store
+    # (rocm lane 2026-09-28). The store only holds wheels, so a member name
+    # is unambiguous — and a non-wheel ORT dropped there still fails.
+    /opt/onnxruntime-wheels/*.whl!*) return 0 ;;
+  esac
   _ort_under "${2%%!*}" "${_ORTC_ALLOW[@]}" || printf 'ELSEWHERE\t%s\ta chain ORT copy outside the chain prefixes and */site-packages/onnxruntime/capi\n' "$2"
   return 0
 }
