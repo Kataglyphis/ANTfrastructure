@@ -743,6 +743,28 @@ The app wheelhouse (`05-frameworks/torch/build-app-wheelhouse.sh`) is built on t
 - Each local stage context is deleted after the downstream build consumes it.
 - `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest` from existing per-arch wrappers.
 
+### Torch pin enforcement on GPU lines
+
+`assemble-torch-app.sh`'s `enforce_torch_version_pins` re-installs the pinned
+torch pair when the venv's versions differ from `versions.env`. On the GPU
+lines three facts make the install non-obvious (rocm lane 2026-09-27):
+
+1. **The pin names the LOCAL VERSION** (`torch==2.14.0+rocm7.14`, not
+   `torch==2.14.0`). With PyPI as the `--extra-index-url`, a bare pin matched
+   **both** the rocm7.14 wheel and PyPI's plain 2.14.0 — and uv picked PyPI's
+   **CUDA** build, swapping a ROCm torch for one whose `torch.version.hip` is
+   `None`. The GPU-tagged wheel is unambiguous.
+2. **`--index-strategy unsafe-best-match` is required** for that local version:
+   uv's first-index-wins guard sees torch on PyPI first and refuses any version
+   PyPI does not carry, without ever consulting the pytorch index. The guard
+   exists to stop cross-source confusion; the `+tag` already names the source,
+   so relaxing it is safe. Proven by a dry-run inside the android image.
+3. **With deps, never `--no-deps`**: the CUDA index swapped a CUDA torch back
+   to CPU, and `--no-deps` would keep the old torch's pinned
+   nvidia-cudnn/nccl/triton (they move between torch minors).
+
+CUDA resolves the same way (`+cu130`), so one code path serves both GPU lanes.
+
 ### The wrapper's wheelhouse: two deliveries
 
 The torch RUN in `Dockerfile.torch` builds `/opt/venv` from `/opt/wheels`: 8 to 10
