@@ -206,7 +206,7 @@ run it on**.
 
 | File | Owns |
 |------|------|
-| `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, the role-prompt composition (`resolve_role_prompt_file`, `write_opencode_agent_file`, `_agentic_repo_path`), `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
+| `lib/agentic-engines.sh` | `_AGENTIC_JQ_PRELUDE`, `load_engine_config`, the role-prompt composition (`resolve_role_prompt_file`, `write_opencode_agent_file`, `_agentic_repo_path`), `agent_timeout_for_role`, `agent_stream_passthrough`, `claude_stream_render`, `opencode_major_version`, `opencode_run_args`, `invoke_opencode`, `invoke_claude`, `usage_limit_wait_seconds`, `invoke_agent` |
 | `lib/agentic-loop.sh` | `LOG_FILE` and `log`/`section`, `init_agentic_loop`/`complete_agentic_loop`, the BACKLOG helpers, the build/test/quality phases, `_agentic_planner_phase`, the matrix readers, the `_AL` loop state and `run_agentic_loop` |
 
 The dependency points one way only. The engine half calls `log` and appends to
@@ -221,7 +221,9 @@ sources `agentic-loop.sh` only, and its config-precedence and `invoke_agent`
 cases land in the engine half through it.
 
 Two engines are supported: `opencode` invokes
-`opencode run --agent <role> --model <model>`; `claude` invokes
+`opencode run --agent <role> --model <model>` (plus `--standalone`, and
+`--auto` for the executor, on a v2 CLI:
+[opencode v2](windows-agentic-loop.md#opencode-v2)); `claude` invokes
 `claude -p --model <model>` with the role system prompt appended from the
 configured prompt file.
 

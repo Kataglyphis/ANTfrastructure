@@ -124,6 +124,32 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
+    # The strings are what each CLI's --version really prints (1.18.33, 2.0.18).
+    # docs/windows-agentic-loop.md#opencode-v2
+    Context 'opencode v1 / v2 command line' {
+        It 'reads the major version from both CLIs and defaults to 1' {
+            Get-AgenticOpenCodeMajorVersion -VersionText '1.18.33' | Should -Be 1
+            Get-AgenticOpenCodeMajorVersion -VersionText 'opencode v2.0.18' | Should -Be 2
+            Get-AgenticOpenCodeMajorVersion -VersionText '' | Should -Be 1
+        }
+
+        It 'gives a v1 CLI exactly the v1 command line' {
+            (Get-AgenticOpenCodeCommandLine -Agent 'executor' -Model 'm' -Major 1) -join ' ' |
+                Should -Be 'run --agent executor --model m'
+        }
+
+        It 'runs both roles --standalone on v2 and gives only the executor --auto' {
+            (Get-AgenticOpenCodeCommandLine -Agent 'executor' -Model 'm' -Major 2) -join ' ' |
+                Should -Be 'run --agent executor --model m --standalone --auto'
+            (Get-AgenticOpenCodeCommandLine -Agent 'planner' -Model 'm' -Major 2) -join ' ' |
+                Should -Be 'run --agent planner --model m --standalone'
+        }
+
+        It 'returns an array even for the shortest command line' {
+            , (Get-AgenticOpenCodeCommandLine -Agent 'planner' -Model 'm') | Should -BeOfType [object[]]
+        }
+    }
+
     # -- BACKLOG helpers ---------------------------------------------------
 
     Context 'Get-UncheckedTaskCount' {

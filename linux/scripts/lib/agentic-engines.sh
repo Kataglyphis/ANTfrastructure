@@ -316,10 +316,38 @@ claude_stream_render() {
 }
 
 # ── OpenCode invocation ─────────────────────────────────────────────────
+# Twin of the PS module's Get-AgenticOpenCodeMajorVersion: v1 prints
+# "1.18.33", v2 "opencode v2.0.18". Unparseable (or no opencode) is 1, which
+# keeps the v1 command line unchanged. $1 is the `opencode --version` output.
+opencode_major_version() {
+    if [[ "${1:-}" =~ ([0-9]+)\.[0-9]+\.[0-9]+ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo 1
+    fi
+}
+
+# `opencode run` arguments, one per line, for <agent> <model> <major>.
+# v2 adds --standalone (a v2 run otherwise attaches to the per-user background
+# service, which keeps working after the timeout kills the client) and --auto
+# for the executor only (a headless v2 run auto-REJECTS every `ask`
+# permission and exits 1). docs/windows-agentic-loop.md#opencode-v2
+opencode_run_args() {
+    local agent="$1" model="$2" major="${3:-1}"
+    printf '%s\n' run --agent "$agent" --model "$model"
+    if [[ "$major" -ge 2 ]]; then
+        echo --standalone
+        if [[ "$agent" == "executor" ]]; then echo --auto; fi
+    fi
+}
+
 invoke_opencode() {
     local agent="$1" model="$2" message="$3"
+    local -a run_args
+    mapfile -t run_args < <(opencode_run_args "$agent" "$model" \
+        "$(opencode_major_version "$(opencode --version 2>/dev/null || true)")")
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log "[DRY RUN] opencode run --agent $agent --model $model"
+        log "[DRY RUN] opencode ${run_args[*]}"
         return 0
     fi
     if ! command -v opencode &>/dev/null; then
@@ -331,17 +359,17 @@ invoke_opencode() {
     log "Invoking opencode: agent=$agent model=$model timeout=${timeout_s}s"
     local exit_code=0
     if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
-        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" opencode run --agent "$agent" --model "$model" 2>&1 | agent_stream_passthrough
+        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" opencode "${run_args[@]}" 2>&1 | agent_stream_passthrough
         exit_code=${PIPESTATUS[1]}
     else
-        printf '%s' "$message" | opencode run --agent "$agent" --model "$model" 2>&1 | agent_stream_passthrough
+        printf '%s' "$message" | opencode "${run_args[@]}" 2>&1 | agent_stream_passthrough
         exit_code=${PIPESTATUS[1]}
     fi
     if [[ $exit_code -eq 124 ]]; then
         log "opencode timed out after ${timeout_s}s (agent=$agent)" "ERROR"
     elif [[ $exit_code -ne 0 ]]; then
         log "opencode exited with code $exit_code (agent=$agent)" "WARN"
-        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model|unknown model"; then
+        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model|unknown model|model unavailable"; then
             log "Model '$model' was rejected. Run 'opencode models' to list valid IDs." "ERROR"
         fi
         if tail -n 50 "$LOG_FILE" | grep -qiE "API key|unauthorized|401|403"; then
