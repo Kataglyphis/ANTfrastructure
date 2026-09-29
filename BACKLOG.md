@@ -109,12 +109,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `Get-CiImageReference` has no variant. After the publishes, run one DirectML G-API session, set BeschleunigerBallett's
       ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
       let AccelerANTgine tidy every `Src/` TU.
-- [b] **CON13 — Retire `:latest-cross` for good** [S, ★]. Blocked on the owner. Consumer
-      CI no longer depends on it: since 2026-09-25 the fleet calls this hub at
-      `@develop`, whose `versions.env` names `:latest` (AGENTS.md § Image and tag
-      naming). `main` still names `:latest-cross`, and the two tags are one GHCR
-      version. Make the old name a version of its own first, then delete it;
-      `ghcr-delete-tags.sh` refuses the unsafe order.
+
 ## Open — Linux image (all arches)
 
 None open. CON15–CON21, CON35 and CON36 shipped with CON11 on 2026-09-29 (CON37 has the proof).
