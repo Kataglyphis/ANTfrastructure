@@ -47,15 +47,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `/opt/gcc-16.2.0` at 1.4 GB on amd64 (CON36);
       - `sanitizer/common_interface_defs.h` and `-print-multiarch` on arm64/riscv64 (CON7, CON8);
       - `import hailo_platform` 5.4.0 on amd64 and arm64.
+      - the consumers' `Linux arm64 · build + test` re-ran green on it the same day:
+        AccelerANTgine run 36568033223 (its `gcc` job compiles abseil with ASan, CON7) and
+        BeschleunigerBallett run 36580604128 (all nine jobs, both GNU presets find X11, CON8).
+      - OmniAccelerANT (2026-09-29, its native, android and web lanes run locally on the published
+        amd64 child): no injected `--gcc-toolchain`, compileSdk 37 and no
+        `permission_handler_android` pin. API 37 also needed a Cargokit patch: AGP reports
+        `android-37.0`, which upstream Cargokit's `substring(8) as int` cannot parse.
 
       The media lanes first died in GenAI's G2 on a bare `/` record token (53c1d502).
 
       Left for the consumers, one commit each, proven by the consumer's own lane:
-      - AccelerANTgine and BeschleunigerBallett: `Linux arm64 · build + test` re-run on the new
-        image (runs 36568033223 and 36580604128). AccelerANTgine's `gcc` job must compile
-        abseil with ASan, and BeschleunigerBallett's GNU presets must find X11.
-      - OmniAccelerANT drops its `permission_handler_android` pin (and moves compileSdk to 37).
-      - The injected `--gcc-toolchain` goes (BeschleunigerBallett, OmniAccelerANT, AccelerANTgine).
+      - The injected `--gcc-toolchain` goes (BeschleunigerBallett, AccelerANTgine).
       - WebDavClient and OrchestrANT drop their `unset VIRTUAL_ENV UV_PYTHON` lines, and
         WebDavClient its Python 3.13 pin for atheris.
       - OxidANT's Pi runners drop `--entrypoint` (CON23), and OxidANT sets `KATAGLYPHIS_REQUIRE_GPU=1`.
