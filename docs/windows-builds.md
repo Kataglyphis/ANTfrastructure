@@ -17,7 +17,8 @@ fixes moved to their own pages on 2026-08-25:
 > Building a large project **inside** this image and want it to be fast?
 > See [Windows Container Build Performance](windows-container-build-performance.md)
 > — measured results for incremental builds, plus the approaches that do not
-> work (sccache on C++23 modules, named volumes as build directories).
+> work (named volumes as build directories), and why the released sccache is
+> unsafe on clang-cl C++23 modules.
 
 > **Important (Antivirus):** On Windows, **exclude your development folder from antivirus scanning**. Real-time protection can lock files during builds (especially during CMake FetchContent and cargo builds), causing intermittent failures with errors like "Failed to remove directory" or "(os error 32)". Add your project directory to your antivirus exclusion list.
 
