@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - compiler caches keep one entry per key
+
+- **`compiler-cache-save` deletes the key's entries from older runs on the same ref before it saves.**
+  Each save adds a per-run entry, and the superseded ones stayed until GitHub's quota eviction.
+  That eviction takes the least recently used entry of the whole repository, not of the key.
+  BeschleunigerBallett reached 11.2 GB and OxidANT 12.4 GB of the 10 GB quota, and Ballett's TSan
+  job restored nothing because its only entry went while stale x64 duplicates survived.
+- **What the saving job needs:** `permissions: actions: write`. Without it the step warns and
+  saves anyway. An empty or missing directory deletes nothing.
+- **New inputs and outputs:** `path` (what to save) and `token` inputs, and a `pruned` output.
+- **New action `compiler-cache-prune`**, the same deletion (`prune.sh`, shared with the save).
+  It is for lanes that save elsewhere. `container-ci-windows.yml`'s job grants only
+  `contents: read`, and a reusable workflow cannot ask for more than every caller grants, so a
+  caller setting `compiler-cache-key` prunes from a later job.
+- **Self-test:** it now asserts that no older selftest entry survives a save, and that
+  compiler-cache-prune then finds nothing.
+- **`compiler-cache-prune` deletes only once this run saved its own entry** (`require-saved`,
+  default `true`), so a build that died before its save keeps the older one.
+- **Docs:** [`build-cache-tiers.md`](docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs)
+  and the actions README.
+- **BeschleunigerBallett's `permissions` census row is deleted.** Its `reusable-linux.yml` now
+  declares `contents: read` at the top and `actions: write` on the four cache writers, which
+  takes the census from 11 to 0.
+
 ## 2026-09-29 - `-DisableSccache` beats the preset; the sccache-on-modules docs are corrected
 
 - **`Invoke-CmakeConfigureAndBuild -DisableSccache` now disables sccache.** It only cleared environment

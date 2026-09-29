@@ -1386,12 +1386,26 @@ do not cache with sccache 0.18.0 or ccache 4.12.3, so a GCC lane gains only its
 non-module TUs.
 
 **The quota is 10 GB per repository**, shared with every other cache (CodeQL,
-setup-uv). The actions key each save by run and restore the newest, so a lane
-keeps one live entry and older ones fall to GitHub's least-recently-used
-eviction. Budget a repository so one generation of all its lanes fits well
-inside the quota: one key per preset that is worth it, capped with the `env`
-input (sccache keeps its most recent entries under the cap). `enabled: auto`
-saves on pushes only, which keeps pull requests and dispatches from spending it.
+setup-uv). An `actions/cache` entry cannot be overwritten, so every save gets a
+per-run key and restore takes the newest. Since 2026-09-29, `compiler-cache-save`
+also deletes the key's entries from older runs on the same ref before it saves, so
+each key holds one entry.
+
+Before that, the superseded entries stayed in the quota until GitHub evicted them.
+Its eviction removes the least recently used entry of the whole repository, not of
+the key. BeschleunigerBallett reached 11.2 GB and OxidANT 12.4 GB. Ballett's TSan
+job then restored nothing: its only entry had been evicted, while two stale x64
+duplicates, read more recently, survived. A scheduled clean-up job would come too
+late for this, because GitHub evicts at the moment a save passes the quota.
+
+The deletion needs `permissions: actions: write` in the saving job. Without it the
+action warns and saves anyway. Budget a repository so one generation of all its
+lanes, plus one entry being saved, fits inside the quota:
+- one key per preset that is worth it;
+- each capped with the `env` input (sccache keeps its most recent entries under the cap).
+
+`enabled: auto` saves on pushes only, which keeps pull requests and dispatches from
+spending the quota.
 
 **Windows container lanes** take `container-ci-windows.yml`'s `compiler-cache-key`
 input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the dev host
@@ -1399,7 +1413,15 @@ input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the d
 so the cache is not mounted for sccache to write into. `actions/cache` restores it into the
 workspace as `.ci-cache`, the container gets `CI_COMPILER_CACHE=C:\ws\.ci-cache`, and the
 build script moves it into container-local directories before the build and back after it
-(OxidANT's `Invoke-WindowsLane.ps1`). Pushes save it. A clang-cl C++20 module build must not
+(OxidANT's `Invoke-WindowsLane.ps1`). Pushes save it.
+
+That reusable workflow saves with `actions/cache/save` and deletes nothing. Its job
+grants only `contents: read`, and a reusable workflow cannot ask for more than every
+caller grants. A caller that sets `compiler-cache-key` therefore runs
+`compiler-cache-prune` from a later job that grants `actions: write` (OxidANT's
+`windows-x64.yml`).
+
+A clang-cl C++20 module build must not
 use it: the released sccache serves stale objects for module importers until
 mozilla/sccache#2876 ships.
 

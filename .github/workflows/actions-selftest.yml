@@ -1,6 +1,6 @@
 # .github/workflows/actions-selftest.yml
 #
-# The fourteen composite actions under .github/actions/ are the family's shared
+# The fifteen composite actions under .github/actions/ are the family's shared
 # CI surface: 84 call sites (counted 2026-09-14) across BeschleunigerBallett,
 # OmniAccelerANT, OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology
 # resolve them at `@develop`, which the submodule pin does NOT freeze. An edit here
@@ -247,6 +247,10 @@ jobs:
     name: prepare-linux-ci-host + run-in-linux-container
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # compiler-cache-save and compiler-cache-prune list and delete cache entries.
+      actions: write
     defaults:
       run:
         shell: bash
@@ -351,12 +355,40 @@ jobs:
         with:
           key: selftest
           enabled: 'true'
+          path: ${{ steps.cc.outputs.path }}
+          token: ${{ github.token }}
 
-      - name: The save step says it saved
+      # Save deleted this key's older entries on this ref before it added its own,
+      # so the only selftest entry left is this run's. prune.sh is shared with
+      # compiler-cache-prune, which then finds nothing older.
+      - name: The save step saved and left one entry
         env:
           SAVED: ${{ steps.ccsave.outputs.saved }}
+          PRUNED: ${{ steps.ccsave.outputs.pruned }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           [ "${SAVED}" = true ] || { echo "::error::compiler-cache-save with enabled 'true' reported saved=${SAVED}"; exit 1; }
+          [[ "${PRUNED}" =~ ^[0-9]+$ ]] || { echo "::error::compiler-cache-save reported pruned='${PRUNED}', not a count"; exit 1; }
+          echo "save deleted ${PRUNED} older entr(ies)"
+          keys="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/caches" -f key=compiler-cache-selftest- -f ref="${GITHUB_REF}"             --paginate --jq '.actions_caches[].key')"
+          echo "${keys}"
+          stale="$(grep -v -- "-${GITHUB_RUN_ID}-" <<< "${keys}" | grep -c . || true)"
+          [ "${stale}" = 0 ] || { echo "::error::${stale} selftest entr(ies) of older runs survived the save"; exit 1; }
+
+      - name: compiler-cache-prune
+        id: ccprune
+        uses: ./.github/actions/compiler-cache-prune
+        with:
+          key: selftest
+          token: ${{ github.token }}
+          require-saved: 'true'
+
+      - name: The prune step found nothing older
+        env:
+          PRUNED: ${{ steps.ccprune.outputs.pruned }}
+        run: |
+          [ "${PRUNED}" = 0 ] || { echo "::error::compiler-cache-prune deleted ${PRUNED} entr(ies) the save should already have deleted"; exit 1; }
 
   # ---------------------------------------------------------------------------
   # run-pester-suite + clone-into-short-path (Windows) + upload-codeql-sarif

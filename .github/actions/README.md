@@ -279,14 +279,57 @@ about 7 s.
 Restore inputs: `key` (the lane id; lanes that share one share a cache), `mounts`
 (space-separated `<subdir>:<container path>`, default the image's sccache and
 ccache dirs), `env` (space-separated `NAME=value`, default caps of 2G each).
-Outputs: `docker-args`, `path`, `restored-key`. Save inputs: `key`, `enabled`
-(`auto`, the default, saves on push events only, so pull requests and dispatches
-restore without spending quota). Output: `saved`. A repository has 10 GB of
-cache: budget one key per preset that is worth it, and see
+Outputs: `docker-args`, `path`, `restored-key`.
+
+Save inputs:
+- `key`.
+- `enabled`: `auto`, the default, saves on push events only, so pull requests and
+  dispatches restore without spending quota.
+- `path`: the directory to save; the default is what restore prepared.
+- `token`: lists and deletes cache entries.
+
+Save outputs: `saved` and `pruned`.
+
+Before it saves, save deletes the key's entries from older runs on the same ref,
+so every key holds one entry. **The saving job needs `permissions: actions: write`**
+for that. Without it the step warns and saves anyway, and the superseded entries
+stay until GitHub's quota eviction, which can take another key's only entry. An
+empty or missing directory deletes nothing.
+
+A repository has 10 GB of cache: budget one key per preset that is worth it, and see
 [`docs/build-cache-tiers.md`](../../docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs).
 Linux only. A Windows container lane uses `container-ci-windows.yml`'s
 `compiler-cache-key` input instead, because sccache cannot write to a mounted
-directory there.
+directory there, and prunes with `compiler-cache-prune`.
+
+### `compiler-cache-prune`
+Deletes a compiler-cache key's entries from older runs on the same ref, the step
+`compiler-cache-save` runs before it saves. It is for a lane that saves elsewhere:
+`container-ci-windows.yml` saves its `compiler-cache-key` itself and cannot delete,
+because a reusable workflow's job cannot grant more than every caller does. Run it
+from a later job of the caller:
+
+```yaml
+prune-compiler-cache:
+  needs: build
+  if: ${{ always() && github.event_name == 'push' }}
+  runs-on: ubuntu-26.04
+  permissions:
+    actions: write
+  steps:
+    - uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-prune@develop
+      with:
+        key: x64-windows
+```
+
+Inputs:
+- `key`.
+- `token`: the default is the job's `github.token`.
+- `require-saved`: `true`, the default, deletes only once this run's own entry exists, so a
+  build that died before its save keeps the older one.
+
+Output: `pruned`. It deletes only entries from runs older than the current one, never
+another ref's. Without `actions: write` it warns instead of failing.
 
 ### `run-in-windows-container`
 Runs PowerShell inside a Windows container image. Exactly one of `command`
@@ -309,7 +352,7 @@ inputs.
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
 edit here and the 84 consumer call sites (counted 2026-09-14) that resolve these
 actions at `@develop` - which the submodule pin does not freeze. It `uses:` all
-fourteen directories here, and it fires on any change under `.github/actions/`.
+fifteen directories here, and it fires on any change under `.github/actions/`.
 Read its header before trusting a green run; the short version:
 
 **`deploy-over-ftp` is covered statically, and at runtime only on request.** Its
