@@ -612,9 +612,15 @@ Describe 'Dockerfile.rocm-migraphx' {
 
 Describe 'cpu and nvidia inputs are untouched by the spike' {
     It 'no other Windows Dockerfile names the spike''s scripts, module or pins' {
+        # Dockerfile.torch's torch-rocm-wheels stage borrows the module (TheRock build helpers), but only rocm-1
+        # mounts that stage, so cpu/nvidia never build it; Torch.Rocm.Tests.ps1 holds that. The rest must not.
         $hits = @(Get-ChildItem -Path (Join-Path $script:MgxRepo 'windows') -Filter 'Dockerfile*' -File |
             Where-Object { $_.Name -ne 'Dockerfile.rocm-migraphx' } |
-            Where-Object { [System.IO.File]::ReadAllText($_.FullName) -match 'Build-MigraphxFromSource|Build-OrtAmdgpuEpFromSource|WindowsMigraphx\.Common|MIGRAPHX_WINDOWS_|ORT_AMDGPU_EP_' } |
+            Where-Object {
+                $text = [System.IO.File]::ReadAllText($_.FullName)
+                if ($_.Name -eq 'Dockerfile.torch') { $text = [regex]::Replace($text, '(?s)FROM \$\{BASE_IMAGE\} AS torch-rocm-wheels.*?(?=\r?\nFROM )', '') }
+                $text -match 'Build-MigraphxFromSource|Build-OrtAmdgpuEpFromSource|WindowsMigraphx\.Common|MIGRAPHX_WINDOWS_|ORT_AMDGPU_EP_'
+            } |
             ForEach-Object Name)
         Assert-Equal '' ($hits -join ',') 'a media/torch/final Dockerfile would re-key cpu and nvidia'
     }

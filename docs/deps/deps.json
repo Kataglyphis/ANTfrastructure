@@ -744,10 +744,10 @@
               "spdx": "Apache-2.0 AND MIT"
             },
             {
-              "name": "PyTorch + TorchVision for ROCm (AMD Windows wheels with their own ROCm 10.0.0 runtime; device kernels for gfx1201 and gfx1200; rocm variant only)",
+              "name": "PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only)",
               "var": null,
-              "version_fixed": "torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0, rocm-sdk/amd-torch/amd-torchvision device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
-              "url": "https://rocm.docs.amd.com/",
+              "version_fixed": "torch 2.14.0+rocm10.0.0 and torchvision 0.29.0+rocm10.0.0 from the v2.14.0 / v0.29.0 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+              "url": "https://github.com/pytorch/pytorch",
               "license": "BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file)",
               "spdx": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             },

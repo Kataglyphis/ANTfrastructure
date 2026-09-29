@@ -1,0 +1,276 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+#requires -Version 7.0
+
+<#
+.SYNOPSIS
+    Builds torch and torchvision wheels for Windows ROCm from upstream source against TheRock (rocm lane only).
+.DESCRIPTION
+    Dockerfile.torch's torch-rocm-wheels stage runs it; rocm-1 installs the two wheels into the app venv.
+    Upstream pytorch/vision at the TORCH_ROCM_WINDOWS_*_COMMIT pins (PYTORCH_VERSION / TORCHVISION_VERSION),
+    compiled against the SDK at C:\TheRock\build for the ROCM_WINDOWS_GFX_FAMILY targets, following TheRock's
+    external-builds/pytorch/build_prod_wheels.py. The wheels load ROCm like AMD's: torch/_rocm_init.py and
+    rocm[libraries]==ROCM_WINDOWS_RELEASE. AOTriton (flash/mem-efficient SDPA) and torch.distributed are off.
+    docs/windows-rocm.md § PyTorch on the rocm lane.
+.PARAMETER OutputDir
+    Receives exactly torch-<v>+rocm<r>-cp314-cp314-win_amd64.whl and torchvision-<v>+rocm<r>-...whl.
+.PARAMETER WorkDir
+    Sources, the build venv and the build trees; short on purpose (Windows path limits). Removed at the end.
+#>
+param(
+    [string]$OutputDir = 'C:\torch-rocm-wheels',
+    [string]$WorkDir = 'C:\b'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+foreach ($module in 'WindowsScripts.Shared.psm1', 'WindowsNative.Common.psm1', 'WindowsSourceBuild.Common.psm1', 'WindowsMigraphx.Common.psm1') {
+    $modulePath = Join-Path $scriptAssetRoot "modules\$module"
+    if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
+}
+
+function Get-TorchRocmBuildVersion {
+    # PYTORCH_VERSION-style tag (v2.14.0) + ROCM_WINDOWS_RELEASE -> the wheel's local version, AMD's shape.
+    param([Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Release)
+    $m = [regex]::Match($Version, '^v?(?<v>\d+\.\d+\.\d+)$')
+    if (-not $m.Success) { throw "version pin '$Version' is not [v]x.y.z" }
+    if ($Release -notmatch '^\d+\.\d+\.\d+$') { throw "ROCM_WINDOWS_RELEASE '$Release' is not x.y.z" }
+    return "$($m.Groups['v'].Value)+rocm$Release"
+}
+
+function Assert-TorchRocmTreeVersion {
+    # Upstream release tags keep an alpha version.txt (2.14.0a0); its x.y.z must still be the pinned one.
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$VersionText, [Parameter(Mandatory)][string]$Version)
+    $tree = [regex]::Match($VersionText.Trim(), '^\d+\.\d+\.\d+')
+    $want = $Version -replace '^v', ''
+    if (-not $tree.Success) { throw "$Name version.txt holds '$($VersionText.Trim())', not x.y.z[...]" }
+    if ($tree.Value -ne $want) { throw "$Name commit is $($tree.Value) (version.txt), the version pin is $want" }
+}
+
+function Get-TorchRocmInitSource {
+    # torch/_rocm_init.py as AMD's wheels carry it: torch imports it first and preloads ROCm from rocm_sdk.
+    param([Parameter(Mandatory)][string]$Release)
+    $names = "'amd_comgr', 'amdhip64', 'hiprtc', 'hipblas', 'hipfft', 'hiprand', 'hipsparse', 'hipsparselt', " +
+        "'hipsolver', 'hipblaslt', 'miopen', 'hipdnn', 'rocm-openblas'"
+    return @(
+        'def initialize():'
+        '    import rocm_sdk'
+        '    rocm_sdk.initialize_process('
+        "        preload_shortnames=[$names],"
+        "        check_version='$Release')"
+    ) -join "`n"
+}
+
+function Get-TorchRocmCommonEnv {
+    # _setup_common_build_env on Windows, with the SDK root TheRock's rocm_sdk paths resolve to.
+    param([Parameter(Mandatory)][string]$RocmRoot, [Parameter(Mandatory)][string]$GpuTargets)
+    $llvmBin = Join-Path $RocmRoot 'lib\llvm\bin'
+    $vars = [ordered]@{
+        PYTHONUTF8        = '1'
+        CMAKE_PREFIX_PATH = Join-Path $RocmRoot 'lib\cmake'
+        ROCM_HOME         = $RocmRoot
+        ROCM_PATH         = $RocmRoot
+        PYTORCH_ROCM_ARCH = $GpuTargets
+        USE_KINETO        = 'OFF'
+        HIP_CLANG_PATH    = $llvmBin -replace '\\', '/'
+        CC                = Join-Path $llvmBin 'clang-cl.exe'
+        CXX               = Join-Path $llvmBin 'clang-cl.exe'
+        DISTUTILS_USE_SDK = '1'
+    }
+    $bitcode = Join-Path $RocmRoot 'lib\llvm\amdgcn\bitcode'
+    if (Test-Path -LiteralPath $bitcode) { $vars['HIP_DEVICE_LIB_PATH'] = $bitcode }
+    $hostMath = Join-Path $RocmRoot 'lib\host-math'
+    if (Test-Path -LiteralPath $hostMath) {
+        $vars['BLAS'] = 'OpenBLAS'; $vars['OpenBLAS_HOME'] = $hostMath; $vars['OpenBLAS_LIB_NAME'] = 'rocm-openblas'
+    }
+    return $vars
+}
+
+function Get-TorchRocmTorchEnv {
+    # The torch-only half of do_build_pytorch; AOTriton and torch.distributed off (docs say why).
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Common,
+        [Parameter(Mandatory)][string]$BuildVersion,
+        [Parameter(Mandatory)][string]$Release,
+        [Parameter(Mandatory)][int]$Jobs,
+        [switch]$Sccache
+    )
+    $vars = [ordered]@{}
+    foreach ($k in $Common.Keys) { $vars[$k] = $Common[$k] }
+    $vars['USE_ROCM'] = 'ON'; $vars['USE_CUDA'] = 'OFF'; $vars['USE_MPI'] = 'OFF'; $vars['USE_NUMA'] = 'OFF'
+    $vars['USE_FLASH_ATTENTION'] = 'OFF'; $vars['USE_MEM_EFF_ATTENTION'] = 'OFF'
+    $vars['USE_DISTRIBUTED'] = '0'; $vars['USE_GLOO'] = 'OFF'
+    $vars['BUILD_TEST'] = '0'
+    $vars['PYTORCH_BUILD_VERSION'] = $BuildVersion; $vars['PYTORCH_BUILD_NUMBER'] = '1'
+    $vars['PYTORCH_EXTRA_INSTALL_REQUIREMENTS'] = "rocm[libraries]==$Release"
+    $vars['MAX_JOBS'] = "$Jobs"
+    if ($Sccache) { $vars['CMAKE_C_COMPILER_LAUNCHER'] = 'sccache'; $vars['CMAKE_CXX_COMPILER_LAUNCHER'] = 'sccache' }
+    return $vars
+}
+
+function Get-TorchRocmVisionEnv {
+    # do_build_pytorch_vision: a fresh copy of the common env, HIP forced on a GPU-less host.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Common, [Parameter(Mandatory)][string]$BuildVersion, [Parameter(Mandatory)][int]$Jobs)
+    $vars = [ordered]@{}
+    foreach ($k in $Common.Keys) { $vars[$k] = $Common[$k] }
+    $vars['BUILD_VERSION'] = $BuildVersion; $vars['FORCE_CUDA'] = '1'
+    $vars['TORCHVISION_USE_NVJPEG'] = '0'; $vars['TORCHVISION_USE_VIDEO_CODEC'] = '0'
+    $vars['MAX_JOBS'] = "$Jobs"
+    return $vars
+}
+
+function Get-TorchRocmWheelName {
+    # The one wheel a build must leave, by its exact PEP 427 name.
+    param([Parameter(Mandatory)][string]$Distribution, [Parameter(Mandatory)][string]$BuildVersion, [Parameter(Mandatory)][string]$PythonTag)
+    return "$Distribution-$BuildVersion-$PythonTag-$PythonTag-win_amd64.whl"
+}
+
+function Find-TorchRocmLibomp {
+    # libomp140.x86_64.dll from the MSVC redist (OpenMP.LLVM, never the debug_nonredist copy): Server Core lacks it.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$RedistDir)
+    if (-not $RedistDir -or -not (Test-Path -LiteralPath $RedistDir)) { throw "VCToolsRedistDir '$RedistDir' is missing: the VS environment must be entered first" }
+    $hits = @(Get-ChildItem -LiteralPath (Join-Path $RedistDir 'x64') -Directory -Filter 'Microsoft.VC*.OpenMP.LLVM' -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'libomp140.x86_64.dll' } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Sort-Object)
+    if ($hits.Count -eq 0) { throw "no x64\Microsoft.VC*.OpenMP.LLVM\libomp140.x86_64.dll under $RedistDir" }
+    return $hits[-1]
+}
+
+function Set-TorchRocmProcessEnv {
+    # One build's env into THIS process (the RUN ends with it); values print for the log.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Env)
+    foreach ($k in $Env.Keys) {
+        [Environment]::SetEnvironmentVariable($k, "$($Env[$k])", 'Process')
+        Write-Host "  $k=$($Env[$k])"
+    }
+}
+
+function Invoke-TorchRocmLogged {
+    # Streams a long native build and keeps the whole of it on the persistent log mount.
+    param([Parameter(Mandatory)][string]$CommandLine, [Parameter(Mandatory)][string]$WorkingDir, [Parameter(Mandatory)][string]$LogName)
+    $log = Get-PersistentBuildLogPath -Name $LogName -FallbackDir $WorkDir
+    Write-Host "  log: $log"
+    Push-Location $WorkingDir
+    try {
+        & cmd.exe /s /c " $CommandLine 2>&1" | Tee-Object -FilePath $log
+        $code = $LASTEXITCODE
+    } finally { Pop-Location }
+    if ($code -ne 0) { throw "$LogName failed (exit $code); full log: $log" }
+    $global:LASTEXITCODE = 0
+}
+
+function Get-TorchRocmRuntimePin {
+    # The pinned rocm sdist + core + libraries (TORCH_ROCM_WINDOWS_*), as rocm-1 installs them at run time.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Pins)
+    $dists = [ordered]@{ ROCM = 'rocm'; SDK_CORE = 'rocm-sdk-core'; SDK_LIBRARIES = 'rocm-sdk-libraries' }
+    foreach ($name in $dists.Keys) {
+        $url = "$($Pins["TORCH_ROCM_WINDOWS_${name}_URL"])".Trim()
+        $sha = "$($Pins["TORCH_ROCM_WINDOWS_${name}_SHA256"])".Trim().ToLowerInvariant()
+        if (-not $url.StartsWith('https://stable.repo.amd.com/rocm/')) { throw "TORCH_ROCM_WINDOWS_${name}_URL must be an AMD stable-repo URL, got '$url'" }
+        if ($sha -notmatch '^[0-9a-f]{64}$') { throw "TORCH_ROCM_WINDOWS_${name}_SHA256 must be a 64-hex SHA256, got '$sha'" }
+        [pscustomobject]@{ Distribution = $dists[$name]; Url = $url; Sha256 = $sha; FileName = [uri]::UnescapeDataString(([uri]$url).Segments[-1]) }
+    }
+}
+
+function Save-TorchRocmRuntimeWheel {
+    # Fetches the runtime pins into $Dir and returns uv's hash-pinned requirement lines: the build venv
+    # needs rocm_sdk, because torch/_rocm_init.py runs on the `import torch` torchvision's setup does.
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Pin)
+    New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+    foreach ($p in $Pin) {
+        $file = Join-Path $Dir $p.FileName
+        Invoke-DownloadWithRetry -Url $p.Url -DestinationPath $file -ExpectedSha256 $p.Sha256 -Description $p.FileName
+        "$($p.Distribution) @ $(([uri]$file).AbsoluteUri) --hash=sha256:$($p.Sha256)"
+    }
+}
+
+if ($MyInvocation.InvocationName -eq '.') { return }
+
+# Refuses off the rocm lane (Get-GpuEnvironment.HasRocm) and off amd64, before anything is fetched.
+$build = Initialize-MigraphxBuild -InstallDir $OutputDir -ScriptRoot $PSScriptRoot -Component 'PyTorch'
+$OutputDir = $build.InstallDir
+$rocmRoot = $build.RocmRoot
+$release = "$env:ROCM_WINDOWS_RELEASE".Trim()
+$torchVersion = Get-TorchRocmBuildVersion -Version "$env:PYTORCH_VERSION".Trim() -Release $release
+$visionVersion = Get-TorchRocmBuildVersion -Version "$env:TORCHVISION_VERSION".Trim() -Release $release
+Write-Host "=== torch $torchVersion + torchvision $visionVersion from source (TheRock $rocmRoot, $($build.GpuTargets)) ==="
+
+$python = Start-MigraphxBuildSession -WorkDir $WorkDir
+$jobs = Get-BuildJobCount -MemGBPerJob 5
+try {
+    Switch-BuildPhase '1. sources'
+    & git config --global core.longpaths true
+    $torchSrc = Save-GitCommitSource -Name 'pytorch' -Repository 'https://github.com/pytorch/pytorch.git' `
+        -Commit "$env:TORCH_ROCM_WINDOWS_PYTORCH_COMMIT".Trim() -WorkDir $WorkDir
+    Assert-TorchRocmTreeVersion -Name 'TORCH_ROCM_WINDOWS_PYTORCH_COMMIT' -Version "$env:PYTORCH_VERSION".Trim() `
+        -VersionText ([System.IO.File]::ReadAllText((Join-Path $torchSrc 'version.txt')))
+    # Submodule commits are the superproject's gitlinks: git verifies every object against them.
+    Invoke-TorchRocmLogged -CommandLine 'git submodule update --init --recursive --depth 1 --jobs 8' -WorkingDir $torchSrc -LogName 'torch-rocm-submodules.log'
+    $visionSrc = Save-GitCommitSource -Name 'vision' -Repository 'https://github.com/pytorch/vision.git' `
+        -Commit "$env:TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT".Trim() -WorkDir $WorkDir
+    Assert-TorchRocmTreeVersion -Name 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT' -Version "$env:TORCHVISION_VERSION".Trim() `
+        -VersionText ([System.IO.File]::ReadAllText((Join-Path $visionSrc 'version.txt')))
+
+    Switch-BuildPhase '2. build venv'
+    $venv = Join-Path $WorkDir 'venv'
+    $venvPy = Join-Path $venv 'Scripts\python.exe'
+    $env:UV_NO_CACHE = '1'; $env:UV_LINK_MODE = 'copy'
+    Invoke-TorchRocmLogged -CommandLine "uv venv --python ""$python"" ""$venv""" -WorkingDir $WorkDir -LogName 'torch-rocm-venv.log'
+    Invoke-TorchRocmLogged -CommandLine ("uv pip install --python ""$venvPy"" -r requirements.txt -r requirements-build.txt build") `
+        -WorkingDir $torchSrc -LogName 'torch-rocm-deps.log'
+    # The system ninja (>= 1.13.1): PyPI's hangs (1.11.1) or breaks link.exe response files (1.13.0).
+    [void](Invoke-ShieldedNative -Label 'uv pip uninstall ninja' -Optional -CommandLine "uv pip uninstall --python ""$venvPy"" ninja")
+    $pins = @{}
+    foreach ($k in @([Environment]::GetEnvironmentVariables().Keys | Where-Object { "$_" -like 'TORCH_ROCM_WINDOWS_*' })) { $pins["$k"] = [Environment]::GetEnvironmentVariable("$k") }
+    $req = Join-Path $WorkDir 'rocm-runtime.txt'
+    Set-Content -LiteralPath $req -Encoding utf8 -Value @(Save-TorchRocmRuntimeWheel -Dir (Join-Path $WorkDir 'rocm-runtime') -Pin @(Get-TorchRocmRuntimePin -Pins $pins))
+    $env:ROCM_SDK_TARGET_FAMILY = ($build.GpuTargets -split ';')[-1]; $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
+    Invoke-TorchRocmLogged -CommandLine ("uv pip install --python ""$venvPy"" --no-deps --no-index --no-build-isolation --require-hashes -r ""$req""") `
+        -WorkingDir $WorkDir -LogName 'torch-rocm-runtime.log'
+    $pyTag = "$(& $venvPy -c "import sys; print('cp' + str(sys.version_info[0]) + str(sys.version_info[1]))")".Trim()
+    if ($pyTag -notmatch '^cp3\d+$') { throw "build venv python reports tag '$pyTag'" }
+
+    Switch-BuildPhase '3. torch (HIPIFY + wheel)'
+    Invoke-TorchRocmLogged -CommandLine """$venvPy"" tools/amd_build/build_amd.py" -WorkingDir $torchSrc -LogName 'torch-rocm-hipify.log'
+    Set-Content -LiteralPath (Join-Path $torchSrc 'torch\_rocm_init.py') -Encoding ascii -Value (Get-TorchRocmInitSource -Release $release)
+    Copy-Item -LiteralPath (Find-TorchRocmLibomp -RedistDir "$env:VCToolsRedistDir") -Destination (Join-Path $torchSrc 'torch\lib\') -Force
+    $common = Get-TorchRocmCommonEnv -RocmRoot $rocmRoot -GpuTargets $build.GpuTargets
+    Set-TorchRocmProcessEnv -Env (Get-TorchRocmTorchEnv -Common $common -BuildVersion $torchVersion -Release $release -Jobs $jobs `
+            -Sccache:(Test-SccacheRemoteConfigured))
+    $env:PATH = "$(Join-Path $rocmRoot 'bin');$env:PATH"
+    Invoke-TorchRocmLogged -WorkingDir $torchSrc -LogName 'torch-rocm-wheel.log' -CommandLine ("""$venvPy"" -m build --wheel --no-isolation --skip-dependency-check " +
+        '-Cwheel.force-include.torch/_rocm_init.py=torch/_rocm_init.py ' +
+        '-Cwheel.force-include.torch/lib/libomp140.x86_64.dll=torch/lib/libomp140.x86_64.dll')
+    $torchWheel = Join-Path $torchSrc "dist\$(Get-TorchRocmWheelName -Distribution 'torch' -BuildVersion $torchVersion -PythonTag $pyTag)"
+    if (-not (Test-Path -LiteralPath $torchWheel -PathType Leaf)) { throw "torch build left no $torchWheel" }
+    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" --no-deps ""$torchWheel""" -WorkingDir $WorkDir -LogName 'torch-rocm-install.log'
+    Invoke-TorchRocmLogged -WorkingDir $WorkDir -LogName 'torch-rocm-import.log' -CommandLine ("""$venvPy"" -c ""import torch; " +
+        "print(torch.__version__, torch.version.hip, torch.version.rocm, torch._C._cuda_getArchFlags())""")
+
+    Switch-BuildPhase '4. torchvision'
+    foreach ($k in 'USE_ROCM', 'MAX_JOBS', 'PYTORCH_BUILD_VERSION', 'CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPILER_LAUNCHER') {
+        if (Test-Path "Env:$k") { Remove-Item "Env:$k" }
+    }
+    Set-TorchRocmProcessEnv -Env (Get-TorchRocmVisionEnv -Common $common -BuildVersion $visionVersion -Jobs $jobs)
+    Invoke-TorchRocmLogged -CommandLine """$venvPy"" setup.py bdist_wheel" -WorkingDir $visionSrc -LogName 'torchvision-rocm-wheel.log'
+    $visionWheel = Join-Path $visionSrc "dist\$(Get-TorchRocmWheelName -Distribution 'torchvision' -BuildVersion $visionVersion -PythonTag $pyTag)"
+    if (-not (Test-Path -LiteralPath $visionWheel -PathType Leaf)) { throw "torchvision build left no $visionWheel" }
+    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" --no-deps ""$visionWheel""" -WorkingDir $WorkDir -LogName 'torchvision-rocm-install.log'
+    Invoke-TorchRocmLogged -WorkingDir $WorkDir -LogName 'torchvision-rocm-import.log' -CommandLine ("""$venvPy"" -c ""import torchvision; " +
+        "from torchvision.extension import _has_ops; assert _has_ops(), 'torchvision C++ ops missing'; print(torchvision.__version__)""")
+
+    Switch-BuildPhase '5. stage the wheels'
+    New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+    Copy-Item -LiteralPath $torchWheel, $visionWheel -Destination $OutputDir -Force
+    $staged = @(Get-ChildItem -LiteralPath $OutputDir -Filter '*.whl' | ForEach-Object Name | Sort-Object)
+    if ($staged.Count -ne 2) { throw "expected exactly the torch and torchvision wheels in $OutputDir, found: $($staged -join ', ')" }
+    Complete-CurrentBuildPhase
+} catch {
+    Complete-CurrentBuildPhase -ErrorRecord $_
+    Write-BuildPhaseSummary -Label 'PyTorch ROCm'
+    throw
+}
+
+Complete-MigraphxBuildSession -Label 'PyTorch ROCm' -WorkDir $WorkDir -Banner "=== torch $torchVersion + torchvision $visionVersion built ($OutputDir) ==="

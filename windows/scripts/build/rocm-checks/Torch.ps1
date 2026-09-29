@@ -5,7 +5,7 @@
 
 <#
 .SYNOPSIS
-    rocm image: the app venv runs AMD's ROCm torch/torchvision (kernels for every rocBLAS GPU) and ai-edge-litert.
+    rocm image: the app venv runs the ROCm torch/torchvision built from source (kernels for every rocBLAS GPU) and ai-edge-litert.
 .DESCRIPTION
     One finding per gap, GPU-less (imports, dist metadata, the LiteRT accelerator load); NOT covered: a kernel
     running. The chain ORT's WebGPU EP is OrtWebGpu.ps1's. docs/windows-rocm.md § PyTorch on the rocm lane.
@@ -43,7 +43,8 @@ try:
     with contextlib.redirect_stderr(err):
         import torch, torchvision, rocm_sdk
     report.update(torch=torch.__version__, hip=torch.version.hip, rocm=torch.version.rocm,
-                  torchvision=torchvision.__version__, rocm_sdk=rocm_sdk.__version__)
+                  torchvision=torchvision.__version__, rocm_sdk=rocm_sdk.__version__,
+                  arch=str(torch._C._cuda_getArchFlags() or ""))
 except Exception as exc:
     report["error"] = "%s: %s" % (type(exc).__name__, exc)
 ort_facts = {}
@@ -131,22 +132,18 @@ function Get-TorchRocmFinding {
     foreach ($dist in 'rocm', 'rocm-sdk-core', 'rocm-sdk-libraries') {
         if ("$($dists[$dist])" -ne $Release) { "Torch: dist $dist is '$($dists[$dist])', expected $Release" }
     }
-    if (-not $dists.Contains('rocm-bootstrap')) { 'Torch: dist rocm-bootstrap is missing (torch requires it)' }
-    # Device wheels carry the GPU kernels; each family must match the package it extends.
-    $want = @(
-        @{ Prefix = 'rocm-sdk-device-'; Version = $Release }
-        @{ Prefix = 'amd-torch-device-'; Version = "$($Report['torch'])" }
-        @{ Prefix = 'amd-torchvision-device-'; Version = "$($Report['torchvision'])" }
-    )
-    foreach ($w in $want) {
-        $found = @($dists.Keys | Where-Object { $_.StartsWith($w.Prefix) })
-        if ($found.Count -eq 0) { "Torch: no $($w.Prefix)* dist: the venv carries no GPU kernels" }
-        foreach ($name in $found) {
-            if ("$($dists[$name])" -ne $w.Version) { "Torch: dist $name is '$($dists[$name])', expected '$($w.Version)'" }
-        }
-        foreach ($gfx in $RocmGpu) {
-            if (-not $dists.Contains("$($w.Prefix)$gfx")) { "Torch: no $($w.Prefix)$gfx dist: ROCm's rocBLAS serves $gfx, the venv has no kernels for it" }
-        }
+    # torch's own kernels are compiled in (the source build's PYTORCH_ROCM_ARCH); ROCm's libraries'
+    # kernels come in rocm-sdk-device-<gfx> wheels. Both must cover every GPU rocBLAS serves.
+    $arch = @("$($Report['arch'])" -split '[\s;,]+' | Where-Object { $_ })
+    if ($arch.Count -eq 0) { 'Torch: torch reports no compiled GPU arch (torch._C._cuda_getArchFlags): it carries no kernels' }
+    $sdkDevice = @($dists.Keys | Where-Object { $_.StartsWith('rocm-sdk-device-') })
+    if ($sdkDevice.Count -eq 0) { "Torch: no rocm-sdk-device-* dist: ROCm's libraries have no GPU kernels" }
+    foreach ($name in $sdkDevice) {
+        if ("$($dists[$name])" -ne $Release) { "Torch: dist $name is '$($dists[$name])', expected '$Release'" }
+    }
+    foreach ($gfx in $RocmGpu) {
+        if ($arch.Count -gt 0 -and $arch -notcontains $gfx) { "Torch: torch was built for $($arch -join ', '), not $gfx, which ROCm's rocBLAS serves" }
+        if (-not $dists.Contains("rocm-sdk-device-$gfx")) { "Torch: no rocm-sdk-device-$gfx dist: ROCm's rocBLAS serves $gfx, the venv has no library kernels for it" }
     }
     # Not .Count: an empty set that an `if` unwrapped binds as $null, and StrictMode throws on $null.Count.
     if (-not $RocmGpu) { "Torch: ROCm's rocBLAS names no GPU (no TensileLibrary_lazy_gfx*.dat): cannot tell which device wheels the venv needs" }

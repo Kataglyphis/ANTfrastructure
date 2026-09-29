@@ -24,7 +24,7 @@ belongs on the bare host.
 | TVM | OpenCL runtime; ROCm codegen + runtime as a **spike** (`TVM_ROCM=1`), on a minimal LLVM of its own that carries AMDGPU | OpenCL, ROCm/HIP | spike: yes |
 | LiteRT-LM | GPU backend (WebGPU over Dawn on D3D12) | D3D12 | no |
 | ONNX Runtime | CPU + DirectML, plus the in-tree WebGPU EP as a **spike** (`ORT_WEBGPU=1`). ORT >= 1.23 has no ROCm EP | DirectML, WebGPU (Dawn on D3D12) | no |
-| PyTorch | torch 2.13.0+rocm10.0.0, torchvision 0.28.0+rocm10.0.0, device kernels for gfx1201 and gfx1200 | ROCm/HIP (own runtime in the wheels) | no |
+| PyTorch | torch 2.14.0+rocm10.0.0, torchvision 0.29.0+rocm10.0.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
 | App venv LiteRT | `ai-edge-litert` 2.2.0 with its WebGPU accelerator | WebGPU (Dawn on D3D12) | no |
 | llama.cpp HIP | official Windows ROCm build b11115 (`ggml-hip`), `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | hipBLAS/rocBLAS |
 | llama.cpp Vulkan | the same build's official Windows Vulkan zip (`ggml-vulkan`), `C:\runtime\opt\llama.cpp-vulkan` | Vulkan (the sdk layer's loader) | no |
@@ -710,7 +710,9 @@ On cpu and nvidia, the Bazel command stays `build //runtime/engine:litert_lm_mai
 
 ## PyTorch on the rocm lane (torch stage)
 
-The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **AMD's PyTorch for Windows ROCm**. It has torch 2.13.0+rocm10.0.0 and torchvision 0.28.0+rocm10.0.0 (cp314, win_amd64), the `rocm[libraries]` 10.0.0 runtime, and the device wheels for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). It also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
+The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.0+rocm10.0.0 and torchvision 0.29.0+rocm10.0.0 (cp314, win_amd64), built from the upstream `v2.14.0` / `v0.29.0` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.0 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.0.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
+
+Why here and not AMD's: AMD's Windows wheels for ROCm 10.0 stop at torch 2.13.0, and the app locks 2.14.0. torch 2.14 exists for ROCm 7.14 (pytorch.org, Linux only) and for ROCm 10.1 release candidates (`rc.repo.amd.com`), but not for 10.0.
 
 WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)). The PyPI plugin `onnxruntime-ep-webgpu` that this venv carried for part of 2026-09-23 is gone, with its `TORCH_ROCM_WINDOWS_ORT_EP_WEBGPU_*` pins: it was ORT code not built by this chain.
 
@@ -718,28 +720,47 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
 
 - `app` is the old single stage, unchanged: `uv sync` with `PYTORCH_EXTRA=pytorch-cpu`, so the app lock resolves the same way on every lane.
 - `rocm-0` is `app` with no instruction of its own. This is what cpu and nvidia build, with the same cache key and layers as before.
-- `rocm-1` is built only when the driver passes `TORCH_ROCM=1`. That happens on the rocm lane only (`Get-BkRocmStageArg`).
+- `torch-rocm-wheels` builds the two wheels on the rocm `BASE_IMAGE`, **not on `app`**, so an `APP_REF` move never re-runs the compile. Only `rocm-1` mounts it, so cpu and nvidia never build it.
+- `rocm-1` is built only when the driver passes `TORCH_ROCM=1`. That happens on the rocm lane only (`Get-BkRocmStageArg`, which also forwards the source build's versions and the sccache endpoint there).
 
 `rocm-1` runs `windows/scripts/build/Install-TorchRocm.ps1`, then `Build-TorchApp.ps1 -Mode verify`, so the app's own smoke suite runs on the ROCm torch. That verify runs the ORT census first: any ONNX Runtime distribution that is not a chain wheel fails the stage ([`failure-modes.md`](failure-modes.md#the-torch-stage-fails-with-ort-census-fail)). The installer itself also requires the venv's onnxruntime RECORD digest to be the same before and after it runs (`Assert-TorchRocmOrtUnchanged`).
 
+**The source build** (`windows/scripts/build/Build-TorchRocmFromSource.ps1`, following TheRock's `external-builds/pytorch/build_prod_wheels.py`):
+
+- **Sources.** `Save-GitCommitSource` fetches `TORCH_ROCM_WINDOWS_PYTORCH_COMMIT` and `_TORCHVISION_COMMIT`, the tags' commits, and git verifies every object. Submodules come at the superproject's gitlinks (`--depth 1`). Each commit's `version.txt` (`2.14.0a0` upstream) must carry the pinned x.y.z.
+- **Build venv** on the image's CPython (uv, no cache): torch's `requirements.txt` and `requirements-build.txt`, plus `build`. PyPI's `ninja` is removed so the image's 1.13.2 runs; 1.11.1 hangs and 1.13.0 breaks link.exe response files. The pinned `rocm` sdist, core and libraries go in too: `import torch` runs `_rocm_init.py`, and torchvision's setup imports torch.
+- **Before the wheel:** HIPIFY (`tools/amd_build/build_amd.py`), then `torch/_rocm_init.py` (AMD's content, `check_version` = the release) and `libomp140.x86_64.dll` from the MSVC redist into `torch\lib` (Server Core lacks it). Both are force-included into the wheel, because scikit-build-core drops files `.gitignore` names.
+- **The environment** (`Get-TorchRocmCommonEnv`, `Get-TorchRocmTorchEnv`):
+  - `ROCM_HOME`/`ROCM_PATH` are the SDK root and `CMAKE_PREFIX_PATH` is its `lib\cmake`.
+  - TheRock's `clang-cl` is CC/CXX, plus `HIP_CLANG_PATH`.
+  - `PYTORCH_ROCM_ARCH` comes from `ROCM_WINDOWS_GFX_FAMILY`, and OpenBLAS from the SDK's `lib\host-math`.
+  - `PYTORCH_BUILD_VERSION=2.14.0+rocm10.0.0` and `PYTORCH_EXTRA_INSTALL_REQUIREMENTS=rocm[libraries]==<release>`.
+  - `MAX_JOBS` allows 5 GB per job, and sccache wraps the host C/C++ when it is configured.
+- **Then** `python -m build --wheel --no-isolation`, an install into the build venv, and an `import torch` that prints the HIP version and the compiled arch list. Then torchvision (`setup.py bdist_wheel`, `FORCE_CUDA=1` on the GPU-less host) and an import that requires its C++ ops. Exactly the two wheels are staged in `C:\torch-rocm-wheels`. Every step logs in full to the persistent `C:\sccache-logs` (`torch-rocm-*.log`).
+- **Off in this first build, on purpose:**
+  - **AOTriton** (flash and memory-efficient SDPA, `USE_FLASH_ATTENTION`/`USE_MEM_EFF_ATTENTION=OFF`). Its CMake clones dlfcn-win32, xz and aotriton and pip-installs into a venv of its own at build time, and nothing here pins any of it. SDPA falls back to the math kernel.
+  - **`torch.distributed`** (gloo/libuv).
+  - **Image IO in torchvision** (PNG, JPEG, WEBP). AMD's wheels lack it too.
+- **The SDK tree is AMD's tarball**, not the `rocm-sdk-devel` wheel TheRock's scripts expand. The tarball holds every devel path at the same place and has no symlinks, so the symlink-privilege expansion bug (TheRock#7807) does not apply. No public precedent for building against the tarball was found; the first rocm build of this stage is that test.
+
 **What the installer does.**
 
-- **Pins.** Fourteen files are pinned by URL + SHA256 in `versions.env` (`TORCH_ROCM_WINDOWS_<NAME>_URL` / `_SHA256`, next to `ROCM_WINDOWS_*`): 13 from AMD, and `ai-edge-litert` from PyPI. They reach the stage as ARG defaults that `sync_versions.py` keeps in step. AMD publishes no hashes and its index carries no `#sha256=` fragments, so every SHA256 is self-measured (`curl -fL <url> | sha256sum`). The URLs are AMD's final addresses (`stable.repo.amd.com/rocm/pytorch/whl-next/…`, `/rocm/core/whl-next/…`).
-- **Coupling, checked at build time.** Every file except `rocm-bootstrap` must be built for `ROCM_WINDOWS_RELEASE`. The device wheels must name one GPU and match their package's version. The venv must be `cp314`. The app lock's torch/torchvision must be the same release as the pins, so an `APP_REF` that moves torch fails the stage until the pins move too. **Bump the whole `TORCH_ROCM_WINDOWS_*` block with `ROCM_WINDOWS_RELEASE`.**
-  - **Open since 2026-09-29:** `APP_REF` tracks the app's `develop`, which locks torch 2.14.0 / torchvision 0.29.0, and AMD's stable ROCm 10.0 wheels stop at 2.13.0 / 0.28.0. So `-Variant rocm` fails this check until one of two things lands. Either torch 2.14 is built from source here against ROCm 10.0 (TheRock's `build_prod_wheels.py` on the `ROCm/pytorch` `release/2.14` fork; not a documented recipe), or the lane moves to ROCm 10.1, whose release candidates already carry `2.14.0+rocm10.1.0rc*` for cp314.
-- **One device-wheel set per GPU.** `TORCH_ROCM_WINDOWS_SDK_DEVICE[_<GFX>]` names the GPU, and `TORCH_DEVICE`/`TORCHVISION_DEVICE` with the same suffix must be that GPU's wheels at torch/torchvision's exact version (`Get-TorchRocmGpuTarget`). The unsuffixed set is gfx1201; gfx1200 uses `_GFX1200`. The one family wheel `amd-torch-device-gfx12-0` must serve every pinned GPU. The gfx1200 and gfx1201 sets share only an empty `_rocm_sdk_libraries/__init__.py`.
-- **rocBLAS coverage.** Before any download, every GPU the image's rocBLAS ships kernels for (`%HIP_PATH%\bin\rocblas\library\TensileLibrary_lazy_<gfx>.dat`, the files `rocm-checks\LlamaCpp.ps1` reads too) must have device pins (`Assert-TorchRocmGpuCoverage`). Pinning more GPUs is allowed. A `ROCM_WINDOWS_GFX_FAMILY` change therefore fails the torch stage until the device pins follow.
-- **Offline install.** Files are cached by hash on the torch stage's uv cache mount (`C:\uvcache\torch-rocm\<sha256>\<file>`, about 2 GB) and re-hashed before reuse. Each is downloaded to its cache path directly, never as a `.part` renamed into place. On the mount that rename failed with `Could not find a part of the path` for the first wheel with a 68-character name, after two shorter ones had moved fine (2026-09-25). That is the create-then-rename class of [windows-build-lanes.md § Run-side wcifs symptoms](windows-build-lanes.md#run-side-wcifs-symptoms-process-isolation). A partial file is never used: a failed download deletes what it wrote, and every reuse re-hashes. The install is `uv pip install --force-reinstall --no-deps --no-index --no-build-isolation --require-hashes`. No index is contacted and nothing is resolved. The `rocm` sdist builds on the venv's setuptools (83.0.0 from the app lock).
-- **The no-GPU trap.** The `rocm` sdist's `setup.py` calls `offload-arch` to choose a GPU family. The build container has no GPU (TheRock's `offload-arch.exe` sits in `lib\llvm\bin`, which stays off PATH). The installer sets `ROCM_SDK_TARGET_FAMILY` to the first pinned GPU, gfx1201. That variable takes exactly one GPU, but it only fills the sdist's generic `device` extra, and `--no-deps` never reads it; the pinned per-GPU wheels stand in for AMD's per-GPU extras (`rocm[device-gfx1200]`, `rocm[device-gfx1201]`, `device-all`). `ROCM_BOOTSTRAP_DISABLE_DETECTION=1` is also set; `rocm-bootstrap` 0.1.0 detects only inside its installer plugin, which `--no-deps` never runs.
-- **Dependency confusion.** PyPI has an unrelated `rocm` 0.1.0 and `rocm-bootstrap` 0.3.0. Pinning by URL + hash rules both out.
+- **Pins.** Six files are pinned by URL + SHA256 in `versions.env` (`TORCH_ROCM_WINDOWS_<NAME>_URL` / `_SHA256`, next to `ROCM_WINDOWS_*`): AMD's `rocm` sdist, `rocm-sdk-core`, `rocm-sdk-libraries` and one device wheel per GPU, plus `ai-edge-litert` from PyPI. They reach the stage as ARG defaults that `sync_versions.py` keeps in step. AMD publishes no hashes and its index carries no `#sha256=` fragments, so every SHA256 is self-measured (`curl -fL <url> | sha256sum`).
+- **The built wheels** (`Get-TorchRocmBuiltWheel`): the mounted `C:\bkmnt\torch-rocm-wheels` must hold exactly one torch and one torchvision wheel, each win_amd64 and a `+rocm<release>` build. Their SHA256 is taken on the spot, so the install stays `--require-hashes`.
+- **Coupling, checked at build time.** Every AMD file must be built for `ROCM_WINDOWS_RELEASE`. The venv must be `cp314`. The app lock's torch/torchvision must be the release this build made, so a torch move in the app needs `PYTORCH_VERSION`/`TORCHVISION_VERSION` and their commits to follow. **Bump the whole `TORCH_ROCM_WINDOWS_*` block with `ROCM_WINDOWS_RELEASE`.**
+- **One device wheel per GPU.** `TORCH_ROCM_WINDOWS_SDK_DEVICE[_<GFX>]` names the GPU (`Get-TorchRocmGpuTarget`). The unsuffixed one is gfx1201; gfx1200 uses `_GFX1200`.
+- **rocBLAS coverage.** Before any download, every GPU the image's rocBLAS ships kernels for (`%HIP_PATH%\bin\rocblas\library\TensileLibrary_lazy_<gfx>.dat`, the files `rocm-checks\LlamaCpp.ps1` reads too) must have a device pin (`Assert-TorchRocmGpuCoverage`). Pinning more GPUs is allowed. A `ROCM_WINDOWS_GFX_FAMILY` change therefore fails the torch stage until the device pins follow.
+- **Offline install.** Pinned files are cached by hash on the torch stage's uv cache mount (`C:\uvcache\torch-rocm\<sha256>\<file>`) and re-hashed before reuse. Each is downloaded to its cache path directly, never as a `.part` renamed into place. On the mount that rename failed with `Could not find a part of the path` for the first wheel with a 68-character name, after two shorter ones had moved fine (2026-09-25). That is the create-then-rename class of [windows-build-lanes.md § Run-side wcifs symptoms](windows-build-lanes.md#run-side-wcifs-symptoms-process-isolation). A partial file is never used: a failed download deletes what it wrote, and every reuse re-hashes. The install is `uv pip install --force-reinstall --no-deps --no-index --no-build-isolation --require-hashes`. No index is contacted and nothing is resolved. The `rocm` sdist builds on the venv's setuptools (83.0.0 from the app lock).
+- **The no-GPU trap.** The `rocm` sdist's `setup.py` calls `offload-arch` to choose a GPU family. The build container has no GPU (TheRock's `offload-arch.exe` sits in `lib\llvm\bin`, which stays off PATH). The installer sets `ROCM_SDK_TARGET_FAMILY` to the first pinned GPU, gfx1201. That variable takes exactly one GPU, but it only fills the sdist's generic `device` extra, and `--no-deps` never reads it; the pinned per-GPU wheels stand in for AMD's per-GPU extras. `ROCM_BOOTSTRAP_DISABLE_DETECTION=1` is set too. The source build sets the same two for its build venv.
+- **Dependency confusion.** PyPI has an unrelated `rocm` 0.1.0. Pinning by URL + hash rules it out.
 
 **Smoke.** `windows/scripts/build/rocm-checks/Torch.ps1` runs under `Test-RocmImage.ps1` (`EXPECT_ROCM=1`) and at the end of the install. It imports torch/torchvision/rocm_sdk without a GPU and asserts:
 
 - `+rocm<release>` builds of torch and torchvision
 - a non-empty `torch.version.hip`
 - `torch.version.rocm` and `rocm_sdk` equal to the release
-- the runtime and device packages at matching versions
-- `rocm-sdk-device-`, `amd-torch-device-` and `amd-torchvision-device-<gfx>` for every GPU rocBLAS serves (gfx1200 and gfx1201)
+- the runtime and device packages at the release
+- torch compiled for every GPU rocBLAS serves (`torch._C._cuda_getArchFlags()`, build-time data), and a `rocm-sdk-device-<gfx>` for each (gfx1200 and gfx1201)
 - the chain onnxruntime still imports and lists `DmlExecutionProvider`
 - `ai_edge_litert.interpreter` imports, and `libLiteRtWebGpuAccelerator.dll` loads with `LiteRtAcceleratorImpl` resolved
 - every unconditional requirement of `ai-edge-litert` is installed; on the host, the import alone did not catch a missing `ml_dtypes`
@@ -758,13 +779,15 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 
 - GPU compute is not proven by the image. The bare-host check (torch matmul on the GPU vs CPU, above) still applies. The upstream TheRock#8379, open, reports zeros from torch on RX 9070 XT with ROCm 7.14.
 - There is no Windows triton wheel, so GPU `torch.compile`/inductor is unavailable.
-- The wheels carry their own ROCm 10.0.0 runtime (`_rocm_sdk_core`/`_rocm_sdk_libraries` in the venv, about 4 GB installed). It is the same release as `C:\TheRock\build`, but it is a second copy.
+- AMD's runtime wheels carry their own ROCm 10.0.0 (`_rocm_sdk_core`/`_rocm_sdk_libraries` in the venv, about 4 GB installed). It is the same release as `C:\TheRock\build`, which the source build compiled against, but it is a second copy.
+- No flash or memory-efficient SDPA (AOTriton is off), and no `torch.distributed`: § The source build says why.
+- The `torch-rocm-wheels` stage is a multi-hour compile whenever torch, torchvision, the SDK or the builder moves; an app move does not re-run it.
 - The CPU torch installed by `uv sync` stays as dead bytes in the `app` layer, about 0.5 GB. That is the cost of leaving the cpu/nvidia stage untouched.
 - The rocm lane runs the app verify twice (CPU torch, then ROCm torch), about 1–2 minutes extra.
 - gfx1200 adds about 430 MB of downloads (the rocm-sdk device wheel alone is 377,648,520 B) and about 0.7 GB installed.
 - `whl-next` is AMD's only Windows channel. A withdrawn file fails the download loudly; a cached copy keeps working.
 
-**Evidence** (2026-09-23, Windows 11 host, CPython 3.14.7, uv 0.12.7):
+**Evidence for AMD's 2.13 wheels** (2026-09-23, Windows 11 host, CPython 3.14.7, uv 0.12.7; the runtime and device wheels are still these, torch and torchvision are now built here):
 
 - All ten original files downloaded and hashed; sizes match `Content-Length`. The torch wheel is 113,446,960 bytes; rocm-sdk-core is 758,050,981.
 - The gfx1200 wheels were hashed by streaming, sizes equal to `Content-Length` (51,106,952, 131,254 and 377,648,520 B). AMD's `rocm-10.0.0` sdist declares the per-GPU extras (`setup.py`, `src/rocm_sdk/_dist_info.py`).
@@ -773,7 +796,7 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 - The app smoke's CPU ops pass with `HIP_VISIBLE_DEVICES=-1` (0 devices).
 - `amdhip64_7.dll` statically imports only system DLLs plus `amd_comgr`/`rocm_kpack`. The driver is loaded at run time, which is why `import torch` needs no GPU.
 
-Tests: `windows/scripts/tests/Torch.Rocm.Tests.ps1`.
+Tests: `windows/scripts/tests/Torch.Rocm.Tests.ps1` and, for the source build's pure parts, `Torch.RocmSourceBuild.Tests.ps1`.
 
 ## llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only)
 
