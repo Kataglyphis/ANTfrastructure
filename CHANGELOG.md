@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - Linux lanes can keep their compiler cache across runs
+
+Two new actions, `compiler-cache-restore` and `compiler-cache-save`, carry a Linux container
+lane's `/var/cache/{sccache,ccache}` between CI runs through `actions/cache`. Until now every
+run compiled cold, because each step's `--rm` container took the cache with it. In
+AccelerANTgine's linux-x64 lane, measured against a same-time control, the clang job fell from
+25.1 to 14.4 min. Saves happen on pushes only, one key per lane, sized for the 10 GB repository
+quota: `docs/build-cache-tiers.md` § Keeping the compiler cache across CI runs. Windows lanes
+are not covered yet.
+
+`actions-selftest.yml` exercises both actions (a write through the mount, read back on the host)
+and now compares the Windows deep lane's action-directory count with the host checkout instead
+of a literal 11, which had been wrong since the twelfth action.
+
+
 ## 2026-09-29 - The consumer-pins gate holds torch, torchvision and onnxruntime-genai
 
 `consumer_pins.py` compared only a consumer's ruff pins with `versions.env`. The image build
@@ -29,6 +44,7 @@ force-installs `PYTORCH_VERSION` and `TORCHVISION_VERSION` over the app lock, so
   `APP_REF=v0.0.28` defines; the change that moves `APP_REF` must switch
   `runtime_gpu_backend_pair` and `smoke-torch-venv.sh` with it:
   [`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
+
 
 ## 2026-09-28 - Windows images: faster native libraries, KleidiAI on arm64
 

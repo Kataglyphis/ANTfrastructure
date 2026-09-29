@@ -1,6 +1,6 @@
 # .github/workflows/actions-selftest.yml
 #
-# The twelve composite actions under .github/actions/ are the family's shared
+# The fourteen composite actions under .github/actions/ are the family's shared
 # CI surface: 84 call sites (counted 2026-09-14) across BeschleunigerBallett,
 # OmniAccelerANT, OxidANT, AccelerANTgine, jotrockenmitlocken and ANThology
 # resolve them at `@develop`, which the submodule pin does NOT freeze. An edit here
@@ -315,6 +315,49 @@ jobs:
           seen="$(sed -n 's/^ACTION_DIRS=//p' "${log}")"
           [ "${seen}" = "${expected}" ] || { echo "::error::the container saw ${seen:-no} action directories under the mounted workspace, and this checkout holds ${expected}"; exit 1; }
 
+      # compiler-cache-restore + compiler-cache-save. The container writes
+      # through the restored mount as its own uid, and the host reads it back:
+      # that is the path a real lane's sccache takes. Save is forced on so its
+      # branch runs on every trigger; the entry is one small file per run.
+      - name: compiler-cache-restore
+        id: cc
+        uses: ./.github/actions/compiler-cache-restore
+        with:
+          key: selftest
+          mounts: 'probe:/var/cache/selftest-probe'
+          env: 'SELFTEST_CACHE=ok'
+
+      - name: run-in-linux-container writes through the cache mount
+        uses: ./.github/actions/run-in-linux-container
+        with:
+          extra-args: ${{ steps.cc.outputs.docker-args }}
+          script: >-
+            bash -lc 'echo "${SELFTEST_CACHE:-unset}" > /var/cache/selftest-probe/marker'
+
+      - name: The mount and the env reached the container
+        env:
+          CACHE_PATH: ${{ steps.cc.outputs.path }}
+          RESTORED_KEY: ${{ steps.cc.outputs.restored-key }}
+        run: |
+          set -euo pipefail
+          echo "restored from: ${RESTORED_KEY:-nothing (first run)}"
+          marker="${CACHE_PATH}/probe/marker"
+          test -f "${marker}" || { echo "::error::the container's write did not land in ${marker}; the mount is not the cache directory"; exit 1; }
+          [ "$(cat "${marker}")" = ok ] || { echo "::error::the env input did not reach the container (marker: $(cat "${marker}"))"; exit 1; }
+
+      - name: compiler-cache-save
+        id: ccsave
+        uses: ./.github/actions/compiler-cache-save
+        with:
+          key: selftest
+          enabled: 'true'
+
+      - name: The save step says it saved
+        env:
+          SAVED: ${{ steps.ccsave.outputs.saved }}
+        run: |
+          [ "${SAVED}" = true ] || { echo "::error::compiler-cache-save with enabled 'true' reported saved=${SAVED}"; exit 1; }
+
   # ---------------------------------------------------------------------------
   # run-pester-suite + clone-into-short-path (Windows) + upload-codeql-sarif
   # ---------------------------------------------------------------------------
@@ -571,7 +614,11 @@ jobs:
           measure-data-root: 'true'
 
       - name: The prologue reports the tree and the drive it used
+        id: tree
         run: |
+          # Counted on the host, compared inside the container: a literal here
+          # rotted when the twelfth action landed, as the Linux twin's did.
+          "action-dirs=$(@(Get-ChildItem 'D:\ws\.github\actions' -Directory).Count)" >> $env:GITHUB_OUTPUT
           $root = '${{ steps.prep.outputs.data-root }}'
           $ws = '${{ steps.prep.outputs.workspace }}'
           if ($root -ne 'D:\docker') { throw "prepare-windows-container-host output data-root='$root', expected 'D:\docker'" }
@@ -593,11 +640,13 @@ jobs:
             if ($env:SELFTEST_MARKER -ne 'ok') { throw "extra-args did not deliver SELFTEST_MARKER (got '$env:SELFTEST_MARKER')" }
             if ((Get-Location).Path -ne 'C:\ws') { throw "mount-target did not become the working directory (got '$((Get-Location).Path)')" }
             $n = @(Get-ChildItem 'C:\ws\.github\actions' -Directory).Count
-            if ($n -ne 11) { throw "the bind mount shows $n action directories, expected 11" }
+            if ($n -ne [int]$env:SELFTEST_ACTION_DIRS) { throw "the bind mount shows $n action directories, the host checkout holds $env:SELFTEST_ACTION_DIRS" }
             Write-Host "container OK: marker, workdir and mount all check out"
           extra-args: |
             -e
             SELFTEST_MARKER=ok
+            -e
+            SELFTEST_ACTION_DIRS=${{ steps.tree.outputs.action-dirs }}
           cpus: '2'
           memory: 8g
           mount-source: 'D:\ws'

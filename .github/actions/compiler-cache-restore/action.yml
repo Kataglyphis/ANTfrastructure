@@ -1,0 +1,79 @@
+name: 'Restore compiler cache'
+description: >-
+  Restores a Linux container lane's compiler cache from actions/cache and
+  prepares the host directories the container mounts. Pass the docker-args
+  output to run-in-linux-container's extra-args, and save with
+  compiler-cache-save at the end of the job.
+
+inputs:
+  key:
+    description: >-
+      Lane id inside the cache key, for example `x64-clang`. The newest entry
+      saved under `compiler-cache-<key>-` is restored. Lanes that share a key
+      share a cache, so give each preset or compiler its own.
+    required: true
+  mounts:
+    description: >-
+      Space-separated `<subdir>:<container path>` pairs. Each subdir is created
+      under the cache directory and bind-mounted at its path.
+    required: false
+    default: 'sccache:/var/cache/sccache ccache:/var/cache/ccache'
+  env:
+    description: >-
+      Space-separated `NAME=value` pairs passed with `-e`. The default caps keep
+      the saved archive small; see docs/build-cache-tiers.md for the quota.
+    required: false
+    default: 'SCCACHE_CACHE_SIZE=2G CCACHE_MAXSIZE=2G'
+
+outputs:
+  docker-args:
+    description: 'The `-v` and `-e` arguments to append to run-in-linux-container''s extra-args.'
+    value: ${{ steps.prepare.outputs.docker-args }}
+  path:
+    description: 'The runner directory that holds the cache.'
+    value: ${{ steps.prepare.outputs.path }}
+  restored-key:
+    description: 'The key the cache was restored from; empty when nothing matched.'
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the cache
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/compiler-cache
+        key: compiler-cache-${{ inputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: compiler-cache-${{ inputs.key }}-
+
+    # The directories must exist before docker run: a missing one is created
+    # root-owned, and the uid-1001 container then falls back to a /tmp cache
+    # without saying so (cmake-build.sh's writability fallback).
+    - name: Prepare the mount directories
+      id: prepare
+      shell: bash
+      env:
+        CACHE_DIR: ${{ runner.temp }}/compiler-cache
+        CACHE_MOUNTS: ${{ inputs.mounts }}
+        CACHE_ENV: ${{ inputs.env }}
+      run: |
+        set -euo pipefail
+        args=()
+        for pair in ${CACHE_MOUNTS}; do
+          sub="${pair%%:*}"
+          target="${pair#*:}"
+          if [[ -z "${sub}" || "${target}" == "${pair}" || "${target}" != /* ]]; then
+            echo "::error::mounts entry '${pair}' is not <subdir>:<absolute container path>"
+            exit 1
+          fi
+          mkdir -p "${CACHE_DIR}/${sub}"
+          args+=(-v "${CACHE_DIR}/${sub}:${target}")
+        done
+        for kv in ${CACHE_ENV}; do
+          args+=(-e "${kv}")
+        done
+        chmod -R a+rwX "${CACHE_DIR}"
+        du -sh "${CACHE_DIR}"/* || true
+        echo "path=${CACHE_DIR}" >> "${GITHUB_OUTPUT}"
+        echo "docker-args=${args[*]}" >> "${GITHUB_OUTPUT}"

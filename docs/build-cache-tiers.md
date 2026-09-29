@@ -1358,6 +1358,48 @@ its `[CACHE] hailo/<phase>` lines print `cap=30 GiB`. `compiler-cache.sh` keeps 
 defaults: changing them is an `01-core` edit, which re-keys the chain from the compiler
 stage.
 
+## Keeping the compiler cache across CI runs
+
+A consumer lane starts every step in a fresh `--rm` container, so the image's
+`/var/cache/{sccache,ccache}` die with it and every CI run compiles cold. The
+[`compiler-cache-restore` / `compiler-cache-save`](../.github/actions/README.md#compiler-cache-restore--compiler-cache-save)
+actions mount a runner directory at those paths and carry it between runs
+through `actions/cache`.
+
+**Measured** in AccelerANTgine's linux-x64 lane on 2026-09-29, each warm run beside a
+control run of the same commit at the same time (3 control, 2 warm, 1 cold):
+
+| clang job | no cache | warm cache |
+| --- | --- | --- |
+| whole job | 25.1 min (20.3-29.4) | 14.4 min (14.1-14.7) |
+| the four `cmake --build` | 14.7 min | 3.9 min |
+
+The cache was 405 MB and restored in about 7 s. A cold run, which is what the
+first run after an eviction gets, took 32.6 min. What a warm run cannot shorten is
+the host prologue: the image pull stayed at about 8 min.
+
+**What caches.** clang's C++20 modules cache with the stock sccache on Linux: the
+interface units store their BMI as an output and the importers hash every BMI
+they import, so an interface edit misses exactly its importers (verified on
+BeschleunigerBallett and AccelerANTgine). GCC's `-fmodules-ts` translation units
+do not cache with sccache 0.18.0 or ccache 4.12.3, so a GCC lane gains only its
+non-module TUs.
+
+**The quota is 10 GB per repository**, shared with every other cache (CodeQL,
+setup-uv). The actions key each save by run and restore the newest, so a lane
+keeps one live entry and older ones fall to GitHub's least-recently-used
+eviction. Budget a repository so one generation of all its lanes fits well
+inside the quota: one key per preset that is worth it, capped with the `env`
+input (sccache keeps its most recent entries under the cap). `enabled: auto`
+saves on pushes only, which keeps pull requests and dispatches from spending it.
+
+**Windows is not covered.** A Windows container lane has no restore/save yet:
+an `SCCACHE_DIR` on a mounted volume stored nothing on the dev host
+([§ sccache's cache directory on a Windows container volume](windows-container-build-performance.md)),
+a bind mount on a `windows-2025` runner is unmeasured, and the released sccache
+serves stale objects for clang-cl module importers until mozilla/sccache#2876
+ships.
+
 ## The shipped image carries no build-host setting
 
 **A published image's environment names nothing outside the container** (both lanes,

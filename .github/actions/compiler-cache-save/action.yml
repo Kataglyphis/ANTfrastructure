@@ -1,0 +1,47 @@
+name: 'Save compiler cache'
+description: >-
+  Saves the directory compiler-cache-restore prepared, under a per-run key, so
+  the next run restores it. Call it with `if: always()` so a red build still
+  saves what it compiled.
+
+inputs:
+  key:
+    description: 'The same lane id that was passed to compiler-cache-restore.'
+    required: true
+  enabled:
+    description: >-
+      `auto` saves on push events only, so pull-request and dispatch runs
+      restore without spending cache quota. `true` always saves, `false` never.
+    required: false
+    default: 'auto'
+
+outputs:
+  saved:
+    description: '`true` when this step saved the cache, `false` when it skipped.'
+    value: ${{ steps.decide.outputs.saved }}
+
+runs:
+  using: composite
+  steps:
+    - name: Decide
+      id: decide
+      shell: bash
+      env:
+        SAVE_ENABLED: ${{ inputs.enabled }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        set -euo pipefail
+        case "${SAVE_ENABLED}" in
+          true) saved=true ;;
+          false) saved=false ;;
+          auto) [[ "${EVENT_NAME}" == push ]] && saved=true || saved=false ;;
+          *) echo "::error::enabled must be auto, true or false, not '${SAVE_ENABLED}'"; exit 1 ;;
+        esac
+        echo "saved=${saved}" >> "${GITHUB_OUTPUT}"
+
+    - name: Save the cache
+      if: steps.decide.outputs.saved == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/compiler-cache
+        key: compiler-cache-${{ inputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
