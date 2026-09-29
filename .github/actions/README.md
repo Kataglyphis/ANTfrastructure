@@ -284,7 +284,9 @@ Outputs: `docker-args`, `path`, `restored-key`. Save inputs: `key`, `enabled`
 restore without spending quota). Output: `saved`. A repository has 10 GB of
 cache: budget one key per preset that is worth it, and see
 [`docs/build-cache-tiers.md`](../../docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs).
-Linux only: a Windows container lane does not have it yet.
+Linux only. A Windows container lane uses `container-ci-windows.yml`'s
+`compiler-cache-key` input instead, because sccache cannot write to a mounted
+directory there.
 
 ### `run-in-windows-container`
 Runs PowerShell inside a Windows container image. Exactly one of `command`

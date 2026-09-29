@@ -333,6 +333,8 @@ Three inputs serve the x64 lanes that moved onto the same file (the family's nex
   reach docker as an `--env-file` in `RUNNER_TEMP`, so none enters a command line, a step output
   or the job environment. BeschleunigerBallett's WebDAV credentials and signing password go
   this way.
+- `compiler-cache-key` (2026-09-29) keeps the build's compiler cache across runs:
+  [`build-cache-tiers.md` § Keeping the compiler cache across CI runs](build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs).
 
 `host-command` and `run-command` both run with `$PSNativeCommandUseErrorActionPreference`, so a
 native command that exits non-zero on any line fails the lane. Before that, only the exit code of
