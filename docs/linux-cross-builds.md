@@ -718,8 +718,7 @@ Variant manifests follow the same shape: `:latest-<variant>` (e.g. `nvidia`,
 `rocm`) over per-arch `:latest-<variant>-<arch>` wrappers. Hailo has no variant
 tag — it ships in the standard amd64/arm64 wrappers (`Dockerfile.torch`).
 `:latest-cross`, the manifest's name before 2026-09-22, is retired: nothing
-publishes it again. Its registry tags stay until AGENTS.md § Image and tag naming
-says they may go.
+publishes it again, and its registry tags were deleted on 2026-09-29.
 Prefer the runtime helpers (the canonical commands are in
 [§ Runtime lane helper commands](#runtime-lane-helper-commands)).
 Run with `--dry-run` to print the commands without building.

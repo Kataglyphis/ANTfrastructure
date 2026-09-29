@@ -70,9 +70,8 @@ separate Hailo tag.
 Until 2026-09-22 this manifest was called `:latest-cross`; that name is
 **retired**: no release publishes it any more. The fleet resolves the ref
 through `@develop` (since 2026-09-25), whose `versions.env` names `:latest`;
-only a lane left at `@main` still pulls the frozen `:latest-cross`, and its tags
-stay until the two names are separate GHCR versions (AGENTS.md § Image and tag
-naming). Move any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
+a lane left at `@main` still names `:latest-cross`, whose tags were deleted on
+2026-09-29 (AGENTS.md § Image and tag naming), and fails at the pull. Move any lane still naming it to `:latest`. (The `:latest` of before 2026-08-27 was
 a different, dead native-lane index — its children had 404'd for months and it
 was deleted in the 2026-08-27 registry cleanup; the tag name was then reused
 for the cross-lane manifest.)

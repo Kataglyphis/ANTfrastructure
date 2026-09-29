@@ -141,11 +141,10 @@ qualifier (owner directive 2026-09-22).
   `@develop` (owner directive; 110 refs across eight repos, none passing an
   explicit `image:`), whose `versions.env` names `:latest`. `main` still carries
   `CI_IMAGE_LINUX_TAG=latest-cross`, frozen at the last release that published
-  it, so only a lane left at `@main` pulls `:latest-cross`. **Do not delete those
-  tags yet.** The consumers leaving `@main` was the first condition; the second
-  still holds: `:latest` and `:latest-cross` are ONE GHCR version, so the old name must
-  become a version of its own first. `ghcr-delete-tags.sh` already refuses the
-  unsafe form.
+  it. **The registry tags are gone since 2026-09-29** (owner decision, CON13):
+  republishing `:latest` left `:latest-cross` alone on the old index `ec4bb68b`, and
+  `ghcr-delete-tags.sh` deleted it and the three `:latest-cross-<arch>` wrappers.
+  A lane still at `@main` therefore fails at `docker pull`; move it to `@develop`.
 - A new variant = a new manifest tag. The manifest lane REFUSES to shrink a
   published index (§ Push and Publish Rules), so a partial run cannot silently
   drop an architecture from one.
@@ -887,8 +886,8 @@ Read the strategy before editing that Dockerfile:
 - `build-runtime-manifest.sh --push` pushes wrappers + final manifest.
 - `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
 - Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`
-  (the old `:latest-cross` name is retired; its registry tags stay until the
-  conditions in § Image and tag naming are met).
+  (the old `:latest-cross` name is retired and its registry tags were deleted on
+  2026-09-29, § Image and tag naming).
 - Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
 - **The manifest lane REFUSES to shrink an already-published index.**
   `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the

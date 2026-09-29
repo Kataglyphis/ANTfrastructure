@@ -331,8 +331,8 @@ and are referenced from a consumer workflow as
 
 **`@develop`, not `@main`** (owner directive 2026-09-25). Work lands on
 `develop`; `main` is a release branch that lags it, and its `versions.env` still
-names the retired `:latest-cross`, so an action at `@main` pulls an image no
-release moves any more. The same ref applies to the reusable workflows below.
+names the retired `:latest-cross`, whose tags were deleted on 2026-09-29, so an
+action at `@main` fails at `docker pull`. The same ref applies to the reusable workflows below.
 
 All fourteen, with every input and output, are listed once in
 [`.github/actions/README.md`](../.github/actions/README.md) — that page is the
