@@ -44,6 +44,25 @@ Describe 'WindowsCMake.Common' {
     }
   }
 
+  Context 'Get-CmakeConfigureArgs' {
+    It 'passes the build path, the preset and the extra arguments in order' {
+      $a = Get-CmakeConfigureArgs -BuildPath 'C:\b' -Preset 'clangcl-release' -ConfigureExtraArgs @('-DX=1')
+      ($a -join ' ') | Should -Be '-B C:\b --preset clangcl-release -DX=1'
+    }
+
+    # A COMPILER_CACHE=sccache preset made Cache.cmake set the launcher again, so the
+    # switch only cleared environment variables that CMake then overrode.
+    It '-DisableSccache also clears the preset''s compiler cache and a cached launcher, after the extra args' {
+      $a = Get-CmakeConfigureArgs -BuildPath 'C:\b' -Preset 'p' -ConfigureExtraArgs @('-DCOMPILER_CACHE=sccache') -DisableSccache
+      ($a -join ' ') | Should -Be '-B C:\b --preset p -DCOMPILER_CACHE=sccache -DCOMPILER_CACHE= -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER='
+    }
+
+    It 'returns an array even without extra arguments' {
+      $a = Get-CmakeConfigureArgs -BuildPath 'C:\b' -Preset 'p'
+      $a.Count | Should -Be 4
+    }
+  }
+
   Context 'Get-SanitizerRuntimeDlls' {
     It 'stages the runtime Get-AsanRuntimeDirs selects, not clang-cl-on-PATH' {
       # Regression (2026-09-11): this used to walk clang-cl-on-PATH roots

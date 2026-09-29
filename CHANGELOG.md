@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - `-DisableSccache` beats the preset; the sccache-on-modules docs are corrected
+
+- **`Invoke-CmakeConfigureAndBuild -DisableSccache` now disables sccache.** It only cleared environment
+  variables, and a preset with `COMPILER_CACHE=sccache` made `Cache.cmake` set the launcher again. A reused
+  build tree kept it in `CMakeCache.txt` as well. The configure line is built by the new, exported
+  `Get-CmakeConfigureArgs`, which puts `-DCOMPILER_CACHE=` and both empty `CMAKE_<LANG>_COMPILER_LAUNCHER`
+  after the caller's arguments. Tested in `WindowsCMake.Common.Tests.ps1`.
+- **The docs said sccache "caches nothing" on a C++23 modules build.** That was wrong, and the "harmless to
+  leave wired up" that followed was dangerous. The released 0.18.0 with clang-cl caches importers without
+  hashing the BMIs they import, so after an interface edit a warm cache returns stale objects (reproduced on
+  BeschleunigerBallett and AccelerANTgine). Rewritten from measurement:
+  [`windows-container-build-performance.md` § sccache on a C++23 modules build](docs/windows-container-build-performance.md#sccache-on-a-c23-modules-build),
+  with the one-liners in `windows-builds.md` and `windows-build-resources.md`.
+
 ## 2026-09-29 - Windows ROCm: torch 2.14.0 / torchvision 0.29.0 built from source against ROCm 10.0
 
 Owner decision: the Windows rocm image builds PyTorch here instead of installing AMD's wheels.

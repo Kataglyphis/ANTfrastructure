@@ -245,27 +245,38 @@ which surfaces three indirections later as `Timed out waiting for server
 startup` from every wrapped tool — with `RUSTC_WRAPPER=sccache` that poisons
 even `cargo tree`, reported by corrosion as a missing `cxxbridge-cmd`.
 
-Not to be confused with the module-build failure one section down: there every
-write succeeds and sccache still cannot store a result. This one is the disk
-backend never receiving a byte.
+Not to be confused with the module-build section below, which is about what
+sccache caches, not whether it can write. This one is the disk backend never
+receiving a byte.
 
 ### sccache on a C++23 modules build
 
-`sccache` runs, reports the right cache location, and caches **nothing**:
+Rewritten 2026-09-29 from real builds of BeschleunigerBallett and AccelerANTgine
+in `:winamd64`. This section used to say sccache "caches nothing" here and is
+"harmless to leave wired up". The first claim was wrong. The second was the
+dangerous one:
 
-```
-Compile requests            907
-Cache hits rate            0.00 %
-Cache misses                780
-Cache size                    0 bytes
-```
+- **The released sccache (0.18.0, the image's) with clang-cl** caches the
+  importers and every non-module unit (Ballett, debug + release, warm: 1170 of
+  1474 requests hit, 470 MB stored). It refuses the interface units, because it
+  reads `-x c++-module` as a second input ("multiple input files"). And it
+  hashes an importer **without** the BMIs it imports: after an interface edit a
+  warm cache hands back the old object. Reproduced on both projects (Ballett's
+  test ran the old constant, AccelerANTgine's exe printed the old version). In
+  a reused container whose cache stays warm across edits, empty `SCCACHE_DIR`
+  after an interface change, or configure through
+  `Invoke-CmakeConfigureAndBuild -DisableSccache`, which since
+  2026-09-29 also overrides a preset's `COMPILER_CACHE`.
+- **With mozilla/sccache#2876** (clang-cl's module flags), interface units
+  cache with their BMI and importers hash every BMI they import, so an
+  interface edit misses exactly its importers. Ballett's warm clean-tree
+  rebuild fell from 409.7 s to 187.1 s. Not in the image until that PR ships.
+- **On Linux**, clang's CMake module maps already cache correctly with the
+  released sccache ([`build-cache-tiers.md` § Keeping the compiler cache across CI runs](build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs)).
+  GCC's `-fmodules-ts` units are cached by neither sccache nor ccache.
 
-Zero stored bytes on a byte-identical tree. Module compilations depend on
-BMIs that sccache cannot hash reliably, so results are never stored. A
-persistent volume for the cache directory is therefore pointless here —
-harmless to leave wired up, but do not expect a speedup. **On non-module
-codebases sccache is still worth using**; this finding is specific to C++20/23
-modules.
+The numbers this section used to show (907 requests, 0 bytes stored) match no
+measured lane. They most likely came from the volume write failure above.
 
 ### A named volume as the build directory
 

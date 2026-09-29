@@ -118,6 +118,27 @@ function Remove-BuildRootSafe {
   Write-BuildLogWarning -Context $Context -Message "Could not remove build directory ($Label): $Path. Continuing with in-place configure/build."
 }
 
+# The configure line of Invoke-CmakeConfigureAndBuild. -DisableSccache has to beat the
+# preset too: a COMPILER_CACHE=sccache preset makes Cache.cmake set the launcher again,
+# and a reused build tree keeps the old one in CMakeCache.txt. These -D go last, so
+# they also win over the caller's extra arguments.
+function Get-CmakeConfigureArgs {
+  param(
+    [Parameter(Mandatory)]
+    [string]$BuildPath,
+    [Parameter(Mandatory)]
+    [string]$Preset,
+    [string[]]$ConfigureExtraArgs = @(),
+    [switch]$DisableSccache
+  )
+
+  $configureArgs = @('-B', $BuildPath, '--preset', $Preset) + @($ConfigureExtraArgs)
+  if ($DisableSccache) {
+    $configureArgs += @('-DCOMPILER_CACHE=', '-DCMAKE_C_COMPILER_LAUNCHER=', '-DCMAKE_CXX_COMPILER_LAUNCHER=')
+  }
+  return , $configureArgs
+}
+
 function Invoke-CmakeConfigureAndBuild {
   param(
     [Parameter(Mandatory)]
@@ -199,10 +220,7 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "Keeping build root (persistent volume): $BuildPath"
   }
 
-  $configureArgs = @('-B', $BuildPath, '--preset', $Preset)
-  if ($ConfigureExtraArgs.Count -gt 0) {
-    $configureArgs += $ConfigureExtraArgs
-  }
+  $configureArgs = Get-CmakeConfigureArgs -BuildPath $BuildPath -Preset $Preset -ConfigureExtraArgs $ConfigureExtraArgs -DisableSccache:$DisableSccache
 
   $buildArgs = @('--build', $BuildPath, '--config', $Configuration)
   if ($ParallelJobs -gt 0) {
@@ -487,4 +505,4 @@ function Update-CTestMetadataPaths {
     }
 }
 
-Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
+Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
