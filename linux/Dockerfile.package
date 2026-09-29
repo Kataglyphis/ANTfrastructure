@@ -270,9 +270,15 @@ ENV BUILD_MODE=${BUILD_MODE} \
     # Cache dirs are 01-core/compiler-cache.sh's defaults, re-declared because
     # the parent's image config does not survive the rootfs-export context this
     # stage is built on. /workspace is the CONSUMER's bind mount, never ours.
+    # The caps and server knobs are Dockerfile.base's, lost the same way. No
+    # SCCACHE_CONF: with SCCACHE_DIR set, sccache ignores the file's [cache.disk].
     # docs/build-cache-tiers.md#the-shipped-images-cache-dirs
     CCACHE_DIR=/var/cache/ccache \
     SCCACHE_DIR=/var/cache/sccache \
+    CCACHE_MAXSIZE=30G \
+    SCCACHE_CACHE_SIZE=30G \
+    SCCACHE_IDLE_TIMEOUT=0 \
+    SCCACHE_ERROR_LOG=/tmp/sccache.log \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
     # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),

@@ -118,6 +118,11 @@ RUN mkdir -p /var/cache/ccache /var/cache/sccache \
 # (SCCACHE_CONF), so the switch needs this artifact or those settings quietly
 # do not exist. Baked into base so every descendant stage inherits it.
 #
+# NOT IN EFFECT (measured 2026-09-28): sccache replaces the file's whole
+# [cache.disk] section with its env defaults as soon as SCCACHE_DIR,
+# SCCACHE_CACHE_SIZE or SCCACHE_DIRECT is set, and the ENV above plus
+# 01-core/compiler-cache.sh always set them. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+#
 #   preprocessor_cache_mode  = sccache's analogue of ccache's DIRECT mode. Off
 #     by default; without it every C/C++ TU pays a full preprocess even on a
 #     hit, which is most of what ccache's speed advantage was here.
