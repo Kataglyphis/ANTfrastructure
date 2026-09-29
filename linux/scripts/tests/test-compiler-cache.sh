@@ -173,20 +173,32 @@ t_assert_eq "${_out8}" "sccache"
 # so its ENV must equal the defaults THIS file owns and must never point into the
 # consumer's /workspace bind mount. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
 PKG_DF="${TESTS_DIR}/../../Dockerfile.package"
+BASE_DF="${TESTS_DIR}/../../Dockerfile.base"
 
-_pkg_env_dirs() {
-  local _v _out=""
+_df_env() {
+  local _df="$1" _v _out=""
+  shift
   for _v in "$@"; do
-    _out="${_out}${_out:+ }$(sed -n "s|^[[:space:]]*${_v}=\([^[:space:]]*\).*|\1|p" "${PKG_DF}" | head -1)"
+    _out="${_out}${_out:+ }$(sed -n "s|^[[:space:]]*${_v}=\([^[:space:]]*\).*|\1|p" "${_df}" | head -1)"
   done
   printf '%s' "${_out}"
 }
+
+_pkg_env_dirs() { _df_env "${PKG_DF}" "$@"; }
 
 t_case "Dockerfile.package's cache ENV equals compiler-cache.sh's defaults"
 _lib_dirs="$(env -u CCACHE_DIR -u SCCACHE_DIR bash -c '
   # shellcheck disable=SC1090
   source "$1" >/dev/null 2>&1; printf "%s %s" "${CCACHE_DIR}" "${SCCACHE_DIR}"' _ "${CCSH}")"
 t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR)" "${_lib_dirs}"
+
+# The caps and server knobs reach the shipped image only through Dockerfile.package's
+# own ENV (same rootfs handoff), so they must repeat Dockerfile.base's four values.
+_cache_knobs=(CCACHE_MAXSIZE SCCACHE_CACHE_SIZE SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG)
+t_case "Dockerfile.package's cache caps equal Dockerfile.base's"
+_base_knobs="$(_df_env "${BASE_DF}" "${_cache_knobs[@]}")"
+t_assert_eq "$(wc -w <<< "${_base_knobs}" | tr -d ' ')" "4"
+t_assert_eq "$(_pkg_env_dirs "${_cache_knobs[@]}")" "${_base_knobs}"
 
 t_case "MUTATION: the shipped cache dirs must not sit in the consumer's /workspace"
 t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR | grep -c -e '/workspace' || true)" "0"

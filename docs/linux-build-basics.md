@@ -108,9 +108,11 @@ blind spots; neither replaces the other:
   which is true whenever preprocessor-cache mode (sccache's analogue of
   ccache's direct mode) is off — and it is off. `Dockerfile.base` still
   writes `use_preprocessor_cache_mode = true` into `/etc/sccache/config.toml`
-  (`SCCACHE_CONF`), but `ensure_sccache_env` in `01-core/common.sh` exports
-  `SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"` on every launcher resolution, and
-  the environment wins over the file. The mode was turned off on 2026-08-26
+  (`SCCACHE_CONF`, not read at all while `SCCACHE_DIR` is set — see
+  [`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-images-cache-dirs)),
+  and `ensure_sccache_env` in `01-core/common.sh` exports
+  `SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"` on every launcher resolution. The
+  mode was turned off on 2026-08-26
   after it broke two builds: it re-reads the INPUT FILE to store the entry
   AFTER the compile, CMake's TryCompile probes delete their scratch dir
   immediately, and the re-read's ENOENT is FATAL to sccache — it killed

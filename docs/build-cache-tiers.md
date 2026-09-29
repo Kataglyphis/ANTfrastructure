@@ -737,7 +737,8 @@ only after a detour through the config file:
   `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`
   (`Dockerfile.base:115-142`, reached via `SCCACHE_CONF`, `:102`) — those knobs
   have NO environment-variable path in sccache, which is why the config file
-  exists at all. But the runtime turns the mode back off: both entry points
+  exists at all. (It is not read while `SCCACHE_DIR` is set, which is always:
+  [§ The shipped image's cache dirs](#the-shipped-images-cache-dirs).) And the runtime turns the mode off: both entry points
   export `SCCACHE_DIRECT=false` (`01-core/common.sh:419-433`,
   `01-core/compiler-cache.sh:132`), and the environment variable wins over
   the config file. That is the TryCompile trap seen from the other end —
@@ -969,7 +970,9 @@ The rules an agent must never violate:
      Windows lane records that released sccache breaks around it.
    - sccache-specific knobs live in `/etc/sccache/config.toml` (baked in
      `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
-     and preprocessor/direct mode have NO env-var path in sccache. The size cap
+     and preprocessor/direct mode have NO env-var path in sccache. They take no
+     effect while `SCCACHE_DIR` is set, which the chain always does
+     ([§ The shipped image's cache dirs](#the-shipped-images-cache-dirs)). The size cap
      is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
    - **PREFER `01-core/sccache-launcher.sh`; fall back to bare `sccache` rather
      than to nothing.** Superseded 2026-08-27 (`26a30740`): this rule used to
@@ -1299,6 +1302,13 @@ source shell, and `test-compiler-cache.sh` sources the library with both vars
 unset and asserts the ENV equals what it produces — plus a second assertion that
 neither value sits under `/workspace`. Drift on either side fails the suite.
 
+**The caps and server knobs (2026-09-28).** `Dockerfile.package` now also repeats
+base's `CCACHE_MAXSIZE=30G`, `SCCACHE_CACHE_SIZE=30G`, `SCCACHE_IDLE_TIMEOUT=0` and
+`SCCACHE_ERROR_LOG=/tmp/sccache.log`. Until then the published `:latest` (v0.0.28)
+carried only the two dirs, so every consumer's sccache ran with its 10 GiB default.
+`test-compiler-cache.sh` asserts the four equal base's. `SCCACHE_CONF` stays out on
+purpose: it changes nothing while `SCCACHE_DIR` is set (see below).
+
 **What the shipped image already provides.** `/var/cache/ccache` and
 `/var/cache/sccache` are `drwxrwxrwt` (`Dockerfile.base`, 1777 since `35f83d62`)
 and uid 1001 writes to both — verified by running the shipped image. A missing
@@ -1323,10 +1333,26 @@ Jetson (`CROSS_BUILD_PLATFORM=linux/arm64`). Only an arch the runtime lane build
 QEMU, such as arm64 on the cross host, has mounts no cross stage uses. riscv64 skips the
 Hailo build and never writes its mounts.
 
-`SCCACHE_CONF` does not set the cap: with `SCCACHE_DIR` set, sccache takes its disk
-settings from the environment and ignores the size in the file. Only
-`SCCACHE_CACHE_SIZE` does (the same probe: 10 GiB with the file, 30 GiB with the
-variable). Since 2026-09-24 the Hailo `RUN` passes `SCCACHE_CACHE_SIZE=30G` and
+`SCCACHE_CONF` does not set the cap, nor any other knob in the file: as soon as
+`SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_DIRECT` or `SCCACHE_LOCAL_RW_MODE` is
+set, sccache builds its disk config from the environment, and that replaces the
+file's whole `[cache.disk]` section (sccache `src/config.rs`, `config_from_env` and
+`CacheConfigs::merge`). Only `SCCACHE_CACHE_SIZE` sets the cap. Measured on the
+published `:latest` on 2026-09-28 with `sccache --show-stats`:
+
+| Environment | Max cache size |
+| --- | --- |
+| `SCCACHE_DIR` | 10 GiB |
+| `SCCACHE_DIR` + `SCCACHE_CONF` | 10 GiB |
+| `SCCACHE_CONF` alone | 30 GiB (the file) |
+| `SCCACHE_DIR` + `SCCACHE_CACHE_SIZE=30G` | 30 GiB |
+
+Base's ENV and `compiler-cache.sh` always set `SCCACHE_DIR`, so the baked
+`file_stat_matches = true` and `hash_working_directory = false` have never applied.
+What applies is sccache's env default: preprocessor-cache mode **on**, with
+`file_stat_matches = false` and `hash_working_directory = true`. The chain's entry
+points turn the mode off with `SCCACHE_DIRECT=false`; the shipped image sets no
+`SCCACHE_DIRECT`, so a consumer runs with the mode on. Since 2026-09-24 the Hailo `RUN` passes `SCCACHE_CACHE_SIZE=30G` and
 `CCACHE_MAXSIZE=30G`, and `tests/test-hailo-build.sh` pins them to `Dockerfile.base`;
 its `[CACHE] hailo/<phase>` lines print `cap=30 GiB`. `compiler-cache.sh` keeps its 10G
 defaults: changing them is an `01-core` edit, which re-keys the chain from the compiler
@@ -1343,9 +1369,9 @@ consumer-side probe are in
 
 The Linux lane never had the leak: its cache is BuildKit cache mounts, with no
 remote tier (§ 5.4, the cross-machine tier), and the mirror URLs
-(`FAST_UBUNTU_MIRROR_URL`, …) are ARGs. The four runtime defaults above
-(`SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_IDLE_TIMEOUT`, `SCCACHE_ERROR_LOG`)
-plus `SCCACHE_CONF` are container-local and stay. What keeps a leak from ever
+(`FAST_UBUNTU_MIRROR_URL`, …) are ARGs. The runtime defaults above
+(`CCACHE_DIR`, `CCACHE_MAXSIZE`, `SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`,
+`SCCACHE_IDLE_TIMEOUT`, `SCCACHE_ERROR_LOG`) are container-local and stay. What keeps a leak from ever
 reaching `:latest`:
 
 - **The static pass**, `linux/scripts/verify_image_env.py --dockerfile`, runs in
