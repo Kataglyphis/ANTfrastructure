@@ -2,7 +2,9 @@ name: 'Save compiler cache'
 description: >-
   Saves the directory compiler-cache-restore prepared, under a per-run key, so
   the next run restores it. Call it with `if: always()` so a red build still
-  saves what it compiled.
+  saves what it compiled. Before saving it deletes this key's older entries on
+  this ref, so each key holds one entry and the repository stays under its
+  cache quota (the caller needs `permissions: actions: write`).
 
 inputs:
   key:
@@ -14,11 +16,26 @@ inputs:
       restore without spending cache quota. `true` always saves, `false` never.
     required: false
     default: 'auto'
+  path:
+    description: >-
+      The directory to save. The default is where compiler-cache-restore
+      restored; the Windows container lane saves its workspace's .ci-cache.
+    required: false
+    default: ''
+  token:
+    description: >-
+      Deletes the older entries. Without `actions: write` the deletion is
+      refused, and the step warns and saves anyway.
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   saved:
     description: '`true` when this step saved the cache, `false` when it skipped.'
     value: ${{ steps.decide.outputs.saved }}
+  pruned:
+    description: 'How many older entries of this key this step deleted.'
+    value: ${{ steps.prune.outputs.pruned }}
 
 runs:
   using: composite
@@ -29,6 +46,7 @@ runs:
       env:
         SAVE_ENABLED: ${{ inputs.enabled }}
         EVENT_NAME: ${{ github.event_name }}
+        SAVE_PATH: ${{ inputs.path != '' && inputs.path || format('{0}/compiler-cache', runner.temp) }}
       run: |
         set -euo pipefail
         case "${SAVE_ENABLED}" in
@@ -38,10 +56,36 @@ runs:
           *) echo "::error::enabled must be auto, true or false, not '${SAVE_ENABLED}'"; exit 1 ;;
         esac
         echo "saved=${saved}" >> "${GITHUB_OUTPUT}"
+        echo "path=${SAVE_PATH}" >> "${GITHUB_OUTPUT}"
+
+    # Deletes the entries this key's older runs left, before this one adds its own, so
+    # the key keeps one entry and GitHub's quota eviction never reaches another key's
+    # only one (compiler-cache-prune/prune.sh says why).
+    - name: Delete this key's older entries
+      id: prune
+      if: steps.decide.outputs.saved == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        CACHE_KEY: ${{ inputs.key }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        SAVE_PATH: ${{ steps.decide.outputs.path }}
+      run: |
+        set -euo pipefail
+        # Nothing to save (a build that died before the cache existed) keeps the old entry.
+        dir="${SAVE_PATH}"
+        if command -v cygpath > /dev/null; then dir="$(cygpath -u "${dir}")"; fi
+        if [[ ! -d "${dir}" ]] || [[ -z "$(ls -A "${dir}")" ]]; then
+          echo "::warning::${SAVE_PATH} is missing or empty; keeping this key's older entries"
+          echo "pruned=0" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+        bash "${GITHUB_ACTION_PATH}/../compiler-cache-prune/prune.sh"
 
     - name: Save the cache
       if: steps.decide.outputs.saved == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ${{ runner.temp }}/compiler-cache
+        path: ${{ steps.decide.outputs.path }}
         key: compiler-cache-${{ inputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}

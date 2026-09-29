@@ -1,0 +1,44 @@
+name: 'Prune compiler cache'
+description: >-
+  Deletes the entries of one compiler-cache key that older runs saved on this
+  ref, so the key keeps one entry and the repository stays under its cache
+  quota. compiler-cache-save does this itself before it saves; this action is
+  for a lane that saves elsewhere, such as container-ci-windows.yml's
+  compiler-cache-key, from a later job that grants `actions: write`.
+
+inputs:
+  key:
+    description: 'The lane id, as passed to compiler-cache-restore or compiler-cache-key.'
+    required: true
+  token:
+    description: >-
+      Lists and deletes the entries. Without `actions: write` both are refused,
+      and the step warns instead of failing.
+    required: false
+    default: ${{ github.token }}
+  require-saved:
+    description: >-
+      `true`, the default, deletes only once this run has saved its own entry
+      of the key, so a build that died before its save keeps the older one.
+      `false` deletes regardless.
+    required: false
+    default: 'true'
+
+outputs:
+  pruned:
+    description: 'How many older entries of this key this step deleted.'
+    value: ${{ steps.prune.outputs.pruned }}
+
+runs:
+  using: composite
+  steps:
+    - name: Delete this key's older entries
+      id: prune
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        CACHE_KEY: ${{ inputs.key }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        REQUIRE_SAVED: ${{ inputs.require-saved == 'true' && '1' || '0' }}
+      run: bash "${GITHUB_ACTION_PATH}/prune.sh"

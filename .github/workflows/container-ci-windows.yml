@@ -139,7 +139,9 @@ on:
           it after the build. The build script must move it to container-local
           directories and back: sccache cannot write to a mounted directory
           (docs/build-cache-tiers.md). Not for clang-cl C++20 module builds until
-          mozilla/sccache#2876 ships.
+          mozilla/sccache#2876 ships. This job cannot delete the entries older runs
+          saved (it grants contents: read only), so the caller runs compiler-cache-prune
+          from a later job with actions: write.
         required: false
         type: string
         default: ''
