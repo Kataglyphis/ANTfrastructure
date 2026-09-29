@@ -1264,6 +1264,14 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Fix.** **Wait.** Killing `buildctl` here is exactly the "mid-finalize" kill that manufactures the 0xb7 debris two rows up and costs a `-NoCache` re-run. Bound the wait (a watcher on the log's mtime) instead of judging by CPU: the export shows no user-mode activity by design.
 
+### Every new `RUN` sits silent while C: gains hundreds of GB
+
+**Symptom.** BK lane: a `RUN` header prints and nothing follows, for every step and every solve, even a trivial probe. No `containerd-shim-runhcs-v1` process exists, and `ctr -n buildkit containers ls` lists the waiting containers while `tasks ls` is empty. containerd does thousands of small file operations per second at little CPU. Free space on C: climbs by GB per minute, and one `rm-<n>` directory under `C:\ProgramData\containerd\root\io.containerd.snapshotter.v1.windows\snapshots` has a current LastWriteTime.
+
+**Cause.** **containerd is deleting snapshots, and a new container waits for it.** A new container needs a fresh snapshot, and while the sweep ran none was created (the `rm-<n>` directory is the one in flight). Measured 2026-09-29: containerd deleted about 440 GB, most likely the 27-28 Sep rocm runs' cache after buildkit's `[history]` retention (48 h, 10 entries) let go of it. New RUNs stalled from about 20:37 to 21:31, and `buildctl du` ended at 24 GB. Nothing failed: the waiting RUNs started on their own the second the sweep ended.
+
+**Fix.** **Wait**, and do not kill `buildctl` (the 0xb7 row above). Watch C:'s free space: while it grows, the sweep is running, and the RUN starts when it stops. Afterwards the next chain solve is colder, because the sweep took the unpinned cache of earlier runs with it (tagged `bk-*` images are kept).
+
 ### A stage fails instantly with `exit code: 1` and zero container output
 
 **Symptom.** BK lane: a stage fails instantly with `exit code: 1` and **ZERO container output** — no script banner, no stderr, deterministic across retries

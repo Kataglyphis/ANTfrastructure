@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Build-TorchRocmFromSource.ps1's pure parts: the wheel versions and names, the version.txt check,
-# torch/_rocm_init.py, the torch and torchvision build env, the libomp lookup and the runtime pins.
+# torch/_rocm_init.py, the torch and torchvision build env, the OpenMP runtime check, the venv shim and the runtime pins.
 # NOT covered: the compile itself, which only a real rocm-lane build of Dockerfile.torch runs.
 
 $script:TorchRocmBuilder = 'windows\scripts\build\Build-TorchRocmFromSource.ps1'
@@ -76,20 +76,57 @@ Describe 'Build-TorchRocmFromSource: the ROCm loader and the build env' {
     }
 }
 
-Describe 'Build-TorchRocmFromSource: libomp and the runtime pins' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Find-TorchRocmLibomp', 'Get-TorchRocmRuntimePin')
+Describe 'Build-TorchRocmFromSource: libomp, the venv shim and the runtime pins' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Assert-TorchRocmSystemLibomp', 'Copy-TorchRocmVenvShim', 'Get-TorchRocmRuntimePin')
 
-    It 'takes libomp140.x86_64.dll from the x64 OpenMP.LLVM redist, never debug_nonredist' {
+    It 'the build venv gets the base sitecustomize.py (win-amd64 tag) and python3.dll, and refuses without the shim' {
         Invoke-InTestDir { param($dir)
-            foreach ($d in 'x64\Microsoft.VC145.OpenMP.LLVM', 'debug_nonredist\x64\Microsoft.VC145.DebugOpenMP.LLVM') {
-                $p = Join-Path $dir $d
-                [void][System.IO.Directory]::CreateDirectory($p)
-                [System.IO.File]::WriteAllText((Join-Path $p 'libomp140.x86_64.dll'), 'x')
-            }
-            Assert-Equal (Join-Path $dir 'x64\Microsoft.VC145.OpenMP.LLVM\libomp140.x86_64.dll') (Find-TorchRocmLibomp -RedistDir $dir) 'the redist copy'
-            Assert-Throws { Find-TorchRocmLibomp -RedistDir '' } 'no VS env' -MessagePattern 'VCToolsRedistDir'
-            Assert-Throws { Find-TorchRocmLibomp -RedistDir (Join-Path $dir 'debug_nonredist') } 'no x64 redist' -MessagePattern 'OpenMP\.LLVM'
+            $site = Join-Path $dir 'cpython\Lib\site-packages'; $pyDir = Join-Path $dir 'cpython\PCbuild\amd64'; $venv = Join-Path $dir 'venv'
+            foreach ($d in $site, $pyDir, (Join-Path $venv 'Lib\site-packages'), (Join-Path $venv 'Scripts')) { [void][System.IO.Directory]::CreateDirectory($d) }
+            [System.IO.File]::WriteAllText((Join-Path $pyDir 'python3.dll'), 'x')
+            Assert-Throws { Copy-TorchRocmVenvShim -BaseSitePackages $site -BasePythonDir $pyDir -Venv $venv } 'no shim' -MessagePattern 'win32'
+            [System.IO.File]::WriteAllText((Join-Path $site 'sitecustomize.py'), 'shim')
+            Copy-TorchRocmVenvShim -BaseSitePackages $site -BasePythonDir $pyDir -Venv $venv
+            Assert-Equal 'shim' ([System.IO.File]::ReadAllText((Join-Path $venv 'Lib\site-packages\sitecustomize.py'))) 'sitecustomize.py'
+            Assert-True (Test-Path -LiteralPath (Join-Path $venv 'Scripts\python3.dll')) 'python3.dll'
         }
+    }
+
+    It 'requires the OpenMP runtime torch_cpu.dll imports in System32, where the image''s VS install puts it' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Assert-TorchRocmSystemLibomp -System32 $dir } 'missing' -MessagePattern 'libomp140\.x86_64\.dll is missing.*import torch'
+            [System.IO.File]::WriteAllText((Join-Path $dir 'libomp140.x86_64.dll'), 'x')
+            Assert-Equal (Join-Path $dir 'libomp140.x86_64.dll') (Assert-TorchRocmSystemLibomp -System32 $dir) 'found'
+        }
+    }
+
+    It 'each RUN leaves exactly the wheels it owns in the output: torch, then torch and torchvision' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Assert-TorchRocmStagedWheel')
+        Invoke-InTestDir { param($dir)
+            $t = 'torch-2.14.0+rocm10.0.0-cp314-cp314-win_amd64.whl'; $v = 'torchvision-0.29.0+rocm10.0.0-cp314-cp314-win_amd64.whl'
+            [System.IO.File]::WriteAllText((Join-Path $dir $t), 'x')
+            Assert-TorchRocmStagedWheel -OutputDir $dir -Name $t
+            Assert-Throws { Assert-TorchRocmStagedWheel -OutputDir $dir -Name $t, $v } 'torchvision missing' -MessagePattern 'expected exactly'
+            [System.IO.File]::WriteAllText((Join-Path $dir $v), 'x')
+            Assert-TorchRocmStagedWheel -OutputDir $dir -Name $v, $t
+            [System.IO.File]::WriteAllText((Join-Path $dir 'torch-2.13.0-cp314-cp314-win_amd64.whl'), 'x')
+            Assert-Throws { Assert-TorchRocmStagedWheel -OutputDir $dir -Name $t, $v } 'a stray wheel' -MessagePattern 'torch-2\.13\.0'
+        }
+    }
+
+    It 'the torchvision RUN keeps the torch RUN''s venv and brings the PIL that import torchvision needs' {
+        $src = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TorchvisionRocmFromSource.ps1'))
+        Assert-False ($src -match '(?m)^\s*\$\w+\s*=\s*Start-MigraphxBuildSession') 'no Start-MigraphxBuildSession: it resets -WorkDir, where the venv is'
+        Assert-Match "Build-TorchRocmFromSource\.ps1'\) -OutputDir \`$OutputDir -WorkDir \`$WorkDir" $src 'dot-sources the torch builder with its own parameters'
+        Assert-Match 'uv pip install --python ""\$venvPy"" pillow' $src 'pillow into the build venv'
+        $torch = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:TorchRocmBuilder))
+        Assert-Match "Complete-MigraphxBuildSession [^\r\n]*-WorkDir \`$torchSrc" $torch 'the torch RUN removes only its tree, not the venv'
+    }
+
+    It 'the torch wheel carries no MSVC OpenMP DLL (VS 18 lists it only under debug_nonredist)' {
+        $src = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:TorchRocmBuilder))
+        Assert-False ($src -match 'force-include\.torch/lib/libomp') 'no force-include of libomp140'
+        Assert-False ($src -match 'Copy-Item[^\r\n]*libomp') 'no copy of libomp140 into torch\lib'
     }
 
     It 'the build venv''s runtime is versions.env''s rocm sdist + core + libraries, AMD-hosted and hash-pinned' {

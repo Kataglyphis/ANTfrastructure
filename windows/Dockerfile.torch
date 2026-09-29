@@ -69,7 +69,7 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
 
 ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 
-# rocm lane only: torch + torchvision built from upstream source against TheRock, on the rocm
+# rocm lane only: torch, then torchvision, built from upstream source against TheRock, on the rocm
 # BASE_IMAGE and NOT on app, so an APP_REF move never re-runs this multi-hour compile. Only rocm-1
 # mounts it, so cpu/nvidia never build it. docs/windows-rocm.md § PyTorch on the rocm lane.
 FROM ${BASE_IMAGE} AS torch-rocm-wheels
@@ -89,9 +89,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
 # rocm-1 installs: the build venv needs rocm_sdk, because `import torch` runs torch/_rocm_init.py.
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
 ARG PYTORCH_VERSION=v2.14.0
-ARG TORCHVISION_VERSION=v0.29.0
 ARG TORCH_ROCM_WINDOWS_PYTORCH_COMMIT=2b3ec34829036a65cd9d1398ea72a0167dc37470
-ARG TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT=fc73f5a8567734ffa4c988b24d5432f0d3005974
 ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz
 ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
 ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl
@@ -110,6 +108,22 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsMigraphx.Common.psm1,target=C:\bkmnt\modules\WindowsMigraphx.Common.psm1 `
     & 'C:\bkmnt\Build-TorchRocmFromSource.ps1' -OutputDir 'C:\torch-rocm-wheels' -WorkDir 'C:\b'
+# torchvision in its own RUN, on the venv the torch RUN leaves: its failure, edit or bump never re-runs the compile above.
+ARG TORCHVISION_VERSION=v0.29.0
+ARG TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT=fc73f5a8567734ffa4c988b24d5432f0d3005974
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-TorchvisionRocmFromSource.ps1,target=C:\bkmnt\Build-TorchvisionRocmFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsMigraphx.Common.psm1,target=C:\bkmnt\modules\WindowsMigraphx.Common.psm1 `
+    & 'C:\bkmnt\Build-TorchvisionRocmFromSource.ps1' -OutputDir 'C:\torch-rocm-wheels' -WorkDir 'C:\b'
 
 # cpu/nvidia: rocm-0 IS app, byte for byte. rocm-1 swaps the app venv's CPU torch for the ROCm torch
 # built above and re-verifies the app on it. docs/windows-builds.md § ROCm layer.
