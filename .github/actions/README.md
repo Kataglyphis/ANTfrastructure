@@ -251,6 +251,41 @@ Used by consumer repos to run their build/test steps inside the published
 > The Windows sibling delivers its payload via environment variables and does
 > not share this surface.
 
+### `compiler-cache-restore` / `compiler-cache-save`
+Keep a Linux container lane's compiler cache across runs. `run-in-linux-container`
+starts every step in a fresh `--rm` container, so `/var/cache/{sccache,ccache}`
+die with it. Restore brings the newest cache of a lane back from
+`actions/cache` into a runner directory and creates the mount points; save
+stores it again under a per-run key. Measured in AccelerANTgine's linux-x64 lane
+against a same-time control (2026-09-29): the clang job fell from 25.1 to
+14.4 min, its four builds from 14.7 to 3.9 min, and the 405 MB cache restored in
+about 7 s.
+
+```yaml
+- id: cc
+  uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-restore@develop
+  with:
+    key: x64-clang
+- uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
+  with:
+    extra-args: --platform linux/amd64 ${{ steps.cc.outputs.docker-args }}
+    script: bash -lc 'bash scripts/linux/ci-build.sh'
+- if: always()
+  uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-save@develop
+  with:
+    key: x64-clang
+```
+
+Restore inputs: `key` (the lane id; lanes that share one share a cache), `mounts`
+(space-separated `<subdir>:<container path>`, default the image's sccache and
+ccache dirs), `env` (space-separated `NAME=value`, default caps of 2G each).
+Outputs: `docker-args`, `path`, `restored-key`. Save inputs: `key`, `enabled`
+(`auto`, the default, saves on push events only, so pull requests and dispatches
+restore without spending quota). Output: `saved`. A repository has 10 GB of
+cache: budget one key per preset that is worth it, and see
+[`docs/build-cache-tiers.md`](../../docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs).
+Linux only: a Windows container lane does not have it yet.
+
 ### `run-in-windows-container`
 Runs PowerShell inside a Windows container image. Exactly one of `command`
 (pwsh `-Command`) or `file` (pwsh `-File`, with `file-args` — ONE argv element
@@ -272,7 +307,7 @@ inputs.
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
 edit here and the 84 consumer call sites (counted 2026-09-14) that resolve these
 actions at `@develop` - which the submodule pin does not freeze. It `uses:` all
-twelve directories here, and it fires on any change under `.github/actions/`.
+fourteen directories here, and it fires on any change under `.github/actions/`.
 Read its header before trusting a green run; the short version:
 
 **`deploy-over-ftp` is covered statically, and at runtime only on request.** Its

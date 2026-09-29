@@ -268,7 +268,7 @@ All eleven sites were adopted on 2026-09-14 — the hub's two workflows
 `uses:` swap keeping the step's `if:` and `with:` keys, and each dropping its own
 `chmod -R 755` / `chown -R` fixup, which the action does itself. The gap this
 section used to name is closed with them: `actions-selftest.yml` `uses:` all
-twelve actions in `.github/actions/` now, `deploy-over-ftp` among them, guarded
+every action in `.github/actions/` now, `deploy-over-ftp` among them, guarded
 so it runs only on a dispatch with `ftp-dry-run: true`, and then as a dry run that
 uploads nothing. That is what makes actionlint hold every declared
 input and output on every push, so renaming one breaks the hub rather than a

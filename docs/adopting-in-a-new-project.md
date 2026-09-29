@@ -334,7 +334,7 @@ and are referenced from a consumer workflow as
 names the retired `:latest-cross`, so an action at `@main` pulls an image no
 release moves any more. The same ref applies to the reusable workflows below.
 
-All twelve, with every input and output, are listed once in
+All fourteen, with every input and output, are listed once in
 [`.github/actions/README.md`](../.github/actions/README.md) — that page is the
 list, and a table here would be a second copy of it to keep in sync. They
 replace the hand-rolled `docker run` blocks that otherwise accumulate (in the
