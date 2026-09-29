@@ -342,6 +342,8 @@ _ortg_token_finding() {  # <record> <path> <real path>: one path outside the cha
   # A trailing-slash token (CMakeCache holds them) basenames to EMPTY, and ${arr[${name}]} with an
   # empty subscript is a fatal "bad array subscript" under set -u. Treat it as the dir it is.
   if [ -z "${name}" ]; then name=$(_ortg_token_dirname "${tok}"); fi
+  # '/' (a cross build's CMAKE_FIND_ROOT_PATH) has no segment left: it names no ORT and is no dir to search.
+  [ -n "${name}" ] || return 0
   if [ -n "${_ORTG_SHA[${name}]:-}" ] || _ortg_is_bin "${name}"; then
     if [ -f "${tok}" ]; then _ortg_name_finding "${tok}" | sed -e "s#^#${rec}: #"
     else echo "${rec} names ${tok}, an ONNX Runtime file outside the chain (not on disk to compare)"; fi

@@ -479,6 +479,17 @@ while IFS= read -r _m; do
   t_assert_ok grep -q -x -F -e "${_m}" <<< "${_defaults}"
 done <<< "${_mounts}"
 
+t_case "a record naming '/' or a dir with a trailing '/' passes under set -u (a cross build's CMAKE_FIND_ROOT_PATH)"
+# Both basename to EMPTY: '/' also reduces to no segment at all, and an empty subscript into the chain index
+# was a fatal "bad array subscript" — media-arm64/-riscv64 in the 2026-09-28 chain, after the whole GenAI build.
+_case records-root
+mkdir -p "${CASE}/sysroot"
+printf 'CMAKE_FIND_ROOT_PATH:PATH=/\nCMAKE_SYSROOT:PATH=%s/\nX:STRING=//\n' "${CASE}/sysroot" >> "${TREE}/build/CMakeCache.txt"
+_run
+t_assert_eq 0 "${RC}" "${OUTPUT}"
+t_assert_fails grep -q -e 'bad array subscript' <<< "${OUTPUT}"
+t_assert_contains "${OUTPUT}" "ORT-GATE OK (opencv)"
+
 t_case "GenAI's G2 runs in its own RUN, which mounts every fetch cache of the RUN that built GenAI, same ids (mutation)"
 # _fetch_mounts <needle>: the cache --mount tokens of the RUNs holding <needle>, less the ungraded object and apt caches.
 _fetch_mounts() {

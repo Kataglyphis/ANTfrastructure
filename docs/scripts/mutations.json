@@ -9395,6 +9395,14 @@
     "why": "a cache walk runs in a subshell, so its files never reach the stamp's tree count"
   },
   {
+    "id": "ort-chain.g2-root-token",
+    "target": "linux/scripts/03-media/ort-provenance.sh",
+    "find": "  [ -n \"${name}\" ] || return 0\n  if [ -n \"${_ORTG_SHA[${name}]:-}\" ] || _ortg_is_bin \"${name}\"; then\n    if [ -f",
+    "replace": "  if [ -n \"${_ORTG_SHA[${name}]:-}\" ] || _ortg_is_bin \"${name}\"; then\n    if [ -f",
+    "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+    "why": "a record token of '/' (a cross build's CMAKE_FIND_ROOT_PATH) must not die on an empty subscript"
+  },
+  {
     "id": "ort-chain.g2-genai-fetch-uv",
     "target": "linux/Dockerfile.media",
     "find": "ort-provenance.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
